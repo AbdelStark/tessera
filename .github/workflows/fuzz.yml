@@ -8,6 +8,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - verifier/Cargo.toml
       - verifier/crates/tv-codec/**
       - verifier/crates/tv-field/**
       - verifier/crates/tv-testkit/**
@@ -17,6 +18,7 @@ on:
   push:
     branches: [main]
     paths:
+      - verifier/Cargo.toml
       - verifier/crates/tv-codec/**
       - verifier/crates/tv-field/**
       - verifier/crates/tv-testkit/**
@@ -54,6 +56,8 @@ jobs:
       targets: ${{ steps.targets.outputs.list }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # RUSTUP_TOOLCHAIN makes the pin of verifier/fuzz/rust-toolchain.toml apply everywhere,
       # including where the cache action runs rustc.
       - name: Install the fuzzing toolchain
@@ -69,11 +73,17 @@ jobs:
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Allocation tests
+        run: cargo test --locked
       - name: List the targets, one per fuzz_targets/<name>.rs
         id: targets
         run: |
           list=$(find fuzz_targets -maxdepth 1 -name '*.rs' -exec basename {} .rs \; | sort | jq -Rcn '[inputs]')
           echo "targets: $list"
+          if [ "$list" = "[]" ]; then
+            echo "no fuzz target under fuzz_targets/"
+            exit 1
+          fi
           echo "list=$list" >> "$GITHUB_OUTPUT"
 
   fuzz:
@@ -87,6 +97,8 @@ jobs:
         target: ${{ fromJSON(needs.check.outputs.targets) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install the fuzzing toolchain
         run: |
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
@@ -114,9 +126,10 @@ jobs:
             echo "seconds must be a positive integer, got '$SECONDS_PER_TARGET'"
             exit 1
           fi
-          mkdir -p "corpus/$TARGET"
+          # seeds.py seeds the targets it knows; another starts from an empty directory.
+          mkdir -p "corpus/$TARGET" "$RUNNER_TEMP/seeds/$TARGET"
           cargo fuzz run "$TARGET" "corpus/$TARGET" "$RUNNER_TEMP/seeds/$TARGET" -- \
-            -max_total_time="$SECONDS_PER_TARGET" -print_final_stats=1
+            -max_total_time="$SECONDS_PER_TARGET" -timeout=10 -print_final_stats=1
       - name: Keep the failing input
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -1,15 +1,57 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Decoders shared by the fuzz targets, built from `tv-codec`'s combinators.
+//! Decoders shared by the fuzz targets, built from `tv-codec`'s combinators, and what each
+//! reports about the value it decoded, for the targets' oracles.
 //!
-//! Each one returns the canonical encoding of the value it decoded, written from RFC-0003's
-//! encoding table, so a target can check that an accepted input is exactly that encoding
-//! (INV-TCE-2): a decoder that accepts a second encoding of some value fails the check.
+//! Each decoder returns an [`Echo`]: the canonical encoding of its value, written from RFC-0003's
+//! encoding table from the value and never copied from the input, with the value's nesting depth
+//! and its longest sequence. A target compares the encoding with its input (INV-TCE-2) and the
+//! depth and lengths with its limits, so a decoder that accepts a second encoding of a value, or
+//! a value past a limit, fails the target. What no value of the type can be panics here: a
+//! rational with a zero denominator, text outside `Ascii`, two equal map keys, an unknown enum
+//! tag.
 
 use tv_codec::{Cursor, DecodeError, size};
 
-/// The canonical bytes of a decoded value.
-pub type Echo = Result<Vec<u8>, DecodeError>;
+/// What a decoder learned about the value it decoded.
+pub struct Echo {
+    /// The value's canonical encoding.
+    pub bytes: Vec<u8>,
+    /// Its nesting depth, as RFC-0003 'Limits' counts levels.
+    pub depth: u16,
+    /// The length of its longest sequence: `Vec`, `Bytes`, `Ascii` or map.
+    pub longest: u64,
+}
+
+/// A decoder's result.
+pub type Decoded = Result<Echo, DecodeError>;
+
+impl Echo {
+    /// A value that holds no other: integers, `bool` and `Fp`.
+    fn leaf(bytes: Vec<u8>) -> Self {
+        Self {
+            bytes,
+            depth: 0,
+            longest: 0,
+        }
+    }
+
+    /// A value one level above the deepest of its `parts`, encoded as `head` followed by them; a
+    /// sequence of `len` elements has a `len` length.
+    fn node(head: Vec<u8>, parts: Vec<Echo>, len: u64) -> Self {
+        let depth = parts.iter().map(|part| part.depth).max().unwrap_or(0);
+        let longest = parts.iter().map(|part| part.longest).max().unwrap_or(0);
+        let mut bytes = head;
+        for part in parts {
+            bytes.extend(part.bytes);
+        }
+        Self {
+            bytes,
+            depth: depth.saturating_add(1),
+            longest: longest.max(len),
+        }
+    }
+}
 
 /// The types the targets decode, by selector: every type of the conformance vectors, plus a
 /// few compositions they do not hold.
@@ -53,7 +95,7 @@ pub const TYPES: [&str; 36] = [
 ];
 
 /// Decodes one value of `TYPES[selector % TYPES.len()]`.
-pub fn decode_as(selector: usize, c: &mut Cursor<'_>) -> Echo {
+pub fn decode_as(selector: usize, c: &mut Cursor<'_>) -> Decoded {
     match selector % TYPES.len() {
         0 => u8_(c),
         1 => u16_(c),
@@ -96,93 +138,124 @@ pub fn decode_as(selector: usize, c: &mut Cursor<'_>) -> Echo {
     }
 }
 
-fn u64_le(value: u64) -> Vec<u8> {
-    value.to_le_bytes().to_vec()
-}
-
 fn length(len: usize) -> Vec<u8> {
-    u64_le(len as u64)
+    (len as u64).to_le_bytes().to_vec()
 }
 
-pub fn u8_(c: &mut Cursor<'_>) -> Echo {
-    Ok(vec![c.u8()?])
+pub fn u8_(c: &mut Cursor<'_>) -> Decoded {
+    Ok(Echo::leaf(vec![c.u8()?]))
 }
 
-pub fn u16_(c: &mut Cursor<'_>) -> Echo {
-    Ok(c.u16()?.to_le_bytes().to_vec())
+pub fn u16_(c: &mut Cursor<'_>) -> Decoded {
+    Ok(Echo::leaf(c.u16()?.to_le_bytes().to_vec()))
 }
 
-pub fn u32_(c: &mut Cursor<'_>) -> Echo {
-    Ok(c.u32()?.to_le_bytes().to_vec())
+pub fn u32_(c: &mut Cursor<'_>) -> Decoded {
+    Ok(Echo::leaf(c.u32()?.to_le_bytes().to_vec()))
 }
 
-pub fn u64_(c: &mut Cursor<'_>) -> Echo {
-    Ok(u64_le(c.u64()?))
+pub fn u64_(c: &mut Cursor<'_>) -> Decoded {
+    Ok(Echo::leaf(c.u64()?.to_le_bytes().to_vec()))
 }
 
-pub fn i8_(c: &mut Cursor<'_>) -> Echo {
-    Ok(c.i8()?.to_le_bytes().to_vec())
+pub fn i8_(c: &mut Cursor<'_>) -> Decoded {
+    Ok(Echo::leaf(c.i8()?.to_le_bytes().to_vec()))
 }
 
-pub fn i16_(c: &mut Cursor<'_>) -> Echo {
-    Ok(c.i16()?.to_le_bytes().to_vec())
+pub fn i16_(c: &mut Cursor<'_>) -> Decoded {
+    Ok(Echo::leaf(c.i16()?.to_le_bytes().to_vec()))
 }
 
-pub fn i32_(c: &mut Cursor<'_>) -> Echo {
-    Ok(c.i32()?.to_le_bytes().to_vec())
+pub fn i32_(c: &mut Cursor<'_>) -> Decoded {
+    Ok(Echo::leaf(c.i32()?.to_le_bytes().to_vec()))
 }
 
-pub fn i64_(c: &mut Cursor<'_>) -> Echo {
-    Ok(c.i64()?.to_le_bytes().to_vec())
+pub fn i64_(c: &mut Cursor<'_>) -> Decoded {
+    Ok(Echo::leaf(c.i64()?.to_le_bytes().to_vec()))
 }
 
-pub fn bool_(c: &mut Cursor<'_>) -> Echo {
-    Ok(vec![u8::from(c.bool()?)])
+pub fn bool_(c: &mut Cursor<'_>) -> Decoded {
+    Ok(Echo::leaf(vec![u8::from(c.bool()?)]))
 }
 
-pub fn fp(c: &mut Cursor<'_>) -> Echo {
-    Ok(u64_le(c.fp()?.to_canonical()))
+pub fn fp(c: &mut Cursor<'_>) -> Decoded {
+    Ok(Echo::leaf(c.fp()?.to_canonical().to_le_bytes().to_vec()))
 }
 
-pub fn fp2(c: &mut Cursor<'_>) -> Echo {
+pub fn fp2(c: &mut Cursor<'_>) -> Decoded {
     let x = c.fp2()?;
-    Ok([u64_le(x.c0.to_canonical()), u64_le(x.c1.to_canonical())].concat())
+    let coefficients = vec![
+        Echo::leaf(x.c0.to_canonical().to_le_bytes().to_vec()),
+        Echo::leaf(x.c1.to_canonical().to_le_bytes().to_vec()),
+    ];
+    Ok(Echo::node(Vec::new(), coefficients, 0))
 }
 
-pub fn digest(c: &mut Cursor<'_>) -> Echo {
-    Ok(c.digest()?.to_vec())
+pub fn digest(c: &mut Cursor<'_>) -> Decoded {
+    let bytes = c.digest()?.iter().map(|&b| Echo::leaf(vec![b])).collect();
+    Ok(Echo::node(Vec::new(), bytes, 0))
 }
 
-pub fn bytes(c: &mut Cursor<'_>) -> Echo {
+pub fn bytes(c: &mut Cursor<'_>) -> Decoded {
     let b = c.bytes()?;
-    Ok([length(b.len()), b.to_vec()].concat())
+    Ok(Echo::node(
+        [length(b.len()), b.to_vec()].concat(),
+        Vec::new(),
+        b.len() as u64,
+    ))
 }
 
-pub fn ascii(c: &mut Cursor<'_>) -> Echo {
+pub fn ascii(c: &mut Cursor<'_>) -> Decoded {
     let text = c.ascii()?;
-    Ok([length(text.len()), text.as_bytes().to_vec()].concat())
+    assert!(
+        text.bytes().all(|b| (0x20..=0x7E).contains(&b)),
+        "Ascii accepted with a byte outside 0x20..=0x7E: {:02x?}",
+        text.as_bytes()
+    );
+    Ok(Echo::node(
+        [length(text.len()), text.as_bytes().to_vec()].concat(),
+        Vec::new(),
+        text.len() as u64,
+    ))
 }
 
-pub fn rational(c: &mut Cursor<'_>) -> Echo {
+fn gcd(mut a: u64, mut b: u64) -> u64 {
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    a
+}
+
+/// `Rational`, encoded in lowest terms whatever its decoder returned.
+pub fn rational(c: &mut Cursor<'_>) -> Decoded {
     let r = c.rational()?;
-    Ok([r.num().to_le_bytes(), r.den().to_le_bytes()].concat())
+    let (num, den) = (r.num(), r.den());
+    assert!(den != 0, "a rational accepted with denominator 0");
+    let g = gcd(num.unsigned_abs(), den);
+    let num = i64::try_from(i128::from(num) / i128::from(g)).expect("in range");
+    Ok(Echo::node(
+        [num.to_le_bytes(), (den / g).to_le_bytes()].concat(),
+        Vec::new(),
+        0,
+    ))
 }
 
 /// `Vec<T>`.
 pub fn seq(
     c: &mut Cursor<'_>,
     element_min: u64,
-    element: impl FnMut(&mut Cursor<'_>) -> Echo,
-) -> Echo {
+    element: impl FnMut(&mut Cursor<'_>) -> Decoded,
+) -> Decoded {
     let items = c.vec(element_min, element)?;
-    Ok([length(items.len()), items.concat()].concat())
+    let len = items.len();
+    Ok(Echo::node(length(len), items, len as u64))
 }
 
 /// `Option<T>`.
-pub fn option(c: &mut Cursor<'_>, some: impl FnOnce(&mut Cursor<'_>) -> Echo) -> Echo {
+pub fn option(c: &mut Cursor<'_>, some: impl FnOnce(&mut Cursor<'_>) -> Decoded) -> Decoded {
     Ok(match c.option(some)? {
-        None => vec![0, 0],
-        Some(value) => [vec![1, 0], value].concat(),
+        None => Echo::node(vec![0, 0], Vec::new(), 0),
+        Some(value) => Echo::node(vec![1, 0], vec![value], 0),
     })
 }
 
@@ -191,41 +264,53 @@ pub fn array(
     c: &mut Cursor<'_>,
     len: usize,
     element_min: u64,
-    element: impl FnMut(&mut Cursor<'_>) -> Echo,
-) -> Echo {
-    Ok(c.array(len, element_min, element)?.concat())
+    element: impl FnMut(&mut Cursor<'_>) -> Decoded,
+) -> Decoded {
+    Ok(Echo::node(
+        Vec::new(),
+        c.array(len, element_min, element)?,
+        0,
+    ))
 }
 
 /// A tuple of these fields.
-pub fn tuple(c: &mut Cursor<'_>, fields: &[fn(&mut Cursor<'_>) -> Echo]) -> Echo {
+pub fn tuple(c: &mut Cursor<'_>, fields: &[fn(&mut Cursor<'_>) -> Decoded]) -> Decoded {
     c.nested(|c| {
-        let mut out = Vec::new();
-        for field in fields {
-            out.extend(field(c)?);
-        }
-        Ok(out)
+        let parts = fields
+            .iter()
+            .map(|field| field(c))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Echo::node(Vec::new(), parts, 0))
     })
 }
 
-/// `Map<K, V>`.
+/// `Map<K, V>`, encoded with its entries sorted by their keys' encodings whatever order its
+/// decoder returned them in; two equal keys panic.
 pub fn map(
     c: &mut Cursor<'_>,
     key_min: u64,
     value_min: u64,
-    key: impl FnMut(&mut Cursor<'_>) -> Echo,
-    value: impl FnMut(&mut Cursor<'_>) -> Echo,
-) -> Echo {
-    let entries = c.map(key_min, value_min, key, value)?;
-    let mut out = length(entries.len());
-    for (k, v) in entries {
-        out.extend(k);
-        out.extend(v);
-    }
-    Ok(out)
+    key: impl FnMut(&mut Cursor<'_>) -> Decoded,
+    value: impl FnMut(&mut Cursor<'_>) -> Decoded,
+) -> Decoded {
+    let mut entries = c.map(key_min, value_min, key, value)?;
+    entries.sort_by(|a, b| a.0.bytes.cmp(&b.0.bytes));
+    assert!(
+        entries
+            .windows(2)
+            .all(|pair| pair[0].0.bytes != pair[1].0.bytes),
+        "a map accepted with two equal keys"
+    );
+    let len = entries.len();
+    let entries = entries
+        .into_iter()
+        .map(|(k, v)| Echo::node(Vec::new(), vec![k, v], 0))
+        .collect();
+    Ok(Echo::node(length(len), entries, len as u64))
 }
 
 /// `Option^n<u8>`.
-pub fn options(c: &mut Cursor<'_>, n: usize) -> Echo {
+pub fn options(c: &mut Cursor<'_>, n: usize) -> Decoded {
     match n {
         0 => u8_(c),
         _ => option(c, |c| options(c, n - 1)),
@@ -233,7 +318,7 @@ pub fn options(c: &mut Cursor<'_>, n: usize) -> Echo {
 }
 
 /// `[u8; 1]^n`.
-pub fn arrays(c: &mut Cursor<'_>, n: usize) -> Echo {
+pub fn arrays(c: &mut Cursor<'_>, n: usize) -> Decoded {
     match n {
         0 => u8_(c),
         _ => array(c, 1, 1, |c| arrays(c, n - 1)),
@@ -241,38 +326,40 @@ pub fn arrays(c: &mut Cursor<'_>, n: usize) -> Echo {
 }
 
 /// `pair^n`: `n` nested pairs, each adding a `u8` on the right.
-pub fn pairs(c: &mut Cursor<'_>, n: usize) -> Echo {
+pub fn pairs(c: &mut Cursor<'_>, n: usize) -> Decoded {
     match n {
         0 => u8_(c),
-        _ => c.nested(|c| Ok([pairs(c, n - 1)?, u8_(c)?].concat())),
+        _ => c.nested(|c| Ok(Echo::node(Vec::new(), vec![pairs(c, n - 1)?, u8_(c)?], 0))),
     }
 }
 
 /// `struct Sample { flag: bool, small: u8, list: Vec<u16>, maybe: Option<i32>, name: Ascii,
 /// digest: [u8; 32] }`, the test schema of `spec/vectors/codec/`.
-pub fn sample(c: &mut Cursor<'_>) -> Echo {
+pub fn sample(c: &mut Cursor<'_>) -> Decoded {
     c.nested(|c| {
-        Ok([
+        let fields = vec![
             bool_(c)?,
             u8_(c)?,
             seq(c, size::U16, u16_)?,
             option(c, i32_)?,
             ascii(c)?,
             digest(c)?,
-        ]
-        .concat())
+        ];
+        Ok(Echo::node(Vec::new(), fields, 0))
     })
 }
 
-/// `enum Shape { Empty, Point(u32), Box { width: u16, height: u16 }, Nested(Vec<Shape>) }`.
-pub fn shape(c: &mut Cursor<'_>) -> Echo {
+/// `enum Shape { Empty, Point(u32), Box { width: u16, height: u16 }, Nested(Vec<Shape>) }`,
+/// encoded by the variant decoded, whose fields take no level of their own.
+pub fn shape(c: &mut Cursor<'_>) -> Decoded {
     c.enumeration(4, |c, tag| {
-        let fields = match tag {
-            0 => Vec::new(),
-            1 => u32_(c)?,
-            2 => [u16_(c)?, u16_(c)?].concat(),
-            _ => seq(c, size::TAG, shape)?,
+        let (variant, fields): (u16, Vec<Echo>) = match tag {
+            0 => (0, Vec::new()),
+            1 => (1, vec![u32_(c)?]),
+            2 => (2, vec![u16_(c)?, u16_(c)?]),
+            3 => (3, vec![seq(c, size::TAG, shape)?]),
+            other => panic!("tag {other} accepted for an enum of 4 variants"),
         };
-        Ok([tag.to_le_bytes().to_vec(), fields].concat())
+        Ok(Echo::node(variant.to_le_bytes().to_vec(), fields, 0))
     })
 }

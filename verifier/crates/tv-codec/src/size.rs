@@ -8,6 +8,11 @@
 //! fields'; of an enum, [`TAG`] plus its smallest variant's fields; of an array,
 //! [`array`](fn@array). Saturating arithmetic keeps an oversized minimum oversized: no input can
 //! satisfy it.
+//!
+//! A minimum must be exact. One too large rejects honest inputs: the length check fails, or an
+//! element consumes less than its minimum, `ERR-INTERNAL`. One too small only weakens the length
+//! check, so that a malformed input fails at an element rather than at its length; no check can
+//! see it at run time, and the schema's conformance vectors must.
 
 /// `bool`.
 pub const BOOL: u64 = 1;

@@ -12,7 +12,11 @@ use crate::{DecodeError, DecodeLimits, ErrorCode, Rational, size};
 /// The cursor only moves forward. Each method reads one value at the current position and either
 /// advances past it or returns the error of the first check that failed, with its offset; after
 /// an error the cursor's state is unspecified and decoding stops. A schema decoder is a function
-/// that calls these methods in field order:
+/// that calls these methods in field order, and decodes every composite value through a
+/// combinator, which takes the value's depth level and releases it when the value ends.
+///
+/// A cursor exists only inside [`decode`] and [`Envelope::decode_payload`](crate::Envelope),
+/// which check, once the value is decoded, that no byte is left over (INV-TCE-4):
 ///
 /// ```
 /// use tv_codec::{Cursor, DecodeError, DecodeLimits, decode, size};
@@ -41,7 +45,7 @@ pub struct Cursor<'a> {
 impl<'a> Cursor<'a> {
     /// A cursor at the start of a whole input, after the check that comes before decoding: an
     /// input longer than `max_total_bytes` is `ERR-CODEC-LIMIT` at offset 0.
-    pub fn new(input: &'a [u8], limits: &DecodeLimits) -> Result<Self, DecodeError> {
+    pub(crate) fn new(input: &'a [u8], limits: &DecodeLimits) -> Result<Self, DecodeError> {
         if wide(input.len()) > limits.max_total_bytes {
             return Err(DecodeError::new(ErrorCode::Limit, 0));
         }
@@ -172,9 +176,9 @@ impl<'a> Cursor<'a> {
     // Depth.
 
     /// Takes one level for a composite value that starts here: `ERR-CODEC-LIMIT` here when every
-    /// level of `min(max_depth, 256)` is taken. Pair it with [`leave`](Self::leave) when the value
-    /// ends, or use [`nested`](Self::nested), which pairs them.
-    pub fn enter(&mut self) -> Result<(), DecodeError> {
+    /// level of `min(max_depth, 256)` is taken. Only [`nested`](Self::nested) calls it, paired
+    /// with [`leave`](Self::leave), so that no schema can leave a level taken or skip one.
+    fn enter(&mut self) -> Result<(), DecodeError> {
         if self.depth >= self.max_depth {
             return Err(self.error(ErrorCode::Limit));
         }
@@ -183,11 +187,12 @@ impl<'a> Cursor<'a> {
     }
 
     /// Releases the level of a composite value that has ended.
-    pub fn leave(&mut self) {
+    fn leave(&mut self) {
         self.depth = self.depth.saturating_sub(1);
     }
 
     /// A struct or tuple: `fields` decodes its fields in declaration order, one level deeper.
+    /// Every combinator for a composite value goes through it.
     pub fn nested<T>(
         &mut self,
         fields: impl FnOnce(&mut Self) -> Result<T, DecodeError>,
@@ -206,8 +211,8 @@ impl<'a> Cursor<'a> {
     /// element type ([`size`]); 0, which no schema may declare (RFC-0003 'Limits', empty
     /// elements), counts as 1.
     ///
-    /// The caller has taken the sequence's level; [`vec`](Self::vec) and the other sequence
-    /// combinators do both.
+    /// Call it inside [`nested`](Self::nested), which takes the sequence's level; [`vec`](Self::vec)
+    /// and the other sequence combinators do both, and also bound the memory the elements take.
     pub fn sequence_len(&mut self, element_min: u64) -> Result<usize, DecodeError> {
         let at = self.offset;
         let declared = self.u64()?;
@@ -222,21 +227,51 @@ impl<'a> Cursor<'a> {
     }
 
     /// `Vec<T>`: a checked length, then that many values decoded by `element`, one level deeper.
-    /// It reserves exactly the checked length (INV-TCE-3).
+    ///
+    /// The vector's room grows with the values decoded, up to the checked length (INV-TCE-3);
+    /// memory that cannot be reserved is `ERR-RES-MEMORY` at the sequence. Each value must
+    /// consume at least `element_min` bytes, and at least one: a value that consumes less shows a
+    /// wrong minimum or an empty element type in the schema, `ERR-INTERNAL` at the value.
     pub fn vec<T>(
         &mut self,
         element_min: u64,
-        mut element: impl FnMut(&mut Self) -> Result<T, DecodeError>,
+        element: impl FnMut(&mut Self) -> Result<T, DecodeError>,
     ) -> Result<Vec<T>, DecodeError> {
         self.nested(|c| {
             let at = c.offset;
             let len = c.sequence_len(element_min)?;
-            let mut values = reserve(len, at)?;
-            for _ in 0..len {
-                values.push(element(c)?);
-            }
-            Ok(values)
+            c.elements(len, element_min, at, element)
         })
+    }
+
+    /// Decodes the `len` values of a sequence or an array that starts at `at`, each by `element`.
+    ///
+    /// - **Memory.** The vector never has room for more than `len` values (INV-TCE-3), and its
+    ///   room grows with the values decoded: at most [`FIRST_RESERVATION`] bytes at first, then
+    ///   doubling. Sequences open inside one another thus hold memory in proportion to what they
+    ///   have decoded, not to the lengths they declare. Memory that cannot be reserved is
+    ///   `ERR-RES-MEMORY` at `at`: the reader ran out, the input is not at fault.
+    /// - **Each value's size.** A value that consumes fewer than `element_min` bytes, or none,
+    ///   shows that the schema declared a wrong minimum or an empty element type, which RFC-0003
+    ///   forbids: `ERR-INTERNAL` at the value. So every value consumes input, and decoding time
+    ///   stays linear in it whatever the schema.
+    fn elements<T>(
+        &mut self,
+        len: usize,
+        element_min: u64,
+        at: u64,
+        mut element: impl FnMut(&mut Self) -> Result<T, DecodeError>,
+    ) -> Result<Vec<T>, DecodeError> {
+        let mut values = Vec::new();
+        for _ in 0..len {
+            make_room(&mut values, len, at)?;
+            let start = self.offset;
+            values.push(element(self)?);
+            if self.offset.saturating_sub(start) < element_min.max(1) {
+                return Err(DecodeError::new(ErrorCode::Internal, start));
+            }
+        }
+        Ok(values)
     }
 
     /// `Bytes`, that is `Vec<u8>`, borrowed from the input.
@@ -273,29 +308,27 @@ impl<'a> Cursor<'a> {
         mut key: impl FnMut(&mut Self) -> Result<K, DecodeError>,
         mut value: impl FnMut(&mut Self) -> Result<V, DecodeError>,
     ) -> Result<Vec<(K, V)>, DecodeError> {
+        let entry_min = key_min.saturating_add(value_min);
         self.nested(|c| {
             let at = c.offset;
-            let len = c.sequence_len(key_min.saturating_add(value_min))?;
-            let mut entries = reserve(len, at)?;
+            let len = c.sequence_len(entry_min)?;
             let mut previous: Option<&'a [u8]> = None;
-            for _ in 0..len {
-                let entry = c.nested(|c| {
+            c.elements(len, entry_min, at, |c| {
+                c.nested(|c| {
                     let key_at = c.offset;
                     let before = c.rest;
                     let k = key(c)?;
                     let used = before.len().saturating_sub(c.rest.len());
                     let encoding = before
                         .get(..used)
-                        .ok_or(DecodeError::new(ErrorCode::Noncanonical, key_at))?;
+                        .ok_or(DecodeError::new(ErrorCode::Internal, key_at))?;
                     if previous.is_some_and(|previous| encoding <= previous) {
                         return Err(DecodeError::new(ErrorCode::Noncanonical, key_at));
                     }
                     previous = Some(encoding);
                     Ok((k, value(c)?))
-                })?;
-                entries.push(entry);
-            }
-            Ok(entries)
+                })
+            })
         })
     }
 
@@ -303,22 +336,20 @@ impl<'a> Cursor<'a> {
 
     /// `[T; len]`, as a vector of exactly `len` values decoded by `element`, one level deeper.
     /// The array is checked as a whole first: `len · element_min` above the bytes left is
-    /// `ERR-CODEC-TRUNCATED` at its first byte.
+    /// `ERR-CODEC-TRUNCATED` at its first byte. Memory and each value's size are bounded as for
+    /// [`vec`](Self::vec).
     pub fn array<T>(
         &mut self,
         len: usize,
         element_min: u64,
-        mut element: impl FnMut(&mut Self) -> Result<T, DecodeError>,
+        element: impl FnMut(&mut Self) -> Result<T, DecodeError>,
     ) -> Result<Vec<T>, DecodeError> {
         self.nested(|c| {
+            let at = c.offset;
             if !c.fits(wide(len), element_min) {
                 return Err(c.error(ErrorCode::Truncated));
             }
-            let mut values = reserve(len, c.offset)?;
-            for _ in 0..len {
-                values.push(element(c)?);
-            }
-            Ok(values)
+            c.elements(len, element_min, at, element)
         })
     }
 
@@ -389,7 +420,7 @@ impl<'a> Cursor<'a> {
 
     /// Ends a whole input, or an envelope's payload: a byte left over is
     /// `ERR-CODEC-NONCANONICAL` at that byte (INV-TCE-4).
-    pub fn finish(self) -> Result<(), DecodeError> {
+    pub(crate) fn finish(self) -> Result<(), DecodeError> {
         if self.rest.is_empty() {
             Ok(())
         } else {
@@ -424,14 +455,29 @@ pub fn decode<'a, T>(
     Ok(decoded)
 }
 
-/// An empty vector with room for exactly `len` values, which the caller checked against the
-/// bytes left. Memory that cannot be reserved is `ERR-CODEC-LIMIT` at `at` rather than an abort.
-fn reserve<T>(len: usize, at: u64) -> Result<Vec<T>, DecodeError> {
-    let mut values = Vec::new();
+/// The most memory, in bytes, a sequence reserves before its first value is decoded.
+const FIRST_RESERVATION: usize = 64 << 10;
+
+/// Makes room in `values` for one more of the `len` values of a sequence that starts at `at`:
+/// none when there is room already; otherwise as much again as the vector holds, at least
+/// [`FIRST_RESERVATION`] bytes' worth, and never past `len` values in all.
+fn make_room<T>(values: &mut Vec<T>, len: usize, at: u64) -> Result<(), DecodeError> {
+    // A type of size 0 never allocates and its vectors always have room, so `T` has a non-zero
+    // size past this point.
+    if values.len() < values.capacity() {
+        return Ok(());
+    }
+    let first = FIRST_RESERVATION
+        .checked_div(size_of::<T>())
+        .unwrap_or(len)
+        .max(1);
+    let additional = values
+        .capacity()
+        .max(first)
+        .min(len.saturating_sub(values.len()));
     values
-        .try_reserve_exact(len)
-        .map_err(|_| DecodeError::new(ErrorCode::Limit, at))?;
-    Ok(values)
+        .try_reserve_exact(additional)
+        .map_err(|_| DecodeError::new(ErrorCode::Memory, at))
 }
 
 /// A length as `u64`. Every supported target has 64-bit or smaller pointers, so this is exact.

@@ -10,7 +10,7 @@ use support::{Ty, decode_whole};
 use tv_codec::{Cursor, DecodeError, DecodeLimits, Envelope, ErrorCode, Expected, decode, size};
 use tv_testkit::blake3;
 
-use ErrorCode::{Digest, Limit, Magic, Noncanonical, Truncated, Version};
+use ErrorCode::{Digest, Internal, Limit, Magic, Noncanonical, Truncated, Version};
 
 const SMALL: DecodeLimits = DecodeLimits {
     max_total_bytes: 64,
@@ -208,15 +208,30 @@ fn a_hostile_length_is_rejected_without_allocating() {
 }
 
 #[test]
-fn element_minimums_bound_every_sequence_length() {
+fn element_minimums_bound_lengths_and_elements_must_meet_them() {
     // An element type of size 0 cannot occur in a schema (RFC-0003 'Limits'); were one passed,
-    // the length is still bounded by the bytes left.
-    let unit = |c: &mut Cursor<'_>| c.vec(0, |_| Ok(()));
+    // the length is still bounded by the bytes left. Accepted, the value would be 2^34 units:
+    // the closure reports its length, so that a failure message stays small.
+    let unit = |c: &mut Cursor<'_>| c.vec(0, |_| Ok(())).map(|units| units.len());
     let error = decode(&le(1 << 34), &DecodeLimits::MESSAGE, unit).expect_err("bounded");
     assert_eq!((error.code(), error.offset()), (Truncated, 0));
+    // An element that consumes nothing, or less than its declared minimum, is the schema's bug,
+    // reported at the element and never blamed on the input.
     let three = [&le(3)[..], &[0; 3]].concat();
     let error = decode(&three, &DecodeLimits::MESSAGE, unit).expect_err("nothing consumed");
-    assert_eq!((error.code(), error.offset()), (Noncanonical, 8));
+    assert_eq!((error.code(), error.offset()), (Internal, 8));
+    assert!(!error.code().is_input_fault());
+    let pairs = [&le(2)[..], &[1, 2, 3, 4]].concat();
+    let error = decode(&pairs, &DecodeLimits::MESSAGE, |c| {
+        c.vec(size::U16, Cursor::u8)
+    })
+    .expect_err("a u8 under a u16 minimum");
+    assert_eq!((error.code(), error.offset()), (Internal, 8));
+    let error = decode(&[0, 0], &DecodeLimits::MESSAGE, |c| {
+        c.array(2, size::U8, |_| Ok(()))
+    })
+    .expect_err("an empty array element");
+    assert_eq!((error.code(), error.offset()), (Internal, 0));
     // A minimum too large for a u64 saturates rather than wrapping to a small one, so no input
     // holds even one element: 2^63 · 2 and u64::MAX + 1 would both wrap to 0.
     let one = [&le(1)[..], &[0; 40]].concat();
@@ -354,9 +369,12 @@ fn siblings_release_their_level() {
     };
     let vec_of_options = [&le(3)[..], &[1, 0, 1, 0, 0, 1, 0, 2]].concat();
     accepts("Vec<Option<u8>>", &vec_of_options, &two);
-    let mut cursor = Cursor::new(&vec_of_options, &two).expect("within limits");
-    cursor.vec(2, |c| c.option(Cursor::u8)).expect("decodes");
-    assert_eq!(cursor.depth(), 0);
+    let after = decode(&vec_of_options, &two, |c| {
+        c.vec(2, |c| c.option(Cursor::u8))?;
+        Ok(c.depth())
+    })
+    .expect("decodes");
+    assert_eq!(after, 0);
 }
 
 // The envelope's own checks, beyond the vectors.
@@ -441,6 +459,14 @@ fn header_faults_are_reported_field_by_field() {
     previous.extend(blake3::derive_key("tessera/v1/envelope", &previous));
     let envelope = open(&previous, &SMALL).expect("version 2 is accepted");
     assert_eq!(envelope.header().schema_version, 2);
+    // The payload decoder is told which version's layout to read.
+    let version = |envelope: Envelope<'_>| {
+        envelope
+            .decode_payload(|c, version| c.u64().map(|_| version))
+            .expect("one u64")
+    };
+    assert_eq!(version(envelope), 2);
+    assert_eq!(version(open(&sealed, &SMALL).expect("sound")), 3);
 }
 
 #[test]
@@ -453,14 +479,14 @@ fn payload_errors_count_from_the_start_of_the_envelope() {
     let over = seal(&[&le(17)[..], &[0; 2]].concat());
     let envelope = open(&over, &limits).expect("sound framing");
     let error = envelope
-        .decode_payload(Cursor::bytes)
+        .decode_payload(|c, _| c.bytes())
         .expect_err("over the limit");
     assert_eq!((error.code(), error.offset()), (Limit, 20));
     // A value that does not fill the payload: the first byte left over.
     let short = seal(&[&le(1)[..], &[5, 6]].concat());
     let envelope = open(&short, &limits).expect("sound framing");
     let error = envelope
-        .decode_payload(Cursor::bytes)
+        .decode_payload(|c, _| c.bytes())
         .expect_err("left over");
     assert_eq!((error.code(), error.offset()), (Noncanonical, 29));
     // The payload decodes under the envelope's own limits, depth included.
@@ -468,7 +494,7 @@ fn payload_errors_count_from_the_start_of_the_envelope() {
     let envelope = open(&deep, &limits).expect("sound framing");
     let ty = Ty::parse("Option^9<u8>");
     let error = envelope
-        .decode_payload(|c| support::decode_value(c, &ty))
+        .decode_payload(|c, _| support::decode_value(c, &ty))
         .expect_err("too deep");
     assert_eq!((error.code(), error.offset()), (Limit, 36));
     let fine = seal(&options(8));

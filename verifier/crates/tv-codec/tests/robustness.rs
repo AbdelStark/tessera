@@ -4,17 +4,21 @@
 //! input of `spec/vectors/codec/`, through the decoder of every type the vectors use and through
 //! the envelope, under the vectors' limits.
 //!
-//! Any rejection is fine; a panic is not, and is reported with its input. An input that decodes
-//! must also be the canonical encoding of its value, `encode(decode(b)) = b` (INV-TCE-2), and
-//! each of its proper prefixes must be cut short, so a decoder that accepts a second encoding of
-//! a value fails here as well.
+//! A rejection must be a fault of the input, pointing inside it; a panic, or a fault of the
+//! reader, is reported with its input. An accepted input is judged by the test support's oracles,
+//! written from RFC-0003 without `tv-codec`: it must be the canonical encoding of the value it
+//! decoded to (INV-TCE-2), the value must be within the limits, and each proper prefix of the
+//! input must be cut short. A decoder that accepts a second encoding of a value, or a value past
+//! a limit, fails here.
 
 mod support;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use support::{Ty, decode_value, decode_whole, encoded, limits_of, list, text};
-use tv_codec::{DecodeError, DecodeLimits, Envelope, ErrorCode, Expected};
+use support::{
+    Ty, accepted_soundly, decode_value, decode_whole, limits_of, list, text, truncated_at,
+};
+use tv_codec::{DecodeError, DecodeLimits, Envelope, EnvelopeHeader, ErrorCode, Expected};
 use tv_testkit::{Json, SplitMix64, blake3, hex, read_vectors};
 
 /// Bytes that sit on a boundary of some check: `bool`, tags, `Ascii`, signs.
@@ -198,22 +202,27 @@ fn check(name: &str, ty: &Ty, input: &[u8], limits: &DecodeLimits, tally: &mut T
     };
     match outcome {
         Err(error) => assert!(
-            error.offset() <= input.len() as u64,
-            "{name}: {error} past the end of {}",
+            error.code().is_input_fault() && error.offset() <= input.len() as u64,
+            "{name}: {error} on {}",
             hex_of(input)
         ),
         Ok(value) => {
             tally.accepted += 1;
-            assert_eq!(
-                encoded(ty, &value),
-                input,
-                "{name}: {} decoded to {value:?}, whose encoding differs",
-                hex_of(input)
-            );
+            if let Err(why) = accepted_soundly(ty, &value, input, limits) {
+                panic!(
+                    "{name} under {limits:?} accepted {} as {value:?}: {why}",
+                    hex_of(input)
+                );
+            }
             for cut in 0..input.len() {
                 let error = decode_whole(ty, &input[..cut], limits)
                     .expect_err("a proper prefix of an encoding decodes");
-                assert_eq!(error.code(), ErrorCode::Truncated, "{name}, {cut}: {error}");
+                assert_eq!(
+                    (error.code(), error.offset()),
+                    (ErrorCode::Truncated, truncated_at(ty, &value, cut as u64)),
+                    "{name}, the first {cut} bytes of {}",
+                    hex_of(input)
+                );
             }
         }
     }
@@ -269,12 +278,32 @@ fn random_and_mutated_inputs_never_panic_and_accepted_ones_are_canonical() {
 }
 
 /// Opens `bytes` and decodes its payload as `ty`.
-fn read_envelope(case: &EnvelopeCase, bytes: &[u8]) -> Result<(Vec<u8>, Json), DecodeError> {
+fn read_envelope(
+    case: &EnvelopeCase,
+    bytes: &[u8],
+) -> Result<(EnvelopeHeader, Vec<u8>, Json), DecodeError> {
     let envelope = Envelope::open(bytes, case.expected, &case.limits, |signed| {
         blake3::derive_key("tessera/v1/envelope", signed)
     })?;
-    let value = envelope.decode_payload(|c| decode_value(c, &case.ty))?;
-    Ok((envelope.payload().to_vec(), value))
+    let value = envelope.decode_payload(|c, _version| decode_value(c, &case.ty))?;
+    Ok((envelope.header(), envelope.payload().to_vec(), value))
+}
+
+/// The envelope a writer of schema version `version` emits for `payload`, from RFC-0003
+/// 'Envelope': the header, the payload and the digest of both.
+fn sealed(schema_id: u16, version: u16, payload: &[u8]) -> Vec<u8> {
+    let mut bytes = [
+        &b"TSRA"[..],
+        &1u16.to_le_bytes(),
+        &schema_id.to_le_bytes(),
+        &version.to_le_bytes(),
+        &0u16.to_le_bytes(),
+        &(payload.len() as u64).to_le_bytes(),
+        payload,
+    ]
+    .concat();
+    bytes.extend(blake3::derive_key("tessera/v1/envelope", &bytes));
+    bytes
 }
 
 /// Makes a mutated envelope's framing and digest sound again, so that its header checks and
@@ -321,7 +350,11 @@ fn mutated_envelopes_never_panic_and_opened_ones_are_canonical() {
             };
             match outcome {
                 Err(error) => {
-                    assert!(error.offset() <= bytes.len() as u64, "{error}");
+                    assert!(
+                        error.code().is_input_fault() && error.offset() <= bytes.len() as u64,
+                        "{error} on {}",
+                        hex_of(&bytes)
+                    );
                     // An envelope that opens failed in its payload, and the error points into
                     // the payload: from its first byte, 20, to its end.
                     let opened = Envelope::open(&bytes, case.expected, &case.limits, |s| {
@@ -337,9 +370,26 @@ fn mutated_envelopes_never_panic_and_opened_ones_are_canonical() {
                         decoded_payloads += 1;
                     }
                 }
-                Ok((payload, value)) => {
+                Ok((header, payload, value)) => {
                     tally.accepted += 1;
-                    assert_eq!(encoded(&case.ty, &value), payload, "{}", hex_of(&bytes));
+                    // A reader accepts the version its writers emit and the one before, never 0;
+                    // what it opens is byte for byte the envelope such a writer emits.
+                    let (found, v) = (header.schema_version, case.expected.version);
+                    assert!(
+                        found != 0 && (found == v || found.checked_add(1) == Some(v)),
+                        "version {found} opened by a reader of version {v}: {}",
+                        hex_of(&bytes)
+                    );
+                    assert_eq!(
+                        sealed(case.expected.schema_id, found, &payload),
+                        bytes,
+                        "not the envelope a writer emits: {}",
+                        hex_of(&bytes)
+                    );
+                    if let Err(why) = accepted_soundly(&case.ty, &value, &payload, &case.limits) {
+                        panic!("payload of {} as {value:?}: {why}", hex_of(&bytes));
+                    }
+                    assert!(bytes.len() as u64 <= case.limits.max_total_bytes);
                 }
             }
         }

@@ -7,10 +7,10 @@
 //! # Design
 //!
 //! There is no `Decode` trait and no derive macro. A [`Cursor`] walks the input with one method
-//! per primitive type, enters and leaves depth levels explicitly, and checks every sequence
-//! length against its element type's minimum encoded size before any element is read. Composite
-//! types are combinator methods that take the decoders of their parts as closures, so a schema is
-//! a function that calls them in field order:
+//! per primitive type, and checks every sequence length against its element type's minimum
+//! encoded size before any element is read. Composite types are combinator methods that take the
+//! decoders of their parts as closures; each takes the value's depth level and releases it when
+//! the value ends. A schema is a function that calls them in field order:
 //!
 //! ```
 //! use tv_codec::{DecodeLimits, decode, size};
@@ -83,16 +83,23 @@
 //!   - an envelope whose size `payload_len + 52` exceeds `max_total_bytes`, or overflows a `u64`,
 //!     at 12;
 //!   - a sequence length above `max_vec_len`, at the sequence's first byte;
-//!   - a composite value deeper than `min(max_depth, 256)`, at the value's first byte;
-//!   - memory for a sequence's checked element count cannot be reserved, at the sequence's first
-//!     byte. This is a resource failure, not an input fault: a reader that holds the input in
-//!     memory can always hold that many elements, so it is reported rather than aborting.
+//!   - a composite value deeper than `min(max_depth, 256)`, at the value's first byte.
 //! - `ERR-CODEC-MAGIC` ([`ErrorCode::Magic`]): an envelope magic other than `b"TSRA"`, at 0; an
 //!   envelope schema id other than the one the reader expects, at 6.
 //! - `ERR-CODEC-VERSION` ([`ErrorCode::Version`]): an envelope version other than 1, at 4; a schema
 //!   version that is neither the version `v` the reader's writers emit nor `v − 1`, or is 0, at 8.
 //! - `ERR-CODEC-DIGEST` ([`ErrorCode::Digest`]): an envelope digest other than the digest of the
 //!   header and payload, at the digest, `20 + payload_len`.
+//!
+//! Two codes are faults of the reader, not of the input ([`ErrorCode::is_input_fault`]); a
+//! verifier reports them as `Inconclusive` (04 §5):
+//!
+//! - `ERR-RES-MEMORY` ([`ErrorCode::Memory`]): memory for the values of a sequence cannot be
+//!   reserved, at the sequence's first byte. Values can take more memory than their encodings,
+//!   so this depends on the reader, not on the input alone.
+//! - `ERR-INTERNAL` ([`ErrorCode::Internal`]): a schema decoder broke its contract, decoding a
+//!   sequence or array element from fewer bytes than the minimum it declared, or from none, at
+//!   the element's first byte. No input causes it under a correct schema.
 //!
 //! ## Order of checks
 //!
@@ -127,11 +134,18 @@
 //! ## Empty elements and allocation
 //!
 //! A sequence's element type encodes to at least one byte, so a sequence of `n` elements needs
-//! at least `n` bytes and decoding time stays linear in the input. The sequence combinators take
-//! the element's minimum size from the caller ([`size`]); a minimum of 0, which no schema may
-//! declare, is treated as 1. A sequence reserves exactly its checked length, never more than
-//! `min(declared length, bytes left / min_size)` elements (INV-TCE-3); `Bytes` and `Ascii`
-//! borrow from the input and allocate nothing.
+//! at least `n` bytes. The sequence combinators take the element's minimum size from the caller
+//! ([`size`]); a minimum of 0, which no schema may declare, is treated as 1 in the length check.
+//! Every element must then consume at least its minimum, and at least one byte, or decoding
+//! stops with `ERR-INTERNAL`: decoding time stays linear in the input even under a wrong
+//! schema.
+//!
+//! A sequence never has room for more than its checked length, at most
+//! `min(declared length, bytes left / min_size)` elements (INV-TCE-3). Its room grows with the
+//! elements decoded: at most 64 KiB before the first, then doubling. Sequences open inside one
+//! another, each declaring as many elements as the bytes left allow, so hold memory in
+//! proportion to what they have decoded, not to what they declare. `Bytes` and `Ascii` borrow
+//! from the input and allocate nothing.
 //!
 //! ## Envelope
 //!
@@ -152,8 +166,8 @@
 //!    more is `ERR-CODEC-NONCANONICAL` at `payload_len + 52`.
 //! 3. The digest: a mismatch is `ERR-CODEC-DIGEST` at `20 + payload_len`. Nothing is decoded
 //!    before it verifies.
-//! 4. The payload ([`Envelope::decode_payload`]), under the same limits: its value must fill it,
-//!    and its errors carry their offsets plus 20.
+//! 4. The payload ([`Envelope::decode_payload`]), as the schema version found and under the same
+//!    limits: its value must fill it, and its errors carry their offsets plus 20.
 //!
 //! ## Where RFC-0003 leaves a choice
 //!

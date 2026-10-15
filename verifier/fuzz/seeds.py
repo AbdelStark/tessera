@@ -7,8 +7,8 @@ Usage: python3 seeds.py OUT_DIR
 Writes OUT_DIR/decode and OUT_DIR/envelope, one file per seed, named by its SHA-1 as libFuzzer
 names corpus files:
 
-- decode: every input of golden.json and noncanonical.json behind every type selector, so that
-  each input meets every decoder.
+- decode: every input of golden.json and noncanonical.json behind every type selector and each
+  of the target's four limits, so that each input meets every decoder.
 - envelope: every envelope.json input under each of the 32 reader configurations, with the payload
   types the envelope vectors use; and every golden and non-canonical input as the payload of a
   probe envelope, which the target reseals (configuration bit 4).
@@ -26,7 +26,9 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 VECTORS = HERE.parent.parent / "spec" / "vectors" / "codec"
 
-# Configuration bit 4: the target makes the declared length and the digest match.
+# The decode target's limits, selected by its second byte.
+DECODE_LIMITS = 4
+# Envelope configuration bit 4: the target makes the declared length and the digest match.
 RESEAL = 0b1_0000
 # Payload types of envelope.json, and the type the target uses for the deeper Option cases.
 ENVELOPE_PAYLOADS = ("Bytes", "Vec<u64>", "Option^8<u8>")
@@ -72,7 +74,8 @@ def main():
 
     for data in inputs:
         for selector in range(len(names)):
-            write("decode", bytes([selector]) + data)
+            for limits in range(DECODE_LIMITS):
+                write("decode", bytes([selector, limits]) + data)
             write("envelope", bytes([RESEAL, selector]) + probe_envelope(data))
     payloads = [names.index(name) for name in ENVELOPE_PAYLOADS]
     for case in envelopes:

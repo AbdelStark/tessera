@@ -158,16 +158,16 @@ impl<'a> Envelope<'a> {
         self.payload
     }
 
-    /// Decodes the payload with `value`, as the schema version found, under the limits the
-    /// envelope was opened with: the last step of RFC-0003's order. The value must fill the
-    /// payload (INV-TCE-4), and errors carry offsets from the start of the envelope, their
-    /// offsets in the payload plus 20.
+    /// Decodes the payload with `value` under the limits the envelope was opened with: the last
+    /// step of RFC-0003's order. `value` is given the schema version found, `v` or `v − 1`,
+    /// which selects the payload's layout. The value must fill the payload (INV-TCE-4), and
+    /// errors carry offsets from the start of the envelope, their offsets in the payload plus 20.
     pub fn decode_payload<T>(
         &self,
-        value: impl FnOnce(&mut Cursor<'a>) -> Result<T, DecodeError>,
+        value: impl FnOnce(&mut Cursor<'a>, u16) -> Result<T, DecodeError>,
     ) -> Result<T, DecodeError> {
         let mut cursor = Cursor::at(self.payload, HEADER_LEN, &self.limits);
-        let decoded = value(&mut cursor)?;
+        let decoded = value(&mut cursor, self.header.schema_version)?;
         cursor.finish()?;
         Ok(decoded)
     }

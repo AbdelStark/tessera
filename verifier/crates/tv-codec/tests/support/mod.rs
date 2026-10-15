@@ -2,10 +2,13 @@
 
 //! Test support shared by the integration tests: the type names of `spec/vectors/codec/README.md`,
 //! a decoder for each built from `tv-codec`'s combinators that renders values as the vectors'
-//! JSON, and an independent encoder from that JSON back to bytes.
+//! JSON, and oracles that judge a decoded value without `tv-codec`.
 //!
-//! The encoder exists only here: it lets the tests check `encode(decode(b)) = b` (INV-TCE-2) and
-//! `decode(encode(v)) = v` (INV-TCE-1) without a second decoder sharing the first one's reading.
+//! The oracles are written from RFC-0003 alone: [`canonical`] encodes a value in its one
+//! canonical form, and [`depth`] and [`longest`] measure it against the limits. They let the
+//! tests check `canonical(decode(b)) = b` (INV-TCE-2), `decode(canonical(v)) = v` (INV-TCE-1)
+//! and the limits on every accepted input, without a second decoder sharing the first one's
+//! reading.
 
 #![allow(dead_code)]
 
@@ -330,6 +333,39 @@ fn member<'j>(value: &'j Json, key: &str) -> &'j Json {
         .unwrap_or_else(|| panic!("missing {key:?} in {value:?}"))
 }
 
+fn text_of(value: &Json) -> &str {
+    value
+        .as_str()
+        .unwrap_or_else(|| panic!("expected a string, found {value:?}"))
+}
+
+/// The variant name and fields of a `Shape` value, `{"Variant": fields}`.
+fn variant(value: &Json) -> (&str, &Json) {
+    let Json::Object(members) = value else {
+        panic!("expected a Shape object, found {value:?}")
+    };
+    assert_eq!(members.len(), 1, "an enum value names one variant");
+    let (name, fields) = &members[0];
+    (name.as_str(), fields)
+}
+
+/// The Goldilocks modulus `P = 2^64 − 2^32 + 1`, stated here independently of `tv-field`.
+const P: u64 = 0xFFFF_FFFF_0000_0001;
+
+/// The canonical encoding of the value `value` of type `ty`, written from RFC-0003's encoding
+/// table: a rational in lowest terms, map entries sorted by their keys' encodings. It fails,
+/// saying why, when `value` is not a value of `ty`: a zero denominator, two equal keys, a
+/// character outside `Ascii`, an `Fp` not below `P`.
+///
+/// The encoding is computed from the value, never copied from the bytes it was decoded from, so
+/// `canonical(decode(b)) = b` holds only if the decoder accepts no second encoding of a value
+/// (INV-TCE-2).
+pub fn canonical(ty: &Ty, value: &Json) -> Result<Vec<u8>, String> {
+    let mut out = Vec::new();
+    write(ty, value, &mut out)?;
+    Ok(out)
+}
+
 fn length(len: usize, out: &mut Vec<u8>) {
     out.extend((len as u64).to_le_bytes());
 }
@@ -338,18 +374,30 @@ fn tag(tag: u16, out: &mut Vec<u8>) {
     out.extend(tag.to_le_bytes());
 }
 
-/// Encodes the JSON `value` as `ty`, from RFC-0003's encoding table. Map entries are written in
-/// the order given, so a non-canonical order shows up as a byte difference.
-pub fn encode(ty: &Ty, value: &Json, out: &mut Vec<u8>) {
+fn gcd(mut a: u64, mut b: u64) -> u64 {
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    a
+}
+
+fn write(ty: &Ty, value: &Json, out: &mut Vec<u8>) -> Result<(), String> {
     match ty {
         Ty::U8 => out.push(number(value)),
         Ty::U16 => out.extend(number::<u16>(value).to_le_bytes()),
         Ty::U32 => out.extend(number::<u32>(value).to_le_bytes()),
-        Ty::U64 | Ty::Fp => out.extend(number::<u64>(value).to_le_bytes()),
+        Ty::U64 => out.extend(number::<u64>(value).to_le_bytes()),
         Ty::I8 => out.extend(number::<i8>(value).to_le_bytes()),
         Ty::I16 => out.extend(number::<i16>(value).to_le_bytes()),
         Ty::I32 => out.extend(number::<i32>(value).to_le_bytes()),
         Ty::I64 => out.extend(number::<i64>(value).to_le_bytes()),
+        Ty::Fp => {
+            let x = number::<u64>(value);
+            if x >= P {
+                return Err(format!("the field element {x} is not below P"));
+            }
+            out.extend(x.to_le_bytes());
+        }
         Ty::Bool => match value {
             Json::Bool(flag) => out.push(u8::from(*flag)),
             other => panic!("expected a bool, found {other:?}"),
@@ -358,100 +406,347 @@ pub fn encode(ty: &Ty, value: &Json, out: &mut Vec<u8>) {
             let coefficients = items(value);
             assert_eq!(coefficients.len(), 2, "an Fp2 has two coefficients");
             for coefficient in coefficients {
-                encode(&Ty::Fp, coefficient, out);
+                write(&Ty::Fp, coefficient, out)?;
             }
         }
-        Ty::Bytes => encode(&Ty::Vec(Box::new(Ty::U8)), value, out),
-        Ty::Digest => encode(&Ty::Array(Box::new(Ty::U8), 32), value, out),
+        Ty::Bytes => write(&Ty::Vec(Box::new(Ty::U8)), value, out)?,
+        Ty::Digest => write(&Ty::Array(Box::new(Ty::U8), 32), value, out)?,
         Ty::Ascii => {
-            let text = value
-                .as_str()
-                .unwrap_or_else(|| panic!("expected a string, found {value:?}"));
+            let text = text_of(value);
+            if let Some(c) = text.chars().find(|c| !(' '..='~').contains(c)) {
+                return Err(format!("{c:?} is not printable ASCII"));
+            }
             length(text.len(), out);
             out.extend(text.as_bytes());
         }
         Ty::Rational => {
-            encode(&Ty::I64, member(value, "num"), out);
-            encode(&Ty::U64, member(value, "den"), out);
+            let num = number::<i64>(member(value, "num"));
+            let den = number::<u64>(member(value, "den"));
+            if den == 0 {
+                return Err(format!("{num}/0 is not a rational"));
+            }
+            // Lowest terms; |num| / g fits an i64 except for i64::MIN / 1, kept as it is.
+            let g = gcd(num.unsigned_abs(), den);
+            let reduced = i64::try_from(i128::from(num) / i128::from(g))
+                .map_err(|_| format!("{num}/{den} reduces out of range"))?;
+            out.extend(reduced.to_le_bytes());
+            out.extend((den / g).to_le_bytes());
         }
         Ty::Array(element, len) => {
             let values = items(value);
             assert_eq!(values.len(), *len, "array length");
             for v in values {
-                encode(element, v, out);
+                write(element, v, out)?;
             }
         }
         Ty::Vec(element) => {
             let values = items(value);
             length(values.len(), out);
             for v in values {
-                encode(element, v, out);
+                write(element, v, out)?;
             }
         }
         Ty::Option(inner) => match value {
             Json::Null => tag(0, out),
             _ => {
                 tag(1, out);
-                encode(inner, member(value, "some"), out);
+                write(inner, member(value, "some"), out)?;
             }
         },
         Ty::Tuple(fields) => {
             let values = items(value);
             assert_eq!(values.len(), fields.len(), "tuple arity");
             for (field, v) in fields.iter().zip(values) {
-                encode(field, v, out);
+                write(field, v, out)?;
+            }
+        }
+        Ty::Map(key, val) => {
+            let mut entries = items(value)
+                .iter()
+                .map(|entry| {
+                    let pair = items(entry);
+                    assert_eq!(pair.len(), 2, "a map entry is a [key, value] pair");
+                    Ok((canonical(key, &pair[0])?, canonical(val, &pair[1])?))
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            entries.sort();
+            if let Some(pair) = entries.windows(2).find(|pair| pair[0].0 == pair[1].0) {
+                return Err(format!("two entries have the key {:02x?}", pair[0].0));
+            }
+            length(entries.len(), out);
+            for (k, v) in entries {
+                out.extend(k);
+                out.extend(v);
+            }
+        }
+        Ty::Sample => {
+            write(&Ty::Bool, member(value, "flag"), out)?;
+            write(&Ty::U8, member(value, "small"), out)?;
+            write(&Ty::Vec(Box::new(Ty::U16)), member(value, "list"), out)?;
+            write(&Ty::Option(Box::new(Ty::I32)), member(value, "maybe"), out)?;
+            write(&Ty::Ascii, member(value, "name"), out)?;
+            write(&Ty::Digest, member(value, "digest"), out)?;
+        }
+        Ty::Shape => match variant(value) {
+            ("Empty", _) => tag(0, out),
+            ("Point", fields) => {
+                tag(1, out);
+                write(&Ty::Tuple(vec![Ty::U32]), fields, out)?;
+            }
+            ("Box", fields) => {
+                tag(2, out);
+                write(&Ty::U16, member(fields, "width"), out)?;
+                write(&Ty::U16, member(fields, "height"), out)?;
+            }
+            ("Nested", fields) => {
+                tag(3, out);
+                write(&Ty::Tuple(vec![Ty::Vec(Box::new(Ty::Shape))]), fields, out)?;
+            }
+            (other, _) => panic!("unknown Shape variant {other:?}"),
+        },
+    }
+    Ok(())
+}
+
+/// The nesting depth of `value` as RFC-0003 'Limits' counts it: one level for each value whose
+/// encoding holds other values (structs, enums and `Option`, tuples and map entries, arrays,
+/// `Vec`, maps, `Ascii`, `Rational` and `Fp2`), none for integers, `bool` and `Fp`.
+pub fn depth(ty: &Ty, value: &Json) -> u64 {
+    let deepest = |depths: &mut dyn Iterator<Item = u64>| depths.max().unwrap_or(0);
+    match ty {
+        Ty::U8
+        | Ty::U16
+        | Ty::U32
+        | Ty::U64
+        | Ty::I8
+        | Ty::I16
+        | Ty::I32
+        | Ty::I64
+        | Ty::Bool
+        | Ty::Fp => 0,
+        Ty::Fp2 | Ty::Bytes | Ty::Digest | Ty::Ascii | Ty::Rational => 1,
+        Ty::Array(element, _) | Ty::Vec(element) => {
+            1 + deepest(&mut items(value).iter().map(|v| depth(element, v)))
+        }
+        Ty::Option(inner) => match value {
+            Json::Null => 1,
+            _ => 1 + depth(inner, member(value, "some")),
+        },
+        Ty::Tuple(fields) => {
+            1 + deepest(&mut fields.iter().zip(items(value)).map(|(f, v)| depth(f, v)))
+        }
+        Ty::Map(key, val) => {
+            1 + deepest(&mut items(value).iter().map(|entry| {
+                let pair = items(entry);
+                1 + depth(key, &pair[0]).max(depth(val, &pair[1]))
+            }))
+        }
+        Ty::Sample => {
+            let list = depth(&Ty::Vec(Box::new(Ty::U16)), member(value, "list"));
+            let maybe = depth(&Ty::Option(Box::new(Ty::I32)), member(value, "maybe"));
+            1 + list.max(maybe).max(1)
+        }
+        // An enum's variant fields take no level of their own.
+        Ty::Shape => match variant(value) {
+            ("Nested", fields) => 1 + depth(&Ty::Vec(Box::new(Ty::Shape)), &items(fields)[0]),
+            _ => 1,
+        },
+    }
+}
+
+/// The length of the longest sequence (`Vec`, `Bytes`, `Ascii` or map) in `value`, which
+/// `max_vec_len` bounds.
+pub fn longest(ty: &Ty, value: &Json) -> u64 {
+    let most = |lengths: &mut dyn Iterator<Item = u64>| lengths.max().unwrap_or(0);
+    match ty {
+        Ty::Bytes => items(value).len() as u64,
+        Ty::Ascii => text_of(value).len() as u64,
+        Ty::Vec(element) => {
+            let values = items(value);
+            most(&mut values.iter().map(|v| longest(element, v))).max(values.len() as u64)
+        }
+        Ty::Array(element, _) => most(&mut items(value).iter().map(|v| longest(element, v))),
+        Ty::Option(inner) => match value {
+            Json::Null => 0,
+            _ => longest(inner, member(value, "some")),
+        },
+        Ty::Tuple(fields) => most(&mut fields.iter().zip(items(value)).map(|(f, v)| longest(f, v))),
+        Ty::Map(key, val) => {
+            let entries = items(value);
+            most(&mut entries.iter().map(|entry| {
+                let pair = items(entry);
+                longest(key, &pair[0]).max(longest(val, &pair[1]))
+            }))
+            .max(entries.len() as u64)
+        }
+        Ty::Sample => {
+            let list = items(member(value, "list")).len() as u64;
+            list.max(text_of(member(value, "name")).len() as u64)
+        }
+        Ty::Shape => match variant(value) {
+            ("Nested", fields) => longest(&Ty::Vec(Box::new(Ty::Shape)), &items(fields)[0]),
+            _ => 0,
+        },
+        _ => 0,
+    }
+}
+
+/// Where decoding the first `cut` bytes of `value`'s canonical encoding fails, for `cut` below
+/// its length: at the first check, in decoding order, that needs more than `cut` bytes, where the
+/// bytes it reads begin (RFC-0003 'Limits', order of checks). Each fixed-width value is one
+/// check; a sequence is two at its length, the length itself and `length · min_size(T)` bytes
+/// after it; an array is one at its first byte for `N · min_size(T)` bytes. Composite values
+/// then check their parts in order.
+pub fn truncated_at(ty: &Ty, value: &Json, cut: u64) -> u64 {
+    let mut checks = Vec::new();
+    layout(ty, value, &mut 0, &mut checks);
+    checks
+        .into_iter()
+        .find(|&(_, end)| end > cut)
+        .map(|(start, _)| start)
+        .unwrap_or_else(|| panic!("no check fails on {cut} bytes of {value:?}"))
+}
+
+/// A check that reads `width` bytes at `at`, which then moves past them.
+fn fixed(width: u64, at: &mut u64, checks: &mut Vec<(u64, u64)>) {
+    checks.push((*at, *at + width));
+    *at += width;
+}
+
+/// A sequence of `len` values of minimum size `min` at `at`: its length, then the bytes-left
+/// check at the length's offset.
+fn sequence(len: usize, min: u64, at: &mut u64, checks: &mut Vec<(u64, u64)>) {
+    let start = *at;
+    fixed(8, at, checks);
+    checks.push((start, start + 8 + len as u64 * min.max(1)));
+}
+
+/// The checks decoding `value`'s canonical encoding makes, from `at`, as (first byte, end).
+fn layout(ty: &Ty, value: &Json, at: &mut u64, checks: &mut Vec<(u64, u64)>) {
+    match ty {
+        Ty::U8 | Ty::I8 | Ty::Bool => fixed(1, at, checks),
+        Ty::U16 | Ty::I16 => fixed(2, at, checks),
+        Ty::U32 | Ty::I32 => fixed(4, at, checks),
+        Ty::U64 | Ty::I64 | Ty::Fp => fixed(8, at, checks),
+        Ty::Fp2 | Ty::Rational => {
+            fixed(8, at, checks);
+            fixed(8, at, checks);
+        }
+        Ty::Digest => fixed(32, at, checks),
+        Ty::Bytes | Ty::Ascii => {
+            let len = match ty {
+                Ty::Ascii => text_of(value).len(),
+                _ => items(value).len(),
+            };
+            sequence(len, 1, at, checks);
+            *at += len as u64;
+        }
+        Ty::Array(element, len) => {
+            checks.push((*at, *at + *len as u64 * element.min_size()));
+            for v in items(value) {
+                layout(element, v, at, checks);
+            }
+        }
+        Ty::Vec(element) => {
+            let values = items(value);
+            sequence(values.len(), element.min_size(), at, checks);
+            for v in values {
+                layout(element, v, at, checks);
+            }
+        }
+        Ty::Option(inner) => {
+            fixed(2, at, checks);
+            if *value != Json::Null {
+                layout(inner, member(value, "some"), at, checks);
+            }
+        }
+        Ty::Tuple(fields) => {
+            for (field, v) in fields.iter().zip(items(value)) {
+                layout(field, v, at, checks);
             }
         }
         Ty::Map(key, val) => {
             let entries = items(value);
-            length(entries.len(), out);
+            sequence(entries.len(), key.min_size() + val.min_size(), at, checks);
             for entry in entries {
                 let pair = items(entry);
-                assert_eq!(pair.len(), 2, "a map entry is a [key, value] pair");
-                encode(key, &pair[0], out);
-                encode(val, &pair[1], out);
+                layout(key, &pair[0], at, checks);
+                layout(val, &pair[1], at, checks);
             }
         }
         Ty::Sample => {
-            encode(&Ty::Bool, member(value, "flag"), out);
-            encode(&Ty::U8, member(value, "small"), out);
-            encode(&Ty::Vec(Box::new(Ty::U16)), member(value, "list"), out);
-            encode(&Ty::Option(Box::new(Ty::I32)), member(value, "maybe"), out);
-            encode(&Ty::Ascii, member(value, "name"), out);
-            encode(&Ty::Digest, member(value, "digest"), out);
+            fixed(1, at, checks);
+            fixed(1, at, checks);
+            layout(
+                &Ty::Vec(Box::new(Ty::U16)),
+                member(value, "list"),
+                at,
+                checks,
+            );
+            layout(
+                &Ty::Option(Box::new(Ty::I32)),
+                member(value, "maybe"),
+                at,
+                checks,
+            );
+            layout(&Ty::Ascii, member(value, "name"), at, checks);
+            fixed(32, at, checks);
         }
         Ty::Shape => {
-            let Json::Object(members) = value else {
-                panic!("expected a Shape object, found {value:?}")
-            };
-            assert_eq!(members.len(), 1, "an enum value names one variant");
-            let (variant, fields) = &members[0];
-            match variant.as_str() {
-                "Empty" => tag(0, out),
-                "Point" => {
-                    tag(1, out);
-                    encode(&Ty::Tuple(vec![Ty::U32]), fields, out);
+            fixed(2, at, checks);
+            match variant(value) {
+                ("Point", _) => fixed(4, at, checks),
+                ("Box", _) => {
+                    fixed(2, at, checks);
+                    fixed(2, at, checks);
                 }
-                "Box" => {
-                    tag(2, out);
-                    encode(&Ty::U16, member(fields, "width"), out);
-                    encode(&Ty::U16, member(fields, "height"), out);
+                ("Nested", fields) => {
+                    layout(&Ty::Vec(Box::new(Ty::Shape)), &items(fields)[0], at, checks)
                 }
-                "Nested" => {
-                    tag(3, out);
-                    encode(&Ty::Tuple(vec![Ty::Vec(Box::new(Ty::Shape))]), fields, out);
-                }
-                other => panic!("unknown Shape variant {other:?}"),
+                _ => {}
             }
         }
     }
 }
 
-/// `encode` into a new vector.
-pub fn encoded(ty: &Ty, value: &Json) -> Vec<u8> {
-    let mut out = Vec::new();
-    encode(ty, value, &mut out);
-    out
+/// The checks an accepted whole input `input` must pass, computed from the value it decoded to
+/// and never from the decoder: it is the canonical encoding of that value (INV-TCE-2), and the
+/// value is within `limits` (RFC-0003 'Limits'). Returns what failed.
+pub fn accepted_soundly(
+    ty: &Ty,
+    value: &Json,
+    input: &[u8],
+    limits: &DecodeLimits,
+) -> Result<(), String> {
+    match canonical(ty, value) {
+        Ok(bytes) if bytes == input => {}
+        Ok(bytes) => {
+            return Err(format!(
+                "not the canonical encoding, {}",
+                bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
+            ));
+        }
+        Err(why) => return Err(format!("not a value of the type: {why}")),
+    }
+    let max_depth = u64::from(limits.max_depth.min(256));
+    if depth(ty, value) > max_depth {
+        return Err(format!("depth {} over {max_depth}", depth(ty, value)));
+    }
+    if longest(ty, value) > limits.max_vec_len {
+        return Err(format!(
+            "a sequence of {} over {}",
+            longest(ty, value),
+            limits.max_vec_len
+        ));
+    }
+    if input.len() as u64 > limits.max_total_bytes {
+        return Err(format!(
+            "{} bytes over {}",
+            input.len(),
+            limits.max_total_bytes
+        ));
+    }
+    Ok(())
 }
 
 /// JSON equality with objects compared as maps: the vectors sort members by name, while a

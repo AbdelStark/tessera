@@ -6,7 +6,10 @@
 
 mod support;
 
-use support::{Ty, code_named, decode_value, decode_whole, encoded, limits_of, list, same, text};
+use support::{
+    Ty, canonical, code_named, decode_value, decode_whole, limits_of, list, same, text,
+    truncated_at,
+};
 use tv_codec::{DIGEST_CONTEXT, DecodeError, DecodeLimits, Envelope, ErrorCode, Expected};
 use tv_testkit::{Json, blake3, hex, read_vectors};
 
@@ -34,25 +37,25 @@ fn golden_values_decode_render_and_re_encode() {
             same(&value, expected),
             "{name}: decoded {value:?}, expected {expected:?}"
         );
-        // INV-TCE-1 and INV-TCE-2: the value encodes back to exactly these bytes.
+        // INV-TCE-1 and INV-TCE-2: the value's canonical encoding is exactly these bytes.
         assert_eq!(
-            encoded(&ty, expected),
-            bytes,
+            canonical(&ty, expected),
+            Ok(bytes.clone()),
             "{name}: encoding of the value"
         );
 
-        // Every proper prefix is cut short inside a value (RFC-0003 'Testing Strategy').
+        // Every proper prefix is cut short inside a value (RFC-0003 'Testing Strategy'), at the
+        // first check that needs more bytes than it holds.
         for cut in 0..bytes.len() {
             let error =
                 decode_whole(&ty, &bytes[..cut], &limits).expect_err("a proper prefix decodes");
             assert_eq!(
-                error.code(),
-                ErrorCode::Truncated,
-                "{name}, prefix of {cut} bytes: {error}"
-            );
-            assert!(
-                error.offset() <= cut as u64,
-                "{name}, prefix of {cut}: {error}"
+                (error.code(), error.offset()),
+                (
+                    ErrorCode::Truncated,
+                    truncated_at(&ty, expected, cut as u64)
+                ),
+                "{name}, prefix of {cut} bytes"
             );
         }
     }
@@ -91,7 +94,7 @@ fn noncanonical_inputs_fail_with_their_code_and_limit_cases_decode() {
         let bytes = hex(text(case, "hex"));
         let value = decode_whole(&ty, &bytes, &limits)
             .unwrap_or_else(|e| panic!("{name} {}: {e}", text(case, "why")));
-        assert_eq!(encoded(&ty, &value), bytes, "{name}: re-encoding");
+        assert_eq!(canonical(&ty, &value), Ok(bytes), "{name}: re-encoding");
     }
 }
 
@@ -116,7 +119,7 @@ fn read_envelope(
     ty: &Ty,
 ) -> Result<(Vec<u8>, Json), DecodeError> {
     let envelope = Envelope::open(bytes, expected, limits, envelope_digest)?;
-    let value = envelope.decode_payload(|c| decode_value(c, ty))?;
+    let value = envelope.decode_payload(|c, _version| decode_value(c, ty))?;
     Ok((envelope.payload().to_vec(), value))
 }
 
@@ -156,7 +159,11 @@ fn envelopes_give_their_payload_or_the_first_fault_in_rfc_order() {
                 let payload = hex(payload.as_str().expect("payload hex"));
                 let (found, value) = outcome.unwrap_or_else(|e| panic!("{why}: {e}"));
                 assert_eq!(found, payload, "{why}: payload");
-                assert_eq!(encoded(&ty, &value), payload, "{why}: re-encoded payload");
+                assert_eq!(
+                    canonical(&ty, &value),
+                    Ok(payload),
+                    "{why}: re-encoded payload"
+                );
                 opened += 1;
             }
             None => {
@@ -175,16 +182,36 @@ fn envelopes_give_their_payload_or_the_first_fault_in_rfc_order() {
     assert_eq!((opened, rejected), (5, 47));
 }
 
-/// The six codec codes, spelled as 04 §3 spells them and in its order, from the file both
-/// workspaces check.
+/// The codes, spelled as 04 §3 spells them, from the file both workspaces check: the six codec
+/// codes in its order are the faults of the input, and the others are of its other classes.
 #[test]
-fn codec_error_identifiers_are_the_specification_s() {
+fn error_identifiers_and_classes_are_the_specification_s() {
     let file = read_vectors("errors/codes.json");
+    let class_of = |id: &str| {
+        list(&file, "codes")
+            .iter()
+            .find(|entry| text(entry, "code") == id)
+            .map(|entry| text(entry, "class"))
+            .unwrap_or_else(|| panic!("{id} is not in codes.json"))
+    };
+    for code in ErrorCode::ALL {
+        assert_eq!(
+            class_of(code.id()) == "Input",
+            code.is_input_fault(),
+            "{code}"
+        );
+    }
+    assert_eq!(class_of("ERR-RES-MEMORY"), "Resource");
+    assert_eq!(class_of("ERR-INTERNAL"), "Internal");
     let codec: Vec<&str> = list(&file, "codes")
         .iter()
         .map(|entry| text(entry, "code"))
         .filter(|code| code.starts_with("ERR-CODEC-"))
         .collect();
-    let ours: Vec<&str> = ErrorCode::ALL.iter().map(|code| code.id()).collect();
+    let ours: Vec<&str> = ErrorCode::ALL
+        .iter()
+        .filter(|code| code.is_input_fault())
+        .map(|code| code.id())
+        .collect();
     assert_eq!(ours, codec);
 }

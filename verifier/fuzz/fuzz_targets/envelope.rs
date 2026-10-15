@@ -7,9 +7,12 @@
 //! digest verify so that the payload decoder is reached. The second byte selects the payload's
 //! type in `tv_fuzz::TYPES`; the rest is the envelope.
 //!
-//! Any input must be accepted or rejected without a panic. An opened envelope's payload has its
-//! declared length; a decoded payload is the canonical encoding of its value (INV-TCE-2); and an
-//! error points inside the input, a payload error past the header.
+//! A rejection must be a fault of the input and point inside it; a payload error, inside the
+//! payload. An opened envelope must be, byte for byte, the envelope a writer of the version found
+//! emits for its payload: magic, envelope version 1, the expected schema, a version the reader
+//! accepts (`v` or `v − 1`, never 0), `reserved` 0, the payload's length, and the digest of all
+//! that, recomputed here. A decoded payload must be the canonical encoding of its value, within
+//! the limits.
 
 #![no_main]
 
@@ -69,6 +72,22 @@ fn reseal(bytes: &mut [u8]) {
     bytes[signed..].copy_from_slice(&digest);
 }
 
+/// The envelope a writer of `schema_id` at `version` emits for `payload` (RFC-0003 'Envelope').
+fn sealed(schema_id: u16, version: u16, payload: &[u8]) -> Vec<u8> {
+    let mut bytes = [
+        &b"TSRA"[..],
+        &1u16.to_le_bytes(),
+        &schema_id.to_le_bytes(),
+        &version.to_le_bytes(),
+        &0u16.to_le_bytes(),
+        &(payload.len() as u64).to_le_bytes(),
+        payload,
+    ]
+    .concat();
+    bytes.extend(blake3::derive_key(CONTEXT, &bytes));
+    bytes
+}
+
 fuzz_target!(|data: &[u8]| {
     let [config, selector, envelope @ ..] = data else {
         return;
@@ -86,20 +105,33 @@ fuzz_target!(|data: &[u8]| {
         Ok(envelope) => envelope,
         Err(error) => {
             assert!(
-                error.offset() <= bytes.len() as u64,
-                "{error} past the input"
+                error.code().is_input_fault() && error.offset() <= bytes.len() as u64,
+                "{error} on a fuzz envelope"
             );
             return;
         }
     };
-    assert_eq!(
-        envelope.payload().len() as u64,
-        envelope.header().payload_len
+    let found = envelope.header().schema_version;
+    assert!(
+        found != 0 && (found == reader.version || found.checked_add(1) == Some(reader.version)),
+        "version {found} opened by a reader of version {}",
+        reader.version
     );
-    match envelope.decode_payload(|c| decode_as(usize::from(*selector), c)) {
-        Ok(canonical) => assert_eq!(canonical, envelope.payload(), "a payload is not canonical"),
+    assert_eq!(
+        sealed(reader.schema_id, found, envelope.payload()),
+        bytes,
+        "an opened envelope is not the one a writer emits"
+    );
+    assert!(bytes.len() as u64 <= limits.max_total_bytes);
+    match envelope.decode_payload(|c, _version| decode_as(usize::from(*selector), c)) {
+        Ok(echo) => {
+            assert_eq!(echo.bytes, envelope.payload(), "a payload is not canonical");
+            assert!(echo.depth <= limits.max_depth.min(256));
+            assert!(echo.longest <= limits.max_vec_len);
+        }
         Err(error) => assert!(
-            (20..=bytes.len() as u64 - 32).contains(&error.offset()),
+            error.code().is_input_fault()
+                && (20..=bytes.len() as u64 - 32).contains(&error.offset()),
             "{error} outside the payload"
         ),
     }

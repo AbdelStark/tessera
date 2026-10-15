@@ -4,7 +4,12 @@
 
 use core::fmt;
 
-/// The codec error codes of 04 §3, one per failure class of RFC-0003 'Failure modes'.
+/// The 04 §3 codes a decoder reports.
+///
+/// The six `ERR-CODEC-*` codes are faults of the input, one per failure class of RFC-0003
+/// 'Failure modes'. The other two are faults of the reader, which a verifier reports as
+/// `Inconclusive`, never as a rejection of the input (04 §5, RFC-0019 'Check order'):
+/// [`is_input_fault`](Self::is_input_fault) tells them apart.
 ///
 /// The identifiers are spelled out in the specification, not shared with the prover's code
 /// (04 §4); `spec/vectors/errors/codes.json` pins them for both.
@@ -23,17 +28,27 @@ pub enum ErrorCode {
     Digest,
     /// `ERR-CODEC-LIMIT`: a length, a total size or a nesting depth beyond the decode limits.
     Limit,
+    /// `ERR-RES-MEMORY`: memory for the values of a sequence could not be reserved. The reader
+    /// ran out of memory; the input is not at fault.
+    Memory,
+    /// `ERR-INTERNAL`: a schema decoder broke its contract, decoding a sequence element from
+    /// fewer bytes than the minimum size it declared for it, or from none. A bug in the
+    /// verifier, whatever the input.
+    Internal,
 }
 
 impl ErrorCode {
-    /// Every code, in the order of the table in 04 §3.
-    pub const ALL: [ErrorCode; 6] = [
+    /// Every code: the faults of the input in the order of the table in 04 §3, then the faults
+    /// of the reader.
+    pub const ALL: [ErrorCode; 8] = [
         ErrorCode::Magic,
         ErrorCode::Version,
         ErrorCode::Noncanonical,
         ErrorCode::Truncated,
         ErrorCode::Digest,
         ErrorCode::Limit,
+        ErrorCode::Memory,
+        ErrorCode::Internal,
     ];
 
     /// The stable identifier, such as `"ERR-CODEC-TRUNCATED"`.
@@ -45,7 +60,15 @@ impl ErrorCode {
             ErrorCode::Truncated => "ERR-CODEC-TRUNCATED",
             ErrorCode::Digest => "ERR-CODEC-DIGEST",
             ErrorCode::Limit => "ERR-CODEC-LIMIT",
+            ErrorCode::Memory => "ERR-RES-MEMORY",
+            ErrorCode::Internal => "ERR-INTERNAL",
         }
+    }
+
+    /// Whether the input is at fault, so that a verifier rejects it: true for the
+    /// `ERR-CODEC-*` codes, false for `ERR-RES-MEMORY` and `ERR-INTERNAL`.
+    pub const fn is_input_fault(self) -> bool {
+        !matches!(self, ErrorCode::Memory | ErrorCode::Internal)
     }
 }
 
