@@ -93,11 +93,20 @@ docs/
 
 `cargo xtask check-isolation` runs in CI on every PR and fails on any violation:
 
-1. Runs `cargo metadata --format-version 1 --locked` inside `verifier/` and rejects any package whose manifest path lies outside `verifier/` and inside the repository, and any package named `tessera-*`.
+1. Runs `cargo metadata --format-version 1 --locked --all-features` inside `verifier/`. It rejects any package named `tessera-*`, and any path package that is not a workspace member, lies outside `verifier/` or lies inside its build directory. Every target of a path package must have a `.rs` crate root inside that package.
 2. Rejects any external package (registry or git source) not listed in `verifier/allowlist.toml`. Each allowlist entry has a name, an allowed major version and a reason.
-3. Scans `verifier/` sources for `include!`, `include_str!`, `include_bytes!` and `#[path = ...]` whose argument resolves outside `verifier/`, and for symlinks anywhere under `verifier/`.
+3. Scans `verifier/` sources under every `cfg`.
+   - It rejects `include!`, `#[path]` and `#[debugger_visualizer]`, so code enters a crate only through `mod` declarations at their default paths and through dependencies.
+   - `include_str!` and `include_bytes!` must be direct calls whose literal paths stay inside their own crate.
+   - Macro bodies may hold no include macro, no macro call named by a metavariable, and no attribute whose name holds one.
+   - It also rejects symlinks anywhere under `verifier/`, and names containing control characters.
 4. Checks that `verifier/rust-toolchain.toml` and the root `rust-toolchain.toml` pin the same toolchain.
 5. Checks that the root workspace uses verifier crates only as `dev-dependencies` (DEP-2).
+6. Rejects `[patch]` and `[replace]` in verifier manifests, cargo configuration under `verifier/`, and any alias in the root `.cargo/config.toml` other than the canonical `xtask` alias. Each could redirect the verifier's dependencies or turn the gate into a no-op.
+7. Checks that verifier crates reach the test-support crate `tv-testkit` only through `dev-dependencies`.
+8. Runs `cargo check` on every verifier target twice: in the dev profile with every feature, and in the release profile with every feature except the test-only ones. Every file in each path package's rustc dep-info must lie inside that package's directory, and malformed dep-info fails. This is the compiler's record of what it read, which no token scan can match once macros expand. Code compiled only for other targets is covered by item 3 alone.
+
+Dependency graphs are resolved with `--all-features`, so an optional dependency is checked even when no default feature enables it.
 
 Initial allowlist (each with its reason recorded in the file): `blake3` 1.x (hash, RFC-0004), `sha2` 0.10.x (recorder digests, RFC-0015), `ed25519-dalek` 2.x (manifest signatures, RFC-0015), `rayon` 1.x (parallel column checks), `thiserror` 2.x (error types), `clap` 4.x (CLI only, `tv-cli`), `serde` 1.x and `serde_json` 1.x (verdict report output only, `tv-cli`), `rustls` 0.23.x (live TLS transport, `tv-transport` only, so verification logic never links a TLS stack; [RFC-0014](RFC-0014-interaction-and-soundness.md#live-transport)), plus their transitive dependencies as resolved in `verifier/Cargo.lock`, each audited with `cargo vet`.
 
