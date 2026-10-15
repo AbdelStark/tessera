@@ -36,6 +36,8 @@ use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use serde_json::Value as Json;
 use toml::{Table, Value as Toml};
 
+use crate::repo;
+
 /// The source id cargo reports for crates.io packages, whatever the index protocol.
 const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 
@@ -100,7 +102,7 @@ pub(crate) fn checks(repo: &Path, cargo: &Cargo) -> io::Result<Vec<(&'static str
             "no verifier/ directory",
         ));
     }
-    let toolchain = pinned_channel(&repo.join("rust-toolchain.toml"));
+    let toolchain = repo::pinned_channel(&repo.join("rust-toolchain.toml"));
     let graph = cargo.metadata(&verifier, toolchain.as_deref());
     let prover = cargo.metadata(&repo, toolchain.as_deref());
 
@@ -670,29 +672,9 @@ fn build_time_code_violations(graph: &Json) -> Vec<String> {
 
 // ----- Check 4: toolchain -------------------------------------------------------------------
 
-fn toolchain_table(path: &Path) -> io::Result<Option<Toml>> {
-    match fs::read_to_string(path) {
-        Ok(text) => Ok(text
-            .parse::<Table>()
-            .ok()
-            .and_then(|mut t| t.remove("toolchain"))),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e),
-    }
-}
-
-fn pinned_channel(path: &Path) -> Option<String> {
-    toolchain_table(path)
-        .ok()
-        .flatten()?
-        .get("channel")?
-        .as_str()
-        .map(str::to_owned)
-}
-
 fn toolchain_violations(repo: &Path, verifier: &Path) -> io::Result<Vec<String>> {
-    let root = toolchain_table(&repo.join("rust-toolchain.toml"))?;
-    let ours = toolchain_table(&verifier.join("rust-toolchain.toml"))?;
+    let root = repo::toolchain_table(&repo.join("rust-toolchain.toml"))?;
+    let ours = repo::toolchain_table(&verifier.join("rust-toolchain.toml"))?;
     Ok(match (root, ours) {
         (Some(root), Some(ours)) if root == ours => Vec::new(),
         (Some(root), Some(ours)) => {

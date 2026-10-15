@@ -33,6 +33,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 cargo xtask lint                # unsafe-code policy, SPDX headers, licenses, Markdown links
 cargo xtask check-isolation     # the verifier shares no code with the prover (RFC-0001)
+cargo xtask check-test-features # test-only features fail release builds (RFC-0001)
 
 # The verifier is a separate workspace:
 cd verifier && cargo build --locked && cargo test --locked
@@ -46,7 +47,7 @@ No crate needs a GPU or the CUDA toolkit to build or test.
 
 | Job | What it runs |
 |---|---|
-| `checks` | rustfmt, clippy `-D warnings` and rustdoc `-D warnings` in both workspaces; `cargo xtask lint`; `cargo xtask check-isolation` |
+| `checks` | rustfmt, clippy `-D warnings` and rustdoc `-D warnings` in both workspaces; `cargo xtask lint`; `cargo xtask check-isolation`; `cargo xtask check-test-features` |
 | `test` | `cargo test --workspace --locked` in both workspaces |
 | `msrv (1.85)` | `cargo +1.85.0 check --workspace --all-targets --locked` in both workspaces |
 | `python` | `ruff`, `pyright --strict` and `pytest` in `python/`, once the package exists |

@@ -2,9 +2,12 @@
 
 //! Locating the repository and listing its files.
 
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use toml::{Table, Value as Toml};
 
 /// The repository root: the parent of the `xtask` crate.
 pub(crate) fn root() -> PathBuf {
@@ -45,4 +48,26 @@ pub(crate) fn files(repo: &Path) -> io::Result<Vec<PathBuf>> {
     files.sort();
     files.dedup();
     Ok(files)
+}
+
+/// The `[toolchain]` table of a `rust-toolchain.toml`, or `None` if the file is absent or has none.
+pub(crate) fn toolchain_table(path: &Path) -> io::Result<Option<Toml>> {
+    match fs::read_to_string(path) {
+        Ok(text) => Ok(text
+            .parse::<Table>()
+            .ok()
+            .and_then(|mut t| t.remove("toolchain"))),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// The `channel` a `rust-toolchain.toml` pins, if any.
+pub(crate) fn pinned_channel(path: &Path) -> Option<String> {
+    toolchain_table(path)
+        .ok()
+        .flatten()?
+        .get("channel")?
+        .as_str()
+        .map(str::to_owned)
 }
