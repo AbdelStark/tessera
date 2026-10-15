@@ -82,6 +82,10 @@ RFC numbers are never reused. To discuss an idea before writing it up, open an i
 | `no-changelog` | The pull request needs no changelog entry |
 | `good first issue`, `help wanted` | Self-contained work for newcomers; work where outside help is welcome |
 
+## Releases
+
+Every release follows [docs/release/checklist.md](docs/release/checklist.md): freeze, gates, the security gates of [06 §9](docs/spec/06-security.md#9-security-gates), versions and changelogs, reproducible verifier builds and publication ([09 §9](docs/spec/09-release-and-versioning.md#9-release-process)). The release's tracking issue carries a completed copy, and the release notes link it.
+
 ## Security and conduct
 
 Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), never in a public issue. Participation in this project is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
