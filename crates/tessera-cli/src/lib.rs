@@ -6,5 +6,13 @@
 
 /// Demonstration only.
 pub fn demo(v: &[u8]) -> bool {
-    v.len() == 0
+    v.is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn demonstration_failure() {
+        assert!(!super::demo(&[]), "deliberately failing test");
+    }
 }
