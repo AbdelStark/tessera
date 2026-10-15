@@ -1,0 +1,146 @@
+# RFC-0018: Witness Engine and GPU Prover Runtime
+
+- Status: Accepted
+- Authors: @AbdelStark
+- Created: 2026-10-15
+- Target milestone: v0.2 (CPU witness engine), v0.3 (CPU prover), v0.5 (GPU prover), v1.0 (405B)
+
+## Summary
+
+The prover has two backends behind one interface: a CPU reference backend, which is also the bit-exact test oracle, and a CUDA backend for H100, H200 and B200 nodes. The witness engine executes `D` exactly: INT8 GEMMs with INT32 accumulation on tensor cores, integer gadget arithmetic on CUDA cores. Field-heavy work (encoding, hashing, sumcheck rounds, fraction trees) runs in custom kernels; folds that are matrix products run as limb-decomposed INT8 GEMMs. Work is partitioned across the GPUs of one node by layer range. Every proof is a fixed sequence of passes over a regenerated witness; this RFC fixes that pass structure, how passes are counted and fused, how leaf levels that exceed memory are streamed, crash consistency, and the determinism rules.
+
+## Motivation
+
+Source principles 8–10 (§6): tile everything, recompute instead of storing, and run matrix-product-shaped work on tensor cores. Source §7 names the phases (witness pass, seed, sumchecks, openings) and §5 the unit costs the kernels must hit. Two gaps found while specifying the corpus land here: regeneration passes cost native compute the source's model omits (RISK-9), and the leaf-adjacent levels of fraction and product trees exceed device memory at long context (RISK-10).
+
+## Goals
+
+- One `ProverBackend` interface; CPU and GPU backends produce byte-identical messages (INV-ARCH-1).
+- Unit costs within the targets of [08 §2](../spec/08-performance-budget.md#2-unit-cost-targets).
+- An explicit, measured count of regeneration passes per proof.
+- Restartable phases with no change to sent messages.
+
+## Non-Goals
+
+- Multi-node proving (NVL72 scaling is future work; the source's minimum is one 8-GPU node).
+- Serving-stack integration (NG-8); the witness engine can serve exact-mode demonstrations but is not a production server.
+- B300 support (NG-10).
+
+## Proposed Design
+
+### Backend interface
+
+```rust
+pub trait ProverBackend {
+    fn witness_pass(&mut self, unit: &ProofUnit, sink: &mut dyn RowSink) -> Result<WitnessSummary, ProverError>;
+    fn weight_fold(&mut self, ty: WeightType, point: &FoldPoint) -> Result<FoldResult, ProverError>;
+    fn tree_levels(&mut self, req: &TreeRequest, tr: &mut Transcript) -> Result<TreeProof, ProverError>;
+    fn stage(&mut self, stage: &Stage, tr: &mut Transcript) -> Result<StageProof, ProverError>;
+    fn opening_pass(&mut self, groups: &OpeningGroups) -> Result<CombinedRows, ProverError>;
+    fn answer_columns(&mut self, q: &ColumnQueries) -> Result<Round3Response, ProverError>;
+}
+```
+
+`tessera-prover` drives the protocol and owns the transcript; backends compute. The CPU backend (`rayon` 1.x) is the reference for every kernel.
+
+### Witness engine
+
+- **Exact integer semantics** of [RFC-0005](RFC-0005-integer-model.md#integer-semantics). INT8 × INT8 GEMMs with INT32 accumulation use cuBLASLt from CUDA ≥ 12.8; integer accumulation is exact in any order, so results do not depend on the library's tiling or split-K choices (S2 bounds every accumulator below 2^31).
+- Gadget arithmetic (requantization, RoPE rotations, softmax maxima, brackets, AES, SHA-256) runs in custom kernels with 64-bit integer intermediates.
+- **Checkpoints.** Layer-boundary residuals (INT20 stored as INT32) are kept for the proof unit's tokens, so any layer's tensors can be regenerated without rerunning earlier layers.
+- The CPU engine implements the same semantics with plain `i64` arithmetic and is the oracle for differential tests ([07 §5](../spec/07-testing-strategy.md#5-differential-and-conformance-tests)).
+
+### Kernels
+
+| Kernel | Used by | Notes |
+|---|---|---|
+| Goldilocks and `Fp2` arithmetic library | All | 32-bit limb multiplies, branch-free reduction ([RFC-0002](RFC-0002-field-arithmetic.md)) |
+| Coset NTT (sizes 2^10–2^23) and RS encode with vanishing mask | Advice and weight commitments | Batched rows; canonical output |
+| BLAKE3 column-chain and Merkle kernels | Commitments | Byte-identical to the CPU reference ([RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests)) |
+| Fraction-tree build and level sumcheck | LogUp-GKR | Bottom-up build fused with leaf generation |
+| Product-tree build and level sumcheck | Max certificate | |
+| Sumcheck round kernels (degree ≤ 7) with `eq` tables | Stages | Front-padded batching |
+| Table gather | Witness and leaf generation | Piecewise tables keep the dense core in L2 where it fits |
+| Limb-decomposed folds | Weight fold, tensor folds over tokens, query folds | `Fp2` coefficients split into 8-bit limbs; INT8 GEMMs; exact recombination |
+
+### Partitioning
+
+A node with `G` GPUs (8 by default) splits the proof unit's layers into `G` contiguous ranges, one per GPU, matching the advice segments of [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout). Each GPU holds its layers' weights (405 GB / 8 ≈ 51 GB for 405B) and commits its own segment.
+
+- Witness pass: pipeline-parallel over micro-batches of tokens; residuals move between GPUs over NVLink.
+- Stages and tree levels: each GPU computes its layers' contribution to every round; round messages are summed by an all-reduce of at most a few hundred `Fp2` elements per round (NCCL through `cudarc` 0.x, pinned in the lockfile).
+- Embedding and LM head are assigned to the first and last GPU.
+
+### Pass structure
+
+Every proof unit runs these passes, each regenerating the parts of the witness it needs from checkpoints:
+
+| Pass | When | Regenerates | Native cost |
+|---|---|---|---|
+| P1 witness and commit | Before `Round1` | Everything; streams rows to the committer; counts multiplicities; writes checkpoints | 1× forward |
+| P2 leaf streaming | After the seed, only for tree levels that exceed the memory budget | Lookup keys and values and softmax keys for the affected tiles | Attention and affected linear tiles, once per streamed round |
+| P3 stage regeneration | Per reduction stage | Folds of the tensors the stage reads; most are elementwise from checkpoints, not GEMMs | ≤ 1× forward in total |
+| P4 opening | After the last stage | Every committed row | 1× forward |
+| W weight fold | Once per proof unit | Weights of the unit's layers | 0.24 GPU-s per 405B unit (source §5) |
+
+`n_regen` in the cost model ([08 §1](../spec/08-performance-budget.md#1-cost-model)) is the sum of the native-cost column. The run manifest records every pass and its time.
+
+**Leaf levels.** A fraction or product tree level whose working set (two `Fp2` tables over its nodes) fits in the unit's memory budget is proven in memory after one regeneration. A level that does not fit is proven by streaming: for each early round, one pass regenerates the level's leaves tile by tile and accumulates the round message with the challenges drawn so far, until the folded state (halving every round) fits in memory, after which the remaining rounds run in memory. The number of streamed rounds is `c = ⌈log2(N_level · 32 bytes / M)⌉`. At 405B, 16K tokens and 16K context, attention leaves number about 2.2×10^12 against about 0.2 TB of free HBM, giving `c ≈ 8` streamed passes over attention tiles. Each costs a regeneration of the scores (cheap on tensor cores) plus a fold, estimated at 6–8 ps per score against the 94 ps per-score proof cost (RISK-10).
+
+**Proof units.** A batch is split into proof units: sets of requests (short context), or for long requests, layer ranges of one request, chosen so that every tree level whose streaming would exceed a configured pass limit fits in memory. Units of one batch share the seed and the stage structure but have their own advice commitments; boundary residuals of a split request are committed in both adjacent units and linked by an equality claim at a random point, as in the weight linking proof. The planner minimizes total time subject to the proof-size budget, because every unit adds combined rows.
+
+**Fusion.** P2's first streamed round is fused with the bottom-up tree build; P3 regenerations are fused into P2 or P4 when the stage's point is known before the pass begins. The pass planner's objective is the fewest full-forward equivalents; v0.5 publishes the achieved count per context length.
+
+### Memory scheduler
+
+Budgets per device and host come from `ProverConfig.memory_budget`. The planner assigns tiles, unit sizes and streaming decisions before P1 so that no allocation fails mid-proof; an infeasible plan fails fast with `ERR-RES-MEMORY` before `Round1`.
+
+### Crash consistency
+
+- Before `Round1`, the prover writes a per-proof secret seed (from the OS CSPRNG) to a 0600 file via atomic rename. Every masking value, mask polynomial and blinding choice derives from it through a PRG with per-purpose labels.
+- Every phase is a deterministic function of inputs, the per-proof seed, the session seed and verifier messages. After a crash, the prover reruns completed phases to rebuild state and resumes; messages already sent are reproduced byte for byte and compared before continuing.
+- The per-proof seed file is deleted after `Round3Response` is sent.
+
+### Determinism
+
+- Field reductions are exact, so the order of GPU reductions and all-reduces does not change results.
+- Integer GEMMs are exact under S2.
+- Nothing in a kernel's control flow depends on secret values (INV-ARCH-2); data-dependent table gathers are memory accesses whose addresses depend on secrets, which is acceptable because the verifier observes no timing or memory traffic of the prover node.
+
+## Alternatives Considered
+
+1. **Store the witness on NVMe instead of regenerating.** Considered for long context. Rejected as the default: about 35 TB of `Fp2` leaves at 16K context, and read bandwidth of a large NVMe array (tens of GB/s) makes each pass slower than regeneration on tensor cores. Kept as a fallback for linear-layer leaves, whose regeneration needs full GEMMs.
+2. **Independent per-tile challenges for leaf levels.** Considered to make each tile's tree provable in one in-memory pass. Rejected: tile-specific final points multiply opening groups, and each group costs a combined row (64 MB at `k = 2^22`).
+3. **Multi-variable sumcheck rounds** (binding several variables per round to cut streamed passes). Considered. Rejected for v1: message size and prover work grow as `(d + 1)^w` per round; reconsider if RISK-10 measurements exceed 50% overhead.
+4. **Tensor-parallel witness generation** (split each layer across GPUs, as in serving). Rejected for proving: it scatters each committed row across GPUs, while layer ranges map one segment to one GPU.
+5. **CUTLASS kernels instead of cuBLASLt for INT8 GEMMs.** Both are exact for integers; cuBLASLt ships with the toolkit and avoids a source dependency. CUTLASS remains an option for fused limb-decomposed folds.
+
+## Drawbacks
+
+- Long-context proofs pay streamed passes (RISK-10), and proof units add combined rows.
+- Two backends double the kernel test burden.
+- The pass planner is a new optimization component with its own failure modes.
+
+## Migration / Rollout
+
+v0.2: CPU witness engine. v0.3: CPU prover backend with the pass structure and counters, in memory for tiny models and with forced streaming in tests. v0.5: GPU backend, partitioning, streaming, measured on 8B and 70B. v1.0: 405B with the pass planner tuned against SC-2.
+
+## Testing Strategy
+
+- Witness engine: CPU and GPU engines bit-identical on every conformance model and on 8B, across micro-batch sizes and GPU counts 1, 2 and 8.
+- Kernels: each GPU kernel against its CPU reference on random inputs, including NTT sizes 2^10–2^23 and BLAKE3 chains with partial blocks.
+- Backends: full proofs from CPU and GPU backends are byte-identical with pinned masking randomness.
+- Streaming: a test forces a 1 MiB memory budget on a tiny model so that every tree level streams; the proof equals the in-memory proof byte for byte; the pass counter matches `c` from the formula.
+- Proof units: splitting one request into two layer-range units yields a proof that verifies; tampering with a boundary residual in one unit is rejected by the linking claim.
+- Crash consistency: fault injection kills the prover after each phase; the resumed prover sends byte-identical messages.
+- Performance: `tessera bench` reports pass counts and per-pass times nightly on the GPU runner.
+
+## Open Questions
+
+- **OQ-0018-1.** For long context, which is cheaper at 405B: streaming leaf levels (`c ≈ 8` passes) or splitting requests into more, smaller proof units? Owner: @AbdelStark. Resolve at v0.5 from 70B measurements; the planner's default follows the result.
+
+## References
+
+- Source §5 (unit costs, weight pass), §6 principles 8–10, §7 (phases, streaming commitments), §9 problem 6 (hardware drift).
+- Cormode, Mitzenmacher, Thaler, "Practical verified computation with streaming interactive proofs", ITCS 2012 (streaming sumcheck provers).
+- [RFC-0010](RFC-0010-proof-schedule.md), [RFC-0011](RFC-0011-advice-commitment.md), [RFC-0012](RFC-0012-weight-commitment.md), [RFC-0020](RFC-0020-cost-model.md).
