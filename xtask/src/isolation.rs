@@ -3,7 +3,8 @@
 //! `cargo xtask check-isolation`: the verifier-independence gate of RFC-0001 'Enforcement'
 //! (DEP-1 to DEP-3 in 01 §3; security property SP-6).
 //!
-//! The five checks of the RFC, plus a sixth that closes ways around them:
+//! The five checks of the RFC, a sixth that closes ways around them, and a seventh that keeps
+//! test support out of the verifier binary:
 //!
 //! 1. **DEP-1.** The verifier's resolved dependency graph contains no package named `tessera-*`
 //!    and no path package outside `verifier/`, and every target of every path package compiles
@@ -24,6 +25,9 @@
 //!    without this check a vendored directory could ship arbitrary code under an allowlisted
 //!    crate name; and a rewritten alias could make `cargo xtask check-isolation` a no-op. CI
 //!    runs the gate as `cargo run -p xtask -- check-isolation`, not through the alias.
+//! 7. **Test support.** In the verifier's resolved graph, every edge into a crate that exists for
+//!    tests (`tv-testkit`, whose vector reader panics on malformed input) is a dev edge
+//!    (robustness, RFC-0019).
 
 use std::ffi::OsString;
 use std::fs;
@@ -46,6 +50,9 @@ const XTASK_ALIAS: (&str, &str) = ("xtask", "run --quiet --package xtask --");
 
 /// Built-in macros that read files at compile time.
 const INCLUDE_MACROS: [&str; 3] = ["include", "include_str", "include_bytes"];
+
+/// Verifier crates that exist only to support tests (check 7).
+const TEST_SUPPORT: [&str; 1] = ["tv-testkit"];
 
 /// How the gate runs cargo.
 pub(crate) struct Cargo {
@@ -110,19 +117,21 @@ pub(crate) fn checks(repo: &Path, cargo: &Cargo) -> io::Result<Vec<(&'static str
     let mut dep1 = Vec::new();
     let mut dep3 = allowlist.as_ref().err().cloned().unwrap_or_default();
     let mut sources = source_violations(&verifier)?;
-    match &graph {
+    let test_support = match &graph {
         Ok(graph) => {
             dep1.extend(dep1_violations(graph, &verifier));
             if let Ok(entries) = &allowlist {
                 dep3.extend(dep3_violations(graph, entries));
             }
             sources.extend(build_time_code_violations(graph));
+            test_support_violations(graph)
         }
         Err(e) => {
             dep1.push(format!("verifier/: {e}"));
             dep3.push("not checked: no dependency graph for verifier/".to_owned());
+            vec!["not checked: no dependency graph for verifier/".to_owned()]
         }
-    }
+    };
     let dep2 = match &prover {
         Ok(prover) => dep2_violations(prover, &verifier),
         Err(e) => vec![format!("repository root: {e}")],
@@ -146,6 +155,7 @@ pub(crate) fn checks(repo: &Path, cargo: &Cargo) -> io::Result<Vec<(&'static str
             "cargo configuration cannot redirect verifier dependencies",
             config_violations(&repo, &verifier)?,
         ),
+        ("verifier test support is used by tests only", test_support),
     ])
 }
 
@@ -829,6 +839,38 @@ fn config_violations(repo: &Path, verifier: &Path) -> io::Result<Vec<String>> {
         }
     }
     Ok(violations)
+}
+
+// ----- Check 7: test support ----------------------------------------------------------------
+
+/// Every edge into a [`TEST_SUPPORT`] crate in the verifier's resolved graph is a dev edge.
+fn test_support_violations(graph: &Json) -> Vec<String> {
+    let name = |id: &str| {
+        packages(graph)
+            .find(|p| str_field(p, "id") == id)
+            .map_or("?", |p| str_field(p, "name"))
+    };
+    let mut violations = Vec::new();
+    for node in graph["resolve"]["nodes"].as_array().into_iter().flatten() {
+        for dep in node["deps"].as_array().into_iter().flatten() {
+            let to = name(str_field(dep, "pkg"));
+            if !TEST_SUPPORT.contains(&to) {
+                continue;
+            }
+            for kind in dep["dep_kinds"].as_array().into_iter().flatten() {
+                let kind = kind["kind"].as_str().unwrap_or("normal");
+                if kind != "dev" {
+                    violations.push(format!(
+                        "{} has a {kind} dependency on test-support crate {to}; only dev-dependencies are allowed",
+                        name(str_field(node, "id"))
+                    ));
+                }
+            }
+        }
+    }
+    violations.sort();
+    violations.dedup();
+    violations
 }
 
 #[cfg(test)]

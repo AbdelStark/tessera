@@ -15,7 +15,7 @@ The source fixes Goldilocks with a degree-2 extension as the default (source §1
 
 ## Goals
 
-- Exact, branch-free `Fp` and `Fp2` arithmetic with canonical encodings that reject non-canonical inputs.
+- Exact `Fp` and `Fp2` arithmetic, branch-free in the prover, with canonical encodings that reject non-canonical inputs.
 - A trait surface that lets the compiler, sumcheck, LogUp and PCS code run over any prime field with a quadratic extension.
 - Roots of unity defined by formula, not by copied constants.
 - Identical results on CPU and GPU.
@@ -108,7 +108,11 @@ pub fn batch_inverse<F: Field>(xs: &mut [F]) -> Result<(), ZeroElement>; // Zero
 
 ### Timing
 
-All arithmetic is branch-free in the values: conditional corrections use masks or `select`, never `if` on data. This satisfies INV-ARCH-2 ([01 §6](../spec/01-architecture.md#6-concurrency-and-determinism)) at the instruction level. Variable-time exponentiation is permitted only on public exponents (all exponents in this design are public constants).
+All prover arithmetic is branch-free in the values: conditional corrections use masks or `select`, never `if` on data. This satisfies INV-ARCH-2 ([01 §6](../spec/01-architecture.md#6-concurrency-and-determinism)) at the instruction level. Variable-time exponentiation is permitted only on public exponents (all exponents in this design are public constants).
+
+### The verifier's implementation
+
+The representation, reduction, inversion chain and timing rules above bind the prover's `tessera-field`. The verifier's `tv-field` implements the same field from this RFC with different algorithms on purpose, so that a structural bug cannot sit in both ([RFC-0001](RFC-0001-workspace-and-verifier-independence.md)): Montgomery form with REDC, schoolbook `Fp2` products, and inversion by square-and-multiply. It handles public data only, so its arithmetic may branch on values (INV-ARCH-2 constrains the prover). Everything observable is shared: the constants, the canonical encodings and every result, which both implementations check against `spec/vectors/field/`.
 
 ### Failure modes
 
@@ -124,7 +128,7 @@ All arithmetic is branch-free in the values: conditional corrections use masks o
 1. **M31 with a degree-4 extension (QM31), as in Stwo.** Considered because 31-bit symbols halve commitment size and Stwo is mature. Rejected for v1 by the source's default (§10): roughly twice the linear-layer rescales because exact chains overflow 31 bits sooner, and a harder RMSNorm. The traits keep it open (source §9, problem 5).
 2. **BabyBear (31-bit) with a degree-4 extension.** Same trade-off as M31, with a better two-adicity; rejected for the same reason.
 3. **A 254-bit pairing-friendly scalar field.** Rejected: arithmetic is about 10× slower per element, and the design gains nothing from pairings; it would also tie the system to non-post-quantum commitments.
-4. **Montgomery representation for Goldilocks.** Rejected: the special-form reduction above is faster and keeps values in their natural form, which simplifies debugging and encoding.
+4. **Montgomery representation for Goldilocks.** Rejected for the prover: the special-form reduction above is faster and keeps values in their natural form, which simplifies debugging and encoding. The verifier uses it for algorithmic diversity (see 'The verifier's implementation').
 5. **Cubic or quartic extension for all challenges.** Rejected: the quadratic extension already gives about 128-bit challenges; larger extensions raise the cost of every `Fp2` operation in lookups and sumchecks by 2.25× or more. The one place where 2^-90 matters (LogUp at frontier volume) is handled by grinding and live seeds (RFC-0014).
 
 ## Drawbacks

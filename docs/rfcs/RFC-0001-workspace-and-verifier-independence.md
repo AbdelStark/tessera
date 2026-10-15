@@ -54,6 +54,7 @@ verifier/
   deny.toml                # stricter policy, no license exceptions
   allowlist.toml           # permitted third-party packages with reasons
   crates/ tv-field/ tv-codec/ tv-hash/ tv-tables/ tv-core/ tv-transport/ tv-cli/
+          tv-testkit/      # test support: vector reader (dev-dependency only)
 python/
   pyproject.toml uv.lock
   tessera_quant/ tests/

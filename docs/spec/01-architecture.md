@@ -74,7 +74,7 @@ flowchart TB
 | GPU | Rust + CUDA | `crates/tessera-gpu` | Kernels, multi-GPU runtime, memory scheduler | RFC-0018 |
 | Bench | Rust | `crates/tessera-bench` | Executable cost model, unit-cost microbenchmarks, reports | RFC-0020 |
 | CLI | Rust | `crates/tessera-cli` | `tessera` binary | [02](02-public-api.md) |
-| Verifier | Rust | `verifier/` (separate workspace) | `tv-field`, `tv-codec`, `tv-hash`, `tv-tables`, `tv-core`, `tv-transport`, `tv-cli` (`tessera-verify` binary) | RFC-0019 |
+| Verifier | Rust | `verifier/` (separate workspace) | `tv-field`, `tv-codec`, `tv-hash`, `tv-tables`, `tv-core`, `tv-transport`, `tv-cli` (`tessera-verify` binary); `tv-testkit` (test support, dev-dependency only) | RFC-0019 |
 | Quantization front-end | Python | `python/tessera_quant` | Checkpoint import, calibration, W8A8 quantization, `D` export, integer reference, fidelity evaluation | RFC-0005 |
 | Conformance vectors | Data | `spec/vectors/` | Cross-implementation test vectors and tiny models | [07](07-testing-strategy.md) |
 
