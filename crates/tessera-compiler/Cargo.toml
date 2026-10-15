@@ -1,0 +1,12 @@
+[package]
+name = "tessera-compiler"
+description = "Range analysis, rescale placement, lowering, tiling, claim-list emission and the commitment report (RFC-0006, RFC-0007)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

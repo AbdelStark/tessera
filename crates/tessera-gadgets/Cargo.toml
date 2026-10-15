@@ -1,0 +1,12 @@
+[package]
+name = "tessera-gadgets"
+description = "Witness generation and constraint descriptions for the uniqueness gadgets and the anchor circuits (RFC-0009, RFC-0015, RFC-0017)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

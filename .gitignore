@@ -1,0 +1,7 @@
+# Build output of both Cargo workspaces and of fixture workspaces.
+target/
+
+# Local tool state.
+.DS_Store
+*.profraw
+*.profdata

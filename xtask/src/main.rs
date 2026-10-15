@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! Repository automation for the Tessera workspaces, run as `cargo xtask <command>`.
+//!
+//! Commands are added by the work that needs them (RFC-0001 'Repository tree'): the verifier
+//! isolation gate, vector generation and release helpers. Repository policies that need no
+//! command of their own are enforced by this crate's tests, which run with
+//! `cargo test --workspace`.
+
+#![forbid(unsafe_code)]
+// A command-line tool reports on stdout and stderr.
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+
+#[cfg(test)]
+mod unsafe_policy;
+
+use std::process::ExitCode;
+
+/// Exit code for usage errors, shared with the Tessera command-line tools (02 §2.4).
+const EXIT_USAGE: u8 = 64;
+
+const USAGE: &str = "\
+usage: cargo xtask <command>
+
+commands:
+  help    print this message
+";
+
+fn main() -> ExitCode {
+    match std::env::args().nth(1).as_deref() {
+        Some("help" | "-h" | "--help") => {
+            print!("{USAGE}");
+            ExitCode::SUCCESS
+        }
+        Some(other) => {
+            eprintln!("error: unknown command `{other}`\n\n{USAGE}");
+            ExitCode::from(EXIT_USAGE)
+        }
+        None => {
+            eprint!("{USAGE}");
+            ExitCode::from(EXIT_USAGE)
+        }
+    }
+}

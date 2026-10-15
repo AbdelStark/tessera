@@ -1,0 +1,12 @@
+[package]
+name = "tessera-logup"
+description = "The LogUp-GKR lookup prover with multiplicities and tuple tables (RFC-0008)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
