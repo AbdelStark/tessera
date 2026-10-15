@@ -38,6 +38,12 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 - Every value sent to the verifier is public, uniformly masked, or determined by values already sent (INV-ZK-1).
 - Each mask row, blinding row and masking polynomial is used in exactly one revealed combination; masking randomness comes from the per-proof seed, never from the transcript.
 
+## Secrets (05 §3, 06 §7)
+- Every secret-class value of the 05 §3 table lives in `Secret<T>` from the moment it is read or derived, and none reaches `Debug`, `Display`, an error, a metric, a log or a report.
+- `expose_secret` appears only in files that `secret-access.toml` lists with a reason. A listed file hands neither the value nor a reference to it to code outside the list: no function returns it, and no trait impl or exported macro exposes it.
+- A secret that moves or grows lives on the heap (`Secret<Box<_>>`, `Secret<Vec<_>>` sized up front), so zeroization reaches its only copy (OBS-2).
+- Randomness comes from `getrandom`; only the `test-rng` feature pins it, in test builds.
+
 ## Verifier robustness (RFC-0019)
 - Every input path returns `Accept`, `Reject(reason)` or `Inconclusive(error)`: no panic, no allocation beyond `ResourceLimits`, no unbounded loop.
 - The check order is the fixed order of RFC-0019, so one invalid proof always yields one reason.
