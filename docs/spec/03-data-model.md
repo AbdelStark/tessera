@@ -126,6 +126,6 @@ JSON reports are not TCE artifacts. Each carries a `"schema"` string (`tessera.c
 ## 7. Schema versioning
 
 - Each artifact envelope carries `(schema_id: u16, version: u16)`. Any change to field order, type or meaning increments `version`.
-- Readers accept `version` and `version − 1`; writers emit only the current version ([09 §3](09-release-and-versioning.md#3-protocol-and-schema-versions)).
+- Readers accept `version` and `version − 1`, never version 0, which no writer emits; writers emit only the current version ([09 §3](09-release-and-versioning.md#3-protocol-and-schema-versions)).
 - A schema version bump for any tier-A artifact implies a protocol version bump.
 - Golden vectors for every artifact type and version live in `spec/vectors/codec/` and are checked by both the prover-side and verifier-side decoders.

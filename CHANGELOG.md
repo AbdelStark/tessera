@@ -48,3 +48,16 @@ All notable changes to the prover release train are recorded here: the crates un
   - `clippy.toml` denies `expose_secret` everywhere, and the modules that need it opt back in with `#[allow(clippy::disallowed_methods)]`. `cargo xtask lint` accepts that opt-in, and any use of the accessors by name under any `cfg`, only in the files `secret-access.toml` lists. It also rejects every other way found to switch the rule off: wider allowances, `warn(warnings)`, manifest lint tables and a second `clippy.toml`. Prover sources may no longer pull in code through `include!` or `#[path]`, and crate targets must be `.rs` files inside their package, so the scan sees every compiled source.
   - CI's test job installs clippy, which a test of the rule runs.
   - Compile-fail tests pin that a secret cannot be printed, cloned or encoded.
+- Artifact envelope and schema registry (RFC-0003 'Envelope', 'Limits'; 03 §5) ([#43](https://github.com/AbdelStark/tessera/issues/43)):
+  - `tessera_codec::envelope` seals a TCE payload behind the `TSRA` header with its BLAKE3 digest (`tessera/v1/envelope`).
+    - `write` streams an envelope of any size in constant memory, and `verify` checks one read from a file the same way.
+    - `open_payload` and `open` check one in memory, and decode only after the digest verifies.
+    - Streaming buffers are zeroized, since payloads may be secret-class data.
+  - RFC-0003 'Envelope' now fixes the order of a reader's checks: field by field, then the length, the digest and the payload. Every reader returns the same code at the same offset. `spec/vectors/codec/envelope.json` pins the order with 52 cases:
+    - one fault per check;
+    - every header truncation;
+    - pairs of faults that show which check comes first;
+    - the RFC-0003 default limits at and one past each bound.
+  - `tessera_codec::schema` holds the 21 schemas of 03 §5 with their ids, versions, extensions and classes. A test reads the table from the specification. Readers accept versions `v` and `v − 1`, never 0, which 03 §7 now says too.
+  - `DecodeLimits::MESSAGE` (8 GiB, 2^34 elements, depth 32) and `DecodeLimits::INTEGER_MODEL` (1 TiB) are the RFC-0003 defaults. A counting allocator shows that hostile lengths are refused without allocating.
+  - A declared length that fits `max_vec_len` but not a 32-bit `usize` is now `ERR-CODEC-TRUNCATED`, as on 64-bit targets.

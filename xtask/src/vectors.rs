@@ -83,6 +83,52 @@ pub(crate) fn render() -> Vec<(&'static str, String)> {
             }))
             .collect::<Vec<_>>(),
     });
+    let envelope = json!({
+        "description": "Envelope vectors (RFC-0003 'Envelope'), written by `cargo xtask \
+            gen-vectors`. A reader expects schema `schema` whose writers emit version `version`, \
+            so it accepts `version` and `version - 1` but never 0. It reads under `limits`, or \
+            under the RFC-0003 defaults a case names, which every implementation takes from its \
+            own constants. It checks `hex` in the order RFC-0003 fixes, then decodes the payload \
+            as `type`, which must fill it. It returns `payload`, or fails with `code` at `offset`, \
+            counted from the start of the envelope. A rejection has one fault, except the cases \
+            that pin which of two faults is reported.",
+        "limits": limits(golden::ENVELOPE_LIMITS),
+        "named_limits": {
+            "message": limits(DecodeLimits {
+                max_total_bytes: golden::RFC_MESSAGE_TOTAL,
+                max_vec_len: golden::RFC_MESSAGE_VEC_LEN,
+                max_depth: golden::RFC_MESSAGE_DEPTH,
+            }),
+            "integer-model": limits(DecodeLimits {
+                max_total_bytes: golden::RFC_INTEGER_MODEL_TOTAL,
+                max_vec_len: golden::RFC_MESSAGE_VEC_LEN,
+                max_depth: golden::RFC_MESSAGE_DEPTH,
+            }),
+        },
+        "cases": golden::envelopes()
+            .iter()
+            .map(|c| {
+                let mut case = json!({
+                    "schema": c.expect.id.0,
+                    "version": c.expect.version,
+                    "type": c.ty,
+                    "hex": hex(&c.bytes),
+                });
+                if let Some(name) = c.limits.name() {
+                    case["limits"] = Value::from(name);
+                }
+                match &c.outcome {
+                    Ok(payload) => case["payload"] = Value::from(hex(payload)),
+                    Err((code, offset)) => {
+                        case["code"] = Value::from(code.as_str());
+                        case["offset"] = Value::from(*offset);
+                    }
+                }
+                case["why"] = Value::from(c.why);
+                case
+            })
+            .collect::<Vec<_>>(),
+    });
     let pretty = |value: &Value| {
         let mut text = serde_json::to_string_pretty(value).unwrap_or_default();
         text.push('\n');
@@ -91,6 +137,7 @@ pub(crate) fn render() -> Vec<(&'static str, String)> {
     vec![
         ("spec/vectors/codec/golden.json", pretty(&golden)),
         ("spec/vectors/codec/noncanonical.json", pretty(&corpus)),
+        ("spec/vectors/codec/envelope.json", pretty(&envelope)),
     ]
 }
 
