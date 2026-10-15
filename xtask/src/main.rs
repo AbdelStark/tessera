@@ -10,6 +10,7 @@
 // A command-line tool reports on stdout and stderr.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+mod isolation;
 mod licenses;
 mod lint;
 mod repo;
@@ -27,8 +28,9 @@ const USAGE: &str = "\
 usage: cargo xtask <command>
 
 commands:
-  lint    check repository policies: unsafe code, SPDX headers, manifest licenses
-  help    print this message
+  check-isolation    check that the verifier shares no code with the prover (RFC-0001)
+  lint               check repository policies: unsafe code, SPDX headers, manifest licenses
+  help               print this message
 ";
 
 fn main() -> ExitCode {
@@ -37,14 +39,8 @@ fn main() -> ExitCode {
             print!("{USAGE}");
             ExitCode::SUCCESS
         }
-        Some("lint") => match lint::run(&repo::root()) {
-            Ok(true) => ExitCode::SUCCESS,
-            Ok(false) => ExitCode::FAILURE,
-            Err(e) => {
-                eprintln!("error: {e}");
-                ExitCode::FAILURE
-            }
-        },
+        Some("check-isolation") => report(isolation::run(&repo::root())),
+        Some("lint") => report(lint::run(&repo::root())),
         Some(other) => {
             eprintln!("error: unknown command `{other}`\n\n{USAGE}");
             ExitCode::from(EXIT_USAGE)
@@ -52,6 +48,18 @@ fn main() -> ExitCode {
         None => {
             eprint!("{USAGE}");
             ExitCode::from(EXIT_USAGE)
+        }
+    }
+}
+
+/// Maps a check's outcome to the process exit code: 0 clean, 1 violations or errors.
+fn report(outcome: std::io::Result<bool>) -> ExitCode {
+    match outcome {
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::FAILURE,
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::FAILURE
         }
     }
 }

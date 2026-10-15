@@ -31,7 +31,8 @@ cargo build --workspace --locked
 cargo test --workspace --locked
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
-cargo xtask lint      # unsafe-code policy, SPDX headers, manifest licenses
+cargo xtask lint                # unsafe-code policy, SPDX headers, manifest licenses
+cargo xtask check-isolation     # the verifier shares no code with the prover (RFC-0001)
 
 # The verifier is a separate workspace:
 cd verifier && cargo build --locked && cargo test --locked
