@@ -5,7 +5,8 @@ integers. This script is the independent oracle: it shares no code or algorithm 
 implementations in crates/tessera-field and verifier/crates/tv-field, which both check its
 output.
 
-Usage: python3 spec/vectors/field/generate.py   (rewrites constants.json and goldilocks.json)
+Usage: python3 spec/vectors/field/generate.py
+(rewrites constants.json, goldilocks.json and goldilocks_ext2.json)
 
 Inputs come from SplitMix64 with a fixed seed so that the files are reproducible and any
 implementation can regenerate the same inputs.
@@ -17,6 +18,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SEED = 0x7E55E7A_2026_1015  # fixed; changing it changes every vector
 CASES = 10_000
+EXT2_CASES = 4_096
 
 
 def splitmix64(state):
@@ -113,6 +115,47 @@ def main():
     text = json.dumps(header, indent=2)[:-2] + ',\n  "cases": [\n' + body + "\n  ]\n}\n"
     json.loads(text)  # the file must parse
     (HERE / "goldilocks.json").write_text(text)
+
+    # Fp2 = Fp[X]/(X^2 - 7). Products by the schoolbook formula and inverses through the norm,
+    # independent of the Karatsuba form the implementations use. Each case is
+    # [a0, a1, b0, b1, (a*b)_0, (a*b)_1, (a^-1)_0, (a^-1)_1, norm(a)]; the inverse entries are
+    # null for a = 0. Edge pairs first, then EXT2_CASES uniform pairs.
+    w = 7
+    edge2 = [(0, 0), (1, 0), (0, 1), (p - 1, 0), (0, p - 1), (p - 1, p - 1), (2**32, 2**63)]
+    ext_pairs = [(a, b) for a in edge2 for b in edge2]
+    rng2 = splitmix64(SEED ^ 0xE2)
+
+    def uniform():
+        while True:
+            x = next(rng2)
+            if x < p:
+                return x
+
+    while len(ext_pairs) < len(edge2) ** 2 + EXT2_CASES:
+        ext_pairs.append(((uniform(), uniform()), (uniform(), uniform())))
+    lines = []
+    for (a0, a1), (b0, b1) in ext_pairs:
+        prod0 = (a0 * b0 + w * a1 * b1) % p
+        prod1 = (a0 * b1 + a1 * b0) % p
+        norm = (a0 * a0 - w * a1 * a1) % p
+        if (a0, a1) == (0, 0):
+            inv0 = inv1 = None
+        else:
+            n_inv = pow(norm, p - 2, p)
+            inv0, inv1 = hex64(a0 * n_inv % p), hex64(-a1 * n_inv % p)
+        case = [hex64(a0), hex64(a1), hex64(b0), hex64(b1), hex64(prod0), hex64(prod1), inv0, inv1, hex64(norm)]
+        lines.append(json.dumps(case))
+    header = {
+        "description": "Goldilocks Fp2 = Fp[X]/(X^2 - 7) reference vectors: [a0, a1, b0, b1, (a*b)_0, "
+        "(a*b)_1, (a^-1)_0, (a^-1)_1, norm(a)] (inverse entries null for a = 0); the first 49 cases "
+        "are all pairs of edge values",
+        "modulus": hex64(p),
+        "non_residue": w,
+        "seed": hex64(SEED ^ 0xE2),
+    }
+    text = json.dumps(header, indent=2)[:-2] + ',\n  "cases": [\n' + ",\n".join(lines) + "\n  ]\n}\n"
+    json.loads(text)
+    (HERE / "goldilocks_ext2.json").write_text(text)
 
 
 if __name__ == "__main__":

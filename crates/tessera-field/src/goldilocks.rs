@@ -125,6 +125,19 @@ impl Goldilocks {
     pub const MULTIPLICATIVE_GENERATOR: Self = Self(7);
     /// The primitive `2^32`-th root of unity `7^((P − 1) / 2^32)`.
     pub const ROOT_2_32: Self = Self(ROOT_2_32);
+
+    /// `self · c` for a constant `c < 2^32`, with a shorter reduction than a full product: the
+    /// product is below `2^96`, so `x·c ≡ lo + hi·(2^32 − 1) (mod P)` with `hi < 2^32`.
+    #[inline]
+    pub const fn mul_small(self, c: u32) -> Self {
+        let x = self.0 as u128 * c as u128;
+        let lo = x as u64;
+        let hi = (x >> 64) as u64;
+        // hi·(2^32 − 1) < 2^64. lo + hi·(2^32 − 1) < 2^65 − 2^33, so on carry the wrapped sum is
+        // at most 2^64 − 2^33 and adding EPSILON (2^64 mod P) cannot wrap again.
+        let (t, carry) = lo.overflowing_add(hi * EPSILON);
+        Self(canonicalize(t.wrapping_add(EPSILON & mask(carry))))
+    }
 }
 
 impl fmt::Debug for Goldilocks {
