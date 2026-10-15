@@ -50,3 +50,5 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 
 ## Evidence
 - For each check the change adds or modifies, a test that violates exactly that check and asserts the exact `RejectReason` or error code, seen red before the fix.
+- Property and fuzz oracles judge what was accepted without the code under test. They re-encode each accepted value from the value itself (rationals reduced, maps sorted, ranges checked), measure it against the limits, and predict error offsets. An oracle that echoes the input's own fields passes a decoder that skipped a check.
+- A mutation run in a scratch copy: disable, reorder or shift each check, one mutant at a time, with a no-op control. Every mutant that changes behaviour fails a test, and the pull request records the count caught.

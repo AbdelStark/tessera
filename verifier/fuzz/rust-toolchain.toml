@@ -1,0 +1,7 @@
+[toolchain]
+# cargo-fuzz instruments with nightly-only flags. Pinned so that local runs and
+# .github/workflows/fuzz.yml fuzz with the same compiler; the verifier itself builds with
+# verifier/rust-toolchain.toml.
+channel = "nightly-2026-01-15"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
