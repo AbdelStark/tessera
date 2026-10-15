@@ -1,0 +1,12 @@
+[package]
+name = "tv-tables"
+description = "Integer-only table generators and structured multilinear evaluation of tables (RFC-0008)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

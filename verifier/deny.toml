@@ -1,0 +1,38 @@
+# cargo-deny policy for the verifier workspace: stricter than the prover's (09 §7, TB-4).
+# No license exceptions are admitted (09 §7) and every duplicate version is an error, to keep
+# the trusted base small and auditable. CI wiring and cargo-vet land with #50.
+
+[graph]
+all-features = true
+
+[advisories]
+yanked = "deny"
+ignore = []
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CC0-1.0",
+]
+confidence-threshold = 0.93
+# The allow list is policy; not every license on it occurs in the graph.
+unused-allowed-license = "allow"
+# The verifier admits no exceptions (09 §7). Do not add any.
+exceptions = []
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
