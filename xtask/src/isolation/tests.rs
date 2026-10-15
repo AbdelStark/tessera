@@ -13,16 +13,7 @@ struct FixtureRepo {
 }
 
 fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).expect("mkdir");
-    for entry in fs::read_dir(from).expect("read fixture") {
-        let entry = entry.expect("fixture entry");
-        let target = to.join(entry.file_name());
-        if entry.file_type().expect("file type").is_dir() {
-            copy_dir(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), target).expect("copy fixture file");
-        }
-    }
+    repo::copy_dir(from, to).expect("copy fixture");
 }
 
 impl FixtureRepo {

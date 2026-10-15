@@ -14,7 +14,7 @@ use crate::spdx::LICENSE;
 /// Checks every `Cargo.toml` and `pyproject.toml` in `files` (relative to `repo`).
 pub(crate) fn check(repo: &Path, files: &[PathBuf]) -> io::Result<Vec<String>> {
     let mut violations = Vec::new();
-    for rel in files {
+    for rel in files.iter().filter(|rel| !is_third_party_stand_in(rel)) {
         let problem = match rel.file_name().and_then(|n| n.to_str()) {
             Some("Cargo.toml") => cargo_problem(repo, rel)?,
             Some("pyproject.toml") => pyproject_problem(&parse(&repo.join(rel))?),
@@ -25,6 +25,14 @@ pub(crate) fn check(repo: &Path, files: &[PathBuf]) -> io::Result<Vec<String>> {
         }
     }
     Ok(violations)
+}
+
+/// Fixture stand-ins for crates.io packages (`xtask/fixtures/<name>/vendor/`) model third-party
+/// metadata, such as an MPL-2.0 license the dependency-policy self-test must reject, so their
+/// manifests are not ours to license.
+fn is_third_party_stand_in(rel: &Path) -> bool {
+    let parts: Vec<_> = rel.components().map(|c| c.as_os_str()).collect();
+    parts.len() > 4 && parts[0] == "xtask" && parts[1] == "fixtures" && parts[3] == "vendor"
 }
 
 fn parse(path: &Path) -> io::Result<Table> {
@@ -152,6 +160,11 @@ mod tests {
             (
                 "pybad/pyproject.toml",
                 "[project]\nname = \"q\"\nlicense = { text = \"MIT\" }\n",
+            ),
+            // A third-party stand-in under xtask/fixtures/*/vendor/ is not checked.
+            (
+                "xtask/fixtures/x/vendor/dep-1.0.0/Cargo.toml",
+                "[package]\nname = \"dep\"\nlicense = \"MPL-2.0\"\n",
             ),
         ];
         let paths: Vec<PathBuf> = manifests

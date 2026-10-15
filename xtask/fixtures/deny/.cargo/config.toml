@@ -1,0 +1,10 @@
+# Serve crates.io from the fixture's vendor/ directory: the stand-ins below are all the
+# packages the fixture workspaces use.
+[source.crates-io]
+replace-with = "fixture-vendor"
+
+[source.fixture-vendor]
+directory = "vendor"
+
+[net]
+offline = true

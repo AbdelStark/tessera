@@ -1,6 +1,7 @@
 # cargo-deny policy for the verifier workspace: stricter than the prover's (09 §7, TB-4).
-# No license exceptions are admitted (09 §7) and every duplicate version is an error, to keep
-# the trusted base small and auditable. CI wiring and cargo-vet land with #50.
+# No license exception and no ignored advisory is admitted (09 §7), and every duplicate version
+# is an error, to keep the trusted base small and auditable. Run by `cargo xtask check-deps`,
+# with `cargo vet` (supply-chain/).
 
 [graph]
 all-features = true

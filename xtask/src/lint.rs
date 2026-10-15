@@ -5,7 +5,7 @@
 use std::io;
 use std::path::Path;
 
-use crate::{licenses, links, repo, spdx, unsafe_policy};
+use crate::{deny_policy, licenses, links, repo, spdx, unsafe_policy};
 
 /// The policies checked by `lint`, each with its violations.
 pub(crate) fn checks(repo: &Path) -> io::Result<Vec<(&'static str, Vec<String>)>> {
@@ -18,6 +18,7 @@ pub(crate) fn checks(repo: &Path) -> io::Result<Vec<(&'static str, Vec<String>)>
             "Markdown links and anchors (07 §9)",
             links::check(repo, &files)?,
         ),
+        ("dependency-policy files (09 §7)", deny_policy::check(repo)?),
     ])
 }
 
