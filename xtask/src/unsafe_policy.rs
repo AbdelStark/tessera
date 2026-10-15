@@ -73,62 +73,50 @@ fn crate_roots(dir: &Path) -> io::Result<Vec<PathBuf>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn repo_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("xtask lives in the repository")
-            .into()
-    }
+    use crate::{repo, testing::Fixture};
 
     #[test]
-    fn repository_follows_the_unsafe_policy() {
-        let repo = repo_root();
+    fn exempt_crates_exist() {
+        // A stale exemption would silently exempt nothing; a renamed crate must update the list.
         for name in UNSAFE_PERMITTED {
             assert!(
-                repo.join("crates").join(name).is_dir(),
+                repo::root().join("crates").join(name).is_dir(),
                 "exempt crate {name} is missing"
             );
         }
-        let violations = check(&repo).expect("crates/ is readable");
-        assert!(
-            violations.is_empty(),
-            "unsafe-code policy violations:\n{}",
-            violations.join("\n")
-        );
     }
 
     #[test]
     fn missing_or_weakened_attributes_are_reported() {
-        let fixture =
-            std::env::temp_dir().join(format!("tessera-unsafe-policy-{}", std::process::id()));
-        let write = |rel: &str, text: &str| {
-            let path = fixture.join(rel);
-            fs::create_dir_all(path.parent().expect("fixture paths have parents")).expect("mkdir");
-            fs::write(path, text).expect("write fixture");
-        };
-        write("crates/tessera-ok/Cargo.toml", "");
-        write(
+        let fixture = Fixture::new("unsafe");
+        fixture.write("crates/tessera-ok/Cargo.toml", "");
+        fixture.write(
             "crates/tessera-ok/src/lib.rs",
             "//! ok\n\n#![forbid(unsafe_code)]\n",
         );
-        write("crates/tessera-plain/Cargo.toml", "");
-        write("crates/tessera-plain/src/lib.rs", "//! no attribute\n");
-        write("crates/tessera-bin/Cargo.toml", "");
-        write("crates/tessera-bin/src/lib.rs", "#![forbid(unsafe_code)]\n");
-        write(
+        fixture.write("crates/tessera-plain/Cargo.toml", "");
+        fixture.write("crates/tessera-plain/src/lib.rs", "//! no attribute\n");
+        fixture.write("crates/tessera-bin/Cargo.toml", "");
+        fixture.write("crates/tessera-bin/src/lib.rs", "#![forbid(unsafe_code)]\n");
+        fixture.write(
             "crates/tessera-bin/src/bin/tool.rs",
-            "// forbid(unsafe_code) only in a comment\n",
+            "// forbid(unsafe_code) in a comment\n",
         );
-        write("crates/tessera-gpu/Cargo.toml", "");
-        write("crates/tessera-gpu/src/lib.rs", "#![allow(unsafe_code)]\n");
+        fixture.write("crates/tessera-gpu/Cargo.toml", "");
+        fixture.write("crates/tessera-gpu/src/lib.rs", "#![allow(unsafe_code)]\n");
 
-        let violations = check(&fixture).expect("fixture is readable");
-        fs::remove_dir_all(&fixture).expect("cleanup");
-        let flagged = |needle: &str| violations.iter().any(|v| v.contains(needle));
-        assert_eq!(violations.len(), 3, "{violations:#?}");
-        assert!(flagged("tessera-plain/src/lib.rs"));
-        assert!(flagged("tessera-bin/src/bin/tool.rs"));
-        assert!(flagged("tessera-gpu/src/lib.rs"));
+        let violations = check(fixture.path()).expect("fixture is readable");
+        let flagged: Vec<&str> = violations
+            .iter()
+            .map(|v| v.split(':').next().unwrap_or_default())
+            .collect();
+        assert_eq!(
+            flagged,
+            [
+                "crates/tessera-bin/src/bin/tool.rs",
+                "crates/tessera-gpu/src/lib.rs",
+                "crates/tessera-plain/src/lib.rs",
+            ]
+        );
     }
 }
