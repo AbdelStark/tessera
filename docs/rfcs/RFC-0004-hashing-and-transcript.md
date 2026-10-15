@@ -55,7 +55,7 @@ Context strings are distinct ASCII strings, so outputs of different domains are 
 
 ### Column digests
 
-A committed matrix has `m` rows of codewords of length `n` (RFC-0011). Rows are produced in blocks of `B` rows (`B` is a public commitment parameter, default 64). For column `j`:
+A committed matrix has `m` rows of codewords of length `n` (RFC-0011). Rows are produced in blocks of `B` rows. `B` is a public commitment parameter, recorded in the commitment's layout; the advice commitment uses 32 ([RFC-0011](RFC-0011-advice-commitment.md#column-digests-and-root)). For column `j`:
 
 ```text
 d_j[0]   = H("column-init",  commitment_id ‖ u64(j))
@@ -63,12 +63,13 @@ d_j[i+1] = H("column-step",  d_j[i] ‖ symbols of rows iB .. min((i+1)B, m) −
 leaf_j   = d_j[ceil(m / B)]
 ```
 
-The prover keeps one 32-byte chain value per column: 256 MiB for `n = 2^23`. The verifier, given an opened column (all `m` symbols), recomputes the chain. `commitment_id` binds the digest to the commitment's descriptor (shape, rate, `B`, purpose), so columns of different commitments never collide.
+The symbols of a step are their 8-byte TCE encodings, concatenated with no length prefix: `B` and `m` fix how many there are. The prover keeps one 32-byte chain value per column: 256 MiB for `n = 2^23`. The verifier, given an opened column (all `m` symbols), recomputes the chain. `commitment_id` binds the digest to the commitment's descriptor (shape, rate, `B`, purpose), so columns of different commitments never collide.
 
 ### Merkle trees
 
 - Binary tree over `n` leaves (`n` a power of two), node `= H("merkle-node", left ‖ right)`, root at level `log2 n`.
-- **Batch openings** use a canonical multiproof: given the sorted, deduplicated set of queried leaf indices, the proof lists, level by level from the leaves upward and left to right within a level, exactly the sibling digests the verifier cannot compute itself. The verifier rejects a multiproof with extra or missing digests.
+- **Batch openings** use a canonical multiproof: given the sorted, deduplicated set of queried leaf indices, the proof lists, level by level from the leaves upward and left to right within a level, exactly the sibling digests the verifier cannot compute itself. The verifier rejects a multiproof with extra or missing digests, and an empty set of opened leaves.
+- The verifier takes `n` from public data, never from the prover. The nodes at level `k` are the leaves of a tree of `n / 2^k` leaves with the same root, so a prover choosing `n` could open internal nodes as leaves.
 
 ```rust
 pub struct MultiProof { pub siblings: Vec<Digest> }   // canonical order as above

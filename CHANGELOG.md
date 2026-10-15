@@ -30,3 +30,8 @@ All notable changes to the prover release train are recorded here: the crates un
   - Every path package must be a workspace member.
   - Names under `verifier/` may not contain control characters.
   - A new eighth check reads rustc's dep-info strictly after `cargo check` in the dev profile (every feature) and the release profile (every feature but the test-only ones). It requires every file a verifier crate compiles to lie inside that crate.
+- Hashing in `tessera-hash` (RFC-0004) ([#34](https://github.com/AbdelStark/tessera/issues/34)):
+  - `H(domain, bytes)` over BLAKE3 key derivation for the 17 domains, with each domain's context key derived once.
+  - Binary Merkle trees with canonical multiproofs: `MerkleTree::open`, and `verify_multiproof`, which rejects a missing, extra or reordered sibling.
+  - Chained column digests (`ColumnChains`) with a configurable row block and a short final block.
+  - `spec/vectors/hash/` holds domain, Merkle and column vectors from an independent Python BLAKE3, itself checked against the official BLAKE3 vectors vendored in `spec/vectors/blake3/`.
