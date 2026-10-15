@@ -182,6 +182,7 @@ DOMAINS = [
     "audit-sample",
     "audit-select",
     "claim-list",
+    "statement",
 ]
 
 

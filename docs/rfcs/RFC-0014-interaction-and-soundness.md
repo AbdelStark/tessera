@@ -105,7 +105,7 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 
 ### Grinding
 
-In non-interactive mode the seed is squeezed only after a nonce whose `H("pow", state ‖ "seed-pow" ‖ nonce)` has 20 leading zero bits; the queries likewise after `query-pow`. Each grinding step costs the honest prover about 2^20 BLAKE3 evaluations (milliseconds) and adds 20 bits to every bound an adversary could otherwise retry: the LogUp identity (RISK-5) and the proximity test.
+In non-interactive mode the seed is squeezed only after a nonce whose `H("pow", state ‖ Ascii("seed-pow") ‖ nonce)` has 20 leading zero bits; the queries likewise after `query-pow`. Each grinding step costs the honest prover about 2^20 BLAKE3 evaluations (milliseconds) and adds 20 bits to every bound an adversary could otherwise retry: the LogUp identity (RISK-5) and the proximity test.
 
 ### Parameter sets
 
@@ -120,6 +120,8 @@ In non-interactive mode the seed is squeezed only after a nonce whose `H("pow", 
 | `g_seed`, `g_query` | 0, 0 | 20, 20 | 0, 0 |
 | Row block `B`, segments `S` | 32, 8 | 32, 8 | 4, 1 |
 | Accepted by release verifier | Yes | Yes | No (`test-params` feature only) |
+
+A parameter set is identified by its name and version as the table's header writes them, `live-64/1`, `ni-100/1` or `test-small/1`: `pub struct ParamSetId(pub Ascii)`. The identifier is bound into every transcript through `SessionContext` ([RFC-0004](RFC-0004-hashing-and-transcript.md#transcript)) and into every claim list ([RFC-0007](RFC-0007-claim-list.md)); a new version of a set is a new identifier.
 
 The source's `τ = 100` at rate 1/2 gives 41.5 bits under unique decoding; `live-64` uses 155 to meet the 64-bit target, at about 1.55× the source's column bytes (RISK-4). Non-interactive proofs need 193 advice columns with grinding instead of the source's "roughly 2.5×" (250) without it.
 

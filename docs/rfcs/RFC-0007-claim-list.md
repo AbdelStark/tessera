@@ -84,7 +84,7 @@ Hidden per-channel classes enter lookups through tuple keys `(class_c, acc)`: th
 ### Public statement
 
 ```rust
-pub struct PublicStatement {              // 03 §4; hashed into SessionContext.statement_digest
+pub struct PublicStatement {              // 03 §4; SessionContext.statement_digest = H("statement", TCE(self))
     pub claim_list_digest: Digest,
     pub weights_root: Digest, pub weights_epoch: u32,
     pub manifest_digest: Digest,
