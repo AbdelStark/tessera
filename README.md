@@ -51,8 +51,9 @@ No crate needs a GPU or the CUDA toolkit to build or test.
 | `test` | `cargo test --workspace --locked` in both workspaces |
 | `msrv (1.85)` | `cargo +1.85.0 check --workspace --all-targets --locked` in both workspaces |
 | `python` | `ruff`, `pyright --strict` and `pytest` in `python/`, once the package exists |
+| `pr-policy` | `cargo xtask check-pr`: every change to a release train adds a changelog entry (`CHANGELOG.md` for `crates/*/src` and `python/tessera_quant/`, `verifier/CHANGELOG.md` for `verifier/`, either for `spec/`) unless the PR is labeled `no-changelog`; every commit is signed off (`git commit -s`, [09 §6](docs/spec/09-release-and-versioning.md#6-contribution-workflow)) |
 
-A build-only job on macOS aarch64, a tier-2 platform ([09 §8](docs/spec/09-release-and-versioning.md#8-supported-platforms)), runs on `main` only. To reproduce a failure, run the job's commands locally; they are the commands listed above.
+`pr-policy` runs in its own workflow so that adding or removing the label re-runs only that check; locally, `cargo xtask check-pr --base origin/main` checks the current branch. A build-only job on macOS aarch64, a tier-2 platform ([09 §8](docs/spec/09-release-and-versioning.md#8-supported-platforms)), runs on `main` only. To reproduce a failure, run the job's commands locally; they are the commands listed above.
 
 ## License
 
