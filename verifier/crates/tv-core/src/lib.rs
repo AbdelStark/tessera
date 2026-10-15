@@ -20,3 +20,6 @@
         clippy::indexing_slicing
     )
 )]
+
+/// Demonstration only.
+pub const PROVER_SOURCE: &str = include_str!("../../../../crates/tessera-field/src/lib.rs");
