@@ -61,7 +61,7 @@ Tests exist to catch soundness and conformance bugs. In order of value:
 
 1. **Adversarial**: for every check, a test that violates exactly that check and asserts the exact rejection (`RejectReason`, error code). A check without one is unproven.
 2. **Conformance vectors** in `spec/vectors/`, produced by an independent oracle (for example Python big integers) and checked by both workspaces.
-3. **Algebraic properties**: ring laws, round trips, `decode(encode(x)) = x` (`proptest` on the prover side).
+3. **Algebraic properties**: ring laws, round trips, `decode(encode(x)) = x` (`proptest` on the prover side, seeded `tv-testkit` generators in the verifier).
 4. **Soundness calibration** over the test field `F65537`, where cheating succeeds often enough to measure against the analytic bound.
 5. **End to end** through the command-line tools.
 
@@ -71,5 +71,5 @@ A test that restates the implementation (a getter, a constructor, plumbing) adds
 
 - The verifier is a separate workspace: run its cargo commands inside `verifier/`; run `cargo xtask` from the repository root.
 - `gh pr edit` fails on this repository (Projects classic deprecation): set PR bodies with `gh api -X PATCH repos/AbdelStark/tessera/pulls/N -F body=@file`, labels with `gh api -X POST repos/AbdelStark/tessera/issues/N/labels -f "labels[]=name"`.
-- `rm` is interactive on the maintainer's machine; scripts move scratch files instead of deleting them.
+- `rm`, `cp` and `mv` are interactive (`-i`) on the maintainer's machine; scripts move scratch files instead of deleting them, and overwrite with `/bin/cp -f` and `/bin/mv -f`.
 - Vendored stand-ins under `xtask/fixtures/*/vendor/` model crates.io packages for offline gate self-tests; they are not the real crates.

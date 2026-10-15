@@ -40,6 +40,7 @@
 | `tv-core` | Claim-list validation and lowering, range re-derivation, schedule derivation, sumcheck and tree verification, gadget final checks, opening and column checks, anchor and scoring checks, soundness calculator, audit plan |
 | `tv-transport` | Stream and directory transports for live sessions (only crate allowed to link `rustls`) |
 | `tv-cli` | `tessera-verify` binary, JSON verdict output |
+| `tv-testkit` | Test support: a reader for `spec/vectors/` and a seeded generator, with no third-party dependency; other verifier crates may use it only as a dev-dependency, so it never reaches `tessera-verify` |
 
 ### Dependencies
 

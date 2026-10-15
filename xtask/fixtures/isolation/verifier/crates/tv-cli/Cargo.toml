@@ -7,3 +7,6 @@ publish.workspace = true
 
 [dependencies]
 clap = "4"
+
+[dev-dependencies]
+tv-testkit = { path = "../tv-testkit" }

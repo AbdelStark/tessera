@@ -311,6 +311,20 @@ fn prover_normal_dependency_on_a_verifier_crate_fails() {
 }
 
 #[test]
+fn test_support_as_a_normal_or_build_dependency_fails() {
+    let repo = FixtureRepo::clean();
+    repo.append(TV_A, "tv-testkit = { path = \"../tv-testkit\" }\n");
+    repo.append(
+        "verifier/crates/tv-cli/Cargo.toml",
+        "\n[build-dependencies]\ntv-testkit = { path = \"../tv-testkit\" }\n",
+    );
+    repo.assert_violations(&[
+        "tv-a has a normal dependency on test-support crate tv-testkit",
+        "tv-cli has a build dependency on test-support crate tv-testkit",
+    ]);
+}
+
+#[test]
 fn directory_named_target_inside_sources_is_scanned() {
     // Only verifier/target is skipped; a force-added src/target/ is ordinary source.
     let repo = FixtureRepo::clean();

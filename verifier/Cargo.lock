@@ -17,6 +17,9 @@ version = "0.1.0"
 [[package]]
 name = "tv-field"
 version = "0.1.0"
+dependencies = [
+ "tv-testkit",
+]
 
 [[package]]
 name = "tv-hash"
@@ -24,6 +27,10 @@ version = "0.1.0"
 
 [[package]]
 name = "tv-tables"
+version = "0.1.0"
+
+[[package]]
+name = "tv-testkit"
 version = "0.1.0"
 
 [[package]]
