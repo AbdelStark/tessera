@@ -41,7 +41,7 @@ The verifier must locate every committed tensor from public data, so the layout 
 ### Encoding
 
 - A row's `k` values are evaluations of a polynomial `f` of degree `< k` on the subgroup `H` of order `k`.
-- The encoding adds a vanishing mask: `g(X) = f(X) + Z_H(X) · m(X)` with `Z_H(X) = X^k − 1` and `m` a random polynomial of degree `< P_A` (`P_A = 160` mask coefficients, at least the largest `τ_A` of any parameter set). On `H` the mask vanishes, so the message is unchanged.
+- The encoding adds a vanishing mask: `g(X) = f(X) + Z_H(X) · m(X)` with `Z_H(X) = X^k − 1` and `m` a random polynomial of degree `< P_A` (`P_A` mask coefficients, at least the parameter set's `τ_A`: 160 for `live-64`, 200 for `ni-100`). On `H` the mask vanishes, so the message is unchanged.
 - The codeword is `g` evaluated on the coset `7·L`, where `L` is the subgroup of order `n = 2k`; `7·L` is disjoint from `H`. Rate `ρ = (k + P_A)/n ≈ 1/2`.
 - Encoding cost per row: an inverse NTT of size `k` and a coset NTT of size `2k`.
 

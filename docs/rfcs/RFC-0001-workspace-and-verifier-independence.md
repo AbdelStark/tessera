@@ -53,7 +53,7 @@ verifier/
   rust-toolchain.toml      # same pin as root, checked equal by CI
   deny.toml                # stricter policy, no license exceptions
   allowlist.toml           # permitted third-party packages with reasons
-  crates/ tv-field/ tv-codec/ tv-hash/ tv-tables/ tv-core/ tv-cli/
+  crates/ tv-field/ tv-codec/ tv-hash/ tv-tables/ tv-core/ tv-transport/ tv-cli/
 python/
   pyproject.toml uv.lock
   tessera_quant/ tests/
@@ -98,7 +98,7 @@ docs/
 4. Checks that `verifier/rust-toolchain.toml` and the root `rust-toolchain.toml` pin the same toolchain.
 5. Checks that the root workspace uses verifier crates only as `dev-dependencies` (DEP-2).
 
-Initial allowlist (each with its reason recorded in the file): `blake3` 1.x (hash, RFC-0004), `sha2` 0.10.x (recorder digests, RFC-0015), `ed25519-dalek` 2.x (manifest signatures, RFC-0015), `rayon` 1.x (parallel column checks), `thiserror` 2.x (error types), `clap` 4.x (CLI only, `tv-cli`), `serde` 1.x and `serde_json` 1.x (verdict report output only, `tv-cli`), plus their transitive dependencies as resolved in `verifier/Cargo.lock`, each audited with `cargo vet`.
+Initial allowlist (each with its reason recorded in the file): `blake3` 1.x (hash, RFC-0004), `sha2` 0.10.x (recorder digests, RFC-0015), `ed25519-dalek` 2.x (manifest signatures, RFC-0015), `rayon` 1.x (parallel column checks), `thiserror` 2.x (error types), `clap` 4.x (CLI only, `tv-cli`), `serde` 1.x and `serde_json` 1.x (verdict report output only, `tv-cli`), `rustls` 0.23.x (live TLS transport, `tv-transport` only, so verification logic never links a TLS stack; [RFC-0014](RFC-0014-interaction-and-soundness.md#live-transport)), plus their transitive dependencies as resolved in `verifier/Cargo.lock`, each audited with `cargo vet`.
 
 ### Shared artifacts that are not code
 

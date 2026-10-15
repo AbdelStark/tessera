@@ -39,6 +39,7 @@ tessera prove           --plan plan.tep --model MODEL.d --weights WEIGHTS.twc --
                         [--backend {cpu,gpu}] [--devices 0,1,...] [--memory-budget GIB]
 tessera audit sample    --manifest MANIFEST.tlm --seed SEED.tsd --rate FLOAT --out SAMPLE.tas
 tessera audit batch     --sample SAMPLE.tas --min-tokens 16384 --out-dir DIR
+tessera audit plan      --policy POLICY.json --traffic PROFILE.json --plan plan.tep   # detection and overhead
 tessera params check    --params PARAMSET [--lookups N] [--table-rows T]   # soundness report
 tessera bench unit-costs --device INT --out UNIT_COSTS.json
 tessera bench model     --plan plan.tep --context INT --out MU.json         # cost-model projection
@@ -54,6 +55,9 @@ tessera-verify live     --claims claims.tcl --weights-root ROOT --manifest MANIF
                         --connect ENDPOINT --bound UHAT [--out VERDICT.json]
 tessera-verify tables   --claims claims.tcl     # regenerates and prints table digests
 tessera-verify params   --params PARAMSET       # independent soundness report
+tessera-verify weights link --ledger LEDGER.tvl --link LINK.twl   # accept a refreshed weight root
+tessera-verify audit plan  --policy POLICY.json --traffic PROFILE.json --claims claims.tcl
+tessera-verify audit report --ledger LEDGER.tvl --sample SAMPLE.tas --out REPORT.json
 ```
 
 ### 2.4 Exit codes

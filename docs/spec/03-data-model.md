@@ -105,10 +105,11 @@ Protocol messages (`Round1`, `SeedCommit`, `ProverSeedShare`, `SeedReveal`, `Rou
 | `NiProof` | `0x0520` | 1 | `.tnp` | Protocol | RFC-0014 |
 | `TokenFile` | `0x0601` | 1 | `.ttk` | Secret | RFC-0003 |
 | `LogitsFile` | `0x0602` | 1 | `.tlg` | Secret | RFC-0003 |
+| `VerifierLedger` | `0x0701` | 1 | `.tvl` | Private (verifier-local) | RFC-0019 |
 
 "Protocol" class means the artifact is sent to the verifier and is zero-knowledge by construction; it may be shared but must not be altered.
 
-JSON reports are not TCE artifacts. Each carries a `"schema"` string (`tessera.commitment-report/1`, `tessera.unit-costs/1`, `tessera.fidelity/1`, `tessera.verdict/1`, `tessera.run-manifest/1`, `tessera.calibration/1`) and is validated against a JSON Schema file under `spec/schemas/`. JSON reports are never hashed into transcripts or commitments.
+JSON reports are not TCE artifacts. Each carries a `"schema"` string (`tessera.commitment-report/1`, `tessera.unit-costs/1`, `tessera.fidelity/1`, `tessera.verdict/1`, `tessera.audit-report/1`, `tessera.run-manifest/1`, `tessera.calibration/1`) and is validated against a JSON Schema file under `spec/schemas/`. JSON reports are never hashed into transcripts or commitments.
 
 ## 6. Invariants
 

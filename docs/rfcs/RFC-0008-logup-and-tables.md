@@ -61,7 +61,8 @@ for a challenge `α ∈ Fp2` drawn after the values and multiplicities are commi
 | `Requant { b, classes, r_by_class, lo, hi }` | `(class, k)`, `k ∈ [−2^{b−1}, 2^{b−1})` | `clamp(floor((k + 2^{r−1}) / 2^r), lo, hi)` | `|classes| · 2^b` | `Requant1` (RFC-0009) |
 | `Silu { b, classes, r_by_class, out_exp }` | `(class, k)` | `clamp(round(silu(h · σ_h) / σ_out), −128, 127)`, `h = k >> r` | `|classes| · 2^b` | MLP |
 | `Exp { key_bits, sigma, scale }` | `k ∈ [0, 2^{key_bits})` | `round(2^σ · exp(−k · scale))` | `2^{key_bits}` | Softmax, vocabulary softmax |
-| `Log2Frac { bits, frac_bits }` | `x ∈ [0, 2^bits)` | one-sided bound on `log2` (RFC-0017) | `2^bits` | Scoring |
+| `Exp2Frac { frac_bits, out_bits }` | `f ∈ [0, 2^{frac_bits})` | `⌊2^{f/2^{frac_bits}} · 2^{out_bits}⌋` | 2^8 | Scoring bound (RFC-0017) |
+| `Pow2 { max_exp }` | `i ∈ [0, max_exp)` | `2^i` | 64 | Scoring bound (RFC-0017) |
 | `Bitwise8 { op }` | `(a, b)`, 8-bit each | `a ⊕ b`, `a ∧ b` | 2^16 | SHA-256 |
 | `AesSbox`, `Gf256Mul { c }` | `x`, 8-bit | S-box, `c · x` in GF(2^8) | 2^8 | AES-128 |
 | `Rope { theta, scaling, bits, max_context, d_head }` | `(position, frequency)` | `(C, S)`, 14-bit | `max_context · d_head / 2` | Public constants for `Rotate`, not a lookup table |

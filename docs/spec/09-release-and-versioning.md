@@ -28,7 +28,7 @@ The two release trains are separate so the verifier can ship on its own schedule
 - Any change to a tier-A surface (message layout, transcript labels, challenge derivation, table definitions, parameter sets, verdict semantics) increments the protocol version and requires an accepted RFC that supersedes the affected section.
 - A verifier release supports exactly the protocol versions listed in its release notes, at most two: the current one and the previous one.
 - Schema readers accept versions `v` and `v − 1`; writers emit `v` only. Readers never guess: unknown versions fail with `ERR-CODEC-VERSION`.
-- Protocol version 1 is frozen at v1.0. The v1.0 release notes publish its full transcript-label list, parameter sets and table digests.
+- The protocol version current at v1.0 (expected `tessera-protocol/2`, which adds zero knowledge in v0.4) is frozen there. The v1.0 release notes publish its full transcript-label list, parameter sets and table digests.
 
 ## 4. Deprecation policy
 

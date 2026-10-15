@@ -75,7 +75,7 @@ pub fn prove_stage(stage: &Stage, w: &mut dyn WitnessSource, tr: &mut Transcript
     -> (StageProof, Vec<Claim>);
 ```
 
-`WitnessSource` regenerates the evaluation tables a stage needs from committed data and weights on demand (recompute, never store; RFC-0018). Stages whose tables exceed device memory (the leaf levels of fraction and product trees at production sizes) are proven with a small-space streaming sumcheck prover that reads the regenerated witness in a constant number of passes ([RFC-0018](RFC-0018-gpu-prover-runtime.md#pass-structure)); the messages are identical to those of the in-memory prover.
+`WitnessSource` regenerates the evaluation tables a stage needs from committed data and weights on demand (recompute, never store; RFC-0018). Stages whose tables exceed device memory (the leaf levels of fraction and product trees at production sizes) are proven by streaming their early rounds over the regenerated witness, one pass per streamed round, until the folded state fits in memory ([RFC-0018](RFC-0018-gpu-prover-runtime.md#pass-structure)); the messages are identical to those of the in-memory prover.
 
 ### Claim pool and openings
 

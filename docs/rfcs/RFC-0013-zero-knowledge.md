@@ -77,7 +77,7 @@ Weights follow the same rule with the mask row stored as a blinding row of the w
 
 ### Hiding openings
 
-- **Columns.** Every committed row carries a vanishing mask of `P` random coefficients (RFC-0011 encoding). Any set of at most `P` codeword positions outside `H` is uniformly distributed and independent of the message. Advice commitments are opened once (`τ_A ≤ P_A = 160`); weight matrices are opened up to `P_W` distinct positions per epoch.
+- **Columns.** Every committed row carries a vanishing mask of `P` random coefficients (RFC-0011 encoding). Any set of at most `P` codeword positions outside `H` is uniformly distributed and independent of the message. Advice commitments are opened once (`τ_A ≤ P_A`); weight matrices are opened up to `P_W` distinct positions per epoch.
 - **Combined rows.** For each revealed combination (each claim group `g` and the proximity row), a fresh blinding row `Q_g` with its own vanishing mask is included with coefficient 1: the prover reveals `u'_g = Σ_row c_g(row) A_row + Q_g` and the claimed value `q_g = ⟨Q_g, eq(col_g)⟩`, which enters the group check as one more claim. Soundness is unchanged: `Q_g` is a committed row like any other. `u'_g` is uniform because `Q_g` is used exactly once; `q_g` is determined by `u'_g` and the other revealed values, so it adds no information.
 - **Masks of combined masks.** The combined vanishing-mask polynomials `M_g` include `Q_g`'s mask, so they are uniform as well.
 

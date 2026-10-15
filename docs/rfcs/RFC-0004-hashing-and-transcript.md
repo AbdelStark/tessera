@@ -38,13 +38,17 @@ The source sets 30 ps per committed 64-bit element, including rate-1/2 encoding 
 | `column-init` | `commitment_id: Digest ‖ column: u64` | Column digests |
 | `column-step` | `chain: Digest ‖ symbols: [Fp; ≤ B]` | Column digests |
 | `merkle-node` | `left: Digest ‖ right: Digest` | Merkle trees |
+| `column-merge` | `segment digests of one column, in segment order` | Advice leaves (RFC-0011) |
+| `weights-root` | `TCE(WeightLayoutParams) ‖ matrix roots ‖ epoch` | Weight root (RFC-0012) |
 | `transcript-init` | `TCE(SessionContext)` | Transcript |
 | `transcript-absorb` | `state ‖ Ascii(label) ‖ TCE(value)` | Transcript |
 | `transcript-squeeze` | `state ‖ Ascii(label) ‖ counter: u64` | Transcript |
 | `transcript-ratchet` | `state ‖ out: Digest` | Transcript |
 | `pow` | `state ‖ Ascii(label) ‖ nonce: u64` | Grinding |
+| `coin-commit` | `share_v: Digest` | Verifier's seed-share commitment (RFC-0014) |
 | `coin-toss` | `share_v: Digest ‖ share_p: Digest` | Live seed (RFC-0014) |
-| `table` | `TCE(TableSpec without digest) ‖ rows` | Table digests (RFC-0008) |
+| `table` | `TCE(TableSpec without digest) ‖ piece parameters ‖ core values` | Table digests (RFC-0008) |
+| `audit-sample`, `audit-select` | Sampling seed and per-request selection inputs | Audit sampling (RFC-0016) |
 | `claim-list` | `TCE(ClaimList)` | Claim-list digest (RFC-0007) |
 
 Context strings are distinct ASCII strings, so outputs of different domains are independent under the standard assumption on BLAKE3's key derivation mode. The Rust crate `blake3` 1.x is used on CPU (prover and verifier, allowlisted); a CUDA implementation in `tessera-gpu` covers `column-step` and `merkle-node`.
@@ -86,13 +90,13 @@ pub struct Transcript { state: Digest, counter: u64 }
 
 impl Transcript {
     pub fn new(ctx: &SessionContext) -> Self;                         // state = H("transcript-init", TCE(ctx))
-    pub fn absorb<T: Encode>(&mut self, label: &'static str, v: &T);  // state = H("transcript-absorb", state ‖ label ‖ TCE(v))
-    pub fn squeeze(&mut self, label: &'static str) -> Digest;
-    pub fn challenge_fp(&mut self, label: &'static str) -> Fp;
-    pub fn challenge_fp2(&mut self, label: &'static str) -> Fp2;
-    pub fn challenge_indices(&mut self, label: &'static str, log_n: u32, count: u32) -> Vec<u64>;
-    pub fn grind(&mut self, label: &'static str, bits: u8) -> u64;    // prover: finds nonce, absorbs it
-    pub fn check_grind(&mut self, label: &'static str, bits: u8, nonce: u64) -> bool; // verifier
+    pub fn absorb<T: Encode>(&mut self, label: &str, v: &T);  // state = H("transcript-absorb", state ‖ label ‖ TCE(v))
+    pub fn squeeze(&mut self, label: &str) -> Digest;
+    pub fn challenge_fp(&mut self, label: &str) -> Fp;
+    pub fn challenge_fp2(&mut self, label: &str) -> Fp2;
+    pub fn challenge_indices(&mut self, label: &str, log_n: u32, count: u32) -> Vec<u64>;
+    pub fn grind(&mut self, label: &str, bits: u8) -> u64;    // prover: finds nonce, absorbs it
+    pub fn check_grind(&mut self, label: &str, bits: u8, nonce: u64) -> bool; // verifier
 }
 ```
 
@@ -102,7 +106,7 @@ impl Transcript {
 - `challenge_indices`: words masked to `log_n` bits, drawn with replacement, in order, four per squeeze. Exactly uniform for power-of-two domains.
 - `grind`: the prover searches `nonce = 0, 1, 2, …` for the first value whose `H("pow", state ‖ label ‖ nonce)` has its first `bits` bits zero (most significant bit of byte 0 first); it then absorbs `nonce` under `label`. `check_grind` recomputes one hash and absorbs the nonce identically. The honest prover uses the smallest valid nonce, so its output is deterministic; the verifier accepts any nonce that meets the bit requirement, since soundness accounting already charges the prover for every attempt.
 
-Labels are ASCII constants. The full schedule of labels per protocol version is a tier-A table in [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule).
+Labels are ASCII strings built only from the tier-A label patterns of [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule), which fix the full schedule per protocol version.
 
 ### Invariants
 

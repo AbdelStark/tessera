@@ -50,7 +50,7 @@ Projected from the source (§8) with source unit costs and source commitment cou
 | 16K | 18.8 | 28.5 s | 1.8% | 83.3% |
 | 128K (stretch) | 88.7 | 28 min | 0.38% | 31.4% |
 
-These figures exclude witness regeneration. Corrected projections: the RISK-2 upper bound raises the linear-layer term from about 2.1 to 3.3, and four regeneration passes (RISK-9) add about 4, giving `μ(1K) ≈ 8.5` and `μ(16K) ≈ 24`. v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)): `μ(1K) ≤ 12`, `μ(16K) ≤ 45`. Sampling rates for a 10% amortized overhead scale inversely with `μ`, so the corrected projection roughly halves the affordable rate at 1K (to about 3.9%) while keeping daily detection of 100 violations in 10^6 requests above 98%.
+These figures exclude witness regeneration. Corrected projections: the RISK-2 upper bound raises the linear-layer term from about 2.1 to 3.3, and four regeneration passes (RISK-9) add about 4, giving `μ(1K) ≈ 8.5` and `μ(16K) ≈ 24`; at 16K context, streaming the tree leaf levels (RISK-10) may add up to about 12 more. v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)): `μ(1K) ≤ 12`, `μ(16K) ≤ 45`. Sampling rates for a 10% amortized overhead scale inversely with `μ`, so the corrected projection roughly halves the affordable rate at 1K (to about 3.9%) while keeping daily detection of 100 violations in 10^6 requests above 98%.
 
 ## 4. Memory budgets
 
@@ -58,7 +58,7 @@ These figures exclude witness regeneration. Corrected projections: the RISK-2 up
 |---|---|---|
 | GPU HBM per H100 (80 GB) | Weights ≤ 51 GB (405 GB / 8); working set ≤ 24 GB; reserve ≥ 5 GB | Weights stay resident for the witness pass and fold pass |
 | Witness residency | ≤ one tile per stream (INV-ARCH-3) | 16K-context witnesses reach terabytes |
-| Column-digest state | 32 bytes × codeword length (2^23 → 256 MiB) | Chained column digests ([RFC-0011](../rfcs/RFC-0011-advice-commitment.md#column-digests)) |
+| Column-digest state | 32 bytes × codeword length (2^23 → 256 MiB) | Chained column digests ([RFC-0011](../rfcs/RFC-0011-advice-commitment.md#column-digests-and-root)) |
 | LogUp multiplicity counters | ≤ 2^32 rows per table × 4 bytes, sharded across GPUs | Table-side cost amortized over the batch |
 | Host RAM, prover node | ≤ 1 TiB | Weight staging and checkpoint streaming |
 | Host RAM, verifier | ≤ 64 GiB | SC-3 |
