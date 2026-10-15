@@ -1,0 +1,45 @@
+name: Feature or task
+description: Implement part of the specification, or add a capability it requires.
+labels: ["type:feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every change traces to the specification. Name the RFC or specification section this implements, and write acceptance criteria that a reviewer can check.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this is needed, and the RFC or specification section it implements (for example `docs/rfcs/RFC-0004-hashing-and-transcript.md#transcript`).
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What the change includes.
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: Related work this issue does not cover, with links to the issues that do.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checkable conditions, including the tests and commands that demonstrate them.
+      value: |
+        - [ ] 
+        - [ ] Docs updated: rustdoc for every new public item; changelog entry under Unreleased
+        - [ ] Validation: the CI pipeline passes on the pull request and on `main` after merge
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      value: |
+        - Depends on: 
+        - Blocks: 

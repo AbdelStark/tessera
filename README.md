@@ -56,6 +56,10 @@ No crate needs a GPU or the CUDA toolkit to build or test.
 
 To run the dependency checks locally, install cargo-deny 0.20.2 and cargo-vet 0.10.2. `pr-policy` runs in its own workflow so that adding or removing the label re-runs only that check; locally, `cargo xtask check-pr --base origin/main` checks the current branch. A build-only job on macOS aarch64, a tier-2 platform ([09 §8](docs/spec/09-release-and-versioning.md#8-supported-platforms)), runs on `main` only. To reproduce a failure, run the job's commands locally; they are the commands listed above.
 
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) describes the workflow, sign-off, changelog, review and RFC rules. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md). Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
 Tessera is dual-licensed under the [Apache License, Version 2.0](LICENSE-APACHE) or the [MIT license](LICENSE-MIT), at your option. Every Rust, Python and CUDA source file starts with the header `SPDX-License-Identifier: Apache-2.0 OR MIT`, and every Cargo and Python manifest declares the same expression; `cargo xtask lint` checks both.

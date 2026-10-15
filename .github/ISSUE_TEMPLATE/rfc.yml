@@ -1,0 +1,34 @@
+name: RFC proposal
+description: Propose a new load-bearing decision, or a change to an accepted RFC.
+labels: ["type:docs"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is for discussion before writing an RFC. The RFC itself is a pull request that adds `docs/rfcs/RFC-NNNN-<slug>.md` with `Status: Draft`; it is accepted when a pull request setting `Status: Accepted` merges, and an accepted RFC changes only through a new RFC that supersedes it (CONTRIBUTING.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: The decision to be made, and why the current specification does not settle it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The decision you propose, with the main alternatives you considered.
+    validations:
+      required: true
+  - type: input
+    id: supersedes
+    attributes:
+      label: Supersedes
+      description: The accepted RFC or sections this would replace, if any.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Effect on soundness, zero knowledge, performance, tier-A surfaces (protocol messages, transcript labels, tables, parameter sets) and existing proofs.
+    validations:
+      required: true
