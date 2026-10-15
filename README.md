@@ -31,7 +31,7 @@ cargo build --workspace --locked
 cargo test --workspace --locked
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
-cargo xtask lint                # unsafe-code policy, SPDX headers, manifest licenses
+cargo xtask lint                # unsafe-code policy, SPDX headers, licenses, Markdown links
 cargo xtask check-isolation     # the verifier shares no code with the prover (RFC-0001)
 
 # The verifier is a separate workspace:
@@ -39,6 +39,19 @@ cd verifier && cargo build --locked && cargo test --locked
 ```
 
 No crate needs a GPU or the CUDA toolkit to build or test.
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and on `main`. Each job blocks merging:
+
+| Job | What it runs |
+|---|---|
+| `checks` | rustfmt, clippy `-D warnings` and rustdoc `-D warnings` in both workspaces; `cargo xtask lint`; `cargo xtask check-isolation` |
+| `test` | `cargo test --workspace --locked` in both workspaces |
+| `msrv (1.85)` | `cargo +1.85.0 check --workspace --all-targets --locked` in both workspaces |
+| `python` | `ruff`, `pyright --strict` and `pytest` in `python/`, once the package exists |
+
+A build-only job on macOS aarch64, a tier-2 platform ([09 §8](docs/spec/09-release-and-versioning.md#8-supported-platforms)), runs on `main` only. To reproduce a failure, run the job's commands locally; they are the commands listed above.
 
 ## License
 

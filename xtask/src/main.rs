@@ -12,6 +12,7 @@
 
 mod isolation;
 mod licenses;
+mod links;
 mod lint;
 mod repo;
 mod spdx;
@@ -29,7 +30,8 @@ usage: cargo xtask <command>
 
 commands:
   check-isolation    check that the verifier shares no code with the prover (RFC-0001)
-  lint               check repository policies: unsafe code, SPDX headers, manifest licenses
+  lint               check repository policies: unsafe code, SPDX headers, manifest
+                     licenses, Markdown links
   help               print this message
 ";
 
