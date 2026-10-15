@@ -1,0 +1,38 @@
+# cargo-deny policy for the prover workspace (09 §7, 06 §3 TB-4).
+# CI wiring and the verifier's stricter policy land with the dependency-policy gate (#50).
+
+[graph]
+all-features = true
+
+[advisories]
+yanked = "deny"
+ignore = []
+
+[licenses]
+# 09 §7: anything else needs an exception below, with a reason.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CC0-1.0",
+]
+confidence-threshold = 0.93
+# The allow list is policy; not every license on it occurs in the graph.
+unused-allowed-license = "allow"
+exceptions = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Workspace crates are unpublished path dependencies.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

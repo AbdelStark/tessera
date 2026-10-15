@@ -1,0 +1,12 @@
+[package]
+name = "tessera-hash"
+description = "Domain-separated BLAKE3, Merkle trees, chained column digests, the Fiat-Shamir transcript and proof-of-work (RFC-0004)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

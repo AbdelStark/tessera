@@ -1,0 +1,12 @@
+[package]
+name = "tessera-field"
+description = "The Goldilocks field Fp, its quadratic extension Fp2, NTT roots and the field traits (RFC-0002)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

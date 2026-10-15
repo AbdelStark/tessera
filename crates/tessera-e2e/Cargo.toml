@@ -1,0 +1,12 @@
+[package]
+name = "tessera-e2e"
+description = "End-to-end and tamper tests across the prover and the independent verifier (docs/spec/07-testing-strategy.md)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

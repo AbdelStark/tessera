@@ -1,0 +1,12 @@
+[package]
+name = "tessera-pcs"
+description = "The streaming advice commitment, the persistent weight commitment, openings and the hiding budget (RFC-0011, RFC-0012)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

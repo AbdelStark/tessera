@@ -1,0 +1,12 @@
+[package]
+name = "tessera-protocol"
+description = "Message types, session state machines, parameter sets, the soundness calculator and audit sampling (RFC-0014, RFC-0016)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
