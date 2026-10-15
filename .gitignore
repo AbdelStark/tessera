@@ -5,3 +5,4 @@ target/
 .DS_Store
 *.profraw
 *.profdata
+__pycache__/

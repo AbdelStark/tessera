@@ -18,9 +18,11 @@
 // The derive macros name this crate by path, which also works inside it.
 extern crate self as tessera_codec;
 
+pub mod envelope;
 pub mod error;
 #[doc(hidden)]
 pub mod golden;
+pub mod schema;
 mod secret;
 mod tce;
 mod types;

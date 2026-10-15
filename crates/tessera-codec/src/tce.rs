@@ -60,6 +60,22 @@ pub struct DecodeLimits {
     pub max_depth: u16,
 }
 
+impl DecodeLimits {
+    /// RFC-0003's defaults for verifier messages: 8 GiB in all, 2^34 elements in a sequence, 32
+    /// levels of nesting.
+    pub const MESSAGE: Self = Self {
+        max_total_bytes: 8 << 30,
+        max_vec_len: 1 << 34,
+        max_depth: 32,
+    };
+
+    /// RFC-0003's defaults for `IntegerModel`: 1 TiB in all, the message defaults otherwise.
+    pub const INTEGER_MODEL: Self = Self {
+        max_total_bytes: 1 << 40,
+        ..Self::MESSAGE
+    };
+}
+
 /// The deepest nesting any reader accepts. Decoding recurses once per level, and a deeper limit
 /// could exhaust a thread's stack before the input runs out.
 pub const DEPTH_CEILING: u16 = 256;
@@ -223,7 +239,9 @@ impl<'a> Reader<'a> {
         if declared > self.limits.max_vec_len {
             return Err(self.limit(at));
         }
-        let n = usize::try_from(declared).map_err(|_| self.limit(at))?;
+        // A length beyond `usize`, possible within `max_vec_len` where `usize` has 32 bits,
+        // cannot fit in what remains either.
+        let n = usize::try_from(declared).map_err(|_| self.truncated(at))?;
         let needed = n.checked_mul(min_size).ok_or_else(|| self.truncated(at))?;
         self.require(needed, at)?;
         Ok(n)

@@ -1,0 +1,493 @@
+{
+  "cases": [
+    {
+      "hex": "545352410100f0ff03000000180000000000000002000000000000000100000000000000020000000000000064db129e0ad0748cd4a2b3af0a2cfc8a2c1e4a65757ec2bb4c9b37282cfb1359",
+      "payload": "020000000000000001000000000000000200000000000000",
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "the current version"
+    },
+    {
+      "hex": "545352410100f0ff0200000018000000000000000200000000000000010000000000000002000000000000008631fad907d38b39838d0b5fc73e073090d189afea1637e22bc535b5947e2273",
+      "payload": "020000000000000001000000000000000200000000000000",
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "the previous version: readers accept v and v - 1"
+    },
+    {
+      "hex": "545352410100f0ff03000000080000000000000000000000000000008008f2eea3e5b0fe2c6022ebd0513fe76f8fde08c9056e9f8cd211f2ab9b8cde",
+      "payload": "0000000000000000",
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "an empty sequence"
+    },
+    {
+      "hex": "545352410100f0ff03000000cc00000000000000c4000000000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aba4e75881909edc478c5fb169f0281d5a8dd190c85b570757032026bed937b77",
+      "payload": "c4000000000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+      "schema": 65520,
+      "type": "Bytes",
+      "version": 3,
+      "why": "exactly max_total_bytes in all"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "",
+      "offset": 0,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "nothing at all"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545352",
+      "offset": 0,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "three bytes of the magic"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "54535241",
+      "offset": 4,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "the envelope version cut off"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545352410100",
+      "offset": 6,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "the schema id cut off"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545352410100f0ff",
+      "offset": 8,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "the schema version cut off"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545352410100f0ff0300",
+      "offset": 10,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "reserved cut off"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545352410100f0ff03000000",
+      "offset": 12,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "the payload length cut off"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545352410100f0ff0300000018000000000000",
+      "offset": 12,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "the payload length short by a byte"
+    },
+    {
+      "code": "ERR-CODEC-MAGIC",
+      "hex": "545352420100f0ff0300000018000000000000000200000000000000010000000000000002000000000000006502dd00e787b5bc0952f6233f246e959e3baaa8a938d230bde2bd93c48190dd",
+      "offset": 0,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "another magic"
+    },
+    {
+      "code": "ERR-CODEC-VERSION",
+      "hex": "545352410200f0ff0300000018000000000000000200000000000000010000000000000002000000000000005f0539f02d96584fdfc04866c823ee725c90f6cc5e2220e7726c0aa993863ba2",
+      "offset": 4,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "envelope version 2"
+    },
+    {
+      "code": "ERR-CODEC-VERSION",
+      "hex": "545352410000f0ff0300000018000000000000000200000000000000010000000000000002000000000000009bbcf5dd18081849245035d11e1d96dba3a7baeb116b7b71bd7d25dd18b51792",
+      "offset": 4,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "envelope version 0"
+    },
+    {
+      "code": "ERR-CODEC-MAGIC",
+      "hex": "5453524101000106030000001800000000000000020000000000000001000000000000000200000000000000311021867e16f0e7f1603a60f2a8c61044041a81c6ed56e6dd41ddffc9e2b46c",
+      "offset": 6,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "another schema of the catalog"
+    },
+    {
+      "code": "ERR-CODEC-VERSION",
+      "hex": "545352410100f0ff01000000180000000000000002000000000000000100000000000000020000000000000010959fc6c9007a3c92bb1dae43e77ac0c78a1ce6557acd2fc44d2676b31ea980",
+      "offset": 8,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "version v - 2"
+    },
+    {
+      "code": "ERR-CODEC-VERSION",
+      "hex": "545352410100f0ff040000001800000000000000020000000000000001000000000000000200000000000000a7426b204daf8f8a5597b7e2310644ecdd1de1a06be018b10029b12de2d2f1d9",
+      "offset": 8,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "a version newer than the reader's"
+    },
+    {
+      "code": "ERR-CODEC-NONCANONICAL",
+      "hex": "545352410100f0ff0300010018000000000000000200000000000000010000000000000002000000000000002187e6baebc31a439ffb0a8b0e34df5795a82055aca058efc096df1f5cd3ea1f",
+      "offset": 10,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "reserved is 1"
+    },
+    {
+      "code": "ERR-CODEC-NONCANONICAL",
+      "hex": "545352410100f0ff03000080180000000000000002000000000000000100000000000000020000000000000044573c214adf4ea4008f473c95d0579a7edf50babf7e72e5d21af1dd8a516eb5",
+      "offset": 10,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "reserved has its top bit set"
+    },
+    {
+      "code": "ERR-CODEC-LIMIT",
+      "hex": "545352410100f0ff03000000ffffffffffffffff0200000000000000010000000000000002000000000000007d038aafc401ba2369c16ee48e8dd309902213ccb98daaa08e901df7a3dc5af7",
+      "offset": 12,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "a payload length whose envelope overflows a u64"
+    },
+    {
+      "code": "ERR-CODEC-LIMIT",
+      "hex": "545352410100f0ff03000000cd00000000000000c5000000000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5af51f07cde6b84d64f1f2af5ed5f78236a5589ee925a790697cf5de907d187abd",
+      "offset": 12,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "one byte over max_total_bytes in all"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545352410100f0ff0300000018000000000000000200000000000000010000000000000002000000000000",
+      "offset": 12,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "the payload short by a byte, and no digest"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545352410100f0ff03000000180000000000000002000000000000000100000000000000020000000000000064db129e0ad0748cd4a2b3af0a2cfc8a2c1e4a65757ec2bb4c9b37282cfb13",
+      "offset": 12,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "the digest short by a byte"
+    },
+    {
+      "code": "ERR-CODEC-NONCANONICAL",
+      "hex": "545352410100f0ff03000000180000000000000002000000000000000100000000000000020000000000000064db129e0ad0748cd4a2b3af0a2cfc8a2c1e4a65757ec2bb4c9b37282cfb135900",
+      "offset": 76,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "a byte after the digest"
+    },
+    {
+      "code": "ERR-CODEC-DIGEST",
+      "hex": "545352410100f0ff03000000180000000000000002000000000000000100000000000000020000000000000064db129e0ad0748cd4a2b3af0a2cfc8a2c1e4a65757ec2bb4c9b37282cfb1358",
+      "offset": 44,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "a digest bit flipped"
+    },
+    {
+      "code": "ERR-CODEC-DIGEST",
+      "hex": "545352410100f0ff03000000180000000000000002000000000000000000000000000000020000000000000064db129e0ad0748cd4a2b3af0a2cfc8a2c1e4a65757ec2bb4c9b37282cfb1359",
+      "offset": 44,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "a bit of an element flipped: the digest covers the payload"
+    },
+    {
+      "code": "ERR-CODEC-DIGEST",
+      "hex": "545352410100f0ff02000000180000000000000002000000000000000100000000000000020000000000000064db129e0ad0748cd4a2b3af0a2cfc8a2c1e4a65757ec2bb4c9b37282cfb1359",
+      "offset": 44,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "another accepted version under the same digest: the digest covers the header"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545352410100f0ff0300000018000000000000001e0000000000000000000000000000000000000000000000e90ef1e7d8deeb7a6dc8fe5afbaf83485922347f113dcdb7881860f74948346e",
+      "offset": 20,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "30 elements declared, room for 2 (INV-TCE-3)"
+    },
+    {
+      "code": "ERR-CODEC-NONCANONICAL",
+      "hex": "545352410100f0ff0300000011000000000000000100000000000000070000000000000000dc55bc5e6ab7bc73da27562a0f0b9472873a30c95f783b05535514e9b6c330c7",
+      "offset": 36,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "a byte left over in the payload (INV-TCE-4)"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545358",
+      "offset": 0,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "a magic that cannot match, cut short: the field is incomplete before it is wrong"
+    },
+    {
+      "code": "ERR-CODEC-MAGIC",
+      "hex": "545352420100",
+      "offset": 0,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "another magic, then the header cut short"
+    },
+    {
+      "code": "ERR-CODEC-VERSION",
+      "hex": "545352410200f0ff",
+      "offset": 4,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "envelope version 2, then the header cut short"
+    },
+    {
+      "code": "ERR-CODEC-MAGIC",
+      "hex": "545352420200f0ff030000001800000000000000020000000000000001000000000000000200000000000000726b3ab9b35dbe4e163960d19adf3772b431dad77046036c47afed14f107b46b",
+      "offset": 0,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "another magic and envelope version 2"
+    },
+    {
+      "code": "ERR-CODEC-VERSION",
+      "hex": "5453524102000106030000001800000000000000020000000000000001000000000000000200000000000000ab4812c09e240ca11afb79a5363dc5acbaa286fdfe0384fe4a97694f691fe598",
+      "offset": 4,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "envelope version 2 and another schema"
+    },
+    {
+      "code": "ERR-CODEC-MAGIC",
+      "hex": "54535241010001060900010018000000000000000200000000000000010000000000000002000000000000002c2d2355e4e4c4421d1c75680c66470c774a984954514ad7a4b82eaf15aaa1f0",
+      "offset": 6,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "another schema, version 9 and reserved 1"
+    },
+    {
+      "code": "ERR-CODEC-VERSION",
+      "hex": "545352410100f0ff09000100180000000000000002000000000000000100000000000000020000000000000055ca65a70374fc9a500d7a4a69dc6aa7099b8e0844fbf2669258edcc261fe6c0",
+      "offset": 8,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "version 9 and reserved 1"
+    },
+    {
+      "code": "ERR-CODEC-NONCANONICAL",
+      "hex": "545352410100f0ff03000100ffffffffffffffff0200000000000000010000000000000002000000000000005bf1743038a14a6c7bfeb3618b109013992d3cbcea8b78da7f61d6b2c1798d93",
+      "offset": 10,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "reserved 1 and a payload length over the limit"
+    },
+    {
+      "code": "ERR-CODEC-NONCANONICAL",
+      "hex": "545352410100f0ff0300010018000000000000000200000000000000010000000000000002000000000000002187e6baebc31a439ffb0a8b0e34df5795a82055aca058efc096df1f5cd3ea1e",
+      "offset": 10,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "reserved 1 and a bad digest: the header comes before the digest"
+    },
+    {
+      "code": "ERR-CODEC-NONCANONICAL",
+      "hex": "545352410100f0ff03000000180000000000000002000000000000000100000000000000020000000000000064db129e0ad0748cd4a2b3af0a2cfc8a2c1e4a65757ec2bb4c9b37282cfb135800",
+      "offset": 76,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "a byte after the digest and a bad digest: the length comes before the digest"
+    },
+    {
+      "code": "ERR-CODEC-DIGEST",
+      "hex": "545352410100f0ff0300000011000000000000000100000000000000070000000000000000dc55bc5e6ab7bc73da27562a0f0b9472873a30c95f783b05535514e9b6c330c6",
+      "offset": 37,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "an undecodable payload and a bad digest: the digest comes before the payload"
+    },
+    {
+      "code": "ERR-CODEC-LIMIT",
+      "hex": "545352410100f0ff030000001800000000000000000000000000008000000000000000000000000000000000e31244e96e5ab161ebe11e266362e4f22897c75dccc879727417de702f4f7362",
+      "offset": 20,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "a 2^63 length with 16 bytes left, over max_vec_len and the bytes left: max_vec_len comes first (INV-TCE-3)"
+    },
+    {
+      "code": "ERR-CODEC-VERSION",
+      "hex": "5453524101000102000000001800000000000000020000000000000001000000000000000200000000000000051a04e0fbc2cae508b74018b4ccc216bc81ec82b1818b3f2253f4fd6a7ac50d",
+      "offset": 8,
+      "schema": 513,
+      "type": "Vec<u64>",
+      "version": 1,
+      "why": "version 0 to a reader of version 1"
+    },
+    {
+      "code": "ERR-CODEC-VERSION",
+      "hex": "54535241010001020200000018000000000000000200000000000000010000000000000002000000000000001e755af006d5f1a8b6b45c51d90e91fe2fa99a61b97ef38eb4a19532262ae130",
+      "offset": 8,
+      "schema": 513,
+      "type": "Vec<u64>",
+      "version": 1,
+      "why": "version 2 to a reader of version 1"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545352410100f0ff03000000ccffffff01000000",
+      "limits": "message",
+      "offset": 12,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "exactly the 8 GiB message limit in all: the payload is missing"
+    },
+    {
+      "code": "ERR-CODEC-LIMIT",
+      "hex": "545352410100f0ff03000000cdffffff01000000",
+      "limits": "message",
+      "offset": 12,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "one byte over the 8 GiB message limit"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545352410100010101000000ccffffffff000000",
+      "limits": "integer-model",
+      "offset": 12,
+      "schema": 257,
+      "type": "Vec<u64>",
+      "version": 1,
+      "why": "exactly the 1 TiB IntegerModel limit in all: the payload is missing"
+    },
+    {
+      "code": "ERR-CODEC-LIMIT",
+      "hex": "545352410100010101000000cdffffffff000000",
+      "limits": "integer-model",
+      "offset": 12,
+      "schema": 257,
+      "type": "Vec<u64>",
+      "version": 1,
+      "why": "one byte over the 1 TiB IntegerModel limit"
+    },
+    {
+      "code": "ERR-CODEC-TRUNCATED",
+      "hex": "545352410100f0ff0300000008000000000000000000000004000000e42593820706612aa49780d0b42c7f2d16881bef2da5cbf472cfa9c25e8434e7",
+      "limits": "message",
+      "offset": 20,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "2^34 elements, the most a message may declare, and none there"
+    },
+    {
+      "code": "ERR-CODEC-LIMIT",
+      "hex": "545352410100f0ff03000000080000000000000001000000040000004b636b216e6c2d4c1c8150a80c7d1b1f35cf6785706ac5e7e33c1500e87ada81",
+      "limits": "message",
+      "offset": 20,
+      "schema": 65520,
+      "type": "Vec<u64>",
+      "version": 3,
+      "why": "2^34 + 1 elements, over the message limit"
+    },
+    {
+      "hex": "545352410100f0ff0300000041000000000000000100010001000100010001000100010001000100010001000100010001000100010001000100010001000100010001000100010001000100010001000100010007d48e0522641f44bf3275e47a297e0bd72b2ffcc2c92a0c26d4a742cf3cfa8cc3",
+      "limits": "message",
+      "payload": "0100010001000100010001000100010001000100010001000100010001000100010001000100010001000100010001000100010001000100010001000100010007",
+      "schema": 65520,
+      "type": "Option^32<u8>",
+      "version": 3,
+      "why": "32 levels of nesting, the message limit"
+    },
+    {
+      "code": "ERR-CODEC-LIMIT",
+      "hex": "545352410100f0ff030000004300000000000000010001000100010001000100010001000100010001000100010001000100010001000100010001000100010001000100010001000100010001000100010001000100074d4c64ac72012f2b3106224f8ff873f9903cfaf5b817b99e91d17bb0c6a8117f",
+      "limits": "message",
+      "offset": 84,
+      "schema": 65520,
+      "type": "Option^33<u8>",
+      "version": 3,
+      "why": "33 levels of nesting, one over the message limit"
+    }
+  ],
+  "description": "Envelope vectors (RFC-0003 'Envelope'), written by `cargo xtask gen-vectors`. A reader expects schema `schema` whose writers emit version `version`, so it accepts `version` and `version - 1` but never 0. It reads under `limits`, or under the RFC-0003 defaults a case names, which every implementation takes from its own constants. It checks `hex` in the order RFC-0003 fixes, then decodes the payload as `type`, which must fill it. It returns `payload`, or fails with `code` at `offset`, counted from the start of the envelope. A rejection has one fault, except the cases that pin which of two faults is reported.",
+  "limits": {
+    "max_depth": 8,
+    "max_total_bytes": 256,
+    "max_vec_len": 256
+  },
+  "named_limits": {
+    "integer-model": {
+      "max_depth": 32,
+      "max_total_bytes": 1099511627776,
+      "max_vec_len": 17179869184
+    },
+    "message": {
+      "max_depth": 32,
+      "max_total_bytes": 8589934592,
+      "max_vec_len": 17179869184
+    }
+  }
+}

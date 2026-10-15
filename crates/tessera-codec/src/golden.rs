@@ -5,11 +5,15 @@
 //! - golden encodings, each with its value in a language-neutral form, so that an implementation
 //!   that only decodes can compare what it read;
 //! - inputs each decoder must reject with a given code;
-//! - inputs exactly at the limits, which it must accept.
+//! - inputs exactly at the limits, which it must accept;
+//! - envelopes, each with the payload a reader must return or the code and offset it must
+//!   report, pinning the order of RFC-0003 'Envelope'.
 //!
 //! Field types add their cases in `tessera-field`.
 
-use crate::error::ErrorCode;
+use crate::envelope::{self, DIGEST_LEN, HEADER_LEN, MAGIC};
+use crate::error::{ErrorCode, SchemaId};
+use crate::schema::{self, Class, Schema};
 use crate::{Ascii, Decode, DecodeError, DecodeLimits, Encode, Map, Rational, decode, encode};
 
 /// A value as the vectors write it, as JSON:
@@ -214,6 +218,7 @@ impl Show for Shape {
 type Opt2<T> = Option<Option<T>>;
 type Opt4<T> = Opt2<Opt2<T>>;
 type Opt8<T> = Opt4<Opt4<T>>;
+type Opt32<T> = Opt8<Opt8<Opt8<Opt8<T>>>>;
 type Arr2<T> = [[T; 1]; 1];
 type Arr4<T> = Arr2<Arr2<T>>;
 type Arr8<T> = Arr4<Arr4<T>>;
@@ -709,6 +714,528 @@ pub fn decode_as(ty: &str, bytes: &[u8], limits: DecodeLimits) -> Outcome {
         "Option^6<Map<u8, u8>>" => read::<Opt4<Opt2<Map<u8, u8>>>>(bytes, limits),
         "Option^7<Map<u8, u8>>" => read::<Opt4<Opt2<Option<Map<u8, u8>>>>>(bytes, limits),
         "Vec<Option<u64>>" => read::<Vec<Option<u64>>>(bytes, limits),
+        "Option^32<u8>" => read::<Opt32<u8>>(bytes, limits),
+        "Option^33<u8>" => read::<Option<Opt32<u8>>>(bytes, limits),
         _ => return None,
     })
+}
+
+// ----- Envelopes ------------------------------------------------------------------------------
+
+/// The schema the envelope vectors expect: outside the catalog, at version 3, so that its readers
+/// accept versions 3 and 2 and the vectors can show both.
+pub const PROBE_SCHEMA: Schema = Schema {
+    name: "EnvelopeProbe",
+    id: SchemaId(0xFFF0),
+    version: 3,
+    extension: None,
+    class: Class::Public,
+};
+
+/// The limits most envelope vectors are read under.
+pub const ENVELOPE_LIMITS: DecodeLimits = DecodeLimits {
+    max_total_bytes: 256,
+    max_vec_len: 256,
+    max_depth: 8,
+};
+
+/// The limits an envelope case is read under: the vectors' own, or one of RFC-0003's defaults,
+/// by name, so that every implementation checks its own constants against the vectors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaseLimits {
+    /// [`ENVELOPE_LIMITS`].
+    Vectors,
+    /// The verifier-message defaults: 8 GiB, 2^34 elements, 32 levels.
+    Message,
+    /// The `IntegerModel` defaults: 1 TiB, otherwise as for messages.
+    IntegerModel,
+}
+
+impl CaseLimits {
+    /// The name the vectors give these limits, `None` for the vectors' own.
+    pub fn name(self) -> Option<&'static str> {
+        match self {
+            Self::Vectors => None,
+            Self::Message => Some("message"),
+            Self::IntegerModel => Some("integer-model"),
+        }
+    }
+}
+
+/// RFC-0003 'Limits', as the RFC writes them: what [`CaseLimits::Message`] and
+/// [`CaseLimits::IntegerModel`] must be.
+pub const RFC_MESSAGE_TOTAL: u64 = 8 << 30;
+/// See [`RFC_MESSAGE_TOTAL`].
+pub const RFC_MESSAGE_VEC_LEN: u64 = 1 << 34;
+/// See [`RFC_MESSAGE_TOTAL`].
+pub const RFC_MESSAGE_DEPTH: u16 = 32;
+/// See [`RFC_MESSAGE_TOTAL`].
+pub const RFC_INTEGER_MODEL_TOTAL: u64 = 1 << 40;
+
+/// An envelope that a reader expecting `expect` checks under `limits`, then decodes as `ty`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EnvelopeCase {
+    /// The schema the reader expects, at the version its writers emit.
+    pub expect: Schema,
+    /// The limits it reads under.
+    pub limits: CaseLimits,
+    /// The payload's type, as the vectors name it.
+    pub ty: &'static str,
+    /// The input.
+    pub bytes: Vec<u8>,
+    /// The payload the reader returns, or the code and offset it reports.
+    pub outcome: Result<Vec<u8>, (ErrorCode, u64)>,
+    /// What the case shows.
+    pub why: &'static str,
+}
+
+/// An envelope's fields, each free to be wrong, with a digest that matches whatever they hold.
+#[derive(Clone)]
+struct Fields {
+    magic: [u8; 4],
+    envelope_version: u16,
+    schema: u16,
+    version: u16,
+    reserved: u16,
+    payload_len: Option<u64>,
+    payload: Vec<u8>,
+}
+
+impl Fields {
+    fn of(payload: Vec<u8>) -> Self {
+        Self {
+            magic: MAGIC,
+            envelope_version: envelope::ENVELOPE_VERSION,
+            schema: PROBE_SCHEMA.id.0,
+            version: PROBE_SCHEMA.version,
+            reserved: 0,
+            payload_len: None,
+            payload,
+        }
+    }
+
+    fn header(&self) -> Vec<u8> {
+        let payload_len = self.payload_len.unwrap_or(self.payload.len() as u64);
+        [
+            &self.magic[..],
+            &self.envelope_version.to_le_bytes(),
+            &self.schema.to_le_bytes(),
+            &self.version.to_le_bytes(),
+            &self.reserved.to_le_bytes(),
+            &payload_len.to_le_bytes(),
+        ]
+        .concat()
+    }
+
+    fn bytes(&self) -> Vec<u8> {
+        let mut bytes = [self.header(), self.payload.clone()].concat();
+        let digest = blake3::Hasher::new_derive_key(envelope::DIGEST_CONTEXT)
+            .update(&bytes)
+            .finalize();
+        bytes.extend_from_slice(digest.as_bytes());
+        bytes
+    }
+}
+
+/// `bytes` with bit 0 of the byte at `at` flipped.
+fn flipped(mut bytes: Vec<u8>, at: usize) -> Vec<u8> {
+    bytes[at] ^= 1;
+    bytes
+}
+
+/// The envelope cases, in groups:
+/// - accepted envelopes;
+/// - one rejection per check of RFC-0003 'Envelope', each with exactly one fault, header fields
+///   cut short at every offset among them;
+/// - pairs of faults, each pinning which of two checks comes first;
+/// - RFC-0003's default limits, exactly at and one past each bound.
+pub fn envelopes() -> Vec<EnvelopeCase> {
+    use ErrorCode::{
+        CodecDigest as Digest, CodecLimit as Limit, CodecMagic as Magic,
+        CodecNoncanonical as Noncanonical, CodecTruncated as Truncated, CodecVersion as Version,
+    };
+    let case = |limits, bytes, ty, outcome, why| EnvelopeCase {
+        expect: PROBE_SCHEMA,
+        limits,
+        ty,
+        bytes,
+        outcome,
+        why,
+    };
+    let ok = |fields: &Fields, ty, why| {
+        case(
+            CaseLimits::Vectors,
+            fields.bytes(),
+            ty,
+            Ok(fields.payload.clone()),
+            why,
+        )
+    };
+    let bad = |bytes, code, offset, why| {
+        case(
+            CaseLimits::Vectors,
+            bytes,
+            "Vec<u64>",
+            Err((code, offset)),
+            why,
+        )
+    };
+    let base = Fields::of(encode(&vec![1u64, 2]));
+    let whole = base.bytes();
+    let digest_at = (HEADER_LEN + base.payload.len()) as u64;
+    let end = whole.len() as u64;
+    let with = |edit: &dyn Fn(&mut Fields)| {
+        let mut fields = base.clone();
+        edit(&mut fields);
+        fields.bytes()
+    };
+    // The largest `Bytes` payload that keeps the envelope within the limits: its length prefix,
+    // then the bytes.
+    let room = ENVELOPE_LIMITS.max_total_bytes as usize - HEADER_LEN - DIGEST_LEN - 8;
+    let fits = Fields::of(encode(&vec![0x5Au8; room]));
+    let over = Fields::of(encode(&vec![0x5Au8; room + 1]));
+    let previous = Fields {
+        version: PROBE_SCHEMA.version - 1,
+        ..base.clone()
+    };
+    let undecodable = Fields::of([encode(&vec![7u64]), vec![0]].concat());
+    let mut cases = vec![
+        ok(&base, "Vec<u64>", "the current version"),
+        ok(
+            &previous,
+            "Vec<u64>",
+            "the previous version: readers accept v and v - 1",
+        ),
+        ok(
+            &Fields::of(encode(&Vec::<u64>::new())),
+            "Vec<u64>",
+            "an empty sequence",
+        ),
+        ok(&fits, "Bytes", "exactly max_total_bytes in all"),
+        // The header, field by field: each field cut short, then each field wrong.
+        bad(Vec::new(), Truncated, 0, "nothing at all"),
+        bad(b"TSR".to_vec(), Truncated, 0, "three bytes of the magic"),
+        bad(
+            whole[..4].to_vec(),
+            Truncated,
+            4,
+            "the envelope version cut off",
+        ),
+        bad(whole[..6].to_vec(), Truncated, 6, "the schema id cut off"),
+        bad(
+            whole[..8].to_vec(),
+            Truncated,
+            8,
+            "the schema version cut off",
+        ),
+        bad(whole[..10].to_vec(), Truncated, 10, "reserved cut off"),
+        bad(
+            whole[..12].to_vec(),
+            Truncated,
+            12,
+            "the payload length cut off",
+        ),
+        bad(
+            whole[..19].to_vec(),
+            Truncated,
+            12,
+            "the payload length short by a byte",
+        ),
+        bad(with(&|f| f.magic = *b"TSRB"), Magic, 0, "another magic"),
+        bad(
+            with(&|f| f.envelope_version = 2),
+            Version,
+            4,
+            "envelope version 2",
+        ),
+        bad(
+            with(&|f| f.envelope_version = 0),
+            Version,
+            4,
+            "envelope version 0",
+        ),
+        bad(
+            with(&|f| f.schema = schema::TOKEN_FILE.id.0),
+            Magic,
+            6,
+            "another schema of the catalog",
+        ),
+        bad(with(&|f| f.version = 1), Version, 8, "version v - 2"),
+        bad(
+            with(&|f| f.version = 4),
+            Version,
+            8,
+            "a version newer than the reader's",
+        ),
+        bad(with(&|f| f.reserved = 1), Noncanonical, 10, "reserved is 1"),
+        bad(
+            with(&|f| f.reserved = 0x8000),
+            Noncanonical,
+            10,
+            "reserved has its top bit set",
+        ),
+        bad(
+            with(&|f| f.payload_len = Some(u64::MAX)),
+            Limit,
+            12,
+            "a payload length whose envelope overflows a u64",
+        ),
+        bad(
+            over.bytes(),
+            Limit,
+            12,
+            "one byte over max_total_bytes in all",
+        ),
+        // The rest of the envelope.
+        bad(
+            whole[..whole.len() - DIGEST_LEN - 1].to_vec(),
+            Truncated,
+            12,
+            "the payload short by a byte, and no digest",
+        ),
+        bad(
+            whole[..whole.len() - 1].to_vec(),
+            Truncated,
+            12,
+            "the digest short by a byte",
+        ),
+        bad(
+            [&whole[..], &[0]].concat(),
+            Noncanonical,
+            end,
+            "a byte after the digest",
+        ),
+        // The digest.
+        bad(
+            flipped(whole.clone(), whole.len() - 1),
+            Digest,
+            digest_at,
+            "a digest bit flipped",
+        ),
+        bad(
+            flipped(whole.clone(), HEADER_LEN + 8),
+            Digest,
+            digest_at,
+            "a bit of an element flipped: the digest covers the payload",
+        ),
+        bad(
+            {
+                let mut bytes = whole.clone();
+                bytes[8] = (PROBE_SCHEMA.version - 1) as u8;
+                bytes
+            },
+            Digest,
+            digest_at,
+            "another accepted version under the same digest: the digest covers the header",
+        ),
+        // The payload, under a valid digest.
+        bad(
+            Fields::of([le(&[30], 8), vec![0; 16]].concat()).bytes(),
+            Truncated,
+            HEADER_LEN as u64,
+            "30 elements declared, room for 2 (INV-TCE-3)",
+        ),
+        bad(
+            undecodable.bytes(),
+            Noncanonical,
+            (HEADER_LEN + 16) as u64,
+            "a byte left over in the payload (INV-TCE-4)",
+        ),
+        // Two faults: the check that comes first decides. A field is read before it is checked,
+        // and each field is checked before the next is read.
+        bad(
+            b"TSX".to_vec(),
+            Truncated,
+            0,
+            "a magic that cannot match, cut short: the field is incomplete before it is wrong",
+        ),
+        bad(
+            [&b"TSRB"[..], &[1, 0]].concat(),
+            Magic,
+            0,
+            "another magic, then the header cut short",
+        ),
+        bad(
+            [&MAGIC[..], &[2, 0, 0xF0, 0xFF]].concat(),
+            Version,
+            4,
+            "envelope version 2, then the header cut short",
+        ),
+        bad(
+            with(&|f| {
+                f.magic = *b"TSRB";
+                f.envelope_version = 2;
+            }),
+            Magic,
+            0,
+            "another magic and envelope version 2",
+        ),
+        bad(
+            with(&|f| {
+                f.envelope_version = 2;
+                f.schema = schema::TOKEN_FILE.id.0;
+            }),
+            Version,
+            4,
+            "envelope version 2 and another schema",
+        ),
+        bad(
+            with(&|f| {
+                f.schema = schema::TOKEN_FILE.id.0;
+                f.version = 9;
+                f.reserved = 1;
+            }),
+            Magic,
+            6,
+            "another schema, version 9 and reserved 1",
+        ),
+        bad(
+            with(&|f| {
+                f.version = 9;
+                f.reserved = 1;
+            }),
+            Version,
+            8,
+            "version 9 and reserved 1",
+        ),
+        bad(
+            with(&|f| {
+                f.reserved = 1;
+                f.payload_len = Some(u64::MAX);
+            }),
+            Noncanonical,
+            10,
+            "reserved 1 and a payload length over the limit",
+        ),
+        bad(
+            flipped(with(&|f| f.reserved = 1), whole.len() - 1),
+            Noncanonical,
+            10,
+            "reserved 1 and a bad digest: the header comes before the digest",
+        ),
+        bad(
+            [&flipped(whole.clone(), whole.len() - 1)[..], &[0]].concat(),
+            Noncanonical,
+            end,
+            "a byte after the digest and a bad digest: the length comes before the digest",
+        ),
+        bad(
+            flipped(undecodable.bytes(), undecodable.bytes().len() - 1),
+            Digest,
+            (HEADER_LEN + undecodable.payload.len()) as u64,
+            "an undecodable payload and a bad digest: the digest comes before the payload",
+        ),
+        bad(
+            Fields::of([le(&[1 << 63], 8), vec![0; 16]].concat()).bytes(),
+            Limit,
+            HEADER_LEN as u64,
+            "a 2^63 length with 16 bytes left, over max_vec_len and the bytes left: \
+             max_vec_len comes first (INV-TCE-3)",
+        ),
+    ];
+    // A reader of version 1, where v - 1 would be 0, which no writer emits.
+    for (version, why) in [
+        (0, "version 0 to a reader of version 1"),
+        (2, "version 2 to a reader of version 1"),
+    ] {
+        let fields = Fields {
+            schema: schema::CLAIM_LIST.id.0,
+            version,
+            ..base.clone()
+        };
+        cases.push(EnvelopeCase {
+            expect: schema::CLAIM_LIST,
+            ..bad(fields.bytes(), Version, 8, why)
+        });
+    }
+    // RFC-0003's defaults, exactly at and one past each bound. A header alone shows the total:
+    // within it, the reader goes on to find the payload missing.
+    let header_only = |schema: Schema, payload_len: u64| {
+        Fields {
+            schema: schema.id.0,
+            version: schema.version,
+            payload_len: Some(payload_len),
+            ..base.clone()
+        }
+        .header()
+    };
+    let overhead = (HEADER_LEN + DIGEST_LEN) as u64;
+    let probe_total = |total: u64, outcome, why| {
+        case(
+            CaseLimits::Message,
+            header_only(PROBE_SCHEMA, total - overhead),
+            "Vec<u64>",
+            outcome,
+            why,
+        )
+    };
+    cases.push(probe_total(
+        RFC_MESSAGE_TOTAL,
+        Err((Truncated, 12)),
+        "exactly the 8 GiB message limit in all: the payload is missing",
+    ));
+    cases.push(probe_total(
+        RFC_MESSAGE_TOTAL + 1,
+        Err((Limit, 12)),
+        "one byte over the 8 GiB message limit",
+    ));
+    for (total, outcome, why) in [
+        (
+            RFC_INTEGER_MODEL_TOTAL,
+            Err((Truncated, 12)),
+            "exactly the 1 TiB IntegerModel limit in all: the payload is missing",
+        ),
+        (
+            RFC_INTEGER_MODEL_TOTAL + 1,
+            Err((Limit, 12)),
+            "one byte over the 1 TiB IntegerModel limit",
+        ),
+    ] {
+        cases.push(EnvelopeCase {
+            expect: schema::INTEGER_MODEL,
+            limits: CaseLimits::IntegerModel,
+            ty: "Vec<u64>",
+            bytes: header_only(schema::INTEGER_MODEL, total - overhead),
+            outcome,
+            why,
+        });
+    }
+    let message = |payload: Vec<u8>, ty, outcome, why| {
+        case(
+            CaseLimits::Message,
+            Fields::of(payload).bytes(),
+            ty,
+            outcome,
+            why,
+        )
+    };
+    let most = RFC_MESSAGE_VEC_LEN;
+    cases.push(message(
+        le(&[most], 8),
+        "Vec<u64>",
+        Err((Truncated, HEADER_LEN as u64)),
+        "2^34 elements, the most a message may declare, and none there",
+    ));
+    cases.push(message(
+        le(&[most + 1], 8),
+        "Vec<u64>",
+        Err((Limit, HEADER_LEN as u64)),
+        "2^34 + 1 elements, over the message limit",
+    ));
+    let depth = usize::from(RFC_MESSAGE_DEPTH);
+    cases.push(message(
+        somes(depth, &[7]),
+        "Option^32<u8>",
+        Ok(somes(depth, &[7])),
+        "32 levels of nesting, the message limit",
+    ));
+    // The 33rd `Option` fails as it is entered, after 32 tags.
+    let at = (HEADER_LEN + 2 * depth) as u64;
+    cases.push(message(
+        somes(depth + 1, &[7]),
+        "Option^33<u8>",
+        Err((Limit, at)),
+        "33 levels of nesting, one over the message limit",
+    ));
+    cases
 }

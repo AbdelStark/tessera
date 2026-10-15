@@ -74,6 +74,24 @@ pub struct Envelope {
 
 The digest trails the payload so writers can stream. Readers either verify the digest in a streaming pre-pass before decoding (files) or decode while hashing and discard the result on mismatch (messages). Nothing decoded from an envelope is acted on before its digest verifies.
 
+A schema's reader accepts the version its writers emit, `v`, and `v − 1` ([09 §3](../spec/09-release-and-versioning.md#3-protocol-and-schema-versions)). No writer emits version 0, so a reader of version 1 accepts version 1 only.
+
+So that independent readers return the same code, at the same offset, for every input, a reader checks an envelope in this order. Offsets count from the start of the envelope.
+
+1. **The header, field by field as it is read.** A field cut short is `ERR-CODEC-TRUNCATED` at its offset.
+
+   | Field | Offset | Check | Failure |
+   |---|---|---|---|
+   | `magic` | 0 | `b"TSRA"` | `ERR-CODEC-MAGIC` |
+   | `envelope_version` | 4 | 1 | `ERR-CODEC-VERSION` |
+   | `schema_id` | 6 | the schema the reader expects | `ERR-CODEC-MAGIC` |
+   | `schema_version` | 8 | a version the reader accepts | `ERR-CODEC-VERSION` |
+   | `reserved` | 10 | 0 | `ERR-CODEC-NONCANONICAL` |
+   | `payload_len` | 12 | the whole envelope, `payload_len + 52` bytes, within `max_total_bytes` | `ERR-CODEC-LIMIT` |
+2. **The rest of the input.** Fewer than `payload_len + 32` bytes is `ERR-CODEC-TRUNCATED` at offset 12, the length that promised them. More is `ERR-CODEC-NONCANONICAL` at the first byte past the digest. A streaming reader learns either only when it reaches the end, and reports the same.
+3. **The digest.** A mismatch is `ERR-CODEC-DIGEST` at the digest's offset, `20 + payload_len`. A reader that decodes while it hashes reports the mismatch rather than any error it met in the payload.
+4. **The payload,** decoded as the schema version found, under the same limits. It must fill the payload (INV-TCE-4), and its errors carry their offsets plus 20.
+
 ### Auxiliary schemas
 
 Two schemas carry data between the Python front-end and Rust tools and are added to the artifact catalog in [03 §5](../spec/03-data-model.md#5-artifact-catalog):
