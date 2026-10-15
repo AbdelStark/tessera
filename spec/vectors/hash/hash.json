@@ -177,6 +177,16 @@
     "1c174c4396d7292584e189abf9119f66451aeb94cd1b7b9e8385fea53a9e2c7c",
     "91439c7ce68821f418ce6f3d54f7e4371a32efcde8ca913fffd51ab2b367749b"
    ]
+  },
+  {
+   "name": "statement",
+   "context": "tessera/v1/statement",
+   "digests": [
+    "3908ad30141e6260c3f609b6e208c6426216908db329586770eabc5b8622ddee",
+    "0f30f70e1b21f8b2552bdf42ec95a63aab4634d8e1cac8ee8c89f1af2abc186e",
+    "32fb4cb145c55ee8bcea4463cc2d10ad5b6e2774243029308bf2a57ccac9ba7a",
+    "99403f20ef2b96437ee8d905c79c59ab2993c15c150e9698ea4cf6ee376b4b82"
+   ]
   }
  ],
  "merkle": [

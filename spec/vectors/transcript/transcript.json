@@ -1,0 +1,386 @@
+{
+  "description": "Fiat-Shamir transcript vectors (RFC-0004 'Transcript'), written by generate.py, an oracle independent of the Rust crates. Each case builds a SessionContext from `context`, whose TCE encoding is `context_tce`, and starts from `state`. Each step then runs on the same transcript and leaves `state` and `counter` (squeezes so far). `absorb` absorbs the TCE bytes `tce` under `label`. `squeeze` returns `out`. `challenge_fp`, `challenge_fp2` and `challenge_indices` return `value` (decimal strings); `rejected` counts the words (`Fp`) or squeezes (`Fp2`) rejected for being at or above P, which the last three cases reach. `grind` finds `nonce` for `bits`. `check_grind` checks `nonce` against `bits`, giving `valid`: a valid nonce is absorbed, an invalid one leaves the state unchanged, and the valid nonce shown is not the smallest.",
+  "official_blake3_cases_checked": 35,
+  "cases": [
+    {
+      "name": "a non-interactive session",
+      "context": {
+        "protocol": "tessera-protocol/1",
+        "mode": "NonInteractive",
+        "params": "ni-100/1",
+        "statement_digest": "a0e009c7e5599b0f4aaa29411006353fb233e28585193b310a18567818164f93",
+        "session_id": "e6b5b95218aced8d6961d8349824c898"
+      },
+      "context_tce": "1200000000000000746573736572612d70726f746f636f6c2f31010008000000000000006e692d3130302f31a0e009c7e5599b0f4aaa29411006353fb233e28585193b310a18567818164f93e6b5b95218aced8d6961d8349824c898",
+      "state": "33a8b91ebfae4f69c898655cd03b17890b4f6b723e788e32092834b93acd1774",
+      "steps": [
+        {
+          "op": "absorb",
+          "label": "round1",
+          "tce": "64000000000000001db559f58f51948b07fe662b78ae0e6016e80b74f998c9354b34b90568e62929d3b7f7e2e288254931d5b36bd4c72b9cd454670e8895640b4b191f2eb886d47f0fc27f46b3d50ece0eedfe3b3db0083b4fdc49ceda66bb7a13508bf17cc2d877b23b3f3c",
+          "state": "ee4261d8d7c5d423591223322a0e05d4dc35e89d7f706690279a3715ab138d95",
+          "counter": 0
+        },
+        {
+          "op": "grind",
+          "label": "seed-pow",
+          "bits": 12,
+          "nonce": "1934",
+          "state": "34531fcc22b8199a83ee8ee604f30f60e6430ccb7c6fb9601ce5c2dab27fe1d0",
+          "counter": 0
+        },
+        {
+          "op": "squeeze",
+          "label": "seed",
+          "out": "2b2c2920e6e9564d072dacce8d538a0d67da9e448104417d18a810aaa2c746b4",
+          "state": "82486cf4e7faf0b16c0c00e03b837443782958225585dbc5e6e88b8ef285fac9",
+          "counter": 1
+        },
+        {
+          "op": "challenge_fp2",
+          "label": "logup/alpha",
+          "value": [
+            "8790238841789444625",
+            "4206067665231831296"
+          ],
+          "rejected": 0,
+          "state": "f053db4228add5fd90a63031839eea96d7b52d4d12a605e5fd0dae43dfe6f754",
+          "counter": 2
+        },
+        {
+          "op": "challenge_fp2",
+          "label": "logup/beta",
+          "value": [
+            "13763096373473436841",
+            "938213946367787997"
+          ],
+          "rejected": 0,
+          "state": "daf220a5b4d897fa96acca996ca9184fa4897756ff927095700df53f2e25eec4",
+          "counter": 3
+        },
+        {
+          "op": "absorb",
+          "label": "tree/0/round/0",
+          "tce": "0300000000000000800aebccc10109b053ba12cba129f553763932b4c0a85a186513afcbac5f89b383f447c55f37b501d115d7a8536d7521",
+          "state": "4eb181c4ff23c50e4c0047e1b612201ae74eeb9970846de8e2ae0c22f994c291",
+          "counter": 3
+        },
+        {
+          "op": "challenge_fp2",
+          "label": "tree/0/r/0",
+          "value": [
+            "1309971170329060990",
+            "5291358952015733249"
+          ],
+          "rejected": 0,
+          "state": "4566af6281995711a8ee4b09637159cc3604dcc81eb8035e94de376daa610cc1",
+          "counter": 4
+        },
+        {
+          "op": "absorb",
+          "label": "stage/0/zk-sum",
+          "tce": "3c15d28668702f788d4810e732ec1de9",
+          "state": "a4beb3f4c092d3629263981f5608b1c30ddbd52ad9f4da1c9d08ae11ff24c035",
+          "counter": 4
+        },
+        {
+          "op": "challenge_fp",
+          "label": "stage/0/zk-rho",
+          "value": "6899132757035240278",
+          "rejected": 0,
+          "state": "2bd865818e9a63e5c97856b87e0b3932c2d84519aced09cd56722bc5a7c7514e",
+          "counter": 5
+        },
+        {
+          "op": "challenge_fp",
+          "label": "stage/0/gamma",
+          "value": "13255423349351546250",
+          "rejected": 0,
+          "state": "411574e710666d1c3536cdaf55e2b3b14c9b4b640d7f3ceb80187474339fedfb",
+          "counter": 6
+        },
+        {
+          "op": "grind",
+          "label": "query-pow",
+          "bits": 8,
+          "nonce": "66",
+          "state": "c90edb9e0c72e41cb94cf18a9a416268950a807221bac31ba1ce745a42d0d14b",
+          "counter": 6
+        },
+        {
+          "op": "challenge_indices",
+          "label": "pcs/advice/queries",
+          "log_n": 22,
+          "count": 9,
+          "value": [
+            "544699",
+            "342986",
+            "1115774",
+            "1235133",
+            "1015586",
+            "713727",
+            "741878",
+            "2871344",
+            "3700585"
+          ],
+          "state": "98a2cf66d7c953180cf4db7f8475859ed6c12d1ce183a0f6734e0f343a767a2b",
+          "counter": 9
+        }
+      ]
+    },
+    {
+      "name": "a live session",
+      "context": {
+        "protocol": "tessera-protocol/1",
+        "mode": "Live",
+        "params": "live-64/1",
+        "statement_digest": "8da047fcb5096eecc9403a8f28467cedf17e910ead36510ff12beaeacdb9cee4",
+        "session_id": "17c1fc73203909c5f4735f5c69d8c1ca"
+      },
+      "context_tce": "1200000000000000746573736572612d70726f746f636f6c2f31000009000000000000006c6976652d36342f318da047fcb5096eecc9403a8f28467cedf17e910ead36510ff12beaeacdb9cee417c1fc73203909c5f4735f5c69d8c1ca",
+      "state": "32389c37a142401ca564402c78610a28fcb5ab6b30d0370ee02b3836cf4d7df5",
+      "steps": [
+        {
+          "op": "absorb",
+          "label": "round1",
+          "tce": "0000000000000000",
+          "state": "4f321a710f4fae77a83bd0b55ba8fef27a25df74607ad65f2c5dc7f85ad03aba",
+          "counter": 0
+        },
+        {
+          "op": "absorb",
+          "label": "seed",
+          "tce": "80019da6610aa126c254430469c13319060c777b8213e5e9cbb710f787fd8dd2",
+          "state": "126ff41c96c542db26bb2d777560e9f2601ed62dd0b5e251df3af7525bb7273f",
+          "counter": 0
+        },
+        {
+          "op": "challenge_fp2",
+          "label": "logup/alpha",
+          "value": [
+            "14849088801553906164",
+            "18179795099771972521"
+          ],
+          "rejected": 0,
+          "state": "043d08a6af85b95cedc700b1d2c80c73c964e9a7d7f320d98cf2625f2f7d18ae",
+          "counter": 1
+        },
+        {
+          "op": "challenge_indices",
+          "label": "pcs/weights/0/queries",
+          "log_n": 0,
+          "count": 3,
+          "value": [
+            "0",
+            "0",
+            "0"
+          ],
+          "state": "0f1faae2a4740b0f6e2c25663b67296f7d83d660e1900f981b233d32f4b8eaf3",
+          "counter": 2
+        },
+        {
+          "op": "challenge_indices",
+          "label": "pcs/weights/1/queries",
+          "log_n": 64,
+          "count": 5,
+          "value": [
+            "5517351399088450333",
+            "12870494291771938214",
+            "13871342238063760944",
+            "2289320656740649320",
+            "8054850908290023515"
+          ],
+          "state": "0205d8e5f30856362d6f5ba065f8406741c113b102c73d2ad3046f093a428123",
+          "counter": 4
+        },
+        {
+          "op": "challenge_indices",
+          "label": "pcs/weights/2/queries",
+          "log_n": 20,
+          "count": 0,
+          "value": [],
+          "state": "0205d8e5f30856362d6f5ba065f8406741c113b102c73d2ad3046f093a428123",
+          "counter": 4
+        },
+        {
+          "op": "squeeze",
+          "label": "",
+          "out": "eeed1a3d27581d9a3af2f9043d47a0dc34a98a8e206687f3b841593ba70a15b4",
+          "state": "f9b43ac2280b95ffe9d0ea19e8ce5edec621a3abb45a70d0bec0a50259d3b7d2",
+          "counter": 5
+        },
+        {
+          "op": "challenge_fp",
+          "label": "tree/3/r/12",
+          "value": "4748662645144798799",
+          "rejected": 0,
+          "state": "24db3a2197bc27172278184bb2cfebac0cef8e4e8040eb218f6d0f57608098af",
+          "counter": 6
+        },
+        {
+          "op": "absorb",
+          "label": "pcs/advice/combined",
+          "tce": "2c010000000000000307c5b937a65d3b720296e642d7727ba498aef3fd619a6511b2ad14c0c4f6702f0fa53dcc4af7850e6dd89957222644698197278eaf712227e93027b0f0140cfd660d1375b13f69022b61b63cd552819e03d895a3e969dd6b7634eba5d308ca2d85df010de30ccb8eee1c37dea687dc8265cdaf2cfed564540e69d5893755e2e4f8ec7cb2ce62d79b3782ed304ec5b745dc382f4370730b69b0663235d3ae5fd1b0685b03cee4bc27900985c5c463ea1d210e53f31f62df6aa41b8b6bb003dd7182ed2eff82defa5cd2b19160802214c536f161fd7fdddc5e8ae2e2b782e8ac06f883b98c80ea2fa573a474c0846d4d1e788ec181802677bf690af10d84954822ce75bfa638b6597eb2314149e6e37d1d572333861e3e4a8bc9907fa34e412a78a48e7b46c0bceacea10e671cd424edf8ed5309130b6253cb8a12cd95e54a62c8e376d55b3982ec9e4d0195502e8d2ef97149e26b39688321696187c3372362a1fc9cc63c77d5c5b8162ac0235c153aed94e00eec195337a5813368aca3845a62341209dcd802b8ce3ea5e387b3561a54ae9b505e4409228a0a376beaca96fd467658288a3b6106dc0286653c0ab27553e2600e4384df47e291723c725d32f8e3a17e33c4d07fb9f1b3cff861957aac26cd605bd19bf2fffd87b94372dc85349ab126b48398c51ac0c04bfaf5de3ef00699f6d468acec7fe741c691553b8b20e8fd89a5e41afec35ecbee65d1861fabeee316fb5cb84a9c0c4ce2d79fced39d4107cc5506d3df8df9b1011cd8a819cd004c29580d59d376160b252c5912331047ac4e4b0adeec4eaa390fce1ac16edeb25d7dbd627ac1ca461463098adb3fb7d20caf623b5a24ac5fd08dc5426adf7d572660c998033e4b41003d956740b20d5cd3911a9a1f12e99a0a7c22086b226423d3e770d8ca8bf8f8b3bc3b0530a260b7fcb99332e95299db63a6d05ebbe9ae01edf8bfdf44a511998eef92c4cd81787dfc23d2ae0aac2bb43351652a832c4b4406973f55419e38effb9d36ead4bbc7d8bd16fc573487d05bd75d613ed4e521a357231aea23a8f6ec64b69ffb17f5d85119196f03f872d9cec1ff617a5183f6242a10823e81eaf63eaef8d8e03cb744dfef8c146431156253b26c83dcadebaed2dea62152a690be3d04c6731c1cfbeccf59dbd6213ae0d0c744f9260fca858c8cf062b3ca2315e01d13a2c59e6ce296a702a43885b615fb8c9d0acaf88fa827e6dd9049bc329c87ae6cf4e3463feb9aa06094102dcb77625a1c9e477a6e64648ec2676115c7750ca130615067a0e3446d0b0b664ccaf371242bc52f9fd17b9ee86831a134a4ee935c3e80447c52269076c3cfbe83d1f6304042a622ed7bd99fd7ad8cc314639fd625071a9cc5c309a5e1b80595392144802f5a2372a436857c06cc92b9ca9b61ad1c572fc1fbdc9473a30c7682f88828792123bb3271f7a0e0fc82ee7702d1cf920e0696fc860503610e07a42703a795e356d44dc035d4ec0c61024b93ca9b903d193ea87d6743c73c7a7d1fb78c9f4336328cd031fc930e9bded060d00f649ccdceb9c408d5dd09f775fe09d5d0cfb129d9c27ba91760a3371cebbb1fe46ffe5f039f63b6155d4508b35552d8ac9d17ba307b9e0ffcacf9166e969a42d72a7cb8de574285e08c395e9e126eb182e8163d2a322149c56de4097e3c553a1f44a374782975afa75aaafd660be0ac14b48324b8cabc1ab2322a1e37c2bc91dbdeda73214844c1d83cbe7aaa7222e9c94b74e2ded3df70c7b7de426eb193bfa835f7649fcf9ca0669d44605f3445be0c2c80b30307d5bff96c190c13c33be5a15674c38ee8c056d0ea655f968de37df1f48c908f575f469371b016b2b04cd32589ca1dd26ff1663fa51b94133b512b4e794ac44cb79b394861a5bc27536d1abf530eb323b4141d36de17ce7c8b82adb283a6530bfc302683adc57b99927a0a7878666f01f57518b28ea83b4d8c10f6b47cc714cf11cc641079432b752278f881881e010f3b5cd5369945564b16d67afcaf3073dceab8d6f260293d575bb6d6d2fa8ce5be1a34e1c67e40d109f8e5d969d897dd64250e375cabfe8de24b7fc077f0324097cae787810a6ba12a25f3db304ad958867c984f0c8d559a848128decee1e8c7ad43b8d7f6f26931a8f1e0942ae1213c2a966f13fe888a748cc28298682e790d5ef53578c395c2917799e2b1c4b81520eebfac36d487ee4f620bc5b14e3983b1132293303de2e803d25f460c87bc844f409493e8cbe11d93d82f91dfe00d808e66654d9f3c99411a14c62a732b036947e0c2579a296b25ecc62610279519f29f8e12f762226ffb87c158ce0742f277060952e071746c3941dcc81212ec2d061a086b0cd04060eb3c8cbf72e45614a89c2efab18f400b1dc9c6d8e9b47ed3e7a80ad95317c0d9b51ce2e20912d25bf4ec77f191308885238f26c52626d72f3c273481f0470f9d109ab669f7450c3731c3d441503d6362fac153a82b26b6482061adcb5fcb29b414ebfe7852fc3bbe75400f88d0e94c7c426cadab9a28a3646eedaf245ae5bd0f07c669ec862b68651ac5ad62bad18d421ef2798bcff6b434d71f260b0d22b9251b88d40f240e1c5858cf2dfe0a427ec9748804211dc5a5a393ba73616902a8d860e5509d0d58c61de11e67d046c2c5134bf287b540a2db46c867498e62680a3709ffdad912dea0ca1be7b60aa35854a5023057b8d0d3a0b327343eecb973da34f52127834c5fe1121e16bc75109f04f29653e22d4892bfef2cbe0636d26bada8081f1937931deb9261da3c12e08f5b8d8dc3039ae469e25fc23cfc97c46d67fd0b360636737f308a85f04fb97a3c568ebc9c7aeb0a93265850c61e8df63373c9011488c205be9a4da497bad8164340587d70ad923d73b4ec42df1053cd6e8fdb71690e1a53f97d87405a27936f9a396dded97b918a8ba5cd22a06a998a549c8d67a167e617c56ef81f777b775b955d22080397dbef1cfbe627db5ac8df4cd213faeceb016140d16a3931b1dc3df907e9dc287a08a99773b690b885ddc58210d9c194a159ebd8c65031ec04ebe9c900caca0315227a7bc96ebf28611582c5f4caab71829651572f16c6f608ac2b3e9d5705cbc23fc04417f9b93f2a58a27501605c7e735d7fea9b42b1b95137b83197c8466615f2a7129aca4bb6978d0b31da9cf406d2d5eb1e99fc0e1cd60e1ae74230e29e9710ad93ad5a29334e6afd37b1057464a415a9b3297560ec802d0e19c1f062b611e9e4f77992104f568916e438d34ecf38041e09c41ab8d77c5ccfdeacd070b408bbaafbed294a7e76daafa3f79f9acf9cba3e20a2be4013f1708ce5a17d90028dbdaa579eb770ab45b14f76f0ab8513",
+          "state": "ed4fcc6606a934f4f0312e9eb77b3a19d74d0605a240e5a3e5e75337223b13ae",
+          "counter": 6
+        },
+        {
+          "op": "challenge_fp",
+          "label": "pcs/advice/gamma",
+          "value": "3554261226897911118",
+          "rejected": 0,
+          "state": "4779566493323ed928678dbd0de4ea7d9d6ad14274d0b5a7c8889a02f33122af",
+          "counter": 7
+        }
+      ]
+    },
+    {
+      "name": "proofs of work",
+      "context": {
+        "protocol": "tessera-protocol/1",
+        "mode": "NonInteractive",
+        "params": "test-small/1",
+        "statement_digest": "c1267a2646db2c9eb13cde0b2d9261652e07b29353befda230f5728621e7d16f",
+        "session_id": "3835345b5aeac24f26c50ec9876b01eb"
+      },
+      "context_tce": "1200000000000000746573736572612d70726f746f636f6c2f3101000c00000000000000746573742d736d616c6c2f31c1267a2646db2c9eb13cde0b2d9261652e07b29353befda230f5728621e7d16f3835345b5aeac24f26c50ec9876b01eb",
+      "state": "74443c82d81a49cbaae89419d1d5c1ffc38408c2b19042f2ea016b7e4e6e92d5",
+      "steps": [
+        {
+          "op": "grind",
+          "label": "seed-pow",
+          "bits": 0,
+          "nonce": "0",
+          "state": "a2bf79b0d2baf8f654d826305ab884481ac3f585f61b30e3ff4fdb38a815c6e6",
+          "counter": 0
+        },
+        {
+          "op": "check_grind",
+          "label": "query-pow",
+          "bits": 8,
+          "valid": false,
+          "nonce": "0",
+          "state": "a2bf79b0d2baf8f654d826305ab884481ac3f585f61b30e3ff4fdb38a815c6e6",
+          "counter": 0
+        },
+        {
+          "op": "check_grind",
+          "label": "query-pow",
+          "bits": 8,
+          "valid": true,
+          "nonce": "661",
+          "state": "643413c62c44b548d04633b7f7e423b760a136b293b3764c8a93d42deb951e81",
+          "counter": 0
+        },
+        {
+          "op": "grind",
+          "label": "seed-pow",
+          "bits": 10,
+          "nonce": "109",
+          "state": "7d4ef0edb5af2310df72aab06c007b96c32e02333c83213777715f98c3ca09c6",
+          "counter": 0
+        },
+        {
+          "op": "squeeze",
+          "label": "seed",
+          "out": "49906cea42f2c25cc86fbd99225f418bf1e2588d5d5aaae5146a8a32d05c5cd8",
+          "state": "54662fab4d46d1406d02844cc7e30012786a13af85fa8a0a012da693325cf8d1",
+          "counter": 1
+        }
+      ]
+    },
+    {
+      "name": "challenge_fp passes over a word at or above P",
+      "context": {
+        "protocol": "tessera-protocol/1",
+        "mode": "NonInteractive",
+        "params": "test-small/1",
+        "statement_digest": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "session_id": "07070707070707070707070707070707"
+      },
+      "context_tce": "1200000000000000746573736572612d70726f746f636f6c2f3101000c00000000000000746573742d736d616c6c2f315a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a07070707070707070707070707070707",
+      "state": "51f492858d2473b2904db3467b9f658425ae407f3a9ab6750b901d7d2c09a3e5",
+      "steps": [
+        {
+          "op": "absorb",
+          "label": "x",
+          "tce": "3967dd5500000000",
+          "state": "2351e33d7ee65eb1f4e148d6e67c10307223eedf04e3045253e44b59b0955299",
+          "counter": 0
+        },
+        {
+          "op": "challenge_fp",
+          "label": "c",
+          "rejected": 1,
+          "value": "10296365079962768047",
+          "state": "3a4b8a6b6587a5b903500a207b5efd15e5d95ffc0a5c533baaf5b4f84c8fa219",
+          "counter": 1
+        }
+      ]
+    },
+    {
+      "name": "challenge_fp2 squeezes again when c0 is at or above P",
+      "context": {
+        "protocol": "tessera-protocol/1",
+        "mode": "NonInteractive",
+        "params": "test-small/1",
+        "statement_digest": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "session_id": "07070707070707070707070707070707"
+      },
+      "context_tce": "1200000000000000746573736572612d70726f746f636f6c2f3101000c00000000000000746573742d736d616c6c2f315a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a07070707070707070707070707070707",
+      "state": "51f492858d2473b2904db3467b9f658425ae407f3a9ab6750b901d7d2c09a3e5",
+      "steps": [
+        {
+          "op": "absorb",
+          "label": "x",
+          "tce": "3967dd5500000000",
+          "state": "2351e33d7ee65eb1f4e148d6e67c10307223eedf04e3045253e44b59b0955299",
+          "counter": 0
+        },
+        {
+          "op": "challenge_fp2",
+          "label": "c",
+          "rejected": 1,
+          "value": [
+            "4511935003087790275",
+            "17514622287596710904"
+          ],
+          "state": "4f08bdc410f28477e212da16bfb025d6bb9975925551bd11b9eb3b6abfbb96a4",
+          "counter": 2
+        }
+      ]
+    },
+    {
+      "name": "challenge_fp2 squeezes again when c1 is at or above P",
+      "context": {
+        "protocol": "tessera-protocol/1",
+        "mode": "NonInteractive",
+        "params": "test-small/1",
+        "statement_digest": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "session_id": "07070707070707070707070707070707"
+      },
+      "context_tce": "1200000000000000746573736572612d70726f746f636f6c2f3101000c00000000000000746573742d736d616c6c2f315a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a07070707070707070707070707070707",
+      "state": "51f492858d2473b2904db3467b9f658425ae407f3a9ab6750b901d7d2c09a3e5",
+      "steps": [
+        {
+          "op": "absorb",
+          "label": "x",
+          "tce": "e86a3d1b00000000",
+          "state": "496f70bb0883d46009396354f7aeabbaa01434359d0b63ed23f55b3a9f0b205a",
+          "counter": 0
+        },
+        {
+          "op": "challenge_fp2",
+          "label": "c",
+          "rejected": 1,
+          "value": [
+            "159960810641776433",
+            "8295772040964101424"
+          ],
+          "state": "03307edc11d0c0f0d68dc09b20e34a57645af984cb821deb1e1eeb741b8ea041",
+          "counter": 2
+        }
+      ]
+    }
+  ]
+}

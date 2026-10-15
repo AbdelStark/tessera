@@ -53,13 +53,13 @@ domains! {
     WeightsRoot => "weights-root",
     /// The transcript's first state: `TCE(SessionContext)`.
     TranscriptInit => "transcript-init",
-    /// A transcript absorb: `state ‖ label ‖ TCE(value)`.
+    /// A transcript absorb: `state ‖ Ascii(label) ‖ TCE(value)`.
     TranscriptAbsorb => "transcript-absorb",
-    /// A transcript squeeze: `state ‖ label ‖ counter`.
+    /// A transcript squeeze: `state ‖ Ascii(label) ‖ counter`.
     TranscriptSqueeze => "transcript-squeeze",
     /// The transcript state after a squeeze: `state ‖ out`.
     TranscriptRatchet => "transcript-ratchet",
-    /// A proof-of-work attempt: `state ‖ label ‖ nonce`.
+    /// A proof-of-work attempt: `state ‖ Ascii(label) ‖ nonce`.
     Pow => "pow",
     /// The verifier's seed-share commitment (RFC-0014).
     CoinCommit => "coin-commit",
@@ -73,6 +73,8 @@ domains! {
     AuditSelect => "audit-select",
     /// The claim-list digest (RFC-0007).
     ClaimList => "claim-list",
+    /// The statement digest a session binds: `TCE(PublicStatement)` (RFC-0007).
+    Statement => "statement",
 }
 
 /// The context key of every domain, derived once. Deriving it costs one compression, as much as
@@ -101,6 +103,14 @@ impl Hasher {
     /// `H(domain, input)` for the input so far.
     pub fn finalize(&self) -> Digest {
         *self.0.finalize().as_bytes()
+    }
+}
+
+/// A [`Hasher`] takes TCE encodings directly, so values are hashed as they are encoded, without
+/// a buffer.
+impl tessera_codec::Sink for Hasher {
+    fn put(&mut self, bytes: &[u8]) {
+        self.0.update(bytes);
     }
 }
 

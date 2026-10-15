@@ -50,6 +50,7 @@ The source sets 30 ps per committed 64-bit element, including rate-1/2 encoding 
 | `table` | `TCE(TableSpec without digest) ‖ piece parameters ‖ core values` | Table digests (RFC-0008) |
 | `audit-sample`, `audit-select` | Sampling seed and per-request selection inputs | Audit sampling (RFC-0016) |
 | `claim-list` | `TCE(ClaimList)` | Claim-list digest (RFC-0007) |
+| `statement` | `TCE(PublicStatement)` | `SessionContext.statement_digest` (RFC-0007) |
 
 Context strings are distinct ASCII strings, so outputs of different domains are independent under the standard assumption on BLAKE3's key derivation mode. The Rust crate `blake3` 1.x is used on CPU (prover and verifier, allowlisted); a CUDA implementation in `tessera-gpu` covers `column-step` and `merkle-node`.
 
@@ -79,11 +80,13 @@ pub fn verify_multiproof(root: &Digest, n: u64, leaves: &[(u64, Digest)], proof:
 ### Transcript
 
 ```rust
+pub enum Mode { Live, NonInteractive }  // TCE tags 0 and 1, in declaration order
+
 pub struct SessionContext {
     pub protocol: Ascii,              // "tessera-protocol/1"
-    pub mode: Mode,                   // Live | NonInteractive
-    pub params: ParamSetId,
-    pub statement_digest: Digest,     // H over TCE(PublicStatement)
+    pub mode: Mode,
+    pub params: ParamSetId,           // RFC-0014 'Parameter sets'
+    pub statement_digest: Digest,     // H("statement", TCE(PublicStatement))
     pub session_id: [u8; 16],
 }
 
@@ -91,7 +94,7 @@ pub struct Transcript { state: Digest, counter: u64 }
 
 impl Transcript {
     pub fn new(ctx: &SessionContext) -> Self;                         // state = H("transcript-init", TCE(ctx))
-    pub fn absorb<T: Encode>(&mut self, label: &str, v: &T);  // state = H("transcript-absorb", state ‖ label ‖ TCE(v))
+    pub fn absorb<T: Encode>(&mut self, label: &str, v: &T);  // state = H("transcript-absorb", state ‖ Ascii(label) ‖ TCE(v))
     pub fn squeeze(&mut self, label: &str) -> Digest;
     pub fn challenge_fp(&mut self, label: &str) -> Fp;
     pub fn challenge_fp2(&mut self, label: &str) -> Fp2;
@@ -101,11 +104,11 @@ impl Transcript {
 }
 ```
 
-- `squeeze`: `out = H("transcript-squeeze", state ‖ label ‖ counter)`; `counter += 1`; `state = H("transcript-ratchet", state ‖ out)`; return `out`.
+- `squeeze`: `out = H("transcript-squeeze", state ‖ Ascii(label) ‖ counter)`; `counter += 1`; `state = H("transcript-ratchet", state ‖ out)`; return `out`. A label is TCE `Ascii`, its length then its bytes, so no two label and value pairs share an input.
 - `challenge_fp`: repeat `squeeze`; scan its four 8-byte little-endian words in order; return the first word `< P`. Each word is rejected with probability below 2^-32, so the output is exactly uniform on `Fp`.
 - `challenge_fp2`: repeat `squeeze` until its first two words are both `< P`; return them as `(c0, c1)`. Exactly uniform on `Fp2`.
-- `challenge_indices`: words masked to `log_n` bits, drawn with replacement, in order, four per squeeze. Exactly uniform for power-of-two domains.
-- `grind`: the prover searches `nonce = 0, 1, 2, …` for the first value whose `H("pow", state ‖ label ‖ nonce)` has its first `bits` bits zero (most significant bit of byte 0 first); it then absorbs `nonce` under `label`. `check_grind` recomputes one hash and absorbs the nonce identically. The honest prover uses the smallest valid nonce, so its output is deterministic; the verifier accepts any nonce that meets the bit requirement, since soundness accounting already charges the prover for every attempt.
+- `challenge_indices`: each squeezed word masked to its low `log_n` bits (`log_n ≤ 64`), drawn with replacement, in order, four per squeeze; `count = 0` squeezes nothing. Exactly uniform for power-of-two domains, so nothing is rejected.
+- `grind`: the prover searches `nonce = 0, 1, 2, …` for the first value whose `H("pow", state ‖ Ascii(label) ‖ nonce)` has its first `bits` bits zero (most significant bit of byte 0 first); it then absorbs `nonce` under `label`. `check_grind` recomputes one hash and, when the nonce meets the requirement, absorbs it identically; an invalid nonce is not absorbed, and the verifier rejects the proof (`Reject(ProofOfWork)`) without using the transcript again. The honest prover uses the smallest valid nonce, so its output is deterministic; the verifier accepts any nonce that meets the bit requirement, since soundness accounting already charges the prover for every attempt.
 
 Labels are ASCII strings built only from the tier-A label patterns of [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule), which fix the full schedule per protocol version.
 
@@ -150,9 +153,9 @@ v0.1. The protocol label table is first frozen at `tessera-protocol/1` (v0.3).
 - Column digests: random matrices with `m` not a multiple of `B`; CPU, GPU and verifier chains agree; changing any symbol changes the leaf.
 - Merkle: random trees of size 2^1 to 2^20; single and batch openings verify; a multiproof with one extra, missing or reordered sibling is rejected.
 - Transcript vectors in `spec/vectors/transcript/`: scripted absorb and squeeze sequences with expected challenges, checked by prover and verifier crates.
-- Rejection paths: a test-only hash stub forces words `≥ P` to exercise every retry branch of `challenge_fp`, `challenge_fp2` and `challenge_indices`.
+- Rejection paths: a test-only hash stub forces words `≥ P` to exercise every retry branch of `challenge_fp` and `challenge_fp2`, and the multi-squeeze path of `challenge_indices`, which never rejects.
 - Uniformity smoke test: 2^20 `challenge_fp` outputs reduced modulo 2^16 pass a chi-square test at significance 0.001.
-- Grinding: a valid nonce for `bits = 16` verifies; the same nonce fails for `bits = 24` with overwhelming probability; a valid but non-minimal nonce is accepted by `check_grind`.
+- Grinding: a valid nonce for `bits = 16` verifies; the same nonce fails for `bits = 24` unless it happens to have 24 leading zero bits (probability 1/256, so the test pins a nonce that has not); a valid but non-minimal nonce is accepted by `check_grind`.
 
 ## Open Questions
 
