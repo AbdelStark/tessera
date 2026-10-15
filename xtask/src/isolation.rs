@@ -3,19 +3,29 @@
 //! `cargo xtask check-isolation`: the verifier-independence gate of RFC-0001 'Enforcement'
 //! (DEP-1 to DEP-3 in 01 §3; security property SP-6).
 //!
-//! The five checks of the RFC, a sixth that closes ways around them, and a seventh that keeps
-//! test support out of the verifier binary:
+//! The eight checks the RFC lists:
 //!
-//! 1. **DEP-1.** The verifier's resolved dependency graph contains no package named `tessera-*`
-//!    and no path package outside `verifier/`, and every target of every path package compiles
-//!    a source inside `verifier/` (`[lib] path` and its siblings can point anywhere).
+//! 1. **DEP-1.** The verifier's resolved dependency graph contains no package named `tessera-*`.
+//!    Every path package is a member of the verifier workspace, inside `verifier/` but outside
+//!    its build directory `verifier/target`. Every target of a path package has a `.rs` crate
+//!    root inside that package's directory: `[lib] path` and its siblings can point anywhere.
 //! 2. **DEP-3.** Every registry package in that graph comes from crates.io and is listed in
 //!    `verifier/allowlist.toml` with a compatible version. A package with `direct-dependents`
 //!    is a normal or build dependency of those verifier crates only.
-//! 3. **Sources.** `include!`, `include_str!`, `include_bytes!` and `path` attributes in verifier
-//!    sources take plain string literals that resolve inside `verifier/` (to `.rs` files when they
-//!    import code); nothing renames those macros; there are no symlinks, and no build scripts or
-//!    procedural macros, which run at build time and can read any file.
+//! 3. **Sources.** A token scan of every `.rs` file under `verifier/`, which sees the code of
+//!    every `cfg`:
+//!    - There is no `include!`, no `path` attribute and no `debugger_visualizer` attribute, so
+//!      code enters a crate only through `mod` declarations at their default paths and through
+//!      dependencies, which the graph checks see.
+//!    - `include_str!` and `include_bytes!` are direct calls with plain string literals naming
+//!      files of their own package.
+//!    - Macro bodies hold no include macro, since its path would resolve at each call site.
+//!      They call no macro named by a metavariable, and no attribute name in them holds one,
+//!      since the caller could make it `path`. A metavariable in an attribute's value, as in
+//!      `#[doc = $doc]`, is allowed: the caller's tokens are scanned where they are written.
+//!    - There are no symlinks and no names with control characters.
+//!    - There are no build scripts or procedural macros, which run at build time and can read any
+//!      file.
 //! 4. **Toolchain.** `verifier/rust-toolchain.toml` pins the same toolchain as the root.
 //! 5. **DEP-2.** In the prover's resolved graph, verifier crates appear only behind
 //!    dev-dependency edges, and no prover workspace member lives under `verifier/`.
@@ -28,6 +38,16 @@
 //! 7. **Test support.** In the verifier's resolved graph, every edge into a crate that exists for
 //!    tests (`tv-testkit`, whose vector reader panics on malformed input) is a dev edge
 //!    (robustness, RFC-0019).
+//! 8. **Compiled files.** The compiler's own record. `cargo check` builds every target twice: in
+//!    the dev profile with every feature, and in the release profile with every feature except
+//!    the test-only ones. Every file in the rustc dep-info of each path package's units must be a
+//!    file inside that package's directory and outside the build directory. The dep-info is read
+//!    strictly, so a malformed record fails. This catches what no token scan can, such as a
+//!    dependency's macro that expands to `include!`. It runs once checks 1, 2, 3 and 6 pass, so
+//!    the gate never compiles code they reject.
+//!
+//! Both graphs are resolved with every feature enabled. An optional dependency counts as present,
+//! since any build may enable it; a default resolve would leave it out of `cargo metadata`.
 
 use std::ffi::OsString;
 use std::fs;
@@ -89,7 +109,13 @@ impl Cargo {
     /// `cargo metadata` for the workspace in `dir` with its resolved graph, as JSON.
     fn metadata(&self, dir: &Path, toolchain: Option<&str>) -> Result<Json, String> {
         let mut cmd = self.command(dir, toolchain);
-        cmd.args(["metadata", "--format-version", "1", "--locked"]);
+        cmd.args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--locked",
+            "--all-features",
+        ]);
         let output = cmd.output().map_err(|e| format!("cannot run cargo: {e}"))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -99,8 +125,39 @@ impl Cargo {
     }
 }
 
-/// Runs every check on the repository at `repo` and returns `(check, violations)` pairs.
-pub(crate) fn checks(repo: &Path, cargo: &Cargo) -> io::Result<Vec<(&'static str, Vec<String>)>> {
+/// The result of one check.
+pub(crate) struct Report {
+    /// The property the check asserts.
+    pub(crate) name: &'static str,
+    /// Each way the repository breaks it; empty when it holds.
+    pub(crate) violations: Vec<String>,
+    /// Why the check did not run. A check is skipped only when another check fails, so a
+    /// skipped check never lets the gate pass.
+    pub(crate) skipped: Option<&'static str>,
+}
+
+impl Report {
+    fn new(name: &'static str, violations: Vec<String>) -> Self {
+        Self {
+            name,
+            violations,
+            skipped: None,
+        }
+    }
+
+    fn skipped(name: &'static str, reason: &'static str) -> Self {
+        Self {
+            name,
+            violations: Vec::new(),
+            skipped: Some(reason),
+        }
+    }
+}
+
+const NO_GRAPH: &str = "no dependency graph for verifier/";
+
+/// Runs every check on the repository at `repo`.
+pub(crate) fn checks(repo: &Path, cargo: &Cargo) -> io::Result<Vec<Report>> {
     let repo = repo.canonicalize()?;
     let verifier = repo.join("verifier");
     if !verifier.is_dir() {
@@ -113,64 +170,95 @@ pub(crate) fn checks(repo: &Path, cargo: &Cargo) -> io::Result<Vec<(&'static str
     let graph = cargo.metadata(&verifier, toolchain.as_deref());
     let prover = cargo.metadata(&repo, toolchain.as_deref());
 
+    const DEP1: &str = "DEP-1: no prover crate in the verifier's dependency graph";
+    const DEP3: &str = "DEP-3: third-party packages are allowlisted";
+    const SOURCES: &str = "verifier sources reference no file outside their crate";
+    const TEST_SUPPORT: &str = "verifier test support is used by tests only";
+    const COMPILED: &str = "every file a verifier crate compiles lies inside that crate";
+
     let allowlist = load_allowlist(&verifier.join("allowlist.toml"))?;
-    let mut dep1 = Vec::new();
-    let mut dep3 = allowlist.as_ref().err().cloned().unwrap_or_default();
     let mut sources = source_violations(&verifier)?;
-    let test_support = match &graph {
+    let config = config_violations(&repo, &verifier)?;
+    let (dep1, dep3, test_support) = match &graph {
         Ok(graph) => {
-            dep1.extend(dep1_violations(graph, &verifier));
+            sources.extend(build_time_code_violations(graph));
+            let mut dep3 = allowlist.as_ref().err().cloned().unwrap_or_default();
             if let Ok(entries) = &allowlist {
                 dep3.extend(dep3_violations(graph, entries));
             }
-            sources.extend(build_time_code_violations(graph));
-            test_support_violations(graph)
+            (
+                Report::new(DEP1, dep1_violations(graph, &verifier)),
+                Report::new(DEP3, dep3),
+                Report::new(TEST_SUPPORT, test_support_violations(graph)),
+            )
         }
-        Err(e) => {
-            dep1.push(format!("verifier/: {e}"));
-            dep3.push("not checked: no dependency graph for verifier/".to_owned());
-            vec!["not checked: no dependency graph for verifier/".to_owned()]
+        Err(e) => (
+            Report::new(DEP1, vec![format!("verifier/: {e}")]),
+            Report::skipped(DEP3, NO_GRAPH),
+            Report::skipped(TEST_SUPPORT, NO_GRAPH),
+        ),
+    };
+    // Compiling runs the build scripts of dependencies, so check 8 waits until the checks that
+    // vet what gets compiled pass.
+    let compiled = match &graph {
+        Err(_) => Report::skipped(COMPILED, NO_GRAPH),
+        Ok(_)
+            if !(dep1.violations.is_empty()
+                && dep3.violations.is_empty()
+                && sources.is_empty()
+                && config.is_empty()) =>
+        {
+            Report::skipped(
+                COMPILED,
+                "it runs once DEP-1, DEP-3, the source scan and the configuration check pass",
+            )
         }
+        Ok(graph) => Report::new(
+            COMPILED,
+            compiled_file_violations(cargo, &verifier, graph, toolchain.as_deref()),
+        ),
     };
     let dep2 = match &prover {
         Ok(prover) => dep2_violations(prover, &verifier),
         Err(e) => vec![format!("repository root: {e}")],
     };
     Ok(vec![
-        (
-            "DEP-1: no prover crate in the verifier's dependency graph",
-            dep1,
-        ),
-        ("DEP-3: third-party packages are allowlisted", dep3),
-        ("verifier sources reach nothing outside verifier/", sources),
-        (
+        dep1,
+        dep3,
+        Report::new(SOURCES, sources),
+        Report::new(
             "toolchain pins are equal",
             toolchain_violations(&repo, &verifier)?,
         ),
-        (
+        Report::new(
             "DEP-2: prover crates use verifier crates only as dev-dependencies",
             dep2,
         ),
-        (
+        Report::new(
             "cargo configuration cannot redirect verifier dependencies",
-            config_violations(&repo, &verifier)?,
+            config,
         ),
-        ("verifier test support is used by tests only", test_support),
+        test_support,
+        compiled,
     ])
 }
 
 /// Runs every check, reports on stdout and returns whether the repository is isolated.
 pub(crate) fn run(repo: &Path) -> io::Result<bool> {
     let mut clean = true;
-    for (name, violations) in checks(repo, &Cargo::from_env())? {
-        if violations.is_empty() {
-            println!("ok    {name}");
-        } else {
-            clean = false;
-            println!("FAIL  {name}");
-            for violation in violations {
-                println!("      {violation}");
-            }
+    for report in checks(repo, &Cargo::from_env())? {
+        let status = match (&report.skipped, report.violations.is_empty()) {
+            (_, false) => "FAIL",
+            (Some(_), true) => "skip",
+            (None, true) => "ok",
+        };
+        clean &= status == "ok";
+        println!("{status:<6}{}", report.name);
+        if let Some(reason) = report.skipped {
+            println!("      not run: {reason}");
+        }
+        for violation in &report.violations {
+            println!("      {violation}");
         }
     }
     Ok(clean)
@@ -180,6 +268,15 @@ pub(crate) fn run(repo: &Path) -> io::Result<bool> {
 
 fn packages(graph: &Json) -> impl Iterator<Item = &Json> {
     graph["packages"].as_array().into_iter().flatten()
+}
+
+fn workspace_members(graph: &Json) -> Vec<&str> {
+    graph["workspace_members"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Json::as_str)
+        .collect()
 }
 
 fn str_field<'a>(value: &'a Json, key: &str) -> &'a str {
@@ -192,9 +289,13 @@ fn resolve(path: &Path) -> PathBuf {
 }
 
 /// DEP-1. A path package is judged by where its code lives, not only by where its manifest
-/// sits: target keys such as `[lib] path` let a manifest inside `verifier/` compile sources from
-/// anywhere, and `targets[].src_path` is cargo's own record of what it compiles.
+/// sits: target keys such as `[lib] path` let a manifest compile sources from anywhere, and
+/// `targets[].src_path` is cargo's own record of what it compiles. Each crate root must be a
+/// `.rs` file of its own package, which the source scan reads; the scan skips the build
+/// directory, so no package may live there.
 fn dep1_violations(graph: &Json, verifier: &Path) -> Vec<String> {
+    let build_dir = verifier.join("target");
+    let members = workspace_members(graph);
     let mut violations = Vec::new();
     for package in packages(graph) {
         let name = str_field(package, "name");
@@ -213,12 +314,31 @@ fn dep1_violations(graph: &Json, verifier: &Path) -> Vec<String> {
             ));
             continue;
         }
+        if dir.starts_with(&build_dir) {
+            violations.push(format!(
+                "{name} lives in the build directory verifier/target, which the source scan skips"
+            ));
+            continue;
+        }
+        if !members.contains(&str_field(package, "id")) {
+            violations.push(format!(
+                "{name} is a path package but not a member of the verifier workspace, which \
+                 `--all-features` and check 8 cover"
+            ));
+            continue;
+        }
         for target in package["targets"].as_array().into_iter().flatten() {
+            let target_name = str_field(target, "name");
             let src = resolve(Path::new(str_field(target, "src_path")));
-            if !src.starts_with(verifier) {
+            if !src.starts_with(&dir) {
                 violations.push(format!(
-                    "{name} target `{}` compiles a source outside verifier/: {}",
-                    str_field(target, "name"),
+                    "{name} target `{target_name}` compiles a source outside its package: {}",
+                    src.display()
+                ));
+            } else if src.extension().is_none_or(|ext| ext != "rs") {
+                violations.push(format!(
+                    "{name} target `{target_name}` has a crate root that is not a .rs file, which \
+                     the source scan skips: {}",
                     src.display()
                 ));
             }
@@ -471,14 +591,29 @@ fn normalize(path: &Path) -> PathBuf {
     out
 }
 
-/// A file reference found in Rust source: what referenced it, where, its literal value (`None`
-/// when the argument is not a plain string literal), and whether it imports code (`include!`,
-/// `path`) rather than data (`include_str!`, `include_bytes!`).
+/// What a file reference in Rust source does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kind {
+    /// `include!` or a `path` attribute: imports code.
+    Code,
+    /// `include_str!` or `include_bytes!`: reads a data file.
+    Data,
+    /// An include macro's name used other than in a direct call (`use … as`, an argument to
+    /// another macro), which can carry it out of sight of this scan.
+    Indirect,
+    /// In a macro body, a macro call or attribute whose name is a metavariable: the caller
+    /// chooses it and can choose an include macro or `path`.
+    Metavariable,
+}
+
+/// A file reference found in Rust source: what it is, where, its literal value (`None` when
+/// the argument is not a plain string literal), and whether it sits in a `macro_rules!` body.
 struct Reference {
     what: String,
     line: usize,
     value: Option<String>,
-    imports_code: bool,
+    kind: Kind,
+    in_macro: bool,
 }
 
 /// An identifier without its raw prefix: `r#path` names the same item as `path`.
@@ -508,10 +643,33 @@ fn line_of(token: &TokenTree) -> usize {
     token.span().start().line
 }
 
-/// Finds include macros, renames of them, and `path` attributes in a token stream, recursively.
-fn scan(stream: TokenStream, out: &mut Vec<Reference>) {
+fn is_punct(token: Option<&TokenTree>, c: char) -> bool {
+    matches!(token, Some(TokenTree::Punct(p)) if p.as_char() == c)
+}
+
+/// Whether `tokens[i]` is the body of `macro_rules! name { ... }`.
+fn is_macro_body(tokens: &[TokenTree], i: usize) -> bool {
+    i >= 3
+        && matches!(&tokens[i - 3], TokenTree::Ident(m) if ident_name(m) == "macro_rules")
+        && is_punct(tokens.get(i - 2), '!')
+        && matches!(&tokens[i - 1], TokenTree::Ident(_))
+}
+
+/// Finds file references in a token stream, recursively: include macros and any other use of
+/// their names, `path` attributes, and, in macro bodies, macro calls and attributes named by a
+/// metavariable.
+fn scan(stream: TokenStream, in_macro: bool, out: &mut Vec<Reference>) {
     let tokens: Vec<TokenTree> = stream.into_iter().collect();
     for (i, token) in tokens.iter().enumerate() {
+        let mut found = |what: String, value: Option<String>, kind: Kind| {
+            out.push(Reference {
+                what,
+                line: line_of(token),
+                value,
+                kind,
+                in_macro,
+            });
+        };
         match token {
             TokenTree::Ident(ident) if INCLUDE_MACROS.contains(&ident_name(ident).as_str()) => {
                 let name = ident_name(ident);
@@ -524,43 +682,76 @@ fn scan(stream: TokenStream, out: &mut Vec<Reference>) {
                             [single] => plain_string(single),
                             _ => None,
                         };
-                        out.push(Reference {
-                            what: format!("{name}!"),
-                            line: line_of(token),
-                            value,
-                            imports_code: name == "include",
-                        });
+                        let kind = if name == "include" {
+                            Kind::Code
+                        } else {
+                            Kind::Data
+                        };
+                        found(format!("{name}!"), value, kind);
                     }
-                    (Some(TokenTree::Ident(next)), _) if next == "as" => out.push(Reference {
-                        what: format!("renaming {name}"),
-                        line: line_of(token),
-                        value: None,
-                        imports_code: false,
-                    }),
-                    _ => {}
+                    _ => found(format!("`{name}`"), None, Kind::Indirect),
+                }
+            }
+            TokenTree::Punct(dollar) if in_macro && dollar.as_char() == '$' => {
+                if let Some(TokenTree::Ident(var)) = tokens.get(i + 1) {
+                    if is_punct(tokens.get(i + 2), '!') {
+                        found(format!("`${var}!`"), None, Kind::Metavariable);
+                    }
                 }
             }
             TokenTree::Punct(hash) if hash.as_char() == '#' => {
-                let mut j = i + 1;
-                if matches!(tokens.get(j), Some(TokenTree::Punct(p)) if p.as_char() == '!') {
-                    j += 1;
-                }
+                let j = if is_punct(tokens.get(i + 1), '!') {
+                    i + 2
+                } else {
+                    i + 1
+                };
                 if let Some(TokenTree::Group(group)) = tokens.get(j) {
                     if group.delimiter() == Delimiter::Bracket {
-                        scan_attribute(group.stream(), out);
+                        scan_attribute(group.stream(), in_macro, out);
                     }
                 }
             }
-            TokenTree::Group(group) => scan(group.stream(), out),
+            TokenTree::Group(group) => {
+                scan(group.stream(), in_macro || is_macro_body(&tokens, i), out);
+            }
             _ => {}
         }
     }
 }
 
-/// Records `path = ...` in an attribute body, looking inside `cfg_attr(predicate, ...)`.
-fn scan_attribute(stream: TokenStream, out: &mut Vec<Reference>) {
+/// Records the attributes in an attribute body that read files, looking inside
+/// `cfg_attr(predicate, ...)`. In a macro body it also records an attribute whose name holds a
+/// metavariable, since the caller can make that name `path`. A metavariable in a value, as in
+/// `#[doc = $doc]`, is harmless: what the caller passes there is scanned where it is written.
+fn scan_attribute(stream: TokenStream, in_macro: bool, out: &mut Vec<Reference>) {
     let tokens: Vec<TokenTree> = stream.into_iter().collect();
+    let Some(first) = tokens.first() else {
+        return;
+    };
+    // The name is the path before `=` or the arguments.
+    let name = tokens
+        .iter()
+        .take_while(|t| !matches!(t, TokenTree::Group(_)) && !is_punct(Some(t), '='));
+    if in_macro && name.clone().any(|t| is_punct(Some(t), '$')) {
+        out.push(Reference {
+            what: "an attribute named by a metavariable".to_owned(),
+            line: line_of(first),
+            value: None,
+            kind: Kind::Metavariable,
+            in_macro,
+        });
+        return;
+    }
     match &tokens[..] {
+        [TokenTree::Ident(attr), ..] if ident_name(attr) == "debugger_visualizer" => {
+            out.push(Reference {
+                what: "#[debugger_visualizer]".to_owned(),
+                line: line_of(first),
+                value: None,
+                kind: Kind::Code,
+                in_macro,
+            });
+        }
         [TokenTree::Ident(path), rest @ ..] if ident_name(path) == "path" => {
             let value = match rest {
                 [TokenTree::Punct(eq), lit] if eq.as_char() == '=' => plain_string(lit),
@@ -570,7 +761,8 @@ fn scan_attribute(stream: TokenStream, out: &mut Vec<Reference>) {
                 what: "#[path]".to_owned(),
                 line: line_of(&tokens[0]),
                 value,
-                imports_code: true,
+                kind: Kind::Code,
+                in_macro,
             });
         }
         [TokenTree::Ident(cfg_attr), TokenTree::Group(args)]
@@ -582,10 +774,71 @@ fn scan_attribute(stream: TokenStream, out: &mut Vec<Reference>) {
                 .split(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == ','))
                 .skip(1)
             {
-                scan_attribute(attr.iter().cloned().collect(), out);
+                scan_attribute(attr.iter().cloned().collect(), in_macro, out);
             }
         }
         _ => {}
+    }
+}
+
+/// The directory of the package that `file` belongs to: its nearest ancestor holding a
+/// `Cargo.toml`, or `verifier/` itself.
+fn package_dir<'a>(file: &'a Path, verifier: &'a Path) -> &'a Path {
+    file.ancestors()
+        .skip(1)
+        .take_while(|dir| dir.starts_with(verifier))
+        .find(|dir| dir.join("Cargo.toml").is_file())
+        .unwrap_or(verifier)
+}
+
+/// What is wrong with one reference found in `file`, if anything.
+fn reference_violation(r: &Reference, file: &Path, verifier: &Path) -> Option<String> {
+    let value = match (r.kind, &r.value) {
+        (Kind::Code, _) => {
+            return Some(format!(
+                "{} is not allowed: code enters a verifier crate only through `mod` \
+                 declarations at their default paths and through dependencies",
+                r.what
+            ));
+        }
+        (Kind::Indirect, _) => {
+            return Some(format!(
+                "{} used other than in a direct call can hide a file reference",
+                r.what
+            ));
+        }
+        (Kind::Metavariable, _) => {
+            return Some(format!(
+                "a macro body uses {}, which its caller can turn into a file reference",
+                r.what
+            ));
+        }
+        (Kind::Data, _) if r.in_macro => {
+            return Some(format!(
+                "{} in a macro body resolves at each call site",
+                r.what
+            ));
+        }
+        (Kind::Data, None) => {
+            return Some(format!("{} needs a plain string literal argument", r.what));
+        }
+        (Kind::Data, Some(value)) => value,
+    };
+    if Path::new(value).is_absolute() {
+        return Some(format!("{} uses an absolute path `{value}`", r.what));
+    }
+    let target = normalize(&file.parent().unwrap_or(verifier).join(value));
+    let package = package_dir(file, verifier);
+    if !target.starts_with(verifier) {
+        Some(format!("{} `{value}` resolves outside verifier/", r.what))
+    } else if package_dir(&target, verifier) != package {
+        Some(format!(
+            "{} `{value}` resolves outside its package (verifier/{})",
+            r.what,
+            package.strip_prefix(verifier).unwrap_or(package).display()
+        ))
+    } else {
+        None
     }
 }
 
@@ -597,6 +850,16 @@ fn source_violations(verifier: &Path) -> io::Result<Vec<String>> {
             .unwrap_or(&path)
             .display()
             .to_string();
+        // A newline in a path would split rustc's dep-info records, which check 8 parses.
+        match path.file_name().and_then(|name| name.to_str()) {
+            None => violations.push(format!("verifier/{rel:?} has a name that is not UTF-8")),
+            Some(name) if name.chars().any(char::is_control) => {
+                violations.push(format!(
+                    "verifier/{rel:?} has a control character in its name"
+                ));
+            }
+            Some(_) => {}
+        }
         if fs::symlink_metadata(&path)?.file_type().is_symlink() {
             violations.push(format!("verifier/{rel} is a symlink"));
             continue;
@@ -613,32 +876,15 @@ fn source_violations(verifier: &Path) -> io::Result<Vec<String>> {
             }
         };
         let mut references = Vec::new();
-        scan(stream, &mut references);
-        let dir = path.parent().unwrap_or(verifier);
-        for r in references {
-            let at = format!("verifier/{rel}:{}", r.line);
-            match r.value {
-                None => violations.push(format!(
-                    "{at}: {} needs a plain string literal argument",
-                    r.what
-                )),
-                Some(value) if Path::new(&value).is_absolute() => {
-                    violations.push(format!("{at}: {} uses an absolute path `{value}`", r.what));
-                }
-                Some(value) if !normalize(&dir.join(&value)).starts_with(verifier) => {
-                    violations.push(format!(
-                        "{at}: {} `{value}` resolves outside verifier/",
-                        r.what
-                    ));
-                }
-                // Only `.rs` files are scanned, so imported code must live in one.
-                Some(value) if r.imports_code && !value.ends_with(".rs") => {
-                    violations.push(format!("{at}: {} `{value}` must name a .rs file", r.what));
-                }
-                Some(_) => {}
+        scan(stream, false, &mut references);
+        for r in &references {
+            if let Some(problem) = reference_violation(r, &path, verifier) {
+                violations.push(format!("verifier/{rel}:{}: {problem}", r.line));
             }
         }
     }
+    // A macro's matcher and transcriber can repeat one finding on one line.
+    violations.dedup();
     Ok(violations)
 }
 
@@ -871,6 +1117,210 @@ fn test_support_violations(graph: &Json) -> Vec<String> {
     violations.sort();
     violations.dedup();
     violations
+}
+
+// ----- Check 8: compiled files --------------------------------------------------------------
+
+/// Check 8. The token scan of check 3 cannot follow macro expansion: a dependency's macro can
+/// expand to `include!` at a call site that shows no include. So this check asks the compiler.
+/// It runs `cargo check` on every target and reads the dep-info rustc writes for each unit of a
+/// verifier crate, which lists every file that compilation read: the crate root, its modules and
+/// every included file. Each must be a file inside that crate's directory and outside the build
+/// directory.
+///
+/// It checks two configurations: the dev profile with every feature, and the release profile,
+/// which is what ships and compiles `cfg(not(debug_assertions))` code, with every feature except
+/// the test-only ones, whose guards fail release builds (RFC-0001 'Cargo features'). Code under
+/// other `cfg`s, such as other targets, is left to the token scan, which reads every `cfg`.
+fn compiled_file_violations(
+    cargo: &Cargo,
+    verifier: &Path,
+    graph: &Json,
+    toolchain: Option<&str>,
+) -> Vec<String> {
+    let members = workspace_members(graph);
+    let release_features: Vec<String> = packages(graph)
+        .filter(|p| members.contains(&str_field(p, "id")))
+        .flat_map(|p| {
+            let name = str_field(p, "name");
+            p["features"]
+                .as_object()
+                .into_iter()
+                .flat_map(|features| features.keys())
+                .filter(|feature| !crate::test_features::TEST_ONLY.contains(&feature.as_str()))
+                .map(move |feature| format!("{name}/{feature}"))
+        })
+        .collect();
+    let mut release = vec!["--release".to_owned()];
+    if !release_features.is_empty() {
+        release.extend(["--features".to_owned(), release_features.join(",")]);
+    }
+    let mut violations = Vec::new();
+    for args in [vec!["--all-features".to_owned()], release] {
+        violations.extend(compiled_files_of_one_build(
+            cargo, verifier, graph, toolchain, &args,
+        ));
+    }
+    violations.sort();
+    violations.dedup();
+    violations
+}
+
+fn compiled_files_of_one_build(
+    cargo: &Cargo,
+    verifier: &Path,
+    graph: &Json,
+    toolchain: Option<&str>,
+    args: &[String],
+) -> Vec<String> {
+    let build_dir = verifier.join("target");
+    let mut cmd = cargo.command(verifier, toolchain);
+    cmd.args([
+        "check",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--message-format=json",
+    ])
+    .args(args)
+    .arg("--target-dir")
+    .arg(build_dir.join("check-isolation"));
+    let build = format!("cargo check {}", args.first().map_or("", String::as_str));
+    let output = match cmd.output() {
+        Ok(output) => output,
+        Err(e) => return vec![format!("cannot run cargo: {e}")],
+    };
+    let messages: Vec<Json> = output
+        .stdout
+        .split(|&b| b == b'\n')
+        .filter_map(|line| serde_json::from_slice(line).ok())
+        .collect();
+    if !output.status.success() {
+        let error = messages
+            .iter()
+            .find(|m| m["reason"] == "compiler-message" && m["message"]["level"] == "error")
+            .and_then(|m| m["message"]["rendered"].as_str())
+            .map_or_else(
+                || String::from_utf8_lossy(&output.stderr).into_owned(),
+                str::to_owned,
+            );
+        return vec![format!("{build} failed: {}", error.trim())];
+    }
+
+    let repo = verifier.parent().unwrap_or(verifier);
+    let mut violations = Vec::new();
+    for message in messages
+        .iter()
+        .filter(|m| m["reason"] == "compiler-artifact")
+    {
+        let id = str_field(message, "package_id");
+        // Every path package, not only members: DEP-1 rejects non-members, and this check does
+        // not rely on it.
+        let Some(package) =
+            packages(graph).find(|p| p["source"].is_null() && str_field(p, "id") == id)
+        else {
+            continue;
+        };
+        let name = str_field(package, "name");
+        let manifest = Path::new(str_field(package, "manifest_path"));
+        let dir = resolve(manifest.parent().unwrap_or(manifest));
+        let target = str_field(&message["target"], "name");
+        let unit = format!("{name} target `{target}`");
+        for artifact in message["filenames"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Json::as_str)
+        {
+            let artifact = Path::new(artifact);
+            let dep_info = dep_info_path(artifact);
+            let files = fs::read_to_string(&dep_info)
+                .map_err(|e| format!("cannot read {}: {e}", dep_info.display()))
+                .and_then(|text| dep_info_files(&text, &[artifact, &dep_info]));
+            let files = match files {
+                Ok(files) => files,
+                Err(e) => {
+                    violations.push(format!("{build}: {unit}: dep-info: {e}"));
+                    continue;
+                }
+            };
+            for file in files {
+                // Cargo runs rustc for path packages from the workspace root.
+                let path = normalize(&verifier.join(&file));
+                let shown = path.strip_prefix(repo).unwrap_or(&path).display();
+                if !path.starts_with(&dir) || path.starts_with(&build_dir) {
+                    violations.push(format!(
+                        "compiling {unit} reads {shown}, outside verifier/{}",
+                        dir.strip_prefix(verifier).unwrap_or(&dir).display()
+                    ));
+                } else if !path.is_file() {
+                    violations.push(format!(
+                        "{build}: {unit}: dep-info lists {shown}, which is not a file"
+                    ));
+                }
+            }
+        }
+    }
+    violations
+}
+
+/// The dep-info file rustc writes next to an artifact: `lib<name>-<hash>.rmeta` has
+/// `<name>-<hash>.d`.
+fn dep_info_path(artifact: &Path) -> PathBuf {
+    let stem = artifact
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or_default();
+    artifact.with_file_name(format!("{}.d", stem.strip_prefix("lib").unwrap_or(stem)))
+}
+
+/// The words of a dep-info line: separated by spaces, with a backslash escaping the next
+/// character.
+fn dep_info_words(line: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => word.extend(chars.next()),
+            ' ' if !word.is_empty() => words.push(std::mem::take(&mut word)),
+            ' ' => {}
+            c => word.push(c),
+        }
+    }
+    if !word.is_empty() {
+        words.push(word);
+    }
+    words
+}
+
+/// The files a rustc dep-info file lists, read strictly. rustc writes one rule
+/// `output: file file …` per output, then an empty rule `file:` per file, and `#` comments for
+/// environment and checksum records. Any other line, such as the remainder of a path that
+/// contained a newline, makes the record untrustworthy, so it is an error.
+fn dep_info_files(text: &str, outputs: &[&Path]) -> Result<Vec<String>, String> {
+    let mut files: Vec<String> = Vec::new();
+    for line in text.lines() {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let words = dep_info_words(line);
+        let Some((target, rest)) = words.split_first() else {
+            continue;
+        };
+        let Some(target) = target.strip_suffix(':') else {
+            return Err(format!("unexpected line {line:?}"));
+        };
+        if outputs.iter().any(|output| Path::new(target) == *output) {
+            files.extend(rest.iter().cloned());
+        } else if !(rest.is_empty() && files.iter().any(|file| file == target)) {
+            return Err(format!("unexpected line {line:?}"));
+        }
+    }
+    if files.is_empty() {
+        return Err("no rule for the artifact".to_owned());
+    }
+    Ok(files)
 }
 
 #[cfg(test)]

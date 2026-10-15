@@ -66,8 +66,8 @@ impl FixtureRepo {
         cargo
     }
 
-    /// Every violation as `"<check>: <violation>"`, after regenerating both lockfiles.
-    fn violations(&self) -> Vec<String> {
+    /// Every check's report, after regenerating both lockfiles.
+    fn reports(&self) -> Vec<Report> {
         let cargo = self.cargo();
         let pin = repo::pinned_channel(&self.path().join("rust-toolchain.toml"));
         for dir in [self.path().to_path_buf(), self.path().join("verifier")] {
@@ -83,18 +83,17 @@ impl FixtureRepo {
                 String::from_utf8_lossy(&output.stderr)
             );
         }
-        checks(self.path(), &cargo)
-            .expect("fixture is readable")
-            .into_iter()
-            .flat_map(|(check, violations)| {
-                violations.into_iter().map(move |v| format!("{check}: {v}"))
-            })
-            .collect()
+        checks(self.path(), &cargo).expect("fixture is readable")
     }
 
-    /// Asserts that the violations are exactly one per needle, each containing its needle.
+    /// Asserts that the violations are exactly one per needle, each containing its needle. With
+    /// no needle, also asserts that every check ran.
     fn assert_violations(&self, needles: &[&str]) {
-        let violations = self.violations();
+        let reports = self.reports();
+        if needles.is_empty() {
+            assert_eq!(skipped(&reports), Vec::<&str>::new(), "skipped checks");
+        }
+        let violations = violations(reports);
         assert_eq!(
             violations.len(),
             needles.len(),
@@ -109,18 +108,36 @@ impl FixtureRepo {
     }
 }
 
+/// Every violation as `"<check>: <violation>"`.
+fn violations(reports: Vec<Report>) -> Vec<String> {
+    reports
+        .into_iter()
+        .flat_map(|r| {
+            let name = r.name;
+            r.violations
+                .into_iter()
+                .map(move |v| format!("{name}: {v}"))
+        })
+        .collect()
+}
+
+/// The names of the checks that did not run.
+fn skipped(reports: &[Report]) -> Vec<&'static str> {
+    reports
+        .iter()
+        .filter(|r| r.skipped.is_some())
+        .map(|r| r.name)
+        .collect()
+}
+
 const TV_A: &str = "verifier/crates/tv-a/Cargo.toml";
 const TV_A_LIB: &str = "verifier/crates/tv-a/src/lib.rs";
 
 #[test]
 fn repository_is_isolated() {
-    let failures: Vec<String> = checks(&repo::root(), &Cargo::from_env())
-        .expect("repository is readable")
-        .into_iter()
-        .flat_map(|(check, violations)| {
-            violations.into_iter().map(move |v| format!("{check}: {v}"))
-        })
-        .collect();
+    let reports = checks(&repo::root(), &Cargo::from_env()).expect("repository is readable");
+    assert_eq!(skipped(&reports), Vec::<&str>::new(), "skipped checks");
+    let failures = violations(reports);
     assert!(
         failures.is_empty(),
         "isolation failures:\n{}",
@@ -215,9 +232,7 @@ fn path_attribute_reaching_prover_sources_fails() {
         TV_A_LIB,
         "#[path = \"../../../../crates/shared-util/src/lib.rs\"]\nmod stolen;\n",
     );
-    repo.assert_violations(&[
-        "tv-a/src/lib.rs:4: #[path] `../../../../crates/shared-util/src/lib.rs`",
-    ]);
+    repo.assert_violations(&["tv-a/src/lib.rs:4: #[path] is not allowed"]);
 }
 
 #[test]
@@ -238,10 +253,10 @@ fn indirect_file_references_fail() {
         ),
     );
     repo.assert_violations(&[
-        "lib.rs:4: #[path] `../../../../crates/shared-util/src/lib.rs` resolves outside",
-        "lib.rs:6: include_str! `../../../../README.md` resolves outside",
-        "lib.rs:8: renaming include_bytes",
-        "lib.rs:9: include_bytes! needs a plain string literal",
+        "lib.rs:4: #[path] is not allowed",
+        "lib.rs:6: include_str! `../../../../README.md` resolves outside verifier/",
+        "lib.rs:8: `include_bytes` used other than in a direct call",
+        "lib.rs:9: include_bytes! in a macro body resolves at each call site",
         "lib.rs:10: include_str! needs a plain string literal",
         "lib.rs:11: include_bytes! needs a plain string literal",
         "lib.rs:12: include_str! uses an absolute path",
@@ -264,7 +279,6 @@ fn references_inside_verifier_and_mentions_in_comments_pass() {
     repo.assert_violations(&[]);
 }
 
-#[cfg(unix)]
 #[test]
 fn symlink_under_verifier_fails() {
     let repo = FixtureRepo::clean();
@@ -325,6 +339,38 @@ fn test_support_as_a_normal_or_build_dependency_fails() {
 }
 
 #[test]
+fn optional_dependencies_are_checked_whatever_the_features() {
+    // An optional dependency that no default feature enables is absent from a default resolve;
+    // every graph check must see it as if it were enabled.
+    let repo = FixtureRepo::clean();
+    repo.append(
+        TV_A,
+        concat!(
+            "shared-util = { path = \"../../../crates/shared-util\", optional = true }\n",
+            "notallowed = { version = \"1\", optional = true }\n",
+            "tv-testkit = { path = \"../tv-testkit\", optional = true }\n",
+            "\n[features]\n",
+            "extra = [\"dep:shared-util\", \"dep:notallowed\", \"dep:tv-testkit\"]\n",
+        ),
+    );
+    repo.append(
+        "crates/tessera-probe/Cargo.toml",
+        concat!(
+            "\n[dependencies]\n",
+            "tv-a = { path = \"../../verifier/crates/tv-a\", optional = true }\n",
+            "\n[features]\n",
+            "probe = [\"dep:tv-a\"]\n",
+        ),
+    );
+    repo.assert_violations(&[
+        "shared-util is a path package outside verifier/",
+        "notallowed 1.0.0 is not in verifier/allowlist.toml",
+        "tv-a has a normal dependency on test-support crate tv-testkit",
+        "tessera-probe has a normal dependency on verifier crate tv-a",
+    ]);
+}
+
+#[test]
 fn directory_named_target_inside_sources_is_scanned() {
     // Only verifier/target is skipped; a force-added src/target/ is ordinary source.
     let repo = FixtureRepo::clean();
@@ -337,17 +383,246 @@ fn directory_named_target_inside_sources_is_scanned() {
 }
 
 #[test]
-fn included_code_must_be_a_rust_file() {
-    // Code imported from a non-.rs file would escape the scan.
+fn code_inclusion_is_not_allowed() {
+    // `include!` and `#[path]` can reach any file, and rustc resolves `#[path]` inside inline
+    // modules from a directory the module itself can set; so neither is allowed, wherever it
+    // points.
     let repo = FixtureRepo::clean();
     repo.write("verifier/crates/tv-a/code.txt", "pub fn f() {}\n");
     repo.append(
         TV_A_LIB,
-        "include!(\"../code.txt\");\n#[path = \"../code.txt\"]\nmod code;\n",
+        concat!(
+            "include!(\"../code.txt\");\n", // line 4
+            "#[path = \"inner.rs\"]\n",     // line 5
+            "mod inner;\n",
+            "#[path = \"../../.rs\"]\n", // line 7
+            "mod w {\n",
+            "    #[path = \"../../tv-testkit/src/lib.rs\"]\n", // line 9
+            "    pub(crate) mod testkit;\n",
+            "}\n",
+            "#![debugger_visualizer(gdb_script_file = \"../../../../crates/x.py\")]\n", // line 12
+        ),
     );
     repo.assert_violations(&[
-        "lib.rs:4: include! `../code.txt` must name a .rs file",
-        "lib.rs:5: #[path] `../code.txt` must name a .rs file",
+        "lib.rs:4: include! is not allowed",
+        "lib.rs:5: #[path] is not allowed",
+        "lib.rs:7: #[path] is not allowed",
+        "lib.rs:9: #[path] is not allowed",
+        "lib.rs:12: #[debugger_visualizer] is not allowed",
+    ]);
+}
+
+#[test]
+fn macro_bodies_cannot_hide_file_references() {
+    // In a macro body a path resolves at each call site, and a name taken from a metavariable
+    // can be an include macro or `path`; neither is visible where the macro is defined.
+    let repo = FixtureRepo::clean();
+    repo.append(
+        TV_A_LIB,
+        concat!(
+            "macro_rules! grab { () => { include_str!(\"../Cargo.toml\") }; }\n", // line 4
+            "macro_rules! call { ($m:ident) => { $m!(\"x.rs\") }; }\n",           // line 5
+            "macro_rules! attr { ($a:ident) => { #[$a = \"x.rs\"] mod m; }; }\n", // line 6
+            "macro_rules! meta { ($m:meta) => { #[$m] mod n; }; }\n",             // line 7
+            "pub fn pass(x: u8) -> u8 { call_with!(include_str) }\n",             // line 8
+            "macro_rules! ca { ($a:ident) => { #[cfg_attr(all(), $a = \"x.rs\")] mod o; }; }\n",
+            "macro_rules! cm { ($m:meta) => { #[cfg_attr(all(), $m)] mod p; }; }\n", // line 10
+            "macro_rules! fw { ($(#[$m:meta])* $i:item) => { $(#[$m])* $i }; }\n",   // line 11
+            // Metavariables in values are what the caller wrote, and are scanned there.
+            "macro_rules! doc { ($d:literal) => { #[doc = $d] pub struct D; }; }\n",
+            "macro_rules! cd { ($d:literal) => { #[cfg_attr($d, doc = $d)] pub struct E; }; }\n",
+        ),
+    );
+    repo.assert_violations(&[
+        "lib.rs:4: include_str! in a macro body resolves at each call site",
+        "lib.rs:5: a macro body uses `$m!`",
+        "lib.rs:6: a macro body uses an attribute named by a metavariable",
+        "lib.rs:7: a macro body uses an attribute named by a metavariable",
+        "lib.rs:8: `include_str` used other than in a direct call",
+        "lib.rs:9: a macro body uses an attribute named by a metavariable",
+        "lib.rs:10: a macro body uses an attribute named by a metavariable",
+        "lib.rs:11: a macro body uses an attribute named by a metavariable",
+    ]);
+}
+
+#[test]
+fn data_includes_stay_inside_their_package() {
+    let repo = FixtureRepo::clean();
+    repo.write("verifier/crates/tv-a/data.txt", "data\n");
+    repo.append(
+        TV_A_LIB,
+        concat!(
+            "pub const OWN: &str = include_str!(\"../data.txt\");\n",
+            "pub const OTHER: &str = include_str!(\"../../tv-cli/Cargo.toml\");\n", // line 5
+        ),
+    );
+    repo.assert_violations(&[
+        "lib.rs:5: include_str! `../../tv-cli/Cargo.toml` resolves outside its package (verifier/crates/tv-a)",
+    ]);
+}
+
+#[test]
+fn crate_roots_stay_inside_their_package() {
+    let repo = FixtureRepo::clean();
+    // A new crate whose library is another crate's source.
+    repo.write(
+        "verifier/crates/tv-vectors/Cargo.toml",
+        concat!(
+            "[package]\nname = \"tv-vectors\"\nversion.workspace = true\n",
+            "edition.workspace = true\nlicense.workspace = true\npublish.workspace = true\n",
+            "\n[lib]\npath = \"../tv-testkit/src/lib.rs\"\n",
+        ),
+    );
+    // A crate root the source scan would not read.
+    repo.write("verifier/crates/tv-a/src/lib.txt", "pub fn f() {}\n");
+    repo.append(TV_A, "\n[lib]\npath = \"src/lib.txt\"\n");
+    // A package hidden in the build directory, which the source scan skips.
+    repo.write(
+        "verifier/target/tv-hidden/Cargo.toml",
+        concat!(
+            "[package]\nname = \"tv-hidden\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+            "license = \"Apache-2.0 OR MIT\"\npublish = false\n",
+        ),
+    );
+    repo.write(
+        "verifier/target/tv-hidden/src/lib.rs",
+        "// SPDX-License-Identifier: Apache-2.0 OR MIT\n",
+    );
+    repo.append(
+        "verifier/crates/tv-cli/Cargo.toml",
+        "\n[dependencies.tv-hidden]\npath = \"../../target/tv-hidden\"\n",
+    );
+    repo.assert_violations(&[
+        "tv-vectors target `tv_vectors` compiles a source outside its package",
+        "tv-a target `tv_a` has a crate root that is not a .rs file",
+        "tv-hidden lives in the build directory verifier/target",
+    ]);
+}
+
+#[test]
+fn names_with_control_characters_fail() {
+    // A newline in a path would split rustc's dep-info records, which check 8 reads.
+    let repo = FixtureRepo::clean();
+    repo.write("verifier/crates/tv-a/src/x\ny/z.txt", "z\n");
+    repo.assert_violations(&["\"crates/tv-a/src/x\\ny\" has a control character in its name"]);
+}
+
+#[test]
+fn path_packages_outside_the_workspace_members_fail() {
+    // An excluded package would escape `--all-features`, which applies to members, and the
+    // feature coverage of check 8.
+    let repo = FixtureRepo::clean();
+    repo.replace(
+        "verifier/Cargo.toml",
+        "members = [\"crates/*\"]",
+        "members = [\"crates/*\"]\nexclude = [\"shadow\"]",
+    );
+    repo.write(
+        "verifier/shadow/Cargo.toml",
+        concat!(
+            "[package]\nname = \"tv-shadow\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+            "license = \"Apache-2.0 OR MIT\"\npublish = false\n\n[workspace]\n",
+        ),
+    );
+    repo.write(
+        "verifier/shadow/src/lib.rs",
+        "// SPDX-License-Identifier: Apache-2.0 OR MIT\n",
+    );
+    repo.append(TV_A, "tv-shadow = { path = \"../../shadow\" }\n");
+    repo.assert_violations(&["tv-shadow is a path package but not a member"]);
+}
+
+#[test]
+fn files_read_only_in_release_builds_are_caught() {
+    // Code under `cfg(not(debug_assertions))` is compiled only in release builds, which ship.
+    let repo = FixtureRepo::clean();
+    repo.append(
+        "vendor/blake3-1.5.0/src/lib.rs",
+        "#[macro_export]\nmacro_rules! embed { ($p:literal) => { include_str!($p) }; }\n",
+    );
+    repo.append(
+        TV_A_LIB,
+        concat!(
+            "#[cfg(not(debug_assertions))]\n",
+            "pub const S: &str = blake3::embed!(\"../../../../crates/shared-util/src/lib.rs\");\n",
+        ),
+    );
+    repo.assert_violations(&[
+        "compiling tv-a target `tv_a` reads crates/shared-util/src/lib.rs, outside verifier/crates/tv-a",
+    ]);
+}
+
+#[test]
+fn dep_info_is_read_strictly() {
+    let out = Path::new("/t/debug/deps/libx-1.rmeta");
+    let d = Path::new("/t/debug/deps/x-1.d");
+    let outputs = [out, d];
+    let good = concat!(
+        "/t/debug/deps/x-1.d: crates/x/src/lib.rs crates/x/src/a\\ b.rs\n",
+        "/t/debug/deps/libx-1.rmeta: crates/x/src/lib.rs crates/x/src/a\\ b.rs\n",
+        "\n",
+        "crates/x/src/lib.rs:\n",
+        "crates/x/src/a\\ b.rs:\n",
+        "\n",
+        "# env-dep:CARGO_MANIFEST_DIR=/x\n",
+    );
+    assert_eq!(
+        dep_info_files(good, &outputs),
+        Ok(vec![
+            "crates/x/src/lib.rs".to_owned(),
+            "crates/x/src/a b.rs".to_owned(),
+            "crates/x/src/lib.rs".to_owned(),
+            "crates/x/src/a b.rs".to_owned(),
+        ])
+    );
+    // A path holding a newline splits its rule: the gate refuses the record instead of reading
+    // the in-package prefix and dropping the rest.
+    let split = concat!(
+        "/t/debug/deps/x-1.d: crates/x/src/x\n",
+        "/../../../evil/src/lib.rs\n",
+        "\n",
+        "crates/x/src/x\n",
+        "/../../../evil/src/lib.rs:\n",
+    );
+    assert!(dep_info_files(split, &outputs).is_err());
+    // The same with every other line well formed: the stray remainder alone must be refused.
+    let stray = concat!(
+        "/t/debug/deps/x-1.d: crates/x/src/x\n",
+        "/../../../evil/src/lib.rs\n",
+        "\n",
+        "crates/x/src/x:\n",
+    );
+    assert!(dep_info_files(stray, &outputs).is_err());
+    // A rule for an output that is not this unit's, or an empty rule for an unlisted file.
+    assert!(dep_info_files("/other.d: a.rs\n", &outputs).is_err());
+    assert!(dep_info_files("/t/debug/deps/x-1.d: a.rs\nb.rs:\n", &outputs).is_err());
+    assert!(dep_info_files("", &outputs).is_err());
+}
+
+#[test]
+fn files_a_dependency_macro_reads_are_caught_from_the_compiler_record() {
+    // An allowlisted dependency exports macros that expand to `include_str!` and `include!`.
+    // At the call site no include is visible, so the source scan passes; rustc resolves the
+    // paths from the call site and records the files in its dep-info.
+    let repo = FixtureRepo::clean();
+    repo.append(
+        "vendor/blake3-1.5.0/src/lib.rs",
+        concat!(
+            "#[macro_export]\nmacro_rules! embed { ($p:literal) => { include_str!($p) }; }\n",
+            "#[macro_export]\nmacro_rules! value { ($p:literal) => { include!($p) }; }\n",
+        ),
+    );
+    repo.write("crates/shared-util/src/value.rs", "7\n");
+    repo.append(
+        TV_A_LIB,
+        concat!(
+            "pub const S: &str = blake3::embed!(\"../../../../crates/shared-util/src/lib.rs\");\n",
+            "pub const V: u32 = blake3::value!(\"../../../../crates/shared-util/src/value.rs\");\n",
+        ),
+    );
+    repo.assert_violations(&[
+        "compiling tv-a target `tv_a` reads crates/shared-util/src/lib.rs, outside verifier/crates/tv-a",
+        "compiling tv-a target `tv_a` reads crates/shared-util/src/value.rs, outside verifier/crates/tv-a",
     ]);
 }
 
@@ -361,7 +636,7 @@ fn raw_identifiers_are_recognized() {
             "#[r#path = \"../../../../crates/shared-util/src/lib.rs\"]\nmod stolen;\n",
         ),
     );
-    repo.assert_violations(&["lib.rs:4: include_str!", "lib.rs:5: #[path]"]);
+    repo.assert_violations(&["lib.rs:4: include_str!", "lib.rs:5: #[path] is not allowed"]);
 }
 
 #[test]
@@ -414,8 +689,8 @@ fn target_sources_outside_verifier_fail() {
         "\n[[bin]]\nname = \"tv-verify\"\npath = \"../../../crates/shared-util/src/main.rs\"\n",
     );
     repo.assert_violations(&[
-        "tv-a target `tv_a` compiles a source outside verifier/",
-        "tv-cli target `tv-verify` compiles a source outside verifier/",
+        "tv-a target `tv_a` compiles a source outside its package",
+        "tv-cli target `tv-verify` compiles a source outside its package",
     ]);
 }
 
@@ -454,8 +729,8 @@ fn cargo_configuration_that_could_redirect_dependencies_fails() {
         ".cargo/config.toml",
         "[alias]\nxtask = \"run --quiet --package xtask --\"\n[build]\njobs = 1\n",
     );
-    // A patch to a copy of the crate inside verifier/ passes DEP-1 and DEP-3; only check 6
-    // sees the substitution.
+    // A patch to a copy of the crate inside verifier/ passes DEP-3. Check 6 sees the
+    // substitution, and DEP-1 sees a path package outside the workspace members.
     copy_dir(
         &repo.path().join("vendor/blake3-1.5.0"),
         &repo.path().join("verifier/patched/blake3"),
@@ -465,6 +740,7 @@ fn cargo_configuration_that_could_redirect_dependencies_fails() {
         "\n[patch.crates-io]\nblake3 = { path = \"patched/blake3\" }\n",
     );
     repo.assert_violations(&[
+        "blake3 is a path package but not a member of the verifier workspace",
         "verifier/.cargo: cargo configuration under verifier/ is not allowed",
         ".cargo/config.toml: only [alias] is allowed, found `build`",
         "verifier/Cargo.toml: [patch] can substitute any dependency",
