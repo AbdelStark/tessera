@@ -106,7 +106,7 @@ fn every_truncation_of_a_golden_case_is_truncated() {
 }
 
 #[test]
-fn every_corpus_entry_is_rejected_with_its_code() {
+fn every_corpus_entry_is_rejected_with_its_code_at_its_offset() {
     let file = load("noncanonical.json");
     let limits = limits(&file["limits"]);
     let cases = own(&file["cases"]);
@@ -118,10 +118,16 @@ fn every_corpus_entry_is_rejected_with_its_code() {
     for (case, ty, input) in cases {
         let code =
             ErrorCode::from_identifier(case["code"].as_str().expect("code")).expect("a known code");
+        let offset = case["offset"].as_u64().expect("offset");
         let error = decode_as(&ty, &input, limits)
             .expect("a codec type")
             .expect_err("a corpus entry decoded");
-        assert_eq!(error.code, code, "{ty}: {}", case["why"]);
+        assert_eq!(
+            (error.code, error.offset),
+            (code, offset),
+            "{ty}: {}",
+            case["why"]
+        );
     }
 }
 

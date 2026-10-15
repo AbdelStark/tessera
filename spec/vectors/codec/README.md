@@ -10,7 +10,7 @@ These files pin the Tessera Canonical Encoding ([RFC-0003](../../../docs/rfcs/RF
 | File | What it pins |
 |---|---|
 | `golden.json` | Encodings of values: decoding `hex` as `type` gives `value`. Every proper prefix of `hex` is `ERR-CODEC-TRUNCATED`. |
-| `noncanonical.json` | `cases`: inputs that decoding as `type` must reject with `code`, each for one reason. `accepted`: inputs sitting exactly at a limit, which decoding must accept. |
+| `noncanonical.json` | `cases`: inputs that decoding as `type` must reject with `code` at `offset`, the first byte the failing check reads (RFC-0003 'Limits'), each for one reason. `accepted`: inputs sitting exactly at a limit, which decoding must accept. |
 | `envelope.json` | Envelopes (RFC-0003 'Envelope'): the payload a reader returns, or the `code` and `offset` it must report, in the order the RFC fixes. |
 
 Each file states the `limits` (`max_total_bytes`, `max_vec_len`, `max_depth`; RFC-0003 'Limits') its cases are read under.

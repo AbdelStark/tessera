@@ -11,7 +11,8 @@
 //!
 //! [`Encode`] and [`Decode`] cover the primitive and composite types. `#[derive(Encode, Decode)]`
 //! covers schema structs and enums. Every decoder rejects any input that is not the encoding of
-//! a value, with a stable code and the offset of the value at fault.
+//! a value, with a stable code and the offset of the first byte the failing check reads
+//! (RFC-0003 'Limits').
 
 #![forbid(unsafe_code)]
 

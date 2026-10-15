@@ -60,263 +60,306 @@
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "02",
+      "offset": 0,
       "type": "bool",
       "why": "a bool byte other than 0 or 1"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "ff",
+      "offset": 0,
       "type": "bool",
       "why": "a bool byte other than 0 or 1"
     },
     {
       "code": "ERR-CODEC-TRUNCATED",
       "hex": "01",
+      "offset": 0,
       "type": "u16",
       "why": "one byte of two"
     },
     {
       "code": "ERR-CODEC-TRUNCATED",
       "hex": "00000000000000",
+      "offset": 0,
       "type": "u64",
       "why": "seven bytes of eight"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "0102",
+      "offset": 1,
       "type": "u8",
       "why": "a byte left over after the value"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "01000000000000001f",
+      "offset": 8,
       "type": "Ascii",
       "why": "a control character"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "01000000000000007f",
+      "offset": 8,
       "type": "Ascii",
       "why": "DEL"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "010000000000000080",
+      "offset": 8,
       "type": "Ascii",
       "why": "a byte above 0x7E"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "03000000000000006f6b00",
+      "offset": 10,
       "type": "Ascii",
       "why": "a NUL byte"
     },
     {
       "code": "ERR-CODEC-TRUNCATED",
       "hex": "03000000000000006162",
+      "offset": 0,
       "type": "Ascii",
       "why": "two bytes of a declared three"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "01000000000000000000000000000000",
+      "offset": 0,
       "type": "Rational",
       "why": "a zero denominator"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "02000000000000000400000000000000",
+      "offset": 0,
       "type": "Rational",
       "why": "a fraction not in lowest terms"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "00000000000000000200000000000000",
+      "offset": 0,
       "type": "Rational",
       "why": "zero not written 0/1"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "fdffffffffffffff0900000000000000",
+      "offset": 0,
       "type": "Rational",
       "why": "a negative fraction not in lowest terms"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "00000000000000800200000000000000",
+      "offset": 0,
       "type": "Rational",
       "why": "i64::MIN over an even denominator"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "0200",
+      "offset": 0,
       "type": "Option<u64>",
       "why": "an Option tag above 1"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "ffff",
+      "offset": 0,
       "type": "Option<u64>",
       "why": "an Option tag of 0xFFFF"
     },
     {
       "code": "ERR-CODEC-TRUNCATED",
       "hex": "0100",
+      "offset": 2,
       "type": "Option<u64>",
       "why": "Some without its payload"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "0400",
+      "offset": 0,
       "type": "Shape",
       "why": "an enum tag past the last variant"
     },
     {
       "code": "ERR-CODEC-TRUNCATED",
       "hex": "02000300",
+      "offset": 4,
       "type": "Shape",
       "why": "a struct variant missing a field"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "020000000000000001000a000114",
+      "offset": 11,
       "type": "Map<u16, u8>",
       "why": "keys in numeric order, which is not encoding order"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "0200000000000000070001070002",
+      "offset": 11,
       "type": "Map<u16, u8>",
       "why": "a duplicate key"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "0200000000000000020000000000000061610101000000000000006202",
+      "offset": 19,
       "type": "Map<Bytes, u8>",
       "why": "keys in content order, which is not encoding order: the length prefix sorts first"
     },
     {
       "code": "ERR-CODEC-LIMIT",
       "hex": "11000000000000000000000000000000000000000000000000",
+      "offset": 0,
       "type": "Vec<u8>",
       "why": "a length above max_vec_len, with every byte present"
     },
     {
       "code": "ERR-CODEC-TRUNCATED",
       "hex": "0a0000000000000000000000000000000000000000000000",
+      "offset": 0,
       "type": "Vec<u64>",
       "why": "a length whose elements cannot fit in the bytes left"
     },
     {
       "code": "ERR-CODEC-LIMIT",
       "hex": "0000000000000080",
+      "offset": 0,
       "type": "Vec<u64>",
       "why": "a length of 2^63: max_vec_len is checked before the bytes left"
     },
     {
       "code": "ERR-CODEC-LIMIT",
       "hex": "0101050000000000000007000700070007000700000003000000000000006162630000000000000000000000000000000000000000000000000000000000000000",
+      "offset": 0,
       "type": "Sample",
       "why": "a valid encoding one byte above max_total_bytes"
     },
     {
       "code": "ERR-CODEC-LIMIT",
       "hex": "030001000000000000000300010000000000000003000100000000000000030001000000000000000000",
+      "offset": 40,
       "type": "Shape",
       "why": "nesting at depth 9: each Shape and each Vec is one level"
     },
     {
       "code": "ERR-CODEC-LIMIT",
       "hex": "01000100010001000100010001000100010007",
+      "offset": 16,
       "type": "Option^9<u8>",
       "why": "nine Options: each is one level"
     },
     {
       "code": "ERR-CODEC-LIMIT",
       "hex": "07",
+      "offset": 0,
       "type": "[u8; 1]^9",
       "why": "nine nested arrays: each is one level"
     },
     {
       "code": "ERR-CODEC-LIMIT",
       "hex": "07070707070707070707",
+      "offset": 0,
       "type": "pair^9",
       "why": "nine nested pairs: each is one level"
     },
     {
       "code": "ERR-CODEC-LIMIT",
       "hex": "01000100010001000100010001000100010000000000000061",
+      "offset": 16,
       "type": "Option^8<Ascii>",
       "why": "eight Options around Ascii, which is one level"
     },
     {
       "code": "ERR-CODEC-LIMIT",
       "hex": "0100010001000100010001000100010001000000000000000200000000000000",
+      "offset": 16,
       "type": "Option^8<Rational>",
       "why": "eight Options around a Rational, which is one level"
     },
     {
       "code": "ERR-CODEC-LIMIT",
       "hex": "010001000100010001000100010001000000000000000102",
+      "offset": 22,
       "type": "Option^7<Map<u8, u8>>",
       "why": "seven Options around a map entry: the map and the entry are one level each"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "01000000ffffffff",
+      "offset": 0,
       "type": "Fp",
       "why": "the modulus itself"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "02000000ffffffff",
+      "offset": 0,
       "type": "Fp",
       "why": "a value above the modulus"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "ffffffffffffffff",
+      "offset": 0,
       "type": "Fp",
       "why": "2^64 − 1"
     },
     {
       "code": "ERR-CODEC-TRUNCATED",
       "hex": "01010101010101",
+      "offset": 0,
       "type": "Fp",
       "why": "seven bytes of eight"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "01000000ffffffff0000000000000000",
+      "offset": 0,
       "type": "Fp2",
       "why": "a non-canonical c0"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "000000000000000001000000ffffffff",
+      "offset": 8,
       "type": "Fp2",
       "why": "a non-canonical c1"
     },
     {
       "code": "ERR-CODEC-TRUNCATED",
       "hex": "0100000000000000",
+      "offset": 8,
       "type": "Fp2",
       "why": "c0 without c1"
     },
     {
       "code": "ERR-CODEC-NONCANONICAL",
       "hex": "02000000000000000300000000000000ffffffffffffffff",
+      "offset": 16,
       "type": "Vec<Fp>",
       "why": "a non-canonical element"
     },
     {
       "code": "ERR-CODEC-LIMIT",
       "hex": "0100010001000100010001000100010001000000000000000200000000000000",
+      "offset": 16,
       "type": "Option^8<Fp2>",
       "why": "eight Options around an Fp2, which is one level"
     }
   ],
-  "description": "TCE non-canonical corpus (RFC-0003 'Failure modes', 'Limits'), written by `cargo xtask gen-vectors`. Under `limits`, decoding each `cases` entry as `type` fails with `code`, each for one reason; decoding each `accepted` entry, which sits exactly at a limit, succeeds and encodes back to `hex`.",
+  "description": "TCE non-canonical corpus (RFC-0003 'Failure modes', 'Limits'), written by `cargo xtask gen-vectors`. Under `limits`, decoding each `cases` entry as `type` fails with `code` at `offset`, the first byte the failing check reads, counted from the start of the input; each fails for one reason, or for the pair whose order RFC-0003 'Limits' fixes. Decoding each `accepted` entry, which sits exactly at a limit, succeeds and encodes back to `hex`.",
   "limits": {
     "max_depth": 8,
     "max_total_bytes": 64,

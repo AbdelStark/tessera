@@ -50,35 +50,39 @@ pub fn corpus() -> Vec<Rejected> {
     use ErrorCode::{CodecNoncanonical as Noncanonical, CodecTruncated as Truncated};
     let words =
         |values: &[u64]| -> Vec<u8> { values.iter().flat_map(|v| v.to_le_bytes()).collect() };
-    let bad = |ty, bytes, code, why| Rejected {
+    let bad = |ty, bytes, code, offset, why| Rejected {
         ty,
         bytes,
         code,
+        offset,
         why,
     };
     vec![
-        bad("Fp", words(&[P]), Noncanonical, "the modulus itself"),
+        bad("Fp", words(&[P]), Noncanonical, 0, "the modulus itself"),
         bad(
             "Fp",
             words(&[P + 1]),
             Noncanonical,
+            0,
             "a value above the modulus",
         ),
-        bad("Fp", words(&[u64::MAX]), Noncanonical, "2^64 − 1"),
-        bad("Fp", vec![1; 7], Truncated, "seven bytes of eight"),
-        bad("Fp2", words(&[P, 0]), Noncanonical, "a non-canonical c0"),
-        bad("Fp2", words(&[0, P]), Noncanonical, "a non-canonical c1"),
-        bad("Fp2", words(&[1]), Truncated, "c0 without c1"),
+        bad("Fp", words(&[u64::MAX]), Noncanonical, 0, "2^64 − 1"),
+        bad("Fp", vec![1; 7], Truncated, 0, "seven bytes of eight"),
+        bad("Fp2", words(&[P, 0]), Noncanonical, 0, "a non-canonical c0"),
+        bad("Fp2", words(&[0, P]), Noncanonical, 8, "a non-canonical c1"),
+        bad("Fp2", words(&[1]), Truncated, 8, "c0 without c1"),
         bad(
             "Vec<Fp>",
             [words(&[2]), words(&[3, u64::MAX])].concat(),
             Noncanonical,
+            16,
             "a non-canonical element",
         ),
         bad(
             "Option^8<Fp2>",
             [[1u8, 0].repeat(8), words(&[1, 2])].concat(),
             ErrorCode::CodecLimit,
+            16,
             "eight Options around an Fp2, which is one level",
         ),
     ]

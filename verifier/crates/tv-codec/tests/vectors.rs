@@ -62,7 +62,7 @@ fn golden_values_decode_render_and_re_encode() {
 }
 
 #[test]
-fn noncanonical_inputs_fail_with_their_code_and_limit_cases_decode() {
+fn noncanonical_inputs_fail_with_their_code_at_their_offset_and_limit_cases_decode() {
     let file = read_vectors("codec/noncanonical.json");
     let limits = limits_of(file.get("limits").expect("limits"));
 
@@ -72,17 +72,15 @@ fn noncanonical_inputs_fail_with_their_code_and_limit_cases_decode() {
         let name = text(case, "type");
         let bytes = hex(text(case, "hex"));
         let code = code_named(text(case, "code"));
+        let offset = case.get("offset").and_then(Json::as_u64).expect("offset");
         match decode_whole(&Ty::parse(name), &bytes, &limits) {
             Ok(value) => panic!("{name} {}: accepted as {value:?}", text(case, "why")),
-            Err(error) => {
-                assert_eq!(
-                    error.code(),
-                    code,
-                    "{name}: {} gave {error}",
-                    text(case, "why")
-                );
-                assert!(error.offset() <= bytes.len() as u64, "{name}: {error}");
-            }
+            Err(error) => assert_eq!(
+                (error.code(), error.offset()),
+                (code, offset),
+                "{name}: {} gave {error}",
+                text(case, "why")
+            ),
         }
     }
 
