@@ -14,6 +14,7 @@ mod isolation;
 mod licenses;
 mod links;
 mod lint;
+mod pr_policy;
 mod repo;
 mod spdx;
 mod test_features;
@@ -31,6 +32,8 @@ usage: cargo xtask <command>
 
 commands:
   check-isolation    check that the verifier shares no code with the prover (RFC-0001)
+  check-pr --base <REF> [--labels <a,b,...>]
+                     check the change from REF to HEAD: changelog entries and DCO sign-off
   check-test-features
                      check that test-only cargo features fail release builds (RFC-0001)
   lint               check repository policies: unsafe code, SPDX headers, manifest
@@ -45,6 +48,13 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("check-isolation") => report(isolation::run(&repo::root())),
+        Some("check-pr") => match check_pr_args(std::env::args().skip(2)) {
+            Ok((base, labels)) => report(pr_policy::run(&repo::root(), &base, &labels)),
+            Err(message) => {
+                eprintln!("error: {message}\n\n{USAGE}");
+                ExitCode::from(EXIT_USAGE)
+            }
+        },
         Some("check-test-features") => report(test_features::run(&repo::root())),
         Some("lint") => report(lint::run(&repo::root())),
         Some(other) => {
@@ -68,4 +78,27 @@ fn report(outcome: std::io::Result<bool>) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Parses `--base <REF> [--labels <a,b,...>]`.
+fn check_pr_args(mut args: impl Iterator<Item = String>) -> Result<(String, Vec<String>), String> {
+    let (mut base, mut labels) = (None, Vec::new());
+    while let Some(arg) = args.next() {
+        let value = args
+            .next()
+            .ok_or_else(|| format!("`{arg}` needs a value"))?;
+        match arg.as_str() {
+            "--base" => base = Some(value),
+            "--labels" => {
+                labels = value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty())
+                    .map(str::to_owned)
+                    .collect();
+            }
+            other => return Err(format!("unknown argument `{other}`")),
+        }
+    }
+    Ok((base.ok_or("check-pr needs --base <REF>")?, labels))
 }
