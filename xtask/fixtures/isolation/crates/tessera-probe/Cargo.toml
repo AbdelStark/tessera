@@ -1,0 +1,9 @@
+[package]
+name = "tessera-probe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dev-dependencies]
+tv-a = { path = "../../verifier/crates/tv-a" }

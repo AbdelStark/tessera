@@ -12,4 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# Lexing only (no syn): finds include macros and path attributes in verifier sources.
+proc-macro2 = { version = "1", default-features = false, features = ["span-locations"] }
+serde_json = "1"
 toml = { version = "1", default-features = false, features = ["std", "parse", "serde"] }

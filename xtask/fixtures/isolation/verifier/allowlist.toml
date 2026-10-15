@@ -1,0 +1,10 @@
+[[package]]
+name = "blake3"
+version = "1"
+reason = "fixture: an allowlisted registry crate"
+
+[[package]]
+name = "clap"
+version = "4"
+reason = "fixture: an allowlisted crate scoped to one verifier crate"
+direct-dependents = ["tv-cli"]
