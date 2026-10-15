@@ -34,7 +34,10 @@
 //!    the canonical `xtask` alias. Source replacement is invisible in `cargo metadata`, so
 //!    without this check a vendored directory could ship arbitrary code under an allowlisted
 //!    crate name; and a rewritten alias could make `cargo xtask check-isolation` a no-op. CI
-//!    runs the gate as `cargo run -p xtask -- check-isolation`, not through the alias.
+//!    runs the gate as `cargo run -p xtask -- check-isolation`, not through the alias. The
+//!    secret-access check of `cargo xtask lint` (05 §3 OBS-1) relies on this check too:
+//!    `rustflags`, `[env]` and compiler wrappers could switch off clippy's rule against
+//!    `expose_secret`.
 //! 7. **Test support.** In the verifier's resolved graph, every edge into a crate that exists for
 //!    tests (`tv-testkit`, whose vector reader panics on malformed input) is a dev edge
 //!    (robustness, RFC-0019).
@@ -779,6 +782,36 @@ fn scan_attribute(stream: TokenStream, in_macro: bool, out: &mut Vec<Reference>)
         }
         _ => {}
     }
+}
+
+/// Where a token stream pulls in code from another file (`include!`, a `path` or
+/// `debugger_visualizer` attribute), or names an include macro other than in a direct call,
+/// which can hide one. Direct `include_str!` and `include_bytes!` calls read data and are left
+/// out. The secret-access check (05 §3 OBS-1) holds prover sources to this, since it reads only
+/// the `.rs` files that `mod` declarations reach.
+pub(crate) fn code_inclusions(stream: TokenStream) -> Vec<(usize, String)> {
+    let mut references = Vec::new();
+    scan(stream, false, &mut references);
+    let mut found: Vec<(usize, String)> = references
+        .into_iter()
+        .filter_map(|r| match r.kind {
+            Kind::Code => Some((
+                r.line,
+                format!("{} pulls in code from another file", r.what),
+            )),
+            Kind::Indirect => Some((
+                r.line,
+                format!(
+                    "{} used other than in a direct call can pull in code",
+                    r.what
+                ),
+            )),
+            Kind::Data | Kind::Metavariable => None,
+        })
+        .collect();
+    // A macro's matcher and transcriber can repeat one finding on one line.
+    found.dedup();
+    found
 }
 
 /// The directory of the package that `file` belongs to: its nearest ancestor holding a

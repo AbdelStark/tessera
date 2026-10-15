@@ -38,7 +38,7 @@ pub struct Secret<T: Zeroize>(T);
 pub struct Public<T>(pub T);
 ```
 
-- **OBS-1.** Tracing events and `PublicContext` accept only `Public<T>` and primitive identifier types. A custom lint (`dylint` or a `clippy.toml` disallowed-methods rule) forbids `expose_secret` outside the witness engine, gadget witness generation, commitment encoding and key handling modules.
+- **OBS-1.** Tracing events and `PublicContext` accept only `Public<T>` and primitive identifier types. A `clippy.toml` disallowed-methods rule forbids `expose_secret` outside the witness engine, gadget witness generation, commitment encoding and key handling modules. Those modules opt in with `#[allow(clippy::disallowed_methods)]`. `cargo xtask lint` accepts that allowance, and any use of `expose_secret` by name under any `cfg`, only in the files `secret-access.toml` lists, each with a reason. It also rejects lint and clippy configuration that would switch the rule off, and code pulled in other than through `mod` (`include!`, `#[path]`), which its scan could not see.
 - **OBS-2.** Key material (`Secret<[u8; 16]>` AES keys, sampler keys, per-proof seeds) is zeroized on drop.
 - **OBS-3. Canary scan.** The end-to-end CI job builds a tiny model whose weights and prompts contain canary patterns (distinctive 64-bit values and token ids). After proving and verifying, CI scans every log line, JSON report, protocol artifact and error message for each canary in decimal, hex and little-endian byte forms. Any match outside secret-class artifacts fails the build.
 - **OBS-4.** Debug dumps of secret tensors exist only behind the `unsafe-debug-dump` cargo feature, which release builds reject at compile time (`compile_error!` under `cfg(all(feature = "unsafe-debug-dump", not(debug_assertions)))`).

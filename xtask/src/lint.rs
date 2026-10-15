@@ -5,7 +5,7 @@
 use std::io;
 use std::path::Path;
 
-use crate::{deny_policy, licenses, links, repo, spdx, unsafe_policy};
+use crate::{deny_policy, licenses, links, repo, secret_access, spdx, unsafe_policy};
 
 /// The policies checked by `lint`, each with its violations.
 pub(crate) fn checks(repo: &Path) -> io::Result<Vec<(&'static str, Vec<String>)>> {
@@ -19,6 +19,10 @@ pub(crate) fn checks(repo: &Path) -> io::Result<Vec<(&'static str, Vec<String>)>
             links::check(repo, &files)?,
         ),
         ("dependency-policy files (09 §7)", deny_policy::check(repo)?),
+        (
+            "secret access only in listed modules (05 §3 OBS-1)",
+            secret_access::check(repo, &files)?,
+        ),
     ])
 }
 
