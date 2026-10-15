@@ -16,6 +16,7 @@ mod links;
 mod lint;
 mod repo;
 mod spdx;
+mod test_features;
 #[cfg(test)]
 mod testing;
 mod unsafe_policy;
@@ -30,6 +31,8 @@ usage: cargo xtask <command>
 
 commands:
   check-isolation    check that the verifier shares no code with the prover (RFC-0001)
+  check-test-features
+                     check that test-only cargo features fail release builds (RFC-0001)
   lint               check repository policies: unsafe code, SPDX headers, manifest
                      licenses, Markdown links
   help               print this message
@@ -42,6 +45,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("check-isolation") => report(isolation::run(&repo::root())),
+        Some("check-test-features") => report(test_features::run(&repo::root())),
         Some("lint") => report(lint::run(&repo::root())),
         Some(other) => {
             eprintln!("error: unknown command `{other}`\n\n{USAGE}");

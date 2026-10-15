@@ -8,5 +8,9 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+# Test-only: accepts the `test-small` parameter set, which certifies nothing. A release build with it fails to compile.
+test-params = []
+
 [lints]
 workspace = true

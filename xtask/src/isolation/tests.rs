@@ -78,7 +78,7 @@ impl FixtureRepo {
     /// Every violation as `"<check>: <violation>"`, after regenerating both lockfiles.
     fn violations(&self) -> Vec<String> {
         let cargo = self.cargo();
-        let pin = pinned_channel(&self.path().join("rust-toolchain.toml"));
+        let pin = repo::pinned_channel(&self.path().join("rust-toolchain.toml"));
         for dir in [self.path().to_path_buf(), self.path().join("verifier")] {
             let output = cargo
                 .command(&dir, pin.as_deref())
@@ -298,8 +298,8 @@ fn build_script_fails() {
 #[test]
 fn toolchain_pin_mismatch_fails() {
     let repo = FixtureRepo::clean();
-    let pin =
-        pinned_channel(&repo.path().join("rust-toolchain.toml")).expect("root pin has a channel");
+    let pin = repo::pinned_channel(&repo.path().join("rust-toolchain.toml"))
+        .expect("root pin has a channel");
     repo.replace(
         "verifier/rust-toolchain.toml",
         &format!("channel = \"{pin}\""),

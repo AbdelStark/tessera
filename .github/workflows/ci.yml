@@ -58,6 +58,8 @@ jobs:
         run: cargo run --locked --quiet -p xtask -- lint
       - name: Verifier isolation (RFC-0001)
         run: cargo run --locked --quiet -p xtask -- check-isolation
+      - name: Test-only features fail release builds (RFC-0001)
+        run: cargo run --locked --quiet -p xtask -- check-test-features
 
   test:
     name: test

@@ -8,5 +8,9 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+# Test-only: dumps secret tensors for debugging (OBS-4). A release build with it fails to compile.
+unsafe-debug-dump = []
+
 [lints]
 workspace = true
