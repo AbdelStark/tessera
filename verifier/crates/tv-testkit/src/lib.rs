@@ -5,7 +5,8 @@
 //! It reads the shared conformance vectors under `spec/vectors/` with a small JSON reader, so
 //! that verifier tests add no third-party crate to the verifier's dependency graph, which
 //! `allowlist.toml` and `cargo vet` must cover (RFC-0001, DEP-3). It also provides a seeded
-//! generator for reproducible randomized tests.
+//! generator for reproducible randomized tests, and a reference BLAKE3 in key-derivation mode
+//! ([`blake3::derive_key`]) to recompute the digests vectors carry.
 
 #![forbid(unsafe_code)]
 // Test support: a malformed vector file is a test failure, reported by panicking.
@@ -13,6 +14,8 @@
 
 use std::fs;
 use std::path::PathBuf;
+
+pub mod blake3;
 
 /// A JSON value. Numbers keep their source text, so integers of any width survive exactly.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -265,6 +268,21 @@ pub fn read_vectors(rel: &str) -> Json {
     let path = vectors_dir().join(rel);
     let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     Json::parse(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+}
+
+/// The bytes of a hexadecimal string such as a vector's `"hex"` field, panicking on anything else.
+pub fn hex(text: &str) -> Vec<u8> {
+    assert!(text.len() % 2 == 0, "odd-length hex string");
+    (0..text.len())
+        .step_by(2)
+        .map(|i| {
+            let pair = text
+                .get(i..i + 2)
+                .filter(|pair| pair.bytes().all(|b| b.is_ascii_hexdigit()))
+                .unwrap_or_else(|| panic!("not a hex digit pair at {i} in {text:?}"));
+            u8::from_str_radix(pair, 16).unwrap_or_else(|e| panic!("hex {pair:?}: {e}"))
+        })
+        .collect()
 }
 
 /// SplitMix64 (Steele, Lea and Flood, 2014): a small seeded generator for reproducible

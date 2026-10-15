@@ -1,0 +1,38 @@
+# cargo-fuzz targets for the verifier's decoders (RFC-0003 and RFC-0019 'Testing Strategy');
+# README.md says how to run them.
+#
+# This is its own workspace, outside the verifier's: libfuzzer-sys and its build dependencies
+# never enter the verifier's dependency graph, lockfile or allowlist, and nothing here is part of
+# `tessera-verify`.
+
+[package]
+name = "tv-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tv-codec = { path = "../crates/tv-codec" }
+tv-testkit = { path = "../crates/tv-testkit" }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "decode"
+path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "envelope"
+path = "fuzz_targets/envelope.rs"
+test = false
+doc = false
+bench = false
