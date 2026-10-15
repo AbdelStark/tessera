@@ -113,9 +113,23 @@ pub struct DecodeLimits {
 
 Every decoder takes limits explicitly. Defaults: verifier messages 8 GiB total, `max_vec_len` 2^34, depth 32; `IntegerModel` 1 TiB total. Length checks happen before allocation, so a hostile length prefix costs nothing.
 
-So that independent decoders return the same code for every input:
+So that independent decoders return the same code, at the same offset, for every input:
 
-- **Order of checks.** `max_total_bytes` is checked before decoding starts. For each sequence (`Vec`, `Bytes`, `Ascii`, map), the declared length is checked against `max_vec_len` (`ERR-CODEC-LIMIT`), then `length × min_size(T)` against the bytes left (`ERR-CODEC-TRUNCATED`), both before any element is read. An array is checked as a whole against the bytes left the same way.
+- **Order of checks.** `max_total_bytes` is checked before decoding starts. The value is then read front to back, and each check runs as soon as the bytes it reads are available:
+  - a fixed-width value (an integer, `bool`, `Fp`, an enum tag, a sequence length) is read whole, then checked, so a value cut short is `ERR-CODEC-TRUNCATED` before it can be wrong;
+  - for each sequence (`Vec`, `Bytes`, `Ascii`, map), the declared length is checked against `max_vec_len` (`ERR-CODEC-LIMIT`), then `length × min_size(T)` against the bytes left (`ERR-CODEC-TRUNCATED`), both before any element is read. An array is checked as a whole against the bytes left the same way;
+  - a composite value takes its depth level before any of its bytes is read;
+  - `Fp2` reads and checks `c0`, then `c1`; `Rational` reads both integers, then checks them;
+  - a map key is checked against the previous key before its value is read.
+- **Offsets.** An error carries the offset, from the start of the input, of the first byte the failing check reads:
+  - a fixed-width value cut short, a non-canonical `bool`, `Fp` or `Rational`, and an unknown enum tag: the value's first byte; for `Fp2`, the first byte of the failing coefficient;
+  - `Ascii`: the first byte outside `0x20..=0x7E`;
+  - a sequence's length checks: the length's first byte; an array's: the array's first byte;
+  - a map key not above the previous one: the key's first byte;
+  - a value beyond `max_depth`: its first byte;
+  - bytes left over: the first of them; an input above `max_total_bytes`: offset 0.
+
+  `spec/vectors/codec/noncanonical.json` pins the code and offset of every case.
 - **Depth.** Each value whose encoding holds other values adds one level while it is decoded:
   - structs and enums, including `Option`;
   - tuples and map entries;
@@ -178,7 +192,7 @@ Lands in v0.1 before any artifact is written. The envelope's `envelope_version` 
 - Golden vectors in `spec/vectors/codec/` for every schema in the catalog: minimal values, maximal lengths within limits, every enum variant, nested vectors, edge-case integers (`0`, `MAX`, `MIN`).
 - Property tests: INV-TCE-1 over random values of every schema; INV-TCE-2 over random byte strings (accepted ones must re-encode identically).
 - Truncation: for one vector per schema, every prefix is rejected with `ERR-CODEC-TRUNCATED`.
-- Non-canonical corpus: `Fp` values `≥ P`, `bool` value 2, unknown enum tag, unsorted map, non-reduced rational, ASCII byte `0x7F`, trailing payload byte, non-zero `reserved`, each rejected with the right code by all three implementations.
+- Non-canonical corpus: `Fp` values `≥ P`, `bool` value 2, unknown enum tag, unsorted map, non-reduced rational, ASCII byte `0x7F`, trailing payload byte, non-zero `reserved`, each rejected with the right code at the right offset by all three implementations.
 - Hostile lengths: a `Vec` length of 2^63 with 16 remaining bytes is rejected without allocation (asserted with a counting allocator in Rust).
 - Fuzzing: `cargo-fuzz` targets for every verifier-side decoder (nightly 1 h; 24 CPU-hours before v1.0).
 - Cross-language: the Python writer's `IntegerModel` for each conformance model decodes in both Rust readers to identical values.

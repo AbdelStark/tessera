@@ -94,7 +94,8 @@ pub(crate) fn reservation<T>(n: usize, remaining: usize) -> usize {
 pub struct DecodeError {
     /// The stable code.
     pub code: ErrorCode,
-    /// The offset, from the start of the input, of the value that failed.
+    /// The offset, from the start of the input, of the first byte the failing check reads
+    /// (RFC-0003 'Limits').
     pub offset: u64,
 }
 

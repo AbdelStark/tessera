@@ -103,10 +103,16 @@ fn field_vectors_hold() {
     for (case, ty, input) in field_cases(&file["cases"]) {
         let code =
             ErrorCode::from_identifier(case["code"].as_str().expect("code")).expect("a known code");
+        let offset = case["offset"].as_u64().expect("offset");
         let error = decode_as(&ty, &input, corpus_limits)
             .expect("a field type")
             .expect_err("a corpus entry decoded");
-        assert_eq!(error.code, code, "{ty}: {}", case["why"]);
+        assert_eq!(
+            (error.code, error.offset),
+            (code, offset),
+            "{ty}: {}",
+            case["why"]
+        );
     }
     let accepted: Vec<_> = file["accepted"]
         .as_array()

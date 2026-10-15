@@ -169,18 +169,20 @@
 //! 4. The payload ([`Envelope::decode_payload`]), as the schema version found and under the same
 //!    limits: its value must fill it, and its errors carry their offsets plus 20.
 //!
-//! ## Where RFC-0003 leaves a choice
+//! ## Offsets
 //!
-//! The RFC fixes offsets for the envelope header only. These choices follow the rule above, that
-//! a check fails where the bytes it reads begin, and agree with every vector:
+//! RFC-0003 'Limits' fixes every offset listed under 'Error codes': an error carries the offset
+//! of the first byte its check reads. Some consequences:
 //!
-//! - the offset of each payload-level error, listed under 'Error codes';
 //! - a whole input above `max_total_bytes` fails at offset 0;
 //! - the depth check comes before a composite's first byte is read, so a value that is both too
 //!   deep and cut short is `ERR-CODEC-LIMIT`;
-//! - `Fp2` is a struct of two `Fp`, not an array: its coefficients are read one by one, and are
-//!   not checked as a whole against the bytes left;
+//! - `Fp2` is read coefficient by coefficient, not checked as a whole against the bytes left, so
+//!   a bad `c0` with `c1` missing is `ERR-CODEC-NONCANONICAL` at `c0`;
 //! - a map key's order is checked before its value is read.
+//!
+//! `spec/vectors/codec/noncanonical.json` pins the code and offset of every case, and the tests
+//! check the offset at which every prefix of every accepted input is cut short.
 
 #![forbid(unsafe_code)]
 // Decoders read hostile bytes and must reject them with typed errors, never by panicking (RFC-0019

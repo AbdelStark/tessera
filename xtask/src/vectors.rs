@@ -66,8 +66,10 @@ pub(crate) fn render() -> Vec<(&'static str, String)> {
     let corpus = json!({
         "description": "TCE non-canonical corpus (RFC-0003 'Failure modes', 'Limits'), written \
             by `cargo xtask gen-vectors`. Under `limits`, decoding each `cases` entry as `type` \
-            fails with `code`, each for one reason; decoding each `accepted` entry, which sits \
-            exactly at a limit, succeeds and encodes back to `hex`.",
+            fails with `code` at `offset`, the first byte the failing check reads, counted from \
+            the start of the input; each fails for one reason, or for the pair whose order \
+            RFC-0003 'Limits' fixes. Decoding each `accepted` entry, which sits exactly at a \
+            limit, succeeds and encodes back to `hex`.",
         "limits": limits(golden::CORPUS_LIMITS),
         "accepted": boundaries
             .iter()
@@ -79,6 +81,7 @@ pub(crate) fn render() -> Vec<(&'static str, String)> {
                 "type": r.ty,
                 "hex": hex(&r.bytes),
                 "code": r.code.as_str(),
+                "offset": r.offset,
                 "why": r.why,
             }))
             .collect::<Vec<_>>(),
