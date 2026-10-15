@@ -42,7 +42,7 @@ pub struct IntegerModel {              // artifact "D", schema 0x0101
 pub struct WeightTensor { pub ty: WeightType, pub layer: u32, pub rows: u32, pub cols: u32, pub data: Vec<i8> }
 ```
 
-The source names seven per-layer weight types (source §7). The data model adds `Embed` and `LmHead`: the embedding is applied as a matmul with a committed one-hot token vector, and the LM head produces the logits ([RFC-0006](../rfcs/RFC-0006-compiler-ir.md#llama-lowering)). RMSNorm gains are folded into the following weights at quantization time and do not appear as separate tensors.
+The source names seven per-layer weight types (source §7). The data model adds `Embed` and `LmHead`: the embedding is applied as a matmul with a committed one-hot token vector, and the LM head produces the logits ([RFC-0006](../rfcs/RFC-0006-compiler-ir.md#llama-lowering)). RMSNorm gains are folded into the following weights at quantization time and do not appear as separate tensors. Per-channel quantities derived from weights (power-of-two shift classes, affine multipliers) are secret: they are committed with the weights as channel-parameter vectors ([RFC-0012](../rfcs/RFC-0012-weight-commitment.md#layout)) and enter lookups through tuple keys, so the claim list never reveals them ([RFC-0007](../rfcs/RFC-0007-claim-list.md#public-and-hidden-quantization-data)).
 
 ## 3. Circuit types
 
@@ -103,6 +103,8 @@ Protocol messages (`Round1`, `SeedCommit`, `ProverSeedShare`, `SeedReveal`, `Rou
 | `SeedCommit`, `ProverSeedShare`, `SeedReveal` | `0x0501`–`0x0503` | 1 | message | Public | RFC-0014 |
 | `Round1`, `Round2Response`, `ColumnQueries`, `Round3Response` | `0x0510`–`0x0513` | 1 | message | Protocol | RFC-0014 |
 | `NiProof` | `0x0520` | 1 | `.tnp` | Protocol | RFC-0014 |
+| `TokenFile` | `0x0601` | 1 | `.ttk` | Secret | RFC-0003 |
+| `LogitsFile` | `0x0602` | 1 | `.tlg` | Secret | RFC-0003 |
 
 "Protocol" class means the artifact is sent to the verifier and is zero-knowledge by construction; it may be shared but must not be altered.
 
