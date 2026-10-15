@@ -23,6 +23,7 @@ mod test_features;
 #[cfg(test)]
 mod testing;
 mod unsafe_policy;
+mod vectors;
 
 use std::process::ExitCode;
 
@@ -40,6 +41,9 @@ commands:
                      check the change from REF to HEAD: changelog entries and DCO sign-off
   check-test-features
                      check that test-only cargo features fail release builds (RFC-0001)
+  gen-vectors [--check]
+                     write the codec conformance vectors in spec/vectors/codec/, or check
+                     that they are current
   lint               check repository policies: unsafe code, SPDX headers, manifest
                      licenses, Markdown links, dependency-policy files
   help               print this message
@@ -61,6 +65,14 @@ fn main() -> ExitCode {
             }
         },
         Some("check-test-features") => report(test_features::run(&repo::root())),
+        Some("gen-vectors") => match std::env::args().nth(2).as_deref() {
+            None => report(vectors::run(&repo::root(), false)),
+            Some("--check") => report(vectors::run(&repo::root(), true)),
+            Some(other) => {
+                eprintln!("gen-vectors: unknown argument `{other}`\n\n{USAGE}");
+                ExitCode::from(EXIT_USAGE)
+            }
+        },
         Some("lint") => report(lint::run(&repo::root())),
         Some(other) => {
             eprintln!("error: unknown command `{other}`\n\n{USAGE}");

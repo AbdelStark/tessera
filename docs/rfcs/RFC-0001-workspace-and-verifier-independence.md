@@ -47,6 +47,7 @@ crates/
   tessera-gadgets/ tessera-witness/ tessera-scoring/ tessera-anchor/
   tessera-protocol/ tessera-prover/ tessera-gpu/ tessera-bench/ tessera-cli/
   tessera-e2e/             # end-to-end and tamper tests (publish = false)
+  tessera-codec-derive/    # #[derive(Encode, Decode)] for tessera-codec (procedural macro)
 verifier/
   Cargo.toml               # separate workspace: members = crates/*
   Cargo.lock               # separate lockfile

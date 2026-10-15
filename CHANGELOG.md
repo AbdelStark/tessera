@@ -35,3 +35,10 @@ All notable changes to the prover release train are recorded here: the crates un
   - Binary Merkle trees with canonical multiproofs: `MerkleTree::open`, and `verify_multiproof`, which rejects a missing, extra or reordered sibling.
   - Chained column digests (`ColumnChains`) with a configurable row block and a short final block.
   - `spec/vectors/hash/` holds domain, Merkle and column vectors from an independent Python BLAKE3, itself checked against the official BLAKE3 vectors vendored in `spec/vectors/blake3/`.
+- The Tessera Canonical Encoding (RFC-0003) ([#41](https://github.com/AbdelStark/tessera/issues/41)):
+  - `Encode` and `Decode` in `tessera-codec` for every primitive and composite type: integers, `bool`, arrays, `Vec`, `Option`, pairs, `Bytes`, `Ascii`, `Rational` (kept in lowest terms) and `Map` (sorted by key encoding).
+  - `#[derive(Encode, Decode)]` for schema structs and enums, from the new `tessera-codec-derive`.
+  - `Fp` and `Fp2` encodings in `tessera-field`.
+  - Decoding reads through a `Reader` that enforces `DecodeLimits`, in the order RFC-0003 'Limits' now fixes. It checks each declared length against the bytes that remain before reading or reserving anything (INV-TCE-3), and caps reservations by the input. It nests at most 256 levels, rejects trailing bytes (INV-TCE-4), and reports `ERR-CODEC-TRUNCATED`, `ERR-CODEC-NONCANONICAL` or `ERR-CODEC-LIMIT` with the offset of the value at fault. Its debug form never shows the input.
+  - `cargo xtask gen-vectors` writes `spec/vectors/codec/`: golden encodings with language-neutral values, a corpus of inputs to reject (each for one reason), and inputs exactly at the limits to accept. A test fails while the files are stale.
+  - RFC-0003 'Limits' now specifies the order of checks, what counts as a nesting level, and that sequence elements encode to at least one byte.

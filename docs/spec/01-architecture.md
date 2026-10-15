@@ -56,7 +56,7 @@ flowchart TB
 | Component | Language | Location | Responsibility | Specified in |
 |---|---|---|---|---|
 | Field | Rust | `crates/tessera-field` | Goldilocks `Fp`, quadratic extension `Fp2`, NTT roots, field traits | RFC-0002 |
-| Codec | Rust | `crates/tessera-codec` | Tessera Canonical Encoding (TCE), artifact envelope, schema registry | RFC-0003 |
+| Codec | Rust | `crates/tessera-codec`, `crates/tessera-codec-derive` | Tessera Canonical Encoding (TCE) and its derive macros, artifact envelope, schema registry | RFC-0003 |
 | Hash | Rust | `crates/tessera-hash` | Domain-separated BLAKE3, Merkle trees, chained column digests, Fiat–Shamir transcript, proof-of-work | RFC-0004 |
 | Polynomials | Rust | `crates/tessera-poly` | Multilinear tables, `eq` tables, MLE evaluation, univariate round polynomials, masking helpers | RFC-0010 |
 | Sumcheck | Rust | `crates/tessera-sumcheck` | Sumcheck engine, GKR layer protocols (matmul, product tree, generic), stage batching, masked variants | RFC-0010, RFC-0013 |
