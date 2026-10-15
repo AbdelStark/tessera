@@ -1,0 +1,30 @@
+{
+  "description": "Error codes of docs/spec/04-error-model.md §3 in table order: stable identifier, class, and exit code of the tessera command line (02 §2.4). The prover (crates/tessera-codec) and the verifier implement these codes independently and both check this file.",
+  "codes": [
+    {"code": "ERR-USAGE", "class": "Usage", "exit": 64},
+    {"code": "ERR-CODEC-MAGIC", "class": "Input", "exit": 65},
+    {"code": "ERR-CODEC-VERSION", "class": "Input", "exit": 65},
+    {"code": "ERR-CODEC-NONCANONICAL", "class": "Input", "exit": 65},
+    {"code": "ERR-CODEC-TRUNCATED", "class": "Input", "exit": 65},
+    {"code": "ERR-CODEC-DIGEST", "class": "Input", "exit": 65},
+    {"code": "ERR-CODEC-LIMIT", "class": "Input", "exit": 65},
+    {"code": "ERR-QUANT-ARCH", "class": "Model", "exit": 65},
+    {"code": "ERR-QUANT-CALIB", "class": "Model", "exit": 20},
+    {"code": "ERR-COMPILE-RANGE", "class": "Model", "exit": 20},
+    {"code": "ERR-COMPILE-WRAP", "class": "Model", "exit": 20},
+    {"code": "ERR-COMPILE-PROFILE", "class": "Model", "exit": 20},
+    {"code": "ERR-WITNESS-EXACT-MISMATCH", "class": "Completeness", "exit": 20},
+    {"code": "ERR-WITNESS-ANCHOR", "class": "Completeness", "exit": 20},
+    {"code": "ERR-WITNESS-BUDGET", "class": "Completeness", "exit": 20},
+    {"code": "ERR-PROTO-ORDER", "class": "Protocol", "exit": 20},
+    {"code": "ERR-PROTO-VERSION", "class": "Protocol", "exit": 20},
+    {"code": "ERR-PROTO-COINTOSS", "class": "Protocol", "exit": 20},
+    {"code": "ERR-PROTO-REUSE", "class": "Protocol", "exit": 70},
+    {"code": "ERR-PROTO-TIMEOUT", "class": "Protocol", "exit": 20},
+    {"code": "ERR-RES-MEMORY", "class": "Resource", "exit": 20},
+    {"code": "ERR-RES-DEVICE", "class": "Resource", "exit": 20},
+    {"code": "ERR-RES-IO", "class": "Resource", "exit": 20},
+    {"code": "ERR-RES-TIME", "class": "Resource", "exit": 20},
+    {"code": "ERR-INTERNAL", "class": "Internal", "exit": 70}
+  ]
+}

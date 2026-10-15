@@ -3,3 +3,5 @@
 //! Tessera Canonical Encoding (TCE), the artifact envelope and the schema registry (RFC-0003).
 
 #![forbid(unsafe_code)]
+
+pub mod error;
