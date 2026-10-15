@@ -5,4 +5,6 @@
 #![forbid(unsafe_code)]
 
 /// Demonstration only.
-pub fn demo( ) {}
+pub fn demo(v: &[u8]) -> bool {
+    v.len() == 0
+}
