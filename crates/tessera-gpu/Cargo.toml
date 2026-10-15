@@ -8,5 +8,21 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+# The CUDA backend: compiles kernels/*.cu with nvcc (CUDA 12.8 or later) into sm_90 and sm_100
+# fatbins and enables the host bindings. Without it the crate is an empty stub (DEP-5).
+gpu = ["dep:cudarc"]
+
+[dependencies]
+# Driver API bindings against the CUDA 12.8 interface, loaded at run time, so the host code
+# compiles on machines without the CUDA toolkit. `nvrtc` provides module loading.
+cudarc = { version = "0.19", optional = true, default-features = false, features = [
+    "std",
+    "driver",
+    "nvrtc",
+    "cuda-12080",
+    "dynamic-loading",
+] }
+
 [lints]
 workspace = true

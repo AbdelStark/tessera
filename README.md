@@ -39,7 +39,7 @@ cargo xtask check-test-features # test-only features fail release builds (RFC-00
 cd verifier && cargo build --locked && cargo test --locked
 ```
 
-No crate needs a GPU or the CUDA toolkit to build or test.
+No crate needs a GPU or the CUDA toolkit to build or test. The CUDA backend is the `gpu` feature of `tessera-gpu`; it needs the CUDA toolkit 12.8 or later (`nvcc` on `PATH` or `CUDA_HOME` set) and builds kernels for `sm_90` (H100, H200) and `sm_100` (B200). Without CUDA, `TESSERA_GPU_SKIP_KERNELS=1 cargo clippy -p tessera-gpu --features gpu` type-checks the host code.
 
 ## Continuous integration
 
