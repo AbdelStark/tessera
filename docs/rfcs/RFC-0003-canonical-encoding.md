@@ -95,11 +95,24 @@ pub struct DecodeLimits {
 
 Every decoder takes limits explicitly. Defaults: verifier messages 8 GiB total, `max_vec_len` 2^34, depth 32; `IntegerModel` 1 TiB total. Length checks happen before allocation, so a hostile length prefix costs nothing.
 
+So that independent decoders return the same code for every input:
+
+- **Order of checks.** `max_total_bytes` is checked before decoding starts. For each sequence (`Vec`, `Bytes`, `Ascii`, map), the declared length is checked against `max_vec_len` (`ERR-CODEC-LIMIT`), then `length × min_size(T)` against the bytes left (`ERR-CODEC-TRUNCATED`), both before any element is read. An array is checked as a whole against the bytes left the same way.
+- **Depth.** Each value whose encoding holds other values adds one level while it is decoded:
+  - structs and enums, including `Option`;
+  - tuples and map entries;
+  - arrays, so `Digest`;
+  - `Vec`, so `Bytes`;
+  - `Ascii`, `Rational` and `Fp2`.
+
+  Integers, `bool` and `Fp` add none. A value beyond `max_depth` is `ERR-CODEC-LIMIT`. A limit above 256 counts as 256: decoding recurses once per level, and deeper recursion could exhaust a thread's stack.
+- **Empty elements.** A sequence's element type encodes to at least one byte: a sequence of empty values would carry only a count and cost time without consuming input.
+
 ### Implementations
 
 | Implementation | Location | Construction |
 |---|---|---|
-| Prover side | `crates/tessera-codec` | `Encode`/`Decode` traits plus a derive macro for structs and enums |
+| Prover side | `crates/tessera-codec` | `Encode`/`Decode` traits plus a derive macro for structs and enums (`crates/tessera-codec-derive`) |
 | Verifier side | `verifier/crates/tv-codec` | Hand-written decoders and the encoders needed to recompute digests; no shared macro |
 | Python | `python/tessera_quant/tce.py` | Writer and reader for `IntegerModel`, `TokenFile`, `LogitsFile` |
 
@@ -121,7 +134,7 @@ Each implementation is tested against the same golden vectors (RFC-0001, "Shared
 | Non-canonical value, bad tag, unsorted map, trailing bytes | `ERR-CODEC-NONCANONICAL` |
 | Truncated input | `ERR-CODEC-TRUNCATED` |
 | Digest mismatch | `ERR-CODEC-DIGEST` |
-| Length above limit | `ERR-CODEC-LIMIT` |
+| Length above `max_vec_len`, input above `max_total_bytes`, or nesting beyond `max_depth` | `ERR-CODEC-LIMIT` |
 
 ## Alternatives Considered
 

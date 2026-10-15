@@ -1,0 +1,5 @@
+error: TCE has no unions
+ --> tests/ui/union.rs:6:1
+  |
+6 | union Overlap {
+  | ^^^^^

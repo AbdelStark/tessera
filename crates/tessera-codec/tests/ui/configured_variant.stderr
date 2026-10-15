@@ -1,0 +1,5 @@
+error: a TCE field or variant cannot depend on configuration: the encoding would differ between builds
+ --> tests/ui/configured_variant.rs:8:5
+  |
+8 |     #[cfg(all())]
+  |     ^

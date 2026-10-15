@@ -48,6 +48,7 @@ cargo xtask check-isolation      # the verifier shares no code with the prover
 cargo xtask check-test-features  # test-only features fail release builds
 cargo xtask check-pr --base origin/main   # changelog entry and sign-off for your branch
 cargo xtask check-deps           # needs cargo-deny 0.20.2 and cargo-vet 0.10.2
+cargo xtask gen-vectors          # rewrite spec/vectors/codec/; a test fails while they are stale
 ```
 
 ## Reviews

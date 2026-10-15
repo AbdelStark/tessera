@@ -15,4 +15,7 @@ workspace = true
 # Lexing only (no syn): finds include macros and path attributes in verifier sources.
 proc-macro2 = { version = "1", default-features = false, features = ["span-locations"] }
 serde_json = "1"
+# The codec vectors come from the cases these crates define (`cargo xtask gen-vectors`).
+tessera-codec = { path = "../crates/tessera-codec" }
+tessera-field = { path = "../crates/tessera-field" }
 toml = { version = "1", default-features = false, features = ["std", "parse", "serde"] }

@@ -17,8 +17,11 @@
 // comment and is tested against the portable backend.
 #![deny(unsafe_code)]
 
+mod codec;
 mod ext2;
 mod f65537;
+#[doc(hidden)]
+pub mod golden;
 mod goldilocks;
 mod traits;
 
