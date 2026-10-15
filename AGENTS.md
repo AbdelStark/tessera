@@ -1,0 +1,75 @@
+# AGENTS.md
+
+Context for coding agents working in this repository. Humans start with [README.md](README.md), [SPEC.md](SPEC.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## What Tessera is
+
+Tessera proves that a committed integer language model `D` produced a recorded token stream: a sumcheck/GKR proof over the Goldilocks field, sound against a prover that controls all hardware, zero-knowledge against a malicious verifier, checked by an independent verifier that shares no code with the prover. It serves verification between parties that do not trust each other. **A soundness bug is the worst bug this repository can have: it certifies a cheating prover.** Code that decides whether a proof is accepted, or that touches secrets, gets an adversarial reading before it ships (the `soundness-review` skill).
+
+## Ground truth
+
+- The specification is normative: [SPEC.md](SPEC.md), [docs/spec/](docs/spec/) and the accepted RFCs in [docs/rfcs/](docs/rfcs/). In Proposed Design sections and requirement tables, "must" means must.
+- Code follows the specification. When the specification is wrong or inconsistent, say so: fix the document in the same pull request when the fix is unambiguous, otherwise open an issue. A change to a tier-A surface ([02 §1](docs/spec/02-public-api.md#1-stability-tiers)) needs a superseding RFC.
+- Stable identifiers name every rule: `RFC-0004`, `INV-TCE-2`, `SP-6`, `DEP-1`, `ERR-CODEC-LIMIT`, `REJ-SUMCHECK`, `RISK-2` ([conventions](SPEC.md#conventions)). Cite them in code comments, tests and pull requests.
+- Each issue names the RFC section it implements and its acceptance criteria; [docs/roadmap/IMPLEMENTATION.md](docs/roadmap/IMPLEMENTATION.md) has the dependency graph and the critical path.
+
+## Repository map
+
+| Path | What |
+|---|---|
+| `crates/` | Prover workspace: one crate per component of [01 §2](docs/spec/01-architecture.md#2-components), dependencies in the DAG order of [01 §3](docs/spec/01-architecture.md#3-dependency-rules) |
+| `verifier/` | Independent verifier workspace (`tv-*`): own lockfile, `allowlist.toml`, stricter `deny.toml`, `supply-chain/` (cargo vet) |
+| `xtask/` | Repository gates and automation (`cargo xtask help`); `xtask/fixtures/` holds the gates' self-test inputs |
+| `spec/vectors/` | Conformance vectors: data shared by both workspaces, produced by independent oracles |
+| `docs/` | Specification, RFCs, roadmap, release checklist |
+
+## Commands
+
+```sh
+cargo test -p <crate>                                    # narrowest first
+cargo test --workspace --locked                          # prover workspace
+(cd verifier && cargo test --locked)                     # verifier workspace
+cargo clippy --workspace --all-targets --locked -- -D warnings   # also inside verifier/
+cargo fmt --all --check                                  # also inside verifier/
+cargo xtask lint                 # unsafe code, SPDX headers, licenses, Markdown links, policy files
+cargo xtask check-isolation      # verifier independence (RFC-0001)
+cargo xtask check-test-features  # test-only features fail release builds
+cargo xtask check-pr --base origin/main   # changelog entry and DCO sign-off of the branch
+cargo xtask check-deps           # cargo-deny and cargo-vet; needs cargo-deny 0.20.2, cargo-vet 0.10.2
+```
+
+## Invariants a change must not break
+
+Each is a security property or a merge-blocking gate; breaking one is a bug even when every test passes.
+
+1. **Verifier independence** (SP-6, DEP-1..3, [RFC-0001](docs/rfcs/RFC-0001-workspace-and-verifier-independence.md)). Nothing under `verifier/` depends on, includes or copies prover code; verifier code is written from the specification (the `verifier-independence` skill). Every third-party crate the verifier uses, transitive ones included, is in `verifier/allowlist.toml` with a reason. Prover crates use verifier crates as dev-dependencies only.
+2. **Unsafe code.** Forbidden everywhere except `tessera-field` (SIMD backends) and `tessera-gpu` (CUDA FFI), which deny it crate-wide and opt in per module, each block with a `// SAFETY:` comment. The verifier has none.
+3. **Canonical encoding** ([RFC-0003](docs/rfcs/RFC-0003-canonical-encoding.md), INV-TCE-1..4, INV-DM-1). One encoding per value; decoders return a typed error for anything else and check lengths against limits before allocating. Floating point never enters hashed or tier-A data (INV-DM-6).
+4. **Fiat–Shamir** ([RFC-0004](docs/rfcs/RFC-0004-hashing-and-transcript.md), INV-FS-1..4). Every prover message is absorbed, as TCE bytes, before any challenge that depends on it is squeezed; challenges are exactly uniform (rejection sampling); labels follow the schedule of [RFC-0014](docs/rfcs/RFC-0014-interaction-and-soundness.md#transcript-schedule).
+5. **True integers and uniqueness** ([RFC-0006](docs/rfcs/RFC-0006-compiler-ir.md#range-analysis), INV-IR-1..2; [RFC-0009](docs/rfcs/RFC-0009-gadgets.md), Lemma 0; SP-3). Every lookup key and gadget input is a true integer inside its table and the centered field range, and every committed value upstream of the logits has exactly one passing witness; the verifier re-derives ranges from public data and never trusts prover-declared ranges (SP-7).
+6. **Redaction** ([05 §3](docs/spec/05-observability.md#3-data-classification-and-redaction), INV-ARCH-6). Secret-class values (weights, activations, tokens, masks, seeds) reach no log, error, metric or report; they live in `Secret<T>`, and errors carry `PublicContext` only.
+7. **Verifier robustness** ([RFC-0019](docs/rfcs/RFC-0019-verifier.md#robustness), SP-8). Every input yields `Accept`, `Reject(reason)` or `Inconclusive(error)`: no panic, no allocation beyond limits, no unbounded loop. `tv-core` and `tv-codec` deny `unwrap`, `expect`, `panic!` and unchecked indexing.
+8. **Test-only features** (`test-rng`, `test-params`, `unsafe-debug-dump`; [RFC-0001](docs/rfcs/RFC-0001-workspace-and-verifier-independence.md#cargo-features), OBS-4) fail to compile in release builds.
+
+## How work is done
+
+One issue, one branch, one pull request; the `issue-workflow` skill has the loop, [CONTRIBUTING.md](CONTRIBUTING.md) the rules it follows: DCO sign-off on every commit, a changelog entry per release train, the review rules and the RFC process.
+
+## Tests that count
+
+Tests exist to catch soundness and conformance bugs. In order of value:
+
+1. **Adversarial**: for every check, a test that violates exactly that check and asserts the exact rejection (`RejectReason`, error code). A check without one is unproven.
+2. **Conformance vectors** in `spec/vectors/`, produced by an independent oracle (for example Python big integers) and checked by both workspaces.
+3. **Algebraic properties**: ring laws, round trips, `decode(encode(x)) = x` (`proptest` on the prover side).
+4. **Soundness calibration** over the test field `F65537`, where cheating succeeds often enough to measure against the analytic bound.
+5. **End to end** through the command-line tools.
+
+A test that restates the implementation (a getter, a constructor, plumbing) adds maintenance without catching anything.
+
+## Pitfalls
+
+- The verifier is a separate workspace: run its cargo commands inside `verifier/`; run `cargo xtask` from the repository root.
+- `gh pr edit` fails on this repository (Projects classic deprecation): set PR bodies with `gh api -X PATCH repos/AbdelStark/tessera/pulls/N -F body=@file`, labels with `gh api -X POST repos/AbdelStark/tessera/issues/N/labels -f "labels[]=name"`.
+- `rm` is interactive on the maintainer's machine; scripts move scratch files instead of deleting them.
+- Vendored stand-ins under `xtask/fixtures/*/vendor/` model crates.io packages for offline gate self-tests; they are not the real crates.

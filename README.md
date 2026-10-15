@@ -60,6 +60,8 @@ To run the dependency checks locally, install cargo-deny 0.20.2 and cargo-vet 0.
 
 [CONTRIBUTING.md](CONTRIBUTING.md) describes the workflow, sign-off, changelog, review and RFC rules. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md). Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
+Coding agents start from [AGENTS.md](AGENTS.md): ground truth, commands, the invariants a change must not break, and the project skills under `.claude/skills/`.
+
 ## License
 
 Tessera is dual-licensed under the [Apache License, Version 2.0](LICENSE-APACHE) or the [MIT license](LICENSE-MIT), at your option. Every Rust, Python and CUDA source file starts with the header `SPDX-License-Identifier: Apache-2.0 OR MIT`, and every Cargo and Python manifest declares the same expression; `cargo xtask lint` checks both.
