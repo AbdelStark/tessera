@@ -11,7 +11,7 @@ Every number in this document is a projection until RFC-0020's measurements repl
 The proof multiplier for a model at context `S` (source §5):
 
 ```math
-\mu(S) \approx \frac{1.15\,(C_{lin} c_{c} + K_{lin} c_{\ell}) + 1.15\cdot A\, S\,(c_{c}+c_{\ell}+c_{\pi}) + W/T}{(F_{lin} + F_{att} S)/R}
+\mu(S) \approx \frac{1.15\,(C_{lin} c_{c} + K_{lin} c_{\ell}) + 1.15\cdot A\, S\,(c_{c}+c_{\ell}+c_{\pi}) + W/T}{(F_{lin} + F_{att} S)/R} \;+\; n_{regen}
 ```
 
 | Symbol | Meaning | 405B value |
@@ -23,6 +23,7 @@ The proof multiplier for a model at context `S` (source §5):
 | `W/T` | Weight pass per token: 0.24 GPU-s per 16K-token batch | — |
 | `F_lin`, `F_att` | Native INT8 operations per token: linear, attention per unit context | 8.1×10^11, 4.1×10^6 |
 | `R` | Native rate: 60% of 1,979 TOPS dense INT8 on H100 SXM | 1.19×10^15 op/s |
+| `n_regen` | Witness regenerations, each about one native forward pass: witness pass, streamed tree leaf levels, opening pass. Absent from the source model (RISK-9). | 4 (estimate) |
 
 `tessera bench model` implements this formula with counts from the compiler's commitment report, so projections update automatically when the compiler changes ([RFC-0020](../rfcs/RFC-0020-cost-model.md#executable-cost-model)).
 
@@ -49,7 +50,7 @@ Projected from the source (§8) with source unit costs and source commitment cou
 | 16K | 18.8 | 28.5 s | 1.8% | 83.3% |
 | 128K (stretch) | 88.7 | 28 min | 0.38% | 31.4% |
 
-v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)): `μ(1K) ≤ 8`, `μ(16K) ≤ 40`. At the RISK-2 upper bound the linear-layer term rises from about 2.1 to 3.3, so projected `μ(1K)` becomes about 4.5 and `μ(16K)` about 20; both stay within the ceilings.
+These figures exclude witness regeneration. Corrected projections: the RISK-2 upper bound raises the linear-layer term from about 2.1 to 3.3, and four regeneration passes (RISK-9) add about 4, giving `μ(1K) ≈ 8.5` and `μ(16K) ≈ 24`. v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)): `μ(1K) ≤ 12`, `μ(16K) ≤ 45`. Sampling rates for a 10% amortized overhead scale inversely with `μ`, so the corrected projection roughly halves the affordable rate at 1K (to about 3.9%) while keeping daily detection of 100 violations in 10^6 requests above 98%.
 
 ## 4. Memory budgets
 
@@ -67,10 +68,10 @@ v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)): `μ(1K) ≤ 8
 | Quantity | Budget (16K tokens, 16K context, `live-64`) | Projection |
 |---|---|---|
 | Opened advice columns | `τ_A = 155` columns × column length × 8 bytes | about 0.73 GB with message width 2^22 |
-| Combined rows | about 4 rows × 2^22 × 16 bytes | about 0.27 GB |
+| Combined rows | at most 17 rows (one per claim group plus proximity) × 2^22 × 16 bytes | at most 1.14 GB |
 | Sumcheck messages | about 6 stages × ≤ 50 rounds × degree ≤ 4 × 16 bytes × batch factors | < 10 MB |
 | Weight openings | `τ_W = 95` columns per weight type × 9 types | < 0.3 GB |
-| **Total proof** | **≤ 4 GiB (gate), 1.5 GiB (target)** | about 1.3 GB |
+| **Total proof** | **≤ 4 GiB (gate), 2 GiB (target)** | about 2 GB |
 | Verification time | ≤ 300 s on 32 cores | seconds to tens of seconds: column hashing, column combinations, combined-row re-encoding, table MLEs |
 | Dense table evaluation | ≤ 20 dense tables of ≤ 2^24 rows | about 2 s single-threaded |
 

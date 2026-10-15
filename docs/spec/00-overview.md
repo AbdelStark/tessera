@@ -16,7 +16,7 @@ The unique claim is structural (source §5, §7). Proving cost under an exact su
 4. batches every layer, head and query block into a constant number of sumcheck stages under one challenge seed, so proof depth is independent of model depth;
 5. opens a persistent weight commitment with the same tensor-core pass that folds the weights for the sumcheck.
 
-No published system proves a 400B-class dense model at a cost near inference (source §3). The best open systems trail the best closed system by two to four orders of magnitude; the best published frontier-scale proof (VerInf) has a proof multiplier near 10^5. Tessera's projected multiplier for Llama-3.1-405B is 3.2 at 1K tokens and 18.8 at 16K tokens, before the corrections in [§9](#9-risks).
+No published system proves a 400B-class dense model at a cost near inference (source §3). The best open systems trail the best closed system by two to four orders of magnitude; the best published frontier-scale proof (VerInf) has a proof multiplier near 10^5. The source projects Tessera's multiplier for Llama-3.1-405B at 3.2 for 1K tokens and 18.8 for 16K tokens; the corrections in [§9](#9-risks) raise these to about 8.5 and 24, still four orders of magnitude below VerInf.
 
 ## 2. Parties and users
 
@@ -82,7 +82,7 @@ Both modes share the compiled circuit for `D`; they differ only in the scoring p
 |---|---|---|
 | SC-0 | v0.1 | Unit costs `c_c`, `c_ℓ`, `c_π` measured on H100 SXM with the protocol of [RFC-0020](../rfcs/RFC-0020-cost-model.md); go/no-go decision recorded. |
 | SC-1 | v1.0 | Exact-mode proof of Llama-3.1-405B batches at 1K, 4K and 16K context on one 8×H100 node, accepted by the independent verifier. |
-| SC-2 | v1.0 | Measured proof multiplier `μ(1K) ≤ 8` and `μ(16K) ≤ 40` for 405B. These ceilings leave about 2.5× and 2× headroom over the source projection to absorb [RISK-2](#9-risks) and [RISK-4](#9-risks). |
+| SC-2 | v1.0 | Measured proof multiplier `μ(1K) ≤ 12` and `μ(16K) ≤ 45` for 405B. The source projects 3.2 and 18.8; correcting for [RISK-2](#9-risks) and [RISK-9](#9-risks) gives about 8.5 and 24, and the ceilings leave 1.4× and 1.9× headroom over the corrected figures. |
 | SC-3 | v1.0 | Verification of a 16K-token batch proof in ≤ 300 s on a 32-core x86-64 CPU with ≤ 64 GiB RAM; proof ≤ 4 GiB at live parameters. |
 | SC-4 | v0.3 onward | Soundness calculator reports ≥ 100 bits (non-interactive algebraic parts) and ≥ 64 bits (live proximity) for every shipped parameter set; the tamper corpus is rejected in full. |
 | SC-5 | v0.4 onward | Zero-knowledge simulator tests pass; CI redaction scan finds no secret-class data in logs or artifacts. |
@@ -107,6 +107,7 @@ Each risk names where the spec may be wrong and how it is resolved.
 - **RISK-6: zero-knowledge composition.** Masking across stage boundaries is the least mechanical part of the design. Resolution: a written simulator argument is a v0.4 entry gate ([RFC-0013](../rfcs/RFC-0013-zero-knowledge.md#simulator-argument)).
 - **RISK-7: integer-model fidelity.** W8A8 with power-of-two requantization at 405B scale is unmeasured, as is the bounded-mode `Û`. Resolution: the v0.2 fidelity harness ([RFC-0005](../rfcs/RFC-0005-integer-model.md#fidelity-evaluation)); requantization falls back to the split gadget per tensor where fidelity requires it.
 - **RISK-8: hash throughput.** BLAKE3 must sustain about 530 GB/s per H100 inside the committed-element budget. Resolution: measured as part of `c_c` at v0.1; the hash is behind a trait so a superseding RFC can swap it.
+- **RISK-9: witness regeneration is outside the source cost model.** The source's `μ` counts commitment, lookup and product-tree work, 15% sumcheck glue and the weight pass. It does not count the native compute of regenerating the witness: the witness pass itself, the leaf levels of the fraction and product trees (which exceed memory and are proven by a small-space sumcheck that streams the witness about twice), and the opening pass ([RFC-0011](../rfcs/RFC-0011-advice-commitment.md#opening-protocol)). Each regeneration costs about one native forward pass, so `μ` rises by about 3 to 5 at every context length; with RISK-2, the 405B projection becomes about 8.5 at 1K and 24 at 16K. Resolution: the executable cost model carries an explicit regeneration term ([RFC-0020](../rfcs/RFC-0020-cost-model.md#executable-cost-model)); v0.3 counts passes on CPU; v0.5 measures them on GPU; fusing passes is a performance objective of [RFC-0018](../rfcs/RFC-0018-gpu-prover-runtime.md#pass-structure).
 
 ## 10. Three meanings of overhead
 
