@@ -1,0 +1,149 @@
+# Pull-request pipeline for both workspaces: the merge-blocking gates of
+# docs/spec/07-testing-strategy.md §9 that exist so far. Third-party actions are pinned by
+# commit SHA (TB-4 in docs/spec/06-security.md).
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  checks:
+    name: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --component clippy,rustfmt --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            . -> target
+            verifier -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Format
+        run: |
+          cargo fmt --all --check
+          (cd verifier && cargo fmt --all --check)
+      - name: Clippy
+        run: |
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          (cd verifier && cargo clippy --workspace --all-targets --locked -- -D warnings)
+      - name: Rustdoc
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          cargo doc --workspace --no-deps --locked
+          (cd verifier && cargo doc --workspace --no-deps --locked)
+      # The gates run as `cargo run -p xtask`, not through the `cargo xtask` alias: the alias is
+      # repository configuration that a change under review could rewrite.
+      - name: Repository policies (unsafe code, SPDX headers, licenses, Markdown links)
+        run: cargo run --locked --quiet -p xtask -- lint
+      - name: Verifier isolation (RFC-0001)
+        run: cargo run --locked --quiet -p xtask -- check-isolation
+
+  test:
+    name: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            . -> target
+            verifier -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Prover workspace
+        run: cargo test --workspace --locked
+      - name: Verifier workspace
+        working-directory: verifier
+        run: cargo test --workspace --locked
+
+  msrv:
+    name: msrv (1.85)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust 1.85
+        run: rustup toolchain install 1.85.0 --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            . -> target
+            verifier -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build every target with the minimum supported Rust version (09 §2)
+        run: |
+          cargo +1.85.0 check --workspace --all-targets --locked
+          (cd verifier && cargo +1.85.0 check --workspace --all-targets --locked)
+
+  python:
+    name: python
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Detect the Python package
+        id: detect
+        run: |
+          if [ -f python/pyproject.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.detect.outputs.present == 'true'
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Lint, type-check and test
+        if: steps.detect.outputs.present == 'true'
+        working-directory: python
+        run: |
+          uv sync --locked
+          uv run ruff check
+          uv run ruff format --check
+          uv run pyright --strict
+          uv run pytest
+      - name: Skip
+        if: steps.detect.outputs.present != 'true'
+        run: echo "python/pyproject.toml is absent; nothing to check yet (#67)."
+
+  macos:
+    # Tier-2 build-only platform (09 §8). Runs on main only: macOS minutes are billed at ten
+    # times the Linux rate, and contributors' macOS machines build every change locally.
+    name: macos build (tier 2)
+    if: github.event_name != 'pull_request'
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            . -> target
+            verifier -> target
+      - name: Build both workspaces
+        run: |
+          cargo build --workspace --locked
+          (cd verifier && cargo build --workspace --locked)
