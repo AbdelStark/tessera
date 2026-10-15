@@ -21,11 +21,14 @@ extern crate self as tessera_codec;
 pub mod error;
 #[doc(hidden)]
 pub mod golden;
+mod secret;
 mod tce;
 mod types;
 
+pub use secret::{Public, Secret};
 pub use tce::{
     DEPTH_CEILING, Decode, DecodeError, DecodeLimits, Encode, Reader, Sink, decode, encode,
 };
 pub use tessera_codec_derive::{Decode, Encode};
 pub use types::{Ascii, Bytes, DuplicateKey, Map, NotAscii, Rational};
+pub use zeroize::Zeroize;

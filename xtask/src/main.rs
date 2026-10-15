@@ -18,6 +18,7 @@ mod links;
 mod lint;
 mod pr_policy;
 mod repo;
+mod secret_access;
 mod spdx;
 mod test_features;
 #[cfg(test)]

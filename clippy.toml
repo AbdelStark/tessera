@@ -1,0 +1,10 @@
+# Secret-class values leave `Secret<T>` only in the modules 05 §3 OBS-1 names: the witness
+# engine, gadget witness generation, commitment encoding and key handling. Those modules opt in
+# with `#[allow(clippy::disallowed_methods)]`, and `cargo xtask lint` accepts that allowance only
+# in the files `secret-access.toml` lists. This stays the only clippy configuration outside
+# `verifier/`, which `cargo xtask lint` checks: clippy reads the nearest one, so another would
+# switch these rules off for the crates below it.
+disallowed-methods = [
+    { path = "tessera_codec::Secret::expose_secret", reason = "secret-class values leave Secret<T> only in the modules listed in secret-access.toml (05 §3 OBS-1)" },
+    { path = "tessera_codec::Secret::expose_secret_mut", reason = "secret-class values leave Secret<T> only in the modules listed in secret-access.toml (05 §3 OBS-1)" },
+]
