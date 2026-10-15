@@ -10,3 +10,6 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+toml = { version = "1", default-features = false, features = ["std", "parse", "serde"] }

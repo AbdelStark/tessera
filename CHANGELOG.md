@@ -9,3 +9,4 @@ All notable changes to the prover release train are recorded here: the crates un
 - Prover workspace with the twenty crates of RFC-0001 as skeletons, edition 2024, minimum supported Rust 1.85 and an exact toolchain pin (1.95.0) ([#25](https://github.com/AbdelStark/tessera/issues/25)).
 - `cargo xtask` dispatcher, and a test that enforces the unsafe-code policy of RFC-0001: every crate forbids unsafe code except `tessera-field` and `tessera-gpu`, which deny it crate-wide ([#25](https://github.com/AbdelStark/tessera/issues/25)).
 - `deny.toml` license, advisory, ban and source policy for the prover workspace ([#25](https://github.com/AbdelStark/tessera/issues/25)).
+- `LICENSE-APACHE` and `LICENSE-MIT`, and `cargo xtask lint`, which checks the unsafe-code policy, the SPDX header of every Rust, Python and CUDA source file, and the dual license in every Cargo and Python manifest ([#26](https://github.com/AbdelStark/tessera/issues/26)).

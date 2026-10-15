@@ -30,7 +30,15 @@ cargo build --workspace --locked
 cargo test --workspace --locked
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
-cargo xtask help
+cargo xtask lint      # unsafe-code policy, SPDX headers, manifest licenses
 ```
 
 No crate needs a GPU or the CUDA toolkit to build or test.
+
+## License
+
+Tessera is dual-licensed under the [Apache License, Version 2.0](LICENSE-APACHE) or the [MIT license](LICENSE-MIT), at your option. Every Rust, Python and CUDA source file starts with the header `SPDX-License-Identifier: Apache-2.0 OR MIT`, and every Cargo and Python manifest declares the same expression; `cargo xtask lint` checks both.
+
+Contributions are inbound = outbound: unless you explicitly state otherwise, any contribution you intentionally submit for inclusion in Tessera is dual-licensed as above, without additional terms or conditions. The Developer Certificate of Origin sign-off on each commit affirms this ([09 §6](docs/spec/09-release-and-versioning.md#6-contribution-workflow)).
+
+Model weights are never redistributed. Test vectors use randomly generated weights, and users supply checkpoints under their own licenses ([09 §7](docs/spec/09-release-and-versioning.md#7-licensing)).
