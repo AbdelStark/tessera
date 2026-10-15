@@ -60,6 +60,17 @@ jobs:
         run: cargo run --locked --quiet -p xtask -- check-isolation
       - name: Test-only features fail release builds (RFC-0001)
         run: cargo run --locked --quiet -p xtask -- check-test-features
+      - name: GPU host code without CUDA (clippy)
+        env:
+          TESSERA_GPU_SKIP_KERNELS: "1"
+        run: cargo clippy -p tessera-gpu --features gpu --all-targets --locked -- -D warnings
+      - name: The gpu feature fails without CUDA 12.8, naming it (RFC-0001)
+        run: |
+          if cargo build -p tessera-gpu --features gpu --locked 2> "$RUNNER_TEMP/gpu-build.log"; then
+            echo "building tessera-gpu with --features gpu succeeded on a runner without CUDA"
+            exit 1
+          fi
+          grep -F "needs the CUDA toolkit 12.8 or later" "$RUNNER_TEMP/gpu-build.log"
 
   test:
     name: test
