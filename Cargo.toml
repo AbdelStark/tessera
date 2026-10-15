@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "xtask"]
+# The verifier is a separate workspace with its own lockfile (RFC-0001).
+exclude = ["verifier"]
 
 [workspace.package]
 version = "0.1.0"

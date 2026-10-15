@@ -1,0 +1,65 @@
+# Third-party packages permitted in the verifier's build graph (RFC-0001 'Enforcement', DEP-3;
+# RFC-0019 'Dependencies'; trust boundary TB-4 in docs/spec/06-security.md).
+#
+# `cargo xtask check-isolation` rejects every registry or git package in the resolved graph of
+# this workspace that is not listed here with a matching major version. The rule covers
+# transitive dependencies too: a dependency that arrives through an upgrade must be added here
+# with its reason, in the same change that introduces it, and audited with `cargo vet`.
+#
+# Fields:
+#   name               crates.io package name
+#   version            allowed major version: "1" admits 1.x; "0.10" admits 0.10.x (Cargo's
+#                      SemVer compatibility rule for 0.y versions)
+#   reason             why the verifier needs it, citing the governing document
+#   direct-dependents  optional; the only verifier crates allowed to depend on it directly
+#
+# Changing this file changes the trusted base and requires a second reviewer (09 §6).
+
+[[package]]
+name = "blake3"
+version = "1"
+reason = "BLAKE3 in key-derivation mode: domains, column digests, Merkle nodes, transcript and proof-of-work (RFC-0004)"
+
+[[package]]
+name = "sha2"
+version = "0.10"
+reason = "SHA-256 for recorder digests and the RFC 6962 Merkle tree of the digest log (RFC-0015)"
+
+[[package]]
+name = "ed25519-dalek"
+version = "2"
+reason = "Ed25519 (RFC 8032) verification of recorder log manifests (RFC-0015)"
+
+[[package]]
+name = "rayon"
+version = "1"
+reason = "Data-parallel column checks and combined-row re-encoding within the SC-3 time budget (RFC-0019)"
+
+[[package]]
+name = "thiserror"
+version = "2"
+reason = "Derived Display and Error impls for verifier error types (04 §4)"
+
+[[package]]
+name = "clap"
+version = "4"
+reason = "Argument parsing of the tessera-verify command line (02 §2.3)"
+direct-dependents = ["tv-cli"]
+
+[[package]]
+name = "serde"
+version = "1"
+reason = "Serialization of the tessera.verdict/1 JSON report only, never of protocol data (05 §7)"
+direct-dependents = ["tv-cli"]
+
+[[package]]
+name = "serde_json"
+version = "1"
+reason = "Writing the tessera.verdict/1 JSON report (05 §7)"
+direct-dependents = ["tv-cli"]
+
+[[package]]
+name = "rustls"
+version = "0.23"
+reason = "Mutually authenticated TLS 1.3 for live sessions, isolated so verification logic never links a TLS stack (RFC-0014 'Live transport')"
+direct-dependents = ["tv-transport"]

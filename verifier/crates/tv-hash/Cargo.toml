@@ -1,0 +1,12 @@
+[package]
+name = "tv-hash"
+description = "BLAKE3 domains, chained column digests, Merkle multiproofs, transcript replay and proof-of-work checks, and the SHA-256 Merkle tree of recorder logs (RFC-0004, RFC-0015)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

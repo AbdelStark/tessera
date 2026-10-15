@@ -1,0 +1,12 @@
+[package]
+name = "tv-core"
+description = "Claim-list validation and lowering, range re-derivation, schedule derivation and every proof check, run in the fixed order of RFC-0019."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

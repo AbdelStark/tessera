@@ -16,10 +16,11 @@ Tessera proves that a committed integer language model `D` produced a recorded t
 | Path | Contents |
 |---|---|
 | `crates/` | Prover workspace: one crate per component of [01 Architecture](docs/spec/01-architecture.md#2-components) |
+| `verifier/` | Verifier workspace: an independent implementation of every check, with its own lockfile and a third-party allowlist ([RFC-0019](docs/rfcs/RFC-0019-verifier.md)) |
 | `xtask/` | Repository automation, run as `cargo xtask <command>` |
 | `docs/` | Specification, RFCs and roadmap |
 
-The layout and the verifier-independence rules it enforces are fixed by [RFC-0001](docs/rfcs/RFC-0001-workspace-and-verifier-independence.md).
+The layout and the verifier-independence rules it enforces are fixed by [RFC-0001](docs/rfcs/RFC-0001-workspace-and-verifier-independence.md). The verifier never depends on prover code; only shared data (the specification and test vectors) connects the two workspaces.
 
 ## Building and testing
 
@@ -31,6 +32,9 @@ cargo test --workspace --locked
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 cargo xtask lint      # unsafe-code policy, SPDX headers, manifest licenses
+
+# The verifier is a separate workspace:
+cd verifier && cargo build --locked && cargo test --locked
 ```
 
 No crate needs a GPU or the CUDA toolkit to build or test.

@@ -1,0 +1,12 @@
+[package]
+name = "tv-field"
+description = "The verifier's own Fp and Fp2 arithmetic, roots of unity and the NTT used to re-encode combined rows, written from RFC-0002 without reference to the prover's field crate."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
