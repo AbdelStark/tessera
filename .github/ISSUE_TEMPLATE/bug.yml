@@ -1,0 +1,43 @@
+name: Bug
+description: Behavior that differs from the specification.
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A security vulnerability (a proof that should be rejected but is accepted, a proof that reveals secret data, or a verifier crash on hostile input) must be reported privately: see SECURITY.md.
+
+        Do not paste secret-class data: weights, prompts, tokens, logits, keys, seeds or masking randomness ([05 §3](https://github.com/AbdelStark/tessera/blob/main/docs/spec/05-observability.md#3-data-classification-and-redaction)).
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: What happened, with exact error codes (`ERR-...`) or reject reasons where there are any.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What the specification says should happen, with a link to the section.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Commands, inputs and artifacts that reproduce the problem.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The release, or the output of `git rev-parse HEAD`.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, CPU or GPU, toolchain (`rustc --version`), and anything else relevant.
