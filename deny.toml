@@ -1,11 +1,13 @@
-# cargo-deny policy for the prover workspace (09 §7, 06 §3 TB-4).
-# CI wiring and the verifier's stricter policy land with the dependency-policy gate (#50).
+# cargo-deny policy for the prover workspace (09 §7, TB-4 in 06 §3), run by
+# `cargo xtask check-deps`. The verifier's stricter policy is verifier/deny.toml.
 
 [graph]
 all-features = true
 
 [advisories]
 yanked = "deny"
+# An ignored advisory is a table `{ id = "RUSTSEC-...", reason = "..." }`; `cargo xtask lint`
+# requires the reason.
 ignore = []
 
 [licenses]
@@ -23,7 +25,8 @@ allow = [
 confidence-threshold = 0.93
 # The allow list is policy; not every license on it occurs in the graph.
 unused-allowed-license = "allow"
-exceptions = []
+# Exceptions are `[[licenses.exceptions]]` tables at the end of this file, each directly
+# preceded by a `# Reason:` comment; `cargo xtask lint` checks both.
 
 [bans]
 multiple-versions = "warn"

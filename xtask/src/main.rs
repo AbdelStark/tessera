@@ -10,6 +10,8 @@
 // A command-line tool reports on stdout and stderr.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+mod deny_policy;
+mod deps;
 mod isolation;
 mod licenses;
 mod links;
@@ -31,13 +33,15 @@ const USAGE: &str = "\
 usage: cargo xtask <command>
 
 commands:
+  check-deps         run cargo-deny in both workspaces and cargo-vet in the verifier, then
+                     self-test the dependency policies (09 §7; needs cargo-deny, cargo-vet)
   check-isolation    check that the verifier shares no code with the prover (RFC-0001)
   check-pr --base <REF> [--labels <a,b,...>]
                      check the change from REF to HEAD: changelog entries and DCO sign-off
   check-test-features
                      check that test-only cargo features fail release builds (RFC-0001)
   lint               check repository policies: unsafe code, SPDX headers, manifest
-                     licenses, Markdown links
+                     licenses, Markdown links, dependency-policy files
   help               print this message
 ";
 
@@ -47,6 +51,7 @@ fn main() -> ExitCode {
             print!("{USAGE}");
             ExitCode::SUCCESS
         }
+        Some("check-deps") => report(deps::run(&repo::root())),
         Some("check-isolation") => report(isolation::run(&repo::root())),
         Some("check-pr") => match check_pr_args(std::env::args().skip(2)) {
             Ok((base, labels)) => report(pr_policy::run(&repo::root(), &base, &labels)),

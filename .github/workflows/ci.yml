@@ -83,6 +83,37 @@ jobs:
         working-directory: verifier
         run: cargo test --workspace --locked
 
+  dependencies:
+    name: dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            . -> target
+            verifier -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install cargo-deny 0.20.2 (release binary, SHA-256 pinned)
+        run: |
+          base=https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2
+          archive=cargo-deny-0.20.2-x86_64-unknown-linux-musl
+          curl --proto '=https' --tlsv1.2 -sSfL -o "$RUNNER_TEMP/$archive.tar.gz" "$base/$archive.tar.gz"
+          echo "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f  $RUNNER_TEMP/$archive.tar.gz" \
+            | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP"
+          install -m 0755 "$RUNNER_TEMP/$archive/cargo-deny" "$HOME/.cargo/bin/cargo-deny"
+      - name: Install cargo-vet 0.10.2 (crates.io, locked)
+        # No release binary exists after 0.10.0, whose parser rejects audits in newer formats.
+        run: cargo install cargo-vet --version 0.10.2 --locked
+      - name: Dependency policy (09 §7)
+        run: cargo run --locked --quiet -p xtask -- check-deps
+
   msrv:
     name: msrv (1.85)
     runs-on: ubuntu-24.04
