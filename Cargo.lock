@@ -156,6 +156,9 @@ version = "0.1.0"
 [[package]]
 name = "tessera-codec"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "tessera-compiler"
