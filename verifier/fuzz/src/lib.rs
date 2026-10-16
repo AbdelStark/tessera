@@ -2,7 +2,8 @@
 
 //! Decoders shared by the fuzz targets, built from `tv-codec`'s combinators, and what each
 //! reports about the value it decoded, for the targets' oracles. The cases and oracles of the
-//! proof targets, `multiproof` and `inclusion`, are in [`proofs`].
+//! proof targets, `multiproof` and `inclusion`, are in [`proofs`], and those of `sumcheck` in
+//! [`sumcheck`].
 //!
 //! Each decoder returns an [`Echo`]: the canonical encoding of its value, written from RFC-0003's
 //! encoding table from the value and never copied from the input, with the value's nesting depth
@@ -15,6 +16,7 @@
 use tv_codec::{Cursor, DecodeError, size};
 
 pub mod proofs;
+pub mod sumcheck;
 
 /// What a decoder learned about the value it decoded.
 pub struct Echo {

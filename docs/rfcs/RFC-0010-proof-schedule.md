@@ -66,18 +66,31 @@ Claims on a `Linear` target become claims on its inputs at the same point with p
 
 For the `servable` Llama template the longest chain is: requantization key of the residual update ← O-projection (`MatMulWeight`) ← attention output requantization key ← `R_q · PV` (`Elementwise`) ← `PV` (`MatMulAct`) ← committed `e`, `v`. In the `minimal` template one more stage appears because the attention output is not committed. The compiler's commitment report lists the stage count; it must be identical for 2-, 4-, 8- and 126-layer models of the same template.
 
+### Tree levels
+
+The leaf stage proves each product tree level by level from its root, level 0, to its leaves, level `h`. Level `ℓ + 1` has twice the entries of level `ℓ`, and the pair `2x, 2x + 1` combines into entry `x`: `V_ℓ[x] = V_{ℓ+1}[2x]·V_{ℓ+1}[2x + 1]`. In the relation `ProductTreeLevel`, `V_{ℓ+1}(x, b)` is therefore `Ṽ_{ℓ+1}(b ‖ x)`: the pair bit is the lowest variable. Fraction trees pair their entries the same way, under the rule of [RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree). Trees of different heights join the batch where their heights match, as RFC-0008 'Batching' says: with `H` the tallest tree's height, a tree of height `h` takes its root level at level `H − h` of the batch, and at level `ℓ` of the batch it has `ℓ − (H − h)` variables.
+
+At level `ℓ`, each instance `i` holds a claim `Ṽ(r_i) = v_i` on its current level, over `n_i` variables:
+
+1. The challenge `γ` is squeezed under `tree/{ℓ}/gamma`, and the instances are combined and front-padded as in a stage ('Batching within a stage').
+2. A sumcheck of degree 3 over `n_max` variables proves `Σ_x eq(r_i, x)·Ṽ_{ℓ+1}(0 ‖ x)·Ṽ_{ℓ+1}(1 ‖ x)` for every instance, with the messages of 'Sumcheck messages' under `tree/{ℓ}/round/{j − 1}` and `tree/{ℓ}/r/{j − 1}`.
+3. The prover sends `u_i = Ṽ_{ℓ+1}(0 ‖ r'_i)` and `w_i = Ṽ_{ℓ+1}(1 ‖ r'_i)` for each instance, at its point `r'_i`, the last `n_i` challenges: one TCE `Vec<Fp2>` of `u_0, w_0, u_1, w_1, …` under `tree/{ℓ}/evals`. The verifier checks `Σ_i γ^i · eq(r_i, r'_i) · u_i · w_i` against the sumcheck's last claim.
+4. The challenge `ρ` is squeezed under `tree/{ℓ}/line`. Each instance's claim on its next level is `Ṽ_{ℓ+1}(ρ ‖ r'_i) = u_i + ρ·(w_i − u_i)`, on `n_i + 1` variables.
+
+A product tree's root claim is public: zero for the trees of `SoftmaxRow` ([RFC-0009](RFC-0009-gadgets.md#softmaxrow)), on the root level's zero variables. The claims after a tree's last level are the leaf claims the next stage consumes.
+
 ### Batching within a stage
 
-- Instances of one stage are combined with powers of a batching challenge `γ` drawn after the stage's input claims are fixed (label `stage/{k}/gamma`).
-- Instances with fewer variables than the stage maximum `n_max` are treated as functions constant in the extra leading variables; their claims are scaled by `2^{n_max − n_i}` (the standard front-padding argument), so all instances share one round sequence.
+- Instances of one stage are combined with powers of a batching challenge `γ` drawn after the stage's input claims are fixed (label `stage/{k}/gamma`). Numbered from 0 in schedule order, instance `i` with claim `c_i` on `n_i` variables enters the stage's claim as `γ^i · 2^{n_max − n_i} · c_i`.
+- Instances with fewer variables than the stage maximum `n_max` are front-padded: each is treated as constant in the extra leading variables, the lowest `n_max − n_i`, which the first `n_max − n_i` rounds bind, hence the scaling of its claim by `2^{n_max − n_i}`. Its own variables take the last `n_i` challenges, so all instances share one round sequence, and the high coordinates of every instance, a stacked tensor's layer coordinate among them, are the stage's last challenges.
 - **Stacked layers.** Per-layer instances of one relation are stacked: the layer index becomes `⌈log2 n_layers⌉` extra sumcheck variables (padded layers are zero). A stage therefore ends with one claim per stacked tensor, at one point that includes a layer coordinate `ρ_ℓ`. For weights this yields a single claim `W̃_T(ρ_ℓ, r_o, r_i)` per weight type, opened with one folding pass ([RFC-0012](RFC-0012-weight-commitment.md#opening-by-the-folding-pass)); for zero knowledge it means one masked evaluation per tensor kind per proof rather than one per layer ([RFC-0013](RFC-0013-zero-knowledge.md#stacked-layers)).
 - All instances share the stage's round challenges `r_1 … r_{n_max}`; different relations and tensors of different shapes are combined with powers of `γ` as above.
 
 ### Sumcheck messages
 
-- Round `j` sends the round polynomial `p_j` of degree `d` as its evaluations at `{0, 2, 3, …, d}`; the verifier derives `p_j(1) = claim_j − p_j(0)`.
-- After absorbing the message, the challenge `r_j ∈ Fp2` is squeezed (label `stage/{k}/round/{j}`).
-- At the end, the prover sends the claimed evaluations of every input polynomial at the final point (label `stage/{k}/evals`). The verifier checks that the stage's batched combination of these evaluations, with public factors (`eq`, selectors, constants) it computes itself, equals the last round's claim.
+- Round `j`, from 1 to `n_max`, sends the round polynomial `p_j` of the stage's degree `d` as its evaluations at `0, 2, 3, …, d` (`p_j(0)` alone when `d = 1`): a `Vec<Fp2>` of `d` entries, absorbed as TCE under `stage/{k}/round/{j − 1}`. A message of another length is rejected (`Reject(Sumcheck)`). The verifier derives `p_j(1) = claim_j − p_j(0)`, squeezes the challenge `r_j ∈ Fp2` under `stage/{k}/r/{j − 1}`, and continues with `claim_{j+1} = p_j(r_j)`, `claim_1` being the stage's claim.
+- At the end, the prover sends the claimed evaluations of every input polynomial at the final point: instance by instance in schedule order, each at its own point, the last `n_i` challenges, and within an instance in the order its relation lists its inputs. They are absorbed as one TCE `Vec<Fp2>` under `stage/{k}/evals`. The verifier checks that the stage's batched combination of these evaluations, with public factors (`eq`, selectors, constants) it computes itself, equals `claim_{n_max + 1}`; a stage of `n_max = 0` has no rounds and checks its claim directly.
+- The verifier checks a stage's messages in this order and stops at the first failure, a `Reject(Sumcheck)` whose round counts from 0 as the labels do: for `j` from 1 to `n_max`, round `j` is present and holds `d` values (round `j − 1`); no round follows round `n_max` (round `n_max`); the final evaluations are as many as the instances' relations list, and the final check holds (both round `n_max`). A tree level is checked in the same order.
 
 ```rust
 pub struct SumcheckProof { pub rounds: Vec<Vec<Fp2>>, pub final_evals: Vec<Fp2> }
@@ -134,7 +147,7 @@ The sumcheck engine, matmul relation and product tree land in v0.1 (needed for u
 
 ## Open Questions
 
-None.
+- **OQ-0010-1.** The leaf stage runs the LogUp fraction trees ([RFC-0008](RFC-0008-logup-and-tables.md#batching)) and the product trees in the same levels, under one label set per level ([RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule) row 5), while RFC-0014's `Round2Response` carries `logup` and `product_trees` apart and defines neither type. 'Tree levels' specifies product-tree instances only. How does one level order instances of both kinds, lay out their evaluations under `tree/{ℓ}/evals`, and combine a fraction tree's numerator and denominator claims? Owner: @AbdelStark. Resolve in v0.1 with LogUp-GKR verification.
 
 ## References
 

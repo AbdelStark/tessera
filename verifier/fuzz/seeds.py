@@ -16,10 +16,12 @@ libFuzzer names corpus files:
   of the same size; alone, and followed by each change the target's script knows.
 - inclusion: every tree size and leaf index of the golden proofs in rfc6962/inclusion/ that the
   target's log holds; alone, and followed by each change.
+- sumcheck: the shape of every stage and tree batch of sumcheck/sumcheck.json that the target's
+  limits admit, with a seed for its tables or leaves; alone, and followed by each change.
 
 The selectors are the indices of `TYPES` in src/lib.rs, read from the source so that the seeds
 follow any change to the list. The proof targets' input formats are those of `multiproof_case`
-and `inclusion_case` in src/proofs.rs.
+and `inclusion_case` in src/proofs.rs, and of `case` in src/sumcheck.rs.
 """
 
 import hashlib
@@ -32,6 +34,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 VECTORS = HERE.parent.parent / "spec" / "vectors" / "codec"
 HASH_VECTORS = HERE.parent.parent / "spec" / "vectors" / "hash" / "hash.json"
 INCLUSION_VECTORS = HERE.parent.parent / "spec" / "vectors" / "rfc6962" / "inclusion"
+SUMCHECK_VECTORS = HERE.parent.parent / "spec" / "vectors" / "sumcheck" / "sumcheck.json"
 
 # The decode target's limits, selected by its second byte.
 DECODE_LIMITS = 4
@@ -45,6 +48,12 @@ MULTIPROOF_CHANGES = 16
 INCLUSION_CHANGES = 12
 MAX_OPENED = 64
 MAX_ENTRIES = 260
+# The sumcheck target (src/sumcheck.rs): its changes, and the largest batch it builds.
+SUMCHECK_CHANGES = 16
+SUMCHECK_MAX_INSTANCES = 4
+SUMCHECK_MAX_VARS = 6
+SUMCHECK_MAX_DEGREE = 7
+SUMCHECK_MAX_HEIGHT = 5
 
 
 def type_names():
@@ -99,6 +108,46 @@ def inclusion_seeds():
             yield base + bytes([change, 1, 0, 3])
 
 
+def sumcheck_seeds():
+    """Each stage and tree batch of the sumcheck vectors that fits the target, as its shape and a
+    seed (the stage's index or the batch's, as 8 bytes), alone and followed by each change: a
+    stage's degree, instances (variables, tables) and index; a batch's trees (height, the zero
+    leaf's index or 255). A tree case's change starts with the level it touches."""
+    vectors = json.loads(SUMCHECK_VECTORS.read_text())
+    tail = bytes([1, 0, 2, 0, 3, 0]) + (5).to_bytes(16, "little")
+    stages = [stage for session in vectors["sessions"] for stage in session["stages"]]
+    for number, stage in enumerate(stages):
+        shapes = [(i["vars"], i["factors"]) for i in stage["instances"]]
+        degree = stage["degree"]
+        if len(shapes) > SUMCHECK_MAX_INSTANCES or degree > SUMCHECK_MAX_DEGREE:
+            continue
+        if any(vars > SUMCHECK_MAX_VARS for vars, _ in shapes):
+            continue
+        index = int(stage["prefix"].split("/")[1])
+        base = bytes([0, degree - 1, len(shapes) - 1])
+        base += b"".join(bytes([vars, tables - 1]) for vars, tables in shapes)
+        base += bytes([index % 256]) + number.to_bytes(8, "little")
+        yield base
+        for change in range(SUMCHECK_CHANGES):
+            yield base + bytes([change]) + tail
+    for number, batch in enumerate(vectors["tree_batches"]):
+        trees = batch["trees"]
+        heights = [tree["height"] for tree in trees]
+        if len(trees) > SUMCHECK_MAX_INSTANCES or max(heights) > SUMCHECK_MAX_HEIGHT:
+            continue
+        zeros = []
+        for tree in trees:
+            zero = [i for i, leaf in enumerate(tree["leaves"]) if int(leaf, 16) == 0]
+            zeros.append(zero[0] if zero else 255)
+        base = bytes([1, len(trees) - 1])
+        base += b"".join(bytes([h - 1, z]) for h, z in zip(heights, zeros))
+        base += number.to_bytes(8, "little")
+        yield base
+        for level in range(max(heights)):
+            for change in range(SUMCHECK_CHANGES):
+                yield base + bytes([level, change]) + tail
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -132,8 +181,10 @@ def main():
         write("multiproof", seed)
     for seed in inclusion_seeds():
         write("inclusion", seed)
+    for seed in sumcheck_seeds():
+        write("sumcheck", seed)
 
-    for target in ("decode", "envelope", "multiproof", "inclusion"):
+    for target in ("decode", "envelope", "multiproof", "inclusion", "sumcheck"):
         print(f"{target}: {sum(1 for _ in (out / target).iterdir())} seeds")
 
 

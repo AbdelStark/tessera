@@ -12,5 +12,14 @@ publish.workspace = true
 # Test-only: accepts the `test-small` parameter set, which certifies nothing. A release build with it fails to compile.
 test-params = []
 
+# The verifier's own field and transcript, nothing else: the checks are written from the
+# specifications without reference to the prover's crates (SP-6, RFC-0001).
+[dependencies]
+tv-field = { path = "../tv-field" }
+tv-hash = { path = "../tv-hash" }
+
+[dev-dependencies]
+tv-testkit = { path = "../tv-testkit" }
+
 [lints]
 workspace = true

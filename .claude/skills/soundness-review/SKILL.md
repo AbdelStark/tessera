@@ -23,6 +23,7 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 ## Sumcheck, GKR and LogUp (RFC-0008, RFC-0010)
 - Each round polynomial has at most the relation's degree; the verifier checks `p(0) + p(1) = claim` every round and recomputes the final evaluation from its own public factors.
 - Batching challenges are drawn after the claims they combine are fixed; smaller instances are scaled by `2^(n_max − n_i)`.
+- A check that passes on the way to a later one returns what that check still owes in a `#[must_use]` type: a sumcheck's last claim, a GKR level's next claims, the leaf claims. A caller that drops them accepts what nothing checked.
 - LogUp: the verifier rejects `d_root = 0` and any zero denominator; multiplicities stay below `P`; the error bound counts `N + T` over `|Fp2|`.
 - Every new round or challenge is counted by the soundness calculator (RFC-0014).
 
@@ -36,6 +37,7 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 
 ## Zero knowledge (RFC-0013)
 - Every value sent to the verifier is public, uniformly masked, or determined by values already sent (INV-ZK-1).
+- A masked extension `Ṽ + Z·R̃` with `Z = Π x_i(1 − x_i)` equals `Ṽ` at any point with a Boolean coordinate, such as a GKR level's pair bit: an evaluation revealed there needs masking of its own (RFC-0013 OQ-0013-2).
 - Each mask row, blinding row and masking polynomial is used in exactly one revealed combination; masking randomness comes from the per-proof seed, never from the transcript.
 
 ## Secrets (05 §3, 06 §7)
