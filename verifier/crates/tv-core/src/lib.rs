@@ -6,10 +6,15 @@
 //! This version holds the sumcheck checks of RFC-0019 'Check order' steps 7 and 8: the rounds
 //! of a sumcheck, batched instances with front-padding, and the levels of the leaf stage's
 //! product trees (RFC-0010 'Multilinear extensions', 'Tree levels', 'Batching within a stage',
-//! 'Sumcheck messages'). They are written from the specification without reference to the
-//! prover's sumcheck code, so that the two agree only because both follow the specification
-//! (SP-6, RFC-0001). Where the specification admits several algorithms this crate takes another
-//! than the prover's: a round polynomial is evaluated by Newton's forward differences.
+//! 'Sumcheck messages'). It also holds the opening checks of the advice commitment, steps 9 and
+//! 11: the group evaluations, then the queried columns' leaves, multiproof and consistency with
+//! the combined rows (RFC-0011 'Opening protocol'). They are written from the specification
+//! without reference to the prover's code, so that the two agree only because both follow the
+//! specification (SP-6, RFC-0001). Where the specification admits several algorithms this crate
+//! takes another than the prover's: a round polynomial is evaluated by Newton's forward
+//! differences; a combined row is evaluated at its column point by merging pairs in one pass,
+//! with no table of `eq`; and the row coefficients come from tables of `eq` over 8 bits of the
+//! row index at a time.
 //!
 //! | Item | What it checks |
 //! |---|---|
@@ -17,16 +22,22 @@
 //! | [`sumcheck::verify_batch`] | a batched sumcheck: the batching challenge, front-padded instances, the rounds, and the final evaluations against the relation the caller supplies |
 //! | [`tree::verify_product_level`] | one level of the leaf stage's product trees, and the claims it passes to the next level |
 //! | [`sumcheck::eq`] | `eq(a, b)`, the public factor of RFC-0010 'Multilinear extensions' |
+//! | [`opening::check_evaluations`] | the advice opening's combined rows: their shape, and each group's claims against its combined row (RFC-0011 step 6) |
+//! | [`opening::Evaluated::check_columns`] | the answer to the column queries: its shape, the leaves and the multiproof, and every combined row against every queried column (RFC-0011 step 8) |
 //!
 //! The stage schedule (#114), the relations of the stages, the masked sumcheck of RFC-0013, the
-//! LogUp fraction-tree levels (#62) and the verifier's driver and verdicts (#128) build on these.
+//! LogUp fraction-tree levels (#62) and the verifier's driver and verdicts (#128) build on these;
+//! so do the advice layout (#116), the transcript steps that squeeze the opening's challenges and
+//! queries, the hiding of RFC-0013 (blinding rows, `u'_g`, `q_g`) and the weight commitment
+//! (RFC-0012).
 //!
 //! # Specification
 //!
-//! What this crate computes and rejects, written down from RFC-0010, RFC-0014 'Transcript
+//! What the sumcheck checks compute and reject, written down from RFC-0010, RFC-0014 'Transcript
 //! schedule' and 'Soundness budget', RFC-0004 'Transcript', RFC-0019 'Robustness' and 04 §2
 //! before the code. The tests check every item against `spec/vectors/sumcheck/`, written by an
-//! independent Python prover, and with inputs that violate exactly one check.
+//! independent Python prover, and with inputs that violate exactly one check. The opening checks
+//! follow, in 'Openings'.
 //!
 //! ## Conventions
 //!
@@ -154,6 +165,151 @@
 //! claim either fails the final check or moves into the final evaluations, which the next stage,
 //! or the openings, then check.
 //!
+//! ## Openings
+//!
+//! What the opening checks of the advice commitment compute and reject, written down from
+//! RFC-0011 ('Canonical advice layout', 'Encoding', 'Column digests and root', 'Opening protocol'
+//! steps 1 to 8, 'Failure modes'), RFC-0004 ('Column digests', 'Merkle trees'), RFC-0002
+//! ('Constants'), RFC-0019 ('Check order' steps 9 to 11, 'Robustness') and 04 §2 before the
+//! code. The tests check every item against `spec/vectors/pcs/opening.json`, written by an
+//! independent Python oracle, and with inputs that violate exactly one check. The caller derives
+//! the layout and runs the transcript, which squeezes the batching challenges `γ`, the point `ξ*`
+//! and the queries; these checks take them as inputs.
+//!
+//! ### Conventions
+//!
+//! - `k = 2^log2_k` and `n = k·2^log2_inv_rate`. `H` and `L` are the subgroups of `Fp^*` of
+//!   order `k` and `n`, and `ω_m = 7^((P − 1)/m)` generates the one of order `m`. Column `j` of
+//!   the commitment is checked at `x_j = 7·ω_n^j`, on the coset `7·L`, which is disjoint from
+//!   `H`.
+//! - The advice polynomial `Ã` has the column index in its low `log2_k` variables and the row
+//!   index in its high `row_vars`, so a claim `Ã(column_point ‖ row_point) = value` lists the
+//!   column point first. A point lists its coordinates lowest variable first: coordinate `t`
+//!   sets bit `t` of an index, and `eq(r, x) = Π_t (r_t·x_t + (1 − r_t)·(1 − x_t))`.
+//! - The layout lists the non-zero rows of each of the `S` segments in layout order, `N` rows in
+//!   all. Every other row is zero, and is neither committed nor summed over. A column holds one
+//!   symbol per non-zero row, segment by segment, in layout order.
+//! - Group `g`'s row coefficients are `c_g(row) = Σ_{claims of g} γ·eq(row_point, row)`, and the
+//!   proximity coefficients are `ξ_row = eq(ξ*, row)`. The verifier computes both itself, for
+//!   every non-zero row.
+//! - A combined row is `u`, `k` values in `Fp2`, and `M`, `P_A` coefficients in `Fp2`. `enc(u)`
+//!   is the polynomial of degree below `k` that takes the values `u` on `H`,
+//!   `enc(u)(ω_k^i) = u_i`, and the row's value at column `j` is
+//!   `enc(u)(x_j) + Z_H(x_j)·M(x_j)`, with `Z_H(X) = X^k − 1` and `M(X) = Σ_{i < P_A} M_i·X^i`.
+//! - `leaf_j = H("column-merge", d_j^(1) ‖ … ‖ d_j^(S))`, where `d_j^(s)` is the chained digest
+//!   [`column_digest`](tv_hash::column::column_digest)`(commitment_id, j, B, ·)` of segment `s`'s
+//!   symbols at column `j`, possibly none. The root is the Merkle root over the `n` leaves.
+//!
+//! ### The verifier's inputs
+//!
+//! [`opening::check_evaluations`]`(opening, combined)` first checks the [`opening::Opening`] the
+//! verifier built from public data and the transcript, before it reads the proof, in this order.
+//! Each failure is a fault of the verifier:
+//!
+//! 1. `log2_inv_rate ≥ 1` and `log2_k + log2_inv_rate ≤ 32`, so that `L` exists and `n ≥ 2k`
+//!    symbols determine `enc(u) + Z_H·M`, of degree below `k + P_A ≤ 2k`; and `n` is addressable.
+//!    Else `CodeLength`.
+//! 2. `1 ≤ P_A ≤ k`, else `MaskCoefficients`. RFC-0011 admits `P_A = k`, though at rate 1/2
+//!    the code is then all of `Fp^n` and the proximity check proves nothing: the parameter sets
+//!    keep `ρ = (k + P_A)/n ≤ 0.51`, and RFC-0019 step 2 accepts the parameter set before these
+//!    checks run.
+//! 3. `B ≥ 1`, else `RowBlock`.
+//! 4. `row_vars ≤ 64`, the bits of a `u64` row index, else `RowVars`.
+//! 5. At least one segment, else `NoSegments`. A segment may be empty.
+//! 6. Row by row in layout order: the row is above the one before it, across segments too, else
+//!    `RowOrder { segment, position }`; then it is below `2^row_vars`, else
+//!    `RowRange { segment, position }`.
+//! 7. Group by group: its column point has `log2_k` coordinates, else
+//!    `ColumnPoint { group, length }`; then claim by claim, its row point has `row_vars`, else
+//!    `RowPoint { group, claim, length }`.
+//! 8. `ξ*` has `row_vars` coordinates, else `XiPoint { length }`.
+//!
+//! There may be no group, and a group may have no claim. Such a group claims 0 and weighs no row,
+//! so its combined row must open to 0 at its column point and be 0 at every queried column.
+//!
+//! ### The evaluation check
+//!
+//! Then [`opening::check_evaluations`] checks the combined rows of the proof (RFC-0011 steps 5
+//! and 6, RFC-0019 step 9), in this order:
+//!
+//! 1. Their shape: `G + 1` rows, the groups' in group order and then the proximity row; then row
+//!    by row, `u` holds `k` values and `M` holds `P_A`. Else `Evaluation { group: None }`.
+//! 2. Group by group, for `g = 0, …, G − 1`:
+//!    `Σ_{claims of g} γ·value = Σ_{i < k} u_g[i]·eq(column_point_g, i)`, else
+//!    `Evaluation { group: Some(g) }`.
+//!
+//! It returns the rows as an [`opening::Evaluated`], which is `#[must_use]`: they are bound to
+//! the claims, and to the commitment only once the columns are checked.
+//!
+//! ### The column check
+//!
+//! [`opening::Evaluated::check_columns`]`(queries, columns, siblings)` checks the answer to the
+//! queries (RFC-0011 steps 7 and 8, RFC-0019 step 11). The queries are the `τ` drawn indices in
+//! draw order, which may repeat. In this order:
+//!
+//! 1. The queries, which are the verifier's: at least one, else `NoQueries`; each below `n`,
+//!    else `QueryRange { position }` at the first in draw order that is not. `D` is their sorted
+//!    set without repeats, and `j_0` its smallest element.
+//! 2. The answer's shape (step 8.1): one column per element of `D`, then each of `N` symbols,
+//!    else `MerklePath { column: j_0 }`.
+//! 3. The leaves and the multiproof (step 8.2): the answer's column `i` is column `D_i`, its
+//!    symbols are split among the segments by their row counts, and its leaf is recomputed; then
+//!    [`verify_multiproof`](tv_hash::merkle::verify_multiproof)`(root, n, [(D_i, leaf_i)…],
+//!    siblings)`. Missing or extra siblings and any other root, from a wrong leaf or sibling or
+//!    one out of place, are `MerklePath { column: j_0 }`: a multiproof fails as a whole, never at
+//!    one column.
+//! 4. Consistency (step 8.3): for each `j` of `D` in increasing order, every combined row, the
+//!    groups' in group order and then the proximity row, satisfies
+//!    `Σ_row c(row)·col_j[row] = enc(u)(x_j) + Z_H(x_j)·M(x_j)`, with `c` the row's `c_g` or `ξ`
+//!    and the sum over the non-zero rows. The first `j` at which some row fails is
+//!    `Proximity { column: j }`.
+//!
+//! ### Opening errors
+//!
+//! [`opening::OpeningError`] says whose fault an error is, and
+//! [`code`](opening::OpeningError::code) gives its identifier in 04 §2 and §3. The commitment
+//! class of the rejection is the caller's, the advice commitment here.
+//!
+//! | Error | Fault | Verdict (04 §2) |
+//! |---|---|---|
+//! | `Evaluation { group }` | the proof's | `Reject(Evaluation { commitment })`, `REJ-PCS-EVAL`; `group` locates the failure and is not part of the reason |
+//! | `MerklePath { column }` | the proof's | `Reject(MerklePath { commitment, column })`, `REJ-PCS-MERKLE` |
+//! | `Proximity { column }` | the proof's | `Reject(Proximity { commitment, column })`, `REJ-PCS-PROXIMITY` |
+//! | `Memory` | the verifier's: memory for a buffer the parameters size could not be reserved | `Inconclusive(ERR-RES-MEMORY)` |
+//! | `CodeLength`, `MaskCoefficients`, `RowBlock`, `RowVars`, `NoSegments`, `RowOrder`, `RowRange`, `ColumnPoint`, `RowPoint`, `XiPoint`, `NoQueries`, `QueryRange` | the verifier's: its own inputs | `Inconclusive(ERR-INTERNAL)` |
+//! | `Internal` | the verifier's: a step that the checks before it make infallible failed, a bug of this crate that no input reaches | `Inconclusive(ERR-INTERNAL)` |
+//!
+//! A column is below `n ≤ 2^32`, so it is a `u32`, as 04 §2 writes it.
+//!
+//! ### Cost and memory
+//!
+//! Every length the proof gives is compared with the parameters or the layout before anything is
+//! allocated or computed from it, so a proof of any shape costs the verifier no more than an
+//! honest one; nothing panics, indexes unchecked or computes sizes unchecked (RFC-0019
+//! 'Robustness').
+//!
+//! - The evaluation check allocates nothing. It reduces each `u_g` to its value at the column
+//!   point in one pass, merging each pair of values with the coordinate of its level as soon as
+//!   both are known: `k − 1` products in `Fp2` per group, and 33 values of state.
+//! - The column check allocates the sorted queries and the leaves (`τ` and `|D|` entries), the
+//!   coefficients of one combined row (`N` values in `Fp2`), one codeword (`n` values in `Fp2`),
+//!   and the NTT's `n/2` twiddles. Hashing the leaves reads `|D|·N` symbols. Then, one combined row
+//!   at a time: its coefficients, at `⌈row_vars/8⌉` products per claim and non-zero row, from
+//!   tables of `γ·eq` over 8 bits of the row index; its codeword, an inverse NTT of size `k` on
+//!   `H`, the mask folded in as `g = f + (X^k − 1)·M`, and a coset NTT of size `n` with shift 7;
+//!   and `|D|` inner products of length `N`. A row is checked only at the positions before the
+//!   first failure found so far, which keeps the reported column exact: it is the smallest
+//!   failing position over the rows.
+//! - So the column check costs `G + 1` NTTs of sizes `k` and `n` in `Fp2`, `(G + 1)·|D|·N`
+//!   products of an `Fp2` coefficient by an `Fp` symbol, and the hashing of `|D|·N` symbols.
+//!   Holding one codeword at a time, it needs about `16·n + 16·N + 4·n` bytes beyond its inputs.
+//! - Measured kernel by kernel on one core of an Apple M4 Max at `k = 2^22`, `n = 2^23`,
+//!   `N = 5.8×10^5`, `|D| = 193`, `G + 1 = 17` and 40 claims: re-encoding takes 0.6 s per
+//!   combined row, about 11 s in all, and dominates; the consistency 1.2 to 1.3 ns per product,
+//!   about 2.4 s; the leaves 0.9 s; the coefficients 0.4 s; the evaluation check 0.5 s. The rows
+//!   are independent of one another, so both large loops parallelize across them: RFC-0019's
+//!   performance plan gives them about 5 s and 2 s on 32 cores.
+//!
 //! # Features
 //!
 //! - `test-params` accepts the `test-small` parameter set, which certifies nothing. Tests only: a
@@ -193,5 +349,6 @@ compile_error!(
 
 mod fiat_shamir;
 mod interpolation;
+pub mod opening;
 pub mod sumcheck;
 pub mod tree;
