@@ -89,14 +89,29 @@ Product trees of one height that the schedule lists together are stacked into a 
   - A forest of one tree takes no challenge. Its root claim is its tree's root value, on the root level's zero variables.
   - If a forest's root level differs from its public values, its root claim holds with probability at most `s/|Fp2|` over the root point.
 
-At level `ℓ`, each instance `i`, a forest of height `h_i`, holds a claim `Ṽ_{t_i}(r_i) = v_i` on its own level `t_i = ℓ − (H − h_i)`, over `n_i` variables:
+The fraction trees of LogUp ([RFC-0008 'Fraction tree'](RFC-0008-logup-and-tables.md#fraction-tree)) run in the same levels, under the same labels: each instance's lookup tree and table tree.
+- Each fraction tree is an instance of its own, a single tree. It joins at level `H − h` like a forest of one tree.
+- Its root `(n, d)`, sent under `logup/roots`, gives the claims on its level 0.
+- It holds two claims at one point: `Ñ_t(r) = p` on its numerators and `D̃_t(r) = q` on its denominators.
 
-1. The challenge `γ` is squeezed under `tree/{ℓ}/gamma`, and the instances are combined and front-padded as in a stage ('Batching within a stage').
-2. A sumcheck of degree 3 over `n_max` variables proves `Σ_x eq(r_i, x)·Ṽ_{t_i+1}(0 ‖ x)·Ṽ_{t_i+1}(1 ‖ x)` for every instance, with the messages of 'Sumcheck messages' under `tree/{ℓ}/round/{j − 1}` and `tree/{ℓ}/r/{j − 1}`.
-3. The prover sends `u_i = Ṽ_{t_i+1}(0 ‖ r'_i)` and `w_i = Ṽ_{t_i+1}(1 ‖ r'_i)` for each instance, at its point `r'_i`, the last `n_i` challenges: one TCE `Vec<Fp2>` of `u_0, w_0, u_1, w_1, …` under `tree/{ℓ}/evals`. The verifier checks `Σ_i γ^i · eq(r_i, r'_i) · u_i · w_i` against the sumcheck's last claim.
-4. The challenge `ρ` is squeezed under `tree/{ℓ}/line`. Each instance's claim on its next level is `Ṽ_{t_i+1}(ρ ‖ r'_i) = u_i + ρ·(w_i − u_i)`, on `n_i + 1` variables.
+`H` is the height of the tallest forest or tree, and instances of both kinds are numbered from 0 in schedule order.
 
-The claims after a forest's last level are the leaf claims the next stage consumes. Each is a claim on the forest's leaf table of `2^{s+h}` entries, its trees' leaves stacked as above.
+At level `ℓ`, each instance `i` of height `h_i` holds its claims on its own level `t_i = ℓ − (H − h_i)`, over `n_i` variables: `Ṽ_{t_i}(r_i) = v_i` for a forest, and `Ñ_{t_i}(r_i) = p_i`, `D̃_{t_i}(r_i) = q_i` for a fraction tree.
+
+1. The challenge `γ` is squeezed under `tree/{ℓ}/gamma`. When a fraction tree is present at the level, the challenge `λ` follows under `tree/{ℓ}/lambda`. Each instance enters with the claim `c_i`: `v_i` for a forest, `p_i + λ·q_i` for a fraction tree. The instances are combined and front-padded as in a stage ('Batching within a stage').
+2. A sumcheck of degree 3 over `n_max` variables proves `Σ_x eq(r_i, x)·g_i(x)` for every instance, with the messages of 'Sumcheck messages' under `tree/{ℓ}/round/{j − 1}` and `tree/{ℓ}/r/{j − 1}`.
+   - For a forest, `g_i(x) = Ṽ_{t_i+1}(0 ‖ x)·Ṽ_{t_i+1}(1 ‖ x)`.
+   - For a fraction tree, with `N` and `D` its numerators and denominators on level `t_i + 1`, `g_i(x) = N(0 ‖ x)·D(1 ‖ x) + N(1 ‖ x)·D(0 ‖ x) + λ·D(0 ‖ x)·D(1 ‖ x)`.
+3. The prover sends each instance's evaluations at its point `r'_i`, the last `n_i` challenges, instance by instance in schedule order, as one TCE `Vec<Fp2>` under `tree/{ℓ}/evals`:
+   - for a forest, `u_i = Ṽ_{t_i+1}(0 ‖ r'_i)` and `w_i = Ṽ_{t_i+1}(1 ‖ r'_i)`;
+   - for a fraction tree, `N_0`, `N_1`, `D_0`, `D_1`, the values of `N(0 ‖ r'_i)`, `N(1 ‖ r'_i)`, `D(0 ‖ r'_i)` and `D(1 ‖ r'_i)`.
+
+   The verifier checks `Σ_i γ^i · eq(r_i, r'_i) · g_i` against the sumcheck's last claim, with `g_i = u_i·w_i` for a forest and `g_i = N_0·D_1 + N_1·D_0 + λ·D_0·D_1` for a fraction tree.
+4. The challenge `ρ` is squeezed under `tree/{ℓ}/line`. Each instance's claims on its next level are on `n_i + 1` variables:
+   - for a forest, `Ṽ_{t_i+1}(ρ ‖ r'_i) = u_i + ρ·(w_i − u_i)`;
+   - for a fraction tree, `N(ρ ‖ r'_i) = N_0 + ρ·(N_1 − N_0)` and `D(ρ ‖ r'_i) = D_0 + ρ·(D_1 − D_0)`.
+
+The claims after a forest's last level are the leaf claims the next stage consumes. Each is a claim on the forest's leaf table of `2^{s+h}` entries, its trees' leaves stacked as above. A fraction tree's leaf claims go to the final checks of RFC-0008 'Fraction tree', after the prover sends the lookup trees' value evaluations under `logup/values`. A level with no fraction tree squeezes no `λ`, so the levels of a leaf stage of product forests alone run exactly as before. Such a stage still squeezes `α` and `β` and absorbs `logup/roots` and `logup/values`, empty.
 
 ### Batching within a stage
 
@@ -129,7 +144,7 @@ All claims on committed advice are collected in a pool keyed by polynomial. Clai
 
 ### Soundness of the schedule
 
-For a stage with `n` rounds of degree `d` and `m` batched instances, the error is at most `(n·d + m)/|Fp2|`. Each tree level contributes likewise, and each forest's root claim at most `s/|Fp2|`. The total over all stages and levels is summed by the soundness calculator (RFC-0014); for 405B at 16K tokens it is below 2^-110.
+For a stage with `n` rounds of degree `d` and `m` batched instances, the error is at most `(n·d + m)/|Fp2|`. Each tree level contributes likewise, with `m` its instances. At a level with fraction trees, the combination `Σ_i γ^i·c_i` is a polynomial of total degree at most `m` in `γ` and `λ`, so `λ` adds nothing to that bound. Each forest's root claim adds at most `s/|Fp2|`. The total over all stages and levels is summed by the soundness calculator (RFC-0014); for 405B at 16K tokens it is below 2^-110.
 
 ### Invariants
 
@@ -167,7 +182,7 @@ The sumcheck engine, matmul relation and product tree land in v0.1 (needed for u
 
 ## Open Questions
 
-- **OQ-0010-1.** The leaf stage runs the LogUp fraction trees ([RFC-0008](RFC-0008-logup-and-tables.md#batching)) and the product trees in the same levels, under one label set per level ([RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule) row 5), while RFC-0014's `Round2Response` carries `logup` and `product_trees` apart and defines neither type. 'Tree levels' specifies product-tree instances only. How does one level order instances of both kinds, lay out their evaluations under `tree/{ℓ}/evals`, and combine a fraction tree's numerator and denominator claims? Owner: @AbdelStark. Resolve in v0.1 with LogUp-GKR verification.
+- **OQ-0010-1** (resolved). How does one level order fraction trees and product trees, lay out their evaluations under `tree/{ℓ}/evals`, and combine a fraction tree's numerator and denominator claims? 'Tree levels' answers it. Instances of both kinds are numbered in schedule order. A fraction tree sends `N_0, N_1, D_0, D_1` where a forest sends `u, w`. A level with fraction trees squeezes `λ` after `γ`, and each fraction tree enters with the claim `p + λ·q`. The types of RFC-0014's `Round2Response` that carry these messages are still to be written.
 
 ## References
 

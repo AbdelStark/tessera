@@ -77,8 +77,8 @@ Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{c}`, `{T}` are decimal
 | 1 | init | `SessionContext` (protocol, mode, params, statement digest, session id) |
 | 2 | absorb | `round1` |
 | 3 | live: absorb `seed`; NI: grind `seed-pow`, then squeeze | `seed` |
-| 4 | squeeze `Fp2` × 2 | `logup/alpha`, `logup/beta` |
-| 5 | per tree level `ℓ`: squeeze the root point of the forests that join at `ℓ` ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)), squeeze `γ_ℓ`, absorb round messages, squeeze challenges, absorb evaluations, squeeze the line challenge | `tree/{ℓ}/root/{c}`, `tree/{ℓ}/gamma`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line` |
+| 4 | squeeze `Fp2` × 2, then absorb the fraction trees' roots ([RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree)) | `logup/alpha`, `logup/beta`, `logup/roots` |
+| 5 | per tree level `ℓ`: squeeze the root point of the forests that join at `ℓ` ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)), squeeze `γ_ℓ`, and `λ_ℓ` at a level with fraction trees, absorb round messages, squeeze challenges, absorb evaluations, squeeze the line challenge; after the last level, absorb the lookup trees' value evaluations | `tree/{ℓ}/root/{c}`, `tree/{ℓ}/gamma`, `tree/{ℓ}/lambda`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line`, `logup/values` |
 | 6 | per stage `k`: absorb masked sum, squeeze `ρ_k`, squeeze `γ_k`, rounds, final evaluations | `stage/{k}/zk-sum`, `stage/{k}/zk-rho`, `stage/{k}/gamma`, `stage/{k}/round/{j}`, `stage/{k}/r/{j}`, `stage/{k}/evals` |
 | 7 | squeeze opening batching challenges | `pcs/advice/gamma`, `pcs/advice/xi`, `pcs/weights/{T}/xi` |
 | 8 | absorb combined rows | `pcs/advice/combined`, `pcs/weights/{T}/combined` |
@@ -102,7 +102,7 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 | Weight linking | `ν/|Fp2|` | ≥ 120 bits | ≥ 120 bits |
 | Hash collisions | BLAKE3, 256-bit output | 128 bits | 128 bits |
 
-`b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients. The bound takes the queries to be independent. Both modes draw column indices uniformly with replacement, and a repeated index is checked once at no cost in soundness ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7). The verifier also rejects any `d_root = 0` in LogUp and any zero denominator.
+`b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients. The bound takes the queries to be independent. Both modes draw column indices uniformly with replacement, and a repeated index is checked once at no cost in soundness ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7). The verifier also rejects a zero LogUp root denominator, of a lookup tree or a table tree, and any zero denominator.
 
 ### Grinding
 

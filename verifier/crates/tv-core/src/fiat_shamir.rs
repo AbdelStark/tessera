@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The transcript as the sumcheck checks use it: labels built from RFC-0014's patterns,
-//! messages absorbed as TCE `Vec<Fp2>`, challenges in `Fp2`.
+//! The transcript as the sumcheck and LogUp checks use it: labels built from RFC-0014's
+//! patterns, messages absorbed as TCE `Vec<Fp2>`, challenges in `Fp2`.
 //!
 //! The checks run on any [`FiatShamir`] transcript. The verifier's is `tv-hash`'s
 //! [`Transcript`]; the unit tests put a recording stub in its place, which sees every label and
@@ -9,7 +9,7 @@
 //! branch BLAKE3 reaches with probability below `2^-496`.
 
 use tv_field::Fp2;
-use tv_hash::transcript::{Ascii, Transcript, TranscriptError};
+use tv_hash::transcript::{Ascii, NotAscii, Transcript, TranscriptError};
 
 use crate::sumcheck::{Prefix, SumcheckError};
 
@@ -37,6 +37,8 @@ impl FiatShamir for Transcript {
 pub(crate) enum Step {
     /// `<prefix>/gamma`, the batching challenge.
     Gamma,
+    /// `<prefix>/lambda`, a tree level's challenge combining a fraction tree's two claims.
+    Lambda,
     /// `<prefix>/round/{j}`, the message of round `j`.
     Round(usize),
     /// `<prefix>/r/{j}`, the challenge of round `j`.
@@ -51,11 +53,51 @@ pub(crate) enum Step {
 fn label(prefix: Prefix, step: Step) -> String {
     match step {
         Step::Gamma => format!("{prefix}/gamma"),
+        Step::Lambda => format!("{prefix}/lambda"),
         Step::Round(j) => format!("{prefix}/round/{j}"),
         Step::Challenge(j) => format!("{prefix}/r/{j}"),
         Step::Evals => format!("{prefix}/evals"),
         Step::Line => format!("{prefix}/line"),
     }
+}
+
+/// A transcript operation that could not run: its label is not printable ASCII, or its
+/// challenge found no value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Failure {
+    /// The label.
+    Label(NotAscii),
+    /// The challenge.
+    Transcript(TranscriptError),
+}
+
+impl From<Failure> for SumcheckError {
+    fn from(failure: Failure) -> Self {
+        match failure {
+            Failure::Label(error) => SumcheckError::Label(error),
+            Failure::Transcript(error) => SumcheckError::Transcript(error),
+        }
+    }
+}
+
+/// Absorbs `values`, a prover message, as TCE `Vec<Fp2>` under `label`.
+pub(crate) fn absorb_under(
+    transcript: &mut impl FiatShamir,
+    label: &str,
+    values: &[Fp2],
+) -> Result<(), Failure> {
+    let label = Ascii::new(label).map_err(Failure::Label)?;
+    transcript.absorb(label, &tce(values));
+    Ok(())
+}
+
+/// Squeezes a challenge under `label`.
+pub(crate) fn challenge_under(
+    transcript: &mut impl FiatShamir,
+    label: &str,
+) -> Result<Fp2, Failure> {
+    let label = Ascii::new(label).map_err(Failure::Label)?;
+    transcript.challenge_fp2(label).map_err(Failure::Transcript)
 }
 
 /// The TCE encoding of a `Vec<Fp2>`: the length as a little-endian `u64`, then each element as
@@ -78,10 +120,7 @@ pub(crate) fn absorb(
     step: Step,
     values: &[Fp2],
 ) -> Result<(), SumcheckError> {
-    let label = label(prefix, step);
-    let label = Ascii::new(&label).map_err(SumcheckError::Label)?;
-    transcript.absorb(label, &tce(values));
-    Ok(())
+    absorb_under(transcript, &label(prefix, step), values).map_err(SumcheckError::from)
 }
 
 /// Squeezes the challenge of `step`.
@@ -90,11 +129,7 @@ pub(crate) fn challenge(
     prefix: Prefix,
     step: Step,
 ) -> Result<Fp2, SumcheckError> {
-    let label = label(prefix, step);
-    let label = Ascii::new(&label).map_err(SumcheckError::Label)?;
-    transcript
-        .challenge_fp2(label)
-        .map_err(SumcheckError::Transcript)
+    challenge_under(transcript, &label(prefix, step)).map_err(SumcheckError::from)
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@
 
 ## Summary
 
-Every non-arithmetic relation in Tessera reduces to lookups `(key, value) ∈ T` proven with LogUp-GKR: one fraction tree per table instance, batched across all layers, heads and tokens, with challenges in `Fp2`. Keys are virtual, values and multiplicities are committed. Tables are public, defined by integer-only generators whose outputs are bit-identical across the prover, the verifier and the Python reference, and pinned by digests in the claim list. Large tables (up to 2^32 rows) are cheap for the verifier because every v1 table is a piecewise function whose multilinear extension is evaluated in time proportional to its non-constant core, at most 2^24 entries.
+Every non-arithmetic relation in Tessera reduces to lookups `(key, value) ∈ T` proven with LogUp-GKR: two fraction trees per table instance, one for the lookups and one for the table, batched across all layers, heads and tokens, with challenges in `Fp2`. Keys are virtual, values and multiplicities are committed. Tables are public, defined by integer-only generators whose outputs are bit-identical across the prover, the verifier and the Python reference, and pinned by digests in the claim list. Large tables (up to 2^32 rows) are cheap for the verifier because every v1 table is a piecewise function whose multilinear extension is evaluated in time proportional to its non-constant core, at most 2^24 entries.
 
 ## Motivation
 
@@ -41,16 +41,27 @@ for a challenge `α ∈ Fp2` drawn after the values and multiplicities are commi
 
 ### Fraction tree
 
-- Leaves: lookups contribute `(1, α − a_i)`; table rows contribute `(−m_j, α − t_j)`. Both sides share one tree (combined), padded to a power of two by lookups that repeat row 0 with `m_0` increased by the padding count.
-- Internal nodes: `(n, d) = (n_L d_R + n_R d_L, d_L d_R)`.
-- Claim: the root has `n = 0` and `d ≠ 0`. The verifier checks `d_root ≠ 0`.
-- Each tree level is proven by a sumcheck of degree 3 per variable (Papini and Haböck), reducing a claim on level `ℓ` to claims on level `ℓ + 1`.
-- Final claims land on the leaf polynomials: the lookup-side key polynomial (virtual, handed to the stage that produces the key, RFC-0010), the value polynomial (committed advice), the multiplicity polynomial (committed advice), and the table polynomial `t̃`, which the verifier evaluates itself.
+An instance, with at least one lookup, proves its identity with two fraction trees, one per side, so that neither side is padded to the other's size:
+
+- **The lookup tree** has `2^{h_a}` leaves, `h_a = ⌈log2 N⌉`. Leaf `i < N` is `(1, α − a_i)`. The `2^{h_a} − N` padding leaves repeat row 0, `(1, α − t_0)`, and the multiplicity of row 0 counts them.
+- **The table tree** has `2^{h_t}` leaves, `h_t = ⌈log2 T⌉`. Leaf `j < T` is `(−m_j, α − t_j)`. The `2^{h_t} − T` padding leaves repeat row 0, `(−m_j, α − t_0)`, and an honest prover gives them multiplicity 0. A padding row is a copy of row 0, so a multiplicity there only counts more lookups of row 0, and the padding cannot admit a tuple that is not a row. Padding with a row of key and value 0 would admit the lookup `(0, 0)`: nothing checks a committed multiplicity there, and a non-zero one would balance it.
+- **Internal nodes.** `(n, d) = (n_L·d_R + n_R·d_L, d_L·d_R)`. Node `x` of level `ℓ` combines entries `2x` (left) and `2x + 1` (right) of level `ℓ + 1`, with the pair bit lowest, as in a product tree ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)). A root's `d` is the product of its leaves' denominators. When `d ≠ 0`, no leaf denominator is zero, and `n/d` is the sum of the leaves' fractions `Σ n_i/d_i`.
+- **Roots.** For every instance, the prover sends the roots `(n_a, d_a)` of the lookup tree and `(n_t, d_t)` of the table tree, in schedule order, before the first tree level (label `logup/roots`, RFC-0014; absorbed even when empty). The verifier checks `d_a ≠ 0`, `d_t ≠ 0` and `n_a·d_t + n_t·d_a = 0`, else `Reject(Lookup)`. The lookups' fractions and the rows' fractions then sum to zero, which is the identity of 'Relation'.
+- **Levels.** Each tree joins the batched levels where its height matches ('Batching'), with its root as the claims on its level 0, on no variable. A level runs one sumcheck of degree 3 per variable over the tree's numerator and denominator claims, combined by a challenge `λ` (Papini and Haböck). It reduces the two claims on level `ℓ` to two claims on level `ℓ + 1`, at one point ([RFC-0010 'Tree levels'](RFC-0010-proof-schedule.md#tree-levels)).
+- **Leaf claims.** After its last level, each tree holds claims `Ñ(ρ) = p` on its leaves' numerators and `D̃(ρ) = q` on their denominators. The verifier checks them instance by instance, the lookup tree first:
+  - **Lookup tree.**
+    - Its numerators are all 1, so the verifier checks `p = 1`, else `Reject(Lookup)`.
+    - The prover sends `v = valũe(ρ)`, the value polynomial's evaluation, one per instance whose table has values, in schedule order (label `logup/values`). The message follows the last tree level, or `logup/roots` when no tree has a level, and is absorbed even when empty. A table without values (`Range`) sends none, and `v = 0`.
+    - Two claims follow: `kẽy(ρ) = α − q − β·v` on the lookup-side key polynomial, which is virtual and goes to the stage that produces the keys ([RFC-0010](RFC-0010-proof-schedule.md#stages)); and `valũe(ρ) = v` on the value polynomial, which is committed advice.
+    - Both polynomials have `2^{h_a}` entries, and their padding slots hold row 0's key and value.
+  - **Table tree.**
+    - `p = −m̃(ρ)` leaves the claim `m̃(ρ) = −p` on the multiplicity polynomial, committed advice of `2^{h_t}` entries.
+    - The verifier evaluates the table polynomial `t̃ = kẽy_t + β·valũe_t` itself ('Structured evaluation'), its padding rows copies of row 0. It checks `q = α − t̃(ρ)`, else `Reject(Lookup)`.
 
 ### Batching
 
 - All lookups into one table definition, across every layer, head, token and channel, form one instance.
-- All instances run their GKR layers in one batched sumcheck per level with a random combination; trees of different heights join the batch at the level where their height matches (as in Stwo's LogUp-GKR batching).
+- All instances run their GKR layers in one batched sumcheck per level, with a random combination: the lookup tree and the table tree of each instance, beside the product forests of the leaf stage. Trees of different heights join the batch at the level where their height matches, as in Stwo's LogUp-GKR batching ([RFC-0010 'Tree levels'](RFC-0010-proof-schedule.md#tree-levels)).
 - `α` and `β` are shared by all instances and derived from the transcript immediately after Round 1 (RFC-0014, label `logup/alpha`, `logup/beta`).
 
 ### Table kinds
@@ -71,7 +82,7 @@ Signed keys are offset-encoded (`k + 2^{b−1}`); the compressed key adds `2^b �
 
 ### Structured evaluation
 
-The verifier needs `t̃(ρ)` at the random point where the table side of the fraction tree ends. With `t = key + β·value`:
+The verifier needs `t̃(ρ)` at the random point where the table tree ends, over its `2^{h_t}` rows, whose padding rows are copies of row 0. With `t = key + β·value` over the `T` rows, `t̃(ρ) = Σ_{j<T} eq(ρ, j)·t_j + t_0·(1 − LT(ρ, T))`: the padding term costs one `LT`, and vanishes when `T` is a power of two. On the `T` rows:
 
 - `key` is an affine function of the row index bits (offset encoding and class packing), so `kẽy(ρ)` is a closed-form `O(n)` expression.
 - For `Requant`, `Silu` and `Exp`, `value(x)` depends only on the high bits `h = x >> r`, so `valũe(ρ) = f̃(ρ_high)`: the low variables sum out because `Σ_{x_low} eq(ρ_low, x_low) = 1`.
@@ -109,7 +120,8 @@ pub fn prove_logup_batch(instances: &[LogUpInstance], tr: &mut Transcript) -> Lo
 | Failure | Response |
 |---|---|
 | Honest key outside the table | `ERR-INTERNAL` (range analysis bug, INV-IR-2) |
-| `d_root = 0` | `Reject(Lookup)` |
+| A root denominator `d_a = 0` or `d_t = 0`, or roots with `n_a·d_t + n_t·d_a ≠ 0` | `Reject(Lookup)` |
+| A lookup tree's leaf numerator claim other than 1 | `Reject(Lookup)` |
 | Final table evaluation mismatch | `Reject(Lookup)` |
 | Generator divergence between implementations | Digest mismatch; `Reject(StatementMismatch)` at claim-list validation; CI conformance failure |
 | Multiplicity counter overflow | Impossible: counts are `< N < 2^{48}` and multiplicities are field elements |
@@ -119,14 +131,18 @@ pub fn prove_logup_batch(instances: &[LogUpInstance], tr: &mut Transcript) -> Lo
 1. **One-hot lookups (Lasso/Shout, as in Jolt Atlas).** Considered for huge decomposable tables. Rejected: with hash-based commitments each lookup commits several one-hot chunks, so per-lookup cost rises, and the separation result cited by the source shows the activation function's structure cannot be exploited to lower it (source §3). The piecewise structured evaluation already makes large tables cheap for the verifier.
 2. **Univariate lookups (Plookup, Caulk, cq).** Rejected: they assume univariate polynomial commitments, often pairing-based, incompatible with the multilinear hash-based design.
 3. **Base-field LogUp challenges (VerInf).** Rejected: about 2^-28 error at frontier volume.
-4. **Separate lookup and table trees.** Rejected: two roots to compare and two GKR instances where one combined tree suffices.
+4. **One combined tree for both sides.** Rejected after the first verifier was written (#62).
+   - It pads both sides into one power of two, up to twice the leaves.
+   - Its leaf claims mix the two sides under a selector, so either the smaller side is padded to the larger one's size, or the lookup-side key polynomial carries a hole where the table sits.
+
+   Two trees cost one more root to check and one more instance per level.
 5. **Shipping table contents with the claim list.** Rejected: a 2^32-row table is 64 GB, and the verifier would trust prover-supplied data instead of regenerating it.
 6. **Floating-point or big-float generators (libm, MPFR).** Rejected: libm differs across platforms; MPFR is a C dependency under a copyleft license, outside the verifier allowlist.
 
 ## Drawbacks
 
 - Fixed-point generators must be implemented three times with identical rounding.
-- The combined tree mixes lookup counts and table sizes, so a small table used rarely still pays its full row count per proof; tables are therefore shared across layers wherever definitions coincide.
+- The table tree holds all `T` rows, so a small table used rarely still pays its full row count per proof; tables are therefore shared across layers wherever definitions coincide.
 
 ## Migration / Rollout
 
@@ -136,8 +152,9 @@ The LogUp-GKR prover and verifier land in v0.1 (with dense test tables) for the 
 
 - Completeness: random dense tables (2^8 to 2^16 rows) and lookups (2^4 to 2^20) verify; batched instances of different heights verify.
 - Soundness: one lookup outside the table, one wrong value, one multiplicity off by one, each rejected; over the `F65537` test field, the empirical false-accept rate of a single random-`α` trial matches `(N + T)/|F|` within a 99% binomial interval.
-- Padding: instance sizes `2^k − 1`, `2^k`, `2^k + 1` verify.
-- Structured evaluation: for each table kind at small parameters (`b ≤ 16`), `eval_mle` equals brute-force `Σ_x eq(ρ, x) t(x)` at 100 random points.
+- Padding: instance sizes `2^k − 1`, `2^k`, `2^k + 1` verify, on both sides.
+- Trees and roots: lookup trees of `2^0` to `2^20` leaves beside table trees of `2^0` to `2^16`, joining where their heights match, verify. Each of these is rejected with `Reject(Lookup)`: a zero root denominator on either side; roots whose fractions do not sum to zero; a lookup tree's leaf numerator claim other than 1; a table evaluation off by one.
+- Structured evaluation: for each table kind at small parameters (`b ≤ 16`), `eval_mle` equals brute-force `Σ_x eq(ρ, x) t(x)` over the `2^{h_t}` padded rows at 100 random points, `T` both a power of two and not.
 - Generators: cross-implementation digests agree; accuracy against a 256-bit reference is within one output unit for every key at test parameters and on 10^6 sampled keys at production parameters.
 - Performance: CPU throughput per lookup in `criterion`; GPU throughput is the v0.1 unit-cost measurement (RFC-0020).
 

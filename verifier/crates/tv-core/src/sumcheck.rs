@@ -355,25 +355,77 @@ pub(crate) fn verify_batch_with<F>(
     degree: usize,
     instances: &[Instance],
     proof: &SumcheckProof,
-    mut relation: F,
+    relation: F,
 ) -> Result<Batch, SumcheckError>
 where
     F: FnMut(usize, &[Fp2], &[Fp2]) -> Option<Fp2>,
 {
     // 1. The caller's inputs, before the transcript moves.
-    check_degree(degree)?;
-    let n_max = instances
-        .iter()
-        .map(|instance| instance.vars)
-        .max()
-        .ok_or(SumcheckError::NoInstances)?;
-    let expected = instances
-        .iter()
-        .try_fold(0usize, |total, instance| total.checked_add(instance.evals))
-        .ok_or(SumcheckError::EvaluationTotal)?;
-
-    // 2. and 3. The batching challenge, then Σ_i γ^i · 2^{n_max − n_i} · c_i.
+    let shape = Shape::of(
+        degree,
+        instances
+            .iter()
+            .map(|instance| (instance.vars, instance.evals)),
+    )?;
+    // 2. The batching challenge.
     let gamma = fiat_shamir::challenge(transcript, prefix, Step::Gamma)?;
+    finish_batch(transcript, prefix, shape, gamma, instances, proof, relation)
+}
+
+/// What a batch's instances fix before the transcript moves (step 1 of 'Batches'): the degree,
+/// checked, `n_max` and `Σ k_i`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Shape {
+    degree: usize,
+    n_max: usize,
+    evals: usize,
+}
+
+impl Shape {
+    /// The shape of a batch of degree `degree` whose instances have the `(n_i, k_i)` of `sizes`,
+    /// in schedule order, or the first of `Degree`, `NoInstances` and `EvaluationTotal` that
+    /// they fail.
+    pub(crate) fn of(
+        degree: usize,
+        sizes: impl IntoIterator<Item = (usize, usize)>,
+    ) -> Result<Self, SumcheckError> {
+        check_degree(degree)?;
+        let mut n_max: Option<usize> = None;
+        let mut evals: usize = 0;
+        for (vars, count) in sizes {
+            n_max = Some(n_max.map_or(vars, |most| most.max(vars)));
+            evals = evals
+                .checked_add(count)
+                .ok_or(SumcheckError::EvaluationTotal)?;
+        }
+        Ok(Self {
+            degree,
+            n_max: n_max.ok_or(SumcheckError::NoInstances)?,
+            evals,
+        })
+    }
+}
+
+/// Steps 3 to 8 of 'Batches', after `γ`: `instances` are those whose sizes gave `shape`, in the
+/// same order, with their claims.
+pub(crate) fn finish_batch<F>(
+    transcript: &mut impl FiatShamir,
+    prefix: Prefix,
+    shape: Shape,
+    gamma: Fp2,
+    instances: &[Instance],
+    proof: &SumcheckProof,
+    mut relation: F,
+) -> Result<Batch, SumcheckError>
+where
+    F: FnMut(usize, &[Fp2], &[Fp2]) -> Option<Fp2>,
+{
+    let Shape {
+        degree,
+        n_max,
+        evals: expected,
+    } = shape;
+    // 3. Σ_i γ^i · 2^{n_max − n_i} · c_i.
     let mut claim = Fp2::ZERO;
     let mut weight = Fp2::ONE;
     for instance in instances {
