@@ -91,6 +91,24 @@ fn the_source_defaults_reproduce_the_source_chart() {
     }
 }
 
+/// `docs/perf/examples/cost-model-source-defaults.json`, the documented example of the report,
+/// which `cargo xtask lint` validates against its JSON Schema, is what the command prints: a model
+/// that changes changes it, and `--source-defaults --json > FILE` rewrites it.
+#[test]
+fn the_committed_example_is_what_the_command_prints() {
+    let output = tessera(&["bench", "model", "--source-defaults", "--json"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/perf/examples/cost-model-source-defaults.json");
+    let example = fs::read_to_string(&path).expect("the committed example");
+    assert!(
+        example == stdout(&output),
+        "{} is stale: rerun `tessera bench model --source-defaults --json > {}`",
+        path.display(),
+        "docs/perf/examples/cost-model-source-defaults.json"
+    );
+}
+
 /// `--out` writes the report that `--json` prints; without `--json`, stdout is a table with one
 /// row per requested context.
 #[test]

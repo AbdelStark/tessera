@@ -32,7 +32,7 @@ cargo test --workspace --locked                          # prover workspace
 (cd verifier/fuzz && cargo fuzz run decode)              # fuzz targets, own nightly pin: verifier/fuzz/README.md
 cargo clippy --workspace --all-targets --locked -- -D warnings   # also inside verifier/
 cargo fmt --all --check                                  # also inside verifier/
-cargo xtask lint                 # unsafe code, SPDX headers, licenses, Markdown links, policy files
+cargo xtask lint                 # unsafe code, SPDX headers, licenses, Markdown links, policy files, report schemas
 cargo xtask check-isolation      # verifier independence (RFC-0001)
 cargo xtask check-test-features  # test-only features fail release builds
 cargo xtask check-branchless     # the field's operations compile branch-free in x86_64 loops (INV-ARCH-2)

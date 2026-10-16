@@ -1,6 +1,6 @@
 # Performance measurements
 
-This directory holds measured performance: the CPU microbenchmarks' baselines now, and the v0.1 H100 unit-cost reports of [RFC-0020](../rfcs/RFC-0020-cost-model.md#measurement-protocol-v01-gate) once they are measured. Every number in [08](../spec/08-performance-budget.md) stays a projection until a file here replaces it.
+This directory holds measured performance: the CPU microbenchmarks' baselines now, and the v0.1 H100 unit-cost reports of [RFC-0020](../rfcs/RFC-0020-cost-model.md#measurement-protocol-v01-gate) once they are measured. Every number in [08](../spec/08-performance-budget.md) stays a projection until a file here replaces it. Every JSON file here is a report whose JSON Schema is in [`spec/schemas/`](../../spec/schemas/README.md), and `cargo xtask lint` validates it. [`examples/`](examples/) holds `tessera bench model --source-defaults --json`'s report, which a test keeps current.
 
 ## CPU microbenchmarks
 
