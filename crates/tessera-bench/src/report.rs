@@ -230,6 +230,10 @@ impl ModelReport {
                 "streaming_pass_ps",
                 number("streaming_pass_ps", u.streaming_pass_ps)?,
             ),
+            (
+                "column_answer_ps",
+                number("column_answer_ps", u.column_answer_ps)?,
+            ),
         ]);
         let memory = object([
             ("free_bytes", number("free_bytes", m.free_bytes)?),
@@ -258,6 +262,10 @@ impl ModelReport {
                     ("weights", number("weights", p.mu.weights)?),
                     ("regen", number("regen", p.mu.regen)?),
                     ("streaming", number("streaming", p.mu.streaming)?),
+                    (
+                        "column_answers",
+                        number("column_answers", p.mu.column_answers)?,
+                    ),
                     ("total", number("total", p.mu.total)?),
                 ]);
                 Ok(object([

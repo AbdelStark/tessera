@@ -9,8 +9,9 @@
 //!
 //! - [`mu`] evaluates 08 §1 term by term: the linear layers' commitments and lookups, the
 //!   attention scores' commitments, lookups and product-tree leaves, the shared weight pass,
-//!   the witness regenerations of RISK-9 and the streamed leaf passes of RISK-10, each over the
-//!   native time of a token. [`streaming_passes`] counts the passes.
+//!   the witness regenerations of RISK-9, the streamed leaf passes of RISK-10 and the column
+//!   answers of RFC-0018 P5, each over the native time of a token. [`streaming_passes`] counts
+//!   the streamed passes.
 //! - [`proof_time_s`], [`sampling_rate`] and [`detection_probability`] turn `μ` into the
 //!   columns of the source's §8: the time to prove a request, the sampling rate for an amortized
 //!   overhead, and the daily detection probability of violating requests (RFC-0016
@@ -23,9 +24,10 @@
 //!   `tessera.microbenchmarks/1` baseline of 08 §6's regression gate (`docs/perf/`).
 //!
 //! [`Counts::SOURCE_405B`], [`UnitCosts::SOURCE`] and [`Scenario::SOURCE`] are the source's
-//! inputs. With them, no regeneration and no streaming, the model reproduces the source's chart
-//! (source §5) within ±0.05, and its calculators reproduce §8 within 0.1 percentage point from
-//! that table's `μ`: `spec/vectors/cost-model/` holds both, each figure with its line.
+//! inputs. With them, which regenerate nothing, stream nothing and price no column answers, the
+//! model reproduces the source's chart (source §5) within ±0.05, and its calculators reproduce
+//! §8 within 0.1 percentage point from that table's `μ`: `spec/vectors/cost-model/` holds both,
+//! each figure with its line.
 //!
 //! ```
 //! use tessera_bench::{ModelReport, SOURCE_CONTEXTS};

@@ -23,9 +23,9 @@ The proof multiplier for a model at context `S` (source §5):
 | `W/T` | Weight pass per token: 0.24 GPU-s per 16K-token batch | — |
 | `F_lin`, `F_att` | Native INT8 operations per token: linear, attention per unit context | 8.1×10^11, 4.1×10^6 |
 | `R` | Native rate: 60% of 1,979 TOPS dense INT8 on H100 SXM | 1.19×10^15 op/s |
-| `n_regen` | Witness regenerations, each about one native forward pass: witness pass, streamed tree leaf levels, opening pass. Absent from the source model (RISK-9). | 4 (estimate) |
+| `n_regen` | Witness regenerations, each about one native forward pass: the passes P1 to P5 of [RFC-0018](../rfcs/RFC-0018-gpu-prover-runtime.md#pass-structure), which are the witness pass, the tree leaf levels, stage regeneration, the opening pass and the column answers. Absent from the source model (RISK-9). | 5 (estimate) |
 
-`tessera bench model` implements this formula with counts from the compiler's commitment report, so projections update automatically when the compiler changes ([RFC-0020](../rfcs/RFC-0020-cost-model.md#executable-cost-model)).
+`tessera bench model` implements this formula and two terms it leaves out: the streamed passes of RISK-10, and the column answers' evaluation of every committed element at the queried columns, at `c_a` per element (RFC-0018 P5). It reads the counts from the compiler's commitment report, so projections update automatically when the compiler changes ([RFC-0020](../rfcs/RFC-0020-cost-model.md#executable-cost-model)).
 
 ## 2. Unit-cost targets
 
@@ -50,7 +50,14 @@ Projected from the source (§8) with source unit costs and source commitment cou
 | 16K | 18.8 | 28.5 s | 1.8% | 83.3% |
 | 128K (stretch) | 88.7 | 28 min | 0.38% | 31.4% |
 
-These figures exclude witness regeneration. Corrected projections: the RISK-2 upper bound raises the linear-layer term from about 2.1 to 3.3, and four regeneration passes (RISK-9) add about 4, giving `μ(1K) ≈ 8.5` and `μ(16K) ≈ 24`; at 16K context, streaming the tree leaf levels (RISK-10) may add up to about 12 more. v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)): `μ(1K) ≤ 12`, `μ(16K) ≤ 45`. Sampling rates for a 10% amortized overhead scale inversely with `μ`, so the corrected projection roughly halves the affordable rate at 1K (to about 3.9%) while keeping daily detection of 100 violations in 10^6 requests above 98%.
+These figures exclude witness regeneration. Corrected projections, computed with the executable model:
+
+- The RISK-2 upper bound raises the linear-layer term at 1K from 2.0 to 3.3.
+- Five regeneration passes (RISK-9, RFC-0018 P1 to P5) add 5, giving `μ(1K) ≈ 9.4` and `μ(16K) ≈ 24.9`.
+- The column answers (P5) also evaluate every committed element at the queried columns, at a cost `c_a` per element that is not yet measured. Each picosecond of `c_a` adds 0.053 at 1K and 0.22 at 16K. Re-encoding a row costs at most what committing it does, `c_c = 30 ps` per element (assumed), which adds 1.6 and 6.5.
+- At 16K context, streaming the tree leaf levels (RISK-10) may add up to about 12 more.
+
+v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)) are `μ(1K) ≤ 12` and `μ(16K) ≤ 45`. With `c_a = c_c` and the upper streaming estimate, the 16K projection reaches about 43, within 4% of its ceiling. Sampling rates for a 10% amortized overhead scale inversely with `μ`. At 1K, the corrected projection cuts the affordable rate from 10.4% to about 3.5% (3.0% at `c_a = c_c`), and daily detection of 100 violations in 10^6 requests to about 97% (95%).
 
 ## 4. Memory budgets
 

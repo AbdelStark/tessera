@@ -21,6 +21,7 @@
     },
     "source_defaults": true,
     "unit_costs": {
+      "column_answer_ps": 0.0,
       "commit_ps": 30.0,
       "glue_fraction": 0.15,
       "lookup_ps": 40.0,
@@ -36,6 +37,7 @@
       "detection": 0.9999844825148898,
       "mu": {
         "attention": 1.1331928978184198,
+        "column_answers": 0.0,
         "linear": 2.0254095620306365,
         "regen": 0.0,
         "streaming": 0.0,
@@ -51,6 +53,7 @@
       "detection": 0.9996924138893002,
       "mu": {
         "attention": 2.2547027957911685,
+        "column_answers": 0.0,
         "linear": 2.0149687713911173,
         "regen": 0.0,
         "streaming": 0.0,
@@ -66,6 +69,7 @@
       "detection": 0.9949181179999204,
       "mu": {
         "attention": 4.463388914195717,
+        "column_answers": 0.0,
         "linear": 1.994406822368323,
         "regen": 0.0,
         "streaming": 0.0,
@@ -81,6 +85,7 @@
       "detection": 0.9574820249366286,
       "mu": {
         "attention": 8.748233394695767,
+        "column_answers": 0.0,
         "linear": 1.9545167026068577,
         "regen": 0.0,
         "streaming": 0.0,
@@ -96,6 +101,7 @@
       "detection": 0.8341078946511197,
       "mu": {
         "attention": 16.823493586102007,
+        "column_answers": 0.0,
         "linear": 1.8793393892630152,
         "regen": 0.0,
         "streaming": 0.0,
@@ -111,6 +117,7 @@
       "detection": 0.6376052418183357,
       "mu": {
         "attention": 31.243524250250676,
+        "column_answers": 0.0,
         "linear": 1.745094902030246,
         "regen": 0.0,
         "streaming": 0.0,
@@ -126,6 +133,7 @@
       "detection": 0.44826384479474235,
       "mu": {
         "attention": 54.67586402570768,
+        "column_answers": 0.0,
         "linear": 1.5269495657903553,
         "regen": 0.0,
         "streaming": 0.0,
@@ -141,6 +149,7 @@
       "detection": 0.31370123077494316,
       "mu": {
         "attention": 87.48070280678644,
+        "column_answers": 0.0,
         "linear": 1.2215501624542342,
         "regen": 0.0,
         "streaming": 0.0,
