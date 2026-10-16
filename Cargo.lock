@@ -576,6 +576,16 @@ version = "0.1.0"
 [[package]]
 name = "tessera-sumcheck"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tessera-codec",
+ "tessera-field",
+ "tessera-hash",
+ "tessera-poly",
+ "tv-core",
+ "tv-field",
+ "tv-hash",
+]
 
 [[package]]
 name = "tessera-tables"
@@ -637,6 +647,14 @@ dependencies = [
  "target-triple",
  "termcolor",
  "toml",
+]
+
+[[package]]
+name = "tv-core"
+version = "0.1.0"
+dependencies = [
+ "tv-field",
+ "tv-hash",
 ]
 
 [[package]]
