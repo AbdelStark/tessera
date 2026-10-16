@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! A table as the claim list names it (RFC-0008 'Table specifications'). The TCE layout of these
+//! types is tier A: an enum's tag is its variant's declaration index (RFC-0003), so variants are
+//! appended, never reordered.
+
+use tessera_codec::{Decode, Encode};
+use tessera_hash::Digest;
+
+/// A table's index in the claim list, assigned by the compiler (03 §3, INV-DM-5).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Encode, Decode)]
+pub struct TableId(pub u32);
+
+/// The operation of a [`TableKind::Bitwise8`] table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Encode, Decode)]
+pub enum BitOp {
+    /// `a ⊕ b`.
+    Xor,
+    /// `a ∧ b`.
+    And,
+}
+
+/// A table's kind and parameters. Row `j` of each kind, and the parameters it allows, are those
+/// of RFC-0008 'Table specifications'; every key is the row index `j` itself.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
+pub enum TableKind {
+    /// Keys `0 ≤ x < 2^bits` with no value: range checks.
+    Range {
+        /// Key bits, 1 to 32.
+        bits: u8,
+    },
+    /// `rq(k, r_c, lo, hi)` of RFC-0005 for the class `c` and the key `k ∈ [−2^{b−1}, 2^{b−1})`,
+    /// looked up as `pack(c, k) = (k + 2^{b−1}) + 2^b · c` (RFC-0009 `Requant1`).
+    Requant {
+        /// Key bits, at least 1, with `b + ⌈log2 n⌉ ≤ 32` for `n` classes.
+        b: u8,
+        /// The shift `r_c` of each class `c`, each 1 to 63; one to four classes.
+        r_by_class: Vec<u8>,
+        /// The saturation floor.
+        lo: i32,
+        /// The saturation ceiling, at least `lo`.
+        hi: i32,
+    },
+    /// `i ↦ 2^i` for `0 ≤ i < max_exp`.
+    Pow2 {
+        /// The number of rows, 1 to 63, so that every value is in the centered range.
+        max_exp: u8,
+    },
+    /// `(a, b) ↦ a op b` for bytes `a` and `b`, looked up as `a + 2^8 · b`.
+    Bitwise8 {
+        /// `⊕` or `∧`.
+        op: BitOp,
+    },
+    /// The AES S-box (FIPS-197 §5.1.1).
+    AesSbox,
+    /// `x ↦ c • x` in GF(2^8) modulo `x^8 + x^4 + x^3 + x + 1` (FIPS-197 §4.2).
+    Gf256Mul {
+        /// The constant factor.
+        c: u8,
+    },
+}
+
+/// A table as the claim list names it (RFC-0007), sorted there by [`TableId`].
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
+pub struct TableSpec {
+    /// The table's index.
+    pub id: TableId,
+    /// The kind, with its parameters.
+    pub kind: TableKind,
+    /// `⌈log2 T⌉` for the kind's `T` rows: the table tree has `2^log2_rows` leaves.
+    pub log2_rows: u8,
+    /// `H("table", TCE(id, kind, log2_rows) ‖ TCE(pieces) ‖ TCE(core))` (RFC-0008 'Generators
+    /// and digests').
+    pub digest: Digest,
+}

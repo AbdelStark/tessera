@@ -80,6 +80,55 @@ An instance, with at least one lookup, proves its identity with two fraction tre
 
 Signed keys are offset-encoded (`k + 2^{b−1}`); the compressed key adds `2^b · class` so tuples pack into one integer below `2^{B_max}`.
 
+### Table specifications
+
+A claim list names each table by a `TableSpec` (RFC-0007), whose TCE layout is tier A ([02 §1](../spec/02-public-api.md#1-stability-tiers)). An enum's TCE tag is its variant's declaration index (RFC-0003), so kinds are appended, never reordered.
+
+```rust
+pub struct TableId(pub u32);
+pub struct TableSpec {
+    pub id: TableId,
+    pub kind: TableKind,
+    pub log2_rows: u8,                 // ⌈log2 T⌉ for the kind's T rows, at most 32
+    pub digest: Digest,                // 'Generators and digests'
+}
+pub enum TableKind {
+    Range { bits: u8 },
+    Requant { b: u8, r_by_class: Vec<u8>, lo: i32, hi: i32 },
+    Pow2 { max_exp: u8 },
+    Bitwise8 { op: BitOp },
+    AesSbox,
+    Gf256Mul { c: u8 },
+    // Silu, Exp, Exp2Frac and Rope are appended with their generators.
+}
+pub enum BitOp { Xor, And }
+```
+
+Row `j` of each kind, for `j < T`, is below; rows `T` to `2^{log2_rows} − 1` repeat row 0. Keys and values are true integers, mapped to `Fp` in the centered representation ([RFC-0002](RFC-0002-field-arithmetic.md)).
+
+| Kind | `T` | Key of row `j` | Value of row `j` | Parameters allowed |
+|---|---|---|---|---|
+| `Range` | `2^bits` | `j` | 0 | `1 ≤ bits ≤ 32` |
+| `Requant` | `n · 2^b`, `n = |r_by_class|` | `j` | `rq(k, r_c, lo, hi)` of [RFC-0005](RFC-0005-integer-model.md#integer-semantics), for the class `c = ⌊j / 2^b⌋` and `k = (j mod 2^b) − 2^{b−1}` | `b ≥ 1`, `1 ≤ n ≤ 4`, `b + ⌈log2 n⌉ ≤ 32`, `1 ≤ r_c ≤ 63`, `lo ≤ hi` |
+| `Pow2` | `max_exp` | `j` | `2^j` | `1 ≤ max_exp ≤ 63`, so that every value is in the centered range |
+| `Bitwise8` | `2^16` | `j` | `(j mod 2^8) ⊕ ⌊j / 2^8⌋` for `Xor`, `∧` for `And` | any |
+| `AesSbox` | `2^8` | `j` | `S(j)`, the S-box of FIPS-197 §5.1.1 | none |
+| `Gf256Mul` | `2^8` | `j` | `c • j` in GF(2^8) modulo `x^8 + x^4 + x^3 + x + 1` (FIPS-197 §4.2) | any |
+
+A lookup's key is the row's key:
+
+- `pack(c, z) = (z + 2^{b−1}) + 2^b · c` for `Requant`, as `Requant1` forms it ([RFC-0009](RFC-0009-gadgets.md#requant1));
+- `a + 2^8 · b` for the operands `a` and `b` of `Bitwise8`;
+- the operand itself for the other kinds.
+
+`Requant`'s classes are indices into `r_by_class`. The shifts they stand for are public; which class an output channel takes is hidden ([RFC-0007](RFC-0007-claim-list.md#public-and-hidden-quantization-data)).
+
+Claim-list validation regenerates each spec from its kind and id. Any of the following is `Reject(StatementMismatch)`:
+
+- parameters outside the table above;
+- a `log2_rows` other than `⌈log2 T⌉`;
+- another digest.
+
 ### Structured evaluation
 
 The verifier needs `t̃(ρ)` at the random point where the table tree ends, over its `2^{h_t}` rows, whose padding rows are copies of row 0. With `t = key + β·value` over the `T` rows, `t̃(ρ) = Σ_{j<T} eq(ρ, j)·t_j + t_0·(1 − LT(ρ, T))`: the padding term costs one `LT`, and vanishes when `T` is a power of two. On the `T` rows:
@@ -87,7 +136,7 @@ The verifier needs `t̃(ρ)` at the random point where the table tree ends, over
 - `key` is an affine function of the row index bits (offset encoding and class packing), so `kẽy(ρ)` is a closed-form `O(n)` expression.
 - For `Requant`, `Silu` and `Exp`, `value(x)` depends only on the high bits `h = x >> r`, so `valũe(ρ) = f̃(ρ_high)`: the low variables sum out because `Σ_{x_low} eq(ρ_low, x_low) = 1`.
 - Every `f` is piecewise: constant below `a`, a dense core on `[a, c)` of at most 2^24 explicit values, and constant or affine on `[c, 2^{n_h})`. Then `f̃(ρ) = A · LT(ρ, a) + Σ_{h=a}^{c−1} f(h) eq(ρ, h) + Σ_{h ≥ c} eq(ρ, h)(u·h + w)`, where `LT(ρ, a) = Σ_{h<a} eq(ρ, h)` and the weighted suffix sums have `O(n)` bit-recursive forms. The dense middle term costs `O(core)` with Gray-code updates of `eq`.
-- `Range`, `Bitwise8`, `AesSbox` and `Gf256Mul` are small enough to evaluate by enumeration.
+- `Range`, `Pow2`, `Bitwise8`, `AesSbox` and `Gf256Mul` are small enough to evaluate by enumeration.
 
 Verifier cost per table: `O(n · core)`, at most a few times 2^24 field operations; independent of the 2^32 row count the prover enumerates.
 
@@ -97,6 +146,9 @@ Verifier cost per table: `O(n · core)`, at most a few times 2^24 field operatio
 - `Exp`, `Silu` and `Rope` use fixed-point arithmetic with 128-bit intermediates: range reduction by a pinned fixed-point `ln 2` (respectively `2π`), and a fixed-degree Taylor polynomial with pinned fixed-point coefficients evaluated by Horner's rule with floor division at each step. The constants (`ln 2`, `log2 e`, `2π`, Taylor coefficients) are computed once at 256-bit precision, stored in `spec/vectors/tables/constants.json`, and written as literals in every implementation.
 - **The generator is the definition.** A table's correctness for the protocol is its exact output, not its closeness to the real function. Accuracy (at most one output unit from the true value for every key) is a fidelity property, tested separately against a 256-bit reference.
 - `TableSpec.digest = H("table", TCE(spec without digest) ‖ TCE(piece parameters) ‖ TCE(core values))`. Hashing the defining data rather than all rows keeps digest computation `O(core)`.
+  - Both are TCE sequences. The kinds of 'Table specifications' have no piece parameters: that sequence is empty.
+  - The core values of `Pow2`, `Bitwise8`, `AesSbox` and `Gf256Mul`, which the verifier evaluates by enumeration, are their value column `Vec<Fp>` in row order, without padding.
+  - `Range` and `Requant` have no core values: their values are closed forms of their parameters.
 - Three implementations exist: `tessera-tables` (prover), `tv-tables` (verifier), `tessera_quant.tables` (Python reference). All are checked against pinned digests.
 
 ### Interfaces
@@ -105,8 +157,9 @@ Verifier cost per table: `O(n · core)`, at most a few times 2^24 field operatio
 pub trait Table {
     fn spec(&self) -> &TableSpec;
     fn log2_rows(&self) -> u8;
-    fn row(&self, index: u64) -> (Fp, Fp);                 // (key, value) as field elements
+    fn row(&self, index: u64) -> Option<(Fp, Fp)>;         // (key, value); None past the padded rows
     fn eval_mle(&self, rho: &[Fp2], beta: Fp2) -> Fp2;     // structured evaluation of key + beta*value
+    fn index(&self, key: i64, class: u8) -> Option<u64>;   // the row a lookup hits, for multiplicities
     fn lookup(&self, key: i64, class: u8) -> Option<i64>;  // witness-side integer lookup
 }
 
