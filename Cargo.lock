@@ -551,6 +551,10 @@ version = "0.1.0"
 [[package]]
 name = "tessera-poly"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tessera-field",
+]
 
 [[package]]
 name = "tessera-protocol"

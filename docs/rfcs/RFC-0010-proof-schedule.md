@@ -27,6 +27,20 @@ The source's "constant-depth proof" (source §7) is what removes the sequential 
 
 ## Proposed Design
 
+### Multilinear extensions
+
+A table of `2^n` values `f[0], …, f[2^n − 1]` defines the multilinear polynomial `f̃(x_1, …, x_n)` that equals `f[Σ_i x_i·2^{i−1}]` on `{0, 1}^n`: `x_1` is the least significant bit of the index. A point `r = (r_1, …, r_n)` sets `x_i = r_i`, and
+
+```text
+eq(r, x) = Π_i (r_i·x_i + (1 − r_i)·(1 − x_i))        f̃(r) = Σ_{x ∈ {0,1}^n} f[x]·eq(r, x)
+```
+
+- Tensors are flattened row-major, so their last index takes the lowest variables, and a stacked tensor's layer index the highest. Function notation such as `W̃(ℓ, o, i)` names the indices in row-major order. As a coordinate vector, low variables first, the same point is `r_i ‖ r_o ‖ ρ_ℓ`, as RFC-0011 writes `r ‖ base_X`.
+- Sumcheck round `j` binds `x_j` to its challenge `r_j`: each pair `(f[2k], f[2k+1])` becomes `f[2k] + r_j·(f[2k+1] − f[2k])`. A stage's final point therefore lists its challenges in round order.
+- Two public predicates have `O(n)` closed forms, which the prover and the verifier each evaluate:
+  - `LT(r, a) = Σ_{h < a} eq(r, h)`, for an integer `0 ≤ a ≤ 2^n` ([RFC-0008](RFC-0008-logup-and-tables.md#structured-evaluation));
+  - the causal selector `C(q, i) = Σ_{i' ≤ q'} eq(q, q')·eq(i, i')`, over pairs of `n`-bit positions ([RFC-0009](RFC-0009-gadgets.md#softmaxrow)).
+
 ### Relations
 
 Every constraint in the derived constraint system is one of these relation kinds, each a sumcheck identity over the Boolean hypercube:

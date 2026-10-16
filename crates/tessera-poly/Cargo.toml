@@ -8,5 +8,15 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dependencies]
+tessera-field = { path = "../tessera-field" }
+
+[dev-dependencies]
+serde_json = "1"
+
+[[bench]]
+name = "throughput"
+harness = false
+
 [lints]
 workspace = true
