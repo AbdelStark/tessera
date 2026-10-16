@@ -12,9 +12,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde_json::Value;
-use tessera_codec::{DecodeLimits, decode, encode};
+use tessera_codec::{DecodeLimits, Rational, decode, encode};
 use tessera_field::{Goldilocks, PrimeField};
-use tessera_tables::{ArithmeticTable, BitOp, Table, TableError, TableId, TableKind, TableSpec};
+use tessera_tables::{BitOp, GeneratedTable, Table, TableError, TableId, TableKind, TableSpec};
 
 fn cases() -> Vec<Value> {
     let path =
@@ -43,13 +43,13 @@ fn integer(value: &Value) -> i64 {
 #[test]
 fn every_vector_regenerates_with_its_digest_rows_and_lookups() {
     let cases = cases();
-    assert_eq!(cases.len(), 20);
+    assert_eq!(cases.len(), 29);
     for case in &cases {
         let name = case["name"].as_str().expect("a name");
         let spec = spec_of(case);
         assert_eq!(encode(&spec), bytes(&case["spec"]), "{name}: canonical");
         assert_eq!(spec.digest.to_vec(), bytes(&case["digest"]), "{name}");
-        let table = ArithmeticTable::from_spec(&spec).expect(name);
+        let table = GeneratedTable::from_spec(&spec).expect(name);
         assert_eq!(table.spec(), &spec, "{name}");
         let rows = case["rows"].as_u64().expect("rows");
         assert_eq!(table.row_count(), rows, "{name}");
@@ -117,14 +117,14 @@ fn a_specification_wrong_in_one_field_is_refused() {
         let spec = spec_of(&case);
         let mut digest = spec.clone();
         digest.digest[31] ^= 1;
-        assert_eq!(ArithmeticTable::from_spec(&digest), Err(TableError::Digest));
+        assert_eq!(GeneratedTable::from_spec(&digest), Err(TableError::Digest));
         for stated in [spec.log2_rows.wrapping_sub(1), spec.log2_rows + 1] {
             let wrong = TableSpec {
                 log2_rows: stated,
                 ..spec.clone()
             };
             assert_eq!(
-                ArithmeticTable::from_spec(&wrong),
+                GeneratedTable::from_spec(&wrong),
                 Err(TableError::Log2Rows {
                     stated,
                     expected: spec.log2_rows,
@@ -135,7 +135,7 @@ fn a_specification_wrong_in_one_field_is_refused() {
             id: TableId(spec.id.0 + 1),
             ..spec.clone()
         };
-        assert_eq!(ArithmeticTable::from_spec(&id), Err(TableError::Digest));
+        assert_eq!(GeneratedTable::from_spec(&id), Err(TableError::Digest));
     }
     // A parameter changed within what the kind allows leaves the digest of the old one.
     let requant = cases()
@@ -147,17 +147,14 @@ fn a_specification_wrong_in_one_field_is_refused() {
     if let TableKind::Requant { lo, .. } = &mut changed.kind {
         *lo -= 1;
     }
-    assert_eq!(
-        ArithmeticTable::from_spec(&changed),
-        Err(TableError::Digest)
-    );
+    assert_eq!(GeneratedTable::from_spec(&changed), Err(TableError::Digest));
 }
 
 /// Each rule of RFC-0008 'Table specifications', at its edges: the last parameters inside are
 /// built, the first outside refused with the rule.
 #[test]
 fn parameters_just_outside_each_rule_are_refused() {
-    let build = |kind| ArithmeticTable::new(TableId(0), kind).map(|t| t.row_count());
+    let build = |kind| GeneratedTable::new(TableId(0), kind).map(|t| t.row_count());
     let refused = |kind, rule| Err(TableError::Parameter { kind, rule });
     let requant = |b, r_by_class: &[u8], lo, hi| TableKind::Requant {
         b,
@@ -214,6 +211,62 @@ fn parameters_just_outside_each_rule_are_refused() {
     }
     assert_eq!(build(TableKind::Pow2 { max_exp: 63 }), Ok(63));
     assert_eq!(build(TableKind::Bitwise8 { op: BitOp::And }), Ok(1 << 16));
+
+    let scale = |num, den| Rational::new(num, den).expect("a fraction");
+    let exp = |key_bits, sigma, scale| TableKind::Exp {
+        key_bits,
+        sigma,
+        scale,
+    };
+    for key_bits in [0, 33] {
+        assert_eq!(
+            build(exp(key_bits, 16, scale(1, 4))),
+            refused("Exp", "1 ≤ key_bits ≤ 32")
+        );
+    }
+    assert_eq!(build(exp(4, 33, scale(1, 4))), refused("Exp", "σ ≤ 32"));
+    for num in [0, -1] {
+        assert_eq!(
+            build(exp(4, 16, scale(num, 4))),
+            refused("Exp", "a positive scale")
+        );
+    }
+    assert_eq!(build(exp(4, 32, scale(1, 4))), Ok(16));
+    // The zero tail must start by key 2^24; at σ = 16 it starts near 18·ln 2 / scale. The
+    // check comes before the core is generated, so a refused table costs nothing.
+    let tail = "a zero tail from key 2^24 or earlier";
+    assert_eq!(build(exp(26, 16, scale(1, 1 << 21))), refused("Exp", tail));
+    assert_eq!(
+        build(exp(26, 16, scale(1, 2896))),
+        Ok(1 << 26),
+        "the 405B-like tail"
+    );
+
+    for frac_bits in [0, 17] {
+        assert_eq!(
+            build(TableKind::Exp2Frac {
+                frac_bits,
+                out_bits: 16
+            }),
+            refused("Exp2Frac", "1 ≤ frac_bits ≤ 16")
+        );
+    }
+    for out_bits in [0, 57] {
+        assert_eq!(
+            build(TableKind::Exp2Frac {
+                frac_bits: 8,
+                out_bits
+            }),
+            refused("Exp2Frac", "1 ≤ out_bits ≤ 56")
+        );
+    }
+    assert_eq!(
+        build(TableKind::Exp2Frac {
+            frac_bits: 16,
+            out_bits: 56
+        }),
+        Ok(1 << 16)
+    );
 }
 
 /// The witness-side lookup computes what the rows hold for every key of the byte tables and of a
@@ -230,9 +283,18 @@ fn lookups_agree_with_the_rows_for_every_key() {
             lo: -9,
             hi: 7,
         },
+        TableKind::Exp {
+            key_bits: 12,
+            sigma: 16,
+            scale: Rational::new(1, 100).expect("a fraction"),
+        },
+        TableKind::Exp2Frac {
+            frac_bits: 8,
+            out_bits: 16,
+        },
     ];
     for kind in kinds {
-        let table = ArithmeticTable::new(TableId(7), kind.clone()).expect("a table");
+        let table = GeneratedTable::new(TableId(7), kind.clone()).expect("a table");
         let (offset, classes, width) = match &kind {
             TableKind::Requant { b, r_by_class, .. } => {
                 (1i64 << (b - 1), r_by_class.len(), 1u64 << b)

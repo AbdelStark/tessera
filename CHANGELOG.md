@@ -205,7 +205,7 @@ All notable changes to the prover release train are recorded here: the crates un
   - `cargo xtask lint` fails when the workspace `Cargo.toml` and `python/pyproject.toml` state different versions (09 §1), a dynamic version, or one outside `MAJOR.MINOR.PATCH`. 09 §1 maps no pre-release between SemVer and PEP 440, so that last case is refused rather than guessed.
 - The arithmetic table kinds in `tessera-tables` (RFC-0008 'Table specifications', [#69](https://github.com/AbdelStark/tessera/issues/69)):
   - `TableSpec`, `TableKind`, `TableId` and `BitOp`. RFC-0008 now fixes their tier-A TCE layout. Tags are declaration indices, so the transcendental kinds are appended later without moving a tag or a pinned digest. 03 §3's `TableSpec` follows the RFC.
-  - `ArithmeticTable` builds `Range`, `Requant`, `Pow2`, `Bitwise8`, `AesSbox` and `Gf256Mul` from their parameters, refusing those outside RFC-0008's rules. It also regenerates a claim list's specification, refusing a wrong `log2_rows` or digest.
+  - `GeneratedTable` builds `Range`, `Requant`, `Pow2`, `Bitwise8`, `AesSbox` and `Gf256Mul` from their parameters, refusing those outside RFC-0008's rules. It also regenerates a claim list's specification, refusing a wrong `log2_rows` or digest.
   - `Table` gives the rows, padded with copies of row 0, the row a lookup hits, and its value. Lookups take witness keys, so they compute arithmetically, with no memory access that depends on the key (INV-ARCH-2): the S-box by inversion in GF(2^8), a class's shift by selects.
   - A digest hashes the definition, an empty sequence of piece parameters, and the value column of the kinds the verifier enumerates (RFC-0008 'Generators and digests').
   - `spec/vectors/tables/` holds 20 cases from an independent Python oracle. Before writing, the oracle checks its S-box and products against FIPS-197: the §4.2 examples, Figure 7, and the AES-128 known answers of Appendices B and C.1. It also checks every one of the 65,536 products against logarithms.
@@ -219,6 +219,13 @@ All notable changes to the prover release train are recorded here: the crates un
   - Every shard's header is checked before any tensor is read: bounded size, BF16, shapes, byte ranges tiling the data to the end of the file, and exactly the architecture's tensors where the index places them, in shards of the checkpoint's own directory.
   - A departure raises `ArchitectureError` (`ERR-QUANT-ARCH`), a `TesseraQuantError` (04 §4). A directory holding only pickle files is refused without opening them, and a test scans the package's sources for any pickle-based loading.
   - Tests import a tiny checkpoint, single-file and sharded, bit for bit. They also import a sparse, header-only checkpoint with the published Llama-3.1-8B configuration and shapes, and check each refusal for its reason. A malicious pickle that would create a file if loaded leaves no file.
+- The `Exp` and `Exp2Frac` tables in `tessera-tables`, the first of the fixed-point generators of #71 (RFC-0008 'Fixed-point generators'):
+  - RFC-0008 now defines the generators to the last integer. `LN2` is pinned as `⌊ln 2 · 2^64⌋`. `exp_neg` reduces by it and runs Horner's rule over 20 Taylor terms in Q64. `exp_pos` works in Q62 and only rounds down. `Exp`'s argument `k · scale` is reduced exactly, with no 256-bit arithmetic. Every intermediate stays below `2^128`, and no floating point is used.
+  - `TableKind::Exp { key_bits, sigma, scale }` and `TableKind::Exp2Frac { frac_bits, out_bits }` are appended, as tags 6 and 7. `Exp`'s digest hashes its zero tail's first key as a piece, and the values before it as its core. `Exp2Frac`'s core is all of its values.
+  - `Exp2Frac` never exceeds the true `⌊2^out · 2^{f/2^frac}⌋`, as RFC-0017's scoring bound requires. The oracle checks every key, and `out_bits ≤ 56` keeps the rounding inside below one unit: at 62 the reference check found values two units low.
+  - `GeneratedTable` holds the generated core of the fixed-point kinds, and `Exp` and `Exp2Frac` lookups read it.
+  - The tables oracle checks every `Exp` key of its core, and every `Exp2Frac` key, against 60-digit `decimal` references. That includes the production parameters: 2^22 keys at `σ = 16`, with cores of 36,133 and 144,542 keys. `spec/vectors/tables/constants.json` pins `LN2`.
+  - `cargo xtask lint` refuses floating-point types and literals in `tessera-tables` and `tv-tables`. It lexes the sources, so comments and strings do not count.
 
 ### Changed
 

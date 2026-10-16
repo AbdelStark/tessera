@@ -9,17 +9,22 @@ use tessera_codec::Encode;
 use tessera_field::{Goldilocks, PrimeField};
 use tessera_hash::{Digest, Domain, Hasher};
 
+use crate::fixed::{LN2, exp_neg, exp_pos};
 use crate::gf256;
 use crate::{BitOp, TableError, TableId, TableKind, TableSpec};
+
+/// The longest dense core a table may have (RFC-0008 'Structured evaluation').
+const MAX_CORE: u64 = 1 << 24;
 
 /// A lookup table of RFC-0008: `T` rows of `(key, value)`, padded to `2^log2_rows` with copies
 /// of row 0.
 ///
 /// [`index`](Table::index) and [`lookup`](Table::lookup) take a witness's key, which is secret
-/// (05 §3). They compute the row and the value arithmetically, with no memory access that
-/// depends on the key, and the class's shift is selected without indexing by it (INV-ARCH-2).
-/// Whether the key is in the table is the one outcome that depends on it, and an honest
-/// witness's keys always are (INV-DM-2).
+/// (05 §3). The arithmetic kinds compute the row and the value with no memory access that
+/// depends on the key, and select a class's shift without indexing by it (INV-ARCH-2). The
+/// fixed-point kinds, `Exp` and `Exp2Frac`, read their value from the generated core at the
+/// key, an access #257 reconciles with INV-ARCH-2. Whether the key is in the table is the one
+/// outcome that depends on it, and an honest witness's keys always are (INV-DM-2).
 pub trait Table {
     /// The specification, digest included.
     fn spec(&self) -> &TableSpec;
@@ -45,33 +50,36 @@ pub trait Table {
     fn lookup(&self, key: i64, class: u8) -> Option<i64>;
 }
 
-/// A table of an arithmetic kind: `Range`, `Requant`, `Pow2`, `Bitwise8`, `AesSbox` or
-/// `Gf256Mul`. Rows are computed on demand, so building one costs nothing but its digest, which
-/// enumerates the value column of the kinds that have one (at most `2^16` rows).
+/// A table generated from its kind. The arithmetic kinds compute rows on demand. The
+/// fixed-point kinds generate their dense core when built: `Exp` the values below its zero tail
+/// (at most `2^24`), `Exp2Frac` all of its at most `2^16`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ArithmeticTable {
+pub struct GeneratedTable {
     spec: TableSpec,
     rows: u64,
+    /// The values of rows `0` to `core.len() − 1`, for the fixed-point kinds; empty otherwise.
+    core: Vec<i64>,
 }
 
-impl ArithmeticTable {
+impl GeneratedTable {
     /// The table of `kind` with index `id`: its parameters checked against RFC-0008 'Table
-    /// specifications', its `log2_rows` and digest computed.
+    /// specifications', its core generated, and its `log2_rows` and digest computed.
     ///
     /// # Errors
     ///
     /// [`TableError::Parameter`] for parameters the kind does not allow.
     pub fn new(id: TableId, kind: TableKind) -> Result<Self, TableError> {
         let rows = row_count(&kind)?;
-        let log2_rows = ceil_log2(rows);
+        let core = generate_core(&kind, rows)?;
         let mut table = Self {
             spec: TableSpec {
                 id,
+                log2_rows: ceil_log2(rows),
                 kind,
-                log2_rows,
                 digest: [0; 32],
             },
             rows,
+            core,
         };
         table.spec.digest = table.digest();
         Ok(table)
@@ -100,27 +108,33 @@ impl ArithmeticTable {
     }
 
     /// `H("table", TCE(id, kind, log2_rows) ‖ TCE(pieces) ‖ TCE(core))` (RFC-0008 'Generators
-    /// and digests'). The arithmetic kinds have no piece parameters. The core values are the
-    /// value column of the kinds the verifier enumerates, and nothing for `Range` and `Requant`,
-    /// whose values are closed forms of their parameters.
+    /// and digests'), both sequences of TCE:
+    ///
+    /// - `Exp` has one piece, the first key of its zero tail, and its core is the values below
+    ///   it; `Exp2Frac` has no piece and its core is all of its values;
+    /// - the enumerated arithmetic kinds have no piece and their value column as core;
+    /// - `Range` and `Requant` have neither: their values are closed forms of their parameters.
     fn digest(&self) -> Digest {
         let mut hasher = Hasher::new(Domain::Table);
         self.spec.id.encode_to(&mut hasher);
         self.spec.kind.encode_to(&mut hasher);
         self.spec.log2_rows.encode_to(&mut hasher);
-        // TCE sequences: a u64 length, then the elements (RFC-0003).
-        0u64.encode_to(&mut hasher);
-        match self.spec.kind {
-            TableKind::Range { .. } | TableKind::Requant { .. } => 0u64.encode_to(&mut hasher),
+        let pieces: Vec<u64> = match self.spec.kind {
+            TableKind::Exp { .. } => vec![self.core.len() as u64],
+            _ => vec![],
+        };
+        pieces.encode_to(&mut hasher);
+        let core_len = match self.spec.kind {
+            TableKind::Range { .. } | TableKind::Requant { .. } => 0,
+            TableKind::Exp { .. } | TableKind::Exp2Frac { .. } => self.core.len() as u64,
             TableKind::Pow2 { .. }
             | TableKind::Bitwise8 { .. }
             | TableKind::AesSbox
-            | TableKind::Gf256Mul { .. } => {
-                self.rows.encode_to(&mut hasher);
-                for j in 0..self.rows {
-                    Goldilocks::from_i64(self.value(j)).encode_to(&mut hasher);
-                }
-            }
+            | TableKind::Gf256Mul { .. } => self.rows,
+        };
+        core_len.encode_to(&mut hasher);
+        for j in 0..core_len {
+            Goldilocks::from_i64(self.value(j)).encode_to(&mut hasher);
         }
         hasher.finalize()
     }
@@ -145,11 +159,16 @@ impl ArithmeticTable {
             TableKind::Bitwise8 { op } => bitwise(*op, key),
             TableKind::AesSbox => i64::from(gf256::sbox(low_byte(key))),
             TableKind::Gf256Mul { c } => i64::from(gf256::mul(*c, low_byte(key))),
+            TableKind::Exp { .. } | TableKind::Exp2Frac { .. } => usize::try_from(j)
+                .ok()
+                .and_then(|j| self.core.get(j))
+                .copied()
+                .unwrap_or(0),
         }
     }
 }
 
-impl Table for ArithmeticTable {
+impl Table for GeneratedTable {
     fn spec(&self) -> &TableSpec {
         &self.spec
     }
@@ -189,7 +208,7 @@ impl Table for ArithmeticTable {
     }
 
     fn lookup(&self, key: i64, class: u8) -> Option<i64> {
-        self.index(key, class)?;
+        let row = self.index(key, class)?;
         Some(match &self.spec.kind {
             TableKind::Range { .. } => 0,
             TableKind::Requant {
@@ -199,6 +218,7 @@ impl Table for ArithmeticTable {
             TableKind::Bitwise8 { op } => bitwise(*op, key),
             TableKind::AesSbox => i64::from(gf256::sbox(low_byte(key))),
             TableKind::Gf256Mul { c } => i64::from(gf256::mul(*c, low_byte(key))),
+            TableKind::Exp { .. } | TableKind::Exp2Frac { .. } => self.value(row),
         })
     }
 }
@@ -243,7 +263,114 @@ fn row_count(kind: &TableKind) -> Result<u64, TableError> {
         }
         TableKind::Bitwise8 { .. } => Ok(1 << 16),
         TableKind::AesSbox | TableKind::Gf256Mul { .. } => Ok(1 << 8),
+        TableKind::Exp {
+            key_bits,
+            sigma,
+            scale,
+        } => {
+            if !(1..=32).contains(key_bits) {
+                return refuse("Exp", "1 ≤ key_bits ≤ 32");
+            }
+            if *sigma > 32 {
+                return refuse("Exp", "σ ≤ 32");
+            }
+            if scale.num() < 1 {
+                return refuse("Exp", "a positive scale");
+            }
+            Ok(1 << key_bits)
+        }
+        TableKind::Exp2Frac {
+            frac_bits,
+            out_bits,
+        } => {
+            if !(1..=16).contains(frac_bits) {
+                return refuse("Exp2Frac", "1 ≤ frac_bits ≤ 16");
+            }
+            if !(1..=56).contains(out_bits) {
+                return refuse("Exp2Frac", "1 ≤ out_bits ≤ 56");
+            }
+            Ok(1 << frac_bits)
+        }
     }
+}
+
+/// The dense core of the fixed-point kinds (RFC-0008 'Fixed-point generators'); empty for the
+/// others.
+fn generate_core(kind: &TableKind, rows: u64) -> Result<Vec<i64>, TableError> {
+    match kind {
+        TableKind::Exp { sigma, scale, .. } => {
+            // `scale.num() ≥ 1`, checked with the row count.
+            let (num, den) = (scale.num().unsigned_abs(), scale.den());
+            let tail = zero_tail(rows, *sigma, num, den);
+            if tail > MAX_CORE {
+                return Err(TableError::Parameter {
+                    kind: "Exp",
+                    rule: "a zero tail from key 2^24 or earlier",
+                });
+            }
+            Ok((0..tail).map(|k| exp_value(k, *sigma, num, den)).collect())
+        }
+        TableKind::Exp2Frac {
+            frac_bits,
+            out_bits,
+        } => Ok((0..rows)
+            .map(|f| {
+                let x = (u128::from(f) * LN2) >> frac_bits;
+                // `≤ 2^63 >> (62 − out_bits) = 2^{out_bits + 1} ≤ 2^57`.
+                i64::try_from(exp_pos(x) >> (62 - out_bits)).unwrap_or(i64::MAX)
+            })
+            .collect()),
+        _ => Ok(Vec::new()),
+    }
+}
+
+/// `k · scale` in Q64, or `None` once its integer part reaches `2^20`, where `e^{−k·scale}` is
+/// far below every output unit.
+fn exp_argument(k: u64, num: u64, den: u64) -> Option<u128> {
+    let product = u128::from(k) * u128::from(num);
+    let den = u128::from(den);
+    let whole = product / den;
+    if whole >= 1 << 20 {
+        return None;
+    }
+    // The remainder is below `den < 2^64`, so shifting it by 64 stays below `2^128`.
+    let fraction = ((product - whole * den) << 64) / den;
+    Some((whole << 64) + fraction)
+}
+
+/// Whether key `k` lies in `Exp`'s zero tail: `k · scale ≥ 2^20`, or `e^{−k·scale}` reduced by
+/// at least `σ + 2` halvings, so that `2^σ · e^{−k·scale} < 1/4` and every later key is 0 too.
+fn in_zero_tail(k: u64, sigma: u8, num: u64, den: u64) -> bool {
+    exp_argument(k, num, den).is_none_or(|x| x / LN2 >= u128::from(sigma) + 2)
+}
+
+/// The first key of `Exp`'s zero tail, or `rows` when it has none. Keys only grow `k · scale`,
+/// so the tail is a suffix and a binary search finds where it starts.
+fn zero_tail(rows: u64, sigma: u8, num: u64, den: u64) -> u64 {
+    let (mut lo, mut hi) = (0, rows);
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if in_zero_tail(mid, sigma, num, den) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+/// `round(2^σ · e^{−k·scale})`, rounding half up, outside the zero tail.
+fn exp_value(k: u64, sigma: u8, num: u64, den: u64) -> i64 {
+    let Some(x) = exp_argument(k, num, den) else {
+        return 0;
+    };
+    let (y, n) = exp_neg(x);
+    if n >= u128::from(sigma) + 2 {
+        return 0;
+    }
+    // `y · 2^σ ≤ 2^96` and `2^{63+n} ≤ 2^96`: no overflow, and the result is at most `2^32`.
+    let rounded = ((y << sigma) + (1u128 << (63 + n))) >> (64 + n);
+    i64::try_from(rounded).unwrap_or(i64::MAX)
 }
 
 /// `⌈log2 n⌉` for `1 ≤ n ≤ 2^32`.

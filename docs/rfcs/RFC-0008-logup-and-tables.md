@@ -99,7 +99,9 @@ pub enum TableKind {
     Bitwise8 { op: BitOp },
     AesSbox,
     Gf256Mul { c: u8 },
-    // Silu, Exp, Exp2Frac and Rope are appended with their generators.
+    Exp { key_bits: u8, sigma: u8, scale: Rational },
+    Exp2Frac { frac_bits: u8, out_bits: u8 },
+    // Silu and Rope are appended with their generators.
 }
 pub enum BitOp { Xor, And }
 ```
@@ -114,6 +116,8 @@ Row `j` of each kind, for `j < T`, is below; rows `T` to `2^{log2_rows} − 1` r
 | `Bitwise8` | `2^16` | `j` | `(j mod 2^8) ⊕ ⌊j / 2^8⌋` for `Xor`, `∧` for `And` | any |
 | `AesSbox` | `2^8` | `j` | `S(j)`, the S-box of FIPS-197 §5.1.1 | none |
 | `Gf256Mul` | `2^8` | `j` | `c • j` in GF(2^8) modulo `x^8 + x^4 + x^3 + x + 1` (FIPS-197 §4.2) | any |
+| `Exp` | `2^key_bits` | `j` | `round(2^σ · e^{−j · scale})` as 'Fixed-point generators' computes it | `1 ≤ key_bits ≤ 32`, `σ ≤ 32`, `scale > 0`; the zero tail starts by key `2^24` |
+| `Exp2Frac` | `2^frac_bits` | `j` | `⌊2^out_bits · 2^{j / 2^frac_bits}⌋` from below, as 'Fixed-point generators' computes it | `1 ≤ frac_bits ≤ 16`, `1 ≤ out_bits ≤ 56` |
 
 A lookup's key is the row's key:
 
@@ -143,13 +147,44 @@ Verifier cost per table: `O(n · core)`, at most a few times 2^24 field operatio
 ### Generators and digests
 
 - Generators use integers only: no floating point, no platform math library, no big-float dependency.
-- `Exp`, `Silu` and `Rope` use fixed-point arithmetic with 128-bit intermediates: range reduction by a pinned fixed-point `ln 2` (respectively `2π`), and a fixed-degree Taylor polynomial with pinned fixed-point coefficients evaluated by Horner's rule with floor division at each step. The constants (`ln 2`, `log2 e`, `2π`, Taylor coefficients) are computed once at 256-bit precision, stored in `spec/vectors/tables/constants.json`, and written as literals in every implementation.
+- `Exp`, `Exp2Frac`, `Silu` and `Rope` compute in the fixed point of 'Fixed-point generators', with 128-bit intermediates. Range reduction uses a pinned `ln 2` (respectively `2π`), and a fixed-degree Taylor series is evaluated by Horner's rule with floor division at each step. The constants are the floors of the true constants times `2^64`. `spec/vectors/tables/generate.py` computes them with 100 significant digits (about 330 bits) and stores them in `spec/vectors/tables/constants.json`; every implementation writes them as literals.
 - **The generator is the definition.** A table's correctness for the protocol is its exact output, not its closeness to the real function. Accuracy (at most one output unit from the true value for every key) is a fidelity property, tested separately against a 256-bit reference.
 - `TableSpec.digest = H("table", TCE(spec without digest) ‖ TCE(piece parameters) ‖ TCE(core values))`. Hashing the defining data rather than all rows keeps digest computation `O(core)`.
-  - Both are TCE sequences. The kinds of 'Table specifications' have no piece parameters: that sequence is empty.
-  - The core values of `Pow2`, `Bitwise8`, `AesSbox` and `Gf256Mul`, which the verifier evaluates by enumeration, are their value column `Vec<Fp>` in row order, without padding.
-  - `Range` and `Requant` have no core values: their values are closed forms of their parameters.
+  - The piece parameters are a `Vec<u64>`, and the core values a `Vec<Fp>` in row order, without padding.
+  - `Exp` has one piece, `z`, the first key of its zero tail ('Fixed-point generators'), and its core is the values of keys `0` to `z − 1`.
+  - `Pow2`, `Bitwise8`, `AesSbox`, `Gf256Mul` and `Exp2Frac` have no piece, and their core is their whole value column: the verifier evaluates them by enumeration.
+  - `Range` and `Requant` have neither: their values are closed forms of their parameters.
 - Three implementations exist: `tessera-tables` (prover), `tv-tables` (verifier), `tessera_quant.tables` (Python reference). All are checked against pinned digests.
+
+### Fixed-point generators
+
+The transcendental kinds are defined by the integers below, not by the functions they approximate: an implementation computes exactly these. Division is floor division and `>>` is the arithmetic shift. A Q64 number `v` stands for `v / 2^64`, and every intermediate stays below `2^128`.
+
+- **Constant.** `LN2 = ⌊ln 2 · 2^64⌋ = 0xB17217F7D1CF79AB`.
+- **`exp_neg(x)`**, for a Q64 `x ≥ 0`, returns `(y, n)` with `e^{−x/2^64} ≈ y · 2^{−64−n}`:
+  1. Set `n = ⌊x / LN2⌋` and `r = x − n · LN2`.
+  2. Set `y = 2^64`. Then, for `i` from 20 down to 1, set `y ← 2^64 − ⌊r · y / (i · 2^64)⌋`.
+
+  Throughout, `0 < y ≤ 2^64` and `r · y < 2^128`.
+- **`exp_pos(x)`**, for a Q64 `x` with `0 ≤ x ≤ LN2`, returns `e^{x/2^64}` in Q62:
+  1. Set `y = 2^62`.
+  2. Then, for `i` from 20 down to 1, set `y ← 2^62 + ⌊x · y / (i · 2^64)⌋`.
+
+  `y ≤ 2^63` throughout. Every step rounds down and the dropped terms of the series are positive, so `y / 2^62` never exceeds `e^{x/2^64}`.
+- **`Exp`** with `scale = num / den` evaluates key `k` as follows:
+  1. Write `k · num = q · den + m`.
+  2. If `q ≥ 2^20`, the value is 0.
+  3. Otherwise set `x = q · 2^64 + ⌊m · 2^64 / den⌋`, the floor of `k · scale · 2^64`, and `(y, n) = exp_neg(x)`.
+  4. The value is 0 when `n ≥ σ + 2`. Otherwise it is `(y · 2^σ + 2^{63+n}) >> (64 + n)`, the value rounded half up.
+
+  Key 0 gives exactly `2^σ`.
+- **`Exp`'s zero tail.** The keys with `q ≥ 2^20` or `n ≥ σ + 2` form a suffix, because `x` never decreases with `k`. On them the true value is below `1/4`, and the table holds 0. Its first key `z` is the least `k` with `x ≥ (σ + 2) · LN2` or `q ≥ 2^20`, or `T` when no key qualifies. `z ≤ 2^24` bounds the core ('Structured evaluation').
+- **`Exp2Frac`** gives key `f` the value `exp_pos(⌊f · LN2 / 2^frac_bits⌋) >> (62 − out_bits)`.
+  - It never exceeds `⌊2^out_bits · 2^{f / 2^frac_bits}⌋`, because `LN2`, the argument and every step of `exp_pos` round down. RFC-0017 relies on this when it says that `E2` rounds down.
+  - The rounding inside `exp_pos` stays below four units of `2^{−62}`, which `out_bits ≤ 56` keeps far below one output unit.
+- **Accuracy**, a fidelity property rather than part of the definition. The oracle checks every key of `Exp`'s core at the test parameters and at the production ones (`σ = 16`, `key_bits = 22`) against 60-digit references, and every key of `Exp2Frac`:
+  - every `Exp` value lies within one unit of `2^σ · e^{−k·scale}`;
+  - every `Exp2Frac` value lies at most one unit below the true floor, and never above it.
 
 ### Interfaces
 
