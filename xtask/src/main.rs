@@ -43,8 +43,9 @@ commands:
   check-test-features
                      check that test-only cargo features fail release builds (RFC-0001)
   gen-vectors [--check]
-                     write the codec conformance vectors in spec/vectors/codec/, or check
-                     that they are current
+                     write the conformance vectors in spec/vectors/: the codec vectors, and
+                     the files of each set's Python oracle (generate.py; needs python3);
+                     or check that they are current, running the oracles on a copy
   lint               check repository policies: unsafe code, SPDX headers, manifest
                      licenses, Markdown links, dependency-policy files
   help               print this message
