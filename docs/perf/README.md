@@ -44,6 +44,6 @@ Every number is finite.
 
 | File | Runner class | How it was measured |
 |---|---|---|
-| `baselines/github-ubuntu-24.04.json` | GitHub-hosted `ubuntu-24.04` | The `bench` workflow ([`.github/workflows/bench.yml`](../../.github/workflows/bench.yml)) runs the benchmark when `crates/tessera-bench/` changes, or on demand, and uploads the report as an artifact. |
+| [`baselines/github-ubuntu-24.04.json`](baselines/github-ubuntu-24.04.json) | GitHub-hosted `ubuntu-24.04` (x86_64) | The `bench` workflow ([`.github/workflows/bench.yml`](../../.github/workflows/bench.yml)) runs the benchmark when `crates/tessera-bench/` changes, or on demand, and uploads the report as an artifact. |
 
 The regression gate of 08 §6 compares each benchmark's median with its baseline on the same runner class, and a regression above 5% fails. That gate runs on a runner with locked clocks (#167). GitHub-hosted runners share their hosts, so their baseline records where the primitives stand, not a threshold to gate on.
