@@ -5,8 +5,10 @@
 //! This version holds the generic batched sumcheck prover of RFC-0010 'Batching within a stage'
 //! and 'Sumcheck messages': [`prove_batch`] proves the sums of products of up to
 //! [`MAX_DEGREE`] multilinear tables, over many instances of different sizes, in one round
-//! sequence. The relations of the stages, the product-tree levels, masking (RFC-0013) and the
-//! stage schedule build on it.
+//! sequence. On it, [`prove_forests`] proves the product-tree levels of the leaf stage, for
+//! batches of forests of stacked trees (RFC-0010 'Tree levels'), and returns the leaf claims the
+//! next stage checks. The relations of the stages, masking (RFC-0013) and the stage schedule
+//! build on them.
 //!
 //! # Protocol
 //!
@@ -62,6 +64,52 @@
 //! # Ok::<(), tessera_sumcheck::SumcheckError>(())
 //! ```
 //!
+//! # Product forests
+//!
+//! A [`Forest`] stacks `2^s` product trees of height `h` into one table of `2^{s+h}` leaves over
+//! the prime subfield, entry `y·2^h + x` being leaf `x` of tree `y`. [`prove_forests`] proves a
+//! batch of them from the roots to the leaves, one batched sumcheck of degree 3 per level under
+//! `tree/{ℓ}`. Forests join where their heights match; a level where forests of more than one
+//! tree join first squeezes their root point under `tree/{ℓ}/root/{c}`. The result,
+//! [`ProvenForests`], holds each level's challenges and [`SumcheckProof`], and each forest's leaf
+//! claim, a [`LevelClaim`] on its stacked leaves.
+//!
+//! ```
+//! use tessera_codec::Ascii;
+//! use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField};
+//! use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
+//! use tessera_sumcheck::{Forest, prove_forests};
+//!
+//! let context = SessionContext {
+//!     protocol: Ascii::new("tessera-protocol/1").expect("ASCII"),
+//!     mode: Mode::NonInteractive,
+//!     params: ParamSetId(Ascii::new("test-small/1").expect("ASCII")),
+//!     statement_digest: [0; 32],
+//!     session_id: [0; 16],
+//! };
+//! let fp = Goldilocks::from_u64_reduced;
+//! // Four rows of four keys, each with a zero key: 2^2 trees of height 2.
+//! let rows: Vec<Goldilocks> = [3, 0, 5, 1, 0, 2, 2, 7, 4, 4, 0, 9, 1, 1, 1, 0]
+//!     .into_iter()
+//!     .map(fp)
+//!     .collect();
+//! // One tree of 2^3 leaves, a level taller: it joins at level 0, the rows at level 1.
+//! let tree: Vec<Goldilocks> = (1..=8).map(fp).collect();
+//! let forests = [Forest::new(&rows, 2), Forest::<GoldilocksExt2>::new(&tree, 3)];
+//! let mut transcript = Transcript::new(&context);
+//! let proven = prove_forests(&mut transcript, &forests)?;
+//! let levels = proven.levels();
+//! assert_eq!(levels.len(), 3);
+//! // The single tree joins at level 0 under no root challenge; the rows join at level 1 under two.
+//! assert_eq!(levels[0].root_challenges().len(), 0);
+//! assert_eq!(levels[1].root_challenges().len(), 2);
+//! assert_eq!(levels[1].forests(), [0, 1]);
+//! // A leaf claim per forest, on its stacked leaves: 2 + 2 and 0 + 3 variables.
+//! let points: Vec<usize> = proven.leaf_claims().iter().map(|c| c.point.len()).collect();
+//! assert_eq!(points, [4, 3]);
+//! # Ok::<(), tessera_sumcheck::SumcheckError>(())
+//! ```
+//!
 //! # Algorithm
 //!
 //! - **Round values.** On a pair `(a, b) = (T[2t], T[2t + 1])` a table is `a + z·Δ` with
@@ -108,12 +156,14 @@ compile_error!(
 );
 
 mod error;
+mod forest;
 mod kernel;
 mod proof;
 mod prover;
 mod transcript;
 
 pub use error::SumcheckError;
+pub use forest::{Forest, LevelClaim, ProvenForests, ProvenLevel, prove_forests};
 pub use proof::SumcheckProof;
 pub use prover::{Instance, Prefix, ProvenBatch, Table, prove_batch};
 pub use tessera_poly::MAX_DEGREE;

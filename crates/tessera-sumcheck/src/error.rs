@@ -14,8 +14,12 @@ use crate::MAX_DEGREE;
 /// table and no more tables than the degree, and table by table, that the length is a power of
 /// two and equals the instance's first table's.
 ///
-/// The variants carry indices, lengths and degrees, never a field element, so an error cannot
-/// carry a secret table value or an evaluation (05 §3).
+/// [`prove_forests`](crate::prove_forests) checks its forests in this order and returns the first
+/// failure: that there is a forest; then forest by forest, that its leaf count is a power of two
+/// and that its height is between 1 and `log2` of its leaf count.
+///
+/// The variants carry indices, lengths, heights and degrees, never a field element, so an error
+/// cannot carry a secret table value, a leaf or an evaluation (05 §3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SumcheckError {
     /// The degree is outside `1..=MAX_DEGREE`.
@@ -60,6 +64,26 @@ pub enum SumcheckError {
         /// The length of the instance's first table.
         expected: usize,
     },
+    /// The batch of forests has no forest.
+    NoForests,
+    /// A forest's leaf count is not a power of two (zero included): its trees and their leaves
+    /// stack into `2^{s+h}` entries.
+    LeafCount {
+        /// The forest, counted from 0 in the order given.
+        forest: usize,
+        /// The leaf count given.
+        len: usize,
+    },
+    /// A forest's height is 0, or more than `log2` of its leaf count: a tree has at least one
+    /// level below its root, and a forest at least one tree.
+    Height {
+        /// The forest, counted from 0 in the order given.
+        forest: usize,
+        /// The height given.
+        height: usize,
+        /// `log2` of its leaf count, the largest height it admits.
+        vars: usize,
+    },
 }
 
 impl fmt::Display for SumcheckError {
@@ -97,6 +121,19 @@ impl fmt::Display for SumcheckError {
                 f,
                 "table {table} of instance {instance} has {len} entries where its first table has \
                  {expected}"
+            ),
+            Self::NoForests => write!(f, "a batch of forests needs at least one forest"),
+            Self::LeafCount { forest, len } => {
+                write!(f, "forest {forest} has {len} leaves, not a power of two")
+            }
+            Self::Height {
+                forest,
+                height,
+                vars,
+            } => write!(
+                f,
+                "forest {forest} has height {height}, outside 1 to {vars}, the log2 of its leaf \
+                 count"
             ),
         }
     }

@@ -107,9 +107,12 @@
 //! It returns `γ`, the point, `ρ`, and, in the same order, each instance's claim on its next
 //! level: `Ṽ_{ℓ+1}(ρ ‖ r'_i) = u_i + ρ·(w_i − u_i)` on `n_i + 1` variables, `ρ` the lowest, the
 //! pair bit of `V_ℓ[x] = V_{ℓ+1}[2x]·V_{ℓ+1}[2x + 1]`. The caller says which instances are
-//! present: with `H` the tallest tree's height, a tree of height `h` joins at level `H − h` with
-//! its public root claim on 0 variables, and after its last level the claims returned are its
-//! leaf claims.
+//! present. Each is a forest of `2^s` trees of one height `h`, stacked with the tree index in the
+//! high `s` variables; a single tree has `s = 0`. With `H` the tallest forest's height, a forest
+//! joins at level `H − h`, with its root claim `Σ_y v_y·eq(r, y)` on `s` variables. Its public
+//! root values `v_y` give the claim, at the root point `r` that the caller squeezes under
+//! `tree/{ℓ}/root/{c}` before the level. After the forest's last level, the claims returned
+//! are its leaf claims.
 //!
 //! The check of step 8 is symmetric in `u_i` and `w_i`, and a `u_i` whose `w_i` is zero does
 //! not enter it: such changes pass the level. They do not pass the next claim, which absorbs

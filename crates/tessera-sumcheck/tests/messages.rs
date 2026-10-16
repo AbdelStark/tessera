@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The messages as values: `SumcheckProof` encodes as RFC-0010 defines it, in TCE (RFC-0003),
-//! and decodes back; and no debug form of the crate shows a table entry, which is secret-class,
-//! or a message value, which is protocol-class (05 §3).
+//! and decodes back; and no debug form of the crate shows a table entry or a leaf, which are
+//! secret-class, or a message, challenge or claim value, which are protocol-class (05 §3).
 
 mod common;
 
 use common::{Fp, Fp2, Session, SplitMix64, TestInstance, TestTable, prove_and_verify};
 use tessera_codec::{DecodeLimits, decode, encode};
 use tessera_field::{PrimeField, QuadraticExtension};
-use tessera_sumcheck::{Instance, Prefix, SumcheckProof, Table};
+use tessera_sumcheck::{Forest, Instance, Prefix, SumcheckProof, Table, prove_forests};
 
 fn element_bytes(x: Fp2) -> Vec<u8> {
     let [c0, c1] = x.coeffs();
@@ -133,4 +133,43 @@ fn debug_forms_show_shapes_never_values() {
     );
     assert_hidden(&format!("{proven:?}"), &secrets, "a proven batch");
     assert_hidden(&format!("{proven:#?}"), &secrets, "a proven batch");
+}
+
+#[test]
+fn forest_debug_forms_show_shapes_never_values() {
+    let mut rng = SplitMix64::new(0x58_0503);
+    let leaves: Vec<Fp> = (0..32)
+        .map(|_| Fp::from_u64_reduced(rng.next_u64() | 1 << 40))
+        .collect();
+    let mut secrets = forms(&leaves.iter().map(|&b| Fp2::from(b)).collect::<Vec<_>>());
+    let forest = Forest::<Fp2>::new(&leaves, 3);
+    assert_eq!(format!("{forest:?}"), "Forest { leaves: 32, height: 3 }");
+
+    let session = Session::random(&mut rng);
+    let proven = prove_forests(&mut session.transcript(), &[forest]).expect("a forest");
+    let mut values = Vec::new();
+    for level in proven.levels() {
+        values.extend(level.root_challenges());
+        values.push(*level.gamma());
+        values.extend(level.proof().rounds.concat());
+        values.extend(&level.proof().final_evals);
+        values.extend(level.point());
+        values.push(*level.rho());
+        for claim in level.next_claims() {
+            values.extend(&claim.point);
+            values.push(claim.value);
+        }
+    }
+    secrets.extend(forms(&values));
+    assert_eq!(
+        format!("{:?}", proven.leaf_claims()[0]),
+        "LevelClaim { vars: 5, .. }"
+    );
+    assert_hidden(&format!("{proven:?}"), &secrets, "proven forests");
+    assert_hidden(&format!("{proven:#?}"), &secrets, "proven forests");
+    assert_hidden(
+        &format!("{:?}", proven.levels()[1]),
+        &secrets,
+        "a proven level",
+    );
 }

@@ -10,7 +10,12 @@
 //!   3, 2 and 3 tables over `Fp`, per entry of all its tables;
 //! - one `tessera_poly::bind_lowest` pass over an `Fp` table, per entry, and binding every round
 //!   (that pass, then `bind_lowest_in_place` down to one entry): what binding alone costs, a lower
-//!   bound of the prover's cost per entry of each table.
+//!   bound of the prover's cost per entry of each table;
+//! - `prove_forests` on a forest of 2^10 trees of 2^12 leaves, on one tree of 2^22 leaves and on a
+//!   batch of forests of several heights and tree counts, 2^22 leaves each, per leaf. Beside each
+//!   come the `eq` tables its levels build, alone, and the engine's degree-3 sumcheck of a product
+//!   of three tables of as many entries as leaves, per entry: three tables over `Fp`, and a tree
+//!   level's shape, one over `Fp2` and two over `Fp`.
 //!
 //! `cargo bench -p tessera-sumcheck` reports the fastest of several runs. Without `--bench`, as
 //! under `cargo test --benches`, it runs once at small sizes as a smoke test.
@@ -25,8 +30,8 @@ use std::time::{Duration, Instant};
 use tessera_codec::Ascii;
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
-use tessera_poly::{bind_lowest, bind_lowest_in_place};
-use tessera_sumcheck::{Instance, Prefix, Table, prove_batch};
+use tessera_poly::{bind_lowest, bind_lowest_in_place, eq_table};
+use tessera_sumcheck::{Forest, Instance, Prefix, Table, prove_batch, prove_forests};
 
 type Fp = Goldilocks;
 type Fp2 = GoldilocksExt2;
@@ -75,9 +80,13 @@ fn fastest<T>(runs: usize, mut f: impl FnMut() -> T) -> Duration {
 }
 
 fn report(what: &str, entries: usize, time: Duration) {
-    let ns = time.as_secs_f64() * 1e9 / entries as f64;
+    report_per(what, entries, "entry", time);
+}
+
+fn report_per(what: &str, count: usize, unit: &str, time: Duration) {
+    let ns = time.as_secs_f64() * 1e9 / count as f64;
     let ms = time.as_secs_f64() * 1e3;
-    println!("{what:<52} {ns:>7.3} ns per entry  ({ms:>8.2} ms)");
+    println!("{what:<52} {ns:>7.3} ns per {unit:<5} ({ms:>8.2} ms)");
 }
 
 /// A batch of degree `degree` over `instances`, on a fresh transcript.
@@ -159,6 +168,88 @@ fn binding(log_n: u32, runs: usize) {
     report(&format!("  binding every round, 2^{log_n}"), n, time);
 }
 
+/// `prove_forests` over forests of `(s, h)` shapes, `2^s` trees of height `h`, per leaf; the `eq`
+/// tables its levels build, alone, per leaf; and the engine's degree-3 sumcheck of three tables of
+/// as many entries as the batch has leaves, per entry, three over `Fp` and a tree level's shape,
+/// one over `Fp2` and two over `Fp`.
+fn forests(what: &str, shapes: &[(usize, usize)], runs: usize) {
+    let mut rng = SplitMix64(0x7E55_E7A0_0058_0001);
+    let leaves: Vec<Vec<Fp>> = shapes
+        .iter()
+        .map(|&(s, h)| (0..1usize << (s + h)).map(|_| rng.fp()).collect())
+        .collect();
+    let batch: Vec<Forest<'_, Fp2>> = leaves
+        .iter()
+        .zip(shapes)
+        .map(|(leaves, &(_, h))| Forest::new(leaves, h))
+        .collect();
+    let total: usize = leaves.iter().map(Vec::len).sum();
+    assert!(
+        total.is_power_of_two(),
+        "the engine's tables have as many entries"
+    );
+    let time = fastest(runs, || {
+        let mut transcript = Transcript::new(&context());
+        let proven = prove_forests(&mut transcript, &batch).expect("well-formed forests");
+        proven.into_parts()
+    });
+    report_per(&format!("forests: {what}"), total, "leaf", time);
+
+    // The eq tables of every level: at level ℓ each forest that has joined builds one on its
+    // s + ℓ − (H − h) coordinates.
+    let tallest = shapes.iter().map(|&(_, h)| h).max().unwrap_or(0);
+    let points: Vec<Vec<Fp2>> = (0..tallest)
+        .flat_map(|level| {
+            shapes
+                .iter()
+                .filter(move |&&(_, h)| tallest - h <= level)
+                .map(move |&(s, h)| s + level - (tallest - h))
+        })
+        .map(|vars| (0..vars).map(|_| rng.fp2()).collect())
+        .collect();
+    let time = fastest(runs, || {
+        for point in &points {
+            black_box(eq_table(black_box(point)).expect("a table"));
+        }
+    });
+    report_per("  the eq tables alone", total, "leaf", time);
+
+    let a: Vec<Fp> = (0..total).map(|_| rng.fp()).collect();
+    let b: Vec<Fp> = (0..total).map(|_| rng.fp()).collect();
+    let c: Vec<Fp> = (0..total).map(|_| rng.fp()).collect();
+    let instance = Instance::new(vec![Table::base(&a), Table::base(&b), Table::base(&c)]);
+    let time = fastest(runs, || prove(3, std::slice::from_ref(&instance)));
+    report("  engine: product of 3 Fp tables, degree 3", total, time);
+    let eq: Vec<Fp2> = (0..total).map(|_| rng.fp2()).collect();
+    let instance = Instance::new(vec![
+        Table::ext(&eq).public(),
+        Table::base(&b),
+        Table::base(&c),
+    ]);
+    let time = fastest(runs, || prove(3, std::slice::from_ref(&instance)));
+    report("  engine: Fp2 public x 2 Fp tables, degree 3", total, time);
+}
+
+/// The three forest batches of 2^22 leaves, or of 2^10 as a smoke test.
+fn forest_cases(large: bool, runs: usize) {
+    if large {
+        forests("2^10 trees of 2^12 leaves", &[(10, 12)], runs);
+        forests("one tree of 2^22 leaves", &[(0, 22)], runs);
+        forests(
+            "2^9 x 2^12, 2^11 x 2^9 and 1 x 2^20 leaves",
+            &[(9, 12), (11, 9), (0, 20)],
+            runs,
+        );
+    } else {
+        forests("2^4 trees of 2^6 leaves", &[(4, 6)], runs);
+        forests(
+            "2^3 x 2^5, 2^5 x 2^2 and 1 x 2^7 leaves",
+            &[(3, 5), (5, 2), (0, 7)],
+            runs,
+        );
+    }
+}
+
 /// Keeps one core busy before anything is timed, so that the first measurement does not run on
 /// a core that is still raising its clock.
 fn warm_up(duration: Duration) {
@@ -179,9 +270,11 @@ fn main() {
         binding(22, 5);
         single_products(22, 3, false);
         mixed_batch(200);
+        forest_cases(true, 5);
     } else {
         binding(10, 1);
         single_products(10, 1, true);
         mixed_batch(1);
+        forest_cases(false, 1);
     }
 }

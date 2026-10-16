@@ -2,14 +2,17 @@
 
 //! Every input-dependent failure is a typed error, never a panic (04 §1): each test violates one
 //! condition and asserts the exact error, the checks come in the documented order, and a refused
-//! batch leaves the transcript where it was, before `γ`.
+//! batch leaves the transcript where it was, before `γ` and, for forests, before the root
+//! challenges.
 
 mod common;
 
 use common::{Fp, Fp2, Session, SplitMix64};
 use tessera_field::Field;
 use tessera_hash::Transcript;
-use tessera_sumcheck::{Instance, MAX_DEGREE, Prefix, SumcheckError, Table, prove_batch};
+use tessera_sumcheck::{
+    Forest, Instance, MAX_DEGREE, Prefix, SumcheckError, Table, prove_batch, prove_forests,
+};
 
 /// Proves on a fresh transcript and checks that a refusal left it untouched.
 fn refused(degree: usize, instances: &[Instance<'_, Fp2>]) -> SumcheckError {
@@ -166,6 +169,89 @@ fn tables_of_one_instance_of_different_sizes_are_refused() {
     );
 }
 
+/// Proves forests on a fresh transcript and checks that a refusal left it untouched.
+fn refused_forests(forests: &[Forest<'_, Fp2>]) -> SumcheckError {
+    let session = Session::random(&mut SplitMix64::new(0x58_0301));
+    let mut transcript = session.transcript();
+    let error = prove_forests(&mut transcript, forests).expect_err("the forests are refused");
+    let fresh: Transcript = session.transcript();
+    assert_eq!(
+        (transcript.state(), transcript.counter()),
+        (fresh.state(), fresh.counter()),
+        "refused forests do not move the transcript"
+    );
+    error
+}
+
+#[test]
+fn a_batch_without_forests_is_refused() {
+    assert_eq!(refused_forests(&[]), SumcheckError::NoForests);
+}
+
+#[test]
+fn a_leaf_count_that_is_not_a_power_of_two_is_refused() {
+    let good = [Fp::ONE; 8];
+    for len in [0, 3, 5, 6, 7, 12, 1000] {
+        let bad = vec![Fp::ONE; len];
+        // After a valid forest, and before the height, which no count fits.
+        for height in [0, 1, 2, 64] {
+            assert_eq!(
+                refused_forests(&[Forest::new(&good, 3), Forest::new(&bad, height)]),
+                SumcheckError::LeafCount { forest: 1, len }
+            );
+        }
+        // Forest by forest: the first forest's count before the second's height.
+        assert_eq!(
+            refused_forests(&[Forest::new(&bad, 1), Forest::new(&good, 0)]),
+            SumcheckError::LeafCount { forest: 0, len }
+        );
+    }
+}
+
+#[test]
+fn a_height_of_0_or_above_log2_of_the_leaf_count_is_refused() {
+    let sixteen = [Fp::ONE; 16];
+    for height in [0, 5, 6, 64, usize::MAX] {
+        assert_eq!(
+            refused_forests(&[Forest::new(&sixteen, 4), Forest::new(&sixteen, height)]),
+            SumcheckError::Height {
+                forest: 1,
+                height,
+                vars: 4
+            }
+        );
+    }
+    // A single leaf has no level below a root.
+    let one = [Fp::ONE; 1];
+    for height in [0, 1] {
+        assert_eq!(
+            refused_forests(&[Forest::new(&one, height)]),
+            SumcheckError::Height {
+                forest: 0,
+                height,
+                vars: 0
+            }
+        );
+    }
+    // Forest by forest: the first forest's height before the second's count.
+    let three = [Fp::ONE; 3];
+    assert_eq!(
+        refused_forests(&[Forest::new(&sixteen, 0), Forest::new(&three, 1)]),
+        SumcheckError::Height {
+            forest: 0,
+            height: 0,
+            vars: 4
+        }
+    );
+    // The bounds themselves are heights: 2^3 trees of height 1 and one tree of height 4.
+    let session = Session::random(&mut SplitMix64::new(0x58_0302));
+    for height in [1, 4] {
+        let forests = [Forest::<Fp2>::new(&sixteen, height)];
+        let proven = prove_forests(&mut session.transcript(), &forests).expect("a valid height");
+        assert_eq!(proven.levels().len(), height);
+    }
+}
+
 /// The messages name shapes only.
 #[test]
 fn errors_display_shapes() {
@@ -206,6 +292,22 @@ fn errors_display_shapes() {
                 expected: 4,
             },
             "table 1 of instance 3 has 8 entries where its first table has 4",
+        ),
+        (
+            SumcheckError::NoForests,
+            "a batch of forests needs at least one forest",
+        ),
+        (
+            SumcheckError::LeafCount { forest: 2, len: 12 },
+            "forest 2 has 12 leaves, not a power of two",
+        ),
+        (
+            SumcheckError::Height {
+                forest: 1,
+                height: 5,
+                vars: 4,
+            },
+            "forest 1 has height 5, outside 1 to 4, the log2 of its leaf count",
         ),
     ];
     for (error, message) in cases {

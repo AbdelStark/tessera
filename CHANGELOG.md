@@ -97,3 +97,21 @@ All notable changes to the prover release train are recorded here: the crates un
     - products of 1, 2, 3 and 4 tables over `Fp` take about 4.2, 6.5, 8.3 and 11.5 ns at `2^20` and `2^22` entries per table;
     - over `Fp2`, they take 5.8, 10.1, 12.7 and 17.7 ns at `2^20`;
     - binding one table through every round, alone, takes 3.2 ns per entry.
+- The product-tree levels of the leaf stage, over forests of stacked trees (RFC-0010 'Tree levels'), in `tessera-sumcheck` ([#58](https://github.com/AbdelStark/tessera/issues/58)):
+  - A `Forest` borrows `2^{s+h}` leaves over the prime subfield: `2^s` trees of height `h`, stacked with the tree index in the high variables. `prove_forests` proves a batch of forests from the roots to the leaves, and forests join where their heights match. Each level runs three steps:
+    1. Where forests of more than one tree join, it squeezes `s_max` root challenges under `tree/{ℓ}/root/{c}`, and each joining forest takes the last `s` as its root point.
+    2. `prove_batch` runs under `tree/{ℓ}`, of degree 3, over the forests that have joined, in the order given. Each instance is `eq(r_i, ·)`, a public factor, times the two halves of its next level.
+    3. It squeezes `ρ` under `tree/{ℓ}/line`, and each next claim is `u_i + ρ·(w_i − u_i)` at `ρ ‖ r'_i`.
+  - `ProvenForests` is `#[must_use]`. Each of its levels is a `ProvenLevel`: root challenges, `γ`, `SumcheckProof`, point, `ρ`, instances and next claims. Each forest's leaf claim is a `LevelClaim` on its stacked leaves, and `into_parts` hands the proofs and the leaf claims to the next stage. The prover takes no claim.
+  - `SumcheckError` gains `NoForests`, `LeafCount` and `Height`, checked in that order, forest by forest, before the transcript moves. Debug forms show shapes only.
+  - Each forest's levels are built once, bottom-up, in the prime subfield. Each level is stored as its two halves, written in one pass, and dropped once its sumcheck has run; each `eq` table is dropped after its level.
+  - The verifier's `tv_core::tree::verify_product_level`, a dev-dependency (DEP-2), checks every proof the tests produce. A driver in the tests squeezes the root challenges itself and forms each root claim `Σ_y v_y·eq(r, y)` from the trees' products. The verifier must draw the prover's challenges, and every leaf claim must equal the stacked leaves' multilinear extension. The cases:
+    - every forest of 2^0 to 2^10 trees of heights 1 to 12 with at most 2^13 leaves, and 2^10 trees of 2^12 leaves;
+    - forests joining at one level, and at several;
+    - zero and random roots;
+    - 40 seeded random batches;
+    - batches over `F65537Ext2` and `F65537`, checked level by level from the RFC;
+    - the Python oracle's new `forest_batches` in `spec/vectors/sumcheck/sumcheck.json`, reproduced value by value.
+
+    A row with a non-zero product claimed zero is rejected at the level where its forest joins, and so is a root challenge other than the transcript's. Every changed round value or evaluation is rejected too.
+  - On one Apple M4 Max core (`benches/throughput.rs`), 2^22 leaves take 134 ms, 32 ns per leaf, whether as 2^10 trees of 2^12 leaves, as one tree, or as forests of three heights. One degree-3 sumcheck in a tree level's shape (one `Fp2` table, two over `Fp`) over 2^22 entries takes 115 ms. The `eq` tables take 10% of the forests' time.

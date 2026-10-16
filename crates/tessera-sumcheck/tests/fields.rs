@@ -7,16 +7,22 @@
 //! says a verifier does, round by round from the batched claim with `p(1) = claim − p(0)` and
 //! `tessera_poly::RoundPoly`, which the prover does not use, and each final evaluation against
 //! the table's multilinear extension at the instance's point.
+//!
+//! Batches of product forests are checked the same way, level by level as RFC-0010 'Tree levels'
+//! says: root challenges, root claims from the trees' products, the level's sumcheck and its
+//! final check `Σ_i γ^i·eq(r_i, r'_i)·u_i·w_i`, `ρ` and the next claims, and the leaf claims
+//! against the leaves' multilinear extension.
 
 mod common;
 
 use common::SplitMix64;
 use tessera_codec::{Ascii, Encode};
-use tessera_field::{F65537, F65537Ext2, PrimeField, QuadraticExtension};
+use tessera_field::{F65537, F65537Ext2, Field, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_poly::{PolyField, RoundPoly, evaluate, evaluate_base};
 use tessera_sumcheck::{
-    Instance, MAX_DEGREE, Prefix, SumcheckProof, SumcheckTranscript, Table, prove_batch,
+    Forest, Instance, MAX_DEGREE, Prefix, SumcheckProof, SumcheckTranscript, Table, prove_batch,
+    prove_forests,
 };
 
 /// A transcript over `F65537` and its extension: messages absorbed as TCE `Vec`, challenges
@@ -241,4 +247,190 @@ fn batches_over_the_extension_of_f65537_verify() {
 #[test]
 fn batches_with_challenges_in_f65537_verify() {
     random_batches::<F65537>(0x53_0402);
+}
+
+/// `eq(r, y)` at the vertex `y`, from the definition: `Π_i (r_i·y_i + (1 − r_i)·(1 − y_i))`,
+/// `y_i` bit `i − 1` of `y`.
+fn eq_at_vertex<F: PolyField>(r: &[F], y: usize) -> F {
+    r.iter().enumerate().fold(F::ONE, |product, (i, &ri)| {
+        product * if (y >> i) & 1 == 1 { ri } else { F::ONE - ri }
+    })
+}
+
+/// `eq(a, b) = Π_i (a_i·b_i + (1 − a_i)·(1 − b_i))`.
+fn eq_points<F: PolyField>(a: &[F], b: &[F]) -> F {
+    assert_eq!(a.len(), b.len());
+    a.iter().zip(b).fold(F::ONE, |product, (&a, &b)| {
+        product * (a * b + (F::ONE - a) * (F::ONE - b))
+    })
+}
+
+/// A batch of forests over `F`, `(s, h, zero rows)` each: heights 4, 6, 2, 3 and 1 join at
+/// levels 2, 0, 4, 3 and 5, the forests of 2^2, 2^3 and 2^5 trees under root challenges, the
+/// single trees under none. Proven, then checked level by level as a verifier would.
+fn forest_batch<F: Draw<Base = F65537>>(seed: u8)
+where
+    SmallTranscript: SumcheckTranscript<F>,
+{
+    let mut rng = SplitMix64::new(0x58_0400 + u64::from(seed));
+    let shapes = [
+        (2usize, 4usize, true),
+        (0, 6, false),
+        (3, 2, false),
+        (5, 3, true),
+        (0, 1, true),
+    ];
+    let leaves: Vec<Vec<F65537>> = shapes
+        .iter()
+        .map(|&(s, h, zero_rows)| {
+            let mut leaves: Vec<F65537> =
+                (0..1 << (s + h)).map(|_| F65537::draw(&mut rng)).collect();
+            if zero_rows {
+                for y in 0..1 << s {
+                    leaves[(y << h) + rng.below(1 << h) as usize] = F65537::ZERO;
+                }
+            }
+            leaves
+        })
+        .collect();
+    let forests: Vec<Forest<'_, F>> = leaves
+        .iter()
+        .zip(&shapes)
+        .map(|(leaves, &(_, h, _))| Forest::new(leaves, h))
+        .collect();
+    let mut prover = SmallTranscript::new(seed);
+    let proven = prove_forests(&mut prover, &forests).expect("well-formed forests");
+
+    // The verifier, from RFC-0010 'Tree levels', with the trees' true products as public roots.
+    let roots: Vec<Vec<F>> = leaves
+        .iter()
+        .zip(&shapes)
+        .map(|(leaves, &(_, h, _))| {
+            leaves
+                .chunks_exact(1 << h)
+                .map(|tree| F::from(tree.iter().fold(F65537::ONE, |p, &x| p * x)))
+                .collect()
+        })
+        .collect();
+    let tallest = shapes.iter().map(|&(_, h, _)| h).max().expect("a forest");
+    assert_eq!(proven.levels().len(), tallest);
+    let mut t = SmallTranscript::new(seed);
+    let mut claims: Vec<Option<(Vec<F>, F)>> = vec![None; shapes.len()];
+    for (level, record) in proven.levels().iter().enumerate() {
+        let prefix = format!("tree/{level}");
+        let joins = |i: usize| tallest - shapes[i].1;
+        let s_max = (0..shapes.len())
+            .filter(|&i| joins(i) == level)
+            .map(|i| shapes[i].0)
+            .max()
+            .unwrap_or(0);
+        let root: Vec<F> = (0..s_max)
+            .map(|c| t.challenge(&format!("{prefix}/root/{c}")))
+            .collect();
+        assert!(
+            record.root_challenges() == root,
+            "level {level}: the root challenges"
+        );
+        for i in (0..shapes.len()).filter(|&i| joins(i) == level) {
+            let r = root[s_max - shapes[i].0..].to_vec();
+            let value = roots[i]
+                .iter()
+                .enumerate()
+                .fold(F::ZERO, |sum, (y, &v)| sum + v * eq_at_vertex(&r, y));
+            claims[i] = Some((r, value));
+        }
+        let present: Vec<usize> = (0..shapes.len()).filter(|&i| joins(i) <= level).collect();
+        assert_eq!(record.forests(), present, "level {level}: the instances");
+        let entering: Vec<(Vec<F>, F)> = present
+            .iter()
+            .map(|&i| claims[i].clone().expect("joined"))
+            .collect();
+
+        let gamma = t.challenge(&format!("{prefix}/gamma"));
+        assert_eq!(*record.gamma(), gamma, "level {level}: γ");
+        let n_max = entering
+            .iter()
+            .map(|(r, _)| r.len())
+            .max()
+            .expect("an instance");
+        let mut claim = F::ZERO;
+        let mut weight = F::ONE;
+        for (r, value) in &entering {
+            let scale = F::from(F65537::from_u64_reduced(1 << (n_max - r.len())));
+            claim += weight * scale * *value;
+            weight *= gamma;
+        }
+        let proof = record.proof();
+        assert_eq!(
+            proof.rounds.len(),
+            n_max,
+            "level {level}: one round per variable"
+        );
+        let mut point = Vec::new();
+        for (j, round) in proof.rounds.iter().enumerate() {
+            assert_eq!(round.len(), 3, "level {level}: round {j} holds 3 values");
+            t.absorb_message(&format!("{prefix}/round/{j}"), round);
+            let r = t.challenge(&format!("{prefix}/r/{j}"));
+            claim = RoundPoly::new(round).expect("degree 3").evaluate(claim, r);
+            point.push(r);
+        }
+        assert!(record.point() == point, "level {level}: the point");
+        assert_eq!(proof.final_evals.len(), 2 * entering.len());
+        t.absorb_message(&format!("{prefix}/evals"), &proof.final_evals);
+        let rho = t.challenge(&format!("{prefix}/line"));
+        assert_eq!(*record.rho(), rho, "level {level}: ρ");
+        let mut batched = F::ZERO;
+        let mut weight = F::ONE;
+        for (k, ((r, _), evals)) in entering
+            .iter()
+            .zip(proof.final_evals.chunks_exact(2))
+            .enumerate()
+        {
+            let own = &point[n_max - r.len()..];
+            let (u, w) = (evals[0], evals[1]);
+            batched += weight * eq_points(r, own) * u * w;
+            weight *= gamma;
+            let mut next = vec![rho];
+            next.extend_from_slice(own);
+            let value = u + rho * (w - u);
+            let mine = &record.next_claims()[k];
+            assert!(
+                mine.point == next,
+                "level {level}: instance {k}'s next point"
+            );
+            assert_eq!(
+                mine.value, value,
+                "level {level}: instance {k}'s next value"
+            );
+            claims[present[k]] = Some((next, value));
+        }
+        assert_eq!(batched, claim, "level {level}: the final check");
+    }
+    for (i, (claim, leaves)) in proven.leaf_claims().iter().zip(&leaves).enumerate() {
+        assert_eq!(claim.point.len(), shapes[i].0 + shapes[i].1);
+        assert_eq!(
+            claim.value,
+            evaluate_base(leaves, &claim.point).expect("2^n leaves at n coordinates"),
+            "forest {i}: the leaves' extension at the leaf point"
+        );
+    }
+    assert_eq!(
+        t.inner.state(),
+        prover.inner.state(),
+        "the transcripts end in the same state"
+    );
+}
+
+#[test]
+fn forests_over_the_extension_of_f65537_verify() {
+    for seed in 0..20 {
+        forest_batch::<F65537Ext2>(seed);
+    }
+}
+
+#[test]
+fn forests_with_challenges_in_f65537_verify() {
+    for seed in 0..20 {
+        forest_batch::<F65537>(seed);
+    }
 }

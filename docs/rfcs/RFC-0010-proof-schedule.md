@@ -68,16 +68,25 @@ For the `servable` Llama template the longest chain is: requantization key of th
 
 ### Tree levels
 
-The leaf stage proves each product tree level by level from its root, level 0, to its leaves, level `h`. Level `ℓ + 1` has twice the entries of level `ℓ`, and the pair `2x, 2x + 1` combines into entry `x`: `V_ℓ[x] = V_{ℓ+1}[2x]·V_{ℓ+1}[2x + 1]`. In the relation `ProductTreeLevel`, `V_{ℓ+1}(x, b)` is therefore `Ṽ_{ℓ+1}(b ‖ x)`: the pair bit is the lowest variable. Fraction trees pair their entries the same way, under the rule of [RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree). Trees of different heights join the batch where their heights match, as RFC-0008 'Batching' says: with `H` the tallest tree's height, a tree of height `h` takes its root level at level `H − h` of the batch, and at level `ℓ` of the batch it has `ℓ − (H − h)` variables.
+The leaf stage proves each product tree level by level from its root, level 0, to its leaves, level `h`. Level `ℓ + 1` has twice the entries of level `ℓ`, and the pair `2x, 2x + 1` combines into entry `x`: `V_ℓ[x] = V_{ℓ+1}[2x]·V_{ℓ+1}[2x + 1]`. In the relation `ProductTreeLevel`, `V_{ℓ+1}(x, b)` is therefore `Ṽ_{ℓ+1}(b ‖ x)`: the pair bit is the lowest variable. Fraction trees pair their entries the same way, under the rule of [RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree).
 
-At level `ℓ`, each instance `i` holds a claim `Ṽ(r_i) = v_i` on its current level, over `n_i` variables:
+Product trees of one height that the schedule lists together are stacked into a forest and proven as one instance, such as the `SoftmaxRow` trees of every query row, head and layer ([RFC-0009](RFC-0009-gadgets.md#softmaxrow)).
+- **Layout.** Level `ℓ` of a forest of `2^s` trees is a table of `2^{s+ℓ}` entries: entry `y·2^ℓ + x` is entry `x` of tree `y`'s level `ℓ`. The tree index takes the high `s` variables, as a stacked tensor's layer index does ('Multilinear extensions'). The forest's levels therefore pair their entries by the rule above, and the pair bit stays the lowest variable. A single tree is a forest with `s = 0`. When the schedule's trees are not a power of two, it pads the forest with trees whose root values are public as well.
+- **Joining the batch.** Forests of different heights join the batch where their heights match, as RFC-0008 'Batching' says. With `H` the tallest forest's height, a forest of height `h` takes its root level at level `H − h` of the batch, and at level `ℓ` of the batch it has `s + ℓ − (H − h)` variables.
+- **Root claim.** A forest's root level holds one value per tree. These values are public: zero for the trees of `SoftmaxRow`.
+  - At a level `ℓ` where forests of more than one tree join, before `γ`, the challenges `c = 0, 1, …, s_max − 1` are squeezed in `Fp2` under `tree/{ℓ}/root/{c}`. Here `s_max` is the largest `s` among the joining forests.
+  - Each joining forest's root point `r = (r_1, …, r_s)` is the last `s` of these challenges, in the order squeezed. The forest enters the level with the root claim `Ṽ_0(r) = Σ_y v_y·eq(r, y)`, where `v_y` are its public root values: zero for `SoftmaxRow`.
+  - A forest of one tree takes no challenge. Its root claim is its tree's root value, on the root level's zero variables.
+  - If a forest's root level differs from its public values, its root claim holds with probability at most `s/|Fp2|` over the root point.
+
+At level `ℓ`, each instance `i`, a forest of height `h_i`, holds a claim `Ṽ_{t_i}(r_i) = v_i` on its own level `t_i = ℓ − (H − h_i)`, over `n_i` variables:
 
 1. The challenge `γ` is squeezed under `tree/{ℓ}/gamma`, and the instances are combined and front-padded as in a stage ('Batching within a stage').
-2. A sumcheck of degree 3 over `n_max` variables proves `Σ_x eq(r_i, x)·Ṽ_{ℓ+1}(0 ‖ x)·Ṽ_{ℓ+1}(1 ‖ x)` for every instance, with the messages of 'Sumcheck messages' under `tree/{ℓ}/round/{j − 1}` and `tree/{ℓ}/r/{j − 1}`.
-3. The prover sends `u_i = Ṽ_{ℓ+1}(0 ‖ r'_i)` and `w_i = Ṽ_{ℓ+1}(1 ‖ r'_i)` for each instance, at its point `r'_i`, the last `n_i` challenges: one TCE `Vec<Fp2>` of `u_0, w_0, u_1, w_1, …` under `tree/{ℓ}/evals`. The verifier checks `Σ_i γ^i · eq(r_i, r'_i) · u_i · w_i` against the sumcheck's last claim.
-4. The challenge `ρ` is squeezed under `tree/{ℓ}/line`. Each instance's claim on its next level is `Ṽ_{ℓ+1}(ρ ‖ r'_i) = u_i + ρ·(w_i − u_i)`, on `n_i + 1` variables.
+2. A sumcheck of degree 3 over `n_max` variables proves `Σ_x eq(r_i, x)·Ṽ_{t_i+1}(0 ‖ x)·Ṽ_{t_i+1}(1 ‖ x)` for every instance, with the messages of 'Sumcheck messages' under `tree/{ℓ}/round/{j − 1}` and `tree/{ℓ}/r/{j − 1}`.
+3. The prover sends `u_i = Ṽ_{t_i+1}(0 ‖ r'_i)` and `w_i = Ṽ_{t_i+1}(1 ‖ r'_i)` for each instance, at its point `r'_i`, the last `n_i` challenges: one TCE `Vec<Fp2>` of `u_0, w_0, u_1, w_1, …` under `tree/{ℓ}/evals`. The verifier checks `Σ_i γ^i · eq(r_i, r'_i) · u_i · w_i` against the sumcheck's last claim.
+4. The challenge `ρ` is squeezed under `tree/{ℓ}/line`. Each instance's claim on its next level is `Ṽ_{t_i+1}(ρ ‖ r'_i) = u_i + ρ·(w_i − u_i)`, on `n_i + 1` variables.
 
-A product tree's root claim is public: zero for the trees of `SoftmaxRow` ([RFC-0009](RFC-0009-gadgets.md#softmaxrow)), on the root level's zero variables. The claims after a tree's last level are the leaf claims the next stage consumes.
+The claims after a forest's last level are the leaf claims the next stage consumes. Each is a claim on the forest's leaf table of `2^{s+h}` entries, its trees' leaves stacked as above.
 
 ### Batching within a stage
 
@@ -110,7 +119,7 @@ All claims on committed advice are collected in a pool keyed by polynomial. Clai
 
 ### Soundness of the schedule
 
-For a stage with `n` rounds of degree `d` and `m` batched instances, the error is at most `(n·d + m)/|Fp2|`. Each tree level contributes likewise. The total over all stages and levels is summed by the soundness calculator (RFC-0014); for 405B at 16K tokens it is below 2^-110.
+For a stage with `n` rounds of degree `d` and `m` batched instances, the error is at most `(n·d + m)/|Fp2|`. Each tree level contributes likewise, and each forest's root claim at most `s/|Fp2|`. The total over all stages and levels is summed by the soundness calculator (RFC-0014); for 405B at 16K tokens it is below 2^-110.
 
 ### Invariants
 
@@ -140,6 +149,7 @@ The sumcheck engine, matmul relation and product tree land in v0.1 (needed for u
 
 - Each relation kind: honest proofs verify for random instances with 1–24 variables; flipping any round evaluation or final evaluation is rejected.
 - Batching: stages mixing instances of 3, 7 and 12 variables verify; dropping the `2^{n_max − n_i}` scaling is rejected.
+- Product forests: forests of 1 to 2^10 trees with 2 to 2^12 leaves each verify, including forests of several heights in one batch. A forest with a tree whose product differs from its public root value is rejected.
 - Schedule derivation: prover and verifier schedules (stage count, relation kinds, variable counts) are equal on all conformance models.
 - INV-SCH-4: stage count equal for tiny models with 2, 4 and 8 layers of the same template, and in the 405B-shaped commitment report.
 - Common point: after the `MatMulWeight` stage, each weight type has exactly one claim, at a point whose layer coordinate is shared by all stacked tensors of that stage (asserted in tests).
