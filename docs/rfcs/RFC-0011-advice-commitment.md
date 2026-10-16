@@ -43,6 +43,8 @@ The verifier must locate every committed tensor from public data, so the layout 
 - A row's `k` values are evaluations of a polynomial `f` of degree `< k` on the subgroup `H` of order `k`.
 - The encoding adds a vanishing mask: `g(X) = f(X) + Z_H(X) · m(X)` with `Z_H(X) = X^k − 1` and `m` a random polynomial of degree `< P_A` (`P_A` mask coefficients, at least the parameter set's `τ_A`: 160 for `live-64`, 200 for `ni-100`). On `H` the mask vanishes, so the message is unchanged.
 - The codeword is `g` evaluated on the coset `7·L`, where `L` is the subgroup of order `n = 2k`; `7·L` is disjoint from `H`. Rate `ρ = (k + P_A)/n ≈ 1/2`.
+- Evaluations are in natural order. With `ω_m = 7^((P − 1)/m)`, the primitive `m`-th root of unity of [RFC-0002](RFC-0002-field-arithmetic.md#constants), position `i` of a row is `f(ω_k^i)` and symbol `j` of the codeword is `g(7·ω_n^j)`. Column `j` of the commitment holds symbol `j` of every row, so a queried column `j` is checked at `x_j = 7·ω_n^j`.
+- The mask is `m(X) = Σ_{i < P_A} m_i·X^i`, its coefficients drawn in the order `m_0, m_1, …` from the row's mask stream ('Streaming procedure'). `P_A ≤ k`, so `g` has degree below `n` and the codeword determines it.
 - Encoding cost per row: an inverse NTT of size `k` and a coset NTT of size `2k`.
 
 ### Column digests and root
