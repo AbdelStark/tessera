@@ -15,7 +15,8 @@
 //! | `logup/prove` | the LogUp stage of `2^18` lookups into `2^16` rows with values | lookup |
 //!
 //! `cargo bench -p tessera-bench --bench primitives` prints them. With `-- --runner-class NAME
-//! --out FILE` it also writes a `tessera.microbenchmarks/1` baseline. Without `--bench`, as under
+//! --out FILE` it also writes a `tessera.microbenchmarks/1` baseline, a relative `FILE` being
+//! relative to the repository root. Without `--bench`, as under
 //! `cargo test --benches`, every benchmark runs once at small sizes as a smoke test, and nothing
 //! is written.
 
@@ -25,6 +26,7 @@
 
 use std::hint::black_box;
 use std::num::NonZeroUsize;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use tessera_bench::{Measurement, MicrobenchmarkReport, Protocol, measure};
@@ -269,6 +271,18 @@ fn benchmarks(s: &Sizes) -> Vec<Bench> {
     list
 }
 
+/// Where `--out FILE` writes: a relative path is relative to the repository root, since cargo
+/// runs a benchmark from its package's directory.
+fn output_path(out: &str) -> PathBuf {
+    let path = Path::new(out);
+    match path.is_absolute() {
+        true => path.to_path_buf(),
+        false => Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(path),
+    }
+}
+
 /// `--runner-class NAME` and `--out FILE`, after the arguments cargo passes.
 struct Args {
     full: bool,
@@ -357,7 +371,9 @@ fn main() -> ExitCode {
         .and_then(|report| report.to_json())
         .map_err(|error| error.to_string())
         .and_then(|json| {
-            std::fs::write(&out, json + "\n").map_err(|error| format!("{out}: {error}"))
+            let path = output_path(&out);
+            std::fs::write(&path, json + "\n")
+                .map_err(|error| format!("{}: {error}", path.display()))
         });
     match written {
         Ok(()) => ExitCode::SUCCESS,

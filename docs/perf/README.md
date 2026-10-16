@@ -24,7 +24,7 @@ cargo bench -p tessera-bench --bench primitives -- \
   --runner-class NAME --out docs/perf/baselines/NAME.json            # also write a baseline
 ```
 
-Without `--bench`, as under `cargo test --benches`, each benchmark runs once at small sizes as a smoke test, and nothing is written.
+A relative `--out` is relative to the repository root, although cargo runs the benchmark from `crates/tessera-bench/`. Without `--bench`, as under `cargo test --benches`, each benchmark runs once at small sizes as a smoke test, and nothing is written.
 
 ### Baselines
 
