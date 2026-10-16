@@ -70,7 +70,10 @@ Checks run in this order; the first failure determines the verdict.
 4. Bind the statement: claim-list digest; `weights_root` and `epoch` equal to the ledger's current root for that model; manifest signature under a pinned key; sample membership and no prior acceptance of the batch's requests; anchor entries' inclusion proofs ([RFC-0015](RFC-0015-transcript-anchor.md#verifier-checks), [RFC-0016](RFC-0016-audit-sampling.md#verifier-checks)).
 5. Weight reservation: declared blinding rows unused in this epoch according to the ledger (`Reject(Budget)`).
 6. Transcript: rebuild `SessionContext`, absorb `Round1`, derive or check the seed (coin-toss transcript, or proof-of-work nonce in non-interactive mode; `Reject(ProofOfWork)`).
-7. Tree levels: LogUp fraction trees (root numerator zero, root denominator non-zero) and product trees (root zero) level by level (`Reject(Lookup)`, `Reject(Sumcheck)`).
+7. Tree levels, in this order:
+   1. The LogUp roots: for each instance, `d_a ≠ 0`, `d_t ≠ 0` and `n_a·d_t + n_t·d_a = 0` ([RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree)) (`Reject(Lookup)`).
+   2. The levels of the fraction trees and the product forests, from the root (`Reject(Sumcheck)`).
+   3. Each LogUp instance's leaf checks: the lookup tree's numerator claim is 1, and the table tree's denominator claim is `α − t̃(ρ)` (`Reject(Lookup)`).
 8. Stages in schedule order, including masked-sumcheck terms and gadget final checks (`Reject(Sumcheck)`, `Reject(Gadget)`).
 9. Opening groups for advice and every weight matrix: `Σ γ v = ⟨u'_g, eq⟩` per group (`Reject(Evaluation)`).
 10. Column queries: live, the verifier draws them now from its CSPRNG; non-interactive, from the transcript after the query proof-of-work.

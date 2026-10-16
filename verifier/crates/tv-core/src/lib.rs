@@ -4,40 +4,47 @@
 //! check, run in the fixed order of RFC-0019.
 //!
 //! This version holds the sumcheck checks of RFC-0019 'Check order' steps 7 and 8: the rounds
-//! of a sumcheck, batched instances with front-padding, and the levels of the leaf stage's
-//! product trees (RFC-0010 'Multilinear extensions', 'Tree levels', 'Batching within a stage',
-//! 'Sumcheck messages'). It also holds the opening checks of the advice commitment, steps 9 and
-//! 11: the group evaluations, then the queried columns' leaves, multiproof and consistency with
-//! the combined rows (RFC-0011 'Opening protocol'). They are written from the specification
-//! without reference to the prover's code, so that the two agree only because both follow the
-//! specification (SP-6, RFC-0001). Where the specification admits several algorithms this crate
-//! takes another than the prover's: a round polynomial is evaluated by Newton's forward
-//! differences; a combined row is evaluated at its column point by merging pairs in one pass,
-//! with no table of `eq`; and the row coefficients come from tables of `eq` over 8 bits of the
-//! row index at a time.
+//! of a sumcheck, batched instances with front-padding, and the levels of the leaf stage, where
+//! product forests and LogUp fraction trees run together (RFC-0010 'Multilinear extensions',
+//! 'Tree levels', 'Batching within a stage', 'Sumcheck messages'). Around those levels it holds
+//! LogUp-GKR's own checks of step 7: the roots before the first level and the leaf checks after
+//! the last (RFC-0008 'Fraction tree'). It also holds the opening checks of the advice
+//! commitment, steps 9 and 11: the group evaluations, then the queried columns' leaves,
+//! multiproof and consistency with the combined rows (RFC-0011 'Opening protocol'). They are
+//! written from the specification without reference to the prover's code, so that the two agree
+//! only because both follow the specification (SP-6, RFC-0001). Where the specification admits
+//! several algorithms this crate takes another than the prover's: a round polynomial is evaluated
+//! by Newton's forward differences; a combined row is evaluated at its column point by merging
+//! pairs in one pass, with no table of `eq`; and the row coefficients come from tables of `eq`
+//! over 8 bits of the row index at a time.
 //!
 //! | Item | What it checks |
 //! |---|---|
 //! | [`sumcheck::reduce`] | the rounds of one sumcheck, which reduce a claim on a sum to a claim at a point |
 //! | [`sumcheck::verify_batch`] | a batched sumcheck: the batching challenge, front-padded instances, the rounds, and the final evaluations against the relation the caller supplies |
-//! | [`tree::verify_product_level`] | one level of the leaf stage's product trees, and the claims it passes to the next level |
+//! | [`logup::check_roots`] | LogUp's challenges `α` and `β`, then the roots of every instance's lookup tree and table tree, and the claims the trees enter the levels with |
+//! | [`tree::verify_level`] | one level of the leaf stage, its instances product forests and LogUp fraction trees, and the claims it passes to the next level |
+//! | [`tree::verify_product_level`] | one level of the leaf stage whose instances are all product forests |
+//! | [`logup::check_leaves`] | the lookup trees' value evaluations, then each LogUp instance's leaf checks, and the claims they leave for later stages |
 //! | [`sumcheck::eq`] | `eq(a, b)`, the public factor of RFC-0010 'Multilinear extensions' |
 //! | [`opening::check_evaluations`] | the advice opening's combined rows: their shape, and each group's claims against its combined row (RFC-0011 step 6) |
 //! | [`opening::Evaluated::check_columns`] | the answer to the column queries: its shape, the leaves and the multiproof, and every combined row against every queried column (RFC-0011 step 8) |
 //!
 //! The stage schedule (#114), the relations of the stages, the masked sumcheck of RFC-0013, the
-//! LogUp fraction-tree levels (#62) and the verifier's driver and verdicts (#128) build on these;
-//! so do the advice layout (#116), the transcript steps that squeeze the opening's challenges and
-//! queries, the hiding of RFC-0013 (blinding rows, `u'_g`, `q_g`) and the weight commitment
-//! (RFC-0012).
+//! regeneration of the tables and the structured evaluation of `t̃` (#100), the stage that
+//! consumes the lookups' key claims, and the verifier's driver and verdicts (#128) build on
+//! these; so do the advice layout (#116), the transcript steps that squeeze the opening's
+//! challenges and queries, the hiding of RFC-0013 (blinding rows, `u'_g`, `q_g`) and the weight
+//! commitment (RFC-0012).
 //!
 //! # Specification
 //!
-//! What the sumcheck checks compute and reject, written down from RFC-0010, RFC-0014 'Transcript
-//! schedule' and 'Soundness budget', RFC-0004 'Transcript', RFC-0019 'Robustness' and 04 §2
-//! before the code. The tests check every item against `spec/vectors/sumcheck/`, written by an
-//! independent Python prover, and with inputs that violate exactly one check. The opening checks
-//! follow, in 'Openings'.
+//! What the sumcheck and LogUp checks compute and reject, written down from RFC-0008 'Relation'
+//! and 'Fraction tree', RFC-0010, RFC-0014 'Transcript schedule' and 'Soundness budget',
+//! RFC-0004 'Transcript', RFC-0019 'Check order' and 'Robustness' and 04 §2 before the code. The
+//! tests check every item against `spec/vectors/sumcheck/`, written by an independent Python
+//! prover, and with inputs that violate exactly one check. The opening checks follow, in
+//! 'Openings'.
 //!
 //! ## Conventions
 //!
@@ -103,42 +110,166 @@
 //! polynomial takes, at the stage's point, the value of the instance's own polynomial at its
 //! own point.
 //!
-//! ## Product-tree levels
+//! ## Tree levels
 //!
-//! [`tree::verify_product_level`]`(transcript, ℓ, claims, proof)` checks level `ℓ` of the leaf
-//! stage for the product-tree instances present there, in schedule order, each a claim
-//! `Ṽ(r_i) = v_i` on its current level over `n_i = |r_i|` variables:
+//! The leaf stage proves its trees level by level from their roots (RFC-0010 'Tree levels'). An
+//! instance of a level is one of two kinds:
 //!
-//! 1. to 8. Those of [`sumcheck::verify_batch`] under `tree/{ℓ}`, of degree 3, with `c_i = v_i`,
-//!    `k_i = 2`, the evaluations `u_0, w_0, u_1, w_1, …`, and `g_i = eq(r_i, r'_i)·u_i·w_i`,
-//!    `r'_i` the last `n_i` challenges: the check is
-//!    `Σ_i γ^i · eq(r_i, r'_i) · u_i · w_i = claim`.
+//! - a product forest: `2^s` product trees of one height, stacked with the tree index in the high
+//!   `s` variables (a single tree has `s = 0`), with its claim `Ṽ(r_i) = v_i` on its current
+//!   level, a [`tree::TreeClaim`] over `n_i = |r_i|` variables;
+//! - a LogUp fraction tree, a single tree, with its claims `Ñ(r_i) = p_i` on its current level's
+//!   numerators and `D̃(r_i) = q_i` on its denominators, at one point, a [`tree::FractionClaim`]
+//!   over `n_i = |r_i|` variables.
+//!
+//! Level `ℓ + 1` of a tree has twice the entries of level `ℓ`, and entry `x` of level `ℓ`
+//! combines the pair `2x` (left) and `2x + 1` (right): `V_ℓ[x] = V_{ℓ+1}[2x]·V_{ℓ+1}[2x + 1]`
+//! in a product tree, `(n, d) = (n_L·d_R + n_R·d_L, d_L·d_R)` in a fraction tree (RFC-0008
+//! 'Fraction tree'). The pair bit is therefore the lowest variable of level `ℓ + 1`: entry
+//! `2x + b` is `Ṽ_{ℓ+1}(b ‖ x)`, and likewise `N(b ‖ x)` and `D(b ‖ x)`.
+//!
+//! [`tree::verify_level`]`(transcript, ℓ, claims, proof)` checks level `ℓ` of the leaf stage for
+//! the instances present there, in schedule order, numbered from 0 across both kinds. Instance
+//! `i` lists `k_i` final evaluations: 2 for a forest, 4 for a fraction tree. In this order:
+//!
+//! 1. Before the transcript moves: at least one instance, else `NoInstances`; `Σ k_i` fits a
+//!    `usize`, else `EvaluationTotal`.
+//! 2. `γ = challenge_fp2(tree/{ℓ}/gamma)`.
+//! 3. When at least one instance is a fraction tree, `λ = challenge_fp2(tree/{ℓ}/lambda)`. A
+//!    level of forests alone squeezes no `λ`.
+//! 4. Instance `i` enters with `c_i = v_i` for a forest and `c_i = p_i + λ·q_i` for a fraction
+//!    tree, and the level's claim is `Σ_i γ^i · 2^{n_max − n_i} · c_i`, front-padded as in a
+//!    batch.
+//! 5. The rounds of [`sumcheck::reduce`], of degree 3, over `n_max` variables, under `tree/{ℓ}`,
+//!    with their errors.
+//! 6. The proof holds `Σ k_i` final evaluations, else `EvaluationCount { round: n_max, … }`:
+//!    instance by instance, `u_i, w_i` for a forest and `N_0, N_1, D_0, D_1` for a fraction tree.
+//! 7. They are absorbed as one TCE `Vec<Fp2>` under `tree/{ℓ}/evals`.
+//! 8. With `r'_i` the last `n_i` challenges, `Σ_i γ^i · eq(r_i, r'_i) · g_i` equals the last
+//!    claim, else `FinalMismatch { round: n_max }`, where `g_i = u_i·w_i` for a forest and
+//!    `g_i = N_0·D_1 + N_1·D_0 + λ·D_0·D_1` for a fraction tree.
 //! 9. `ρ = challenge_fp2(tree/{ℓ}/line)`.
 //!
-//! It returns `γ`, the point, `ρ`, and, in the same order, each instance's claim on its next
-//! level: `Ṽ_{ℓ+1}(ρ ‖ r'_i) = u_i + ρ·(w_i − u_i)` on `n_i + 1` variables, `ρ` the lowest, the
-//! pair bit of `V_ℓ[x] = V_{ℓ+1}[2x]·V_{ℓ+1}[2x + 1]`. The caller says which instances are
-//! present. Each is a forest of `2^s` trees of one height `h`, stacked with the tree index in the
-//! high `s` variables; a single tree has `s = 0`. With `H` the tallest forest's height, a forest
-//! joins at level `H − h`, with its root claim `Σ_y v_y·eq(r, y)` on `s` variables. Its public
-//! root values `v_y` give the claim, at the root point `r` that the caller squeezes under
-//! `tree/{ℓ}/root/{c}` before the level. After the forest's last level, the claims returned
-//! are its leaf claims.
+//! Steps 1, 2 and 4 to 8 are those of [`sumcheck::verify_batch`] of degree 3. It returns `γ`, `λ`
+//! when it was squeezed, the point, `ρ`, and, in the same order, each instance's claims on its
+//! next level, on `n_i + 1` variables at `ρ ‖ r'_i`, `ρ` the lowest: `u_i + ρ·(w_i − u_i)` for a
+//! forest; `N_0 + ρ·(N_1 − N_0)` on the numerators and `D_0 + ρ·(D_1 − D_0)` on the denominators
+//! for a fraction tree.
 //!
-//! The check of step 8 is symmetric in `u_i` and `w_i`, and a `u_i` whose `w_i` is zero does
-//! not enter it: such changes pass the level. They do not pass the next claim, which absorbs
-//! both values before `ρ` and places them on the line through `Ṽ_{ℓ+1}(0 ‖ r'_i)` and
-//! `Ṽ_{ℓ+1}(1 ‖ r'_i)`, so the next level, or the stage that consumes the leaf claims, rejects
-//! them. A level that passed has proven nothing until its next claims are checked, so its result
-//! is `#[must_use]`.
+//! [`tree::verify_product_level`]`(transcript, ℓ, claims, proof)` is this check for a level whose
+//! instances are all forests: it squeezes no `λ`, and its errors, its transcript and the claims it
+//! returns are those of [`tree::verify_level`] on the same claims.
 //!
-//! RFC-0010 runs the LogUp fraction trees in the same levels and under the same labels; how one
-//! level orders and lays out instances of both kinds is open (RFC-0010 OQ-0010-1). This check
-//! takes levels whose instances are all product trees, and LogUp-GKR (#62) generalizes it.
+//! The caller, which holds the schedule, says which instances are present. With `H` the height of
+//! the tallest forest or fraction tree, an instance of height `h` joins at level `H − h`:
+//!
+//! - a forest with its root claim `Σ_y v_y·eq(r, y)` on `s` variables, from its public root
+//!   values `v_y`, at the root point `r` that the caller squeezes under `tree/{ℓ}/root/{c}` before
+//!   the level's `γ`, the last `s` of those challenges;
+//! - a fraction tree with its root `(n, d)` on no variable, from [`logup::check_roots`].
+//!
+//! At the levels after it joins, an instance carries the claims the level before returned. After
+//! the last level, `H − 1`, they are its leaf claims: a forest's go to the stage that consumes
+//! them, a fraction tree's to [`logup::check_leaves`]. A fraction tree of height 0, a single leaf,
+//! joins no level, and its root claims are its leaf claims.
+//!
+//! A level that passed has proven nothing until its next claims are checked, so its result is
+//! `#[must_use]`. Some changes of the evaluations pass the check of step 8:
+//!
+//! - It is symmetric in `u_i` and `w_i`, and a `u_i` whose `w_i` is zero does not enter it.
+//! - It is symmetric in the children, the pairs `(N_0, D_0)` and `(N_1, D_1)`. A change `δ` of
+//!   one evaluation adds `γ^i·eq(r_i, r'_i)·δ` times its cofactor to it: `D_1` for `N_0`, `D_0` for
+//!   `N_1`, `N_1 + λ·D_1` for `D_0` and `N_0 + λ·D_0` for `D_1`. It passes when that cofactor is
+//!   zero.
+//!
+//! Such changes do not pass the next claims, which the level absorbs before `ρ` and places on the
+//! line through the two children: the next level rejects them, or after the last level the stage
+//! that consumes a forest's leaf claims, or the leaf checks of a fraction tree.
+//!
+//! ## LogUp roots
+//!
+//! A LogUp instance proves that each of its `N ≥ 1` lookups `a_0, …, a_{N−1}` is a row of its
+//! table `t_0, …, t_{T−1}`, each a pair compressed to `key + β·value`, with committed
+//! multiplicities `m_j` (RFC-0008 'Relation'). It has two fraction trees (RFC-0008 'Fraction
+//! tree'):
+//!
+//! - the lookup tree, of `2^{h_a}` leaves, `h_a = ⌈log2 N⌉`: leaf `i < N` is `(1, α − a_i)`, and
+//!   the padding leaves repeat row 0, `(1, α − t_0)`, which the multiplicity of row 0 counts;
+//! - the table tree, of `2^{h_t}` leaves, `h_t = ⌈log2 T⌉`: leaf `j < T` is `(−m_j, α − t_j)`, and
+//!   the padding leaves repeat row 0 too, `(−m_j, α − t_0)`, with multiplicity 0 from an honest
+//!   prover.
+//!
+//! A root's `d` is the product of its tree's leaf denominators, and when it is not zero, `n/d` is
+//! the sum of its leaves' fractions. So when neither root denominator is zero,
+//! `n_a·d_t + n_t·d_a = 0` says `Σ_i 1/(α − a_i) − Σ_j m_j/(α − t_j) = 0` over every leaf, the
+//! identity of 'Relation'. A padding row is a copy of row 0, so the multiplicity a prover commits
+//! there only counts more lookups of row 0: padding admits no tuple that is not a row. (Padding
+//! with a row of key and value 0 would admit the lookup `(0, 0)`, which nothing checks a padding
+//! multiplicity against.)
+//!
+//! [`logup::check_roots`]`(transcript, m, roots)` runs RFC-0014 'Transcript schedule' row 4 and
+//! RFC-0019 'Check order' step 7.1 for the leaf stage's `m ≥ 0` LogUp instances, numbered from 0
+//! in schedule order. A leaf stage of product forests alone has `m = 0`: it still squeezes `α`
+//! and `β` and absorbs the roots and the values empty (RFC-0010 'Tree levels'). In this order:
+//!
+//! 1. `α = challenge_fp2(logup/alpha)`, then `β = challenge_fp2(logup/beta)`.
+//! 2. The roots message holds `4m` values, `n_a, d_a, n_t, d_t` for each instance in order, else
+//!    `RootsLength { instance, expected: 4m, found }`. A message too short names the first
+//!    instance whose four values it does not hold, and one too long the last instance, which its
+//!    extra values follow. With no instance, a message that holds values names none:
+//!    `RootsWithoutInstance { found }`.
+//! 3. It is absorbed as one TCE `Vec<Fp2>` under `logup/roots`, even when empty.
+//! 4. Instance by instance, for `i = 0, …, m − 1`:
+//!    1. `d_a ≠ 0`, else `LookupDenominator { instance: i }`;
+//!    2. `d_t ≠ 0`, else `TableDenominator { instance: i }`;
+//!    3. `n_a·d_t + n_t·d_a = 0`, else `Unbalanced { instance: i }`.
+//!
+//! It returns `α`, `β` and each instance's root claims, the claims its trees enter the levels
+//! with, on no variable: `Ñ = n_a`, `D̃ = d_a` for the lookup tree and `Ñ = n_t`, `D̃ = d_t` for
+//! the table tree. The roots are the prover's word until the levels and the leaf checks bind them
+//! to the leaves, so the result is `#[must_use]`.
+//!
+//! ## LogUp leaf checks
+//!
+//! After its last level, an instance's lookup tree holds the leaf claims `Ñ(ρ_a) = p_a` and
+//! `D̃(ρ_a) = q_a`, and its table tree `Ñ(ρ_t) = p_t` and `D̃(ρ_t) = q_t`, on `h_a` and `h_t`
+//! variables. The lookup tree's numerators are all 1, and its denominators are
+//! `α − kẽy − β·valũe`, polynomials of `2^{h_a}` entries whose padding slots hold row 0's key and
+//! value. The table tree's numerators are `−m̃`, over `2^{h_t}` committed entries, and its
+//! denominators `α − t̃`, with `t̃ = kẽy_t + β·valũe_t` public and its padding rows copies of row
+//! 0 (RFC-0008 'Fraction tree').
+//!
+//! [`logup::check_leaves`]`(transcript, challenges, leaves, values, table)` runs the last step of
+//! RFC-0014 'Transcript schedule' row 5 and RFC-0019 'Check order' step 7.3 for the `m ≥ 0`
+//! instances in schedule order, after the last tree level, or right after the roots when no tree
+//! has a level. `leaves[i]` holds instance `i`'s leaf claims and whether its table has values;
+//! `table(i, ρ_t)` is `t̃(ρ_t)`, which the caller evaluates from the public table (RFC-0008
+//! 'Structured evaluation'), its padding rows copies of row 0, or `None` when it cannot. In this
+//! order:
+//!
+//! 1. The values message holds one value `v` for each instance whose table has values, in
+//!    schedule order, `k` in all, else `ValuesLength { instance, expected: k, found }`. A message
+//!    too short names the first instance with values whose value it lacks, and one too long the
+//!    last instance. With no instance, a message that holds values names none:
+//!    `ValuesWithoutInstance { found }`. An instance whose table has no values, such as a `Range`
+//!    table's, sends none, and its `v` is 0.
+//! 2. It is absorbed as one TCE `Vec<Fp2>` under `logup/values`, even when empty.
+//! 3. Instance by instance, for `i = 0, …, m − 1`, the lookup tree first:
+//!    1. `p_a = 1`, else `LeafNumerator { instance: i }`;
+//!    2. `table(i, ρ_t)` gives `t̃(ρ_t)`, else `TableUnavailable { instance: i }`;
+//!    3. `q_t = α − t̃(ρ_t)`, else `TableEvaluation { instance: i }`.
+//!
+//! It returns, for each instance, the claims left for later stages: `kẽy(ρ_a) = α − q_a − β·v` on
+//! the lookup-side key polynomial, which is virtual and goes to the stage that produces the keys;
+//! `valũe(ρ_a) = v` on the value polynomial, committed advice, for a table with values only; and
+//! `m̃(ρ_t) = −p_t` on the multiplicity polynomial, committed advice. Nothing here checks them, so
+//! the result is `#[must_use]`. No check reads `v` either: a false `v` passes the leaf checks and
+//! leaves false claims on the value and key polynomials, which the stages and openings that take
+//! them reject.
 //!
 //! ## Errors
 //!
-//! [`sumcheck::SumcheckError`] says whose fault an error is:
+//! [`sumcheck::SumcheckError`] says whose fault an error of a sumcheck or a tree level is:
 //!
 //! - The proof's: `MissingRound`, `RoundLength`, `ExtraRound`, `EvaluationCount` and
 //!   `FinalMismatch`, a `Reject(Sumcheck { stage, round })` in 04 §2, with `round` from
@@ -151,6 +282,18 @@
 //!   (RFC-0004 'Failure modes'). All are `Inconclusive(ERR-INTERNAL)`, never a verdict on a
 //!   proof.
 //!
+//! [`logup::LookupError`] does the same for the LogUp roots and leaf checks:
+//!
+//! - The proof's, as [`is_rejection`](logup::LookupError::is_rejection) says: `RootsLength`,
+//!   `LookupDenominator`, `TableDenominator`, `Unbalanced`, `ValuesLength`, `LeafNumerator` and
+//!   `TableEvaluation`, a `Reject(Lookup { table })` in 04 §2, whose `table` is that of the
+//!   instance [`rejected_instance`](logup::LookupError::rejected_instance) gives; and
+//!   `RootsWithoutInstance` and `ValuesWithoutInstance`, which name no instance and so no table
+//!   for `Reject(Lookup)`, and whose reason the verifier's driver (#128) gives.
+//! - The verifier's: `TableUnavailable` judges the caller's table evaluation; `Label` would mean
+//!   that one of the four fixed labels was not ASCII; `Transcript` is `α` or `β` without a value
+//!   after 16 squeezes. All are `Inconclusive(ERR-INTERNAL)`.
+//!
 //! ## Robustness and soundness
 //!
 //! Every input yields a value or a typed error: nothing here panics, indexes unchecked or
@@ -158,12 +301,22 @@
 //! size and the caller's instances, never by a number the proof states: the rounds stop at the
 //! first missing one, so a point holds at most as many challenges as the proof has rounds; a
 //! message is encoded for the transcript only after its length check, at most `8 + 16·7` bytes
-//! a round and `8 + 16·Σ k_i` for the evaluations; `2^{n_max − n_i}` takes one squaring per bit.
+//! a round, `8 + 16·Σ k_i` for a level's evaluations, `8 + 64·m` for the roots and `8 + 16·k` for
+//! the values; `2^{n_max − n_i}` takes one squaring per bit. The checks of the roots and the
+//! leaves invert nothing. They allocate, after the count checks, the root claims of the `m`
+//! instances and the claims the leaf checks return, one copy of each leaf claim's point.
 //!
 //! A batch of `m` instances over `n_max` rounds of degree `d` accepts a false claim with
 //! probability at most `(n_max·d + m)/|Fp2|` (RFC-0010 'Soundness of the schedule'). A false
 //! claim either fails the final check or moves into the final evaluations, which the next stage,
-//! or the openings, then check.
+//! or the openings, then check. A tree level is such a batch of degree 3; at a level with fraction
+//! trees, `Σ_i γ^i·c_i` has total degree at most `m` in `γ` and `λ`, so `λ` adds nothing to the
+//! bound. A lookup that is not a row of its table makes the roots balance for at most `N + T − 1`
+//! values of `α`, the compression by `β` included, so the root check accepts a false instance with
+//! probability at most `(N + T)/|Fp2|` (RFC-0008 'Relation', RFC-0014 'Soundness budget'). A zero
+//! leaf denominator makes its root's `d` zero, which the root check rejects unless a level's claim
+//! is false. The leaf checks compare exactly what the verifier can compute; what they cannot, the
+//! key, value and multiplicity claims, they return for the stages and openings that can.
 //!
 //! ## Openings
 //!
@@ -349,6 +502,7 @@ compile_error!(
 
 mod fiat_shamir;
 mod interpolation;
+pub mod logup;
 pub mod opening;
 pub mod sumcheck;
 pub mod tree;

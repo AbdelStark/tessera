@@ -7,11 +7,11 @@
 
 ## Summary
 
-Tessera is made zero-knowledge with four mechanisms, each tied to one kind of revealed data: (1) every sumcheck is masked with a committed random polynomial so its round messages are simulatable; (2) every tensor whose evaluation crosses a stage boundary is replaced by a masked extension `V' = Ṽ + Z·R_V`, which agrees with `Ṽ` on the hypercube but has uniformly random evaluations off it; (3) every commitment uses vanishing-polynomial encoding masks so that opened columns are uniform, and every revealed combined row includes a fresh blinding row; (4) every LogUp fraction tree includes a zero-numerator leaf with a random denominator so its root reveals nothing. Challenges derive from a coin-tossed seed, so the construction holds against a malicious verifier. Layers are sumcheck variables, so each proof reveals one masked evaluation per tensor kind rather than one per layer, which keeps the weight-commitment budget affordable.
+Tessera is made zero-knowledge with four mechanisms, each tied to one kind of revealed data: (1) every sumcheck is masked with a committed random polynomial so its round messages are simulatable; (2) every tensor whose evaluation crosses a stage boundary is replaced by a masked extension `V' = Ṽ + Z·R_V`, which agrees with `Ṽ` on the hypercube but has uniformly random evaluations off it; (3) every commitment uses vanishing-polynomial encoding masks so that opened columns are uniform, and every revealed combined row includes a fresh blinding row; (4) every LogUp instance's two fraction trees include a pair of masking leaves whose fractions cancel, so that their roots reveal nothing. Challenges derive from a coin-tossed seed, so the construction holds against a malicious verifier. Layers are sumcheck variables, so each proof reveals one masked evaluation per tensor kind rather than one per layer, which keeps the weight-commitment budget affordable.
 
 ## Motivation
 
-The verifier is a counterparty state; weights, prompts, outputs and activations must stay hidden from it even if it deviates (source §2). The source's default is "Libra-style masked sumchecks with small committed masking polynomials, plus hiding commitments" (source §7, "Zero knowledge"; §10). A non-ZK proof leaks, per stage, partial sums of witness polynomials, evaluations of every tensor at random points, combined rows that are linear combinations of committed rows, and LogUp roots that are products over all keys. Each needs a mask.
+The verifier is a counterparty state; weights, prompts, outputs and activations must stay hidden from it even if it deviates (source §2). The source's default is "Libra-style masked sumchecks with small committed masking polynomials, plus hiding commitments" (source §7, "Zero knowledge"; §10). A non-ZK proof leaks, per stage, partial sums of witness polynomials, evaluations of every tensor at random points, combined rows that are linear combinations of committed rows, and LogUp roots that are functions of every key. Each needs a mask.
 
 ## Goals
 
@@ -36,7 +36,7 @@ The verifier is a counterparty state; weights, prompts, outputs and activations 
 | Seed | Coin toss (live) or hash with proof-of-work (non-interactive) | Both parties |
 | Sumcheck round messages | Masked sumcheck | Committed masking polynomial `G_k` per stage |
 | Final evaluations of each stage | Masked extensions | One mask row `R_V` per stacked tensor kind |
-| LogUp root `(0, d_root)` | Random-denominator leaf | One committed `δ` per tree |
+| LogUp roots `(n_a, d_a)`, `(n_t, d_t)` | A pair of masking leaves `(μ, δ)`, `(−μ, δ)` | One committed `μ` and `δ` per instance |
 | Combined rows `u_g` | Blinding rows | One fresh blinding row per revealed combination |
 | Opened columns | Vanishing encoding masks | `P_A` (advice) or `P_W` (weights) coefficients per row |
 | `Û`, lengths, digests | Public by design | — |
@@ -83,7 +83,11 @@ Weights follow the same rule with the mask row stored as a blinding row of the w
 
 ### LogUp and product-tree roots
 
-- Each LogUp fraction tree includes one extra leaf `(0, δ)` with `δ` random and committed. The sum is unchanged; `d_root` is multiplied by a uniform non-zero factor.
+- Each LogUp instance's two trees ([RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree)) include a pair of masking leaves: `(μ, δ)` in the lookup tree and `(−μ, δ)` in the table tree, with `μ` and `δ ≠ 0` random and committed.
+  - The two fractions cancel, so the instance's sum is unchanged.
+  - Each root `(n, d)` becomes uniform: `d` is multiplied by `δ`, and `n/d` is shifted by `μ/δ`.
+  - Without the pair, a lookup root would reveal its fraction `Σ_i 1/(α − a_i)`, a function of the secret lookup multiset. A zero-numerator leaf alone rescales `n` and `d` but keeps that fraction.
+  - The masking leaves change both trees' leaf claims. The lookup tree's numerators are 1 except at its masking leaf, and the table tree's denominators are `α − t` except at its masking leaf. How both leaf checks account for the committed `μ` and `δ` belongs to the tree levels' zero knowledge (OQ-0013-2).
 - Product-tree roots are zero by the statement (the max certificate), so they reveal nothing. Intermediate levels are masked extensions like any virtual tensor, except at the evaluations a level reveals, which OQ-0013-2 leaves open.
 
 ### Malicious verifier
@@ -144,7 +148,7 @@ v0.3 ships a sound, non-hiding protocol. v0.4 adds the four mechanisms behind th
 - Masked sumcheck: completeness for degrees 1–7; the simulator's round messages and real round messages pass a two-sample distribution test over 10^5 runs on a toy instance.
 - Masked extensions: `V' = Ṽ` on the hypercube (exhaustive for small `n`); revealed `V'(p)` values over 10^5 runs of a fixed witness are uniform (chi-square on low bits) and uncorrelated with the witness (two witnesses give indistinguishable distributions).
 - Hiding openings: opened columns and blinding-row combinations for two different witnesses are indistinguishable by the distinguisher suite of [07 §7](../spec/07-testing-strategy.md#7-zero-knowledge-tests).
-- LogUp roots: `d_root` distribution independent of the key multiset.
+- LogUp roots: the distribution of each instance's roots is independent of the key multiset.
 - End-to-end simulator test: simulated and real transcripts of the tiny model are indistinguishable at significance 0.001 over 10^4 runs.
 - Budget: each proof consumes exactly three weight blinding rows per matrix and fails cleanly when they run out.
 

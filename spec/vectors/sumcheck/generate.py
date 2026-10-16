@@ -2,15 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 """Reference vectors for the sumchecks of RFC-0010: honest proofs of single and batched
 sumchecks of products of multilinear tables, front-padded, of batches of product trees proven
-level by level from their roots to their leaves, and of batches of product forests, trees stacked
-under a random root point.
+level by level from their roots to their leaves, of batches of product forests, trees stacked
+under a random root point, and of LogUp-GKR leaf stages, the fraction trees of RFC-0008 beside
+product forests, honest and cheating.
 
 This script is the independent oracle: an honest prover written from RFC-0010 ('Multilinear
-extensions', 'Tree levels', 'Batching within a stage', 'Sumcheck messages') and RFC-0014
-'Transcript schedule' alone, computing with Python's arbitrary-precision integers. Its transcript
-is the oracle of ../transcript/generate.py, whose BLAKE3 is checked against the official test
-vectors before anything is written. It shares no code with crates/ or verifier/, which check its
-output, and its algorithms differ from theirs:
+extensions', 'Tree levels', 'Batching within a stage', 'Sumcheck messages'), RFC-0008 'Fraction
+tree' and RFC-0014 'Transcript schedule' alone, computing with Python's arbitrary-precision
+integers. Its transcript is the oracle of ../transcript/generate.py, whose BLAKE3 is checked
+against the official test vectors before anything is written. It shares no code with crates/ or
+verifier/, which check its output, and its algorithms differ from theirs:
 
 - A smaller instance is padded literally: its tables are extended to 2^n_max entries, constant in
   the lowest n_max - n_i variables, and one plain sumcheck runs over the padded tables.
@@ -21,6 +22,9 @@ output, and its algorithms differ from theirs:
 - A forest's levels are its trees' levels concatenated, and a forest's root claim is computed
   twice: as sum_y v_y eq(r, y), from the product formula of eq and the trees' products, and as
   the extension of the stacked root level.
+- A LogUp batch is proven by the prover here and read back from the written file by a separate
+  verifier, which rederives every challenge and claim from the messages, evaluates the tables by
+  folding them variable by variable, and must find exactly the batch's expected verdict.
 
 Usage: python3 spec/vectors/sumcheck/generate.py
 (rewrites sumcheck.json)
@@ -28,6 +32,7 @@ Usage: python3 spec/vectors/sumcheck/generate.py
 Inputs come from SplitMix64 with the fixed seed below, so the file is reproducible byte for byte.
 """
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -47,6 +52,9 @@ W = 7  # Fp2 = Fp[X]/(X^2 - W)
 SINGLE_FACTORS = [1, 2, 3, 4]  # products of d tables, the sumcheck's degree d
 SINGLE_VARS = list(range(13))  # over 0 to 12 variables
 TABLES_MAX_VARS = 5  # a stage whose instances have at most this many variables records its tables
+# SHA-256 of the file as it was before logup_batches: sessions, tree_batches and forest_batches
+# are pinned by it, and a deliberate change to them updates it.
+BEFORE_LOGUP_SHA256 = "2e049d2450e985d1673d7008a02a0417aba798bf79c30ed121254187f206403c"
 
 
 # ----- Fp2 = Fp[X]/(X^2 - 7) on pairs (c0, c1); Fp embeds as (x, 0) ---------------------------
@@ -480,6 +488,273 @@ def prove_forests(t, forests):
     return records
 
 
+# ----- LogUp-GKR fraction trees (RFC-0008 'Fraction tree'; RFC-0010 'Tree levels') ---------------
+
+
+def neg(a):
+    return ((-a[0]) % P, (-a[1]) % P)
+
+
+def inverse(a):
+    """1/a in Fp2: (c0 - c1 X) / (c0^2 - 7 c1^2). The norm c0^2 - 7 c1^2 of a non-zero element is
+    not 0, because 7 is not a square in Fp."""
+    norm = (a[0] * a[0] - W * a[1] * a[1]) % P
+    require(norm != 0, "no inverse of 0")
+    k = inverse_fp(norm)
+    return (a[0] * k % P, -a[1] * k % P)
+
+
+def height_of(n):
+    """h = ceil(log2 n) for n >= 1: the height of a tree whose n leaves are padded to 2^h."""
+    require(n >= 1, "a tree has a leaf")
+    return (n - 1).bit_length()
+
+
+def compress(beta, row):
+    """A tuple (key, value) of Fp as one Fp2 element, key + beta value ('Relation')."""
+    return add(lift(row[0]), mul(beta, lift(row[1])))
+
+
+def combine(left, right):
+    """A fraction tree's node from its children (n, d), the left one the even entry:
+    (n_L d_R + n_R d_L, d_L d_R)."""
+    return (add(mul(left[0], right[1]), mul(right[0], left[1])), mul(left[1], right[1]))
+
+
+def fraction_levels(leaves):
+    """Every level of a fraction tree, the root first, each a list of (numerator, denominator):
+    node x of level l combines entries 2x and 2x + 1 of level l + 1."""
+    require(len(leaves) & (len(leaves) - 1) == 0, "a fraction tree has 2^h leaves")
+    levels = [leaves]
+    while len(levels[0]) > 1:
+        below = levels[0]
+        levels.insert(0, [combine(below[2 * x], below[2 * x + 1]) for x in range(len(below) // 2)])
+    return levels
+
+
+def fraction_sum(pairs):
+    """sum_i n_i / d_i."""
+    return total(mul(n, inverse(d)) for n, d in pairs)
+
+
+def check_fraction_tree(levels):
+    """A second reading of a fraction tree, from its leaves: no leaf denominator is 0, and every
+    node x of level l, over the leaves x 2^(h - l) to (x + 1) 2^(h - l) - 1, has their product as
+    its denominator and their fractions' sum as its fraction n/d. At the root, n/d is the sum of
+    all the leaves' fractions, sum_i n_i / d_i."""
+    leaves, h = levels[-1], len(levels) - 1
+    require(all(d != ZERO for _, d in leaves), "no leaf denominator is 0")
+    fractions = [mul(n, inverse(d)) for n, d in leaves]
+    for level, nodes in enumerate(levels):
+        span = 1 << (h - level)
+        require(len(nodes) == 1 << level, "level l of a tree has 2^l nodes")
+        for x, (n, d) in enumerate(nodes):
+            require(d == product(leaf[1] for leaf in leaves[x * span:(x + 1) * span]), "a node's denominator is its leaves' product")
+            require(mul(n, inverse(d)) == total(fractions[x * span:(x + 1) * span]), "a node's fraction is its leaves' sum")
+    require(mul(levels[0][0][0], inverse(levels[0][0][1])) == fraction_sum(leaves), "the root's n/d is sum_i n_i / d_i")
+
+
+def level_sumcheck(t, prefix, instances, weights):
+    """The honest prover of one tree level's batched sumcheck of degree 3 ('Tree levels' step 2,
+    'Sumcheck messages'), once gamma and lambda are drawn. Each instance is `(terms, n)`: its
+    relation is a sum of terms, each a coefficient times the product of three tables of 2^n
+    entries, and `weights` holds gamma^i. The tables are padded literally, as in `sumcheck`.
+    Returns the round messages, the challenges, the claims, each the bound tables' sum, and each
+    term's tables bound to every challenge."""
+    n_max = max(n for _, n in instances)
+    padded = [[(c, [[table[idx >> (n_max - n)] for idx in range(1 << n_max)] for table in tables]) for c, tables in terms]
+              for terms, n in instances]
+
+    def batched(instances):
+        out = ZERO
+        for weight, terms in zip(weights, instances):
+            for c, tables in terms:
+                out = add(out, mul(mul(weight, c), total(product(f[x] for f in tables) for x in range(len(tables[0])))))
+        return out
+
+    claims, rounds, challenges = [batched(padded)], [], []
+    for j in range(n_max):
+        half = 1 << (n_max - j - 1)
+
+        def at(x_j):
+            """p_j(x_j): the batched sum with x_j fixed and the later variables summed."""
+            out = ZERO
+            for weight, terms in zip(weights, padded):
+                for c, tables in terms:
+                    s = total(product(add(f[2 * x], mul(x_j, sub(f[2 * x + 1], f[2 * x]))) for f in tables) for x in range(half))
+                    out = add(out, mul(mul(weight, c), s))
+            return out
+
+        values = [at(lift(k)) for k in range(4)]
+        require(add(values[0], values[1]) == claims[-1], f"{prefix} round {j}: p(0) + p(1) = claim")
+        message = [values[0]] + values[2:]
+        t.absorb(f"{prefix}/round/{j}", tce(message))
+        r = challenge(t, f"{prefix}/r/{j}")
+        padded = [[(c, [[add(f[2 * x], mul(r, sub(f[2 * x + 1], f[2 * x]))) for x in range(half)] for f in tables]) for c, tables in terms]
+                  for terms in padded]
+        claim = batched(padded)
+        require(lagrange(values, r) == claim, f"{prefix} round {j}: p(r) is the bound tables' sum")
+        rounds.append(message)
+        challenges.append(r)
+        claims.append(claim)
+    bound = [[[f[0] for f in tables] for _, tables in terms] for terms in padded]
+    return rounds, challenges, claims, bound
+
+
+def numerators(nodes):
+    return [nd[0] for nd in nodes]
+
+
+def denominators(nodes):
+    return [nd[1] for nd in nodes]
+
+
+def prove_leaf_stage(t, schedule):
+    """The tree levels of one leaf stage, after logup/roots (RFC-0010 'Tree levels'). `schedule`
+    lists the trees in schedule order, each a dict with `kind` ("lookup", "table" or "forest") and
+    `levels`, the prover's own tree or stacked forest, the root level first. A forest also has `s`
+    and its public `roots`; a fraction tree has `s` = 0 and `sent`, the root (n, d) the roots
+    message gave it, which is what the verifier holds on its level 0. A tree of height h joins at
+    level H - h, and the instances present at a level are the trees that have joined, in schedule
+    order. Where a fraction tree is present, lambda follows gamma and a fraction tree enters with
+    the claim p + lambda q. Returns the level records, whose claims are those the verifier derives
+    from the messages, and every tree's claims after its last level."""
+    heights = [len(tree["levels"]) - 1 for tree in schedule]
+    tallest = max(heights)
+    current = {}  # tree -> (own level, point, claim): a forest's value, a fraction tree's (p, q)
+    records = []
+    for level in range(tallest):
+        prefix = f"tree/{level}"
+        joining = [k for k, h in enumerate(heights) if tallest - h == level]
+        s_max = max((schedule[k]["s"] for k in joining), default=0)
+        root_challenges = [challenge(t, f"{prefix}/root/{c}") for c in range(s_max)]
+        for k in joining:
+            tree = schedule[k]
+            if tree["kind"] == "forest":
+                point = root_challenges[s_max - tree["s"]:]
+                value = root_claim(tree["roots"], point)
+                require(tree["roots"] == tree["levels"][0] and value == mle(tree["levels"][0], point),
+                        f"{prefix}: the root claim is the root level's MLE at the root point")
+                current[k] = (0, point, value)
+            else:
+                current[k] = (0, [], tree["sent"])
+        present = [k for k in range(len(schedule)) if k in current]
+        gamma = challenge(t, f"{prefix}/gamma")
+        lam = challenge(t, f"{prefix}/lambda") if any(schedule[k]["kind"] != "forest" for k in present) else None
+        weights = [power(gamma, i) for i in range(len(present))]
+        instances, entering, held, owned = [], [], [], []
+        for k in present:
+            tree = schedule[k]
+            own, point, claim = current[k]
+            n = len(point)
+            require(own == level - (tallest - heights[k]) and n == tree["s"] + own, "a tree has s + l - (H - h) variables at level l")
+            above, below = tree["levels"][own], tree["levels"][own + 1]
+            eq_table = [eq_at(point, x) for x in range(1 << n)]
+            if tree["kind"] == "forest":
+                truth = mle(above, point)
+                left = [below[2 * x] for x in range(1 << n)]
+                right = [below[2 * x + 1] for x in range(1 << n)]
+                require(total(mul(eq_table[x], mul(left[x], right[x])) for x in range(1 << n)) == truth,
+                        f"{prefix}: the level relation sums to the claim")
+                instances.append(([(ONE, [eq_table, left, right])], n))
+                entering.append({"tree": k, "point": elements(point), "value": fp2(claim)})
+                held.append(claim)
+                owned.append(truth)
+            else:
+                truth = (mle(numerators(above), point), mle(denominators(above), point))
+                n0, n1 = [below[2 * x][0] for x in range(1 << n)], [below[2 * x + 1][0] for x in range(1 << n)]
+                d0, d1 = [below[2 * x][1] for x in range(1 << n)], [below[2 * x + 1][1] for x in range(1 << n)]
+                require(total(mul(eq_table[x], add(mul(n0[x], d1[x]), mul(n1[x], d0[x]))) for x in range(1 << n)) == truth[0]
+                        and total(mul(eq_table[x], mul(d0[x], d1[x])) for x in range(1 << n)) == truth[1],
+                        f"{prefix}: the level relation sums to the claims")
+                instances.append(([(ONE, [eq_table, n0, d1]), (ONE, [eq_table, n1, d0]), (lam, [eq_table, d0, d1])], n))
+                entering.append({"tree": k, "point": elements(point), "numerator": fp2(claim[0]), "denominator": fp2(claim[1])})
+                held.append(add(claim[0], mul(lam, claim[1])))
+                owned.append(add(truth[0], mul(lam, truth[1])))
+        n_max = max(n for _, n in instances)
+        scales = [lift(1 << (n_max - n)) for _, n in instances]
+        rounds, challenges, own_claims, bound = level_sumcheck(t, prefix, instances, weights)
+        require(own_claims[0] == total(mul(w, mul(s, c)) for w, s, c in zip(weights, scales, owned)),
+                f"{prefix}: the padded batch sums to sum_i gamma^i 2^(n_max - n_i) c_i")
+        # The claims as the verifier derives them from the claims it holds and the messages:
+        # p_j(1) = claim_j - p_j(0), and claim_{j+1} = p_j(r_j) ('Sumcheck messages').
+        claims = [total(mul(w, mul(s, c)) for w, s, c in zip(weights, scales, held))]
+        for message, r in zip(rounds, challenges):
+            claims.append(lagrange([message[0], sub(claims[-1], message[0])] + message[1:], r))
+        honest = held == owned
+        require(not honest or claims == own_claims, f"{prefix}: an honest level's claims are the bound tables' sums")
+        evals, terms = [], []
+        for k, (parts, n), bound_i in zip(present, instances, bound):
+            point = suffix(challenges, n)
+            e = eq_points(current[k][1], point)
+            if schedule[k]["kind"] == "forest":
+                _, left, right = parts[0][1]
+                u, w = mle(left, point), mle(right, point)
+                require(bound_i == [[e, u, w]], f"{prefix}: eq, u and w are the bound tables")
+                evals += [u, w]
+                terms.append(mul(e, mul(u, w)))
+            else:
+                (_, n0, d1), (_, n1, d0) = parts[0][1], parts[1][1]
+                N0, N1, D0, D1 = mle(n0, point), mle(n1, point), mle(d0, point), mle(d1, point)
+                require(bound_i == [[e, N0, D1], [e, N1, D0], [e, D0, D1]], f"{prefix}: eq, N_0, N_1, D_0 and D_1 are the bound tables")
+                evals += [N0, N1, D0, D1]
+                terms.append(mul(e, add(add(mul(N0, D1), mul(N1, D0)), mul(lam, mul(D0, D1)))))
+        t.absorb(f"{prefix}/evals", tce(evals))
+        final = total(mul(w, term) for w, term in zip(weights, terms))
+        require(final == own_claims[-1], f"{prefix}: the prover's final check holds")
+        require(not honest or final == claims[-1], f"{prefix}: an honest level passes the final check")
+        rho = challenge(t, f"{prefix}/line")
+        nexts, cursor = [], 0
+        for k, (_, n) in zip(present, instances):
+            tree, own = schedule[k], current[k][0]
+            point = [rho] + suffix(challenges, n)
+            below = tree["levels"][own + 1]
+            if tree["kind"] == "forest":
+                u, w = evals[cursor:cursor + 2]
+                cursor += 2
+                value = add(u, mul(rho, sub(w, u)))
+                require(mle(below, point) == value, f"{prefix}: the next claim is the next level's MLE at rho || r'")
+                current[k] = (own + 1, point, value)
+                nexts.append({"tree": k, "point": elements(point), "value": fp2(value)})
+            else:
+                N0, N1, D0, D1 = evals[cursor:cursor + 4]
+                cursor += 4
+                claim = (add(N0, mul(rho, sub(N1, N0))), add(D0, mul(rho, sub(D1, D0))))
+                require(claim == (mle(numerators(below), point), mle(denominators(below), point)),
+                        f"{prefix}: the next claims are the next level's MLEs at rho || r'")
+                current[k] = (own + 1, point, claim)
+                nexts.append({"tree": k, "point": elements(point), "numerator": fp2(claim[0]), "denominator": fp2(claim[1])})
+        records.append({
+            "prefix": prefix,
+            "root_challenges": elements(root_challenges),
+            "instances": entering,
+            "gamma": fp2(gamma),
+            "lambda": None if lam is None else fp2(lam),
+            "rounds": [elements(m) for m in rounds],
+            "challenges": elements(challenges),
+            "claims": elements(claims),
+            "final_evals": elements(evals),
+            "rho": fp2(rho),
+            "next": nexts,
+            "state": t.state.hex(),
+            "counter": t.counter,
+        })
+    for k, tree in enumerate(schedule):
+        if heights[k] == 0:
+            # A tree of height 0 joins at level H: its root, its one leaf, is its leaf claim.
+            require(tree["kind"] != "forest", "a forest has a level")
+            current[k] = (0, [], tree["sent"])
+        own, point, claim = current[k]
+        leaves = tree["levels"][-1]
+        require(own == heights[k] and len(point) == tree["s"] + own, "every tree reaches its leaves")
+        if tree["kind"] == "forest":
+            require(mle(leaves, point) == claim, "every leaf claim is the stacked leaves' MLE at its point")
+        else:
+            require(claim == (mle(numerators(leaves), point), mle(denominators(leaves), point)),
+                    "every leaf claim is the leaves' numerators' and denominators' MLE at its point")
+    return records, current
+
+
 # ----- Rendering ---------------------------------------------------------------------------------
 
 
@@ -516,7 +791,25 @@ def render_batches(key, members, batches):
     ) + "\n  ]"
 
 
-def render(header, sessions, batches, forest_batches):
+LOGUP_KEYS = ["name", "context", "alpha", "beta", "instances", "forests", "trees", "roots", "levels", "values", "leaf_checks",
+              "state", "counter", "expected"]
+LOGUP_LISTS = {"instances", "forests", "levels", "leaf_checks"}  # one member per line
+
+
+def render_logup(batches):
+    """`"logup_batches": [...]`, one batch per line group: its fields in order, and each of its
+    instances, forests, levels and leaf checks on a line of its own."""
+    def field(key, value):
+        if key in LOGUP_LISTS and value:
+            return f'"{key}":[\n' + ",\n".join("      " + compact(member) for member in value) + "\n    ]"
+        return f'"{key}":{compact(value)}'
+
+    for b in batches:
+        require(list(b) == LOGUP_KEYS, "a LogUp batch's fields, in order")
+    return '"logup_batches": [\n' + ",\n".join("    {" + ",".join(field(key, b[key]) for key in LOGUP_KEYS) + "}" for b in batches) + "\n  ]"
+
+
+def render(header, sessions, batches, forest_batches, logup_batches):
     text = json.dumps(header, indent=2)[:-2] + ',\n  "sessions": [\n'
     text += ",\n".join(
         "    {" + f'"name":{compact(s["name"])},"context":{compact(s["context"])},"stages":[\n'
@@ -527,12 +820,19 @@ def render(header, sessions, batches, forest_batches):
     # The forests are one key appended to the file as it was before them: removing the key, with
     # its comma, gives that file byte for byte.
     without_forests = text + "\n}\n"
-    text += ",\n  " + render_batches("forest_batches", "forests", forest_batches) + "\n}\n"
+    text += ",\n  " + render_batches("forest_batches", "forests", forest_batches)
+    # The LogUp batches are one more key appended the same way, to the file whose hash is pinned.
+    without_logup = text + "\n}\n"
+    text += ",\n  " + render_logup(logup_batches) + "\n}\n"
     require(json.loads(without_forests) == {**header, "sessions": sessions, "tree_batches": batches}, "the file parses back")
-    document = json.loads(text)
-    require(document == {**header, "sessions": sessions, "tree_batches": batches, "forest_batches": forest_batches},
+    require(json.loads(without_logup) == {**header, "sessions": sessions, "tree_batches": batches, "forest_batches": forest_batches},
             "the file parses back")
-    require(list(document) == [*header, "sessions", "tree_batches", "forest_batches"], "the forest batches come last")
+    require(hashlib.sha256(without_logup.encode()).hexdigest() == BEFORE_LOGUP_SHA256,
+            "sessions, tree_batches and forest_batches are byte for byte the file before logup_batches")
+    document = json.loads(text)
+    require(document == {**header, "sessions": sessions, "tree_batches": batches, "forest_batches": forest_batches,
+                         "logup_batches": logup_batches}, "the file parses back")
+    require(list(document) == [*header, "sessions", "tree_batches", "forest_batches", "logup_batches"], "the LogUp batches come last")
     return text
 
 
@@ -561,33 +861,35 @@ def tree_batch(rng, name, shapes):
     return {"name": name, "context": context, "trees": trees, "levels": levels}
 
 
+def draw_forest(rng, s, h, zeros):
+    """2^s trees of height h with random leaves, where `zeros` places zero leaves. "rows" gives
+    every tree a zero leaf at a random position, as SoftmaxRow's rows have their maximum's key;
+    "first" gives every tree a zero first leaf; a list of `(tree, leaf)` places those zeros only.
+    Returns the forest as `(s, levels, roots)` and its record."""
+    trees = [[lift(rng.fp()) for _ in range(1 << h)] for _ in range(1 << s)]
+    if zeros == "rows":
+        places = [(y, rng.word() % (1 << h)) for y in range(1 << s)]
+    elif zeros == "first":
+        places = [(y, 0) for y in range(1 << s)]
+    else:
+        places = zeros
+    for y, x in places:
+        trees[y][x] = ZERO
+    # The public root values: each tree's product, computed directly from its leaves.
+    roots = [product(leaves) for leaves in trees]
+    zero_trees = {y for y, _ in places}
+    for y, root in enumerate(roots):
+        require((root == ZERO) == (y in zero_trees), "only the trees with a zero leaf have root 0")
+    levels = forest_levels(trees)
+    return (s, levels, roots), {"rows_log": s, "height": h, "roots": [fp(v) for v in roots], "leaves": [fp(v) for v in levels[-1]]}
+
+
 def forest_batch(rng, name, shapes):
-    """`shapes` lists each forest as `(s, h, zeros)`: 2^s trees of height h with random leaves,
-    where `zeros` places zero leaves. "rows" gives every tree a zero leaf at a random position, as
-    SoftmaxRow's rows have their maximum's key; "first" gives every tree a zero first leaf; a list
-    of `(tree, leaf)` places those zeros only."""
+    """`shapes` lists each forest as `(s, h, zeros)`, drawn by `draw_forest`."""
     context = rng.context()
     t = transcript.Transcript(transcript.session_context(context))
-    forests, described = [], []
-    for s, h, zeros in shapes:
-        trees = [[lift(rng.fp()) for _ in range(1 << h)] for _ in range(1 << s)]
-        if zeros == "rows":
-            places = [(y, rng.word() % (1 << h)) for y in range(1 << s)]
-        elif zeros == "first":
-            places = [(y, 0) for y in range(1 << s)]
-        else:
-            places = zeros
-        for y, x in places:
-            trees[y][x] = ZERO
-        # The public root values: each tree's product, computed directly from its leaves.
-        roots = [product(leaves) for leaves in trees]
-        zero_trees = {y for y, _ in places}
-        for y, root in enumerate(roots):
-            require((root == ZERO) == (y in zero_trees), "only the trees with a zero leaf have root 0")
-        levels = forest_levels(trees)
-        forests.append((s, levels, roots))
-        described.append({"rows_log": s, "height": h, "roots": [fp(v) for v in roots], "leaves": [fp(v) for v in levels[-1]]})
-    return {"name": name, "context": context, "forests": described, "levels": prove_forests(t, forests)}
+    drawn = [draw_forest(rng, s, h, zeros) for s, h, zeros in shapes]
+    return {"name": name, "context": context, "forests": [d for _, d in drawn], "levels": prove_forests(t, [f for f, _ in drawn])}
 
 
 def trees_as_forests(batch):
@@ -604,6 +906,473 @@ def trees_as_forests(batch):
         for claim in record["instances"] + record["next"]:
             claim["tree"] = claim.pop("forest")
     return records
+
+
+# ----- LogUp batches: one leaf stage each, honest or cheating -------------------------------------
+
+WITNESS_CHEATS = {"outside", "wrong value", "multiplicity", "false roots", "numerator", "table", "phantom row",
+                  "phantom row, zero padding"}  # each breaks the identity
+MESSAGE_CHEATS = {"zero root", "false roots", "scaled roots"}  # a roots message other than the trees' roots
+HARMLESS = {"padding multiplicity"}  # a witness other than the honest prover's that the verifier accepts
+PADDING_COUNTS = {"phantom row", "phantom row, zero padding", "padding multiplicity"}  # non-zero padding multiplicities
+
+
+def draw_instance(rng, rows, lookups, has_values):
+    """A LogUp instance as its prover holds it: a public table of `rows` rows (key, value) of Fp and
+    `lookups` lookups, each of a row drawn at random, with the multiplicities they give. A table
+    with values has distinct random keys and random values; a table without, Range-like, has the
+    keys 0 to T - 1 and every value 0. m_j counts the lookups of row j, row 0's also the lookup
+    tree's 2^h_a - N padding leaves, and the 2^h_t - T padding rows hold 0. Another prover
+    changes `lookups` (a row index, or the tuple of a lookup that is no row), `tuples`,
+    `numerators`, `table` (the table its trees use), `padding` (the tuple its table tree pads
+    with) or `multiplicities`; `rows` stays public."""
+    if has_values:
+        table, keys = [], set()
+        while len(table) < rows:
+            key = rng.fp()
+            if key not in keys:
+                keys.add(key)
+                table.append((key, rng.fp()))
+    else:
+        table = [(j, 0) for j in range(rows)]
+    indices = [rng.word() % rows for _ in range(lookups)]
+    m = [0] * (1 << height_of(rows))
+    for j in indices:
+        m[j] += 1
+    m[0] += (1 << height_of(lookups)) - lookups
+    return {"rows": table, "has_values": has_values, "lookups": indices, "tuples": [table[j] for j in indices],
+            "numerators": [ONE] * lookups, "table": list(table), "padding": "row 0", "multiplicities": m}
+
+
+def padding_row(beta, table, padding):
+    """The tuple a table's padding rows hold, compressed: a copy of row 0 (RFC-0008 'Fraction
+    tree'), or 0 for a prover that pads with key and value 0, as the text did before #62 fixed it."""
+    return ZERO if padding == "zero" else compress(beta, table[0])
+
+
+def logup_trees(alpha, beta, inst):
+    """The prover's two trees of an instance (RFC-0008 'Fraction tree'). The lookup tree's leaf
+    i < N is (1, alpha - a_i), a_i = key + beta value of the lookup's tuple, and its 2^h_a - N
+    padding leaves repeat row 0, (1, alpha - t_0). The table tree's leaf j < T is
+    (-m_j, alpha - t_j), and its 2^h_t - T padding leaves repeat row 0, (-m_j, alpha - t_0),
+    which an honest prover gives the multiplicity 0."""
+    table, tuples, m = inst["table"], inst["tuples"], inst["multiplicities"]
+    h_a, h_t = height_of(len(tuples)), height_of(len(table))
+    require(len(m) == 1 << h_t, "2^h_t multiplicities")
+    lookup = [(n, sub(alpha, compress(beta, tup))) for n, tup in zip(inst["numerators"], tuples)]
+    lookup += [(ONE, sub(alpha, compress(beta, table[0])))] * ((1 << h_a) - len(tuples))
+    rows = [(neg(lift(mj)), sub(alpha, compress(beta, row))) for mj, row in zip(m, table)]
+    rows += [(neg(lift(mj)), sub(alpha, padding_row(beta, table, inst["padding"]))) for mj in m[len(table):]]
+    return fraction_levels(lookup), fraction_levels(rows)
+
+
+def lookup_side(inst):
+    """The lookup side's key and value polynomials, of 2^h_a entries: each lookup's key and value,
+    then row 0's in the padding slots."""
+    tuples = inst["tuples"]
+    slots = tuples + [inst["table"][0]] * ((1 << height_of(len(tuples))) - len(tuples))
+    return [lift(key) for key, _ in slots], [lift(value) for _, value in slots]
+
+
+def table_polynomial(beta, table, padding="row 0"):
+    """The table polynomial t = key_t + beta value_t, of 2^h_t entries, its padding rows copies of
+    row 0."""
+    return [compress(beta, row) for row in table] + [padding_row(beta, table, padding)] * ((1 << height_of(len(table))) - len(table))
+
+
+def identity(alpha, beta, inst):
+    """'Relation' against the public table: sum_{i<N} 1/(alpha - a_i) - sum_{j<T} m_j/(alpha - t_j),
+    from the lookups' tuples and the multiplicities. A padding row is a copy of row 0, so row 0's
+    multiplicity takes the padding rows' multiplicities, and gives back the lookup tree's padding
+    leaves, which repeat row 0. It is 0 exactly when the identity holds."""
+    rows, tuples, m = inst["rows"], inst["tuples"], inst["multiplicities"]
+    counts = m[:len(rows)]
+    counts[0] += sum(m[len(rows):]) - ((1 << height_of(len(tuples))) - len(tuples))
+    lookups = total(inverse(sub(alpha, compress(beta, tup))) for tup in tuples)
+    return sub(lookups, total(mul(lift(c), inverse(sub(alpha, compress(beta, row)))) for c, row in zip(counts, rows)))
+
+
+def outside_tuple(rng, inst):
+    """A tuple that is no row of the table: the key T of a Range-like table, or a key that no row
+    has, with a random value."""
+    if not inst["has_values"]:
+        return (len(inst["rows"]), 0)
+    keys = {key for key, _ in inst["rows"]}
+    while True:
+        key = rng.fp()
+        if key not in keys:
+            return (key, rng.fp())
+
+
+def cheat_witness(rng, inst, cheat):
+    """The witness a cheating prover commits instead of the honest one; its trees stay honest
+    trees of that witness."""
+    kind = cheat["kind"]
+    if kind in ("outside", "numerator"):
+        # A lookup that is no row, which no multiplicity counts; "numerator" also gives its leaf
+        # the numerator 0, so that the trees' roots sum to zero.
+        i = cheat["lookup"]
+        inst["multiplicities"][inst["lookups"][i]] -= 1
+        inst["lookups"][i] = inst["tuples"][i] = outside_tuple(rng, inst)
+        if kind == "numerator":
+            inst["numerators"][i] = ZERO
+    elif kind == "wrong value":
+        # A lookup of its row's key with another value, still counted in that row.
+        i = cheat["lookup"]
+        require(inst["has_values"], "a wrong value needs a table with values")
+        key, value = inst["rows"][inst["lookups"][i]]
+        inst["lookups"][i] = inst["tuples"][i] = (key, (value + 1) % P)
+    elif kind in ("multiplicity", "false roots"):
+        inst["multiplicities"][cheat["row"]] += 1
+    elif kind == "table":
+        # The trees use a table whose row j, one the lookups use, has another value; the lookups of
+        # row j take that tuple, which is no row of the public table.
+        j = next(j for j in inst["lookups"] if j != 0)
+        require(inst["has_values"], "a changed value needs a table with values")
+        key, value = inst["rows"][j]
+        inst["table"][j] = (key, (value + 1) % P)
+        for i, lookup in enumerate(inst["lookups"]):
+            if lookup == j:
+                inst["lookups"][i] = inst["tuples"][i] = inst["table"][j]
+    elif kind in ("phantom row", "phantom row, zero padding"):
+        # The lookup (0, 0), which is no row, with the multiplicity 1 on the last padding row.
+        # Under row 0's padding that multiplicity counts a lookup of row 0 and cannot balance it;
+        # under the zero padding the text had before #62, the leaf (-1, alpha) balanced it.
+        rows, i, last = inst["rows"], cheat["lookup"], len(inst["multiplicities"]) - 1
+        require(len(rows) & (len(rows) - 1) and (0, 0) not in rows, "a table with padding rows and without the row (0, 0)")
+        inst["multiplicities"][inst["lookups"][i]] -= 1
+        inst["lookups"][i] = inst["tuples"][i] = (0, 0)
+        inst["multiplicities"][last] += 1
+        if kind == "phantom row, zero padding":
+            inst["padding"] = "zero"
+    elif kind == "padding multiplicity":
+        # Not a cheat: the lookup tree's padding leaves, lookups of row 0, counted on the last
+        # padding row, a copy of row 0, instead of on row 0.
+        m, padding = inst["multiplicities"], (1 << height_of(len(inst["tuples"]))) - len(inst["tuples"])
+        require(len(inst["rows"]) < len(m) and padding > 0, "padding on both sides")
+        m[0] -= padding
+        m[-1] += padding
+    else:
+        require(False, f"unknown cheat {kind}")
+
+
+def cheat_roots(rng, roots, cheat):
+    """The roots message of a cheating prover, from its trees' roots, each instance's
+    ((n_a, d_a), (n_t, d_t))."""
+    sent = list(roots)
+    k, kind = cheat["instance"], cheat["kind"]
+    lookup, table = sent[k]
+    if kind == "zero root":
+        # (0, 0) passes n_a d_t + n_t d_a = 0: only the denominator check rejects it.
+        if cheat["side"] == "lookup":
+            lookup = (ZERO, ZERO)
+        else:
+            table = (ZERO, ZERO)
+    elif kind == "false roots":
+        # The n_a that makes n_a d_t + n_t d_a = 0, hiding the multiplicity off by one.
+        lookup = (neg(mul(mul(table[0], lookup[1]), inverse(table[1]))), lookup[1])
+    elif kind == "scaled roots":
+        # (c n_a, c d_a) is the root's fraction, so the roots sum to zero, but it is not the root.
+        c = rng.fp2()
+        require(c not in (ZERO, ONE), "a scale other than 0 and 1")
+        lookup = (mul(c, lookup[0]), mul(c, lookup[1]))
+    else:
+        require(False, f"unknown cheat {kind}")
+    sent[k] = (lookup, table)
+    return sent
+
+
+def describe_instance(inst):
+    return {
+        "rows": [[hex64(key), hex64(value)] for key, value in inst["rows"]],
+        "has_values": inst["has_values"],
+        "lookups": [j if isinstance(j, int) else [hex64(j[0]), hex64(j[1])] for j in inst["lookups"]],
+        "multiplicities": [hex64(m % P) for m in inst["multiplicities"]],
+        "h_a": height_of(len(inst["lookups"])),
+        "h_t": height_of(len(inst["rows"])),
+    }
+
+
+def logup_batch(rng, name, shapes, forest_shapes, order, cheat=None):
+    """One leaf stage on one transcript: the LogUp instances `shapes`, each (T, N, has_values), and
+    the forests `forest_shapes`, as in `forest_batch`, proven in the schedule `order` of
+    (kind, index) pairs, which is the vectors' choice. `cheat` is what another prover does instead
+    of the honest one, a cheat or the harmless padding multiplicity, or None. Returns the batch and
+    the checks a verifier must find failing, in check order."""
+    context = rng.context()
+    t = transcript.Transcript(transcript.session_context(context))
+    instances = [draw_instance(rng, rows, lookups, has_values) for rows, lookups, has_values in shapes]
+    drawn = [draw_forest(rng, s, h, zeros) for s, h, zeros in forest_shapes]
+    kind = cheat["kind"] if cheat else None
+    if kind in WITNESS_CHEATS or kind in HARMLESS:
+        cheat_witness(rng, instances[cheat["instance"]], cheat)
+    for k, inst in enumerate(instances):
+        counted = kind in PADDING_COUNTS and cheat["instance"] == k
+        require(counted == any(inst["multiplicities"][len(inst["rows"]):]), f"{name}: 0 in the padding rows unless a prover counts there")
+    # RFC-0014 rows 4 and 5: alpha and beta, the roots, the levels, then the values.
+    alpha, beta = challenge(t, "logup/alpha"), challenge(t, "logup/beta")
+    trees = [logup_trees(alpha, beta, inst) for inst in instances]
+    for k, (inst, (lookup, table)) in enumerate(zip(instances, trees)):
+        check_fraction_tree(lookup)
+        check_fraction_tree(table)
+        breaks = kind in WITNESS_CHEATS and cheat["instance"] == k
+        require((identity(alpha, beta, inst) == ZERO) != breaks, f"{name}: the identity holds exactly for an honest witness")
+    roots = [(lookup[0][0], table[0][0]) for lookup, table in trees]
+    sent = cheat_roots(rng, roots, cheat) if kind in MESSAGE_CHEATS else roots
+    for k, ((n_a, d_a), (n_t, d_t)) in enumerate(sent):
+        # Which of the root checks each instance fails: the identity-breaking witnesses fail the
+        # sum alone, a root (0, 0) the denominator alone, and every other instance passes both.
+        zero, sums = ZERO in (d_a, d_t), add(mul(n_a, d_t), mul(n_t, d_a)) == ZERO
+        at_fault = cheat is not None and cheat["instance"] == k
+        if at_fault and kind in ("outside", "wrong value", "multiplicity", "phantom row"):
+            require(not zero and not sums, f"{name}: honest trees of a bad witness have non-zero roots that do not sum to zero")
+        elif at_fault and kind == "zero root":
+            require(zero and sums, f"{name}: a root (0, 0) passes n_a d_t + n_t d_a = 0 and fails only its denominator")
+        else:
+            require(not zero and sums, f"{name}: the roots of instance {k} pass")
+    message = [x for lookup, table in sent for x in lookup + table]
+    t.absorb("logup/roots", tce(message))
+    require(sorted(order) == sorted([(side, k) for k in range(len(instances)) for side in ("lookup", "table")]
+                                    + [("forest", f) for f in range(len(drawn))]), f"{name}: the schedule lists every tree once")
+    schedule = []
+    for side, index in order:
+        if side == "forest":
+            s, levels, public = drawn[index][0]
+            schedule.append({"kind": side, "s": s, "levels": levels, "roots": public})
+        else:
+            which = 0 if side == "lookup" else 1
+            schedule.append({"kind": side, "s": 0, "levels": trees[index][which], "sent": sent[index][which]})
+    levels, final = prove_leaf_stage(t, schedule)
+    place = {tree: k for k, tree in enumerate(order)}
+    values, checks = [], []
+    for k, inst in enumerate(instances):
+        _, rho_a, (p_a, q_a) = final[place[("lookup", k)]]
+        _, rho_t, (p_t, q_t) = final[place[("table", k)]]
+        keys, vals = lookup_side(inst)
+        value = mle(vals, rho_a)
+        if inst["has_values"]:
+            values.append(value)
+        else:
+            require(value == ZERO, "a table without values has the value 0")
+        key = sub(sub(alpha, q_a), mul(beta, value))
+        padding = (1 << len(rho_a)) - len(inst["tuples"])
+        table_eval = mle(table_polynomial(beta, inst["rows"]), rho_t)
+        require(p_a == mle(inst["numerators"] + [ONE] * padding, rho_a), "the numerator claim is the lookup leaves' numerators at rho_a")
+        require(key == mle(keys, rho_a), "the key claim is the lookup side's key polynomial at rho_a")
+        require(neg(p_t) == mle([lift(m) for m in inst["multiplicities"]], rho_t), "the multiplicity claim is the multiplicity polynomial at rho_t")
+        require(q_t == sub(alpha, mle(table_polynomial(beta, inst["table"], inst["padding"]), rho_t)),
+                "the denominator claim is alpha - t(rho_t) of the trees' table and padding")
+        require((q_t == sub(alpha, table_eval)) == (inst["table"] == inst["rows"] and inst["padding"] == "row 0"),
+                "the table evaluation holds exactly for the public table, padded with row 0")
+        checks.append({
+            "lookup": {"point": elements(rho_a), "numerator": fp2(p_a), "denominator": fp2(q_a),
+                       "value": fp2(value) if inst["has_values"] else None, "key": fp2(key)},
+            "table": {"point": elements(rho_t), "numerator": fp2(p_t), "multiplicity": fp2(neg(p_t)), "denominator": fp2(q_t),
+                      "table_eval": fp2(table_eval)},
+        })
+    t.absorb("logup/values", tce(values))
+    # The trees whose root in the message is not their root, and the level where each joins.
+    tallest = max(len(tree["levels"]) - 1 for tree in schedule)
+    falsified = [place[(side, k)] for k in range(len(instances)) for which, side in enumerate(("lookup", "table"))
+                 if sent[k][which] != roots[k][which]]
+    require(len(falsified) == (1 if kind in MESSAGE_CHEATS else 0), f"{name}: a message cheat falsifies one root, and no other batch any")
+    joins = {tree: tallest - (len(schedule[tree]["levels"]) - 1) for tree in falsified}
+    require(all(level < tallest for level in joins.values()), f"{name}: a falsified root is on a tree with a level")
+    # The checks a verifier finds failing, in check order; the first is the verdict.
+    if cheat is None or kind in HARMLESS:
+        failing = []
+    elif kind in ("outside", "wrong value", "multiplicity", "phantom row"):
+        failing = [{"reason": "Lookup", "check": "roots", "instance": cheat["instance"]}]
+    elif kind == "zero root":
+        # The level where the tree joins rejects its (0, 0) claims too, but the roots come first.
+        failing = [{"reason": "Lookup", "check": "roots", "instance": cheat["instance"]},
+                   {"reason": "Sumcheck", "check": f"level {joins[falsified[0]]}"}]
+    elif kind in ("false roots", "scaled roots"):
+        failing = [{"reason": "Sumcheck", "check": f"level {joins[falsified[0]]}"}]
+    elif kind == "numerator":
+        failing = [{"reason": "Lookup", "check": "leaf numerator", "instance": cheat["instance"]}]
+    else:
+        require(kind in ("table", "phantom row, zero padding"), f"{name}: a cheat the leaf checks catch")
+        failing = [{"reason": "Lookup", "check": "table evaluation", "instance": cheat["instance"]}]
+    expected = dict(failing[0]) if failing else "accept"
+    if failing and expected["reason"] == "Sumcheck":
+        # The level's instance at fault: the falsified tree's place among the level's instances,
+        # which the schedule makes also its LogUp instance and its index in `trees`.
+        tree = falsified[0]
+        at = [entry["tree"] for entry in levels[joins[tree]]["instances"]].index(tree)
+        require(at == tree == order[tree][1] == cheat["instance"], f"{name}: the falsified tree's place is the same under every reading")
+        expected["instance"] = at
+    batch = {
+        "name": name,
+        "context": context,
+        "alpha": fp2(alpha),
+        "beta": fp2(beta),
+        "instances": [describe_instance(inst) for inst in instances],
+        "forests": [d for _, d in drawn],
+        "trees": [{"kind": side, "index": index} for side, index in order],
+        "roots": elements(message),
+        "levels": levels,
+        "values": elements(values),
+        "leaf_checks": checks,
+        "state": t.state.hex(),
+        "counter": t.counter,
+        "expected": expected,
+    }
+    return batch, failing
+
+
+# ----- A verifier's reading of the LogUp batches ---------------------------------------------------
+
+
+def parse_fp(text):
+    require(isinstance(text, str) and len(text) == 18 and text[:2] == "0x", "an Fp is 0x and 16 hex digits")
+    value = int(text[2:], 16)
+    require(value < P, "an Fp is canonical")
+    return value
+
+
+def parse_fp2(pair):
+    require(isinstance(pair, list) and len(pair) == 2, "an Fp2 is [c0, c1]")
+    return (parse_fp(pair[0]), parse_fp(pair[1]))
+
+
+def fold(table, point):
+    """f~(point) by binding x_1 first, as a sumcheck's rounds do: each pair (f[2k], f[2k + 1])
+    becomes f[2k] + r (f[2k + 1] - f[2k])."""
+    require(len(table) == 1 << len(point), "a table of 2^n entries takes n coordinates")
+    for r in point:
+        table = [add(table[2 * k], mul(r, sub(table[2 * k + 1], table[2 * k]))) for k in range(len(table) // 2)]
+    return table[0]
+
+
+def check_logup_batch(batch):
+    """A verifier's reading of one LogUp batch from the written file (RFC-0019 'Check order' step
+    7), apart from the prover above. From the batch's public data (the tables and sizes, the
+    forests' public roots, the schedule) and its messages (roots, rounds, evaluations, values)
+    alone, it rederives every challenge, claim and point, requires each to be the one recorded,
+    and returns every check that fails, in check order: each instance's roots, then each level,
+    then each instance's leaf checks, the numerator before the table evaluation. A forest's root
+    claim and a table's extension are computed by folding, not by the sum over eq the prover
+    uses."""
+    t = transcript.Transcript(transcript.session_context(batch["context"]))
+    alpha, beta = challenge(t, "logup/alpha"), challenge(t, "logup/beta")
+    require([fp2(alpha), fp2(beta)] == [batch["alpha"], batch["beta"]], "alpha and beta are the first two squeezes")
+    instances, forests, schedule = batch["instances"], batch["forests"], batch["trees"]
+    roots = [parse_fp2(x) for x in batch["roots"]]
+    require(len(roots) == 4 * len(instances), "the roots message holds n_a, d_a, n_t, d_t per instance")
+    t.absorb("logup/roots", tce(roots))
+    failures = []
+    for k in range(len(instances)):
+        n_a, d_a, n_t, d_t = roots[4 * k:4 * k + 4]
+        if d_a == ZERO or d_t == ZERO or add(mul(n_a, d_t), mul(n_t, d_a)) != ZERO:
+            failures.append({"reason": "Lookup", "check": "roots", "instance": k})
+    heights, roots_of = [], {}
+    for k, tree in enumerate(schedule):
+        if tree["kind"] == "forest":
+            heights.append(forests[tree["index"]]["height"])
+            continue
+        inst = instances[tree["index"]]
+        require(inst["h_a"] == height_of(len(inst["lookups"])) and inst["h_t"] == height_of(len(inst["rows"]))
+                and len(inst["multiplicities"]) == 1 << inst["h_t"], "an instance's sizes")
+        heights.append(inst["h_a"] if tree["kind"] == "lookup" else inst["h_t"])
+        offset = 4 * tree["index"] + (0 if tree["kind"] == "lookup" else 2)
+        roots_of[k] = (roots[offset], roots[offset + 1])
+    tallest = max(heights)
+    require(len(batch["levels"]) == tallest, "levels 0 to H - 1")
+    held = {}  # tree -> (point, claim): a forest's value, a fraction tree's (p, q)
+    for level, record in enumerate(batch["levels"]):
+        prefix = f"tree/{level}"
+        joining = [k for k, h in enumerate(heights) if tallest - h == level]
+        rows_logs = {k: forests[schedule[k]["index"]]["rows_log"] for k in joining if schedule[k]["kind"] == "forest"}
+        s_max = max(rows_logs.values(), default=0)
+        root_challenges = [challenge(t, f"{prefix}/root/{c}") for c in range(s_max)]
+        for k in joining:
+            if k in rows_logs:
+                point = root_challenges[s_max - rows_logs[k]:]
+                held[k] = (point, fold([lift(parse_fp(v)) for v in forests[schedule[k]["index"]]["roots"]], point))
+            else:
+                held[k] = ([], roots_of[k])
+        present = [k for k in range(len(schedule)) if k in held]
+        forest = [schedule[k]["kind"] == "forest" for k in present]
+        gamma = challenge(t, f"{prefix}/gamma")
+        lam = None if all(forest) else challenge(t, f"{prefix}/lambda")
+        n_max = max(len(held[k][0]) for k in present)
+        claim, weight = ZERO, ONE
+        for k, f in zip(present, forest):
+            point, c = held[k]
+            claim = add(claim, mul(weight, mul(lift(1 << (n_max - len(point))), c if f else add(c[0], mul(lam, c[1])))))
+            weight = mul(weight, gamma)
+        rounds = [[parse_fp2(x) for x in m] for m in record["rounds"]]
+        require(len(rounds) == n_max and all(len(m) == 3 for m in rounds), f"{prefix}: n_max rounds of 3 values")
+        claims, challenges = [claim], []
+        for j, (p0, p2, p3) in enumerate(rounds):
+            t.absorb(f"{prefix}/round/{j}", tce([p0, p2, p3]))
+            r = challenge(t, f"{prefix}/r/{j}")
+            claim = lagrange([p0, sub(claim, p0), p2, p3], r)
+            claims.append(claim)
+            challenges.append(r)
+        evals = [parse_fp2(x) for x in record["final_evals"]]
+        require(len(evals) == sum(2 if f else 4 for f in forest), f"{prefix}: u, w per forest, N_0, N_1, D_0, D_1 per fraction tree")
+        t.absorb(f"{prefix}/evals", tce(evals))
+        rho = challenge(t, f"{prefix}/line")
+        combination, weight, cursor, entries, nexts = ZERO, ONE, 0, [], []
+        for k, f in zip(present, forest):
+            point, c = held[k]
+            r_prime = challenges[len(challenges) - len(point):]
+            if f:
+                u, w = evals[cursor:cursor + 2]
+                g = mul(u, w)
+                entries.append({"tree": k, "point": elements(point), "value": fp2(c)})
+                held[k] = ([rho] + r_prime, add(u, mul(rho, sub(w, u))))
+                nexts.append({"tree": k, "point": elements(held[k][0]), "value": fp2(held[k][1])})
+            else:
+                N0, N1, D0, D1 = evals[cursor:cursor + 4]
+                g = add(add(mul(N0, D1), mul(N1, D0)), mul(lam, mul(D0, D1)))
+                entries.append({"tree": k, "point": elements(point), "numerator": fp2(c[0]), "denominator": fp2(c[1])})
+                held[k] = ([rho] + r_prime, (add(N0, mul(rho, sub(N1, N0))), add(D0, mul(rho, sub(D1, D0)))))
+                nexts.append({"tree": k, "point": elements(held[k][0]), "numerator": fp2(held[k][1][0]), "denominator": fp2(held[k][1][1])})
+            cursor += 2 if f else 4
+            combination = add(combination, mul(weight, mul(eq_points(point, r_prime), g)))
+            weight = mul(weight, gamma)
+        if combination != claim:
+            failures.append({"reason": "Sumcheck", "check": f"level {level}"})
+        derived = {"prefix": prefix, "root_challenges": elements(root_challenges), "instances": entries, "gamma": fp2(gamma),
+                   "lambda": None if lam is None else fp2(lam), "rounds": record["rounds"], "challenges": elements(challenges),
+                   "claims": elements(claims), "final_evals": record["final_evals"], "rho": fp2(rho), "next": nexts,
+                   "state": t.state.hex(), "counter": t.counter}
+        require(derived == record, f"{prefix}: every value of the level is the one the verifier derives")
+    for k, h in enumerate(heights):
+        if h == 0:
+            # A tree of height 0 never joins a level: its root is its leaf claim, on no variable.
+            require(k in roots_of, "a tree of height 0 is a fraction tree")
+            held[k] = ([], roots_of[k])
+    with_values = [k for k, inst in enumerate(instances) if inst["has_values"]]
+    values = [parse_fp2(x) for x in batch["values"]]
+    require(len(values) == len(with_values), "one value per instance with values")
+    t.absorb("logup/values", tce(values))
+    checks = []
+    for k, inst in enumerate(instances):
+        rho_a, (p_a, q_a) = held[schedule.index({"kind": "lookup", "index": k})]
+        rho_t, (p_t, q_t) = held[schedule.index({"kind": "table", "index": k})]
+        value = values[with_values.index(k)] if inst["has_values"] else ZERO
+        rows = [(parse_fp(key), parse_fp(v)) for key, v in inst["rows"]]
+        require(inst["has_values"] or not any(v for _, v in rows), "a table without values has every value 0")
+        # The table polynomial, its padding rows copies of row 0, folded at rho_t.
+        table = [add(lift(key), mul(beta, lift(v))) for key, v in rows]
+        table_eval = fold(table + [table[0]] * ((1 << inst["h_t"]) - len(rows)), rho_t)
+        if p_a != ONE:
+            failures.append({"reason": "Lookup", "check": "leaf numerator", "instance": k})
+        if q_t != sub(alpha, table_eval):
+            failures.append({"reason": "Lookup", "check": "table evaluation", "instance": k})
+        checks.append({
+            "lookup": {"point": elements(rho_a), "numerator": fp2(p_a), "denominator": fp2(q_a),
+                       "value": fp2(value) if inst["has_values"] else None, "key": fp2(sub(sub(alpha, q_a), mul(beta, value)))},
+            "table": {"point": elements(rho_t), "numerator": fp2(p_t), "multiplicity": fp2(neg(p_t)), "denominator": fp2(q_t),
+                      "table_eval": fp2(table_eval)},
+        })
+    require(checks == batch["leaf_checks"], "every leaf check is the one the verifier derives")
+    require([t.state.hex(), t.counter] == [batch["state"], batch["counter"]], "the transcript after logup/values")
+    return failures
 
 
 def main():
@@ -646,6 +1415,66 @@ def main():
         forest_batch(rng, "a single tree of height 3; a SoftmaxRow forest of 16 trees whose first leaves are zero and a forest "
                      "of 4 trees, of height 2", [(0, 3, []), (4, 2, "first"), (2, 2, [])]),
     ]
+    # LogUp batches, drawn after the forests. The schedule of each is the vectors' choice.
+    lookup, table, forest = "lookup", "table", "forest"
+
+    def paired(count, forests=0):
+        """Each instance's lookup tree, then its table tree, in instance order, then the forests."""
+        return [(side, k) for k in range(count) for side in (lookup, table)] + [(forest, f) for f in range(forests)]
+
+    logup = [
+        logup_batch(rng, "one instance alone: N = 6 and T = 7, both trees of height 3", [(7, 6, True)], [], paired(1)),
+        logup_batch(rng, "one instance alone with N = 1 and T = 1: both trees of height 0, so no level, and the values follow the roots",
+                    [(1, 1, True)], [], paired(1)),
+        logup_batch(rng, "three instances whose trees have heights 2 and 1, 1 and 2, 0 and 2, joining at levels 0 and 1, 1 and 0, "
+                    "never and 0; the second table without values", [(2, 3, True), (4, 2, False), (3, 1, True)], [], paired(3)),
+        logup_batch(rng, "four instances padded on both sides, N of 3, 4, 5 and 2 and T of 5, 4, 3 and 1; the lookup trees first, "
+                    "then the table trees", [(5, 3, True), (4, 4, True), (3, 5, False), (1, 2, True)], [],
+                    [(lookup, 0), (lookup, 1), (lookup, 2), (lookup, 3), (table, 0), (table, 1), (table, 2), (table, 3)]),
+        logup_batch(rng, "three instances beside three forests, the schedule interleaving them: level 0 has a forest of 2 trees of "
+                    "height 4 alone and no lambda; fraction trees join at levels 1, 2 and 3; at level 2 a SoftmaxRow forest of 4 "
+                    "trees joins under two root challenges while fraction trees are present; the third instance has N = T = 1",
+                    [(4, 5, True), (6, 2, False), (1, 1, True)], [(1, 4, []), (2, 2, "rows"), (0, 3, [])],
+                    [(table, 1), (forest, 2), (lookup, 0), (forest, 0), (table, 0), (lookup, 2), (forest, 1), (lookup, 1), (table, 2)]),
+        logup_batch(rng, "a lookup tree of height 10 and a table tree of height 5: N = 513 and T = 17, padded on both sides, "
+                    "the table tree first", [(17, 513, True)], [], [(table, 0), (lookup, 0)]),
+        logup_batch(rng, "two instances with N = 1 and T = 1 beside a forest of 2 trees of height 2: the forest is alone at every "
+                    "level, so no lambda is squeezed", [(1, 1, True), (1, 1, False)], [(1, 2, [])],
+                    [(forest, 0), (lookup, 0), (table, 0), (lookup, 1), (table, 1)]),
+        logup_batch(rng, "not a cheat: the lookup tree's padding, lookups of row 0, counted on the table's padding row, a copy of "
+                    "row 0, instead of on row 0; the batch verifies", [(3, 3, True)], [], paired(1),
+                    {"kind": "padding multiplicity", "instance": 0}),
+        logup_batch(rng, "one instance whose table has no values: logup/values is absorbed empty, after the last level",
+                    [(3, 2, False)], [], paired(1)),
+        logup_batch(rng, "no LogUp instance, a forest of 2 trees of height 1 alone: logup/roots and logup/values are absorbed empty",
+                    [], [(1, 1, [])], [(forest, 0)]),
+        logup_batch(rng, "cheating: a lookup outside a table without values, key T, with honest trees", [(1, 1, True), (2, 2, False)],
+                    [], paired(2), {"kind": "outside", "instance": 1, "lookup": 1}),
+        logup_batch(rng, "cheating: a lookup with a wrong value, counted in its key's row, with honest trees", [(2, 2, True)], [],
+                    paired(1), {"kind": "wrong value", "instance": 0, "lookup": 1}),
+        logup_batch(rng, "cheating: a multiplicity off by one, with honest trees, beside a forest", [(2, 2, True)], [(1, 1, [])],
+                    paired(1, 1), {"kind": "multiplicity", "instance": 0, "row": 1}),
+        logup_batch(rng, "cheating: the roots message gives a lookup tree the root (0, 0), which passes n_a d_t + n_t d_a = 0",
+                    [(1, 1, True), (2, 2, True)], [], paired(2), {"kind": "zero root", "instance": 1, "side": lookup}),
+        logup_batch(rng, "cheating: the roots message gives a table tree the root (0, 0), which passes n_a d_t + n_t d_a = 0",
+                    [(2, 2, True)], [], paired(1), {"kind": "zero root", "instance": 0, "side": table}),
+        logup_batch(rng, "cheating: false roots made to sum to zero, hiding a multiplicity off by one, with honest trees: level 0 fails",
+                    [(2, 2, True)], [], paired(1), {"kind": "false roots", "instance": 0, "row": 1}),
+        logup_batch(rng, "cheating: a lookup tree's root scaled by a constant, the same fraction, with honest trees; the tree joins at "
+                    "level 1, which fails", [(2, 2, True), (2, 3, True)], [], paired(2), {"kind": "scaled roots", "instance": 0}),
+        logup_batch(rng, "cheating: a lookup outside the table whose leaf numerator the prover set to 0, so that the roots sum to zero "
+                    "and the levels pass", [(1, 1, True), (2, 2, False)], [(1, 1, [])], paired(2, 1),
+                    {"kind": "numerator", "instance": 1, "lookup": 1}),
+        logup_batch(rng, "cheating: a prover whose trees use a table with one row's value changed, the row its lookups use, with "
+                    "honest trees over it", [(1, 1, False), (3, 4, True)], [], paired(2), {"kind": "table", "instance": 1}),
+        logup_batch(rng, "cheating: the phantom row, a lookup of (0, 0), which is no row, and the multiplicity 1 on the padding row; "
+                    "honest trees, whose padding leaf (-1, alpha - t_0) counts a lookup of row 0, so the roots fail",
+                    [(3, 2, True)], [], paired(1), {"kind": "phantom row", "instance": 0, "lookup": 1}),
+        logup_batch(rng, "cheating: the phantom row under the zero padding of the text before #62, the padding leaf (-1, alpha): the "
+                    "roots, the levels and the numerator pass, and the table evaluation, padded with row 0, fails",
+                    [(3, 2, True)], [], paired(1), {"kind": "phantom row, zero padding", "instance": 0, "lookup": 1}),
+    ]
+    logup_batches = [batch for batch, _ in logup]
     header = {
         "description": "RFC-0010 sumcheck reference vectors: honest proofs of batched sumchecks "
         "and of product-tree levels, written by spec/vectors/sumcheck/generate.py; see README.md",
@@ -654,13 +1483,23 @@ def main():
         "seed": hex64(SEED),
         "official_blake3_cases_checked": checked,
     }
-    text = render(header, sessions, batches, forest_batches)
+    text = render(header, sessions, batches, forest_batches, logup_batches)
+    # A verifier reads every LogUp batch back from the file and must stop where the batch says.
+    for batch, (_, failing) in zip(json.loads(text)["logup_batches"], logup):
+        failures = check_logup_batch(batch)
+        require(failures == failing, f"{batch['name']}: the verifier finds exactly the failing checks {failing}, not {failures}")
+        expected = batch["expected"]
+        require(expected == "accept" if not failures else all(expected[key] == failures[0][key] for key in failures[0]),
+                f"{batch['name']}: the expected verdict is the first failing check")
     (HERE / "sumcheck.json").write_text(text)
     stages = sum(len(s["stages"]) for s in sessions)
     levels = sum(len(b["levels"]) for b in batches)
     forest_levels_count = sum(len(b["levels"]) for b in forest_batches)
+    logup_levels = sum(len(b["levels"]) for b in logup_batches)
+    rejected = sum(b["expected"] != "accept" for b in logup_batches)
     print(f"wrote sumcheck.json: {len(sessions)} sessions of {stages} stages, {len(batches)} tree batches of {levels} levels, "
-          f"{len(forest_batches)} forest batches of {forest_levels_count} levels, {len(text)} bytes")
+          f"{len(forest_batches)} forest batches of {forest_levels_count} levels, {len(logup_batches)} LogUp batches "
+          f"({len(logup_batches) - rejected} accepted, {rejected} rejected) of {logup_levels} levels, {len(text)} bytes")
 
 
 if __name__ == "__main__":

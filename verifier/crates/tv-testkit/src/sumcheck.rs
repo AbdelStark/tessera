@@ -267,13 +267,18 @@ pub fn lagrange(values: &[Fe], r: Fe) -> Fe {
 
 // ----- Batched sumchecks (RFC-0010 'Batching within a stage', 'Sumcheck messages') --------------
 
-/// One instance: the product of its tables, all of `2^n` entries for its `n` variables.
+/// One instance: the product of its tables, all of `2^n` entries for its `n` variables, or a
+/// LogUp fraction tree's level relation over four of them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Product {
     /// The tables whose values at the instance's point the proof sends, in order.
     pub tables: Vec<Vec<Fe>>,
     /// A factor the verifier computes itself, such as `eq(r, x)`: multiplied in, never sent.
     pub public: Option<Vec<Fe>>,
+    /// `None` for the product of the tables. `Some(λ)` for a fraction tree's level (RFC-0010
+    /// 'Tree levels'): the tables are `N(0 ‖ x)`, `N(1 ‖ x)`, `D(0 ‖ x)` and `D(1 ‖ x)`, and
+    /// the relation is `N_0·D_1 + N_1·D_0 + λ·D_0·D_1`, times the public factor.
+    pub lambda: Option<Fe>,
 }
 
 impl Product {
@@ -282,6 +287,7 @@ impl Product {
         Self {
             tables,
             public: None,
+            lambda: None,
         }
     }
 
@@ -299,10 +305,34 @@ impl Product {
             .trailing_zeros() as usize
     }
 
-    /// Its claim: the sum of the product over the hypercube.
+    /// The relation's degree in each variable.
+    fn degree(&self) -> usize {
+        let public = usize::from(self.public.is_some());
+        match self.lambda {
+            None => self.tables.len() + public,
+            Some(_) => 2 + public,
+        }
+    }
+
+    /// The relation's value from its factors' values, in the order of [`Product::factors`].
+    fn combine(&self, values: &[Fe]) -> Fe {
+        match self.lambda {
+            None => values.iter().fold(Fe::ONE, |p, &v| p * v),
+            Some(lambda) => {
+                let [n0, n1, d0, d1] = values[..4] else {
+                    panic!("a fraction tree's level has four tables")
+                };
+                let public = values[4..].iter().fold(Fe::ONE, |p, &v| p * v);
+                (n0 * d1 + n1 * d0 + lambda * d0 * d1) * public
+            }
+        }
+    }
+
+    /// Its claim: the sum of the relation over the hypercube.
     pub fn claim(&self) -> Fe {
         (0..1usize << self.vars()).fold(Fe::ZERO, |sum, x| {
-            sum + self.factors().fold(Fe::ONE, |p, table| p * table[x])
+            let values: Vec<Fe> = self.factors().map(|table| table[x]).collect();
+            sum + self.combine(&values)
         })
     }
 }
@@ -354,6 +384,20 @@ pub fn prove(
     instances: &[Product],
     lie: Option<Lie>,
 ) -> Proof {
+    let gamma = transcript.challenge_fp2(&format!("{prefix}/gamma"));
+    prove_after_gamma(transcript, prefix, degree, gamma, instances, lie)
+}
+
+/// [`prove`] from its batching challenge `γ`, already squeezed: a tree level squeezes `λ`
+/// between the two, and its fraction trees' instances carry it.
+pub fn prove_after_gamma(
+    transcript: &mut Transcript,
+    prefix: &str,
+    degree: usize,
+    gamma: Fe,
+    instances: &[Product],
+    lie: Option<Lie>,
+) -> Proof {
     let n_max = instances
         .iter()
         .map(Product::vars)
@@ -362,11 +406,14 @@ pub fn prove(
     for instance in instances {
         assert!(instance.factors().all(|t| t.len() == 1 << instance.vars()));
         assert!(
-            instance.factors().count() <= degree,
+            instance.degree() <= degree,
             "degree at least the relation's"
         );
+        assert!(
+            instance.lambda.is_none() || lie.is_none_or(|lie| !lie.forge),
+            "forging solves for a product's evaluation"
+        );
     }
-    let gamma = transcript.challenge_fp2(&format!("{prefix}/gamma"));
     let weights: Vec<Fe> = (0..instances.len()).map(|i| gamma.pow(i as u128)).collect();
     let mut tables: Vec<Vec<Vec<Fe>>> = instances
         .iter()
@@ -385,16 +432,21 @@ pub fn prove(
     for j in 0..n_max {
         let at = |t: Fe| -> Fe {
             let mut value = Fe::ZERO;
-            for ((weight, factors), (&pad, &sum)) in
-                weights.iter().zip(&tables).zip(pads.iter().zip(&sums))
+            for (((weight, factors), (&pad, &sum)), instance) in weights
+                .iter()
+                .zip(&tables)
+                .zip(pads.iter().zip(&sums))
+                .zip(instances)
             {
                 let contribution = if j < pad {
                     sum * Fe::base(2).pow((pad - j - 1) as u128)
                 } else {
                     (0..factors[0].len() / 2).fold(Fe::ZERO, |acc, x| {
-                        acc + factors.iter().fold(Fe::ONE, |p, f| {
-                            p * (f[2 * x] + t * (f[2 * x + 1] - f[2 * x]))
-                        })
+                        let values: Vec<Fe> = factors
+                            .iter()
+                            .map(|f| f[2 * x] + t * (f[2 * x + 1] - f[2 * x]))
+                            .collect();
+                        acc + instance.combine(&values)
                     })
                 };
                 value = value + *weight * contribution;
@@ -564,6 +616,7 @@ pub fn prove_trees(transcript: &mut Transcript, trees: &[ProductTree]) -> Vec<Le
                         below.iter().skip(1).step_by(2).copied().collect(),
                     ],
                     public: Some(eq_table(&claim.point)),
+                    lambda: None,
                 }
             })
             .collect();

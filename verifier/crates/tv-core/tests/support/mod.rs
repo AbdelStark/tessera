@@ -18,6 +18,8 @@
 
 #![allow(dead_code)]
 
+pub mod logup;
+
 use tv_core::sumcheck::{Batch, Instance, Prefix, SumcheckError, SumcheckProof, verify_batch};
 use tv_core::tree::{ProductLevel, TreeClaim, verify_product_level};
 use tv_field::{Fp, Fp2};
@@ -89,6 +91,17 @@ pub struct Context {
 }
 
 impl Context {
+    /// The context of `session`, with its text owned.
+    pub fn of(session: &SessionContext<'_>) -> Self {
+        Self {
+            protocol: session.protocol.as_str().to_owned(),
+            mode: session.mode,
+            params: session.params.0.as_str().to_owned(),
+            statement_digest: session.statement_digest,
+            session_id: session.session_id,
+        }
+    }
+
     pub fn from_json(json: &Json) -> Self {
         Self {
             protocol: text(json, "protocol").to_owned(),

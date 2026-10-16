@@ -1,0 +1,233 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! The memory `tv-core`'s LogUp checks allocate, counted by the `cap` allocator (RFC-0019
+//! 'Robustness'). The roots check allocates the TCE bytes of the roots message and the root
+//! claims, the leaf checks the TCE bytes of the values message and the claims they leave, and a
+//! tree level what a product-forest level does; each only after the message's count is checked
+//! against the caller's instances. So a hostile proof, however long its messages, makes a check
+//! allocate no more than the honest proof of the same leaf stage does.
+//!
+//! The honest leaf stage comes from the test kit's reference prover. The allocator's counters are
+//! global, so the cases run one after another in a single test.
+
+use std::alloc::System;
+
+use cap::Cap;
+use tv_core::logup::{Leaves, LookupError, check_leaves, check_roots};
+use tv_core::sumcheck::{SumcheckError, SumcheckProof};
+use tv_core::tree::{FractionClaim, LevelClaim, TreeClaim, verify_level};
+use tv_field::{Fp, Fp2};
+use tv_fuzz::sumcheck::context;
+use tv_hash::transcript::{Ascii, Transcript};
+use tv_testkit::SplitMix64;
+use tv_testkit::logup::{Forest, LogUp, StageClaim, StageTree, prove_leaf_stage};
+use tv_testkit::sumcheck::{self as kit, Fe};
+
+#[global_allocator]
+static ALLOCATOR: Cap<System> = Cap::new(System, usize::MAX);
+
+/// The bytes `f` allocates in all, and its result.
+fn allocated_by<T>(f: impl FnOnce() -> T) -> (T, usize) {
+    let before = ALLOCATOR.total_allocated();
+    let result = f();
+    (result, ALLOCATOR.total_allocated() - before)
+}
+
+/// A million values: far more than any honest message.
+const HOSTILE: usize = 1 << 20;
+
+fn fp2(value: Fe) -> Fp2 {
+    Fp2::new(
+        Fp::from_canonical(value.0).unwrap(),
+        Fp::from_canonical(value.1).unwrap(),
+    )
+}
+
+fn fp2s(values: &[Fe]) -> Vec<Fp2> {
+    values.iter().copied().map(fp2).collect()
+}
+
+/// A reference claim as the verifier holds it.
+fn claim(claim: &StageClaim) -> LevelClaim {
+    let point = fp2s(&claim.point);
+    match claim.values[..] {
+        [value] => LevelClaim::Product(TreeClaim {
+            point,
+            value: fp2(value),
+        }),
+        [numerator, denominator] => LevelClaim::Fraction(FractionClaim {
+            point,
+            numerator: fp2(numerator),
+            denominator: fp2(denominator),
+        }),
+        _ => panic!("a claim holds one value or two"),
+    }
+}
+
+fn fraction(claim: LevelClaim) -> FractionClaim {
+    match claim {
+        LevelClaim::Fraction(claim) => claim,
+        LevelClaim::Product(_) => panic!("a fraction tree's claims"),
+    }
+}
+
+#[test]
+fn hostile_logup_messages_allocate_no_more_than_honest_ones() {
+    // Two instances, the second without values, and a forest of 2 trees of height 2.
+    let mut rng = SplitMix64::new(0x5eed_f062_0001);
+    let mut row = || (Fe::base(rng.next_u64()), Fe::base(rng.next_u64()));
+    let table: Vec<(Fe, Fe)> = (0..6).map(|_| row()).collect();
+    let range: Vec<(Fe, Fe)> = (0..4u64).map(|j| (Fe::base(j), Fe::ZERO)).collect();
+    let logups = vec![
+        LogUp::honest(table, true, &[0, 5, 5, 2, 1]),
+        LogUp::honest(range, false, &[3, 1]),
+    ];
+    let forest = Forest::new(1, (1..=8).map(Fe::base).collect());
+    let trees = [
+        StageTree::Lookup(0),
+        StageTree::Table(0),
+        StageTree::Forest(0),
+        StageTree::Lookup(1),
+        StageTree::Table(1),
+    ];
+    let mut prover = kit::Transcript::new(&context().to_tce());
+    let stage = prove_leaf_stage(&mut prover, &logups, &[forest], &trees, |_| {});
+    let roots = fp2s(&stage.roots);
+    let values = fp2s(&stage.values);
+    assert_eq!(stage.levels.len(), 3);
+
+    // The roots.
+    let roots_check = |message: &[Fp2]| {
+        let mut transcript = Transcript::new(&context());
+        allocated_by(|| check_roots(&mut transcript, 2, message).map(|roots| roots.instances.len()))
+    };
+    let (outcome, honest) = roots_check(&roots);
+    assert_eq!(outcome, Ok(2));
+    assert!(honest < 1024, "the honest roots: {honest} bytes");
+    let (outcome, bytes) = roots_check(&vec![Fp2::ONE; HOSTILE]);
+    assert_eq!(
+        outcome,
+        Err(LookupError::RootsLength {
+            instance: 1,
+            expected: 8,
+            found: HOSTILE
+        })
+    );
+    assert!(
+        bytes <= honest,
+        "a million roots: {bytes} bytes, {honest} for the honest"
+    );
+
+    // A transcript through the roots and the levels before `upto`, with the claims entering each.
+    let replay = |upto: usize| {
+        let mut transcript = Transcript::new(&context());
+        let _ = check_roots(&mut transcript, 2, &roots).unwrap();
+        for (l, level) in stage.levels[..upto].iter().enumerate() {
+            // The forests that join here take their root points first.
+            for c in 0..level.root_challenges.len() {
+                let label = format!("tree/{l}/root/{c}");
+                let _ = transcript
+                    .challenge_fp2(Ascii::new(&label).unwrap())
+                    .unwrap();
+            }
+            let claims: Vec<LevelClaim> = level.entering.iter().map(claim).collect();
+            let proof = SumcheckProof {
+                rounds: level.proof.rounds.iter().map(|round| fp2s(round)).collect(),
+                final_evals: fp2s(&level.proof.evals),
+            };
+            let _ = verify_level(&mut transcript, l as u32, &claims, &proof).unwrap();
+        }
+        transcript
+    };
+
+    // The last level, with every kind of instance: a million evaluations.
+    let last = stage.levels.len() - 1;
+    let level = &stage.levels[last];
+    let claims: Vec<LevelClaim> = level.entering.iter().map(claim).collect();
+    let honest_proof = SumcheckProof {
+        rounds: level.proof.rounds.iter().map(|round| fp2s(round)).collect(),
+        final_evals: fp2s(&level.proof.evals),
+    };
+    let level_check = |proof: &SumcheckProof| {
+        let mut transcript = replay(last);
+        allocated_by(|| {
+            verify_level(&mut transcript, last as u32, &claims, proof)
+                .map(|level| level.claims.len())
+        })
+    };
+    let (outcome, honest) = level_check(&honest_proof);
+    assert_eq!(outcome, Ok(claims.len()));
+    let expected = honest_proof.final_evals.len();
+    let mut hostile = honest_proof.clone();
+    hostile.final_evals = vec![Fp2::ONE; HOSTILE];
+    let (outcome, bytes) = level_check(&hostile);
+    assert_eq!(
+        outcome,
+        Err(SumcheckError::EvaluationCount {
+            round: level.proof.rounds.len() as u32,
+            expected,
+            found: HOSTILE
+        })
+    );
+    assert!(
+        bytes <= honest,
+        "a million evaluations: {bytes} bytes, {honest} for the honest"
+    );
+
+    // The leaf checks: a million values.
+    let leaves: Vec<Leaves> = (0..2)
+        .map(|i| Leaves {
+            lookup: fraction(claim(&stage.leaves[if i == 0 { 0 } else { 3 }])),
+            table: fraction(claim(&stage.leaves[if i == 0 { 1 } else { 4 }])),
+            has_values: i == 0,
+        })
+        .collect();
+    let beta = fp2(stage.beta);
+    let tables: Vec<Vec<Fp2>> = logups
+        .iter()
+        .map(|logup| fp2s(&logup.table_poly(stage.beta)))
+        .collect();
+    let leaf_check = |message: &[Fp2]| {
+        let mut transcript = replay(stage.levels.len());
+        let challenges = tv_core::logup::Challenges {
+            alpha: fp2(stage.alpha),
+            beta,
+        };
+        allocated_by(|| {
+            check_leaves(
+                &mut transcript,
+                &challenges,
+                &leaves,
+                message,
+                |i, point| {
+                    // t̃(point) by binding one variable at a time, from the lowest; allocation is the
+                    // caller's and counted, so the honest run's total includes it.
+                    let mut table = tables.get(i)?.clone();
+                    for &r in point {
+                        table = table
+                            .chunks_exact(2)
+                            .map(|pair| pair[0] + r * (pair[1] - pair[0]))
+                            .collect();
+                    }
+                    table.first().copied()
+                },
+            )
+            .map(|claims| claims.instances.len())
+        })
+    };
+    let (outcome, honest) = leaf_check(&values);
+    assert_eq!(outcome, Ok(2));
+    let (outcome, bytes) = leaf_check(&vec![Fp2::ONE; HOSTILE]);
+    assert_eq!(
+        outcome,
+        Err(LookupError::ValuesLength {
+            instance: 1,
+            expected: 1,
+            found: HOSTILE
+        })
+    );
+    assert!(
+        bytes <= honest,
+        "a million values: {bytes} bytes, {honest} for the honest"
+    );
+}

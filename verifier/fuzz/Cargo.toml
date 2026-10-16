@@ -24,8 +24,8 @@ tv-hash = { path = "../crates/tv-hash" }
 tv-testkit = { path = "../crates/tv-testkit" }
 
 [dev-dependencies]
-# A global allocator that counts and caps allocations, for tests/allocation.rs,
-# tests/hash_allocation.rs and tests/sumcheck_allocation.rs.
+# A global allocator that counts and caps allocations, for tests/allocation.rs and the other
+# tests/*_allocation.rs.
 cap = { version = "0.1.2", features = ["stats"] }
 
 [workspace]

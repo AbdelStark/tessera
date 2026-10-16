@@ -6,9 +6,9 @@
 //! that verifier tests add no third-party crate to the verifier's dependency graph, which
 //! `allowlist.toml` and `cargo vet` must cover (RFC-0001, DEP-3). It also provides a seeded
 //! generator for reproducible randomized tests, a reference BLAKE3 in key-derivation mode
-//! ([`blake3::derive_key`]) to recompute the digests vectors carry, and a reference sumcheck
-//! prover ([`sumcheck`]) whose proofs of seeded and of cheating instances test the verifier's
-//! sumcheck checks.
+//! ([`blake3::derive_key`]) to recompute the digests vectors carry, a reference sumcheck prover
+//! ([`sumcheck`]) whose proofs of seeded and of cheating instances test the verifier's sumcheck
+//! checks, and a reference prover of LogUp-GKR's leaf stage ([`logup`]) for its LogUp checks.
 
 #![forbid(unsafe_code)]
 // Test support: a malformed vector file is a test failure, reported by panicking.
@@ -18,6 +18,7 @@ use std::fs;
 use std::path::PathBuf;
 
 pub mod blake3;
+pub mod logup;
 pub mod sumcheck;
 
 /// A JSON value. Numbers keep their source text, so integers of any width survive exactly.
