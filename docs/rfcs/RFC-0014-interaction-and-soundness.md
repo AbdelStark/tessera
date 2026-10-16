@@ -70,7 +70,7 @@ pub struct NiProof { pub round1: Round1, pub seed_nonce: u64, pub round2: Round2
 
 ### Transcript schedule
 
-Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{T}` are decimal indices or matrix names.
+Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{T}` are decimal indices, counted from 0, or matrix names.
 
 | Order | Operation | Label |
 |---|---|---|
@@ -78,7 +78,7 @@ Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{T}` are decimal indice
 | 2 | absorb | `round1` |
 | 3 | live: absorb `seed`; NI: grind `seed-pow`, then squeeze | `seed` |
 | 4 | squeeze `Fp2` × 2 | `logup/alpha`, `logup/beta` |
-| 5 | per tree level `ℓ`: absorb round messages, squeeze challenges | `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line` |
+| 5 | per tree level `ℓ`: squeeze `γ_ℓ`, absorb round messages, squeeze challenges, absorb evaluations, squeeze the line challenge | `tree/{ℓ}/gamma`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line` |
 | 6 | per stage `k`: absorb masked sum, squeeze `ρ_k`, squeeze `γ_k`, rounds, final evaluations | `stage/{k}/zk-sum`, `stage/{k}/zk-rho`, `stage/{k}/gamma`, `stage/{k}/round/{j}`, `stage/{k}/r/{j}`, `stage/{k}/evals` |
 | 7 | squeeze opening batching challenges | `pcs/advice/gamma`, `pcs/advice/xi`, `pcs/weights/{T}/xi` |
 | 8 | absorb combined rows | `pcs/advice/combined`, `pcs/weights/{T}/combined` |

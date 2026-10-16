@@ -17,6 +17,11 @@ dependencies = [
 [[package]]
 name = "tv-core"
 version = "0.1.0"
+dependencies = [
+ "tv-field",
+ "tv-hash",
+ "tv-testkit",
+]
 
 [[package]]
 name = "tv-field"

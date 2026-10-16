@@ -18,14 +18,15 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 tv-codec = { path = "../crates/tv-codec" }
+tv-core = { path = "../crates/tv-core" }
+tv-field = { path = "../crates/tv-field" }
 tv-hash = { path = "../crates/tv-hash" }
 tv-testkit = { path = "../crates/tv-testkit" }
 
 [dev-dependencies]
-# A global allocator that counts and caps allocations, for tests/allocation.rs and
-# tests/hash_allocation.rs.
+# A global allocator that counts and caps allocations, for tests/allocation.rs,
+# tests/hash_allocation.rs and tests/sumcheck_allocation.rs.
 cap = { version = "0.1.2", features = ["stats"] }
-tv-field = { path = "../crates/tv-field" }
 
 [workspace]
 members = ["."]
@@ -54,6 +55,13 @@ bench = false
 [[bin]]
 name = "inclusion"
 path = "fuzz_targets/inclusion.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sumcheck"
+path = "fuzz_targets/sumcheck.rs"
 test = false
 doc = false
 bench = false

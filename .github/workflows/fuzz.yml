@@ -10,6 +10,7 @@ on:
     paths:
       - verifier/Cargo.toml
       - verifier/crates/tv-codec/**
+      - verifier/crates/tv-core/**
       - verifier/crates/tv-field/**
       - verifier/crates/tv-hash/**
       - verifier/crates/tv-testkit/**
@@ -17,12 +18,14 @@ on:
       - spec/vectors/codec/**
       - spec/vectors/hash/**
       - spec/vectors/rfc6962/**
+      - spec/vectors/sumcheck/**
       - .github/workflows/fuzz.yml
   push:
     branches: [main]
     paths:
       - verifier/Cargo.toml
       - verifier/crates/tv-codec/**
+      - verifier/crates/tv-core/**
       - verifier/crates/tv-field/**
       - verifier/crates/tv-hash/**
       - verifier/crates/tv-testkit/**
@@ -30,6 +33,7 @@ on:
       - spec/vectors/codec/**
       - spec/vectors/hash/**
       - spec/vectors/rfc6962/**
+      - spec/vectors/sumcheck/**
       - .github/workflows/fuzz.yml
   workflow_dispatch:
     inputs:
