@@ -198,6 +198,11 @@ All notable changes to the prover release train are recorded here: the crates un
   - The `tessera.cost-model/1` report, its schema and its example carry both fields, `tessera.unit-costs/1` names a `column_answer` unit, and the table has an `answers` column. 09 §3 now says when a report version freezes: once a release writes it, so these schemas change in place.
   - With five regenerations (08 §1), the corrected projections are `μ(1K) ≈ 9.4` and `μ(16K) ≈ 24.9`, before the column answers, which add up to 1.6 and 6.5 at the commitment's 30 ps per element (08 §3, SC-2).
   - Priced at the commitment's cost, with glue and the other unit costs at zero, the term equals the linear and attention terms: P5 evaluates exactly the elements the witness pass commits. A test holds the projections that 08 §3, SC-2 and RISK-9 quote to the model's, digit for digit.
+- The `tessera-quant` Python package's skeleton, under `python/` (RFC-0005 'Python packaging', [#67](https://github.com/AbdelStark/tessera/issues/67)):
+  - `pyproject.toml` with RFC-0005's dependencies, locked in `uv.lock` for the platforms of 09 §8, Linux x86-64 and macOS aarch64. PyTorch comes from its own index through the `cpu` or `cu130` extra. Both pin the same release, 2.14.1, and a test fails if they diverge, so CPU and GPU calibration cannot derive different scales through a library upgrade.
+  - The package `tessera_quant`, typed (`py.typed`) and versioned by its distribution. `ruff` lints and formats, `pyright` checks types in strict mode, and `pytest` with `hypothesis` runs the tests.
+  - The `python` CI job runs on Python 3.11, 3.12 and 3.13, and is now a gate over the three, so branch protection still names one check. Its former `pyright --strict` was not a pyright option: strict mode now comes from `pyproject.toml`.
+  - `cargo xtask lint` fails when the workspace `Cargo.toml` and `python/pyproject.toml` state different versions (09 §1), a dynamic version, or one outside `MAJOR.MINOR.PATCH`. 09 §1 maps no pre-release between SemVer and PEP 440, so that last case is refused rather than guessed.
 
 ### Changed
 

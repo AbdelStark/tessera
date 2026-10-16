@@ -27,6 +27,7 @@ mod test_features;
 mod testing;
 mod unsafe_policy;
 mod vectors;
+mod versions;
 
 use std::process::ExitCode;
 

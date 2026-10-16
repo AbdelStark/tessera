@@ -5,7 +5,9 @@
 use std::io;
 use std::path::Path;
 
-use crate::{deny_policy, licenses, links, repo, reports, secret_access, spdx, unsafe_policy};
+use crate::{
+    deny_policy, licenses, links, repo, reports, secret_access, spdx, unsafe_policy, versions,
+};
 
 /// The policies checked by `lint`, each with its violations.
 pub(crate) fn checks(repo: &Path) -> io::Result<Vec<(&'static str, Vec<String>)>> {
@@ -26,6 +28,10 @@ pub(crate) fn checks(repo: &Path) -> io::Result<Vec<(&'static str, Vec<String>)>
         (
             "committed reports match their JSON Schemas (03 §5)",
             reports::check_reports(repo, &files)?,
+        ),
+        (
+            "one version for the crates and tessera-quant (09 §1)",
+            versions::check(repo)?,
         ),
     ])
 }

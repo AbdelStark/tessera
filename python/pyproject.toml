@@ -1,0 +1,104 @@
+[project]
+name = "tessera-quant"
+# The prover release train's version, equal to the workspace Cargo.toml's (09 §1, `cargo xtask lint`).
+version = "0.1.0"
+description = "Tessera's quantization front-end: from a Llama-3.1 checkpoint to the integer model D (RFC-0005)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0 OR MIT"
+# Nothing is published while the repository is private (09 §9).
+classifiers = ["Private :: Do Not Upload"]
+dependencies = [
+    "datasets>=2.20",
+    "numpy>=1.26",
+    "safetensors>=0.4",
+    "transformers>=4.45",
+]
+
+[project.optional-dependencies]
+# PyTorch comes from its own index, through exactly one of these (RFC-0005 'Python packaging'):
+# CPU wheels for CI and the tiny conformance models, CUDA 13.0 wheels for calibrating 8B and up.
+# uv.lock pins both to the same release (tests/test_package.py).
+cpu = ["torch>=2.4,<3"]
+cu130 = ["torch>=2.4,<3 ; sys_platform == 'linux'"]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.100",
+    "pyright[nodejs]>=1.1.390",
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.18,<0.10"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# The package sits beside this file, at python/tessera_quant/.
+module-root = ""
+
+[tool.uv]
+required-version = ">=0.9.18"
+# The supported platforms of 09 §8: tier 1 Linux x86-64, tier 2 macOS aarch64.
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+conflicts = [[{ extra = "cpu" }, { extra = "cu130" }]]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu130", extra = "cu130" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "B",    # likely bugs
+    "C4",   # comprehensions
+    "D",    # docstrings on public items
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # import order
+    "N",    # naming
+    "PERF", # performance anti-patterns
+    "PT",   # pytest style
+    "RUF",  # ruff's own rules
+    "S",    # security: pickle, eval, subprocess, weak randomness
+    "SIM",  # simplifications
+    "UP",   # modern syntax for the minimum Python
+    "W",    # pycodestyle warnings
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert, and their names say what they check.
+"tests/**" = ["D", "S101"]
+
+[tool.pyright]
+include = ["tessera_quant", "tests"]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+xfail_strict = true
+filterwarnings = ["error"]

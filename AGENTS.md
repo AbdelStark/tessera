@@ -20,6 +20,7 @@ Tessera proves that a committed integer language model `D` produced a recorded t
 | `crates/` | Prover workspace: one crate per component of [01 §2](docs/spec/01-architecture.md#2-components), dependencies in the DAG order of [01 §3](docs/spec/01-architecture.md#3-dependency-rules) |
 | `verifier/` | Independent verifier workspace (`tv-*`): own lockfile, `allowlist.toml`, stricter `deny.toml`, `supply-chain/` (cargo vet) |
 | `xtask/` | Repository gates and automation (`cargo xtask help`); `xtask/fixtures/` holds the gates' self-test inputs |
+| `python/` | `tessera-quant`, the quantization front-end (RFC-0005): uv project, own lockfile, same version as the crates |
 | `spec/vectors/` | Conformance vectors: data shared by both workspaces, produced by independent oracles |
 | `docs/` | Specification, RFCs, roadmap, release checklist |
 
@@ -32,13 +33,14 @@ cargo test --workspace --locked                          # prover workspace
 (cd verifier/fuzz && cargo fuzz run decode)              # fuzz targets, own nightly pin: verifier/fuzz/README.md
 cargo clippy --workspace --all-targets --locked -- -D warnings   # also inside verifier/
 cargo fmt --all --check                                  # also inside verifier/
-cargo xtask lint                 # unsafe code, SPDX headers, licenses, Markdown links, policy files, report schemas
+cargo xtask lint                 # unsafe code, SPDX headers, licenses, Markdown links, policy files, report schemas, one version for crates and Python
 cargo xtask check-isolation      # verifier independence (RFC-0001)
 cargo xtask check-test-features  # test-only features fail release builds
 cargo xtask check-branchless     # the field's operations compile branch-free in x86_64 loops (INV-ARCH-2)
 cargo xtask check-pr --base origin/main   # changelog entry and DCO sign-off of the branch
 cargo xtask check-deps           # cargo-deny and cargo-vet; needs cargo-deny 0.20.2, cargo-vet 0.10.2
 cargo xtask gen-vectors          # rewrite spec/vectors/ after changing codec or field cases or an oracle (generate.py); needs python3
+(cd python && uv sync --extra cpu && uv run pytest)      # Python package; also ruff check, ruff format --check, pyright
 ```
 
 ## Invariants a change must not break

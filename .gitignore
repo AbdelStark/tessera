@@ -6,3 +6,8 @@ target/
 *.profraw
 *.profdata
 __pycache__/
+# The Python package's environment and tool caches (python/).
+.venv/
+.hypothesis/
+.pytest_cache/
+.ruff_cache/

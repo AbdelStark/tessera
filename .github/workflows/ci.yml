@@ -147,30 +147,51 @@ jobs:
           cargo +1.88.0 check --workspace --all-targets --locked
           (cd verifier && cargo +1.88.0 check --workspace --all-targets --locked)
 
-  python:
-    name: python
+  python-versions:
+    # The Python front-end's supported versions (09 §8). The `python` job below is the required
+    # check, so that adding a version here leaves branch protection unchanged.
+    name: python ${{ matrix.python }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: python
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Detect the Python package
-        id: detect
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.9.18"
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - name: Install from the lockfile, with CPU PyTorch (RFC-0005 'Python packaging')
+        run: uv sync --locked --extra cpu
+      - name: Lint
         run: |
-          if [ -f python/pyproject.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
-      - if: steps.detect.outputs.present == 'true'
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - name: Lint, type-check and test
-        if: steps.detect.outputs.present == 'true'
-        working-directory: python
-        run: |
-          uv sync --locked
-          uv run ruff check
-          uv run ruff format --check
-          uv run pyright --strict
-          uv run pytest
-      - name: Skip
-        if: steps.detect.outputs.present != 'true'
-        run: echo "python/pyproject.toml is absent; nothing to check yet (#67)."
+          uv run --no-sync ruff check
+          uv run --no-sync ruff format --check
+      - name: Type-check (strict, from pyproject.toml)
+        run: uv run --no-sync pyright
+      - name: Test
+        run: uv run --no-sync pytest
+
+  python:
+    name: python
+    needs: python-versions
+    # Runs when a version fails too, since a skipped required check would count as passed; a
+    # cancelled run reports nothing.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every supported Python version passed
+        env:
+          RESULT: ${{ needs.python-versions.result }}
+        run: test "$RESULT" = success
 
   macos:
     # Tier-2 build-only platform (09 §8). Runs on main only: macOS minutes are billed at ten
