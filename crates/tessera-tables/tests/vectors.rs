@@ -43,7 +43,7 @@ fn integer(value: &Value) -> i64 {
 #[test]
 fn every_vector_regenerates_with_its_digest_rows_and_lookups() {
     let cases = cases();
-    assert_eq!(cases.len(), 29);
+    assert_eq!(cases.len(), 33);
     for case in &cases {
         let name = case["name"].as_str().expect("a name");
         let spec = spec_of(case);
@@ -267,6 +267,50 @@ fn parameters_just_outside_each_rule_are_refused() {
         }),
         Ok(1 << 16)
     );
+
+    let silu = |b, r_by_class: &[u8], in_exp, out_exp| TableKind::Silu {
+        b,
+        r_by_class: r_by_class.to_vec(),
+        in_exp,
+        out_exp,
+    };
+    assert_eq!(
+        build(silu(6, &[], -3, -4)),
+        refused("Silu", "one to four classes")
+    );
+    assert_eq!(
+        build(silu(6, &[0; 5], -3, -4)),
+        refused("Silu", "one to four classes")
+    );
+    let shape = "b ≥ 1 and b + ⌈log2 n⌉ ≤ 32 for n classes";
+    assert_eq!(build(silu(0, &[0], -3, -4)), refused("Silu", shape));
+    assert_eq!(build(silu(32, &[20, 20], -3, -4)), refused("Silu", shape));
+    assert_eq!(
+        build(silu(6, &[1, 6], -3, -4)),
+        refused("Silu", "r_c < b for every class")
+    );
+    assert_eq!(
+        build(silu(6, &[5], -3, -4)),
+        Ok(64),
+        "r_c = b − 1: h is −1 or 0"
+    );
+    // The values of h are counted before any is generated.
+    assert_eq!(
+        build(silu(26, &[1], -3, -4)),
+        refused("Silu", "at most 2^24 values of h over the classes")
+    );
+    assert_eq!(build(silu(30, &[14, 15, 16, 17], -10, -4)), Ok(1 << 32));
+    for in_exp in [-65, 1] {
+        assert_eq!(
+            build(silu(6, &[0], in_exp, -4)),
+            refused("Silu", "−64 ≤ in_exp ≤ 0")
+        );
+    }
+    let shift = "1 ≤ 63 − in_exp + out_exp ≤ 126";
+    assert_eq!(build(silu(6, &[0], 0, -63)), refused("Silu", shift));
+    assert_eq!(build(silu(6, &[0], -64, 0)), refused("Silu", shift));
+    assert_eq!(build(silu(6, &[0], 0, -62)), Ok(64));
+    assert_eq!(build(silu(6, &[0], -64, -1)), Ok(64));
 }
 
 /// The witness-side lookup computes what the rows hold for every key of the byte tables and of a
@@ -292,11 +336,17 @@ fn lookups_agree_with_the_rows_for_every_key() {
             frac_bits: 8,
             out_bits: 16,
         },
+        TableKind::Silu {
+            b: 7,
+            r_by_class: vec![0, 2, 3],
+            in_exp: -4,
+            out_exp: -3,
+        },
     ];
     for kind in kinds {
         let table = GeneratedTable::new(TableId(7), kind.clone()).expect("a table");
         let (offset, classes, width) = match &kind {
-            TableKind::Requant { b, r_by_class, .. } => {
+            TableKind::Requant { b, r_by_class, .. } | TableKind::Silu { b, r_by_class, .. } => {
                 (1i64 << (b - 1), r_by_class.len(), 1u64 << b)
             }
             _ => (0, 1, table.row_count()),

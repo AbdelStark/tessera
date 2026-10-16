@@ -226,6 +226,11 @@ All notable changes to the prover release train are recorded here: the crates un
   - `GeneratedTable` holds the generated core of the fixed-point kinds, and `Exp` and `Exp2Frac` lookups read it.
   - The tables oracle checks every `Exp` key of its core, and every `Exp2Frac` key, against 60-digit `decimal` references. That includes the production parameters: 2^22 keys at `σ = 16`, with cores of 36,133 and 144,542 keys. `spec/vectors/tables/constants.json` pins `LN2`.
   - `cargo xtask lint` refuses floating-point types and literals in `tessera-tables` and `tv-tables`. It lexes the sources, so comments and strings do not count.
+- The `Silu` table in `tessera-tables`, the second of the fixed-point generators of #71 (RFC-0008 'Fixed-point generators'):
+  - RFC-0008's `Silu` row asked for `silu(h · σ_h)` but named no `σ_h`. The kind is now `Silu { b, r_by_class, in_exp, out_exp }`, appended as tag 8. The value is `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)` with `h = k >> r_c`, looked up as `pack(c, k)` like `Requant`.
+  - The generator computes `σ(x)` in Q63 from `exp_neg(|x|)`, multiplies by `h`, and rounds half up by a shift of `63 − in_exp + out_exp`. Every intermediate stays below `2^128`.
+  - A row's value depends only on its class and `h`, so the digest's core is every `h` of every class, at most `2^24` values in all. That bound becomes a rule, which a 405B-like gate (`b = 30`, shifts 14 to 17) meets with 122,880 values.
+  - The tables oracle checks every value against `x / (1 + e^{−x})` at 60 digits, including the 405B-like gate. Rust reproduces every digest.
 
 ### Changed
 

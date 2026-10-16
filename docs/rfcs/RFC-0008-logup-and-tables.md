@@ -70,7 +70,7 @@ An instance, with at least one lookup, proves its identity with two fraction tre
 |---|---|---|---|---|
 | `Range { bits }` | `x ∈ [0, 2^bits)` | none | `2^bits` | Split remainders, limbs, brackets |
 | `Requant { b, classes, r_by_class, lo, hi }` | `(class, k)`, `k ∈ [−2^{b−1}, 2^{b−1})` | `clamp(floor((k + 2^{r−1}) / 2^r), lo, hi)` | `|classes| · 2^b` | `Requant1` (RFC-0009) |
-| `Silu { b, classes, r_by_class, out_exp }` | `(class, k)` | `clamp(round(silu(h · σ_h) / σ_out), −128, 127)`, `h = k >> r` | `|classes| · 2^b` | MLP |
+| `Silu { b, r_by_class, in_exp, out_exp }` | `(class, k)` | `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)`, `h = k >> r_c` | `|r_by_class| · 2^b` | MLP |
 | `Exp { key_bits, sigma, scale }` | `k ∈ [0, 2^{key_bits})` | `round(2^σ · exp(−k · scale))` | `2^{key_bits}` | Softmax, vocabulary softmax |
 | `Exp2Frac { frac_bits, out_bits }` | `f ∈ [0, 2^{frac_bits})` | `⌊2^{f/2^{frac_bits}} · 2^{out_bits}⌋` | 2^8 | Scoring bound (RFC-0017) |
 | `Pow2 { max_exp }` | `i ∈ [0, max_exp)` | `2^i` | 64 | Scoring bound (RFC-0017) |
@@ -101,7 +101,8 @@ pub enum TableKind {
     Gf256Mul { c: u8 },
     Exp { key_bits: u8, sigma: u8, scale: Rational },
     Exp2Frac { frac_bits: u8, out_bits: u8 },
-    // Silu and Rope are appended with their generators.
+    Silu { b: u8, r_by_class: Vec<u8>, in_exp: i8, out_exp: i8 },
+    // Rope is appended with its generator.
 }
 pub enum BitOp { Xor, And }
 ```
@@ -118,14 +119,15 @@ Row `j` of each kind, for `j < T`, is below; rows `T` to `2^{log2_rows} − 1` r
 | `Gf256Mul` | `2^8` | `j` | `c • j` in GF(2^8) modulo `x^8 + x^4 + x^3 + x + 1` (FIPS-197 §4.2) | any |
 | `Exp` | `2^key_bits` | `j` | `round(2^σ · e^{−j · scale})` as 'Fixed-point generators' computes it | `1 ≤ key_bits ≤ 32`, `σ ≤ 32`, `scale > 0`; the zero tail starts by key `2^24` |
 | `Exp2Frac` | `2^frac_bits` | `j` | `⌊2^out_bits · 2^{j / 2^frac_bits}⌋` from below, as 'Fixed-point generators' computes it | `1 ≤ frac_bits ≤ 16`, `1 ≤ out_bits ≤ 56` |
+| `Silu` | `n · 2^b`, `n = |r_by_class|` | `j` | `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)` as 'Fixed-point generators' computes it, for `c = ⌊j / 2^b⌋`, `k = (j mod 2^b) − 2^{b−1}` and `h = k >> r_c` | `b ≥ 1`, `1 ≤ n ≤ 4`, `b + ⌈log2 n⌉ ≤ 32`, `r_c < b`, `Σ_c 2^{b − r_c} ≤ 2^24`, `−64 ≤ in_exp ≤ 0`, `1 ≤ 63 − in_exp + out_exp ≤ 126` |
 
 A lookup's key is the row's key:
 
-- `pack(c, z) = (z + 2^{b−1}) + 2^b · c` for `Requant`, as `Requant1` forms it ([RFC-0009](RFC-0009-gadgets.md#requant1));
+- `pack(c, z) = (z + 2^{b−1}) + 2^b · c` for `Requant` and `Silu`, as `Requant1` forms it ([RFC-0009](RFC-0009-gadgets.md#requant1));
 - `a + 2^8 · b` for the operands `a` and `b` of `Bitwise8`;
 - the operand itself for the other kinds.
 
-`Requant`'s classes are indices into `r_by_class`. The shifts they stand for are public; which class an output channel takes is hidden ([RFC-0007](RFC-0007-claim-list.md#public-and-hidden-quantization-data)).
+`Requant`'s and `Silu`'s classes are indices into `r_by_class`. The shifts they stand for are public; which class an output channel takes is hidden ([RFC-0007](RFC-0007-claim-list.md#public-and-hidden-quantization-data)).
 
 Claim-list validation regenerates each spec from its kind and id. Any of the following is `Reject(StatementMismatch)`:
 
@@ -148,11 +150,12 @@ Verifier cost per table: `O(n · core)`, at most a few times 2^24 field operatio
 
 - Generators use integers only: no floating point, no platform math library, no big-float dependency.
 - `Exp`, `Exp2Frac`, `Silu` and `Rope` compute in the fixed point of 'Fixed-point generators', with 128-bit intermediates. Range reduction uses a pinned `ln 2` (respectively `2π`), and a fixed-degree Taylor series is evaluated by Horner's rule with floor division at each step. The constants are the floors of the true constants times `2^64`. `spec/vectors/tables/generate.py` computes them with 100 significant digits (about 330 bits) and stores them in `spec/vectors/tables/constants.json`; every implementation writes them as literals.
-- **The generator is the definition.** A table's correctness for the protocol is its exact output, not its closeness to the real function. Accuracy (at most one output unit from the true value for every key) is a fidelity property, tested separately against a 256-bit reference.
+- **The generator is the definition.** A table's correctness for the protocol is its exact output, not its closeness to the real function. Accuracy (at most one output unit from the true value for every key) is a fidelity property, tested separately against references of at least 60 significant digits (about 200 bits).
 - `TableSpec.digest = H("table", TCE(spec without digest) ‖ TCE(piece parameters) ‖ TCE(core values))`. Hashing the defining data rather than all rows keeps digest computation `O(core)`.
   - The piece parameters are a `Vec<u64>`, and the core values a `Vec<Fp>` in row order, without padding.
   - `Exp` has one piece, `z`, the first key of its zero tail ('Fixed-point generators'), and its core is the values of keys `0` to `z − 1`.
   - `Pow2`, `Bitwise8`, `AesSbox`, `Gf256Mul` and `Exp2Frac` have no piece, and their core is their whole value column: the verifier evaluates them by enumeration.
+  - `Silu` has no piece. A row's value depends only on its class and `h = k >> r_c`, so the core is the value at every `h` of every class: class by class, `h` ascending from `−2^{b−1−r_c}` to `2^{b−1−r_c} − 1`, `Σ_c 2^{b − r_c}` values in all.
   - `Range` and `Requant` have neither: their values are closed forms of their parameters.
 - Three implementations exist: `tessera-tables` (prover), `tv-tables` (verifier), `tessera_quant.tables` (Python reference). All are checked against pinned digests.
 
@@ -182,9 +185,16 @@ The transcendental kinds are defined by the integers below, not by the functions
 - **`Exp2Frac`** gives key `f` the value `exp_pos(⌊f · LN2 / 2^frac_bits⌋) >> (62 − out_bits)`.
   - It never exceeds `⌊2^out_bits · 2^{f / 2^frac_bits}⌋`, because `LN2`, the argument and every step of `exp_pos` round down. RFC-0017 relies on this when it says that `E2` rounds down.
   - The rounding inside `exp_pos` stays below four units of `2^{−62}`, which `out_bits ≤ 56` keeps far below one output unit.
-- **Accuracy**, a fidelity property rather than part of the definition. The oracle checks every key of `Exp`'s core at the test parameters and at the production ones (`σ = 16`, `key_bits = 22`) against 60-digit references, and every key of `Exp2Frac`:
+- **`Silu`** gives `h` (with `|h| < 2^31`) its value as follows:
+  1. Set `(y, n) = exp_neg(|h| · 2^{64 + in_exp})`, the Q64 argument being `|x|` for `x = h · 2^{in_exp}`. Set `E = y >> n`, or 0 when `n ≥ 128`: `e^{−|x|}` in Q64.
+  2. Set `σ = ⌊2^127 / (2^64 + E)⌋` when `h ≥ 0`, and `⌊E · 2^63 / (2^64 + E)⌋` when `h < 0`. This is the logistic `σ(x)` in Q63.
+  3. The value is `clamp((h · σ + 2^{s−1}) >> s, −128, 127)` with `s = 63 − in_exp + out_exp`: `silu(x) / 2^{out_exp}` rounded half up.
+
+  The argument stays below `2^95`, and `|h · σ| < 2^94`.
+- **Accuracy**, a fidelity property rather than part of the definition. The oracle checks every key of `Exp`'s core at the test parameters and at the production ones (`σ = 16`, `key_bits = 22`), every key of `Exp2Frac` and every `h` of `Silu`, against 60-digit references:
   - every `Exp` value lies within one unit of `2^σ · e^{−k·scale}`;
-  - every `Exp2Frac` value lies at most one unit below the true floor, and never above it.
+  - every `Exp2Frac` value lies at most one unit below the true floor, and never above it;
+  - every `Silu` value lies within one unit of `silu(h · 2^{in_exp}) / 2^{out_exp}` clamped to INT8. This holds at every `h` of the test parameters and of a 405B-like gate: `b = 30`, four classes of shifts 14 to 17, `in_exp = −10`, `out_exp = −4`, 122,880 values.
 
 ### Interfaces
 

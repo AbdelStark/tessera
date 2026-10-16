@@ -76,6 +76,20 @@ pub enum TableKind {
         /// Output bits, 1 to 56, so that the generator's rounding stays below one output unit.
         out_bits: u8,
     },
+    /// `(class, k) ↦ clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)` with
+    /// `h = k >> r_c`, for `k ∈ [−2^{b−1}, 2^{b−1})`, looked up as `pack(c, k)` like `Requant`: the
+    /// MLP activation, absorbing the gate's rescale (RFC-0005 'Integer semantics').
+    Silu {
+        /// Key bits, at least 1, with `b + ⌈log2 n⌉ ≤ 32` for `n` classes.
+        b: u8,
+        /// The shift `r_c` of each class `c`, each below `b`; one to four classes, with
+        /// `Σ_c 2^{b − r_c} ≤ 2^24` values of `h` in all.
+        r_by_class: Vec<u8>,
+        /// The exponent of `h`'s scale, from −64 to 0.
+        in_exp: i8,
+        /// The exponent of the output's scale, with `1 ≤ 63 − in_exp + out_exp ≤ 126`.
+        out_exp: i8,
+    },
 }
 
 /// A table as the claim list names it (RFC-0007), sorted there by [`TableId`].

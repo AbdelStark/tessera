@@ -9,10 +9,10 @@
 //! and the witness-side lookup of a key.
 //!
 //! This version holds the arithmetic kinds, `Range`, `Requant`, `Pow2`, `Bitwise8`, `AesSbox`
-//! and `Gf256Mul`, whose values are exact integer functions, and the first fixed-point kinds,
-//! `Exp` and `Exp2Frac`, which RFC-0008 'Fixed-point generators' defines to the last integer.
-//! `Silu` and `Rope` follow, appended to [`TableKind`], and so does the structured evaluation
-//! of a table's multilinear extension (RFC-0008 'Structured evaluation').
+//! and `Gf256Mul`, whose values are exact integer functions, and the fixed-point kinds `Exp`,
+//! `Exp2Frac` and `Silu`, which RFC-0008 'Fixed-point generators' defines to the last integer.
+//! `Rope` follows, appended to [`TableKind`], and so does the structured evaluation of a table's
+//! multilinear extension (RFC-0008 'Structured evaluation').
 //!
 //! `spec/vectors/tables/` pins every kind's TCE encoding, digest and rows, written by an
 //! independent Python oracle. It checks the AES tables against FIPS-197's known-answer tests,
