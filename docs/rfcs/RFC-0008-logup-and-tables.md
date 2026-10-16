@@ -112,8 +112,11 @@ pub trait Table {
 
 pub struct LogUpInstance<'a> { pub table: &'a dyn Table, pub keys: VirtualPoly, pub values: CommittedPoly,
                                pub multiplicities: CommittedPoly }
-pub fn prove_logup_batch(instances: &[LogUpInstance], tr: &mut Transcript) -> LogUpProof;
+pub fn prove_logup(tr: &mut Transcript, instances: &[LogUpInstance], forests: &[Forest],
+                   schedule: &[TreeId]) -> ProvenLogUp;    // roots, levels, values, leaf claims
 ```
+
+The multiplicities are an input: they are committed before `α` ('Relation'). A schedule of `TreeId`s orders the instances' lookup and table trees beside the leaf stage's product forests, which share their levels ('Batching'). The v0.1 prover runs on dense test tables ('Migration / Rollout'): its instance takes the table's rows and the lookups as columns, and `Table` takes the rows' place when the table registry lands.
 
 ### Failure modes
 
@@ -151,7 +154,7 @@ The LogUp-GKR prover and verifier land in v0.1 (with dense test tables) for the 
 ## Testing Strategy
 
 - Completeness: random dense tables (2^8 to 2^16 rows) and lookups (2^4 to 2^20) verify; batched instances of different heights verify.
-- Soundness: one lookup outside the table, one wrong value, one multiplicity off by one, each rejected; over the `F65537` test field, the empirical false-accept rate of a single random-`α` trial matches `(N + T)/|F|` within a 99% binomial interval.
+- Soundness: one lookup outside the table, one wrong value, one multiplicity off by one, each rejected; over the `F65537` test field, the empirical false-accept rate of a single random-`α` trial stays at or below `(N + T)/|F|` within a 99% binomial interval. The bound is reached only by an instance whose difference polynomial has `N + T − 1` roots in the field; random bad instances accept far less often.
 - Padding: instance sizes `2^k − 1`, `2^k`, `2^k + 1` verify, on both sides.
 - Trees and roots: lookup trees of `2^0` to `2^20` leaves beside table trees of `2^0` to `2^16`, joining where their heights match, verify. Each of these is rejected with `Reject(Lookup)`: a zero root denominator on either side; roots whose fractions do not sum to zero; a lookup tree's leaf numerator claim other than 1; a table evaluation off by one.
 - Structured evaluation: for each table kind at small parameters (`b ≤ 16`), `eval_mle` equals brute-force `Σ_x eq(ρ, x) t(x)` over the `2^{h_t}` padded rows at 100 random points, `T` both a power of two and not.

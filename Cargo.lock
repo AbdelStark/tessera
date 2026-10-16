@@ -543,6 +543,17 @@ version = "0.1.0"
 [[package]]
 name = "tessera-logup"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tessera-codec",
+ "tessera-field",
+ "tessera-hash",
+ "tessera-poly",
+ "tessera-sumcheck",
+ "tv-core",
+ "tv-field",
+ "tv-hash",
+]
 
 [[package]]
 name = "tessera-pcs"

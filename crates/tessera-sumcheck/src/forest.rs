@@ -8,14 +8,8 @@ use core::fmt;
 use tessera_field::Field;
 use tessera_poly::PolyField;
 
-use crate::contract::eq_weights;
-use crate::{
-    Claim, Instance, Prefix, SumcheckError, SumcheckProof, SumcheckTranscript, Table, prove_batch,
-};
-
-/// The degree of a product-tree level's sumcheck: `eq(r, x)·Ṽ(0 ‖ x)·Ṽ(1 ‖ x)` has degree 3 in
-/// each variable (RFC-0010 'Relations', `ProductTreeLevel`).
-const LEVEL_DEGREE: usize = 3;
+use crate::trees::{LevelClaim, ProvenTreeLevel, Tree, prove_trees};
+use crate::{Claim, Prefix, SumcheckError, SumcheckProof, SumcheckTranscript};
 
 /// `2^s` product trees of one height `h`, stacked into one table of `2^{s+h}` leaves over the
 /// prime subfield: entry `y·2^h + x` is leaf `x` of tree `y` (RFC-0010 'Tree levels', 'Layout').
@@ -33,8 +27,8 @@ const LEVEL_DEGREE: usize = 3;
 /// The leaves are secret-class values (05 §3): the debug form shows the leaf count and the
 /// height, never a leaf.
 pub struct Forest<'a, F: PolyField> {
-    leaves: &'a [F::Base],
-    height: usize,
+    pub(crate) leaves: &'a [F::Base],
+    pub(crate) height: usize,
 }
 
 impl<F: PolyField> Clone for Forest<'_, F> {
@@ -150,6 +144,30 @@ impl<F> ProvenLevel<F> {
     }
 }
 
+impl<F> ProvenLevel<F> {
+    /// A level of [`prove_trees`] whose instances are all forests, whose next claims are all
+    /// claims on products.
+    fn of_forests(level: ProvenTreeLevel<F>) -> Self {
+        let (root_challenges, gamma, proof, point, rho, trees, next_claims) = level.into_fields();
+        Self {
+            root_challenges,
+            gamma,
+            proof,
+            point,
+            rho,
+            forests: trees,
+            next_claims: next_claims
+                .into_iter()
+                .filter_map(|claim| match claim {
+                    LevelClaim::Product(claim) => Some(claim),
+                    // Only forests were given, so every claim is on a product.
+                    LevelClaim::Fraction(_) => None,
+                })
+                .collect(),
+        }
+    }
+}
+
 /// Shows the shapes: the messages, challenges and claims are protocol-class data (05 §3).
 impl<F> fmt::Debug for ProvenLevel<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -210,15 +228,15 @@ impl<F> fmt::Debug for ProvenForests<F> {
     }
 }
 
-/// A level of a forest as its two halves, the tables of the sumcheck one level up: its even
+/// A level of a tree as its two halves, the tables of the sumcheck one level up: its even
 /// entries `V[2z]`, the table of `Ṽ(0 ‖ x)`, and its odd entries `V[2z + 1]`, that of `Ṽ(1 ‖ x)`.
-struct Halves<B> {
-    even: Vec<B>,
-    odd: Vec<B>,
+pub(crate) struct Halves<B> {
+    pub(crate) even: Vec<B>,
+    pub(crate) odd: Vec<B>,
 }
 
 impl<B> Halves<B> {
-    fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             even: Vec::new(),
             odd: Vec::new(),
@@ -226,22 +244,12 @@ impl<B> Halves<B> {
     }
 }
 
-/// A forest while its levels are proven.
-struct State<F: PolyField> {
-    /// `s`: the tree index's variables.
-    trees_log: usize,
-    /// `H − h`: the batch level at which it joins.
-    join: usize,
-    /// Level `t` at entry `t`, for `t = 1, …, h`; entry 0, the roots, is never built, and each
-    /// level is dropped once its sumcheck has run.
-    levels: Vec<Halves<F::Base>>,
-    /// The point of its current claim, once it has joined.
-    point: Vec<F>,
-}
-
 /// The tree index's number of variables `s` of forest `index`, or the first shape check it
 /// fails, in the order of [`SumcheckError`].
-fn shape<F: PolyField>(forest: &Forest<'_, F>, index: usize) -> Result<usize, SumcheckError> {
+pub(crate) fn shape<F: PolyField>(
+    forest: &Forest<'_, F>,
+    index: usize,
+) -> Result<usize, SumcheckError> {
     let len = forest.len();
     if !len.is_power_of_two() {
         return Err(SumcheckError::LeafCount { forest: index, len });
@@ -257,9 +265,25 @@ fn shape<F: PolyField>(forest: &Forest<'_, F>, index: usize) -> Result<usize, Su
     Ok(vars - forest.height)
 }
 
+/// Checks the shapes of `forests` as [`prove_forests`] and [`prove_trees`] do, forest by forest:
+/// a leaf count that is a power of two, then a height between 1 and `log2` of it. A caller that
+/// moves the transcript before it hands the forests to [`prove_trees`], as the LogUp prover does
+/// with its challenges and roots, checks them first.
+///
+/// # Errors
+///
+/// [`SumcheckError::LeafCount`] or [`SumcheckError::Height`] for the first forest that fails,
+/// `forest` its position in `forests`.
+pub fn check_forests<F: PolyField>(forests: &[Forest<'_, F>]) -> Result<(), SumcheckError> {
+    for (i, forest) in forests.iter().enumerate() {
+        shape(forest, i)?;
+    }
+    Ok(())
+}
+
 /// A forest's levels `1, …, h` from its leaves, at entries `1..=h`; entry 0, the roots, stays
 /// empty.
-fn build_levels<B: Field>(leaves: &[B], height: usize) -> Vec<Halves<B>> {
+pub(crate) fn build_levels<B: Field>(leaves: &[B], height: usize) -> Vec<Halves<B>> {
     let mut levels = Vec::with_capacity(height + 1);
     levels.resize_with(height + 1, Halves::empty);
     levels[height] = leaf_level(leaves);
@@ -270,7 +294,7 @@ fn build_levels<B: Field>(leaves: &[B], height: usize) -> Vec<Halves<B>> {
 }
 
 /// The halves of a forest's leaf level, `h`: the leaves de-interleaved, in one pass.
-fn leaf_level<B: Copy>(leaves: &[B]) -> Halves<B> {
+pub(crate) fn leaf_level<B: Copy>(leaves: &[B]) -> Halves<B> {
     let (even, odd) = leaves
         .chunks_exact(2)
         .map(|pair| (pair[0], pair[1]))
@@ -291,9 +315,9 @@ fn level_above<B: Field>(below: &Halves<B>) -> Halves<B> {
     Halves { even, odd }
 }
 
-/// `tree/{ℓ}/root/{c}` and `tree/{ℓ}/line`, the labels of a level that [`prove_batch`] does not
-/// squeeze (RFC-0014 'Transcript schedule', row 5).
-fn label(level: u32, suffix: fmt::Arguments<'_>) -> String {
+/// `tree/{ℓ}/{suffix}`: `root/{c}`, `gamma`, `lambda` and `line`, the labels of a level that its
+/// rounds do not squeeze (RFC-0014 'Transcript schedule', row 5).
+pub(crate) fn label(level: u32, suffix: fmt::Arguments<'_>) -> String {
     format!("{}/{suffix}", Prefix::Tree(level))
 }
 
@@ -310,12 +334,12 @@ fn label(level: u32, suffix: fmt::Arguments<'_>) -> String {
 ///    squeezed under `tree/{ℓ}/root/{c}`, `s_max` the largest `s_i` among the joining forests. A
 ///    joining forest's root point is the last `s_i` of them, in the order squeezed, and a single
 ///    tree's has no coordinate.
-/// 2. The forests that have joined, in the order given, are the instances of a [`prove_batch`] of
-///    degree 3 under `tree/{ℓ}`: forest `i`, at its own level `t`, proves
-///    `Σ_x eq(r_i, x)·Ṽ_{t+1}(0 ‖ x)·Ṽ_{t+1}(1 ‖ x)`, `r_i` its claim's point and `eq(r_i, ·)` a
-///    public factor. `γ` is squeezed under `tree/{ℓ}/gamma`, smaller instances are front-padded,
-///    and `u_0, w_0, u_1, w_1, …`, the two halves' values at each instance's point `r'_i`, the
-///    last `n_i` challenges, are absorbed under `tree/{ℓ}/evals`.
+/// 2. The forests that have joined, in the order given, are the instances of a
+///    [`prove_batch`](crate::prove_batch) of degree 3 under `tree/{ℓ}`: forest `i`, at its own
+///    level `t`, proves `Σ_x eq(r_i, x)·Ṽ_{t+1}(0 ‖ x)·Ṽ_{t+1}(1 ‖ x)`, `r_i` its claim's point and
+///    `eq(r_i, ·)` a public factor. `γ` is squeezed under `tree/{ℓ}/gamma`, smaller instances are
+///    front-padded, and `u_0, w_0, u_1, w_1, …`, the two halves' values at each instance's point
+///    `r'_i`, the last `n_i` challenges, are absorbed under `tree/{ℓ}/evals`.
 /// 3. `ρ` is squeezed under `tree/{ℓ}/line`, and instance `i`'s next claim is
 ///    `Ṽ_{t+1}(ρ ‖ r'_i) = u_i + ρ·(w_i − u_i)`, `ρ` its lowest coordinate.
 ///
@@ -325,6 +349,8 @@ fn label(level: u32, suffix: fmt::Arguments<'_>) -> String {
 /// The prover never needs a claim's value, and takes none. A root claim is the verifier's:
 /// `Σ_y v_y·eq(r, y)` from the public root values `v_y`, zero for `SoftmaxRow` (RFC-0009), and a
 /// forest whose trees' products are not the public values yields a proof the verifier rejects.
+///
+/// These are the levels of [`prove_trees`] for a batch of forests alone, which squeezes no `λ`.
 ///
 /// # Algorithm
 ///
@@ -358,95 +384,11 @@ where
     if forests.is_empty() {
         return Err(SumcheckError::NoForests);
     }
-    let trees_logs = forests
-        .iter()
-        .enumerate()
-        .map(|(i, forest)| shape(forest, i))
-        .collect::<Result<Vec<_>, _>>()?;
-    let tallest = forests.iter().map(Forest::height).max().unwrap_or(0);
-
-    let mut states: Vec<State<F>> = forests
-        .iter()
-        .zip(trees_logs)
-        .map(|(forest, trees_log)| State {
-            trees_log,
-            join: tallest - forest.height,
-            levels: build_levels(forest.leaves, forest.height),
-            point: Vec::new(),
-        })
-        .collect();
-
-    let mut levels = Vec::with_capacity(tallest);
-    for level in 0..tallest {
-        let tag = level as u32;
-        let s_max = states
-            .iter()
-            .filter(|state| state.join == level)
-            .map(|state| state.trees_log)
-            .max()
-            .unwrap_or(0);
-        let root_challenges: Vec<F> = (0..s_max)
-            .map(|c| transcript.challenge(&label(tag, format_args!("root/{c}"))))
-            .collect();
-        for state in states.iter_mut().filter(|state| state.join == level) {
-            state.point = root_challenges[s_max - state.trees_log..].to_vec();
-        }
-
-        let active: Vec<usize> = (0..states.len())
-            .filter(|&i| states[i].join <= level)
-            .collect();
-        let eqs: Vec<Vec<F>> = active
-            .iter()
-            .map(|&i| eq_weights(&states[i].point))
-            .collect();
-        let instances: Vec<Instance<'_, F>> = active
-            .iter()
-            .zip(&eqs)
-            .map(|(&i, eq)| {
-                let state = &states[i];
-                let below = &state.levels[level - state.join + 1];
-                Instance::new(vec![
-                    Table::ext(eq).public(),
-                    Table::base(&below.even),
-                    Table::base(&below.odd),
-                ])
-            })
-            .collect();
-        let proven = prove_batch(transcript, Prefix::Tree(tag), LEVEL_DEGREE, &instances)?;
-        drop(instances);
-        drop(eqs);
-        let rho = transcript.challenge(&label(tag, format_args!("line")));
-
-        let mut next_claims = Vec::with_capacity(active.len());
-        for (k, (&i, evals)) in active
-            .iter()
-            .zip(proven.proof().final_evals.chunks_exact(2))
-            .enumerate()
-        {
-            let own = proven.instance_point(k).unwrap_or_default();
-            let mut point = Vec::with_capacity(own.len() + 1);
-            point.push(rho);
-            point.extend_from_slice(own);
-            let (u, w) = (evals[0], evals[1]);
-            let state = &mut states[i];
-            state.point.clone_from(&point);
-            state.levels[level - state.join + 1] = Halves::empty();
-            next_claims.push(Claim {
-                point,
-                value: u + rho * (w - u),
-            });
-        }
-        let gamma = *proven.gamma();
-        let point = proven.point().to_vec();
-        levels.push(ProvenLevel {
-            root_challenges,
-            gamma,
-            proof: proven.into_proof(),
-            point,
-            rho,
-            forests: active,
-            next_claims,
-        });
-    }
-    Ok(ProvenForests { levels })
+    check_forests(forests)?;
+    let trees = forests.iter().map(|&forest| Tree::Forest(forest)).collect();
+    let proven = prove_trees(transcript, trees)?;
+    let (levels, _) = proven.into_levels();
+    Ok(ProvenForests {
+        levels: levels.into_iter().map(ProvenLevel::of_forests).collect(),
+    })
 }
