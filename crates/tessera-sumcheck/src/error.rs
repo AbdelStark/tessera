@@ -12,12 +12,17 @@ use crate::{MAX_DEGREE, Operand};
 ///
 /// [`prove_batch`](crate::prove_batch) checks its inputs in this order and returns the first
 /// failure: the degree; that there is an instance; then instance by instance, that it has a
-/// table and no more tables than the degree, and table by table, that the length is a power of
-/// two and equals the instance's first table's.
+/// table; for a product, no more tables than the degree; for a sum of products, at least one
+/// term, and term by term between 1 and the degree factors, each naming one of its tables; then
+/// table by table, that the length is a power of two and equals the instance's first table's.
 ///
 /// [`prove_forests`](crate::prove_forests) checks its forests in this order and returns the first
 /// failure: that there is a forest; then forest by forest, that its leaf count is a power of two
-/// and that its height is between 1 and `log2` of its leaf count.
+/// and that its height is between 1 and `log2` of its leaf count. [`prove_trees`](crate::prove_trees)
+/// checks its forests the same way, by their positions among its trees.
+///
+/// [`FractionTree::new`](crate::FractionTree::new) checks that `2^height` leaves can be
+/// allocated, then that base numerators are `2^height`.
 ///
 /// The matmul relations check their inputs at each step and return the first failure:
 /// [`MatMulWeight::new`](crate::MatMulWeight::new) and [`MatMulAct::new`](crate::MatMulAct::new),
@@ -41,8 +46,9 @@ pub enum SumcheckError {
         /// The instance, counted from 0 in the order given.
         instance: usize,
     },
-    /// An instance has more tables than the degree: its product would have a higher degree than
-    /// the round polynomials can carry.
+    /// A product instance has more tables than the degree: its product would have a higher degree
+    /// than the round polynomials can carry. A sum of products bounds its terms instead
+    /// ([`TermFactors`](Self::TermFactors)).
     TooManyTables {
         /// The instance, counted from 0 in the order given.
         instance: usize,
@@ -71,6 +77,34 @@ pub enum SumcheckError {
         /// The length of the instance's first table.
         expected: usize,
     },
+    /// A sum-of-products instance has no term.
+    NoTerms {
+        /// The instance, counted from 0 in the order given.
+        instance: usize,
+    },
+    /// A term multiplies no table, or more tables than the degree: its product would have no
+    /// variable, or a higher degree than the round polynomials can carry.
+    TermFactors {
+        /// The instance, counted from 0 in the order given.
+        instance: usize,
+        /// The term, counted from 0 within its instance.
+        term: usize,
+        /// Its number of factors.
+        factors: usize,
+        /// The batch's degree.
+        degree: usize,
+    },
+    /// A term's factor names no table of its instance.
+    TermFactor {
+        /// The instance, counted from 0 in the order given.
+        instance: usize,
+        /// The term, counted from 0 within its instance.
+        term: usize,
+        /// The factor's position, the first out of range.
+        factor: usize,
+        /// The instance's number of tables.
+        tables: usize,
+    },
     /// The batch of forests has no forest.
     NoForests,
     /// A forest's leaf count is not a power of two (zero included): its trees and their leaves
@@ -90,6 +124,19 @@ pub enum SumcheckError {
         height: usize,
         /// `log2` of its leaf count, the largest height it admits.
         vars: usize,
+    },
+    /// A fraction tree's `2^height` leaves cannot be counted in a `usize`, or their entries
+    /// exceed the largest allocation.
+    FractionHeight {
+        /// The height asked for.
+        height: usize,
+    },
+    /// A fraction tree's numerators in the prime subfield are not one per leaf.
+    FractionNumerators {
+        /// The numerators given.
+        len: usize,
+        /// The tree's `2^height` leaves.
+        expected: usize,
     },
     /// A matmul operand's shape counts `2^vars` entries, `vars` at least the bits of a `usize`:
     /// no slice has that many.
@@ -162,6 +209,29 @@ impl fmt::Display for SumcheckError {
                 "table {table} of instance {instance} has {len} entries where its first table has \
                  {expected}"
             ),
+            Self::NoTerms { instance } => {
+                write!(f, "instance {instance} is a sum of no term")
+            }
+            Self::TermFactors {
+                instance,
+                term,
+                factors,
+                degree,
+            } => write!(
+                f,
+                "term {term} of instance {instance} multiplies {factors} tables, outside 1 to the \
+                 degree {degree}"
+            ),
+            Self::TermFactor {
+                instance,
+                term,
+                factor,
+                tables,
+            } => write!(
+                f,
+                "term {term} of instance {instance} names table {factor}, where the instance has \
+                 {tables}"
+            ),
             Self::NoForests => write!(f, "a batch of forests needs at least one forest"),
             Self::LeafCount { forest, len } => {
                 write!(f, "forest {forest} has {len} leaves, not a power of two")
@@ -174,6 +244,14 @@ impl fmt::Display for SumcheckError {
                 f,
                 "forest {forest} has height {height}, outside 1 to {vars}, the log2 of its leaf \
                  count"
+            ),
+            Self::FractionHeight { height } => write!(
+                f,
+                "a fraction tree of height {height} has more leaves than memory can hold"
+            ),
+            Self::FractionNumerators { len, expected } => write!(
+                f,
+                "a fraction tree has {len} numerators where it has {expected} leaves"
             ),
             Self::OperandTooLarge { operand, vars } => write!(
                 f,

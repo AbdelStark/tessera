@@ -7,9 +7,10 @@ use core::fmt::Write as _;
 use core::ops::Range;
 
 use tessera_field::PrimeField;
-use tessera_poly::PolyField;
+use tessera_poly::{PolyField, evaluate, evaluate_base};
 
-use crate::kernel::{self, NODES, Scratch};
+use crate::kernel::{self, Entries, Lines, NODES, Scratch};
+use crate::terms::{Plan, Term};
 use crate::{MAX_DEGREE, SumcheckError, SumcheckProof, SumcheckTranscript};
 
 /// Which sumcheck of the protocol a proof belongs to: the prefix of its labels (RFC-0014
@@ -128,6 +129,14 @@ impl<'a, F: PolyField> Table<'a, F> {
             Values::Ext(values) => values.first().copied().unwrap_or(F::ZERO),
         }
     }
+
+    /// The entries, as the term loop reads them.
+    fn entries(&self) -> Entries<'a, F> {
+        match self.values {
+            Values::Base(values) => Entries::Base(values),
+            Values::Ext(values) => Entries::Ext(values),
+        }
+    }
 }
 
 /// Shows the field, length and kind, never an entry (05 §3).
@@ -141,33 +150,63 @@ impl<F: PolyField> fmt::Debug for Table<'_, F> {
     }
 }
 
-/// One instance of a batched sumcheck: the product `Π_k T̃_k` of its tables, all of `2^{n_i}`
-/// entries, whose sum over `{0, 1}^{n_i}` is the instance's claim. Its relation is the product,
-/// and its final evaluations are its tables' values at its point, in the order of its tables,
-/// public factors left out.
+/// One instance of a batched sumcheck, over tables all of `2^{n_i}` entries, whose relation's sum
+/// over `{0, 1}^{n_i}` is the instance's claim. Its final evaluations are its tables' values at
+/// its point, in the order of its tables, public factors left out. Its relation is either:
+///
+/// - **a product** ([`Instance::new`]): `Π_k T̃_k`, of at most the batch's degree tables;
+/// - **a sum of weighted products** over the shared table list ([`Instance::sum_of_products`]):
+///   `Σ_t w_t·Π_{k ∈ t} T̃_k`, each [`Term`] of at most the batch's degree factors. A fraction
+///   tree's level is `eq·(N_0·D_1 + N_1·D_0 + λ·D_0·D_1)`, over the tables
+///   `[eq (public), N_0, N_1, D_0, D_1]` with the terms `(1, {eq, N_0, D_1})`,
+///   `(1, {eq, N_1, D_0})` and `(λ, {eq, D_0, D_1})`; its final evaluations are `N_0, N_1, D_0,
+///   D_1`. Each table is bound once per round, however many terms read it.
 #[derive(Clone)]
 pub struct Instance<'a, F: PolyField> {
     tables: Vec<Table<'a, F>>,
+    /// `None` for a product of every table.
+    terms: Option<Vec<Term<F>>>,
 }
 
 impl<'a, F: PolyField> Instance<'a, F> {
     /// The product of `tables`, in order. [`prove_batch`] checks the shapes.
     pub fn new(tables: Vec<Table<'a, F>>) -> Self {
-        Self { tables }
+        Self {
+            tables,
+            terms: None,
+        }
+    }
+
+    /// The sum of `terms`, each a weight times a product of some of `tables`, named by their
+    /// positions. [`prove_batch`] checks the shapes: at least one term, each of 1 to the batch's
+    /// degree factors that name tables of the list.
+    pub fn sum_of_products(tables: Vec<Table<'a, F>>, terms: Vec<Term<F>>) -> Self {
+        Self {
+            tables,
+            terms: Some(terms),
+        }
     }
 
     /// The tables, in order.
     pub fn tables(&self) -> &[Table<'a, F>] {
         &self.tables
     }
+
+    /// The terms of a sum-of-products instance, or `None` for a product.
+    pub fn terms(&self) -> Option<&[Term<F>]> {
+        self.terms.as_deref()
+    }
 }
 
-/// Shows the tables' shapes, never an entry (05 §3).
+/// Shows the tables' shapes and the terms' factors, never an entry or a weight (05 §3).
 impl<F: PolyField> fmt::Debug for Instance<'_, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Instance")
-            .field("tables", &self.tables)
-            .finish()
+        let mut debug = f.debug_struct("Instance");
+        debug.field("tables", &self.tables);
+        if let Some(terms) = &self.terms {
+            debug.field("terms", terms);
+        }
+        debug.finish()
     }
 }
 
@@ -297,6 +336,57 @@ impl Degree {
         }
     }
 
+    /// The sums of the terms' values at the nodes of a round message, `0, 2, …, d`, in entries
+    /// `0..d`.
+    fn term_message_sums<F, L>(
+        self,
+        tables: &L,
+        plan: &Plan<F>,
+        pairs: Range<usize>,
+        scratch: &mut Scratch<F>,
+    ) -> [F; NODES]
+    where
+        F: PolyField,
+        L: Lines<F> + ?Sized,
+    {
+        use kernel::term_sums as sums;
+        let s = &mut scratch.terms;
+        match self {
+            Self::One => sums::<F, L, 1, true>(tables, plan, pairs, s),
+            Self::Two => sums::<F, L, 2, true>(tables, plan, pairs, s),
+            Self::Three => sums::<F, L, 3, true>(tables, plan, pairs, s),
+            Self::Four => sums::<F, L, 4, true>(tables, plan, pairs, s),
+            Self::Five => sums::<F, L, 5, true>(tables, plan, pairs, s),
+            Self::Six => sums::<F, L, 6, true>(tables, plan, pairs, s),
+            Self::Seven => sums::<F, L, 7, true>(tables, plan, pairs, s),
+        }
+    }
+
+    /// The sums of the terms' values at every node `0, 1, …, d`, in entries `0..=d`.
+    fn term_node_sums<F, L>(
+        self,
+        tables: &L,
+        plan: &Plan<F>,
+        pairs: Range<usize>,
+        scratch: &mut Scratch<F>,
+    ) -> [F; NODES]
+    where
+        F: PolyField,
+        L: Lines<F> + ?Sized,
+    {
+        use kernel::term_sums as sums;
+        let s = &mut scratch.terms;
+        match self {
+            Self::One => sums::<F, L, 2, false>(tables, plan, pairs, s),
+            Self::Two => sums::<F, L, 3, false>(tables, plan, pairs, s),
+            Self::Three => sums::<F, L, 4, false>(tables, plan, pairs, s),
+            Self::Four => sums::<F, L, 5, false>(tables, plan, pairs, s),
+            Self::Five => sums::<F, L, 6, false>(tables, plan, pairs, s),
+            Self::Six => sums::<F, L, 7, false>(tables, plan, pairs, s),
+            Self::Seven => sums::<F, L, 8, false>(tables, plan, pairs, s),
+        }
+    }
+
     /// The sums of the product's values at every node `0, 1, …, d`, in entries `0..=d`.
     fn node_sums<F, B, X>(
         self,
@@ -377,12 +467,37 @@ fn instance_vars<F: PolyField>(
     let Some(first) = tables.first() else {
         return Err(SumcheckError::NoTables { instance: index });
     };
-    if tables.len() > degree {
-        return Err(SumcheckError::TooManyTables {
-            instance: index,
-            tables: tables.len(),
-            degree,
-        });
+    match instance.terms() {
+        None if tables.len() > degree => {
+            return Err(SumcheckError::TooManyTables {
+                instance: index,
+                tables: tables.len(),
+                degree,
+            });
+        }
+        None => {}
+        Some([]) => return Err(SumcheckError::NoTerms { instance: index }),
+        Some(terms) => {
+            for (term, t) in terms.iter().enumerate() {
+                let factors = t.factors();
+                if factors.is_empty() || factors.len() > degree {
+                    return Err(SumcheckError::TermFactors {
+                        instance: index,
+                        term,
+                        factors: factors.len(),
+                        degree,
+                    });
+                }
+                if let Some(&factor) = factors.iter().find(|&&k| k >= tables.len()) {
+                    return Err(SumcheckError::TermFactor {
+                        instance: index,
+                        term,
+                        factor,
+                        tables: tables.len(),
+                    });
+                }
+            }
+        }
     }
     let expected = first.len();
     for (table, t) in tables.iter().enumerate() {
@@ -413,6 +528,13 @@ struct State<'a, F: PolyField> {
     base: Vec<&'a [F::Base]>,
     /// The tables over `F`, unbound, in order.
     ext: Vec<&'a [F]>,
+    /// For a sum-of-products instance, its plan and its tables unbound in order; `None` for a
+    /// product, which `base` and `ext` serve.
+    terms: Option<(Plan<F>, Vec<Entries<'a, F>>)>,
+    /// Whether the rounds read each table: every table of a product, the tables some term
+    /// multiplies in a sum of products. A table no round reads is never bound: its evaluation is
+    /// computed once, at the instance's point.
+    read: Vec<bool>,
     vars: usize,
     /// `n_max − n_i`: the padding rounds, which the batch runs first.
     pad: usize,
@@ -444,17 +566,36 @@ impl<'a, F: PolyField> State<'a, F> {
         let tables = instance.tables();
         let mut base = Vec::new();
         let mut ext = Vec::new();
-        for table in tables {
-            match table.values {
-                Values::Base(values) => base.push(values),
-                Values::Ext(values) => ext.push(values),
+        let terms = match instance.terms() {
+            Some(terms) => {
+                let plan = Plan::new(terms, tables.len());
+                scratch.terms.fit(plan.lines.len(), plan.groups.len());
+                Some((plan, tables.iter().map(Table::entries).collect::<Vec<_>>()))
             }
-        }
+            None => {
+                for table in tables {
+                    match table.values {
+                        Values::Base(values) => base.push(values),
+                        Values::Ext(values) => ext.push(values),
+                    }
+                }
+                None
+            }
+        };
+        let read: Vec<bool> = match &terms {
+            Some((plan, _)) => (0..tables.len()).map(|k| plan.lines.contains(&k)).collect(),
+            None => vec![true; tables.len()],
+        };
         let bound = if vars == 0 {
             tables.iter().map(|table| vec![table.single()]).collect()
         } else {
             let half = 1 << (vars - 1);
-            tables.iter().map(|_| Vec::with_capacity(half)).collect()
+            read.iter()
+                .map(|&read| match read {
+                    true => Vec::with_capacity(half),
+                    false => Vec::new(),
+                })
+                .collect()
         };
         let pad = n_max - vars;
         let mut first = [F::ZERO; NODES];
@@ -463,13 +604,25 @@ impl<'a, F: PolyField> State<'a, F> {
             // S_i: the product of the single entries, or p(0) + p(1) of the first own round,
             // which reads the tables unbound whatever round it is: compute it now, at every
             // node, in one pass.
-            let sum = if vars == 0 {
-                tables
+            let sum = match (&terms, instance.terms()) {
+                (_, Some(terms)) if vars == 0 => terms.iter().fold(F::ZERO, |sum, term| {
+                    let product = term.factors().iter().fold(F::ONE, |product, &k| {
+                        product * tables.get(k).map_or(F::ZERO, Table::single)
+                    });
+                    sum + *term.weight() * product
+                }),
+                _ if vars == 0 => tables
                     .iter()
-                    .fold(F::ONE, |product, table| product * table.single())
-            } else {
-                first = degree.node_sums(&base, &ext, 0..1 << (vars - 1), scratch);
-                first[0] + first[1]
+                    .fold(F::ONE, |product, table| product * table.single()),
+                (Some((plan, entries)), _) => {
+                    let pairs = 0..1 << (vars - 1);
+                    first = degree.term_node_sums(entries.as_slice(), plan, pairs, scratch);
+                    first[0] + first[1]
+                }
+                (None, _) => {
+                    first = degree.node_sums(&base, &ext, 0..1 << (vars - 1), scratch);
+                    first[0] + first[1]
+                }
             };
             weighted_sum = weight * sum;
         }
@@ -477,6 +630,8 @@ impl<'a, F: PolyField> State<'a, F> {
             tables,
             base,
             ext,
+            terms,
+            read,
             vars,
             pad,
             weight,
@@ -501,8 +656,14 @@ impl<'a, F: PolyField> State<'a, F> {
             return;
         }
         let sums = if j > self.pad {
-            let pairs = self.bound.first().map_or(0, Vec::len) / 2;
-            degree.message_sums(&[] as &[&[F::Base]], &self.bound, 0..pairs, scratch)
+            // Own round j − pad: the tables have 2^{vars − (j − pad)} entries left.
+            let pairs = 0..1 << (self.vars - (j - self.pad) - 1);
+            match &self.terms {
+                Some((plan, _)) => {
+                    degree.term_message_sums(self.bound.as_slice(), plan, pairs, scratch)
+                }
+                None => degree.message_sums(&[] as &[&[F::Base]], &self.bound, pairs, scratch),
+            }
         } else if self.pad > 0 {
             // The first own round, computed at every node by `new`: drop p(1).
             let mut sums = [F::ZERO; NODES];
@@ -510,7 +671,13 @@ impl<'a, F: PolyField> State<'a, F> {
             sums[1..NODES - 1].copy_from_slice(&self.first[2..]);
             sums
         } else {
-            degree.message_sums(&self.base, &self.ext, 0..1 << (self.vars - 1), scratch)
+            let pairs = 0..1 << (self.vars - 1);
+            match &self.terms {
+                Some((plan, entries)) => {
+                    degree.term_message_sums(entries.as_slice(), plan, pairs, scratch)
+                }
+                None => degree.message_sums(&self.base, &self.ext, pairs, scratch),
+            }
         };
         for (entry, sum) in message.iter_mut().zip(sums) {
             *entry += self.weight * sum;
@@ -518,29 +685,38 @@ impl<'a, F: PolyField> State<'a, F> {
     }
 
     /// Binds the instance's lowest unbound variable to `r` after round `j`, if the round was one
-    /// of its own: the first own round binds the borrowed tables into the reserved ones, later
-    /// rounds bind in place.
+    /// of its own: the first own round binds the borrowed tables that the rounds read into the
+    /// reserved ones, later rounds bind in place.
     fn bind(&mut self, j: usize, r: F) {
+        let tables = self.tables.iter().zip(&mut self.bound).zip(&self.read);
         if j == self.pad {
-            for (table, bound) in self.tables.iter().zip(&mut self.bound) {
+            for ((table, bound), _) in tables.filter(|(_, read)| **read) {
                 match table.values {
                     Values::Base(values) => kernel::bind_base(values, r, bound),
                     Values::Ext(values) => kernel::bind_ext(values, r, bound),
                 }
             }
         } else if j > self.pad {
-            for bound in &mut self.bound {
+            for ((_, bound), _) in tables.filter(|(_, read)| **read) {
                 kernel::bind_in_place(bound, r);
             }
         }
     }
 
-    /// Appends the tables' values at the instance's point, public factors left out.
-    fn final_evals(&self, out: &mut Vec<F>) {
-        for (table, bound) in self.tables.iter().zip(&self.bound) {
-            if !table.public {
-                out.push(bound.first().copied().unwrap_or(F::ZERO));
+    /// Appends the tables' values at the instance's point `point`, public factors left out: the
+    /// bound tables' single entries, and the others evaluated there.
+    fn final_evals(&self, point: &[F], out: &mut Vec<F>) {
+        for ((table, bound), &read) in self.tables.iter().zip(&self.bound).zip(&self.read) {
+            if table.public {
+                continue;
             }
+            let value = match (read || self.vars == 0, table.values) {
+                (true, _) => bound.first().copied(),
+                // A table of 2^n entries at n coordinates: the evaluation cannot fail.
+                (false, Values::Base(values)) => evaluate_base(values, point).ok(),
+                (false, Values::Ext(values)) => evaluate(values, point).ok(),
+            };
+            out.push(value.unwrap_or(F::ZERO));
         }
     }
 }
@@ -573,9 +749,10 @@ impl<'a, F: PolyField> State<'a, F> {
 /// # Errors
 ///
 /// A [`SumcheckError`] when the degree is outside `1..=MAX_DEGREE`, there is no instance, an
-/// instance has no table or more tables than the degree, or a table's length is not a power of
-/// two or differs from its instance's first table's. The inputs are checked before the
-/// transcript moves.
+/// instance has no table, a product has more tables than the degree, a sum of products has no
+/// term or a term with no factor, more factors than the degree or a factor that names no table,
+/// or a table's length is not a power of two or differs from its instance's first table's. The
+/// inputs are checked before the transcript moves.
 pub fn prove_batch<F, T>(
     transcript: &mut T,
     prefix: Prefix,
@@ -586,6 +763,45 @@ where
     F: PolyField,
     T: SumcheckTranscript<F> + ?Sized,
 {
+    let (nodes, vars) = check_batch(degree, instances)?;
+    let mut labels = Labels::new(prefix);
+    let gamma = transcript.challenge(labels.gamma());
+    Ok(prove_checked(
+        transcript, labels, nodes, vars, instances, gamma,
+    ))
+}
+
+/// [`prove_batch`] with `γ` already squeezed under `<prefix>/gamma`, for a caller that squeezes
+/// more challenges between `γ` and the first round, such as a tree level's `λ`, and builds its
+/// instances from them (RFC-0014 'Transcript schedule', row 5).
+pub(crate) fn prove_batch_after_gamma<F, T>(
+    transcript: &mut T,
+    prefix: Prefix,
+    degree: usize,
+    instances: &[Instance<'_, F>],
+    gamma: F,
+) -> Result<ProvenBatch<F>, SumcheckError>
+where
+    F: PolyField,
+    T: SumcheckTranscript<F> + ?Sized,
+{
+    let (nodes, vars) = check_batch(degree, instances)?;
+    Ok(prove_checked(
+        transcript,
+        Labels::new(prefix),
+        nodes,
+        vars,
+        instances,
+        gamma,
+    ))
+}
+
+/// The degree's loops and each instance's number of variables, or the first check the batch
+/// fails, in the order of [`SumcheckError`].
+fn check_batch<F: PolyField>(
+    degree: usize,
+    instances: &[Instance<'_, F>],
+) -> Result<(Degree, Vec<usize>), SumcheckError> {
     let nodes = Degree::new(degree).ok_or(SumcheckError::Degree { degree })?;
     if instances.is_empty() {
         return Err(SumcheckError::NoInstances);
@@ -595,10 +811,23 @@ where
         .enumerate()
         .map(|(i, instance)| instance_vars(instance, i, degree))
         .collect::<Result<Vec<_>, _>>()?;
-    let n_max = vars.iter().copied().max().unwrap_or(0);
+    Ok((nodes, vars))
+}
 
-    let mut labels = Labels::new(prefix);
-    let gamma = transcript.challenge(labels.gamma());
+/// The rounds and the final evaluations of a checked batch, from its `γ` on.
+fn prove_checked<F, T>(
+    transcript: &mut T,
+    mut labels: Labels,
+    nodes: Degree,
+    vars: Vec<usize>,
+    instances: &[Instance<'_, F>],
+    gamma: F,
+) -> ProvenBatch<F>
+where
+    F: PolyField,
+    T: SumcheckTranscript<F> + ?Sized,
+{
+    let n_max = vars.iter().copied().max().unwrap_or(0);
     let mut scratch = Scratch::new();
     let mut weight = F::ONE;
     let mut states = Vec::with_capacity(instances.len());
@@ -627,11 +856,11 @@ where
     let mut evals = Vec::with_capacity(states.len());
     for state in &states {
         let start = final_evals.len();
-        state.final_evals(&mut final_evals);
+        state.final_evals(&point[n_max - state.vars..], &mut final_evals);
         evals.push(start..final_evals.len());
     }
     transcript.absorb_message(labels.evals(), &final_evals);
-    Ok(ProvenBatch {
+    ProvenBatch {
         proof: SumcheckProof {
             rounds,
             final_evals,
@@ -640,7 +869,7 @@ where
         point,
         vars,
         evals,
-    })
+    }
 }
 
 /// `2^exponent` in the prime subfield, `exponent ≤ 62`: the scale of a padding round. A unit test

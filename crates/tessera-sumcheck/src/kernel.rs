@@ -21,6 +21,11 @@
 //!   multiplying its values into rows of [`Scratch`], which keeps register pressure flat as the
 //!   degree grows.
 //!
+//! Sums of products ([`term_sums`]) take the row loop too, a block of 64 pairs at a time: each
+//! table some term reads writes its line values into a row once, and the terms read the rows.
+//! Register pressure then stays flat however many tables the terms read, where a zipped loop
+//! would hold every table's line values at once: five tables at a fraction tree's level.
+//!
 //! Every loop walks its slices with `chunks_exact` and `zip`, without bounds checks. The sums are
 //! taken over a range of pairs, so a parallel backend can split the range into chunks and add
 //! their sums (RFC-0018). Control flow depends on lengths and on which tables are over the prime
@@ -32,6 +37,7 @@ use tessera_field::Field;
 use tessera_poly::PolyField;
 
 use crate::MAX_DEGREE;
+use crate::terms::Plan;
 
 /// The most nodes a product is evaluated at: `0, 1, …, MAX_DEGREE`.
 pub(crate) const NODES: usize = MAX_DEGREE + 1;
@@ -49,6 +55,8 @@ const ZIP_EXT_NODES: usize = 3;
 pub(crate) struct Scratch<F: PolyField> {
     ext: Vec<[F; NODES]>,
     base: Vec<[F::Base; NODES]>,
+    /// The term loop's rows, empty until a sum-of-products instance fits them.
+    pub(crate) terms: TermScratch<F>,
 }
 
 impl<F: PolyField> Scratch<F> {
@@ -57,6 +65,7 @@ impl<F: PolyField> Scratch<F> {
         Self {
             ext: vec![[F::ZERO; NODES]; BLOCK],
             base: vec![[F::Base::ZERO; NODES]; BLOCK],
+            terms: TermScratch::new(),
         }
     }
 }
@@ -296,6 +305,259 @@ where
             for ((sum, x), &b) in sums[..N].iter_mut().zip(&ext_row[..N]).zip(&base_row[..N]) {
                 *sum += x.mul_by_base(b);
             }
+        }
+    }
+    sums
+}
+
+/// Pairs per block of the term loop. Its rows hold `N` values per pair, at most 4 in a tree level,
+/// so the line rows of five tables and three work rows take about 32 KB over `Fp2`.
+const TERM_BLOCK: usize = 64;
+
+/// A table's entries as the term loop reads them, unbound: in the prime subfield or in `F`.
+pub(crate) enum Entries<'a, F: PolyField> {
+    Base(&'a [F::Base]),
+    Ext(&'a [F]),
+}
+
+impl<F: PolyField> Clone for Entries<'_, F> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<F: PolyField> Copy for Entries<'_, F> {}
+
+/// Tables addressed by position, whose values on the line through each pair the term loop writes
+/// a block at a time: an instance's unbound tables, or its tables bound over `F`.
+pub(crate) trait Lines<F: PolyField> {
+    /// Writes table `k`'s values at the `N` nodes of [`line`] on each pair of `pairs`, `N` values
+    /// per pair, into `out`, lifted to `F`.
+    fn write<const N: usize, const SKIP_ONE: bool>(
+        &self,
+        k: usize,
+        pairs: Range<usize>,
+        out: &mut [F],
+    );
+}
+
+/// Writes the values of each pair of `entries` at the `N` nodes, `N` per pair, into `out`.
+fn write_lines<E: Field, F: From<E>, const N: usize, const SKIP_ONE: bool>(
+    entries: &[E],
+    out: &mut [F],
+) {
+    for (pair, row) in entries.chunks_exact(2).zip(out.chunks_exact_mut(N)) {
+        each_node::<E, N, SKIP_ONE>(pair[0], pair[1], |m, value| row[m] = F::from(value));
+    }
+}
+
+impl<F: PolyField> Lines<F> for [Entries<'_, F>] {
+    fn write<const N: usize, const SKIP_ONE: bool>(
+        &self,
+        k: usize,
+        pairs: Range<usize>,
+        out: &mut [F],
+    ) {
+        match self[k] {
+            Entries::Base(table) => {
+                write_lines::<F::Base, F, N, SKIP_ONE>(at(&table, &pairs), out);
+            }
+            Entries::Ext(table) => write_lines::<F, F, N, SKIP_ONE>(at(&table, &pairs), out),
+        }
+    }
+}
+
+impl<F: PolyField> Lines<F> for [Vec<F>] {
+    fn write<const N: usize, const SKIP_ONE: bool>(
+        &self,
+        k: usize,
+        pairs: Range<usize>,
+        out: &mut [F],
+    ) {
+        write_lines::<F, F, N, SKIP_ONE>(at(&self[k], &pairs), out);
+    }
+}
+
+/// Rows for one block of the term loop, allocated once per proof: a line row per table that a
+/// term reads, the common factors' product, a group's sum and a product beside it; and one sum
+/// per group.
+pub(crate) struct TermScratch<F> {
+    lines: Vec<F>,
+    common: Vec<F>,
+    sum: Vec<F>,
+    product: Vec<F>,
+    groups: Vec<[F; NODES]>,
+}
+
+impl<F: Field> TermScratch<F> {
+    /// No rows: a batch of products never allocates them.
+    pub(crate) fn new() -> Self {
+        Self {
+            lines: Vec::new(),
+            common: Vec::new(),
+            sum: Vec::new(),
+            product: Vec::new(),
+            groups: Vec::new(),
+        }
+    }
+
+    /// Grows the rows to fit a plan of `lines` line slots and `groups` groups, before any round.
+    pub(crate) fn fit(&mut self, lines: usize, groups: usize) {
+        let row = TERM_BLOCK * NODES;
+        if self.lines.len() < lines * row {
+            self.lines.resize(lines * row, F::ZERO);
+        }
+        for rows in [&mut self.common, &mut self.sum, &mut self.product] {
+            if rows.len() < row {
+                rows.resize(row, F::ZERO);
+            }
+        }
+        if self.groups.len() < groups {
+            self.groups.resize(groups, [F::ZERO; NODES]);
+        }
+    }
+}
+
+/// `out[i] = a[i]·b[i]`.
+fn product_into<F: Field>(out: &mut [F], a: &[F], b: &[F]) {
+    for ((o, &x), &y) in out.iter_mut().zip(a).zip(b) {
+        *o = x * y;
+    }
+}
+
+/// `out[i] += a[i]·b[i]`.
+fn add_product<F: Field>(out: &mut [F], a: &[F], b: &[F]) {
+    for ((o, &x), &y) in out.iter_mut().zip(a).zip(b) {
+        *o += x * y;
+    }
+}
+
+/// `out[i] *= a[i]`.
+fn multiply<F: Field>(out: &mut [F], a: &[F]) {
+    for (o, &x) in out.iter_mut().zip(a) {
+        *o *= x;
+    }
+}
+
+/// `out[i] += a[i]`.
+fn add<F: Field>(out: &mut [F], a: &[F]) {
+    for (o, &x) in out.iter_mut().zip(a) {
+        *o += x;
+    }
+}
+
+/// The product of the rows `slots` (at least two) into `out`.
+fn product_of<'r, F: Field>(out: &mut [F], line: impl Fn(usize) -> &'r [F], slots: &[usize]) {
+    if let [first, second, rest @ ..] = slots {
+        product_into(out, line(*first), line(*second));
+        for &slot in rest {
+            multiply(out, line(slot));
+        }
+    }
+}
+
+/// `acc[m] += Σ_t c[t][m]·r[t][m]` over the rows of `N` values, `c` absent meaning 1; `r` absent
+/// meaning 1 too, the sum of `c` alone.
+fn accumulate<F: Field, const N: usize>(acc: &mut [F; NODES], c: Option<&[F]>, r: Option<&[F]>) {
+    match (c, r) {
+        (Some(c), Some(r)) => {
+            for (c, r) in c.chunks_exact(N).zip(r.chunks_exact(N)) {
+                for m in 0..N {
+                    acc[m] += c[m] * r[m];
+                }
+            }
+        }
+        (Some(row), None) | (None, Some(row)) => {
+            for row in row.chunks_exact(N) {
+                for m in 0..N {
+                    acc[m] += row[m];
+                }
+            }
+        }
+        (None, None) => {}
+    }
+}
+
+/// `Σ_t Σ_k w_k·Π_{f ∈ k} (a_f + z·Δ_f)` at the `N` nodes of [`line`], over the pairs `t` in
+/// `pairs`, of the terms of an instance whose tables are `tables`, by its [`Plan`]; entries `N`
+/// and after of the result are zero.
+///
+/// A block of pairs at a time: each table some term reads writes its line values into a row,
+/// once, whatever the number of terms that read it; the common factors multiply into one row; each
+/// group sums its terms' remaining products into a row and adds its dot product with the common
+/// row into the group's sum. Each group's weight multiplies its sum once, at the end.
+pub(crate) fn term_sums<F, L, const N: usize, const SKIP_ONE: bool>(
+    tables: &L,
+    plan: &Plan<F>,
+    pairs: Range<usize>,
+    scratch: &mut TermScratch<F>,
+) -> [F; NODES]
+where
+    F: PolyField,
+    L: Lines<F> + ?Sized,
+{
+    let TermScratch {
+        lines,
+        common,
+        sum,
+        product,
+        groups,
+    } = scratch;
+    let groups = &mut groups[..plan.groups.len()];
+    for acc in groups.iter_mut() {
+        *acc = [F::ZERO; NODES];
+    }
+    let row = TERM_BLOCK * NODES;
+    let end = pairs.end;
+    for start in pairs.step_by(TERM_BLOCK) {
+        let block = start..end.min(start.saturating_add(TERM_BLOCK));
+        let len = block.len() * N;
+        for (slot, &table) in plan.lines.iter().enumerate() {
+            let out = &mut lines[slot * row..slot * row + len];
+            tables.write::<N, SKIP_ONE>(table, block.clone(), out);
+        }
+        let lines = &*lines;
+        let line = |slot: usize| &lines[slot * row..slot * row + len];
+        let c: Option<&[F]> = match plan.common.as_slice() {
+            [] => None,
+            [only] => Some(line(*only)),
+            slots => {
+                let out = &mut common[..len];
+                product_of(out, line, slots);
+                Some(&*out)
+            }
+        };
+        for (group, acc) in plan.groups.iter().zip(groups.iter_mut()) {
+            let r: Option<&[F]> = match group.rests.as_slice() {
+                [only] if only.is_empty() => None,
+                [only] if only.len() == 1 => Some(line(only[0])),
+                rests => {
+                    let sum = &mut sum[..len];
+                    for (k, rest) in rests.iter().enumerate() {
+                        match (k, rest.as_slice()) {
+                            (0, []) => sum.fill(F::ONE),
+                            (0, [a]) => sum.copy_from_slice(line(*a)),
+                            (0, slots) => product_of(sum, line, slots),
+                            (_, []) => sum.iter_mut().for_each(|x| *x += F::ONE),
+                            (_, [a]) => add(sum, line(*a)),
+                            (_, [a, b]) => add_product(sum, line(*a), line(*b)),
+                            (_, slots) => {
+                                let product = &mut product[..len];
+                                product_of(product, line, slots);
+                                add(sum, product);
+                            }
+                        }
+                    }
+                    Some(&*sum)
+                }
+            };
+            accumulate::<F, N>(acc, c, r);
+        }
+    }
+    let mut sums = [F::ZERO; NODES];
+    for (group, acc) in plan.groups.iter().zip(groups.iter()) {
+        for (s, &a) in sums[..N].iter_mut().zip(&acc[..N]) {
+            *s += group.weight * a;
         }
     }
     sums

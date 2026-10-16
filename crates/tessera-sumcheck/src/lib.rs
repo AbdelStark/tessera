@@ -4,13 +4,14 @@
 //!
 //! This version holds the generic batched sumcheck prover of RFC-0010 'Batching within a stage'
 //! and 'Sumcheck messages': [`prove_batch`] proves the sums of products of up to
-//! [`MAX_DEGREE`] multilinear tables, over many instances of different sizes, in one round
-//! sequence. On it, [`prove_forests`] proves the product-tree levels of the leaf stage, for
-//! batches of forests of stacked trees (RFC-0010 'Tree levels'), and returns the leaf claims the
-//! next stage checks; [`MatMulWeight`] and [`MatMulAct`] build the instances of the matmul
-//! relations of RFC-0010 'Relations', stacked over layers or heads, and map their sumchecks'
-//! results to claims on their operands. The other relations of the stages, masking (RFC-0013)
-//! and the stage schedule build on them.
+//! [`MAX_DEGREE`] multilinear tables, and sums of weighted products over one shared table list,
+//! over many instances of different sizes, in one round sequence. On it, [`prove_trees`] proves
+//! the levels of the leaf stage, where product forests of stacked trees and LogUp fraction trees
+//! run together (RFC-0010 'Tree levels', RFC-0008 'Fraction tree'), and returns the leaf claims
+//! later checks owe; [`prove_forests`] is its batch of forests alone. [`MatMulWeight`] and
+//! [`MatMulAct`] build the instances of the matmul relations of RFC-0010 'Relations', stacked
+//! over layers or heads, and map their sumchecks' results to claims on their operands. The other
+//! relations of the stages, masking (RFC-0013) and the stage schedule build on them.
 //!
 //! # Protocol
 //!
@@ -18,8 +19,10 @@
 //!   on `{0, 1}^n`: `x_1` is the least significant bit of the index, and round `j` binds `x_j`
 //!   (RFC-0010 'Multilinear extensions').
 //! - An [`Instance`] is a product of [`Table`]s of one size, at most the batch's degree `d` of
-//!   them. Instance `i` (counted from 0 in the order given) on `n_i` variables enters with weight
-//!   `γ^i`, `γ` squeezed under `<prefix>/gamma` before the first round.
+//!   them, or a sum of weighted products over one list of tables, each [`Term`] a weight times
+//!   at most `d` of them ([`Instance::sum_of_products`]). Instance `i` (counted from 0 in the
+//!   order given) on `n_i` variables enters with weight `γ^i`, `γ` squeezed under
+//!   `<prefix>/gamma` before the first round.
 //! - Smaller instances are front-padded: constant in the lowest `n_max − n_i` variables, which the
 //!   first rounds bind, so that an instance's own variables take the last `n_i` challenges. The
 //!   batched sum is `Σ_i γ^i·2^{n_max − n_i}·c_i`.
@@ -112,6 +115,54 @@
 //! # Ok::<(), tessera_sumcheck::SumcheckError>(())
 //! ```
 //!
+//! # Fraction trees
+//!
+//! A [`FractionTree`] holds a LogUp tree's levels, built bottom-up from its `2^h` leaves
+//! `(n_x, d_x)` with `(n, d) = (n_L·d_R + n_R·d_L, d_L·d_R)`, its leaf numerators 1 or over the
+//! prime subfield and every other node over `F`. [`prove_trees`] takes a schedule of [`Tree`]s,
+//! forests and fraction trees in any order: each joins where its height matches, a forest of
+//! several trees under root challenges, a fraction tree on its root; `λ` follows `γ` at a level
+//! where a fraction tree is present, and a fraction tree's level is one sum-of-products instance,
+//! `eq·(N_0·D_1 + N_1·D_0 + λ·D_0·D_1)` over the shared tables `[eq, N_0, N_1, D_0, D_1]`, whose
+//! evaluations `N_0, N_1, D_0, D_1` are the level's message. [`ProvenTrees`] holds each level and
+//! each tree's leaf claims, a [`LevelClaim`].
+//!
+//! ```
+//! use tessera_codec::Ascii;
+//! use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
+//! use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
+//! use tessera_sumcheck::{Forest, FractionTree, LeafNumerators, LevelClaim, Tree, prove_trees};
+//!
+//! let context = SessionContext {
+//!     protocol: Ascii::new("tessera-protocol/1").expect("ASCII"),
+//!     mode: Mode::NonInteractive,
+//!     params: ParamSetId(Ascii::new("test-small/1").expect("ASCII")),
+//!     statement_digest: [0; 32],
+//!     session_id: [0; 16],
+//! };
+//! let fp = Goldilocks::from_u64_reduced;
+//! // Leaves (1, x + 9) for x < 8 and (2, x + 9) for x < 2, as a lookup tree and a table tree.
+//! let d = |x: usize| GoldilocksExt2::new(fp(x as u64 + 9), fp(1));
+//! let lookups = FractionTree::new(3, LeafNumerators::Unit, d)?;
+//! let numerators = [fp(2), fp(2)];
+//! let rows = FractionTree::new(1, LeafNumerators::Base(&numerators), d)?;
+//! let leaves: Vec<Goldilocks> = (1..=4).map(fp).collect();
+//! let trees = vec![
+//!     Tree::Fraction(lookups),
+//!     Tree::Forest(Forest::new(&leaves, 2)),
+//!     Tree::Fraction(rows),
+//! ];
+//! let proven = prove_trees(&mut Transcript::new(&context), trees)?;
+//! // Heights 3, 2 and 1 join at levels 0, 1 and 2; every level has a fraction tree, so a λ.
+//! let present: Vec<&[usize]> = proven.levels().iter().map(|level| level.trees()).collect();
+//! assert_eq!(present, [&[0][..], &[0, 1], &[0, 1, 2]]);
+//! assert!(proven.levels().iter().all(|level| level.lambda().is_some()));
+//! // Four evaluations per fraction tree, two per forest.
+//! assert_eq!(proven.levels()[2].proof().final_evals.len(), 4 + 2 + 4);
+//! assert!(matches!(proven.leaf_claims()[1], LevelClaim::Product(_)));
+//! # Ok::<(), tessera_sumcheck::SumcheckError>(())
+//! ```
+//!
 //! # Matmul relations
 //!
 //! [`MatMulWeight`] is a batch of tokens' activations times a weight matrix's transpose,
@@ -189,6 +240,12 @@
 //!   pairs at a time in rows that stay in the first-level cache. Every loop walks its slices with
 //!   `chunks_exact` and `zip`, without bounds checks, and sums over a range of pairs that a
 //!   parallel backend can split (RFC-0018).
+//! - **Sums of products.** Each table that a term reads writes its values on the line through
+//!   each pair into a row, once per block of pairs however many terms read it. The factors every
+//!   term shares, such as `eq`, multiply once per pair, and terms of equal weight share one sum,
+//!   their weight applied once per round: a fraction tree's level costs 5 products per pair and
+//!   node, 3 with numerators of 1. A table no term reads, as those numerators, is never bound: it
+//!   is evaluated once at the instance's point. Each table is bound once per round.
 //! - **Contractions.** A matmul contracts each operand once, in order, one product of an element
 //!   of `F` by a base element per entry, into a table over `F` of the instance's size. The middle
 //!   variables are summed in panels of 8 rows, 4 columns at a time, the low ones 4 rows at a time,
@@ -226,16 +283,23 @@ mod kernel;
 mod matmul;
 mod proof;
 mod prover;
+mod terms;
 mod transcript;
+mod trees;
 
 pub use claim::Claim;
 pub use error::SumcheckError;
-pub use forest::{Forest, ProvenForests, ProvenLevel, prove_forests};
+pub use forest::{Forest, ProvenForests, ProvenLevel, check_forests, prove_forests};
 pub use matmul::{
     MatMulAct, MatMulActClaims, MatMulActShape, MatMulActTables, MatMulWeight, MatMulWeightClaims,
     MatMulWeightShape, MatMulWeightTables, Operand, RightLayout,
 };
 pub use proof::SumcheckProof;
 pub use prover::{Instance, Prefix, ProvenBatch, Table, prove_batch};
+pub use terms::Term;
 pub use tessera_poly::MAX_DEGREE;
 pub use transcript::SumcheckTranscript;
+pub use trees::{
+    FractionClaim, FractionTree, LeafNumerators, LevelClaim, ProvenTreeLevel, ProvenTrees, Tree,
+    prove_trees,
+};

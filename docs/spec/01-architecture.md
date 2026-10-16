@@ -82,7 +82,9 @@ flowchart TB
 
 The prover crates form a DAG in this order (an arrow means "may depend on"):
 
-`codec ← field ← hash ← poly ← {sumcheck, logup, pcs, tables} ← ir ← compiler ← gadgets ← witness ← {scoring, anchor, protocol} ← prover ← gpu-backed prover features ← bench, cli`
+`codec ← field ← hash ← poly ← {sumcheck ← logup, pcs, tables} ← ir ← compiler ← gadgets ← witness ← {scoring, anchor, protocol} ← prover ← gpu-backed prover features ← bench, cli`
+
+Inside the braces, `logup` may depend on `sumcheck`, whose engine proves its fraction trees.
 
 Rules, each enforced by a CI check ([RFC-0001](../rfcs/RFC-0001-workspace-and-verifier-independence.md#enforcement)):
 
