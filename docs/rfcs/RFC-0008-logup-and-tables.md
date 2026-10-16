@@ -76,7 +76,7 @@ An instance, with at least one lookup, proves its identity with two fraction tre
 | `Pow2 { max_exp }` | `i ∈ [0, max_exp)` | `2^i` | 64 | Scoring bound (RFC-0017) |
 | `Bitwise8 { op }` | `(a, b)`, 8-bit each | `a ⊕ b`, `a ∧ b` | 2^16 | SHA-256 |
 | `AesSbox`, `Gf256Mul { c }` | `x`, 8-bit | S-box, `c · x` in GF(2^8) | 2^8 | AES-128 |
-| `Rope { theta, scaling, bits, max_context, d_head }` | `(position, frequency)` | `(C, S)`, 14-bit | `max_context · d_head / 2` | Public constants for `Rotate`, not a lookup table |
+| `Rope { theta, factor, low_freq_factor, high_freq_factor, original_max, bits, max_context, d_head }` | `(position, frequency)` | `(C, S)`, 14-bit | `max_context · d_head / 2` | Public constants for `Rotate`, not a lookup table |
 
 Signed keys are offset-encoded (`k + 2^{b−1}`); the compressed key adds `2^b · class` so tuples pack into one integer below `2^{B_max}`.
 
@@ -102,7 +102,8 @@ pub enum TableKind {
     Exp { key_bits: u8, sigma: u8, scale: Rational },
     Exp2Frac { frac_bits: u8, out_bits: u8 },
     Silu { b: u8, r_by_class: Vec<u8>, in_exp: i8, out_exp: i8 },
-    // Rope is appended with its generator.
+    Rope { theta: u32, factor: u16, low_freq_factor: u16, high_freq_factor: u16,
+           original_max: u32, bits: u8, max_context: u32, d_head: u16 },
 }
 pub enum BitOp { Xor, And }
 ```
@@ -119,6 +120,7 @@ Row `j` of each kind, for `j < T`, is below; rows `T` to `2^{log2_rows} − 1` r
 | `Gf256Mul` | `2^8` | `j` | `c • j` in GF(2^8) modulo `x^8 + x^4 + x^3 + x + 1` (FIPS-197 §4.2) | any |
 | `Exp` | `2^key_bits` | `j` | `round(2^σ · e^{−j · scale})` as 'Fixed-point generators' computes it | `1 ≤ key_bits ≤ 32`, `σ ≤ 32`, `scale > 0`; the zero tail starts by key `2^24` |
 | `Exp2Frac` | `2^frac_bits` | `j` | `⌊2^out_bits · 2^{j / 2^frac_bits}⌋` from below, as 'Fixed-point generators' computes it | `1 ≤ frac_bits ≤ 16`, `1 ≤ out_bits ≤ 56` |
+| `Rope` | `max_context · d_head / 2` pairs | the pair of position `⌊j / (d_head/2)⌋` and frequency `j mod (d_head/2)` | `(C, S) = (round(2^bits · cos(p·ω_i)), round(2^bits · sin(p·ω_i)))` as 'Fixed-point generators' computes them | `θ ≥ 2`, `factor ≥ 1`, `1 ≤ low_freq_factor < high_freq_factor`, `original_max ≥ 1`, `1 ≤ bits ≤ 30`, an even `d_head ≥ 2`, `1 ≤ max_context`, at most `2^24` pairs |
 | `Silu` | `n · 2^b`, `n = |r_by_class|` | `j` | `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)` as 'Fixed-point generators' computes it, for `c = ⌊j / 2^b⌋`, `k = (j mod 2^b) − 2^{b−1}` and `h = k >> r_c` | `b ≥ 1`, `1 ≤ n ≤ 4`, `b + ⌈log2 n⌉ ≤ 32`, `r_c < b`, `Σ_c 2^{b − r_c} ≤ 2^24`, `−64 ≤ in_exp ≤ 0`, `1 ≤ 63 − in_exp + out_exp ≤ 126` |
 
 A lookup's key is the row's key:
@@ -156,6 +158,7 @@ Verifier cost per table: `O(n · core)`, at most a few times 2^24 field operatio
   - `Exp` has one piece, `z`, the first key of its zero tail ('Fixed-point generators'), and its core is the values of keys `0` to `z − 1`.
   - `Pow2`, `Bitwise8`, `AesSbox`, `Gf256Mul` and `Exp2Frac` have no piece, and their core is their whole value column: the verifier evaluates them by enumeration.
   - `Silu` has no piece. A row's value depends only on its class and `h = k >> r_c`, so the core is the value at every `h` of every class: class by class, `h` ascending from `−2^{b−1−r_c}` to `2^{b−1−r_c} − 1`, `Σ_c 2^{b − r_c}` values in all.
+  - `Rope` has no piece, and its core is every pair in row order, `C` then `S`: `2 · max_context · d_head / 2` values.
   - `Range` and `Requant` have neither: their values are closed forms of their parameters.
 - Three implementations exist: `tessera-tables` (prover), `tv-tables` (verifier), `tessera_quant.tables` (Python reference). All are checked against pinned digests.
 
@@ -163,7 +166,7 @@ Verifier cost per table: `O(n · core)`, at most a few times 2^24 field operatio
 
 The transcendental kinds are defined by the integers below, not by the functions they approximate: an implementation computes exactly these. Division is floor division and `>>` is the arithmetic shift. A Q64 number `v` stands for `v / 2^64`, and every intermediate stays below `2^128`.
 
-- **Constant.** `LN2 = ⌊ln 2 · 2^64⌋ = 0xB17217F7D1CF79AB`.
+- **Constants.** `LN2 = ⌊ln 2 · 2^64⌋ = 0xB17217F7D1CF79AB`, `TAU = ⌊2π · 2^64⌋ = 0x6487ED5110B4611A6` and `HALF_PI = ⌊π/2 · 2^64⌋ = 0x1921FB54442D18469`.
 - **`exp_neg(x)`**, for a Q64 `x ≥ 0`, returns `(y, n)` with `e^{−x/2^64} ≈ y · 2^{−64−n}`:
   1. Set `n = ⌊x / LN2⌋` and `r = x − n · LN2`.
   2. Set `y = 2^64`. Then, for `i` from 20 down to 1, set `y ← 2^64 − ⌊r · y / (i · 2^64)⌋`.
@@ -191,10 +194,24 @@ The transcendental kinds are defined by the integers below, not by the functions
   3. The value is `clamp((h · σ + 2^{s−1}) >> s, −128, 127)` with `s = 63 − in_exp + out_exp`: `silu(x) / 2^{out_exp}` rounded half up.
 
   The argument stays below `2^95`, and `|h · σ| < 2^94`.
-- **Accuracy**, a fidelity property rather than part of the definition. The oracle checks every key of `Exp`'s core at the test parameters and at the production ones (`σ = 16`, `key_bits = 22`), every key of `Exp2Frac` and every `h` of `Silu`, against 60-digit references:
+- **`ln(n)`**, for an integer `1 ≤ n < 2^64`, returns `ln n` in Q64. Write `n = 2^m · u` with `u ∈ [1, 2)`, so that `ln n = m · LN2 + 2 · atanh(z)` with `z = (u − 1)/(u + 1) < 1/3`:
+  1. Set `z = ⌊(n − 2^m) · 2^64 / (n + 2^m)⌋` and `w = ⌊z² / 2^64⌋`.
+  2. Set `a = ⌊2^64 / 45⌋`. Then, for `k` from 21 down to 0, set `a ← ⌊2^64 / (2k + 1)⌋ + ⌊w · a / 2^64⌋`.
+  3. The result is `m · LN2 + ⌊z · a / 2^63⌋`.
+- **`cos_sin(θ)`**, for a Q64 angle `θ < 2^100`, returns `(cos θ, sin θ)` in Q62, signed:
+  1. Set `t = θ mod TAU`, `q = ⌊t / HALF_PI⌋` and `r = (t − q · HALF_PI) >> 2`, Q62 of the angle within its quadrant.
+  2. Set `s = ⌊r² / 2^62⌋` and `c = t' = 2^62`. Then, for `k` from 13 down to 1, set `c ← 2^62 − ⌊s · c / ((2k−1) · 2k · 2^62)⌋` and `t' ← 2^62 − ⌊s · t' / (2k · (2k+1) · 2^62)⌋`, with signed floor division.
+  3. With `sin r = ⌊r · t' / 2^62⌋`, quadrant `q mod 4` gives `(c, sin r)`, `(−sin r, c)`, `(−c, −sin r)` or `(sin r, −c)`.
+- **`Rope`'s frequencies.** For frequency `i`, set `(y, n) = exp_neg(⌊2i · ln(θ) / d_head⌋)` and `ω = y >> n`, the Q64 of `θ^{−2i/d_head}`. Llama-3 then scales it by its wavelength `2π/ω` against `L = original_max`, and these comparisons decide the bands exactly:
+  - kept when `TAU · high_freq_factor < L · ω`;
+  - divided, `⌊ω / factor⌋`, when `TAU · low_freq_factor > L · ω`;
+  - otherwise interpolated: with `smooth = ⌊(L · ω − low_freq_factor · TAU) · 2^40 / ((high_freq_factor − low_freq_factor) · TAU)⌋`, it becomes `⌊ω / factor⌋ + ⌊⌊ω · smooth / 2^40⌋ · (factor − 1) / factor⌋`.
+- **`Rope`'s pairs.** The pair of position `p` and frequency `i` is `(c, s) = cos_sin(p · ω_i)`, each rounded half up as `(v · 2^bits + 2^61) >> 62`.
+- **Accuracy**, a fidelity property rather than part of the definition. The oracle checks every key of `Exp`'s core at the test parameters and at the production ones (`σ = 16`, `key_bits = 22`), every key of `Exp2Frac` and every `h` of `Silu`, against 60-digit references, and RoPE at 40 digits:
   - every `Exp` value lies within one unit of `2^σ · e^{−k·scale}`;
   - every `Exp2Frac` value lies at most one unit below the true floor, and never above it;
   - every `Silu` value lies within one unit of `silu(h · 2^{in_exp}) / 2^{out_exp}` clamped to INT8. This holds at every `h` of the test parameters and of a 405B-like gate: `b = 30`, four classes of shifts 14 to 17, `in_exp = −10`, `out_exp = −4`, 122,880 values.
+  - every `Rope` constant lies within one unit of `2^bits` times the cosine or sine of Hugging Face's Llama-3 RoPE angle. The oracle checks every pair of the test tables and 4,008 pairs of Llama-3.1's 131,072-position table against 40-digit references. `tessera-tables` checks 10^6 more against an f64 reference.
 
 ### Interfaces
 

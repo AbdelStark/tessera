@@ -133,7 +133,10 @@ impl GeneratedTable {
             return hasher.finalize();
         }
         let core_len = match self.spec.kind {
-            TableKind::Range { .. } | TableKind::Requant { .. } | TableKind::Silu { .. } => 0,
+            TableKind::Range { .. }
+            | TableKind::Requant { .. }
+            | TableKind::Silu { .. }
+            | TableKind::Rope { .. } => 0,
             TableKind::Exp { .. } | TableKind::Exp2Frac { .. } => self.core.len() as u64,
             TableKind::Pow2 { .. }
             | TableKind::Bitwise8 { .. }
@@ -152,7 +155,8 @@ impl GeneratedTable {
         // `j < T ≤ 2^32`, so it is a non-negative i64.
         let key = i64::try_from(j).unwrap_or(i64::MAX);
         match &self.spec.kind {
-            TableKind::Range { .. } => 0,
+            // A `GeneratedTable` never holds `Rope`, which `new` refuses.
+            TableKind::Range { .. } | TableKind::Rope { .. } => 0,
             TableKind::Requant {
                 b,
                 r_by_class,
@@ -242,7 +246,7 @@ impl Table for GeneratedTable {
     fn lookup(&self, key: i64, class: u8) -> Option<i64> {
         let row = self.index(key, class)?;
         Some(match &self.spec.kind {
-            TableKind::Range { .. } => 0,
+            TableKind::Range { .. } | TableKind::Rope { .. } => 0,
             TableKind::Requant {
                 r_by_class, lo, hi, ..
             } => requant(key, shift_of(r_by_class, i64::from(class)), *lo, *hi),
@@ -325,6 +329,7 @@ fn row_count(kind: &TableKind) -> Result<u64, TableError> {
             }
             Ok(1 << frac_bits)
         }
+        TableKind::Rope { .. } => refuse("Rope", "built as a RopeTable: it is no lookup table"),
         TableKind::Silu {
             b,
             r_by_class,

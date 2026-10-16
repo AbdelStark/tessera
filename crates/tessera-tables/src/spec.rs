@@ -90,6 +90,27 @@ pub enum TableKind {
         /// The exponent of the output's scale, with `1 ≤ 63 − in_exp + out_exp ≤ 126`.
         out_exp: i8,
     },
+    /// The RoPE constants `(C, S) = (round(2^bits · cos(p·ω_i)), round(2^bits · sin(p·ω_i)))` of
+    /// each position `p` and frequency `i < d_head / 2`, with Llama-3's scaled frequencies `ω_i`
+    /// (RFC-0005): the public constants of `Rotate`, not a lookup table.
+    Rope {
+        /// The base `θ`, at least 2.
+        theta: u32,
+        /// Llama-3's scaling `factor`, at least 1.
+        factor: u16,
+        /// `low_freq_factor`, at least 1 and below `high_freq_factor`.
+        low_freq_factor: u16,
+        /// `high_freq_factor`.
+        high_freq_factor: u16,
+        /// `original_max_position_embeddings`, at least 1.
+        original_max: u32,
+        /// The constants' precision, 1 to 30 (14 in `D`).
+        bits: u8,
+        /// The positions, with `max_context · d_head / 2 ≤ 2^24` pairs in all.
+        max_context: u32,
+        /// The head dimension, even and at least 2.
+        d_head: u16,
+    },
 }
 
 /// A table as the claim list names it (RFC-0007), sorted there by [`TableId`].

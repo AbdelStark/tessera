@@ -11,8 +11,9 @@
 //! This version holds the arithmetic kinds, `Range`, `Requant`, `Pow2`, `Bitwise8`, `AesSbox`
 //! and `Gf256Mul`, whose values are exact integer functions, and the fixed-point kinds `Exp`,
 //! `Exp2Frac` and `Silu`, which RFC-0008 'Fixed-point generators' defines to the last integer.
-//! `Rope` follows, appended to [`TableKind`], and so does the structured evaluation of a table's
-//! multilinear extension (RFC-0008 'Structured evaluation').
+//! RoPE's constants are no lookup table: [`RopeTable`] holds a `Rope` specification and its
+//! digest, and [`RopeConstants`] computes its `(C, S)` pairs on demand. The structured evaluation
+//! of a table's multilinear extension follows (RFC-0008 'Structured evaluation').
 //!
 //! `spec/vectors/tables/` pins every kind's TCE encoding, digest and rows, written by an
 //! independent Python oracle. It checks the AES tables against FIPS-197's known-answer tests,
@@ -24,9 +25,11 @@
 mod error;
 mod fixed;
 mod gf256;
+mod rope;
 mod spec;
 mod table;
 
 pub use error::TableError;
+pub use rope::{RopeConstants, RopeTable};
 pub use spec::{BitOp, TableId, TableKind, TableSpec};
 pub use table::{GeneratedTable, Table};

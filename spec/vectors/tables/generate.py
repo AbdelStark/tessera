@@ -27,7 +27,7 @@ Usage: python3 spec/vectors/tables/generate.py
 import importlib.util
 import json
 import sys
-from decimal import ROUND_FLOOR, Decimal, localcontext
+from decimal import ROUND_FLOOR, Decimal, getcontext, localcontext
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # importing the hash oracle leaves nothing behind
@@ -81,7 +81,7 @@ def sequence(encoded_elements):
 
 KIND_TAGS = {
     "Range": 0, "Requant": 1, "Pow2": 2, "Bitwise8": 3, "AesSbox": 4, "Gf256Mul": 5,
-    "Exp": 6, "Exp2Frac": 7, "Silu": 8,
+    "Exp": 6, "Exp2Frac": 7, "Silu": 8, "Rope": 9,
 }
 BITOP_TAGS = {"Xor": 0, "And": 1}
 
@@ -111,6 +111,10 @@ def encode_kind(kind):
         out += u8(params["b"]) + sequence([u8(r) for r in params["r_by_class"]])
         out += (params["in_exp"] % 256).to_bytes(1, "little")
         out += (params["out_exp"] % 256).to_bytes(1, "little")
+    elif name == "Rope":
+        out += u32(params["theta"]) + u16(params["factor"]) + u16(params["low_freq_factor"])
+        out += u16(params["high_freq_factor"]) + u32(params["original_max"]) + u8(params["bits"])
+        out += u32(params["max_context"]) + u16(params["d_head"])
     return out
 
 
@@ -241,17 +245,42 @@ LN2 = 0xB17217F7D1CF79AB
 TERMS = 20
 
 
+TAU = 0x6487ED5110B4611A6
+HALF_PI = 0x1921FB54442D18469
+
+
+def decimal_pi():
+    """π by Machin's formula, 16·atan(1/5) − 4·atan(1/239), at the context's precision."""
+    def atan_inv(n):
+        x = Decimal(1) / n
+        term, total, k = x, x, 1
+        while True:
+            term *= -x * x
+            k += 2
+            if abs(term / k) < Decimal(10) ** -(getcontext().prec + 5):
+                return total
+            total += term / k
+    return 16 * atan_inv(5) - 4 * atan_inv(239)
+
+
 def check_constants():
-    """LN2 is ⌊ln 2 · 2^64⌋, computed here with 100 significant digits (about 330 bits)."""
+    """LN2, TAU and HALF_PI are the floors of ln 2, 2π and π/2 times 2^64, computed here with 100
+    significant digits (about 330 bits)."""
     with localcontext() as context:
         context.prec = 100
         ln2 = Decimal(2).ln()
-        require(int((ln2 * ONE).to_integral_value(rounding=ROUND_FLOOR)) == LN2, "LN2")
+        floor = lambda v: int((v * ONE).to_integral_value(rounding=ROUND_FLOOR))
+        require(floor(ln2) == LN2, "LN2")
+        pi = decimal_pi()
+        require(str(pi).startswith("3.14159265358979323846264338327950288419716939937510"), "π")
+        require(floor(2 * pi) == TAU and floor(pi / 2) == HALF_PI, "TAU and HALF_PI")
     constants = {
         "description": "The pinned constants of RFC-0008 'Fixed-point generators', each the floor "
         "of the constant times 2^64, computed with Python's decimal module at 100 significant "
         "digits by generate.py.",
         "LN2": hex(LN2),
+        "TAU": hex(TAU),
+        "HALF_PI": hex(HALF_PI),
     }
     (HERE / "constants.json").write_text(json.dumps(constants, indent=1) + "\n", encoding="utf-8")
 
@@ -299,6 +328,102 @@ def exp_tail(rows, sigma, num, den):
 def exp2frac_value(f, frac_bits, out_bits):
     """⌊2^out · 2^(f/2^frac_bits)⌋ from below: exp_pos of ⌊f·LN2 / 2^frac_bits⌋."""
     return exp_pos((f * LN2) >> frac_bits) >> (62 - out_bits)
+
+
+def ln_int(n):
+    """ln n in Q64 for an integer n ≥ 1: m·LN2 + 2·atanh(z), z = (u − 1)/(u + 1), n = 2^m·u."""
+    m = n.bit_length() - 1
+    top = 1 << m
+    z = ((n - top) << 64) // (n + top)
+    w = (z * z) >> 64
+    a = ONE // 45
+    for k in range(21, -1, -1):
+        a = ONE // (2 * k + 1) + ((w * a) >> 64)
+    return m * LN2 + ((z * a) >> 63)
+
+
+def cos_sin(angle):
+    """(cos, sin) in Q62 of a Q64 angle: reduced by TAU, then to its quadrant, then Horner."""
+    turn = angle % TAU
+    quadrant, rest = divmod(turn, HALF_PI)
+    r = rest >> 2
+    one = 1 << 62
+    s = (r * r) >> 62
+    c, t = one, one
+    for k in range(13, 0, -1):
+        c = one - (s * c) // ((2 * k - 1) * (2 * k) * one)
+        t = one - (s * t) // ((2 * k) * (2 * k + 1) * one)
+    sin = (r * t) >> 62
+    return [(c, sin), (-sin, c), (-c, -sin), (sin, -c)][quadrant % 4]
+
+
+def rope_omegas(p):
+    """Each frequency θ^(−2i/d), scaled as Llama-3 scales it, in Q64."""
+    ln_theta = ln_int(p["theta"])
+    factor, low, high = p["factor"], p["low_freq_factor"], p["high_freq_factor"]
+    omegas = []
+    for i in range(p["d_head"] // 2):
+        y, n = exp_neg(2 * i * ln_theta // p["d_head"])
+        omega = y >> n if n < 128 else 0
+        l_omega = p["original_max"] * omega
+        if TAU * high < l_omega:
+            omegas.append(omega)
+        elif TAU * low > l_omega:
+            omegas.append(omega // factor)
+        else:
+            smooth = ((l_omega - low * TAU) << 40) // ((high - low) * TAU)
+            omegas.append(omega // factor + ((omega * smooth) >> 40) * (factor - 1) // factor)
+    return omegas
+
+
+def rope_pair(omega, position, bits):
+    c, s = cos_sin(position * omega)
+    round_half_up = lambda v: ((v << bits) + (1 << 61)) >> 62
+    return round_half_up(c), round_half_up(s)
+
+
+def rope_reference(p, position, i):
+    """(2^bits·cos, 2^bits·sin) of HF's Llama-3 RoPE at 40 digits, the scaling in real numbers."""
+    with localcontext() as context:
+        context.prec = 40
+        pi = decimal_pi()
+        d, theta = p["d_head"], Decimal(p["theta"])
+        omega = (-(Decimal(2 * i) / d) * theta.ln()).exp()
+        wavelen = 2 * pi / omega
+        L = Decimal(p["original_max"])
+        low, high, factor = (Decimal(p[k]) for k in ("low_freq_factor", "high_freq_factor", "factor"))
+        if wavelen < L / high:
+            scaled = omega
+        elif wavelen > L / low:
+            scaled = omega / factor
+        else:
+            smooth = (L / wavelen - low) / (high - low)
+            scaled = (1 - smooth) * omega / factor + smooth * omega
+        angle = (position * scaled) % (2 * pi)
+        # Taylor series of cos and sin at the reduced angle, to 45 digits.
+        cos, sin, term, k = Decimal(1), Decimal(0), Decimal(1), 0
+        sin_term = angle
+        sin = sin_term
+        while True:
+            k += 2
+            term *= -angle * angle / ((k - 1) * k)
+            sin_term *= -angle * angle / (k * (k + 1))
+            if abs(term) < Decimal(10) ** -45 and abs(sin_term) < Decimal(10) ** -45:
+                break
+            cos += term
+            sin += sin_term
+        scale = Decimal(2) ** p["bits"]
+        return cos * scale, sin * scale
+
+
+def check_rope(p, pairs):
+    """Each listed pair within one unit of the 40-digit reference, both coordinates."""
+    omegas = rope_omegas(p)
+    for position, i in pairs:
+        got = rope_pair(omegas[i], position, p["bits"])
+        want = rope_reference(p, position, i)
+        for g, w in zip(got, want):
+            require(abs(Decimal(g) - w) <= 1, f"Rope({position}, {i}) = {got} against {want}")
 
 
 def silu_value(h, in_exp, out_exp):
@@ -403,6 +528,21 @@ def _table(kind):
 
         core = sum(2 ** (b - r) for r in shifts)
         return n * 2**b, silu_row, [], core
+    if name == "Rope":
+        d, theta = p["d_head"], p["theta"]
+        require(theta >= 2 and p["factor"] >= 1, "Rope θ and factor")
+        require(1 <= p["low_freq_factor"] < p["high_freq_factor"], "Rope frequency factors")
+        require(p["original_max"] >= 1 and 1 <= p["bits"] <= 30, "Rope context and bits")
+        require(d >= 2 and d % 2 == 0, "Rope d_head")
+        pairs = p["max_context"] * (d // 2)
+        require(1 <= p["max_context"] and pairs <= 2**24, "Rope pair count")
+        omegas = rope_omegas(p)
+
+        def rope_row(j):
+            position, i = divmod(j, d // 2)
+            return rope_pair(omegas[i], position, p["bits"])
+
+        return pairs, rope_row, [], pairs
     if name == "Exp2Frac":
         frac_bits, out_bits = p["frac_bits"], p["out_bits"]
         require(1 <= frac_bits <= 16 and 1 <= out_bits <= 56, "Exp2Frac parameters")
@@ -427,7 +567,9 @@ def case(name, table_id, kind, lookups, values=True):
     log2_rows = (rows - 1).bit_length()
     definition = u32(table_id) + encode_kind(kind) + u8(log2_rows)
     (name_of_kind, params), = kind.items()
-    if name_of_kind == "Silu":
+    if name_of_kind == "Rope":
+        core_values = [v for j in range(core_len) for v in value(j)]
+    elif name_of_kind == "Silu":
         core_values = [
             silu_value(h, params["in_exp"], params["out_exp"])
             for r in params["r_by_class"]
@@ -448,8 +590,10 @@ def case(name, table_id, kind, lookups, values=True):
         "digest": digest.hex(),
     }
     if values:
-        out["values"] = [value(j) for j in range(rows)]
+        out["values"] = [list(value(j)) if name_of_kind == "Rope" else value(j) for j in range(rows)]
     out["lookups"] = []
+    if name_of_kind == "Rope":
+        return out
     for key, cls in lookups:
         row = pack(kind, key, cls)
         out["lookups"].append(
@@ -543,6 +687,40 @@ def main():
         classes = len(p["r_by_class"])
         lookups = edges(-(2 ** (p["b"] - 1)), 2 ** (p["b"] - 1), classes)
         cases.append(case(name, 29 + offset, kind, lookups, values=listed))
+    rope = lambda theta, factor, low, high, original_max, bits, max_context, d_head: {
+        "Rope": {
+            "theta": theta, "factor": factor, "low_freq_factor": low, "high_freq_factor": high,
+            "original_max": original_max, "bits": bits, "max_context": max_context,
+            "d_head": d_head,
+        }
+    }
+    # Test tables, every pair listed and checked, with frequencies in all three of Llama-3's
+    # bands; then Llama-3.1's RoPE: an 8K-context table pinned by its digest, and sampled pairs
+    # of the full 131,072-position table checked against the reference and listed for the Rust
+    # test, which checks 10^6 more against an f64 reference.
+    for offset, (name, kind, listed) in enumerate([
+        ("rope-small-three-bands", rope(10000, 4, 1, 2, 32, 14, 16, 16), True),
+        ("rope-small-no-scaling", rope(10000, 1, 1, 4, 64, 14, 12, 6), True),
+        ("rope-llama31-8k", rope(500000, 8, 1, 4, 8192, 14, 8192, 128), False),
+    ]):
+        p = kind["Rope"]
+        rows = p["max_context"] * (p["d_head"] // 2)
+        if listed:
+            check_rope(p, [divmod(j, p["d_head"] // 2) for j in range(rows)])
+        entry = case(name, 33 + offset, kind, [], values=listed)
+        # The scaled frequencies in Q64, pinned before any rounding to `bits`.
+        entry["frequencies"] = [hex(w) for w in rope_omegas(p)]
+        cases.append(entry)
+    llama = rope(500000, 8, 1, 4, 8192, 14, 131072, 128)["Rope"]
+    rng = hash_oracle.splitmix64(0x7E55_E7A0_0071_0003)
+    sample = [(next(rng) % 131072, next(rng) % 64) for _ in range(4000)]
+    sample += [(131071, i) for i in (0, 28, 29, 34, 35, 63)] + [(0, 0), (1, 1)]
+    check_rope(llama, sample)
+    omegas = rope_omegas(llama)
+    rope_samples = [
+        {"position": position, "frequency": i, "constants": list(rope_pair(omegas[i], position, 14))}
+        for position, i in sample
+    ]
     document = {
         "description": "Table kinds of RFC-0008 'Table specifications': each table's TCE "
         "specification with its digest, row count, log2_rows and the digest's pieces, the value "
@@ -554,6 +732,8 @@ def main():
         "reference. "
         "Written by generate.py.",
         "cases": cases,
+        "rope_llama31_131072": {"kind": rope(500000, 8, 1, 4, 8192, 14, 131072, 128),
+                                "samples": rope_samples},
     }
     text = json.dumps(document, indent=1) + "\n"
     (HERE / "tables.json").write_text(text, encoding="utf-8")

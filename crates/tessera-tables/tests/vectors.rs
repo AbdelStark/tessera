@@ -16,12 +16,19 @@ use tessera_codec::{DecodeLimits, Rational, decode, encode};
 use tessera_field::{Goldilocks, PrimeField};
 use tessera_tables::{BitOp, GeneratedTable, Table, TableError, TableId, TableKind, TableSpec};
 
+/// The lookup tables' cases; the RoPE constants' are `tests/rope.rs`'s.
 fn cases() -> Vec<Value> {
     let path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../spec/vectors/tables/tables.json");
     let document: Value =
         serde_json::from_str(&fs::read_to_string(path).expect("the vectors")).expect("JSON");
-    document["cases"].as_array().expect("cases").clone()
+    document["cases"]
+        .as_array()
+        .expect("cases")
+        .iter()
+        .filter(|case| case["kind"].get("Rope").is_none())
+        .cloned()
+        .collect()
 }
 
 fn bytes(hex: &Value) -> Vec<u8> {
