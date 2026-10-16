@@ -37,9 +37,10 @@ pub enum Op {
     Add, Sub, ConstMul { c: ConstRef },          // public integer constants, per channel allowed
     ConstAdd { c: ConstRef },
     Rotate { rope: TableId },                    // RoPE pair rotation by public constants
-    Sum { axis: u8 }, Reshape, Slice, GatherPublic { index: ConstRef },
+    Sum { axis: u8 }, Reshape, Slice { axis: u8, start: u32, len: u32 },
+    GatherPublic { index: ConstRef },
     // Virtual, degree 2
-    MatMulAct,                                   // activation x activation: QK^T, PV
+    MatMulAct { transpose_rhs: bool },           // activation x activation: QK^T (transposed), PV
     Mul,                                         // elementwise product
     SumSquares { axis: u8 },
     // Gadget-backed: produce committed advice
@@ -52,11 +53,40 @@ pub enum Op {
     Bitwise { table: TableId },                  // AES and SHA-256 sub-operations (RFC-0015)
 }
 
-pub struct Node { pub id: NodeId, pub op: Op, pub inputs: Vec<TensorId>, pub output: TensorId }
-pub struct Graph { pub nodes: Vec<Node>, pub tensors: Vec<TensorSpec> }  // TensorSpec: 03 §3
+pub struct Node { pub id: NodeId, pub op: Op, pub inputs: Vec<TensorId>, pub outputs: Vec<TensorId> }
+pub struct Graph {                               // TensorSpec: 03 §3
+    pub nodes: Vec<Node>, pub tensors: Vec<TensorSpec>,
+    pub constants: Vec<Vec<i64>>,                // by ConstRef: a scalar or one value per channel
+    pub shift_classes: Vec<Vec<u8>>,             // by ShiftClassRef: r_c per class, 1 to 4 classes
+    pub weights: Vec<(WeightRef, TensorId)>,     // WeightRef = (WeightType, layer)
+}
 ```
 
-Node kinds follow from the operation: linear and degree-2 operations produce `Virtual` tensors; gadget-backed operations produce `Committed` or `LookupOutput` tensors plus the gadget's internal advice (limbs, multiplicities). Weights are `Committed { Weight }`; constants and shapes are `Public`.
+Node kinds follow from the operation: linear and degree-2 operations produce `Virtual` tensors; gadget-backed operations produce `Committed` or `LookupOutput` tensors plus the gadget's internal advice (limbs, multiplicities), which stays inside the gadget. Weights are `Committed { Weight }`; constants and shapes are `Public`.
+
+A graph's nodes are in topological order. Every input is a graph input, a tensor no node produces, which is `Public` or `Committed`, or the output of an earlier node. No tensor has two producers. Ids are dense in creation order, so the graph is a pure function of the calls that build it (INV-DM-5). A node keeps the rules of its operation. Shapes have at least one axis, each of length at least 1. `[…, n]` is any shape whose last axis is `n`, and removing a tensor's only axis leaves `[1]`.
+
+| Operation | Inputs → outputs | Shapes | Outputs and inputs |
+|---|---|---|---|
+| `MatMulWeight` | `x`, `W` → `y` | `W [out, in]`, `x […, in]`, `y […, out]` | `W` is the weight tensor its `WeightRef` declares |
+| `Add`, `Sub` | `a`, `b` → `y` | all equal | |
+| `ConstMul`, `ConstAdd` | `x` → `y` | `y = x`; the constant has 1 value or `x`'s last axis | |
+| `Rotate` | `x`, `pos` → `y` | `x [n, …, 2m]`, `pos [n]`, `y = x` | `pos` is `Public` |
+| `Sum`, `SumSquares` | `x` → `y` | `y` is `x` without the axis | |
+| `Reshape` | `x` → `y` | equal element counts | |
+| `Slice` | `x` → `y` | `start + len` within the axis, `len ≥ 1`; `y` is `x` with that axis of length `len` | |
+| `GatherPublic` | `x` → `y` | each index a row of `x`'s outermost axis; `y` has one such row per index | |
+| `MatMulAct` | `a`, `b` → `y` | equal leading axes; `a […, m, k]`, `b […, k, n]` or, transposed, `b […, n, k]`; `y […, m, n]` | |
+| `Mul` | `a`, `b` → `y` | `b`'s shape is `a`'s or a prefix of it, broadcast over the trailing axes; `y = a` | |
+| `OneHot` | `t` → `h` | `h` is `t` with an axis of `vocab ≥ 1` added | `h` is `Committed { Advice }` |
+| `Requant` | `x` (, `c`) → `y` | `y = x`; `c [x's last axis]`, the channel classes, when the set has more than one class | `c` is `Committed { Weight }`; `y` is a lookup output or advice; `lo ≤ hi` |
+| `TableMap` | `x` → `y` | `y = x` | `y` is `LookupOutput { table }` |
+| `SoftmaxRow` | `s` → `e`, `R` | `e = s`; `R` is `s` without its last axis | `e` is `LookupOutput { exp_table }`, `R` advice |
+| `RsqrtRow` | `u` → `ρ` | `ρ = u` | `ρ` is advice |
+| `Argmax`, `InverseCdf` | `ℓ`, `h` → none | `h = ℓ`: one one-hot entry per logit | certificates: every value they commit is internal advice |
+| `Bitwise` | `a`, `b` → `y` | all equal | `y` is `LookupOutput { table }` |
+
+The IR is the prover's (tier C). The verifier re-derives what it checks from the claim list with a representation of its own (Alternative 2), so range analysis, gadget selection and the lowering may refine these rules before the protocol version is fixed.
 
 ### Range analysis
 

@@ -604,6 +604,9 @@ dependencies = [
 [[package]]
 name = "tessera-ir"
 version = "0.1.0"
+dependencies = [
+ "tessera-tables",
+]
 
 [[package]]
 name = "tessera-logup"
