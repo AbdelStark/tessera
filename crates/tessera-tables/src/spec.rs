@@ -4,7 +4,7 @@
 //! types is tier A: an enum's tag is its variant's declaration index (RFC-0003), so variants are
 //! appended, never reordered.
 
-use tessera_codec::{Decode, Encode};
+use tessera_codec::{Decode, Encode, Rational};
 use tessera_hash::Digest;
 
 /// A table's index in the claim list, assigned by the compiler (03 §3, INV-DM-5).
@@ -58,6 +58,24 @@ pub enum TableKind {
         /// The constant factor.
         c: u8,
     },
+    /// `k ↦ round(2^σ · e^{−k · scale})` for `0 ≤ k < 2^key_bits`, in the fixed point of RFC-0008
+    /// 'Fixed-point generators': the softmax exponentials (RFC-0009 `SoftmaxRow`).
+    Exp {
+        /// Key bits, 1 to 32.
+        key_bits: u8,
+        /// The output precision `σ`, at most 32: the value at key 0 is `2^σ`.
+        sigma: u8,
+        /// `σ_q σ_k / √d_head` as the claim list states it, positive.
+        scale: Rational,
+    },
+    /// `f ↦ ⌊2^{out_bits} · 2^{f / 2^{frac_bits}}⌋` for `0 ≤ f < 2^{frac_bits}`, never above the
+    /// true value: the scoring bound's powers of two (RFC-0017).
+    Exp2Frac {
+        /// Fraction bits, 1 to 16.
+        frac_bits: u8,
+        /// Output bits, 1 to 56, so that the generator's rounding stays below one output unit.
+        out_bits: u8,
+    },
 }
 
 /// A table as the claim list names it (RFC-0007), sorted there by [`TableId`].
@@ -70,6 +88,6 @@ pub struct TableSpec {
     /// `⌈log2 T⌉` for the kind's `T` rows: the table tree has `2^log2_rows` leaves.
     pub log2_rows: u8,
     /// `H("table", TCE(id, kind, log2_rows) ‖ TCE(pieces) ‖ TCE(core))` (RFC-0008 'Generators
-    /// and digests').
+    /// and digests'), the pieces a `Vec<u64>` and the core a `Vec<Fp>`.
     pub digest: Digest,
 }

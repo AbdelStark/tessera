@@ -27,6 +27,7 @@ Usage: python3 spec/vectors/tables/generate.py
 import importlib.util
 import json
 import sys
+from decimal import ROUND_FLOOR, Decimal, localcontext
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # importing the hash oracle leaves nothing behind
@@ -78,7 +79,10 @@ def sequence(encoded_elements):
     return u64(len(encoded_elements)) + b"".join(encoded_elements)
 
 
-KIND_TAGS = {"Range": 0, "Requant": 1, "Pow2": 2, "Bitwise8": 3, "AesSbox": 4, "Gf256Mul": 5}
+KIND_TAGS = {
+    "Range": 0, "Requant": 1, "Pow2": 2, "Bitwise8": 3, "AesSbox": 4, "Gf256Mul": 5,
+    "Exp": 6, "Exp2Frac": 7,
+}
 BITOP_TAGS = {"Xor": 0, "And": 1}
 
 
@@ -96,6 +100,13 @@ def encode_kind(kind):
         out += u16(BITOP_TAGS[params["op"]])
     elif name == "Gf256Mul":
         out += u8(params["c"])
+    elif name == "Exp":
+        num, den = params["scale"]
+        require(num > 0 and den > 0, "a positive scale")
+        out += u8(params["key_bits"]) + u8(params["sigma"])
+        out += (num % 2**64).to_bytes(8, "little") + u64(den)
+    elif name == "Exp2Frac":
+        out += u8(params["frac_bits"]) + u8(params["out_bits"])
     return out
 
 
@@ -220,35 +231,139 @@ def rq(k, r, lo, hi):
     return min(max((k + 2 ** (r - 1)) // 2**r, lo), hi)
 
 
+# RFC-0008 'Fixed-point generators'. A Q64 number v stands for v / 2^64.
+ONE = 2**64
+LN2 = 0xB17217F7D1CF79AB
+TERMS = 20
+
+
+def check_constants():
+    """LN2 is ⌊ln 2 · 2^64⌋, computed here with 100 significant digits (about 330 bits)."""
+    with localcontext() as context:
+        context.prec = 100
+        ln2 = Decimal(2).ln()
+        require(int((ln2 * ONE).to_integral_value(rounding=ROUND_FLOOR)) == LN2, "LN2")
+    constants = {
+        "description": "The pinned constants of RFC-0008 'Fixed-point generators', each the floor "
+        "of the constant times 2^64, computed with Python's decimal module at 100 significant "
+        "digits by generate.py.",
+        "LN2": hex(LN2),
+    }
+    (HERE / "constants.json").write_text(json.dumps(constants, indent=1) + "\n", encoding="utf-8")
+
+
+def exp_neg(x):
+    """(y, n) with e^(−x/2^64) ≈ y · 2^(−64−n): reduction by LN2, then Horner from the top term."""
+    n, r = divmod(x, LN2)
+    y = ONE
+    for i in range(TERMS, 0, -1):
+        y = ONE - (r * y) // (i * ONE)
+    require(0 < y <= ONE and r * ONE < 2**128, "exp_neg stays in range")
+    return y, n
+
+
+def exp_pos(x):
+    """e^(x/2^64) in Q62 for 0 ≤ x ≤ LN2, every step rounded down."""
+    require(0 <= x <= LN2, "exp_pos's argument")
+    y = 2**62
+    for i in range(TERMS, 0, -1):
+        y = 2**62 + (x * y) // (i * ONE)
+    require(y <= 2**63, "exp_pos stays below 2")
+    return y
+
+
+def exp_value(k, sigma, num, den):
+    """round(2^σ · e^(−k·num/den)), half up, in the fixed point of RFC-0008."""
+    whole, rem = divmod(k * num, den)
+    if whole >= 2**20:
+        return 0
+    x = whole * ONE + (rem * ONE) // den
+    y, n = exp_neg(x)
+    if n >= sigma + 2:
+        return 0
+    return (y * 2**sigma + 2 ** (63 + n)) >> (64 + n)
+
+
+def exp_tail(rows, sigma, num, den):
+    """The first key of Exp's zero tail, in closed form: x(k) = ⌊k·num·2^64/den⌋ reaches
+    (σ+2)·LN2, or k·num/den reaches 2^20, from the least such k on."""
+    by_halvings = -(-(sigma + 2) * LN2 * den // (num * ONE))
+    by_size = -(-(2**20) * den // num)
+    return min(rows, by_halvings, by_size)
+
+
+def exp2frac_value(f, frac_bits, out_bits):
+    """⌊2^out · 2^(f/2^frac_bits)⌋ from below: exp_pos of ⌊f·LN2 / 2^frac_bits⌋."""
+    return exp_pos((f * LN2) >> frac_bits) >> (62 - out_bits)
+
+
+def check_exp(sigma, num, den, keys):
+    """Every key's value within one unit of 2^σ · e^(−k·scale) computed with 60 digits."""
+    with localcontext() as context:
+        context.prec = 60
+        for k in keys:
+            true = Decimal(2**sigma) * (Decimal(-k * num) / Decimal(den)).exp()
+            got = exp_value(k, sigma, num, den)
+            require(abs(Decimal(got) - true) <= 1, f"Exp at key {k}: {got} against {true}")
+
+
+def check_exp2frac(frac_bits, out_bits):
+    """Every value at or below ⌊2^out · 2^(f/2^frac_bits)⌋, and at most one unit below it."""
+    with localcontext() as context:
+        context.prec = 60
+        ln2 = Decimal(2).ln()
+        for f in range(2**frac_bits):
+            true = Decimal(2**out_bits) * (Decimal(f) / Decimal(2**frac_bits) * ln2).exp()
+            floor = int(true.to_integral_value(rounding=ROUND_FLOOR))
+            got = exp2frac_value(f, frac_bits, out_bits)
+            require(got <= floor, f"Exp2Frac({f}) = {got} above the true floor {floor}")
+            require(floor - got <= 1, f"Exp2Frac({f}) = {got} more than one below {floor}")
+
+
 def table(kind):
-    """T, the value of each row j < T, and whether the digest's core holds the values."""
+    """T, the value of each row j < T, and the digest's pieces and core length."""
+    rows, value, pieces, core = _table(kind)
+    return rows, value, pieces, core
+
+
+def _table(kind):
     (name, p), = kind.items()
     if name == "Range":
         require(1 <= p["bits"] <= 32, "Range bits")
-        return 2 ** p["bits"], lambda j: 0, False
+        return 2 ** p["bits"], lambda j: 0, [], 0
     if name == "Requant":
         b, shifts, lo, hi = p["b"], p["r_by_class"], p["lo"], p["hi"]
         n = len(shifts)
         require(1 <= n <= 4 and b >= 1 and b + (n - 1).bit_length() <= 32, "Requant shape")
         require(all(1 <= r <= 63 for r in shifts) and lo <= hi, "Requant parameters")
-        return n * 2**b, lambda j: rq(j % 2**b - 2 ** (b - 1), shifts[j // 2**b], lo, hi), False
+        return n * 2**b, lambda j: rq(j % 2**b - 2 ** (b - 1), shifts[j // 2**b], lo, hi), [], 0
     if name == "Pow2":
         require(1 <= p["max_exp"] <= 63, "Pow2 max_exp")
-        return p["max_exp"], lambda j: 2**j, True
+        return p["max_exp"], lambda j: 2**j, [], p["max_exp"]
     if name == "Bitwise8":
         op = {"Xor": lambda a, b: a ^ b, "And": lambda a, b: a & b}[p["op"]]
-        return 2**16, lambda j: op(j % 256, j // 256), True
+        return 2**16, lambda j: op(j % 256, j // 256), [], 2**16
     if name == "AesSbox":
-        return 2**8, sbox, True
+        return 2**8, sbox, [], 2**8
     if name == "Gf256Mul":
-        return 2**8, lambda j: gf_mul(p["c"], j), True
+        return 2**8, lambda j: gf_mul(p["c"], j), [], 2**8
+    if name == "Exp":
+        key_bits, sigma, (num, den) = p["key_bits"], p["sigma"], p["scale"]
+        require(1 <= key_bits <= 32 and sigma <= 32 and num > 0, "Exp parameters")
+        tail = exp_tail(2**key_bits, sigma, num, den)
+        require(tail <= 2**24, "Exp's zero tail starts by key 2^24")
+        return 2**key_bits, lambda k: exp_value(k, sigma, num, den), [tail], tail
+    if name == "Exp2Frac":
+        frac_bits, out_bits = p["frac_bits"], p["out_bits"]
+        require(1 <= frac_bits <= 16 and 1 <= out_bits <= 56, "Exp2Frac parameters")
+        return 2**frac_bits, lambda f: exp2frac_value(f, frac_bits, out_bits), [], 2**frac_bits
     raise SystemExit(f"tables oracle: unknown kind {name}")
 
 
 def pack(kind, key, cls):
     """The row a lookup of `key` in `cls` hits, or None (RFC-0008 'Table specifications')."""
     (name, p), = kind.items()
-    rows, _, _ = table(kind)
+    rows, _, _, _ = table(kind)
     if name == "Requant":
         half = 2 ** (p["b"] - 1)
         if -half <= key < half and 0 <= cls < len(p["r_by_class"]):
@@ -258,17 +373,18 @@ def pack(kind, key, cls):
 
 
 def case(name, table_id, kind, lookups, values=True):
-    rows, value, enumerated = table(kind)
+    rows, value, pieces, core_len = table(kind)
     log2_rows = (rows - 1).bit_length()
     definition = u32(table_id) + encode_kind(kind) + u8(log2_rows)
-    core = sequence([fp(value(j)) for j in range(rows)]) if enumerated else u64(0)
-    digest = hash_oracle.H("table", definition + u64(0) + core)
+    core = sequence([fp(value(j)) for j in range(core_len)])
+    digest = hash_oracle.H("table", definition + sequence([u64(x) for x in pieces]) + core)
     out = {
         "name": name,
         "kind": kind,
         "spec": (definition + digest).hex(),
         "rows": rows,
         "log2_rows": log2_rows,
+        "pieces": pieces,
         "digest": digest.hex(),
     }
     if values:
@@ -291,6 +407,7 @@ def edges(low, high, classes=1):
 def main():
     hash_oracle.check_official_vectors()
     check_fips197()
+    check_constants()
     requant = lambda b, shifts, lo, hi: {"Requant": {"b": b, "r_by_class": shifts, "lo": lo, "hi": hi}}
     cases = [
         case("range-1", 0, {"Range": {"bits": 1}}, edges(0, 2)),
@@ -318,12 +435,46 @@ def main():
         case("gf256-mul-3", 18, {"Gf256Mul": {"c": 3}}, edges(0, 256)),
         case("gf256-mul-57", 19, {"Gf256Mul": {"c": 0x57}}, edges(0, 256) + [(0x83, 0), (0x13, 0)]),
     ]
+    exp = lambda key_bits, sigma, num, den: {
+        "Exp": {"key_bits": key_bits, "sigma": sigma, "scale": [num, den]}
+    }
+    # Test parameters, every key checked; then production ones (σ = 16, 2^22 keys, scales near
+    # σ_q σ_k / √128 for σ_q σ_k = 2^-8 and 2^-10), every key of the core checked: past it the
+    # true value is below 1/4 and the table holds 0.
+    exp_cases = [
+        ("exp-k6-s8-quarter", exp(6, 8, 1, 4), True),
+        ("exp-k4-s16-no-tail", exp(4, 16, 1, 1000), True),
+        ("exp-k8-s16-unit-scale", exp(8, 16, 1, 1), True),
+        ("exp-k10-s0", exp(10, 0, 3, 7), True),
+        ("exp-k22-s16-405b-wide", exp(22, 16, 1, 2896), False),
+        ("exp-k22-s16-405b-narrow", exp(22, 16, 1, 11585), False),
+    ]
+    for offset, (name, kind, listed) in enumerate(exp_cases):
+        params = kind["Exp"]
+        rows, _, (tail,), _ = table(kind)
+        keys = range(rows) if listed else range(tail + 1)
+        check_exp(params["sigma"], *params["scale"], keys)
+        if not listed:
+            check_exp(params["sigma"], *params["scale"], range(tail, rows, rows // 4096))
+        lookups = edges(0, rows) + [(max(tail - 1, 0), 0), (tail, 0)]
+        cases.append(case(name, 20 + offset, kind, lookups, values=listed))
+    exp2 = lambda frac_bits, out_bits: {"Exp2Frac": {"frac_bits": frac_bits, "out_bits": out_bits}}
+    for offset, (name, frac_bits, out_bits, listed) in enumerate([
+        ("exp2frac-f8-o16-rfc0017", 8, 16, True),
+        ("exp2frac-f1-o1", 1, 1, True),
+        ("exp2frac-f16-o56", 16, 56, False),
+    ]):
+        check_exp2frac(frac_bits, out_bits)
+        kind = exp2(frac_bits, out_bits)
+        cases.append(case(name, 26 + offset, kind, edges(0, 2**frac_bits), values=listed))
     document = {
-        "description": "Arithmetic table kinds of RFC-0008 'Table specifications': each table's TCE "
-        "specification with its digest, row count, log2_rows, the value of every row where "
-        "'values' is present (the digest binds the value column of Pow2, Bitwise8, AesSbox and "
-        "Gf256Mul), and lookups at the edges of the key range, with the row and value they hit "
-        "or null for none. Written by generate.py.",
+        "description": "Table kinds of RFC-0008 'Table specifications': each table's TCE "
+        "specification with its digest, row count, log2_rows and the digest's pieces, the value "
+        "of every row where 'values' is present (the digest binds the core: the value column of "
+        "Pow2, Bitwise8, AesSbox, Gf256Mul and Exp2Frac, and Exp's values below its zero tail), "
+        "and lookups at the edges of the key range, with the row and value they hit or null for "
+        "none. Every Exp and Exp2Frac value is checked against a 60-digit decimal reference. "
+        "Written by generate.py.",
         "cases": cases,
     }
     text = json.dumps(document, indent=1) + "\n"
