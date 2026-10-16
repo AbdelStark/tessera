@@ -159,7 +159,7 @@ The LogUp-GKR prover and verifier land in v0.1 (with dense test tables) for the 
 - Trees and roots: lookup trees of `2^0` to `2^20` leaves beside table trees of `2^0` to `2^16`, joining where their heights match, verify. Each of these is rejected with `Reject(Lookup)`: a zero root denominator on either side; roots whose fractions do not sum to zero; a lookup tree's leaf numerator claim other than 1; a table evaluation off by one.
 - Structured evaluation: for each table kind at small parameters (`b ≤ 16`), `eval_mle` equals brute-force `Σ_x eq(ρ, x) t(x)` over the `2^{h_t}` padded rows at 100 random points, `T` both a power of two and not.
 - Generators: cross-implementation digests agree; accuracy against a 256-bit reference is within one output unit for every key at test parameters and on 10^6 sampled keys at production parameters.
-- Performance: CPU throughput per lookup in `criterion`; GPU throughput is the v0.1 unit-cost measurement (RFC-0020).
+- Performance: CPU throughput per lookup in `cargo bench` (`tessera-logup`'s throughput benchmark, and `logup/prove` among the microbenchmarks of [08 §6](../spec/08-performance-budget.md#6-regression-gates)); GPU throughput is the v0.1 unit-cost measurement (RFC-0020).
 
 ## Open Questions
 

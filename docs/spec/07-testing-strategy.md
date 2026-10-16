@@ -23,7 +23,7 @@
 | End to end | Compile, commit, prove, verify on tiny models | CLI-driven tests | Every PR (tiny), nightly (8B CPU subset) |
 | Adversarial | Tamper corpus, alternative witnesses, malformed artifacts | Dedicated test crates; `cargo-fuzz` | Every PR (corpus), nightly (fuzz 1 h), release (fuzz 24 CPU-h) |
 | GPU | Kernel correctness against CPU reference; determinism across tilings | Self-hosted H100 runner | Nightly and on `gpu`-labeled PRs |
-| Performance | Microbenchmarks and end-to-end `μ` | `criterion`, `tessera bench` | Nightly; regression gate ([08 §6](08-performance-budget.md#6-regression-gates)) |
+| Performance | Microbenchmarks and end-to-end `μ` | `cargo bench -p tessera-bench`, `tessera bench` | Nightly; regression gate ([08 §6](08-performance-budget.md#6-regression-gates)) |
 | ML fidelity | `D` versus reference float model | `tessera-quant eval` | On quantization changes; release |
 
 ## 3. Unit and property tests

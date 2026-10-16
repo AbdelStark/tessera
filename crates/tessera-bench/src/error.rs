@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The one error type of the crate: an input the model cannot price, or an output that is not a
-//! number. The model never coerces either (04 §1).
+//! The one error type of the crate: an input the model or a measurement cannot use, or an output
+//! that is not a number. Neither is ever coerced (04 §1).
 
 use core::fmt;
 
@@ -18,9 +18,12 @@ pub enum Problem {
     AboveOne,
     /// An empty list.
     Empty,
+    /// A name outside its alphabet or length, or one already used.
+    Malformed,
 }
 
-/// `is not finite`, `is negative`, `is not positive`, `is above 1` or `is empty`.
+/// `is not finite`, `is negative`, `is not positive`, `is above 1`, `is empty` or `is
+/// malformed`.
 impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -29,14 +32,15 @@ impl fmt::Display for Problem {
             Self::NotPositive => "is not positive",
             Self::AboveOne => "is above 1",
             Self::Empty => "is empty",
+            Self::Malformed => "is malformed",
         })
     }
 }
 
-/// Why the model refused to project, or could not.
+/// Why the model refused to project or a measurement to report, or could not.
 ///
-/// The cost model handles public planning data only (counts, unit costs, policy parameters), so
-/// its errors may name the input at fault; they still carry no value.
+/// The crate handles public planning and timing data only (counts, unit costs, policy
+/// parameters, run times), so its errors may name the input at fault; they still carry no value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ModelError {
     /// An input the model cannot price: a usage error.
