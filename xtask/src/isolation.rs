@@ -537,13 +537,13 @@ fn dep3_violations(graph: &Json, allowlist: &[AllowEntry]) -> Vec<String> {
                 continue;
             }
             let dep_name = str_field(dep, "name");
-            if let Some(allowed) = entry(dep_name).and_then(|e| e.direct_dependents.as_ref()) {
-                if !allowed.iter().any(|a| a == member_name) {
-                    violations.push(format!(
-                        "{member_name} depends on {dep_name}, which only {} may use",
-                        allowed.join(", ")
-                    ));
-                }
+            if let Some(allowed) = entry(dep_name).and_then(|e| e.direct_dependents.as_ref())
+                && !allowed.iter().any(|a| a == member_name)
+            {
+                violations.push(format!(
+                    "{member_name} depends on {dep_name}, which only {} may use",
+                    allowed.join(", ")
+                ));
             }
         }
     }
@@ -696,10 +696,10 @@ fn scan(stream: TokenStream, in_macro: bool, out: &mut Vec<Reference>) {
                 }
             }
             TokenTree::Punct(dollar) if in_macro && dollar.as_char() == '$' => {
-                if let Some(TokenTree::Ident(var)) = tokens.get(i + 1) {
-                    if is_punct(tokens.get(i + 2), '!') {
-                        found(format!("`${var}!`"), None, Kind::Metavariable);
-                    }
+                if let Some(TokenTree::Ident(var)) = tokens.get(i + 1)
+                    && is_punct(tokens.get(i + 2), '!')
+                {
+                    found(format!("`${var}!`"), None, Kind::Metavariable);
                 }
             }
             TokenTree::Punct(hash) if hash.as_char() == '#' => {
@@ -708,10 +708,10 @@ fn scan(stream: TokenStream, in_macro: bool, out: &mut Vec<Reference>) {
                 } else {
                     i + 1
                 };
-                if let Some(TokenTree::Group(group)) = tokens.get(j) {
-                    if group.delimiter() == Delimiter::Bracket {
-                        scan_attribute(group.stream(), in_macro, out);
-                    }
+                if let Some(TokenTree::Group(group)) = tokens.get(j)
+                    && group.delimiter() == Delimiter::Bracket
+                {
+                    scan_attribute(group.stream(), in_macro, out);
                 }
             }
             TokenTree::Group(group) => {
@@ -1072,12 +1072,12 @@ fn config_violations(repo: &Path, verifier: &Path) -> io::Result<Vec<String>> {
                 "{rel}: cargo configuration under verifier/ is not allowed"
             ));
         }
-        if name == "Cargo.toml" {
-            if let Ok(manifest) = fs::read_to_string(path)?.parse::<Table>() {
-                for key in ["patch", "replace"] {
-                    if manifest.contains_key(key) {
-                        violations.push(format!("{rel}: [{key}] can substitute any dependency"));
-                    }
+        if name == "Cargo.toml"
+            && let Ok(manifest) = fs::read_to_string(path)?.parse::<Table>()
+        {
+            for key in ["patch", "replace"] {
+                if manifest.contains_key(key) {
+                    violations.push(format!("{rel}: [{key}] can substitute any dependency"));
                 }
             }
         }

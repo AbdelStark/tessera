@@ -8,6 +8,11 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+# The code-generation probes of `cargo xtask check-branchless` (`src/probe.rs`); no crate enables
+# it.
+codegen-probe = []
+
 [dependencies]
 tessera-codec = { path = "../tessera-codec" }
 

@@ -29,7 +29,7 @@ impl Kinds {
         match self {
             Self::Base => true,
             Self::Ext => false,
-            Self::Mixed => t % 2 == 0,
+            Self::Mixed => t.is_multiple_of(2),
         }
     }
 }

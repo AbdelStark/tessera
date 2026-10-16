@@ -11,7 +11,7 @@ members = ["crates/*"]
 # The verifier release train is versioned independently of the prover (09 §1).
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/AbdelStark/tessera"
 # Nothing is published while the repository is private (09 §9).

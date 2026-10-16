@@ -23,6 +23,8 @@ mod f65537;
 #[doc(hidden)]
 pub mod golden;
 mod goldilocks;
+#[cfg(feature = "codegen-probe")]
+pub mod probe;
 mod traits;
 
 pub use ext2::{ExtensionBase, F65537Ext2, GoldilocksExt2, QuadraticExt, QuadraticExtension};

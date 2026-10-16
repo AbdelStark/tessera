@@ -236,7 +236,7 @@ fn random_inputs_get_the_predicted_error() {
         let proof = SumcheckProof {
             rounds: (0..rounds)
                 .map(|_| {
-                    let length = if well_formed && rng.next_u64() % 8 != 0 {
+                    let length = if well_formed && !rng.next_u64().is_multiple_of(8) {
                         degree
                     } else {
                         below(&mut rng, MAX_DEGREE + 3)

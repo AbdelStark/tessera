@@ -10,6 +10,7 @@
 // A command-line tool reports on stdout and stderr.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+mod branchless;
 mod deny_policy;
 mod deps;
 mod isolation;
@@ -35,6 +36,8 @@ const USAGE: &str = "\
 usage: cargo xtask <command>
 
 commands:
+  check-branchless   check that the field's operations compile branch-free in x86_64 loops
+                     (INV-ARCH-2; needs the x86_64-unknown-linux-gnu standard library)
   check-deps         run cargo-deny in both workspaces and cargo-vet in the verifier, then
                      self-test the dependency policies (09 §7; needs cargo-deny, cargo-vet)
   check-isolation    check that the verifier shares no code with the prover (RFC-0001)
@@ -57,6 +60,7 @@ fn main() -> ExitCode {
             print!("{USAGE}");
             ExitCode::SUCCESS
         }
+        Some("check-branchless") => report(branchless::run(&repo::root())),
         Some("check-deps") => report(deps::run(&repo::root())),
         Some("check-isolation") => report(isolation::run(&repo::root())),
         Some("check-pr") => match check_pr_args(std::env::args().skip(2)) {

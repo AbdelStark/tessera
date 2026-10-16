@@ -3,9 +3,15 @@
 //! The Goldilocks field `Fp`, `P = 2^64 − 2^32 + 1` (RFC-0002).
 //!
 //! Elements are held canonically, in `[0, P)`, after every operation. Arithmetic is branch-free in
-//! the values (INV-ARCH-2): conditional corrections are computed with masks, never with `if` on
-//! data. Every operation is a `const fn`, so the constants below (the two-adic roots of unity) are
-//! computed at compile time from their definitions rather than copied.
+//! the values (INV-ARCH-2): each conditional correction selects either the correction or 0, never
+//! an `if` on data. At run time the select is `core::hint::select_unpredictable`, which keeps it a
+//! conditional move. On x86_64, LLVM otherwise turns a plain mask inside a loop into a jump on the
+//! data's carries, a timing side channel and a misprediction on every other operation (#242).
+//! `cargo xtask check-branchless` holds the generated code to that.
+//!
+//! The constants below (the two-adic roots of unity) are computed at compile time from their
+//! definitions rather than copied. They use the same arithmetic instantiated as `const fn`s with
+//! masks, since `select_unpredictable` is not a `const fn`.
 
 use core::fmt;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
@@ -17,97 +23,154 @@ const P: u64 = 0xFFFF_FFFF_0000_0001;
 /// `2^64 − P = 2^32 − 1`, so `2^64 ≡ EPSILON (mod P)`.
 const EPSILON: u64 = 0xFFFF_FFFF;
 
-/// An all-ones mask when `bit` is set, zero otherwise.
-#[inline(always)]
-const fn mask(bit: bool) -> u64 {
-    (bit as u64).wrapping_neg()
-}
-
-/// Reduces `x < 2^64` to `[0, P)`: `x < 2P`, so one conditional subtraction suffices.
-#[inline(always)]
-const fn canonicalize(x: u64) -> u64 {
-    // Subtract P; on borrow (x < P) add it back. Three instructions on aarch64 and x86-64.
-    let (reduced, borrow) = x.overflowing_sub(P);
-    reduced.wrapping_add(P & mask(borrow))
-}
-
-#[inline(always)]
-const fn add(a: u64, b: u64) -> u64 {
-    // a, b < P. If a + b wraps, the true sum S lies in [2^64, 2P), and S − P = wrapped + EPSILON
-    // is below P, so the second addition cannot wrap and the final correction is a no-op.
-    let (sum, carry) = a.overflowing_add(b);
-    canonicalize(sum.wrapping_add(EPSILON & mask(carry)))
-}
-
-#[inline(always)]
-const fn sub(a: u64, b: u64) -> u64 {
-    // On borrow the wrapped difference is a − b + 2^64; a − b + P = wrapped − EPSILON lies in
-    // (0, P), so the result is canonical without a further correction.
-    let (diff, borrow) = a.overflowing_sub(b);
-    diff.wrapping_sub(EPSILON & mask(borrow))
-}
-
-/// Reduces a 128-bit product modulo `P` (RFC-0002 'Representation and reduction').
-///
-/// With `x = lo + 2^64·(hi_lo + 2^32·hi_hi)`: `2^64 ≡ 2^32 − 1` and `2^96 ≡ −1`, so
-/// `x ≡ lo − hi_hi + hi_lo·(2^32 − 1) (mod P)`.
-#[inline(always)]
-const fn reduce128(x: u128) -> u64 {
-    let lo = x as u64;
-    let hi = (x >> 64) as u64;
-    let hi_hi = hi >> 32;
-    let hi_lo = hi & EPSILON;
-    // lo − hi_hi. On borrow (lo < hi_hi < 2^32) the wrapped value exceeds 2^64 − 2^32, so
-    // subtracting EPSILON (that is, adding P − 2^64) cannot underflow.
-    let (t0, borrow) = lo.overflowing_sub(hi_hi);
-    let t0 = t0.wrapping_sub(EPSILON & mask(borrow));
-    // hi_lo·(2^32 − 1) ≤ (2^32 − 1)^2 < 2^64.
-    let t1 = hi_lo * EPSILON;
-    // t0 + t1 < 2^65 − 2^33; on carry the wrapped sum is at most 2^64 − 2^33, so adding EPSILON
-    // (that is, 2^64 mod P) cannot wrap again.
-    let (t2, carry) = t0.overflowing_add(t1);
-    canonicalize(t2.wrapping_add(EPSILON & mask(carry)))
-}
-
-#[inline(always)]
-const fn mul(a: u64, b: u64) -> u64 {
-    reduce128(a as u128 * b as u128)
-}
-
-/// `base^exp` by square-and-multiply. The loop depends on `exp` only, which is public everywhere
-/// this is used (RFC-0002 'Timing').
-const fn pow(base: u64, mut exp: u64) -> u64 {
-    let mut acc = 1;
-    let mut square = base;
-    while exp > 0 {
-        if exp & 1 == 1 {
-            acc = mul(acc, square);
+/// The arithmetic on canonical representatives, written once over `pick(bit, value)` (`value`
+/// when `bit` is set, 0 otherwise) and instantiated twice: [`run_time`] and [`compile_time`].
+macro_rules! arithmetic {
+    ($($constness:tt)?) => {
+        /// Reduces `x < 2^64` to `[0, P)`: `x < 2P`, so one conditional subtraction suffices.
+        #[inline(always)]
+        pub(super) $($constness)? fn canonicalize(x: u64) -> u64 {
+            // Subtract P; on borrow (x < P) add it back.
+            let (reduced, borrow) = x.overflowing_sub(P);
+            reduced.wrapping_add(pick(borrow, P))
         }
-        square = mul(square, square);
-        exp >>= 1;
-    }
-    acc
+
+        #[inline(always)]
+        pub(super) $($constness)? fn add(a: u64, b: u64) -> u64 {
+            // a, b < P. If a + b wraps, the true sum S lies in [2^64, 2P), and S − P = wrapped +
+            // EPSILON is below P, so the second addition cannot wrap and the final correction is a
+            // no-op.
+            let (sum, carry) = a.overflowing_add(b);
+            canonicalize(sum.wrapping_add(pick(carry, EPSILON)))
+        }
+
+        #[inline(always)]
+        pub(super) $($constness)? fn sub(a: u64, b: u64) -> u64 {
+            // On borrow the wrapped difference is a − b + 2^64; a − b + P = wrapped − EPSILON lies
+            // in (0, P), so the result is canonical without a further correction.
+            let (diff, borrow) = a.overflowing_sub(b);
+            diff.wrapping_sub(pick(borrow, EPSILON))
+        }
+
+        /// Reduces a 128-bit product modulo `P` (RFC-0002 'Representation and reduction').
+        ///
+        /// With `x = lo + 2^64·(hi_lo + 2^32·hi_hi)`: `2^64 ≡ 2^32 − 1` and `2^96 ≡ −1`, so
+        /// `x ≡ lo − hi_hi + hi_lo·(2^32 − 1) (mod P)`.
+        #[inline(always)]
+        pub(super) $($constness)? fn reduce128(x: u128) -> u64 {
+            let lo = x as u64;
+            let hi = (x >> 64) as u64;
+            let hi_hi = hi >> 32;
+            let hi_lo = hi & EPSILON;
+            // lo − hi_hi. On borrow (lo < hi_hi < 2^32) the wrapped value exceeds 2^64 − 2^32, so
+            // subtracting EPSILON (that is, adding P − 2^64) cannot underflow.
+            let (t0, borrow) = lo.overflowing_sub(hi_hi);
+            let t0 = t0.wrapping_sub(pick(borrow, EPSILON));
+            // hi_lo·(2^32 − 1) ≤ (2^32 − 1)^2 < 2^64.
+            let t1 = hi_lo * EPSILON;
+            // t0 + t1 < 2^65 − 2^33; on carry the wrapped sum is at most 2^64 − 2^33, so adding
+            // EPSILON (that is, 2^64 mod P) cannot wrap again.
+            let (t2, carry) = t0.overflowing_add(t1);
+            canonicalize(t2.wrapping_add(pick(carry, EPSILON)))
+        }
+
+        #[inline(always)]
+        pub(super) $($constness)? fn mul(a: u64, b: u64) -> u64 {
+            reduce128(a as u128 * b as u128)
+        }
+
+        /// `base^exp` by square-and-multiply. The loop depends on `exp` only, which is public
+        /// everywhere this is used (RFC-0002 'Timing').
+        pub(super) $($constness)? fn pow(base: u64, mut exp: u64) -> u64 {
+            let mut acc = 1;
+            let mut square = base;
+            while exp > 0 {
+                if exp & 1 == 1 {
+                    acc = mul(acc, square);
+                }
+                square = mul(square, square);
+                exp >>= 1;
+            }
+            acc
+        }
+
+        /// `x^(2^k)`.
+        pub(super) $($constness)? fn square_n(mut x: u64, k: u32) -> u64 {
+            let mut i = 0;
+            while i < k {
+                x = mul(x, x);
+                i += 1;
+            }
+            x
+        }
+    };
 }
 
-/// `x^(2^k)`.
-const fn square_n(mut x: u64, k: u32) -> u64 {
-    let mut i = 0;
-    while i < k {
-        x = mul(x, x);
-        i += 1;
+/// The arithmetic every operation runs: each select a `select_unpredictable`, so that it stays a
+/// conditional move in loops, where x86_64's code generation would otherwise branch on the data
+/// (#242).
+mod run_time {
+    use super::{EPSILON, P};
+
+    /// `value` when `bit` is set, 0 otherwise, as a conditional move.
+    #[inline(always)]
+    fn pick(bit: bool, value: u64) -> u64 {
+        core::hint::select_unpredictable(bit, value, 0)
     }
-    x
+
+    arithmetic!();
+
+    /// `x·c mod P` for `c < 2^32`, with a shorter reduction than a full product: the product is
+    /// below `2^96`, so `x·c ≡ lo + hi·(2^32 − 1) (mod P)` with `hi < 2^32`.
+    #[inline(always)]
+    pub(super) fn mul_small(x: u64, c: u32) -> u64 {
+        let product = x as u128 * c as u128;
+        let lo = product as u64;
+        let hi = (product >> 64) as u64;
+        // hi·(2^32 − 1) < 2^64. lo + hi·(2^32 − 1) < 2^65 − 2^33, so on carry the wrapped sum is
+        // at most 2^64 − 2^33 and adding EPSILON (2^64 mod P) cannot wrap again.
+        let (t, carry) = lo.overflowing_add(hi * EPSILON);
+        canonicalize(t.wrapping_add(pick(carry, EPSILON)))
+    }
 }
+
+/// The same arithmetic as `const fn`s, each select a mask, for the constants computed at compile
+/// time; nothing runs it at run time.
+mod compile_time {
+    use super::{EPSILON, P};
+
+    /// `value` when `bit` is set, 0 otherwise, with a mask.
+    const fn pick(bit: bool, value: u64) -> u64 {
+        value & (bit as u64).wrapping_neg()
+    }
+
+    arithmetic!(const);
+}
+
+use run_time::{add, canonicalize, mul, mul_small, pow, square_n, sub};
+
+// The arithmetic's edge cases, checked by the compiler on the compile-time instance, which shares
+// its source with the run-time one: wrapping sums, borrowing differences, the largest product,
+// the reduction of P itself and of the largest 128-bit value, `2^128 − 1 ≡ 2^64 − 2^33`.
+const _: () = {
+    assert!(compile_time::add(P - 1, 1) == 0);
+    assert!(compile_time::add(P - 1, P - 1) == P - 2);
+    assert!(compile_time::sub(0, 1) == P - 1);
+    assert!(compile_time::sub(1, P - 1) == 2);
+    assert!(compile_time::mul(P - 1, P - 1) == 1);
+    assert!(compile_time::canonicalize(P) == 0);
+    assert!(compile_time::reduce128(u128::MAX) == 0xFFFF_FFFE_0000_0000);
+};
 
 /// A primitive `2^32`-th root of unity: `7^((P − 1) / 2^32)` (RFC-0002 'Constants').
-const ROOT_2_32: u64 = pow(7, (P - 1) >> 32);
+const ROOT_2_32: u64 = compile_time::pow(7, (P - 1) >> 32);
 
 /// `ROOTS[k]` is a primitive `2^k`-th root of unity, `ROOT_2_32^(2^(32 − k))`.
 const ROOTS: [u64; 33] = {
     let mut roots = [0u64; 33];
     let mut k = 0;
     while k <= 32 {
-        roots[k] = square_n(ROOT_2_32, 32 - k as u32);
+        roots[k] = compile_time::square_n(ROOT_2_32, 32 - k as u32);
         k += 1;
     }
     roots
@@ -126,17 +189,10 @@ impl Goldilocks {
     /// The primitive `2^32`-th root of unity `7^((P − 1) / 2^32)`.
     pub const ROOT_2_32: Self = Self(ROOT_2_32);
 
-    /// `self · c` for a constant `c < 2^32`, with a shorter reduction than a full product: the
-    /// product is below `2^96`, so `x·c ≡ lo + hi·(2^32 − 1) (mod P)` with `hi < 2^32`.
+    /// `self · c` for a constant `c < 2^32`, with a shorter reduction than a full product.
     #[inline]
-    pub const fn mul_small(self, c: u32) -> Self {
-        let x = self.0 as u128 * c as u128;
-        let lo = x as u64;
-        let hi = (x >> 64) as u64;
-        // hi·(2^32 − 1) < 2^64. lo + hi·(2^32 − 1) < 2^65 − 2^33, so on carry the wrapped sum is
-        // at most 2^64 − 2^33 and adding EPSILON (2^64 mod P) cannot wrap again.
-        let (t, carry) = lo.overflowing_add(hi * EPSILON);
-        Self(canonicalize(t.wrapping_add(EPSILON & mask(carry))))
+    pub fn mul_small(self, c: u32) -> Self {
+        Self(mul_small(self.0, c))
     }
 }
 
@@ -252,8 +308,7 @@ impl PrimeField for Goldilocks {
     fn from_i64(x: i64) -> Self {
         let magnitude = x.unsigned_abs(); // ≤ 2^63 < P, so already canonical
         let negated = sub(0, magnitude);
-        let negative = mask(x < 0);
-        Self((negated & negative) | (magnitude & !negative))
+        Self(core::hint::select_unpredictable(x < 0, negated, magnitude))
     }
 
     #[inline]
@@ -268,9 +323,9 @@ impl PrimeField for Goldilocks {
 
     #[inline]
     fn to_centered_i128(&self) -> i128 {
-        let x = self.0 as i128;
-        let high = (self.0 > (P - 1) / 2) as i128;
-        x - high * P as i128
+        // Branch-free in the value, as from_i64: the witness engine reads secret values back.
+        let high = self.0 > (P - 1) / 2;
+        self.0 as i128 - core::hint::select_unpredictable(high, P as i128, 0)
     }
 
     fn two_adic_generator(log_n: u32) -> Self {

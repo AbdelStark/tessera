@@ -189,3 +189,15 @@ All notable changes to the prover release train are recorded here: the crates un
   - `tessera_bench::measure`, `Statistics` and `MicrobenchmarkReport` are the harness, which the H100 unit costs will share. `--runner-class NAME --out FILE` writes a `tessera.microbenchmarks/1` baseline, added to 03 §5: schema-versioned, its names sanitized and every number finite.
   - The `bench` workflow runs the benchmark on the GitHub-hosted `ubuntu-24.04` runner when the suite changes, or on demand, and uploads the report. `docs/perf/baselines/github-ubuntu-24.04.json` is its committed baseline, and `docs/perf/README.md` says how to run and read it. The 5% regression gate of 08 §6 runs on a runner with locked clocks later.
   - 08 §6, 07 and RFC-0008 name this harness where they named `criterion`. Its statistic is the one the gate compares, the median of 10 runs, and it writes a schema-versioned baseline and adds no dependency.
+
+### Changed
+
+- The minimum supported Rust version is 1.88, up from 1.85 (09 §2): the field needs `core::hint::select_unpredictable`. The `msrv` CI job, renamed from `msrv (1.85)`, checks both workspaces with 1.88.0 ([#242](https://github.com/AbdelStark/tessera/issues/242)).
+
+### Security
+
+- The field's arithmetic is now branch-free in the code x86_64 runs, not only in its source (INV-ARCH-2, [#242](https://github.com/AbdelStark/tessera/issues/242)):
+  - LLVM's x86 cmov conversion had turned the carry and borrow corrections of `Fp2` products inside loops into conditional jumps on the data. That was a timing side channel on witness values, and it cost a misprediction on about every other correction.
+  - Every select on values in `tessera-field` now goes through `core::hint::select_unpredictable`: the reductions, `mul_small`, `from_i64` and `to_centered_i128`. The arithmetic is written once and instantiated twice, at run time with these selects and as `const fn`s with masks for the roots of unity computed at compile time. The compiler checks the edge cases of the latter.
+  - `cargo xtask check-branchless`, a new CI gate, compiles the 13 probe loops of `tessera-field`'s `codegen-probe` feature for `x86_64-unknown-linux-gnu`, from the field operations to an NTT butterfly and an `Fp2` inner product. It fails on any conditional jump beyond a loop's own two. On main's code, the gate fails with 12 jumps on carries in the `Fp2` product loop.
+  - On the GitHub-hosted runner (`docs/perf/baselines/github-ubuntu-24.04.json`, bench run 38944114196), an `Fp2` product went from 27.4 to 8.6 ns. The NTT went from 73 to 30 ns per point, a degree-3 sumcheck from 170 to 65 ns per entry, and the LogUp stage from 945 to 296 ns per lookup. That is on a runner instance whose base products were 1.5 times slower than the earlier baseline's (1.59 ns against 1.08).

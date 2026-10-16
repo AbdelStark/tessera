@@ -261,11 +261,12 @@ fn ct_leaf<S: Shift>(values: &mut [Fp], twiddles: &[Fp], shift: &S, group: usize
         let mut groups = values
             .chunks_exact_mut(2 * half)
             .zip(&twiddles[first..first + count]);
-        if S::UNIT_FIRST && first == 0 {
-            if let Some((chunk, _)) = groups.next() {
-                let (lo, hi) = chunk.split_at_mut(half);
-                ct_unit_butterflies(lo, hi);
-            }
+        if S::UNIT_FIRST
+            && first == 0
+            && let Some((chunk, _)) = groups.next()
+        {
+            let (lo, hi) = chunk.split_at_mut(half);
+            ct_unit_butterflies(lo, hi);
         }
         for (chunk, &z) in groups {
             let (lo, hi) = chunk.split_at_mut(half);
@@ -319,11 +320,12 @@ fn gs_leaf<S: Shift>(values: &mut [Fp], twiddles: &[Fp], shift: &S, group: usize
         let mut groups = values
             .chunks_exact_mut(2 * half)
             .zip(&twiddles[first..first + count]);
-        if S::UNIT_FIRST && first == 0 {
-            if let Some((chunk, _)) = groups.next() {
-                let (lo, hi) = chunk.split_at_mut(half);
-                gs_unit_butterflies(lo, hi);
-            }
+        if S::UNIT_FIRST
+            && first == 0
+            && let Some((chunk, _)) = groups.next()
+        {
+            let (lo, hi) = chunk.split_at_mut(half);
+            gs_unit_butterflies(lo, hi);
         }
         for (chunk, &z) in groups {
             let (lo, hi) = chunk.split_at_mut(half);

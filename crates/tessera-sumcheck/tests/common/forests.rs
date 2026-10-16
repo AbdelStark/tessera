@@ -180,10 +180,10 @@ pub fn verify_forests(
             })
             .collect();
         let mut root = root_challenges.clone();
-        if let Some((changed, c)) = root_change {
-            if changed == level {
-                root[c] += TvFp2::ONE;
-            }
+        if let Some((changed, c)) = root_change
+            && changed == level
+        {
+            root[c] += TvFp2::ONE;
         }
         for &i in &joining {
             let r = root[s_max - shapes[i].0..].to_vec();
