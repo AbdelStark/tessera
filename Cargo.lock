@@ -521,6 +521,12 @@ name = "tessera-bench"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "tessera-codec",
+ "tessera-field",
+ "tessera-hash",
+ "tessera-logup",
+ "tessera-pcs",
+ "tessera-sumcheck",
 ]
 
 [[package]]

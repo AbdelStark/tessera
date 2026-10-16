@@ -1,0 +1,108 @@
+{
+  "arch": "x86_64",
+  "measurements": [
+    {
+      "name": "field/fp-mul",
+      "noisy": false,
+      "ns_per_unit": {
+        "cv": 0.012819670036407625,
+        "max": 1.113905906677246,
+        "median": 1.0767765045166016,
+        "min": 1.0660018920898438
+      },
+      "unit": "product",
+      "units": 1048576
+    },
+    {
+      "name": "field/fp2-mul",
+      "noisy": false,
+      "ns_per_unit": {
+        "cv": 0.00737852476319563,
+        "max": 27.669109344482422,
+        "median": 27.406080722808838,
+        "min": 27.12133026123047
+      },
+      "unit": "product",
+      "units": 1048576
+    },
+    {
+      "name": "field/fp-batch-inverse",
+      "noisy": false,
+      "ns_per_unit": {
+        "cv": 0.014137586818219272,
+        "max": 6.7760772705078125,
+        "median": 6.526344299316406,
+        "min": 6.4907379150390625
+      },
+      "unit": "element",
+      "units": 65536
+    },
+    {
+      "name": "ntt/fp",
+      "noisy": false,
+      "ns_per_unit": {
+        "cv": 0.011939811937664854,
+        "max": 75.21805667877197,
+        "median": 73.13154125213623,
+        "min": 72.18532752990723
+      },
+      "unit": "point",
+      "units": 1048576
+    },
+    {
+      "name": "hash/column-chains",
+      "noisy": false,
+      "ns_per_unit": {
+        "cv": 0.0021771727050647837,
+        "max": 16.523313522338867,
+        "median": 16.47643756866455,
+        "min": 16.41678237915039
+      },
+      "unit": "symbol",
+      "units": 524288
+    },
+    {
+      "name": "merkle/multiproof",
+      "noisy": false,
+      "ns_per_unit": {
+        "cv": 0.024260840706635405,
+        "max": 13919.484375,
+        "median": 12944.0234375,
+        "min": 12823.609375
+      },
+      "unit": "opening",
+      "units": 64
+    },
+    {
+      "name": "sumcheck/product-3",
+      "noisy": true,
+      "ns_per_unit": {
+        "cv": 0.049893994085831485,
+        "max": 195.33630275726318,
+        "median": 169.54470777511597,
+        "min": 165.6363115310669
+      },
+      "unit": "entry",
+      "units": 1048576
+    },
+    {
+      "name": "logup/prove",
+      "noisy": false,
+      "ns_per_unit": {
+        "cv": 0.014680055574758651,
+        "max": 970.3726043701172,
+        "median": 944.5498390197754,
+        "min": 917.6776695251465
+      },
+      "unit": "lookup",
+      "units": 262144
+    }
+  ],
+  "os": "linux",
+  "protocol": {
+    "iterations": 10,
+    "warmups": 3
+  },
+  "runner_class": "github-ubuntu-24.04",
+  "schema": "tessera.microbenchmarks/1"
+}

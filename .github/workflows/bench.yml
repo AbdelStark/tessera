@@ -1,0 +1,49 @@
+# CPU microbenchmarks of the prover's primitives (docs/spec/08-performance-budget.md §6) on the
+# GitHub-hosted CI runner class. They run when the benchmark suite changes, or on demand, and
+# upload a tessera.microbenchmarks/1 report; docs/perf/baselines/ keeps the committed baseline.
+# Nothing is gated here: the regression gate compares on a runner with locked clocks (#167).
+# Third-party actions are pinned by commit SHA (TB-4 in docs/spec/06-security.md).
+name: bench
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/tessera-bench/**"
+      - ".github/workflows/bench.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  microbenchmarks:
+    name: microbenchmarks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Run the microbenchmarks
+        run: |
+          cargo bench --locked -p tessera-bench --bench primitives -- \
+            --runner-class github-ubuntu-24.04 --out github-ubuntu-24.04.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: microbenchmarks-github-ubuntu-24.04
+          path: github-ubuntu-24.04.json
+          if-no-files-found: error

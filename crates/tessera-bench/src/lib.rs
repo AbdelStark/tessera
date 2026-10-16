@@ -2,10 +2,10 @@
 
 //! The executable cost model, unit-cost microbenchmarks and their reports (RFC-0020).
 //!
-//! This version holds the cost model: every projection of the proof multiplier `μ` becomes code
-//! that reproduces the source's tables and takes measured inputs (RFC-0020 'Executable cost
-//! model'). The microbenchmarks and the `tessera.unit-costs/1` report follow with the H100
-//! measurements.
+//! This version holds the cost model and the CPU microbenchmarks' harness. Every projection of the
+//! proof multiplier `μ` becomes code that reproduces the source's tables and takes measured
+//! inputs (RFC-0020 'Executable cost model'), and every microbenchmark is measured the way RFC-0020
+//! measures unit costs. The `tessera.unit-costs/1` report follows with the H100 measurements.
 //!
 //! - [`mu`] evaluates 08 §1 term by term: the linear layers' commitments and lookups, the
 //!   attention scores' commitments, lookups and product-tree leaves, the shared weight pass,
@@ -17,6 +17,10 @@
 //!   'Calculators').
 //! - [`ModelReport`] gathers them at several contexts and writes the `tessera.cost-model/1`
 //!   report of `tessera bench model`.
+//! - [`measure`] runs a benchmark with RFC-0020's protocol, warm-up runs then measured runs, and
+//!   returns their [`Statistics`]: median, extremes and coefficient of variation, flagged above
+//!   [`NOISY_CV`]. [`MicrobenchmarkReport`] stores a run of the `primitives` benchmark as the
+//!   `tessera.microbenchmarks/1` baseline of 08 §6's regression gate (`docs/perf/`).
 //!
 //! [`Counts::SOURCE_405B`], [`UnitCosts::SOURCE`] and [`Scenario::SOURCE`] are the source's
 //! inputs. With them, no regeneration and no streaming, the model reproduces the source's chart
@@ -42,10 +46,15 @@
 #![forbid(unsafe_code)]
 
 mod error;
+mod measure;
 mod model;
 mod report;
 
 pub use error::{ModelError, Problem};
+pub use measure::{
+    MICROBENCHMARKS_SCHEMA, Measurement, MicrobenchmarkReport, NOISY_CV, Protocol, Statistics,
+    measure,
+};
 pub use model::{
     Counts, MemoryModel, MuBreakdown, UnitCosts, detection_probability, mu, proof_time_s,
     sampling_rate, streaming_passes,
