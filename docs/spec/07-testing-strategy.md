@@ -85,6 +85,7 @@ Required properties, each a named test:
 | Format and lint | Yes | `cargo fmt --check`, `cargo clippy -D warnings`, `ruff check`, `ruff format --check` |
 | Types | Yes | `pyright --strict` on `python/` |
 | Unit, property, conformance, component | Yes | `cargo test --workspace` (both workspaces), `pytest` |
+| Conformance vectors current | Yes | `cargo xtask gen-vectors --check`, also a test of `xtask`: the codec vectors match their cases, and every oracle `spec/vectors/*/generate.py`, rerun on a copy, writes its files byte for byte |
 | Tiny end-to-end and tamper corpus | Yes | `cargo test -p tessera-e2e` |
 | Verifier isolation | Yes | `cargo xtask check-isolation` ([RFC-0001](../rfcs/RFC-0001-workspace-and-verifier-independence.md#enforcement)) |
 | Dependency policy | Yes | `cargo deny check` (both workspaces); `cargo vet` (verifier) |
