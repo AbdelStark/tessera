@@ -209,6 +209,11 @@ All notable changes to the prover release train are recorded here: the crates un
   - `Table` gives the rows, padded with copies of row 0, the row a lookup hits, and its value. Lookups take witness keys, so they compute arithmetically, with no memory access that depends on the key (INV-ARCH-2): the S-box by inversion in GF(2^8), a class's shift by selects.
   - A digest hashes the definition, an empty sequence of piece parameters, and the value column of the kinds the verifier enumerates (RFC-0008 'Generators and digests').
   - `spec/vectors/tables/` holds 20 cases from an independent Python oracle. Before writing, the oracle checks its S-box and products against FIPS-197: the §4.2 examples, Figure 7, and the AES-128 known answers of Appendices B and C.1. It also checks every one of the 65,536 products against logarithms.
+- The compiler's dataflow IR in `tessera-ir` (RFC-0006 'Operation set', [#72](https://github.com/AbdelStark/tessera/issues/72)):
+  - `Op` holds the 21 operations, each with its `OpClass` (linear, degree 2 or gadget-backed). `TensorSpec`, `NodeKind`, `IntType`, `IntRange`, the dense ids and the references a node names follow 03 §3.
+  - `GraphBuilder` adds inputs, weights, public constants, shift-class sets and nodes in topological order. It checks every node against its operation's rules (arity, shapes, the kind of each output and of the inputs that need one), and leaves the graph as it was when it refuses one. Ids are dense in creation order, so two builds from the same calls are equal (INV-DM-5).
+  - `Graph::validate` checks the same rules on a graph assembled otherwise: dense ids, one producer per tensor, topological order (so no cycle), and graph inputs that are public or committed. `Graph::producer` walks the virtual DAG that the schedule reads. Errors are `IrError`s.
+  - RFC-0006 now states the rules in a table and refines the sketch. Nodes have several outputs, as `SoftmaxRow` gives the exponentials and the reciprocals. `MatMulAct` has a `transpose_rhs` flag, since `QK^T` and `PV` contract different axes and the operation set has no transpose. `Slice` names its axis and range. The graph declares the constants, shift classes and weights its nodes name.
 
 ### Changed
 
