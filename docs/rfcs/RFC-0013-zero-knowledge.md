@@ -34,12 +34,19 @@ The verifier is a counterparty state; weights, prompts, outputs and activations 
 |---|---|---|
 | Commitment roots | Hash of columns whose symbols are uniformly masked | Encoding masks |
 | Seed | Coin toss (live) or hash with proof-of-work (non-interactive) | Both parties |
-| Sumcheck round messages | Masked sumcheck | Committed masking polynomial `G_k` per stage |
-| Final evaluations of each stage | Masked extensions | One mask row `R_V` per stacked tensor kind |
-| LogUp roots `(n_a, d_a)`, `(n_t, d_t)` | A pair of masking leaves `(μ, δ)`, `(−μ, δ)` | One committed `μ` and `δ` per instance |
-| Combined rows `u_g` | Blinding rows | One fresh blinding row per revealed combination |
+| Sumcheck round messages | Masked sumcheck | Committed masking polynomial `G_k` over `Fp2` per stage |
+| Final evaluations of each stage | Masked extensions | One `Fp2` mask row `R_V` per stacked tensor kind |
+| LogUp roots `(n_a, d_a)`, `(n_t, d_t)` | A pair of masking leaves `(μ, δ)`, `(−μ, δ)` | One committed `μ` and `δ` in `Fp2` per instance |
+| Combined rows `u_g` | Blinding rows | One fresh `Fp2` blinding row per revealed combination |
 | Opened columns | Vanishing encoding masks | `P_A` (advice) or `P_W` (weights) coefficients per row |
 | `Û`, lengths, digests | Public by design | — |
+
+**Masks over `Fp2`.** Committed values are in `Fp`, but every value in the table above but the columns is in `Fp2` (`Fp[X]/(X^2 − 7)`). A mask drawn from `Fp` and scaled by any public coefficient covers one `Fp`-dimension of an `Fp2` value and leaves the other one unmasked:
+- an `Fp` blinding row leaves `Σ_row Im(c_g(row))·A_row` in the clear, `k` linear combinations of the witness, or of the weights, per combined row;
+- `Fp` coefficients of a masking polynomial leave each round-message coefficient's component off the line through `ρ_k`;
+- `Fp` masking leaves leave the root fraction's component off `Fp`.
+
+Every mask in this RFC is therefore uniform over `Fp2`. An `Fp2` mask value is two committed `Fp` values, and an `Fp2` row is two committed `Fp` rows, `B = B^{(0)} + X·B^{(1)}`, which enter a combination with the coefficients `1` and `X`.
 
 ### Stacked layers
 
@@ -49,12 +56,12 @@ Each stage treats per-layer instances of the same tensor kind as one stacked ten
 
 For a stage proving `H = Σ_x f(x)` over `n` variables with round degree `d`:
 
-1. In Round 1, the prover commits `G_k(x) = a_0 + Σ_{j=1}^{n} g_j(x_j)` with each `g_j` a random univariate polynomial of degree `d` (coefficients in the advice mask block).
+1. In Round 1, the prover commits `G_k(x) = a_0 + Σ_{j=1}^{n} g_j(x_j)` with each `g_j` a random univariate polynomial of degree `d` over `Fp2` (each coefficient, and `a_0`, two values of the advice mask block).
 2. In the stage, the prover sends `Γ = Σ_x G_k(x)`; the transcript yields `ρ_k ∈ Fp2` (label `stage/{k}/zk-rho`).
 3. The parties run the sumcheck on `f + ρ_k G_k` with claim `H + ρ_k Γ`.
 4. At the end, `G_k(r)` is opened from the advice commitment as an ordinary claim.
 
-The round messages are then simulatable from `H`, `Γ` and the final evaluation (Chiesa, Forbes, Spooner 2017; Libra, Xie et al. 2019). Cost: `n(d + 1) + 1` committed elements per stage.
+The round messages are then simulatable from `H`, `Γ` and the final evaluation (Chiesa, Forbes, Spooner 2017; Libra, Xie et al. 2019), because each of their non-constant coefficients is masked by a uniform `Fp2` value. Cost: `2(n(d + 1) + 1)` committed elements per stage.
 
 ### Masked extensions
 
@@ -64,21 +71,21 @@ For every stacked tensor `V` whose evaluation is revealed (as a stage output cla
 V'(x) = \tilde V(x) + Z(x) \cdot \tilde R_V(x_{col}), \qquad Z(x) = \prod_i x_i (1 - x_i)
 ```
 
-where `R_V` is a random advice row over `V`'s column variables (its low `min(n_V, log2 k)` variables). Properties:
+where `R_V` is a random `Fp2` advice row, two committed rows, over `V`'s column variables (its low `min(n_V, log2 k)` variables). Properties:
 
 - `V' = Ṽ` on the Boolean hypercube, so every sumcheck identity over the hypercube holds unchanged with `V'` in place of `Ṽ`.
 - `Z` vanishes at every summation point of every round except the last, so the prover's round computations change only in the last round.
-- `V'(p) = Ṽ(p) + Z(p) · R̃_V(p_col)`. For `p` off the hypercube, `Z(p) ≠ 0`, and the values `R̃_V(p_col^{(i)})` at the at most `e_V` revealed points are jointly uniform whenever the vectors `eq(p_col^{(i)}, ·)` are linearly independent, which fails with probability at most `e_V^2 / |Fp2|`.
+- `V'(p) = Ṽ(p) + Z(p) · R̃_V(p_col)`. For `p` off the hypercube, `Z(p) ≠ 0`, and the values `R̃_V(p_col^{(i)})` at the at most `e_V` revealed points are jointly uniform whenever the vectors `eq(p_col^{(i)}, ·)` are linearly independent over `Fp2`, which fails with probability at most `e_V^2 / |Fp2|`. An `Fp` row would need the `2e_V` real and imaginary parts of those vectors independent over `Fp`, which Schwartz–Zippel bounds only by about `2e_V·log2(k)/|Fp|`, near `2^-55`: hence the `Fp2` row.
 - **Committed tensors.** `V'(p)` is a linear functional of the advice vector (data positions plus `R_V`'s row) whose column part is `eq(p_col)` in both terms, so it falls in the same opening group as the data claim ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol)).
 - **Virtual tensors.** The producing relation proves `V'(p) = Σ_x rel(p, x)·inputs(x) + Z(p) Σ_{x_col} eq(p_col, x_col) R_V[x_col]`; the second sum is added to the stage's sumcheck over the column variables, so the verifier never learns `R̃_V(p_col)` itself, only `R̃_V` at the stage's final point (as in Libra's treatment of layer masks).
 - Degree: `V'` has degree at most 3 in each variable; round messages grow by a few coefficients.
 
-Weights follow the same rule with the mask row stored as a blinding row of the weight matrix ([RFC-0012](RFC-0012-weight-commitment.md#budget-state-machine)); each proof consumes one mask row per weight matrix.
+Weights follow the same rule with the mask row stored as blinding rows of the weight matrix ([RFC-0012](RFC-0012-weight-commitment.md#budget-state-machine)); each proof consumes one `Fp2` mask row, two blinding rows, per weight matrix.
 
 ### Hiding openings
 
 - **Columns.** Every committed row carries a vanishing mask of `P` random coefficients (RFC-0011 encoding). Any set of at most `P` codeword positions outside `H` is uniformly distributed and independent of the message. Advice commitments are opened once (`τ_A ≤ P_A`); weight matrices are opened up to `P_W` distinct positions per epoch.
-- **Combined rows.** Each revealed combination, each claim group `g` and the proximity row, includes a fresh blinding row `Q_g` with its own vanishing mask, with coefficient 1. The prover reveals `u'_g = Σ_row c_g(row) A_row + Q_g`. `u'_g` is uniform because `Q_g` is used exactly once.
+- **Combined rows.** Each revealed combination, each claim group `g` and the proximity row, includes a fresh `Fp2` blinding row `Q_g = Q_g^{(0)} + X·Q_g^{(1)}`, two committed rows, each with its own vanishing mask. `Q_g` enters with coefficient 1, its two rows with `1` and `X`. The prover reveals `u'_g = Σ_row c_g(row) A_row + Q_g`. `u'_g` is uniform on `Fp2^k` because `Q_g` is, and is used exactly once.
 - **Blinding claims.** For a claim group, the prover sends the blinding claim `q_g = ⟨Q_g, eq(col_g)⟩` before the claims' coefficients exist. Every `q_g` is absorbed, in group order, under `pcs/advice/blinding`, before `γ` is squeezed (RFC-0014, row 7). The group check then reads `Σ_t γ^{t+1}·v_t + q_g = ⟨u'_g, eq(col_g)⟩` ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) steps 2 and 6).
   - **Soundness.** The column checks bind `u'_g` to the committed rows, so `⟨u'_g, eq(col_g)⟩ = Σ_t γ^{t+1}·f_t + Q̃_g`, with `f_t` the true evaluations and `Q̃_g = ⟨Q_g, eq(col_g)⟩`. The check holds exactly when `(q_g − Q̃_g) + Σ_t γ^{t+1}·(v_t − f_t) = 0`. Everything in it but `γ` is fixed before `γ` is drawn, so a false claim makes it a non-zero polynomial of degree at most `T_g`, the group's number of claims, which vanishes with probability at most `T_g/|Fp2|`.
   - **Both conditions are needed.** If `q_g` were sent after `γ`, the prover could choose it to cancel any false claim. If a claim also had the coefficient 1, `q_g` could cancel that claim's error whatever the order.
@@ -88,7 +95,7 @@ Weights follow the same rule with the mask row stored as a blinding row of the w
 
 ### LogUp and product-tree roots
 
-- Each LogUp instance's two trees ([RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree)) include a pair of masking leaves: `(μ, δ)` in the lookup tree and `(−μ, δ)` in the table tree, with `μ` and `δ ≠ 0` random and committed.
+- Each LogUp instance's two trees ([RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree)) include a pair of masking leaves: `(μ, δ)` in the lookup tree and `(−μ, δ)` in the table tree, with `μ` and `δ ≠ 0` uniform in `Fp2`, each committed as two `Fp` values. With `μ` and `δ` in `Fp`, the root fraction's component off `Fp`, and the class of the denominators' product in `Fp2^*/Fp^*`, would show.
   - The two fractions cancel, so the instance's sum is unchanged.
   - Each root `(n, d)` becomes uniform: `d` is multiplied by `δ`, and `n/d` is shifted by `μ/δ`.
   - Without the pair, a lookup root would reveal its fraction `Σ_i 1/(α − a_i)`, a function of the secret lookup multiset. A zero-numerator leaf alone rescales `n` and `d` but keeps that fraction.
@@ -116,13 +123,13 @@ Before any v0.4 implementation work merges, `docs/zk/simulator.md` must give a c
 
 | Item | 405B, 16K tokens |
 |---|---|
-| Mask rows `R_V` (about 2,000 stacked tensors and tree levels) | about 8×10^9 elements, 0.3% of advice |
-| Stage masking polynomials | < 10^4 elements |
-| Blinding rows for advice combined rows (`G + 1 ≤ 17`) | 17 rows |
-| Weight budget per proof | 3 blinding rows per weight matrix (evaluation, proximity, mask) |
+| Mask rows `R_V` (about 2,000 stacked tensors and tree levels, two rows each) | about 1.6×10^10 elements, 0.6% of advice |
+| Stage masking polynomials | < 2×10^4 elements |
+| Blinding rows for advice combined rows (`G + 1 ≤ 17`, two rows each) | 34 rows |
+| Weight budget per proof | 6 blinding rows per weight matrix (two each for evaluation, proximity and mask) |
 | Extra sumcheck work | last round only |
 
-The weight budget per proof is three rows, so `B_W = 2048` gives `(2048 − 2)/3 = 682` proofs per epoch, matching the column budget of about 674 ([RFC-0012](RFC-0012-weight-commitment.md#budget-state-machine)).
+The weight budget per proof is six rows, and the linking proofs take four at each end of an epoch, so `B_W = 4096` gives `(4096 − 8)/6 = 681` proofs per epoch, matching the column budget of about 674 ([RFC-0012](RFC-0012-weight-commitment.md#budget-state-machine)).
 
 ### Invariants
 
@@ -160,7 +167,11 @@ v0.3 ships a sound, non-hiding protocol. v0.4 adds the four mechanisms behind th
   Over the test field, a false claim with an honest `q_g` is accepted at a rate within `T_g/|F|`.
 - LogUp roots: the distribution of each instance's roots is independent of the key multiset.
 - End-to-end simulator test: simulated and real transcripts of the tiny model are indistinguishable at significance 0.001 over 10^4 runs.
-- Budget: each proof consumes exactly three weight blinding rows per matrix and fails cleanly when they run out.
+- Budget: each proof consumes exactly six weight blinding rows per matrix and fails cleanly when they run out.
+- **Masks over `Fp2`.** Each of these distinguishers tells two witnesses apart with probability close to 1 when its mask is drawn from `Fp`, and is at chance with the masks of this RFC:
+  - one that reads `u'_g` off the line of an `Fp` blinding row;
+  - one that reads a round-message coefficient off the line through `ρ_k`;
+  - one that reads the root fraction's component off `Fp`.
 
 ## Open Questions
 

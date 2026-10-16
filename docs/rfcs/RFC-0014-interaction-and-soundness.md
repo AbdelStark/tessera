@@ -119,7 +119,7 @@ In non-interactive mode the seed is squeezed only after a nonce whose `H("pow", 
 | Challenge field | `Fp2` | `Fp2` | `Fp2` |
 | Advice: `log2 k`, rate, mask `P_A` | 22, 1/2, 160 | 22, 1/2, 200 | 10, 1/2, 16 |
 | Advice `τ_A` | 155 (`64.3` bits) | 193 (`80.1 + 20` bits) | 8 |
-| Weights: `k_W`, rate, mask `P_W`, blinding `B_W` | 2^20, 1/4, 2^16, 2048 | 2^20, 1/4, 2^16, 2048 | 2^8, 1/4, 64, 16 |
+| Weights: `k_W`, rate, mask `P_W`, blinding `B_W` | 2^20, 1/4, 2^16, 4096 | 2^20, 1/4, 2^16, 4096 | 2^8, 1/4, 64, 32 |
 | Weights `τ_W` | 97 (`64.0` bits) | 122 (`80.5 + 20` bits) | 8 |
 | `g_seed`, `g_query` | 0, 0 | 20, 20 | 0, 0 |
 | Row block `B`, segments `S` | 32, 8 | 32, 8 | 4, 1 |

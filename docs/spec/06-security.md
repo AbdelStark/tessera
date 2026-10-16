@@ -62,7 +62,7 @@ Out of scope: an adversary that subverts the recorder itself (the recorder is a 
 | Steering outputs to carry a covert channel | ADV-P | Exact mode: `Û = 0` with the sampler key committed at session open; bounded mode: `Û` bounds the channel capacity |
 | Reseeding a `Round1` to collect two transcripts over the same commitments | ADV-V | The prover answers at most one seed per `Round1`; aborts force fresh commitments and masks (INV-PROTO-1) |
 | Adaptive column queries to reconstruct weights | ADV-V | Padding columns make any `≤ P_W` opened columns perfectly hiding; the budget state machine refuses to exceed it; refresh with a linking proof |
-| Reading weights from combined rows | ADV-V | One fresh blinding row per revealed combination |
+| Reading weights from combined rows | ADV-V | One fresh `Fp2` blinding row, two committed rows, per revealed combination ([RFC-0013](../rfcs/RFC-0013-zero-knowledge.md#hiding-openings)) |
 | Timing side channel | ADV-V | Prover control flow depends only on public data (INV-ARCH-2) |
 | Session hijack or replay | ADV-N | Mutually authenticated TLS 1.3; session ids bound into the transcript; manifest and batch digests in the statement |
 | Verifier denial of service | ADV-P | Size and memory limits checked before allocation; fuzzed decoders |

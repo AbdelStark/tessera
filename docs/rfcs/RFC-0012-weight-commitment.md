@@ -41,7 +41,7 @@ The source keeps VerInf's "persistent weight commitment, opened-column budget, r
 - `o_lo` has `a_T` bits, chosen so the message width `k_T = 2^{a_T} · in_pad` is `2^20` for 405B shapes (`a = 6` for 16,384-wide inputs, `a = 4` for the 53,248-wide down projection padded to 65,536, `a = 3` for the 2^17-wide embedding). Smaller models use `k_T = min(2^20, out_pad · in_pad)`.
 - Rate 1/4: codewords of length `n_T = 4 k_T` on the coset `7·L_T`.
 - Each row's encoding carries a vanishing mask with `P_W = 2^16` random coefficients (RFC-0011 encoding), so the effective rate is `ρ' = (k_T + P_W)/n_T ≈ 0.266`.
-- Each matrix has `B_W = 2048` blinding rows: random message rows appended after the data rows, committed with them, each used at most once. A proof consumes three per matrix: one for the evaluation combined row, one for the proximity combined row, and one as the mask row of the masked extension ([RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions)).
+- Each matrix has `B_W = 4096` blinding rows: random message rows appended after the data rows, committed with them, each used at most once. RFC-0013's masks are over `Fp2`, so each blinding row it uses is two of these. A proof consumes six per matrix: two for the evaluation combined row, two for the proximity combined row, and two as the mask row of the masked extension ([RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions)).
 - `R_W = H("weights-root", TCE(WeightLayoutParams) ‖ root_Embed ‖ … ‖ root_ChannelParams ‖ u32(epoch))`.
 
 ### Opening by the folding pass
@@ -50,13 +50,13 @@ After the `MatMulWeight` stage of RFC-0010, weight type `T` has one claim `W̃_T
 
 1. **Fold.** For each layer, the prover computes the partial fold over high output bits, `F_ℓ(o_lo, i) = Σ_{o_hi} eq(r_o^{hi}, o_hi) · W_ℓ[(o_hi, o_lo), i]`. This is the single pass over the weights. It runs as limb-decomposed INT8 GEMMs on tensor cores: each `Fp2` coefficient of `eq` splits into sixteen 8-bit limbs per base coordinate, and the products are recombined exactly.
 2. **Sumcheck input.** The matmul sumcheck over `(ℓ, i)` needs `W̃(ℓ, r_o, i) = Σ_{o_lo} eq(r_o^{lo}, o_lo) F_ℓ(o_lo, i)`, which costs `2^{a} · in` per layer from `F_ℓ`.
-3. **Combined row.** Let `β_T` be the next unused blinding row.
+3. **Combined row.** Let `β_T = β_T^{(0)} + X·β_T^{(1)}` be the next unused `Fp2` blinding row, two committed rows ([RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings)).
    - **Blinding claim.** The prover sends `q_T = ⟨β_T, eq(r_o^{lo}) ⊗ eq(r_i)⟩` under `pcs/weights/{T}/blinding`, and `θ_T` is then squeezed under `pcs/weights/{T}/gamma` (RFC-0014, row 7).
-   - **Check.** The opening reveals `u_T = θ_T·Σ_ℓ eq(ρ_ℓ, ℓ) F_ℓ + β_T`. The verifier checks `θ_T·v_T + q_T = ⟨u_T, eq(r_o^{lo}) ⊗ eq(r_i)⟩`, and at each queried column it gives the data rows their coefficients scaled by `θ_T` and the blinding row 1.
+   - **Check.** The opening reveals `u_T = θ_T·Σ_ℓ eq(ρ_ℓ, ℓ) F_ℓ + β_T`. The verifier checks `θ_T·v_T + q_T = ⟨u_T, eq(r_o^{lo}) ⊗ eq(r_i)⟩`, and at each queried column it gives the data rows their coefficients scaled by `θ_T`, and the blinding rows `1` and `X`.
    - **Soundness.** `v_T` and `q_T` are fixed before `θ_T`, so a false `v_T` passes with probability at most `1/|Fp2|`: `θ_T·(v_T − f_T) + (q_T − Q̃_T)` vanishes for at most one `θ_T`. With no challenge between them, any split `(v_T + Δ, q_T − Δ)` would pass ([RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings)).
 4. The fold `Σ_ℓ eq(ρ_ℓ, ℓ) F_ℓ` does not depend on `r_i`. It is formed as soon as the layer rounds fix `ρ_ℓ`, from the per-layer folds `F_ℓ` retained in device memory (`n_layers · 2^20` elements of `Fp2` per type, about 2 GiB at 405B), so one pass over the weights per proof suffices. Scaling it by `θ_T` and adding `β_T` once `θ_T` is drawn costs one pass over its `k_T` values.
 
-Proximity uses a second combined row with random coefficients and its own blinding row. Column queries (`τ_W` per matrix) are drawn and answered as [RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7 says: with replacement, each distinct queried column once and in increasing index order. Each answered column is the full column, all non-zero data rows and all blinding rows, followed by the canonical multiproof of the same set.
+Proximity uses a second combined row with random coefficients and its own `Fp2` blinding row. Column queries (`τ_W` per matrix) are drawn and answered as [RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7 says: with replacement, each distinct queried column once and in increasing index order. Each answered column is the full column, all non-zero data rows and all blinding rows, followed by the canonical multiproof of the same set.
 
 ### Budget state machine
 
@@ -79,18 +79,18 @@ Transitions, each persisted (fsync, atomic rename) before the corresponding mess
 
 | Event | Precondition | Effect |
 |---|---|---|
-| `reserve` (before `Round1`) | For every matrix: `next_blinding_row + 3 ≤ B_W − 2` and `|opened_columns| + τ_W ≤ P_W − τ_link`. Blinding rows `B_W − 2` and `B_W − 1` and `τ_link` columns of headroom are reserved exclusively for the linking proof | Burns three blinding rows per matrix; records them in `Round1` |
+| `reserve` (before `Round1`) | For every matrix: `next_blinding_row + 6 ≤ B_W − 4` and `|opened_columns| + τ_W ≤ P_W − τ_link`. Blinding rows `B_W − 4` to `B_W − 1` and `τ_link` columns of headroom are reserved exclusively for the linking proof | Burns six blinding rows per matrix; records them in `Round1` |
 | `record_queries` (before `Round3Response`) | Queries are those of the current session | Adds the distinct query indices to `opened_columns` |
 | `abort` | Any time | Nothing is released: burned rows and opened columns stay burned |
 | `refresh` | Any time; required when `reserve` fails | Produces epoch `e + 1` and a `WeightLinkProof` |
 
-`reserve` failing yields `ERR-WITNESS-BUDGET`. At the defaults, an epoch supports about 670 live proofs: `(B_W − 2)/3 = 682` by blinding rows and `(P_W − τ_link)/τ_W ≈ 674` by columns. The verifier tracks the blinding-row indices declared per epoch and rejects reuse with `Reject(Budget)`; reuse would only hurt the prover, but rejecting it makes prover bugs visible.
+`reserve` failing yields `ERR-WITNESS-BUDGET`. At the defaults, an epoch supports about 670 live proofs: `(B_W − 8)/6 = 681` by blinding rows, since the linking proofs take four rows at each end of an epoch, and `(P_W − τ_link)/τ_W ≈ 674` by columns. The verifier tracks the blinding-row indices declared per epoch and rejects reuse with `Reject(Budget)`; reuse would only hurt the prover, but rejecting it makes prover bugs visible.
 
 ### Refresh and linking proof
 
 1. Commit the same weights with a fresh `masks_seed` as epoch `e + 1`, root `R_W'`.
 2. Derive a random point `ρ_T` per matrix from a transcript over `(R_W, R_W', epoch)`.
-3. Open both commitments at `ρ_T` (one evaluation per matrix, using the last reserved budget of epoch `e` and the first of epoch `e + 1`) and show equal values.
+3. Open both commitments at `ρ_T` and show equal values. Each opening is one evaluation per matrix, with an evaluation and a proximity combined row, each blinded by an `Fp2` row: the last four blinding rows of epoch `e` and the first four of epoch `e + 1`, whose proofs then start at row 4.
 4. The verifier accepts `R_W'` as the successor of `R_W` if every pair is equal and every opening verifies. Two multilinear polynomials over `ν` variables that differ agree at a random point with probability at most `ν/|Fp2|`.
 
 ```rust
