@@ -47,7 +47,7 @@ Every constraint in the derived constraint system is one of these relation kinds
 
 | Kind | Identity (claim on target at point `r`) | Degree per variable |
 |---|---|---|
-| `MatMulWeight` | `Ỹ(r_o) = Σ_i W̃(r_o, i) X̃(i)` | 2 |
+| `MatMulWeight` | `Ỹ(r_t, r_o) = Σ_i W̃(r_o, i) X̃(r_t, i)` | 2 |
 | `MatMulAct` | `Z̃(r_a, r_c) = Σ_j Ã(r_a, j) B̃(j, r_c)` | 2 |
 | `Elementwise` (`Mul`, `Rotate`, scalar-by-row) | `Z̃(r) = Σ_x eq(r, x) Ã(x) B̃(x)` (constants evaluated by the verifier) | 3 |
 | `SumSquares` | `Ũ(r) = Σ_x eq(r, x_row) X̃(x)^2` | 3 |
@@ -55,6 +55,16 @@ Every constraint in the derived constraint system is one of these relation kinds
 | `ZeroCheck` (`OneHot` booleanity) | `0 = Σ_x eq(r, x) h̃(x)(1 − h̃(x))` | 3 |
 | `ProductTreeLevel` | `V_ℓ(r) = Σ_x eq(r, x) V_{ℓ+1}(x, 0) V_{ℓ+1}(x, 1)` | 3 |
 | `FractionTreeLevel` | LogUp-GKR level (RFC-0008) | 3 |
+
+In `MatMulWeight`, `t` is the token index: `X` and `Y` hold one row per token of the batch, and `W` is stored `(o, i)`, so `Y = X·Wᵀ`. The prover contracts each operand once, `W` at `r_o` and `X` at `r_t`, so a matmul costs `O(|W| + |X|)`, or `O(|A| + |B|)`, beyond the product.
+
+The matmuls' rows give their degree per variable when they are not stacked. Stacked over layers or heads ('Batching within a stage'), they also sum over the stacking index, weighted by `eq` at the input claim's coordinate `ρ` of that index:
+- `MatMulWeight`: `Ỹ(ρ, r_t, r_o) = Σ_{ℓ, i} eq(ρ, ℓ)·W̃(ℓ, r_o, i)·X̃(ℓ, r_t, i)`, a sumcheck over `(i, ℓ)` with `i` low.
+- `MatMulAct`: `Z̃(ρ, r_a, r_c) = Σ_{b, j} eq(ρ, b)·Ã(b, r_a, j)·B̃(b, j, r_c)`, a sumcheck over `(j, b)` with `j` low.
+
+Either has degree 3 in the stacking variables and 2 in the others. It ends with one claim on each operand at the shared final point. For `MatMulWeight`, with the point `r_i ‖ ρ_ℓ`, these are `W̃` at `r_i ‖ r_o ‖ ρ_ℓ` and `X̃` at `r_i ‖ r_t ‖ ρ_ℓ`.
+
+In `QKᵀ` the second operand is `Kᵀ`, with `K` stored row-major as `(b, c, j)`. Since `B̃(j, c) = K̃(c, j)`, the claim on `B` lands on `K` with its coordinates reordered, at `r_j ‖ r_c ‖ ρ_b`.
 
 Claims on a `Linear` target become claims on its inputs at the same point with public coefficients, so linear chains (residual stream sums, `c_q − x_qi`, offsets) cost nothing.
 

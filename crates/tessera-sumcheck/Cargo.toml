@@ -30,5 +30,9 @@ tv-hash = { path = "../../verifier/crates/tv-hash" }
 name = "throughput"
 harness = false
 
+[[bench]]
+name = "matmul"
+harness = false
+
 [lints]
 workspace = true

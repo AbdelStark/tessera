@@ -12,6 +12,12 @@
 //! says: root challenges, root claims from the trees' products, the level's sumcheck and its
 //! final check `Σ_i γ^i·eq(r_i, r'_i)·u_i·w_i`, `ρ` and the next claims, and the leaf claims
 //! against the leaves' multilinear extension.
+//!
+//! Stages of matmul relations are checked as RFC-0010 'Relations' says: each instance's claim is
+//! its true product's extension at the input point, `Y = X·Wᵀ` with a row per token for the
+//! weights, the final check is `Σ_i γ^i·eq(ρ_i, ρ'_i)·u_i·v_i` with `eq` left out of a single
+//! product, and each claim on an operand is that operand's extension at the point the RFC
+//! assembles.
 
 mod common;
 
@@ -21,8 +27,8 @@ use tessera_field::{F65537, F65537Ext2, Field, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_poly::{PolyField, RoundPoly, evaluate, evaluate_base};
 use tessera_sumcheck::{
-    Forest, Instance, MAX_DEGREE, Prefix, SumcheckProof, SumcheckTranscript, Table, prove_batch,
-    prove_forests,
+    Forest, Instance, MAX_DEGREE, MatMulAct, MatMulActShape, MatMulWeight, MatMulWeightShape,
+    Prefix, RightLayout, SumcheckProof, SumcheckTranscript, Table, prove_batch, prove_forests,
 };
 
 /// A transcript over `F65537` and its extension: messages absorbed as TCE `Vec`, challenges
@@ -432,5 +438,354 @@ fn forests_over_the_extension_of_f65537_verify() {
 fn forests_with_challenges_in_f65537_verify() {
     for seed in 0..20 {
         forest_batch::<F65537>(seed);
+    }
+}
+
+/// Random `F65537` entries in `blocks` blocks of `block`, the blocks from `live` on zero: the zero
+/// layers or products that pad a count to a power of two.
+fn padded(rng: &mut SplitMix64, blocks: usize, block: usize, live: usize) -> Vec<F65537> {
+    (0..blocks * block)
+        .map(|k| match k / block < live {
+            true => F65537::draw(rng),
+            false => F65537::ZERO,
+        })
+        .collect()
+}
+
+/// A matmul over `F65537`, its operands row-major with the stacking index highest, as RFC-0010
+/// 'Relations' and 'Multilinear extensions' define them:
+///
+/// - `MatMulWeight` of `(n_ℓ, n_t, n_o, n_i)`: `W` as `(ℓ, o, i)` and `X` as `(ℓ, t, i)`, one row
+///   per token, `Y[ℓ, t, o] = Σ_i W[ℓ, o, i]·X[ℓ, t, i]`, the input point `r_o ‖ r_t ‖ ρ`, the
+///   evaluations `[w, x]`, and the claims on `W` at `r_i ‖ r_o ‖ ρ_ℓ` and on `X` at
+///   `r_i ‖ r_t ‖ ρ_ℓ`;
+/// - `MatMulAct` of `(n_b, n_a, n_j, n_c)`: `A` as `(b, a, j)`, and `B` as `(b, j, c)` or `K` as
+///   `(b, c, j)`, `Z[b, a, c] = Σ_j A[b, a, j]·B[b, j, c]`, the input point `r_c ‖ r_a ‖ ρ`, the
+///   evaluations `[a, b]`, and the claims on `A` at `r_j ‖ r_a ‖ ρ_b` and on `B` at
+///   `r_c ‖ r_j ‖ ρ_b`, or on `K` at `r_j ‖ r_c ‖ ρ_b`.
+enum TestMatmul {
+    Weight {
+        shape: MatMulWeightShape,
+        w: Vec<F65537>,
+        x: Vec<F65537>,
+    },
+    Act {
+        shape: MatMulActShape,
+        layout: RightLayout,
+        a: Vec<F65537>,
+        b: Vec<F65537>,
+    },
+}
+
+impl TestMatmul {
+    /// `2^{n_ℓ}` layers of `(n_t, n_o, n_i)`, `live` of them nonzero.
+    fn weight(
+        rng: &mut SplitMix64,
+        (layer_vars, token_vars, out_vars, in_vars): (usize, usize, usize, usize),
+        live: usize,
+    ) -> Self {
+        let w = padded(rng, 1 << layer_vars, 1 << (out_vars + in_vars), live);
+        let x = padded(rng, 1 << layer_vars, 1 << (token_vars + in_vars), live);
+        let shape = MatMulWeightShape {
+            layer_vars,
+            token_vars,
+            out_vars,
+            in_vars,
+        };
+        Self::Weight { shape, w, x }
+    }
+
+    /// `2^{n_b}` products of `(n_a, n_j, n_c)`, `live` of them nonzero.
+    fn act(
+        rng: &mut SplitMix64,
+        (stack_vars, row_vars, inner_vars, col_vars): (usize, usize, usize, usize),
+        live: usize,
+        layout: RightLayout,
+    ) -> Self {
+        let a = padded(rng, 1 << stack_vars, 1 << (row_vars + inner_vars), live);
+        let b = padded(rng, 1 << stack_vars, 1 << (inner_vars + col_vars), live);
+        let shape = MatMulActShape {
+            stack_vars,
+            row_vars,
+            inner_vars,
+            col_vars,
+        };
+        Self::Act {
+            shape,
+            layout,
+            a,
+            b,
+        }
+    }
+
+    /// The operands, in the order of their evaluations.
+    fn operands(&self) -> [&[F65537]; 2] {
+        match self {
+            Self::Weight { w, x, .. } => [w, x],
+            Self::Act { a, b, .. } => [a, b],
+        }
+    }
+
+    /// The stacking variables, the inner variables, and the input point's other coordinates,
+    /// which precede `ρ`.
+    fn dims(&self) -> (usize, usize, usize) {
+        match self {
+            Self::Weight { shape, .. } => (
+                shape.layer_vars,
+                shape.in_vars,
+                shape.out_vars + shape.token_vars,
+            ),
+            Self::Act { shape, .. } => (
+                shape.stack_vars,
+                shape.inner_vars,
+                shape.col_vars + shape.row_vars,
+            ),
+        }
+    }
+
+    /// The product, row-major as the input point reads it: `Y` as `(ℓ, t, o)`, `Z` as
+    /// `(b, a, c)`.
+    fn product(&self) -> Vec<F65537> {
+        match self {
+            Self::Weight { shape, w, x } => {
+                let (tokens, outs, ins) = (
+                    1usize << shape.token_vars,
+                    1usize << shape.out_vars,
+                    1usize << shape.in_vars,
+                );
+                (0..(1usize << shape.layer_vars) * tokens * outs)
+                    .map(|k| {
+                        let (l, t, o) = (k / (tokens * outs), (k / outs) % tokens, k % outs);
+                        (0..ins).fold(F65537::ZERO, |sum, i| {
+                            sum + w[(l * outs + o) * ins + i] * x[(l * tokens + t) * ins + i]
+                        })
+                    })
+                    .collect()
+            }
+            Self::Act {
+                shape,
+                layout,
+                a,
+                b,
+            } => {
+                let (rows, inner, cols) = (
+                    1usize << shape.row_vars,
+                    1usize << shape.inner_vars,
+                    1usize << shape.col_vars,
+                );
+                let b_at = |s: usize, j: usize, c: usize| match layout {
+                    RightLayout::Direct => b[(s * inner + j) * cols + c],
+                    RightLayout::Transposed => b[(s * cols + c) * inner + j],
+                };
+                (0..(1usize << shape.stack_vars) * rows * cols)
+                    .map(|k| {
+                        let (s, r, c) = (k / (rows * cols), (k / cols) % rows, k % cols);
+                        (0..inner).fold(F65537::ZERO, |sum, j| {
+                            sum + a[(s * rows + r) * inner + j] * b_at(s, j, c)
+                        })
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    /// The points of the claims on the operands, in the order of their evaluations, from the
+    /// input point and the instance's point `r_i ‖ ρ_ℓ` or `r_j ‖ ρ_b`.
+    fn claim_points<F: Copy>(&self, input: &[F], point: &[F]) -> [Vec<F>; 2] {
+        match self {
+            Self::Weight { shape, .. } => {
+                let (r_i, rho) = point.split_at(shape.in_vars);
+                let (r_o, rest) = input.split_at(shape.out_vars);
+                let r_t = &rest[..shape.token_vars];
+                [[r_i, r_o, rho].concat(), [r_i, r_t, rho].concat()]
+            }
+            Self::Act { shape, layout, .. } => {
+                let (r_j, rho) = point.split_at(shape.inner_vars);
+                let (r_c, rest) = input.split_at(shape.col_vars);
+                let r_a = &rest[..shape.row_vars];
+                let b = match layout {
+                    RightLayout::Direct => [r_c, r_j, rho].concat(),
+                    RightLayout::Transposed => [r_j, r_c, rho].concat(),
+                };
+                [[r_j, r_a, rho].concat(), b]
+            }
+        }
+    }
+}
+
+/// A stage of matmuls over `F`: weights over 2^2 layers with 3 live for 2^2 tokens, over one
+/// layer for one token, and of no output variable over 2^1 layers for 2^3 tokens; products with
+/// `B` stored either way over 2^1 and 2^2 with 3 live, and one with no column variable. Proven,
+/// then checked as a verifier would from the true products.
+fn matmul_stage<F: Draw<Base = F65537>>(seed: u8)
+where
+    SmallTranscript: SumcheckTranscript<F>,
+{
+    let mut rng = SplitMix64::new(0x57_0400 + u64::from(seed));
+    let matmuls = [
+        TestMatmul::weight(&mut rng, (2, 2, 3, 4), 3),
+        TestMatmul::weight(&mut rng, (0, 0, 2, 5), 1),
+        TestMatmul::weight(&mut rng, (1, 3, 0, 2), 2),
+        TestMatmul::act(&mut rng, (1, 2, 3, 2), 2, RightLayout::Direct),
+        TestMatmul::act(&mut rng, (2, 1, 2, 3), 3, RightLayout::Transposed),
+        TestMatmul::act(&mut rng, (0, 3, 2, 0), 1, RightLayout::Direct),
+    ];
+    let inputs: Vec<Vec<F>> = matmuls
+        .iter()
+        .map(|m| {
+            let (stack, _, other) = m.dims();
+            (0..other + stack).map(|_| F::draw(&mut rng)).collect()
+        })
+        .collect();
+
+    // The prover.
+    let weights: Vec<Option<MatMulWeight<'_, F>>> = matmuls
+        .iter()
+        .map(|m| match m {
+            TestMatmul::Weight { shape, w, x } => {
+                Some(MatMulWeight::new(w, x, *shape).expect("a shape"))
+            }
+            TestMatmul::Act { .. } => None,
+        })
+        .collect();
+    let acts: Vec<Option<MatMulAct<'_, F>>> = matmuls
+        .iter()
+        .map(|m| match m {
+            TestMatmul::Act {
+                shape,
+                layout,
+                a,
+                b,
+            } => Some(MatMulAct::new(a, b, *layout, *shape).expect("a shape")),
+            TestMatmul::Weight { .. } => None,
+        })
+        .collect();
+    let weight_tables: Vec<_> = weights
+        .iter()
+        .zip(&inputs)
+        .map(|(w, input)| w.map(|w| w.tables(input).expect("a point")))
+        .collect();
+    let act_tables: Vec<_> = acts
+        .iter()
+        .zip(&inputs)
+        .map(|(a, input)| a.map(|a| a.tables(input).expect("a point")))
+        .collect();
+    let instances: Vec<Instance<'_, F>> = weight_tables
+        .iter()
+        .zip(&act_tables)
+        .map(|(w, a)| match (w, a) {
+            (Some(w), _) => w.instance(),
+            (_, Some(a)) => a.instance(),
+            (None, None) => unreachable!("a matmul of either kind"),
+        })
+        .collect();
+    let mut prover = SmallTranscript::new(seed);
+    let proven = prove_batch(&mut prover, Prefix::Stage(3), 3, &instances).expect("a stage");
+    let claims: Vec<[(Vec<F>, F); 2]> = weight_tables
+        .iter()
+        .zip(&act_tables)
+        .enumerate()
+        .map(|(k, (w, a))| {
+            let point = proven.instance_point(k).expect("an instance");
+            let evals = proven.instance_evals(k).expect("an instance");
+            match (w, a) {
+                (Some(w), _) => {
+                    let c = w.claims(point, evals).expect("the results");
+                    [(c.w.point, c.w.value), (c.x.point, c.x.value)]
+                }
+                (_, Some(a)) => {
+                    let c = a.claims(point, evals).expect("the results");
+                    [(c.a.point, c.a.value), (c.b.point, c.b.value)]
+                }
+                (None, None) => unreachable!("a matmul of either kind"),
+            }
+        })
+        .collect();
+
+    // The verifier, from RFC-0010 'Relations', with the true products' extensions as claims.
+    let proof = proven.proof();
+    let vars: Vec<usize> = matmuls
+        .iter()
+        .map(|m| {
+            let (stack, inner, _) = m.dims();
+            inner + stack
+        })
+        .collect();
+    let n_max = vars.iter().copied().max().expect("an instance");
+    let mut t = SmallTranscript::new(seed);
+    let gamma = t.challenge("stage/3/gamma");
+    let mut claim = F::ZERO;
+    let mut weight = F::ONE;
+    for ((m, input), &n) in matmuls.iter().zip(&inputs).zip(&vars) {
+        let value = evaluate_base(&m.product(), input).expect("2^n entries at n coordinates");
+        claim += weight * F::from(F65537::from_u64_reduced(1 << (n_max - n))) * value;
+        weight *= gamma;
+    }
+    assert_eq!(proof.rounds.len(), n_max);
+    let mut point = Vec::new();
+    for (j, round) in proof.rounds.iter().enumerate() {
+        assert_eq!(round.len(), 3, "round {j} holds 3 values");
+        t.absorb_message(&format!("stage/3/round/{j}"), round);
+        let r = t.challenge(&format!("stage/3/r/{j}"));
+        claim = RoundPoly::new(round).expect("degree 3").evaluate(claim, r);
+        point.push(r);
+    }
+    assert!(proven.point() == point, "the point");
+    assert_eq!(proof.final_evals.len(), 2 * matmuls.len());
+    t.absorb_message("stage/3/evals", &proof.final_evals);
+    let mut batched = F::ZERO;
+    let mut weight = F::ONE;
+    for (k, (((m, input), &n), evals)) in matmuls
+        .iter()
+        .zip(&inputs)
+        .zip(&vars)
+        .zip(proof.final_evals.chunks_exact(2))
+        .enumerate()
+    {
+        let (stack, inner, other) = m.dims();
+        let own = &point[n_max - n..];
+        let eq = match stack {
+            0 => F::ONE,
+            _ => eq_points(&input[other..], &own[inner..]),
+        };
+        batched += weight * eq * evals[0] * evals[1];
+        weight *= gamma;
+        for (operand, ((expected, eval), (mine, value))) in m.operands().into_iter().zip(
+            m.claim_points(input, own)
+                .into_iter()
+                .zip(evals)
+                .zip(&claims[k]),
+        ) {
+            assert!(*mine == expected, "instance {k}: a claim's point");
+            assert_eq!(
+                value, eval,
+                "instance {k}: a claim's value is the evaluation sent"
+            );
+            assert_eq!(
+                *value,
+                evaluate_base(operand, &expected).expect("2^n entries at n coordinates"),
+                "instance {k}: the operand's extension at the claim's point"
+            );
+        }
+    }
+    assert_eq!(batched, claim, "the final check");
+    assert_eq!(
+        t.inner.state(),
+        prover.inner.state(),
+        "the transcripts end in the same state"
+    );
+}
+
+#[test]
+fn matmul_stages_over_the_extension_of_f65537_verify() {
+    for seed in 0..10 {
+        matmul_stage::<F65537Ext2>(seed);
+    }
+}
+
+#[test]
+fn matmul_stages_with_challenges_in_f65537_verify() {
+    for seed in 0..10 {
+        matmul_stage::<F65537>(seed);
     }
 }

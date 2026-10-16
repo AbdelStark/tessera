@@ -3,14 +3,14 @@
 //! The product-tree levels of the leaf stage, over forests of stacked trees (RFC-0010 'Tree
 //! levels').
 
-use core::alloc::Layout;
 use core::fmt;
 
 use tessera_field::Field;
-use tessera_poly::{PolyField, eq_table};
+use tessera_poly::PolyField;
 
+use crate::contract::eq_weights;
 use crate::{
-    Instance, Prefix, SumcheckError, SumcheckProof, SumcheckTranscript, Table, prove_batch,
+    Claim, Instance, Prefix, SumcheckError, SumcheckProof, SumcheckTranscript, Table, prove_batch,
 };
 
 /// The degree of a product-tree level's sumcheck: `eq(r, x)·Ṽ(0 ‖ x)·Ṽ(1 ‖ x)` has degree 3 in
@@ -78,28 +78,6 @@ impl<F: PolyField> fmt::Debug for Forest<'_, F> {
     }
 }
 
-/// A claim `Ṽ_t(point) = value` on level `t` of a forest, over `point.len() = s + t` variables,
-/// the lowest first: the first `t` coordinates bind the position within a tree and the last `s`
-/// the tree index (RFC-0010 'Tree levels', 'Layout').
-///
-/// The value is protocol-class data (05 §3): the debug form shows the number of coordinates only.
-#[derive(Clone, PartialEq, Eq)]
-pub struct LevelClaim<F> {
-    /// The point, its lowest variable first.
-    pub point: Vec<F>,
-    /// The claimed value of the level's multilinear extension at the point.
-    pub value: F,
-}
-
-/// Shows the number of coordinates, never a value (05 §3).
-impl<F> fmt::Debug for LevelClaim<F> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("LevelClaim")
-            .field("vars", &self.point.len())
-            .finish_non_exhaustive()
-    }
-}
-
 /// One level `ℓ` of a proven batch of forests: its challenges, its messages and the claims it
 /// leaves on the next level, in the order of RFC-0010 'Tree levels'.
 ///
@@ -115,7 +93,7 @@ pub struct ProvenLevel<F> {
     point: Vec<F>,
     rho: F,
     forests: Vec<usize>,
-    next_claims: Vec<LevelClaim<F>>,
+    next_claims: Vec<Claim<F>>,
 }
 
 impl<F> ProvenLevel<F> {
@@ -163,7 +141,11 @@ impl<F> ProvenLevel<F> {
     /// Each instance's claim on its next level, in instance order: `Ṽ(ρ ‖ r'_i) = u_i + ρ·(w_i −
     /// u_i)`, on one variable more than the instance. After the last level these are the leaf
     /// claims.
-    pub fn next_claims(&self) -> &[LevelClaim<F>] {
+    ///
+    /// A claim on level `t` of a forest of `2^s` trees has `s + t` coordinates, the lowest first:
+    /// the first `t` bind the position within a tree and the last `s` the tree index (RFC-0010
+    /// 'Tree levels', 'Layout').
+    pub fn next_claims(&self) -> &[Claim<F>] {
         &self.next_claims
     }
 }
@@ -199,7 +181,7 @@ impl<F> ProvenForests<F> {
     /// The leaf claims, one per forest in the order given: forest `i`'s claim on its leaf table
     /// of `2^{s_i + h_i}` entries, the next claims of the last level, where every forest is an
     /// instance.
-    pub fn leaf_claims(&self) -> &[LevelClaim<F>] {
+    pub fn leaf_claims(&self) -> &[Claim<F>] {
         self.levels
             .last()
             .map_or(&[], |level| level.next_claims.as_slice())
@@ -208,7 +190,7 @@ impl<F> ProvenForests<F> {
     /// Each level's messages, from level 0, and the leaf claims, by value: what a proof carries
     /// and what the next stage must check.
     #[must_use]
-    pub fn into_parts(self) -> (Vec<SumcheckProof<F>>, Vec<LevelClaim<F>>) {
+    pub fn into_parts(self) -> (Vec<SumcheckProof<F>>, Vec<Claim<F>>) {
         let mut leaf_claims = Vec::new();
         let mut proofs = Vec::with_capacity(self.levels.len());
         for level in self.levels {
@@ -309,20 +291,6 @@ fn level_above<B: Field>(below: &Halves<B>) -> Halves<B> {
     Halves { even, odd }
 }
 
-/// `eq(point, ·)` on the point's `2^n` vertices ([`eq_table`]). `eq_table` fails only when it
-/// cannot allocate its table, and every other allocation of the prover aborts the process when it
-/// fails, as `Vec`'s do: so does this one.
-fn eq_weights<F: Field>(point: &[F]) -> Vec<F> {
-    eq_table(point).unwrap_or_else(|_| {
-        let layout = u32::try_from(point.len())
-            .ok()
-            .and_then(|vars| 1usize.checked_shl(vars))
-            .and_then(|len| Layout::array::<F>(len).ok())
-            .unwrap_or_else(Layout::new::<F>);
-        std::alloc::handle_alloc_error(layout)
-    })
-}
-
 /// `tree/{ℓ}/root/{c}` and `tree/{ℓ}/line`, the labels of a level that [`prove_batch`] does not
 /// squeeze (RFC-0014 'Transcript schedule', row 5).
 fn label(level: u32, suffix: fmt::Arguments<'_>) -> String {
@@ -368,8 +336,8 @@ fn label(level: u32, suffix: fmt::Arguments<'_>) -> String {
 ///   times faster than building each level whole and de-interleaving it. Each half is allocated
 ///   once, at its size; together the levels take about twice the leaves' size, and each is
 ///   dropped once its sumcheck has run.
-/// - **`eq`.** Each instance's `eq(r_i, ·)` is built by [`eq_table`] for its level and dropped
-///   after it.
+/// - **`eq`.** Each instance's `eq(r_i, ·)` is built by [`tessera_poly::eq_table`] for its level
+///   and dropped after it.
 ///
 /// Control flow depends on shapes only, never on a leaf (INV-ARCH-2). The leaves and every level
 /// are secret-class values (05 §3): no debug form or error shows one.
@@ -463,7 +431,7 @@ where
             let state = &mut states[i];
             state.point.clone_from(&point);
             state.levels[level - state.join + 1] = Halves::empty();
-            next_claims.push(LevelClaim {
+            next_claims.push(Claim {
                 point,
                 value: u + rho * (w - u),
             });
