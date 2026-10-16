@@ -81,7 +81,7 @@ def sequence(encoded_elements):
 
 KIND_TAGS = {
     "Range": 0, "Requant": 1, "Pow2": 2, "Bitwise8": 3, "AesSbox": 4, "Gf256Mul": 5,
-    "Exp": 6, "Exp2Frac": 7,
+    "Exp": 6, "Exp2Frac": 7, "Silu": 8,
 }
 BITOP_TAGS = {"Xor": 0, "And": 1}
 
@@ -107,6 +107,10 @@ def encode_kind(kind):
         out += (num % 2**64).to_bytes(8, "little") + u64(den)
     elif name == "Exp2Frac":
         out += u8(params["frac_bits"]) + u8(params["out_bits"])
+    elif name == "Silu":
+        out += u8(params["b"]) + sequence([u8(r) for r in params["r_by_class"]])
+        out += (params["in_exp"] % 256).to_bytes(1, "little")
+        out += (params["out_exp"] % 256).to_bytes(1, "little")
     return out
 
 
@@ -297,6 +301,38 @@ def exp2frac_value(f, frac_bits, out_bits):
     return exp_pos((f * LN2) >> frac_bits) >> (62 - out_bits)
 
 
+def silu_value(h, in_exp, out_exp):
+    """clamp(round(silu(h · 2^in_exp) / 2^out_exp), −128, 127): σ(x) in Q63 from e^(−|x|) in Q64."""
+    y, n = exp_neg(abs(h) << (64 + in_exp))
+    e = y >> n if n < 128 else 0
+    sigma = (1 << 127) // (ONE + e) if h >= 0 else (e << 63) // (ONE + e)
+    v = h * sigma
+    require(abs(v) < 2**94, "Silu's product stays below 2^94")
+    s = 63 - in_exp + out_exp
+    return min(max((v + (1 << (s - 1))) >> s, -128), 127)
+
+
+def silu_domain(b, r):
+    """Every h = k >> r for k in [−2^(b−1), 2^(b−1)), r < b: from −2^(b−1−r) to 2^(b−1−r) − 1."""
+    half = 2 ** (b - 1 - r)
+    return range(-half, half)
+
+
+def check_silu(b, shifts, in_exp, out_exp):
+    """Every h of every class within one unit of silu(h · 2^in_exp) / 2^out_exp, clamped to INT8,
+    computed with 60 digits."""
+    with localcontext() as context:
+        context.prec = 60
+        scale_in, scale_out = Decimal(2) ** in_exp, Decimal(2) ** out_exp
+        for r in shifts:
+            for h in silu_domain(b, r):
+                x = Decimal(h) * scale_in
+                true = x / (1 + (-x).exp()) / scale_out
+                true = min(max(true, Decimal(-128)), Decimal(127))
+                got = silu_value(h, in_exp, out_exp)
+                require(abs(Decimal(got) - true) <= 1, f"Silu(h={h}) = {got} against {true}")
+
+
 def check_exp(sigma, num, den, keys):
     """Every key's value within one unit of 2^σ · e^(−k·scale) computed with 60 digits."""
     with localcontext() as context:
@@ -353,6 +389,20 @@ def _table(kind):
         tail = exp_tail(2**key_bits, sigma, num, den)
         require(tail <= 2**24, "Exp's zero tail starts by key 2^24")
         return 2**key_bits, lambda k: exp_value(k, sigma, num, den), [tail], tail
+    if name == "Silu":
+        b, shifts, in_exp, out_exp = p["b"], p["r_by_class"], p["in_exp"], p["out_exp"]
+        n = len(shifts)
+        require(1 <= n <= 4 and b >= 1 and b + (n - 1).bit_length() <= 32, "Silu shape")
+        require(all(r < b for r in shifts), "Silu shifts")
+        require(sum(2 ** (b - r) for r in shifts) <= 2**24, "Silu core size")
+        require(-64 <= in_exp <= 0 and 1 <= 63 - in_exp + out_exp <= 126, "Silu exponents")
+
+        def silu_row(j):
+            c, k = divmod(j, 2**b)
+            return silu_value((k - 2 ** (b - 1)) >> shifts[c], in_exp, out_exp)
+
+        core = sum(2 ** (b - r) for r in shifts)
+        return n * 2**b, silu_row, [], core
     if name == "Exp2Frac":
         frac_bits, out_bits = p["frac_bits"], p["out_bits"]
         require(1 <= frac_bits <= 16 and 1 <= out_bits <= 56, "Exp2Frac parameters")
@@ -364,7 +414,7 @@ def pack(kind, key, cls):
     """The row a lookup of `key` in `cls` hits, or None (RFC-0008 'Table specifications')."""
     (name, p), = kind.items()
     rows, _, _, _ = table(kind)
-    if name == "Requant":
+    if name in ("Requant", "Silu"):
         half = 2 ** (p["b"] - 1)
         if -half <= key < half and 0 <= cls < len(p["r_by_class"]):
             return key + half + 2 ** p["b"] * cls
@@ -376,7 +426,17 @@ def case(name, table_id, kind, lookups, values=True):
     rows, value, pieces, core_len = table(kind)
     log2_rows = (rows - 1).bit_length()
     definition = u32(table_id) + encode_kind(kind) + u8(log2_rows)
-    core = sequence([fp(value(j)) for j in range(core_len)])
+    (name_of_kind, params), = kind.items()
+    if name_of_kind == "Silu":
+        core_values = [
+            silu_value(h, params["in_exp"], params["out_exp"])
+            for r in params["r_by_class"]
+            for h in silu_domain(params["b"], r)
+        ]
+        require(len(core_values) == core_len, "Silu core length")
+    else:
+        core_values = [value(j) for j in range(core_len)]
+    core = sequence([fp(v) for v in core_values])
     digest = hash_oracle.H("table", definition + sequence([u64(x) for x in pieces]) + core)
     out = {
         "name": name,
@@ -467,13 +527,31 @@ def main():
         check_exp2frac(frac_bits, out_bits)
         kind = exp2(frac_bits, out_bits)
         cases.append(case(name, 26 + offset, kind, edges(0, 2**frac_bits), values=listed))
+    silu = lambda b, shifts, in_exp, out_exp: {
+        "Silu": {"b": b, "r_by_class": shifts, "in_exp": in_exp, "out_exp": out_exp}
+    }
+    # Test parameters with every row listed; then a 405B-like gate (keys below 2^29, four classes
+    # of shifts 14 to 17, 122,880 values of h), every value checked.
+    for offset, (name, kind, listed) in enumerate([
+        ("silu-b6-two-classes", silu(6, [0, 2], -3, -4), True),
+        ("silu-b8-saturating", silu(8, [1], 0, -2), True),
+        ("silu-b4-four-classes-extreme-scales", silu(4, [0, 1, 2, 3], -64, -62), True),
+        ("silu-b30-four-classes-405b", silu(30, [14, 15, 16, 17], -10, -4), False),
+    ]):
+        p = kind["Silu"]
+        check_silu(p["b"], p["r_by_class"], p["in_exp"], p["out_exp"])
+        classes = len(p["r_by_class"])
+        lookups = edges(-(2 ** (p["b"] - 1)), 2 ** (p["b"] - 1), classes)
+        cases.append(case(name, 29 + offset, kind, lookups, values=listed))
     document = {
         "description": "Table kinds of RFC-0008 'Table specifications': each table's TCE "
         "specification with its digest, row count, log2_rows and the digest's pieces, the value "
         "of every row where 'values' is present (the digest binds the core: the value column of "
-        "Pow2, Bitwise8, AesSbox, Gf256Mul and Exp2Frac, and Exp's values below its zero tail), "
+        "Pow2, Bitwise8, AesSbox, Gf256Mul and Exp2Frac, Exp's values below its zero tail, and "
+        "Silu's values at every h of every class), "
         "and lookups at the edges of the key range, with the row and value they hit or null for "
-        "none. Every Exp and Exp2Frac value is checked against a 60-digit decimal reference. "
+        "none. Every Exp, Exp2Frac and Silu value is checked against a 60-digit decimal "
+        "reference. "
         "Written by generate.py.",
         "cases": cases,
     }

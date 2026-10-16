@@ -124,8 +124,16 @@ impl GeneratedTable {
             _ => vec![],
         };
         pieces.encode_to(&mut hasher);
+        if let TableKind::Silu { .. } = self.spec.kind {
+            // The core is every value of `h`, class by class: not the table's rows.
+            (self.core.len() as u64).encode_to(&mut hasher);
+            for &value in &self.core {
+                Goldilocks::from_i64(value).encode_to(&mut hasher);
+            }
+            return hasher.finalize();
+        }
         let core_len = match self.spec.kind {
-            TableKind::Range { .. } | TableKind::Requant { .. } => 0,
+            TableKind::Range { .. } | TableKind::Requant { .. } | TableKind::Silu { .. } => 0,
             TableKind::Exp { .. } | TableKind::Exp2Frac { .. } => self.core.len() as u64,
             TableKind::Pow2 { .. }
             | TableKind::Bitwise8 { .. }
@@ -164,7 +172,31 @@ impl GeneratedTable {
                 .and_then(|j| self.core.get(j))
                 .copied()
                 .unwrap_or(0),
+            TableKind::Silu { b, r_by_class, .. } => {
+                let k = (key & ((1 << b) - 1)) - (1 << (b - 1));
+                let class = usize::try_from(key >> b).unwrap_or(usize::MAX);
+                self.silu_core(*b, r_by_class, class, k)
+            }
         }
+    }
+
+    /// The core value of `Silu`'s class `class` at the key `k`: its `h = k >> r_c`, in the class's
+    /// run of the core, which holds every `h` of every class in order.
+    fn silu_core(&self, b: u8, r_by_class: &[u8], class: usize, k: i64) -> i64 {
+        let start: u64 = r_by_class
+            .iter()
+            .take(class)
+            .map(|&r| 1u64 << (b - r))
+            .sum();
+        let r = r_by_class.get(class).copied().unwrap_or(0);
+        // `h + 2^{b−1−r}` is `h`'s position among the class's `2^{b−r}` values.
+        let offset = (k >> r) + (1i64 << (b - 1 - r));
+        u64::try_from(offset)
+            .ok()
+            .and_then(|o| usize::try_from(start + o).ok())
+            .and_then(|i| self.core.get(i))
+            .copied()
+            .unwrap_or(0)
     }
 }
 
@@ -190,7 +222,7 @@ impl Table for GeneratedTable {
 
     fn index(&self, key: i64, class: u8) -> Option<u64> {
         let (index, inside) = match &self.spec.kind {
-            TableKind::Requant { b, r_by_class, .. } => {
+            TableKind::Requant { b, r_by_class, .. } | TableKind::Silu { b, r_by_class, .. } => {
                 let half = 1i64 << (b - 1);
                 let classes = i64::try_from(r_by_class.len()).unwrap_or(0);
                 let c = i64::from(class);
@@ -218,7 +250,9 @@ impl Table for GeneratedTable {
             TableKind::Bitwise8 { op } => bitwise(*op, key),
             TableKind::AesSbox => i64::from(gf256::sbox(low_byte(key))),
             TableKind::Gf256Mul { c } => i64::from(gf256::mul(*c, low_byte(key))),
-            TableKind::Exp { .. } | TableKind::Exp2Frac { .. } => self.value(row),
+            TableKind::Exp { .. } | TableKind::Exp2Frac { .. } | TableKind::Silu { .. } => {
+                self.value(row)
+            }
         })
     }
 }
@@ -291,6 +325,35 @@ fn row_count(kind: &TableKind) -> Result<u64, TableError> {
             }
             Ok(1 << frac_bits)
         }
+        TableKind::Silu {
+            b,
+            r_by_class,
+            in_exp,
+            out_exp,
+        } => {
+            let classes = r_by_class.len();
+            if !(1..=4).contains(&classes) {
+                return refuse("Silu", "one to four classes");
+            }
+            let classes = u64::try_from(classes).unwrap_or(u64::MAX);
+            if *b < 1 || u32::from(*b) + u32::from(ceil_log2(classes)) > 32 {
+                return refuse("Silu", "b ≥ 1 and b + ⌈log2 n⌉ ≤ 32 for n classes");
+            }
+            if r_by_class.iter().any(|r| r >= b) {
+                return refuse("Silu", "r_c < b for every class");
+            }
+            let values: u64 = r_by_class.iter().map(|&r| 1u64 << (b - r)).sum();
+            if values > MAX_CORE {
+                return refuse("Silu", "at most 2^24 values of h over the classes");
+            }
+            if !(-64..=0).contains(in_exp) {
+                return refuse("Silu", "−64 ≤ in_exp ≤ 0");
+            }
+            if !(1..=126).contains(&(63 - i32::from(*in_exp) + i32::from(*out_exp))) {
+                return refuse("Silu", "1 ≤ 63 − in_exp + out_exp ≤ 126");
+            }
+            Ok(classes << b)
+        }
     }
 }
 
@@ -320,8 +383,41 @@ fn generate_core(kind: &TableKind, rows: u64) -> Result<Vec<i64>, TableError> {
                 i64::try_from(exp_pos(x) >> (62 - out_bits)).unwrap_or(i64::MAX)
             })
             .collect()),
+        TableKind::Silu {
+            b,
+            r_by_class,
+            in_exp,
+            out_exp,
+        } => Ok(r_by_class
+            .iter()
+            .flat_map(|&r| {
+                let half = 1i64 << (b - 1 - r);
+                (-half..half).map(move |h| silu_value(h, *in_exp, *out_exp))
+            })
+            .collect()),
         _ => Ok(Vec::new()),
     }
+}
+
+/// `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)` in the fixed point of RFC-0008:
+/// the logistic `σ(x)` in Q63 from `E = e^{−|x|}` in Q64, times `h`, rounded half up by a shift
+/// of `s = 63 − in_exp + out_exp`. `|h| < 2^31`, so `|x| · 2^64 < 2^95` and `|h| · σ < 2^94`.
+fn silu_value(h: i64, in_exp: i8, out_exp: i8) -> i64 {
+    let magnitude = u128::from(h.unsigned_abs());
+    // `64 + in_exp ∈ [0, 64]`, checked with the row count.
+    let (y, n) = exp_neg(magnitude << (64 + i32::from(in_exp)));
+    let e = if n < 128 { y >> n } else { 0 };
+    let one = 1u128 << 64;
+    let sigma = if h >= 0 {
+        (1u128 << 127) / (one + e)
+    } else {
+        (e << 63) / (one + e)
+    };
+    let v = i128::from(h) * i128::try_from(sigma).unwrap_or(i128::MAX);
+    let s = 63 - i32::from(in_exp) + i32::from(out_exp);
+    let rounded = (v + (1i128 << (s - 1))) >> s;
+    // Clamped to INT8, so the narrowing cannot fail.
+    i64::try_from(rounded.clamp(-128, 127)).unwrap_or(0)
 }
 
 /// `k · scale` in Q64, or `None` once its integer part reaches `2^20`, where `e^{−k·scale}` is
