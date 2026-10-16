@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 """Reference vectors for the sumchecks of RFC-0010: honest proofs of single and batched
-sumchecks of products of multilinear tables, front-padded, and of batches of product trees proven
-level by level from their roots to their leaves.
+sumchecks of products of multilinear tables, front-padded, of batches of product trees proven
+level by level from their roots to their leaves, and of batches of product forests, trees stacked
+under a random root point.
 
 This script is the independent oracle: an honest prover written from RFC-0010 ('Multilinear
 extensions', 'Tree levels', 'Batching within a stage', 'Sumcheck messages') and RFC-0014
@@ -17,6 +18,9 @@ output, and its algorithms differ from theirs:
   over the hypercube weighted by eq, and checked against the value the sumcheck reaches.
 - Each round polynomial is evaluated at its challenge by Lagrange's formula, and checked against
   the sum of the tables bound to that challenge.
+- A forest's levels are its trees' levels concatenated, and a forest's root claim is computed
+  twice: as sum_y v_y eq(r, y), from the product formula of eq and the trees' products, and as
+  the extension of the stacked root level.
 
 Usage: python3 spec/vectors/sumcheck/generate.py
 (rewrites sumcheck.json)
@@ -361,6 +365,121 @@ def prove_trees(t, heights_and_leaves):
     return described, records
 
 
+# ----- Product forests ('Tree levels': 'Layout', 'Joining the batch', 'Root claim') --------------
+
+
+def forest_levels(trees):
+    """The levels of a forest of 2^s trees of one height, the root level first: level l is the
+    table of 2^(s + l) entries whose entry y 2^l + x is entry x of tree y's level l, that is the
+    trees' level-l tables concatenated in the order of y."""
+    per_tree = [tree_levels(leaves) for leaves in trees]
+    require(len(trees) & (len(trees) - 1) == 0, "a forest has 2^s trees")
+    require(len({len(levels) for levels in per_tree}) == 1, "the trees of a forest have one height")
+    height = len(per_tree[0]) - 1
+    stacked = [[v for levels in per_tree for v in levels[level]] for level in range(height + 1)]
+    for level in range(height):
+        above, below = stacked[level], stacked[level + 1]
+        require(len(above) == len(trees) << level, "level l of a forest has 2^(s + l) entries")
+        require(above == [mul(below[2 * k], below[2 * k + 1]) for k in range(len(above))],
+                "the stacked levels pair their entries as one tree's do, the pair bit lowest")
+    return stacked
+
+
+def boolean_point(y, n):
+    """The integer y as the Boolean point (y_1, ..., y_n), y_1 its lowest bit."""
+    return [lift((y >> i) & 1) for i in range(n)]
+
+
+def root_claim(roots, point):
+    """sum_y v_y eq(r, y) over the forest's public root values, eq from its product formula."""
+    require(len(roots) == 1 << len(point), "a root point has s coordinates for 2^s trees")
+    return total(mul(v, eq_points(point, boolean_point(y, len(point)))) for y, v in enumerate(roots))
+
+
+def prove_forests(t, forests):
+    """A batch of product forests, level by level from the roots (RFC-0010 'Tree levels'). Each
+    forest is `(s, levels, roots)`: its stacked levels, the root level first, and the public values
+    of its root level, one per tree. A forest of height h joins at level H - h. At a level where
+    forests of more than one tree join, the challenges tree/{l}/root/{c}, c = 0 .. s_max - 1, are
+    squeezed before gamma, and each joining forest's root point is the last s of them, in the
+    order squeezed; a forest of one tree takes none and enters with its root value. The instances
+    present at a level are the forests that have joined, in the order of the batch's list."""
+    heights = [len(levels) - 1 for _, levels, _ in forests]
+    tallest = max(heights)
+    current = {}  # forest -> (own level, point, value)
+    records = []
+    for level in range(tallest):
+        prefix = f"tree/{level}"
+        joining = [f for f, h in enumerate(heights) if tallest - h == level]
+        s_max = max((forests[f][0] for f in joining), default=0)
+        root_challenges = [challenge(t, f"{prefix}/root/{c}") for c in range(s_max)]
+        for f in joining:
+            s, levels, roots = forests[f]
+            require(roots == levels[0], "the public root values are the root level")
+            point = root_challenges[s_max - s:]
+            require(len(point) == s, "a forest's root point has s coordinates")
+            value = root_claim(roots, point)
+            require(value == mle(levels[0], point), f"{prefix}: the root claim is the root level's MLE at the root point")
+            current[f] = (0, point, value)
+        present = [f for f in range(len(forests)) if f in current]
+        instances, entering = [], []
+        for f in present:
+            own, point, value = current[f]
+            s, levels, _ = forests[f]
+            n = s + own
+            require(own == level - (tallest - heights[f]) and len(point) == n, "a forest has s + l - (H - h) variables at level l")
+            require(mle(levels[own], point) == value, f"{prefix}: each claim is its forest level's MLE at its point")
+            below = levels[own + 1]
+            eq_table = [eq_at(point, x) for x in range(1 << n)]
+            left = [below[2 * x] for x in range(1 << n)]
+            right = [below[2 * x + 1] for x in range(1 << n)]
+            require(total(mul(eq_table[x], mul(left[x], right[x])) for x in range(1 << n)) == value,
+                    f"{prefix}: the level relation sums to the claim")
+            instances.append(([eq_table, left, right], n))
+            entering.append({"forest": f, "point": elements(point), "value": fp2(value)})
+        gamma, rounds, challenges, claims, bound = sumcheck(t, prefix, 3, instances)
+        evals, nexts, terms = [], [], []
+        weights = [power(gamma, i) for i in range(len(present))]
+        for f, (tables, n), bound_i in zip(present, instances, bound):
+            point = suffix(challenges, n)
+            _, entry_point, _ = current[f]
+            u, w = mle(tables[1], point), mle(tables[2], point)
+            require([eq_points(entry_point, point), u, w] == bound_i, f"{prefix}: eq, u and w are the bound tables")
+            evals += [u, w]
+            terms.append(mul(eq_points(entry_point, point), mul(u, w)))
+        t.absorb(f"{prefix}/evals", tce(evals))
+        require(total(mul(wt, term) for wt, term in zip(weights, terms)) == claims[-1], f"{prefix}: the final check holds")
+        rho = challenge(t, f"{prefix}/line")
+        for i, f in enumerate(present):
+            own = current[f][0]
+            n = forests[f][0] + own
+            u, w = evals[2 * i], evals[2 * i + 1]
+            point = [rho] + suffix(challenges, n)
+            value = add(u, mul(rho, sub(w, u)))
+            require(mle(forests[f][1][own + 1], point) == value, f"{prefix}: the next claim is the next level's MLE at rho || r'")
+            current[f] = (own + 1, point, value)
+            nexts.append({"forest": f, "point": elements(point), "value": fp2(value)})
+        records.append({
+            "prefix": prefix,
+            "root_challenges": elements(root_challenges),
+            "instances": entering,
+            "gamma": fp2(gamma),
+            "rounds": [elements(m) for m in rounds],
+            "challenges": elements(challenges),
+            "claims": elements(claims),
+            "final_evals": elements(evals),
+            "rho": fp2(rho),
+            "next": nexts,
+            "state": t.state.hex(),
+            "counter": t.counter,
+        })
+    for f, (own, point, value) in current.items():
+        s, levels, _ = forests[f]
+        require(own == heights[f] and len(point) == s + own and mle(levels[-1], point) == value,
+                "every leaf claim is the stacked leaves' MLE at its point")
+    return records
+
+
 # ----- Rendering ---------------------------------------------------------------------------------
 
 
@@ -386,22 +505,34 @@ def compact(value):
     return json.dumps(value, separators=(",", ":"))
 
 
-def render(header, sessions, batches):
+def render_batches(key, members, batches):
+    """`"key": [...]`, one batch per line group: its name and context, then each of its `members`
+    and each of its levels on a line of its own."""
+    return f'"{key}": [\n' + ",\n".join(
+        "    {" + f'"name":{compact(b["name"])},"context":{compact(b["context"])},"{members}":[\n'
+        + ",\n".join("      " + compact(member) for member in b[members]) + '\n    ],"levels":[\n'
+        + ",\n".join("      " + compact(level) for level in b["levels"]) + "\n    ]}"
+        for b in batches
+    ) + "\n  ]"
+
+
+def render(header, sessions, batches, forest_batches):
     text = json.dumps(header, indent=2)[:-2] + ',\n  "sessions": [\n'
     text += ",\n".join(
         "    {" + f'"name":{compact(s["name"])},"context":{compact(s["context"])},"stages":[\n'
         + ",\n".join("      " + compact(stage) for stage in s["stages"]) + "\n    ]}"
         for s in sessions
     )
-    text += '\n  ],\n  "tree_batches": [\n'
-    text += ",\n".join(
-        "    {" + f'"name":{compact(b["name"])},"context":{compact(b["context"])},"trees":[\n'
-        + ",\n".join("      " + compact(tree) for tree in b["trees"]) + '\n    ],"levels":[\n'
-        + ",\n".join("      " + compact(level) for level in b["levels"]) + "\n    ]}"
-        for b in batches
-    )
-    text += "\n  ]\n}\n"
-    require(json.loads(text) == {**header, "sessions": sessions, "tree_batches": batches}, "the file parses back")
+    text += "\n  ],\n  " + render_batches("tree_batches", "trees", batches)
+    # The forests are one key appended to the file as it was before them: removing the key, with
+    # its comma, gives that file byte for byte.
+    without_forests = text + "\n}\n"
+    text += ",\n  " + render_batches("forest_batches", "forests", forest_batches) + "\n}\n"
+    require(json.loads(without_forests) == {**header, "sessions": sessions, "tree_batches": batches}, "the file parses back")
+    document = json.loads(text)
+    require(document == {**header, "sessions": sessions, "tree_batches": batches, "forest_batches": forest_batches},
+            "the file parses back")
+    require(list(document) == [*header, "sessions", "tree_batches", "forest_batches"], "the forest batches come last")
     return text
 
 
@@ -428,6 +559,51 @@ def tree_batch(rng, name, shapes):
     for (height, zero_at), tree in zip(shapes, trees):
         require((tree["root"] == hex64(0)) == (zero_at is not None), "only a tree with a zero leaf has root 0")
     return {"name": name, "context": context, "trees": trees, "levels": levels}
+
+
+def forest_batch(rng, name, shapes):
+    """`shapes` lists each forest as `(s, h, zeros)`: 2^s trees of height h with random leaves,
+    where `zeros` places zero leaves. "rows" gives every tree a zero leaf at a random position, as
+    SoftmaxRow's rows have their maximum's key; "first" gives every tree a zero first leaf; a list
+    of `(tree, leaf)` places those zeros only."""
+    context = rng.context()
+    t = transcript.Transcript(transcript.session_context(context))
+    forests, described = [], []
+    for s, h, zeros in shapes:
+        trees = [[lift(rng.fp()) for _ in range(1 << h)] for _ in range(1 << s)]
+        if zeros == "rows":
+            places = [(y, rng.word() % (1 << h)) for y in range(1 << s)]
+        elif zeros == "first":
+            places = [(y, 0) for y in range(1 << s)]
+        else:
+            places = zeros
+        for y, x in places:
+            trees[y][x] = ZERO
+        # The public root values: each tree's product, computed directly from its leaves.
+        roots = [product(leaves) for leaves in trees]
+        zero_trees = {y for y, _ in places}
+        for y, root in enumerate(roots):
+            require((root == ZERO) == (y in zero_trees), "only the trees with a zero leaf have root 0")
+        levels = forest_levels(trees)
+        forests.append((s, levels, roots))
+        described.append({"rows_log": s, "height": h, "roots": [fp(v) for v in roots], "leaves": [fp(v) for v in levels[-1]]})
+    return {"name": name, "context": context, "forests": described, "levels": prove_forests(t, forests)}
+
+
+def trees_as_forests(batch):
+    """A tree batch proven again as forests of one tree each, on a fresh transcript of its context:
+    a single tree is a forest with s = 0, which takes no root challenge and enters with its root."""
+    t = transcript.Transcript(transcript.session_context(batch["context"]))
+    forests = []
+    for tree in batch["trees"]:
+        levels = tree_levels([lift(int(leaf, 16)) for leaf in tree["leaves"]])
+        forests.append((0, levels, [levels[0][0]]))
+    records = prove_forests(t, forests)
+    for record in records:
+        require(record.pop("root_challenges") == [], "a single tree takes no root challenge")
+        for claim in record["instances"] + record["next"]:
+            claim["tree"] = claim.pop("forest")
+    return records
 
 
 def main():
@@ -460,6 +636,16 @@ def main():
         tree_batch(rng, "three trees of height 4", [(4, None), (4, None), (4, None)]),
         tree_batch(rng, "trees of heights 2 and 5, the shorter first, with a zero leaf", [(2, 0), (5, None)]),
     ]
+    for batch in batches:
+        require(trees_as_forests(batch) == batch["levels"], f"{batch['name']}: the trees, proven as forests of one tree, give the same levels")
+    forest_batches = [
+        forest_batch(rng, "a forest of 2 trees of height 1, alone", [(1, 1, [])]),
+        forest_batch(rng, "a SoftmaxRow forest of 8 trees of height 3, every tree with a zero leaf, alone", [(3, 3, "rows")]),
+        forest_batch(rng, "forests of 4 and 2 trees and a single tree, of height 4; a forest of 2 trees of height 2, one with a "
+                     "zero leaf; two single trees of height 1", [(2, 4, []), (1, 4, []), (0, 4, []), (1, 2, [(0, 1)]), (0, 1, []), (0, 1, [])]),
+        forest_batch(rng, "a single tree of height 3; a SoftmaxRow forest of 16 trees whose first leaves are zero and a forest "
+                     "of 4 trees, of height 2", [(0, 3, []), (4, 2, "first"), (2, 2, [])]),
+    ]
     header = {
         "description": "RFC-0010 sumcheck reference vectors: honest proofs of batched sumchecks "
         "and of product-tree levels, written by spec/vectors/sumcheck/generate.py; see README.md",
@@ -468,11 +654,13 @@ def main():
         "seed": hex64(SEED),
         "official_blake3_cases_checked": checked,
     }
-    text = render(header, sessions, batches)
+    text = render(header, sessions, batches, forest_batches)
     (HERE / "sumcheck.json").write_text(text)
     stages = sum(len(s["stages"]) for s in sessions)
     levels = sum(len(b["levels"]) for b in batches)
-    print(f"wrote sumcheck.json: {len(sessions)} sessions of {stages} stages, {len(batches)} tree batches of {levels} levels, {len(text)} bytes")
+    forest_levels_count = sum(len(b["levels"]) for b in forest_batches)
+    print(f"wrote sumcheck.json: {len(sessions)} sessions of {stages} stages, {len(batches)} tree batches of {levels} levels, "
+          f"{len(forest_batches)} forest batches of {forest_levels_count} levels, {len(text)} bytes")
 
 
 if __name__ == "__main__":

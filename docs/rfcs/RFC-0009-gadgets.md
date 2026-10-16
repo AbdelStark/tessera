@@ -76,7 +76,7 @@ For query row `q` with valid key positions `i ∈ V_q` (causal mask: `i ≤ q`, 
 - Virtual: keys `k_qi = c_q − x_qi`; row sum `s_q = Σ_{i ∈ V_q} e_qi`; bracket slacks `a_q = 2^{2σ} − R_q s_q` and `b_q = s_q − 1 − a_q`.
 - Relations:
   1. Lookup `(k_qi, e_qi) ∈ Exp { key_bits, σ, scale }` for every `i ∈ V_q`.
-  2. Product tree: `Π_{i ∈ V_q} k_qi = 0`.
+  2. Product tree: `Π_{i ∈ V_q} k_qi = 0`, one tree per row. The rows' trees form one forest ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels').
   3. `R_q ∈ [0, 2^{σ+1})`; `NonNeg(a_q, σ + 18)`; `NonNeg(b_q, σ + 18)`.
 - Masked positions are excluded by the public causal selector, whose multilinear extension the verifier evaluates in `O(log S)` time.
 - Cost per score: 1 lookup, 1 commitment, 1 product-tree leaf. Per row: 2 commitments (`c_q`, `R_q`), about 4 limb commitments and 6 lookups.

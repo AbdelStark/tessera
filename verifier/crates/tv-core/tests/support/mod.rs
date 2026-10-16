@@ -3,11 +3,12 @@
 //! Test support shared by the integration tests:
 //!
 //! - the vectors of `spec/vectors/sumcheck/`, written by an independent Python prover, read into
-//!   typed sessions, stages, tree batches and levels;
+//!   typed sessions, stages, tree batches, forest batches and levels;
 //! - the caller's side of the checks, as the stage schedule and the driver will hold it: the
-//!   vectors' relation, the product of an instance's evaluations; the joining of trees of
-//!   different heights, level by level; and a stand-in for the stage that consumes the leaf
-//!   claims, which evaluates each tree's leaves at its leaf claim's point;
+//!   vectors' relation, the product of an instance's evaluations; the joining of trees and
+//!   forests of different heights, level by level, with the root challenges and root claims of
+//!   forests; and a stand-in for the stage that consumes the leaf claims, which evaluates each
+//!   tree's or forest's leaves at its leaf claim's point;
 //! - conversions from the test kit's reference prover, whose proofs of seeded and of cheating
 //!   instances the vectors cannot hold.
 //!
@@ -235,10 +236,10 @@ pub struct Tree {
     pub leaves: Vec<Fp>,
 }
 
-/// A claim of the vectors, with the index of its tree.
-fn tree_claim(json: &Json) -> (usize, TreeClaim) {
+/// A claim of the vectors, with the index of its tree or forest, the member `owner`.
+fn claim_of(json: &Json, owner: &str) -> (usize, TreeClaim) {
     (
-        number(json, "tree") as usize,
+        number(json, owner) as usize,
         TreeClaim {
             point: fp2s(json.get("point").unwrap()),
             value: fp2(json.get("value").unwrap()),
@@ -262,6 +263,32 @@ pub struct Level {
 }
 
 impl Level {
+    /// A level of a tree batch, or what a forest batch's level shares with it, its claims naming
+    /// their tree or forest under `owner`.
+    fn from_json(level: &Json, owner: &str) -> Self {
+        let claims = |key: &str| -> Vec<(usize, TreeClaim)> {
+            list(level, key)
+                .iter()
+                .map(|claim| claim_of(claim, owner))
+                .collect()
+        };
+        Self {
+            prefix: prefix(text(level, "prefix")),
+            entering: claims("instances"),
+            gamma: fp2(level.get("gamma").unwrap()),
+            proof: SumcheckProof {
+                rounds: list(level, "rounds").iter().map(fp2s).collect(),
+                final_evals: fp2s(level.get("final_evals").unwrap()),
+            },
+            challenges: fp2s(level.get("challenges").unwrap()),
+            claims: fp2s(level.get("claims").unwrap()),
+            rho: fp2(level.get("rho").unwrap()),
+            next: claims("next"),
+            state: digest(text(level, "state")),
+            counter: number(level, "counter"),
+        }
+    }
+
     pub fn rounds(&self) -> usize {
         self.challenges.len()
     }
@@ -303,20 +330,83 @@ pub fn tree_batches() -> Vec<TreeBatch> {
                 .collect(),
             levels: list(batch, "levels")
                 .iter()
-                .map(|level| Level {
-                    prefix: prefix(text(level, "prefix")),
-                    entering: list(level, "instances").iter().map(tree_claim).collect(),
-                    gamma: fp2(level.get("gamma").unwrap()),
-                    proof: SumcheckProof {
-                        rounds: list(level, "rounds").iter().map(fp2s).collect(),
-                        final_evals: fp2s(level.get("final_evals").unwrap()),
-                    },
-                    challenges: fp2s(level.get("challenges").unwrap()),
-                    claims: fp2s(level.get("claims").unwrap()),
-                    rho: fp2(level.get("rho").unwrap()),
-                    next: list(level, "next").iter().map(tree_claim).collect(),
-                    state: digest(text(level, "state")),
-                    counter: number(level, "counter"),
+                .map(|level| Level::from_json(level, "tree"))
+                .collect(),
+        })
+        .collect()
+}
+
+/// A product forest of the vectors: `2^s` product trees of one height `h`, stacked (RFC-0010
+/// 'Tree levels'): its level `ℓ` has `2^{s+ℓ}` entries, entry `y·2^ℓ + x` being entry `x` of tree
+/// `y`'s level `ℓ`.
+#[derive(Clone)]
+pub struct Forest {
+    /// `s`: the forest has `2^s` trees.
+    pub rows_log: usize,
+    /// `h`: the trees' height.
+    pub height: usize,
+    /// The public root values `v_y`, one per tree: the forest's level 0.
+    pub roots: Vec<Fp>,
+    /// The `2^{s+h}` stacked leaves: entry `y·2^h + x` is leaf `x` of tree `y`.
+    pub leaves: Vec<Fp>,
+}
+
+/// One level of a forest batch and every value the oracle recorded.
+#[derive(Clone)]
+pub struct ForestLevel {
+    /// The challenges squeezed under `tree/{ℓ}/root/{c}` before `γ`, in the order squeezed.
+    pub root_challenges: Vec<Fp2>,
+    /// The rest, as for a tree batch's level, its claims by forest.
+    pub level: Level,
+}
+
+/// A batch of product forests and its levels.
+pub struct ForestBatch {
+    pub name: String,
+    pub context: Context,
+    pub forests: Vec<Forest>,
+    pub levels: Vec<ForestLevel>,
+}
+
+impl ForestBatch {
+    /// The level proofs.
+    pub fn proofs(&self) -> Vec<SumcheckProof> {
+        self.levels
+            .iter()
+            .map(|level| level.level.proof.clone())
+            .collect()
+    }
+}
+
+/// The forest batches of the vectors.
+pub fn forest_batches() -> Vec<ForestBatch> {
+    let file = read_vectors("sumcheck/sumcheck.json");
+    list(&file, "forest_batches")
+        .iter()
+        .map(|batch| ForestBatch {
+            name: text(batch, "name").to_owned(),
+            context: Context::from_json(batch.get("context").unwrap()),
+            forests: list(batch, "forests")
+                .iter()
+                .map(|forest| {
+                    let forest = Forest {
+                        rows_log: number(forest, "rows_log") as usize,
+                        height: number(forest, "height") as usize,
+                        roots: list(forest, "roots").iter().map(fp).collect(),
+                        leaves: list(forest, "leaves").iter().map(fp).collect(),
+                    };
+                    // Small shapes only: the checks below shift by s and s + h.
+                    assert!(forest.height >= 1 && forest.rows_log + forest.height < 32);
+                    assert_eq!(forest.roots.len(), 1 << forest.rows_log);
+                    assert_eq!(forest.leaves.len(), 1 << (forest.rows_log + forest.height));
+                    forest
+                })
+                .collect(),
+            levels: list(batch, "levels")
+                .iter()
+                .map(|level| ForestLevel {
+                    root_challenges: fp2s(level.get("root_challenges").unwrap()),
+                    level: Level::from_json(level, "forest"),
                 })
                 .collect(),
         })
@@ -466,6 +556,202 @@ pub fn run_trees(
         leaves,
         outcome,
     }
+}
+
+/// Which of its level's root challenges a joining forest takes as its root point.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RootPoint {
+    /// The last `s`, in the order squeezed: RFC-0010 'Tree levels'.
+    Last,
+    /// The first `s`: a misreading, which honest proofs must not pass.
+    First,
+}
+
+/// `Σ_y v_y·eq(r, y)`: a forest's root claim at its root point `r`, from its public root values
+/// `v_y` (RFC-0010 'Tree levels'), with `eq(r, y) = Π_i (r_i·y_i + (1 − r_i)·(1 − y_i))` computed
+/// from that formula, `y_i` being bit `i − 1` of `y` as a field element. `None` unless there are
+/// `2^{|r|}` values.
+pub fn root_claim(roots: &[Fp], point: &[Fp2]) -> Option<Fp2> {
+    let trees = u32::try_from(point.len())
+        .ok()
+        .and_then(|s| 1usize.checked_shl(s))?;
+    if roots.len() != trees {
+        return None;
+    }
+    let mut claim = Fp2::ZERO;
+    for (y, &value) in roots.iter().enumerate() {
+        let mut eq = Fp2::ONE;
+        for (i, &r) in point.iter().enumerate() {
+            let y_i = Fp2::from(Fp::reduce(((y >> i) & 1) as u64));
+            eq *= r * y_i + (Fp2::ONE - r) * (Fp2::ONE - y_i);
+        }
+        claim += eq * value;
+    }
+    Some(claim)
+}
+
+/// What a batch of forests comes to, its levels run by [`run_forests`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ForestOutcome {
+    /// Every level passed and every leaf claim is true.
+    Accepted,
+    /// Level `level` was rejected with `error`.
+    Rejected { level: u32, error: SumcheckError },
+    /// Level `level`'s root claims could not be formed, a fault of the verifier and never a
+    /// verdict on the proof: a root challenge found no value, as RFC-0004 'Failure modes' allows
+    /// with probability below `2^-496`.
+    Inconclusive { level: u32, why: String },
+    /// Every level passed, but the leaf claim of forest `forest` is false, which the stage that
+    /// consumes it rejects.
+    FalseLeaf { forest: usize },
+}
+
+/// A level that passed in a run of [`run_forests`].
+pub struct ForestLevelRun {
+    /// The root challenges squeezed before its `γ`.
+    pub root_challenges: Vec<Fp2>,
+    /// The claims that entered it, by forest, in schedule order.
+    pub entering: Vec<(usize, TreeClaim)>,
+    /// What it returned.
+    pub outcome: ProductLevel,
+    /// The transcript's state and squeeze count after it.
+    pub state: [u8; 32],
+    pub counter: u64,
+}
+
+/// A run of every level of a batch of forests.
+pub struct ForestRun {
+    /// Each level that passed.
+    pub levels: Vec<ForestLevelRun>,
+    /// The leaf claims, by forest, when every level passed.
+    pub leaves: Vec<(usize, TreeClaim)>,
+    pub outcome: ForestOutcome,
+}
+
+/// Runs every level of a batch of `forests` with `proofs` as a verifier's driver does, from
+/// RFC-0010 'Tree levels': at level `ℓ`, with `H` the tallest height, the forests of height
+/// `H − ℓ` join. Where some of them have more than one tree, the challenges `tree/{ℓ}/root/{c}`,
+/// `c = 0, …, s_max − 1`, are squeezed first, `s_max` the largest `s` among them, and each
+/// joining forest takes the `s` of them that `root_point` says as its root point `r`, entering
+/// with the root claim `Σ_y v_y·eq(r, y)` of [`root_claim`]; a forest of one tree takes none and
+/// enters with its root on no variable. The forests present are checked in the order of
+/// `forests` by [`verify_product_level`], and each carries its next claim to the next level.
+/// After the last level, each leaf claim is checked against its forest's stacked leaves.
+pub fn run_forests(
+    transcript: &mut Transcript,
+    forests: &[Forest],
+    proofs: &[SumcheckProof],
+    root_point: RootPoint,
+) -> ForestRun {
+    let tallest = forests
+        .iter()
+        .map(|forest| forest.height)
+        .max()
+        .unwrap_or(0);
+    assert_eq!(proofs.len(), tallest, "one proof per level");
+    let stop = |levels: Vec<ForestLevelRun>, outcome: ForestOutcome| ForestRun {
+        levels,
+        leaves: Vec::new(),
+        outcome,
+    };
+    let mut current: Vec<Option<TreeClaim>> = vec![None; forests.len()];
+    let mut levels = Vec::new();
+    for (level, proof) in proofs.iter().enumerate() {
+        let index = level as u32;
+        let joining: Vec<(usize, &Forest)> = forests
+            .iter()
+            .enumerate()
+            .filter(|(_, forest)| tallest - forest.height == level)
+            .collect();
+        let s_max = joining
+            .iter()
+            .map(|(_, forest)| forest.rows_log)
+            .max()
+            .unwrap_or(0);
+        let mut root_challenges = Vec::with_capacity(s_max);
+        for c in 0..s_max {
+            let label = format!("tree/{level}/root/{c}");
+            let drawn = match Ascii::new(&label) {
+                Ok(label) => transcript
+                    .challenge_fp2(label)
+                    .map_err(|error| error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            match drawn {
+                Ok(challenge) => root_challenges.push(challenge),
+                Err(why) => return stop(levels, ForestOutcome::Inconclusive { level: index, why }),
+            }
+        }
+        for &(f, forest) in &joining {
+            let s = forest.rows_log;
+            let point = match root_point {
+                RootPoint::Last => &root_challenges[s_max - s..],
+                RootPoint::First => &root_challenges[..s],
+            };
+            let Some(value) = root_claim(&forest.roots, point) else {
+                let why = format!("forest {f}: {} roots for {s} variables", forest.roots.len());
+                return stop(levels, ForestOutcome::Inconclusive { level: index, why });
+            };
+            current[f] = Some(TreeClaim {
+                point: point.to_vec(),
+                value,
+            });
+        }
+        let present: Vec<(usize, TreeClaim)> = current
+            .iter()
+            .enumerate()
+            .filter_map(|(f, claim)| claim.clone().map(|claim| (f, claim)))
+            .collect();
+        let claims: Vec<TreeClaim> = present.iter().map(|(_, claim)| claim.clone()).collect();
+        match verify_product_level(transcript, index, &claims, proof) {
+            Err(error) => {
+                return stop(
+                    levels,
+                    ForestOutcome::Rejected {
+                        level: index,
+                        error,
+                    },
+                );
+            }
+            Ok(outcome) => {
+                assert_eq!(outcome.claims.len(), present.len(), "one next claim each");
+                for ((f, _), claim) in present.iter().zip(&outcome.claims) {
+                    current[*f] = Some(claim.clone());
+                }
+                levels.push(ForestLevelRun {
+                    root_challenges,
+                    entering: present,
+                    outcome,
+                    state: *transcript.state(),
+                    counter: transcript.counter(),
+                });
+            }
+        }
+    }
+    let leaves: Vec<(usize, TreeClaim)> = current
+        .into_iter()
+        .enumerate()
+        .filter_map(|(f, claim)| claim.map(|claim| (f, claim)))
+        .collect();
+    assert_eq!(leaves.len(), forests.len(), "every forest joined");
+    let outcome = leaves
+        .iter()
+        .find(|(f, claim)| !leaf_claim_holds(&forests[*f], claim))
+        .map_or(ForestOutcome::Accepted, |(f, _)| ForestOutcome::FalseLeaf {
+            forest: *f,
+        });
+    ForestRun {
+        levels,
+        leaves,
+        outcome,
+    }
+}
+
+/// Whether `claim` holds on `forest`'s stacked leaves, the table of `2^{s+h}` entries its leaf
+/// claim is on (RFC-0010 'Tree levels').
+fn leaf_claim_holds(forest: &Forest, claim: &TreeClaim) -> bool {
+    claim.point.len() == forest.rows_log + forest.height
+        && extension(&forest.leaves, &claim.point) == claim.value
 }
 
 // ----- The reference prover ---------------------------------------------------------------------

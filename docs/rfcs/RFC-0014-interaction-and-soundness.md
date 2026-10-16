@@ -70,7 +70,7 @@ pub struct NiProof { pub round1: Round1, pub seed_nonce: u64, pub round2: Round2
 
 ### Transcript schedule
 
-Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{T}` are decimal indices, counted from 0, or matrix names.
+Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{c}`, `{T}` are decimal indices, counted from 0, or matrix names.
 
 | Order | Operation | Label |
 |---|---|---|
@@ -78,7 +78,7 @@ Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{T}` are decimal indice
 | 2 | absorb | `round1` |
 | 3 | live: absorb `seed`; NI: grind `seed-pow`, then squeeze | `seed` |
 | 4 | squeeze `Fp2` × 2 | `logup/alpha`, `logup/beta` |
-| 5 | per tree level `ℓ`: squeeze `γ_ℓ`, absorb round messages, squeeze challenges, absorb evaluations, squeeze the line challenge | `tree/{ℓ}/gamma`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line` |
+| 5 | per tree level `ℓ`: squeeze the root point of the forests that join at `ℓ` ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)), squeeze `γ_ℓ`, absorb round messages, squeeze challenges, absorb evaluations, squeeze the line challenge | `tree/{ℓ}/root/{c}`, `tree/{ℓ}/gamma`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line` |
 | 6 | per stage `k`: absorb masked sum, squeeze `ρ_k`, squeeze `γ_k`, rounds, final evaluations | `stage/{k}/zk-sum`, `stage/{k}/zk-rho`, `stage/{k}/gamma`, `stage/{k}/round/{j}`, `stage/{k}/r/{j}`, `stage/{k}/evals` |
 | 7 | squeeze opening batching challenges | `pcs/advice/gamma`, `pcs/advice/xi`, `pcs/weights/{T}/xi` |
 | 8 | absorb combined rows | `pcs/advice/combined`, `pcs/weights/{T}/combined` |
@@ -95,6 +95,7 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 |---|---|---|---|
 | Sumcheck and tree rounds (degree `d ≤ 7`) | `d/|Fp2|` per round, round-by-round | ≥ 125 bits per round under Fiat–Shamir | same |
 | All rounds, union bound (405B, 16K tokens, about 10^4 rounds) | `Σ d/|Fp2|` | ≥ 112 bits | ≥ 112 bits |
+| Product-forest root claim (`2^s` trees, `s ≤ 32`) | `s/|Fp2|` per forest | ≥ 120 bits | same |
 | LogUp identity (`N + T ≤ 2^{38}` per instance) | `(N + T)/|Fp2|` | about 90 bits, one shot: `α` derives from a seed the prover cannot retry | 90 + `g_seed` = 110 bits |
 | Tuple compression | included in the LogUp bound (joint polynomial in `α, β`) | — | — |
 | Proximity per commitment | `((1 + ρ')/2)^τ + n/|Fp2|` | `τ · b(ρ') ≥ 64` bits, one shot | `τ · b(ρ') + g_query ≥ 100` bits |

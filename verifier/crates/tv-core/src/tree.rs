@@ -10,11 +10,16 @@
 //! of level `ℓ + 1`. One batched sumcheck of degree 3 per level of the batch reduces every
 //! instance's claim on its level to a claim on the next, from the roots to the leaves.
 //!
-//! Trees of different heights share the batch's levels: with `H` the tallest tree's height, a
-//! tree of height `h` takes its root level at level `H − h` of the batch and has `ℓ − (H − h)`
-//! variables at level `ℓ`. The caller, which holds the schedule, passes the instances present at
-//! each level in schedule order: the claims the previous level returned, and the public root
-//! claims of the trees that join, on no variable.
+//! Trees of one height are stacked into a forest of `2^s` trees, the tree index in the high `s`
+//! variables; a single tree is a forest with `s = 0`. Forests of different heights share the
+//! batch's levels: with `H` the tallest forest's height, a forest of height `h` takes its root
+//! level at level `H − h` of the batch, and has `s + ℓ − (H − h)` variables at level `ℓ`. The
+//! caller, which holds the schedule, passes the instances present at each level in schedule
+//! order:
+//! - the claims the previous level returned;
+//! - the root claims of the forests that join, each `Σ_y v_y·eq(r, y)` from its public root
+//!   values `v_y`, at the root point `r` that the caller squeezes under `tree/{ℓ}/root/{c}`
+//!   before the level's `γ`.
 
 use tv_field::Fp2;
 use tv_hash::transcript::Transcript;
