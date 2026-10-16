@@ -76,11 +76,13 @@ For query row `q` with valid key positions `i ∈ V_q` (causal mask: `i ≤ q`, 
 - Virtual: keys `k_qi = c_q − x_qi`; row sum `s_q = Σ_{i ∈ V_q} e_qi`; bracket slacks `a_q = 2^{2σ} − R_q s_q` and `b_q = s_q − 1 − a_q`.
 - Relations:
   1. Lookup `(k_qi, e_qi) ∈ Exp { key_bits, σ, scale }` for every `i ∈ V_q`.
-  2. Product tree: `Π_{i ∈ V_q} k_qi = 0`, one tree per row. The rows' trees form one forest ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels').
+  2. Product tree: `Π_{i ∈ V_q} k_qi = 0`, one tree per row. The rows' trees form one forest ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels') of one height `h`, so row `q`'s tree has `2^h` leaves. Leaf `i` is `L_qi = C(q, i)·k_qi + 1 − C(q, i)`, with `C(q, i) = [i ≤ q]` the public causal selector. Every masked position's leaf is the constant 1, so the tree's product is exactly `Π_{i ∈ V_q} k_qi`.
   3. `R_q ∈ [0, 2^{σ+1})`; `NonNeg(a_q, σ + 18)`; `NonNeg(b_q, σ + 18)`.
-- Masked positions are excluded by the public causal selector, whose multilinear extension the verifier evaluates in `O(log S)` time.
+- The forest's leaf claim `L̃(r) = v` goes to the stage that produces the keys, which proves `L̃(r) = C̃(r)·k̃(r) + 1 − C̃(r)`. The verifier evaluates the causal selector's multilinear extension `C̃` itself, in `O(log S)` time.
 - Cost per score: 1 lookup, 1 commitment, 1 product-tree leaf. Per row: 2 commitments (`c_q`, `R_q`), about 4 limb commitments and 6 lookups.
-- Lemma 5 (max certificate). Relations 1 and 2 hold iff `c_q = max_{i ∈ V_q} x_qi` and every `e_qi = Exp[c_q − x_qi]`. Proof: relation 1 forces each `k_qi` to be an integer in `[0, 2^{key_bits})`, so `c_q ≥ x_qi` for all `i`. The keys are integers below `P`, and a field has no zero divisors, so relation 2 forces some `k_qi ≡ 0`, hence `k_qi = 0` and `c_q = x_qi` for that `i`. So `c_q` is the maximum; values follow from relation 1.
+- Lemma 5 (max certificate). Relations 1 and 2 hold iff `c_q = max_{i ∈ V_q} x_qi` and every `e_qi = Exp[c_q − x_qi]`. Proof: relation 1 forces each `k_qi` to be an integer in `[0, 2^{key_bits})`, so `c_q ≥ x_qi` for all `i`. The keys are integers below `P`, and a field has no zero divisors, so relation 2 forces some `k_qi ≡ 0`, hence `k_qi = 0` and `c_q = x_qi` for that `i`. So `c_q` is the maximum; values follow from relation 1. The proof needs the masked leaves to be non-zero and public, and the constant 1 is that.
+  - **A masked leaf of 0**, or a selector that multiplies the leaf, would make every row's product vanish. Then `c_q` could be any value at or above the maximum.
+  - **A masked leaf of the real key `c_q − x_qi`** of a future position would let `c_q` equal any future score above the causal maximum.
 - Lemma 6 (reciprocal). Relation 3 holds iff `R_q = floor(2^{2σ} / s_q)`. Proof: `s_q ≥ e(0) = 2^σ > 0` because the maximal score has key 0; `R_q < 2^{σ+1}` and `s_q < 2^{σ+17}` keep `R_q s_q < 2^{50}`, so the slacks are exact integers; `0 ≤ a_q ≤ s_q − 1` is the bracket.
 - Relational fact emitted: `R_q · s_q ≤ 2^{2σ}`, used by range analysis to bound the attention output.
 
@@ -159,7 +161,7 @@ Vocabulary exponentials `e_v = Exp_T[c − ℓ_v]` from a `SoftmaxRow`-style max
 For each gadget, all on random instances at small and production widths:
 
 - Completeness: honest witnesses pass for 10^4 random inputs, including boundary inputs (all scores equal; a single valid position; `u = 0`; `u = 2^55 − 1`; `z` at both ends of its range; ties in `Argmax`).
-- Alternative witnesses, each rejected: `c_q` replaced by the second-largest score or by `max + 1`; `R_q ± 1`; `ρ ± 1`; `z_lo + 2^s` and `z_lo − 1`; a one-hot vector with two ones, or one one at the wrong index; `y` replaced by a later tie in `Argmax`; `ŷ ± 1` in `InverseCdf`.
+- Alternative witnesses, each rejected: a `SoftmaxRow` forest whose masked leaves are 0, or the keys of the masked positions' real scores, at the stage that consumes the leaf claim; `c_q` replaced by the second-largest score or by `max + 1`; `R_q ± 1`; `ρ ± 1`; `z_lo + 2^s` and `z_lo − 1`; a one-hot vector with two ones, or one one at the wrong index; `y` replaced by a later tie in `Argmax`; `ŷ ± 1` in `InverseCdf`.
 - Lemma checks by exhaustion at toy sizes: for `b ≤ 12`, enumerate all `z_lo'` and confirm only one passes (`RequantSplit`); for 3-element rows with scores in `[−8, 8]`, enumerate all `c` (`SoftmaxRow`).
 - Soundness over `F65537`: wrap-based attacks that succeed when a precondition is violated (for example `s > r − 1`, or limb bounds too wide) are demonstrated to succeed there, confirming the preconditions are necessary, and to fail when the preconditions hold.
 
