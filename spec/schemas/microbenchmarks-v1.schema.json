@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/microbenchmarks-v1.schema.json",
+  "title": "tessera.microbenchmarks/1",
+  "description": "A run of the CPU microbenchmarks of 08 §6 on one runner class, the baseline of the regression gate (docs/perf/README.md). Written by tessera_bench::MicrobenchmarkReport.",
+  "type": "object",
+  "required": [
+    "schema",
+    "runner_class",
+    "os",
+    "arch",
+    "protocol",
+    "measurements"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.microbenchmarks/1"
+    },
+    "runner_class": {
+      "description": "Lowercase ASCII letters, digits, '-', '_' and '.'.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "os": {
+      "type": "string",
+      "minLength": 1
+    },
+    "arch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocol": {
+      "type": "object",
+      "required": [
+        "warmups",
+        "iterations"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "warmups": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "iterations": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "measurements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/measurement"
+      }
+    }
+  },
+  "$defs": {
+    "measurement": {
+      "type": "object",
+      "required": [
+        "name",
+        "unit",
+        "units",
+        "ns_per_unit",
+        "noisy"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "The key a candidate is compared by: lowercase ASCII letters, digits, '-', '_', '.' and '/'.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "units": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ns_per_unit": {
+          "$ref": "#/$defs/statistics"
+        },
+        "noisy": {
+          "description": "Whether the coefficient of variation exceeds 3% (RFC-0020).",
+          "type": "boolean"
+        }
+      }
+    },
+    "statistics": {
+      "description": "Nanoseconds per unit of the measured runs: median, extremes, and the coefficient of variation.",
+      "type": "object",
+      "required": [
+        "median",
+        "min",
+        "max",
+        "cv"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "median": {
+          "type": "number",
+          "minimum": 0
+        },
+        "min": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cv": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

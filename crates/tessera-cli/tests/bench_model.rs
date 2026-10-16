@@ -91,6 +91,57 @@ fn the_source_defaults_reproduce_the_source_chart() {
     }
 }
 
+/// Whether `a` and `b` are the same JSON document up to the last bits of their numbers: the same
+/// keys, strings, booleans and array lengths, and numbers within `1e-12` of each other, relative.
+/// The model's probabilities go through `ln_1p` and `exp_m1`, which no platform rounds correctly,
+/// so the last bits differ between, say, aarch64 macOS and x86_64 Linux.
+fn same_report(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => {
+            let (x, y) = (
+                x.as_f64().unwrap_or(f64::NAN),
+                y.as_f64().unwrap_or(f64::NAN),
+            );
+            (x - y).abs() <= 1e-12 * x.abs().max(y.abs())
+        }
+        (Value::Array(x), Value::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(x, y)| same_report(x, y))
+        }
+        (Value::Object(x), Value::Object(y)) => {
+            x.len() == y.len()
+                && x.iter()
+                    .all(|(key, x)| y.get(key).is_some_and(|y| same_report(x, y)))
+        }
+        _ => a == b,
+    }
+}
+
+/// `docs/perf/examples/cost-model-source-defaults.json`, the documented example of the report,
+/// which `cargo xtask lint` validates against its JSON Schema, is what the command prints, up to
+/// the last bits of its numbers: a model that changes changes it, and
+/// `--source-defaults --json > FILE` rewrites it.
+#[test]
+fn the_committed_example_is_what_the_command_prints() {
+    let output = tessera(&["bench", "model", "--source-defaults", "--json"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/perf/examples/cost-model-source-defaults.json");
+    let example: Value =
+        serde_json::from_str(&fs::read_to_string(&path).expect("the committed example"))
+            .expect("JSON");
+    let printed: Value = serde_json::from_str(stdout(&output)).expect("JSON");
+    assert!(
+        same_report(&example, &printed),
+        "{} is stale: rerun `tessera bench model --source-defaults --json > {}`",
+        path.display(),
+        "docs/perf/examples/cost-model-source-defaults.json"
+    );
+    // The comparison itself: a report off in one number's sixth digit is not the same.
+    let mut off = printed.clone();
+    off["projections"][0]["mu"]["total"] = serde_json::json!(3.18);
+    assert!(!same_report(&printed, &off));
+}
+
 /// `--out` writes the report that `--json` prints; without `--json`, stdout is a table with one
 /// row per requested context.
 #[test]

@@ -31,7 +31,7 @@ cargo build --workspace --locked
 cargo test --workspace --locked
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
-cargo xtask lint                # unsafe-code policy, SPDX headers, licenses, Markdown links
+cargo xtask lint                # unsafe-code policy, SPDX headers, licenses, Markdown links, report schemas
 cargo xtask check-isolation     # the verifier shares no code with the prover (RFC-0001)
 cargo xtask check-test-features # test-only features fail release builds (RFC-0001)
 cargo xtask check-branchless    # the field compiles branch-free in x86_64 loops (INV-ARCH-2)
