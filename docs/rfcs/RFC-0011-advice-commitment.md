@@ -81,10 +81,18 @@ After the last stage (RFC-0010):
 4. **Opening pass.** The prover regenerates every non-zero row once more and accumulates `u_g = Σ_row c_g(row) · A_row` for all groups and `u_ξ = Σ_row ξ_row · A_row` (message space, over `Fp2`), plus the combined mask polynomials `M_g = Σ_row c_g(row) m_row` and `M_ξ`.
 5. **Send.** `u_g`, `M_g` for every group, and `u_ξ`, `M_ξ` (label `pcs/advice/combined`).
 6. **Evaluation check.** For each group, the verifier checks `Σ_{claims in g} γ_claim · v_claim = ⟨u_g, eq(column sub-point)⟩`.
-7. **Column queries.** The verifier draws `τ_A` column indices (live: verifier's choice after receiving step 5; non-interactive: transcript with grinding, RFC-0014). The prover answers with every non-zero row's symbol in each queried column, in segment order, plus a canonical Merkle multiproof.
-8. **Column check.** For each queried `j`: recompute `leaf_j` from the column; verify the multiproof; check `Σ_row c_g(row) · col_j[row] = enc(u_g)(x_j) + Z_H(x_j) · M_g(x_j)` for every `g`, and the same for `ξ`.
+7. **Column queries.** The verifier draws `τ_A` column indices uniformly and independently, with replacement (live: verifier's choice after receiving step 5, sent in draw order; non-interactive: transcript with grinding, RFC-0014), so an index can repeat. The prover answers the drawn set once:
+   - the sorted, deduplicated set of drawn indices, in increasing order;
+   - for each of those columns, every non-zero row's symbol, in segment order;
+   - the canonical Merkle multiproof of the same set ([RFC-0004](RFC-0004-hashing-and-transcript.md#merkle-trees)).
+8. **Column check.** In this order:
+   1. The answer holds exactly one column per distinct queried index, each with one symbol per non-zero row.
+   2. The verifier recomputes `leaf_j` from each column and verifies the multiproof of the distinct indices against the root.
+   3. For each distinct queried `j`, in increasing order, it checks `Σ_row c_g(row) · col_j[row] = enc(u_g)(x_j) + Z_H(x_j) · M_g(x_j)` for every `g`, and the same for `ξ`.
 
-Soundness: if the committed rows are `δ`-far from the code for `δ < (1 − ρ)/2`, the proximity check passes with probability at most `(1 − δ)^{τ_A} + n/|Fp2|`; otherwise each row decodes uniquely and the evaluation checks bind every claim to the decoded rows (Ligero, Brakedown). Conservatively each query gives `−log2((1 + ρ)/2) ≈ 0.415` bits ([RFC-0014](RFC-0014-interaction-and-soundness.md#parameter-sets)).
+   A failure of 1 or 2 is `Reject(MerklePath)` at the smallest queried index: a multiproof fails as a whole, never at one column. A failure of 3 is `Reject(Proximity)` at the first `j` that fails.
+
+Soundness: if the committed rows are `δ`-far from the code for `δ < (1 − ρ)/2`, the proximity check passes with probability at most `(1 − δ)^{τ_A} + n/|Fp2|`; otherwise each row decodes uniquely and the evaluation checks bind every claim to the decoded rows (Ligero, Brakedown). The bound takes the `τ_A` draws to be independent, which drawing with replacement makes them. Each draw lands outside the agreeing columns with probability at least `δ`, whether or not it repeats an earlier one, so checking a repeated column once loses nothing. Conservatively each query gives `−log2((1 + ρ)/2) ≈ 0.415` bits ([RFC-0014](RFC-0014-interaction-and-soundness.md#parameter-sets)).
 
 ### Sizes at the default parameters (16K tokens, 16K context, 405B)
 
@@ -138,6 +146,7 @@ v0.1 delivers the encoding, chained digests, Merkle tree and a non-streaming ref
 - Streaming equals batch: the streaming committer and a reference that holds the whole matrix produce the same root for random layouts, including zero rows, partial final blocks and `S ∈ {1, 2, 8}`.
 - Layout: prover and verifier derive identical layouts for conformance models; every tensor's claims map to the right row offsets.
 - Openings: random claims at 1–40 points in up to 16 groups verify; one altered element of `u_g`, `M_g`, a column symbol or a multiproof sibling is rejected with the expected reason.
+- Repeated queries: a draw that repeats an index is answered with each distinct column once, in increasing order, and verifies. Two other answers are rejected with `Reject(MerklePath)`: the distinct columns in draw order, from a draw that is not already increasing, and the drawn columns with the repeated one sent twice.
 - Proximity: a matrix with one row replaced by a non-codeword at relative distance `δ ∈ {0.05, 0.25, 0.5}` is rejected at an empirical rate at least `1 − (1 − δ)^τ` over 10^4 trials at small `τ`.
 - Self-check: a fault-injected opening pass that perturbs one row triggers `ERR-INTERNAL` before any message is sent.
 

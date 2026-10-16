@@ -53,7 +53,7 @@ After the `MatMulWeight` stage of RFC-0010, weight type `T` has one claim `W̃_T
 3. **Combined row.** The opening reveals `u_T = Σ_ℓ eq(ρ_ℓ, ℓ) F_ℓ + β_T`, where `β_T` is the next unused blinding row; the verifier checks the claimed evaluation against `⟨u_T, eq(r_o^{lo}) ⊗ eq(r_i)⟩` with the blinding row's claim included as specified in [RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings).
 4. `u_T` does not depend on `r_i`. It is formed as soon as the layer rounds fix `ρ_ℓ`, from the per-layer folds `F_ℓ` retained in device memory (`n_layers · 2^20` elements of `Fp2` per type, about 2 GiB at 405B), so one pass over the weights per proof suffices.
 
-Proximity uses a second combined row with random coefficients and its own blinding row. Column queries (`τ_W` per matrix) are answered with the full column (all non-zero data rows and all blinding rows) and a canonical multiproof.
+Proximity uses a second combined row with random coefficients and its own blinding row. Column queries (`τ_W` per matrix) are drawn and answered as [RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7 says: with replacement, each distinct queried column once and in increasing index order. Each answered column is the full column, all non-zero data rows and all blinding rows, followed by the canonical multiproof of the same set.
 
 ### Budget state machine
 
@@ -77,7 +77,7 @@ Transitions, each persisted (fsync, atomic rename) before the corresponding mess
 | Event | Precondition | Effect |
 |---|---|---|
 | `reserve` (before `Round1`) | For every matrix: `next_blinding_row + 3 ≤ B_W − 2` and `|opened_columns| + τ_W ≤ P_W − τ_link`. Blinding rows `B_W − 2` and `B_W − 1` and `τ_link` columns of headroom are reserved exclusively for the linking proof | Burns three blinding rows per matrix; records them in `Round1` |
-| `record_queries` (before `Round3Response`) | Queries are those of the current session | Adds query indices to `opened_columns` |
+| `record_queries` (before `Round3Response`) | Queries are those of the current session | Adds the distinct query indices to `opened_columns` |
 | `abort` | Any time | Nothing is released: burned rows and opened columns stay burned |
 | `refresh` | Any time; required when `reserve` fails | Produces epoch `e + 1` and a `WeightLinkProof` |
 

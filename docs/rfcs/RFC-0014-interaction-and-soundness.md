@@ -59,10 +59,10 @@ pub struct Round2Response {
     pub weight_combined: Vec<WeightCombinedRows>,           // per matrix
     pub scoring: ScoringClaims,                             // per-request Û claims, RFC-0017
 }
-pub struct ColumnQueries { pub advice: Vec<u32>, pub weights: Vec<(u8, Vec<u32>)> }
+pub struct ColumnQueries { pub advice: Vec<u32>, pub weights: Vec<(u8, Vec<u32>)> }  // live: τ_A, and τ_W per matrix, in draw order
 pub struct Round3Response {
-    pub advice_columns: Vec<Vec<Fp>>, pub advice_proof: MultiProof,
-    pub weight_columns: Vec<(u8, Vec<Vec<Fp>>, MultiProof)>,
+    pub advice_columns: Vec<Vec<Fp>>, pub advice_proof: MultiProof,   // one per distinct queried index, increasing
+    pub weight_columns: Vec<(u8, Vec<Vec<Fp>>, MultiProof)>,          // likewise per matrix
 }
 pub struct NiProof { pub round1: Round1, pub seed_nonce: u64, pub round2: Round2Response,
                      pub query_nonce: u64, pub round3: Round3Response }
@@ -102,7 +102,7 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 | Weight linking | `ν/|Fp2|` | ≥ 120 bits | ≥ 120 bits |
 | Hash collisions | BLAKE3, 256-bit output | 128 bits | 128 bits |
 
-`b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients. The verifier also rejects any `d_root = 0` in LogUp and any zero denominator.
+`b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients. The bound takes the queries to be independent. Both modes draw column indices uniformly with replacement, and a repeated index is checked once at no cost in soundness ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7). The verifier also rejects any `d_root = 0` in LogUp and any zero denominator.
 
 ### Grinding
 
@@ -130,7 +130,7 @@ The source's `τ = 100` at rate 1/2 gives 41.5 bits under unique decoding; `live
 
 - **INV-PROTO-1.** A prover answers at most one seed per `Round1`. If a session aborts after `ProverSeedShare`, the prover discards that `Round1`, its advice commitment and its masking randomness; a retry starts with fresh randomness and a fresh weight reservation.
 - **INV-PROTO-2.** The seed is fixed only after `Round1` is complete; the verifier's share is committed before the prover's share is seen.
-- **INV-PROTO-3.** The verifier sends `ColumnQueries` only after `Round2Response` is fully received and absorbed; the prover rejects queries that are out of range, duplicated beyond the stated count, or early.
+- **INV-PROTO-3.** The verifier sends `ColumnQueries` only after `Round2Response` is fully received and absorbed. The prover rejects queries that come early, that are out of range, or whose count per matrix is not the parameter set's `τ_A` or `τ_W`. Repeated indices are allowed, since queries are drawn with replacement, and each is answered once (RFC-0011 step 7). A verifier therefore never opens more distinct columns than the count, which bounds what the encoding masks must hide.
 - **INV-PROTO-4.** `session_id` is fresh per session and bound into `SessionContext`.
 - **INV-PROTO-5.** Every parameter used by either side comes from the named parameter set in the claim list; there are no free parameters at runtime.
 
