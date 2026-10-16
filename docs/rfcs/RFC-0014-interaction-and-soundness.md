@@ -55,7 +55,9 @@ pub struct Round1 {
 pub struct Round2Response {
     pub logup: LogUpProof, pub product_trees: TreeProof,   // leaf stage, RFC-0008/0010
     pub stages: Vec<StageProof>,                            // RFC-0010, masked per RFC-0013
-    pub advice_combined: Vec<CombinedRow>,                  // u'_g, M_g, q_g per group, plus proximity row
+    pub advice_blinding: Vec<Fp2>,                          // q_g per claim group, before the challenges (RFC-0013)
+    pub weight_blinding: Vec<Fp2>,                          // q_T per matrix, before θ_T (RFC-0012)
+    pub advice_combined: Vec<CombinedRow>,                  // u'_g, M_g per group, plus proximity row
     pub weight_combined: Vec<WeightCombinedRows>,           // per matrix
     pub scoring: ScoringClaims,                             // per-request Û claims, RFC-0017
 }
@@ -80,7 +82,7 @@ Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{c}`, `{T}` are decimal
 | 4 | squeeze `Fp2` × 2, then absorb the fraction trees' roots ([RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree)) | `logup/alpha`, `logup/beta`, `logup/roots` |
 | 5 | per tree level `ℓ`: squeeze the root point of the forests that join at `ℓ` ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)), squeeze `γ_ℓ`, and `λ_ℓ` at a level with fraction trees, absorb round messages, squeeze challenges, absorb evaluations, squeeze the line challenge; after the last level, absorb the lookup trees' value evaluations | `tree/{ℓ}/root/{c}`, `tree/{ℓ}/gamma`, `tree/{ℓ}/lambda`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line`, `logup/values` |
 | 6 | per stage `k`: absorb masked sum, squeeze `ρ_k`, squeeze `γ_k`, rounds, final evaluations | `stage/{k}/zk-sum`, `stage/{k}/zk-rho`, `stage/{k}/gamma`, `stage/{k}/round/{j}`, `stage/{k}/r/{j}`, `stage/{k}/evals` |
-| 7 | squeeze opening batching challenges | `pcs/advice/gamma`, `pcs/advice/xi`, `pcs/weights/{T}/xi` |
+| 7 | absorb the advice groups' blinding claims, then each weight matrix's; squeeze the opening challenges | `pcs/advice/blinding`, `pcs/weights/{T}/blinding`, `pcs/advice/gamma`, `pcs/advice/xi`, `pcs/weights/{T}/gamma`, `pcs/weights/{T}/xi` |
 | 8 | absorb combined rows | `pcs/advice/combined`, `pcs/weights/{T}/combined` |
 | 9 | absorb scoring claims | `scoring` |
 | 10 | live: absorb `ColumnQueries`; NI: grind `query-pow`, then squeeze indices | `queries`, `pcs/advice/queries`, `pcs/weights/{T}/queries` |
@@ -98,6 +100,7 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 | Product-forest root claim (`2^s` trees, `s ≤ 32`) | `s/|Fp2|` per forest | ≥ 120 bits | same |
 | LogUp identity (`N + T ≤ 2^{38}` per instance) | `(N + T)/|Fp2|` | about 90 bits, one shot: `α` derives from a seed the prover cannot retry | 90 + `g_seed` = 110 bits |
 | Tuple compression | included in the LogUp bound (joint polynomial in `α, β`) | — | — |
+| Opening evaluation checks | `T_g/|Fp2|` per claim group of `T_g` claims, `1/|Fp2|` per weight matrix ([RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings)) | ≥ 110 bits | same |
 | Proximity per commitment | `((1 + ρ')/2)^τ + n/|Fp2|` | `τ · b(ρ') ≥ 64` bits, one shot | `τ · b(ρ') + g_query ≥ 100` bits |
 | Weight linking | `ν/|Fp2|` | ≥ 120 bits | ≥ 120 bits |
 | Hash collisions | BLAKE3, 256-bit output | 128 bits | 128 bits |
