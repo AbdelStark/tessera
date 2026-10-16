@@ -3,9 +3,11 @@
 //! Shared test support: a seeded generator, and the definitions the tests compare the crate
 //! against, written from RFC-0002 'Constants' and RFC-0011 'Encoding' without the crate's
 //! algorithms: roots of unity from `7^((P − 1)/m)`, evaluation by Horner's rule, the DFT as a
-//! sum, and Lagrange interpolation.
+//! sum, and Lagrange interpolation. [`openings`] checks openings with the independent verifier.
 
 #![allow(dead_code)] // each test binary uses part of it
+
+pub mod openings;
 
 use tessera_field::{Field, Goldilocks, PrimeField, batch_inverse};
 

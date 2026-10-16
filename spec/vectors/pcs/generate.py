@@ -329,6 +329,11 @@ def build(rng, case):
         "row_vars": row_vars,
         "commitment_id": commitment_id.hex(),
         "segments": segments,
+        # Test data only: in a real commitment the rows and masks are secret (05-observability, section 3).
+        "witness": {
+            "rows": [[hex64(v) for v in values[r]] for r in rows],
+            "masks": [[hex64(c) for c in masks[r]] for r in rows],
+        },
         "root": levels[-1][0].hex(),
         "groups": [
             {
@@ -551,6 +556,201 @@ def check(o):
     return ("Accept", None, None), "accept", computed
 
 
+# ----- Reproduction: a second prover, from the witness and the public inputs alone ---------------
+#
+# It computes what an honest prover sends, by other algorithms than the prover above: codewords by
+# radix-2 NTTs, the chains by a streaming committer that pushes rows in blocks of B, the root by
+# recursion, the multiproof as the nodes whose subtree holds no opened leaf while their parent's
+# does, eq by selecting r_t or 1 - r_t, and the claims' values by binding one variable at a time.
+
+INPUTS = ("log2_k", "log2_inv_rate", "mask_coeffs", "row_block", "row_vars", "commitment_id", "segments", "witness",
+          "xi_point", "queries")
+
+
+def ntt(coefficients, w):
+    """The values at w^0, ..., w^(n-1) of the polynomial with these n coefficients, n a power of two
+    and w of order n: iterative Cooley-Tukey on the bit-reversed input, output in natural order."""
+    a, n = list(coefficients), len(coefficients)
+    j = 0
+    for i in range(1, n):
+        bit = n >> 1
+        while j & bit:
+            j ^= bit
+            bit >>= 1
+        j |= bit
+        if i < j:
+            a[i], a[j] = a[j], a[i]
+    size = 2
+    while size <= n:
+        step, half = pow(w, n // size, P), size // 2
+        for start in range(0, n, size):
+            twiddle = 1
+            for t in range(start, start + half):
+                low, high = a[t], a[t + half] * twiddle % P
+                a[t], a[t + half] = (low + high) % P, (low - high) % P
+                twiddle = twiddle * step % P
+        size <<= 1
+    return a
+
+
+def intt(values, w):
+    """The coefficients of the polynomial of degree below n with these values at w^0, ..., w^(n-1)."""
+    n_inv = pow(len(values), P - 2, P)
+    return [v * n_inv % P for v in ntt(values, pow(w, P - 2, P))]
+
+
+def coset_values(coefficients, n, w_n):
+    """The polynomial's values at 7 w_n^j for j < n: coefficient i scaled by 7^i, then an NTT."""
+    scaled, power = [0] * n, 1
+    for i, c in enumerate(coefficients):
+        scaled[i] = c * power % P
+        power = power * SHIFT % P
+    return ntt(scaled, w_n)
+
+
+def with_mask(values, mask, k, n, w_k):
+    """The coefficients of f + (X^k - 1) m, f taking `values` on H: m is added at X^k and taken
+    away at X^0."""
+    g = intt(values, w_k) + [0] * (n - k)
+    for i, c in enumerate(mask):
+        g[i] = (g[i] - c) % P
+        g[k + i] = (g[k + i] + c) % P
+    return g
+
+
+def streamed_leaves(commitment_id, n, segments, row_block, codewords):
+    """leaf_j for every column, as a streaming committer computes them: each segment's chains start
+    from column-init and advance by one column-step per block of B rows, pushed in layout order,
+    the last block possibly partial; the segment digests then merge."""
+    digests = []
+    for segment in segments:
+        chains = [H("column-init", commitment_id + j.to_bytes(8, "little")) for j in range(n)]
+        for start in range(0, len(segment), row_block):
+            block = [codewords[r] for r in segment[start:start + row_block]]
+            chains = [H("column-step", chains[j] + b"".join(cw[j].to_bytes(8, "little") for cw in block)) for j in range(n)]
+        digests.append(chains)
+    return [H("column-merge", b"".join(chains[j] for chains in digests)) for j in range(n)]
+
+
+def subtree_root(leaves, low, high):
+    """The root of the subtree over leaves low .. high - 1, by recursion."""
+    if high - low == 1:
+        return leaves[low]
+    middle = (low + high) // 2
+    return H("merkle-node", subtree_root(leaves, low, middle) + subtree_root(leaves, middle, high))
+
+
+def multiproof_by_subtrees(leaves, opened):
+    """The canonical multiproof as the nodes whose subtree holds no opened leaf while their parent's
+    does, ordered by level from the leaves up, then by position."""
+    found = []
+
+    def visit(low, high, height):
+        middle = (low + high) // 2
+        for a, b in ((low, middle), (middle, high)):
+            if any(a <= j < b for j in opened):
+                if b - a > 1:
+                    visit(a, b, height - 1)
+            else:
+                found.append((height - 1, a >> (height - 1), subtree_root(leaves, a, b)))
+
+    if len(leaves) > 1:
+        visit(0, len(leaves), len(leaves).bit_length() - 1)
+    return [digest for _, _, digest in sorted(found)]
+
+
+def eq_select(point, x):
+    """eq(point, x) as the product of r_t where bit t of x is set and 1 - r_t where it is clear."""
+    out = ONE
+    for t, r in enumerate(point):
+        out = mul(out, r if (x >> t) & 1 else sub(ONE, r))
+    return out
+
+
+def bound(table, point):
+    """A table's multilinear extension at `point`, binding the lowest variable first:
+    T'[x] = T[2x] + r (T[2x + 1] - T[2x])."""
+    for r in point:
+        table = [add(low, mul(r, sub(high, low))) for low, high in zip(table[0::2], table[1::2])]
+    require(len(table) == 1, "a point binds every variable")
+    return table[0]
+
+
+def reproduce(inputs, groups):
+    """What an honest prover sends for `inputs`, the witness and public fields of an opening, and the
+    groups' points and batching challenges: the root, combined rows, columns and multiproof, the
+    claims' values and the intermediate values, as the file writes them."""
+    require(set(inputs) == set(INPUTS), "the inputs only")
+    log2_k, pa, row_block, row_vars = inputs["log2_k"], inputs["mask_coeffs"], inputs["row_block"], inputs["row_vars"]
+    k = 1 << log2_k
+    n = k << inputs["log2_inv_rate"]
+    w_n = pow(7, (P - 1) // n, P)
+    w_k = pow(w_n, n // k, P)
+    rows = [r for segment in inputs["segments"] for r in segment]
+    witness = inputs["witness"]
+    require(list(witness) == ["rows", "masks"] and len(witness["rows"]) == len(witness["masks"]) == len(rows),
+            "one row of values and one mask per non-zero row")
+    values = {r: [parse_fp(v) for v in vs] for r, vs in zip(rows, witness["rows"])}
+    masks = {r: [parse_fp(c) for c in cs] for r, cs in zip(rows, witness["masks"])}
+    require(all(len(values[r]) == k and len(masks[r]) == pa for r in rows), "k values and P_A mask coefficients per row")
+    codewords = {r: coset_values(with_mask(values[r], masks[r], k, n, w_k), n, w_n) for r in rows}
+    leaves = streamed_leaves(bytes.fromhex(inputs["commitment_id"]), n, inputs["segments"], row_block, codewords)
+    distinct = sorted(set(inputs["queries"]))
+    # The claims' values: the whole matrix, zero rows included, entry row * k + i.
+    matrix = [lift(values[row][i]) if row in values else ZERO for row in range(1 << row_vars) for i in range(k)]
+    claim_values = [[bound(matrix, column_point + row_point) for row_point, _ in claims] for column_point, claims in groups]
+    # Combined rows, accumulated claim by claim: gamma times the rows weighted by eq(row_point, row).
+    coefficients = []
+    for _, claims in groups:
+        cs = [ZERO] * len(rows)
+        for row_point, gamma in claims:
+            cs = [add(c, mul(gamma, eq_select(row_point, r))) for c, r in zip(cs, rows)]
+        coefficients.append(cs)
+    coefficients.append([eq_select([parse_fp2(c) for c in inputs["xi_point"]], r) for r in rows])
+    combined, at_queries = [], []
+    for cs in coefficients:
+        u = [total(mul(c, lift(values[r][i])) for c, r in zip(cs, rows)) for i in range(k)]
+        mask = [total(mul(c, lift(masks[r][t])) for c, r in zip(cs, rows)) for t in range(pa)]
+        combined.append({"u": elements(u), "mask": elements(mask)})
+        # enc(u) + Z_H M on 7.L, each coordinate of Fp2 on its own.
+        on_coset = [coset_values(with_mask([a[c] for a in u], [a[c] for a in mask], k, n, w_k), n, w_n) for c in (0, 1)]
+        at_queries.append(elements([(on_coset[0][j], on_coset[1][j]) for j in distinct]))
+    points, x = [], SHIFT
+    for j in range(n):
+        if j in distinct:
+            points.append(hex64(x))
+        x = x * w_n % P
+    return {
+        "root": subtree_root(leaves, 0, n).hex(),
+        "combined": combined,
+        "columns": [[hex64(codewords[r][j]) for r in rows] for j in distinct],
+        "siblings": [d.hex() for d in multiproof_by_subtrees(leaves, distinct)],
+        "values": [[fp2(v) for v in vs] for vs in claim_values],
+        "intermediate": {
+            "row_coefficients": [elements(cs) for cs in coefficients],
+            "points": points,
+            "leaves": [leaves[j].hex() for j in distinct],
+            "combined_at_queries": at_queries,
+        },
+    }
+
+
+def check_reproduction(opening):
+    """The opening's root, combined rows, columns, multiproof, claims' values and intermediate values
+    are what the second prover computes from its witness and public inputs alone."""
+    inputs = {key: opening[key] for key in INPUTS}
+    groups = [
+        ([parse_fp2(c) for c in group["column_point"]],
+         [([parse_fp2(c) for c in claim["row_point"]], parse_fp2(claim["gamma"])) for claim in group["claims"]])
+        for group in opening["groups"]
+    ]
+    got = reproduce(inputs, groups)
+    for key in ("root", "combined", "columns", "siblings", "intermediate"):
+        require(got[key] == opening[key], f"{opening['name']}: the witness reproduces {key}")
+    require(got["values"] == [[claim["value"] for claim in group["claims"]] for group in opening["groups"]],
+            f"{opening['name']}: the witness reproduces the claims' values")
+
+
 # ----- Changed openings --------------------------------------------------------------------------
 
 
@@ -592,8 +792,10 @@ def flip(digest):
 
 
 def without_intermediate(opening):
+    """An honest opening as a rejection carries it: without its intermediate values and witness."""
     out = copy.deepcopy(opening)
     del out["intermediate"]
+    del out["witness"]
     return out
 
 
@@ -895,7 +1097,7 @@ def compact(value):
 
 def render_opening(opening, pad):
     """One field per line; the groups, combined rows and columns one per line; the intermediate
-    values one list per line."""
+    values one list per line; the witness's rows and masks one per line."""
     fields = []
     for key, value in opening.items():
         if key in ("groups", "combined", "columns") and value:
@@ -904,9 +1106,29 @@ def render_opening(opening, pad):
         elif key == "intermediate":
             items = ",\n".join(f'{pad}    "{name}": {compact(v)}' for name, v in value.items())
             fields.append(f'{pad}  "{key}": {{\n{items}\n{pad}  }}')
+        elif key == "witness":
+            parts = []
+            for name, lists in value.items():
+                items = ",\n".join(f"{pad}      {compact(item)}" for item in lists)
+                parts.append(f'{pad}    "{name}": [\n{items}\n{pad}    ]' if lists else f'{pad}    "{name}": []')
+            fields.append(f'{pad}  "{key}": {{\n' + ",\n".join(parts) + f"\n{pad}  }}")
         else:
             fields.append(f'{pad}  "{key}": {compact(value)}')
     return "{\n" + ",\n".join(fields) + f"\n{pad}}}"
+
+
+def without_witness_lines(text):
+    """The file with the lines of every opening's witness removed: from its opening line to its
+    closing one, which ends with the comma that separates it from the next field."""
+    out, inside = [], False
+    for line in text.split("\n"):
+        if line == '      "witness": {':
+            inside = True
+        elif inside:
+            inside = line != "      },"
+        else:
+            out.append(line)
+    return "\n".join(out)
 
 
 def render_rejection(r, pad):
@@ -921,12 +1143,22 @@ def render_rejection(r, pad):
     )
 
 
-def render(header, openings, rejections):
+def render_text(header, openings, rejections):
     text = json.dumps(header, indent=2)[:-2]
     text += ',\n  "openings": [\n' + ",\n".join("    " + render_opening(o, "    ") for o in openings) + "\n  ]"
-    text += ',\n  "rejections": [\n' + ",\n".join("    " + render_rejection(r, "    ") for r in rejections) + "\n  ]\n}\n"
+    return text + ',\n  "rejections": [\n' + ",\n".join("    " + render_rejection(r, "    ") for r in rejections) + "\n  ]\n}\n"
+
+
+def render(header, openings, rejections):
+    text = render_text(header, openings, rejections)
     document = json.loads(text)
     require(document == {**header, "openings": openings, "rejections": rejections}, "the file parses back")
+    # The witnesses were added to a file that had none: removing their lines gives that file byte
+    # for byte, so every other value is unchanged.
+    bare = [{key: value for key, value in o.items() if key != "witness"} for o in openings]
+    require(all("witness" in o for o in openings) and not any("witness" in r["opening"] for r in rejections),
+            "every honest opening carries its witness, and no rejection does")
+    require(without_witness_lines(text) == render_text(header, bare, rejections), "removing the witnesses gives the file without them")
     return text, document
 
 
@@ -1010,6 +1242,7 @@ def main():
         verdict, step, computed = check(opening)
         require(verdict == ("Accept", None, None), f"{opening['name']}: accepted, not {verdict} at step {step}")
         require(computed == opening["intermediate"], f"{opening['name']}: the intermediate values are the checks' own")
+        check_reproduction(opening)
     for r, (_, step) in zip(document["rejections"], cases):
         require(check(r["opening"])[:2] == ((r["reason"], r["group"], r["column"]), step), f"{r['name']}: its verdict")
         require(r["opening"]["name"] in {o["name"] for o in openings}, f"{r['name']}: names the honest opening it changes")

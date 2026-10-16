@@ -14,14 +14,23 @@ test-rng = []
 
 [dependencies]
 tessera-field = { path = "../tessera-field" }
+tessera-hash = { path = "../tessera-hash" }
 
 [dev-dependencies]
 serde_json = "1"
-# The verifier's independent NTT, for the differential test `tests/verifier.rs` (DEP-2).
+# The verifier's independent opening checks, field and hashing: every opening the tests produce
+# is checked by `tv_core::opening`, and `tests/verifier.rs` checks the NTT against `tv-field`'s
+# (DEP-2).
+tv-core = { path = "../../verifier/crates/tv-core" }
 tv-field = { path = "../../verifier/crates/tv-field" }
+tv-hash = { path = "../../verifier/crates/tv-hash" }
 
 [[bench]]
 name = "throughput"
+harness = false
+
+[[bench]]
+name = "commitment"
 harness = false
 
 [lints]

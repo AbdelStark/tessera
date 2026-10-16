@@ -550,7 +550,10 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "tessera-field",
+ "tessera-hash",
+ "tv-core",
  "tv-field",
+ "tv-hash",
 ]
 
 [[package]]
