@@ -1,0 +1,292 @@
+{
+  "description": "Executable cost model reference (RFC-0020 'Executable cost model', 08 §1): the source's projections, the inputs they rest on, and the model evaluated on them; written by spec/vectors/cost-model/generate.py; see README.md",
+  "source": "proofs-of-inference-sota-path-forward.md",
+  "inputs": {
+    "commit_ps": {
+      "value": 30.0,
+      "provenance": "stated",
+      "line": 101,
+      "text": "30 ps per committed 64-bit element"
+    },
+    "lookup_ps": {
+      "value": 40.0,
+      "provenance": "stated",
+      "line": 101,
+      "text": "40 ps per LogUp-GKR lookup"
+    },
+    "product_leaf_ps": {
+      "value": 12.0,
+      "provenance": "stated",
+      "line": 101,
+      "text": "12 ps per product-tree leaf"
+    },
+    "glue_fraction": {
+      "value": 0.15,
+      "provenance": "stated",
+      "line": 101,
+      "text": "+15% for sumcheck glue"
+    },
+    "native_ops_per_s": {
+      "value": 1187400000000000.0,
+      "provenance": "stated",
+      "line": 101,
+      "text": "native INT8 at 60% of 1,979 TOPS",
+      "note": "per GPU"
+    },
+    "weight_pass_gpu_s": {
+      "value": 0.24,
+      "provenance": "stated",
+      "line": 101,
+      "text": "one 0.24 GPU-s weight pass per 16K-token proof batch"
+    },
+    "batch_tokens": {
+      "value": 16384.0,
+      "provenance": "stated",
+      "line": 101,
+      "text": "16K-token proof batch",
+      "note": "16K = 16,384"
+    },
+    "commits_per_token": {
+      "value": 17289216.0,
+      "provenance": "derived",
+      "line": 97,
+      "text": "137,216 per layer per token",
+      "note": "times the 126 layers of line 99"
+    },
+    "lookups_per_token": {
+      "value": 17289216.0,
+      "provenance": "derived",
+      "line": 97,
+      "text": "one committed element and one lookup each",
+      "note": "137,216 per layer per token times 126 layers, as commits_per_token"
+    },
+    "scores_per_token_per_ctx": {
+      "value": 8064.0,
+      "provenance": "derived",
+      "line": 99,
+      "text": "128 heads × S/2 × 126 layers ≈ 8,064·S per token"
+    },
+    "native_ops_att_per_ctx": {
+      "value": 4128768.0,
+      "provenance": "derived",
+      "line": 99,
+      "text": "Native work per score is 512 tensor operations",
+      "note": "512 times scores_per_token_per_ctx"
+    },
+    "native_ops_lin": {
+      "value": 811706777600.0,
+      "provenance": "reconstructed",
+      "line": 97,
+      "text": "against 8.1×10^11 native INT8 operations",
+      "note": "two operations per parameter of Llama-3.1-405B, 2 × 405,853,388,800: the reading that reproduces the chart"
+    }
+  },
+  "chart": {
+    "lines": [
+      111,
+      134
+    ],
+    "contexts": [
+      1024,
+      2048,
+      4096,
+      8192,
+      16384,
+      32768,
+      65536,
+      131072
+    ],
+    "total": [
+      3.21,
+      4.32,
+      6.51,
+      10.76,
+      18.75,
+      33.04,
+      56.26,
+      88.73
+    ],
+    "attention": [
+      1.13,
+      2.25,
+      4.46,
+      8.75,
+      16.82,
+      31.24,
+      54.68,
+      87.48
+    ],
+    "linear": [
+      2.06,
+      2.05,
+      2.03,
+      1.99,
+      1.91,
+      1.78,
+      1.56,
+      1.24
+    ],
+    "weight_pass": [
+      0.021,
+      0.021,
+      0.021,
+      0.021,
+      0.02,
+      0.018,
+      0.016,
+      0.013
+    ],
+    "total_one_decimal": [
+      3.2,
+      4.3,
+      6.5,
+      10.8,
+      18.8,
+      33.0,
+      56.3,
+      88.7
+    ],
+    "fitted_commits_per_token": 17599000.0
+  },
+  "section_8": {
+    "lines": [
+      242,
+      249
+    ],
+    "gpus": 8,
+    "eta": 0.3,
+    "target_overhead": 0.1,
+    "violations": 100,
+    "rows": [
+      {
+        "context": 1024,
+        "mu": 3.2,
+        "proof_time_s": 0.3,
+        "proof_time_half_unit_s": 0.05,
+        "sampling_percent": 10.4,
+        "detection_percent": 100.0,
+        "detection_approximate": true
+      },
+      {
+        "context": 4096,
+        "mu": 6.5,
+        "proof_time_s": 2.3,
+        "proof_time_half_unit_s": 0.05,
+        "sampling_percent": 5.1,
+        "detection_percent": 99.5,
+        "detection_approximate": false
+      },
+      {
+        "context": 16384,
+        "mu": 18.8,
+        "proof_time_s": 28.5,
+        "proof_time_half_unit_s": 0.05,
+        "sampling_percent": 1.8,
+        "detection_percent": 83.3,
+        "detection_approximate": false
+      },
+      {
+        "context": 131072,
+        "mu": 88.7,
+        "proof_time_s": 1680.0,
+        "proof_time_half_unit_s": 30.0,
+        "sampling_percent": 0.38,
+        "detection_percent": 31.4,
+        "detection_approximate": false
+      }
+    ]
+  },
+  "tolerances": {
+    "chart": 0.05,
+    "weight_pass": 0.0005,
+    "percentage_points": 0.1
+  },
+  "model": [
+    {
+      "context": 1024,
+      "linear": 2.0254095620306365,
+      "attention": 1.1331928978184198,
+      "weights": 0.021317338325147216,
+      "total": 3.179919798174204
+    },
+    {
+      "context": 2048,
+      "linear": 2.0149687713911173,
+      "attention": 2.2547027957911685,
+      "weights": 0.02120744950531686,
+      "total": 4.290879016687603
+    },
+    {
+      "context": 4096,
+      "linear": 1.994406822368323,
+      "attention": 4.463388914195717,
+      "weights": 0.020991035979795694,
+      "total": 6.4787867725438355
+    },
+    {
+      "context": 8192,
+      "linear": 1.9545167026068577,
+      "attention": 8.748233394695767,
+      "weights": 0.020571194385914184,
+      "total": 10.723321291688539
+    },
+    {
+      "context": 16384,
+      "linear": 1.8793393892630152,
+      "attention": 16.823493586102007,
+      "weights": 0.01977995677502842,
+      "total": 18.722612932140052
+    },
+    {
+      "context": 32768,
+      "linear": 1.745094902030246,
+      "attention": 31.243524250250676,
+      "weights": 0.01836703999697306,
+      "total": 33.0069861922779
+    },
+    {
+      "context": 65536,
+      "linear": 1.5269495657903553,
+      "attention": 54.67586402570768,
+      "weights": 0.01607107081431725,
+      "total": 56.21888466231236
+    },
+    {
+      "context": 131072,
+      "linear": 1.2215501624542342,
+      "attention": 87.48070280678644,
+      "weights": 0.012856756767785797,
+      "total": 88.71510972600846
+    }
+  ],
+  "calculators": [
+    {
+      "context": 1024,
+      "mu": 3.2,
+      "proof_time_s": 0.2814610299130093,
+      "sampling_rate": 0.10416666666666667,
+      "detection": 0.999983299794303
+    },
+    {
+      "context": 4096,
+      "mu": 6.5,
+      "proof_time_s": 2.322419915192508,
+      "sampling_rate": 0.05128205128205129,
+      "detection": 0.9948273665488008
+    },
+    {
+      "context": 16384,
+      "mu": 18.8,
+      "proof_time_s": 28.513712462305904,
+      "sampling_rate": 0.01773049645390071,
+      "detection": 0.8328655122980595
+    },
+    {
+      "context": 131072,
+      "mu": 88.7,
+      "proof_time_s": 1655.7830551278478,
+      "sampling_rate": 0.0037579857196542656,
+      "detection": 0.3137453216173943
+    }
+  ]
+}
