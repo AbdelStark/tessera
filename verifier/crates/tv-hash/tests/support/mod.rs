@@ -77,7 +77,11 @@ pub fn base64(text: &str) -> Vec<u8> {
             _ => panic!("{c:?} is not base64"),
         }
     };
-    assert!(text.len() % 4 == 0, "base64 of length {}", text.len());
+    assert!(
+        text.len().is_multiple_of(4),
+        "base64 of length {}",
+        text.len()
+    );
     let mut out = Vec::new();
     for quad in text.as_bytes().chunks(4) {
         let padding = quad.iter().rev().take_while(|&&c| c == b'=').count();

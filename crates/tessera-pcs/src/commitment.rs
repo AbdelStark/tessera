@@ -262,7 +262,7 @@ impl ReferenceCommitment {
     ) -> Result<Self, PcsError> {
         let shape = params.shape()?;
         // N·k with no product that could overflow.
-        if rows.len() % shape.k != 0 || rows.len() / shape.k != layout.rows {
+        if !rows.len().is_multiple_of(shape.k) || rows.len() / shape.k != layout.rows {
             return Err(PcsError::MatrixLength {
                 rows: layout.rows,
                 row_len: shape.k,

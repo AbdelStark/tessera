@@ -1037,7 +1037,7 @@ mod tests {
                     let base_at = |t: usize| match kinds {
                         0 => true,
                         1 => false,
-                        _ => t % 2 == 0,
+                        _ => t.is_multiple_of(2),
                     };
                     let mut lifted = Vec::new();
                     let mut base: Vec<Vec<Fp>> = Vec::new();

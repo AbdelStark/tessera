@@ -276,7 +276,7 @@ pub fn read_vectors(rel: &str) -> Json {
 
 /// The bytes of a hexadecimal string such as a vector's `"hex"` field, panicking on anything else.
 pub fn hex(text: &str) -> Vec<u8> {
-    assert!(text.len() % 2 == 0, "odd-length hex string");
+    assert!(text.len().is_multiple_of(2), "odd-length hex string");
     (0..text.len())
         .step_by(2)
         .map(|i| {

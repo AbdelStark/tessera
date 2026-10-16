@@ -35,6 +35,7 @@ cargo fmt --all --check                                  # also inside verifier/
 cargo xtask lint                 # unsafe code, SPDX headers, licenses, Markdown links, policy files
 cargo xtask check-isolation      # verifier independence (RFC-0001)
 cargo xtask check-test-features  # test-only features fail release builds
+cargo xtask check-branchless     # the field's operations compile branch-free in x86_64 loops (INV-ARCH-2)
 cargo xtask check-pr --base origin/main   # changelog entry and DCO sign-off of the branch
 cargo xtask check-deps           # cargo-deny and cargo-vet; needs cargo-deny 0.20.2, cargo-vet 0.10.2
 cargo xtask gen-vectors          # rewrite spec/vectors/ after changing codec or field cases or an oracle (generate.py); needs python3

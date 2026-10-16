@@ -29,7 +29,7 @@ const EDGES: [u64; 13] = [
 /// A canonical value: an edge value one time in eight, otherwise uniform in `[0, P)`.
 fn sample(rng: &mut SplitMix64) -> u64 {
     let r = rng.next_u64();
-    if r % 8 == 0 {
+    if r.is_multiple_of(8) {
         return EDGES[(r >> 3) as usize % EDGES.len()];
     }
     loop {
@@ -75,7 +75,7 @@ fn constants_match_their_definitions() {
             "{q} is not prime"
         );
         assert_eq!(rest % q, 0, "{q} does not divide P − 1");
-        while rest % q == 0 {
+        while rest.is_multiple_of(q) {
             rest /= q;
         }
     }

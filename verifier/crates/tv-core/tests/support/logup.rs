@@ -1068,10 +1068,10 @@ impl Subject {
 pub fn run_replacing(subject: &Subject, level: u32, claims: Vec<LevelClaim>) -> LogUpRun {
     let mut replacement = Some(claims);
     subject.run_with(&subject.proof, |at, entering| {
-        if at == level {
-            if let Some(claims) = replacement.take() {
-                *entering = claims;
-            }
+        if at == level
+            && let Some(claims) = replacement.take()
+        {
+            *entering = claims;
         }
     })
 }

@@ -24,7 +24,7 @@ The layout and the verifier-independence rules it enforces are fixed by [RFC-000
 
 ## Building and testing
 
-The toolchain is pinned in `rust-toolchain.toml`; `rustup` installs it on first use. The minimum supported Rust version is 1.85.
+The toolchain is pinned in `rust-toolchain.toml`; `rustup` installs it on first use. The minimum supported Rust version is 1.88.
 
 ```sh
 cargo build --workspace --locked
@@ -34,6 +34,7 @@ cargo fmt --all --check
 cargo xtask lint                # unsafe-code policy, SPDX headers, licenses, Markdown links
 cargo xtask check-isolation     # the verifier shares no code with the prover (RFC-0001)
 cargo xtask check-test-features # test-only features fail release builds (RFC-0001)
+cargo xtask check-branchless    # the field compiles branch-free in x86_64 loops (INV-ARCH-2)
 
 # The verifier is a separate workspace:
 cd verifier && cargo build --locked && cargo test --locked
@@ -47,10 +48,10 @@ No crate needs a GPU or the CUDA toolkit to build or test. The CUDA backend is t
 
 | Job | What it runs |
 |---|---|
-| `checks` | rustfmt, clippy `-D warnings` and rustdoc `-D warnings` in both workspaces; `cargo xtask lint`; `cargo xtask check-isolation`; `cargo xtask check-test-features` |
+| `checks` | rustfmt, clippy `-D warnings` and rustdoc `-D warnings` in both workspaces; `cargo xtask lint`; `cargo xtask check-isolation`; `cargo xtask check-test-features`; `cargo xtask check-branchless` |
 | `test` | `cargo test --workspace --locked` in both workspaces |
 | `dependencies` | `cargo xtask check-deps`: `cargo deny check` (licenses, advisories, bans, sources) in both workspaces, `cargo vet --locked` in the verifier, and a self-test showing the policies reject an MPL-2.0 crate and a crate under a RustSec advisory; cargo-deny 0.20.2 and cargo-vet 0.10.2 |
-| `msrv (1.85)` | `cargo +1.85.0 check --workspace --all-targets --locked` in both workspaces |
+| `msrv` | `cargo +1.88.0 check --workspace --all-targets --locked` in both workspaces |
 | `python` | `ruff`, `pyright --strict` and `pytest` in `python/`, once the package exists |
 | `pr-policy` | `cargo xtask check-pr`: every change to a release train adds a changelog entry (`CHANGELOG.md` for `crates/*/src` and `python/tessera_quant/`, `verifier/CHANGELOG.md` for `verifier/`, either for `spec/`) unless the PR is labeled `no-changelog`; every commit is signed off (`git commit -s`, [09 §6](docs/spec/09-release-and-versioning.md#6-contribution-workflow)) |
 

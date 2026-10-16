@@ -242,13 +242,13 @@ impl<F: PolyField> FractionTree<F> {
             .and_then(|h| 1usize.checked_shl(h))
             .filter(|&leaves| Layout::array::<F>(leaves).is_ok())
             .ok_or(SumcheckError::FractionHeight { height })?;
-        if let LeafNumerators::Base(values) = numerators {
-            if values.len() != leaves {
-                return Err(SumcheckError::FractionNumerators {
-                    len: values.len(),
-                    expected: leaves,
-                });
-            }
+        if let LeafNumerators::Base(values) = numerators
+            && values.len() != leaves
+        {
+            return Err(SumcheckError::FractionNumerators {
+                len: values.len(),
+                expected: leaves,
+            });
         }
         if height == 0 {
             let numerator = match numerators {

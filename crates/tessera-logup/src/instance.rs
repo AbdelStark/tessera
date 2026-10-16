@@ -214,11 +214,11 @@ pub fn multiplicities<B: PrimeField>(
             _ => return Err(LogUpError::LookupRow { lookup, rows }),
         }
     }
-    if let Some(first) = counts.first_mut() {
-        if !lookups.is_empty() {
-            let padding = (1usize << ceil_log2(lookups.len())) - lookups.len();
-            *first += padding as u64;
-        }
+    if let Some(first) = counts.first_mut()
+        && !lookups.is_empty()
+    {
+        let padding = (1usize << ceil_log2(lookups.len())) - lookups.len();
+        *first += padding as u64;
     }
     Ok(counts.into_iter().map(B::from_u64_reduced).collect())
 }

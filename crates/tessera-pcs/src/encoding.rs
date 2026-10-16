@@ -206,7 +206,7 @@ impl RowEncoder {
         codewords: &mut [Fp],
     ) -> Result<(), PcsError> {
         let (k, n) = (self.message_len(), self.codeword_len());
-        if rows.len() % k != 0 {
+        if !rows.len().is_multiple_of(k) {
             return Err(PcsError::PartialRow {
                 len: rows.len(),
                 row_len: k,

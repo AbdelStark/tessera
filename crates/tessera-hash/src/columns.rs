@@ -86,7 +86,7 @@ impl ColumnChains {
         if self.closed {
             return Err(ColumnError::AfterFinalBlock);
         }
-        if rows.len() % columns != 0 {
+        if !rows.len().is_multiple_of(columns) {
             return Err(ColumnError::PartialRow {
                 symbols: rows.len(),
                 columns,

@@ -218,7 +218,7 @@ pub fn multiproof(levels: &[Vec<Digest>], indices: &[u64]) -> Vec<Digest> {
         let mut i = 0;
         while i < known.len() {
             let index = known[i];
-            if index % 2 == 0 && known.get(i + 1) == Some(&(index + 1)) {
+            if index.is_multiple_of(2) && known.get(i + 1) == Some(&(index + 1)) {
                 i += 2;
             } else {
                 siblings.push(level[(index ^ 1) as usize]);
@@ -509,7 +509,7 @@ pub fn random_layout(
     assert!(count as u128 <= u128::from(space) + 1);
     // The extremes when they fit, then random rows.
     for row in [0, space] {
-        if rows.len() < count && rng.next_u64() % 2 == 0 {
+        if rows.len() < count && rng.next_u64().is_multiple_of(2) {
             rows.insert(row);
         }
     }
