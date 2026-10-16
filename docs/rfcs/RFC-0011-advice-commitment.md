@@ -44,7 +44,7 @@ The verifier must locate every committed tensor from public data, so the layout 
 - The encoding adds a vanishing mask: `g(X) = f(X) + Z_H(X) · m(X)` with `Z_H(X) = X^k − 1` and `m` a random polynomial of degree `< P_A` (`P_A` mask coefficients, at least the parameter set's `τ_A`: 160 for `live-64`, 200 for `ni-100`). On `H` the mask vanishes, so the message is unchanged.
 - The codeword is `g` evaluated on the coset `7·L`, where `L` is the subgroup of order `n = 2k`; `7·L` is disjoint from `H`. Rate `ρ = (k + P_A)/n ≈ 1/2`.
 - Evaluations are in natural order. With `ω_m = 7^((P − 1)/m)`, the primitive `m`-th root of unity of [RFC-0002](RFC-0002-field-arithmetic.md#constants), position `i` of a row is `f(ω_k^i)` and symbol `j` of the codeword is `g(7·ω_n^j)`. Column `j` of the commitment holds symbol `j` of every row, so a queried column `j` is checked at `x_j = 7·ω_n^j`.
-- The mask is `m(X) = Σ_{i < P_A} m_i·X^i`, its coefficients drawn in the order `m_0, m_1, …` from the row's mask stream ('Streaming procedure'). `P_A ≤ k`, so `g` has degree below `n` and the codeword determines it.
+- The mask is `m(X) = Σ_{i < P_A} m_i·X^i`, its coefficients drawn in the order `m_0, m_1, …` from the row's mask stream ('Streaming procedure'). `P_A ≤ k`, so `g` has degree below `n` and the codeword determines it. That bound is about decoding only. Soundness uses the rate `ρ = (k + P_A)/n` as it is, and at rate 1/2 with `P_A = k` the code is all of `Fp^n`, where the proximity check proves nothing. The parameter sets keep `P_A` far below `k`, with `ρ ≤ 0.51` ([RFC-0014](RFC-0014-interaction-and-soundness.md#parameter-sets)), and the per-query bits there use this `ρ`.
 - Encoding cost per row: an inverse NTT of size `k` and a coset NTT of size `2k`.
 
 ### Column digests and root
@@ -79,16 +79,15 @@ After the last stage (RFC-0010):
 2. **Row coefficients.** For group `g`, `c_g(row) = Σ_{claims in g} γ_claim · eq(row-part of point, row)`, with batching challenges `γ` from the transcript. Both sides compute `c_g` from public data; it is non-zero only on rows of the claimed tensors.
 3. **Proximity coefficients.** `ξ_row`, drawn from the transcript after Round 1 (label `pcs/advice/xi`), defined as `eq(ξ*, row)` for a random point `ξ*`.
 4. **Opening pass.** The prover regenerates every non-zero row once more and accumulates `u_g = Σ_row c_g(row) · A_row` for all groups and `u_ξ = Σ_row ξ_row · A_row` (message space, over `Fp2`), plus the combined mask polynomials `M_g = Σ_row c_g(row) m_row` and `M_ξ`.
-5. **Send.** `u_g`, `M_g` for every group, and `u_ξ`, `M_ξ` (label `pcs/advice/combined`).
-6. **Evaluation check.** For each group, the verifier checks `Σ_{claims in g} γ_claim · v_claim = ⟨u_g, eq(column sub-point)⟩`.
-7. **Column queries.** The verifier draws `τ_A` column indices uniformly and independently, with replacement (live: verifier's choice after receiving step 5, sent in draw order; non-interactive: transcript with grinding, RFC-0014), so an index can repeat. The prover answers the drawn set once:
-   - the sorted, deduplicated set of drawn indices, in increasing order;
-   - for each of those columns, every non-zero row's symbol, in segment order;
-   - the canonical Merkle multiproof of the same set ([RFC-0004](RFC-0004-hashing-and-transcript.md#merkle-trees)).
+5. **Send.** `u_g`, `M_g` for every group in group order, then `u_ξ`, `M_ξ` (label `pcs/advice/combined`): `G + 1` combined rows, each a `u` of `k` values in `Fp2` with an `M` of `P_A` coefficients.
+6. **Evaluation check.** The verifier checks that the combined rows have that shape. Then, for each group in order, it checks `Σ_{claims in g} γ_claim · v_claim = ⟨u_g, eq(column sub-point)⟩`. Either failure is `Reject(Evaluation)`.
+7. **Column queries.** The verifier draws `τ_A` column indices uniformly and independently, with replacement (live: verifier's choice after receiving step 5, sent in draw order; non-interactive: transcript with grinding, RFC-0014), so an index can repeat. The prover answers each distinct drawn index once, in increasing order. The answer does not carry the indices, which the verifier knows from its draw:
+   - for each distinct index, every non-zero row's symbol in that column, in segment order;
+   - the canonical Merkle multiproof of that set ([RFC-0004](RFC-0004-hashing-and-transcript.md#merkle-trees)).
 8. **Column check.** In this order:
    1. The answer holds exactly one column per distinct queried index, each with one symbol per non-zero row.
    2. The verifier recomputes `leaf_j` from each column and verifies the multiproof of the distinct indices against the root.
-   3. For each distinct queried `j`, in increasing order, it checks `Σ_row c_g(row) · col_j[row] = enc(u_g)(x_j) + Z_H(x_j) · M_g(x_j)` for every `g`, and the same for `ξ`.
+   3. For each distinct queried `j`, in increasing order, it checks `Σ_row c_g(row) · col_j[row] = enc(u_g)(x_j) + Z_H(x_j) · M_g(x_j)` for every `g`, and the same for `ξ`. Here `enc(u)(x)` is the polynomial of degree `< k` that takes the values `u` on `H`, evaluated at `x`, and the sum runs over the non-zero rows.
 
    A failure of 1 or 2 is `Reject(MerklePath)` at the smallest queried index: a multiproof fails as a whole, never at one column. A failure of 3 is `Reject(Proximity)` at the first `j` that fails.
 
@@ -117,9 +116,11 @@ Soundness: if the committed rows are `δ`-far from the code for `δ < (1 − ρ)
 | Failure | Response |
 |---|---|
 | Honest prover's opening pass regenerates a different row than the witness pass | `ERR-INTERNAL` caught by a self-check: the prover recomputes one random column's leaf before sending |
-| Combined row not consistent with columns | `Reject(Proximity)` |
+| Combined rows of another count or length | `Reject(Evaluation)` |
 | Group evaluation mismatch | `Reject(Evaluation)` |
+| Answer with another number of columns, or a column of another length | `Reject(MerklePath)` |
 | Multiproof invalid | `Reject(MerklePath)` |
+| Combined row not consistent with columns | `Reject(Proximity)` |
 
 ## Alternatives Considered
 
