@@ -5,7 +5,7 @@ JSON reports are not TCE artifacts. Each carries a `"schema"` identifier, `tesse
 | Schema | Written by | Committed instances |
 |---|---|---|
 | [`microbenchmarks-v1`](microbenchmarks-v1.schema.json) | `cargo bench -p tessera-bench --bench primitives -- --runner-class NAME --out FILE` | [`docs/perf/baselines/`](../../docs/perf/baselines/) |
-| [`cost-model-v1`](cost-model-v1.schema.json) | `tessera bench model --out FILE` | [`docs/perf/examples/cost-model-source-defaults.json`](../../docs/perf/examples/cost-model-source-defaults.json), which a `tessera-cli` test keeps equal to the command's output |
+| [`cost-model-v1`](cost-model-v1.schema.json) | `tessera bench model --out FILE` | [`docs/perf/examples/cost-model-source-defaults.json`](../../docs/perf/examples/cost-model-source-defaults.json), which a `tessera-cli` test keeps current, up to the last bits of numbers that platforms round differently |
 | [`unit-costs-v1`](unit-costs-v1.schema.json) | `tessera bench unit-costs`, with the H100 measurement of [RFC-0020](../../docs/rfcs/RFC-0020-cost-model.md#measurement-protocol-v01-gate) | none yet; `docs/perf/v0.1/` will hold the measurement |
 
 `cargo xtask lint` validates every committed report under `docs/perf/` against the schema its identifier names. It fails on a report without an identifier, or on an identifier without a schema file. It also checks every schema here.
