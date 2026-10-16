@@ -200,13 +200,14 @@ fn write_atomically(path: &Path, contents: &str) -> Result<(), TesseraError> {
 /// The projections as a table, one row per context.
 fn table(report: &ModelReport) -> String {
     let mut text = format!(
-        "{:>8} {:>8} {:>10} {:>8} {:>6} {:>10} {:>8} {:>7} {:>12} {:>9} {:>10}\n",
+        "{:>8} {:>8} {:>10} {:>8} {:>6} {:>10} {:>8} {:>8} {:>7} {:>12} {:>9} {:>10}\n",
         "context",
         "linear",
         "attention",
         "weights",
         "regen",
         "streaming",
+        "answers",
         "μ",
         "passes",
         "proof time",
@@ -215,13 +216,14 @@ fn table(report: &ModelReport) -> String {
     );
     for p in &report.projections {
         text.push_str(&format!(
-            "{:>8} {:>8.3} {:>10.3} {:>8.3} {:>6.3} {:>10.3} {:>8.3} {:>7} {:>10.2} s {:>8.3}% {:>9.3}%\n",
+            "{:>8} {:>8.3} {:>10.3} {:>8.3} {:>6.3} {:>10.3} {:>8.3} {:>8.3} {:>7} {:>10.2} s {:>8.3}% {:>9.3}%\n",
             p.context,
             p.mu.linear,
             p.mu.attention,
             p.mu.weights,
             p.mu.regen,
             p.mu.streaming,
+            p.mu.column_answers,
             p.mu.total,
             p.streaming_passes,
             p.proof_time_s,

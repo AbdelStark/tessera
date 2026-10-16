@@ -81,7 +81,7 @@ After the last stage (RFC-0010):
 4. **Opening pass.** The prover regenerates every non-zero row once more and accumulates `u_g = Σ_row c_g(row) · A_row` for all groups and `u_ξ = Σ_row ξ_row · A_row` (message space, over `Fp2`), plus the combined mask polynomials `M_g = Σ_row c_g(row) m_row` and `M_ξ`.
 5. **Send.** `u_g`, `M_g` for every group in group order, then `u_ξ`, `M_ξ` (label `pcs/advice/combined`): `G + 1` combined rows, each a `u` of `k` values in `Fp2` with an `M` of `P_A` coefficients.
 6. **Evaluation check.** The verifier checks that the combined rows have that shape. Then, for each group in order, it checks `Σ_{claims in g} γ_claim · v_claim = ⟨u_g, eq(column sub-point)⟩`. Either failure is `Reject(Evaluation)`.
-7. **Column queries.** The verifier draws `τ_A` column indices uniformly and independently, with replacement (live: verifier's choice after receiving step 5, sent in draw order; non-interactive: transcript with grinding, RFC-0014), so an index can repeat. The prover answers each distinct drawn index once, in increasing order. The answer does not carry the indices, which the verifier knows from its draw:
+7. **Column queries.** The verifier draws `τ_A` column indices uniformly and independently, with replacement (live: verifier's choice after receiving step 5, sent in draw order; non-interactive: transcript with grinding, RFC-0014), so an index can repeat. The prover answers each distinct drawn index once, in increasing order. No codeword outlives the witness pass, so the prover regenerates every non-zero row once more and evaluates its codeword at those indices ([RFC-0018](RFC-0018-gpu-prover-runtime.md#pass-structure) P5). The answer does not carry the indices, which the verifier knows from its draw:
    - for each distinct index, every non-zero row's symbol in that column, in segment order;
    - the canonical Merkle multiproof of that set ([RFC-0004](RFC-0004-hashing-and-transcript.md#merkle-trees)).
 8. **Column check.** In this order:
@@ -125,7 +125,7 @@ Soundness: if the committed rows are `δ`-far from the code for `δ < (1 − ρ)
 ## Alternatives Considered
 
 1. **Storing the encoded witness.** Rejected: terabytes per proof at 16K context.
-2. **FRI-based multilinear commitments (BaseFold, WHIR).** Considered: smaller proofs (polylogarithmic) and faster verification. Rejected for v1: the prover must run a folding protocol over the entire committed vector after commitment, which needs either the vector resident or many regeneration passes; the tensor scheme needs one opening pass. BaseFold/WHIR remain candidates for recursive compression (NG-3).
+2. **FRI-based multilinear commitments (BaseFold, WHIR).** Considered: smaller proofs (polylogarithmic) and faster verification. Rejected for v1: the prover must run a folding protocol over the entire committed vector after commitment, which needs either the vector resident or many regeneration passes; the tensor scheme needs two, one to combine rows and one to answer the column queries. BaseFold/WHIR remain candidates for recursive compression (NG-3).
 3. **Brakedown's linear-time codes.** Considered for encoding speed. Rejected: NTT-based RS encoding is fast on GPUs, RS proximity analysis is the best understood, and the source assumes RS at rates 1/2 and 1/4.
 4. **Systematic encoding.** Rejected: opened systematic symbols are witness entries, which would need a separate hiding layer.
 5. **Per-tensor commitments.** Rejected: thousands of roots, openings and Merkle trees instead of one.
@@ -133,7 +133,7 @@ Soundness: if the committed rows are `δ`-far from the code for `δ < (1 − ρ)
 
 ## Drawbacks
 
-- Every opening needs a full regeneration pass of the witness, about one native forward pass of extra compute (RISK-9 in [00 §9](../spec/00-overview.md#9-risks)).
+- Every opening needs two full regeneration passes of the witness, each about one native forward pass of extra compute (RISK-9 in [00 §9](../spec/00-overview.md#9-risks)): step 4 forms the combined rows, and step 7 evaluates every row's codeword at the queried columns, which are drawn only after the combined rows are sent ([RFC-0018](RFC-0018-gpu-prover-runtime.md#pass-structure) P5).
 - Combined rows dominate proof size when many column sub-points exist; the compiler must keep `G` small.
 - Proof size is linear in `τ_A` times the number of non-zero rows.
 

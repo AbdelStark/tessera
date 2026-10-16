@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The golden test of RFC-0020 'Executable cost model': with the source's counts and unit
-//! costs, no regeneration and no streaming, the model reproduces the source's chart (source §5)
+//! costs, no regeneration, no streaming and no column answers, the model reproduces the source's
+//! chart (source §5)
 //! within ±0.05, and its calculators reproduce §8 within 0.1 percentage point from that table's
 //! `μ` column. The figures come from `spec/vectors/cost-model/cost-model.json`, which is checked
 //! here against the source document itself, line by line.
@@ -206,6 +207,10 @@ fn the_source_defaults_are_the_vectors_inputs() {
         "the source prices no streamed pass"
     );
     assert_eq!(
+        u.column_answer_ps, 0.0,
+        "the source prices no column answers"
+    );
+    assert_eq!(
         [
             c.commits_per_token,
             c.lookups_per_token,
@@ -270,7 +275,7 @@ fn the_model_is_the_oracles() {
                 "{term} at {context}: {ours} against {oracle}"
             );
         }
-        assert_eq!((m.regen, m.streaming), (0.0, 0.0));
+        assert_eq!((m.regen, m.streaming, m.column_answers), (0.0, 0.0, 0.0));
     }
 }
 

@@ -113,7 +113,7 @@ Rules, each enforced by a CI check ([RFC-0001](../rfcs/RFC-0001-workspace-and-ve
 2. **Round 1.** The prover sends the advice root, the masking-polynomial commitments, the reference to `R_W` and its budget epoch, and the anchor key commitment.
 3. **Seed.** One seed arrives from coin tossing (live mode) or from the transcript with proof-of-work (non-interactive mode). Every later challenge derives from it.
 4. **Stages.** About six batched sumcheck stages run, each over all layers, heads and query blocks with shared challenges ([RFC-0010](../rfcs/RFC-0010-proof-schedule.md)). Witness values are regenerated on tensor cores in each stage instead of stored.
-5. **Openings.** Claims on committed tensors are batched to one point per commitment. Weights open through the folding pass; advice rows are recomputed in a second streaming pass to form combined rows. The verifier then sends live column queries and the prover answers them.
+5. **Openings.** Claims on committed tensors are batched to one point per commitment. Weights open through the folding pass; advice rows are recomputed in a second streaming pass to form combined rows. The verifier then sends live column queries, and a third streaming pass answers them by evaluating every row's codeword at the queried columns ([RFC-0018](../rfcs/RFC-0018-gpu-prover-runtime.md#pass-structure) P5).
 
 ## 6. Concurrency and determinism
 

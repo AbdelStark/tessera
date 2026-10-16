@@ -106,7 +106,8 @@
               "glue",
               "weight_pass",
               "native_rate",
-              "streaming_pass"
+              "streaming_pass",
+              "column_answer"
             ]
           },
           "normalization": {
@@ -212,6 +213,7 @@
               "weights",
               "regen",
               "streaming",
+              "column_answers",
               "total"
             ],
             "additionalProperties": false,
@@ -233,6 +235,10 @@
                 "minimum": 0
               },
               "streaming": {
+                "type": "number",
+                "minimum": 0
+              },
+              "column_answers": {
                 "type": "number",
                 "minimum": 0
               },

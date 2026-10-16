@@ -69,6 +69,7 @@ fn the_source_defaults_reproduce_the_source_chart() {
         }
         assert_eq!(p["mu"]["regen"], 0.0);
         assert_eq!(p["mu"]["streaming"], 0.0);
+        assert_eq!(p["mu"]["column_answers"], 0.0);
         // The calculators of source §8 from the printed μ, recomputed here from the vectors'
         // inputs: 10% overhead at η = 0.3, 100 violating requests, one request on 8 GPUs.
         let total = p["mu"]["total"].as_f64().expect("μ");

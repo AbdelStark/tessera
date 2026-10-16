@@ -28,12 +28,16 @@ pub struct UnitCosts {
     /// Picoseconds per attention score of one streamed pass over a tree's leaf level (RISK-10,
     /// RFC-0018 'Leaf levels').
     pub streaming_pass_ps: f64,
+    /// Picoseconds per committed element to evaluate its row's masked codeword at the queried
+    /// columns, hashing nothing: the column answers' pass (RFC-0018 P5).
+    pub column_answer_ps: f64,
 }
 
 impl UnitCosts {
     /// The source's assumed unit costs on an H100 SXM (source §5): 30, 40 and 12 ps, 15% glue,
     /// one 0.24 GPU-s weight pass per batch, native INT8 at 60% of 1,979 TOPS. The source has no
-    /// streamed passes, so they cost nothing here; RFC-0018 estimates 6 to 8 ps per score.
+    /// streamed passes and no column-answer pass, so both cost nothing here; RFC-0018 estimates 6
+    /// to 8 ps per score for a streamed pass.
     pub const SOURCE: Self = Self {
         commit_ps: 30.0,
         lookup_ps: 40.0,
@@ -42,6 +46,7 @@ impl UnitCosts {
         weight_pass_gpu_s: 0.24,
         native_ops_per_s: 0.6 * 1979e12,
         streaming_pass_ps: 0.0,
+        column_answer_ps: 0.0,
     };
 }
 
@@ -114,6 +119,8 @@ pub struct MuBreakdown {
     pub regen: f64,
     /// Streamed passes over the attention leaves (RISK-10).
     pub streaming: f64,
+    /// The column answers' evaluation of every committed element (RFC-0018 P5).
+    pub column_answers: f64,
     /// The sum of the terms.
     pub total: f64,
 }
@@ -150,7 +157,8 @@ impl UnitCosts {
         input("glue_fraction", self.glue_fraction, false)?;
         input("weight_pass_gpu_s", self.weight_pass_gpu_s, false)?;
         input("native_ops_per_s", self.native_ops_per_s, true)?;
-        input("streaming_pass_ps", self.streaming_pass_ps, false)
+        input("streaming_pass_ps", self.streaming_pass_ps, false)?;
+        input("column_answer_ps", self.column_answer_ps, false)
     }
 }
 
@@ -227,12 +235,14 @@ pub fn streaming_passes(
 ///
 /// ```text
 /// μ(S) = [(1 + glue)·(C·c_c + K·c_ℓ) + (1 + glue)·A·S·(c_c + c_ℓ + c_π) + W/T
-///         + c(S)·c_s·A·S] / [(F_lin + F_att·S)/R]  +  n_regen
+///         + c(S)·c_s·A·S + (C + A·S)·c_a] / [(F_lin + F_att·S)/R]  +  n_regen
 /// ```
 ///
-/// with `c_s` the streamed pass's cost per score and [`streaming_passes`] its count `c(S)`. With
-/// the source's counts and unit costs, no regeneration and no streaming, this is the source's
-/// formula (source §5).
+/// with `c_s` the streamed pass's cost per score, [`streaming_passes`] its count `c(S)`, and
+/// `c_a` the column answers' cost per committed element, of which a token commits `C` in its
+/// linear layers and one per attention score. With the source's counts and unit costs, which
+/// regenerate nothing, stream nothing and price no column answers, this is the source's formula
+/// (source §5).
 ///
 /// # Errors
 ///
@@ -272,18 +282,23 @@ pub fn mu(
     let attention = glue * counts.scores_per_token_per_ctx * s * per_score;
     let weights = u.weight_pass_gpu_s / f64::from(batch_tokens);
     let streaming = f64::from(passes) * u.streaming_pass_ps * counts.scores_per_token_per_ctx * s;
+    let committed = counts.commits_per_token + counts.scores_per_token_per_ctx * s;
+    let column_answers = committed * u.column_answer_ps;
     let linear = output("linear", linear * PS / native)?;
     let attention = output("attention", attention * PS / native)?;
     let weights = output("weights", weights / native)?;
     let streaming = output("streaming", streaming * PS / native)?;
+    let column_answers = output("column_answers", column_answers * PS / native)?;
     let regen = counts.regen_full_equivalents;
-    let total = output("total", linear + attention + weights + regen + streaming)?;
+    let total = linear + attention + weights + regen + streaming + column_answers;
+    let total = output("total", total)?;
     Ok(MuBreakdown {
         linear,
         attention,
         weights,
         regen,
         streaming,
+        column_answers,
         total,
     })
 }

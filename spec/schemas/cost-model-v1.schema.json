@@ -75,6 +75,7 @@
             "glue_fraction",
             "weight_pass_gpu_s",
             "streaming_pass_ps",
+            "column_answer_ps",
             "native_ops_per_s"
           ],
           "additionalProperties": false,
@@ -100,6 +101,10 @@
               "minimum": 0
             },
             "streaming_pass_ps": {
+              "type": "number",
+              "minimum": 0
+            },
+            "column_answer_ps": {
               "type": "number",
               "minimum": 0
             },
@@ -189,6 +194,7 @@
               "weights",
               "regen",
               "streaming",
+              "column_answers",
               "total"
             ],
             "additionalProperties": false,
@@ -210,6 +216,10 @@
                 "minimum": 0
               },
               "streaming": {
+                "type": "number",
+                "minimum": 0
+              },
+              "column_answers": {
                 "type": "number",
                 "minimum": 0
               },

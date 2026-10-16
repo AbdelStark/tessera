@@ -21,4 +21,4 @@ The validator implements a small subset of JSON Schema 2020-12, chosen so that i
 | Shape | `type` (`integer` is a number without a fraction), `properties`, `required`, `additionalProperties`, `items` |
 | Values | `const`, `enum` (numbers compare by value), `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `minLength`, `maxLength`, `minItems`, `maxItems` |
 
-A new report version gets a new file; a reader accepts the current version and the one before it ([09 §3](../../docs/spec/09-release-and-versioning.md#3-protocol-and-schema-versions)).
+A report version is frozen once a release writes it: a later change gets a new version and a new file, and a reader accepts the current version and the one before it. Until that release, the version's file changes in place with its writer ([09 §3](../../docs/spec/09-release-and-versioning.md#3-protocol-and-schema-versions)).
