@@ -78,7 +78,12 @@ Weights follow the same rule with the mask row stored as a blinding row of the w
 ### Hiding openings
 
 - **Columns.** Every committed row carries a vanishing mask of `P` random coefficients (RFC-0011 encoding). Any set of at most `P` codeword positions outside `H` is uniformly distributed and independent of the message. Advice commitments are opened once (`τ_A ≤ P_A`); weight matrices are opened up to `P_W` distinct positions per epoch.
-- **Combined rows.** For each revealed combination (each claim group `g` and the proximity row), a fresh blinding row `Q_g` with its own vanishing mask is included with coefficient 1: the prover reveals `u'_g = Σ_row c_g(row) A_row + Q_g` and the claimed value `q_g = ⟨Q_g, eq(col_g)⟩`, which enters the group check as one more claim. Soundness is unchanged: `Q_g` is a committed row like any other. `u'_g` is uniform because `Q_g` is used exactly once; `q_g` is determined by `u'_g` and the other revealed values, so it adds no information.
+- **Combined rows.** Each revealed combination, each claim group `g` and the proximity row, includes a fresh blinding row `Q_g` with its own vanishing mask, with coefficient 1. The prover reveals `u'_g = Σ_row c_g(row) A_row + Q_g`. `u'_g` is uniform because `Q_g` is used exactly once.
+- **Blinding claims.** For a claim group, the prover sends the blinding claim `q_g = ⟨Q_g, eq(col_g)⟩` before the claims' coefficients exist. Every `q_g` is absorbed, in group order, under `pcs/advice/blinding`, before `γ` is squeezed (RFC-0014, row 7). The group check then reads `Σ_t γ^{t+1}·v_t + q_g = ⟨u'_g, eq(col_g)⟩` ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) steps 2 and 6).
+  - **Soundness.** The column checks bind `u'_g` to the committed rows, so `⟨u'_g, eq(col_g)⟩ = Σ_t γ^{t+1}·f_t + Q̃_g`, with `f_t` the true evaluations and `Q̃_g = ⟨Q_g, eq(col_g)⟩`. The check holds exactly when `(q_g − Q̃_g) + Σ_t γ^{t+1}·(v_t − f_t) = 0`. Everything in it but `γ` is fixed before `γ` is drawn, so a false claim makes it a non-zero polynomial of degree at most `T_g`, the group's number of claims, which vanishes with probability at most `T_g/|Fp2|`.
+  - **Both conditions are needed.** If `q_g` were sent after `γ`, the prover could choose it to cancel any false claim. If a claim also had the coefficient 1, `q_g` could cancel that claim's error whatever the order.
+  - **Hiding.** `q_g` reveals one linear functional of the fresh row `Q_g`, which is uniform since `eq(col_g) ≠ 0`. Given `q_g`, `u'_g` is uniform subject to its group check.
+- **The proximity row** carries no claim. Its blinding row enters with coefficient 1, and only the column checks see it.
 - **Masks of combined masks.** The combined vanishing-mask polynomials `M_g` include `Q_g`'s mask, so they are uniform as well.
 
 ### LogUp and product-tree roots
@@ -103,7 +108,7 @@ Before any v0.4 implementation work merges, `docs/zk/simulator.md` must give a c
 1. The simulator plays the coin toss, programming the random oracle at `H("coin-toss", ·)` to a uniformly chosen seed.
 2. It commits to uniformly random rows in place of advice; roots are distributed identically because opened positions are uniform in both worlds and unopened leaves are random-oracle outputs of high-entropy inputs.
 3. For each stage in order, it samples the masked final evaluations uniformly subject to the stage's final-check equation, then simulates round messages with the masked-sumcheck simulator.
-4. It samples combined rows `u'_g` uniformly and sets each `q_g` to satisfy its group check.
+4. It samples each blinding claim `q_g` uniformly before `γ`, then each combined row `u'_g` uniformly subject to its group check, and each weight matrix's `u_T` likewise after `θ_T`.
 5. It answers column queries with uniform symbols consistent with the sampled combined rows (solvable because each queried column adds one linear constraint per row on independent mask coefficients).
 6. Indistinguishability error is bounded by the sum of degenerate events: `Z(p) = 0`, linearly dependent `eq` vectors, and the masked-sumcheck failure terms, each at most a small polynomial over `|Fp2|`.
 
@@ -148,6 +153,11 @@ v0.3 ships a sound, non-hiding protocol. v0.4 adds the four mechanisms behind th
 - Masked sumcheck: completeness for degrees 1–7; the simulator's round messages and real round messages pass a two-sample distribution test over 10^5 runs on a toy instance.
 - Masked extensions: `V' = Ṽ` on the hypercube (exhaustive for small `n`); revealed `V'(p)` values over 10^5 runs of a fixed witness are uniform (chi-square on low bits) and uncorrelated with the witness (two witnesses give indistinguishable distributions).
 - Hiding openings: opened columns and blinding-row combinations for two different witnesses are indistinguishable by the distinguisher suite of [07 §7](../spec/07-testing-strategy.md#7-zero-knowledge-tests).
+- Blinding claims, adversarially. Each of these provers is rejected with `Reject(Evaluation)`:
+  - one that compensates a false claim through `q_g`, sent after `γ`;
+  - one that sends `q_g` before `γ` but cancels the error of a claim it gives the coefficient 1;
+  - one that splits a weight claim as `(v_T + Δ, q_T − Δ)`.
+  Over the test field, a false claim with an honest `q_g` is accepted at a rate within `T_g/|F|`.
 - LogUp roots: the distribution of each instance's roots is independent of the key multiset.
 - End-to-end simulator test: simulated and real transcripts of the tiny model are indistinguishable at significance 0.001 over 10^4 runs.
 - Budget: each proof consumes exactly three weight blinding rows per matrix and fails cleanly when they run out.
