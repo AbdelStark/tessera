@@ -78,3 +78,22 @@ All notable changes to the prover release train are recorded here: the crates un
   - `spec/vectors/encoding/encoding.json` (81 KB) comes from an independent Python oracle, `generate.py`, which computes every value from its definition by Horner's rule: 8 transforms of `2^1` to `2^8` points on the subgroup and on `7·L`, and 25 rows of `2^0` to `2^6` values with `P` in `{0, 1, k/2, k}`.
   - On one Apple M4 Max core (`benches/throughput.rs`): an NTT of `2^23` points takes 103 ms (12.3 ns per point), its inverse 101 ms and the coset NTT 117 ms; `encode_row` at `k = 2^22` and `P = 200` takes 135 ms, 32 ns per row value.
 - `cargo xtask gen-vectors` also runs every set's independent Python oracle, `spec/vectors/<set>/generate.py`, with `python3 -I -B`, and `--check` reruns them on a copy of `spec/vectors/` and reports each file they write differently, add or remove, and each oracle that fails, leaving the tree untouched. A test runs the check, so `cargo test --workspace` fails when an oracle and its files disagree, as it already did for the codec vectors. The six oracles (`encoding`, `field`, `hash`, `poly`, `sumcheck`, `transcript`) reproduce their files byte for byte in about 5 s ([#226](https://github.com/AbdelStark/tessera/issues/226)).
+- The batched sumcheck prover of RFC-0010 'Batching within a stage' and 'Sumcheck messages', in `tessera-sumcheck` ([#53](https://github.com/AbdelStark/tessera/issues/53)):
+  - `prove_batch` proves the sums of products of up to 7 multilinear tables over many instances in one round sequence. It squeezes `γ` under `<prefix>/gamma` and weights instance `i` by `γ^i`. It front-pads smaller instances, so that their own variables take the last `n_i` challenges. Round `j` absorbs `p(0), p(2), …, p(d)` as TCE `Vec<Fp2>` under `<prefix>/round/{j}` before squeezing `r_j` under `<prefix>/r/{j}`, and the final evaluations go under `<prefix>/evals`. `Prefix` is `stage/{k}` or `tree/{ℓ}`.
+  - An `Instance` is a product of borrowed `Table`s over the prime subfield (`Table::base`) or the extension (`Table::ext`), mixed freely. `Table::public` marks a factor the verifier evaluates itself, such as `eq(r, ·)`, which the proof leaves out. `ProvenBatch` holds the TCE-encodable `SumcheckProof { rounds, final_evals }`, `γ`, the point, and each instance's point and evaluations.
+  - The prover never reads a claim. A padding round adds `2^{n_max − n_i − j − 1}·S_i`, where `S_i` comes from the instance's tables in the pass that also computes its first own round; padded tables are never materialized. Tables over the prime subfield multiply there until their first binding, which allocates half of each table once; later bindings run in place.
+  - The prover is generic over `PolyField` and over a `SumcheckTranscript` trait, which `tessera_hash::Transcript` implements; tests also run it over `F65537` and its extension. Every input-dependent failure is a `SumcheckError` carrying shapes only, returned before the transcript moves, and debug forms show shapes only.
+  - The verifier's `tv_core::sumcheck::verify_batch`, a dev-dependency (DEP-2), checks every proof the tests produce and must draw the same challenges and end in the same transcript state. The cases:
+    - products of 1 to 4 tables on 0 to 24 variables;
+    - the batch of 3, 7 and 12 variables;
+    - instances on no variable;
+    - degree 7;
+    - public factors;
+    - 300 seeded random batches.
+
+    Changing any round value or final evaluation is rejected, and so is a prover that omits the padding scale.
+  - `spec/vectors/sumcheck/sumcheck.json` now also records the tables of its 31 stages on at most 5 variables (248 KB). The prover reproduces them message by message, and every product-tree level from the trees' leaves.
+  - On one Apple M4 Max core (`benches/throughput.rs`), per entry of all tables:
+    - products of 1, 2, 3 and 4 tables over `Fp` take about 4.2, 6.5, 8.3 and 11.5 ns at `2^20` and `2^22` entries per table;
+    - over `Fp2`, they take 5.8, 10.1, 12.7 and 17.7 ns at `2^20`;
+    - binding one table through every round, alone, takes 3.2 ns per entry.

@@ -1,8 +1,8 @@
 # Sumcheck vectors
 
-`sumcheck.json` holds honest proofs of the sumchecks of [RFC-0010](../../../docs/rfcs/RFC-0010-proof-schedule.md): single and batched sumchecks of products of multilinear tables, front-padded as ['Batching within a stage'](../../../docs/rfcs/RFC-0010-proof-schedule.md#batching-within-a-stage) says, with the messages of ['Sumcheck messages'](../../../docs/rfcs/RFC-0010-proof-schedule.md#sumcheck-messages); and batches of product trees proven level by level, as ['Tree levels'](../../../docs/rfcs/RFC-0010-proof-schedule.md#tree-levels) says. Every challenge, claim, point and transcript state of each proof is recorded, so an implementation can locate the first step where it diverges. `verifier/crates/tv-core/tests/` verifies every proof, reproduces every recorded value, and rejects every proof changed in one element.
+`sumcheck.json` holds honest proofs of the sumchecks of [RFC-0010](../../../docs/rfcs/RFC-0010-proof-schedule.md): single and batched sumchecks of products of multilinear tables, front-padded as ['Batching within a stage'](../../../docs/rfcs/RFC-0010-proof-schedule.md#batching-within-a-stage) says, with the messages of ['Sumcheck messages'](../../../docs/rfcs/RFC-0010-proof-schedule.md#sumcheck-messages); and batches of product trees proven level by level, as ['Tree levels'](../../../docs/rfcs/RFC-0010-proof-schedule.md#tree-levels) says. Every challenge, claim, point and transcript state of each proof is recorded, so an implementation can locate the first step where it diverges, and the stages on at most 5 variables also record their tables, so a prover can reproduce them whole. `verifier/crates/tv-core/tests/` verifies every proof, reproduces every recorded value, and rejects every proof changed in one element; `crates/tessera-sumcheck/tests/vectors.rs` reproduces every stage that records its tables, message by message, and every tree level from the trees' leaves.
 
-[`generate.py`](generate.py) writes it. The script is the independent oracle, an honest prover written from the RFC text alone with Python's arbitrary-precision integers. Its transcript is the oracle of [`../transcript/generate.py`](../transcript/generate.py), imported as that file imports [`../hash/generate.py`](../hash/generate.py); the script reruns the official BLAKE3 test vectors through it before anything is written. Its inputs come from SplitMix64 with the seed the file states, words at or above `P` rejected, so `python3 spec/vectors/sumcheck/generate.py` reproduces the file byte for byte. The file is about 200 KB.
+[`generate.py`](generate.py) writes it. The script is the independent oracle, an honest prover written from the RFC text alone with Python's arbitrary-precision integers. Its transcript is the oracle of [`../transcript/generate.py`](../transcript/generate.py), imported as that file imports [`../hash/generate.py`](../hash/generate.py); the script reruns the official BLAKE3 test vectors through it before anything is written. Its inputs come from SplitMix64 with the seed the file states, words at or above `P` rejected, so `python3 spec/vectors/sumcheck/generate.py` reproduces the file byte for byte. The file is about 250 KB.
 
 ## Conventions
 
@@ -18,7 +18,7 @@ Each session lists its `stages`. A stage is one batched sumcheck:
 | Field | Meaning |
 |---|---|
 | `prefix`, `degree` | `stage/{k}` and the round degree `d` |
-| `instances` | in schedule order, each `vars` `n_i`, `factors` `k_i` and `claim` `c_i`: the instance's relation is the product of `k_i` random `Fp2` tables of `2^{n_i}` entries, and `c_i` is that product's sum over the hypercube |
+| `instances` | in schedule order, each `vars` `n_i`, `factors` `k_i` and `claim` `c_i`: the instance's relation is the product of `k_i` random `Fp2` tables of `2^{n_i}` entries, and `c_i` is that product's sum over the hypercube. When every instance of the stage has at most 5 variables, each also has `tables`: its `k_i` tables in order, each its `2^{n_i}` entries `T[0], …, T[2^{n_i} − 1]` |
 | `gamma` | `γ = challenge_fp2(<prefix>/gamma)` |
 | `rounds` | the proof's round messages: round `j`'s is `p_j(0), p_j(2), …, p_j(d)` |
 | `challenges` | `r_j = challenge_fp2(<prefix>/r/{j})` for each round |
@@ -35,6 +35,8 @@ Each session lists its `stages`. A stage is one batched sumcheck:
 | a batch of equal sizes | degree 2, three instances on 5 variables: `γ` without padding |
 | batches of `n_max = 0`, then of a single instance | three constants (no round), one instance on 6 variables, and one constant of degree 1, on one transcript |
 | degrees 5 to 7 | products of 5, 6 and 7 tables on 3 variables, then a batch of degree 7 of products of 7, 3 and 1 tables on 4, 2 and 0 variables, so that every node of RFC-0014's largest degree is used |
+
+The 31 stages that record their tables are `stage/0` to `stage/5` of each single-instance session, the batch of equal sizes, the two batches of `n_max = 0`, and the four stages of degrees 5 to 7, the last of them front-padded: every degree from 1 to 7 appears, and a padded batch.
 
 ## Tree batches
 

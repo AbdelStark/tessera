@@ -42,6 +42,7 @@ W = 7  # Fp2 = Fp[X]/(X^2 - W)
 
 SINGLE_FACTORS = [1, 2, 3, 4]  # products of d tables, the sumcheck's degree d
 SINGLE_VARS = list(range(13))  # over 0 to 12 variables
+TABLES_MAX_VARS = 5  # a stage whose instances have at most this many variables records its tables
 
 
 # ----- Fp2 = Fp[X]/(X^2 - 7) on pairs (c0, c1); Fp embeds as (x, 0) ---------------------------
@@ -242,8 +243,11 @@ def suffix(challenges, n):
 
 
 def prove_stage(t, rng, prefix, degree, shapes):
-    """A stage of product instances, each `(vars, factors)` with random Fp2 tables."""
+    """A stage of product instances, each `(vars, factors)` with random Fp2 tables. A stage whose
+    instances all have at most TABLES_MAX_VARS variables also records each instance's tables, so
+    that a prover can be checked against the whole proof; the tables come from the same draws."""
     instances = [([[rng.fp2() for _ in range(1 << n)] for _ in range(k)], n) for n, k in shapes]
+    with_tables = max(n for n, _ in shapes) <= TABLES_MAX_VARS
     gamma, rounds, challenges, claims, bound = sumcheck(t, prefix, degree, instances)
     evals, points, values, records = [], [], [], []
     for (tables, n), bound_i in zip(instances, bound):
@@ -253,7 +257,10 @@ def prove_stage(t, rng, prefix, degree, shapes):
         evals += own
         points.append(point)
         values.append(product(own))
-        records.append({"vars": n, "factors": len(tables), "claim": fp2(total(product(tb[x] for tb in tables) for x in range(1 << n)))})
+        record = {"vars": n, "factors": len(tables), "claim": fp2(total(product(tb[x] for tb in tables) for x in range(1 << n)))}
+        if with_tables:
+            record["tables"] = [elements(table) for table in tables]
+        records.append(record)
     t.absorb(f"{prefix}/evals", tce(evals))
     weights = [power(gamma, i) for i in range(len(instances))]
     require(total(mul(w, v) for w, v in zip(weights, values)) == claims[-1], f"{prefix}: the final check holds")

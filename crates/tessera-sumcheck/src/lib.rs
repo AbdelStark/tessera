@@ -2,6 +2,98 @@
 
 //! The sumcheck engine, GKR layer protocols and stage batching (RFC-0010, RFC-0013).
 //!
+//! This version holds the generic batched sumcheck prover of RFC-0010 'Batching within a stage'
+//! and 'Sumcheck messages': [`prove_batch`] proves the sums of products of up to
+//! [`MAX_DEGREE`] multilinear tables, over many instances of different sizes, in one round
+//! sequence. The relations of the stages, the product-tree levels, masking (RFC-0013) and the
+//! stage schedule build on it.
+//!
+//! # Protocol
+//!
+//! - A table of `2^n` entries is the multilinear `T̃(x_1, …, x_n)` equal to `T[Σ_i x_i·2^{i−1}]`
+//!   on `{0, 1}^n`: `x_1` is the least significant bit of the index, and round `j` binds `x_j`
+//!   (RFC-0010 'Multilinear extensions').
+//! - An [`Instance`] is a product of [`Table`]s of one size, at most the batch's degree `d` of
+//!   them. Instance `i` (counted from 0 in the order given) on `n_i` variables enters with weight
+//!   `γ^i`, `γ` squeezed under `<prefix>/gamma` before the first round.
+//! - Smaller instances are front-padded: constant in the lowest `n_max − n_i` variables, which the
+//!   first rounds bind, so that an instance's own variables take the last `n_i` challenges. The
+//!   batched sum is `Σ_i γ^i·2^{n_max − n_i}·c_i`.
+//! - Round `j` (from 0) absorbs `p_j(0), p_j(2), …, p_j(d)` as TCE `Vec<F>` under
+//!   `<prefix>/round/{j}`, never `p_j(1)`, which the verifier derives from its claim, and squeezes
+//!   `r_j` under `<prefix>/r/{j}`.
+//! - The final evaluations, each instance's tables at its point in the order of its tables, are
+//!   absorbed as one TCE `Vec<F>` under `<prefix>/evals`. A table marked [`Table::public`], such
+//!   as `eq(r, ·)`, is a public factor: the verifier evaluates it, so it is left out.
+//!
+//! The [`Prefix`] is `stage/{k}` or `tree/{ℓ}` (RFC-0014 'Transcript schedule'). The result,
+//! [`ProvenBatch`], holds the [`SumcheckProof`] (TCE-encodable, as RFC-0010 defines it), `γ`,
+//! the point, and each instance's point and evaluations, from which the caller forms its next
+//! claims.
+//!
+//! ```
+//! use tessera_codec::Ascii;
+//! use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField};
+//! use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
+//! use tessera_sumcheck::{Instance, Prefix, Table, prove_batch};
+//!
+//! let context = SessionContext {
+//!     protocol: Ascii::new("tessera-protocol/1").expect("ASCII"),
+//!     mode: Mode::NonInteractive,
+//!     params: ParamSetId(Ascii::new("test-small/1").expect("ASCII")),
+//!     statement_digest: [0; 32],
+//!     session_id: [0; 16],
+//! };
+//! let fp = Goldilocks::from_u64_reduced;
+//! let a: Vec<Goldilocks> = (1..=8).map(fp).collect();
+//! let b: Vec<Goldilocks> = (11..=18).map(fp).collect();
+//! let c: Vec<Goldilocks> = (1..=4).map(fp).collect();
+//! // Σ_x a(x)·b(x) on 3 variables, and Σ_y c(y) on 2, front-padded by one round.
+//! let instances = [
+//!     Instance::new(vec![Table::base(&a), Table::base(&b)]),
+//!     Instance::new(vec![Table::base(&c)]),
+//! ];
+//! let mut transcript = Transcript::new(&context);
+//! let proven = prove_batch::<GoldilocksExt2, _>(&mut transcript, Prefix::Stage(0), 2, &instances)?;
+//! assert_eq!(proven.proof().rounds.len(), 3);
+//! assert!(proven.proof().rounds.iter().all(|round| round.len() == 2));
+//! assert_eq!(proven.instance_point(1), Some(&proven.point()[1..]));
+//! assert_eq!(proven.proof().final_evals.len(), 3);
+//! # Ok::<(), tessera_sumcheck::SumcheckError>(())
+//! ```
+//!
+//! # Algorithm
+//!
+//! - **Round values.** On a pair `(a, b) = (T[2t], T[2t + 1])` a table is `a + z·Δ` with
+//!   `Δ = b − a`, so its values at the nodes `0, 2, 3, …, d` come by adding `Δ`, with no
+//!   multiplication, and a product of `k` tables costs `k − 1` multiplications per node. `p(1)`
+//!   is never computed.
+//! - **Prime-subfield first round.** An instance's first own round reads its tables unbound,
+//!   whatever round that is, since padding rounds do not touch them. Tables over the prime
+//!   subfield multiply there; when all of an instance's tables are, the round is summed there too
+//!   and lifted once.
+//! - **Padding.** A padding round contributes `2^{n_max − n_i − j − 1}·S_i` at every node.
+//!   `S_i`, the instance's sum over its own hypercube, comes from its tables in one pass, which
+//!   also yields its first own round at every node; the claims are never read. Padded tables are
+//!   never materialized.
+//! - **Binding.** An instance's first own round binds each borrowed table into a table over `F`
+//!   of half its length, reserved once; later rounds bind in place. A round allocates its message
+//!   and nothing else.
+//! - **Loops.** A single table needs two sums, of its even and odd entries, for every node. Two
+//!   to four tables over the prime subfield, or two or three over `F` at up to three nodes, are
+//!   zipped pair by pair with their products in registers; other products are formed a block of
+//!   pairs at a time in rows that stay in the first-level cache. Every loop walks its slices with
+//!   `chunks_exact` and `zip`, without bounds checks, and sums over a range of pairs that a
+//!   parallel backend can split (RFC-0018).
+//!
+//! Control flow depends on shapes and on which tables are over the prime subfield, never on a
+//! value (INV-ARCH-2). Table entries are secret-class values and the messages protocol-class
+//! (05 §3): no debug form or error of this crate shows either, only shapes.
+//!
+//! The code is generic over [`tessera_poly::PolyField`], so it runs over Goldilocks and its
+//! extension, and over `F65537` and its extension for the soundness-calibration tests (07 §4),
+//! with any transcript that implements [`SumcheckTranscript`].
+//!
 //! # Features
 //!
 //! - `test-rng` seeds masking randomness so that tests are reproducible. Tests only: a release
@@ -14,3 +106,15 @@
 compile_error!(
     "the `test-rng` feature pins masking randomness to a seed; it must not be enabled in a release build (RFC-0001 'Cargo features')"
 );
+
+mod error;
+mod kernel;
+mod proof;
+mod prover;
+mod transcript;
+
+pub use error::SumcheckError;
+pub use proof::SumcheckProof;
+pub use prover::{Instance, Prefix, ProvenBatch, Table, prove_batch};
+pub use tessera_poly::MAX_DEGREE;
+pub use transcript::SumcheckTranscript;
