@@ -203,6 +203,12 @@ All notable changes to the prover release train are recorded here: the crates un
   - The package `tessera_quant`, typed (`py.typed`) and versioned by its distribution. `ruff` lints and formats, `pyright` checks types in strict mode, and `pytest` with `hypothesis` runs the tests.
   - The `python` CI job runs on Python 3.11, 3.12 and 3.13, and is now a gate over the three, so branch protection still names one check. Its former `pyright --strict` was not a pyright option: strict mode now comes from `pyproject.toml`.
   - `cargo xtask lint` fails when the workspace `Cargo.toml` and `python/pyproject.toml` state different versions (09 §1), a dynamic version, or one outside `MAJOR.MINOR.PATCH`. 09 §1 maps no pre-release between SemVer and PEP 440, so that last case is refused rather than guessed.
+- The arithmetic table kinds in `tessera-tables` (RFC-0008 'Table specifications', [#69](https://github.com/AbdelStark/tessera/issues/69)):
+  - `TableSpec`, `TableKind`, `TableId` and `BitOp`. RFC-0008 now fixes their tier-A TCE layout. Tags are declaration indices, so the transcendental kinds are appended later without moving a tag or a pinned digest. 03 §3's `TableSpec` follows the RFC.
+  - `ArithmeticTable` builds `Range`, `Requant`, `Pow2`, `Bitwise8`, `AesSbox` and `Gf256Mul` from their parameters, refusing those outside RFC-0008's rules. It also regenerates a claim list's specification, refusing a wrong `log2_rows` or digest.
+  - `Table` gives the rows, padded with copies of row 0, the row a lookup hits, and its value. Lookups take witness keys, so they compute arithmetically, with no memory access that depends on the key (INV-ARCH-2): the S-box by inversion in GF(2^8), a class's shift by selects.
+  - A digest hashes the definition, an empty sequence of piece parameters, and the value column of the kinds the verifier enumerates (RFC-0008 'Generators and digests').
+  - `spec/vectors/tables/` holds 20 cases from an independent Python oracle. Before writing, the oracle checks its S-box and products against FIPS-197: the §4.2 examples, Figure 7, and the AES-128 known answers of Appendices B and C.1. It also checks every one of the 65,536 products against logarithms.
 
 ### Changed
 

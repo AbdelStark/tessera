@@ -61,11 +61,12 @@ pub struct TensorSpec {
     pub range: IntRange, pub kind: NodeKind,
 }
 
-pub struct TableSpec {
-    pub id: TableId, pub kind: TableKind,      // Range | Shift | Exp | Silu | Log2Frac | Bitwise | Tuple ...
-    pub params: TableParams,                   // exact integers and rationals only
+pub struct TableSpec {                         // RFC-0008 'Table specifications'
+    pub id: TableId,
+    pub kind: TableKind,                       // Range | Requant | Pow2 | Bitwise8 | ..., with its
+                                               // parameters: exact integers and rationals only
     pub log2_rows: u8,                         // <= 32
-    pub digest: Digest,                        // BLAKE3 over the canonical row encoding
+    pub digest: Digest,                        // H("table", ...) over the defining data, not the rows
 }
 ```
 
