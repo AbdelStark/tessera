@@ -38,6 +38,9 @@ These pull against each other. RISK-2, RISK-3 and RISK-7 in [00 §9](../spec/00-
 ### Pipeline
 
 1. **Import.** Load safetensors shards; validate shapes and configuration against `ArchSpec` (`ERR-QUANT-ARCH` on mismatch). Never unpickle.
+   - The configuration is read exactly: a decimal such as `rms_norm_eps = 1e-05` becomes the rational it writes. Anything outside the Llama-3.1 family is refused: RoPE scaling other than `llama3`, an activation other than SiLU, biases, tied embeddings, weights other than BF16.
+   - Each shard's header is checked before any tensor is read: its size bounded, each tensor's dtype BF16 and shape the architecture's, its byte range its shape's, and the ranges tiling the data to the end of the file.
+   - The shards hold exactly the architecture's tensors, each where the index places it, and an index places tensors only in shards of its own directory.
 2. **Fold.** Fold each RMSNorm gain into the columns of the weights that consume the normalized activations (Q, K, V after the attention norm; gate, up after the MLP norm; LM head after the final norm). This is exact in real arithmetic.
 3. **Calibrate.** Run the BF16 model on the calibration set; record per-channel activation maxima at every quantization point.
 4. **Migrate.** Apply SmoothQuant migration with strength `α` to each input of a linear layer; apply QK equalization (scale `W_q` rows by `λ_c` and `W_k` rows by `1/λ_c`, equal within each RoPE pair) so scores are unchanged in real arithmetic.

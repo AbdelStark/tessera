@@ -214,6 +214,11 @@ All notable changes to the prover release train are recorded here: the crates un
   - `GraphBuilder` adds inputs, weights, public constants, shift-class sets and nodes in topological order. It checks every node against its operation's rules (arity, shapes, the kind of each output and of the inputs that need one), and leaves the graph as it was when it refuses one. Ids are dense in creation order, so two builds from the same calls are equal (INV-DM-5).
   - `Graph::validate` checks the same rules on a graph assembled otherwise: dense ids, one producer per tensor, topological order (so no cycle), and graph inputs that are public or committed. `Graph::producer` walks the virtual DAG that the schedule reads. Errors are `IrError`s.
   - RFC-0006 now states the rules in a table and refines the sketch. Nodes have several outputs, as `SoftmaxRow` gives the exponentials and the reciprocals. `MatMulAct` has a `transpose_rhs` flag, since `QK^T` and `PV` contract different axes and the operation set has no transpose. `Slice` names its axis and range. The graph declares the constants, shift classes and weights its nodes name.
+- Checkpoint import in `tessera-quant` (RFC-0005 'Pipeline', step 1; 06 §3, TB-5; [#70](https://github.com/AbdelStark/tessera/issues/70)):
+  - `import_checkpoint(path, expected=None)` reads a Llama-3.1 checkpoint from safetensors only and returns a `FloatModel` whose BF16 tensors load on demand. `ArchSpec` and `RopeSpec` (03 §2) come from `config.json` exactly, decimals as rationals.
+  - Every shard's header is checked before any tensor is read: bounded size, BF16, shapes, byte ranges tiling the data to the end of the file, and exactly the architecture's tensors where the index places them, in shards of the checkpoint's own directory.
+  - A departure raises `ArchitectureError` (`ERR-QUANT-ARCH`), a `TesseraQuantError` (04 §4). A directory holding only pickle files is refused without opening them, and a test scans the package's sources for any pickle-based loading.
+  - Tests import a tiny checkpoint, single-file and sharded, bit for bit. They also import a sparse, header-only checkpoint with the published Llama-3.1-8B configuration and shapes, and check each refusal for its reason. A malicious pickle that would create a file if loaded leaves no file.
 
 ### Changed
 

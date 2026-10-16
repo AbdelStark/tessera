@@ -11,6 +11,18 @@ uv sync --extra cpu      # CPU wheels: CI and the tiny conformance models
 uv sync --extra cu130    # CUDA 13.0 wheels, Linux only: calibrating 8B and up
 ```
 
+## Use
+
+```python
+from pathlib import Path
+
+from tessera_quant import import_checkpoint
+
+# A Hugging Face checkpoint directory: config.json and safetensors shards. Pickle files are refused.
+model = import_checkpoint(Path("Llama-3.1-8B"))
+q = model.tensor("model.layers.0.self_attn.q_proj.weight")  # BF16, read on demand
+```
+
 ## Checks
 
 The `python` CI job runs these on Python 3.11, 3.12 and 3.13:
