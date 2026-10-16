@@ -10,8 +10,9 @@
 //! follows; and a stack of subtree chaining values, merged as chunks complete, so that the last
 //! chunk or parent node is the root.
 //!
-//! The verifier's production hashing uses the allowlisted `blake3` crate (RFC-0019); this module
-//! is never part of `tessera-verify`.
+//! The verifier's production hashing is `tv-hash`, which implements BLAKE3 itself (RFC-0019
+//! 'Dependencies'); this module, which shares no code with it, is its test oracle and is never
+//! part of `tessera-verify`.
 
 /// The default output size in bytes.
 const OUT_LEN: usize = 32;

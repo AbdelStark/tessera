@@ -6,8 +6,8 @@ squeezes, challenges and proofs of work, with the state after every step.
 This script is the independent oracle. Its BLAKE3 and its `H(domain, bytes)` are those of
 ../hash/generate.py, written from the BLAKE3 specification and checked against the official test
 vectors before anything is written. Everything else is written here from RFC-0004 'Transcript'
-and RFC-0003's encoding table. It shares no code with crates/tessera-hash, which checks its
-output, nor with the verifier's own transcript (verifier/crates/tv-hash, #52), which is to.
+and RFC-0003's encoding table. It shares no code with crates/tessera-hash or with the verifier's
+transcript in verifier/crates/tv-hash, which both check its output.
 
 Usage: python3 spec/vectors/transcript/generate.py
 (rewrites transcript.json)

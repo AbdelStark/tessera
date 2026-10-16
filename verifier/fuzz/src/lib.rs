@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Decoders shared by the fuzz targets, built from `tv-codec`'s combinators, and what each
-//! reports about the value it decoded, for the targets' oracles.
+//! reports about the value it decoded, for the targets' oracles. The cases and oracles of the
+//! proof targets, `multiproof` and `inclusion`, are in [`proofs`].
 //!
 //! Each decoder returns an [`Echo`]: the canonical encoding of its value, written from RFC-0003's
 //! encoding table from the value and never copied from the input, with the value's nesting depth
@@ -12,6 +13,8 @@
 //! tag.
 
 use tv_codec::{Cursor, DecodeError, size};
+
+pub mod proofs;
 
 /// What a decoder learned about the value it decoded.
 pub struct Echo {

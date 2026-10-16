@@ -120,7 +120,7 @@ Before `Round1`, the prover re-encrypts its stored transcripts, recomputes every
 ### Verifier checks
 
 1. Manifest signature under a pinned recorder key; unknown scheme rejected.
-2. Inclusion proof of every supplied entry; every frame of every sampled request present (`frame_index` contiguous from 0, matching the statement's lengths).
+2. Inclusion proof of every supplied entry ([RFC 9162 §2.1.3.2](https://www.rfc-editor.org/rfc/rfc9162#section-2.1.3.2)) at leaf index `seq − first_seq`, against `entries_root` in a tree of `entry_count` leaves. The index comes from the entry, and the size and root from the signed manifest, never from the proof: one inclusion proof can verify against one root for several pairs of leaf index and tree size. Every frame of every sampled request present (`frame_index` contiguous from 0, matching the statement's lengths).
 3. The batch's requests equal the audit sample's requests for this manifest ([RFC-0016](RFC-0016-audit-sampling.md#verifier-checks)).
 4. The circuits' public inputs are exactly these digests and commitments.
 

@@ -109,7 +109,7 @@ docs/
 
 Dependency graphs are resolved with `--all-features`, so an optional dependency is checked even when no default feature enables it.
 
-Initial allowlist (each with its reason recorded in the file): `blake3` 1.x (hash, RFC-0004), `sha2` 0.10.x (recorder digests, RFC-0015), `ed25519-dalek` 2.x (manifest signatures, RFC-0015), `rayon` 1.x (parallel column checks), `thiserror` 2.x (error types), `clap` 4.x (CLI only, `tv-cli`), `serde` 1.x and `serde_json` 1.x (verdict report output only, `tv-cli`), `rustls` 0.23.x (live TLS transport, `tv-transport` only, so verification logic never links a TLS stack; [RFC-0014](RFC-0014-interaction-and-soundness.md#live-transport)), plus their transitive dependencies as resolved in `verifier/Cargo.lock`, each audited with `cargo vet`.
+The verifier implements BLAKE3 and SHA-256 itself and takes no hash crate ([RFC-0019](RFC-0019-verifier.md#dependencies)). Initial allowlist (each with its reason recorded in the file): `ed25519-dalek` 2.x (manifest signatures, RFC-0015), `rayon` 1.x (parallel column checks), `thiserror` 2.x (error types), `clap` 4.x (CLI only, `tv-cli`), `serde` 1.x and `serde_json` 1.x (verdict report output only, `tv-cli`), `rustls` 0.23.x (live TLS transport, `tv-transport` only, so verification logic never links a TLS stack; [RFC-0014](RFC-0014-interaction-and-soundness.md#live-transport)), plus their transitive dependencies as resolved in `verifier/Cargo.lock`, each audited with `cargo vet`.
 
 ### Shared artifacts that are not code
 

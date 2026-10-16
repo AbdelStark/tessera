@@ -1,15 +1,19 @@
 # Verifier fuzz targets
 
-`cargo-fuzz` targets for the verifier's decoders ([RFC-0003](../../docs/rfcs/RFC-0003-canonical-encoding.md#testing-strategy), [RFC-0019](../../docs/rfcs/RFC-0019-verifier.md#robustness)), and the tests that need a global allocator. This directory is a workspace of its own, so `libfuzzer-sys` and the allocator crate never enter the verifier's dependency graph, lockfile or allowlist.
+`cargo-fuzz` targets for the verifier's decoders and proof checks ([RFC-0003](../../docs/rfcs/RFC-0003-canonical-encoding.md#testing-strategy), [RFC-0004](../../docs/rfcs/RFC-0004-hashing-and-transcript.md#testing-strategy), [RFC-0019](../../docs/rfcs/RFC-0019-verifier.md#robustness)), and the tests that need a global allocator. This directory is a workspace of its own, so `libfuzzer-sys` and the allocator crate never enter the verifier's dependency graph, lockfile or allowlist.
 
 | Target | Input | It fails when |
 |---|---|---|
 | `decode` | A type selector byte (`TYPES` in `src/lib.rs`), a limits byte, then a whole input for that type's decoder | a decoder panics; a rejection is a fault of the reader (`ERR-RES-MEMORY`, `ERR-INTERNAL`) or points past the input; an accepted input is not the canonical encoding of its value (INV-TCE-2), or its value is past a limit; a proper prefix of an accepted input is not `ERR-CODEC-TRUNCATED` |
 | `envelope` | A reader configuration byte (expected schema, limits, whether to reseal), a payload type selector, then an envelope | opening or decoding panics; a rejection is a fault of the reader, or points outside the input (the payload, for a payload error); an opened envelope is not, byte for byte, the one a writer of the version found emits for its payload; a decoded payload is not canonical, or is past a limit |
+| `multiproof` | A tree of 2^0 to 2^10 leaves, the indices to open, then a script of changes to the canonical multiproof (`multiproof_case` in `src/proofs.rs`) | `verify_multiproof` panics, or its result is not exactly the oracle's: an accepted proof that is not the canonical multiproof of its leaves under its root, or a rejection by another check than the first that fails |
+| `inclusion` | A log of 1 to 260 entries, a leaf index, then a script of changes to the RFC 6962 inclusion proof (`inclusion_case`) | `verify_inclusion` panics, or its result is not exactly the oracle's: an accepted proof that does not lead from the leaf to the root, or a rejection by another step of RFC 9162 §2.1.3.2 than the first that fails |
 
-The oracles judge an accepted value without trusting the decoder that accepted it. `src/lib.rs` re-encodes each value from RFC-0003's encoding table, with rationals in lowest terms and map entries sorted by key, and measures its depth and longest sequence; it panics on what no value of the type can be: a zero denominator, text outside `Ascii`, two equal keys, an unknown tag. A decoder that skips a check thus fails the target on the first input that check should have rejected. The offsets of rejections are pinned by the vectors and by `tv-codec`'s own tests, not here.
+The decoder targets' oracles judge an accepted value without trusting the decoder that accepted it. `src/lib.rs` re-encodes each value from RFC-0003's encoding table, with rationals in lowest terms and map entries sorted by key, and measures its depth and longest sequence; it panics on what no value of the type can be: a zero denominator, text outside `Ascii`, two equal keys, an unknown tag. A decoder that skips a check thus fails the target on the first input that check should have rejected. The offsets of rejections are pinned by the vectors and by `tv-codec`'s own tests, not here.
 
-`tests/allocation.rs` measures and caps memory with the `cap` allocator: a hostile length is rejected before any allocation; thirty nested sequences, each declaring as many elements as 16 MiB allow, stay within 4 MiB; and memory too short for honest values is `ERR-RES-MEMORY`, not a fault of the input.
+The proof targets' oracles, in `src/proofs.rs`, build honest proofs from the specifications with the test kit's reference BLAKE3 and recompute the root of every changed proof in their own way: level by level for a multiproof, where `tv-hash` climbs from leaf to leaf, and by RFC 6962's recursive `PATH` read backwards for an inclusion proof, where `tv-hash` runs RFC 9162's iterative check. They also predict which check rejects a proof, so a check that is skipped or reordered fails the target even when a later one still rejects.
+
+`tests/allocation.rs` measures and caps memory with the `cap` allocator: a hostile length is rejected before any allocation; thirty nested sequences, each declaring as many elements as 16 MiB allow, stay within 4 MiB; and memory too short for honest values is `ERR-RES-MEMORY`, not a fault of the input. `tests/hash_allocation.rs` counts what `tv-hash` allocates: checking multiproofs and inclusion proofs of every shape the scripts build, hashing, chaining columns and replaying a transcript allocate nothing, and `challenge_indices` exactly its indices.
 
 ## Running
 
@@ -17,9 +21,11 @@ From this directory, where `rust-toolchain.toml` pins the nightly toolchain CI u
 
 ```sh
 cargo test                # allocation tests
-python3 seeds.py seeds    # seed corpora from spec/vectors/codec/
+python3 seeds.py seeds    # seed corpora from spec/vectors/
 cargo fuzz run decode corpus/decode seeds/decode -- -max_total_time=600
 cargo fuzz run envelope corpus/envelope seeds/envelope -- -max_total_time=600
+cargo fuzz run multiproof corpus/multiproof seeds/multiproof -- -max_total_time=600
+cargo fuzz run inclusion corpus/inclusion seeds/inclusion -- -max_total_time=600
 ```
 
 libFuzzer adds new inputs to the first directory and only reads the others. A failing input is saved under `artifacts/<target>/`; `cargo fuzz run <target> <file>` replays it.
@@ -28,4 +34,4 @@ On macOS 26, AddressSanitizer in the pinned nightly deadlocks before the first i
 
 ## In CI
 
-`.github/workflows/fuzz.yml` checks this crate's format and lints and runs its tests, then fuzzes each target of `fuzz_targets/` for 10 minutes under AddressSanitizer, seeded as above, with a limit of 10 seconds per input. It runs on pull requests and pushes to `main` that touch `verifier/Cargo.toml`, `tv-codec`, `tv-field`, `tv-testkit`, this directory or the codec vectors, and on demand with a chosen duration. A new target needs only its file in `fuzz_targets/` and its `[[bin]]` entry, of the same name, in `Cargo.toml`; it runs unseeded until `seeds.py` learns its input format.
+`.github/workflows/fuzz.yml` checks this crate's format and lints and runs its tests, then fuzzes each target of `fuzz_targets/` for 10 minutes under AddressSanitizer, seeded as above, with a limit of 10 seconds per input. It runs on pull requests and pushes to `main` that touch `verifier/Cargo.toml`, `tv-codec`, `tv-field`, `tv-hash`, `tv-testkit`, this directory, or the codec, hash and RFC 6962 vectors, and on demand with a chosen duration. A new target needs only its file in `fuzz_targets/` and its `[[bin]]` entry, of the same name, in `Cargo.toml`; it runs unseeded until `seeds.py` learns its input format.

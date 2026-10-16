@@ -105,7 +105,16 @@ dependencies = [
  "cap",
  "libfuzzer-sys",
  "tv-codec",
+ "tv-field",
+ "tv-hash",
  "tv-testkit",
+]
+
+[[package]]
+name = "tv-hash"
+version = "0.1.0"
+dependencies = [
+ "tv-field",
 ]
 
 [[package]]

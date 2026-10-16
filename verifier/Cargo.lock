@@ -28,6 +28,11 @@ dependencies = [
 [[package]]
 name = "tv-hash"
 version = "0.1.0"
+dependencies = [
+ "tv-codec",
+ "tv-field",
+ "tv-testkit",
+]
 
 [[package]]
 name = "tv-tables"

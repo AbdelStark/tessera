@@ -15,6 +15,9 @@ tessera-field = { path = "../tessera-field" }
 
 [dev-dependencies]
 serde_json = "1"
+# The verifier's independent hashing, for the differential test `tests/verifier.rs` (DEP-2).
+tv-field = { path = "../../verifier/crates/tv-field" }
+tv-hash = { path = "../../verifier/crates/tv-hash" }
 
 [lints]
 workspace = true
