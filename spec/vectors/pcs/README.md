@@ -1,8 +1,8 @@
 # Advice opening vectors
 
-`opening.json` holds openings of the advice commitment of [RFC-0011 'Opening protocol'](../../../docs/rfcs/RFC-0011-advice-commitment.md#opening-protocol), at small sizes. Each opening carries its commitment (the layout, `commitment_id` and root), its claims grouped by column point with their batching challenges, the proximity point `ξ*`, the combined rows, the drawn column indices and the answer to them: the distinct columns and their multiproof. The `openings` are honest, and a verifier of RFC-0011 steps 6 and 8 accepts each of them; every one also records the values its checks compute, so an implementation can locate the first step where it diverges. The `rejections` are honest openings changed in exactly one place, and the verifier rejects each with the `reason`, `group` and `column` it states.
+`opening.json` holds openings of the advice commitment of [RFC-0011 'Opening protocol'](../../../docs/rfcs/RFC-0011-advice-commitment.md#opening-protocol), at small sizes. Each opening carries its commitment (the layout, `commitment_id` and root), its claims grouped by column point with their batching challenges, the proximity point `ξ*`, the combined rows, the drawn column indices and the answer to them: the distinct columns and their multiproof. The `openings` are honest, and a verifier of RFC-0011 steps 6 and 8 accepts each of them; every one also records the values its checks compute, so an implementation can locate the first step where it diverges, and its `witness`, the rows and masks it commits, so a prover can reproduce it value by value ([Reproducing an opening](#reproducing-an-opening)). The `rejections` are honest openings changed in exactly one place, and the verifier rejects each with the `reason`, `group` and `column` it states.
 
-[`generate.py`](generate.py) writes it. The script is the independent oracle, an honest prover of RFC-0011 commitments and openings written from the RFC text alone, with Python's arbitrary-precision integers. It imports [`../hash/generate.py`](../hash/generate.py) for BLAKE3, `H`, Merkle trees, canonical multiproofs and column chains, and [`../encoding/generate.py`](../encoding/generate.py) for roots of unity and the masked encoding, as [`../sumcheck/generate.py`](../sumcheck/generate.py) imports the transcript oracle. Before anything is written it reruns the official BLAKE3 test vectors, and checks its `Fp2` products and inverses and its roots of unity against [`../field/`](../field/). Its inputs come from SplitMix64 with the seed the file states, words at or above `P` rejected, so `python3 spec/vectors/pcs/generate.py` reproduces the file byte for byte. The file is about 205 KB.
+[`generate.py`](generate.py) writes it. The script is the independent oracle, an honest prover of RFC-0011 commitments and openings written from the RFC text alone, with Python's arbitrary-precision integers. It imports [`../hash/generate.py`](../hash/generate.py) for BLAKE3, `H`, Merkle trees, canonical multiproofs and column chains, and [`../encoding/generate.py`](../encoding/generate.py) for roots of unity and the masked encoding, as [`../sumcheck/generate.py`](../sumcheck/generate.py) imports the transcript oracle. Before anything is written it reruns the official BLAKE3 test vectors, and checks its `Fp2` products and inverses and its roots of unity against [`../field/`](../field/). Its inputs come from SplitMix64 with the seed the file states, words at or above `P` rejected, so `python3 spec/vectors/pcs/generate.py` reproduces the file byte for byte. The file is about 220 KB.
 
 ## Conventions
 
@@ -39,6 +39,7 @@ An opening is one honest advice opening, which the verifier must accept.
 | `row_vars` | the row index has `row_vars` bits; rows are `0 … 2^row_vars − 1` |
 | `commitment_id` | the 32 bytes bound into `column-init` |
 | `segments` | the non-zero rows of each segment, as row indices, in layout order. Rows increase within and across segments, and every row not listed is a zero row. A segment may be empty |
+| `witness` | the rows and masks the commitment commits: `{"rows": [[Fp × k], …], "masks": [[Fp × P_A], …]}`, one entry per non-zero row in layout order, segment by segment, as `columns` orders its symbols. `rows[t]` holds row `A_r`'s `k` values on `H`, positions `0 … k − 1`, and `masks[t]` the coefficients of its mask `m_r`, constant first, for `r` the `t`-th non-zero row. In a real commitment both are secret and never leave the prover: the rows hold advice such as activations and lookup multiplicities, and the masks are masking randomness, all SECRET in [05 §3](../../../docs/spec/05-observability.md#3-data-classification-and-redaction). They appear here only as test data, so that a prover can be tested |
 | `root` | the Merkle root over the `n` leaves `leaf_j` |
 | `groups` | in group order, each `{"column_point": [Fp2 × log2_k], "claims": [{"row_point": [Fp2 × row_vars], "gamma": Fp2, "value": Fp2}, …]}`. A claim says `Ã(column_point ‖ row_point) = value`, with `γ` its batching challenge |
 | `xi_point` | `ξ*`, `row_vars` coordinates: `ξ_row = eq(ξ*, row)` |
@@ -50,9 +51,22 @@ An opening is one honest advice opening, which the verifier must accept.
 
 An honest opening satisfies step 6, `Σ_{claims in g} γ·value = Σ_i u_g[i]·eq(column_point, i)` for every group, and step 8.3, `Σ_row c(row)·col_j[row] = enc(u)(x_j) + Z_H(x_j)·M(x_j)` for every distinct `j` and every combined row.
 
+## Reproducing an opening
+
+An honest opening's `witness` and its public inputs, `log2_k`, `log2_inv_rate`, `mask_coeffs`, `row_block`, `row_vars`, `commitment_id`, `segments`, the points and `gamma` of `groups`, `xi_point` and `queries`, determine every other value of it. A prover reproduces them in this order:
+
+1. **Codewords.** For the `t`-th non-zero row `r`, `f_r` is the polynomial of degree below `k` with `f_r(ω_k^i) = rows[t][i]`, the inverse transform of size `k` in natural order; `g_r = f_r + (X^k − 1)·m_r`, where `m_r` has the coefficients `masks[t]`, constant first; and symbol `j` of the codeword is `g_r(x_j)`, `x_j = 7·ω_n^j`, a transform of size `n` on the coset `7·L` in natural order.
+2. **Root.** Each segment's chains over its rows' codewords give `d_j^(s)`, the merge gives `leaf_j`, and the Merkle tree over the `n` leaves gives `root`.
+3. **Answer.** `columns` holds, for each distinct queried index in increasing order, symbol `j` of every non-zero row in layout order, and `siblings` the canonical multiproof of those indices.
+4. **Combined rows.** `c_g(row)` for each group and `ξ_row`, at every non-zero row, give `u` and `M` of each row of `combined`.
+5. **Claims.** Each claim's `value` is `Ã(column_point ‖ row_point)` of the matrix whose non-zero rows hold `rows` and whose other rows are zero.
+6. **Intermediate values.** `row_coefficients` are the coefficients of step 4, `points` the `x_j` of the distinct queries, `leaves` their `leaf_j` from step 2, and `combined_at_queries` each combined row's `enc(u)(x_j) + Z_H(x_j)·M(x_j)`: the values on `7·L` of `enc(u) + Z_H·M`, encoded as a row is in step 1, one `Fp2` coordinate at a time.
+
+The rejections carry no witness: a prover has nothing to reproduce there.
+
 ## Rejections
 
-A rejection is `{"name", "opening", "reason", "group", "column"}`. `opening` is a complete opening without `intermediate`, which an honest opening of `openings` became after exactly the one change that `name` describes; its own `name` is that honest opening's, so the two can be compared. The checks run in this order, and the first failure decides the verdict:
+A rejection is `{"name", "opening", "reason", "group", "column"}`. `opening` is a complete opening without `intermediate` and `witness`, which an honest opening of `openings` became after exactly the one change that `name` describes; its own `name` is that honest opening's, so the two can be compared. The checks run in this order, and the first failure decides the verdict:
 
 1. RFC-0011 step 6: the shape of `combined` (`G + 1` rows, each `u` of `k` values and `mask` of `P_A` coefficients), then each group's sum in group order. A failure is `"Evaluation"`, with `group` the index of the first group whose sums differ, or `null` when the shape is wrong; `column` is `null`.
 2. Step 8.1: one column per distinct query, each with one symbol per non-zero row.
@@ -117,11 +131,12 @@ Some changes target specific verifier bugs. The claim's value moves its group's 
 
 ## How the oracle computes
 
-- Each non-zero row draws its `k` values, then its `P_A` mask coefficients `m_0, m_1, …`, in layout order. `f_r` is interpolated on `H` by Lagrange's formula on coefficient lists, and checked against the inverse DFT from its definition, `f_i = k^{−1}·Σ_t A[t]·ω_k^{−it}`. Each symbol `f_r(x_j) + Z_H(x_j)·m_r(x_j)` is evaluated on its own by Horner's rule, and checked against the encoding oracle's `g = f + (X^k − 1)·m` evaluated on `7·L`. No fast transform is used anywhere.
+- Each non-zero row draws its `k` values, then its `P_A` mask coefficients `m_0, m_1, …`, in layout order: they are the `witness`. `f_r` is interpolated on `H` by Lagrange's formula on coefficient lists, and checked against the inverse DFT from its definition, `f_i = k^{−1}·Σ_t A[t]·ω_k^{−it}`. Each symbol `f_r(x_j) + Z_H(x_j)·m_r(x_j)` is evaluated on its own by Horner's rule, and checked against the encoding oracle's `g = f + (X^k − 1)·m` evaluated on `7·L`. No fast transform is used anywhere.
 - Each segment's chains are the hash oracle's `column_leaves` over that segment's codewords; the leaves merge them, and the hash oracle builds the tree and the multiproof.
 - A claim's value is the extension of the whole matrix of `2^{log2_k + row_vars}` entries, zero rows included, at `column_point ‖ row_point`, with `eq` tabulated one coordinate at a time; it is checked against the per-row sum of the conventions above. A row point's coordinates are random, or Boolean where a claim covers one tensor's rows.
 - `c_g`, `ξ_row`, `u` and `M` follow their definitions, and `enc(u)(x_j)` interpolates `u` on `H`, coordinate by coordinate, then evaluates by Horner's rule.
 - A separate checker then runs the checks above on every opening, from the fields written to the file: `eq` from its product formula, `enc(u)(x)` from the barycentric formula on `H`, `L_i(x) = (x^k − 1)·ω^i / (k·(x − ω^i))`, `M(x)` as a sum of powers, each leaf from its opened column, and the multiproof by rebuilding the root from the opened leaves, each sibling taken as it is needed.
+- A second prover then reproduces every honest opening from its `witness` and public inputs alone, as the file writes them, by other algorithms again: codewords and `enc(u) + Z_H·M` by radix-2 NTTs, an inverse NTT on `H` and a coset NTT on `7·L`; the chains by a streaming committer that pushes rows in blocks of `B`; the root by recursion; the multiproof as the nodes whose subtree holds no opened leaf while their parent's does, ordered by level, then position; `eq` by selecting `r_t` or `1 − r_t`; and each claim's value by binding one variable at a time.
 
 Before it writes the file, the script checks:
 - the official BLAKE3 vectors, in all three modes; the 4145 products and inverses of [`../field/goldilocks_ext2.json`](../field/goldilocks_ext2.json); and every root of unity of [`../field/constants.json`](../field/constants.json) as `7^((P − 1)/m)`;
@@ -129,6 +144,8 @@ Before it writes the file, the script checks:
 - that the mask vanishes on `H`, where `g` takes the row's values, and that `7·L` misses `H`;
 - that each claim's value is the per-row sum, that each group's evaluation identity holds, and that every combined row agrees with the columns at every one of the `n` columns, not only the queried ones;
 - that the checker accepts every honest opening as written in the file and recomputes its `intermediate` exactly;
+- that the second prover, given only an honest opening's `witness`, its public inputs and its groups' points and `γ`, reproduces its `root`, `combined`, `columns`, `siblings`, claims' values and `intermediate` exactly, the leaves included;
+- that every honest opening carries a `witness` and no rejection does, and that removing the witnesses' lines gives, byte for byte, the file as it was before they were added: every other value is unchanged;
 - that every rejection differs from its honest opening at exactly the paths of its stated change, and that the checker rejects it with its `reason`, `group` and `column` at the step the table above names;
 - for a cheating prover, that the codeword changes at exactly `D`, is not in the code, and that the opening differs from the honest one only in its root, that row's symbols in `D` and its multiproof;
 - that the file parses back to the values computed, and stays under 1 MB.

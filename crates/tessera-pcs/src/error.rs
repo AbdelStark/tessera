@@ -5,11 +5,12 @@
 
 use core::fmt;
 
-/// Why a transform or an encoding was refused.
+/// Why a transform, an encoding, a commitment, an opening or an answer was refused.
 ///
-/// The variants carry lengths, counts and exponents, never a field element, so an error cannot
-/// carry a row value, a mask coefficient or a codeword symbol (05 §3). Every check runs before
-/// anything is written or drawn: on error, the values, the codeword buffer and the mask source are
+/// The variants carry lengths, counts, exponents, positions and public indices (a layout's
+/// segments, a query), never a field element, so an error cannot carry a row value, a mask
+/// coefficient, a codeword symbol or a point (05 §3). Every check runs before anything is written,
+/// drawn or computed: on error, the values, the codeword buffer and the mask source are
 /// untouched.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PcsError {
@@ -63,6 +64,82 @@ pub enum PcsError {
     },
     /// A coset shift of zero: `0·L` is not a coset.
     ZeroShift,
+    /// A commitment with no mask coefficient. RFC-0011 'Encoding' masks every row with `P_A`
+    /// coefficients, at least the parameter set's `τ_A`, and an opening's verifier refuses
+    /// `P_A = 0`.
+    NoMask,
+    /// A row index of more than 64 bits: a row is a `u64`.
+    RowVars {
+        /// The bit count given.
+        row_vars: u32,
+    },
+    /// A layout with no segment. A matrix has at least one segment, which may be empty.
+    NoSegments,
+    /// A row that is not above the row before it in layout order, within its segment or across
+    /// segments (INV-PCS-2).
+    RowOrder {
+        /// The row's segment.
+        segment: usize,
+        /// The row's position in its segment.
+        position: usize,
+    },
+    /// A row index at or above `2^row_vars`.
+    RowRange {
+        /// The row's segment.
+        segment: usize,
+        /// The row's position in its segment.
+        position: usize,
+        /// The layout's bit count: rows lie below `2^row_vars`.
+        row_vars: u32,
+    },
+    /// The values of the non-zero rows are not `N` rows of `k` values, `N` the layout's count.
+    MatrixLength {
+        /// The number of non-zero rows `N`.
+        rows: usize,
+        /// The number of values `k` in a row.
+        row_len: usize,
+        /// The number of values given.
+        found: usize,
+    },
+    /// A group's column point does not have `log2 k` coordinates.
+    ColumnPoint {
+        /// The group, in group order.
+        group: usize,
+        /// `log2 k`.
+        expected: usize,
+        /// The coordinates given.
+        found: usize,
+    },
+    /// A claim's row point does not have `row_vars` coordinates.
+    RowPoint {
+        /// The claim's group.
+        group: usize,
+        /// The claim's position in its group.
+        claim: usize,
+        /// The layout's `row_vars`.
+        expected: usize,
+        /// The coordinates given.
+        found: usize,
+    },
+    /// The proximity point `ξ*` does not have `row_vars` coordinates.
+    XiPoint {
+        /// The layout's `row_vars`.
+        expected: usize,
+        /// The coordinates given.
+        found: usize,
+    },
+    /// An answer to no column query: a multiproof opens at least one leaf (RFC-0004 'Merkle
+    /// trees').
+    NoQueries,
+    /// A queried column index that is not a column: `n` or more.
+    QueryRange {
+        /// The query's position in draw order: the first that is out of range.
+        position: usize,
+        /// The queried index.
+        query: u64,
+        /// The number of columns `n`.
+        columns: usize,
+    },
 }
 
 impl fmt::Display for PcsError {
@@ -101,6 +178,66 @@ impl fmt::Display for PcsError {
                 "a row of {message_len} values takes at most {message_len} mask coefficients, not {mask_coeffs}"
             ),
             Self::ZeroShift => write!(f, "a coset shift must be non-zero"),
+            Self::NoMask => write!(
+                f,
+                "a commitment masks every row with at least 1 mask coefficient, not 0"
+            ),
+            Self::RowVars { row_vars } => {
+                write!(f, "a row index has at most 64 bits, not {row_vars}")
+            }
+            Self::NoSegments => write!(f, "a layout has at least 1 segment, not 0"),
+            Self::RowOrder { segment, position } => write!(
+                f,
+                "row {position} of segment {segment} is not above the row before it in layout order"
+            ),
+            Self::RowRange {
+                segment,
+                position,
+                row_vars,
+            } => write!(
+                f,
+                "row {position} of segment {segment} is not below 2^{row_vars}"
+            ),
+            Self::MatrixLength {
+                rows,
+                row_len,
+                found,
+            } => write!(
+                f,
+                "{rows} non-zero rows of {row_len} values each are not {found} values"
+            ),
+            Self::ColumnPoint {
+                group,
+                expected,
+                found,
+            } => write!(
+                f,
+                "the column point of group {group} has {expected} coordinates, not {found}"
+            ),
+            Self::RowPoint {
+                group,
+                claim,
+                expected,
+                found,
+            } => write!(
+                f,
+                "the row point of claim {claim} of group {group} has {expected} coordinates, not {found}"
+            ),
+            Self::XiPoint { expected, found } => {
+                write!(
+                    f,
+                    "the proximity point has {expected} coordinates, not {found}"
+                )
+            }
+            Self::NoQueries => write!(f, "an answer needs at least 1 column query, not 0"),
+            Self::QueryRange {
+                position,
+                query,
+                columns,
+            } => write!(
+                f,
+                "query {position} asks for column {query} of a commitment of {columns} columns"
+            ),
         }
     }
 }

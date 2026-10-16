@@ -142,3 +142,25 @@ All notable changes to the prover release train are recorded here: the crates un
   - On one Apple M4 Max core (`benches/matmul.rs`):
     - A contraction takes 1.14 to 1.29 ns per entry it reads, and the sumcheck 38 to 44 ns per instance entry.
     - A whole relation takes 1.23 to 1.31 ns per operand entry once its operands hold `2^9` times as many entries as its instance. Time is linear in the operands: `2^3` layers of `2^10` tokens by `2^10` inputs and outputs take 20.9 ms, and doubling the inputs or the layers doubles it, to 44.0 and 42.7 ms.
+- The reference tensor commitment and opening of RFC-0011, non-streaming, in `tessera-pcs`, for v0.1 measurements and tests ([#54](https://github.com/AbdelStark/tessera/issues/54)):
+  - `ReferenceCommitment::commit` takes `CommitmentParams` (`log2 k`, `P_A`, `B`, `commitment_id`), a `RowLayout` whose segments list their non-zero rows in increasing order, the non-zero rows' values in layout order and a `MaskSource`. It draws each row's `P_A` mask coefficients in layout order and encodes the row, chains each segment's columns with `ColumnChains`, merges each column's segment digests into `leaf_j = H("column-merge", d_j^(1) ‖ … ‖ d_j^(S))` for every `S ≥ 1`, and builds the Merkle tree over the `n` leaves. It keeps the rows, masks, codewords, leaves and tree resident.
+  - `open` takes the claims grouped by column sub-point, each claim its row point and `γ` but not its value (`ClaimGroup`, `RowClaim`), and `ξ*`. It returns the `G + 1` combined rows, the groups' in group order and the proximity row last (`CombinedRow`). `RowLayout::row_coefficients` gives `c_g(row) = Σ γ·eq(row_point, row)` and `ξ_row = eq(ξ*, row)` at every non-zero row. Consecutive rows share their high bits, so a claim costs about two `Fp2` products per row, and no table of `2^row_vars` entries is built.
+  - `answer` takes the queries in draw order, possibly repeated. It returns the columns of their sorted, distinct set, in increasing order, each with one symbol per non-zero row in layout order, and the canonical multiproof of that set (`ColumnAnswer`).
+  - The opening pass, `(G + 1)·N·(k + P_A)` products of an `Fp2` coefficient by an `Fp` value, keeps its sums unreduced, as 128 bits and a count of carries, and reduces once per output. It works on tiles of 64 columns, four rows at a time, and allocates nothing in its loop. On one Apple M4 Max core (`benches/commitment.rs`), with 17 combined rows and `P_A = 200`:
+    - a product takes 0.48 to 0.60 ns;
+    - committing takes 35 ns per committed element at `k = 2^10` and 44 ns at `2^14`;
+    - opening takes 8.4 to 10.2 ns per opened element.
+  - `PcsError` gains `NoMask`, `RowVars`, `NoSegments`, `RowOrder`, `RowRange`, `MatrixLength`, `ColumnPoint`, `RowPoint`, `XiPoint`, `NoQueries` and `QueryRange`, each returned before anything is drawn or computed. The commitment's `Debug` form shows its shape, and those of combined rows and answers their lengths. Rows, masks and codewords are held in plain vectors and freed without being cleared, as in the encoder, until #229 decides how secret tables are held and cleared.
+  - Every opening the tests produce is checked by the verifier's `tv_core::opening`, `check_evaluations` then `check_columns`, a dev-dependency with `tv-hash` (DEP-2), on claims whose values are computed in `tv-field` from the matrix. The cases:
+    - 1 to 40 claims in up to 16 groups, a group with no claim and no group at all;
+    - one to four segments, empty ones included, with zero rows anywhere, and a matrix with no non-zero row;
+    - `B` of 1, 2, 5 and 32, `P_A` from 1 to `k`, `k` from `2^0` to `2^10`;
+    - draws that repeat columns and are not increasing.
+
+    Combined rows and row coefficients also equal their definitions, computed in `tv-field`, and every leaf and the root equal `tv-hash`'s column digests, merge and Merkle nodes over all `n` columns.
+  - These are all rejected with the reason of RFC-0011's check order:
+    - every entry of every combined row and mask, changed by 1 and by `X`;
+    - every opened column symbol and every sibling;
+    - the other answers to a repeated, unordered draw.
+  - A cheating prover commits to one row's codeword corrupted at `⌈δ·n⌉` columns, `δ` in {0.05, 0.25, 0.5}, and sends the honest combined rows. On 10^4 seeded draws of `τ` ∈ {4, 8} queries it is rejected exactly when a draw hits a corrupted column, with `Proximity` at the smallest one, at a rate above `1 − (1 − δ')^τ` less four standard deviations.
+  - The prover reproduces every honest opening of `spec/vectors/pcs/opening.json` from its witness, value by value: the root, the leaves, the columns, the siblings, the row coefficients, the combined rows and their values at the queries. Every claim's value equals the matrix's extension at its point.

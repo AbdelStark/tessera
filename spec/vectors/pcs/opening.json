@@ -15,6 +15,14 @@
       "row_vars": 0,
       "commitment_id": "950c3e71043e18666b3e4b264efa0def793d44d02805a8c6b97fd72d5c9546d5",
       "segments": [[0]],
+      "witness": {
+        "rows": [
+          ["0x3ac552451b046f59","0x05e74cbd3d100ef7","0x0ff0f281dfe77006","0x8ac1bd68a78c1d59"]
+        ],
+        "masks": [
+          ["0x8c53b79b38694ee8"]
+        ]
+      },
       "root": "b3465009cb1702451b5b8412994370b811a0f841b4f62da5573bf1f8bd6b4f6b",
       "groups": [
         {"column_point":[["0x0b3df804ca00a37e","0xac69327ef6a36ad4"],["0x4930937c4be90779","0x7ded883878a592ee"]],"claims":[{"row_point":[],"gamma":["0x29ffcc1a77f50bc8","0x8488b000d0717260"],"value":["0x336f3322f7c4e019","0x657b6fcf0e7ad21d"]}]}
@@ -45,6 +53,22 @@
       "row_vars": 3,
       "commitment_id": "00101ff487ae6e11c223ec82c8bd664b08b3116593a42438793bdf19d5b66597",
       "segments": [[0,1,2],[4,6]],
+      "witness": {
+        "rows": [
+          ["0x9171d57e1f7d60a3","0xf6a0bc1f958c3d34","0xb18c2bd684d40f01","0x489b1502741fc0a6"],
+          ["0xfa4aebc237e80035","0x299be880716c20b3","0xad0998cbd76a145b","0xc760f31e08bb5438"],
+          ["0x5105e993fb8942af","0x1550922ee7dc1915","0x137c3f8ecb8424b3","0x687df1af65ab3910"],
+          ["0xb6a224ddb719caff","0x5f3c764d5529a011","0x5dce08a13f158e95","0xaebf9c14a86f9628"],
+          ["0x16c543c6fda528cd","0x615dfbe73c246e25","0xb7abf2d9f12f899d","0x06187692489dcf08"]
+        ],
+        "masks": [
+          ["0xbd2745c53761404f","0x178e43b26a1cd142"],
+          ["0xd9711764f93e76ac","0xe49ffbc972188233"],
+          ["0x3079c3cb996064df","0x4b16880e7e6598c0"],
+          ["0x7e0d41420cdd9dc1","0x059474d75a2f52d3"],
+          ["0x91dd37b0c3124128","0x32063cf65fd14b6a"]
+        ]
+      },
       "root": "18d8b701d1217911faa69fd018bbc44dc87cf192c1c6e550e1e971ec515af2e5",
       "groups": [
         {"column_point":[["0x3f2256217d4eb850","0x89bf374930aef2a7"],["0x45a4b6d2ced0d172","0xcb496bd3815ade05"]],"claims":[{"row_point":[["0x261ccf6bc44fdfd8","0x9032490f9cafe382"],["0xe408bd612d909f1e","0xfac743d16b25a103"],["0x0000000000000000","0x0000000000000000"]],"gamma":["0x8ddba445cab62789","0xbf5c2a5b1cc28641"],"value":["0x7b6158bed68f0bc5","0xad0d3aee28f9e709"]},{"row_point":[["0x26c78990999117f1","0x3cb53bd2b72cda6e"],["0x7ebb95b59a8f203d","0xcf008b491852af51"],["0x0000000000000000","0x0000000000000000"]],"gamma":["0x81935e5d2621f884","0x44fa5fff5b89d97f"],"value":["0x8499d1ad6a80d16f","0x1ace3f6ce4f7149d"]}]},
@@ -81,6 +105,18 @@
       "row_vars": 2,
       "commitment_id": "d88a6d654789bd4a70fce68ebbe87b740f0e4b8b820058bc5644e7d563b666df",
       "segments": [[1],[],[2,3]],
+      "witness": {
+        "rows": [
+          ["0xf8351a9fe58d9fc7","0x2102c24757cc718c","0x3c8aba275ea948d1","0x48d797244d3f8ed9"],
+          ["0xfdd01cea0d406a13","0xff3ff9635fdff85e","0xc22b2fb831a8554d","0xd23dd81eb08be6c8"],
+          ["0xf1ad83c30e101781","0x0ddde3fbc899157f","0x46730c01157db83a","0xa57130c5574f8076"]
+        ],
+        "masks": [
+          ["0xa9a182b2c221b638","0x2e6fc5bd014906a8","0x17c4df6a8224caeb","0x113fe48f2cec72b0"],
+          ["0x53114ce770521bcf","0x02a084acdfd5add5","0x82d48569aecb9118","0x9080de8d51d52ff8"],
+          ["0xff644a45f4705ebd","0x071b3697ee92591f","0x76b363d8aea42906","0x73f9a97d6d7da33e"]
+        ]
+      },
       "root": "1ae7fc0da53c1a011f1100fa1ffba4d384ee1c6a4ca83ec90cb0f0646b9ddd3c",
       "groups": [
         {"column_point":[["0xde4d0bdd9467d741","0xac9565774a9f5e49"],["0xee399fe962eb3663","0x0afdf71db8b1eb0c"]],"claims":[{"row_point":[["0x6564933c186d097e","0xf2c9406419f64172"],["0x227c288beed25e75","0x7d8b5db9fb1fd11c"]],"gamma":["0x1ba63a6fca75557e","0x016ce82ee62ce74b"],"value":["0x53e8cf975e71c947","0xab68b16654a42606"]}]},
@@ -114,6 +150,20 @@
       "row_vars": 2,
       "commitment_id": "cdfa3a03053f6f1562be920f82113186c120449545b5c68d7920c78d803d926e",
       "segments": [[0,1,2,3]],
+      "witness": {
+        "rows": [
+          ["0x5c5751506ceb7f23","0x13e9233da5384849","0xc4f5db51d8d2babf","0xfa056f9ee867aef5","0x5524b6d3e879a875","0xe7370e28ddc11c81","0x13281a0aa0239935","0xcf2afc7b99beac76"],
+          ["0x8a88ed653b2a4a45","0xffe8120fcb869752","0x1a38513c5be95622","0x02556fff3d389555","0xf5ec61876d5e30e1","0xd5399575b713554a","0x48df85b5ae3551e3","0x8f408940ffbb7a08"],
+          ["0xe8bb99c7171af49b","0xfc351f5867ceb178","0x3204281d554b5db0","0xef08da12844ed6c8","0xeb2fa0cedcb61692","0xe5ecd6bdadfbf850","0xd8311b0943a60f14","0x33a658fa5b0eee41"],
+          ["0xe4f378377262fe85","0xb1e0d7d454e9565e","0x664f2bad88e27acb","0xe7cf73d6a3601193","0xe73122a3e9f6290f","0xd8ab42642eb1a5ab","0x96bd8fbfd5be7973","0xfaddf7e189112429"]
+        ],
+        "masks": [
+          ["0x5a2232f5e3b55cd7"],
+          ["0xa5be3c89cd1c49a8"],
+          ["0x0124fd188d90dd85"],
+          ["0xd893bad65e69df65"]
+        ]
+      },
       "root": "54603ffbe723ecd44b1b091de1b086fcfc25a0b39de98de217df2dee51c0f57b",
       "groups": [
         {"column_point":[["0xba715801372d0910","0x598dece4255dfda8"],["0x5b4617caa179b99a","0x5f601e5af69ae8dc"],["0x6d0dc91655482600","0x8617015a4fe06bb2"]],"claims":[{"row_point":[["0x0bfbe92de4fcd412","0xf16ce9ee10539273"],["0xd500c49740ff65a8","0xbfdfec704d6c635f"]],"gamma":["0x73cfdf72fa15ae3f","0xbfe8d52c023152b2"],"value":["0xaadf39bff9dc5356","0x0345535cac90471d"]},{"row_point":[["0xcb8c0203d08a53a4","0x0f1bf5db2ea8bed9"],["0x685af934250c17f4","0x68ba21ad332a1322"]],"gamma":["0x5f8d4c51db94b0c7","0x176ea61f2531d09a"],"value":["0x501906244e53454c","0x57db1f91ce736026"]},{"row_point":[["0xed49f7742e2d8ba4","0x87976b36308ac82e"],["0x4329629ba0717876","0x31baa66bd221ef47"]],"gamma":["0xb98cb0946fe328b4","0xa8034ff8eed1142f"],"value":["0xd16c674ab1c7cf99","0x397a0f26c711004a"]},{"row_point":[["0x9497e9bdd1fd0685","0x13d2ee6720014baa"],["0x238b503d47763cd7","0xa360c987f0e9f03d"]],"gamma":["0x3b1c00adae6b006e","0x03cff6e6f44ef5d5"],"value":["0xa7dd845f825db066","0x91b7a2f0e9a3cadc"]},{"row_point":[["0xbbebe7af41acb7f6","0x07bd8be1d5e9cc7e"],["0xce4923cd9213a7fb","0xcbacc6d7261c997c"]],"gamma":["0x633d5ee9e140e7cf","0xdb53f185d5342324"],"value":["0x45f89b062363a2c9","0x38fff1c18c215ec9"]}]},
@@ -146,6 +196,24 @@
       "row_vars": 4,
       "commitment_id": "ccc1c0c36b553f34bec8d08a8db8aeb08db1fdfb4bc143b4302f48280ff8e73b",
       "segments": [[0,2],[5,6,7],[12]],
+      "witness": {
+        "rows": [
+          ["0x6056344d880489ec","0x9f335422fbaf9146","0x81785baac1516d1e","0xa8aee3bb7be5540d","0xbb046c88a150abe5","0x525adc78c10154f7","0xe53c19001ef72dbb","0xa2e79d31abcea7c5"],
+          ["0x7a30caa78bd54b77","0x92249a24e1ed69a1","0xbbd0c6d5297e1aec","0x0fc5ed500df49030","0xb25e958095672df9","0x16d088a1966c5bea","0xf8365666e6e7f782","0xa9c88e75c644ea27"],
+          ["0x2a8467078574ed46","0x615b5d5704a87a36","0xe926cd5810fe0af7","0x3f59829fb5f10569","0x5b23e822a5e86568","0x50cc686095859e8a","0xc72c4be86b3e5d9a","0xac2fc974e56c85b3"],
+          ["0x099e498298b2537b","0xc9d6df4c2dfe1da4","0x3b7a24a03bb7c201","0x4fbbb2fc6d6fa63c","0xa449725708da052f","0xb55dc49d5015734e","0x529311af22dd3b90","0xfa0ba8aa587b2cdc"],
+          ["0xa4f774bfbff40a51","0xe8c48d692a73fac3","0x5f11b1b3589f1e39","0x4262d8ed98a403db","0x7ccef154b44da512","0x8973052a4cbdf02a","0x75fdd61e21ee0924","0x3f7a6cc626bf4bf0"],
+          ["0x0e8a105726f6aca9","0x675cd90267bb6452","0x7114539400bdbe5e","0xa160bacf76700c3c","0x64c797b32339ac24","0x7078b047bd026049","0x3e7338a0ed44b470","0x29cda2e7477b20f3"]
+        ],
+        "masks": [
+          ["0xd33cb4bb00f4d392","0xec099f70a80eeb2d","0xe02c42c8e0972cb5"],
+          ["0x16f48ef506fa0524","0x4d9d34a7ed7dfbe2","0x8c9ec646662b54d7"],
+          ["0xb68b779e3759da0e","0xeffa65784e17fc66","0x3f47d004da65a343"],
+          ["0x8ffe38dc7817b3e8","0xebed7138723910ef","0xf22ecd478fbfa8c0"],
+          ["0x8efa28d34f55531f","0x2dacb9938616e83b","0xa00851ecf94beec3"],
+          ["0x0ba8b9c59062070c","0x7ee061f22d2fcb61","0xa1c8a0ddd144e967"]
+        ]
+      },
       "root": "cc22842d56b15c2e5f21ba833934a73bf856a677a4c8ba480c8281d78dcdd032",
       "groups": [
         {"column_point":[["0x21934fda10976838","0xf9792b2ef8f70c13"],["0x18017c4d70b52ffc","0x4a2ae333009f789b"],["0x7f1cfd29c896c307","0x200633b6e1f96db5"]],"claims":[{"row_point":[["0xef44499a748d3136","0x36524b4d315507b2"],["0x509c0f50a04573c1","0x61e13cc5bfc05053"],["0x4bee84774e18e51b","0x53e75a004d6c91be"],["0x6c4ea600d8afe43a","0xd5f8563065e8cead"]],"gamma":["0x6741a48f876d703f","0xe7ae47a4bc86ab57"],"value":["0x09aa45b64bdecbbf","0x773ba9a603db61de"]}]},
@@ -185,6 +253,16 @@
       "row_vars": 1,
       "commitment_id": "1839c5f23395241a85cfcaef53b07a568799ae38c896d59dcb29ad363e8e6720",
       "segments": [[0],[1]],
+      "witness": {
+        "rows": [
+          ["0x02ac51fd0ef66a56","0x1dfce51c11cbac7a","0xf657aa845853f5a8","0x544fa0034d68f2ec","0xb5ab934fa7059285","0x46fc0b5fe3f03ed0","0xb845d0e2d28f5b14","0x4594af50a95d2945"],
+          ["0xf8dcc2faf10f5e51","0xcfb1c94190156f3a","0x47d3c093bd8befbd","0xe7307cedf263336c","0x973104bd29b9dbd5","0x6859187e74196579","0x1be8577d58c76f38","0x5aeab1ed6d0b61a0"]
+        ],
+        "masks": [
+          ["0x7aee7d4c06096418","0x4697956a94e6b3bf","0x7d45ee90392582e2","0x8ba14b9c320326b1","0x0c8f88daf3c43f1b","0xb8b53d3cb7da11d7","0x58f88ac58c260535","0xb7e40af9391a7ddd"],
+          ["0xb8f3f6ee29d4bdc7","0xcf53b2a916a25686","0x7394bf609b00a8e2","0x9420024a4f07b8c7","0xd50b24b85af67b68","0x5ba5bc667c6b589d","0x15579921dbef5f25","0x9fc0b5e8f58060f9"]
+        ]
+      },
       "root": "620b102746990c7db45d53cc16b1470484987c256adc2b236984018a97bdd125",
       "groups": [
         {"column_point":[["0x8c828dd276d148c9","0x461e01ac2e500a87"],["0xe57364fbfb94543d","0xed5d27bb608de260"],["0x4040f172785ef1bb","0x1920aa2b53c88e65"]],"claims":[{"row_point":[["0x4fede5ef19282511","0x569dad5b01b40b73"]],"gamma":["0xb77f10b1f7bad3f6","0x937da7d344d5cddc"],"value":["0xf3d3f0b6aac310e2","0xef20ef6bb3643993"]},{"row_point":[["0xbf3d17ccaf0bca20","0xf85a1526e79bd306"]],"gamma":["0x606584df8dd4780d","0x54fab95abfa1b459"],"value":["0xfa879b8177dbb5b7","0xfbbec94708fa45cd"]},{"row_point":[["0x0000000000000001","0x0000000000000000"]],"gamma":["0x66a540cba7a1b784","0x926f802516d34ebe"],"value":["0xc7341fc8d75fcfa5","0xc2355a329c896d29"]}]}
@@ -219,6 +297,22 @@
       "row_vars": 3,
       "commitment_id": "3d1a8f21f0d43423bcb6bff2b0f9a097c592263bc179df943def9f6b5492f984",
       "segments": [[0,1,3,4,6]],
+      "witness": {
+        "rows": [
+          ["0x4b0443b0fa28a264","0xc4485d1346766106","0x41ae96fb754c2d7b","0xc23c4de543f1622b","0x486cac2ddc0c7908","0x6c1e14990ccc5f7c","0x9c125eb51c85504b","0x6d7d8e94e88ca1da","0xa9b7ad678c331055","0x6bb2016ba891d96e","0xb1988c591a23c0e5","0xb324290fdd527768","0xa8bb0011917e3595","0x0be1712edc2cea91","0x7880f42ce3e4c764","0xb51501a9bb7f46ce"],
+          ["0x04206e8d22195a05","0x61107c343a86fb4f","0xd84ec92385f29deb","0xafaa1cf9394ed4fc","0x7bb05dab2f3b4d0b","0x896fbe508efcd95c","0xe9fcc9a4c7e34e68","0xb2e44197a8007d01","0x44f79b451a38167f","0x18ff8d2a262a1f62","0xa81577b483cff80d","0xfc2bc4ce26445506","0x9aa676459f461ee0","0xdb6167ef294559cb","0x600421c461da9b00","0xad0f3d029ee2a8a8"],
+          ["0xfd17452193726c72","0xa547cd91d3f9b894","0xbfc96cc4297a03cf","0x056f9abb80cb8c32","0x19e4b34e30213bea","0x53bcd5ef41efd310","0x66c75ae2b09a8a2d","0xe980697e2da69c14","0xc41396bc7873660f","0xa90abb66b142215c","0xef648330e69aba6b","0xb4cfafeb8bc01702","0x8d924f98a835bcff","0x805ed2b182c46445","0x21e024216bd115f4","0x9ea5e4f8194b2243"],
+          ["0x262a2120c7d425d7","0x0fecaba25be34be0","0xe096d260b5bec39c","0x381bcb5bb8986322","0xdbf60e78b3b30f04","0x57746d3127733615","0xca8f5d592d73a8dc","0xa2e0b2c85addbfc9","0x00b59fb7f07fffe2","0xbdd4e5e693991cc1","0x6be93d3e9f0f632b","0x88d0e289b1fe5209","0xa03396b5a9585c0e","0x19d2d6db6a91159d","0xa38295658ca4fd8c","0xd186c061bc78b50b"],
+          ["0x760bb053f306bba0","0x32bf9da39d39eed7","0x4999aa4d93ae8e61","0xe06c754f00e5480f","0x12939ee0a892c013","0x585be6b70b338fe2","0x1d531f39fa13da40","0x00653e86e48d7d3a","0xd097f74765155be2","0x75c49b20a5c0c199","0xba51de3c6a10262b","0x3b1e9439f44354df","0xf8378ccc6b4145f4","0x54fc18361f384a82","0x3511892db84dfa50","0x56a67c4039a5a5cc"]
+        ],
+        "masks": [
+          ["0xf2c15d0f70e08d8d"],
+          ["0xfe5702498c5b381e"],
+          ["0xa4f7c208fad44696"],
+          ["0x366fddc5c1382ad8"],
+          ["0x78d0cb60025ec1bf"]
+        ]
+      },
       "root": "2a590974d147cfcd0ec2436384b2e3f549502b1dcf130152dbc581d7b5e14b79",
       "groups": [
         {"column_point":[["0xd709688a70f64c3d","0x8c40766e0220467e"],["0xc85611f9dc6f333d","0x708ce5d3b382ef55"],["0xd0cbd44fc6021f63","0xaa528cb26b750fae"],["0xde126ea46a9a1475","0x17cf5dfb8a49c3ec"]],"claims":[{"row_point":[["0x78f377bdc5367d53","0x9a046bb50afa8a83"],["0xe2d049a46957dbef","0x4dc57b3f37a8d2a1"],["0xda398cd04d8f91cc","0x6297097b6a41f008"]],"gamma":["0x0c8ed00f4e83c464","0x3c5b918d552f90d5"],"value":["0x2981e21f6cdd0fb5","0x7815f8259ee73c52"]},{"row_point":[["0x2b5a89b577db3957","0x12f7383d8dc828fd"],["0x3d283e46ea79dbc5","0x075861cdb2f4ae8f"],["0x0000000000000000","0x0000000000000000"]],"gamma":["0x275015c5582d75fe","0x3162c0f95fa869ed"],"value":["0xe8139a5d3a9b98c7","0x96700164eb5aa047"]},{"row_point":[["0x46f3b1baf8e80202","0x31edf16d5caed9d3"],["0x0000000000000001","0x0000000000000000"],["0x81bbad5238b371e9","0xaac5c14d03fd93fb"]],"gamma":["0x7917766a7613046f","0x5bc86f4308225374"],"value":["0x198db0f1c7b5dbca","0xe13d3ca880bc3237"]},{"row_point":[["0x09ba003b0ed4ba77","0x696f19733b356116"],["0x4e9faae135399c5a","0x83c80c1c91ff1a75"],["0xc7077b1134d4801b","0x882f7a2efad9e591"]],"gamma":["0xa66b49a272c51701","0xd1d2486750b936e7"],"value":["0x44a4772e85d1eb64","0x74b2563e758531a3"]}]},
@@ -257,6 +351,18 @@
       "row_vars": 2,
       "commitment_id": "6afb8b966855869eb4b2171f703b9afaae7bfd3164c17473ae198ea7e04d187d",
       "segments": [[0,1],[3]],
+      "witness": {
+        "rows": [
+          ["0x1b457a621769df6f","0x2efbfd839cecfe18","0x3f809ae0a280b441","0x54d78cc2e6995fe6","0x140cfa5c325808ff","0xd884b38ccb161b4e","0xbd70f0c05dc5ff8c","0x6b327e1b6a4264df","0x2b18920549ceeb5b","0xc75474e00ec82a60","0x5bb4b1ec37593ee1","0xb431fb5104ba2c5f","0x842f4085e34f573b","0x86b9e62dbac4d4d2","0x96ee520e6946e4af","0xfbd5831359e824fe"],
+          ["0x644b74725d58e234","0x828ebdc58dac3818","0xa48852d53e4227d2","0xc8ece5401a65d418","0x4659c8e6e016fd5c","0xefb3b4819ba544d5","0x2c90f9f0c2eb53c8","0xd6af7a1efe453817","0x8b6ac2bb35b2dc6a","0x9f5ec9fbd85a7219","0xfc70818a73a22dfd","0x641c243fb32e7d5d","0xeb7a5eb661527269","0x3afed13f58a274d4","0xd0fca790b53aedb3","0x36373b98594d4e0e"],
+          ["0x9a19b428dcb150b4","0x59e968a9b665bcaa","0x919bdba3aec0cc43","0xf933eb32da125c3f","0x2fca0c955ab0c44b","0x76d0220e7a09eee7","0xd046ba935f4c3e4a","0x2f519504510dfcb8","0x64925ae88ede7d24","0xf4292eb8d8c65e68","0xa8cb31a7ffacf3c5","0x57646a89c8faca02","0xae16dcaf25a698b4","0x1ce6b6a17bf3b973","0xac16750f2556bd0e","0xb7081245890b865d"]
+        ],
+        "masks": [
+          ["0x2f6c1a046550f08d","0xf6f5dede9077c66b","0x2fc42b8d4c222c69","0x3c5aaf9ccdfb3074","0x77df5c97b4bc0632"],
+          ["0xd1edefacb91eb658","0x140222b39504b234","0x23dad677083a7e79","0x5d2cdb0e8dd38385","0x468cc42d4fb2553b"],
+          ["0xbce349630dc43596","0xb79503ae4e2d25e1","0x78c59cfe5d10712a","0x11d2e08d33159eba","0xf496224db3f572ae"]
+        ]
+      },
       "root": "1679040cc573d4f88f1093b3010f65cf84eab7d194bcd998a57d22d697113aee",
       "groups": [
         {"column_point":[["0x651bc481ab09d3a4","0x1a8fda5542618b2d"],["0xe861ed4ab4378a98","0xcd8bc538de60216d"],["0xadb74c438bc10780","0xd2f30cf2fbb2526d"],["0x3de72ca2617b5178","0x74ccf6822c8629de"]],"claims":[{"row_point":[["0x79c2a34820535e76","0xfcbfb1d7e4f961f0"],["0xcb6103e3e082550f","0x437fad5df962296f"]],"gamma":["0x71ad8b5a9050fff2","0x5c024a9cdf0c391c"],"value":["0xe2cf691455e2710c","0x0127dcea17686bce"]},{"row_point":[["0xaa598c736cecf279","0x6e7167cccba3fe20"],["0x0000000000000000","0x0000000000000000"]],"gamma":["0x5124cab5844bf0dd","0x238abed0a64206b7"],"value":["0x441f2bd89ec62e4c","0x58705529fe55ab59"]}]},
@@ -294,6 +400,28 @@
       "row_vars": 4,
       "commitment_id": "2d15a20cd2eb5d8f103a155e1341be47c04572fd09aec0b914c9f03a0e581a9d",
       "segments": [[],[2,3,5],[8,9,10,11,13]],
+      "witness": {
+        "rows": [
+          ["0x60e271a99bb32d96","0x8f915da164996325","0xbda22d4ae81d5667","0x381c9595cbc4653f","0x9ae57f425f8dbdaf","0xe1f8ebdf3130b622","0x401f33c55ad94bac","0x7d9fe5f25f9cf9c9","0x5092407c216a8547","0x32b4ab28d6dd65a8","0x88b7dcaa2bcb88ff","0x46a4c766d536c025","0x3a5bc33d56e0bb06","0xc2f54f02660e7a00","0xbad3a9fdb9033e76","0x423f12de1fbd4022"],
+          ["0xf898882c6f10dbd2","0x0d447f99b42cba62","0x175a59b5f95d168b","0x00efb2c718264934","0xa0c1e8f6dff9913d","0x9c96bf60af89ecec","0xa2c77594921b9fc6","0xca1c845c681bb956","0xce51beaae9719592","0x00d1c1f32d1b9da1","0xc69c883e1e01157f","0xefea472f92f363cb","0x6f447a480071f453","0xe4bc1c2505d847c8","0xd4f69c24908dd692","0xecb15f684a349325"],
+          ["0x4cb04eed14f9e243","0xe8daf364867f949d","0x98734568ae7a541a","0x873fec2f71fe1fc2","0xbf51eaae68acb305","0xd5ef4e57ad7fea97","0x310e41ebf4859cb8","0x9a2eb072cd034a6a","0xb6e09339348ca596","0x3aa7bf4041fa5be1","0x5579b21342996245","0x5a0d8a6ea8bf18c0","0x48d49db6e90ea50d","0x673eba8a87cb797f","0xa5d2c64a244057a8","0x42128db77e230361"],
+          ["0xf6ade693361b065e","0x5ae2ea76a290620a","0x26bbefc2e4e76704","0xeb161149d473a06a","0x94bf636a963fd6c6","0x8ed0c4a93ea1ea80","0x35c579e09fea4bdc","0x7194eec66d3f50ea","0xbbf8b2d1d8bbb8d4","0x958249b18b150489","0x0c61becb05d9e1f2","0xeb63154e627a6b40","0xe3f2f47bb44290a1","0xad3facd06ce0995c","0xd641c778b31ae3dd","0x506d228d5ccdaa42"],
+          ["0x606e0328713959a9","0xb5176fe35b49c67d","0x5ef74c1af9667624","0x3bf84181caeb78fa","0x7d6b0b677e15f8f8","0x7fe776bfa2e103bf","0xe34b1b446d216b6c","0xeb2f7af3005c92fc","0x181dea7155406a64","0x5cdcbf41d675faa9","0xd4323c70e70501b8","0x94e0fe62e2c54617","0xe4664a5d25b7b95b","0xef3a61b7023d001f","0x662e178fd7972d44","0x8ec1eabcf69d62f6"],
+          ["0xe881ebf1aafba6f5","0x7a6dcfbf2857f0a7","0xf648b522f072d8f1","0xdae4f091045318ce","0xb0f13e0d73d73fb5","0xc2d076fec9a65943","0xc882104a5f9d4f5c","0xcb986d770d9bbe26","0x14c6ff83ef63530d","0x863ed42928d03295","0xfb4ae457533521a8","0xc674ec18b47a61b0","0xce624d56695f31ae","0x205c5392e0832be7","0x7cafade8955c0d0d","0x8e47918aa21a3541"],
+          ["0x91aef673c39bfc20","0x568742ca317fdb32","0x830e013cffd7d501","0x861223049facdbad","0x2745b453db32fbab","0xd08d41d7b33212a6","0x60789ed169d294c6","0x2e37a3745acc5635","0x88170196d8d1d80e","0x6043efca1202717d","0xbaf8af6a2a22f715","0xcbf63921c029ae4f","0x751ec075b2f78884","0x4f74e63dacf4b6a5","0xda7f929b4609a7e4","0x87d87e4cb1ef0529"],
+          ["0x7f4b34388f81b4ac","0x96430abf31b0e357","0x6769124a2f75c7c9","0xde0e0dc902ade088","0xa2d4e42ac2ebc6a0","0x14c7f95db734d0f9","0xeb5e3259c456d318","0xa00b917669d13d67","0xb624bb641d18277c","0x08c6c8b0f5f35104","0xf56330d89fe3e7f3","0xeec298972d1634a4","0x64c3e6be79fccdd7","0x3de2e509621038f8","0x1e7ed2dc311db50b","0xf8c000a6b8d28263"]
+        ],
+        "masks": [
+          ["0xe2b69436919b0c6d","0xd55ed130b36de442","0x658efe1b3bb4e373","0x15693377285a443b","0x2d576bb0ec180580","0x9a864b70ca42bff9","0x3dc0f99b264e0f65","0xdd426d4cbc8303a5","0x84893e925963ecfa","0xfc71761d1dc12f9b","0x46e89c7c7d25f6d6","0x4ccb2decc2229a0f","0x336e52b216575342","0xa94facd344c76b82","0x4e4f1cdbdab1ad53","0x5f08403462859dc4"],
+          ["0x4363a00505bbd1e3","0x249994f7083faeff","0xcb6a07191d5ac533","0xab6cc7130e36b541","0x26ddee684b8c4905","0x19a2557dda433924","0xc58cb0f77649bcb7","0x08dbfca55d4b5c19","0xc9f2d3f7cc192461","0x4563b37a0e900239","0x0d00d7c636005c0d","0xbe06fc3525ca77f4","0xeb48cf5231c0d22b","0xd82589e1b16f9990","0xf4941abba439c8df","0xfa0afc4c5e7ba3d5"],
+          ["0x2d9339fe147ec8ed","0x9af29f6a1f09d4b1","0xc88fcd3e6b0a1082","0x07a3c6f485b6caf5","0x14320972f6b13182","0x0a67f281d81e5425","0x0663655a8795a209","0x7fbc96eb56d031ac","0x9ea31530d09aae44","0x23ae0a511b14fd75","0x0e92eefb02819caa","0xb503473a5bb1563b","0x67d8ad1bf0955024","0x5e8cc36bbf28c510","0xdac191172c0d6478","0x583bde997110010a"],
+          ["0x96190e0944948632","0x4daed3e6817d8c74","0xed7ab6f276ed0f0b","0xe6458d9c54c8af83","0xbdd04f0be49363d5","0xa18f3b646a764d4a","0x84ece4364ae9054c","0xc802539b89b970d9","0x616e82cf788e21df","0x2afc98820288a98d","0x9d98b0226ab317aa","0x32d15df383f743d4","0xa97a1693b89b3bd2","0x49e74860cd5d6d08","0x1a0e860fdb660d49","0x92859cdd3ef23120"],
+          ["0x0a65417b92a3f094","0xe15b6ac51a319610","0xe60ef3d7647347e5","0x92ee60a6dfb37222","0x3987be71d5bd847b","0xf5a8b96728e8efc1","0x565385989d90e55b","0x7be257b80d9b6056","0x4f15549b484bc682","0x51f0f04f56eb0b07","0x1c514725ea84183f","0x55eff33c43fca5f4","0xefd4f796c8814ca9","0x4d461cd7d8d0a86a","0x00c8b59bbf846fac","0x7de422e9df552192"],
+          ["0xb54946773674263a","0xc8ef7b5e4bd1c9dd","0xb8157bbb9311cdc5","0x655280a8dac5bc08","0x9dfc0b1545d7e258","0x779b4b876caad4a0","0x2078aa3c49c35c6b","0xb6cef7a9c7cf4ce8","0x9ec79ebf301c00f5","0xa6ba1fbdffaaf26e","0x31bf24de36581dd1","0x7855fce1638170d3","0x59acd1e9240921b5","0x638155341bc6e561","0xb4f6c009497e5652","0xe6a466ef6765becf"],
+          ["0x263854c755f97987","0x7e9c34e33744c944","0x4637337ba0bdaaec","0x38a1e1259f1d4ad5","0x9b170085e984437a","0x445cccb1e791b481","0x9467bd14eb7a7e79","0x24b86507d62e8f1f","0xfcbf78d291913ecf","0x73b6dad1b3581596","0x36590c160182780a","0x6277852dac3326be","0x213d42b0e11c7f5f","0x26a07ad567fe0f4b","0x8492be52fa38ed28","0x341dec127da953ac"],
+          ["0xa6e8eca327eb0fe3","0x43787ab8d189e71c","0xea8d3fa7639a6851","0x89a0b3ce3aa1833a","0x9b96b16c919c9005","0xd4b87f416e6bcc6d","0xf990cbb5458a4d60","0xacec1aa715dd0b60","0x35665a9b6e4cca85","0xcc9e4150e4bff52e","0x5eaa78db8d1b74ca","0x9b5e97ce8d8ede9b","0x2fd8feceb47329b3","0x849132890e764623","0x8120d70a136e3c99","0x3129823782b1a119"]
+        ]
+      },
       "root": "a81354f0c09465ab7d5e0ea4a114e95a907dc8a9739eb60095e4ef496be566bb",
       "groups": [
         {"column_point":[["0x3c9a90454b4a6050","0x38d34433c51ad104"],["0x1b59d274710b44a5","0x6ed9711a0142fe1e"],["0x202a62a84b91674c","0x1e368d9eb818d7e7"],["0x8e2d1390c56038ac","0xc30162ae3db433d7"]],"claims":[{"row_point":[["0xeac318ec63fae313","0x111141460b5d7730"],["0x13ef8d7092104a09","0x0436d571811fbebd"],["0x80b08f0ac5326552","0x639f28bf7cf54508"],["0x91c56c57c9f11588","0xfb16e2d3d5a07cb0"]],"gamma":["0x467aa96b08a22a31","0x7bc66e5a10dd90a2"],"value":["0x299d6bbfcceb329f","0xc165c95e201def5f"]},{"row_point":[["0x07f6320774e5b987","0x903dac0c9957643d"],["0x10f307e7635f6280","0x34d67c6698fb457c"],["0x45431088f16c2d12","0x6aea4f81c4d78d2d"],["0x31e6355a677aa731","0x6512e4066a4946d0"]],"gamma":["0x424da84d3b8c06ca","0xb5d57bcd3e4078b6"],"value":["0x48e39a974f7ec1f7","0x5ebb244260bbabfd"]},{"row_point":[["0x87018a7beccd3b48","0x2cb900cb0ac45be3"],["0x5e298bc5622d913e","0x8f3d307b75346c92"],["0xef30aebd65e3cb70","0xf3f67fd684936916"],["0xfe62e24bdbdf8f23","0x6e75c4794aa81501"]],"gamma":["0x146cfd29ae0749c5","0x38cf7c9d048ba19c"],"value":["0x7d92d4eef360b909","0x6f46552b32e04559"]},{"row_point":[["0x09a3a7427790ac2b","0x2bb736ca90d479fa"],["0xc91e90ad737f277e","0xf1fdc0eb09c5e6b1"],["0x0000000000000000","0x0000000000000000"],["0x0000000000000001","0x0000000000000000"]],"gamma":["0x7016024415416142","0x1f09b28bd6bd6adf"],"value":["0x39294311bcaabd33","0xf10cc4fad1e04398"]},{"row_point":[["0xbe2feabde44e1e09","0x7b9e458a8f55e1eb"],["0x2e5446e17b125dec","0x63dc9fc2a3a8d45c"],["0x4a6d54454c337dfa","0xfad28a04eec0b87c"],["0x0000000000000000","0x0000000000000000"]],"gamma":["0x322bafb0dddd6391","0x9037afac134d8466"],"value":["0xd23dfd9b441f6501","0x1eeb01038abc59f8"]}]},
@@ -335,6 +463,16 @@
       "row_vars": 1,
       "commitment_id": "1f97c441c2d77aa943e129fe07e8035d72c38f4f1a375704f59e28a6727f94b2",
       "segments": [[0,1]],
+      "witness": {
+        "rows": [
+          ["0xdad8dd031ffcde1d","0x808c324b139db44c","0xa2ce252af52ffd10","0x57b74befa18cf263"],
+          ["0x34617e3da07c5cfc","0xf165d21bb1b08702","0x52eb9ae567f40694","0x2e11891a62dbcef3"]
+        ],
+        "masks": [
+          ["0x9cf72b203f430bae","0x62a6e809cf191d26","0xdfdfea42dd62faf6"],
+          ["0xe2d93898954d22aa","0x177ff46c5b669dc4","0xf5844a264902d267"]
+        ]
+      },
       "root": "4aa12bcaa3a2111cb7d159bfd1c5e146ac4bcc483927d3cb41cb7ee3200a157d",
       "groups": [
         {"column_point":[["0xbf0dcd7e327bbc06","0xf45b292639163929"],["0x3eb2b4892b301ca1","0x5d64e23b06a983d5"]],"claims":[{"row_point":[["0xa77e59151b78dae8","0x7cfbfb25bc2f74a0"]],"gamma":["0x855599b2fe009d3a","0x221b94019d6a8074"],"value":["0x4a633208f2c4e3ae","0xc6b37e3a059c7872"]}]},
