@@ -1,4 +1,6 @@
 {
  "description": "The pinned constants of RFC-0008 'Fixed-point generators', each the floor of the constant times 2^64, computed with Python's decimal module at 100 significant digits by generate.py.",
- "LN2": "0xb17217f7d1cf79ab"
+ "LN2": "0xb17217f7d1cf79ab",
+ "TAU": "0x6487ed5110b4611a6",
+ "HALF_PI": "0x1921fb54442d18469"
 }

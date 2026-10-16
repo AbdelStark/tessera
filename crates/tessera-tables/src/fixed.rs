@@ -42,3 +42,60 @@ pub(crate) fn exp_pos(x: u128) -> u128 {
     }
     y
 }
+
+/// `⌊2π · 2^64⌋`, pinned in `spec/vectors/tables/constants.json`.
+pub(crate) const TAU: u128 = 0x6_487E_D511_0B46_11A6;
+
+/// `⌊π/2 · 2^64⌋`, pinned in `spec/vectors/tables/constants.json`.
+pub(crate) const HALF_PI: u128 = 0x1_921F_B544_42D1_8469;
+
+/// The terms of the series of `atanh`, whose ratio is at most `1/9`: the remainder after the
+/// 22nd is below `2^-69`.
+const ATANH_TERMS: u128 = 22;
+
+/// The pairs of Taylor terms of `cos` and `sin`: on `[0, π/2)` the remainder after the 13th
+/// pair is below `2^-75`.
+const TRIG_TERMS: i128 = 13;
+
+/// `ln n` in Q64 for an integer `n ≥ 1`. With `n = 2^m · u` and `u ∈ [1, 2)`,
+/// `ln u = 2 · atanh(z)` for `z = (u − 1)/(u + 1) < 1/3`, summed by Horner's rule over `w = z²`:
+/// from `a = ⌊2^64 / 45⌋`, for `k` from 21 down to 0, `a ← ⌊2^64 / (2k + 1)⌋ + ⌊w · a / 2^64⌋`;
+/// then `ln u = ⌊z · a / 2^63⌋`, and `ln n = m · LN2 + ln u`.
+pub(crate) fn ln(n: u64) -> u128 {
+    let m = 63 - n.leading_zeros();
+    let (n, top) = (u128::from(n), 1u128 << m);
+    let z = ((n - top) << 64) / (n + top);
+    let w = (z * z) >> 64;
+    let mut a = ONE / (2 * ATANH_TERMS + 1);
+    for k in (0..ATANH_TERMS).rev() {
+        a = ONE / (2 * k + 1) + ((w * a) >> 64);
+    }
+    u128::from(m) * LN2 + ((z * a) >> 63)
+}
+
+/// `(cos θ, sin θ)` in Q62, signed, for a Q64 angle `θ < 2^100`. The angle is reduced modulo
+/// `TAU`, then to `r ∈ [0, HALF_PI)` and its quadrant; Horner's rule over `s = r²` gives
+/// `cos r`, and `sin r` from its series divided by `r`, both from `2^62`:
+/// `c ← 2^62 − ⌊s·c / ((2k−1)·2k·2^62)⌋` and `t ← 2^62 − ⌊s·t / (2k·(2k+1)·2^62)⌋` for `k` from
+/// 13 down to 1, then `sin r = ⌊r·t / 2^62⌋`.
+pub(crate) fn cos_sin(angle: u128) -> (i128, i128) {
+    let turn = angle % TAU;
+    let quadrant = turn / HALF_PI;
+    // In Q62, `r < 2^62.66`, so `r² < 2^126`; `s < 2^64` and `|c|, |t| ≤ 2^62` keep products
+    // below `2^127`.
+    let r = i128::try_from((turn - quadrant * HALF_PI) >> 2).unwrap_or(0);
+    let one = 1i128 << 62;
+    let s = (r * r) >> 62;
+    let (mut c, mut t) = (one, one);
+    for k in (1..=TRIG_TERMS).rev() {
+        c = one - (s * c).div_euclid((2 * k - 1) * (2 * k) * one);
+        t = one - (s * t).div_euclid((2 * k) * (2 * k + 1) * one);
+    }
+    let sin = (r * t) >> 62;
+    match quadrant % 4 {
+        0 => (c, sin),
+        1 => (-sin, c),
+        2 => (-c, -sin),
+        _ => (sin, -c),
+    }
+}

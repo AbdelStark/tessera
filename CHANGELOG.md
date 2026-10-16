@@ -231,6 +231,17 @@ All notable changes to the prover release train are recorded here: the crates un
   - The generator computes `σ(x)` in Q63 from `exp_neg(|x|)`, multiplies by `h`, and rounds half up by a shift of `63 − in_exp + out_exp`. Every intermediate stays below `2^128`.
   - A row's value depends only on its class and `h`, so the digest's core is every `h` of every class, at most `2^24` values in all. That bound becomes a rule, which a 405B-like gate (`b = 30`, shifts 14 to 17) meets with 122,880 values.
   - The tables oracle checks every value against `x / (1 + e^{−x})` at 60 digits, including the 405B-like gate. Rust reproduces every digest.
+- RoPE's constants in `tessera-tables`, the last of the fixed-point generators of #71 (RFC-0008 'Fixed-point generators'):
+  - `TableKind::Rope { theta, factor, low_freq_factor, high_freq_factor, original_max, bits, max_context, d_head }` is appended as tag 9, with integer parameters, as Llama-3.1's are. Each pair is `(C, S) = (round(2^bits · cos(p·ω_i)), round(2^bits · sin(p·ω_i)))`.
+  - RFC-0008 pins `TAU = ⌊2π · 2^64⌋` and `HALF_PI = ⌊π/2 · 2^64⌋` and defines the rest exactly:
+    - `ln` by the atanh series;
+    - the frequencies `θ^{−2i/d}` by `exp_neg`;
+    - Llama-3's frequency bands, decided by exact integer comparisons, and the interpolation weight in Q40;
+    - `cos` and `sin` by Horner's rule in Q62 after reduction by `TAU` and quadrants.
+
+    Every intermediate stays below `2^128`.
+  - `RopeTable` holds a specification and its digest. The core is every pair, at most `2^24`; Llama-3.1-405B has 8,388,608. `RopeConstants` gives any pair on demand, without the digest, for the witness engine's `Rotate`. `GeneratedTable` refuses a `Rope` kind, and `RopeTable` refuses any other.
+  - The tables oracle checks every pair of two test tables, and 4,008 sampled pairs of Llama-3.1's 131,072-position table, against 40-digit references. It also pins the digest of the 8K-context table. A Rust test checks 10^6 more sampled pairs against an f64 implementation of Hugging Face's Llama-3 RoPE, all within one unit.
 
 ### Changed
 
