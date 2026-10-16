@@ -52,7 +52,7 @@ The source sets 30 ps per committed 64-bit element, including rate-1/2 encoding 
 | `claim-list` | `TCE(ClaimList)` | Claim-list digest (RFC-0007) |
 | `statement` | `TCE(PublicStatement)` | `SessionContext.statement_digest` (RFC-0007) |
 
-Context strings are distinct ASCII strings, so outputs of different domains are independent under the standard assumption on BLAKE3's key derivation mode. The Rust crate `blake3` 1.x is used on CPU (prover and verifier, allowlisted); a CUDA implementation in `tessera-gpu` covers `column-step` and `merkle-node`.
+Context strings are distinct ASCII strings, so outputs of different domains are independent under the standard assumption on BLAKE3's key derivation mode. The prover uses the Rust crate `blake3` 1.x on CPU and a CUDA implementation in `tessera-gpu` for `column-step` and `merkle-node`. The verifier implements BLAKE3 itself, in safe Rust from the BLAKE3 specification ([RFC-0019](RFC-0019-verifier.md#dependencies)), checked against the official test vectors.
 
 ### Column digests
 
@@ -125,6 +125,7 @@ Labels are ASCII strings built only from the tier-A label patterns of [RFC-0014]
 |---|---|
 | Prover and verifier label tables diverge | Every challenge differs; the first sumcheck check fails; caught by transcript vectors in CI |
 | Grinding nonce invalid | `Reject(ProofOfWork)` |
+| A challenge finds no word below `P` in 16 squeezes | The verifier stops with `Inconclusive(ERR-INTERNAL)`, never a verdict on the proof, because [RFC-0019](RFC-0019-verifier.md#robustness) admits no unbounded loop. The probability is below 2^-496 for `challenge_fp2` and 2^-2048 for `challenge_fp`, and grinding the absorbed messages buys a prover nothing short of breaking BLAKE3. The prover's loop has no bound. |
 | Merkle multiproof non-canonical | `Reject(MerklePath)` |
 | GPU kernel hash differs from CPU | Differential test failure; release blocker |
 

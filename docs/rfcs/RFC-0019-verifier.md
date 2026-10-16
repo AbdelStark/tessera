@@ -35,7 +35,7 @@
 |---|---|
 | `tv-field` | `Fp`, `Fp2`, roots of unity, NTT for re-encoding combined rows |
 | `tv-codec` | TCE decoders with `DecodeLimits`; encoders only where digests require them |
-| `tv-hash` | BLAKE3 domains, chained column digests, Merkle multiproofs, transcript replay, proof-of-work checks; SHA-256 Merkle for recorder logs |
+| `tv-hash` | BLAKE3 and SHA-256, implemented in the crate ([Dependencies](#dependencies)); BLAKE3 domains, chained column digests, Merkle multiproofs, transcript replay with the TCE encoding of its `SessionContext`, proof-of-work checks; SHA-256 Merkle for recorder logs |
 | `tv-tables` | Integer-only table generators and structured multilinear evaluation |
 | `tv-core` | Claim-list validation and lowering, range re-derivation, schedule derivation, sumcheck and tree verification, gadget final checks, opening and column checks, anchor and scoring checks, soundness calculator, audit plan |
 | `tv-transport` | Stream and directory transports for live sessions (only crate allowed to link `rustls`) |
@@ -44,7 +44,7 @@
 
 ### Dependencies
 
-The allowlist of [RFC-0001](RFC-0001-workspace-and-verifier-independence.md#enforcement) applies: `blake3` 1.x, `sha2` 0.10.x, `ed25519-dalek` 2.x, `rayon` 1.x, `thiserror` 2.x; `clap` 4.x, `serde` 1.x and `serde_json` 1.x in `tv-cli` only; `rustls` 0.23.x in `tv-transport` only. Every crate declares `#![forbid(unsafe_code)]`; `tv-core` additionally denies `clippy::unwrap_used`, `clippy::expect_used`, `clippy::panic`, `clippy::indexing_slicing` and `clippy::arithmetic_side_effects` on size computations (field arithmetic is exempt through its own types).
+The verifier implements its two hash functions itself, in safe Rust from their specifications: BLAKE3 for every Tessera hash (RFC-0004) and SHA-256 (FIPS 180-4) for the recorder logs (RFC-0015). Taking the `blake3` and `sha2` crates would have brought seventeen crates into the trusted base, with unsafe SIMD code and about 250,000 lines to audit. The official BLAKE3 vectors and NIST's SHA-256 vectors check the two implementations, and a differential test checks BLAKE3 against the prover's crate. The allowlist of [RFC-0001](RFC-0001-workspace-and-verifier-independence.md#enforcement) applies to everything else: `ed25519-dalek` 2.x, `rayon` 1.x, `thiserror` 2.x; `clap` 4.x, `serde` 1.x and `serde_json` 1.x in `tv-cli` only; `rustls` 0.23.x in `tv-transport` only. Every crate declares `#![forbid(unsafe_code)]`; `tv-core` additionally denies `clippy::unwrap_used`, `clippy::expect_used`, `clippy::panic`, `clippy::indexing_slicing` and `clippy::arithmetic_side_effects` on size computations (field arithmetic is exempt through its own types).
 
 ### Inputs
 

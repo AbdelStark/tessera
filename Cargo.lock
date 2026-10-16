@@ -532,6 +532,8 @@ dependencies = [
  "serde_json",
  "tessera-codec",
  "tessera-field",
+ "tv-field",
+ "tv-hash",
 ]
 
 [[package]]
@@ -626,6 +628,17 @@ dependencies = [
  "target-triple",
  "termcolor",
  "toml",
+]
+
+[[package]]
+name = "tv-field"
+version = "0.1.0"
+
+[[package]]
+name = "tv-hash"
+version = "0.1.0"
+dependencies = [
+ "tv-field",
 ]
 
 [[package]]

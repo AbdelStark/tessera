@@ -1,5 +1,5 @@
-# cargo-fuzz targets for the verifier's decoders (RFC-0003 and RFC-0019 'Testing Strategy');
-# README.md says how to run them.
+# cargo-fuzz targets for the verifier's decoders and proof checks (RFC-0003, RFC-0004 and RFC-0019
+# 'Testing Strategy'); README.md says how to run them.
 #
 # This is its own workspace, outside the verifier's: libfuzzer-sys, the allocator of
 # tests/allocation.rs and their dependencies never enter the verifier's dependency graph,
@@ -18,11 +18,14 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 tv-codec = { path = "../crates/tv-codec" }
+tv-hash = { path = "../crates/tv-hash" }
 tv-testkit = { path = "../crates/tv-testkit" }
 
 [dev-dependencies]
-# A global allocator that counts and caps allocations, for tests/allocation.rs.
+# A global allocator that counts and caps allocations, for tests/allocation.rs and
+# tests/hash_allocation.rs.
 cap = { version = "0.1.2", features = ["stats"] }
+tv-field = { path = "../crates/tv-field" }
 
 [workspace]
 members = ["."]
@@ -37,6 +40,20 @@ bench = false
 [[bin]]
 name = "envelope"
 path = "fuzz_targets/envelope.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "multiproof"
+path = "fuzz_targets/multiproof.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "inclusion"
+path = "fuzz_targets/inclusion.rs"
 test = false
 doc = false
 bench = false

@@ -1,6 +1,6 @@
-# Fuzzing of the verifier's decoders (verifier/fuzz/README.md): every target for ten minutes
-# under AddressSanitizer, seeded from spec/vectors/codec/, when what the targets exercise changes,
-# and on demand. The nightly hour of 07 §2 is #96. Third-party actions are pinned by commit SHA
+# Fuzzing of the verifier's decoders and proof checks (verifier/fuzz/README.md): every target for
+# ten minutes under AddressSanitizer, seeded from spec/vectors/, when what the targets exercise
+# changes, and on demand. The nightly hour of 07 §2 is #96. Third-party actions are pinned by commit SHA
 # (TB-4 in docs/spec/06-security.md).
 name: fuzz
 
@@ -11,9 +11,12 @@ on:
       - verifier/Cargo.toml
       - verifier/crates/tv-codec/**
       - verifier/crates/tv-field/**
+      - verifier/crates/tv-hash/**
       - verifier/crates/tv-testkit/**
       - verifier/fuzz/**
       - spec/vectors/codec/**
+      - spec/vectors/hash/**
+      - spec/vectors/rfc6962/**
       - .github/workflows/fuzz.yml
   push:
     branches: [main]
@@ -21,9 +24,12 @@ on:
       - verifier/Cargo.toml
       - verifier/crates/tv-codec/**
       - verifier/crates/tv-field/**
+      - verifier/crates/tv-hash/**
       - verifier/crates/tv-testkit/**
       - verifier/fuzz/**
       - spec/vectors/codec/**
+      - spec/vectors/hash/**
+      - spec/vectors/rfc6962/**
       - .github/workflows/fuzz.yml
   workflow_dispatch:
     inputs:
@@ -111,7 +117,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install cargo-fuzz ${{ env.CARGO_FUZZ_VERSION }} (crates.io, locked)
         run: cargo install cargo-fuzz --version "$CARGO_FUZZ_VERSION" --locked
-      - name: Seed corpus from spec/vectors/codec/
+      - name: Seed corpora from spec/vectors/
         run: python3 seeds.py "$RUNNER_TEMP/seeds"
       - name: Build under AddressSanitizer
         run: cargo fuzz build "$TARGET"

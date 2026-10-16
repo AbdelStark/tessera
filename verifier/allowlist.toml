@@ -16,16 +16,6 @@
 # Changing this file changes the trusted base and requires a second reviewer (09 §6).
 
 [[package]]
-name = "blake3"
-version = "1"
-reason = "BLAKE3 in key-derivation mode: domains, column digests, Merkle nodes, transcript and proof-of-work (RFC-0004)"
-
-[[package]]
-name = "sha2"
-version = "0.10"
-reason = "SHA-256 for recorder digests and the RFC 6962 Merkle tree of the digest log (RFC-0015)"
-
-[[package]]
 name = "ed25519-dalek"
 version = "2"
 reason = "Ed25519 (RFC 8032) verification of recorder log manifests (RFC-0015)"
