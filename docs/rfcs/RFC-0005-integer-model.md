@@ -132,7 +132,14 @@ If `pot` fails a gate, the compiler switches the worst tensors (ranked by per-te
 
 ### Python packaging
 
-`python/pyproject.toml`: `requires-python = ">=3.11"`; dependencies `torch>=2.4,<3` (deterministic algorithms, `float8` dtypes for FP8 deployment proxies), `safetensors>=0.4` (safe loading), `transformers>=4.45` (Llama-3.1 RoPE scaling and configuration parsing), `numpy>=1.26`, `datasets>=2.20` (pinned revisions). Exact versions are locked in `uv.lock`. Lint with `ruff`, types with `pyright --strict`, tests with `pytest` and `hypothesis`.
+`python/pyproject.toml`: `requires-python = ">=3.11"`; dependencies `torch>=2.4,<3` (deterministic algorithms, `float8` dtypes for FP8 deployment proxies), `safetensors>=0.4` (safe loading), `transformers>=4.45` (Llama-3.1 RoPE scaling and configuration parsing), `numpy>=1.26`, `datasets>=2.20` (pinned revisions). Exact versions are locked in `uv.lock`, which resolves for the supported platforms of [09 §8](../spec/09-release-and-versioning.md#8-supported-platforms). Lint with `ruff`, types with `pyright` in strict mode, tests with `pytest` and `hypothesis`, on Python 3.11 to 3.13.
+
+PyTorch comes from its own index, through exactly one of two extras:
+
+- `cpu`: CPU wheels, for CI and the tiny conformance models;
+- `cu130`: CUDA 13.0 wheels on Linux, for calibrating 8B and up.
+
+Both resolve to the same PyTorch release, and a test of the package fails when `uv.lock` holds two. Calibration on CPU and on GPU then runs the same library, so a scale cannot differ between them through a PyTorch upgrade. The package's version is the prover release train's ([09 §1](../spec/09-release-and-versioning.md#1-what-is-versioned)); `cargo xtask lint` fails when it differs from the workspace's.
 
 ## Alternatives Considered
 

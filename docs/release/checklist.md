@@ -26,7 +26,7 @@ Each milestone is a minor release (`v0.1.0` … `v0.5.0`, then `v1.0.0`, [09 §2
 
 ## 4. Versions and changelogs
 
-- [ ] The prover version is the same in the workspace `Cargo.toml` and in `python/pyproject.toml` ([09 §1](../spec/09-release-and-versioning.md#1-what-is-versioned)); the verifier version is set in `verifier/Cargo.toml`.
+- [ ] The prover version is the same in the workspace `Cargo.toml` and in `python/pyproject.toml` ([09 §1](../spec/09-release-and-versioning.md#1-what-is-versioned)), which `cargo xtask lint` checks; the verifier version is set in `verifier/Cargo.toml`.
 - [ ] Each changelog's `Unreleased` section is renamed to the release version and date, and a new empty `Unreleased` section is added.
 - [ ] A change of minimum supported Rust version is noted in the changelog ([09 §2](../spec/09-release-and-versioning.md#2-semantic-versioning)).
 - [ ] Protocol version: `tessera-protocol/1` is assigned when the first end-to-end proof verifies (v0.3). Any change to a tier-A surface since then has a new protocol version and a superseding RFC. The verifier release notes list the supported protocol versions, at most the current and the previous one ([09 §3](../spec/09-release-and-versioning.md#3-protocol-and-schema-versions)).
