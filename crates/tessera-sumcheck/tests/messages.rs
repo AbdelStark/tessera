@@ -8,8 +8,11 @@ mod common;
 
 use common::{Fp, Fp2, Session, SplitMix64, TestInstance, TestTable, prove_and_verify};
 use tessera_codec::{DecodeLimits, decode, encode};
-use tessera_field::{PrimeField, QuadraticExtension};
-use tessera_sumcheck::{Forest, Instance, Prefix, SumcheckProof, Table, prove_forests};
+use tessera_field::{Field, PrimeField, QuadraticExtension};
+use tessera_sumcheck::{
+    Forest, Instance, MatMulAct, MatMulActShape, MatMulWeight, MatMulWeightShape, Prefix,
+    RightLayout, SumcheckProof, Table, prove_batch, prove_forests,
+};
 
 fn element_bytes(x: Fp2) -> Vec<u8> {
     let [c0, c1] = x.coeffs();
@@ -163,7 +166,7 @@ fn forest_debug_forms_show_shapes_never_values() {
     secrets.extend(forms(&values));
     assert_eq!(
         format!("{:?}", proven.leaf_claims()[0]),
-        "LevelClaim { vars: 5, .. }"
+        "Claim { vars: 5, .. }"
     );
     assert_hidden(&format!("{proven:?}"), &secrets, "proven forests");
     assert_hidden(&format!("{proven:#?}"), &secrets, "proven forests");
@@ -172,4 +175,112 @@ fn forest_debug_forms_show_shapes_never_values() {
         &secrets,
         "a proven level",
     );
+}
+
+/// `Σ_m eq(r, m)·T[(l·M + m)·I + i]` for each `(l, i)`, `M = 2^{|r|}` and `I = inner`: an
+/// operand's middle variables contracted with `eq(r, ·)`, from the definition.
+fn contracted(table: &[Fp], r: &[Fp2], inner: usize) -> Vec<Fp2> {
+    let weights = tessera_poly::eq_table(r).expect("a small table");
+    let rows = weights.len();
+    (0..table.len() / rows)
+        .map(|k| {
+            let (layer, column) = (k / inner, k % inner);
+            (0..rows).fold(Fp2::ZERO, |sum, row| {
+                sum + weights[row] * Fp2::from(table[(layer * rows + row) * inner + column])
+            })
+        })
+        .collect()
+}
+
+#[test]
+fn matmul_debug_forms_show_shapes_never_values() {
+    let mut rng = SplitMix64::new(0x57_0503);
+    let mut large = |n: usize| -> Vec<Fp> {
+        (0..n)
+            .map(|_| Fp::from_u64_reduced(rng.next_u64() | 1 << 40))
+            .collect()
+    };
+    let (w, x, a, b) = (large(64), large(32), large(64), large(32));
+    let lift = |values: &[Fp]| values.iter().map(|&v| Fp2::from(v)).collect::<Vec<_>>();
+    let mut secrets: Vec<String> = [&w, &x, &a, &b]
+        .into_iter()
+        .flat_map(|operand| forms(&lift(operand)))
+        .collect();
+    let session = Session::random(&mut rng);
+
+    // 2^1 layers of 2^1 tokens by 2^3 inputs, by 2^2 outputs; the input point r_o ‖ r_t ‖ ρ.
+    let shape = MatMulWeightShape {
+        layer_vars: 1,
+        token_vars: 1,
+        out_vars: 2,
+        in_vars: 3,
+    };
+    let weight = MatMulWeight::<Fp2>::new(&w, &x, shape).expect("a shape");
+    let shown =
+        "shape: MatMulWeightShape { layer_vars: 1, token_vars: 1, out_vars: 2, in_vars: 3 }, ..";
+    assert_eq!(format!("{weight:?}"), format!("MatMulWeight {{ {shown} }}"));
+    let point = rng.fp2s(4);
+    let tables = weight.tables(&point).expect("a point");
+    secrets.extend(forms(&contracted(&w, &point[..2], 8)));
+    secrets.extend(forms(&contracted(&x, &point[2..3], 8)));
+    assert_eq!(
+        format!("{tables:?}"),
+        format!("MatMulWeightTables {{ {shown} }}")
+    );
+    assert_hidden(&format!("{:?}", tables.instance()), &secrets, "an instance");
+    let proven = prove_batch(
+        &mut session.transcript(),
+        Prefix::Stage(0),
+        3,
+        &[tables.instance()],
+    )
+    .expect("a stage");
+    let claims = tables
+        .claims(
+            proven.instance_point(0).expect("an instance"),
+            proven.instance_evals(0).expect("an instance"),
+        )
+        .expect("the instance's results");
+    secrets.extend(forms(&[claims.w.value, claims.x.value]));
+    assert_eq!(
+        format!("{claims:?}"),
+        "MatMulWeightClaims { w: Claim { vars: 6, .. }, x: Claim { vars: 5, .. } }"
+    );
+
+    let shape = MatMulActShape {
+        stack_vars: 1,
+        row_vars: 2,
+        inner_vars: 3,
+        col_vars: 1,
+    };
+    let act = MatMulAct::<Fp2>::new(&a, &b, RightLayout::Transposed, shape).expect("a shape");
+    let shown = "shape: MatMulActShape { stack_vars: 1, row_vars: 2, inner_vars: 3, col_vars: 1 }, \
+                 layout: Transposed, ..";
+    assert_eq!(format!("{act:?}"), format!("MatMulAct {{ {shown} }}"));
+    let tables = act.tables(&rng.fp2s(4)).expect("a point");
+    assert_eq!(
+        format!("{tables:?}"),
+        format!("MatMulActTables {{ {shown} }}")
+    );
+    let proven = prove_batch(
+        &mut session.transcript(),
+        Prefix::Stage(0),
+        3,
+        &[tables.instance()],
+    )
+    .expect("a stage");
+    let claims = tables
+        .claims(
+            proven.instance_point(0).expect("an instance"),
+            proven.instance_evals(0).expect("an instance"),
+        )
+        .expect("the instance's results");
+    secrets.extend(forms(&[claims.a.value, claims.b.value]));
+    assert_eq!(
+        format!("{claims:?}"),
+        "MatMulActClaims { a: Claim { vars: 6, .. }, b: Claim { vars: 5, .. } }"
+    );
+    assert_hidden(&format!("{claims:#?}"), &secrets, "claims");
+    assert_hidden(&format!("{tables:#?}"), &secrets, "tables");
+    assert_hidden(&format!("{weight:#?}"), &secrets, "a relation");
 }

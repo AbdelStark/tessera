@@ -102,7 +102,7 @@ All notable changes to the prover release train are recorded here: the crates un
     1. Where forests of more than one tree join, it squeezes `s_max` root challenges under `tree/{ℓ}/root/{c}`, and each joining forest takes the last `s` as its root point.
     2. `prove_batch` runs under `tree/{ℓ}`, of degree 3, over the forests that have joined, in the order given. Each instance is `eq(r_i, ·)`, a public factor, times the two halves of its next level.
     3. It squeezes `ρ` under `tree/{ℓ}/line`, and each next claim is `u_i + ρ·(w_i − u_i)` at `ρ ‖ r'_i`.
-  - `ProvenForests` is `#[must_use]`. Each of its levels is a `ProvenLevel`: root challenges, `γ`, `SumcheckProof`, point, `ρ`, instances and next claims. Each forest's leaf claim is a `LevelClaim` on its stacked leaves, and `into_parts` hands the proofs and the leaf claims to the next stage. The prover takes no claim.
+  - `ProvenForests` is `#[must_use]`. Each of its levels is a `ProvenLevel`: root challenges, `γ`, `SumcheckProof`, point, `ρ`, instances and next claims. Each forest's leaf claim is a `Claim` on its stacked leaves, and `into_parts` hands the proofs and the leaf claims to the next stage. The prover takes no claim.
   - `SumcheckError` gains `NoForests`, `LeafCount` and `Height`, checked in that order, forest by forest, before the transcript moves. Debug forms show shapes only.
   - Each forest's levels are built once, bottom-up, in the prime subfield. Each level is stored as its two halves, written in one pass, and dropped once its sumcheck has run; each `eq` table is dropped after its level.
   - The verifier's `tv_core::tree::verify_product_level`, a dev-dependency (DEP-2), checks every proof the tests produce. A driver in the tests squeezes the root challenges itself and forms each root claim `Σ_y v_y·eq(r, y)` from the trees' products. The verifier must draw the prover's challenges, and every leaf claim must equal the stacked leaves' multilinear extension. The cases:
@@ -115,3 +115,30 @@ All notable changes to the prover release train are recorded here: the crates un
 
     A row with a non-zero product claimed zero is rejected at the level where its forest joins, and so is a root challenge other than the transcript's. Every changed round value or evaluation is rejected too.
   - On one Apple M4 Max core (`benches/throughput.rs`), 2^22 leaves take 134 ms, 32 ns per leaf, whether as 2^10 trees of 2^12 leaves, as one tree, or as forests of three heights. One degree-3 sumcheck in a tree level's shape (one `Fp2` table, two over `Fp`) over 2^22 entries takes 115 ms. The `eq` tables take 10% of the forests' time.
+- The `MatMulWeight` and `MatMulAct` relations of RFC-0010 'Relations', stacked over layers or heads, in `tessera-sumcheck` ([#57](https://github.com/AbdelStark/tessera/issues/57)):
+  - `MatMulWeight` proves `Y = X·Wᵀ` for a batch of tokens: `X` holds one row per token and `W` is stored `(o, i)`. `MatMulAct` proves `Z = A·B`, with `B` stored as it is or transposed as `K` in `QKᵀ` (`RightLayout::Direct`, `RightLayout::Transposed`). Operands are borrowed row-major over the prime subfield, with the stacking index highest. Shapes are logs of two (`MatMulWeightShape`, `MatMulActShape`). A count of layers or heads that is not a power of two is padded with zero ones.
+  - A relation is proven in three steps around `prove_batch`:
+    1. `tables` builds the instance from the input claim's point, never its value. It contracts each operand once with `eq` at the point's coordinates (`W` at `r_o`, `X` at `r_t`), and adds `eq(ρ, ·)` on the stacking variables as a public factor. An operand with nothing to contract is used as it is.
+    2. `prove_batch` proves the instance among the stage's others: degree 3 when stacked, 2 for one layer.
+    3. `claims` maps the instance's point and evaluations to one claim per operand: `W` at `r_i ‖ r_o ‖ ρ_ℓ` and `X` at `r_i ‖ r_t ‖ ρ_ℓ`; `A` at `r_j ‖ r_a ‖ ρ_b`, and `B` at `r_c ‖ r_j ‖ ρ_b` or `K` at `r_j ‖ r_c ‖ ρ_b`.
+  - RFC-0010 'Relations' now gives `MatMulWeight` its token index and states the stacked identities, of degree 3 in the stacking variables. It also says where the claim on `K` lands.
+  - `Claim { point, value }`, renamed from `LevelClaim`, is the crate's one claim type, for forests and matmuls alike.
+  - `SumcheckError` gains `OperandTooLarge`, `OperandLength`, `PointLength` and `EvaluationCount`, each returned before anything is computed. Debug forms show shapes only.
+  - Contractions keep 4 independent sums in registers: panels of 8 rows, 4 columns at a time, for the middle variables, and 4 rows at a time for the low ones. Several loop orders were measured on one Apple M4 Max core. The middle kernel is the fastest on rows of `2^14` entries or more and within 20% of the fastest elsewhere; the low kernel is within 6% of the fastest everywhere.
+  - Every proof the tests produce is checked by the verifier's `tv_core::sumcheck::verify_batch`, a dev-dependency (DEP-2). The relations are written in the tests from the RFC, and the claims are computed in `tv-field` from the true products. The cases:
+    - the issue's `2^6×2^8` by `2^8×2^5` as a `MatMulAct` with `B` either way, and as a `MatMulWeight` of `2^6` tokens by `2^5` outputs, each alone and stacked;
+    - instances on 1 to 24 variables;
+    - 2 to 9 layers and 2 to 7 products, zero-padded;
+    - single layers;
+    - transposed `B`, which proves with the same messages as `B` stored as it is;
+    - stages mixing every kind and size, front-padded, and 40 seeded random stages;
+    - stages over `F65537Ext2` and `F65537`.
+
+    Every claim equals its operand's multilinear extension at the point the verifier derives. These are all rejected:
+    - a product with one entry changed, at its stage's final check;
+    - a prover with one operand entry changed;
+    - every changed round value or evaluation;
+    - a claim routed to the other operand or to another point, at the next stage's final check.
+  - On one Apple M4 Max core (`benches/matmul.rs`):
+    - A contraction takes 1.14 to 1.29 ns per entry it reads, and the sumcheck 38 to 44 ns per instance entry.
+    - A whole relation takes 1.23 to 1.31 ns per operand entry once its operands hold `2^9` times as many entries as its instance. Time is linear in the operands: `2^3` layers of `2^10` tokens by `2^10` inputs and outputs take 20.9 ms, and doubling the inputs or the layers doubles it, to 44.0 and 42.7 ms.

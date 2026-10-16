@@ -8,11 +8,12 @@
 //! arithmetic, by summing each product over the hypercube; public factors are evaluated by the
 //! verifier's own `eq` or by summing the table against `eq` at each vertex. None of it uses the
 //! prover's algorithms. [`forests`] does the same for batches of product forests, around
-//! `tv_core::tree::verify_product_level`.
+//! `tv_core::tree::verify_product_level`, and [`matmul`] for stages of matmul relations.
 
 #![allow(dead_code)] // each test binary uses part of it
 
 pub mod forests;
+pub mod matmul;
 
 use tessera_codec::Ascii;
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
