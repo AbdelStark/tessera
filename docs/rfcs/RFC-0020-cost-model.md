@@ -33,7 +33,8 @@ Every performance number in the source and in this corpus is a projection from a
 
 ```rust
 pub struct UnitCosts { pub commit_ps: f64, pub lookup_ps: f64, pub product_leaf_ps: f64,
-                       pub glue_fraction: f64, pub weight_pass_gpu_s: f64, pub native_ops_per_s: f64 }
+                       pub glue_fraction: f64, pub weight_pass_gpu_s: f64, pub native_ops_per_s: f64,
+                       pub streaming_pass_ps: f64 }                      // per score per streamed pass
 pub struct Counts {                       // from the compiler's CommitmentReport
     pub commits_per_token: f64, pub lookups_per_token: f64,          // linear layers
     pub scores_per_token_per_ctx: f64,                               // A = heads × layers / 2
@@ -41,16 +42,17 @@ pub struct Counts {                       // from the compiler's CommitmentRepor
     pub regen_full_equivalents: f64,                                 // RISK-9
 }
 pub struct MemoryModel { pub free_bytes: f64, pub bytes_per_leaf: f64 }  // RISK-10 streaming passes
-pub fn mu(counts: &Counts, u: &UnitCosts, mem: &MemoryModel, context: u32, batch_tokens: u32) -> MuBreakdown;
+pub fn mu(counts: &Counts, u: &UnitCosts, mem: &MemoryModel, context: u32, batch_tokens: u32)
+    -> Result<MuBreakdown, ModelError>;
 pub struct MuBreakdown { pub linear: f64, pub attention: f64, pub weights: f64, pub regen: f64,
                          pub streaming: f64, pub total: f64 }
 ```
 
-`μ` follows [08 §1](../spec/08-performance-budget.md#1-cost-model): the source's formula plus `n_regen` plus a streaming term `c(S) · (per-pass cost per score) · A · S / native`, where `c(S) = max(0, ⌈log2(N_level(S) · bytes_per_leaf / free_bytes)⌉)`. Floating-point is acceptable here: the model is a planning tool, not part of the protocol.
+`μ` follows [08 §1](../spec/08-performance-budget.md#1-cost-model): the source's formula plus `n_regen` plus a streaming term `c(S) · streaming_pass_ps · A · S / native`, where `c(S) = max(0, ⌈log2(N_level(S) · bytes_per_leaf / free_bytes)⌉)` and `N_level(S) = A · S · batch_tokens` is the batch's attention leaves ([RFC-0018 'Leaf levels'](RFC-0018-gpu-prover-runtime.md#pass-structure)). Floating-point is acceptable here: the model is a planning tool, not part of the protocol. Inputs are checked: every count and cost finite and non-negative, the native rate, free memory and batch positive. An input the model cannot price is an error, never a NaN in a report.
 
 `tessera bench model --plan plan.tep --context S` reads counts from the commitment report; with `--source-defaults` it uses the source's counts and unit costs. Outputs: `MuBreakdown` per context, proof time per request on `G` GPUs, sampling rate for a target amortized overhead, and daily detection probability for a given violation count (as in [RFC-0016](RFC-0016-audit-sampling.md#calculators)).
 
-**Golden test.** With source defaults, `regen_full_equivalents = 0` and no streaming, the model reproduces the source's §5 chart data and §8 table: `μ` at 1K, 2K, 4K, 8K, 16K, 32K, 64K and 128K within ±0.05, and the sampling and detection columns within ±0.1 percentage point.
+**Golden test.** With source defaults, `regen_full_equivalents = 0` and no streaming, the model reproduces the source's §5 chart data and §8 table: `μ` at 1K, 2K, 4K, 8K, 16K, 32K, 64K and 128K within ±0.05, and the sampling and detection columns within ±0.1 percentage point, computed from that table's `μ` column, which the source rounds to one decimal. [`spec/vectors/cost-model/`](../../spec/vectors/cost-model/README.md) records each figure with its line and each input with its provenance: `F_lin`, which the source writes as 8.1×10^11, is two operations per parameter, 2 × 405,853,388,800.
 
 ### Measurement protocol (v0.1 gate)
 

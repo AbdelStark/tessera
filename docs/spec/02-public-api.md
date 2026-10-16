@@ -42,7 +42,8 @@ tessera audit batch     --sample SAMPLE.tas --min-tokens 16384 --out-dir DIR
 tessera audit plan      --policy POLICY.json --traffic PROFILE.json --plan plan.tep   # detection and overhead
 tessera params check    --params PARAMSET [--lookups N] [--table-rows T]   # soundness report
 tessera bench unit-costs --device INT --out UNIT_COSTS.json
-tessera bench model     --plan plan.tep --context INT --out MU.json         # cost-model projection
+tessera bench model     (--plan plan.tep | --source-defaults) [--context INT,...] [--out MU.json]
+                        # cost-model projection
 tessera recorder ref    --listen ADDR --log-dir DIR                         # software reference recorder
 ```
 

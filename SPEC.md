@@ -118,4 +118,4 @@ Full statements and resolution plans are in [00 §9](docs/spec/00-overview.md#9-
 - **Normative language.** In Proposed Design sections and in invariant and requirement tables, "must", "must not" and "may" are normative. Everything else is explanatory.
 - **Identifiers.** Goals `G-n`, non-goals `NG-n`, success criteria `SC-n`, invariants `INV-<AREA>-n`, error codes `ERR-*`, reject reasons `REJ-*`, risks `RISK-n`, open questions `OQ-<RFC>-n`, dependency rules `DEP-n`, compatibility rules `COMPAT-n`, observability rules `OBS-n`, security properties `SP-n`, trust boundaries `TB-n`, adversaries `ADV-*`. Identifiers are stable; cite them in code comments, tests and issues.
 - **Projections.** Every number derived from the source's cost model is labeled a projection until a measured value with a run manifest replaces it.
-- **Source citations.** "Source §n" refers to sections of the source document.
+- **Source citations.** "Source §n" refers to sections of the source document, [`proofs-of-inference-sota-path-forward.md`](proofs-of-inference-sota-path-forward.md) at the repository root.
