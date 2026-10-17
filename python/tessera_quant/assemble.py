@@ -25,7 +25,7 @@ import torch
 
 from tessera_quant.capture import CalibrationResult, reference_logits
 from tessera_quant.checkpoint import FloatModel
-from tessera_quant.errors import CalibrationError, TesseraQuantError
+from tessera_quant.errors import CalibrationError, UsageError
 from tessera_quant.integer_model import (
     INTEGER_MODEL,
     CalibrationIdentity,
@@ -38,7 +38,16 @@ from tessera_quant.reference import trace
 from tessera_quant.scales import Quantized, choose
 from tessera_quant.tce import INTEGER_MODEL_LIMITS, write_artifact
 
-LIBRARIES = ("blake3", "datasets", "numpy", "python", "safetensors", "torch", "transformers")
+LIBRARIES = (
+    "blake3",
+    "datasets",
+    "numpy",
+    "python",
+    "safetensors",
+    "tokenizers",
+    "torch",
+    "transformers",
+)
 """The libraries `Provenance` records, by name (RFC-0005 'Determinism')."""
 
 _CHUNK = 1 << 24
@@ -60,26 +69,18 @@ def quantize(
 
     Raises:
         CalibrationError: for an empty held-out split, or as `tessera_quant.scales.choose`.
-        TesseraQuantError: for `affine` scales, which the reference computes only with #301, or
-            as `choose`.
+        UsageError: as `check_options`.
+        TesseraQuantError: as `choose`.
     """
-    if scales != "pot":
-        raise TesseraQuantError(
-            "affine scales are chosen once the integer reference computes affine sites (#301)"
-        )
+    the_profile = check_options(profile, scales)
     held_out = calib.calibration.held_out
     if not held_out:
         raise CalibrationError(
             "the migration strength is chosen on the held-out split: it is empty"
         )
-    profiles = {"servable": Profile.Servable, "minimal": Profile.Minimal}
-    if profile not in profiles:
-        raise TesseraQuantError(f"no profile {profile!r}: servable or minimal")
-    the_profile = profiles[profile]
     arch = model.arch
     # The files are hashed once, before their tensors are read.
-    paths = {path.name: path for path in model.files.values()}
-    checkpoint = [(name, file_digest(paths[name])) for name in sorted(paths)]
+    checkpoint = checkpoint_digests(model)
     weights = {name: model.tensor(name).to(torch.float64) for name in model.names}
     maxima = calib.statistics.maxima
     reference = reference_logits(model, held_out, calib.calibration.seed, device)
@@ -102,6 +103,29 @@ def quantize(
 
     alpha = select_alpha(divergence, alphas)
     return assembled(quantized(alpha), alpha)
+
+
+def check_options(profile: str, scales: str) -> Profile:
+    """The profile `quantize` builds for `profile`, once `profile` and `scales` are its options.
+
+    Raises:
+        UsageError: for `affine` scales, which the reference computes only with #301, or an
+            unknown profile.
+    """
+    if scales != "pot":
+        raise UsageError(
+            "affine scales are chosen once the integer reference computes affine sites (#301)"
+        )
+    profiles = {"servable": Profile.Servable, "minimal": Profile.Minimal}
+    if profile not in profiles:
+        raise UsageError(f"no profile {profile!r}: servable or minimal")
+    return profiles[profile]
+
+
+def checkpoint_digests(model: FloatModel) -> list[tuple[str, bytes]]:
+    """Each file of `model`'s checkpoint and its BLAKE3, by name: what `Provenance` records."""
+    paths = {path.name: path for path in model.files.values()}
+    return [(name, file_digest(paths[name])) for name in sorted(paths)]
 
 
 def export(model: IntegerModel, out: Path) -> bytes:

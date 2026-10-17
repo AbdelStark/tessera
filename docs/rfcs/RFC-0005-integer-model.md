@@ -167,7 +167,7 @@ If `pot` fails a gate, the compiler switches the worst tensors (ranked by per-te
 
 ### Python packaging
 
-`python/pyproject.toml`: `requires-python = ">=3.11"`; dependencies `torch>=2.4,<3` (deterministic algorithms, `float8` dtypes for FP8 deployment proxies), `safetensors>=0.4` (safe loading), `transformers>=4.45` (Llama-3.1 RoPE scaling and configuration parsing), `numpy>=1.26`, `datasets>=2.20` (pinned revisions), `blake3>=1.0` (the calibration set's digests). Exact versions are locked in `uv.lock`, which resolves for the supported platforms of [09 §8](../spec/09-release-and-versioning.md#8-supported-platforms). Lint with `ruff`, types with `pyright` in strict mode, tests with `pytest` and `hypothesis`, on Python 3.11 to 3.13.
+`python/pyproject.toml`: `requires-python = ">=3.11"`; dependencies `torch>=2.4,<3` (deterministic algorithms, `float8` dtypes for FP8 deployment proxies), `safetensors>=0.4` (safe loading), `transformers>=4.45` (Llama-3.1 RoPE scaling and configuration parsing), `numpy>=1.26`, `datasets>=2.20` (pinned revisions), `blake3>=1.0` (the calibration set's digests), `tokenizers>=0.20` (the checkpoint's `tokenizer.json`, which the command line draws its data with). Exact versions are locked in `uv.lock`, which resolves for the supported platforms of [09 §8](../spec/09-release-and-versioning.md#8-supported-platforms). Lint with `ruff`, types with `pyright` in strict mode, tests with `pytest` and `hypothesis`, on Python 3.11 to 3.13.
 
 PyTorch comes from its own index, through exactly one of two extras:
 

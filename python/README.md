@@ -11,6 +11,30 @@ uv sync --extra cpu      # CPU wheels: CI and the tiny conformance models
 uv sync --extra cu130    # CUDA 13.0 wheels, Linux only: calibrating 8B and up
 ```
 
+## Command line
+
+`tessera-quant`, or `python -m tessera_quant`, runs the pipeline from files ([02 §2.1](../docs/spec/02-public-api.md#21-tessera-quant-python)):
+
+```sh
+# D from a checkpoint and RFC-0005's calibration set: C4's validation split, drawn from the seed.
+tessera-quant compile --checkpoint Llama-3.1-8B --calibration ../docs/perf/examples/calibration-spec-c4.json \
+    --profile servable --scales pot --out llama-3.1-8b.d --report calibration.json --seed 0 --device cuda
+# D against its checkpoint, on data apart from its calibration set.
+tessera-quant eval --model llama-3.1-8b.d --reference Llama-3.1-8B --dataset eval.json \
+    --out fidelity.json --device cuda
+# D's integer logits on token sequences: a TokenFile in, a LogitsFile out.
+tessera-quant reference --model llama-3.1-8b.d --tokens prompts.ttk --out logits.tlg
+```
+
+- The checkpoint directory also holds its `tokenizer.json`, and `config.json`'s `bos_token_id`.
+- `--calibration` and `--dataset` name JSON specifications, `tessera.calibration-spec/1` and `tessera.eval-spec/1` ([`spec/schemas/`](../spec/schemas/README.md)), with paths relative to the file. A dataset is `"c4"` or JSON-lines files of `text` fields with their identity:
+
+  ```json
+  {"name": "wikitext", "config": "wikitext-2-raw-v1", "split": "test", "revision": "<commit>", "files": ["wikitext-2-test.jsonl"]}
+  ```
+
+- Progress goes to stderr. `--json` prints the result, or the error's code and message, as one JSON object on stdout. The exit status is the error code's, as 04 §3 lists them: 64 for usage, 65 for a malformed input, 20 for a calibration or I/O failure.
+
 ## Use
 
 ```python

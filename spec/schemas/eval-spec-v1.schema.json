@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/eval-spec-v1.schema.json",
+  "title": "tessera.eval-spec/1",
+  "description": "What `tessera-quant eval` measures D on (02 §2.1, RFC-0005 'Fidelity evaluation'). The calibration source is the dataset D was calibrated on: its calibration set is redrawn from D's provenance, checked by the selection digest, and no evaluation sequence comes from one of its documents. The documents and prompts are drawn from `--seed`, as `tessera_quant.fidelity.select` defines. Paths are relative to the file. `tessera_quant.cli` reads it strictly: no key may be missing or unknown.",
+  "type": "object",
+  "required": [
+    "schema",
+    "calibration",
+    "documents",
+    "prompts",
+    "continuation"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.eval-spec/1"
+    },
+    "calibration": {
+      "$ref": "#/$defs/source"
+    },
+    "documents": {
+      "description": "The perplexity documents: each the beginning-of-text token and a document's first tokens, at most `max_tokens` in all.",
+      "type": "object",
+      "required": [
+        "source",
+        "count",
+        "max_tokens"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_tokens": {
+          "description": "At most the model's context.",
+          "type": "integer",
+          "minimum": 2
+        }
+      }
+    },
+    "prompts": {
+      "description": "The agreement prompts: each the beginning-of-text token and a document's first `tokens - 1` tokens; shorter documents are skipped.",
+      "type": "object",
+      "required": [
+        "source",
+        "count",
+        "tokens"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tokens": {
+          "type": "integer",
+          "minimum": 2
+        }
+      }
+    },
+    "continuation": {
+      "description": "The reference's greedy tokens after each prompt, the agreement trials: 256 by RFC-0005. With the prompt, at most the model's context.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "resamples": {
+      "description": "Bootstrap resamples: 1,000 when absent.",
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {
+    "source": {
+      "description": "A dataset: the string \"c4\", C4's `en` validation split at the revision RFC-0005 pins, fetched from the Hugging Face Hub; or JSON-lines files of `text` fields, gzip-compressed when a name ends in `.gz`, read in order, with the identity the report records.",
+      "type": [
+        "string",
+        "object"
+      ],
+      "minLength": 2,
+      "maxLength": 2,
+      "required": [
+        "name",
+        "config",
+        "split",
+        "revision",
+        "files"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config": {
+          "type": "string",
+          "minLength": 1
+        },
+        "split": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

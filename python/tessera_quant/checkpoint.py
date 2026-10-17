@@ -7,11 +7,12 @@ module checks before any tensor is loaded, and nothing is ever unpickled.
 
 import json
 import struct
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+import tokenizers
 import torch
 from safetensors import safe_open
 
@@ -23,6 +24,7 @@ MAX_HEADER_BYTES = 100 * 2**20
 
 INDEX = "model.safetensors.index.json"
 SINGLE = "model.safetensors"
+TOKENIZER = "tokenizer.json"
 PICKLE_SUFFIXES = frozenset({".bin", ".pt", ".pth", ".pkl", ".pickle", ".ckpt"})
 
 
@@ -99,6 +101,53 @@ def import_checkpoint(path: Path, *, expected: ArchSpec | None = None) -> FloatM
             if size != 2 * _elements(shape):
                 raise ArchitectureError(f"{name} does not hold its shape's bytes in {file}")
     return FloatModel(arch, {name: directory / placement[name] for name in shapes})
+
+
+@dataclass(frozen=True)
+class Tokenizer:
+    """What drawing calibration and evaluation data needs of a checkpoint's tokenizer."""
+
+    encode: Callable[[str], Sequence[int]]
+    """A text's tokens, without special tokens."""
+    bos: int
+    """The beginning-of-text token."""
+
+
+def read_tokenizer(path: Path, arch: ArchSpec) -> Tokenizer:
+    """The tokenizer of the checkpoint in the directory `path`, whose architecture is `arch`.
+
+    It is the directory's `tokenizer.json`, a JSON file that the `tokenizers` library parses
+    without running code, with the beginning-of-text token `bos_token_id` of its `config.json`, as
+    Llama-3.1 checkpoints ship them. Every token it can give lies in the vocabulary.
+
+    Raises:
+        ArchitectureError: for a missing or malformed tokenizer, a configuration without one
+            integer `bos_token_id`, or a token outside the vocabulary.
+    """
+    directory = Path(path)
+    file = directory / TOKENIZER
+    if not file.is_file():
+        raise ArchitectureError(f"{directory} has no {TOKENIZER}")
+    try:
+        tokenizer = tokenizers.Tokenizer.from_file(str(file))
+    except Exception as error:  # the library raises its own exception types
+        raise ArchitectureError(f"{TOKENIZER} is not a tokenizer: {error}") from None
+    try:
+        config: object = json.loads((directory / "config.json").read_text(encoding="utf-8"))
+    except ValueError as error:
+        raise ArchitectureError(f"config.json is not JSON: {error}") from None
+    bos = cast(dict[str, object], config).get("bos_token_id") if isinstance(config, dict) else None
+    if not isinstance(bos, int) or isinstance(bos, bool):
+        raise ArchitectureError("config.json has no integer bos_token_id")
+    if not 0 <= bos < arch.vocab or tokenizer.get_vocab_size(with_added_tokens=True) > arch.vocab:
+        raise ArchitectureError(
+            f"the tokenizer's tokens lie outside the vocabulary of {arch.vocab}"
+        )
+
+    def encode(text: str) -> list[int]:
+        return tokenizer.encode(text, add_special_tokens=False).ids
+
+    return Tokenizer(encode, bos)
 
 
 def _placement(directory: Path) -> dict[str, str]:

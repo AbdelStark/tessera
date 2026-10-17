@@ -9,7 +9,7 @@
 | Tier | Surfaces | Promise |
 |---|---|---|
 | **A: protocol** | TCE schemas of every artifact and message, the protocol version string, the claim-list schema, table definitions, parameter-set definitions, verifier verdict semantics and exit codes | Frozen per protocol version. A change requires a new protocol version and a superseding RFC. Readers support the current and previous protocol version ([09 §3](09-release-and-versioning.md#3-protocol-and-schema-versions)). |
-| **B: interfaces** | `tessera` and `tessera-verify` CLIs, the Python `tessera_quant` top-level functions, the Rust items re-exported at the root of `tessera-prover` and `tv-core` | SemVer from 1.0. Before 1.0, breaking changes are allowed in minor releases and listed in the changelog. |
+| **B: interfaces** | `tessera`, `tessera-verify` and `tessera-quant` CLIs, the Python `tessera_quant` top-level functions, the Rust items re-exported at the root of `tessera-prover` and `tv-core` | SemVer from 1.0. Before 1.0, breaking changes are allowed in minor releases and listed in the changelog. |
 | **C: internal** | Everything else | No promise. |
 
 Tier A is the treaty-facing contract: two parties pin a protocol version, not a software version.
@@ -23,9 +23,17 @@ Every command reads and writes TCE artifacts, prints human-readable progress to 
 ```text
 tessera-quant compile  --checkpoint DIR --calibration SPEC.json --profile {servable,minimal}
                        --scales {pot,affine} --out MODEL.d [--report CALIB.json] [--seed INT]
-tessera-quant eval     --model MODEL.d --reference DIR --dataset SPEC.json --out FIDELITY.json [--seed INT]
-tessera-quant reference --model MODEL.d --tokens TOKENS.bin --out LOGITS.bin
+                       [--device DEVICE]
+tessera-quant eval     --model MODEL.d --reference DIR --dataset SPEC.json --out FIDELITY.json
+                       [--seed INT] [--device DEVICE]
+tessera-quant reference --model MODEL.d --tokens TOKENS.ttk --out LOGITS.tlg
 ```
+
+- **Inputs.** A checkpoint directory holds `config.json`, its safetensors files and the `tokenizer.json` the calibration and evaluation data are tokenized with; `config.json`'s `bos_token_id` is the beginning-of-text token. A `SPEC.json` is a `tessera.calibration-spec/1` or `tessera.eval-spec/1` file, whose JSON Schemas are in [`spec/schemas/`](../../spec/schemas/README.md). Its dataset sources are `"c4"`, the pinned C4 validation split of [RFC-0005](../rfcs/RFC-0005-integer-model.md#calibration), or JSON-lines files with their identity. RFC-0005's default calibration is [`calibration-spec-c4.json`](../perf/examples/calibration-spec-c4.json).
+- **`compile`** draws the calibration set from `--seed` (default 0) and captures its statistics on `--device` (default `cpu`). It then quantizes and exports `D`, a secret artifact, and `--report` writes the calibration's `tessera.calibration/1` report. On the CPU, the same seed gives the same artifact byte for byte. `--scales affine` is refused with `ERR-USAGE` before any work until [#301](https://github.com/AbdelStark/tessera/issues/301).
+- **`eval`** measures `D` against the checkpoint it was compiled from, whose file digests `D`'s provenance records; another reference is `ERR-QUANT-ARCH`. It redraws `D`'s calibration set from its provenance and the specification's calibration source, refusing with `ERR-QUANT-CALIB` a source that does not give the recorded selection digest back. It then draws the evaluation documents and prompts from `--seed`, skipping every calibration document (`tessera_quant.fidelity.select`), and writes a `tessera.fidelity/1` report.
+- **`reference`** reads a `TokenFile` and writes a `LogitsFile`: the logits of every position of every sequence, in order.
+- **Exit codes** are each error code's ([04 §3](04-error-model.md#3-error-codes)): 0 on success, 64 for usage, 65 for a malformed input, 20 for a calibration or I/O failure, 70 for a bug. With `--json`, a failure prints `{"command", "error": {"code", "message"}}`.
 
 ### 2.2 `tessera` (Rust, prover side)
 

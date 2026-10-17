@@ -19,11 +19,15 @@ agrees when its most likely next token is the reference's. Bootstrap intervals a
 The report, `tessera.fidelity/1`, records the seeds, the data's identities and digests, the
 library versions and `D`'s own provenance digests. Bounded mode's `Û` joins it with RFC-0017's
 predictor.
+
+`select` draws evaluation sequences from a dataset's documents as the calibration set is drawn:
+in the order of a seeded shuffle, each document tokenized without special tokens, and none of
+them a calibration document.
 """
 
 import math
 import platform
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from importlib.metadata import version
@@ -34,10 +38,10 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
-from tessera_quant.calibration import DatasetIdentity
+from tessera_quant.calibration import DatasetIdentity, SplitMix64, document_hash
 from tessera_quant.capture import continue_greedily, logits_of, reference_model
 from tessera_quant.checkpoint import FloatModel
-from tessera_quant.errors import CalibrationError, TesseraQuantError
+from tessera_quant.errors import ArchitectureError, CalibrationError, TesseraQuantError
 from tessera_quant.integer_model import IntegerModel
 from tessera_quant.reference import trace
 
@@ -77,6 +81,55 @@ class EvalSet:
             hasher.update(len(sequence).to_bytes(8, "little"))
             hasher.update(np.asarray(sequence, dtype="<u4").tobytes())
         return hasher.digest()
+
+
+def select(
+    documents: Sequence[str],
+    encode: Callable[[str], Sequence[int]],
+    bos: int,
+    *,
+    source: DatasetIdentity,
+    rng: SplitMix64,
+    count: int,
+    length: int,
+    minimum: int,
+    exclude: frozenset[bytes],
+) -> EvalSet:
+    """`count` evaluation sequences from `documents`, none of them a document of `exclude`.
+
+    The documents are visited in the order of `rng`'s shuffle of their indices
+    (`SplitMix64.shuffled`). A document whose content hash is in `exclude`, the calibration's, is
+    skipped, as is one of fewer than `minimum` tokens, tokenized without special tokens. Each
+    other gives the beginning-of-text token `bos`, then its first `length - 1` tokens, until
+    `count` are drawn. No document gives two sequences.
+
+    Raises:
+        CalibrationError: when the documents give fewer than `count` sequences
+            (`ERR-QUANT-CALIB`).
+        ValueError: for a count below 1, a length below 2 or a minimum below 1.
+    """
+    if count < 1 or length < 2 or minimum < 1:
+        raise ValueError("a selection draws sequences of at least 2 tokens, from 1 token up")
+    sequences: list[tuple[int, ...]] = []
+    hashes: set[bytes] = set()
+    for index in rng.shuffled(len(documents)):
+        if len(sequences) == count:
+            break
+        text = documents[index]
+        digest = document_hash(text)
+        if digest in exclude:
+            continue
+        tokens = encode(text)
+        if len(tokens) < minimum:
+            continue
+        sequences.append((bos, *tokens[: length - 1]))
+        hashes.add(digest)
+    if len(sequences) < count:
+        raise CalibrationError(
+            f"{len(documents)} documents give {len(sequences)} evaluation sequences, "
+            f"not the {count} drawn"
+        )
+    return EvalSet(source, tuple(sequences), frozenset(hashes))
 
 
 @dataclass(frozen=True)
@@ -280,7 +333,8 @@ def evaluate_fidelity(
     Raises:
         CalibrationError: when an evaluation document is a calibration document, or the data is
             empty (`ERR-QUANT-CALIB`: no evaluation data may inform a choice).
-        TesseraQuantError: as `trace`, or for a reference of another architecture.
+        ArchitectureError: for a reference of another architecture.
+        TesseraQuantError: as `trace`.
     """
     for name, data in (("documents", spec.documents), ("prompts", spec.prompts)):
         if not data.sequences:
@@ -290,7 +344,7 @@ def evaluate_fidelity(
     if spec.continuation < 1:
         raise CalibrationError("each prompt is followed by at least one reference token")
     if reference.arch != model.arch:
-        raise TesseraQuantError("the reference has another architecture than D")
+        raise ArchitectureError("the reference has another architecture than D")
     llama = reference_model(reference, device)
     scale = Fraction(2) ** model.quant.public.logits_exponent
 

@@ -27,7 +27,7 @@ import blake3
 import numpy as np
 import pytest
 import torch
-from checkpoints import TINY, TINY_ARCH, tensors, write
+from checkpoints import TINY, TINY_ARCH, llama_like, write
 
 from tessera_quant import (
     CalibrationError,
@@ -50,20 +50,16 @@ from tessera_quant.tce import INTEGER_MODEL_LIMITS, encode, read_artifact
 SOURCE = DatasetIdentity(
     name="fixture", config="en", split="validation", revision="0" * 40, files=("fixture",)
 )
-LIBRARIES = {"blake3", "datasets", "numpy", "python", "safetensors", "torch", "transformers"}
-
-
-def llama_like(seed: int) -> dict[str, torch.Tensor]:
-    """Random weights at Llama's magnitudes: unit embeddings, matrices near 0.02, gains near 1."""
-    generator = torch.Generator().manual_seed(seed + 1)
-    weights = tensors(TINY_ARCH, seed)
-    for name, t in weights.items():
-        if t.dim() == 1:
-            gain = 1 + 0.1 * torch.randn(t.shape, generator=generator, dtype=torch.float64)
-            weights[name] = gain.to(torch.bfloat16)
-        elif name != "model.embed_tokens.weight":
-            weights[name] = (t.to(torch.float64) * 0.02).to(torch.bfloat16)
-    return weights
+LIBRARIES = {
+    "blake3",
+    "datasets",
+    "numpy",
+    "python",
+    "safetensors",
+    "tokenizers",
+    "torch",
+    "transformers",
+}
 
 
 @pytest.fixture(scope="module")
