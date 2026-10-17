@@ -15,7 +15,8 @@
 //!   shows what that costs;
 //! - `prove_forests` on a forest of 2^10 trees of 2^12 leaves, on one tree of 2^22 leaves and on a
 //!   batch of forests of several heights and tree counts, 2^22 leaves each, per leaf. Beside each
-//!   come the `eq` tables its levels build, alone, and the engine's degree-3 sumcheck of a product
+//!   come the `eq` tables the batch prover would build for its levels, alone, which the levels'
+//!   split-`eq` kernel never builds, and the engine's degree-3 sumcheck of a product
 //!   of three tables of as many entries as leaves, per entry: three tables over `Fp`, and a tree
 //!   level's shape, one over `Fp2` and two over `Fp`.
 //!
@@ -187,7 +188,8 @@ fn binding(log_n: u32, runs: usize) {
 }
 
 /// `prove_forests` over forests of `(s, h)` shapes, `2^s` trees of height `h`, per leaf; the `eq`
-/// tables its levels build, alone, per leaf; and the engine's degree-3 sumcheck of three tables of
+/// tables the batch prover would build for its levels, alone, per leaf, which the split-`eq`
+/// kernel saves; and the engine's degree-3 sumcheck of three tables of
 /// as many entries as the batch has leaves, per entry, three over `Fp` and a tree level's shape,
 /// one over `Fp2` and two over `Fp`.
 fn forests(what: &str, shapes: &[(usize, usize)], runs: usize) {
@@ -213,8 +215,8 @@ fn forests(what: &str, shapes: &[(usize, usize)], runs: usize) {
     });
     report_per(&format!("forests: {what}"), total, "leaf", time);
 
-    // The eq tables of every level: at level ℓ each forest that has joined builds one on its
-    // s + ℓ − (H − h) coordinates.
+    // The eq tables the batch prover would build at every level: at level ℓ, one per forest that
+    // has joined, on its s + ℓ − (H − h) coordinates. The split-eq kernel builds none.
     let tallest = shapes.iter().map(|&(_, h)| h).max().unwrap_or(0);
     let points: Vec<Vec<Fp2>> = (0..tallest)
         .flat_map(|level| {
@@ -230,7 +232,12 @@ fn forests(what: &str, shapes: &[(usize, usize)], runs: usize) {
             black_box(eq_table(black_box(point)).expect("a table"));
         }
     });
-    report_per("  the eq tables alone", total, "leaf", time);
+    report_per(
+        "  the eq tables a batch prover would build",
+        total,
+        "leaf",
+        time,
+    );
 
     let a: Vec<Fp> = (0..total).map(|_| rng.fp()).collect();
     let b: Vec<Fp> = (0..total).map(|_| rng.fp()).collect();

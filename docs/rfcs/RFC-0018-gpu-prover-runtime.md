@@ -57,8 +57,8 @@ pub trait ProverBackend {
 | Goldilocks and `Fp2` arithmetic library | All | 32-bit limb multiplies, branch-free reduction ([RFC-0002](RFC-0002-field-arithmetic.md)) |
 | Coset NTT (sizes 2^10–2^23) and RS encode with vanishing mask | Advice and weight commitments | Batched rows; canonical output |
 | BLAKE3 column-chain and Merkle kernels | Commitments | Byte-identical to the CPU reference ([RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests)) |
-| Fraction-tree build and level sumcheck | LogUp-GKR | Bottom-up build fused with leaf generation |
-| Product-tree build and level sumcheck | Max certificate | |
+| Fraction-tree build and level sumcheck | LogUp-GKR | Bottom-up build fused with leaf generation; the level sumcheck as the product tree's |
+| Product-tree build and level sumcheck | Max certificate | `eq` never materialized: per instance a scalar, the current variable's line and two tables of about `√N` entries, in shared memory; two node sums per round, the third recovered from the instance's claim (Gruen), about 15 `Fp`-multiplication equivalents per leaf against 25.5 with an `eq` table ([#258](https://github.com/AbdelStark/tessera/issues/258)) |
 | Sumcheck round kernels (degree ≤ 7) with `eq` tables | Stages | Front-padded batching |
 | Table gather | Witness and leaf generation | Piecewise tables keep the dense core in L2 where it fits |
 | Limb-decomposed folds | Weight fold, tensor folds over tokens, query folds | `Fp2` coefficients split into 8-bit limbs; INT8 GEMMs; exact recombination |

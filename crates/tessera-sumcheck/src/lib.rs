@@ -280,6 +280,7 @@ mod contract;
 mod error;
 mod forest;
 mod kernel;
+mod level;
 mod matmul;
 mod proof;
 mod prover;

@@ -548,6 +548,12 @@ All notable changes to the prover release train are recorded here: the crates un
   - **The correction.** RFC-0011 draws the proximity coefficients as `eq(ξ*, row)`, a tensor over the row index's `ϑ` bits, so the false-witness probability is `ϑ·n/|Fp2|` (Diamond–Posen; Diamond–Gruen, Theorems 2 and 3), not the `n/|Fp2|` of independent coefficients.
   - **At 405B.** The term is about `2^{−100.6}` for advice (`ϑ` up to 21) and at most `2^{−101.8}` per weight matrix (`ϑ_T` up to 18). `live-64` keeps about 100 bits one shot, `ni-100` about 120 with the seed's grinding: no parameter changes.
   - **Where it lands.** RFC-0011's soundness and RFC-0014's budget carry the term. RFC-0012 names the weights' generator, `eq(ξ*_T, row)` under `pcs/weights/{T}/xi`. The calculators take each commitment's `ϑ`, and RFC-0014's Johnson-bound alternative notes that no list-decoding bound is known for this generator.
+- Tree levels prove about 1.76× faster per leaf, with the same proofs ([#258](https://github.com/AbdelStark/tessera/issues/258)):
+  - **The kernel.** `prove_trees`, and so `prove_forests` and `prove_logup`, proves each level by a split `eq` and Gruen's claim recovery (Dao and Thaler, ePrint 2024/1210; Gruen, ePrint 2024/108, §3.2), in `tessera-sumcheck`'s `level` module.
+    - It builds no `eq` table: a scalar, the current variable's line and two tables of about `√N` entries, rebuilt each round.
+    - It takes two node sums per round, recovering the third from each instance's claim. It sums the third when a public challenge zeroes the recovery's divisor.
+  - **The proofs** are bit-identical to the batch prover's over `[eq, …]` instances, which stays as the reference its tests compare to: products on 0 to 12 variables, fraction trees with every kind of numerator, front-padded batches, and the three degenerate challenges.
+  - **Measured.** RFC-0020's protocol on one Apple M4 Max core: `trees/forest`, a new microbenchmark of a product forest of `2^22` leaves, goes from 32.96 to 18.70 ns per leaf; `logup/prove` from 119.1 to 86.8 ns per lookup. RFC-0018 'Kernels' records the level kernel.
 
 ### Removed
 
