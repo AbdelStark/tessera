@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Schema': `PublicQuantSpec`'s affine sites; 'Public and hidden quantization data'; 'Verifier validation', step 5), [RFC-0026](RFC-0026-claim-list-layout.md) ('Schema': `scoring` and `anchor` join with their circuits, and `WeightLayoutParams`' fields; 'Verifier validation', step 7), [RFC-0027](RFC-0027-logits-exponent.md) ('Schema': `PublicQuantSpec`'s `logits_exponent`)
+- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Schema': `PublicQuantSpec`'s affine sites; 'Public and hidden quantization data'; 'Verifier validation', step 5), [RFC-0026](RFC-0026-claim-list-layout.md) ('Schema': `scoring` and `anchor` join with their circuits, and `WeightLayoutParams`' fields; 'Verifier validation', step 7), [RFC-0027](RFC-0027-logits-exponent.md) ('Schema': `PublicQuantSpec`'s `logits_exponent`), [RFC-0030](RFC-0030-masked-exponentials.md) ('Verifier validation', step 5: `SoftmaxRow`'s table)
 
 ## Summary
 
@@ -107,7 +107,7 @@ Before reading any proof message, the verifier runs these checks in order and re
 2. Architecture consistency: `d_model = n_heads · d_head`; `n_heads mod n_kv_heads = 0`; `vocab`, `max_context` within protocol limits (v1: `vocab ≤ 2^18`, `max_context ≤ 2^17`).
 3. Profile constraints hold for the derived graph (S1–S3 of [RFC-0005](RFC-0005-integer-model.md#profiles)) when the profile claims them.
 4. Tables: each `TableSpec` is regenerated from its definition by the verifier's own generator; the digest must match.
-5. Ranges: the verifier lowers the claim list into its own graph and re-derives every range from public data with its own analysis (INV-IR-5), affine sites included ([RFC-0025](RFC-0025-affine-sites.md)). Every lookup key must fit its table and the centered field range, and every split gadget must satisfy its preconditions.
+5. Ranges: the verifier lowers the claim list into its own graph and re-derives every range from public data with its own analysis (INV-IR-5), affine sites included ([RFC-0025](RFC-0025-affine-sites.md)). Every lookup key must fit its table and the centered field range, and every split gadget must satisfy its preconditions. Every `SoftmaxRow`'s `Exp` table must map its last key to 0 ([RFC-0030](RFC-0030-masked-exponentials.md#range-analysis-and-validation)).
 6. Layout: commitment parameters are those the parameter set prescribes, and the derived advice layout fits within the protocol's maximum matrix size.
 7. Scoring and anchor templates name supported variants, once they join the claim list ([RFC-0026](RFC-0026-claim-list-layout.md)).
 

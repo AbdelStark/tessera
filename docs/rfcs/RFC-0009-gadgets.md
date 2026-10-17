@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide'), [RFC-0028](RFC-0028-balanced-split.md) ('RequantSplit': the split point)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide'), [RFC-0028](RFC-0028-balanced-split.md) ('RequantSplit': the split point), [RFC-0030](RFC-0030-masked-exponentials.md) ('SoftmaxRow': every position looked up, the leaf claims' reduction, Lemma 5)
 
 ## Summary
 
@@ -96,17 +96,21 @@ Proves `X ≤ Y` for non-negative integers given in base `2^L` limbs that may ex
 
 ### SoftmaxRow
 
-For query row `q` with valid key positions `i ∈ V_q` (causal mask: `i ≤ q`, public), virtual scores `x_qi` (true integers, `|x| ≤ 2^21`):
+For query row `q` of a sequence of `n` positions, with valid key positions `i ∈ V_q` (causal mask: `C(q, i) = [i ≤ q < n]`, public, [RFC-0030](RFC-0030-masked-exponentials.md#the-causal-selector)) and virtual scores `x_qi` (true integers, `|x| ≤ 2^21`). Every other position of the padded score tensor is masked: padded rows and columns, and, where the tensor is stacked, every position of a padded layer or head.
 
-- Committed: row maximum `c_q`; exponentials `e_qi`; reciprocal `R_q`; limbs of two `NonNeg` instances.
-- Virtual: keys `k_qi = c_q − x_qi`; row sum `s_q = Σ_{i ∈ V_q} e_qi`; bracket slacks `a_q = 2^{2σ} − R_q s_q` and `b_q = s_q − 1 − a_q`.
+- Committed: row maximum `c_q`; exponentials `e_qi` at every position, 0 at masked ones; reciprocal `R_q`; limbs of two `NonNeg` instances.
+- Virtual: keys `k_qi = c_q − x_qi`; lookup keys `κ_qi = C(q, i)·k_qi + (1 − C(q, i))·K_0`, with `K_0 = 2^{key_bits} − 1` the table's last key; row sum `s_q = Σ_i e_qi`, which equals `Σ_{i ∈ V_q} e_qi` because the masked `e` are 0; bracket slacks `a_q = 2^{2σ} − R_q s_q` and `b_q = s_q − 1 − a_q`.
 - Relations:
-  1. Lookup `(k_qi, e_qi) ∈ Exp { key_bits, σ, scale }` for every `i ∈ V_q`.
-  2. Product tree: `Π_{i ∈ V_q} k_qi = 0`, one tree per row. The rows' trees form one forest ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels') of one height `h`, so row `q`'s tree has `2^h` leaves. Leaf `i` is `L_qi = C(q, i)·k_qi + 1 − C(q, i)`, with `C(q, i) = [i ≤ q]` the public causal selector. Every masked position's leaf is the constant 1, so the tree's product is exactly `Π_{i ∈ V_q} k_qi`.
+  1. Lookup `(κ_qi, e_qi) ∈ Exp { key_bits, σ, scale }` at every position of the padded score tensor: the key `k_qi` at a valid position, `K_0` at a masked one. The table maps `K_0` to 0: `key_bits` is the narrowest width, from the spread's up, whose last key lies in the zero tail ([RFC-0030](RFC-0030-masked-exponentials.md#relation-1-every-position-looked-up)).
+  2. Product tree: `Π_{i ∈ V_q} k_qi = 0`, one tree per row. The rows' trees form one forest ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels') of one height `h`, so row `q`'s tree has `2^h` leaves. Leaf `i` is `L_qi = C(q, i)·k_qi + 1 − C(q, i)`, with `C` the public causal selector. Every masked position's leaf is the constant 1, so the tree's product is exactly `Π_{i ∈ V_q} k_qi`. A padded row's tree has every leaf 1, and its public root value is 1.
   3. `R_q ∈ [0, 2^{σ+1})`; `NonNeg(a_q, σ + 18)`; `NonNeg(b_q, σ + 18)`.
-- The forest's leaf claim `L̃(r) = v` goes to the stage that produces the keys, which proves `L̃(r) = C̃(r)·k̃(r) + 1 − C̃(r)`. The verifier evaluates the causal selector's multilinear extension `C̃` itself, in `O(log S)` time.
-- Cost per score: 1 lookup, 1 commitment, 1 product-tree leaf. Per row: 2 commitments (`c_q`, `R_q`), about 4 limb commitments and 6 lookups.
-- Lemma 5 (max certificate). Relations 1 and 2 hold iff `c_q = max_{i ∈ V_q} x_qi` and every `e_qi = Exp[c_q − x_qi]`. Proof: relation 1 forces each `k_qi` to be an integer in `[0, 2^{key_bits})`, so `c_q ≥ x_qi` for all `i`. The keys are integers below `P`, and a field has no zero divisors, so relation 2 forces some `k_qi ≡ 0`, hence `k_qi = 0` and `c_q = x_qi` for that `i`. So `c_q` is the maximum; values follow from relation 1. The proof needs the masked leaves to be non-zero and public, and the constant 1 is that.
+- The forest's leaf claim `L̃(r)` and the lookup's key claim `κ̃(ρ)` go to the stage that produces the keys. It proves each as the sum it stands for, an `Elementwise` relation of degree 3 ([RFC-0030](RFC-0030-masked-exponentials.md#relation-2-the-trees)):
+  - `Σ_x eq(r, x)·C(x)·k(x) = L̃(r) − 1 + C̃(r)`;
+  - `Σ_x eq(ρ, x)·C(x)·k(x) = κ̃(ρ) − K_0·(1 − C̃(ρ))`.
+
+  The verifier evaluates the causal selector's multilinear extension `C̃` itself, in `O(log S)` time, at the points of the claims and at the stage's final point.
+- Cost per valid score: 1 lookup, 1 commitment, 1 product-tree leaf. A masked position's lookup is the constant tuple `(K_0, 0)`, and its leaf the constant 1 ([#321](https://github.com/AbdelStark/tessera/issues/321)). Per row: 2 commitments (`c_q`, `R_q`), about 4 limb commitments and 6 lookups.
+- Lemma 5 (max certificate). Relations 1 and 2 hold iff, for every row `q < n`, `c_q = max_{i ∈ V_q} x_qi` and every valid `e_qi = Exp[c_q − x_qi]`, and every masked `e_qi = 0`. Proof: at a masked position, relation 1 puts `(K_0, e_qi)` in `Exp`, whose keys are distinct, so `e_qi = Exp[K_0] = 0`. At a valid position, relation 1 forces each `k_qi` to be an integer in `[0, 2^{key_bits})`, so `c_q ≥ x_qi` for all `i ∈ V_q`. The keys are integers below `P`, and a field has no zero divisors, so relation 2 forces some `k_qi ≡ 0`, hence `k_qi = 0` and `c_q = x_qi` for that `i`. So `c_q` is the maximum; values follow from relation 1. The proof needs the masked leaves to be non-zero and public, and the constant 1 is that.
   - **A masked leaf of 0**, or a selector that multiplies the leaf, would make every row's product vanish. Then `c_q` could be any value at or above the maximum.
   - **A masked leaf of the real key `c_q − x_qi`** of a future position would let `c_q` equal any future score above the causal maximum.
 - Lemma 6 (reciprocal). Relation 3 holds iff `R_q = floor(2^{2σ} / s_q)`. Proof: `s_q ≥ e(0) = 2^σ > 0` because the maximal score has key 0; `R_q < 2^{σ+1}` and `s_q < 2^{σ+17}` keep `R_q s_q < 2^{50}`, so the slacks are exact integers; `0 ≤ a_q ≤ s_q − 1` is the bracket.
