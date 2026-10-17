@@ -8,6 +8,15 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dependencies]
+tessera-codec = { path = "../tessera-codec" }
+tessera-compiler = { path = "../tessera-compiler" }
+tessera-ir = { path = "../tessera-ir" }
+tessera-tables = { path = "../tessera-tables" }
+
+[dev-dependencies]
+serde_json = "1"
+
 [features]
 # Test-only: dumps secret tensors for debugging (OBS-4). A release build with it fails to compile.
 unsafe-debug-dump = []

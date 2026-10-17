@@ -89,6 +89,10 @@ pub struct Lowering {
     pub one_hot: TensorId,
     /// The logits `[n, vocab]`, which the scoring certificates read (RFC-0017).
     pub logits: TensorId,
+    /// The residual stream `[n, d_model]` at each layer boundary: after the embedding, then after
+    /// each layer. These are the checkpoints from which any layer regenerates (RFC-0018 'Witness
+    /// engine').
+    pub checkpoints: Vec<TensorId>,
     /// The channel-class vector of each weight whose site has several classes, `[rows]`: its
     /// `ChannelParams` classes, committed with the weights (RFC-0012).
     pub classes: Vec<(WeightRef, TensorId)>,
@@ -169,7 +173,7 @@ pub fn lower(model: PublicModel<'_>, positions: u32) -> Result<Lowering, Compile
         });
     }
     let mut builder = Builder::new(model, positions)?;
-    let (one_hot, logits) = builder.forward()?;
+    let (one_hot, logits, checkpoints) = builder.forward()?;
     let mut graph = builder.graph.finish();
     let ranges = analyze(&graph, &builder.tables)?;
     check_profile(&graph, &ranges, &builder.tables, model.profile)?;
@@ -181,6 +185,7 @@ pub fn lower(model: PublicModel<'_>, positions: u32) -> Result<Lowering, Compile
         positions: builder.positions,
         one_hot,
         logits,
+        checkpoints,
         classes: builder.classes,
     })
 }
@@ -622,8 +627,8 @@ impl<'a> Builder<'a> {
         Ok(self.graph.node(op, inputs, vec![output])?[0])
     }
 
-    /// The forward pass: the one-hot tokens and the logits.
-    fn forward(&mut self) -> Result<(TensorId, TensorId), CompileError> {
+    /// The forward pass: the one-hot tokens, the logits and the residual at each layer boundary.
+    fn forward(&mut self) -> Result<(TensorId, TensorId, Vec<TensorId>), CompileError> {
         let arch = self.model.arch;
         let (n, d, vocab) = (self.n, arch.d_model, arch.vocab);
         // Embedding: the one-hot tokens select columns of the transposed embedding, shifted into
@@ -634,12 +639,14 @@ impl<'a> Builder<'a> {
             .graph
             .constant(vec![1 << embed_shift(self.model.quant)?])?;
         let mut residual = self.node(Op::ConstMul { c: scale }, &[x0], virt(&[n, d]))?;
+        let mut checkpoints = vec![residual];
         for layer in 0..arch.n_layers {
             residual = self.layer(layer, residual)?;
+            checkpoints.push(residual);
         }
         let y = self.norm(residual, QuantPoint::FinalNorm)?;
         let logits = self.matmul(WeightType::LmHead, 0, y, vocab, d)?;
-        Ok((one_hot, logits))
+        Ok((one_hot, logits, checkpoints))
     }
 
     fn layer(&mut self, layer: u32, residual: TensorId) -> Result<TensorId, CompileError> {
