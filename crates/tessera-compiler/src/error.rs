@@ -7,6 +7,7 @@ use core::fmt;
 
 use tessera_codec::error::ErrorCode;
 use tessera_ir::{IrError, NodeId, TableId};
+use tessera_tables::TableError;
 
 /// Why a graph cannot be compiled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,6 +30,33 @@ pub enum CompileError {
         /// The input, counted from 0.
         input: usize,
     },
+    /// The graph breaks a constraint its profile claims, S1 to S3 of RFC-0005 'Profiles'
+    /// (`ERR-COMPILE-PROFILE`).
+    Profile {
+        /// The node.
+        node: NodeId,
+        /// The constraint, with what it requires.
+        rule: &'static str,
+    },
+    /// The integer model contradicts its architecture or RFC-0005, or uses what the compiler does
+    /// not support yet (`ERR-QUANT-ARCH`, RFC-0006 'Llama lowering').
+    Model {
+        /// The rule the model breaks.
+        rule: &'static str,
+    },
+    /// A table the model's public constants define is one RFC-0008 refuses (`ERR-QUANT-ARCH`).
+    ModelTable {
+        /// The table's index in the lowering.
+        table: TableId,
+        /// Why the generator refuses it.
+        error: TableError,
+    },
+    /// The compilation request is malformed, such as a sequence longer than the model's context
+    /// (`ERR-USAGE`).
+    Usage {
+        /// What the request breaks.
+        rule: &'static str,
+    },
     /// A node names a table that the given specifications lack, or one of a kind its operation
     /// cannot use: a bug in the code that built the graph (`ERR-INTERNAL`).
     Table {
@@ -49,6 +77,9 @@ impl CompileError {
         match self {
             Self::Range { .. } => ErrorCode::CompileRange,
             Self::Wrap { .. } => ErrorCode::CompileWrap,
+            Self::Profile { .. } => ErrorCode::CompileProfile,
+            Self::Model { .. } | Self::ModelTable { .. } => ErrorCode::QuantArch,
+            Self::Usage { .. } => ErrorCode::Usage,
             Self::Table { .. } | Self::Graph(_) => ErrorCode::Internal,
         }
     }
@@ -66,6 +97,10 @@ impl fmt::Display for CompileError {
                 "node {}, input {input}: no bound proves the value a true integer",
                 node.0
             ),
+            Self::Profile { node, rule } => write!(f, "node {}: {rule}", node.0),
+            Self::Model { rule } => write!(f, "the integer model breaks a rule: {rule}"),
+            Self::ModelTable { table, error } => write!(f, "table {}: {error}", table.0),
+            Self::Usage { rule } => f.write_str(rule),
             Self::Table { node, table, rule } => {
                 write!(f, "node {}, table {}: {rule}", node.0, table.0)
             }

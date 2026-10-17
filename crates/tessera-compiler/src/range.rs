@@ -11,13 +11,15 @@
 //!   secret weights would leak them through the claim list. An interval that would leave `i128`
 //!   is [`Range::Unbounded`]; a virtual tensor may be, since it is computed modulo `P`.
 //! - **Gadget outputs** take the range their gadget's lookups enforce (RFC-0009).
-//! - **The relational fact.** `SoftmaxRow` emits `R_q · s_q ≤ 2^{2σ}` (RFC-0009 Lemma 6), with
+//! - **Relational facts.** `SoftmaxRow` emits `R_q · s_q ≤ 2^{2σ}` (RFC-0009 Lemma 6), with
 //!   `s_q = Σ_i e_qi`. When the attention output multiplies `PV = MatMulAct(e, v)` by that row's
 //!   `R`, as RFC-0006's lowering does, `R_q · Σ_i e_qi v_ic` lies between `2^{2σ} · min(v)` and
 //!   `2^{2σ} · max(v)`, with 0 in between: `e ≥ 0`, `R ≥ 0`. The product of the operands' bounds
 //!   would be about `2^σ` times the context length wider. The fact holds for honest values, whose
 //!   exponentials are zero at masked positions: the reference softmax has no masked term, and
-//!   #279 makes the protocol enforce it.
+//!   #279 makes the protocol enforce it. `OneHot` emits that its vectors have exactly one 1
+//!   (RFC-0009 Lemma 8), so `MatMulWeight` on them selects a column of the weight and keeps the
+//!   weight's range: the embedding rows stay INT8 rather than growing with the vocabulary.
 //! - **True integers.** Every gadget input that must be an integer needs a bounded range inside
 //!   `(−(P−1)/2, (P−1)/2)`, and inside what its gadget or table accepts. Without a bound it is
 //!   `ERR-COMPILE-WRAP`, outside one `ERR-COMPILE-RANGE`. Inside the gadgets the field value of
@@ -36,7 +38,8 @@ use crate::CompileError;
 /// within it on either side (RFC-0006 'True-integer rule').
 pub const HALF_FIELD: i128 = (1 << 63) - (1 << 31);
 
-/// A `SoftmaxRow` score's bound: `|x| < 2^21` (RFC-0009 'SoftmaxRow').
+/// A `SoftmaxRow` score's bound: `|x| ≤ 2^21` (RFC-0009 'SoftmaxRow'), attained by INT8 queries
+/// and keys of width 128 at `−128`.
 const SCORE_BOUND: i128 = 1 << 21;
 
 /// An `RsqrtRow` sum's bound with its epsilon: `u + e < 2^55` (RFC-0009 'RsqrtRow').
@@ -157,6 +160,13 @@ impl Analysis<'_> {
         };
         match &node.op {
             Op::MatMulWeight { .. } => {
+                if self
+                    .producer(node.inputs[0])
+                    .is_some_and(|p| matches!(p.op, Op::OneHot { .. }))
+                {
+                    // A one-hot vector selects one column: the weight's own range.
+                    return Ok(vec![input(1)]);
+                }
                 let fan_in = u64::from(self.shape(node.inputs[1])[1]);
                 let weight = input(1).bounded().and_then(magnitude);
                 let bound = input(0)
@@ -259,7 +269,25 @@ impl Analysis<'_> {
                     table: *table,
                     rule: "TableMap takes a table of single keys",
                 })?;
+                let classes = classes(kind);
+                if (classes > 1) != (node.inputs.len() > 1) {
+                    return Err(CompileError::Table {
+                        node: node.id,
+                        table: *table,
+                        rule: "the channel classes come with a table of several classes, and only \
+                               with one",
+                    });
+                }
                 self.within(node, 0, lo, hi, "a key lies in its table's keys")?;
+                if classes > 1 {
+                    self.within(
+                        node,
+                        1,
+                        0,
+                        classes - 1,
+                        "a channel class indexes the table's classes",
+                    )?;
+                }
                 Ok(vec![values(kind)])
             }
             Op::Bitwise { table } => {
@@ -277,9 +305,22 @@ impl Analysis<'_> {
                 Ok(vec![values(kind)])
             }
             Op::SoftmaxRow { exp_table, sigma } => self.softmax(node, *exp_table, *sigma),
-            Op::RsqrtRow { kappa, eps_int } => {
+            Op::RsqrtRow {
+                kappa,
+                eps_int,
+                dim,
+            } => {
+                // ρ < 2^{κ+1}, the gadget's range check, holds iff d < 4(u + e): the smallest sum
+                // still gives a root inside it.
                 let eps = i128::from(*eps_int);
-                self.within(node, 0, 0, RSQRT_BOUND - 1 - eps, "u + e lies in [0, 2^55)")?;
+                let least = (0i128).max(i128::from(*dim) / 4 + 1 - eps);
+                self.within(
+                    node,
+                    0,
+                    least,
+                    RSQRT_BOUND - 1 - eps,
+                    "u ≥ 0 and d < 4(u + e), with u + e < 2^55",
+                )?;
                 Ok(vec![Range::new(0, (1 << (u32::from(*kappa) + 1)) - 1)])
             }
             Op::Argmax | Op::InverseCdf { .. } => {
@@ -291,7 +332,7 @@ impl Analysis<'_> {
     }
 
     /// `SoftmaxRow`'s outputs: the exponentials in its `Exp` table's values, and `R_q`, which its
-    /// range check bounds by `2^{σ+1}` (RFC-0009). The scores are true integers with `|x| < 2^21`,
+    /// range check bounds by `2^{σ+1}` (RFC-0009). The scores are true integers with `|x| ≤ 2^21`,
     /// and their spread fits the table's keys, since each key is the row maximum less a score.
     fn softmax(&self, node: &Node, table: TableId, sigma: u8) -> Result<Vec<Range>, CompileError> {
         let kind = self.table(node, table)?;
@@ -317,9 +358,9 @@ impl Analysis<'_> {
         let scores = self.within(
             node,
             0,
-            1 - SCORE_BOUND,
-            SCORE_BOUND - 1,
-            "a score lies in (−2^21, 2^21)",
+            -SCORE_BOUND,
+            SCORE_BOUND,
+            "a score lies in [−2^21, 2^21]",
         )?;
         if scores.hi - scores.lo >= 1 << key_bits {
             return Err(CompileError::Range {
@@ -413,6 +454,17 @@ fn keys(kind: &TableKind) -> Option<(i128, i128)> {
         TableKind::Exp { key_bits, .. } => Some((0, below(key_bits))),
         TableKind::Exp2Frac { frac_bits, .. } => Some((0, below(frac_bits))),
         TableKind::Bitwise8 { .. } | TableKind::Rope { .. } => None,
+    }
+}
+
+/// The number of classes a table of `kind` keys by: `r_by_class`'s for `Requant` and `Silu`, one
+/// for the others.
+fn classes(kind: &TableKind) -> i128 {
+    match kind {
+        TableKind::Requant { r_by_class, .. } | TableKind::Silu { r_by_class, .. } => {
+            i128::try_from(r_by_class.len()).unwrap_or(i128::MAX)
+        }
+        _ => 1,
     }
 }
 

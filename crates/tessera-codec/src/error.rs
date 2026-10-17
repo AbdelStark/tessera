@@ -89,7 +89,8 @@ error_codes! {
     CodecTruncated => "ERR-CODEC-TRUNCATED", Input, 65, "Input ended inside a value.";
     CodecDigest => "ERR-CODEC-DIGEST", Input, 65, "Envelope digest does not match the payload.";
     CodecLimit => "ERR-CODEC-LIMIT", Input, 65, "A length exceeds the configured resource limit.";
-    QuantArch => "ERR-QUANT-ARCH", Model, 65, "Checkpoint architecture outside `ArchSpec` support.";
+    QuantArch => "ERR-QUANT-ARCH", Model, 65,
+        "Checkpoint or integer model outside `ArchSpec` support, or inconsistent with it.";
     QuantCalib => "ERR-QUANT-CALIB", Model, 20,
         "Calibration produced non-finite or degenerate statistics.";
     CompileRange => "ERR-COMPILE-RANGE", Model, 20,

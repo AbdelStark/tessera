@@ -354,13 +354,28 @@ impl Graph {
                     return fail("the output is committed, as a lookup output or as advice");
                 }
             }
-            Op::TableMap { table } | Op::Bitwise { table } => {
-                let n_in = if matches!(op, Op::Bitwise { .. }) {
-                    2
-                } else {
-                    1
-                };
-                arity(n_in, 1, "takes its operands and produces one tensor")?;
+            Op::TableMap { table } => {
+                if !(1..=2).contains(&inputs.len()) || outputs.len() != 1 {
+                    return fail(
+                        "takes the tensor, with the channel classes of a classed table, and \
+                         produces one",
+                    );
+                }
+                let x = inputs[0].shape;
+                if let Some(c) = inputs.get(1)
+                    && (c.kind != weight() || c.shape != [last(x)])
+                {
+                    return fail("the channel classes are committed weights, one per channel");
+                }
+                if outputs[0].shape != x {
+                    return fail("the output has the input's shape");
+                }
+                if outputs[0].kind != lookup_output(*table) {
+                    return fail("the output is the table's lookup output");
+                }
+            }
+            Op::Bitwise { table } => {
+                arity(2, 1, "takes its operands and produces one tensor")?;
                 if inputs.iter().any(|i| i.shape != inputs[0].shape)
                     || outputs[0].shape != inputs[0].shape
                 {
@@ -377,19 +392,32 @@ impl Graph {
                     "takes the scores and produces the exponentials and reciprocals",
                 )?;
                 let x = inputs[0].shape;
-                if outputs[0].shape != x || outputs[1].shape != without_axis(x, x.len() - 1) {
+                let r = x.len();
+                if r < 2 || x[r - 1] != x[r - 2] {
+                    return fail(
+                        "the scores' last two axes are the query and key positions of one sequence",
+                    );
+                }
+                if outputs[0].shape != x || outputs[1].shape != without_axis(x, r - 1) {
                     return fail("one exponential per score and one reciprocal per row");
                 }
                 if outputs[0].kind != lookup_output(*exp_table) || outputs[1].kind != advice() {
                     return fail("the exponentials are Exp lookup outputs, the reciprocals advice");
                 }
             }
-            Op::RsqrtRow { .. } => {
+            Op::RsqrtRow { kappa, dim, .. } => {
                 arity(
                     1,
                     1,
                     "takes the sums of squares and produces one root per row",
                 )?;
+                if *dim == 0 {
+                    return fail("the rows have at least one element");
+                }
+                // The roots' range check `ρ < 2^{κ+1}` is one lookup of at most 32 bits.
+                if *kappa > 31 {
+                    return fail("κ ≤ 31");
+                }
                 if outputs[0].shape != inputs[0].shape {
                     return fail("one root per sum");
                 }

@@ -115,6 +115,7 @@ fn block() -> Graph {
         Op::RsqrtRow {
             kappa: 16,
             eps_int: 5,
+            dim: D,
         },
         &[ss],
         advice(&[T]),
@@ -316,11 +317,12 @@ fn a_block_with_every_operation_builds_identically_and_validates() {
     );
 }
 
-/// A builder with the declarations every scenario below needs. Tensors 0 to 6 are `a [T, D]`,
+/// A builder with the declarations every scenario below needs. Tensors 0 to 7 are `a [T, D]`,
 /// `b [T, D]` (advice), the positions `[T]` (public), the channel classes `[D]` (weights), the
-/// weight Q `[D, D]`, a public `[D]` and an advice `[T, 3]` with an odd last axis; shift classes 0 and 1 have one and two classes; constants 0, 1 and 2
-/// are a scalar, the rows 3 and 0, and the rows 0 and `T`, one past the end of `[T]`.
-fn base() -> (GraphBuilder, [TensorId; 7]) {
+/// weight Q `[D, D]`, a public `[D]`, an advice `[T, 3]` with an odd last axis, and square scores
+/// `[T, T]` (advice); shift classes 0 and 1 have one and two classes; constants 0, 1 and 2 are a
+/// scalar, the rows 3 and 0, and the rows 0 and `T`, one past the end of `[T]`.
+fn base() -> (GraphBuilder, [TensorId; 8]) {
     let mut b = GraphBuilder::new();
     let a = b.input(advice(&[T, D])).expect("a");
     let c = b.input(advice(&[T, D])).expect("b");
@@ -336,13 +338,14 @@ fn base() -> (GraphBuilder, [TensorId; 7]) {
     let wq = b.weight(weight(WeightType::Q), D, D).expect("Q");
     let wide = b.input(public(&[D])).expect("a public [D]");
     let odd = b.input(advice(&[T, 3])).expect("an odd last axis");
+    let square = b.input(advice(&[T, T])).expect("square scores");
     b.shift_classes(vec![4]).expect("one class");
     b.shift_classes(vec![3, 5]).expect("two classes");
     b.constant(vec![3]).expect("scalar");
     b.constant(vec![3, 0]).expect("rows");
     b.constant(vec![0, i64::from(T)])
         .expect("a row past the end");
-    (b, [a, c, positions, classes, wq, wide, odd])
+    (b, [a, c, positions, classes, wq, wide, odd, square])
 }
 
 fn op_error(op: &'static str, rule: &'static str) -> IrError {
@@ -355,7 +358,7 @@ fn op_error(op: &'static str, rule: &'static str) -> IrError {
 
 #[test]
 fn each_operation_rule_broken_alone_is_refused() {
-    let (base_builder, [a, c, positions, classes, wq, wide, odd]) = base();
+    let (base_builder, [a, c, positions, classes, wq, wide, odd, square]) = base();
     let q = weight(WeightType::Q);
     let shift = |n| tessera_ir::ShiftClassRef(n);
     let konst = |n| tessera_ir::ConstRef(n);
@@ -714,14 +717,23 @@ fn each_operation_rule_broken_alone_is_refused() {
             vec![lookup(&[T, D], 4)],
             op_error("Bitwise", "the operands and the output have one shape"),
         ),
+        (
+            Op::TableMap { table: TableId(3) },
+            vec![a, c],
+            vec![lookup(&[T, D], 3)],
+            op_error(
+                "TableMap",
+                "the channel classes are committed weights, one per channel",
+            ),
+        ),
         // SoftmaxRow and RsqrtRow.
         (
             Op::SoftmaxRow {
                 exp_table: TableId(1),
                 sigma: 16,
             },
-            vec![a],
-            vec![lookup(&[T, D], 1)],
+            vec![square],
+            vec![lookup(&[T, T], 1)],
             op_error(
                 "SoftmaxRow",
                 "takes the scores and produces the exponentials and reciprocals",
@@ -733,7 +745,19 @@ fn each_operation_rule_broken_alone_is_refused() {
                 sigma: 16,
             },
             vec![a],
-            vec![lookup(&[T, D], 1), advice(&[D])],
+            vec![lookup(&[T, D], 1), advice(&[T])],
+            op_error(
+                "SoftmaxRow",
+                "the scores' last two axes are the query and key positions of one sequence",
+            ),
+        ),
+        (
+            Op::SoftmaxRow {
+                exp_table: TableId(1),
+                sigma: 16,
+            },
+            vec![square],
+            vec![lookup(&[T, T], 1), advice(&[D])],
             op_error(
                 "SoftmaxRow",
                 "one exponential per score and one reciprocal per row",
@@ -744,8 +768,8 @@ fn each_operation_rule_broken_alone_is_refused() {
                 exp_table: TableId(1),
                 sigma: 16,
             },
-            vec![a],
-            vec![lookup(&[T, D], 2), advice(&[T])],
+            vec![square],
+            vec![lookup(&[T, T], 2), advice(&[T])],
             op_error(
                 "SoftmaxRow",
                 "the exponentials are Exp lookup outputs, the reciprocals advice",
@@ -755,6 +779,27 @@ fn each_operation_rule_broken_alone_is_refused() {
             Op::RsqrtRow {
                 kappa: 16,
                 eps_int: 0,
+                dim: 0,
+            },
+            vec![positions],
+            vec![advice(&[T])],
+            op_error("RsqrtRow", "the rows have at least one element"),
+        ),
+        (
+            Op::RsqrtRow {
+                kappa: 32,
+                eps_int: 0,
+                dim: D,
+            },
+            vec![positions],
+            vec![advice(&[T])],
+            op_error("RsqrtRow", "κ ≤ 31"),
+        ),
+        (
+            Op::RsqrtRow {
+                kappa: 16,
+                eps_int: 0,
+                dim: D,
             },
             vec![positions],
             vec![advice(&[D])],
@@ -764,6 +809,7 @@ fn each_operation_rule_broken_alone_is_refused() {
             Op::RsqrtRow {
                 kappa: 16,
                 eps_int: 0,
+                dim: D,
             },
             vec![positions],
             vec![lookup(&[T], 0)],
@@ -800,7 +846,8 @@ fn each_operation_rule_broken_alone_is_refused() {
             vec![a, c],
             vec![virt(&[T, 0])],
             IrError::Tensor {
-                tensor: TensorId(7),
+                // The node's output, the first tensor after `base`'s inputs.
+                tensor: TensorId(square.0 + 1),
                 rule: "a shape has at least one axis, each of length at least 1",
             },
         ),
@@ -882,9 +929,12 @@ fn each_operation_rule_broken_alone_is_refused() {
         ),
         (
             Op::TableMap { table: TableId(3) },
-            vec![a, c],
+            vec![a, classes, classes],
             vec![lookup(&[T, D], 3)],
-            op_error("TableMap", "takes its operands and produces one tensor"),
+            op_error(
+                "TableMap",
+                "takes the tensor, with the channel classes of a classed table, and produces one",
+            ),
         ),
         (
             Op::Bitwise { table: TableId(4) },
@@ -896,6 +946,7 @@ fn each_operation_rule_broken_alone_is_refused() {
             Op::RsqrtRow {
                 kappa: 16,
                 eps_int: 0,
+                dim: D,
             },
             vec![positions],
             vec![advice(&[T]), advice(&[T])],

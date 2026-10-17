@@ -7,7 +7,7 @@
 
 ## Summary
 
-The Python front-end `tessera-quant` turns a Llama-3.1 checkpoint into the integer model `D`, a network defined entirely by integer operations with exact rounding rules. `D` uses INT8 weights and activations, power-of-two requantization shifts by default, an INT20 residual stream, an integer RMSNorm, RoPE with 14-bit constants, max-shift softmax over a 2^24-key exponential table, a SiLU table and INT28 logits. Two compilation profiles exist: `servable` (default; every matmul operand is INT8, so exact mode can run on tensor cores) and `minimal` (fewest commitments; bounded mode only). This RFC fixes `D`'s semantics bit for bit, the calibration procedure, the determinism rules, and the fidelity evaluation that gates any change.
+The Python front-end `tessera-quant` turns a Llama-3.1 checkpoint into the integer model `D`, a network defined entirely by integer operations with exact rounding rules. `D` uses INT8 weights and activations, power-of-two requantization shifts by default, an INT20 residual stream, an integer RMSNorm, RoPE with 14-bit constants, max-shift softmax over a 2^24-key exponential table, a SiLU table and INT28 logits. Two compilation profiles exist: `servable` (default; every weight matmul's operands are INT8, so exact mode can run on tensor cores) and `minimal` (fewest commitments; bounded mode only). This RFC fixes `D`'s semantics bit for bit, the calibration procedure, the determinism rules, and the fidelity evaluation that gates any change.
 
 ## Motivation
 
@@ -67,11 +67,11 @@ All operations are on integers; `rq(x, r, lo, hi) = clamp(floor((x + 2^{r−1}) 
 | Step | Operation | Range (worst case) |
 |---|---|---|
 | Embed | `x0 = onehot(token)^T · E` (INT8 row), `res = x0 · 2^{s_e}` | INT20 |
-| Attn norm | `s = Σ res_i^2`; `ρ = max{ρ ∈ ℕ : ρ^2 (s + e) ≤ d · 2^{2κ}}`, `κ = 16`, `e` = exact integer form of `d·ε/σ_res^2` rounded up; `y_i = rq(res_i · ρ, r_n, −128, 127)` | `s < 2^54`; key `< 2^37` |
+| Attn norm | `s = Σ res_i^2`; `ρ = max{ρ ∈ ℕ : ρ^2 (s + e) ≤ d · 2^{2κ}}`, `κ = 16`, `e` = exact integer form of `d·ε/σ_res^2` rounded up; `y_i = rq(res_i · ρ, r_n, −128, 127)` | `s < 2^54`; key `< 2^37`; `ρ < 2^{κ+1}` for every row needs `4e > d` ([#285](https://github.com/AbdelStark/tessera/issues/285)) |
 | Q, K, V | `acc = W y` (INT32) | `< 2^29` |
-| RoPE | `(a, b) ↦ (a·C − b·S, a·S + b·C)` with `C, S` 14-bit constants from the RoPE table ([RFC-0008](RFC-0008-logup-and-tables.md#table-kinds)); then `q = rq(·, r_q, −128, 127)`, same for `k` | key `< 2^44` |
+| RoPE | Each head's pairs `(a, b) = (x_i, x_{i + d_head/2})`, the layout of Hugging Face checkpoints: `(a, b) ↦ (a·C − b·S, a·S + b·C)` with `C, S` 14-bit constants of frequency `i` from the RoPE table ([RFC-0008](RFC-0008-logup-and-tables.md#table-kinds)); then `q = rq(·, r_q, −128, 127)`, same for `k` | key `< 2^44` |
 | V | `v = rq(acc, r_v,c, −128, 127)` | key `< 2^29` |
-| Scores | `x_qi = Σ_j q_j k_ij` over `d_head = 128` for `i ≤ p` (GQA: 16 query heads per KV head) | `−2^21 < x < 2^21` |
+| Scores | `x_qi = Σ_j q_j k_ij` over `d_head = 128` for `i ≤ p` (GQA: query head `h` reads KV head `h / (n_heads / n_kv_heads)`, 16 query heads per KV head at 405B) | `−2^21 < x ≤ 2^21`; `2^21` is attained at `q = k = −128` |
 | Softmax | `c_q = max_i x_qi`; `e_qi = T_exp[c_q − x_qi]`, `T_exp[k] = round(2^σ · exp(−k · σ_q σ_k / √d_head))`, `σ = 16`; `s_q = Σ_i e_qi`; `R_q = floor(2^{2σ} / s_q)` | keys `≤ 2^22`; `s_q < 2^{σ+17}` |
 | Attention out | `o = R_q · Σ_i e_qi v_i` | `o ∈ [−2^39, 127 · 2^32]` using `R_q s_q ≤ 2^{2σ}`; `−2^39` is attained (one position, `v = −128`) |
 | O projection | `servable`: `o8 = rq(o, r_o, −128, 127)`, `acc = W_O o8`. `minimal`: `acc = W_O o` | `< 2^29` or `< 2^60` |
@@ -89,11 +89,13 @@ Every constant (`s_e`, `e`, all shifts, `σ_q σ_k / √d_head` as an exact rati
 
 | Constraint | `servable` | `minimal` |
 |---|---|---|
-| S1: every matmul operand is INT8 | Required | Not required for O and down projections |
-| S2: every accumulator fits INT32 in the worst case | Required | Not required |
+| S1: every weight matmul's operands are INT8 | Required | Not required for O and down projections |
+| S2: every weight matmul's accumulator fits INT32 in the worst case | Required | Not required |
 | S3: every nonlinearity is a table lookup or an operation in the table above | Required | Required |
 | Exact mode | Available | Not available (`ERR-COMPILE-PROFILE` if requested) |
 | Witness GEMMs | INT8 tensor cores | Limb-decomposed GEMMs for O and down projections |
+
+S1 and S2 concern the weight matmuls, the GEMMs that run on tensor cores. The attention products are outside them in both profiles: `QK^T` multiplies INT8 values, but `PV` multiplies 17-bit exponentials, and its accumulator grows with the context.
 
 `servable` is the default so that one `D` serves both modes ("two modes, one circuit", source §7). The `minimal` profile reproduces the source's commitment-minimal dataflow (137,216 commitments per layer per token at 405B before RISK-2 corrections). The v0.2 commitment report costs both.
 

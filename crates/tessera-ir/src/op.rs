@@ -30,8 +30,10 @@ pub enum Op {
         /// The constant.
         c: ConstRef,
     },
-    /// RoPE: each pair of the last axis rotated by public constants of the row's position;
-    /// inputs `x` and the public positions of its rows.
+    /// RoPE: inputs `x` and the public positions of its rows. With a last axis of `2m`, the pair
+    /// `(a, b) = (x_i, x_{i+m})` becomes `(a·C − b·S, a·S + b·C)`, where `(C, S)` are the constants
+    /// of the row's position and frequency `i`: Llama's `rotate_half` layout, the channel order of
+    /// Hugging Face checkpoints.
     Rotate {
         /// The `Rope` table of the constants.
         rope: TableId,
@@ -86,25 +88,30 @@ pub enum Op {
         /// The saturation ceiling.
         hi: i64,
     },
-    /// A single-input lookup, elementwise: SiLU and other nonlinearities.
+    /// A single-key lookup, elementwise: SiLU and other nonlinearities. With a table of several
+    /// classes, the second input is the channel-class vector, as for `Requant`.
     TableMap {
         /// The table.
         table: TableId,
     },
     /// Softmax over the last axis by the max certificate and the reciprocal bracket (RFC-0009):
-    /// outputs the exponentials and each row's reciprocal `R_q`.
+    /// outputs the exponentials and each row's reciprocal `R_q`. The last two axes are the query
+    /// and key positions of one sequence, and row `q` sees keys `i ≤ q`: the exponentials of the
+    /// others are zero.
     SoftmaxRow {
         /// The `Exp` table.
         exp_table: TableId,
         /// The exponentials' precision `σ`.
         sigma: u8,
     },
-    /// `ρ = max{ρ : ρ^2 (u + e) ≤ d · 2^{2κ}}` for each row's sum of squares (RFC-0009).
+    /// `ρ = max{ρ : ρ^2 (u + e) ≤ d · 2^{2κ}}` for each row's sum of squares `u` (RFC-0009).
     RsqrtRow {
         /// The precision `κ`.
         kappa: u8,
         /// The exact epsilon term `e`.
         eps_int: u64,
+        /// The row length `d` the sums ran over.
+        dim: u32,
     },
     /// Certifies that each row's one-hot token is the argmax of its logits (RFC-0017).
     Argmax,
