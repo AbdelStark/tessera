@@ -1,6 +1,6 @@
 # Report schemas
 
-JSON reports are not TCE artifacts. Each carries a `"schema"` identifier, `tessera.<name>/<version>`, and its JSON Schema lives here as `<name>-v<version>.schema.json` ([03 §5](../../docs/spec/03-data-model.md#5-artifact-catalog)).
+JSON reports, and the specifications `tessera-quant` reads, are not TCE artifacts. Each carries a `"schema"` identifier, `tessera.<name>/<version>`, and its JSON Schema lives here as `<name>-v<version>.schema.json` ([03 §5](../../docs/spec/03-data-model.md#5-artifact-catalog)).
 
 | Schema | Written by | Committed instances |
 |---|---|---|
@@ -8,6 +8,8 @@ JSON reports are not TCE artifacts. Each carries a `"schema"` identifier, `tesse
 | [`cost-model-v1`](cost-model-v1.schema.json) | `tessera bench model --out FILE` | [`docs/perf/examples/cost-model-source-defaults.json`](../../docs/perf/examples/cost-model-source-defaults.json), which a `tessera-cli` test keeps current, up to the last bits of numbers that platforms round differently |
 | [`calibration-v1`](calibration-v1.schema.json) | `tessera_quant.capture.write_calibration`, beside the secret statistics file | [`docs/perf/examples/calibration-tiny.json`](../../docs/perf/examples/calibration-tiny.json), which a `tessera-quant` test keeps current but for its statistics digest and environment, which depend on the platform |
 | [`fidelity-v1`](fidelity-v1.schema.json) | `tessera_quant.fidelity.evaluate_fidelity` (`FidelityReport.as_json`) | [`docs/perf/examples/fidelity-tiny.json`](../../docs/perf/examples/fidelity-tiny.json), whose shape a `tessera-quant` test keeps current; its numbers depend on the platform's BF16 arithmetic |
+| [`calibration-spec-v1`](calibration-spec-v1.schema.json) | an operator, for `tessera-quant compile --calibration` (02 §2.1), which reads it strictly | [`docs/perf/examples/calibration-spec-c4.json`](../../docs/perf/examples/calibration-spec-c4.json), RFC-0005's default calibration, which a `tessera-quant` test reads |
+| [`eval-spec-v1`](eval-spec-v1.schema.json) | an operator, for `tessera-quant eval --dataset` (02 §2.1), which reads it strictly | none yet: the 8B gates' data is [#93](https://github.com/AbdelStark/tessera/issues/93)'s |
 | [`commitment-report-v1`](commitment-report-v1.schema.json) | `tessera_compiler::report`, with the projections of `tessera-bench`'s cost model | the 405B reports in [`docs/perf/v0.2/`](../../docs/perf/v0.2/README.md), which a `tessera-bench` test keeps current; `TESSERA_WRITE_EXAMPLES=1` rewrites them |
 | [`unit-costs-v1`](unit-costs-v1.schema.json) | `tessera bench unit-costs`, with the H100 measurement of [RFC-0020](../../docs/rfcs/RFC-0020-cost-model.md#measurement-protocol-v01-gate) | none yet; `docs/perf/v0.1/` will hold the measurement |
 

@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/calibration-spec-v1.schema.json",
+  "title": "tessera.calibration-spec/1",
+  "description": "What `tessera-quant compile` draws its calibration set from (02 §2.1, RFC-0005 'Calibration'): a dataset source and the sizes of the draw, whose seed is `--seed`. Paths are relative to the file. `tessera_quant.cli` reads it strictly: no key may be missing or unknown.",
+  "type": "object",
+  "required": [
+    "schema",
+    "source",
+    "sequences",
+    "tokens_per_sequence",
+    "held_out"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.calibration-spec/1"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "sequences": {
+      "description": "Calibration sequences: 512 by RFC-0005.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "tokens_per_sequence": {
+      "description": "Tokens per sequence, the beginning-of-text token included: 2,048 by RFC-0005. At most the model's context.",
+      "type": "integer",
+      "minimum": 2
+    },
+    "held_out": {
+      "description": "Sequences of the split on which the migration strength is chosen: 64 by RFC-0005.",
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {
+    "source": {
+      "description": "A dataset: the string \"c4\", C4's `en` validation split at the revision RFC-0005 pins, fetched from the Hugging Face Hub; or JSON-lines files of `text` fields, gzip-compressed when a name ends in `.gz`, read in order, with the identity the reports record.",
+      "type": [
+        "string",
+        "object"
+      ],
+      "minLength": 2,
+      "maxLength": 2,
+      "required": [
+        "name",
+        "config",
+        "split",
+        "revision",
+        "files"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config": {
+          "type": "string",
+          "minLength": 1
+        },
+        "split": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

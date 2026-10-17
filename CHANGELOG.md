@@ -448,6 +448,23 @@ All notable changes to the prover release train are recorded here: the crates un
     - two bugs planted in each implementation, a reciprocal one too small and an inner clamp at `±2^bits`, fail at the tensor and index where they arise.
   - Llama-3.1-8B is [#312](https://github.com/AbdelStark/tessera/issues/312), once [#93](https://github.com/AbdelStark/tessera/issues/93) gives its `D`.
 
+- The `tessera-quant` command line (02 §2.1, [#92](https://github.com/AbdelStark/tessera/issues/92)), also `python -m tessera_quant`:
+  - `compile` draws the calibration set from `--seed`, captures its statistics, quantizes and exports `D`. `--report` writes the calibration report. The same seed gives the same artifact byte for byte.
+  - `eval` measures `D` against the checkpoint it was compiled from, checked by `D`'s provenance digests. It redraws `D`'s calibration set from its provenance and the specification's calibration source, checked by the selection digest, and draws evaluation data apart from those documents.
+  - `reference` writes the integer logits of every position of every sequence of a `TokenFile` as a `LogitsFile`.
+  - Specifications are `tessera.calibration-spec/1` and `tessera.eval-spec/1`, with JSON Schemas in `spec/schemas/`. `docs/perf/examples/calibration-spec-c4.json` is RFC-0005's default calibration.
+  - Progress goes to stderr, and `--json` prints one result or error object. The exit status is the error code's (04 §3), checked against `spec/vectors/errors/codes.json`.
+  - Supporting changes:
+    - `tessera_quant.checkpoint.read_tokenizer` reads a checkpoint's `tokenizer.json` and its `bos_token_id`, through `tokenizers`, now a direct dependency (RFC-0005 'Python packaging'). `Provenance` records its version.
+    - `tessera_quant.fidelity.select` draws evaluation sequences as the calibration set is drawn.
+    - `tessera_quant.assemble` gains `check_options` and `checkpoint_digests`, and plain JSON-lines files are read as well as gzip-compressed ones.
+  - Error codes:
+    - `UsageError` (`ERR-USAGE`) is new.
+    - `quantize`'s refusals of `affine` scales and unknown profiles become `ERR-USAGE`.
+    - The reference's refusal of affine sites becomes `ERR-QUANT-ARCH`, and of tokens outside the vocabulary or bad lengths `ERR-USAGE`.
+    - A reference of another architecture in `evaluate_fidelity` becomes `ERR-QUANT-ARCH`. All four were `ERR-INTERNAL`.
+  - Tests: an end-to-end run on a tiny checkpoint with its tokenizer, and each failure's exit status. Six bugs planted in the command line each fail a test: hashes not excluded, the selection digest unchecked, the reference unchecked, the seed ignored, the logits reordered, and affine scales accepted.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

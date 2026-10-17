@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any, cast
 
 import safetensors.torch
+import tokenizers
+import tokenizers.models
+import tokenizers.pre_tokenizers
 import torch
 
 from tessera_quant import (
@@ -78,6 +81,33 @@ def tensors(arch: ArchSpec, seed: int = 7) -> Weights:
         name: torch.randn(shape, generator=generator).to(torch.bfloat16)
         for name, shape in tensor_shapes(arch).items()
     }
+
+
+def llama_like(seed: int) -> Weights:
+    """Random weights at Llama's magnitudes: unit embeddings, matrices near 0.02, gains near 1."""
+    generator = torch.Generator().manual_seed(seed + 1)
+    weights = tensors(TINY_ARCH, seed)
+    for name, t in weights.items():
+        if t.dim() == 1:
+            gain = 1 + 0.1 * torch.randn(t.shape, generator=generator, dtype=torch.float64)
+            weights[name] = gain.to(torch.bfloat16)
+        elif name != "model.embed_tokens.weight":
+            weights[name] = (t.to(torch.float64) * 0.02).to(torch.bfloat16)
+    return weights
+
+
+CHARACTERS = "abcdefghijklmnopqrstuvwxyz0123456789 .,"
+"""What the character tokenizer knows: token `2 + i` is `CHARACTERS[i]`, 0 unknown, 1 `<s>`."""
+
+
+def char_tokenizer(directory: Path) -> None:
+    """Writes `tokenizer.json`: one token per character, as `tokenizers` saves it."""
+    vocab = {"[UNK]": 0, "<s>": 1} | {c: 2 + i for i, c in enumerate(CHARACTERS)}
+    tokenizer = tokenizers.Tokenizer(tokenizers.models.WordLevel(vocab, "[UNK]"))
+    tokenizer.pre_tokenizer = tokenizers.pre_tokenizers.Split(
+        tokenizers.Regex("."), behavior="isolated"
+    )
+    tokenizer.save(str(directory / "tokenizer.json"))
 
 
 def save(weights: Weights, path: Path) -> None:

@@ -21,6 +21,9 @@ them, and `tessera_quant.integer_model` defines `D`. `tessera_quant.tables` gene
 tables `D` uses and their digests, equal to the Rust generators' (RFC-0008). `run_reference`, from
 `tessera_quant.reference`, computes `D`'s logits in int64, the integer reference that the Rust
 engine is checked against bit for bit (SC-7).
+
+`tessera_quant.cli` is the `tessera-quant` command line, which runs the pipeline from files (02
+§2.1).
 """
 
 from importlib.metadata import version
@@ -36,6 +39,7 @@ from tessera_quant.errors import (
     EncodeError,
     TableError,
     TesseraQuantError,
+    UsageError,
 )
 from tessera_quant.fidelity import EvalSet, EvalSpec, FidelityReport, evaluate_fidelity
 from tessera_quant.reference import run_reference
@@ -55,6 +59,7 @@ __all__ = [
     "RopeSpec",
     "TableError",
     "TesseraQuantError",
+    "UsageError",
     "__version__",
     "calibrate",
     "evaluate_fidelity",

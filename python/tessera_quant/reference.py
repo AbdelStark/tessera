@@ -29,7 +29,7 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
-from tessera_quant.errors import TesseraQuantError
+from tessera_quant.errors import ArchitectureError, TesseraQuantError, UsageError
 from tessera_quant.integer_model import (
     EmbedPoint,
     FinalNormPoint,
@@ -104,8 +104,11 @@ def trace(model: IntegerModel, tokens: npt.NDArray[np.uint32]) -> Trace:
     Deterministic: CPU int64 arithmetic only.
 
     Raises:
-        TesseraQuantError: for an affine site, a token outside the vocabulary, a sequence longer
-            than the context, or a product that could leave int64.
+        ArchitectureError: for a model with affine sites, which the reference computes only
+            with #301.
+        UsageError: for a token outside the vocabulary, or a sequence empty or longer than the
+            context.
+        TesseraQuantError: for a product that could leave int64.
     """
     return _Forward(model, tokens).run()
 
@@ -117,14 +120,14 @@ class _Forward:
         arch = model.arch
         public = model.quant.public
         if public.affine_sites:
-            raise TesseraQuantError(
+            raise ArchitectureError(
                 "the reference computes no affine site until RFC-0025's lowering lands (#301)"
             )
         n = len(tokens)
         if not 1 <= n <= arch.max_context:
-            raise TesseraQuantError("a sequence has 1 to max_context tokens")
+            raise UsageError("a sequence has 1 to max_context tokens")
         if int(tokens.max()) >= arch.vocab:
-            raise TesseraQuantError("every token lies in [0, vocab)")
+            raise UsageError("every token lies in [0, vocab)")
         self.model = model
         self.tokens = torch.as_tensor(tokens.astype(np.int64))
         self.n = n

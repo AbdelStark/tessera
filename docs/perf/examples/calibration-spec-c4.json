@@ -1,0 +1,7 @@
+{
+  "schema": "tessera.calibration-spec/1",
+  "source": "c4",
+  "sequences": 512,
+  "tokens_per_sequence": 2048,
+  "held_out": 64
+}

@@ -92,6 +92,18 @@ class SplitMix64:
             if x < limit:
                 return x % n
 
+    def shuffled(self, n: int) -> list[int]:
+        """`0` to `n - 1`, shuffled.
+
+        The Fisher-Yates shuffle: for `i` from `n - 1` down to 1, swap positions `i` and
+        `uniform(i + 1)`.
+        """
+        order = list(range(n))
+        for i in range(n - 1, 0, -1):
+            j = self.uniform(i + 1)
+            order[i], order[j] = order[j], order[i]
+        return order
+
 
 @dataclass(frozen=True)
 class DatasetIdentity:
@@ -166,13 +178,9 @@ def draw(
     if count < 0 or held_out < 0:
         raise ValueError("the split sizes are not negative")
     rng = SplitMix64(seed)
-    order = list(range(len(documents)))
-    for i in range(len(order) - 1, 0, -1):
-        j = rng.uniform(i + 1)
-        order[i], order[j] = order[j], order[i]
     wanted = count + held_out
     windows: list[Window] = []
-    for index in order:
+    for index in rng.shuffled(len(documents)):
         if len(windows) == wanted:
             break
         tokens = encode(documents[index])
@@ -225,13 +233,20 @@ def check_disjoint(calibration: CalibrationSet, evaluation: Iterable[str], name:
 
 
 def read_json_lines(path: Path) -> list[str]:
-    """The `text` field of every line of a gzip-compressed JSON-lines file, in order: a C4 file.
+    """The `text` field of every line of a JSON-lines file, in order, such as a C4 file.
+
+    A file whose name ends in `.gz` is read through gzip.
 
     Raises:
         CalibrationError: for a line that is not a JSON object with a string `text`.
     """
     texts: list[str] = []
-    with gzip.open(path, "rt", encoding="utf-8") as lines:
+    compressed = path.suffix == ".gz"
+    with (
+        gzip.open(path, "rt", encoding="utf-8")
+        if compressed
+        else path.open(encoding="utf-8") as lines
+    ):
         for number, line in enumerate(lines, 1):
             try:
                 record: object = json.loads(line)

@@ -13,6 +13,16 @@ class TesseraQuantError(Exception):
     """The error's stable code, as 04 §3 spells it."""
 
 
+class UsageError(TesseraQuantError):
+    """Invalid arguments or configuration (`ERR-USAGE`).
+
+    An option the package does not offer yet, a malformed specification file, or input that a
+    call's contract excludes, such as a token outside the vocabulary.
+    """
+
+    code = "ERR-USAGE"
+
+
 class ArchitectureError(TesseraQuantError):
     """A checkpoint outside what `ArchSpec` supports, or not the expected one (`ERR-QUANT-ARCH`)."""
 

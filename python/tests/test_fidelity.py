@@ -12,6 +12,9 @@
   checks.
 - **Hygiene.** An evaluation document that the calibration used, empty data, no continuation and
   a reference of another architecture are refused.
+- **Selection.** `select` draws the same sequences from the same seed: the beginning-of-text token
+  and a document's first tokens, never from a calibration document or one too short, and refuses
+  to draw more than the documents give.
 """
 
 import json
@@ -24,7 +27,7 @@ from typing import cast
 import numpy as np
 import pytest
 import torch
-from checkpoints import TINY, TINY_ARCH, tensors, write
+from checkpoints import TINY, llama_like, write
 
 from tessera_quant import (
     CalibrationError,
@@ -33,13 +36,14 @@ from tessera_quant import (
     import_checkpoint,
     quantize,
 )
-from tessera_quant.calibration import DatasetIdentity, document_hash, draw
+from tessera_quant.calibration import DatasetIdentity, SplitMix64, document_hash, draw
 from tessera_quant.checkpoint import FloatModel
 from tessera_quant.fidelity import (
     EvalSet,
     EvalSpec,
     bootstrap_ratio,
     evaluate_fidelity,
+    select,
     token_totals,
     wilson,
 )
@@ -111,15 +115,7 @@ def test_intervals_have_their_textbook_values() -> None:
 def evaluated(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> tuple[FloatModel, IntegerModel, EvalSpec]:
-    generator = torch.Generator().manual_seed(6)
-    weights = tensors(TINY_ARCH, 5)
-    for name, t in weights.items():
-        if t.dim() == 1:
-            gain = 1 + 0.1 * torch.randn(t.shape, generator=generator, dtype=torch.float64)
-            weights[name] = gain.to(torch.bfloat16)
-        elif name != "model.embed_tokens.weight":
-            weights[name] = (t.to(torch.float64) * 0.02).to(torch.bfloat16)
-    path = write(tmp_path_factory.mktemp("fidelity") / "checkpoint", TINY, weights)
+    path = write(tmp_path_factory.mktemp("fidelity") / "checkpoint", TINY, llama_like(5))
     model = import_checkpoint(path)
     documents = [f"document {i} " + "the quick brown fox jumps" * (1 + i % 3) for i in range(40)]
     calibration = draw(documents, encode, 1, source=SOURCE, seed=11, count=6, length=16, held_out=3)
@@ -198,3 +194,35 @@ def test_evaluation_data_is_disjoint_from_the_calibration(
     other = replace(d, arch=replace(d.arch, max_context=d.arch.max_context + 1))
     with pytest.raises(TesseraQuantError, match="another architecture"):
         evaluate_fidelity(other, model, spec)
+
+
+def test_evaluation_data_is_drawn_from_a_seed_apart_from_the_calibration() -> None:
+    # Document 0 is too short for a window of 8 tokens; documents 1 to 10 are the calibration's.
+    texts = [f"text {i} " + "abc " * i for i in range(30)]
+    excluded = frozenset(document_hash(t) for t in texts[1:11])
+
+    def drawn(seed: int, count: int) -> EvalSet:
+        rng = SplitMix64(seed)
+        return select(
+            texts,
+            encode,
+            1,
+            source=SOURCE,
+            rng=rng,
+            count=count,
+            length=9,
+            minimum=8,
+            exclude=excluded,
+        )
+
+    some = drawn(4, 12)
+    assert some == drawn(4, 12)
+    assert some.sequences != drawn(5, 12).sequences
+    assert len(some.document_hashes) == 12
+    every = drawn(4, 19)
+    assert every.document_hashes == {document_hash(t) for t in texts[11:]}
+    by_hash = {document_hash(t): t for t in texts}
+    starts = {(1, *encode(by_hash[h])[:8]) for h in every.document_hashes}
+    assert set(every.sequences) == starts
+    with pytest.raises(CalibrationError, match="give 19 evaluation sequences, not the 20"):
+        drawn(4, 20)

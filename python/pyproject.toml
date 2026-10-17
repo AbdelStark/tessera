@@ -13,8 +13,12 @@ dependencies = [
     "datasets>=2.20",
     "numpy>=1.26",
     "safetensors>=0.4",
+    "tokenizers>=0.20",
     "transformers>=4.45",
 ]
+
+[project.scripts]
+tessera-quant = "tessera_quant.cli:main"
 
 [project.optional-dependencies]
 # PyTorch comes from its own index, through exactly one of these (RFC-0005 'Python packaging'):

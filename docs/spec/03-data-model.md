@@ -184,7 +184,7 @@ Protocol messages (`Round1`, `SeedCommit`, `ProverSeedShare`, `SeedReveal`, `Rou
 
 "Protocol" class means the artifact is sent to the verifier and is zero-knowledge by construction; it may be shared but must not be altered.
 
-JSON reports are not TCE artifacts. Each carries a `"schema"` string (`tessera.commitment-report/1`, `tessera.cost-model/1`, `tessera.microbenchmarks/1`, `tessera.unit-costs/1`, `tessera.fidelity/1`, `tessera.verdict/1`, `tessera.audit-report/1`, `tessera.run-manifest/1`, `tessera.calibration/1`) and is validated against a JSON Schema file under `spec/schemas/`. JSON reports are never hashed into transcripts or commitments.
+JSON reports and specifications are not TCE artifacts. Each carries a `"schema"` string (`tessera.commitment-report/1`, `tessera.cost-model/1`, `tessera.microbenchmarks/1`, `tessera.unit-costs/1`, `tessera.fidelity/1`, `tessera.verdict/1`, `tessera.audit-report/1`, `tessera.run-manifest/1`, `tessera.calibration/1`, and the `tessera-quant` specifications `tessera.calibration-spec/1` and `tessera.eval-spec/1`) and is validated against a JSON Schema file under `spec/schemas/`. JSON reports are never hashed into transcripts or commitments.
 
 ## 6. Invariants
 
