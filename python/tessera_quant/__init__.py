@@ -9,7 +9,8 @@ from a seed and a pinned dataset, and checks evaluation data disjoint from it (R
 and keeps each quantization point's per-channel maxima in a secret statistics file, with a
 `tessera.calibration/1` report beside it. `tessera_quant.migration` folds the RMSNorm gains,
 equalizes queries and keys, and migrates activation outliers into the weights, with the
-statistics that follow (RFC-0005 'Pipeline', steps 2 and 4). Quantization follows.
+statistics that follow (RFC-0005 'Pipeline', steps 2 and 4). `tessera_quant.quantize` chooses
+`D`'s scales and shifts and rounds its weights to INT8 (RFC-0005 'Scale policy', step 5).
 
 `D` reaches the Rust tools as a TCE artifact (RFC-0003): `tessera_quant.tce` reads and writes
 them, and `tessera_quant.integer_model` defines `D`. `tessera_quant.tables` generates the lookup
