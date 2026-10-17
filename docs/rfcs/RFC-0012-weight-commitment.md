@@ -36,10 +36,16 @@ The source keeps VerInf's "persistent weight commitment, opened-column budget, r
 | `Embed` | `d_model × vocab` (transposed embedding) | `(o_hi)` | `(o_lo, v)` |
 | `Q`, `K`, `V`, `O`, `Gate`, `Up`, `Down` | `out × in` | `(layer, o_hi)` | `(o_lo, i)` |
 | `LmHead` | `vocab × d_model` | `(o_hi)` | `(o_lo, i)` |
-| `ChannelParams` | per (type, layer): class index and affine multiplier per output channel | `(type, layer)` | `(channel)` |
+| `ChannelParams` | per (type, layer): one value per output channel, its class index or affine multiplier | `(type, layer_hi)` | `(layer_lo, channel)` |
 
 - Dimensions are padded to powers of two; padded output rows are structurally zero and skipped, as in RFC-0011.
 - `o_lo` has `a_T` bits, chosen so the message width `k_T = 2^{a_T} · in_pad` is `2^20` for 405B shapes (`a = 6` for 16,384-wide inputs, `a = 4` for the 53,248-wide down projection padded to 65,536, `a = 3` for the 2^17-wide embedding). Smaller models use `k_T = min(2^20, out_pad · in_pad)`.
+- `ChannelParams` holds the tensor `[types, n_layers, C]`, flattened row-major ([RFC-0010](RFC-0010-proof-schedule.md#multilinear-extensions)):
+  - the types in this table's order, `Embed` first, 9 padded to 16;
+  - `C`, the largest padded output width among the weights that have a `ChannelParams` ([03 §2](../spec/03-data-model.md#quantization)): `2^16` at 405B, Gate's and Up's;
+  - entry `(T, ℓ, c)`: channel `c`'s class index if `T`'s outputs reach a site of several classes, its multiplier `M_c` if they reach an affine site ([RFC-0025](RFC-0025-affine-sites.md)), and 0 for padding, for a channel past `T`'s width and for a weight with no `ChannelParams`.
+
+  Its message width is `k_W`, as every 405B matrix's is: the low `log2 k_W` bits of the flattened index are its columns, the rest its row. A narrower message would raise its rate `(k + P_W)/n_T` above the one `τ_W` is computed for. At `k = 2^16` with `P_W = 2^16` the rate is 1/2, and `live-64`'s 97 queries would give about 40 bits instead of 64. At 405B a row holds 16 layers' values of one type. Each type that has a `ChannelParams` fills 8 rows, and the other types' rows are zero and skipped. At 8B, with `C = 2^{12}` when only `O` and `Down` have a `ChannelParams`, the tensor holds `2^{21}` entries, and a row holds all 32 layers of 8 types. A model whose tensor is smaller than `k_W` takes `k = min(k_W, types · layers · C)` after padding, as the other matrices take `min(2^20, out_pad · in_pad)`.
 - Rate 1/4: codewords of length `n_T = 4 k_T` on the coset `7·L_T`.
 - Each row's encoding carries a vanishing mask with `P_W = 2^16` random coefficients (RFC-0011 encoding), so the effective rate is `ρ' = (k_T + P_W)/n_T ≈ 0.266`.
 - Each matrix has `B_W = 4096` blinding rows: random message rows appended after the data rows, committed with them, each used at most once. RFC-0013's masks are over `Fp2`, so each blinding row it uses is two of these. A proof consumes six per matrix: two for the evaluation combined row, two for the proximity combined row, and two as the mask row of the masked extension ([RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions)).

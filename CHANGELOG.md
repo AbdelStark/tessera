@@ -592,6 +592,11 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Uniqueness.** That instance leaves a few values free: `RsqrtRow`'s `ρ`, `SoftmaxRow`'s `c_q` and `R_q`, and `InverseCdf`'s maximum. A padding zero-check `(1 − ψ)·w = 0` pins each of them, so every committed value upstream of the logits keeps one passing witness.
   - **Zero-check points.** No document had said where a zero-check's point came from. Each stage with a `ZeroCheck` now squeezes it under `stage/{k}/zero/{c}` before `γ`, and every `ZeroCheck` runs in stage 1, `OneHot`'s booleanity included.
   - **What it touches.** RFC-0009, RFC-0010, RFC-0011, RFC-0014 and RFC-0017 are amended. No commitment or lookup is added.
+- RFC-0012 defines the `ChannelParams` matrix's layout ([#331](https://github.com/AbdelStark/tessera/issues/331)):
+  - **The rule.** The matrix holds the tensor `[types, n_layers, C]`, with `C` the widest padded output among the weights that have a `ChannelParams`. Each entry is the channel's class index or affine multiplier, or 0, and the message width is `k_W`.
+  - **Why `k_W`.** A narrower message would raise the rate above the one `τ_W` is computed for. A `2^16`-wide message with `P_W = 2^16` has rate 1/2, where `live-64`'s 97 queries give about 40 bits instead of 64.
+  - **At 405B.** Rows hold 16 layers of one type, 8 rows per type that has a `ChannelParams`.
+  - **The vectors.** The production `ChannelParams` descriptor in `spec/vectors/hash/` follows the rule: `log2_k = 20` and `2 · 8 + 4096` rows for `servable` with two classes. Its encoding and `commitment_id` are regenerated, and both workspaces check them.
 
 ### Removed
 
