@@ -8,6 +8,7 @@
 mod common;
 
 use common::{SplitMix64, TestField, brute_force, vertex};
+use tessera_codec::SecretBuf;
 use tessera_field::{F65537, F65537Ext2, Goldilocks, GoldilocksExt2};
 use tessera_poly::{bind_lowest, bind_lowest_in_place, evaluate, evaluate_base, num_vars};
 
@@ -75,7 +76,7 @@ fn binding_follows_its_definition<F: TestField>(seed: u64) {
         let table: Vec<F> = rng.elements(1 << n);
         let r: F = rng.element();
         let bound = bind_lowest(&base, r).expect("a table with a variable");
-        let mut in_place = table.clone();
+        let mut in_place: SecretBuf<F> = table.iter().copied().collect();
         bind_lowest_in_place(&mut in_place, r).expect("a table with a variable");
         assert_eq!(bound.len(), 1 << (n - 1));
         assert_eq!(in_place.len(), 1 << (n - 1));
@@ -94,11 +95,14 @@ fn binding_follows_its_definition<F: TestField>(seed: u64) {
                 .step_by(2)
                 .map(|&b| F::from(b))
                 .collect();
-            assert_eq!(bind_lowest(&base, x1), Ok(lifted));
-            let mut in_place = table.clone();
+            assert_eq!(
+                bind_lowest(&base, x1).map(|bound| bound.to_vec()),
+                Ok(lifted)
+            );
+            let mut in_place: SecretBuf<F> = table.iter().copied().collect();
             bind_lowest_in_place(&mut in_place, x1).expect("a table with a variable");
             let kept: Vec<F> = table.iter().skip(parity).step_by(2).copied().collect();
-            assert_eq!(in_place, kept);
+            assert_eq!(in_place[..], kept[..]);
         }
     }
 }
@@ -116,7 +120,7 @@ fn binding_then_evaluating_is_evaluating<F: TestField>(seed: u64) {
         let point: Vec<F> = rng.elements(n);
         let bound = bind_lowest(&base, point[0]).expect("a table with a variable");
         assert_eq!(evaluate(&bound, &point[1..]), evaluate_base(&base, &point));
-        let mut in_place = table.clone();
+        let mut in_place: SecretBuf<F> = table.iter().copied().collect();
         bind_lowest_in_place(&mut in_place, point[0]).expect("a table with a variable");
         assert_eq!(evaluate(&in_place, &point[1..]), evaluate(&table, &point));
         // Round j of a sumcheck binds x_j: n bindings in round order leave f̃(point).
@@ -136,7 +140,10 @@ fn binding_the_lowest_variable_then_evaluating_the_rest_is_evaluating() {
 #[test]
 fn binding_in_place_keeps_the_allocation() {
     let mut rng = SplitMix64::new(5);
-    let mut table: Vec<GoldilocksExt2> = rng.elements(1 << 10);
+    let mut table: SecretBuf<GoldilocksExt2> = rng
+        .elements::<GoldilocksExt2>(1 << 10)
+        .into_iter()
+        .collect();
     let (start, capacity) = (table.as_ptr(), table.capacity());
     while table.len() > 1 {
         bind_lowest_in_place(&mut table, rng.element()).expect("a table with a variable");

@@ -6,6 +6,7 @@
 mod common;
 
 use common::{SplitMix64, small};
+use tessera_codec::SecretBuf;
 use tessera_field::{F65537, Field, Goldilocks, GoldilocksExt2};
 use tessera_poly::{
     MAX_DEGREE, PolyError, RoundPoly, bind_lowest, bind_lowest_in_place, causal_selector, eq,
@@ -32,11 +33,12 @@ fn a_length_that_is_not_a_power_of_two_is_refused() {
         // The point length is checked after the table's, so any point will do.
         assert_eq!(evaluate(&table, &[]), Err(error));
         assert_eq!(evaluate_base(&base, &fp2s(2)), Err(error));
-        assert_eq!(bind_lowest(&base, Fp2::ONE), Err(error));
-        let mut refused = table.clone();
+        assert_eq!(bind_lowest(&base, Fp2::ONE).err(), Some(error));
+        let mut refused: SecretBuf<Fp2> = table.iter().copied().collect();
         assert_eq!(bind_lowest_in_place(&mut refused, Fp2::ONE), Err(error));
         assert_eq!(
-            refused, table,
+            refused[..],
+            table[..],
             "a refused binding leaves the table unchanged"
         );
     }
@@ -73,15 +75,15 @@ fn points_compared_coordinate_by_coordinate_must_have_equal_lengths() {
 #[test]
 fn a_table_of_one_entry_has_no_variable_to_bind() {
     assert_eq!(
-        bind_lowest(&[Fp::ONE], Fp2::ONE),
-        Err(PolyError::NoVariable)
+        bind_lowest(&[Fp::ONE], Fp2::ONE).err(),
+        Some(PolyError::NoVariable)
     );
-    let mut table = vec![Fp2::ONE];
+    let mut table = SecretBuf::filled(Fp2::ONE, 1);
     assert_eq!(
         bind_lowest_in_place(&mut table, Fp2::ONE),
         Err(PolyError::NoVariable)
     );
-    assert_eq!(table, vec![Fp2::ONE]);
+    assert_eq!(table[..], [Fp2::ONE]);
     // A table of one entry is still evaluated, at the empty point.
     assert_eq!(evaluate(&[small::<Fp2>(5)], &[]), Ok(small(5)));
     assert_eq!(evaluate_base(&[small::<Fp>(5)], &[]), Ok(small::<Fp2>(5)));

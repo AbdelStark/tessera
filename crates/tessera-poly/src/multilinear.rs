@@ -6,7 +6,12 @@
 //! A table of `2^n` values is the multilinear `f̃(x_1, …, x_n)` equal to `f[Σ_i x_i·2^{i−1}]` on
 //! the hypercube, so `x_1` is the least significant bit of the index, and a point lists its
 //! coordinates from `x_1` up.
+//!
+//! Tables are secret-class when they hold activations or weights, and so is every table this
+//! module derives from one: a bound table and an evaluation's partial sums live in a
+//! [`SecretBuf`], which clears its memory when it drops (05 §3 OBS-6).
 
+use tessera_codec::SecretBuf;
 use tessera_field::Field;
 
 use crate::{PolyError, PolyField, eq_table};
@@ -55,17 +60,16 @@ fn check_point(vars: usize, point: usize) -> Result<(), PolyError> {
 /// This is the first round of a sumcheck over committed values: an `Fp` table bound with an `Fp2`
 /// challenge becomes an `Fp2` table. Each pair costs one base subtraction, two base
 /// multiplications ([`PolyField::mul_by_base`]) and one base addition. Later rounds bind in place
-/// with [`bind_lowest_in_place`].
+/// with [`bind_lowest_in_place`]. The result is allocated once, at its size, and cleared when it
+/// drops.
 ///
 /// # Errors
 ///
 /// [`PolyError::TableLength`] when the length is not a power of two, [`PolyError::NoVariable`]
 /// for a table of one entry, and [`PolyError::TooLarge`] when the result cannot be allocated.
-pub fn bind_lowest<F: PolyField>(table: &[F::Base], r: F) -> Result<Vec<F>, PolyError> {
+pub fn bind_lowest<F: PolyField>(table: &[F::Base], r: F) -> Result<SecretBuf<F>, PolyError> {
     let vars = bindable(table.len())?;
-    let mut bound = Vec::new();
-    bound
-        .try_reserve_exact(table.len() / 2)
+    let mut bound = SecretBuf::try_with_capacity(table.len() / 2)
         .map_err(|_| PolyError::TooLarge { vars: vars - 1 })?;
     bound.extend(
         table
@@ -86,7 +90,7 @@ pub fn bind_lowest<F: PolyField>(table: &[F::Base], r: F) -> Result<Vec<F>, Poly
 ///
 /// [`PolyError::TableLength`] when the length is not a power of two, and
 /// [`PolyError::NoVariable`] for a table of one entry.
-pub fn bind_lowest_in_place<F: Field>(table: &mut Vec<F>, r: F) -> Result<(), PolyError> {
+pub fn bind_lowest_in_place<F: Field>(table: &mut SecretBuf<F>, r: F) -> Result<(), PolyError> {
     bindable(table.len())?;
     fold_in_place(table, r);
     table.truncate(table.len() / 2);
@@ -158,10 +162,8 @@ fn evaluate_blocked<T: Copy, F: Field>(
     let low = point.len().min(BLOCK_VARS);
     let eq_low = eq_table(&point[..low])?;
     // The table of f̃(r_low, x_high): one inner product per block of 2^low entries.
-    let mut partial = Vec::new();
-    partial
-        .try_reserve_exact(table.len() >> low)
-        .map_err(|_| PolyError::TooLarge {
+    let mut partial =
+        SecretBuf::try_with_capacity(table.len() >> low).map_err(|_| PolyError::TooLarge {
             vars: point.len() - low,
         })?;
     partial.extend(

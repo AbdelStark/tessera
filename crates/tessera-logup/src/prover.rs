@@ -327,8 +327,9 @@ fn value_at<F: PolyField>(values: &[F::Base], padding: F::Base, point: &[F]) -> 
 ///
 /// Control flow depends on shapes only, never on a lookup, a value or a multiplicity
 /// (INV-ARCH-2). Every column and every tree node is a secret-class value (05 §3): no debug form
-/// or error shows one, and the trees are freed level by level without being cleared, as the
-/// rest of the prover does until #229 settles zeroization.
+/// or error shows one. Each tree's levels are `SecretBuf`s, which clear themselves as the levels
+/// are dropped (OBS-6); the multiplicities, their negations and the padded value column are plain
+/// vectors until #264.
 ///
 /// # Errors
 ///

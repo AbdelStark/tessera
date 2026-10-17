@@ -2,7 +2,14 @@
 
 //! The secret-access policy of 05 §3 OBS-1: a secret-class value leaves `Secret<T>` only through
 //! `expose_secret` or `expose_secret_mut`, and only in the files `secret-access.toml` lists, each
-//! with a reason. Two layers hold that line.
+//! with a reason. The policy lists two kinds of file:
+//!
+//! - a **reader** takes values out of their `Secret`: it names an accessor, or its entry is stale;
+//! - a **borrower** (`borrows = true`) computes on values a reader lends it, such as a proving
+//!   engine's kernel: it names no accessor and switches no rule off, and its entry names a prover
+//!   source.
+//!
+//! Two layers hold the line.
 //!
 //! - **Names.** A prover source outside the policy may not name either accessor. The scan reads
 //!   tokens, so it sees code under every `cfg` and feature, which clippy never compiles, and no
@@ -81,11 +88,11 @@ fn silences(level: &str, lint: &str) -> bool {
 /// Checks the policy, the root clippy configuration, and every prover source and manifest.
 pub(crate) fn check(repo: &Path, files: &[PathBuf]) -> io::Result<Vec<String>> {
     let mut violations = Vec::new();
-    let listed = match load_policy(&repo.join(POLICY)) {
-        Ok(listed) => listed,
+    let Policy { readers, borrowers } = match load_policy(&repo.join(POLICY)) {
+        Ok(policy) => policy,
         Err(problems) => {
             violations.extend(problems);
-            Vec::new()
+            Policy::default()
         }
     };
     violations.extend(clippy_rules(repo));
@@ -112,19 +119,27 @@ pub(crate) fn check(repo: &Path, files: &[PathBuf]) -> io::Result<Vec<String>> {
             if !found.names.is_empty() {
                 naming.insert(rel.clone());
             }
-            if listed.contains(rel) {
+            if readers.contains(rel) {
                 continue;
             }
             for line in found.names {
-                violations.push(format!(
-                    "{shown}:{line}: names a secret accessor; list the file in {POLICY} with a \
-                     reason, or keep the value in its `Secret`"
-                ));
+                violations.push(if borrowers.contains(rel) {
+                    format!(
+                        "{shown}:{line}: names a secret accessor, which a borrower computing on \
+                         lent values never does; list the file in {POLICY} as a reader, without \
+                         `borrows`"
+                    )
+                } else {
+                    format!(
+                        "{shown}:{line}: names a secret accessor; list the file in {POLICY} with \
+                         a reason, or keep the value in its `Secret`"
+                    )
+                });
             }
             for (line, what) in found.silencing {
                 violations.push(format!(
                     "{shown}:{line}: {what} switches off clippy's rule against `expose_secret`, \
-                     which only the files {POLICY} lists may do"
+                     which only the readers {POLICY} lists may do"
                 ));
             }
         } else if name == "Cargo.toml" {
@@ -156,10 +171,23 @@ pub(crate) fn check(repo: &Path, files: &[PathBuf]) -> io::Result<Vec<String>> {
             ));
         }
     }
-    for rel in &listed {
+    for rel in &readers {
         if !naming.contains(rel) {
             violations.push(format!(
-                "{POLICY}: {} names no secret accessor; remove the entry",
+                "{POLICY}: {} names no secret accessor; remove the entry, or mark a file that \
+                 computes on lent values `borrows = true`",
+                rel.display()
+            ));
+        }
+    }
+    let sources: BTreeSet<&PathBuf> = files
+        .iter()
+        .filter(|f| !f.starts_with("verifier") && f.extension().is_some_and(|e| e == "rs"))
+        .collect();
+    for rel in &borrowers {
+        if !sources.contains(rel) {
+            violations.push(format!(
+                "{POLICY}: {} is not a prover source; remove the entry",
                 rel.display()
             ));
         }
@@ -167,18 +195,27 @@ pub(crate) fn check(repo: &Path, files: &[PathBuf]) -> io::Result<Vec<String>> {
     Ok(violations)
 }
 
+/// The files the policy lists, by kind.
+#[derive(Default)]
+struct Policy {
+    /// Files that take values out of `Secret`.
+    readers: Vec<PathBuf>,
+    /// Files that compute on values a reader lends them (`borrows = true`).
+    borrowers: Vec<PathBuf>,
+}
+
 /// The files the policy lists, or what is wrong with it.
-fn load_policy(path: &Path) -> Result<Vec<PathBuf>, Vec<String>> {
+fn load_policy(path: &Path) -> Result<Policy, Vec<String>> {
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Policy::default()),
         Err(e) => return Err(vec![format!("{POLICY}: {e}")]),
     };
     let table: Table = text
         .parse()
         .map_err(|e| vec![format!("{POLICY}: not TOML: {e}")])?;
     let mut problems = Vec::new();
-    let mut listed = Vec::new();
+    let mut policy = Policy::default();
     for key in table.keys().filter(|k| *k != "module") {
         problems.push(format!("{POLICY}: unknown key `{key}`"));
     }
@@ -191,10 +228,20 @@ fn load_policy(path: &Path) -> Result<Vec<PathBuf>, Vec<String>> {
         };
         for key in entry
             .keys()
-            .filter(|k| !matches!(k.as_str(), "path" | "reason"))
+            .filter(|k| !matches!(k.as_str(), "path" | "reason" | "borrows"))
         {
             problems.push(format!("{POLICY}: module {n} has unknown key `{key}`"));
         }
+        let borrows = match entry.get("borrows") {
+            None => false,
+            Some(Toml::Boolean(true)) => true,
+            Some(_) => {
+                problems.push(format!(
+                    "{POLICY}: module {n}: `borrows` is `true` or absent"
+                ));
+                false
+            }
+        };
         if entry
             .get("reason")
             .and_then(Toml::as_str)
@@ -202,16 +249,25 @@ fn load_policy(path: &Path) -> Result<Vec<PathBuf>, Vec<String>> {
         {
             problems.push(format!("{POLICY}: module {n} needs a reason"));
         }
+        let listed = |p: &str| {
+            let p = Path::new(p);
+            policy
+                .readers
+                .iter()
+                .chain(&policy.borrowers)
+                .any(|l| l == p)
+        };
         match entry.get("path").and_then(Toml::as_str) {
-            Some(p) if listed.iter().any(|l| l == Path::new(p)) => {
+            Some(p) if listed(p) => {
                 problems.push(format!("{POLICY}: module {n} repeats `{p}`"));
             }
-            Some(p) if p.ends_with(".rs") => listed.push(PathBuf::from(p)),
+            Some(p) if p.ends_with(".rs") && borrows => policy.borrowers.push(PathBuf::from(p)),
+            Some(p) if p.ends_with(".rs") => policy.readers.push(PathBuf::from(p)),
             _ => problems.push(format!("{POLICY}: module {n} needs a `path` to a .rs file")),
         }
     }
     if problems.is_empty() {
-        Ok(listed)
+        Ok(policy)
     } else {
         Err(problems)
     }
@@ -722,5 +778,74 @@ mod tests {
             (POLICY, POLICY_WITH_A),
         ]);
         assert_exactly(&stale, &["crates/a/src/lib.rs names no secret accessor"]);
+        // `borrows` is `true` or absent, and a path is listed once whatever its kind.
+        let malformed = violations(&[
+            ("crates/a/src/lib.rs", "fn f() {}\n"),
+            (
+                POLICY,
+                concat!(
+                    "[[module]]\npath = \"crates/a/src/lib.rs\"\nborrows = true\nreason = \"x\"\n",
+                    "[[module]]\npath = \"crates/a/src/lib.rs\"\nreason = \"again\"\n",
+                    "[[module]]\npath = \"crates/b/src/lib.rs\"\nborrows = false\nreason = \"x\"\n",
+                    "[[module]]\npath = \"crates/c/src/lib.rs\"\nborrows = \"yes\"\nreason = \"x\"\n",
+                ),
+            ),
+        ]);
+        assert_exactly(
+            &malformed,
+            &[
+                "module 2 repeats `crates/a/src/lib.rs`",
+                "module 3: `borrows` is `true` or absent",
+                "module 4: `borrows` is `true` or absent",
+            ],
+        );
+    }
+
+    /// A borrower computes on values a reader lends it: it names no accessor, switches no rule
+    /// off, and its entry names a prover source.
+    #[test]
+    fn a_borrower_reads_nothing_out_of_a_secret() {
+        let borrower = |path: &str| {
+            format!("[[module]]\npath = \"{path}\"\nborrows = true\nreason = \"kernel\"\n")
+        };
+        let policy: String = [
+            POLICY_WITH_A.to_owned(),
+            borrower("crates/a/src/kernel.rs"),
+            borrower("crates/a/src/peek.rs"),
+            borrower("crates/a/src/quiet.rs"),
+            borrower("crates/a/src/gone.rs"),
+            borrower("verifier/crates/tv-a/src/lib.rs"),
+        ]
+        .concat();
+        let found = violations(&[
+            (
+                "crates/a/src/lib.rs",
+                "#![allow(clippy::disallowed_methods)]\n\
+                 fn f(k: &Secret<Vec<u8>>) -> u8 { kernel::sum(k.expose_secret()) }\n",
+            ),
+            (
+                "crates/a/src/kernel.rs",
+                "pub fn sum(values: &[u8]) -> u8 { values.iter().sum() }\n",
+            ),
+            (
+                "crates/a/src/peek.rs",
+                "fn f() {}\nfn g(k: &Secret<u8>) -> u8 { *k.expose_secret() }\n",
+            ),
+            (
+                "crates/a/src/quiet.rs",
+                "#![allow(clippy::disallowed_methods)]\nfn f() {}\n",
+            ),
+            ("verifier/crates/tv-a/src/lib.rs", "fn f() {}\n"),
+            (POLICY, &policy),
+        ]);
+        assert_exactly(
+            &found,
+            &[
+                "crates/a/src/peek.rs:2: names a secret accessor, which a borrower",
+                "crates/a/src/quiet.rs:1: `allow(clippy::disallowed_methods)`",
+                "crates/a/src/gone.rs is not a prover source",
+                "verifier/crates/tv-a/src/lib.rs is not a prover source",
+            ],
+        );
     }
 }

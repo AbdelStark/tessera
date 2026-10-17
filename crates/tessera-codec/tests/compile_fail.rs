@@ -7,7 +7,8 @@
 //!   has no single layout; a variant under `#[cfg]` would move every later tag in builds
 //!   without it.
 //! - A `Secret` has no `Debug`, `Display`, `Clone` or `Encode`, so a secret-class value cannot be
-//!   printed, copied or encoded by accident (05 §3).
+//!   printed, copied or encoded by accident (05 §3), and neither has a `SecretBuf` of values
+//!   derived from one (OBS-6).
 
 #[test]
 fn misuses_do_not_compile() {

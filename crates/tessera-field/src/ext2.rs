@@ -6,6 +6,8 @@
 use core::fmt;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
+use tessera_codec::Zeroize;
+
 use crate::{F65537, Field, Goldilocks, PrimeField};
 
 /// A prime field with a fixed quadratic non-residue `W`, over which [`QuadraticExt`] is built.
@@ -61,6 +63,14 @@ pub trait QuadraticExtension<B: PrimeField>: Field + From<B> {
 pub struct QuadraticExt<B> {
     c0: B,
     c1: B,
+}
+
+/// Clears both coefficients (05 §3 OBS-2, OBS-6).
+impl<B: Zeroize> Zeroize for QuadraticExt<B> {
+    fn zeroize(&mut self) {
+        self.c0.zeroize();
+        self.c1.zeroize();
+    }
 }
 
 /// `Fp2` over Goldilocks: `Fp[X]/(X^2 − 7)`.

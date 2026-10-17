@@ -11,7 +11,8 @@ publish.workspace = true
 [dependencies]
 blake3 = "1.8"
 tessera-codec-derive = { path = "../tessera-codec-derive" }
-zeroize = "1"
+# 1.9 for `optimization_barrier`, which keeps the zeros a `SecretBuf` writes as it frees.
+zeroize = "1.9"
 
 [dev-dependencies]
 allocation-counter = "0.8"

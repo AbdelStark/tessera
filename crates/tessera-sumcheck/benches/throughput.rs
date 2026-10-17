@@ -10,7 +10,9 @@
 //!   3, 2 and 3 tables over `Fp`, per entry of all its tables;
 //! - one `tessera_poly::bind_lowest` pass over an `Fp` table, per entry, and binding every round
 //!   (that pass, then `bind_lowest_in_place` down to one entry): what binding alone costs, a lower
-//!   bound of the prover's cost per entry of each table;
+//!   bound of the prover's cost per entry of each table. Every timing includes clearing what the
+//!   prover derives as it drops (05 §3 OBS-6); beside the pass, the bound table's clearing alone
+//!   shows what that costs;
 //! - `prove_forests` on a forest of 2^10 trees of 2^12 leaves, on one tree of 2^22 leaves and on a
 //!   batch of forests of several heights and tree counts, 2^22 leaves each, per leaf. Beside each
 //!   come the `eq` tables its levels build, alone, and the engine's degree-3 sumcheck of a product
@@ -67,12 +69,25 @@ fn context() -> SessionContext {
     }
 }
 
-/// The fastest of `runs` runs of `f`.
+/// The fastest of `runs` runs of `f`, dropping its result included.
 fn fastest<T>(runs: usize, mut f: impl FnMut() -> T) -> Duration {
     (0..runs)
         .map(|_| {
             let start = Instant::now();
             black_box(f());
+            start.elapsed()
+        })
+        .min()
+        .unwrap_or_default()
+}
+
+/// The fastest of `runs` drops of what `make` builds, untimed.
+fn fastest_drop<T>(runs: usize, mut make: impl FnMut() -> T) -> Duration {
+    (0..runs)
+        .map(|_| {
+            let value = black_box(make());
+            let start = Instant::now();
+            drop(value);
             start.elapsed()
         })
         .min()
@@ -157,6 +172,9 @@ fn binding(log_n: u32, runs: usize) {
         n,
         time,
     );
+    // Its result is secret-class and clears its allocation as it drops: what that costs alone.
+    let time = fastest_drop(runs, || bind_lowest(&table, r).expect("a variable"));
+    report("  of which clearing the bound table", n, time);
     // Binding alone over every round: the first pass, then in place down to one entry.
     let time = fastest(runs, || {
         let mut bound = bind_lowest(black_box(&table), r).expect("a variable");

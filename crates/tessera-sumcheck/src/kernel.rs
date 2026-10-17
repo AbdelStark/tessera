@@ -30,9 +30,14 @@
 //! taken over a range of pairs, so a parallel backend can split the range into chunks and add
 //! their sums (RFC-0018). Control flow depends on lengths and on which tables are over the prime
 //! subfield, never on a value (INV-ARCH-2).
+//!
+//! The rows hold products of table values, and the bound tables the tables themselves at a public
+//! challenge: secret-class values when the tables are (05 §3). Each is a [`SecretBuf`], which
+//! clears its memory when it drops and when it grows (OBS-6).
 
 use core::ops::Range;
 
+use tessera_codec::SecretBuf;
 use tessera_field::Field;
 use tessera_poly::PolyField;
 
@@ -53,8 +58,8 @@ const ZIP_EXT_NODES: usize = 3;
 /// Rows of products for one block of pairs, in the field and in its prime subfield: entry `m` of
 /// row `t` is the product, so far, of the tables' values at node `m` on pair `t`.
 pub(crate) struct Scratch<F: PolyField> {
-    ext: Vec<[F; NODES]>,
-    base: Vec<[F::Base; NODES]>,
+    ext: SecretBuf<[F; NODES]>,
+    base: SecretBuf<[F::Base; NODES]>,
     /// The term loop's rows, empty until a sum-of-products instance fits them.
     pub(crate) terms: TermScratch<F>,
 }
@@ -63,8 +68,8 @@ impl<F: PolyField> Scratch<F> {
     /// Rows for one block, allocated once per proof.
     pub(crate) fn new() -> Self {
         Self {
-            ext: vec![[F::ZERO; NODES]; BLOCK],
-            base: vec![[F::Base::ZERO; NODES]; BLOCK],
+            ext: SecretBuf::filled([F::ZERO; NODES], BLOCK),
+            base: SecretBuf::filled([F::Base::ZERO; NODES], BLOCK),
             terms: TermScratch::new(),
         }
     }
@@ -367,7 +372,7 @@ impl<F: PolyField> Lines<F> for [Entries<'_, F>] {
     }
 }
 
-impl<F: PolyField> Lines<F> for [Vec<F>] {
+impl<F: PolyField> Lines<F> for [SecretBuf<F>] {
     fn write<const N: usize, const SKIP_ONE: bool>(
         &self,
         k: usize,
@@ -381,27 +386,28 @@ impl<F: PolyField> Lines<F> for [Vec<F>] {
 /// Rows for one block of the term loop, allocated once per proof: a line row per table that a
 /// term reads, the common factors' product, a group's sum and a product beside it; and one sum
 /// per group.
-pub(crate) struct TermScratch<F> {
-    lines: Vec<F>,
-    common: Vec<F>,
-    sum: Vec<F>,
-    product: Vec<F>,
-    groups: Vec<[F; NODES]>,
+pub(crate) struct TermScratch<F: Field> {
+    lines: SecretBuf<F>,
+    common: SecretBuf<F>,
+    sum: SecretBuf<F>,
+    product: SecretBuf<F>,
+    groups: SecretBuf<[F; NODES]>,
 }
 
 impl<F: Field> TermScratch<F> {
     /// No rows: a batch of products never allocates them.
     pub(crate) fn new() -> Self {
         Self {
-            lines: Vec::new(),
-            common: Vec::new(),
-            sum: Vec::new(),
-            product: Vec::new(),
-            groups: Vec::new(),
+            lines: SecretBuf::new(),
+            common: SecretBuf::new(),
+            sum: SecretBuf::new(),
+            product: SecretBuf::new(),
+            groups: SecretBuf::new(),
         }
     }
 
-    /// Grows the rows to fit a plan of `lines` line slots and `groups` groups, before any round.
+    /// Grows the rows to fit a plan of `lines` line slots and `groups` groups, before any round:
+    /// a row that grows moves to a new allocation and clears the old one.
     pub(crate) fn fit(&mut self, lines: usize, groups: usize) {
         let row = TERM_BLOCK * NODES;
         if self.lines.len() < lines * row {
@@ -566,7 +572,7 @@ where
 /// `out[t] = a + r·(b − a)` for each pair of a prime-subfield table, into `out`, whose capacity
 /// is reserved: the first binding of a committed table, two base multiplications per pair
 /// ([`PolyField::mul_by_base`]).
-pub(crate) fn bind_base<F: PolyField>(table: &[F::Base], r: F, out: &mut Vec<F>) {
+pub(crate) fn bind_base<F: PolyField>(table: &[F::Base], r: F, out: &mut SecretBuf<F>) {
     out.clear();
     out.extend(
         table
@@ -577,7 +583,7 @@ pub(crate) fn bind_base<F: PolyField>(table: &[F::Base], r: F, out: &mut Vec<F>)
 
 /// `out[t] = a + r·(b − a)` for each pair of a borrowed table over `F`, into `out`, whose
 /// capacity is reserved.
-pub(crate) fn bind_ext<F: Field>(table: &[F], r: F, out: &mut Vec<F>) {
+pub(crate) fn bind_ext<F: Field>(table: &[F], r: F, out: &mut SecretBuf<F>) {
     out.clear();
     out.extend(
         table
@@ -593,7 +599,7 @@ pub(crate) fn bind_ext<F: Field>(table: &[F], r: F, out: &mut Vec<F>) {
 /// `s = 1, 2, 4, …`: the inputs of a range, `[2s, 4s)`, lie past every output written so far, and
 /// its outputs were the inputs of the range before, already read. The split borrow makes each
 /// range a plain zip, as in `tessera_poly::bind_lowest_in_place`.
-pub(crate) fn bind_in_place<F: Field>(table: &mut Vec<F>, r: F) {
+pub(crate) fn bind_in_place<F: Field>(table: &mut SecretBuf<F>, r: F) {
     let half = table.len() / 2;
     if let [a, b, ..] = table[..] {
         table[0] = a + r * (b - a);

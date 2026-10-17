@@ -6,6 +6,7 @@ use core::fmt;
 use core::fmt::Write as _;
 use core::ops::Range;
 
+use tessera_codec::{Secret, SecretBuf, Zeroize};
 use tessera_field::PrimeField;
 use tessera_poly::{PolyField, evaluate, evaluate_base};
 
@@ -55,7 +56,10 @@ enum Values<'a, F: PolyField> {
 /// verifier evaluates itself.
 ///
 /// Table entries are secret-class values (05 §3): the debug form shows the table's field, its
-/// length and whether it is public, never an entry.
+/// length and whether it is public, never an entry. A table of activations or weights comes in
+/// its [`Secret`], through [`Table::secret_base`] or [`Table::secret_ext`], so that only the
+/// engine reads it (OBS-1); [`Table::base`] and [`Table::ext`] take public tables, such as
+/// `eq(r, ·)` or a selector, and tables an engine derived itself.
 pub struct Table<'a, F: PolyField> {
     values: Values<'a, F>,
     public: bool,
@@ -84,6 +88,48 @@ impl<'a, F: PolyField> Table<'a, F> {
             values: Values::Ext(values),
             public: false,
         }
+    }
+
+    /// A secret-class table over the prime subfield, such as activations or weights, whose
+    /// evaluation is sent. The prover reads it in its rounds and keeps no copy: what it derives,
+    /// the bound tables and the products of their entries, is cleared when the proof ends
+    /// (05 §3 OBS-1, OBS-6).
+    ///
+    /// ```
+    /// use tessera_codec::{Ascii, Secret};
+    /// use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField};
+    /// use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
+    /// use tessera_sumcheck::{Instance, Prefix, Table, prove_batch};
+    ///
+    /// let context = SessionContext {
+    ///     protocol: Ascii::new("tessera-protocol/1").expect("ASCII"),
+    ///     mode: Mode::NonInteractive,
+    ///     params: ParamSetId(Ascii::new("test-small/1").expect("ASCII")),
+    ///     statement_digest: [0; 32],
+    ///     session_id: [0; 16],
+    /// };
+    /// let fp = Goldilocks::from_u64_reduced;
+    /// let activations = Secret::new((1..=8).map(fp).collect::<Vec<_>>());
+    /// let selector: Vec<Goldilocks> = [1, 1, 1, 0, 0, 0, 0, 0].into_iter().map(fp).collect();
+    /// let instance = Instance::new(vec![
+    ///     Table::secret_base(&activations),
+    ///     Table::base(&selector).public(),
+    /// ]);
+    /// let mut transcript = Transcript::new(&context);
+    /// let proven = prove_batch::<GoldilocksExt2, _>(&mut transcript, Prefix::Stage(0), 2, &[instance])?;
+    /// // The selector is a public factor: one evaluation, the activations'.
+    /// assert_eq!(proven.proof().final_evals.len(), 1);
+    /// # Ok::<(), tessera_sumcheck::SumcheckError>(())
+    /// ```
+    #[allow(clippy::disallowed_methods)]
+    pub fn secret_base(values: &'a Secret<Vec<F::Base>>) -> Self {
+        Self::base(values.expose_secret())
+    }
+
+    /// A secret-class table over `F`, whose evaluation is sent: as [`Table::secret_base`].
+    #[allow(clippy::disallowed_methods)]
+    pub fn secret_ext(values: &'a Secret<Vec<F>>) -> Self {
+        Self::ext(values.expose_secret())
     }
 
     /// The same table as a public factor: a polynomial whose value at the instance's point the
@@ -548,7 +594,15 @@ struct State<'a, F: PolyField> {
     first: [F; NODES],
     /// The tables, in order, as the rounds bind them: empty until the first own round binds
     /// them; for an instance on no variable, its tables' single entries.
-    bound: Vec<Vec<F>>,
+    bound: Vec<SecretBuf<F>>,
+}
+
+/// The bound tables clear themselves; `first`, the instance's own sums, which no message carries
+/// alone, is cleared here (05 §3 OBS-6).
+impl<F: PolyField> Drop for State<'_, F> {
+    fn drop(&mut self) {
+        self.first.zeroize();
+    }
 }
 
 impl<'a, F: PolyField> State<'a, F> {
@@ -587,13 +641,16 @@ impl<'a, F: PolyField> State<'a, F> {
             None => vec![true; tables.len()],
         };
         let bound = if vars == 0 {
-            tables.iter().map(|table| vec![table.single()]).collect()
+            tables
+                .iter()
+                .map(|table| SecretBuf::filled(table.single(), 1))
+                .collect()
         } else {
             let half = 1 << (vars - 1);
             read.iter()
                 .map(|&read| match read {
-                    true => Vec::with_capacity(half),
-                    false => Vec::new(),
+                    true => SecretBuf::with_capacity(half),
+                    false => SecretBuf::new(),
                 })
                 .collect()
         };

@@ -21,6 +21,7 @@
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
+use tessera_codec::SecretBuf;
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_poly::{
     RoundPoly, bind_lowest, bind_lowest_in_place, eq_table, evaluate, evaluate_base,
@@ -74,14 +75,14 @@ fn run(log_n: u32, runs: usize) {
     let ext: Vec<Fp2> = (0..n).map(|_| rng.fp2()).collect();
     let point: Vec<Fp2> = (0..log_n).map(|_| rng.fp2()).collect();
     let r = point[0];
-    let mut work: Vec<Fp2> = Vec::with_capacity(n);
+    let mut work: SecretBuf<Fp2> = SecretBuf::with_capacity(n);
 
     let time = fastest(runs, || timed(|| bind_lowest(black_box(&base), r)));
     report("bind_lowest, Fp table into Fp2", log_n, n, time);
 
     let time = fastest(runs, || {
         work.clear();
-        work.extend_from_slice(&ext);
+        work.extend(ext.iter().copied());
         timed(|| bind_lowest_in_place(black_box(&mut work), r))
     });
     report("bind_lowest_in_place, Fp2 table", log_n, n, time);
@@ -107,7 +108,7 @@ fn run(log_n: u32, runs: usize) {
     report("evaluate, Fp2 table at an Fp2 point", log_n, n, time);
     let time = fastest(runs, || {
         work.clear();
-        work.extend_from_slice(&ext);
+        work.extend(ext.iter().copied());
         timed(|| {
             for &r in &point {
                 bind_lowest_in_place(black_box(&mut work), r).expect("a variable");

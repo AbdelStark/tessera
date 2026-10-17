@@ -19,7 +19,10 @@
 //! - **Tables** are slices of length `2^n`. [`bind_lowest`] binds a table over the prime subfield
 //!   into a new table over the challenge field (the first round of a sumcheck over committed
 //!   values); [`bind_lowest_in_place`] binds a table in place, without allocating (every later
-//!   round). [`evaluate`] and [`evaluate_base`] give `f̃` at a point.
+//!   round). [`evaluate`] and [`evaluate_base`] give `f̃` at a point. A table of activations or
+//!   weights is secret-class, and so are the tables derived from it: a bound table comes back in
+//!   a [`SecretBuf`](tessera_codec::SecretBuf), and an evaluation keeps its partial sums in one,
+//!   which clears its memory when it drops (05 §3 OBS-6).
 //! - **`eq`**: [`eq_table`] builds the `2^n` values of `eq(r, ·)` with one multiplication each;
 //!   [`eq`] evaluates `eq(a, b)` at two points.
 //! - **Predicates** with `O(n)` closed forms, which the prover and the verifier each evaluate:
@@ -43,7 +46,7 @@
 //! for &r in &point[1..] {
 //!     bind_lowest_in_place(&mut bound, r)?;
 //! }
-//! assert_eq!(bound, [evaluate_base(&table, &point)?]);
+//! assert_eq!(bound[..], [evaluate_base(&table, &point)?]);
 //! # Ok::<(), tessera_poly::PolyError>(())
 //! ```
 //!

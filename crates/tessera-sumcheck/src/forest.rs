@@ -5,6 +5,7 @@
 
 use core::fmt;
 
+use tessera_codec::{Secret, SecretBuf};
 use tessera_field::Field;
 use tessera_poly::PolyField;
 
@@ -44,6 +45,13 @@ impl<'a, F: PolyField> Forest<'a, F> {
     /// with `2^s = leaves.len() / 2^height`.
     pub fn new(leaves: &'a [F::Base], height: usize) -> Self {
         Self { leaves, height }
+    }
+
+    /// [`new`](Self::new) on secret-class leaves, in their [`Secret`]: the prover reads them to
+    /// build the levels, which clear themselves when they drop (05 §3 OBS-1, OBS-6).
+    #[allow(clippy::disallowed_methods)]
+    pub fn secret(leaves: &'a Secret<Vec<F::Base>>, height: usize) -> Self {
+        Self::new(leaves.expose_secret(), height)
     }
 
     /// The height `h` of its trees: the number of levels below the roots.
@@ -230,16 +238,28 @@ impl<F> fmt::Debug for ProvenForests<F> {
 
 /// A level of a tree as its two halves, the tables of the sumcheck one level up: its even
 /// entries `V[2z]`, the table of `Ṽ(0 ‖ x)`, and its odd entries `V[2z + 1]`, that of `Ṽ(1 ‖ x)`.
-pub(crate) struct Halves<B> {
-    pub(crate) even: Vec<B>,
-    pub(crate) odd: Vec<B>,
+/// Each is allocated once, at its size, and cleared when it drops (05 §3 OBS-6).
+pub(crate) struct Halves<B: Copy> {
+    pub(crate) even: SecretBuf<B>,
+    pub(crate) odd: SecretBuf<B>,
 }
 
-impl<B> Halves<B> {
+impl<B: Copy> Halves<B> {
     pub(crate) fn empty() -> Self {
         Self {
-            even: Vec::new(),
-            odd: Vec::new(),
+            even: SecretBuf::new(),
+            odd: SecretBuf::new(),
+        }
+    }
+}
+
+impl<B: Field> Halves<B> {
+    /// Halves of `half` zeros each, which a level's single pass overwrites: writing a zipped
+    /// slice measures twice as fast as pushing onto two buffers.
+    pub(crate) fn zeroed(half: usize) -> Self {
+        Self {
+            even: SecretBuf::filled(B::ZERO, half),
+            odd: SecretBuf::filled(B::ZERO, half),
         }
     }
 }
@@ -294,25 +314,28 @@ pub(crate) fn build_levels<B: Field>(leaves: &[B], height: usize) -> Vec<Halves<
 }
 
 /// The halves of a forest's leaf level, `h`: the leaves de-interleaved, in one pass.
-pub(crate) fn leaf_level<B: Copy>(leaves: &[B]) -> Halves<B> {
-    let (even, odd) = leaves
-        .chunks_exact(2)
-        .map(|pair| (pair[0], pair[1]))
-        .unzip();
-    Halves { even, odd }
+pub(crate) fn leaf_level<B: Field>(leaves: &[B]) -> Halves<B> {
+    let mut halves = Halves::zeroed(leaves.len() / 2);
+    let outputs = halves.even.iter_mut().zip(halves.odd.iter_mut());
+    for ((even, odd), pair) in outputs.zip(leaves.chunks_exact(2)) {
+        *even = pair[0];
+        *odd = pair[1];
+    }
+    halves
 }
 
 /// The halves of level `t` from those of level `t + 1`, in one pass: entry `z` of level `t` is
 /// `V_t[z] = even_{t+1}[z]·odd_{t+1}[z]`, so `even_t[z] = even_{t+1}[2z]·odd_{t+1}[2z]` and
 /// `odd_t[z] = even_{t+1}[2z + 1]·odd_{t+1}[2z + 1]`.
 fn level_above<B: Field>(below: &Halves<B>) -> Halves<B> {
-    let (even, odd) = below
-        .even
-        .chunks_exact(2)
-        .zip(below.odd.chunks_exact(2))
-        .map(|(e, o)| (e[0] * o[0], e[1] * o[1]))
-        .unzip();
-    Halves { even, odd }
+    let mut halves = Halves::zeroed(below.even.len() / 2);
+    let outputs = halves.even.iter_mut().zip(halves.odd.iter_mut());
+    let inputs = below.even.chunks_exact(2).zip(below.odd.chunks_exact(2));
+    for ((even, odd), (e, o)) in outputs.zip(inputs) {
+        *even = e[0] * o[0];
+        *odd = e[1] * o[1];
+    }
+    halves
 }
 
 /// `tree/{ℓ}/{suffix}`: `root/{c}`, `gamma`, `lambda` and `line`, the labels of a level that its
