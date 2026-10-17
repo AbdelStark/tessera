@@ -51,8 +51,8 @@ Out of scope: an adversary that subverts the recorder itself (the recorder is a 
 
 | Threat | Adversary | Mitigation |
 |---|---|---|
-| Grinding Fiat–Shamir challenges | ADV-P | Challenges in `Fp2` (`|F| ≈ 2^128`); in non-interactive mode the seed and query phases each require 20 bits of proof-of-work; in live mode the seed comes from a coin toss |
-| Grinding the LogUp challenge at `(N + T)/|F| ≈ 2^-90` | ADV-P | Derived from the live seed (one shot) or behind 20-bit proof-of-work (RISK-5, [00 §9](00-overview.md#9-risks)) |
+| Grinding Fiat–Shamir challenges | ADV-P | Challenges in `Fp2` (`\|F\| ≈ 2^128`); in non-interactive mode the seed and query phases each require 20 bits of proof-of-work; in live mode the seed comes from a coin toss |
+| Grinding the LogUp challenge at `(N + T)/\|F\| ≈ 2^-90` | ADV-P | Derived from the live seed (one shot) or behind 20-bit proof-of-work (RISK-5, [00 §9](00-overview.md#9-risks)) |
 | Committing a non-codeword | ADV-P | Proximity test with `τ` columns drawn after all commitments; unique-decoding analysis |
 | Exploiting a wrapped lookup key to admit a false value | ADV-P | Compiler proves each key a true integer; the verifier independently re-derives ranges from the claim list (SP-7) |
 | Substituting tables | ADV-P | The verifier regenerates every table from its definition with its own code and compares digests |

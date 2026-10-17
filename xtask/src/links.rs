@@ -4,6 +4,11 @@
 //! existing file or directory, and every `#anchor` into a Markdown file names one of its
 //! headings, slugged as GitHub renders them. External links (`http`, `https`, `mailto`) are not
 //! fetched: the result must not depend on the network.
+//!
+//! The same pass checks tables: GitHub's table parser splits a row into cells at every unescaped
+//! `|`, inside code spans too, so a row such as ``| `max|a|` |`` renders with its cells shifted.
+//! A pipe in a code span of a table row (a line that starts with `|`, outside fenced blocks) is
+//! written `\|`, which GitHub renders as `|`.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -131,6 +136,59 @@ fn link_targets(text: &str) -> Vec<(usize, String)> {
     out
 }
 
+/// The code spans of `line`, as CommonMark delimits them: a run of `k` backticks opens one, and
+/// the next run of exactly `k` closes it; an unclosed run is literal text.
+fn code_spans(line: &str) -> Vec<&str> {
+    let bytes = line.as_bytes();
+    let run = |from: usize| bytes[from..].iter().take_while(|&&b| b == b'`').count();
+    let mut spans = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'`' {
+            i += 1;
+            continue;
+        }
+        let open = run(i);
+        let start = i + open;
+        let mut j = start;
+        let mut close = None;
+        while j < bytes.len() {
+            if bytes[j] == b'`' {
+                let length = run(j);
+                if length == open {
+                    close = Some(j);
+                    break;
+                }
+                j += length;
+            } else {
+                j += 1;
+            }
+        }
+        match close {
+            Some(end) => {
+                spans.push(&line[start..end]);
+                i = end + open;
+            }
+            None => i = start,
+        }
+    }
+    spans
+}
+
+/// The lines of the table rows whose code spans hold a `|` with no `\` before it.
+fn split_cells(text: &str) -> Vec<usize> {
+    prose_lines(text)
+        .filter(|(_, line)| line.trim_start().starts_with('|'))
+        .filter(|(_, line)| {
+            code_spans(line).iter().any(|span| {
+                span.char_indices()
+                    .any(|(k, c)| c == '|' && !span[..k].ends_with('\\'))
+            })
+        })
+        .map(|(n, _)| n)
+        .collect()
+}
+
 /// Checks the Markdown files among `files` (relative to `repo`).
 pub(crate) fn check(repo: &Path, files: &[PathBuf]) -> io::Result<Vec<String>> {
     let mut anchor_cache: HashMap<PathBuf, HashSet<String>> = HashMap::new();
@@ -140,6 +198,12 @@ pub(crate) fn check(repo: &Path, files: &[PathBuf]) -> io::Result<Vec<String>> {
         .filter(|f| f.extension().is_some_and(|e| e == "md"))
     {
         let text = fs::read_to_string(repo.join(rel))?;
+        for line in split_cells(&text) {
+            violations.push(format!(
+                "{}:{line}: a `|` inside a code span splits this table row's cells; write it `\\|`",
+                rel.display()
+            ));
+        }
         for (line, target) in link_targets(&text) {
             if target.is_empty()
                 || ["http://", "https://", "mailto:"]
@@ -242,5 +306,32 @@ mod tests {
         assert!(violations[0].starts_with("b.md:9: `a.md#fenced`: no heading with anchor #fenced"));
         assert!(violations[1].starts_with("b.md:9: `missing.md`"));
         assert!(violations[2].starts_with("b.md:9: `#nope`: no heading with anchor #nope"));
+    }
+
+    #[test]
+    fn pipes_inside_code_spans_of_table_rows_are_reported() {
+        let fixture = Fixture::new("table-pipes");
+        fixture.write(
+            "t.md",
+            concat!(
+                "| Quantity | Range |\n",
+                "|---|---|\n",
+                "| Activations | `max|a| / 127` |\n",
+                "| Scores | `\\|x\\| < 2^21` and `a || b` |\n",
+                "| Escaped | `\\|x\\| < 2^21` |\n",
+                "| Fences | ``a ` | b`` |\n",
+                "| Unclosed | `a | b |\n",
+                "Prose with `x | y` is not a table row.\n",
+                "```\n| fenced | `a|b` |\n```\n",
+            ),
+        );
+        let violations = check(fixture.path(), &[PathBuf::from("t.md")]).expect("readable");
+        assert_eq!(violations.len(), 3, "{violations:#?}");
+        for (violation, line) in violations.iter().zip([3, 4, 6]) {
+            assert!(
+                violation.starts_with(&format!("t.md:{line}: a `|` inside a code span")),
+                "{violation}"
+            );
+        }
     }
 }
