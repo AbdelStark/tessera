@@ -234,11 +234,20 @@ fn the_streaming_term_steps_one_pass_per_doubling_of_the_leaves() {
     )
     .expect("the source's model");
     assert_eq!(source.streaming, 0.0);
-    assert_eq!(
-        streaming_passes(&Counts::SOURCE_405B, &MemoryModel::NODE_405B, 16_384, BATCH),
-        Ok(9),
-        "about 8 at 16K (RFC-0018 'Leaf levels'): 2.2×10^12 leaves of 32 bytes over 0.2 TB"
-    );
+    // The counts RFC-0018 'Leaf levels', RISK-10 and 08 §3 quote for the source's 16K-token batch
+    // on 0.2 TB: at 16K, 2.165×10^12 leaves of 32 bytes are 346 times the memory, so 9 passes.
+    for (context, passes) in [(1024, 5), (4096, 7), (16_384, 9)] {
+        assert_eq!(
+            streaming_passes(
+                &Counts::SOURCE_405B,
+                &MemoryModel::NODE_405B,
+                context,
+                BATCH
+            ),
+            Ok(passes),
+            "the documents count {passes} passes over the attention leaves at {context}"
+        );
+    }
 }
 
 /// The column answers evaluate every element the witness pass commits, `C` per token in the
@@ -296,14 +305,14 @@ fn each_table_row_costs_a_committed_lookup_once_per_batch() {
     }
 }
 
-/// The corrected 405B projections that 08 §3, SC-2 and RISK-9 quote, each to the digits quoted:
-/// the source's model with RISK-2's upper bound for `minimal`, 285,696 commitments and 302,080
-/// lookups per layer per token over 126 layers (RFC-0024's wide rescale and RFC-0022's two steps
-/// at classed residual sites), five regenerations (RFC-0018 P1 to P5) and the table rows of the
-/// two-class report at `B_max = 32` with RFC-0028's balanced split (`docs/perf/v0.2/`), with the
-/// column answers free or priced as
-/// committing is, 30 ps per element. A change to the model that moves one fails here until the
-/// documents follow.
+/// The corrected 405B projections that 08 §3, SC-2, RISK-9 and RISK-10 quote, each to the digits
+/// quoted. The counts are the source's model with RISK-2's upper bound for `minimal`: 285,696
+/// commitments and 302,080 lookups per layer per token over 126 layers (RFC-0024's wide rescale
+/// and RFC-0022's two steps at classed residual sites), five regenerations (RFC-0018 P1 to P5), and
+/// the table rows of the two-class report at `B_max = 32` with RFC-0028's balanced split
+/// (`docs/perf/v0.2/`). The column answers are free or priced as committing is, 30 ps per element.
+/// The streamed passes over the attention leaves are free or priced at RFC-0018's 6 or 8 ps per
+/// score. A change to the model that moves one fails here until the documents follow.
 #[test]
 fn the_corrected_projections_are_the_ones_the_documents_quote() {
     let corrected = Counts {
@@ -313,9 +322,10 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         table_rows: 6_659_571_712.0,
         ..Counts::SOURCE_405B
     };
-    let at = |counts: &Counts, context: u32, column_answer_ps: f64| {
+    let at = |counts: &Counts, context: u32, column_answer_ps: f64, streaming_pass_ps: f64| {
         let costs = UnitCosts {
             column_answer_ps,
+            streaming_pass_ps,
             ..UnitCosts::SOURCE
         };
         mu(counts, &costs, &MemoryModel::NODE_405B, context, BATCH).expect("a projection")
@@ -327,40 +337,44 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
             "{what}: the model gives {value}, the documents {figure}"
         );
     };
-    let (k1, k16) = (1024, 16_384);
+    let (k1, k4, k16) = (1024, 4096, 16_384);
     quoted(
         "source linear term at 1K",
-        at(&Counts::SOURCE_405B, k1, 0.0).linear,
+        at(&Counts::SOURCE_405B, k1, 0.0, 0.0).linear,
         2.0,
         1,
     );
     quoted(
         "corrected linear term at 1K",
-        at(&corrected, k1, 0.0).linear,
+        at(&corrected, k1, 0.0, 0.0).linear,
         4.4,
         1,
     );
     let (mu1, mu16) = (
-        at(&corrected, k1, 0.0).total,
-        at(&corrected, k16, 0.0).total,
+        at(&corrected, k1, 0.0, 0.0).total,
+        at(&corrected, k16, 0.0, 0.0).total,
     );
     quoted("μ(1K)", mu1, 10.6, 1);
     quoted("μ(16K)", mu16, 25.9, 1);
-    quoted("1K table term", at(&corrected, k1, 0.0).tables, 0.048, 3);
-    quoted("16K table term", at(&corrected, k16, 0.0).tables, 0.044, 3);
     quoted(
-        "1K per ps of c_a",
-        at(&corrected, k1, 1.0).column_answers,
-        0.064,
+        "1K table term",
+        at(&corrected, k1, 0.0, 0.0).tables,
+        0.048,
         3,
     );
     quoted(
-        "16K per ps of c_a",
-        at(&corrected, k16, 1.0).column_answers,
-        0.23,
-        2,
+        "16K table term",
+        at(&corrected, k16, 0.0, 0.0).tables,
+        0.044,
+        3,
     );
-    let (full1, full16) = (at(&corrected, k1, 30.0), at(&corrected, k16, 30.0));
+    let per_ps = |context| at(&corrected, context, 1.0, 0.0).column_answers;
+    quoted("1K per ps of c_a", per_ps(k1), 0.064, 3);
+    quoted("16K per ps of c_a", per_ps(k16), 0.23, 2);
+    let (full1, full16) = (
+        at(&corrected, k1, 30.0, 0.0),
+        at(&corrected, k16, 30.0, 0.0),
+    );
     quoted("1K column answers at c_c", full1.column_answers, 1.9, 1);
     quoted("16K column answers at c_c", full16.column_answers, 6.8, 1);
     quoted("μ(1K) at c_c", full1.total, 12.5, 1);
@@ -368,21 +382,67 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
     quoted("1K headroom", 12.0 / mu1, 1.14, 2);
     quoted("16K headroom", 45.0 / mu16, 1.74, 2);
     quoted("16K headroom at c_c", 45.0 / full16.total, 1.37, 2);
-    // 08 §3: at c_c, 4% above the 1K ceiling, and 0.6% below the 16K one with RISK-10's upper
-    // streaming estimate, about 12.
     quoted(
         "1K excess at c_c",
         100.0 * (full1.total / 12.0 - 1.0),
         4.0,
         0,
     );
-    quoted("16K at c_c with streaming", full16.total + 12.0, 44.7, 1);
+    // RISK-10, 08 §3 and SC-2: the streamed passes over the attention leaves at 6 and 8 ps per
+    // score, and their share of the attention term. They do not depend on the profile.
+    for (context, low, high, share_low, share_high, digits) in [
+        (k1, 0.36, 0.48, 32.0, 42.0, 2),
+        (k4, 2.0, 2.7, 45.0, 59.0, 1),
+        (k16, 9.6, 12.8, 57.0, 76.0, 1),
+    ] {
+        let attention = at(&corrected, context, 0.0, 0.0).attention;
+        for (ps, figure, share) in [(6.0, low, share_low), (8.0, high, share_high)] {
+            let streaming = at(&corrected, context, 0.0, ps).streaming;
+            quoted(
+                &format!("streaming at {ps} ps, {context}"),
+                streaming,
+                figure,
+                digits,
+            );
+            quoted(
+                &format!("share of attention at {ps} ps, {context}"),
+                100.0 * streaming / attention,
+                share,
+                0,
+            );
+        }
+    }
+    // 08 §3 and SC-2: at c_c with the upper streaming estimate, 8% above the 1K ceiling and 1.3%
+    // above the 16K one.
+    let (all1, all16) = (
+        at(&corrected, k1, 30.0, 8.0),
+        at(&corrected, k16, 30.0, 8.0),
+    );
+    quoted("μ(1K) at c_c with streaming", all1.total, 13.0, 1);
     quoted(
-        "16K margin at c_c with streaming",
-        100.0 * (1.0 - (full16.total + 12.0) / 45.0),
-        0.6,
+        "1K excess at c_c with streaming",
+        100.0 * (all1.total / 12.0 - 1.0),
+        8.0,
+        0,
+    );
+    quoted("μ(16K) at c_c with streaming", all16.total, 45.6, 1);
+    quoted(
+        "16K excess at c_c with streaming",
+        100.0 * (all16.total / 45.0 - 1.0),
+        1.3,
         1,
     );
+    // RISK-10 and 08 §3: with the upper streaming estimate, the ceilings hold while c_a stays below
+    // about 15 ps at 1K and 27 ps at 16K.
+    for (context, ceiling, room) in [(k1, 12.0, 15.0), (k16, 45.0, 27.0)] {
+        let streamed = at(&corrected, context, 0.0, 8.0).total;
+        quoted(
+            &format!("c_a that meets the ceiling at {context}"),
+            (ceiling - streamed) / per_ps(context),
+            room,
+            0,
+        );
+    }
     // 08 §3's sampling rate for 10% overhead at η = 0.3, and daily detection of 100 violations.
     for (total, rate, detection) in [(mu1, 3.2, 96.0), (full1.total, 2.7, 93.0)] {
         let s = sampling_rate(0.1, total, 0.3).expect("a rate");
@@ -392,10 +452,11 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
     }
 }
 
-/// The same projections at the default `servable` profile's count, which 00 §7 SC-2, 00 §9 RISK-2
-/// and 08 §3 quote beside `minimal`'s: 359,424 commitments and lookups per layer per token under
-/// RFC-0006's selection rule, with RFC-0022's two steps at both classed residual sites, over 126
-/// layers, and the two-class report's table rows at `B_max = 32` with the balanced split.
+/// The same projections at the default `servable` profile's count, which 00 §7 SC-2, 00 §9 RISK-2,
+/// 00 §9 RISK-10, 08 §3 and `SPEC.md` quote beside `minimal`'s: 359,424 commitments and lookups per
+/// layer per token under RFC-0006's selection rule, with RFC-0022's two steps at both classed
+/// residual sites, over 126 layers, and the two-class report's table rows at `B_max = 32` with the
+/// balanced split.
 #[test]
 fn the_servable_projections_are_the_ones_the_documents_quote() {
     let servable = Counts {
@@ -405,9 +466,10 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
         table_rows: 7_693_467_648.0,
         ..Counts::SOURCE_405B
     };
-    let at = |context: u32, column_answer_ps: f64| {
+    let at = |context: u32, column_answer_ps: f64, streaming_pass_ps: f64| {
         let costs = UnitCosts {
             column_answer_ps,
+            streaming_pass_ps,
             ..UnitCosts::SOURCE
         };
         mu(&servable, &costs, &MemoryModel::NODE_405B, context, BATCH).expect("a projection")
@@ -420,15 +482,25 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
         );
     };
     let (k1, k16) = (1024, 16_384);
-    quoted("linear term at 1K", at(k1, 0.0).linear, 5.3, 1);
-    let (mu1, mu16) = (at(k1, 0.0).total, at(k16, 0.0).total);
+    quoted("linear term at 1K", at(k1, 0.0, 0.0).linear, 5.3, 1);
+    let (mu1, mu16) = (at(k1, 0.0, 0.0).total, at(k16, 0.0, 0.0).total);
     quoted("μ(1K)", mu1, 11.5, 1);
     quoted("μ(16K)", mu16, 26.8, 1);
-    quoted("1K table term", at(k1, 0.0).tables, 0.055, 3);
-    quoted("16K table term", at(k16, 0.0).tables, 0.051, 3);
-    quoted("1K per ps of c_a", at(k1, 1.0).column_answers, 0.078, 3);
-    quoted("16K per ps of c_a", at(k16, 1.0).column_answers, 0.24, 2);
-    let (full1, full16) = (at(k1, 30.0), at(k16, 30.0));
+    quoted("1K table term", at(k1, 0.0, 0.0).tables, 0.055, 3);
+    quoted("16K table term", at(k16, 0.0, 0.0).tables, 0.051, 3);
+    quoted(
+        "1K per ps of c_a",
+        at(k1, 1.0, 0.0).column_answers,
+        0.078,
+        3,
+    );
+    quoted(
+        "16K per ps of c_a",
+        at(k16, 1.0, 0.0).column_answers,
+        0.24,
+        2,
+    );
+    let (full1, full16) = (at(k1, 30.0, 0.0), at(k16, 30.0, 0.0));
     quoted("1K column answers at c_c", full1.column_answers, 2.3, 1);
     quoted("16K column answers at c_c", full16.column_answers, 7.2, 1);
     quoted("μ(1K) at c_c", full1.total, 13.9, 1);
@@ -442,12 +514,36 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
         15.0,
         0,
     );
-    // With the upper streaming estimate of RISK-10, about 12 at 16K: 2% above the ceiling.
-    quoted("16K at c_c with streaming", full16.total + 12.0, 46.0, 0);
+    // SC-2, RISK-10 and 08 §3: the upper streaming estimate alone brings the 1K projection to
+    // about 12.0, the ceiling, and leaves the column answers no room under it.
+    let streamed1 = at(k1, 0.0, 8.0).total;
+    quoted("μ(1K) with streaming", streamed1, 12.0, 1);
+    let room = (12.0 - streamed1) / at(k1, 1.0, 0.0).column_answers;
+    assert!(
+        (0.0..0.1).contains(&room),
+        "servable's 1K ceiling leaves {room} ps per element for the column answers"
+    );
+    // With the column answers priced as committing as well: 14.3 at 1K and 46.8 at 16K, 19% and
+    // 4% above the ceilings; `SPEC.md` rounds them to 14.3 and 47.
+    let (all1, all16) = (at(k1, 30.0, 8.0), at(k16, 30.0, 8.0));
+    quoted("μ(1K) at c_c with streaming", all1.total, 14.3, 1);
+    quoted(
+        "1K excess at c_c with streaming",
+        100.0 * (all1.total / 12.0 - 1.0),
+        19.0,
+        0,
+    );
+    quoted("μ(16K) at c_c with streaming", all16.total, 46.8, 1);
+    quoted(
+        "μ(16K) at c_c with streaming, SPEC.md",
+        all16.total,
+        47.0,
+        0,
+    );
     quoted(
         "16K excess at c_c with streaming",
-        100.0 * ((full16.total + 12.0) / 45.0 - 1.0),
-        2.0,
+        100.0 * (all16.total / 45.0 - 1.0),
+        4.0,
         0,
     );
     for (total, rate, detection) in [(mu1, 2.9, 95.0), (full1.total, 2.4, 91.0)] {

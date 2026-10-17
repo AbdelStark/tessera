@@ -11,7 +11,7 @@ The prover has two backends behind one interface: a CPU reference backend, which
 
 ## Motivation
 
-Source principles 8–10 (§6): tile everything, recompute instead of storing, and run matrix-product-shaped work on tensor cores. Source §7 names the phases (witness pass, seed, sumchecks, openings) and §5 the unit costs the kernels must hit. Two gaps found while specifying the corpus land here: regeneration passes cost native compute the source's model omits (RISK-9), and the leaf-adjacent levels of fraction and product trees exceed device memory at long context (RISK-10).
+Source principles 8–10 (§6): tile everything, recompute instead of storing, and run matrix-product-shaped work on tensor cores. Source §7 names the phases (witness pass, seed, sumchecks, openings) and §5 the unit costs the kernels must hit. Two gaps found while specifying the corpus land here: regeneration passes cost native compute the source's model omits (RISK-9), and the leaf-adjacent levels of fraction and product trees exceed device memory (RISK-10).
 
 ## Goals
 
@@ -86,7 +86,7 @@ Every proof unit runs these passes, each regenerating the parts of the witness i
 
 `n_regen` in the cost model ([08 §1](../spec/08-performance-budget.md#1-cost-model)) counts the forward passes of P1 to P5, five; the streamed rounds of P2, the evaluation of P5 and the weight fold are the model's streaming, column-answer and weight terms ([RFC-0020](RFC-0020-cost-model.md#executable-cost-model)). The run manifest records every pass and its time.
 
-**Leaf levels.** A fraction or product tree level whose working set (two `Fp2` tables over its nodes) fits in the unit's memory budget is proven in memory after one regeneration. A level that does not fit is proven by streaming: for each early round, one pass regenerates the level's leaves tile by tile and accumulates the round message with the challenges drawn so far, until the folded state (halving every round) fits in memory, after which the remaining rounds run in memory. The number of streamed rounds is `c = ⌈log2(N_level · 32 bytes / M)⌉`. At 405B, 16K tokens and 16K context, attention leaves number about 2.2×10^12 against about 0.2 TB of free HBM, giving `c ≈ 8` streamed passes over attention tiles. Each costs a regeneration of the scores (cheap on tensor cores) plus a fold, estimated at 6–8 ps per score against the 94 ps per-score proof cost (RISK-10).
+**Leaf levels.** A fraction or product tree level whose working set (two `Fp2` tables over its nodes) fits in the unit's memory budget is proven in memory after one regeneration. A level that does not fit is proven by streaming: for each early round, one pass regenerates the level's leaves tile by tile and accumulates the round message with the challenges drawn so far, until the folded state (halving every round) fits in memory, after which the remaining rounds run in memory. The number of streamed rounds is `c = ⌈log2(N_level · 32 bytes / M)⌉`. At 405B, 16K tokens and 16K context, attention leaves number about 2.2×10^12 against about 0.2 TB of free HBM, so `c = ⌈log2 346⌉ = 9` streamed passes over attention tiles. The same 16K-token batch streams 7 at 4K context and 5 at 1K, as `streaming_passes` in the executable model computes ([RFC-0020](RFC-0020-cost-model.md#executable-cost-model)). Each pass costs a regeneration of the scores (cheap on tensor cores) plus a fold, estimated at 6–8 ps per score against the 94 ps per-score proof cost (RISK-10). These counts cover the attention trees' leaf level only. The leaf stage batches every tree ([RFC-0010 'Stages'](RFC-0010-proof-schedule.md#stages)), its levels above the leaves stream as well, and a pass over the linear layers' lookups regenerates their GEMMs. [#329](https://github.com/AbdelStark/tessera/issues/329) tracks pricing them and revising this design.
 
 **Proof units.** A batch is split into proof units: sets of requests (short context), or for long requests, layer ranges of one request, chosen so that every tree level whose streaming would exceed a configured pass limit fits in memory. Units of one batch share the seed and the stage structure but have their own advice commitments; boundary residuals of a split request are committed in both adjacent units and linked by an equality claim at a random point, as in the weight linking proof. The planner minimizes total time subject to the proof-size budget, because every unit adds combined rows.
 
@@ -125,7 +125,7 @@ Budgets per device and host come from `ProverConfig.memory_budget`. The planner 
 
 ## Drawbacks
 
-- Long-context proofs pay streamed passes (RISK-10), and proof units add combined rows.
+- Proofs whose tree levels exceed memory pay streamed passes (RISK-10), which at 405B means a 16K-token batch at every context length. Proof units add combined rows.
 - Openings alone cost two of the five regenerations: P4 forms the combined rows, and P5 answers the column queries that depend on them.
 - Two backends double the kernel test burden.
 - The pass planner is a new optimization component with its own failure modes.
@@ -147,7 +147,7 @@ v0.2: CPU witness engine. v0.3: CPU prover backend with the pass structure and c
 
 ## Open Questions
 
-- **OQ-0018-1.** For long context, which is cheaper at 405B: streaming leaf levels (`c ≈ 8` passes) or splitting requests into more, smaller proof units? Owner: @AbdelStark. Resolve at v0.5 from 70B measurements; the planner's default follows the result.
+- **OQ-0018-1.** Which is cheaper at 405B: streaming leaf levels, or splitting the batch into more, smaller proof units? The attention leaves of a 16K-token batch take 9 passes at 16K context and 5 at 1K; [#329](https://github.com/AbdelStark/tessera/issues/329) covers the rest of the leaf stage. Owner: @AbdelStark. Resolve at v0.5 from 70B measurements; the planner's default follows the result.
 
 ## References
 

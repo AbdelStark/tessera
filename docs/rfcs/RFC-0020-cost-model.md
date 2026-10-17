@@ -53,7 +53,7 @@ pub struct MuBreakdown { pub linear: f64, pub attention: f64, pub weights: f64, 
 
 `μ` follows [08 §1](../spec/08-performance-budget.md#1-cost-model): the source's formula plus `n_regen` and three more terms:
 
-- a streaming term `c(S) · streaming_pass_ps · A · S / native`, where `c(S) = max(0, ⌈log2(N_level(S) · bytes_per_leaf / free_bytes)⌉)` and `N_level(S) = A · S · batch_tokens` is the batch's attention leaves ([RFC-0018 'Leaf levels'](RFC-0018-gpu-prover-runtime.md#pass-structure));
+- a streaming term `c(S) · streaming_pass_ps · A · S / native`, where `c(S) = max(0, ⌈log2(N_level(S) · bytes_per_leaf / free_bytes)⌉)` and `N_level(S) = A · S · batch_tokens` is the batch's attention leaves ([RFC-0018 'Leaf levels'](RFC-0018-gpu-prover-runtime.md#pass-structure)). This counts the attention trees' leaf level alone; [#329](https://github.com/AbdelStark/tessera/issues/329) covers the rest of the leaf stage;
 - a column-answer term `(C + A · S) · column_answer_ps / native`, P5's evaluation of every committed element at the queried columns ([RFC-0018 'Column answers'](RFC-0018-gpu-prover-runtime.md#pass-structure)). A token commits `C` elements in its linear layers and one per score. P5 runs no sumcheck, so the term carries no glue.
 - a table term `(1 + glue) · M · (c_c + c_ℓ) / batch_tokens / native`. A proof commits one multiplicity per table row and builds the table's fraction tree over every row, however few lookups the table serves ([RFC-0008](RFC-0008-logup-and-tables.md)). Each of the `M` rows therefore costs one committed element and one tree leaf, priced as a lookup, once per proof. `M` is the commitment report's multiplicities ([#304](https://github.com/AbdelStark/tessera/issues/304)).
 
@@ -119,7 +119,7 @@ v0.1 delivers the model, its golden test, the microbenchmarks, the report and th
 ## Testing Strategy
 
 - Golden test against the source's tables, as above.
-- Model unit tests: monotonicity in each unit cost; the streaming term is zero when leaves fit in memory and steps up by one pass per doubling of `N_level` beyond it; the column-answer term priced at `c_c`, with glue and the other unit costs at zero, equals the linear and attention terms, since P5 evaluates exactly the elements P1 commits; each table row costs what a token's committed lookup costs, once per batch; the corrected projections that [08 §3](../spec/08-performance-budget.md#3-end-to-end-targets-llama-31-405b-one-8h100-node) and SC-2 quote are the model's.
+- Model unit tests: monotonicity in each unit cost; the streaming term is zero when leaves fit in memory and steps up by one pass per doubling of `N_level` beyond it; the column-answer term priced at `c_c`, with glue and the other unit costs at zero, equals the linear and attention terms, since P5 evaluates exactly the elements P1 commits; each table row costs what a token's committed lookup costs, once per batch; the corrected projections and streaming figures that [08 §3](../spec/08-performance-budget.md#3-end-to-end-targets-llama-31-405b-one-8h100-node), SC-2 and RISK-10 quote are the model's.
 - Benchmark correctness: output digests match CPU references; a deliberately slowed kernel (sleep injection) changes the reported unit cost proportionally.
 - Report validation: JSON Schema validation in CI for every committed report.
 
