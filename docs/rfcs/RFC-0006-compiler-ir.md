@@ -92,13 +92,25 @@ The IR is the prover's (tier C). The verifier re-derives what it checks from the
 
 - Ranges are exact integer intervals computed with `i128` endpoints; an interval that would leave `i128` is marked unbounded.
 - Inputs: token ids in `[0, vocab)`; positions in `[0, max_context)`; weights in `[−127, 127]`; activations of each type over their full type range. Ranges hold for every admissible input, never for calibration statistics.
-- Transfer functions: interval arithmetic for `Add`, `Sub`, `ConstMul`, `ConstAdd`, `Sum` (scaled by axis length), `MatMulWeight` (using only the public bound `127 · fan_in · max|x|`, never the actual weight values: bounds derived from secret weights would leak them through the claim list and could not be re-derived by the verifier), `Rotate` (using the public RoPE constants), `Mul`, `SumSquares`, `MatMulAct`.
-- Gadget outputs take their declared output type range (for example `[−128, 127]` after `Requant`).
-- **Relational facts.** Gadgets may emit facts that tighten downstream bounds. v1 has one: `SoftmaxRow` emits `R_q · Σ_i e_qi ≤ 2^{2σ}`, so `R_q · Σ_i e_qi v_i` is bounded by `2^{2σ} · max|v|` rather than by the product of the individual bounds. Each fact has a proof obligation in RFC-0009 and is re-derived by the verifier.
+- Transfer functions: interval arithmetic for `Add`, `Sub`, `ConstMul` and `ConstAdd` (over the constant's least and greatest values), `Sum` (scaled by axis length), `MatMulWeight` (using only the public bound `max|W| · fan_in · max|x|`, `max|W| = 127`, never the actual weight values: bounds derived from secret weights would leak them through the claim list and could not be re-derived by the verifier), `Rotate` (each output is `a·C − b·S` or `a·S + b·C` with `|C|, |S| ≤ 2^bits` of its `Rope` table, so at most `2^{bits+1} · max|x|`), `Mul`, `SumSquares` (0 at least when the range holds 0), `MatMulAct` (the products' interval, scaled by the inner length). `Reshape`, `Slice` and `GatherPublic` keep their input's range.
+- Gadget outputs take the range their gadget's lookups enforce (RFC-0009): `[lo, hi]` after `Requant`; a table's values after `TableMap` and `Bitwise` (`[−128, 127]` for `Silu`, `[0, 2^σ]` for `Exp`, `[0, 255]` for the byte tables); `[0, 1]` after `OneHot`; `e` in the `Exp` table's values and `R ∈ [0, 2^{σ+1})` after `SoftmaxRow`; `ρ ∈ [0, 2^{κ+1})` after `RsqrtRow`.
+- **Relational facts.** Gadgets may emit facts that tighten downstream bounds. v1 has one: `SoftmaxRow` emits `R_q · Σ_i e_qi ≤ 2^{2σ}`, so `R_q · Σ_i e_qi v_i` is bounded by `2^{2σ} · max|v|` rather than by the product of the individual bounds. Each fact has a proof obligation in RFC-0009 and is re-derived by the verifier. The fact applies to a `Mul(MatMulAct(e, v), R)` node, untransposed, whose `e` and `R` are the two outputs of one `SoftmaxRow`, as the lowering builds the attention output. Its range is then `[2^{2σ} · min(v_lo, 0), 2^{2σ} · max(v_hi, 0)]`, since `e ≥ 0` and `R ≥ 0`: for INT8 values and `σ = 16`, RFC-0005's `[−2^39, 127 · 2^32]`. It holds for honest values, whose exponentials vanish at masked positions; [#279](https://github.com/AbdelStark/tessera/issues/279) makes the protocol enforce that.
 
 **True-integer rule.** A tensor used as a lookup key or a gadget input that requires an integer must have a bounded range inside `(−(P−1)/2, (P−1)/2)` and, for keys, inside its table's key domain. Intermediate virtual tensors may exceed that range: they are computed modulo `P`, and because every key is an integer-linear or polynomial function of them whose own exact range is bounded, the key's field value equals its true integer value. The analysis therefore never needs to track wraps explicitly; it checks bounds only where integrality matters.
 
-Violations: a key outside every feasible gadget's bound raises `ERR-COMPILE-RANGE`; an integrality-requiring input with an unbounded range raises `ERR-COMPILE-WRAP`.
+The integrality-requiring inputs, each with the domain it must lie in (every domain lies inside the centered field range):
+
+| Gadget | Input | Domain |
+|---|---|---|
+| `OneHot` | tokens | `[0, vocab)` |
+| `Requant` | key; channel classes | the centered field range; `[0, classes)` |
+| `TableMap` | key | the table's keys: `[−2^{b−1}, 2^{b−1})` for `Silu`, `[0, 2^{key_bits})` for `Exp` |
+| `Bitwise` | both operands | `[0, 256)` |
+| `SoftmaxRow` | scores | `(−2^21, 2^21)`, with a spread `x_hi − x_lo` below `2^{key_bits}` of its `Exp` table, since each key is the row maximum less a score |
+| `RsqrtRow` | sums of squares | `u ≥ 0` and `u + e < 2^55` |
+| `Argmax`, `InverseCdf` | logits; one-hot entries | the centered field range; `[0, 1]` |
+
+Violations: an integrality-requiring input with an unbounded range raises `ERR-COMPILE-WRAP`; one whose range leaves its domain raises `ERR-COMPILE-RANGE`, and so does a key outside every feasible gadget's bound (gadget selection).
 
 ### Gadget selection
 
