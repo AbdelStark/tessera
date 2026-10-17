@@ -168,7 +168,6 @@ Protocol messages (`Round1`, `SeedCommit`, `ProverSeedShare`, `SeedReveal`, `Rou
 | `IntegerModel` | `0x0101` | 1 | `.d` | Secret | RFC-0005 |
 | `ClaimList` | `0x0201` | 1 | `.tcl` | Public | RFC-0007 |
 | `ExecutionPlan` | `0x0202` | 1 | `.tep` | Private | RFC-0006 |
-| `TableSetManifest` | `0x0203` | 1 | `.tts` | Public | RFC-0008 |
 | `WeightCommitmentPublic` | `0x0301` | 1 | `.twr` | Public | RFC-0012 |
 | `WeightCommitmentState` | `0x0302` | 1 | `.twc` | Secret | RFC-0012 |
 | `WeightLinkProof` | `0x0303` | 1 | `.twl` | Public | RFC-0012 |
@@ -181,6 +180,8 @@ Protocol messages (`Round1`, `SeedCommit`, `ProverSeedShare`, `SeedReveal`, `Rou
 | `TokenFile` | `0x0601` | 1 | `.ttk` | Secret | RFC-0003 |
 | `LogitsFile` | `0x0602` | 1 | `.tlg` | Secret | RFC-0003 |
 | `VerifierLedger` | `0x0701` | 1 | `.tvl` | Private (verifier-local) | RFC-0019 |
+
+Schema `0x0203` and the extension `.tts`, once named for a `TableSetManifest`, are retired and stay unassigned: the claim list's `tables` is the table set ([RFC-0029](../rfcs/RFC-0029-table-set.md)).
 
 "Protocol" class means the artifact is sent to the verifier and is zero-knowledge by construction; it may be shared but must not be altered.
 

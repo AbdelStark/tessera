@@ -8,7 +8,7 @@ Tessera proves that a committed integer language model `D` produced a recorded t
 
 - [`SPEC.md`](SPEC.md): executive summary, reading order, release plan and risk register.
 - [`docs/spec/`](docs/spec/): overview, architecture, public API, data model, error model, observability, security, testing, performance, release policy and glossary.
-- [`docs/rfcs/`](docs/rfcs/): the accepted design decisions, RFC-0001 to RFC-0020, and RFC-0022 to RFC-0028.
+- [`docs/rfcs/`](docs/rfcs/): the accepted design decisions, RFC-0001 to RFC-0020, and RFC-0022 to RFC-0029.
 - [`docs/roadmap/IMPLEMENTATION.md`](docs/roadmap/IMPLEMENTATION.md): the issue tracker generated from the corpus.
 
 ## Repository layout

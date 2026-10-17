@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual), [RFC-0024](RFC-0024-wide-requantization.md) ('Gadget selection': `RequantWide`), [RFC-0025](RFC-0025-affine-sites.md) ('Operation set': `Mul`'s broadcast; 'Llama lowering': affine sites), [RFC-0028](RFC-0028-balanced-split.md) ('Gadget selection': the split point)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual), [RFC-0024](RFC-0024-wide-requantization.md) ('Gadget selection': `RequantWide`), [RFC-0025](RFC-0025-affine-sites.md) ('Operation set': `Mul`'s broadcast; 'Llama lowering': affine sites), [RFC-0028](RFC-0028-balanced-split.md) ('Gadget selection': the split point), [RFC-0029](RFC-0029-table-set.md) ('Outputs': the claim list is the table set)
 
 ## Summary
 
@@ -204,9 +204,8 @@ pub fn compile(model: &IntegerModel, params: &ParamSet, policy: &GadgetPolicy)
     -> Result<CompileOutput, CompileError>;
 
 pub struct CompileOutput {
-    pub claim_list: ClaimList,          // public, RFC-0007
+    pub claim_list: ClaimList,          // public, RFC-0007; its tables are the table set (RFC-0029)
     pub plan: ExecutionPlan,            // private
-    pub tables: TableSetManifest,       // public, RFC-0008
     pub report: CommitmentReport,       // public JSON, tessera.commitment-report/1
 }
 ```
@@ -244,7 +243,7 @@ v0.2 delivers IR, range analysis, gadget selection, Llama lowering and the commi
 - Gadget selection: synthetic nodes at `b = B_max`, `B_max + 1`, `2·B_max − 2`, `2·B_max − 1` select `Requant1`, `RequantSplit`, `RequantSplit`, `ERR-COMPILE-RANGE`.
 - Relational fact: a test removes the softmax fact and checks that the O-projection key range grows to the product bound.
 - Lowering: seeded tiny models are lowered in both profiles, with grouped-query attention and sites of one to four classes. An exact interpreter of the IR runs each graph to the logits of an independent token-by-token implementation of RFC-0005's semantics, and every value stays inside its tensor's range. Llama-3.1 8B's and 405B's shapes lower from their public part alone.
-- Determinism: compiling twice yields identical claim-list, plan and table-manifest bytes.
+- Determinism: compiling twice yields identical claim-list and plan bytes.
 - Report: for the `minimal` profile at 405B shapes, requantized elements per layer per token equal 137,216, matching the source; committed elements are reported separately with split limbs.
 - Golden claim lists for the tiny conformance models in `spec/vectors/claims/`.
 

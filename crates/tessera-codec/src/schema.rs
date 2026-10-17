@@ -66,7 +66,6 @@ catalog! {
     INTEGER_MODEL = "IntegerModel", 0x0101, 1, Some("d"), Secret;
     CLAIM_LIST = "ClaimList", 0x0201, 1, Some("tcl"), Public;
     EXECUTION_PLAN = "ExecutionPlan", 0x0202, 1, Some("tep"), Private;
-    TABLE_SET_MANIFEST = "TableSetManifest", 0x0203, 1, Some("tts"), Public;
     WEIGHT_COMMITMENT_PUBLIC = "WeightCommitmentPublic", 0x0301, 1, Some("twr"), Public;
     WEIGHT_COMMITMENT_STATE = "WeightCommitmentState", 0x0302, 1, Some("twc"), Secret;
     WEIGHT_LINK_PROOF = "WeightLinkProof", 0x0303, 1, Some("twl"), Public;
