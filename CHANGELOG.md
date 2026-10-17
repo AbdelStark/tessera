@@ -486,6 +486,12 @@ All notable changes to the prover release train are recorded here: the crates un
     - every input moves exactly the terms it enters, the table rows included;
     - the restated figures are the model's.
 
+- The cost model prices the opening pass's row combination, P4 of RFC-0018 ([#252](https://github.com/AbdelStark/tessera/issues/252)):
+  - **The term.** P4 folds every committed element into `u_ξ` and the combined row of each claim group on its tensor. `UnitCosts::row_combination_ps` (`c_r`) and `MuBreakdown::row_combination` price it at `(C + A·S)·c_r` over the native time, with no glue, as the column answers are priced. The source prices none, so the golden test is unchanged. The cost-model, commitment-report and unit-costs schemas, the example, the v0.2 reports and the CLI table carry the term. The unit-costs schema's restated projections also gain `tables`, which #304 left out.
+  - **The blocking.** RFC-0018 'Opening pass' combines rows in blocks of the row block `B`, so each accumulator tile is read and written once per block: `32/B` bytes per product instead of 32. On tensor cores a block is one limb-decomposed INT8 GEMM, as the weight fold is. RFC-0020 measures `c_r` at v0.1.
+  - **Measured.** `pcs/combine`, a new microbenchmark, times the reference combination: 0.55 ns per product on one Apple M4 Max core, about 3% of encoding and hashing an element that enters three combined rows. Each picosecond of `c_r` adds what one of `c_a` does: 0.064 to `μ(1K)` for `minimal` (08 §3).
+  - **Tests.** Every input moves exactly the terms it enters, the row combination included. Priced at `c_c`, the term equals the linear and attention terms, as the column answers' does.
+
 - Affine rescale sites compile and run end to end (RFC-0025, [#301](https://github.com/AbdelStark/tessera/issues/301)):
   - **Lowering.** The weight before each affine site adds its multipliers as a committed input, `[rows]` in `[0, 2^16 − 1]`. An INT8 site rescales `Mul(x, m)` with its one shift. A residual site takes the fused key `acc · m + 2^r · res`, or the two-step update when `r = 63`. `Lowering::multipliers` names the inputs, and the refusal of affine sites is gone.
   - **`Mul`'s broadcast** is a field of the operation: `Mul { broadcast: Trailing }` for one value per row, `Leading` for one per channel. Shapes alone cannot say which applies, since a `[n, n]` operand fits both, as a norm's root does at `n = d_model` positions. RFC-0006 and RFC-0025 say so.

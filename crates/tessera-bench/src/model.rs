@@ -31,13 +31,18 @@ pub struct UnitCosts {
     /// Picoseconds per committed element to evaluate its row's masked codeword at the queried
     /// columns, hashing nothing: the column answers' pass (RFC-0018 P5).
     pub column_answer_ps: f64,
+    /// Picoseconds per committed element to fold it into the opening's combined rows: `u_ξ`, and
+    /// the `u_g` of each claim group on its tensor, one product of an `Fp2` coefficient by the
+    /// element per row (RFC-0011 step 4). This is the opening pass's arithmetic, beside its
+    /// regeneration (RFC-0018 P4).
+    pub row_combination_ps: f64,
 }
 
 impl UnitCosts {
     /// The source's assumed unit costs on an H100 SXM (source §5): 30, 40 and 12 ps, 15% glue,
     /// one 0.24 GPU-s weight pass per batch, native INT8 at 60% of 1,979 TOPS. The source has no
-    /// streamed passes and no column-answer pass, so both cost nothing here; RFC-0018 estimates 6
-    /// to 8 ps per score for a streamed pass.
+    /// streamed passes, no column-answer pass and no row combination, so they cost nothing here;
+    /// RFC-0018 estimates 6 to 8 ps per score for a streamed pass.
     pub const SOURCE: Self = Self {
         commit_ps: 30.0,
         lookup_ps: 40.0,
@@ -47,6 +52,7 @@ impl UnitCosts {
         native_ops_per_s: 0.6 * 1979e12,
         streaming_pass_ps: 0.0,
         column_answer_ps: 0.0,
+        row_combination_ps: 0.0,
     };
 }
 
@@ -126,6 +132,9 @@ pub struct MuBreakdown {
     pub streaming: f64,
     /// The column answers' evaluation of every committed element (RFC-0018 P5).
     pub column_answers: f64,
+    /// The opening pass's combination of every committed element into the combined rows
+    /// (RFC-0018 P4).
+    pub row_combination: f64,
     /// The table side of LogUp: each table row's multiplicity and fraction-tree leaf, shared by
     /// the batch's tokens (RFC-0008).
     pub tables: f64,
@@ -166,7 +175,8 @@ impl UnitCosts {
         input("weight_pass_gpu_s", self.weight_pass_gpu_s, false)?;
         input("native_ops_per_s", self.native_ops_per_s, true)?;
         input("streaming_pass_ps", self.streaming_pass_ps, false)?;
-        input("column_answer_ps", self.column_answer_ps, false)
+        input("column_answer_ps", self.column_answer_ps, false)?;
+        input("row_combination_ps", self.row_combination_ps, false)
     }
 }
 
@@ -244,16 +254,17 @@ pub fn streaming_passes(
 ///
 /// ```text
 /// μ(S) = [(1 + glue)·(C·c_c + K·c_ℓ) + (1 + glue)·A·S·(c_c + c_ℓ + c_π) + W/T
-///         + c(S)·c_s·A·S + (C + A·S)·c_a + (1 + glue)·M·(c_c + c_ℓ)/T]
+///         + c(S)·c_s·A·S + (C + A·S)·(c_a + c_r) + (1 + glue)·M·(c_c + c_ℓ)/T]
 ///        / [(F_lin + F_att·S)/R]  +  n_regen
 /// ```
 ///
 /// with `T` the batch's tokens, `c_s` the streamed pass's cost per score, [`streaming_passes`]
-/// its count `c(S)`, and `c_a` the column answers' cost per committed element, of which a token
-/// commits `C` in its linear layers and one per attention score. Each of the `M` table rows
-/// costs one committed multiplicity and one fraction-tree leaf, priced as a lookup, once per
-/// proof. With the source's counts and unit costs, which regenerate nothing, stream nothing,
-/// price no column answers and count no table rows, this is the source's formula (source §5).
+/// its count `c(S)`, and `c_a` and `c_r` the column answers' and the row combination's costs per
+/// committed element, of which a token commits `C` in its linear layers and one per attention
+/// score. Each of the `M` table rows costs one committed multiplicity and one fraction-tree leaf,
+/// priced as a lookup, once per proof. With the source's counts and unit costs, which regenerate
+/// nothing, stream nothing, price neither the column answers nor the row combination and count
+/// no table rows, this is the source's formula (source §5).
 ///
 /// # Errors
 ///
@@ -295,15 +306,24 @@ pub fn mu(
     let streaming = f64::from(passes) * u.streaming_pass_ps * counts.scores_per_token_per_ctx * s;
     let committed = counts.commits_per_token + counts.scores_per_token_per_ctx * s;
     let column_answers = committed * u.column_answer_ps;
+    let row_combination = committed * u.row_combination_ps;
     let tables = glue * counts.table_rows * (u.commit_ps + u.lookup_ps) / f64::from(batch_tokens);
     let linear = output("linear", linear * PS / native)?;
     let attention = output("attention", attention * PS / native)?;
     let weights = output("weights", weights / native)?;
     let streaming = output("streaming", streaming * PS / native)?;
     let column_answers = output("column_answers", column_answers * PS / native)?;
+    let row_combination = output("row_combination", row_combination * PS / native)?;
     let tables = output("tables", tables * PS / native)?;
     let regen = counts.regen_full_equivalents;
-    let total = linear + attention + weights + regen + streaming + column_answers + tables;
+    let total = linear
+        + attention
+        + weights
+        + regen
+        + streaming
+        + column_answers
+        + row_combination
+        + tables;
     let total = output("total", total)?;
     Ok(MuBreakdown {
         linear,
@@ -312,6 +332,7 @@ pub fn mu(
         regen,
         streaming,
         column_answers,
+        row_combination,
         tables,
         total,
     })

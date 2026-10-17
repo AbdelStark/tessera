@@ -14,6 +14,7 @@
 //! | `sumcheck/product-3` | a degree-3 sumcheck of three `Fp` tables of `2^20` entries | entry |
 //! | `logup/prove` | the LogUp stage of `2^18` lookups into `2^16` rows with values | lookup |
 //! | `trees/forest` | the levels of a product forest of `2^10` trees of `2^12` leaves | leaf |
+//! | `pcs/combine` | the combined rows of 4 claim groups and the proximity row over 64 rows of `2^16` columns | product |
 //!
 //! `cargo bench -p tessera-bench --bench primitives` prints them. With `-- --runner-class NAME
 //! --out FILE` it also writes a `tessera.microbenchmarks/1` baseline, a relative `FILE` being
@@ -39,7 +40,9 @@ use tessera_hash::{
     ColumnChains, Digest, MerkleTree, Mode, ParamSetId, SessionContext, Transcript,
 };
 use tessera_logup::{LogUpInstance, TreeId, Tuples, multiplicities, prove_logup};
-use tessera_pcs::NttPlan;
+use tessera_pcs::{
+    ClaimGroup, CommitmentParams, NttPlan, ReferenceCommitment, RowClaim, RowLayout,
+};
 use tessera_sumcheck::{Forest, Instance, Prefix, Table, prove_batch, prove_forests};
 
 type Fp = Goldilocks;
@@ -93,6 +96,8 @@ struct Sizes {
     rows_log: u32,
     /// `(s, h)`: a product forest of `2^s` trees of height `h`.
     forest: (usize, usize),
+    /// `(log2 N, log2 k)`: the committed matrix the combination opens.
+    combine: (u32, u32),
 }
 
 const FULL: Sizes = Sizes {
@@ -106,6 +111,7 @@ const FULL: Sizes = Sizes {
     lookups_log: 18,
     rows_log: 16,
     forest: (10, 12),
+    combine: (6, 16),
 };
 
 const SMOKE: Sizes = Sizes {
@@ -119,6 +125,7 @@ const SMOKE: Sizes = Sizes {
     lookups_log: 8,
     rows_log: 6,
     forest: (2, 4),
+    combine: (2, 6),
 };
 
 /// A benchmark: its name, its unit of work, its units per run and the run.
@@ -284,6 +291,46 @@ fn benchmarks(s: &Sizes) -> Vec<Bench> {
             let forest = Forest::<Fp2>::new(&leaves, height);
             let proven = prove_forests(&mut transcript(), &[forest]).expect("a well-formed forest");
             let _ = black_box(proven);
+        }),
+    ));
+
+    // The opening pass's arithmetic (RFC-0011 step 4): every row times each group's coefficient
+    // and the proximity coefficient. The matrix is committed once, outside the measured runs.
+    let (rows_log, log2_k) = s.combine;
+    let (rows, k, groups_n, mask_coeffs) = (1usize << rows_log, 1usize << log2_k, 4, 16);
+    let params = CommitmentParams {
+        log2_k,
+        mask_coeffs,
+        row_block: NonZeroUsize::new(32).expect("a block"),
+        commitment_id: [0x65; 32],
+    };
+    let layout = RowLayout::new(rows_log, vec![(0..rows as u64).collect()]).expect("a layout");
+    let mut mask = SplitMix64(0x0065_0002);
+    let commitment =
+        ReferenceCommitment::commit(params, layout, Secret::new(rng.fps(rows * k)), &mut || {
+            mask.fp()
+        })
+        .expect("a commitment");
+    let groups: Vec<ClaimGroup> = (0..groups_n)
+        .map(|_| ClaimGroup {
+            column_point: rng.fp2s(log2_k as usize),
+            claims: vec![RowClaim {
+                row_point: rng.fp2s(rows_log as usize),
+                gamma: Fp2::new(rng.fp(), rng.fp()),
+            }],
+        })
+        .collect();
+    let xi = rng.fp2s(rows_log as usize);
+    list.push((
+        "pcs/combine",
+        "product",
+        (groups_n + 1) * rows * (k + mask_coeffs),
+        Box::new(move || {
+            black_box(
+                commitment
+                    .open(&groups, &xi)
+                    .expect("points of the matrix's shape"),
+            );
         }),
     ));
     list

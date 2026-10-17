@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The golden test of RFC-0020 'Executable cost model': with the source's counts and unit
-//! costs, no regeneration, no streaming and no column answers, the model reproduces the source's
-//! chart (source §5)
-//! within ±0.05, and its calculators reproduce §8 within 0.1 percentage point from that table's
-//! `μ` column. The figures come from `spec/vectors/cost-model/cost-model.json`, which is checked
-//! here against the source document itself, line by line.
+//! costs, no regeneration, no streaming, no column answers and no row combination, the model
+//! reproduces the source's chart (source §5) within ±0.05, and its calculators reproduce §8
+//! within 0.1 percentage point from that table's `μ` column. The figures come from
+//! `spec/vectors/cost-model/cost-model.json`, which is checked here against the source document
+//! itself, line by line.
 
 use std::fs;
 use std::path::PathBuf;
@@ -211,6 +211,10 @@ fn the_source_defaults_are_the_vectors_inputs() {
         "the source prices no column answers"
     );
     assert_eq!(
+        u.row_combination_ps, 0.0,
+        "the source prices no row combination"
+    );
+    assert_eq!(
         [
             c.commits_per_token,
             c.lookups_per_token,
@@ -275,7 +279,10 @@ fn the_model_is_the_oracles() {
                 "{term} at {context}: {ours} against {oracle}"
             );
         }
-        assert_eq!((m.regen, m.streaming, m.column_answers), (0.0, 0.0, 0.0));
+        assert_eq!(
+            (m.regen, m.streaming, m.column_answers, m.row_combination),
+            (0.0, 0.0, 0.0, 0.0)
+        );
     }
 }
 

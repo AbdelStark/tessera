@@ -395,6 +395,7 @@
             "weight_pass_gpu_s",
             "streaming_pass_ps",
             "column_answer_ps",
+            "row_combination_ps",
             "native_ops_per_s"
           ],
           "additionalProperties": false,
@@ -424,6 +425,10 @@
               "minimum": 0
             },
             "column_answer_ps": {
+              "type": "number",
+              "minimum": 0
+            },
+            "row_combination_ps": {
               "type": "number",
               "minimum": 0
             },
@@ -518,6 +523,7 @@
               "regen",
               "streaming",
               "column_answers",
+              "row_combination",
               "tables",
               "total"
             ],
@@ -544,6 +550,11 @@
                 "minimum": 0
               },
               "column_answers": {
+                "type": "number",
+                "minimum": 0
+              },
+              "row_combination": {
+                "description": "The opening pass's combination of every committed element into the combined rows (RFC-0018 P4).",
                 "type": "number",
                 "minimum": 0
               },

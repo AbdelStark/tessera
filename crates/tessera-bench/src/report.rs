@@ -235,6 +235,10 @@ impl ModelReport {
                 "column_answer_ps",
                 number("column_answer_ps", u.column_answer_ps)?,
             ),
+            (
+                "row_combination_ps",
+                number("row_combination_ps", u.row_combination_ps)?,
+            ),
         ]);
         let memory = object([
             ("free_bytes", number("free_bytes", m.free_bytes)?),
@@ -266,6 +270,10 @@ impl ModelReport {
                     (
                         "column_answers",
                         number("column_answers", p.mu.column_answers)?,
+                    ),
+                    (
+                        "row_combination",
+                        number("row_combination", p.mu.row_combination)?,
                     ),
                     ("tables", number("tables", p.mu.tables)?),
                     ("total", number("total", p.mu.total)?),
