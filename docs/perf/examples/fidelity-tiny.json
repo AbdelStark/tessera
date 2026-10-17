@@ -1,0 +1,73 @@
+{
+  "schema": "tessera.fidelity/1",
+  "tessera_quant": "0.1.0",
+  "model": {
+    "profile": "servable",
+    "layers": 2,
+    "d_model": 32,
+    "vocab": 64,
+    "alpha": "7/10",
+    "statistics_digest": "ef1879993dba392131b11949dbb554116bd8f7a266228dece1848dd5cab6c776",
+    "calibration_selection": "0924881625323ddfc3100595b5eee723a7b459061c9030e68e6390b96cd06138"
+  },
+  "seed": 3,
+  "resamples": 300,
+  "perplexity": {
+    "dataset": {
+      "name": "fixture",
+      "config": "en",
+      "split": "validation",
+      "revision": "0000000000000000000000000000000000000000",
+      "files": [
+        "fixture"
+      ]
+    },
+    "sequences": 10,
+    "tokens": 240,
+    "digest": "2827093694c7bacae48b0c2b81bbb689954a7f67fd5924f62f68dda65ce6d76e",
+    "reference": 64.15769707919459,
+    "model": 64.15272200818002,
+    "ratio": {
+      "estimate": 0.9999224555861401,
+      "low": 0.9998448907463501,
+      "high": 1.0000039901785982
+    }
+  },
+  "agreement": {
+    "dataset": {
+      "name": "fixture",
+      "config": "en",
+      "split": "validation",
+      "revision": "0000000000000000000000000000000000000000",
+      "files": [
+        "fixture"
+      ]
+    },
+    "sequences": 10,
+    "tokens": 60,
+    "digest": "fa5977c3d936e1d6d7d9ab59b244730041d7fe4c215605605b516b12ad730807",
+    "continuation": 6,
+    "top1": {
+      "estimate": 1.0,
+      "low": 0.93982814785791,
+      "high": 1.0,
+      "agreeing": 60
+    },
+    "kl": {
+      "estimate": 2.5106521605413456e-06,
+      "low": 2.4270727917173498e-06,
+      "high": 2.5931780027710203e-06
+    }
+  },
+  "environment": {
+    "device": "cpu",
+    "python": "3.13.11",
+    "libraries": {
+      "blake3": "1.0.11",
+      "numpy": "2.5.4",
+      "safetensors": "0.8.0",
+      "torch": "2.14.1",
+      "transformers": "5.20.1"
+    }
+  }
+}

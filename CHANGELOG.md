@@ -425,6 +425,17 @@ All notable changes to the prover release train are recorded here: the crates un
   - Every encoding carries it: the Rust and Python types, the models' oracle and the vectors. The layout changes in place, as 09 §3 allows before a release, and the conformance models and claim lists are regenerated.
   - A test pins it to RFC-0005's rule on the folded LM head, in both profiles.
 
+- Fidelity evaluation in `tessera_quant.fidelity` (RFC-0005 'Fidelity evaluation', 02 §4, [#90](https://github.com/AbdelStark/tessera/issues/90)):
+  - `evaluate_fidelity(model, reference, spec)` compares `D`, run by the integer reference with its logits at their real scale, with the BF16 reference. It computes:
+    - the perplexity ratio, with a 95% bootstrap interval over documents;
+    - teacher-forced top-1 agreement, with a 95% Wilson interval. `D` reads each prompt and the reference's greedy continuation, and each continuation token is a trial;
+    - the mean per-token `KL(ref ‖ D)`, with a 95% bootstrap interval over prompts.
+  - An `EvalSpec` holds the token data with its identities and the calibration's document hashes. An evaluation document that the calibration used is refused (`ERR-QUANT-CALIB`).
+  - The `tessera.fidelity/1` report (`spec/schemas/fidelity-v1.schema.json`) records the seed, the data's identities and digests, the library versions and `D`'s provenance. `docs/perf/examples/fidelity-tiny.json` is a tiny model's.
+  - `tessera_quant.capture` gains `logits_of` and `continue_greedily` on a loaded reference.
+  - Tests: the token metrics on a three-token vocabulary match the hand-computed values, KL in its direction. The Wilson interval of 9 out of 10 is the textbook [0.5958, 0.9821], exactly 0 and 1 at the ends. A bootstrap of one ratio has no width, and its bounds are the 2.5% and 97.5% percentiles by Python's own quantiles. A tiny Llama's report is reproducible, records what it measured, and shows D close to its reference. Each hygiene rule is tested. Each of 12 bugs planted in the module fails a test.
+  - Bounded mode's `Û` joins the report with RFC-0017's predictor. The gates themselves are [#93](https://github.com/AbdelStark/tessera/issues/93).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

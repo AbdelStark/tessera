@@ -12,7 +12,9 @@ to a secret statistics file with a `tessera.calibration/1` report beside it.
 activation outliers into the weights, with the statistics that follow (RFC-0005 'Pipeline',
 steps 2 and 4). `tessera_quant.scales` chooses `D`'s scales and shifts and rounds its weights to
 INT8 (RFC-0005 'Scale policy', step 5). `quantize` chooses the migration strength and assembles
-`D` with its provenance, and `export` writes it (steps 4 to 6).
+`D` with its provenance, and `export` writes it (steps 4 to 6). `evaluate_fidelity` measures how
+closely `D` follows the BF16 reference, with confidence intervals (RFC-0005 'Fidelity
+evaluation').
 
 `D` reaches the Rust tools as a TCE artifact (RFC-0003): `tessera_quant.tce` reads and writes
 them, and `tessera_quant.integer_model` defines `D`. `tessera_quant.tables` generates the lookup
@@ -35,6 +37,7 @@ from tessera_quant.errors import (
     TableError,
     TesseraQuantError,
 )
+from tessera_quant.fidelity import EvalSet, EvalSpec, FidelityReport, evaluate_fidelity
 from tessera_quant.reference import run_reference
 
 __all__ = [
@@ -45,12 +48,16 @@ __all__ = [
     "CalibrationResult",
     "CodecError",
     "EncodeError",
+    "EvalSet",
+    "EvalSpec",
+    "FidelityReport",
     "FloatModel",
     "RopeSpec",
     "TableError",
     "TesseraQuantError",
     "__version__",
     "calibrate",
+    "evaluate_fidelity",
     "export",
     "import_checkpoint",
     "quantize",

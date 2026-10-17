@@ -198,13 +198,51 @@ def reference_logits(
     algorithms and `seed`, as the capture does.
     """
     llama = reference_model(model, device)
+    return torch.cat(logits_of(llama, [w.tokens for w in windows], seed, device))
+
+
+def logits_of(
+    llama: LlamaForCausalLM, sequences: Sequence[Sequence[int]], seed: int, device: str = "cpu"
+) -> list[torch.Tensor]:
+    """`llama`'s logits on each sequence, run alone, in float64: `[len(sequence), vocab]` each.
+
+    They run under deterministic algorithms and `seed`.
+    """
     rows: list[torch.Tensor] = []
     with _deterministic(seed), torch.no_grad():
-        for window in windows:
-            tokens = torch.tensor([window.tokens], dtype=torch.long, device=device)
+        for sequence in sequences:
+            tokens = torch.tensor([list(sequence)], dtype=torch.long, device=device)
             output: Any = llama(input_ids=tokens)
             rows.append(cast(torch.Tensor, output.logits)[0].to("cpu", torch.float64))
-    return torch.cat(rows)
+    return rows
+
+
+def continue_greedily(
+    llama: LlamaForCausalLM,
+    prompts: Sequence[Sequence[int]],
+    length: int,
+    seed: int,
+    device: str = "cpu",
+) -> list[tuple[int, ...]]:
+    """`llama`'s greedy continuation of each prompt: `length` tokens, each the most likely.
+
+    No token ends a continuation early. They run under deterministic algorithms and `seed`.
+    """
+    found: list[tuple[int, ...]] = []
+    with _deterministic(seed), torch.no_grad():
+        for prompt in prompts:
+            tokens = torch.tensor([list(prompt)], dtype=torch.long, device=device)
+            output: Any = cast(Any, llama).generate(
+                input_ids=tokens,
+                max_new_tokens=length,
+                min_new_tokens=length,
+                do_sample=False,
+                num_beams=1,
+                pad_token_id=0,
+            )
+            generated = cast(torch.Tensor, output)[0, len(prompt) :].to("cpu")
+            found.append(tuple(int(x) for x in generated.numpy()))
+    return found
 
 
 @contextmanager
