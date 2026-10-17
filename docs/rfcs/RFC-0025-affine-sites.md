@@ -84,7 +84,7 @@ pub struct PublicQuantSpec {
 
 The weight before an affine site has a `ChannelParams` whose `multiplier` holds one `M_c ∈ [1, 2^{16})` per output channel and whose `class` is empty. The weight before a `pot` site of several classes has `class` and an empty `multiplier`. No other weight has a `ChannelParams` ([03 §2](../spec/03-data-model.md#quantization)). At `RopeQ` and `RopeK`, rows `i` and `i + d_head/2` of each head share their multiplier, as they share a scale ([RFC-0005](RFC-0005-integer-model.md#scale-policy) 'RoPE pairs').
 
-The multipliers are committed with the weights, in the `ChannelParams` matrix of [RFC-0012](RFC-0012-weight-commitment.md#layout), row `(type, layer)`, like the class indices.
+The multipliers are committed with the weights, in the `ChannelParams` matrix of [RFC-0012](RFC-0012-weight-commitment.md#layout), at their channels' positions `(type, layer, channel)` ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-matrices)), like the class indices.
 
 ### Semantics
 

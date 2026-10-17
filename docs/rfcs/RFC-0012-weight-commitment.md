@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3 (binding), v0.4 (hiding budget and refresh)
-- Amended by: [RFC-0026](RFC-0026-claim-list-layout.md) ('Layout': the fields of `WeightLayoutParams`), [RFC-0031](RFC-0031-commitment-id.md) ('Layout': each matrix's `commitment_id` and row block)
+- Amended by: [RFC-0026](RFC-0026-claim-list-layout.md) ('Layout': the fields of `WeightLayoutParams`), [RFC-0031](RFC-0031-commitment-id.md) ('Layout': each matrix's `commitment_id` and row block), [RFC-0040](RFC-0040-weight-commitment-artifacts.md) ('Layout': wide inputs, positions, committed rows and leaves; 'Budget state machine': the state's fields)
 
 ## Summary
 
@@ -38,11 +38,11 @@ The source keeps VerInf's "persistent weight commitment, opened-column budget, r
 | `LmHead` | `vocab × d_model` | `(o_hi)` | `(o_lo, i)` |
 | `ChannelParams` | per (type, layer): one value per output channel, its class index or affine multiplier | `(type, layer_hi)` | `(layer_lo, channel)` |
 
-- Dimensions are padded to powers of two; padded output rows are structurally zero and skipped, as in RFC-0011.
-- `o_lo` has `a_T` bits, chosen so the message width `k_T = 2^{a_T} · in_pad` is `2^20` for 405B shapes (`a = 6` for 16,384-wide inputs, `a = 4` for the 53,248-wide down projection padded to 65,536, `a = 3` for the 2^17-wide embedding). Smaller models use `k_T = min(2^20, out_pad · in_pad)`.
-- `ChannelParams` holds the tensor `[types, n_layers, C]`, flattened row-major ([RFC-0010](RFC-0010-proof-schedule.md#multilinear-extensions)):
+- Dimensions are padded to powers of two; padded output rows and a per-layer matrix's padded layers are structurally zero and skipped, as in RFC-0011. [RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-matrices) gives every entry's position and the committed rows.
+- `o_lo` has `a_T` bits, chosen so the message width `k_T = 2^{a_T} · in_pad` is `2^20` for 405B shapes (`a = 6` for 16,384-wide inputs, `a = 4` for the 53,248-wide down projection padded to 65,536, `a = 3` for the 2^17-wide embedding). Smaller models use `k_T = max(in_pad, min(2^20, out_pad · in_pad))`, so that a row holds at least one input row ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-matrices)).
+- `ChannelParams` holds the tensor `[types, L_pad, C]`, `L_pad` the next power of two of `n_layers`, flattened row-major ([RFC-0010](RFC-0010-proof-schedule.md#multilinear-extensions)):
   - the types in this table's order, `Embed` first, 9 padded to 16;
-  - `C`, the largest padded output width among the weights that have a `ChannelParams` ([03 §2](../spec/03-data-model.md#quantization)): `2^16` at 405B, Gate's and Up's;
+  - `C`, the largest padded output width among the weights that have a `ChannelParams` ([03 §2](../spec/03-data-model.md#quantization)): `2^16` at 405B, Gate's and Up's, and 1 when no weight has one;
   - entry `(T, ℓ, c)`: channel `c`'s class index if `T`'s outputs reach a site of several classes, its multiplier `M_c` if they reach an affine site ([RFC-0025](RFC-0025-affine-sites.md)), and 0 for padding, for a channel past `T`'s width and for a weight with no `ChannelParams`.
 
   Its message width is `k_W`, as every 405B matrix's is: the low `log2 k_W` bits of the flattened index are its columns, the rest its row. A narrower message would raise its rate `(k + P_W)/n_T` above the one `τ_W` is computed for. At `k = 2^16` with `P_W = 2^16` the rate is 1/2, and `live-64`'s 97 queries would give about 40 bits instead of 64. At 405B a row holds 16 layers' values of one type. Each type that has a `ChannelParams` fills 8 rows, and the other types' rows are zero and skipped. At 8B, with `C = 2^{12}` when only `O` and `Down` have a `ChannelParams`, the tensor holds `2^{21}` entries, and a row holds all 32 layers of 8 types. A model whose tensor is smaller than `k_W` takes `k = min(k_W, types · layers · C)` after padding, as the other matrices take `min(2^20, out_pad · in_pad)`.
@@ -50,7 +50,8 @@ The source keeps VerInf's "persistent weight commitment, opened-column budget, r
 - Each row's encoding carries a vanishing mask with `P_W = 2^16` random coefficients (RFC-0011 encoding), so the effective rate is `ρ' = (k_T + P_W)/n_T ≈ 0.266`.
 - Each matrix has `B_W = 4096` blinding rows: random message rows appended after the data rows, committed with them, each used at most once. RFC-0013's masks are over `Fp2`, so each blinding row it uses is two of these. A proof consumes six per matrix: two for the evaluation combined row, two for the proximity combined row, and two as the mask row of the masked extension ([RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions)).
 - Each matrix chains its columns over blocks of the parameter set's row block `B` ([RFC-0014](RFC-0014-interaction-and-soundness.md#parameter-sets)), from its own `commitment_id`: the hash of its `WeightMatrix` descriptor, which holds `WeightLayoutParams`, the matrix, its message width, `B`, its rows and the epoch ([RFC-0031](RFC-0031-commitment-id.md#the-descriptor)).
-- `R_W = H("weights-root", TCE(WeightLayoutParams) ‖ root_Embed ‖ … ‖ root_ChannelParams ‖ u32(epoch))`. `WeightLayoutParams` holds `log2 k_W`, the inverse rate's `log2`, `P_W` and `B_W`, the parameter set's values; the shapes and padding follow from the architecture ([RFC-0026](RFC-0026-claim-list-layout.md)).
+- Each column is one chain over the matrix's committed rows, `leaf_j = d_j[⌈m/B⌉]` ([RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests)): a matrix has no segments and no `column-merge`.
+- `R_W = H("weights-root", TCE(WeightLayoutParams) ‖ root_Embed ‖ … ‖ root_ChannelParams ‖ u32(epoch))`, the hash of `TCE(WeightCommitmentPublic)` ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#weightcommitmentpublic)). The first commitment is epoch 0. `WeightLayoutParams` holds `log2 k_W`, the inverse rate's `log2`, `P_W` and `B_W`, the parameter set's values; the shapes and padding follow from the architecture ([RFC-0026](RFC-0026-claim-list-layout.md)).
 
 ### Opening by the folding pass
 
@@ -84,17 +85,15 @@ The weights' codewords stay fixed for an epoch: their masks and blinding rows co
 ### Budget state machine
 
 ```rust
-pub struct WeightCommitmentState {          // schema 0x0302, secret, persisted with mode 0600
-    pub public: WeightCommitmentPublic,     // R_W, epoch, layout
-    pub masks_seed: Secret<[u8; 32]>,       // regenerates masks and blinding rows
-    pub budget: [TypeBudget; 10],
+pub struct WeightCommitmentState {          // schema 0x0302, secret, persisted with mode 0600 (RFC-0040)
+    pub public: WeightCommitmentPublic,     // layout, the ten roots, epoch
+    pub masks_seed: [u8; 32],               // secret-class; regenerates masks and blinding rows
+    pub budget: [TypeBudget; 10],           // in WeightMatrix order
 }
 
-pub struct TypeBudget {
-    pub opened_columns: BitSet,             // distinct column indices revealed this epoch
+pub struct TypeBudget {                      // its limits are the layout's P_W and B_W
+    pub opened_columns: Vec<u32>,           // distinct column indices revealed this epoch, increasing
     pub next_blinding_row: u32,             // rows below this index are burned
-    pub max_opened_columns: u32,            // P_W
-    pub blinding_rows: u32,                 // B_W
 }
 ```
 

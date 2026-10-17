@@ -598,6 +598,14 @@ All notable changes to the prover release train are recorded here: the crates un
     - Step 5 checks `max_log2_rows` first, then each gadget in node order, then that the derived tables are the claim list's, id for id.
   - 04 §2 declares the type.
 
+- RFC-0040, accepted, defines the weight commitment's two artifacts and closes the gaps in its layout ([#102](https://github.com/AbdelStark/tessera/issues/102)):
+  - **`WeightCommitmentPublic`** (`0x0301`, `.twr`) holds the layout, the ten matrix roots and the epoch, and `R_W` is the hash of its encoding. The verifier reads the roots from it, and `tessera-verify` takes it as `--weights WEIGHTS.twr`. A `.twr` that does not hash to the trusted root is `ERR-USAGE`.
+  - **`WeightCommitmentState`** (`0x0302`, `.twc`) holds the public part, `masks_seed` and a budget per matrix, with `opened_columns` a strictly increasing set. RFC-0012's two budget fields that repeated `P_W` and `B_W` are dropped. It is written with mode 0600 by atomic rename.
+  - **The layout.**
+    - `k_T = max(in_pad, min(k_W, out_pad · in_pad))`, so that `test-small`'s 512-wide inputs fit a row.
+    - Every entry's position, the committed rows of padded layers and outputs, and `ChannelParams` with no live channel (`C = 1`) are defined.
+    - A weight matrix's leaf is its single chain's last digest, with no `column-merge`, and the first epoch is 0.
+  - Amended: RFC-0012 'Layout' and 'Budget state machine', RFC-0019 'Inputs' and steps 4 and 11, RFC-0025 'Hidden data', RFC-0026 'Schema', RFC-0039 'The checks' (the weight layout's check, `Layout`, at RFC-0019 step 4), 02 §2.2–2.3 and 03 §5. 00 RISK-4 now says `τ_W = 97`, as RFC-0014 computes it with the masks, rather than 95.
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

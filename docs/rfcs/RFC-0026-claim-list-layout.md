@@ -74,7 +74,7 @@ pub struct WeightLayoutParams {
 }
 ```
 
-- **The weights' layout.** Each weight type's message width is `k_T = min(2^{log2_k}, out_pad · in_pad)`. Its rows and columns, and the padding of its dimensions to powers of two, follow from `ArchSpec` ([RFC-0012](RFC-0012-weight-commitment.md#layout) 'Layout'), so the layout does not repeat them.
+- **The weights' layout.** Each weight type's message width is `k_T = max(in_pad, min(2^{log2_k}, out_pad · in_pad))` ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-matrices)). Its rows and columns, and the padding of its dimensions to powers of two, follow from `ArchSpec` ([RFC-0012](RFC-0012-weight-commitment.md#layout) 'Layout'), so the layout does not repeat them.
 - **The parameter set fixes the layout.** Both parts are the values RFC-0014's table gives the parameter set `params`:
 
   | | `live-64/1` | `ni-100/1` | `test-small/1` |

@@ -168,8 +168,8 @@ Protocol messages (`Round1`, `SeedCommit`, `ProverSeedShare`, `SeedReveal`, `Rou
 | `IntegerModel` | `0x0101` | 1 | `.d` | Secret | RFC-0005 |
 | `ClaimList` | `0x0201` | 1 | `.tcl` | Public | RFC-0007 |
 | `ExecutionPlan` | `0x0202` | 1 | `.tep` | Private | RFC-0006 |
-| `WeightCommitmentPublic` | `0x0301` | 1 | `.twr` | Public | RFC-0012 |
-| `WeightCommitmentState` | `0x0302` | 1 | `.twc` | Secret | RFC-0012 |
+| `WeightCommitmentPublic` | `0x0301` | 1 | `.twr` | Public | RFC-0040 |
+| `WeightCommitmentState` | `0x0302` | 1 | `.twc` | Secret | RFC-0040 |
 | `WeightLinkProof` | `0x0303` | 1 | `.twl` | Public | RFC-0012 |
 | `DigestLogEntry` | `0x0401` | 1 | stream | Public | RFC-0015 |
 | `LogManifest` | `0x0402` | 1 | `.tlm` | Public | RFC-0015 |
