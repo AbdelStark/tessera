@@ -320,6 +320,14 @@ All notable changes to the prover release train are recorded here: the crates un
   - RISK-2's upper bound for `minimal` rises to 252,928 commitments and 269,312 lookups per layer per token at 405B, and its corrected `μ(1K)` from 9.4 to 10.0. 00, 08 and `SPEC.md` restate the projections, which the bench test pins.
   - The tests check the boundary with `RequantSplit` and each precondition at its boundary. A property test checks that the five lookups compute `rq(z, r_c, lo, hi)` for every class, range ends included, with `lo` and `hi` drawn independently. Each of 16 bugs planted in the selection fails a test.
 
+- Tiny conformance models in `spec/vectors/models/` (07 §5, [#83](https://github.com/AbdelStark/tessera/issues/83)):
+  - Three Llama-3.1-architecture models with random INT8 weights, each an `IntegerModel` artifact pinned by its digest. tiny-2 (2 layers, `d_model` 64, 4 heads, 2 KV heads, vocabulary 512) comes in both profiles. tiny-4 (4 layers, `d_model` 256) comes in `servable`, with a 16-bit residual.
+  - Each model has two token sequences, with the residual stream `D` gives at every layer boundary and its logits.
+  - `generate.py` is their independent oracle: `D`'s forward pass in Python's integers, written from RFC-0005 as RFC-0022 and RFC-0023 amend it, with RFC-0008's tables from the tables oracle. Its encoder must first write the pinned `IntegerModel` vectors byte for byte.
+  - Each site's shift is the least that keeps its outputs in range. A few sites are pushed past it, so the sequences reach every clamp: an INT8 requantization, the Silu table, the residual at INT20 and at INT16, and a zero exponential. The oracle fails unless each push clamps.
+  - The compiler's lowering, run on its exact interpreter, gives every sequence's logits bit for bit, as does its token-by-token reference. That differential test catches 6 of 8 bugs planted in the oracle, and the oracle's own checks refuse the other 2.
+  - The prover (`tessera-e2e`), the verifier (`tv-codec`) and `tessera-quant` each load every artifact. `spec/vectors/README.md` maps every vector set and who writes it.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

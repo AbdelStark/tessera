@@ -8,5 +8,11 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dev-dependencies]
+serde_json = "1"
+tessera-codec = { path = "../tessera-codec" }
+tessera-compiler = { path = "../tessera-compiler" }
+tessera-ir = { path = "../tessera-ir" }
+
 [lints]
 workspace = true

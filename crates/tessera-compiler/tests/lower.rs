@@ -14,12 +14,17 @@
 //! - **Validation.** A model that breaks one rule is refused with `ERR-QUANT-ARCH`, naming it.
 //! - **Real shapes.** Llama-3.1-8B's shape lowers from its public part alone, without weights, and
 //!   its scores reach `2^21`.
+//! - **Conformance models.** The models of `spec/vectors/models/` (07 §5) lower, and their graphs
+//!   give, bit for bit, the logits the independent Python oracle computed, as does the reference.
 
 mod common;
 
+use std::fs;
+use std::path::Path;
+
 use common::{Lookup, ROPE, Seeded, check_ranges, evaluate, llama, regenerate, rq, sites};
 use tessera_codec::error::ErrorCode;
-use tessera_codec::{Ascii, Map, Rational};
+use tessera_codec::{Ascii, DecodeLimits, Map, Rational, envelope, schema};
 use tessera_compiler::{
     CompileError, Lowering, PublicModel, Range, analyze, check_profile, lower, validate,
 };
@@ -693,6 +698,59 @@ fn lowered_graphs_compute_the_reference_logits_in_both_profiles() {
         fused >= 10 && two_step >= 10,
         "{fused} fused, {two_step} in two steps"
     );
+}
+
+/// Each sequence of each conformance model (07 §5): the lowered graph, on the interpreter, gives
+/// the logits `spec/vectors/models/generate.py` computed from RFC-0005 in Python, and so does the
+/// reference. The models clamp at an INT8 requantization, the Silu table, the residual's INT20 and
+/// INT16 and the exponentials, so each clamp is compared too.
+#[test]
+fn the_conformance_models_lower_to_the_oracles_logits() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/vectors/models");
+    let text = fs::read_to_string(dir.join("models.json")).expect("the index");
+    let index: serde_json::Value = serde_json::from_str(&text).expect("JSON");
+    let models = index["models"].as_array().expect("models");
+    assert_eq!(models.len(), 3, "every conformance model");
+    let mut sequences = 0;
+    for entry in models {
+        let name = entry["name"].as_str().expect("a name");
+        let bytes =
+            fs::read(dir.join(entry["file"].as_str().expect("a file"))).expect("the artifact");
+        let model: IntegerModel =
+            envelope::open(&bytes, &schema::INTEGER_MODEL, DecodeLimits::INTEGER_MODEL)
+                .expect("an IntegerModel");
+        let tables = reference_tables(&model);
+        for sequence in entry["sequences"].as_array().expect("sequences") {
+            let tokens: Vec<u32> = sequence["tokens"]
+                .as_array()
+                .expect("tokens")
+                .iter()
+                .map(|t| u32::try_from(t.as_u64().expect("a token")).expect("a u32"))
+                .collect();
+            let expected: Vec<Vec<i128>> = sequence["logits"]
+                .as_array()
+                .expect("logits")
+                .iter()
+                .map(|row| {
+                    row.as_array()
+                        .expect("a row")
+                        .iter()
+                        .map(|x| i128::from(x.as_i64().expect("a logit")))
+                        .collect()
+                })
+                .collect();
+            let n = u32::try_from(tokens.len()).expect("a length");
+            let logits = run(&model, &lowered(&model, n), &tokens);
+            assert_eq!(logits, expected, "{name}, tokens {tokens:?}: the lowering");
+            assert_eq!(
+                reference(&model, &tables, &tokens),
+                expected,
+                "{name}, tokens {tokens:?}: the reference"
+            );
+            sequences += 1;
+        }
+    }
+    assert_eq!(sequences, 6, "two sequences per model");
 }
 
 #[test]
