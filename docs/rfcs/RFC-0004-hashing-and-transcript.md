@@ -49,7 +49,7 @@ The source sets 30 ps per committed 64-bit element, including rate-1/2 encoding 
 | `pow` | `state ‖ Ascii(label) ‖ nonce: u64` | Grinding |
 | `coin-commit` | `share_v: Digest` | Verifier's seed-share commitment (RFC-0014) |
 | `coin-toss` | `share_v: Digest ‖ share_p: Digest` | Live seed (RFC-0014) |
-| `table` | `TCE(TableSpec without digest) ‖ piece parameters ‖ core values` | Table digests (RFC-0008) |
+| `table` | `TCE(TableSpec without digest) ‖ TCE(piece parameters) ‖ TCE(core values)` | Table digests (RFC-0008) |
 | `audit-sample`, `audit-select` | Sampling seed and per-request selection inputs | Audit sampling (RFC-0016) |
 | `claim-list` | `TCE(ClaimList)` | Claim-list digest (RFC-0007) |
 | `statement` | `TCE(PublicStatement)` | `SessionContext.statement_digest` (RFC-0007) |

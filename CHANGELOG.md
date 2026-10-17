@@ -528,7 +528,6 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Large batches.** Batches of 1 to 20 instances verify, their trees of every height from 4 to 24 between them: one table tree of `2^24` rows, and twenty lookup trees of heights 4 to 23 in one batch.
   - **A dropped instance.** A prover that keeps one instance out of the levels, after absorbing every instance's roots, is rejected at the first level where that instance's taller tree is present, by an `EvaluationCount` failure. The levels before that are the honest ones, and the verifier accepts them.
 - Soundness calibration over `F65537` (07 §4) in `tessera-e2e`'s `soundness_calibration`: a prover that lies in one sumcheck round and one with lookups outside its table run on the real engines and transcript, against verifiers written from RFC-0010 and RFC-0008, and each is accepted exactly when its challenge is one of `K = d` or `K = N + T − 1` roots. For degrees 1, 3 and 7 and tables of 16, 255 and 1,023 rows, every 99% Clopper–Pearson interval of the accepted rate contains `K/|F|` and starts at or below the analytic bound. The new `nightly` workflow runs it, with `tessera-logup`'s measurement of random bad lookups, and `docs/testing/soundness-calibration.md` describes it ([#104](https://github.com/AbdelStark/tessera/issues/104)).
-
 - The elementwise relations of RFC-0010 'Relations' and `Linear` claim propagation, in `tessera-sumcheck` ([#99](https://github.com/AbdelStark/tessera/issues/99)):
   - `Elementwise` is a sum of weighted products of inputs against `eq` at the target's point. An input is an operand read at each vertex, at each entry's RoPE partner (`Input::Partner`) or broadcast over some variables (`Input::Broadcast`), or a public table, which the verifier evaluates. The constructors are `mul` (elementwise, scalar-by-row and by-constant products), `rotate` (RoPE on the pairs that differ in one bit), `sum_squares`, `booleanity` and `padding` (RFC-0035's zero-check). `new` takes any terms up to `MAX_DEGREE`, such as SHA-256's majority.
   - A relation is proven in the matmuls' three steps:
@@ -563,6 +562,9 @@ All notable changes to the prover release train are recorded here: the crates un
     - On an honest witness at random coordinates, every claim equals its atoms, every pool claim equals its group, and every matmul, product and sum of squares holds at its evaluations' points. This includes a hand-built template of every linear map.
     - 25 mutations of the derivation are caught.
   - RFC-0037 now states that per-layer constants belong to a layer's own template, that a ready virtual atom has coefficient 1, the order of split claims, and the leaf stage's claims on the graph.
+- The independent verifier's `tv-tables` is checked against the prover's tables ([#100](https://github.com/AbdelStark/tessera/issues/100)):
+  - `tessera-tables`' differential test compares both crates on every kind: specification bytes, digests, rows at the edges, `eval_mle` at seeded points, and which parameters each refuses.
+  - `spec/vectors/tables/` gains `silu-b8-wide-arguments`, a `Silu` table whose arguments reach `128·ln 2`, where `exp_neg`'s `n` reaches 128 and the value is 0 by its rule. Both workspaces and `tessera-quant` check it.
 
 ### Changed
 
@@ -636,6 +638,11 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Why `k_W`.** A narrower message would raise the rate above the one `τ_W` is computed for. A `2^16`-wide message with `P_W = 2^16` has rate 1/2, where `live-64`'s 97 queries give about 40 bits instead of 64.
   - **At 405B.** Rows hold 16 layers of one type, 8 rows per type that has a `ChannelParams`.
   - **The vectors.** The production `ChannelParams` descriptor in `spec/vectors/hash/` follows the rule: `log2_k = 20` and `2 · 8 + 4096` rows for `servable` with two classes. Its encoding and `commitment_id` are regenerated, and both workspaces check them.
+- RFC text that disagreed with itself or with every implementation is corrected ([#100](https://github.com/AbdelStark/tessera/issues/100)):
+  - RFC-0008's overview of table kinds now follows its specification table: `Requant` has no `classes` field and `|r_by_class| · 2^b` rows, `Pow2` has `max_exp` rows, and `Exp2Frac` has `2^{frac_bits}` rows, its values from below. Its structured evaluation lists `Exp2Frac` among the kinds evaluated by enumeration.
+  - RFC-0030's precondition is that the `Exp` table's last key maps to 0. A non-empty zero tail implies it, but it does not imply a non-empty zero tail: values can round to 0 before the tail starts.
+  - RFC-0007's validation step 5 refuses a lookup that names a `Rope` table, which RFC-0008 says is no lookup table.
+  - RFC-0004's `table` domain hashes the piece parameters and the core values as TCE, as RFC-0008 and every implementation do.
 
 - RFC-0037, accepted, makes the stage schedule a function of the graph, with one claim per weight type ([#113](https://github.com/AbdelStark/tessera/issues/113)):
   - **Layers and kinds.** The lowering's checkpoints bound the layers. A tensor's kind is its node's position in the layer, stacked over the layers, and the layers must follow one template.

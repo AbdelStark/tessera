@@ -16,6 +16,10 @@ tessera-poly = { path = "../tessera-poly" }
 
 [dev-dependencies]
 serde_json = "1"
+# The verifier's independent tables, for the differential test `tests/verifier.rs` (DEP-2).
+tv-codec = { path = "../../verifier/crates/tv-codec" }
+tv-field = { path = "../../verifier/crates/tv-field" }
+tv-tables = { path = "../../verifier/crates/tv-tables" }
 
 [[bench]]
 name = "mle"
