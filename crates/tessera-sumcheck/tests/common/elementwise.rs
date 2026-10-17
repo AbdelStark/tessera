@@ -82,8 +82,6 @@ pub enum Build {
     New,
     /// `Elementwise::mul` on inputs 0 and 1.
     Mul,
-    /// `Elementwise::rotate` on input 0, the bit of input 1, and the public inputs 2 and 3.
-    Rotate,
     /// `Elementwise::sum_squares` on input 0.
     SumSquares,
     /// `Elementwise::booleanity` on input 0.
@@ -134,18 +132,6 @@ impl Case {
                 Elementwise::new(self.shape, inputs, terms)
             }
             Build::Mul => Elementwise::mul(self.input(0), self.input(1), vars),
-            Build::Rotate => {
-                let Read::Partner(bit) = self.inputs[1].read else {
-                    panic!("a rotation's second input is the partner");
-                };
-                Elementwise::rotate(
-                    &self.inputs[0].values,
-                    &self.inputs[2].values,
-                    &self.inputs[3].values,
-                    bit,
-                    vars,
-                )
-            }
             Build::SumSquares => Elementwise::sum_squares(self.input(0), self.shape),
             Build::Booleanity => Elementwise::booleanity(self.input(0), vars),
             Build::Padding => Elementwise::padding(self.input(0), &self.inputs[1].values, vars),

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The elementwise relations of RFC-0010 'Relations': `Elementwise` (`Mul`, `Rotate`,
-//! scalar-by-row), `SumSquares` and `ZeroCheck`, each a sum of weighted products of its inputs
-//! against `eq` at a point, proven as one sum-of-products instance of the stage.
+//! The elementwise relations of RFC-0010 'Relations': `Elementwise` (`Mul`, scalar-by-row),
+//! `SumSquares` and `ZeroCheck`, each a sum of weighted products of its inputs against `eq` at a
+//! point, proven as one sum-of-products instance of the stage. RoPE is [`Rotate`](crate::Rotate),
+//! a kernel of its own (RFC-0037).
 //!
 //! A relation on `n` variables whose target has the high `n − m` of them states, for a claim on
 //! the target at `r`,
@@ -198,9 +199,6 @@ impl<F: PolyField> fmt::Debug for Input<'_, F> {
 /// - **`Mul`** ([`mul`](Self::mul)): `Z̃(r) = Σ_x eq(r, x)·Ã(x)·B̃(x)`, either factor an operand,
 ///   a broadcast operand or a public table: elementwise products, scalar-by-row products and
 ///   products by constants. Degree 3.
-/// - **`Rotate`** ([`rotate`](Self::rotate)): RoPE's `(a, b) ↦ (a·C − b·S, a·S + b·C)` on the
-///   pairs that differ in bit `b`, `Ỹ(r) = Σ_x eq(r, x)·(X̃(x)·C(x) + X̃(x ⊕ 2^b)·S_±(x))` with
-///   `C` and `S_± = ±S` public. Degree 3.
 /// - **`SumSquares`** ([`sum_squares`](Self::sum_squares)): `Ũ(r) = Σ_x eq(r, x_high)·X̃(x)²`, a
 ///   row's squares summed over its `2^m` columns. Degree 3.
 /// - **`ZeroCheck`** ([`booleanity`](Self::booleanity), [`padding`](Self::padding)):
@@ -299,58 +297,6 @@ impl<'a, F: PolyField> Elementwise<'a, F> {
             vec![a, b],
             vec![Term::new(F::ONE, vec![0, 1])],
         )
-    }
-
-    /// `Rotate`: RoPE on the pairs of `x` that differ in bit `bit`, `x_i` the low and `x_{i+m}`
-    /// the high member of each pair, `(a, b) ↦ (a·C − b·S, a·S + b·C)`. With `cos` the public
-    /// `C` at every entry and `sin` the public `S_±`, `−S` at a pair's low member and `S` at its
-    /// high one,
-    ///
-    /// ```text
-    /// Ỹ(r) = Σ_x eq(r, x)·(X̃(x)·C(x) + X̃(x ⊕ 2^b)·S_±(x)).
-    /// ```
-    ///
-    /// Its inputs are `[x, x's partner, cos, sin]`: the proof sends `x`'s two evaluations, and
-    /// [`ElementwiseTables::claims`] gives claims on `x̃` at `r'` and at `r'` with coordinate `b`
-    /// replaced by `1 − r'_{b+1}`.
-    ///
-    /// # Errors
-    ///
-    /// As [`new`](Self::new), the inputs in the order above.
-    pub fn rotate(
-        x: &'a [F::Base],
-        cos: &'a [F::Base],
-        sin: &'a [F::Base],
-        bit: usize,
-        vars: usize,
-    ) -> Result<Self, SumcheckError> {
-        Self::new(
-            ElementwiseShape::elementwise(vars),
-            vec![
-                Input::Operand(x),
-                Input::Partner { operand: x, bit },
-                Input::Public(cos),
-                Input::Public(sin),
-            ],
-            vec![Term::new(F::ONE, vec![0, 2]), Term::new(F::ONE, vec![1, 3])],
-        )
-    }
-
-    /// [`rotate`](Self::rotate) on a secret-class operand, in its [`Secret`], as
-    /// [`Input::secret`].
-    ///
-    /// # Errors
-    ///
-    /// As [`rotate`](Self::rotate).
-    #[allow(clippy::disallowed_methods)]
-    pub fn secret_rotate(
-        x: &'a Secret<Vec<F::Base>>,
-        cos: &'a [F::Base],
-        sin: &'a [F::Base],
-        bit: usize,
-        vars: usize,
-    ) -> Result<Self, SumcheckError> {
-        Self::rotate(x.expose_secret(), cos, sin, bit, vars)
     }
 
     /// `SumSquares`: `Ũ(r) = Σ_x eq(r, x_high)·X̃(x)²`, each row of `x`'s `2^m` lowest-indexed

@@ -11,8 +11,8 @@
 //! later checks owe; [`prove_forests`] is its batch of forests alone. [`MatMulWeight`] and
 //! [`MatMulAct`] build the instances of the matmul relations of RFC-0010 'Relations', stacked
 //! over layers or heads, and map their sumchecks' results to claims on their operands;
-//! [`Elementwise`] does the same for `Mul`, `Rotate`, `SumSquares` and `ZeroCheck`, and
-//! [`Linear`] propagates claims through linear relations without a sumcheck. Masking (RFC-0013)
+//! [`Elementwise`] does the same for `Mul`, `SumSquares` and `ZeroCheck`, [`Rotate`] for RoPE,
+//! and [`Linear`] propagates claims through linear relations without a sumcheck. Masking (RFC-0013)
 //! and the stage schedule build on them.
 //!
 //! # Protocol
@@ -346,6 +346,7 @@ mod linear;
 mod matmul;
 mod proof;
 mod prover;
+mod rotate;
 mod terms;
 mod transcript;
 mod trees;
@@ -361,6 +362,7 @@ pub use matmul::{
 };
 pub use proof::SumcheckProof;
 pub use prover::{Instance, Prefix, ProvenBatch, Table, prove_batch};
+pub use rotate::{Rotate, RotateTables};
 pub use terms::Term;
 pub use tessera_poly::MAX_DEGREE;
 pub use transcript::SumcheckTranscript;

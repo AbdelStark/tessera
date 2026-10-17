@@ -12,7 +12,7 @@ use tessera_field::{Field, PrimeField, QuadraticExtension};
 use tessera_sumcheck::{
     Claim, Elementwise, ElementwiseShape, Forest, Input, Instance, Linear, LinearClaim,
     LinearInput, MatMulAct, MatMulActShape, MatMulWeight, MatMulWeightShape, Placement, Prefix,
-    RightLayout, SumcheckProof, Table, Term, prove_batch, prove_forests,
+    RightLayout, Rotate, SumcheckProof, Table, Term, prove_batch, prove_forests,
 };
 
 fn element_bytes(x: Fp2) -> Vec<u8> {
@@ -294,7 +294,7 @@ fn elementwise_and_linear_debug_forms_show_shapes_never_values() {
             .map(|_| Fp::from_u64_reduced(rng.next_u64() | 1 << 40))
             .collect()
     };
-    let (x, cos, sin, r) = (large(16), large(16), large(16), large(4));
+    let (x, cos, sin, r) = (large(16), large(8), large(8), large(4));
     let weight = Fp2::from(Fp::from_u64_reduced(0x1234_5678_9abc));
     let lift = |values: &[Fp]| values.iter().map(|&v| Fp2::from(v)).collect::<Vec<_>>();
     let mut secrets: Vec<String> = [&x, &cos, &sin, &r]
@@ -304,11 +304,22 @@ fn elementwise_and_linear_debug_forms_show_shapes_never_values() {
     secrets.extend(forms(&[weight]));
     let session = Session::random(&mut rng);
 
-    let rotate = Elementwise::<Fp2>::rotate(&x, &cos, &sin, 3, 4).expect("a rotation");
+    let pairwise = Elementwise::<Fp2>::new(
+        ElementwiseShape::elementwise(4),
+        vec![
+            Input::Operand(&x),
+            Input::Partner {
+                operand: &x,
+                bit: 3,
+            },
+            Input::Public(&x),
+        ],
+        vec![Term::new(weight, vec![0, 1, 2])],
+    )
+    .expect("a relation");
     assert_eq!(
-        format!("{:?}", rotate.inputs()),
-        "[Operand { len: 16 }, Partner { len: 16, bit: 3 }, Public { len: 16 }, \
-         Public { len: 16 }]"
+        format!("{:?}", pairwise.inputs()),
+        "[Operand { len: 16 }, Partner { len: 16, bit: 3 }, Public { len: 16 }]"
     );
     let scaled = Elementwise::<Fp2>::new(
         ElementwiseShape::elementwise(4),
@@ -328,7 +339,7 @@ fn elementwise_and_linear_debug_forms_show_shapes_never_values() {
          [Broadcast { len: 4, low_vars: 2 }, Operand { len: 16 }], terms: \
          [Term { factors: [0, 1], .. }] }"
     );
-    for relation in [&rotate, &scaled] {
+    for relation in [&pairwise, &scaled] {
         let point = rng.fp2s(4);
         secrets.extend(forms(&point));
         let tables = relation.tables(&point).expect("a point");
@@ -337,7 +348,7 @@ fn elementwise_and_linear_debug_forms_show_shapes_never_values() {
         let proven = prove_batch(
             &mut session.transcript(),
             Prefix::Stage(1),
-            3,
+            relation.degree(),
             &[tables.instance()],
         )
         .expect("a stage");
@@ -351,6 +362,33 @@ fn elementwise_and_linear_debug_forms_show_shapes_never_values() {
         secrets.extend(forms(&values));
         assert_hidden(&format!("{claims:#?}"), &secrets, "claims");
     }
+
+    // RoPE's kernel product shows its shape: its kernel is public, its operand secret.
+    let rotate = Rotate::<Fp2>::new(&x, &cos, &sin, 3, 4).expect("a rotation");
+    assert_eq!(format!("{rotate:?}"), "Rotate { vars: 4, bit: 3, .. }");
+    let point = rng.fp2s(4);
+    secrets.extend(forms(&point));
+    let tables = rotate.tables(&point).expect("a point");
+    assert_eq!(
+        format!("{tables:?}"),
+        "RotateTables { vars: 4, bit: 3, .. }"
+    );
+    assert_hidden(&format!("{:?}", tables.instance()), &secrets, "an instance");
+    let proven = prove_batch(
+        &mut session.transcript(),
+        Prefix::Stage(2),
+        2,
+        &[tables.instance()],
+    )
+    .expect("a stage");
+    let claim = tables
+        .claim(
+            proven.instance_point(0).expect("an instance"),
+            proven.instance_evals(0).expect("an instance"),
+        )
+        .expect("the instance's result");
+    secrets.extend(forms(&[claim.value]));
+    assert_hidden(&format!("{claim:#?}"), &secrets, "a claim");
 
     // A claim on a linear combination shows its polynomials and numbers of coordinates.
     let point = rng.fp2s(3);

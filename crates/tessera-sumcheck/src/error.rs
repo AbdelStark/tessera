@@ -180,17 +180,18 @@ pub enum SumcheckError {
         /// The number the instance sends.
         expected: usize,
     },
-    /// An elementwise relation's shape cannot hold: it sums out more variables than it has, or
-    /// its `2^vars` entries cannot be counted in a `usize`.
+    /// An elementwise relation's or a `Rotate`'s shape cannot hold: it sums out more variables
+    /// than it has, or its `2^vars` entries cannot be counted in a `usize`.
     RelationShape {
         /// The relation's variables, `n`.
         vars: usize,
         /// The low variables it sums out, `m`.
         summed_vars: usize,
     },
-    /// An elementwise relation's input does not fit its `n` variables: an operand, a partner or
-    /// a public table has `2^n` entries, and a broadcast operand `2^j` with `k + j ≤ n`, `k` the
-    /// low variables it is constant in.
+    /// A relation's input does not fit its `n` variables. In an elementwise relation an operand,
+    /// a partner or a public table has `2^n` entries, and a broadcast operand `2^j` with
+    /// `k + j ≤ n`, `k` the low variables it is constant in. `Rotate`'s operand has `2^n`, and
+    /// its constants `2^{n−1}` each.
     InputLength {
         /// The input, counted from 0 in the order given.
         input: usize,
@@ -199,8 +200,8 @@ pub enum SumcheckError {
         /// The relation's variables, `n`.
         vars: usize,
     },
-    /// An elementwise relation's partner input flips a bit that is not one of the relation's
-    /// variables.
+    /// A relation pairs entries along a bit that is not one of its variables: an elementwise
+    /// relation's partner input, or `Rotate`'s pair bit.
     PartnerBit {
         /// The input, counted from 0 in the order given.
         input: usize,

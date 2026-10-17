@@ -636,6 +636,14 @@ All notable changes to the prover release train are recorded here: the crates un
   - **The layer point.** Stage 1 draws it under `stage/1/layer/{c}` and stacks the leaf stage's per-layer claims with it.
   - **The pool.** It takes combinations of committed tensors at one point, and RFC-0011's grouping admits them.
   - Amended: RFC-0006, RFC-0010, RFC-0011, RFC-0014 row 6 and RFC-0036.
+- RoPE is `tessera_sumcheck::Rotate`, RFC-0037's kernel relation, in place of `Elementwise::rotate` ([#113](https://github.com/AbdelStark/tessera/issues/113)):
+  - **The relation.** `Ỹ(r) = Σ_x E_r(x)·X̃(x)`, a product of the public kernel `E_r(x) = eq(r_{−b}, x_{−b})·(C·eq(r_b, x_b) + S·(r_b − x_b))` and `X`, of degree 2. It leaves one claim on `X` where the partner form left two: Q's and K's weights now have one claim each.
+  - **Construction.** `Rotate::new` takes `X` and the pairs' constants `C` and `S`, `2^{n−1}` entries each, indexed by a pair's other bits. `Rotate::secret` takes `X` in its `Secret`, so `secret-access.toml` lists `rotate.rs`. `tables` builds the kernel from the input claim's point, and `claim` gives the claim on `X`.
+  - **Tests.** They run through `tv_core::sumcheck::verify_batch` with RFC-0037's closed form `eq(r_b, r'_b)·⟨C, w⟩ + (r_b − r'_b)·⟨S, w⟩`, which is itself checked against the kernel's extension by enumeration. The cases:
+    - every size from 1 to 12 variables at every pair bit, and 20 at RoPE's bit, from RoPE's output as RFC-0005 states it;
+    - a stage mixing rotations with elementwise products.
+
+    Each of these is rejected at the final check: one changed entry of `X`, `C` or `S`, every changed round value, and every changed evaluation. The elementwise tests keep their partner reads with a pairwise product.
 
 ### Removed
 
