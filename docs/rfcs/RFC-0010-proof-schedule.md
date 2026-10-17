@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
+- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site)
 
 ## Summary
 
@@ -79,7 +80,7 @@ For the `servable` Llama template the longest chains have two relations, so it h
 - the attention output's requantization key ← `R_q · PV` (`Elementwise`) ← `PV` (`MatMulAct`) ← committed `e`, `v`;
 - RoPE's key ← `Rotate` ← the Q or K projection (`MatMulWeight`).
 
-The O projection reads the committed `o8`, so the residual update's key is one relation from committed tensors. The `minimal` template has three relations and one more stage. Its attention output is not committed, so the residual update's key ← O-projection (`MatMulWeight`) ← `R_q · PV` ← `PV` makes three. So does the down projection's, through `a · u` (`Elementwise`) and the up projection. The compiler's commitment report lists the stage count; it must be identical for 2-, 4-, 8- and 126-layer models of the same template.
+The O projection reads the committed `o8`, so the residual update's key is one relation from committed tensors. The `minimal` template has three relations and one more stage. Its attention output is not committed, so the residual update's key ← O-projection (`MatMulWeight`) ← `R_q · PV` ← `PV` makes three. So does the down projection's, through `a · u` (`Elementwise`) and the up projection. An affine RoPE site adds its multipliers' `Mul` to RoPE's chain ([RFC-0025](RFC-0025-affine-sites.md#stages)), so a `servable` model with an affine Q or K has four stages too. The compiler's commitment report lists the stage count; it must be identical for 2-, 4-, 8- and 126-layer models of the same template.
 
 ### Tree levels
 

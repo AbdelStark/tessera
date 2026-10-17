@@ -129,7 +129,12 @@ class PublicQuantSpec:
     score_scales: list[tuple[int, Fraction]]
     """Each layer's attention score scale, exactly."""
     shift_class_sets: list[tuple[QuantPoint, list[int]]]
-    """Each rescale site's class shifts `r`, from 1 to 63, at most four."""
+    """Each `pot` rescale site's class shifts `r`, from 1 to 63, at most four."""
+    affine_sites: list[tuple[QuantPoint, int]]
+    """Each `affine` rescale site's shift `r`, from 1 to 63, sorted by point (RFC-0025).
+
+    A rescale site is here or in `shift_class_sets`, never both.
+    """
     rope: RopeSpec
     logits_bits: int
 
@@ -165,9 +170,9 @@ class ChannelParams:
     ty: WeightType
     layer: int
     class_: npt.NDArray[np.uint8] = field(repr=False)
-    """Each output channel's index into its site's shift classes."""
+    """Each output channel's index into its site's shift classes; empty at an affine site."""
     multiplier: npt.NDArray[np.uint16] = field(repr=False)
-    """Each output channel's multiplier `M_c` in `affine` mode; empty in `pot` mode."""
+    """Each output channel's multiplier `M_c` at an affine site (RFC-0025); empty at a `pot` one."""
 
 
 @dataclass(frozen=True, eq=False)
@@ -299,6 +304,7 @@ _PUBLIC = Struct(
         ("exp_sigma", U8),
         ("score_scales", Seq(Pair(U32, RATIONAL))),
         ("shift_class_sets", Seq(Pair(_QUANT_POINT, Seq(I8)))),
+        ("affine_sites", Seq(Pair(_QUANT_POINT, I8))),
         ("rope", _ROPE),
         ("logits_bits", U8),
     ],

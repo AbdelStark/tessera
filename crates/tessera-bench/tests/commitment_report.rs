@@ -97,6 +97,7 @@ fn llama_405b() -> (ArchSpec, PublicQuantSpec, Vec<(u32, i8)>) {
             .map(|l| (l, Rational::new(1, 1 << 14).expect("a scale")))
             .collect(),
         shift_class_sets,
+        affine_sites: Vec::new(),
         rope: ROPE,
         logits_bits: 28,
     };

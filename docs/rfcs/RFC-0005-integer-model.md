@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Integer semantics': the residual rows and the norm row's range), [RFC-0023](RFC-0023-norm-precision.md) (the norm's `κ`), [RFC-0024](RFC-0024-wide-requantization.md) ('Profiles': `minimal`'s down-projection residual)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Integer semantics': the residual rows and the norm row's range), [RFC-0023](RFC-0023-norm-precision.md) (the norm's `κ`), [RFC-0024](RFC-0024-wide-requantization.md) ('Profiles': `minimal`'s down-projection residual), [RFC-0025](RFC-0025-affine-sites.md) ('Scale policy': affine sites)
 
 ## Summary
 
@@ -59,7 +59,7 @@ Each tensor `t` has a real scale `σ_t` with `real ≈ int · σ_t`.
 
 | Quantity | `pot` mode (default) | `affine` mode |
 |---|---|---|
-| Activations (INT8) | Per tensor, `σ = 2^e`, `e = ceil(log2(max\|a\| / 127))` | Per tensor, `σ = max\|a\| / 127` |
+| Activations (INT8) | Per tensor, `σ = 2^e`, `e = ceil(log2(max\|a\| / 127))` | Same: the claim list's exponents define tables |
 | Weights (INT8) | Per output channel, `σ_c = 2^{e_c}`, rounded up so no weight clips | Per output channel, `σ_c = max\|w_c\| / 127` |
 | Residual (INT20) | Per model, `σ_res = 2^e`, with one bit of headroom over the calibration maximum and every embedding row | Same |
 | Requantization | Shift `r_c = e_out − e_in − e_c` per output channel, grouped into shift classes | 16-bit multiplier `M_c` and shift `r` |
@@ -73,7 +73,7 @@ The semantics below fix the rest of the policy:
 - **Shifts** lie in `[1, 63]`. Exponents that give another shift fail with `ERR-QUANT-CALIB`.
 - **The score scale** `σ_q σ_k / √d_head` is the rational `2^{e_q + e_k} · n / 2^{40}`, `n` the integer nearest `2^{40} / √d_head`.
 - **SiLU's input exponent** is the finest at which its table's core holds at most `2^{24}` values: `Σ_c 2^{b − r_c}` over the gate's classes, at the lowering's key width `b` ([RFC-0008](RFC-0008-logup-and-tables.md#table-specifications)).
-- **In `affine` mode**, `M_c = round(2^r · f_c)`, `f_c` the real factor from channel `c`'s accumulator to the site's output, and `r` is the largest shift at which every `M_c` fits 16 bits. A zero row takes the largest channel's scale, so that it changes no other multiplier.
+- **In `affine` mode**, `M_c = round(2^r · f_c)`, `f_c` the real factor from channel `c`'s accumulator to the site's output, and `r` is the largest shift at which every `M_c` fits 16 bits. A zero row takes the largest channel's scale, so that it changes no other multiplier. The site computes `rq(x · M_c, r)`, `x` what a `pot` site rescales, and the claim list names it with its shift ([RFC-0025](RFC-0025-affine-sites.md)). It follows the Q, K, V, O, up or down projection, but not `minimal`'s O or down, whose keys would exceed 62 bits.
 
 ### Integer semantics
 

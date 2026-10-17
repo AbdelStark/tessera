@@ -352,6 +352,20 @@ All notable changes to the prover release train are recorded here: the crates un
   - RFC-0010's longest `servable` chains are two relations, the attention output's and RoPE's, not one through the committed `o8`; RFC-0010 now says so.
   - Each of 38 bugs planted in the report and in the lowering's record of sites fails a test. A 39th is equivalent, since the first checkpoint's producer is no gadget, and a no-op control survives.
 
+- Affine rescale sites in the claim list, with RFC-0025, accepted ([#274](https://github.com/AbdelStark/tessera/issues/274)):
+  - `PublicQuantSpec.affine_sites` names each affine site with its one shift. Every rescale site is in it or in `shift_class_sets`, never both. An affine site follows the Q, K, V, O, up or down projection.
+  - From that public data, the verifier can lower an affine site. Its key is `x · M_c`, a `Mul` by the weight's committed 16-bit multipliers broadcast over positions, and the multipliers' public range `[0, 2^16)` bounds it.
+  - RFC-0025 also fixes the lowering, the stage count and the soundness argument:
+    - An affine Q or K gives `servable` four stages.
+    - Uniqueness needs no proof of the multipliers' range, just as it needs none of the weights'.
+    - It amends RFC-0005, RFC-0006, RFC-0007, RFC-0010 and 03 §2.
+  - The weight before an affine site carries its multipliers, from 1 to `2^16 − 1`, and no classes. `tessera_quant.quantize` writes affine sites this way. It refuses `affine` at `minimal`'s O and down projections, whose keys would exceed 62 bits.
+  - The compiler checks RFC-0025's rules on both parts of the model, and refuses to lower an affine site until [#301](https://github.com/AbdelStark/tessera/issues/301) implements the lowering.
+  - `PublicQuantSpec`'s layout changes in place, as 09 §3 allows before a release, so each `IntegerModel` grows by the list's 8-byte length.
+    - The `IntegerModel` vectors now hold two affine sites, and the models' oracle encodes them byte for byte.
+    - The conformance models are regenerated.
+  - The tests refuse each rule's breach alone, in the public and the hidden part. Each of 16 bugs planted in the checks and the quantizer fails a test, and a no-op control survives. A 17th survived in an affine branch that nothing reached yet, so the branch was removed.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

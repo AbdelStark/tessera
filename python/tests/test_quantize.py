@@ -13,8 +13,9 @@ transforms it, and `quantize` gives `D`'s weights and constants, in both profile
   its table allows. The residual holds every token's embedding, seen in calibration or not.
 - **Fidelity.** The model run in floats with every weight and activation rounded to its scale,
   as `D` holds them, gives logits close to the float model's.
-- **affine** switches the named weights only, keeps every multiplier within 16 bits where the
-  largest rounds up, and refuses what cannot take it.
+- **affine** switches the named weights only, states each switched site and its shift in
+  `affine_sites` (RFC-0025), keeps every multiplier within 16 bits where the largest rounds up,
+  and refuses what cannot take it.
 """
 
 import math
@@ -98,6 +99,10 @@ def act(quantized: Quantized) -> dict[QuantPoint, int]:
 
 def sets(quantized: Quantized) -> dict[QuantPoint, list[int]]:
     return dict(quantized.quant.public.shift_class_sets)
+
+
+def affine_shifts(quantized: Quantized) -> dict[QuantPoint, int]:
+    return dict(quantized.quant.public.affine_sites)
 
 
 def weight(quantized: Quantized, ty: WeightType, layer: int = 0) -> torch.Tensor:
@@ -455,10 +460,15 @@ def test_affine_switches_the_named_weights_only(pipeline: dict[Profile, Any]) ->
     (params,) = affine
     assert params.multiplier.size == ARCH.d_model
     assert int(params.multiplier.min()) >= 1
+    assert params.class_.size == 0
     # Each row's largest weight is exactly 127 at its scale max|w_c| / 127.
     q = weight(quantized, WeightType.Down, 0)
     assert bool((q.abs().amax(dim=1) == 127).all())
-    (r,) = sets(quantized)[LayerPoint(0, Site.MlpResidual)]
+    # The site and its one shift are public, in affine_sites rather than shift_class_sets.
+    site = LayerPoint(0, Site.MlpResidual)
+    assert list(affine_shifts(quantized)) == [site]
+    assert site not in sets(quantized)
+    r = affine_shifts(quantized)[site]
     assert 1 <= r <= 63
     # The site's factor M_c / 2^r is sigma_c / 2^offset, with offset = e_res - e_h.
     public = quantized.quant.public
@@ -492,7 +502,7 @@ def test_affine_multipliers_fit_16_bits_and_ignore_zero_rows(
     for case, w in (("top", rows), ("zero", zero)):
         quantized = quantize(ARCH, Profile.Servable, {**weights, down: w}, maxima, affine=[down])
         (params,) = [c for c in quantized.quant.channels if c.multiplier.size]
-        (r,) = sets(quantized)[LayerPoint(0, Site.MlpResidual)]
+        r = affine_shifts(quantized)[LayerPoint(0, Site.MlpResidual)]
         found[case] = (r, torch.tensor(params.multiplier.astype("int64")))
     r, m = found["top"]
     assert r == offset - j - 1
@@ -518,6 +528,17 @@ def test_affine_refuses_what_cannot_take_it(pipeline: dict[Profile, Any]) -> Non
         quantize(
             ARCH, Profile.Minimal, weights_m, maxima_m, affine=["model.layers.0.mlp.up_proj.weight"]
         )
+    for name in ("self_attn.o_proj", "mlp.down_proj"):
+        with pytest.raises(TesseraQuantError, match="minimal's O and down keys exceed 62 bits"):
+            quantize(
+                ARCH, Profile.Minimal, weights_m, maxima_m, affine=[f"model.layers.0.{name}.weight"]
+            )
+    # The sites minimal keeps after Q, K and V take it.
+    names = [f"model.layers.0.self_attn.{n}_proj.weight" for n in "qkv"]
+    quantized = quantize(ARCH, Profile.Minimal, weights_m, maxima_m, affine=names)
+    assert list(affine_shifts(quantized)) == [
+        LayerPoint(0, site) for site in (Site.RopeQ, Site.RopeK, Site.V)
+    ]
 
 
 def test_quantization_is_deterministic_and_refuses_missing_statistics(

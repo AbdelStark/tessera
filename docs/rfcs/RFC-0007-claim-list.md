@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
+- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Schema': `PublicQuantSpec`'s affine sites; 'Public and hidden quantization data'; 'Verifier validation', step 5)
 
 ## Summary
 
@@ -53,7 +54,8 @@ pub struct PublicQuantSpec {
     pub rms_eps_int: u64,
     pub exp_sigma: u8,                             // 16
     pub score_scales: Vec<(u32 /*layer*/, Rational)>,   // σ_q σ_k / sqrt(d_head)
-    pub shift_class_sets: Vec<(QuantPoint, Vec<i8>)>,   // the set of classes per tensor, not the assignment
+    pub shift_class_sets: Vec<(QuantPoint, Vec<i8>)>,   // pot sites: the set of classes per tensor, not the assignment
+    pub affine_sites: Vec<(QuantPoint, i8)>,            // affine sites: the one shift r (RFC-0025)
     pub rope: RopeSpec,
     pub logits_bits: u8,                           // 28
 }
@@ -67,7 +69,7 @@ pub struct CommitmentLayout {
 }
 ```
 
-`QuantPoint` names a quantized or rescaled tensor, as [03 §2](../spec/03-data-model.md#quantization) defines it, and orders both lists. `shift_class_sets` gives each rescale site its class shifts `r`, from 1 to 63: the `r_by_class` of its `Requant` table. `IntegerModel`'s `QuantSpec` holds this struct as its public part, beside the hidden per-channel classes.
+`QuantPoint` names a quantized or rescaled tensor, as [03 §2](../spec/03-data-model.md#quantization) defines it, and orders both lists. `shift_class_sets` gives each `pot` rescale site its class shifts `r`, from 1 to 63: the `r_by_class` of its `Requant` table. `affine_sites` gives each affine site its one shift, from 1 to 63; its key is multiplied by the hidden 16-bit multipliers of the weight before it ([RFC-0025](RFC-0025-affine-sites.md)). Each rescale site is in exactly one of the two lists, and both are sorted. `IntegerModel`'s `QuantSpec` holds this struct as its public part, beside the hidden per-channel classes.
 
 `claim_list_digest = H("claim-list", TCE(ClaimList))` (RFC-0004).
 
@@ -78,6 +80,7 @@ pub struct CommitmentLayout {
 | Architecture dimensions, RoPE parameters, `rms_eps` | Public | Architecture is revealed (source §10) |
 | Per-tensor activation exponents, residual exponent, score scales | Public | Needed to define tables; derived from calibration statistics, not weight values |
 | Set of shift classes per tensor (at most 4 values) | Public | Defines the tuple table's domain |
+| Affine sites and their shifts; the multipliers' width, 16 bits | Public | Define the key, its range and its tables ([RFC-0025](RFC-0025-affine-sites.md)) |
 | Assignment of each output channel to a shift class; affine multipliers | Hidden | Derived from per-channel weight magnitudes; committed with the weights as channel-parameter vectors ([RFC-0012](RFC-0012-weight-commitment.md#layout)) |
 | Weights | Hidden | Committed |
 
@@ -105,7 +108,7 @@ Before reading any proof message, the verifier runs these checks in order and re
 2. Architecture consistency: `d_model = n_heads · d_head`; `n_heads mod n_kv_heads = 0`; `vocab`, `max_context` within protocol limits (v1: `vocab ≤ 2^18`, `max_context ≤ 2^17`).
 3. Profile constraints hold for the derived graph (S1–S3 of [RFC-0005](RFC-0005-integer-model.md#profiles)) when the profile claims them.
 4. Tables: each `TableSpec` is regenerated from its definition by the verifier's own generator; the digest must match.
-5. Ranges: the verifier lowers the claim list into its own graph and re-derives every range from public data with its own analysis (INV-IR-5). Every lookup key must fit its table and the centered field range, and every split gadget must satisfy its preconditions.
+5. Ranges: the verifier lowers the claim list into its own graph and re-derives every range from public data with its own analysis (INV-IR-5), affine sites included ([RFC-0025](RFC-0025-affine-sites.md)). Every lookup key must fit its table and the centered field range, and every split gadget must satisfy its preconditions.
 6. Layout: commitment parameters are those the parameter set prescribes, and the derived advice layout fits within the protocol's maximum matrix size.
 7. Scoring and anchor templates name supported variants.
 

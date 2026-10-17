@@ -68,7 +68,7 @@ pub struct QuantSpec {
 
 pub struct ChannelParams {             // RFC-0012 'Layout', the ChannelParams matrix
     pub ty: WeightType, pub layer: u32,
-    pub class: Vec<u8>,                // per output channel: its index into its site's shift classes
+    pub class: Vec<u8>,                // per output channel: its index into its site's shift classes; empty at an affine site
     pub multiplier: Vec<u16>,          // per output channel: M_c in affine mode; empty in pot mode
 }
 
@@ -92,9 +92,9 @@ pub enum Site {                        // the rescales of a layer, in the order 
 }
 ```
 
-- **Points.** `PublicQuantSpec.act_exponents` gives the exponent `e` of each INT8 tensor's scale `2^e`, and `shift_class_sets` each rescale site's class shifts `r`, from 1 to 63, at most four (RFC-0005 'Scale policy'). They are the `r_by_class` of the site's `Requant` table (RFC-0008). A site after a weight takes the classes of that weight's output channels. Every other site has one class. The embedding's shift into the residual is the difference of their exponents: `res = x0 · 2^{e_Embed − residual_exponent}`.
+- **Points.** `PublicQuantSpec.act_exponents` gives the exponent `e` of each INT8 tensor's scale `2^e`, `shift_class_sets` each `pot` rescale site's class shifts `r`, from 1 to 63, at most four (RFC-0005 'Scale policy'), and `affine_sites` each affine site's one shift ([RFC-0025](../rfcs/RFC-0025-affine-sites.md)). Each rescale site is in one list. They are the `r_by_class` of the site's `Requant` table (RFC-0008). A site after a weight takes the classes of that weight's output channels. Every other site has one class. The embedding's shift into the residual is the difference of their exponents: `res = x0 · 2^{e_Embed − residual_exponent}`.
 - **SiLU.** Each layer's `Silu` table computes `silu(h · 2^{in_exp})` for `h = g >> r_c`, the gate accumulator `g` shifted by its channel's class shift. The quantizer chooses `in_exp`, and with it each `r_c = in_exp − e_y − e_c` for the hidden weight exponents `e_c`, so public data cannot give it: `silu_in_exponents` records it, sorted by layer. It is public, and the claim list states it in the table's `TableSpec` rather than in `PublicQuantSpec`. The table's other parameters come from `PublicQuantSpec`: its `out_exp` is the `Silu` point's exponent, its `r_by_class` the site's shift classes.
-- **Channels.** A `ChannelParams` exists for each weight followed by a site with more than one class, or by an affine site. `class[c]` indexes the site's shifts; `multiplier` is empty unless the site is affine. The public parameters of affine sites are not yet in the claim list ([#274](https://github.com/AbdelStark/tessera/issues/274)).
+- **Channels.** A `ChannelParams` exists for each weight followed by a site with more than one class, or by an affine site. At a site of several classes, `class[c]` indexes the site's shifts and `multiplier` is empty. At an affine site, `multiplier[c]` is `M_c`, from 1 to `2^{16} − 1`, and `class` is empty ([RFC-0025](../rfcs/RFC-0025-affine-sites.md)).
 
 ### Provenance
 

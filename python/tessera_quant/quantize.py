@@ -27,10 +27,12 @@
   `n` the integer nearest `2^40 / sqrt(d_head)`. SiLU's input exponent is the finest whose table
   core, over the gate's classes, holds at most `2^24` values of `h`, for the key width the
   compiler gives the table (RFC-0006 'Llama lowering').
-- **`affine`** (RFC-0005 'Scale policy'): a weight named in `affine` takes per-channel scales
-  `max|w_c| / 127`, and its site a 16-bit multiplier per channel with one shift, the largest at
-  which every multiplier still fits. Q, K, V, O, up and down can; the compiler refuses the
-  result until the claim list can state it (#274).
+- **`affine`** (RFC-0005 'Scale policy', RFC-0025): a weight named in `affine` takes per-channel
+  scales `max|w_c| / 127`, and its site a 16-bit multiplier per channel with one shift, the
+  largest at which every multiplier still fits. The site goes in `affine_sites` with its shift,
+  and the multipliers in the weight's `ChannelParams`, with no classes. Q, K, V, O, up and down
+  can, except `minimal`'s O and down, whose keys would exceed 62 bits; the compiler lowers no
+  affine site yet (#301).
 
 Weights and statistics are secret-class (05 §3): errors name tensors and sites, never a value.
 """
@@ -150,6 +152,7 @@ class _Quantizer:
         self.affine = affine
         self.act: list[tuple[QuantPoint, int]] = []
         self.sets: list[tuple[QuantPoint, list[int]]] = []
+        self.affine_sites: list[tuple[QuantPoint, int]] = []
         self.channels: list[ChannelParams] = []
         self.tensors: list[WeightTensor] = []
         self.scales: dict[str, torch.Tensor] = {}
@@ -200,6 +203,7 @@ class _Quantizer:
             exp_sigma=EXP_SIGMA,
             score_scales=scales,
             shift_class_sets=sorted(self.sets, key=lambda item: _order(item[0])),
+            affine_sites=sorted(self.affine_sites, key=lambda item: _order(item[0])),
             rope=arch.rope,
             logits_bits=LOGITS_BITS,
         )
@@ -311,6 +315,11 @@ class _Quantizer:
         if name in self.affine:
             if ty not in _AFFINE:
                 raise TesseraQuantError(f"{name}: affine applies to Q, K, V, O, up and down")
+            if self.profile is Profile.Minimal and ty in (WeightType.O, WeightType.Down):
+                # Their accumulators reach about 2^60 and 2^58, unrequantized (RFC-0025).
+                raise TesseraQuantError(
+                    f"{name}: minimal's O and down keys exceed 62 bits with a multiplier"
+                )
             self._affine(name, ty, layer, w, point, offset, pairs=pairs)
             return
         exponents = _row_exponents(w, self.arch.d_head if pairs else None)
@@ -357,12 +366,12 @@ class _Quantizer:
             )
         self.tensors.append(_tensor(ty, layer, q))
         self.scales[name] = per_row
-        self.sets.append((point, [r]))
+        self.affine_sites.append((point, r))
         self.channels.append(
             ChannelParams(
                 ty,
                 layer,
-                np.zeros(len(multipliers), dtype=np.uint8),
+                np.zeros(0, dtype=np.uint8),
                 np.asarray(multipliers, dtype=np.uint16),
             )
         )

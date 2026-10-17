@@ -281,6 +281,7 @@ fn tiny(seed: u64, profile: Profile, shape: Shape) -> IntegerModel {
                 exp_sigma: 16,
                 score_scales,
                 shift_class_sets,
+                affine_sites: Vec::new(),
                 rope: ROPE,
                 logits_bits: 28,
             },
@@ -1082,8 +1083,8 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
             }),
         ),
         (
-            "shift_class_sets holds each site of the profile and the final norm, once each and \
-             sorted",
+            "shift_class_sets and affine_sites hold each site of the profile and the final norm, \
+             once each in one of them, each sorted",
             Box::new(|m| m.quant.public.shift_class_sets.swap(0, 1)),
         ),
         (
@@ -1180,22 +1181,22 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
             Box::new(|m| m.weights[5].data[7] = i8::MIN),
         ),
         (
-            "an affine rescale needs public data the claim list lacks yet (#274)",
+            "only the weight before an affine site has multipliers",
             Box::new(|m| {
                 let rows = m.quant.channels[0].class.len();
                 m.quant.channels[0].multiplier = vec![40_000; rows];
             }),
         ),
         (
-            "a ChannelParams exists for each weight a site of several classes rescales, and \
-             only for one, sorted by (ty, layer)",
+            "a ChannelParams exists for each weight a site of several classes or an affine site \
+             rescales, and only for one, sorted by (ty, layer)",
             Box::new(|m| {
                 m.quant.channels.remove(0);
             }),
         ),
         (
-            "a ChannelParams exists for each weight a site of several classes rescales, and \
-             only for one, sorted by (ty, layer)",
+            "a ChannelParams exists for each weight a site of several classes or an affine site \
+             rescales, and only for one, sorted by (ty, layer)",
             Box::new(|m| {
                 m.quant.channels.insert(
                     0,
@@ -1283,6 +1284,170 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
 // ----- Real shapes -------------------------------------------------------------------------------
 
 /// Every norm of `graph`: its sum's range and its root's.
+/// `base` with layer 0's `site` made affine with the shift `r` (RFC-0025): the site moves from
+/// `shift_class_sets` to `affine_sites`, and the weight before it carries multipliers, no classes.
+fn with_affine(base: &IntegerModel, site: Site, r: i8) -> IntegerModel {
+    let mut model = base.clone();
+    let point = QuantPoint::Layer { layer: 0, site };
+    let public = &mut model.quant.public;
+    public.shift_class_sets.retain(|&(p, _)| p != point);
+    let at = public.affine_sites.partition_point(|&(p, _)| p < point);
+    public.affine_sites.insert(at, (point, r));
+    let ty = weight_of(site).expect("a weight before the site");
+    let rows = model
+        .weights
+        .iter()
+        .find(|w| (w.ty, w.layer) == (ty, 0))
+        .expect("the weight")
+        .rows;
+    let multiplier = (0..rows)
+        .map(|c| u16::try_from(c % 65_535 + 1).expect("16 bits"))
+        .collect();
+    let channels = &mut model.quant.channels;
+    channels.retain(|c| (c.ty, c.layer) != (ty, 0));
+    let at = channels.partition_point(|c| (c.ty, c.layer) < (ty, 0));
+    channels.insert(
+        at,
+        ChannelParams {
+            ty,
+            layer: 0,
+            class: Vec::new(),
+            multiplier,
+        },
+    );
+    model
+}
+
+#[test]
+fn affine_sites_keep_rfc_0025s_rules_and_wait_for_their_lowering() {
+    const SITES: &str = "shift_class_sets and affine_sites hold each site of the profile and the \
+                         final norm, once each in one of them, each sorted";
+    let base = tiny(31, Profile::Servable, SHAPES[0]);
+    let model_rule = |rule| CompileError::Model { rule };
+    let lowers_later =
+        model_rule("the compiler lowers no affine site until RFC-0025's lowering lands (#301)");
+    // Each site after the Q, K, V, O, up or down projection may be affine.
+    for site in [
+        Site::RopeQ,
+        Site::RopeK,
+        Site::V,
+        Site::AttnResidual,
+        Site::Up,
+        Site::MlpResidual,
+    ] {
+        let model = with_affine(&base, site, 20);
+        assert_eq!(validate(&model), Ok(()), "{site:?}");
+        assert_eq!(lower(PublicModel::of(&model), 4), Err(lowers_later));
+    }
+    let affine = with_affine(&base, Site::V, 20);
+    let moved = |m: &mut IntegerModel, point: QuantPoint| {
+        let public = &mut m.quant.public;
+        public.shift_class_sets.retain(|&(p, _)| p != point);
+        let at = public.affine_sites.partition_point(|&(p, _)| p < point);
+        public.affine_sites.insert(at, (point, 20));
+    };
+    type Edit = Box<dyn Fn(&mut IntegerModel)>;
+    let public: Vec<(&str, Edit)> = vec![
+        (
+            SITES,
+            Box::new(|m| {
+                let point = m.quant.public.affine_sites[0].0;
+                let sets = &mut m.quant.public.shift_class_sets;
+                let at = sets.partition_point(|&(p, _)| p < point);
+                sets.insert(at, (point, vec![20]));
+            }),
+        ),
+        (SITES, Box::new(|m| m.quant.public.affine_sites.clear())),
+        (
+            SITES,
+            Box::new(|m| {
+                let point = QuantPoint::Layer {
+                    layer: 0,
+                    site: Site::RopeQ,
+                };
+                m.quant.public.shift_class_sets.retain(|&(p, _)| p != point);
+                m.quant.public.affine_sites.push((point, 20));
+            }),
+        ),
+        (
+            "an affine site follows the Q, K, V, O, up or down projection",
+            Box::new(move |m| {
+                let point = QuantPoint::Layer {
+                    layer: 0,
+                    site: Site::AttnNorm,
+                };
+                moved(m, point);
+            }),
+        ),
+        (
+            "an affine site follows the Q, K, V, O, up or down projection",
+            Box::new(move |m| moved(m, QuantPoint::FinalNorm)),
+        ),
+        (
+            "an affine site's shift lies from 1 to 63",
+            Box::new(|m| m.quant.public.affine_sites[0].1 = 0),
+        ),
+        (
+            "an affine site's shift lies from 1 to 63",
+            Box::new(|m| m.quant.public.affine_sites[0].1 = 64),
+        ),
+    ];
+    for (rule, edit) in &public {
+        let mut model = affine.clone();
+        edit(&mut model);
+        assert_eq!(validate(&model), Err(model_rule(*rule)), "{rule}");
+        assert_eq!(
+            lower(PublicModel::of(&model), 4),
+            Err(model_rule(*rule)),
+            "{rule}"
+        );
+    }
+    let v = |m: &IntegerModel| {
+        m.quant
+            .channels
+            .iter()
+            .position(|c| (c.ty, c.layer) == (WeightType::V, 0))
+            .expect("V's parameters")
+    };
+    let hidden: Vec<(&str, Edit)> = vec![
+        (
+            "a ChannelParams exists for each weight a site of several classes or an affine site \
+             rescales, and only for one, sorted by (ty, layer)",
+            Box::new(move |m| {
+                let at = v(m);
+                m.quant.channels.remove(at);
+            }),
+        ),
+        (
+            "an affine site's ChannelParams holds one multiplier per channel",
+            Box::new(move |m| {
+                let at = v(m);
+                m.quant.channels[at].multiplier.pop();
+            }),
+        ),
+        (
+            "a multiplier lies from 1 to 2^16 − 1",
+            Box::new(move |m| {
+                let at = v(m);
+                m.quant.channels[at].multiplier[1] = 0;
+            }),
+        ),
+        (
+            "an affine site's ChannelParams holds no classes",
+            Box::new(move |m| {
+                let at = v(m);
+                let rows = m.quant.channels[at].multiplier.len();
+                m.quant.channels[at].class = vec![0; rows];
+            }),
+        ),
+    ];
+    for (rule, edit) in &hidden {
+        let mut model = affine.clone();
+        edit(&mut model);
+        assert_eq!(validate(&model), Err(model_rule(*rule)), "{rule}");
+    }
+}
+
 fn norms(graph: &tessera_ir::Graph) -> Vec<(IntRange, IntRange)> {
     let range = |t: tessera_ir::TensorId| graph.tensors[t.0 as usize].range;
     graph
