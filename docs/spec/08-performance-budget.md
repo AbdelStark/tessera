@@ -16,7 +16,7 @@ The proof multiplier for a model at context `S` (source §5):
 
 | Symbol | Meaning | 405B value |
 |---|---|---|
-| `C_lin`, `K_lin` | Committed elements and lookups per token in linear layers | 1.7×10^7 each (source); with RISK-2's decompositions, 3.2×10^7 committed elements and 3.4×10^7 lookups for the `minimal` profile, and 4.1×10^7 each for the default `servable` one |
+| `C_lin`, `K_lin` | Committed elements and lookups per token in linear layers | 1.7×10^7 each (source); with RISK-2's decompositions, 3.6×10^7 committed elements and 3.8×10^7 lookups for the `minimal` profile, and 4.5×10^7 each for the default `servable` one |
 | `A` | Scores per token per unit context: heads × layers / 2 | 8,064 |
 | `c_c`, `c_ℓ`, `c_π` | Unit costs: committed element, lookup, product-tree leaf | 30, 40, 12 ps (assumed) |
 | 1.15 | Sumcheck glue factor | assumed |
@@ -52,12 +52,12 @@ Projected from the source (§8) with source unit costs and source commitment cou
 
 These figures exclude witness regeneration. Corrected projections, computed with the executable model:
 
-- RISK-2's decompositions raise the linear-layer term at 1K from 2.0 to 3.9 at the `minimal` profile's count, and to 4.8 at the default `servable` profile's.
-- Five regeneration passes (RISK-9, RFC-0018 P1 to P5) add 5, giving `μ(1K) ≈ 10.0` and `μ(16K) ≈ 25.4` for `minimal`, and `μ(1K) ≈ 11.0` and `μ(16K) ≈ 26.3` for `servable`.
-- The column answers (P5) also evaluate every committed element at the queried columns, at a cost `c_a` per element that is not yet measured. Each picosecond of `c_a` adds 0.058 at 1K and 0.22 at 16K for `minimal`, and 0.072 and 0.23 for `servable`. Re-encoding a row costs at most what committing it does, `c_c = 30 ps` per element (assumed), which adds 1.8 and 6.6, or 2.2 and 7.0.
+- RISK-2's decompositions raise the linear-layer term at 1K from 2.0 to 4.4 at the `minimal` profile's count, and to 5.3 at the default `servable` profile's.
+- Five regeneration passes (RISK-9, RFC-0018 P1 to P5) add 5, giving `μ(1K) ≈ 10.5` and `μ(16K) ≈ 25.9` for `minimal`, and `μ(1K) ≈ 11.5` and `μ(16K) ≈ 26.8` for `servable`.
+- The column answers (P5) also evaluate every committed element at the queried columns, at a cost `c_a` per element that is not yet measured. Each picosecond of `c_a` adds 0.064 at 1K and 0.23 at 16K for `minimal`, and 0.078 and 0.24 for `servable`. Re-encoding a row costs at most what committing it does, `c_c = 30 ps` per element (assumed), which adds 1.9 and 6.8, or 2.3 and 7.2.
 - At 16K context, streaming the tree leaf levels (RISK-10) may add up to about 12 more.
 
-v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)) are `μ(1K) ≤ 12` and `μ(16K) ≤ 45`. For `minimal`, with `c_a = c_c`, the 1K projection is about 11.8, 2% below its ceiling, and with the upper streaming estimate the 16K projection reaches about 44, 2% below its ceiling. For the default `servable` profile the same assumptions give about 13.1 at 1K, 9% above its ceiling, and about 45 at 16K, at its ceiling: meeting SC-2 in that profile needs `c_a` below `c_c`, or fewer splits. Sampling rates for a 10% amortized overhead scale inversely with `μ`. At 1K, the corrected projection cuts the affordable rate from 10.4% to about 3.3% (2.8% at `c_a = c_c`) for `minimal` and 3.0% (2.5%) for `servable`, and daily detection of 100 violations in 10^6 requests to about 97% (94%) and 95% (92%).
+v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)) are `μ(1K) ≤ 12` and `μ(16K) ≤ 45`. For `minimal`, with `c_a = c_c`, the 1K projection is about 12.4, 4% above its ceiling, and with the upper streaming estimate the 16K projection reaches about 44.7, within 1% of its ceiling. For the default `servable` profile the same assumptions give about 13.8 at 1K, 15% above its ceiling, and about 46 at 16K, 2% above it. Meeting SC-2 in either profile needs `c_a` below `c_c`, or fewer decompositions. Sampling rates for a 10% amortized overhead scale inversely with `μ`. At 1K, the corrected projection cuts the affordable rate from 10.4% to about 3.2% (2.7% at `c_a = c_c`) for `minimal` and 2.9% (2.4%) for `servable`, and daily detection of 100 violations in 10^6 requests to about 96% (93%) and 95% (91%).
 
 ## 4. Memory budgets
 

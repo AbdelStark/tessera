@@ -11,7 +11,7 @@ Tessera proves that a committed integer language model `D` produced a recorded t
 
 The design is a sumcheck/GKR proof over the Goldilocks field in which matmuls and attention products are never committed. Only lookup outputs, per-row scalars and weights are. Every layer, head and query block is proven in a constant number of batched stages under one seed. Softmax is pinned by a max certificate at one lookup, one commitment and one product-tree leaf per score. A persistent weight commitment is opened by the same pass that folds the weights for the sumcheck. An independent verifier rebuilds every constraint from a public claim list and shares no code with the prover.
 
-The source projects a proof multiplier of 3.2 at 1K tokens and 18.8 at 16K for Llama-3.1-405B on one 8×H100 node. This corpus finds three costs the source's model leaves out, rescale decompositions (RISK-2), witness regeneration (RISK-9) and memory-bound tree levels (RISK-10), and restates the projection as about 10 to 11 at 1K and 25 to 44 at 16K. Both remain four orders of magnitude below the best published frontier-scale proof. Every figure is a projection until milestone v0.1 measures the unit costs on H100 and records a go/no-go decision against a rule fixed in advance ([RFC-0020](docs/rfcs/RFC-0020-cost-model.md#decision-rule)).
+The source projects a proof multiplier of 3.2 at 1K tokens and 18.8 at 16K for Llama-3.1-405B on one 8×H100 node. This corpus finds three costs the source's model leaves out, rescale decompositions (RISK-2), witness regeneration (RISK-9) and memory-bound tree levels (RISK-10), and restates the projection as about 10.5 to 11.5 at 1K and 26 to 27 at 16K, or up to 13.8 and 46 with the unmeasured column answers and streaming at their upper estimates. Both remain four orders of magnitude below the best published frontier-scale proof. Every figure is a projection until milestone v0.1 measures the unit costs on H100 and records a go/no-go decision against a rule fixed in advance ([RFC-0020](docs/rfcs/RFC-0020-cost-model.md#decision-rule)).
 
 Sub-10% overhead is an amortized property, reached by recording every request and proving an unpredictable sample in full. It is not a per-request cost, and this corpus never claims it is.
 
@@ -88,7 +88,7 @@ Full statements and resolution plans are in [00 §9](docs/spec/00-overview.md#9-
 | Risk | Summary | Resolved by |
 |---|---|---|
 | RISK-1 | Unit costs are assumptions | v0.1 measurement and decision rule |
-| RISK-2 | Wide-key rescales need two commitments, or four where the key is too wide for its shift; up to +84% linear-layer commitments at 405B in `minimal` | v0.2 commitment report |
+| RISK-2 | Wide-key rescales need two commitments, or four where the key is too wide for its shift, and a classed residual site two steps; up to +108% linear-layer commitments at 405B in `minimal` and +162% in `servable` | v0.2 commitment report |
 | RISK-3 | The source's commitment-minimal `D` is not INT8-servable in exact mode | Profiles `servable` and `minimal` |
 | RISK-4 | `τ = 100` gives 41.5 bits, not 64 | `τ_A = 155`, `τ_W = 97` in `live-64` |
 | RISK-5 | LogUp error about 2^-90 at frontier volume | Live seed; 20-bit grinding in non-interactive mode |
