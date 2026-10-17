@@ -101,13 +101,13 @@ pub struct Lowering {
     pub classes: Vec<(WeightRef, TensorId)>,
 }
 
-/// Checks `model` whole: its public part as [`lower`] does, and its weights and channel classes
-/// against it.
+/// Checks `model` whole: its public part as [`lower`] does, and its weights, channel classes and
+/// multipliers against it.
 ///
 /// # Errors
 ///
 /// [`CompileError::Model`] for the first rule broken: the public rules first, then the weights in
-/// order, then the channel classes.
+/// order, then the channel parameters.
 pub fn validate(model: &IntegerModel) -> Result<(), CompileError> {
     let public = PublicModel::of(model);
     check_public(public)?;
@@ -130,23 +130,42 @@ pub fn validate(model: &IntegerModel) -> Result<(), CompileError> {
         }
     }
     let channels = &model.quant.channels;
-    if channels.iter().any(|c| !c.multiplier.is_empty()) {
-        return refuse("an affine rescale needs public data the claim list lacks yet (#274)");
-    }
     let classed = classed(public)?;
     let order = channels.iter().map(|c| (c.ty, c.layer));
     if !order.eq(classed.iter().map(|&(w, ..)| (w.ty, w.layer))) {
         return refuse(
-            "a ChannelParams exists for each weight a site of several classes rescales, and \
-             only for one, sorted by (ty, layer)",
+            "a ChannelParams exists for each weight a site of several classes or an affine site \
+             rescales, and only for one, sorted by (ty, layer)",
         );
     }
-    for (params, &(_, rows, count)) in channels.iter().zip(&classed) {
-        if u64::try_from(params.class.len()).ok() != Some(u64::from(rows)) {
-            return refuse("a ChannelParams holds one class per output channel");
-        }
-        if params.class.iter().any(|&c| usize::from(c) >= count) {
-            return refuse("a channel class indexes its site's shift classes");
+    for (params, &(_, rows, classes)) in channels.iter().zip(&classed) {
+        let per_channel = |len: usize| u64::try_from(len).ok() == Some(u64::from(rows));
+        match classes {
+            Some(count) => {
+                if !per_channel(params.class.len()) {
+                    return refuse("a ChannelParams holds one class per output channel");
+                }
+                if params.class.iter().any(|&c| usize::from(c) >= count) {
+                    return refuse("a channel class indexes its site's shift classes");
+                }
+                if !params.multiplier.is_empty() {
+                    return refuse("only the weight before an affine site has multipliers");
+                }
+            }
+            // RFC-0025: an affine site's weight carries multipliers, and no classes.
+            None => {
+                if !per_channel(params.multiplier.len()) {
+                    return refuse(
+                        "an affine site's ChannelParams holds one multiplier per channel",
+                    );
+                }
+                if params.multiplier.contains(&0) {
+                    return refuse("a multiplier lies from 1 to 2^16 − 1");
+                }
+                if !params.class.is_empty() {
+                    return refuse("an affine site's ChannelParams holds no classes");
+                }
+            }
         }
     }
     Ok(())
@@ -157,13 +176,17 @@ pub fn validate(model: &IntegerModel) -> Result<(), CompileError> {
 /// # Errors
 ///
 /// - [`CompileError::Model`] when the public part breaks a rule of RFC-0005, RFC-0006 'Llama
-///   lowering' or RFC-0007 'Verifier validation', and [`CompileError::ModelTable`] when a table it
-///   defines is one RFC-0008 refuses;
+///   lowering', RFC-0007 'Verifier validation' or RFC-0025, or has an affine site, which the
+///   lowering does not take yet (#301); [`CompileError::ModelTable`] when a table it defines is
+///   one RFC-0008 refuses;
 /// - [`CompileError::Usage`] for no position, or more than `max_context`;
 /// - [`CompileError::Range`] and [`CompileError::Wrap`] when range analysis refuses the graph;
 /// - [`CompileError::Profile`] when it breaks a constraint of its profile.
 pub fn lower(model: PublicModel<'_>, positions: u32) -> Result<Lowering, CompileError> {
     check_public(model)?;
+    if !model.quant.affine_sites.is_empty() {
+        return refuse("the compiler lowers no affine site until RFC-0025's lowering lands (#301)");
+    }
     if positions == 0 || positions > model.arch.max_context {
         return Err(CompileError::Usage {
             rule: "a sequence has 1 to max_context positions",
@@ -360,23 +383,28 @@ fn weights(arch: &ArchSpec) -> Vec<(WeightRef, u32, u32)> {
     all
 }
 
-/// Each weight a site of several classes rescales, sorted by `(ty, layer)`, with its rows and
-/// its site's class count.
-fn classed(model: PublicModel<'_>) -> Result<Vec<(WeightRef, u32, usize)>, CompileError> {
+/// Each weight a site of several classes or an affine site rescales, sorted by `(ty, layer)`,
+/// with its rows and its site's class count, or `None` for an affine site.
+fn classed(model: PublicModel<'_>) -> Result<Vec<(WeightRef, u32, Option<usize>)>, CompileError> {
     let shapes = weights(model.arch);
     let mut classed = Vec::new();
     for layer in 0..model.arch.n_layers {
         for &site in sites(model.profile) {
             let Some(ty) = after(site) else { continue };
-            let count = shifts(model.quant, QuantPoint::Layer { layer, site })?.len();
-            if count > 1 {
-                let weight = WeightRef { ty, layer };
-                let rows = shapes
-                    .iter()
-                    .find(|(w, ..)| *w == weight)
-                    .map_or(0, |&(_, rows, _)| rows);
-                classed.push((weight, rows, count));
-            }
+            let point = QuantPoint::Layer { layer, site };
+            let classes = match affine(model.quant, point) {
+                Some(_) => None,
+                None => match shifts(model.quant, point)?.len() {
+                    1 => continue,
+                    count => Some(count),
+                },
+            };
+            let weight = WeightRef { ty, layer };
+            let rows = shapes
+                .iter()
+                .find(|(w, ..)| *w == weight)
+                .map_or(0, |&(_, rows, _)| rows);
+            classed.push((weight, rows, classes));
         }
     }
     classed.sort_by_key(|&(w, ..)| w);
@@ -418,12 +446,37 @@ fn check_public(model: PublicModel<'_>) -> Result<(), CompileError> {
              norm, once each and sorted",
         );
     }
-    let sets = quant.shift_class_sets.iter().map(|(p, _)| *p);
-    if !sets.eq(points(arch, model.profile, false)) {
-        return refuse(
-            "shift_class_sets holds each site of the profile and the final norm, once each and \
-             sorted",
+    // RFC-0025: each rescale site is `pot`, with its classes, or affine, with its shift.
+    let pot: Vec<QuantPoint> = quant.shift_class_sets.iter().map(|(p, _)| *p).collect();
+    let affine: Vec<QuantPoint> = quant.affine_sites.iter().map(|&(p, _)| p).collect();
+    let increasing = |points: &[QuantPoint]| points.windows(2).all(|w| w[0] < w[1]);
+    let mut every = [pot.as_slice(), affine.as_slice()].concat();
+    every.sort_unstable();
+    if !increasing(&pot)
+        || !increasing(&affine)
+        || !every.into_iter().eq(points(arch, model.profile, false))
+    {
+        return refuse(SITES);
+    }
+    for &(point, r) in &quant.affine_sites {
+        let after_its_weight = matches!(
+            point,
+            QuantPoint::Layer {
+                site: Site::RopeQ
+                    | Site::RopeK
+                    | Site::V
+                    | Site::AttnResidual
+                    | Site::Up
+                    | Site::MlpResidual,
+                ..
+            }
         );
+        if !after_its_weight {
+            return refuse("an affine site follows the Q, K, V, O, up or down projection");
+        }
+        if !(1..=63).contains(&r) {
+            return refuse("an affine site's shift lies from 1 to 63");
+        }
     }
     for (point, shifts) in &quant.shift_class_sets {
         if !(1..=4).contains(&shifts.len()) || shifts.iter().any(|r| !(1..=63).contains(r)) {
@@ -489,10 +542,7 @@ fn shifts(quant: &PublicQuantSpec, point: QuantPoint) -> Result<Vec<u8>, Compile
         .shift_class_sets
         .iter()
         .find(|(p, _)| *p == point)
-        .ok_or(CompileError::Model {
-            rule: "shift_class_sets holds each site of the profile and the final norm, once each \
-                   and sorted",
-        })?;
+        .ok_or(CompileError::Model { rule: SITES })?;
     set.1
         .iter()
         .map(|&r| u8::try_from(r))
@@ -500,6 +550,19 @@ fn shifts(quant: &PublicQuantSpec, point: QuantPoint) -> Result<Vec<u8>, Compile
         .map_err(|_| CompileError::Model {
             rule: "a site has one to four classes, each shift from 1 to 63",
         })
+}
+
+/// The rule that every rescale site has its data once (RFC-0007 'Schema', RFC-0025).
+const SITES: &str = "shift_class_sets and affine_sites hold each site of the profile and the final \
+                     norm, once each in one of them, each sorted";
+
+/// The shift of the affine site at `point`, if it is one (RFC-0025).
+fn affine(quant: &PublicQuantSpec, point: QuantPoint) -> Option<i8> {
+    quant
+        .affine_sites
+        .iter()
+        .find(|&&(p, _)| p == point)
+        .map(|&(_, r)| r)
 }
 
 /// The number of bits of `x`: `2^{bits − 1} ≤ x < 2^bits`, and 0 for 0.

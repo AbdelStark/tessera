@@ -142,10 +142,14 @@ pub struct PublicQuantSpec {
     pub exp_sigma: u8,
     /// Each layer's `σ_q σ_k / √d_head`, exactly.
     pub score_scales: Vec<(u32, Rational)>,
-    /// Each rescale site's class shifts `r`, 1 to 63, at most four: its `Requant` table's
+    /// Each `pot` rescale site's class shifts `r`, 1 to 63, at most four: its `Requant` table's
     /// `r_by_class`. A site after a weight has one class per weight exponent class, every other
     /// site one.
     pub shift_class_sets: Vec<(QuantPoint, Vec<i8>)>,
+    /// Each `affine` rescale site's shift `r`, 1 to 63, sorted by point (RFC-0025). Its key is
+    /// the product of what a `pot` site would rescale and the hidden 16-bit multipliers of the
+    /// weight before it. A rescale site is in this list or in `shift_class_sets`, never both.
+    pub affine_sites: Vec<(QuantPoint, i8)>,
     /// RoPE.
     pub rope: RopeSpec,
     /// The logits' width: 28.
@@ -160,9 +164,10 @@ pub struct ChannelParams {
     pub ty: WeightType,
     /// The layer, 0 for `Embed` and `LmHead`.
     pub layer: u32,
-    /// Each output channel's index into its site's shift classes.
+    /// Each output channel's index into its site's shift classes; empty at an affine site.
     pub class: Vec<u8>,
-    /// Each output channel's multiplier `M_c` in `affine` mode; empty in `pot` mode.
+    /// Each output channel's multiplier `M_c`, from 1 to `2^16 − 1`, at an affine site; empty at
+    /// a `pot` site (RFC-0025).
     pub multiplier: Vec<u16>,
 }
 
@@ -172,7 +177,8 @@ impl fmt::Debug for ChannelParams {
         f.debug_struct("ChannelParams")
             .field("ty", &self.ty)
             .field("layer", &self.layer)
-            .field("channels", &self.class.len())
+            // One class per channel at a `pot` site, one multiplier at an affine one (RFC-0025).
+            .field("channels", &self.class.len().max(self.multiplier.len()))
             .field("affine", &!self.multiplier.is_empty())
             .finish()
     }

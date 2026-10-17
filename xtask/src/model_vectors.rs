@@ -136,6 +136,7 @@ fn servable() -> IntegerModel {
                 exp_sigma: 16,
                 score_scales: vec![(0, rational(3, 1024))],
                 shift_class_sets,
+                affine_sites: Vec::new(),
                 rope: ROPE,
                 logits_bits: 28,
             },
@@ -178,8 +179,8 @@ fn servable() -> IntegerModel {
     }
 }
 
-/// The minimal profile in `affine` mode: the sites the servable profile adds are absent, and
-/// two weights carry multipliers.
+/// The minimal profile with two affine sites (RFC-0025): the sites the servable profile adds are
+/// absent, and the V and down projections carry multipliers, with no classes.
 fn minimal() -> IntegerModel {
     let int8 = [
         Site::AttnNorm,
@@ -202,12 +203,18 @@ fn minimal() -> IntegerModel {
         Site::Silu,
         Site::MlpResidual,
     ];
-    let mut shift_class_sets: Vec<(QuantPoint, Vec<i8>)> = sites
-        .into_iter()
-        .zip(21..)
+    let affine = |site| matches!(site, Site::V | Site::MlpResidual);
+    let shifts = sites.into_iter().zip(21..);
+    let mut shift_class_sets: Vec<(QuantPoint, Vec<i8>)> = shifts
+        .clone()
+        .filter(|&(site, _)| !affine(site))
         .map(|(site, r)| (layer(site), vec![r]))
         .collect();
     shift_class_sets.push((QuantPoint::FinalNorm, vec![63]));
+    let affine_sites = shifts
+        .filter(|&(site, _)| affine(site))
+        .map(|(site, r)| (layer(site), r))
+        .collect();
     IntegerModel {
         arch: arch(),
         profile: Profile::Minimal,
@@ -221,6 +228,7 @@ fn minimal() -> IntegerModel {
                 exp_sigma: 16,
                 score_scales: vec![(0, rational(-5, 4096))],
                 shift_class_sets,
+                affine_sites,
                 rope: ROPE,
                 logits_bits: 28,
             },
@@ -229,13 +237,13 @@ fn minimal() -> IntegerModel {
                 ChannelParams {
                     ty: WeightType::V,
                     layer: 0,
-                    class: vec![0, 0],
+                    class: Vec::new(),
                     multiplier: vec![40_000, 33_001],
                 },
                 ChannelParams {
                     ty: WeightType::Down,
                     layer: 0,
-                    class: vec![0, 0, 0, 0],
+                    class: Vec::new(),
                     multiplier: vec![65_535, 32_768, 1, 50_000],
                 },
             ],
@@ -381,6 +389,8 @@ fn value(m: &IntegerModel) -> Value {
                         point(point_),
                         shifts.iter().map(|&r| number(r)).collect::<Vec<_>>(),
                     ])).collect::<Vec<_>>(),
+                "affine_sites": q.affine_sites.iter()
+                    .map(|(point_, r)| json!([point(point_), number(r)])).collect::<Vec<_>>(),
                 "rope": rope(&q.rope),
                 "logits_bits": number(q.logits_bits),
             },

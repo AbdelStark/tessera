@@ -5,6 +5,7 @@ Canonical terms used across the corpus. When a document uses one of these words,
 | Term | Definition |
 |---|---|
 | Advice | Committed per-proof values: lookup outputs, per-row scalars, decomposition limbs, multiplicities, one-hot vectors, masking coefficients. Committed by the streaming advice commitment (RFC-0011). |
+| Affine site | A rescale site whose key is the accumulator times a hidden 16-bit multiplier per output channel, shifted by one public shift. The claim list names it and its shift (RFC-0005, RFC-0025). A `pot` site shifts by its channel's class shift alone. |
 | Amortized overhead | `s · μ · η`: proving cost relative to serving cost when a fraction `s` of requests is proven. |
 | Anchor (transcript anchor) | The statement conjunct binding the token streams inside a proof to the recorder's digest log (RFC-0015). |
 | Batch (proof batch) | The set of sampled requests proven together under one seed; at least 16,384 tokens in production. |

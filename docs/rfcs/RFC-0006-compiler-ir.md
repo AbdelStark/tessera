@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual), [RFC-0024](RFC-0024-wide-requantization.md) ('Gadget selection': `RequantWide`)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual), [RFC-0024](RFC-0024-wide-requantization.md) ('Gadget selection': `RequantWide`), [RFC-0025](RFC-0025-affine-sites.md) ('Operation set': `Mul`'s broadcast; 'Llama lowering': affine sites)
 
 ## Summary
 
@@ -78,7 +78,7 @@ A graph's nodes are in topological order. Every input is a graph input, a tensor
 | `Slice` | `x` → `y` | `start + len` within the axis, `len ≥ 1`; `y` is `x` with that axis of length `len` | |
 | `GatherPublic` | `x` → `y` | each index a row of `x`'s outermost axis; `y` has one such row per index | |
 | `MatMulAct` | `a`, `b` → `y` | equal leading axes; `a […, m, k]`, `b […, k, n]` or, transposed, `b […, n, k]`; `y […, m, n]` | |
-| `Mul` | `a`, `b` → `y` | `b`'s shape is `a`'s or a prefix of it, broadcast over the trailing axes; `y = a` | |
+| `Mul` | `a`, `b` → `y` | `b`'s shape is `a`'s, a prefix of it, broadcast over the trailing axes, or its last axis, broadcast over the leading axes; `y = a` | |
 | `OneHot` | `t` → `h` | `h` is `t` with an axis of `vocab ≥ 1` added | `h` is `Committed { Advice }` |
 | `Requant` | `x` (, `c`) → `y` | `y = x`; `c [x's last axis]`, the channel classes, when the set has more than one class | `c` is `Committed { Weight }`; `y` is a lookup output or advice; `lo ≤ hi` |
 | `TableMap` | `x` (, `c`) → `y` | `y = x`; `c [x's last axis]`, the channel classes, when the table has several classes | `c` is `Committed { Weight }`; `y` is `LookupOutput { table }` |
@@ -152,12 +152,12 @@ The lowering instantiates the profile's template from [RFC-0005](RFC-0005-intege
 
 It reads only the public part of `D`: the architecture, the profile, `PublicQuantSpec` and each layer's `Silu` input exponent. The graph is therefore what the verifier re-derives from the claim list (INV-IR-5). One graph covers one sequence of `n ≤ max_context` tokens at positions `0` to `n − 1`.
 
-- **Inputs.** The tokens `[n]`, committed advice in `[0, vocab)`; the positions `[n]`, public; each weight matrix; and, for each site of several classes, the classes of the weight before it, `[rows]` in `[0, classes)`, committed with the weights.
+- **Inputs.** The tokens `[n]`, committed advice in `[0, vocab)`; the positions `[n]`, public; each weight matrix; for each site of several classes, the classes of the weight before it, `[rows]` in `[0, classes)`; and for each affine site, the multipliers of the weight before it, `[rows]` in `[0, 2^{16} − 1]` ([RFC-0025](RFC-0025-affine-sites.md)). Classes and multipliers are committed with the weights.
 - **Layout.** Activations are position-major, `[n, channels]`. RoPE rotates Q and K as `[n, heads, d_head]`, pairing `x_i` with `x_{i + d_head/2}`.
   - Attention runs head-major. `GatherPublic` reorders the rows of Q to `[n_heads, n, d_head]`, and those of K and V to the same shape, with query head `h` reading KV head `h / (n_heads / n_kv_heads)`.
   - One `MatMulAct` then forms every head's scores `[n_heads, n, n]`, one causal `SoftmaxRow` their exponentials and reciprocals, and `Mul(MatMulAct(e, v), R)` the attention output: the softmax fact's pattern.
   - A last `GatherPublic` returns the output to `[n, d_model]`.
-- **Rescales.** Each `Requant` names its site's shift classes and takes the channel classes when there are several, as does the `Silu` lookup. INT8 sites saturate to `[−128, 127]`. The embedding enters the residual by `ConstMul` with `2^{s_e}`, `s_e = e_Embed − residual_exponent` ([03 §2](../spec/03-data-model.md#quantization)).
+- **Rescales.** Each `Requant` names its site's shift classes and takes the channel classes when there are several, as does the `Silu` lookup. An affine site's key is `Mul(x, m)`, with `x` what a `pot` site would rescale and `m` its multipliers, rescaled with its one shift; at a residual site `Mul(acc, m)` takes the place of `acc`. INT8 sites saturate to `[−128, 127]`. The embedding enters the residual by `ConstMul` with `2^{s_e}`, `s_e = e_Embed − residual_exponent` ([03 §2](../spec/03-data-model.md#quantization)).
 - **The residual** saturates its sum within `[−2^{19}, 2^{19} − 1]` ([RFC-0022](RFC-0022-saturating-residual.md#saturating-residual)):
   - a site of one class, whose `2^r` fits a constant (`r ≤ 62`), rescales the fused key `Add(acc, ConstMul(res, 2^r))` with its shift;
   - a site of several classes rescales `acc` with its classes within `±(2^{20} − 1)`, then clamps `2(res + u)` with the shift 1.
@@ -174,8 +174,9 @@ It reads only the public part of `D`: the architecture, the profile, `PublicQuan
   Every tensor then carries its analyzed range and the narrowest integer type holding it.
 - **Validation** (`ERR-QUANT-ARCH`). The lowering refuses a public part that breaks RFC-0007's architecture rules (`d_model = n_heads · d_head`, `n_kv_heads` dividing `n_heads`, `vocab ≤ 2^18`, `max_context ≤ 2^17`). It also refuses:
   - an odd `d_head`;
-  - quantization data that misses or repeats a point of the profile;
+  - quantization data that misses or repeats a point of the profile, or a site in both `shift_class_sets` and `affine_sites`;
   - a site after no weight with several classes;
+  - an affine site that follows no Q, K, V, O, up or down projection;
   - a shift outside `[1, 63]`, or a score scale that is not positive;
   - an embedding shift that would push INT8 rows out of the residual;
   - `e = 0`, or `κ > 31`;
@@ -183,9 +184,11 @@ It reads only the public part of `D`: the architecture, the profile, `PublicQuan
 
   The prover also checks the hidden part before lowering:
   - one weight per type and layer, in `(ty, layer)` order, with its architecture's shape and entries in `[−127, 127]`;
-  - a `ChannelParams` for each weight a site of several classes rescales and for no other, with one class per output channel, each inside the site's classes.
+  - a `ChannelParams` for each weight a site of several classes or an affine site rescales and for no other;
+  - at a site of several classes, one class per output channel, each inside the site's classes, and no multiplier;
+  - at an affine site, one multiplier per output channel, each in `[1, 2^{16})`, and no class.
 
-  Affine rescales are refused until the claim list carries their public data ([#274](https://github.com/AbdelStark/tessera/issues/274)).
+  The compiler refuses affine sites until it implements their lowering ([#301](https://github.com/AbdelStark/tessera/issues/301)).
 
 ### Tiling and the execution plan
 

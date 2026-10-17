@@ -65,6 +65,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0022](docs/rfcs/RFC-0022-saturating-residual.md) | A saturating residual stream and complete norms (amends RFC-0005, RFC-0006, RFC-0009) | v0.2 |
 | [RFC-0023](docs/rfcs/RFC-0023-norm-precision.md) | The norm's precision: choosing κ per model (amends RFC-0005) | v0.2 |
 | [RFC-0024](docs/rfcs/RFC-0024-wide-requantization.md) | Wide requantization: keys too wide for their shift (amends RFC-0005, RFC-0006, RFC-0009) | v0.2 |
+| [RFC-0025](docs/rfcs/RFC-0025-affine-sites.md) | Affine rescale sites in the claim list (amends RFC-0005, RFC-0006, RFC-0007, RFC-0010) | v0.2 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 
