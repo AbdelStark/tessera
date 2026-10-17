@@ -287,6 +287,15 @@ All notable changes to the prover release train are recorded here: the crates un
   - Seeded tiny models are lowered in both profiles, with grouped-query attention and sites of one to four classes. An exact interpreter of the IR runs each graph to the logits of an independent, token-by-token implementation of RFC-0005's semantics. Every value stays inside its tensor's range, on random and adversarial inputs.
   - Llama-3.1 8B's and 405B's shapes lower from their public part alone. Each validation rule is tested broken alone, and each of 36 bugs planted in the changes fails a test.
 
+- Gain folding, QK equalization and SmoothQuant migration in `tessera_quant.migration` (RFC-0005 'Pipeline', steps 2 and 4, [#79](https://github.com/AbdelStark/tessera/issues/79)):
+  - `fold` multiplies each RMSNorm gain into the weights that read its output.
+  - `equalize` scales `W_q` and `W_k` rows by `λ` and `1/λ` per KV head and RoPE pair, shared by the group's query heads.
+  - `migrate` moves activation outliers into the weights where `D` can absorb the factor: the O projection's input through `W_v`, the down projection's through `W_up`.
+  - Each returns the statistics the transformed model computes. Each acts within one layer, so a quantizer can stream a model.
+  - `select_alpha` picks the strength of least divergence among `{1/2, 3/5, 7/10, 4/5}`, the smallest of equal ones; `mean_kl` measures the divergence.
+  - In float64 on 64 sequences, each transform keeps a tiny Llama's logits within `10^{-12}` relative. An independent recorder finds the maxima each one predicts. 18 planted bugs each fail a test.
+  - RFC-0005 now says where each migration factor goes. The norm-fed inputs have no place for one in `D` ([#289](https://github.com/AbdelStark/tessera/issues/289)).
+
 ### Changed
 
 - RFC-0022, accepted, makes `D`'s residual stream saturate, and bounds its norms' roots over all inputs ([#284](https://github.com/AbdelStark/tessera/issues/284), [#285](https://github.com/AbdelStark/tessera/issues/285)):

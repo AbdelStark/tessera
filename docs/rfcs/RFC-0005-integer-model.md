@@ -44,7 +44,12 @@ These pull against each other. RISK-2, RISK-3 and RISK-7 in [00 §9](../spec/00-
    - The shards hold exactly the architecture's tensors, each where the index places it, and an index places tensors only in shards of its own directory.
 2. **Fold.** Fold each RMSNorm gain into the columns of the weights that consume the normalized activations (Q, K, V after the attention norm; gate, up after the MLP norm; LM head after the final norm). This is exact in real arithmetic.
 3. **Calibrate.** Run the BF16 model on the calibration set; record per-channel activation maxima at every quantization point.
-4. **Migrate.** Apply SmoothQuant migration with strength `α` to each input of a linear layer; apply QK equalization (scale `W_q` rows by `λ_c` and `W_k` rows by `1/λ_c`, equal within each RoPE pair) so scores are unchanged in real arithmetic.
+4. **Migrate.** Apply SmoothQuant migration with strength `α` to each input of a linear layer whose producer can absorb its per-channel factor.
+   - The O projection's input takes it through the rows of `W_v`, one factor per value channel shared by its group of query heads.
+   - The down projection's input takes it through the rows of `W_up`.
+   - The norm-fed inputs of Q, K, V, gate, up and the LM head cannot: `D`'s norm applies no per-channel factor ([#289](https://github.com/AbdelStark/tessera/issues/289)).
+
+   Apply QK equalization so that scores are unchanged in real arithmetic: scale `W_q` rows by `λ_c` and `W_k` rows by `1/λ_c`, with `λ = √(max|k| / max|q|)` equal within each RoPE pair and across the query heads that share a KV head.
 5. **Quantize.** Choose scales (below), quantize weights by round-to-nearest-even into `[−127, 127]`.
 6. **Assemble.** Emit the integer graph, `QuantSpec` and weights as an `IntegerModel` (schema `0x0101`) with `Provenance`.
 
