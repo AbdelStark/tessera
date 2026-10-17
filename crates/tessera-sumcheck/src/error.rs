@@ -7,8 +7,8 @@ use core::fmt;
 
 use crate::{MAX_DEGREE, Operand};
 
-/// Why a batch, a batch of forests or a matmul relation was refused: before the transcript moved,
-/// and before anything was computed.
+/// Why a batch, a batch of forests or a relation was refused: before the transcript moved, and
+/// before anything was computed.
 ///
 /// [`prove_batch`](crate::prove_batch) checks its inputs in this order and returns the first
 /// failure: the degree; that there is an instance; then instance by instance, that it has a
@@ -30,13 +30,22 @@ use crate::{MAX_DEGREE, Operand};
 /// that the input claim's point has its coordinates; `claims`, that the instance's point has its
 /// coordinates and that there are two evaluations.
 ///
+/// [`Elementwise::new`](crate::Elementwise::new) checks, in this order, that its shape holds;
+/// input by input, that its length fits the relation's variables and that a partner's bit is one
+/// of them; term by term, that every factor names an input and that the term's degree is between
+/// 1 and [`MAX_DEGREE`]; and that there is a term. Its `tables` and `claims` check points and
+/// evaluations as the matmuls' do. [`Linear::new`](crate::Linear::new) checks that each input
+/// sits within its target's variables, and [`Linear::terms`](crate::Linear::terms) that the
+/// target's point has its coordinates.
+///
 /// The variants carry indices, lengths, heights, degrees and operand names, never a field
 /// element, so an error cannot carry a secret table value, a leaf or an evaluation (05 §3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SumcheckError {
-    /// The degree is outside `1..=MAX_DEGREE`.
+    /// The degree is outside `1..=MAX_DEGREE`: a batch's, or that of a term of an elementwise
+    /// relation, its factors plus `eq`'s, 0 for a relation with no term.
     Degree {
-        /// The degree asked for.
+        /// The degree asked for, or the term's.
         degree: usize,
     },
     /// The batch has no instance.
@@ -155,21 +164,68 @@ pub enum SumcheckError {
         /// The length its shape gives.
         expected: usize,
     },
-    /// A point given to a matmul relation has the wrong number of coordinates: the input claim's
-    /// point, or the instance's point after the sumcheck.
+    /// A point given to a relation has the wrong number of coordinates: the input claim's point,
+    /// or the instance's point after the sumcheck.
     PointLength {
         /// The number of coordinates given.
         len: usize,
         /// The number the shape gives.
         expected: usize,
     },
-    /// The final evaluations given for a matmul's instance are not as many as it sends: one per
-    /// operand.
+    /// The final evaluations given for a relation's instance are not as many as it sends: one
+    /// per operand.
     EvaluationCount {
         /// The number given.
         len: usize,
         /// The number the instance sends.
         expected: usize,
+    },
+    /// An elementwise relation's shape cannot hold: it sums out more variables than it has, or
+    /// its `2^vars` entries cannot be counted in a `usize`.
+    RelationShape {
+        /// The relation's variables, `n`.
+        vars: usize,
+        /// The low variables it sums out, `m`.
+        summed_vars: usize,
+    },
+    /// An elementwise relation's input does not fit its `n` variables: an operand, a partner or
+    /// a public table has `2^n` entries, and a broadcast operand `2^j` with `k + j ≤ n`, `k` the
+    /// low variables it is constant in.
+    InputLength {
+        /// The input, counted from 0 in the order given.
+        input: usize,
+        /// Its length.
+        len: usize,
+        /// The relation's variables, `n`.
+        vars: usize,
+    },
+    /// An elementwise relation's partner input flips a bit that is not one of the relation's
+    /// variables.
+    PartnerBit {
+        /// The input, counted from 0 in the order given.
+        input: usize,
+        /// The bit it flips, from 0 for the lowest variable.
+        bit: usize,
+        /// The relation's variables, `n`.
+        vars: usize,
+    },
+    /// A term of an elementwise relation names an input the relation does not have.
+    TermInput {
+        /// The term, counted from 0 in the order given.
+        term: usize,
+        /// The factor's position, the first out of range.
+        factor: usize,
+        /// The relation's number of inputs.
+        inputs: usize,
+    },
+    /// A `Linear` relation's input does not sit within its target's variables: a broadcast's
+    /// low variables and own variables exceed them, or a sum's input has more variables than a
+    /// `usize` counts.
+    InputPlacement {
+        /// The input, counted from 0 in the order given.
+        input: usize,
+        /// The target's variables.
+        target_vars: usize,
     },
 }
 
@@ -274,6 +330,31 @@ impl fmt::Display for SumcheckError {
             Self::EvaluationCount { len, expected } => write!(
                 f,
                 "{len} final evaluations where the instance sends {expected}"
+            ),
+            Self::RelationShape { vars, summed_vars } => write!(
+                f,
+                "a relation on {vars} variables cannot sum out {summed_vars} of them, or count \
+                 2^{vars} entries"
+            ),
+            Self::InputLength { input, len, vars } => write!(
+                f,
+                "input {input} has {len} entries, which do not fit a relation on {vars} variables"
+            ),
+            Self::PartnerBit { input, bit, vars } => write!(
+                f,
+                "input {input} flips bit {bit}, outside a relation on {vars} variables"
+            ),
+            Self::TermInput {
+                term,
+                factor,
+                inputs,
+            } => write!(
+                f,
+                "factor {factor} of term {term} names no input, where the relation has {inputs}"
+            ),
+            Self::InputPlacement { input, target_vars } => write!(
+                f,
+                "input {input} does not sit within a target of {target_vars} variables"
             ),
         }
     }

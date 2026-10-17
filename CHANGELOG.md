@@ -528,6 +528,25 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Large batches.** Batches of 1 to 20 instances verify, their trees of every height from 4 to 24 between them: one table tree of `2^24` rows, and twenty lookup trees of heights 4 to 23 in one batch.
   - **A dropped instance.** A prover that keeps one instance out of the levels, after absorbing every instance's roots, is rejected at the first level where that instance's taller tree is present, by an `EvaluationCount` failure. The levels before that are the honest ones, and the verifier accepts them.
 
+- The elementwise relations of RFC-0010 'Relations' and `Linear` claim propagation, in `tessera-sumcheck` ([#99](https://github.com/AbdelStark/tessera/issues/99)):
+  - `Elementwise` is a sum of weighted products of inputs against `eq` at the target's point. An input is an operand read at each vertex, at each entry's RoPE partner (`Input::Partner`) or broadcast over some variables (`Input::Broadcast`), or a public table, which the verifier evaluates. The constructors are `mul` (elementwise, scalar-by-row and by-constant products), `rotate` (RoPE on the pairs that differ in one bit), `sum_squares`, `booleanity` and `padding` (RFC-0035's zero-check). `new` takes any terms up to `MAX_DEGREE`, such as SHA-256's majority.
+  - A relation is proven in the matmuls' three steps:
+    1. `tables` builds the instance from the input claim's point: `eq`, and the partner and broadcast operands laid out in `SecretBuf`s. A single term of weight 1 that multiplies every input once runs on the engine's product loops.
+    2. `prove_batch` proves it among the stage's instances.
+    3. `claims` gives one claim per operand input: at the instance's point, at that point with the partner's coordinate flipped, or at a broadcast's own coordinates.
+  - `zero_check_point` squeezes a stage's zero-check point under `stage/{k}/zero/{c}`.
+  - `Linear` turns a claim on a linear target into a `LinearClaim` on its inputs, each with its public coefficient and at the point its `Placement` gives: `Same`, `Broadcast` (the coordinates it has) or `Sum` (`(½, …, ½) ‖ r`, coefficient `2^j`). `substitute` propagates a chain, `evaluate_public` moves public terms to the value, and `combination` evaluates the claim.
+  - RFC-0010 'Relations' now states how each input is read and where it leaves its claim, `Rotate`'s identity with its two claims on `X`, and the `Linear` placements.
+  - `tessera-compiler`'s stage count now takes a `Sum` over an axis for the `Linear` relation that RFC-0010 and RFC-0030 make it, with no stage of its own: its claim lands at `(½, …, ½)` on the axis. No template uses `Sum`, so no report changes.
+  - `SumcheckError` gains `RelationShape`, `InputLength`, `PartnerBit`, `TermInput` and `InputPlacement`, and debug forms show shapes only. `secret-access.toml` lists `elementwise.rs`, whose `Input::secret*` constructors and `Elementwise::secret_rotate` take operands in their `Secret`.
+  - The tests run every proof through `tv_core::sumcheck::verify_batch`, with relations written from the RFCs:
+    - every kind alone from 1 to 12 variables and at 20, and a product and a rotation at 24;
+    - all kinds together, with zero-checks at the stage's point;
+    - `rotate` against RoPE as RFC-0005 states it;
+    - a residual chain over 8 layers, propagated to its inputs and checked by direct evaluation.
+
+    These are all rejected at the final check: a prover with one operand or public entry changed; every changed round value or evaluation; a non-boolean entry; a value on a padded row.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

@@ -28,10 +28,11 @@
 //!
 //! The stage count is RFC-0010's: the leaf stage, then one stage per sumcheck relation on the
 //! longest chain from a gadget's input down to committed tensors. `MatMulWeight`, `MatMulAct`,
-//! `Mul`, `Rotate`, `SumSquares`, `Sum` and a `ConstMul` by per-channel constants are proved by
-//! sumchecks; adds, a `ConstMul` by one constant, `ConstAdd`, `Reshape`, `Slice` and
-//! `GatherPublic` map a claim onto their inputs at no stage. The opening groups `G` and the masks
-//! of RFC-0011 and RFC-0013 follow from the stage schedule's claim points (#113, #149, #154).
+//! `Mul`, `Rotate`, `SumSquares` and a `ConstMul` by per-channel constants are proved by
+//! sumchecks; adds, a `Sum` over an axis, a `ConstMul` by one constant, `ConstAdd`, `Reshape`,
+//! `Slice` and `GatherPublic` map a claim onto their inputs at no stage. The opening groups `G`
+//! and the masks of RFC-0011 and RFC-0013 follow from the stage schedule's claim points (#113,
+//! #149, #154).
 
 use serde_json::{Map, Value, json};
 use tessera_ir::{GadgetPolicy, Graph, NodeId, NodeKind, Op, Profile, QuantPoint, Site, TensorId};
@@ -499,15 +500,15 @@ pub fn stage_count(graph: &Graph) -> u32 {
     1 + deepest
 }
 
-/// Whether RFC-0010 proves `op` by a sumcheck rather than mapping a claim onto its inputs.
+/// Whether RFC-0010 proves `op` by a sumcheck rather than mapping a claim onto its inputs. A
+/// sum over an axis maps its claim to `(½, …, ½)` on the axis, a `Linear` relation.
 fn sumcheck(graph: &Graph, op: &Op) -> bool {
     match op {
         Op::MatMulWeight { .. }
         | Op::MatMulAct { .. }
         | Op::Mul { .. }
         | Op::Rotate { .. }
-        | Op::SumSquares { .. }
-        | Op::Sum { .. } => true,
+        | Op::SumSquares { .. } => true,
         // A product by one constant scales a claim; by one per channel it does not.
         Op::ConstMul { c } => graph
             .constants
