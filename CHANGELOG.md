@@ -575,6 +575,11 @@ All notable changes to the prover release train are recorded here: the crates un
     - Every stage of the conformance models `tiny-2-servable`, `tiny-2-minimal` and `tiny-4-servable`, and of three hand-built templates (scaled relation outputs, every linear map, per-layer channel products), verifies through a verifier written in the test from the RFCs. The pool it ends with is the prover's and the committed tensors' extensions.
     - A split that does not add up, and a changed round or evaluation, are rejected at their stage. 15 of 16 mutations of the stages are caught; the survivor removes the check of each claim against the schedule, which fires only when a relation and the schedule disagree.
   - `tiny-2-affine` has no schedule: its layer 0 has affine sites that layer 1 has not (#348).
+- RFC-0038, accepted, makes every layer of a model one template, for RFC-0037's stacked layers ([#348](https://github.com/AbdelStark/tessera/issues/348)):
+  - **The rule.** At each site, every layer is affine or none is, and a `pot` site has one class in every layer or several in every layer. Claim-list validation step 2 checks it, and the compiler refuses a model that breaks it.
+  - **The residual's route** is chosen once for all layers: the fused key when every layer's site has one shift of at most 62, two steps otherwise.
+  - **The quantizer** can meet the rule without changing `D`, by giving a site unused classes or by turning a `pot` site whose classes span at most 15 bits into the affine site of shift `r_max` with multipliers `2^{r_max − r_c}`.
+  - Amended: RFC-0007 'Verifier validation' step 2, RFC-0022 'Proposed Design' and RFC-0037 'Layers and kinds'.
 
 ### Changed
 

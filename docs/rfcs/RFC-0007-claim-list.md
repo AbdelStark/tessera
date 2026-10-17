@@ -104,7 +104,7 @@ Everything a proof depends on is a function of `ClaimList`, `PublicStatement`, t
 Before reading any proof message, the verifier runs these checks in order and returns `Reject(StatementMismatch)` or `Reject(Params)` on the first failure:
 
 1. `protocol_version` is supported; `params` names an allowed parameter set (`test-small` only with the `test-params` feature).
-2. Architecture consistency: `d_model = n_heads · d_head`; `n_heads mod n_kv_heads = 0`; `vocab`, `max_context` within protocol limits (v1: `vocab ≤ 2^18`, `max_context ≤ 2^17`).
+2. Architecture consistency: `d_model = n_heads · d_head`; `n_heads mod n_kv_heads = 0`; `vocab`, `max_context` within protocol limits (v1: `vocab ≤ 2^18`, `max_context ≤ 2^17`). Every layer's sites are rescaled alike ([RFC-0038](RFC-0038-uniform-layers.md)): each site is affine in every layer or in none, and a `pot` site has one class in every layer or several in every layer.
 3. Profile constraints hold for the derived graph (S1–S3 of [RFC-0005](RFC-0005-integer-model.md#profiles)) when the profile claims them.
 4. Tables: each `TableSpec` is regenerated from its definition by the verifier's own generator; the digest must match.
 5. Ranges: the verifier lowers the claim list into its own graph and re-derives every range from public data with its own analysis (INV-IR-5), affine sites included ([RFC-0025](RFC-0025-affine-sites.md)). Every lookup must name a lookup table, not a `Rope` table ([RFC-0008](RFC-0008-logup-and-tables.md#table-kinds)), and its key must fit its table and the centered field range. Every split gadget must satisfy its preconditions. Every `SoftmaxRow`'s `Exp` table must map its last key to 0 ([RFC-0030](RFC-0030-masked-exponentials.md#range-analysis-and-validation)).
