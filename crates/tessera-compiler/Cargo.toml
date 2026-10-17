@@ -8,5 +8,13 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dependencies]
+tessera-codec = { path = "../tessera-codec" }
+tessera-ir = { path = "../tessera-ir" }
+tessera-tables = { path = "../tessera-tables" }
+
+[dev-dependencies]
+proptest = "1"
+
 [lints]
 workspace = true

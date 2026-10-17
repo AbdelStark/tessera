@@ -564,6 +564,12 @@ dependencies = [
 [[package]]
 name = "tessera-compiler"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+ "tessera-codec",
+ "tessera-ir",
+ "tessera-tables",
+]
 
 [[package]]
 name = "tessera-e2e"
