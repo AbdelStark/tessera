@@ -8,7 +8,7 @@
 
 ## Summary
 
-The weights of `D` are committed once per epoch in ten Ligero-family matrices (one per weight type plus one for hidden channel parameters) at rate 1/4, under a single root `R_W`. Rows are (layer, high output bits) and columns are (low output bits, input), so the combined row an opening reveals is a partial fold of the weights that the prover already computes for the matmul sumcheck. One pass over the weights per proof serves both. Hiding comes from vanishing masks with `P_W = 2^16` random coefficients per row and one fresh blinding row per revealed combination. A budget state machine tracks opened columns and blinding rows; when the budget runs out, the prover refreshes the commitment and publishes a linking proof.
+The weights of `D` are committed once per epoch in ten Ligero-family matrices (one per weight type plus one for hidden channel parameters) at rate 1/4, under a single root `R_W`. Rows are (layer, high output bits) and columns are (low output bits, input), so the combined row an opening reveals is a partial fold of the weights that the prover already computes for the matmul sumcheck. One pass over the weights per proof serves both. Hiding comes from vanishing masks with `P_W = 2^16` random coefficients per row and one fresh blinding row per revealed combination. The prover answers column queries from a store of the epoch's codewords. A budget state machine tracks opened columns and blinding rows; when the budget runs out, the prover refreshes the commitment and publishes a linking proof.
 
 ## Motivation
 
@@ -58,7 +58,22 @@ After the `MatMulWeight` stage of RFC-0010, weight type `T` has one claim `W̃_T
    - **Soundness.** `v_T` and `q_T` are fixed before `θ_T`, so a false `v_T` passes with probability at most `1/|Fp2|`: `θ_T·(v_T − f_T) + (q_T − Q̃_T)` vanishes for at most one `θ_T`. With no challenge between them, any split `(v_T + Δ, q_T − Δ)` would pass ([RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings)).
 4. The fold `Σ_ℓ eq(ρ_ℓ, ℓ) F_ℓ` does not depend on `r_i`. It is formed as soon as the layer rounds fix `ρ_ℓ`, from the per-layer folds `F_ℓ` retained in device memory (`n_layers · 2^20` elements of `Fp2` per type, about 2 GiB at 405B), so one pass over the weights per proof suffices. Scaling it by `θ_T` and adding `β_T` once `θ_T` is drawn costs one pass over its `k_T` values.
 
-Proximity uses a second combined row and its own `Fp2` blinding row. Its coefficients are the tensor of [RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 3, `eq(ξ*_T, row)` for a random point `ξ*_T` with one coordinate per bit of the matrix's row index, data and blinding rows together (label `pcs/weights/{T}/xi`). Its field term is `ϑ_T·n_T/|Fp2|`, with `ϑ_T` those bits ([RFC-0014](RFC-0014-interaction-and-soundness.md#soundness-budget)). Column queries (`τ_W` per matrix) are drawn and answered as [RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7 says: with replacement, each distinct queried column once and in increasing index order. Each answered column is the full column, all non-zero data rows and all blinding rows, followed by the canonical multiproof of the same set.
+Proximity uses a second combined row and its own `Fp2` blinding row. Its coefficients are the tensor of [RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 3, `eq(ξ*_T, row)` for a random point `ξ*_T` with one coordinate per bit of the matrix's row index, data and blinding rows together (label `pcs/weights/{T}/xi`). Its field term is `ϑ_T·n_T/|Fp2|`, with `ϑ_T` those bits ([RFC-0014](RFC-0014-interaction-and-soundness.md#soundness-budget)). Column queries (`τ_W` per matrix) are drawn and answered as [RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7 says: with replacement, each distinct queried column once and in increasing index order. Each answered column is the full column, all non-zero data rows and all blinding rows, followed by the canonical multiproof of the same set. 'Column answers' says where the prover reads them.
+
+### Column answers
+
+The weights' codewords stay fixed for an epoch: their masks and blinding rows come from `masks_seed`, not from the proof. So a proof can read its column answers from a store. An advice row cannot be answered that way, because its codewords exist only during the witness pass ([RFC-0018 'Column answers'](RFC-0018-gpu-prover-runtime.md#pass-structure)). Both methods below send the same bytes, so the verifier is unaffected.
+
+- **The codeword store, the default.** When the prover commits an epoch, it writes each matrix's codewords column-major. Each column's symbols are contiguous: the non-zero data rows in layout order, then the blinding rows. The matrix's Merkle tree is written beside them. A proof reads its distinct queried columns and their multiproof, and checks them against the matrix's root before sending them. A part that fails is recomputed, a column by evaluation, so a damaged store costs time, not a rejected proof.
+  - **Size.** At 405B the store holds 453,126 rows of `2^22` symbols, about 15.2 TB per epoch: the nine weight matrices' non-zero rows, `ChannelParams`' at most 882 at the common width, and 40,960 blinding rows.
+  - **Reads.** A proof reads 0.35 GB at `live-64` (`τ_W = 97`) and 0.44 GB at `ni-100` (122). The reads start with the queries and overlap P5, which regenerates the advice witness after the same queries, so they take no GPU time.
+  - **Secrecy.** The store is secret-class: its symbols determine the weights, the masks and the blinding rows. It is written with mode 0600, as `WeightCommitmentState` is ([06 §7](../spec/06-security.md#7-secrets-handling)). It leaves the prover only as answered columns.
+  - **Refresh.** A refresh writes the next epoch's store while the old one serves the linking proof, and deletes the old one afterwards, so a refresh needs twice the space.
+- **Evaluation of the queried symbols, the fallback** for a node without the store. Symbol `j` of row `r` is `⟨A_r, w_j⟩ + Z_H(x_j) · m_r(x_j)`, the same evaluation RFC-0018 'Column answers' applies to advice rows. It is one product of the rows with the `τ'` vectors of barycentric weights `w_j`, limb-decomposed on tensor cores:
+  - 8 INT8 products per element and column for a weight row;
+  - 64 for a blinding row's elements and for every row's `P_W` mask coefficients.
+
+  At 405B those products come to about 1.3 GPU-s at `τ_W = 97` and 1.7 at 122, as operation counts. Unless the prover keeps the masks and blinding rows, it also regenerates them from `masks_seed`: 581 GB of PRG output per proof.
 
 ### Budget state machine
 
@@ -123,16 +138,18 @@ pub struct WeightLinkProof { pub old_root: Digest, pub new_root: Digest, pub epo
 3. **Hiding by committing weights with random padding columns only (no blinding rows).** Rejected: combined rows reveal linear combinations of weight rows, which padding alone does not hide.
 4. **A fresh weight commitment per proof.** Rejected: committing 405 GB at rate 1/4 per proof costs far more than the proof's weight pass and loses the persistent anchor parties agree on.
 5. **Hiding through a ZK-STARK wrapper over the openings.** Rejected for v1 (source §10, zero-knowledge alternative): larger trusted base and recursion.
+6. **Answer the column queries by re-encoding every row per proof.** Rejected: each row takes an inverse NTT of size `2^20` and a coset NTT of size `2^22`. At the advice's 30 ps per element, that is about 14 GPU-s per 405B proof unit, +1.3 on `μ(1K)` for a 16K-token batch. Evaluating only the queried symbols costs about a tenth of that and is the fallback; reading the store costs no GPU time ('Column answers').
 
 ## Drawbacks
 
 - The epoch length (about 670 proofs) forces periodic refreshes, each requiring a full recommitment.
 - Rate 1/4 doubles commitment work against rate 1/2; it is paid once per epoch, not per proof.
 - State persistence is security-critical: losing the budget file forfeits the epoch.
+- The default column answers need a store of the epoch's codewords: about 15.2 TB at 405B, and twice that during a refresh.
 
 ## Migration / Rollout
 
-v0.3: binding commitment, layout and fold-pass opening on CPU (no masks, no blinding rows). v0.4: masks, blinding rows, budget state machine, refresh and linking proof. v0.5: GPU fold pass with limb-decomposed GEMMs.
+v0.3: binding commitment, layout and fold-pass opening on CPU (no masks, no blinding rows), with column answers from codewords held in memory. v0.4: masks, blinding rows, budget state machine, refresh and linking proof. v0.5: GPU fold pass with limb-decomposed GEMMs, and the codeword store with evaluation as its fallback.
 
 ## Testing Strategy
 
@@ -141,6 +158,7 @@ v0.3: binding commitment, layout and fold-pass opening on CPU (no masks, no blin
 - Opening: claims at the common point verify; altering one element of `u_T`, one column symbol or one weight after commitment is rejected.
 - Budget: a sequence of proofs exhausts the budget exactly at the predicted count; the next `reserve` fails; an aborted session burns its rows; a crash between `reserve` and `Round1` never leads to row reuse (fault-injection test).
 - Refresh: a linking proof between equal weights verifies; between weights differing in one entry it is rejected.
+- Column answers: stored and evaluated columns equal the re-encoded rows' symbols at every queried index, repeated and boundary indices included. A store with one corrupted symbol fails the check against the root, and that column is evaluated instead.
 - Hiding smoke test: the revealed columns and combined rows of 50 proofs on a tiny model pass the distinguisher suite of [07 §7](../spec/07-testing-strategy.md#7-zero-knowledge-tests).
 
 ## Open Questions
