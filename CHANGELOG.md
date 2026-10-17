@@ -524,6 +524,9 @@ All notable changes to the prover release train are recorded here: the crates un
   - **`TreeLevel { level, round }`, `REJ-TREE`.** A failed tree level was reported as `Reject(Sumcheck { stage, round })`, but a tree level has no `StageId`. The new reason names its `ℓ` and the round within it.
   - **`LogUpIdentity { round }`, `REJ-LOGUP-IDENTITY`.** `tessera-protocol/2`'s identity sumcheck combines every LogUp instance, so its failure names no table.
   - **Amended.** 04 §2, RFC-0010 'Sumcheck messages', RFC-0019 step 7 and RFC-0032. 07 §4's tamper corpus mutates one round coefficient and one evaluation per tree level.
+- LogUp batches of any size and height are tested end to end through the independent verifier ([#105](https://github.com/AbdelStark/tessera/issues/105), [#62](https://github.com/AbdelStark/tessera/issues/62)):
+  - **Large batches.** Batches of 1 to 20 instances verify, their trees of every height from 4 to 24 between them: one table tree of `2^24` rows, and twenty lookup trees of heights 4 to 23 in one batch.
+  - **A dropped instance.** A prover that keeps one instance out of the levels, after absorbing every instance's roots, is rejected at the first level where that instance's taller tree is present, by an `EvaluationCount` failure. The levels before that are the honest ones, and the verifier accepts them.
 
 ### Changed
 
