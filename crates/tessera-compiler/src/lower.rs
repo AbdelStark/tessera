@@ -27,6 +27,7 @@
 //!   constraints ([`check_profile`]). Every tensor carries its analyzed range and the narrowest
 //!   integer type holding it.
 
+use tessera_codec::Rational;
 use tessera_ir::{
     ArchSpec, Broadcast, CommitmentClass, ConstRef, Graph, GraphBuilder, IntRange, IntType,
     IntegerModel, IrError, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, Site, TableId,
@@ -1026,11 +1027,7 @@ impl<'a> Builder<'a> {
             })?;
         // INT8 queries and keys give scores in [−128 · 127 · d_head, 128 · 128 · d_head].
         let spread = 128 * 255 * u128::from(dh);
-        let exp = self.table(TableKind::Exp {
-            key_bits: bits(spread),
-            sigma: quant.exp_sigma,
-            scale,
-        })?;
+        let exp = self.exp_table(bits(spread), quant.exp_sigma, scale)?;
         let softmax = Op::SoftmaxRow {
             exp_table: exp,
             sigma: quant.exp_sigma,
@@ -1117,6 +1114,40 @@ impl<'a> Builder<'a> {
         )?;
         self.sites.push((point, output));
         Ok(output)
+    }
+
+    /// `SoftmaxRow`'s `Exp` table: the narrowest from the spread's width up whose last key maps
+    /// to 0, the key every masked position looks up (RFC-0030). Values do not depend on the
+    /// width and the zero tail is a suffix, so the first width that holds a zero is the rule's.
+    /// RFC-0008 refuses a zero tail that starts past key `2^24`, so the search never widens a
+    /// table past 25 bits.
+    fn exp_table(
+        &mut self,
+        spread_bits: u8,
+        sigma: u8,
+        scale: Rational,
+    ) -> Result<TableId, CompileError> {
+        let id = TableId(u32::try_from(self.tables.len()).unwrap_or(u32::MAX));
+        for key_bits in spread_bits..=32 {
+            let kind = TableKind::Exp {
+                key_bits,
+                sigma,
+                scale,
+            };
+            // Only this function names an `Exp` table, so an earlier one holds the zero.
+            if let Some(spec) = self.tables.iter().find(|s| s.kind == kind) {
+                return Ok(spec.id);
+            }
+            let table = GeneratedTable::new(id, kind)
+                .map_err(|error| CompileError::ModelTable { table: id, error })?;
+            if table.lookup((1 << key_bits) - 1, 0) == Some(0) {
+                self.tables.push(table.spec().clone());
+                return Ok(id);
+            }
+        }
+        Err(CompileError::Model {
+            rule: "an Exp table holds a zero within 2^32 keys",
+        })
     }
 
     /// The table of `kind`: an earlier one of the same definition, or a new one.

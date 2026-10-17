@@ -15,9 +15,9 @@
 //!   `s_q = Σ_i e_qi`. When the attention output multiplies `PV = MatMulAct(e, v)` by that row's
 //!   `R`, as RFC-0006's lowering does, `R_q · Σ_i e_qi v_ic` lies between `2^{2σ} · min(v)` and
 //!   `2^{2σ} · max(v)`, with 0 in between: `e ≥ 0`, `R ≥ 0`. The product of the operands' bounds
-//!   would be about `2^σ` times the context length wider. The fact holds for honest values, whose
-//!   exponentials are zero at masked positions: the reference softmax has no masked term, and
-//!   #279 makes the protocol enforce it. `OneHot` emits that its vectors have exactly one 1
+//!   would be about `2^σ` times the context length wider. The fact sums every key position, and
+//!   holds because the exponentials are zero at masked positions: `SoftmaxRow` looks a masked
+//!   position up at its table's last key, which the table maps to 0 (RFC-0030). `OneHot` emits that its vectors have exactly one 1
 //!   (RFC-0009 Lemma 8), so `MatMulWeight` on them selects a column of the weight and keeps the
 //!   weight's range: the embedding rows stay INT8 rather than growing with the vocabulary.
 //! - **True integers.** Every gadget input that must be an integer needs a bounded range inside

@@ -541,6 +541,21 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Security
 
+- `SoftmaxRow` pins its masked exponentials to zero (RFC-0030, accepted, [#279](https://github.com/AbdelStark/tessera/issues/279)):
+  - **The gap.**
+    - `e` is committed at the scores' full shape, and RFC-0006 says it is 0 past the causal mask. Only the valid positions were looked up, while `PV = MatMulAct(e, v)` sums every key position.
+    - A prover could add `Σ_{j > q} e_qj·v_j` to any attention output and pass every check, which breaks SP-3.
+    - Nothing implements the gadget yet (#122).
+  - **The fix.**
+    - Every position of the padded score tensor is looked up: a valid position at its key `c_q − x_qi`, a masked one at the `Exp` table's last key, which the table maps to 0.
+    - Every exponential then has exactly one passing value, and the row sum, `PV` and the softmax fact read `e` as written.
+    - The causal selector is `[i ≤ q < n]`, so padded rows are masked and their trees' roots are 1.
+  - **Also corrected.** The trees' leaf claim reduces by an `Elementwise` relation, `Σ_x eq(r, x)·C(x)·k(x) = L̃(r) − 1 + C̃(r)`. RFC-0009 had written a product of extensions, which holds only on the hypercube.
+  - **The compiler.** `SoftmaxRow`'s `Exp` table takes the narrowest width, from the spread's up, whose last key maps to 0. Claim-list validation rejects a table that does not. No model in the repository needs a wider table. RFC-0006, RFC-0007, RFC-0009 and RFC-0010 are amended.
+  - **Follow-ups.**
+    - RISK-11 and [#321](https://github.com/AbdelStark/tessera/issues/321): the masked half's cost. Paid in full, it would add 1.13 to 405B's `μ(1K)` and 16.8 to `μ(16K)`.
+    - [#322](https://github.com/AbdelStark/tessera/issues/322): padded token rows in the row gadgets.
+
 - The field's arithmetic is now branch-free in the code x86_64 runs, not only in its source (INV-ARCH-2, [#242](https://github.com/AbdelStark/tessera/issues/242)):
   - LLVM's x86 cmov conversion had turned the carry and borrow corrections of `Fp2` products inside loops into conditional jumps on the data. That was a timing side channel on witness values, and it cost a misprediction on about every other correction.
   - Every select on values in `tessera-field` now goes through `core::hint::select_unpredictable`: the reductions, `mul_small`, `from_i64` and `to_centered_i128`. The arithmetic is written once and instantiated twice, at run time with these selects and as `const fn`s with masks for the roots of unity computed at compile time. The compiler checks the edge cases of the latter.

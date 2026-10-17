@@ -1850,3 +1850,41 @@ fn the_residual_saturates_as_rfc_0022_defines() {
     }
     assert!(low && high, "the residual reached both of its bounds");
 }
+
+/// RFC-0030: every masked score looks up its `Exp` table's last key, which the table must map
+/// to 0. A layer whose score scale starts the zero tail past the spread's width takes the
+/// narrowest wider table that holds a zero; a layer whose zero tail starts inside it keeps the
+/// spread's width.
+#[test]
+fn a_softmax_table_maps_its_last_key_to_zero() {
+    let mut model = tiny(31, Profile::Servable, SHAPES[0]);
+    // `d_head = 4` spreads scores over `bits(128 · 255 · 4) = 17` bits. At `2^{−14}` per unit,
+    // the zero tail starts near key `18 · ln 2 · 2^14 ≈ 2^{17.6}`: past `2^17` keys, inside
+    // `2^18`. Layer 1 keeps a scale of at least `2^{−12}`, whose tail starts by key `2^{15.7}`.
+    let scale = Rational::new(1, 1 << 14).expect("a scale");
+    model.quant.public.score_scales[0].1 = scale;
+    let lowering = lower(PublicModel::of(&model), 4).expect("the model lowers");
+    let exps: Vec<GeneratedTable> = lowering
+        .tables
+        .iter()
+        .filter(|s| matches!(s.kind, TableKind::Exp { .. }))
+        .map(|s| GeneratedTable::from_spec(s).expect("an Exp table"))
+        .collect();
+    let widths: Vec<u8> = exps.iter().map(|t| t.spec().log2_rows).collect();
+    assert_eq!(widths, [18, 17]);
+    for table in &exps {
+        let last = (1 << table.spec().log2_rows) - 1;
+        assert_eq!(table.lookup(last, 0), Some(0), "{:?}", table.spec().kind);
+    }
+    // The spread's width alone would end layer 0's table before its zero tail.
+    let narrow = GeneratedTable::new(
+        TableId(0),
+        TableKind::Exp {
+            key_bits: 17,
+            sigma: model.quant.public.exp_sigma,
+            scale,
+        },
+    )
+    .expect("an Exp table");
+    assert_ne!(narrow.lookup((1 << 17) - 1, 0), Some(0));
+}

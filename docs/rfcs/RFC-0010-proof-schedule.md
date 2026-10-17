@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site)
+- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site), [RFC-0030](RFC-0030-masked-exponentials.md) ('Multilinear extensions': the causal selector's sequence length; 'Tree levels': `SoftmaxRow`'s root values)
 
 ## Summary
 
@@ -40,7 +40,7 @@ eq(r, x) = Π_i (r_i·x_i + (1 − r_i)·(1 − x_i))        f̃(r) = Σ_{x ∈ 
 - Sumcheck round `j` binds `x_j` to its challenge `r_j`: each pair `(f[2k], f[2k+1])` becomes `f[2k] + r_j·(f[2k+1] − f[2k])`. A stage's final point therefore lists its challenges in round order.
 - Two public predicates have `O(n)` closed forms, which the prover and the verifier each evaluate:
   - `LT(r, a) = Σ_{h < a} eq(r, h)`, for an integer `0 ≤ a ≤ 2^n` ([RFC-0008](RFC-0008-logup-and-tables.md#structured-evaluation));
-  - the causal selector `C(q, i) = Σ_{i' ≤ q'} eq(q, q')·eq(i, i')`, over pairs of `n`-bit positions ([RFC-0009](RFC-0009-gadgets.md#softmaxrow)).
+  - the causal selector of a sequence of `S` positions, `C(q, i) = Σ_{i' ≤ q' < S} eq(q, q')·eq(i, i')`, over pairs of `n`-bit positions ([RFC-0009](RFC-0009-gadgets.md#softmaxrow), [RFC-0030](RFC-0030-masked-exponentials.md#the-causal-selector)). Its closed form is a recursion over the bits, most significant first, that carries two comparisons: `q'` against `S`, and `i'` against `q'`. A tensor stacked over layers and heads multiplies it by `LT` of each, which vanishes on padded layers and heads.
 
 ### Relations
 
@@ -89,9 +89,9 @@ The leaf stage proves each product tree level by level from its root, level 0, t
 Product trees of one height that the schedule lists together are stacked into a forest and proven as one instance, such as the `SoftmaxRow` trees of every query row, head and layer ([RFC-0009](RFC-0009-gadgets.md#softmaxrow)).
 - **Layout.** Level `ℓ` of a forest of `2^s` trees is a table of `2^{s+ℓ}` entries: entry `y·2^ℓ + x` is entry `x` of tree `y`'s level `ℓ`. The tree index takes the high `s` variables, as a stacked tensor's layer index does ('Multilinear extensions'). The forest's levels therefore pair their entries by the rule above, and the pair bit stays the lowest variable. A single tree is a forest with `s = 0`. When the schedule's trees are not a power of two, it pads the forest with trees whose root values are public as well.
 - **Joining the batch.** Forests of different heights join the batch where their heights match, as RFC-0008 'Batching' says. With `H` the tallest forest's height, a forest of height `h` takes its root level at level `H − h` of the batch, and at level `ℓ` of the batch it has `s + ℓ − (H − h)` variables.
-- **Root claim.** A forest's root level holds one value per tree. These values are public: zero for the trees of `SoftmaxRow`.
+- **Root claim.** A forest's root level holds one value per tree. These values are public. For `SoftmaxRow` they are zero for the trees of a sequence's rows, and one for the trees of its padded rows and for those that pad the forest, whose leaves are all 1 ([RFC-0030](RFC-0030-masked-exponentials.md#relation-2-the-trees)).
   - At a level `ℓ` where forests of more than one tree join, before `γ`, the challenges `c = 0, 1, …, s_max − 1` are squeezed in `Fp2` under `tree/{ℓ}/root/{c}`. Here `s_max` is the largest `s` among the joining forests.
-  - Each joining forest's root point `r = (r_1, …, r_s)` is the last `s` of these challenges, in the order squeezed. The forest enters the level with the root claim `Ṽ_0(r) = Σ_y v_y·eq(r, y)`, where `v_y` are its public root values: zero for `SoftmaxRow`.
+  - Each joining forest's root point `r = (r_1, …, r_s)` is the last `s` of these challenges, in the order squeezed. The forest enters the level with the root claim `Ṽ_0(r) = Σ_y v_y·eq(r, y)`, where `v_y` are its public root values. For `SoftmaxRow`, stacked over layers and heads, that is `1 − LT(r_ℓ, n_layers)·LT(r_h, n_heads)·LT(r_q, S)`.
   - A forest of one tree takes no challenge. Its root claim is its tree's root value, on the root level's zero variables.
   - If a forest's root level differs from its public values, its root claim holds with probability at most `s/|Fp2|` over the root point.
 
