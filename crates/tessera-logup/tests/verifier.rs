@@ -15,6 +15,7 @@
 mod common;
 
 use common::{Session, SplitMix64, TestForest, TestInstance, TestTable, prove_and_verify};
+use tessera_codec::Secret;
 use tessera_logup::TreeId;
 
 /// One instance alone, its two trees paired.
@@ -263,14 +264,15 @@ fn the_counted_multiplicities_are_the_honest_ones() {
             .collect();
         let honest = TestInstance::of_rows(table, &chosen);
         let as_u32: Vec<u32> = chosen.iter().map(|&r| r as u32).collect();
-        let counted = tessera_logup::multiplicities(honest.table.tuples(), &as_u32)
+        let counted = tessera_logup::multiplicities(honest.table.tuples(), &Secret::new(as_u32))
             .expect("rows of the table");
         assert_eq!(
-            counted, honest.multiplicities,
+            counted[..],
+            honest.multiplicities[..],
             "{rows} rows, {lookups} lookups"
         );
         let mut instance = honest.clone();
-        instance.multiplicities = counted;
+        instance.multiplicities = counted.to_vec();
         let _ = prove_and_verify(&session, &[instance], &[], &TreeId::paired(1));
     }
 }

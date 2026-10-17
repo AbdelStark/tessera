@@ -36,7 +36,7 @@
 //! an honest prover commits from each lookup's row, the lookup tree's padding counted on row 0.
 //!
 //! ```
-//! use tessera_codec::Ascii;
+//! use tessera_codec::{Ascii, Secret};
 //! use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField};
 //! use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 //! use tessera_logup::{LogUpInstance, TreeId, Tuples, multiplicities, prove_logup};
@@ -54,13 +54,15 @@
 //! let squares: Vec<Goldilocks> = (0..5).map(|k| fp(k * k)).collect();
 //! let table = Tuples::new(&keys, Some(&squares));
 //! let rows = [4u32, 0, 2, 4, 3, 1];
-//! let lookup_keys: Vec<Goldilocks> = rows.iter().map(|&r| keys[r as usize]).collect();
-//! let lookup_values: Vec<Goldilocks> = rows.iter().map(|&r| squares[r as usize]).collect();
-//! // 2^3 table leaves: row 0 also counts the lookup tree's 2 padding leaves.
-//! let m = multiplicities(table, &rows)?;
-//! assert_eq!(m, [3, 1, 1, 1, 2, 0, 0, 0].map(fp));
-//! let instance =
-//!     LogUpInstance::new(table, Tuples::new(&lookup_keys, Some(&lookup_values)), &m);
+//! // The lookups are secret-class, each column in its `Secret`.
+//! let lookup_keys = Secret::new(rows.iter().map(|&r| keys[r as usize]).collect::<Vec<_>>());
+//! let lookup_values = Secret::new(rows.iter().map(|&r| squares[r as usize]).collect::<Vec<_>>());
+//! // Which lookup hits which row is secret-class too: the count takes the rows in their
+//! // `Secret`. 2^3 table leaves: row 0 also counts the lookup tree's 2 padding leaves.
+//! let m = multiplicities(table, &Secret::new(rows.to_vec()))?;
+//! assert_eq!(m[..], [3, 1, 1, 1, 2, 0, 0, 0].map(fp));
+//! let lookups = Tuples::secret(&lookup_keys, Some(&lookup_values));
+//! let instance = LogUpInstance::new(table, lookups, &m);
 //!
 //! let mut transcript = Transcript::new(&context);
 //! let proven =

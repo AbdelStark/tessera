@@ -47,13 +47,15 @@
 //! Rows, masks and codewords are secret-class (05 §3). Nothing here logs; errors carry lengths,
 //! positions and public indices only ([`PcsError`]). A commitment's `Debug` form shows its
 //! shape, and it has no `Display` and no `Clone`. Control flow depends on lengths, the public
-//! layout and public indices, never on a row, a mask or a symbol (INV-ARCH-2). Like the
-//! encoder's buffers, the commitment holds its secrets in plain `Vec`s and does not clear them
-//! when it drops, until #264 moves them into `SecretBuf`s (05 §3 OBS-6).
+//! layout and public indices, never on a row, a mask or a symbol (INV-ARCH-2). The commitment
+//! takes its rows in their `Secret` and keeps them there, and holds the masks and codewords it
+//! derives in `SecretBuf`s: all three are cleared when it drops (05 §3 OBS-1, OBS-6). The encoder
+//! keeps nothing; it writes each codeword in the buffer it is given.
 
 use core::fmt;
 use core::num::NonZeroUsize;
 
+use tessera_codec::{Secret, SecretBuf};
 use tessera_field::{Field, Goldilocks, GoldilocksExt2};
 use tessera_hash::{ColumnChains, Digest, Domain, Hasher, MerkleTree, MultiProof};
 
@@ -207,17 +209,18 @@ impl RowLayout {
 /// the Merkle tree.
 ///
 /// Rows, masks and codewords are secret-class (05 §3): the `Debug` form shows the shape only,
-/// and there is no `Display` and no `Clone`.
+/// there is no `Display` and no `Clone`, and all three are cleared when the commitment drops
+/// (OBS-6).
 pub struct ReferenceCommitment {
     params: CommitmentParams,
     shape: Shape,
     layout: RowLayout,
     /// The non-zero rows' values, `N × k`, in layout order.
-    rows: Vec<Fp>,
+    rows: Secret<Vec<Fp>>,
     /// Their mask coefficients, `N × P_A`, each row's `m_0` first.
-    masks: Vec<Fp>,
+    masks: SecretBuf<Fp>,
     /// Their codewords, `N × n`.
-    codewords: Vec<Fp>,
+    codewords: SecretBuf<Fp>,
     /// `leaf_j` for `j < n`.
     leaves: Vec<Digest>,
     tree: MerkleTree,
@@ -243,8 +246,9 @@ impl ReferenceCommitment {
     /// `k` values, one after another, in layout order) and whose other rows are zero. Each row
     /// takes `P_A` mask coefficients from `mask`, row by row in layout order, `m_0` first.
     ///
-    /// The commitment takes the rows and keeps them for its openings. It allocates
-    /// `N·(2k + P_A)` elements for the masks and codewords, and `3n` digests.
+    /// The commitment takes the rows, secret-class values in their `Secret`, and keeps them for
+    /// its openings (05 §3 OBS-1). It allocates `N·(2k + P_A)` elements for the masks and
+    /// codewords, cleared when it drops (OBS-6), and `3n` digests.
     ///
     /// # Errors
     ///
@@ -253,28 +257,30 @@ impl ReferenceCommitment {
     /// `P_A > k`, and [`PcsError::MatrixLength`] unless `rows` holds `N·k` values. The layout
     /// was checked when it was built ([`RowLayout::new`]). On error nothing is drawn from
     /// `mask`, and `rows` is dropped.
+    #[allow(clippy::disallowed_methods)]
     pub fn commit<M: MaskSource + ?Sized>(
         params: CommitmentParams,
         layout: RowLayout,
-        rows: Vec<Fp>,
+        rows: Secret<Vec<Fp>>,
         mask: &mut M,
     ) -> Result<Self, PcsError> {
         let shape = params.shape()?;
+        let values = rows.expose_secret();
         // N·k with no product that could overflow.
-        if !rows.len().is_multiple_of(shape.k) || rows.len() / shape.k != layout.rows {
+        if !values.len().is_multiple_of(shape.k) || values.len() / shape.k != layout.rows {
             return Err(PcsError::MatrixLength {
                 rows: layout.rows,
                 row_len: shape.k,
-                found: rows.len(),
+                found: values.len(),
             });
         }
         let encoder = RowEncoder::new(shape.k, shape.mask_coeffs)?;
         // N·P_A ≤ N·k and N·n = 2·N·k: a vector of N·k elements exists, so neither overflows.
-        let mut masks = vec![Fp::ZERO; layout.rows * shape.mask_coeffs];
-        for coefficient in &mut masks {
+        let mut masks = SecretBuf::filled(Fp::ZERO, layout.rows * shape.mask_coeffs);
+        for coefficient in masks.iter_mut() {
             *coefficient = mask.draw();
         }
-        let mut codewords = vec![Fp::ZERO; 2 * rows.len()];
+        let mut codewords = SecretBuf::filled(Fp::ZERO, 2 * values.len());
         // The encoder draws P_A coefficients per row, row after row: the masks just drawn.
         let mut drawn = masks.iter().copied();
         let mut replay = || {
@@ -282,7 +288,7 @@ impl ReferenceCommitment {
                 .next()
                 .expect("the encoder draws P_A coefficients per row")
         };
-        encoder.encode_rows(&rows, &mut replay, &mut codewords)?;
+        encoder.encode_rows(values, &mut replay, &mut codewords)?;
         Ok(Self::from_encoded(
             params, shape, layout, rows, masks, codewords,
         ))
@@ -295,16 +301,16 @@ impl ReferenceCommitment {
         params: CommitmentParams,
         shape: Shape,
         layout: RowLayout,
-        rows: Vec<Fp>,
-        masks: Vec<Fp>,
-        codewords: Vec<Fp>,
+        rows: Secret<Vec<Fp>>,
+        masks: SecretBuf<Fp>,
+        codewords: SecretBuf<Fp>,
     ) -> Self {
         let n = shape.n;
         let columns = NonZeroUsize::new(n).expect("a codeword has n ≥ 2 symbols");
         // A step absorbs B rows of n symbols; a B too large for a usize covers any segment.
         let step = params.row_block.get().saturating_mul(n);
         let mut digests: Vec<Vec<Digest>> = Vec::with_capacity(layout.segments.len());
-        let mut rest = codewords.as_slice();
+        let mut rest = &codewords[..];
         for segment in &layout.segments {
             let (here, after) = rest.split_at(segment.len() * n);
             let mut chains = ColumnChains::new(&params.commitment_id, columns, params.row_block);
@@ -386,6 +392,7 @@ impl ReferenceCommitment {
     /// In this order, before anything is computed: [`PcsError::ColumnPoint`] for the first
     /// group, in group order, whose column point does not have `log2 k` coordinates, then the
     /// errors of [`RowLayout::row_coefficients`].
+    #[allow(clippy::disallowed_methods)]
     pub fn open(
         &self,
         groups: &[ClaimGroup],
@@ -403,7 +410,7 @@ impl ReferenceCommitment {
             }
         }
         let coefficients = self.layout.row_coefficients(groups, xi_point)?;
-        let u = combine(&coefficients, &self.rows, self.shape.k);
+        let u = combine(&coefficients, self.rows.expose_secret(), self.shape.k);
         let masks = combine(&coefficients, &self.masks, self.shape.mask_coeffs);
         Ok(u.into_iter()
             .zip(masks)

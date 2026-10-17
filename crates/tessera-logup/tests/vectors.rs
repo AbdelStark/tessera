@@ -27,7 +27,7 @@ use common::{
     Fp, Fp2, Messages, Session, TestForest, TestInstance, TestTable, tv_fp2, tv_fp2s, verify,
 };
 use serde_json::Value;
-use tessera_codec::Ascii;
+use tessera_codec::{Ascii, Secret};
 use tessera_field::{Field, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_logup::{LogUpInstance, TreeId, multiplicities, prove_logup};
@@ -201,8 +201,9 @@ fn honest_logup_batches_are_reproduced_value_by_value() {
         // The recorded multiplicities are those an honest prover counts, but where the batch
         // counts the lookup tree's padding on a padding row instead of row 0.
         for (k, (instance, rows)) in parsed.iter().enumerate() {
-            let counted = multiplicities::<Fp>(instance.table.tuples(), &u32s(rows)).expect("rows");
-            let canonical = counted == instance.multiplicities;
+            let counted = multiplicities::<Fp>(instance.table.tuples(), &Secret::new(u32s(rows)))
+                .expect("rows");
+            let canonical = counted[..] == instance.multiplicities[..];
             assert_eq!(
                 canonical,
                 !name.contains("padding row"),

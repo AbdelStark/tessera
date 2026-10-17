@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use tessera_bench::{Measurement, MicrobenchmarkReport, Protocol, measure};
-use tessera_codec::Ascii;
+use tessera_codec::{Ascii, Secret};
 use tessera_field::{
     Field, Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension, batch_inverse,
 };
@@ -250,8 +250,8 @@ fn benchmarks(s: &Sizes) -> Vec<Bench> {
         .collect();
     let lookup_keys: Vec<Fp> = picks.iter().map(|&r| keys[r as usize]).collect();
     let lookup_values: Vec<Fp> = picks.iter().map(|&r| values[r as usize]).collect();
-    let counts =
-        multiplicities(Tuples::new(&keys, Some(&values)), &picks).expect("rows of the table");
+    let counts = multiplicities(Tuples::new(&keys, Some(&values)), &Secret::new(picks))
+        .expect("rows of the table");
     list.push((
         "logup/prove",
         "lookup",

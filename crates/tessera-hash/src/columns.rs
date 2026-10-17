@@ -8,10 +8,15 @@
 //! d_j[i+1] = H("column-step", d_j[i] ‖ symbols of rows iB .. min((i+1)B, m) − 1 at column j)
 //! leaf_j   = d_j[ceil(m / B)]
 //! ```
+//!
+//! The rows of a committed matrix are secret-class when they hold weights or advice, and so are
+//! their codewords (05 §3). A step's input, a chain and one column's symbols, is laid out in a
+//! [`SecretBuf`], which clears its memory when it drops (OBS-6); the chains are digests.
 
 use core::fmt;
 use core::num::NonZeroUsize;
 
+use tessera_codec::SecretBuf;
 use tessera_field::{Goldilocks, PrimeField};
 
 use crate::{Digest, Domain, Hasher, hash};
@@ -100,13 +105,14 @@ impl ColumnChains {
             });
         }
         self.closed = count < self.block;
-        // One contiguous input per column: the chain, then the column's symbols in row order.
-        let mut input = Vec::with_capacity(32 + 8 * count);
+        // One contiguous input per column: the chain, then the column's symbols in row order,
+        // written over the same buffer column after column.
+        let mut input = SecretBuf::filled(0u8, 32 + 8 * count);
         for (j, chain) in self.chains.iter_mut().enumerate() {
-            input.clear();
-            input.extend_from_slice(chain);
-            for row in rows.chunks_exact(columns) {
-                input.extend_from_slice(&row[j].to_canonical_u64().to_le_bytes());
+            let (head, symbols) = input.split_at_mut(32);
+            head.copy_from_slice(chain);
+            for (symbol, row) in symbols.chunks_exact_mut(8).zip(rows.chunks_exact(columns)) {
+                symbol.copy_from_slice(&row[j].to_canonical_u64().to_le_bytes());
             }
             *chain = hash(Domain::ColumnStep, &input);
         }

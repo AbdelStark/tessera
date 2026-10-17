@@ -73,6 +73,7 @@
 //! ```
 //! use std::num::NonZeroUsize;
 //!
+//! use tessera_codec::Secret;
 //! use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 //! use tessera_pcs::{ClaimGroup, CommitmentParams, ReferenceCommitment, RowClaim, RowLayout};
 //!
@@ -89,7 +90,8 @@
 //! // Of the rows 0 to 3, rows 0 and 1 form the first segment and row 3 the second; row 2 is
 //! // zero.
 //! let layout = RowLayout::new(2, vec![vec![0, 1], vec![3]])?;
-//! let rows: Vec<Goldilocks> = (1..=12).map(fp).collect();
+//! // The rows are secret-class: the commitment takes them in their `Secret`.
+//! let rows = Secret::new((1..=12).map(fp).collect::<Vec<Goldilocks>>());
 //! let mut seed = 0;
 //! let mut masks = || {
 //!     seed += 1;
@@ -120,9 +122,9 @@
 //! columns protocol-class (05 §3). Nothing here logs. Errors carry lengths, positions and public
 //! indices only ([`PcsError`]). The `Debug` forms of the plan, the encoder and the commitment
 //! show their sizes, and those of combined rows and answers their lengths. Control flow depends
-//! on lengths, the public layout and public indices, never on values (INV-ARCH-2). Buffers of
-//! secret values are plain vectors, freed without being cleared, until #264 moves them into
-//! `SecretBuf`s (05 §3 OBS-6).
+//! on lengths, the public layout and public indices, never on values (INV-ARCH-2). The commitment
+//! takes its rows in their `Secret` and keeps its masks and codewords in `SecretBuf`s, so all
+//! three are cleared when it drops (05 §3 OBS-1, OBS-6).
 //!
 //! # Features
 //!

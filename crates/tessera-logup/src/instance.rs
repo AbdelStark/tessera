@@ -5,6 +5,7 @@
 
 use core::fmt;
 
+use tessera_codec::{Secret, SecretBuf, Zeroize};
 use tessera_field::PrimeField;
 
 use crate::{Column, LogUpError};
@@ -31,9 +32,23 @@ impl<B> Clone for Tuples<'_, B> {
 impl<B> Copy for Tuples<'_, B> {}
 
 impl<'a, B> Tuples<'a, B> {
-    /// Keys and values, pair by pair.
+    /// Keys and values, pair by pair: a public table, or test data.
     pub fn new(keys: &'a [B], values: Option<&'a [B]>) -> Self {
         Self { keys, values }
+    }
+
+    /// Secret-class keys and values, such as an instance's lookups, each column in its
+    /// [`Secret`]: the prover reads them to build its trees, which clear their levels as they drop
+    /// (05 §3 OBS-1, OBS-6).
+    #[allow(clippy::disallowed_methods)]
+    pub fn secret(keys: &'a Secret<Vec<B>>, values: Option<&'a Secret<Vec<B>>>) -> Self
+    where
+        B: Zeroize,
+    {
+        Self::new(
+            keys.expose_secret(),
+            values.map(Secret::expose_secret).map(Vec::as_slice),
+        )
     }
 
     /// The number of pairs: the number of keys.
@@ -194,19 +209,25 @@ pub(crate) fn ceil_log2(n: usize) -> usize {
 /// Counting reads each lookup's row once; the memory it touches depends on the rows, which the
 /// verifier observes no more than any table gather of the witness (RFC-0018 'Determinism').
 ///
+/// The rows, which lookup hits which row, are secret-class: they come in their [`Secret`], and
+/// the counts and the multiplicities, a histogram of them, are [`SecretBuf`]s, cleared when they
+/// drop (05 §3 OBS-1, OBS-6).
+///
 /// # Errors
 ///
 /// [`LogUpError::LookupRow`] for the first lookup whose row is not below `T`.
+#[allow(clippy::disallowed_methods)]
 pub fn multiplicities<B: PrimeField>(
     table: Tuples<'_, B>,
-    lookups: &[u32],
-) -> Result<Vec<B>, LogUpError> {
+    lookups: &Secret<Vec<u32>>,
+) -> Result<SecretBuf<B>, LogUpError> {
+    let lookups = lookups.expose_secret();
     let rows = table.len();
     let leaves = match rows {
         0 => 0,
         _ => 1 << ceil_log2(rows),
     };
-    let mut counts = vec![0u64; leaves];
+    let mut counts = SecretBuf::filled(0u64, leaves);
     for (lookup, &row) in lookups.iter().enumerate() {
         let row = row as usize;
         match counts.get_mut(row) {
@@ -220,5 +241,8 @@ pub fn multiplicities<B: PrimeField>(
         let padding = (1usize << ceil_log2(lookups.len())) - lookups.len();
         *first += padding as u64;
     }
-    Ok(counts.into_iter().map(B::from_u64_reduced).collect())
+    Ok(counts
+        .iter()
+        .map(|&count| B::from_u64_reduced(count))
+        .collect())
 }

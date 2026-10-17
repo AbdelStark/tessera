@@ -9,6 +9,7 @@ mod common;
 use std::num::NonZeroUsize;
 
 use common::{Fp, Replay, SplitMix64, fp};
+use tessera_codec::Secret;
 use tessera_field::{Field, GoldilocksExt2};
 use tessera_pcs::{
     ClaimGroup, CommitmentParams, NttPlan, PcsError, ReferenceCommitment, RowClaim, RowEncoder,
@@ -329,7 +330,12 @@ fn layout(row_vars: u32, segments: Vec<Vec<u64>>) -> RowLayout {
 /// Asserts that committing `values` values refuses with `error` and draws nothing.
 fn refused_commit(params: CommitmentParams, layout: RowLayout, values: usize, error: PcsError) {
     let mut source = Replay::new(vec![Fp::ONE; 64]);
-    let result = ReferenceCommitment::commit(params, layout, vec![Fp::ONE; values], &mut source);
+    let result = ReferenceCommitment::commit(
+        params,
+        layout,
+        Secret::new(vec![Fp::ONE; values]),
+        &mut source,
+    );
     assert_eq!(result.map(|_| ()), Err(error));
     assert_eq!(source.drawn, 0, "nothing drawn on error");
 }
@@ -465,7 +471,7 @@ fn committed() -> ReferenceCommitment {
     ReferenceCommitment::commit(
         params(4, 1),
         layout(3, vec![vec![0, 2], vec![5]]),
-        values,
+        Secret::new(values),
         &mut source,
     )
     .expect("valid inputs")

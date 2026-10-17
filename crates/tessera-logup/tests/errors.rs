@@ -8,6 +8,7 @@
 mod common;
 
 use common::{Fp, Fp2, Session, SplitMix64, TestForest, TestInstance, TestTable};
+use tessera_codec::Secret;
 use tessera_field::Field;
 use tessera_hash::Transcript;
 use tessera_logup::{
@@ -168,8 +169,8 @@ fn a_lookup_of_no_row_is_refused_by_the_count() {
         (vec![1, 2, 3, u32::MAX], 3),
     ] {
         assert_eq!(
-            multiplicities::<Fp>(table.tuples(), &rows),
-            Err(LogUpError::LookupRow {
+            multiplicities::<Fp>(table.tuples(), &Secret::new(rows)).err(),
+            Some(LogUpError::LookupRow {
                 lookup: bad,
                 rows: 5
             })
@@ -180,15 +181,15 @@ fn a_lookup_of_no_row_is_refused_by_the_count() {
         values: None,
     };
     assert_eq!(
-        multiplicities::<Fp>(empty.tuples(), &[0]),
-        Err(LogUpError::LookupRow { lookup: 0, rows: 0 })
+        multiplicities::<Fp>(empty.tuples(), &Secret::new(vec![0])).err(),
+        Some(LogUpError::LookupRow { lookup: 0, rows: 0 })
     );
     // A table of no row has no multiplicity, and no lookup no padding.
-    assert_eq!(multiplicities::<Fp>(empty.tuples(), &[]), Ok(Vec::new()));
-    assert_eq!(
-        multiplicities::<Fp>(table.tuples(), &[]),
-        Ok(vec![Fp::ZERO; 8])
-    );
+    let counted = |table: &TestTable, rows: Vec<u32>| {
+        multiplicities::<Fp>(table.tuples(), &Secret::new(rows)).map(|m| m.to_vec())
+    };
+    assert_eq!(counted(&empty, Vec::new()), Ok(Vec::new()));
+    assert_eq!(counted(&table, Vec::new()), Ok(vec![Fp::ZERO; 8]));
 }
 
 #[test]
