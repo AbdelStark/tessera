@@ -17,6 +17,7 @@ mod isolation;
 mod licenses;
 mod links;
 mod lint;
+mod model_vectors;
 mod no_float;
 mod pr_policy;
 mod repo;

@@ -25,24 +25,94 @@ pub struct ArchSpec {
     pub family: ArchFamily,            // LlamaV3 only in v1
     pub n_layers: u32, pub d_model: u32, pub n_heads: u32, pub n_kv_heads: u32,
     pub d_head: u32, pub d_ff: u32, pub vocab: u32, pub max_context: u32,
-    pub rope: RopeSpec,                // theta, Llama-3 frequency scaling parameters, constant bits (14)
+    pub rope: RopeSpec,
     pub rms_eps: Rational,             // exact rational, never a float
 }
+
+pub enum ArchFamily { LlamaV3 }
+
+pub struct RopeSpec {                  // Llama-3.1's RoPE: the integer parameters of RFC-0008's `Rope` table
+    pub theta: u32, pub factor: u16, pub low_freq_factor: u16, pub high_freq_factor: u16,
+    pub original_max: u32,             // original_max_position_embeddings
+    pub bits: u8,                      // the constants' precision: 14 in D
+}
+
+pub enum Profile { Servable, Minimal } // RFC-0005 'Profiles'
 
 pub enum WeightType { Embed, Q, K, V, O, Gate, Up, Down, LmHead }   // 9 types
 
 pub struct IntegerModel {              // artifact "D", schema 0x0101
     pub arch: ArchSpec,
-    pub profile: Profile,              // Servable | Minimal (RFC-0005)
-    pub quant: QuantSpec,              // scales, shift classes, table parameters
+    pub profile: Profile,
+    pub quant: QuantSpec,
     pub weights: Vec<WeightTensor>,    // int8, row-major, ordered by (WeightType, layer)
-    pub provenance: Provenance,        // checkpoint digest, calibration digest, tool versions
+    pub provenance: Provenance,
 }
 
 pub struct WeightTensor { pub ty: WeightType, pub layer: u32, pub rows: u32, pub cols: u32, pub data: Vec<i8> }
 ```
 
 The source names seven per-layer weight types (source §7). The data model adds `Embed` and `LmHead`: the embedding is applied as a matmul with a committed one-hot token vector, and the LM head produces the logits ([RFC-0006](../rfcs/RFC-0006-compiler-ir.md#llama-lowering)). RMSNorm gains are folded into the following weights at quantization time and do not appear as separate tensors. Per-channel quantities derived from weights (power-of-two shift classes, affine multipliers) are secret: they are committed with the weights as channel-parameter vectors ([RFC-0012](../rfcs/RFC-0012-weight-commitment.md#layout)) and enter lookups through tuple keys, so the claim list never reveals them ([RFC-0007](../rfcs/RFC-0007-claim-list.md#public-and-hidden-quantization-data)).
+
+### Quantization
+
+`QuantSpec` holds every constant of RFC-0005 'Integer semantics', each an integer or a rational (INV-DM-6). Its public part is the claim list's `PublicQuantSpec` ([RFC-0007](../rfcs/RFC-0007-claim-list.md#schema)), field for field; its hidden part is what RFC-0012 commits with the weights as the `ChannelParams` matrix.
+
+```rust
+pub struct QuantSpec {
+    pub public: PublicQuantSpec,       // RFC-0007, the copy the claim list carries
+    pub channels: Vec<ChannelParams>,  // hidden; one per weight whose outputs a classed site rescales, sorted by (ty, layer)
+}
+
+pub struct ChannelParams {             // RFC-0012 'Layout', the ChannelParams matrix
+    pub ty: WeightType, pub layer: u32,
+    pub class: Vec<u8>,                // per output channel: its index into its site's shift classes
+    pub multiplier: Vec<u16>,          // per output channel: M_c in affine mode; empty in pot mode
+}
+
+pub enum QuantPoint {                  // a quantized or rescaled tensor; sorted as declared
+    Embed,                             // the INT8 embedding rows x0
+    Layer { layer: u32, site: Site },
+    FinalNorm,                         // y before the LM head
+}
+
+pub enum Site {                        // the rescales of a layer, in the order of RFC-0005 'Integer semantics'
+    AttnNorm,                          // y = rq(res · ρ, r_n)
+    RopeQ, RopeK,                      // q and k after RoPE; their classes follow W_Q's and W_K's channels
+    V,                                 // v = rq(acc, r_v,c); classes from W_V
+    AttnOut,                           // o8 = rq(o, r_o); servable only
+    AttnResidual,                      // the O projection's accumulator into the residual; classes from W_O
+    MlpNorm,
+    Silu,                              // a = T_silu[g]; classes from W_Gate
+    Up,                                // u8 = rq(u, r_u); servable only; classes from W_Up
+    Product,                           // h = rq(a · u8, r_h); servable only
+    MlpResidual,                       // the down projection's accumulator into the residual; classes from W_Down
+}
+```
+
+- **Points.** `PublicQuantSpec.act_exponents` gives the exponent `e` of each INT8 tensor's scale `2^e`, and `shift_class_sets` each rescale site's class shifts `r`, from 1 to 63, at most four (RFC-0005 'Scale policy'). They are the `r_by_class` of the site's `Requant` table (RFC-0008). A site after a weight takes the classes of that weight's output channels. Every other site has one class. The embedding's shift into the residual is the difference of their exponents: `res = x0 · 2^{e_Embed − residual_exponent}`.
+- **Channels.** A `ChannelParams` exists for each weight followed by a site with more than one class, or by an affine site. `class[c]` indexes the site's shifts; `multiplier` is empty unless the site is affine. The public parameters of affine sites are not yet in the claim list ([#274](https://github.com/AbdelStark/tessera/issues/274)).
+
+### Provenance
+
+```rust
+pub struct Provenance {                // RFC-0005 'Determinism'
+    pub tessera_quant: Ascii,          // the version that wrote D
+    pub checkpoint: Vec<(Ascii, Digest)>,   // each safetensors file's name and BLAKE3 digest, sorted by name
+    pub calibration: CalibrationIdentity,
+    pub statistics: Digest,            // the statistics digest of RFC-0005 'Calibration'
+    pub alpha: Rational,               // the migration strength chosen
+    pub libraries: Map<Ascii, Ascii>,  // name to version: python, torch, transformers, safetensors, numpy, datasets, blake3
+}
+
+pub struct CalibrationIdentity {       // RFC-0005 'Calibration'
+    pub dataset: Ascii, pub config: Ascii, pub split: Ascii,
+    pub revision: Ascii,               // the dataset's commit, 40 hex digits
+    pub files: Vec<Ascii>,             // in the order read
+    pub seed: u64, pub sequences: u32, pub held_out: u32, pub tokens_per_sequence: u32,
+    pub selection: Digest,             // the selection digest
+}
+```
 
 ## 3. Circuit types
 
