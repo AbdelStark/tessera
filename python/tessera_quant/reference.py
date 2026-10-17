@@ -53,14 +53,19 @@ _LIMIT = 1 << 63
 class Trace:
     """Every tensor `D` commits on one sequence, for differential tests (SC-7): secret-class.
 
-    The residual stream at each layer boundary, each site's output, each norm's root, each
-    layer's attention maxima, exponentials and reciprocals, and the logits, all int64.
+    The residual stream at each layer boundary, each site's output, each two-step residual
+    update, each norm's root, each layer's attention maxima, exponentials and reciprocals, and the
+    logits, all int64.
     """
 
     residuals: list[torch.Tensor] = field(repr=False)
     """`[n_layers + 1]` tensors of `[n, d_model]`: after the embedding, then after each layer."""
     sites: dict[QuantPoint, torch.Tensor] = field(repr=False)
     """Each rescale site's output, `[n, channels]`, by its point."""
+    updates: dict[QuantPoint, torch.Tensor] = field(repr=False)
+    """Each residual site of two steps, `[n, d_model]`: the update `u = rq(acc, r_c, -(2^b - 1),
+    2^b - 1)` committed before the sum, `b` the residual's bits (RFC-0022). A site of one class
+    below 63 has none."""
     roots: dict[QuantPoint, torch.Tensor] = field(repr=False)
     """Each norm's root `rho`, `[n]`, by the point of the norm's output."""
     maxima: dict[int, torch.Tensor] = field(repr=False)
@@ -144,6 +149,7 @@ class _Forward:
         self.cos, self.sin = torch.as_tensor(cos), torch.as_tensor(sin)
         self.half = 1 << (public.residual_bits - 1)
         self.sites: dict[QuantPoint, torch.Tensor] = {}
+        self.updates: dict[QuantPoint, torch.Tensor] = {}
         self.roots: dict[QuantPoint, torch.Tensor] = {}
         self.maxima: dict[int, torch.Tensor] = {}
         self.exponentials: dict[int, torch.Tensor] = {}
@@ -273,10 +279,17 @@ class _Forward:
     def residual(
         self, res: torch.Tensor, acc: torch.Tensor, point: LayerPoint, ty: WeightType
     ) -> torch.Tensor:
-        """`res <- clamp(res + floor((acc + 2^(r-1)) / 2^r), INT20)`, `r` the channel's shift."""
+        """`res <- clamp(res + floor((acc + 2^(r-1)) / 2^r), INT20)`, `r` the channel's shift.
+
+        A site of several classes, or of the one shift 63, sums in two steps (RFC-0022): its update
+        clamped within `2^b - 1` first, which changes no sum.
+        """
         shift = self.per_channel(point, ty, point.layer)
         half = torch.bitwise_left_shift(torch.ones_like(shift), shift - 1)
         update = torch.bitwise_right_shift(acc + half, shift)
+        if len(self.shifts[point]) > 1 or self.shifts[point] == [63]:
+            wide = 2 * self.half - 1
+            self.updates[point] = torch.clamp(update, -wide, wide)
         out = torch.clamp(res + update, -self.half, self.half - 1)
         self.sites[point] = out
         return out
@@ -323,6 +336,7 @@ class _Forward:
         return Trace(
             residuals,
             self.sites,
+            self.updates,
             self.roots,
             self.maxima,
             self.exponentials,

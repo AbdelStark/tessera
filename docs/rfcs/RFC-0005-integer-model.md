@@ -199,7 +199,7 @@ v0.2 delivers the pipeline for 8B and the tiny conformance models; 70B and 405B 
 
 - Unit tests for `rq` at boundaries: ties (`x = k·2^r + 2^{r−1}`), negative ties, saturation at both ends, `r = 1` and `r = 40`.
 - RMSNorm `ρ`: brute-force check of the defining inequality for 10^6 random `s` and edge cases `s = 0`, `s = 2^54 − 1`.
-- Integer reference (PyTorch, int64 tensors) against the Rust CPU engine on all conformance models: every intermediate tensor bit-identical ([07 §5](../spec/07-testing-strategy.md#5-differential-and-conformance-tests)).
+- Integer reference (PyTorch, int64 tensors) against the Rust CPU engine on all conformance models: every committed tensor and the logits bit-identical, each held to the oracle's traces ([07 §5](../spec/07-testing-strategy.md#5-differential-and-conformance-tests)).
 - Range assertions: the reference engine asserts each tensor's declared range on the 8B nightly run.
 - Determinism: two runs of statistics-to-`IntegerModel` give identical digests.
 - Fidelity: the gates above, run on every PR that touches `python/tessera_quant/scales.py`, `assemble.py` or `calibration.py`, on 8B with a reduced set (128 documents) and in full nightly.

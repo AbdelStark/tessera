@@ -436,6 +436,18 @@ All notable changes to the prover release train are recorded here: the crates un
   - Tests: the token metrics on a three-token vocabulary match the hand-computed values, KL in its direction. The Wilson interval of 9 out of 10 is the textbook [0.5958, 0.9821], exactly 0 and 1 at the ends. A bootstrap of one ratio has no width, and its bounds are the 2.5% and 97.5% percentiles by Python's own quantiles. A tiny Llama's report is reproducible, records what it measured, and shows D close to its reference. Each hygiene rule is tested. Each of 12 bugs planted in the module fails a test.
   - Bounded mode's `Û` joins the report with RFC-0017's predictor. The gates themselves are [#93](https://github.com/AbdelStark/tessera/issues/93).
 
+- The CPU engine and the PyTorch reference agree bit for bit on every tensor `D` commits (SC-7, 07 §5, [#91](https://github.com/AbdelStark/tessera/issues/91)):
+  - `spec/vectors/models/traces.json` holds the oracle's traces. For each sequence of the conformance models it lists every committed tensor, with the residual before the first layer and the logits, in the order of the forward pass.
+  - `crates/tessera-e2e/tests/differential.rs` runs the engine on every sequence and compares each traced tensor. Every committed tensor of the lowering must have its name in the traces.
+  - `python/tests/test_reference.py` holds the PyTorch reference to the same traces. Both report the first tensor and index that diverge.
+  - `tessera_quant.reference.Trace` gains `updates`: the `u` a two-step residual site commits (RFC-0022).
+  - The conformance models now reach the two-step update's clamp, at INT20 and at INT16. tiny-2-minimal's and tiny-4-servable's constants change, and their artifacts, `models.json` and the golden claim lists are regenerated.
+  - Tests:
+    - a divergence seeded at a drawn index of each tensor is reported there;
+    - a channel moved to another class is reported at its site and channel;
+    - two bugs planted in each implementation, a reciprocal one too small and an inner clamp at `±2^bits`, fail at the tensor and index where they arise.
+  - Llama-3.1-8B is [#312](https://github.com/AbdelStark/tessera/issues/312), once [#93](https://github.com/AbdelStark/tessera/issues/93) gives its `D`.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
