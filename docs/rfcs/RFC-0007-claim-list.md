@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Schema': `PublicQuantSpec`'s affine sites; 'Public and hidden quantization data'; 'Verifier validation', step 5), [RFC-0026](RFC-0026-claim-list-layout.md) ('Schema': `scoring` and `anchor` join with their circuits, and `WeightLayoutParams`' fields; 'Verifier validation', step 7)
+- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Schema': `PublicQuantSpec`'s affine sites; 'Public and hidden quantization data'; 'Verifier validation', step 5), [RFC-0026](RFC-0026-claim-list-layout.md) ('Schema': `scoring` and `anchor` join with their circuits, and `WeightLayoutParams`' fields; 'Verifier validation', step 7), [RFC-0027](RFC-0027-logits-exponent.md) ('Schema': `PublicQuantSpec`'s `logits_exponent`)
 
 ## Summary
 
@@ -56,6 +56,7 @@ pub struct PublicQuantSpec {
     pub affine_sites: Vec<(QuantPoint, i8)>,            // affine sites: the one shift r (RFC-0025)
     pub rope: RopeSpec,
     pub logits_bits: u8,                           // 28
+    pub logits_exponent: i8,                       // RFC-0027: a logit ℓ stands for ℓ · 2^logits_exponent
 }
 
 pub struct GadgetPolicy { pub max_log2_rows: u8 /* B_max = 32 */, pub query_block: u32 /* 512 */,

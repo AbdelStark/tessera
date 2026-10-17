@@ -284,6 +284,7 @@ fn tiny(seed: u64, profile: Profile, shape: Shape) -> IntegerModel {
                 affine_sites: Vec::new(),
                 rope: ROPE,
                 logits_bits: 28,
+                logits_exponent: -11,
             },
             silu_in_exponents,
             channels,

@@ -154,6 +154,9 @@ pub struct PublicQuantSpec {
     pub rope: RopeSpec,
     /// The logits' width: 28.
     pub logits_bits: u8,
+    /// The logits' scale `2^e`: a logit `ℓ` stands for `ℓ · 2^{logits_exponent}`, the final norm's
+    /// exponent plus the LM head's (RFC-0027).
+    pub logits_exponent: i8,
 }
 
 /// A weight's hidden per-output-channel parameters, committed with the weights as the

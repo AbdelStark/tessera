@@ -5,8 +5,8 @@
 chooses `D`'s scales for each (`tessera_quant.scales`). It keeps the strength whose `D` diverges
 least from the BF16 reference on the held-out split: the mean KL divergence of their next-token
 distributions, `D` run by the integer reference (`tessera_quant.reference`) and its logits taken
-at their real scale. It then assembles `D` with its `Provenance`, and `export` writes it as a
-secret artifact.
+at their real scale, `2^logits_exponent` (RFC-0027). It then assembles `D` with its
+`Provenance`, and `export` writes it as a secret artifact.
 
 Statistics to artifact is float64 and integer arithmetic on the CPU, so it is byte-reproducible
 (RFC-0005 'Determinism'). The BF16 reference's logits only rank the strengths, and run under
@@ -29,7 +29,6 @@ from tessera_quant.errors import CalibrationError, TesseraQuantError
 from tessera_quant.integer_model import (
     INTEGER_MODEL,
     CalibrationIdentity,
-    FinalNormPoint,
     IntegerModel,
     Profile,
     Provenance,
@@ -99,7 +98,7 @@ def quantize(
         found = torch.cat(
             [trace(d, np.array(w.tokens, dtype=np.uint32)).logits for w in held_out]
         ).to(torch.float64)
-        return mean_kl(reference, found * _logit_scale(q))
+        return mean_kl(reference, found * 2.0**d.quant.public.logits_exponent)
 
     alpha = select_alpha(divergence, alphas)
     return assembled(quantized(alpha), alpha)
@@ -127,15 +126,6 @@ def libraries() -> dict[str, str]:
     return {
         name: platform.python_version() if name == "python" else version(name) for name in LIBRARIES
     }
-
-
-def _logit_scale(q: Quantized) -> float:
-    """The real value of one unit of `D`'s logits: the final norm's scale times the LM head's."""
-    exponents = dict(q.quant.public.act_exponents)
-    head = q.scales["lm_head.weight"]
-    if not bool((head == head[0]).all()):
-        raise TesseraQuantError("the LM head has one scale for every row")
-    return float(head[0]) * 2.0 ** exponents[FinalNormPoint()]
 
 
 def _provenance(

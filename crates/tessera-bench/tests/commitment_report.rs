@@ -127,6 +127,7 @@ fn llama_405b(profile: Profile, classes: i8) -> (ArchSpec, PublicQuantSpec, Vec<
         affine_sites: Vec::new(),
         rope: ROPE,
         logits_bits: 28,
+        logits_exponent: -11,
     };
     let silu = (0..LAYERS).map(|l| (l, -6)).collect();
     (arch, quant, silu)

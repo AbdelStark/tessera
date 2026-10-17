@@ -203,6 +203,14 @@ def test_the_embedding_lm_head_and_minimals_up_projection_have_one_exponent(
         )
     _, _, minimal = pipeline[Profile.Minimal]
     assert all(c.ty is not WeightType.Up for c in minimal.quant.channels)
+    # The logits stand for l * 2^(e_y + e_lm), e_lm the least exponent that holds the folded LM
+    # head within 127 (RFC-0027).
+    for profile in Profile:
+        weights, _, quantized = pipeline[profile]
+        e_lm = exponent(float(weights["lm_head.weight"].abs().max()), 127)
+        e_y = act(quantized)[FinalNormPoint()]
+        assert quantized.quant.public.logits_exponent == e_y + e_lm, profile
+        assert float(quantized.scales["lm_head.weight"][0]) == 2.0**e_lm
 
 
 def expected_sets(quantized: Quantized, profile: Profile) -> dict[QuantPoint, list[int]]:

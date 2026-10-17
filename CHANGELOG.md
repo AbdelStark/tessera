@@ -418,6 +418,13 @@ All notable changes to the prover release train are recorded here: the crates un
     - each refusal is tested.
   - Each of 11 bugs planted in the assembly fails a test, and a no-op control survives.
 
+- `D` records the scale of its logits, with RFC-0027, accepted ([#309](https://github.com/AbdelStark/tessera/issues/309)):
+  - `PublicQuantSpec.logits_exponent` follows `logits_bits`: a logit `ℓ` stands for `ℓ · 2^{logits_exponent}`, the final norm's exponent plus the LM head's. The quantizer writes it.
+  - Fidelity evaluation of an exported `D` needs it for perplexity and KL divergence ([#90](https://github.com/AbdelStark/tessera/issues/90)), and temperature and mixture scoring need it to build `Exp_T` ([#152](https://github.com/AbdelStark/tessera/issues/152), [#155](https://github.com/AbdelStark/tessera/issues/155)).
+  - `quantize`'s choice of `α` now reads it from `D`.
+  - Every encoding carries it: the Rust and Python types, the models' oracle and the vectors. The layout changes in place, as 09 §3 allows before a release, and the conformance models and claim lists are regenerated.
+  - A test pins it to RFC-0005's rule on the folded LM head, in both profiles.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

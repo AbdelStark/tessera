@@ -137,6 +137,8 @@ class PublicQuantSpec:
     """
     rope: RopeSpec
     logits_bits: int
+    logits_exponent: int
+    """The logits' scale `2^e`: the final norm's exponent plus the LM head's (RFC-0027)."""
 
 
 def norm_kappa(d_model: int, rms_eps_int: int) -> int:
@@ -307,6 +309,7 @@ _PUBLIC = Struct(
         ("affine_sites", Seq(Pair(_QUANT_POINT, I8))),
         ("rope", _ROPE),
         ("logits_bits", U8),
+        ("logits_exponent", I8),
     ],
 )
 

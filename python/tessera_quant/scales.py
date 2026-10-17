@@ -194,7 +194,8 @@ class _Quantizer:
         self.act.append((FinalNormPoint(), e_final))
         self.sets.append((FinalNormPoint(), [self._shift(self.kappa + e_final, "the final norm")]))
         lm_head = self._float("lm_head.weight")
-        self._store("lm_head.weight", WeightType.LmHead, 0, lm_head, [_whole(lm_head)] * arch.vocab)
+        e_lm = _whole(lm_head)
+        self._store("lm_head.weight", WeightType.LmHead, 0, lm_head, [e_lm] * arch.vocab)
         public = PublicQuantSpec(
             act_exponents=sorted(self.act, key=lambda item: _order(item[0])),
             residual_exponent=self.e_res,
@@ -207,6 +208,7 @@ class _Quantizer:
             affine_sites=sorted(self.affine_sites, key=lambda item: _order(item[0])),
             rope=arch.rope,
             logits_bits=LOGITS_BITS,
+            logits_exponent=e_final + e_lm,
         )
         channels = sorted(self.channels, key=lambda c: (c.ty.value, c.layer))
         tensors = sorted(self.tensors, key=lambda w: (w.ty.value, w.layer))
