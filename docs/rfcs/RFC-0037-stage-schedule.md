@@ -67,7 +67,7 @@ The lowering's checkpoints `c_0, …, c_L` are the residual stream after the emb
   - its layer's checkpoint `c_ℓ`;
   - a graph input, such as the positions or the layer's own weight, classes and multipliers.
 
-  The lowering emits such layers. The schedule refuses any other graph with `ERR-INTERNAL`.
+  The lowering emits such layers for a claim list that rescales every layer's sites alike ([RFC-0038](RFC-0038-uniform-layers.md)). The schedule refuses any other graph with `ERR-INTERNAL`.
 - **Kinds.**
   - The outputs at position `p` form one stacked kind, `X_κ[ℓ, …]`.
   - The layer input `X_in[ℓ] = c_ℓ` is a stacked kind.

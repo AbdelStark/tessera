@@ -64,6 +64,8 @@ The compiler proves the sum one of two ways, chosen from public data so that the
   - `u = rq(acc, r_c, −(2^20 − 1), 2^20 − 1)` takes the channel classes, as RFC-0005's update did.
   - Then `res ← rq(2(res + u), 1, −2^19, 2^19 − 1)`: `rq(2t, 1, lo, hi) = clamp(t, lo, hi)` for an integer `t`. Its key lies within `±(2^21 + 2^20 − 2)`, a single lookup of one class.
 
+  A site takes one route in every layer ([RFC-0038](RFC-0038-uniform-layers.md)): the fused key when every layer's site has one shift at most 62, two steps otherwise.
+
   The inner clamp at `±(2^20 − 1)` changes nothing. It binds only when `|⌊(acc + 2^{r−1}) / 2^r⌋| ≥ 2^20`. Then, since `res ∈ [−2^19, 2^19 − 1]`, the sum reaches a bound of INT20 with or without it: `res + 2^20 − 1 ≥ 2^19 − 1` and `res − (2^20 − 1) ≤ −2^19`. This costs one more committed value and lookup per element per update than the fused key.
 
 The residual after each update is a `Requant` output, so range analysis gives it INT20 by the lookup alone. Every norm then sees `u ≤ d · 2^38`: `2^50` at 8B, `2^52` at 405B. The embedding's `res = x0 · 2^{s_e}` is INT20 by the compiler's rule on `s_e` ([RFC-0006](RFC-0006-compiler-ir.md#llama-lowering)).
