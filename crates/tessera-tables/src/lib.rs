@@ -12,8 +12,12 @@
 //! and `Gf256Mul`, whose values are exact integer functions, and the fixed-point kinds `Exp`,
 //! `Exp2Frac` and `Silu`, which RFC-0008 'Fixed-point generators' defines to the last integer.
 //! RoPE's constants are no lookup table: [`RopeTable`] holds a `Rope` specification and its
-//! digest, and [`RopeConstants`] computes its `(C, S)` pairs on demand. The structured evaluation
-//! of a table's multilinear extension follows (RFC-0008 'Structured evaluation').
+//! digest, and [`RopeConstants`] computes its `(C, S)` pairs on demand.
+//!
+//! [`Table::eval_mle`] gives `t̃(ρ) = kẽy(ρ) + β·valũe(ρ)` over a table's padded rows, the value
+//! the LogUp check compares with the table tree's claim (RFC-0008 'Structured evaluation'), in
+//! time set by the table's parameters: `O(n)` per class for `Range` and `Requant`, whatever their
+//! `2^32` rows, and `O(core)` for the kinds with a dense core.
 //!
 //! `spec/vectors/tables/` pins every kind's TCE encoding, digest and rows, written by an
 //! independent Python oracle. It checks the AES tables against FIPS-197's known-answer tests,
@@ -25,6 +29,7 @@
 mod error;
 mod fixed;
 mod gf256;
+mod mle;
 mod rope;
 mod spec;
 mod table;
