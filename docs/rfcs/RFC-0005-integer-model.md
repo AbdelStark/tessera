@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Integer semantics': the residual rows and the norm row's range), [RFC-0023](RFC-0023-norm-precision.md) (the norm's `κ`)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Integer semantics': the residual rows and the norm row's range), [RFC-0023](RFC-0023-norm-precision.md) (the norm's `κ`), [RFC-0024](RFC-0024-wide-requantization.md) ('Profiles': `minimal`'s down-projection residual)
 
 ## Summary
 
@@ -115,6 +115,8 @@ S1 and S2 concern the weight matmuls, the GEMMs that run on tensor cores. The at
 `servable` is the default so that one `D` serves both modes ("two modes, one circuit", source §7). The `minimal` profile reproduces the source's commitment-minimal dataflow (137,216 commitments per layer per token at 405B before RISK-2 corrections). The v0.2 commitment report costs both.
 
 `minimal` has one bit of margin at 405B. Its O-projection accumulator `W_O · o` reaches `127 · 2^14 · 2^39 < 2^60`, 61 bits, one below the 62 that RFC-0006's split gadget accepts ([RFC-0006](RFC-0006-compiler-ir.md#gadget-selection)). A model with four times the hidden size, or `σ = 17`, would fail to compile in that profile with `ERR-COMPILE-RANGE`.
+
+Its down projection reads `a · u` unrequantized, so its residual's key nears `2^{58}` at 405B. A shift near 17 is too small for `RequantSplit`, and the site takes `RequantWide` instead, at four commitments and five lookups per element ([RFC-0024](RFC-0024-wide-requantization.md)).
 
 ### Calibration
 

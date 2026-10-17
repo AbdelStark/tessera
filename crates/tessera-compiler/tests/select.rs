@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Gadget selection and table sizing (RFC-0006 'Gadget selection', RFC-0009).
+//! Gadget selection and table sizing (RFC-0006 'Gadget selection', RFC-0009, RFC-0024).
 //!
 //! - **Widths.** Keys of `B_max`, `B_max + 1`, `2·B_max − 2` and `2·B_max − 1` bits take
 //!   `Requant1`, `RequantSplit`, `RequantSplit` and `ERR-COMPILE-RANGE`. A table of several
-//!   classes spends their index bits first, the split needs `s ≤ r − 1` for every class, and its
-//!   low part must fit a table too.
-//! - **The split computes the requantization.** The low bits pass their `Range` table, and the
-//!   reduced table returns `rq(z, r)` on random keys of every width.
+//!   classes spends their index bits first.
+//! - **Too wide for the split.** A key whose split would pass a class's rounding bit, or whose
+//!   low part would not fit a table, takes `RequantWide`, whose five tables must fit `B_max`.
+//! - **The tables compute the requantization.** The split's two lookups and the wide gadget's five
+//!   return `rq(z, r_c, lo, hi)` on random keys of every width and class, ends included.
 //! - **Sizing.** A lookup's table holds at most `2^{B_max}` rows, and `B_max` lies in `[1, 32]`.
-//! - **Sharing.** Llama-3.1 8B's 32 layers read exactly the tables its first two do. `minimal`
-//!   8B is refused where its down projection's key is too wide for its shift (#292).
+//! - **Llama.** 8B's 32 layers read exactly the tables its first two do. `minimal` 8B and 405B
+//!   compile: their down projections' residual keys take `RequantWide`, with one class or four
+//!   (#292).
 
 mod common;
 
@@ -156,11 +158,45 @@ fn a_tables_classes_take_key_bits_before_the_split() {
     }
 }
 
+/// The tables of a `RequantWide`: `Range { s }` or none, `Range { t }`, `Range { k }`, the
+/// saturation's and the reduced requantization's.
+fn wide_tables(selection: &Selection, gadget: Gadget) -> (u8, u8, Vec<TableKind>) {
+    let Gadget::RequantWide {
+        split,
+        middle,
+        low,
+        mid,
+        top,
+        sign,
+        high,
+    } = gadget
+    else {
+        panic!("RequantWide expected, found {gadget:?}");
+    };
+    let mut kinds: Vec<TableKind> = low.iter().map(|&t| kind(selection, t).clone()).collect();
+    for table in [mid, top, sign, high] {
+        kinds.push(kind(selection, table).clone());
+    }
+    (split, middle, kinds)
+}
+
+fn range(bits: u8) -> TableKind {
+    TableKind::Range { bits }
+}
+
+fn rq(b: u8, r_by_class: &[u8], lo: i32, hi: i32) -> TableKind {
+    TableKind::Requant {
+        b,
+        r_by_class: r_by_class.to_vec(),
+        lo,
+        hi,
+    }
+}
+
 #[test]
-fn a_split_keeps_its_rounding_only_below_every_classs_shift() {
+fn a_key_too_wide_for_its_shift_takes_requant_wide() {
     // b = 40 splits 8 bits: a shift of 9 keeps the rounding bit above them, one of 8 does not.
     let default = GadgetPolicy::default();
-    let rule = "a split key keeps its rounding: s ≤ r − 1 for every class";
     assert!(matches!(
         selected(&requant(40, &[9]), &[], &default)
             .expect("selects")
@@ -168,21 +204,53 @@ fn a_split_keeps_its_rounding_only_below_every_classs_shift() {
             .1,
         Gadget::RequantSplit { split: 8, .. }
     ));
+    // At 8, the low part stops below the rounding bit: s = 7. Past |w| ≥ 2^8 an INT8 output
+    // saturates (2^{8 − 1} ≥ 128), so the top part takes the other 25 bits.
+    let selection = selected(&requant(40, &[8]), &[], &default).expect("selects");
     assert_eq!(
-        selected(&requant(40, &[8]), &[], &default),
-        Err(refused(rule))
+        wide_tables(&selection, selection.gadgets[0].1),
+        (
+            7,
+            8,
+            vec![
+                range(7),
+                range(8),
+                range(25),
+                rq(26, &[1], -2, 1),
+                rq(10, &[1], -128, 127)
+            ]
+        )
     );
-    // The least shift decides: 39 bits and a class bit split 8.
+    // The least shift decides the low part, the largest the middle: 39 bits and a class bit
+    // split 8, past the shift of 8; the middle holds 12 − 7 + 7 bits.
+    let selection = selected(&requant(39, &[12, 8]), &[], &default).expect("selects");
     assert_eq!(
-        selected(&requant(39, &[12, 8]), &[], &default),
-        Err(refused(rule))
+        wide_tables(&selection, selection.gadgets[0].1),
+        (
+            7,
+            12,
+            vec![
+                range(7),
+                range(12),
+                range(20),
+                rq(21, &[1], -2, 1),
+                rq(14, &[5, 1], -128, 127)
+            ]
+        )
     );
-    assert!(selected(&requant(39, &[12, 9]), &[], &default).is_ok());
+    assert!(matches!(
+        selected(&requant(39, &[12, 9]), &[], &default)
+            .expect("selects")
+            .gadgets[0]
+            .1,
+        Gadget::RequantSplit { split: 8, .. }
+    ));
 }
 
 #[test]
-fn a_split_keys_low_part_fits_a_table_of_b_max() {
-    // B_max = 20: a key of 40 bits splits 20 low bits, one of 41 would need 21.
+fn a_split_keys_low_part_past_b_max_takes_requant_wide() {
+    // B_max = 20: a key of 40 bits splits 20 low bits; one of 41 would need 21, so the wide
+    // gadget takes it with a low part of 20.
     let small = policy(20);
     assert!(matches!(
         selected(&requant(40, &[30]), &[], &small)
@@ -191,12 +259,63 @@ fn a_split_keys_low_part_fits_a_table_of_b_max() {
             .1,
         Gadget::RequantSplit { split: 20, .. }
     ));
+    let selection = selected(&requant(41, &[30]), &[], &small).expect("selects");
     assert_eq!(
-        selected(&requant(41, &[30]), &[], &small),
+        wide_tables(&selection, selection.gadgets[0].1),
+        (
+            20,
+            17,
+            vec![
+                range(20),
+                range(17),
+                range(4),
+                rq(5, &[1], -2, 1),
+                rq(19, &[10], -128, 127)
+            ]
+        )
+    );
+}
+
+#[test]
+fn a_wide_keys_tables_fit_b_max() {
+    // The reduced table: t = 4 + 7 bits, two more for the saturation and two for four classes.
+    let classes = requant(30, &[8, 9, 10, 11]);
+    let selection = selected(&classes, &[], &policy(15)).expect("15 bits fit");
+    assert!(matches!(
+        selection.gadgets[0].1,
+        Gadget::RequantWide { middle: 11, .. }
+    ));
+    assert_eq!(
+        selected(&classes, &[], &policy(14)),
         Err(refused(
-            "a split key's low part fits a table of 2^{B_max} rows"
+            "a wide key's reduced table fits 2^{B_max} rows: t + 2 + ⌈log2 n⌉ ≤ B_max"
         ))
     );
+    // The top part: a shift of 1 leaves no low part, and the doubled top key of k + 1 bits fits
+    // 32 up to b = 39.
+    let default = GadgetPolicy::default();
+    let selection = selected(&requant(39, &[1]), &[], &default).expect("selects");
+    assert_eq!(
+        wide_tables(&selection, selection.gadgets[0].1),
+        (
+            0,
+            8,
+            vec![
+                range(8),
+                range(31),
+                rq(32, &[1], -2, 1),
+                rq(10, &[1], -128, 127)
+            ]
+        )
+    );
+    for b in [40, 62] {
+        assert_eq!(
+            selected(&requant(b, &[1]), &[], &default),
+            Err(refused(
+                "a wide key's top part fits a table of 2^{B_max} rows: k + 1 ≤ B_max"
+            ))
+        );
+    }
 }
 
 #[test]
@@ -301,6 +420,80 @@ proptest! {
     }
 }
 
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(512))]
+
+    #[test]
+    fn the_wide_tables_compute_the_requantization(
+        least in 1u8..=30, n in 1u8..=4, below in 0i64..=1 << 20, above in 0i64..=1 << 20, seed in any::<u64>(),
+    ) {
+        // Keys too wide for the split, of every width the wide gadget takes: its low part, middle,
+        // top part and saturation pass their tables, and the reduced table returns rq(z, r_c,
+        // lo, hi) for every class, at both ends of the key's range and inside it. The bounds are
+        // drawn apart, so that the wider of the two sets the saturation.
+        let shifts: Vec<u8> = (0..n).map(|c| least + c).collect();
+        let class_bits = u32::from(n.next_power_of_two().trailing_zeros() as u8);
+        let (lo, hi) = (-below, above);
+        let bound = u64::try_from(hi.max(-lo).max(1)).expect("positive");
+        let saturates = bound.next_power_of_two().trailing_zeros();
+        let r_max = u32::from(least + n - 1);
+        // The split fails from b = 32 − ⌈log2 n⌉ + least; the top table fits until k + 1 = 32.
+        let first = (32 - class_bits + u32::from(least)).max(33);
+        let last = (31 + r_max + saturates).min(62);
+        prop_assume!(first <= last);
+        let b = first + u32::try_from(seed % u64::from(last - first + 1)).expect("small");
+        let mut g = GraphBuilder::new();
+        let half = 1i128 << (b - 1);
+        let x = g.input(decl(&[1], ADVICE, -half, half - 1)).expect("a key");
+        let mut inputs = vec![x];
+        if n > 1 {
+            inputs.push(g.input(decl(&[1], WEIGHT, 0, i128::from(n) - 1)).expect("classes"));
+        }
+        let shift = g.shift_classes(shifts.clone()).expect("shifts");
+        one(&mut g, Op::Requant { shift, lo, hi }, &inputs, out(&[1], ADVICE));
+        let selection = selected(&g.finish(), &[], &GadgetPolicy::default()).expect("selects");
+        let Gadget::RequantWide { split, middle, low, mid, top, sign, high } = selection.gadgets[0].1 else {
+            panic!("RequantWide expected at b = {b}, shifts {shifts:?}");
+        };
+        let table = |id: TableId| {
+            let spec = selection.tables.iter().find(|t| t.id == id).expect("a table");
+            GeneratedTable::from_spec(spec).expect("the table regenerates")
+        };
+        let (s, t) = (u32::from(split), u32::from(middle));
+        let k = b - s - t;
+        let low = low.map(table);
+        let (mid, top, sign, high) = (table(mid), table(top), table(sign), table(high));
+        let mut state = seed;
+        let mut keys = vec![-half, half - 1, -1, 0, 1];
+        for _ in 0..32 {
+            state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            // Magnitudes spread over every width up to the key's, so that each case of the top
+            // part comes up.
+            let bits = (state >> 58) as u32 % b;
+            let magnitude = i128::from(state >> 2) % (1i128 << bits);
+            keys.push(if state & 1 == 0 { magnitude } else { -magnitude - 1 });
+        }
+        for z in keys {
+            let z_lo = (z + half) % (1 << s);
+            if let Some(low) = &low {
+                prop_assert!(low.lookup(i64::try_from(z_lo).expect("small"), 0).is_some());
+            }
+            let w = z >> s;
+            let (h0, h1) = (w.rem_euclid(1 << t), w >> t);
+            prop_assert!(mid.lookup(i64::try_from(h0).expect("small"), 0).is_some());
+            let h1_off = i64::try_from(h1 + (1 << (k - 1))).expect("small");
+            prop_assert!(top.lookup(h1_off, 0).is_some());
+            let g = sign.lookup(i64::try_from(2 * h1).expect("small"), 0).expect("in the table");
+            let key = i64::try_from(h0).expect("small") + (1i64 << t) * g;
+            for (class, &r) in shifts.iter().enumerate() {
+                let found = high.lookup(key, u8::try_from(class).expect("small")).expect("in the table");
+                let expected = ((z + (1i128 << (r - 1))) >> r).clamp(i128::from(lo), i128::from(hi));
+                prop_assert_eq!(i128::from(found), expected, "z = {}, r = {}", z, r);
+            }
+        }
+    }
+}
+
 #[test]
 fn llama_8b_shares_every_table_across_its_layers() {
     let select_8b = |layers: u32| {
@@ -344,41 +537,75 @@ fn llama_8b_shares_every_table_across_its_layers() {
 }
 
 #[test]
-fn minimal_8b_is_refused_where_its_down_projection_needs_a_wider_split() {
-    // The down projection reads a · u unrequantized: its residual key reaches about 2^55, a split
-    // of 23 bits, against a shift of 17 (#292).
-    let (arch, quant, silu) = llama(Profile::Minimal, 1, 4096, 32, 8, 14_336);
-    let model = PublicModel {
-        arch: &arch,
-        profile: Profile::Minimal,
-        quant: &quant,
-        silu_in_exponents: &silu,
-    };
-    let lowering = lower(model, 16).expect("the shape lowers");
-    let ranges = analyze(&lowering.graph, &lowering.tables).expect("analyzes");
-    let error = select(
-        &lowering.graph,
-        &ranges,
-        &lowering.tables,
-        &GadgetPolicy::default(),
-    )
-    .expect_err("refused");
-    let CompileError::Range { node, rule, .. } = error else {
-        panic!("a range refusal");
-    };
-    assert_eq!(
-        rule,
-        "a split key keeps its rounding: s ≤ r − 1 for every class"
-    );
-    // The refused node is the layer's last requantization, the down projection's residual.
-    let last = lowering
-        .graph
-        .nodes
-        .iter()
-        .filter(|n| matches!(n.op, Op::Requant { .. }))
-        .nth_back(1)
-        .expect("the residual's requantization");
-    assert_eq!(node, last.id);
+fn minimal_takes_requant_wide_where_its_down_projection_is_too_wide_for_a_split() {
+    // The down projection reads a · u unrequantized: its residual key reaches about 2^54 at 8B
+    // and 2^58 at 405B, a split of 23 or more bits against shifts near 17 (#292). With one class
+    // the fused key saturates at INT20; with four, the update u = rq(acc, r_c, ±(2^20 − 1)) does.
+    // The low part keeps 16 bits, the middle 20 or 24, and the top part the rest.
+    let int20 = (-(1 << 19), (1 << 19) - 1);
+    let update = (-((1 << 20) - 1), (1 << 20) - 1);
+    let cases = [
+        (4096, 32, 14_336, vec![17], 20, 55, int20),
+        (4096, 32, 14_336, vec![17, 18, 19, 20], 24, 55, update),
+        (16_384, 128, 53_248, vec![17], 20, 59, int20),
+        (16_384, 128, 53_248, vec![17, 18, 19, 20], 24, 59, update),
+    ];
+    for (d, heads, d_ff, shifts, middle, b, (lo, hi)) in cases {
+        let (arch, mut quant, silu) = llama(Profile::Minimal, 1, d, heads, 8, d_ff);
+        let site = tessera_ir::QuantPoint::Layer {
+            layer: 0,
+            site: tessera_ir::Site::MlpResidual,
+        };
+        for (point, set) in &mut quant.shift_class_sets {
+            if *point == site {
+                set.clone_from(&shifts.iter().map(|&r| r as i8).collect());
+            }
+        }
+        let model = PublicModel {
+            arch: &arch,
+            profile: Profile::Minimal,
+            quant: &quant,
+            silu_in_exponents: &silu,
+        };
+        let lowering = lower(model, 16).expect("the shape lowers");
+        let ranges = analyze(&lowering.graph, &lowering.tables).expect("analyzes");
+        let selection = select(
+            &lowering.graph,
+            &ranges,
+            &lowering.tables,
+            &GadgetPolicy::default(),
+        )
+        .expect("every gadget fits");
+        let wide: Vec<_> = selection
+            .gadgets
+            .iter()
+            .filter(|(_, g)| matches!(g, Gadget::RequantWide { .. }))
+            .collect();
+        let [(node, gadget)] = wide[..] else {
+            panic!("one RequantWide expected, found {}", wide.len());
+        };
+        let Op::Requant { shift, .. } = lowering.graph.nodes[node.0 as usize].op else {
+            panic!("a requantization");
+        };
+        assert_eq!(lowering.graph.shift_classes[shift.0 as usize], shifts);
+        let reduced: Vec<u8> = shifts.iter().map(|r| r - 16).collect();
+        let top = b - 16 - middle;
+        assert_eq!(
+            wide_tables(&selection, *gadget),
+            (
+                16,
+                middle,
+                vec![
+                    range(16),
+                    range(middle),
+                    range(top),
+                    rq(top + 1, &[1], -2, 1),
+                    rq(middle + 2, &reduced, lo, hi)
+                ]
+            ),
+            "d = {d}, shifts {shifts:?}"
+        );
+    }
 }
 
 #[test]

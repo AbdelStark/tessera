@@ -313,6 +313,13 @@ All notable changes to the prover release train are recorded here: the crates un
   - On a tiny Llama-like model, with weights and activations rounded to their scales in float64, the logits' error is 2% of the largest, KL divergence `2.3 · 10^{−6}` and top-1 agreement 99.2% in both profiles. Every site's shifts equal RFC-0005's formulas, written out independently in the tests. Of 25 planted bugs, 24 fail a test; the 25th is equivalent at the head sizes tested.
   - RFC-0005's scale policy now states the rules its semantics force: the per-tensor weights, the RoPE pairs, the shifts' range, the score scale's rational, SiLU's input exponent and the affine shift.
 
+- `RequantWide` in `tessera-compiler`'s gadget selection, with RFC-0024, accepted (RFC-0006 'Gadget selection', [#292](https://github.com/AbdelStark/tessera/issues/292)):
+  - It takes a requantization key too wide for its shift, which `RequantSplit` cannot take. The key splits below every class's rounding bit, keeps a middle part as wide as the output's range needs, and reduces its top part to the saturation `clamp(h1, −2, 1)`. That costs four commitments and five lookups per element, into existing table kinds. RFC-0009 Lemma 11 proves one witness per key.
+  - `minimal` now compiles at 8B and 405B. Its down projection's residual key, of 55 and 59 bits against a shift near 17, takes `RequantWide`, with one class or four.
+  - The top part's `Range` check is necessary. Without it, a half-integer top part reaches the saturation table's odd keys and passes with another output. An exhaustive search over `F65537` found such outputs in every configuration tried without the check, and none with it.
+  - RISK-2's upper bound for `minimal` rises to 252,928 commitments and 269,312 lookups per layer per token at 405B, and its corrected `μ(1K)` from 9.4 to 10.0. 00, 08 and `SPEC.md` restate the projections, which the bench test pins.
+  - The tests check the boundary with `RequantSplit` and each precondition at its boundary. A property test checks that the five lookups compute `rq(z, r_c, lo, hi)` for every class, range ends included, with `lo` and `hi` drawn independently. Each of 16 bugs planted in the selection fails a test.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

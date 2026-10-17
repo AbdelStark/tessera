@@ -258,15 +258,15 @@ fn the_column_answers_price_every_committed_element() {
 }
 
 /// The corrected 405B projections that 08 §3, SC-2 and RISK-9 quote, each to the digits quoted:
-/// the source's model with RISK-2's upper bound of 2.8×10^7 commitments and lookups per token
-/// and five regenerations (RFC-0018 P1 to P5), with the column answers free or priced as
-/// committing is, 30 ps per element. A change to the model that moves one fails here until the
-/// documents follow.
+/// the source's model with RISK-2's upper bound for `minimal`, 252,928 commitments and 269,312
+/// lookups per layer per token over 126 layers (RFC-0024), and five regenerations (RFC-0018 P1 to
+/// P5), with the column answers free or priced as committing is, 30 ps per element. A change to
+/// the model that moves one fails here until the documents follow.
 #[test]
 fn the_corrected_projections_are_the_ones_the_documents_quote() {
     let corrected = Counts {
-        commits_per_token: 2.8e7,
-        lookups_per_token: 2.8e7,
+        commits_per_token: 252_928.0 * 126.0,
+        lookups_per_token: 269_312.0 * 126.0,
         regen_full_equivalents: 5.0,
         ..Counts::SOURCE_405B
     };
@@ -294,19 +294,19 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
     quoted(
         "corrected linear term at 1K",
         at(&corrected, k1, 0.0).linear,
-        3.3,
+        3.9,
         1,
     );
     let (mu1, mu16) = (
         at(&corrected, k1, 0.0).total,
         at(&corrected, k16, 0.0).total,
     );
-    quoted("μ(1K)", mu1, 9.4, 1);
-    quoted("μ(16K)", mu16, 24.9, 1);
+    quoted("μ(1K)", mu1, 10.0, 1);
+    quoted("μ(16K)", mu16, 25.4, 1);
     quoted(
         "1K per ps of c_a",
         at(&corrected, k1, 1.0).column_answers,
-        0.053,
+        0.058,
         3,
     );
     quoted(
@@ -316,16 +316,31 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         2,
     );
     let (full1, full16) = (at(&corrected, k1, 30.0), at(&corrected, k16, 30.0));
-    quoted("1K column answers at c_c", full1.column_answers, 1.6, 1);
-    quoted("16K column answers at c_c", full16.column_answers, 6.5, 1);
-    quoted("μ(1K) at c_c", full1.total, 11.0, 1);
+    quoted("1K column answers at c_c", full1.column_answers, 1.8, 1);
+    quoted("16K column answers at c_c", full16.column_answers, 6.6, 1);
+    quoted("μ(1K) at c_c", full1.total, 11.8, 1);
     // SC-2's headroom: ceilings of 12 and 45 over the corrected figures.
-    quoted("1K headroom", 12.0 / mu1, 1.27, 2);
-    quoted("16K headroom", 45.0 / mu16, 1.8, 1);
-    quoted("1K headroom at c_c", 12.0 / full1.total, 1.09, 2);
-    quoted("16K headroom at c_c", 45.0 / full16.total, 1.43, 2);
+    quoted("1K headroom", 12.0 / mu1, 1.20, 2);
+    quoted("16K headroom", 45.0 / mu16, 1.77, 2);
+    quoted("1K headroom at c_c", 12.0 / full1.total, 1.02, 2);
+    quoted("16K headroom at c_c", 45.0 / full16.total, 1.40, 2);
+    // 08 §3: at c_c, 2% below the 1K ceiling, and within 2% of the 16K one with RISK-10's upper
+    // streaming estimate, about 12.
+    quoted(
+        "1K margin at c_c",
+        100.0 * (1.0 - full1.total / 12.0),
+        2.0,
+        0,
+    );
+    quoted("16K at c_c with streaming", full16.total + 12.0, 44.0, 0);
+    quoted(
+        "16K margin at c_c with streaming",
+        100.0 * (1.0 - (full16.total + 12.0) / 45.0),
+        2.0,
+        0,
+    );
     // 08 §3's sampling rate for 10% overhead at η = 0.3, and daily detection of 100 violations.
-    for (total, rate, detection) in [(mu1, 3.5, 97.0), (full1.total, 3.0, 95.0)] {
+    for (total, rate, detection) in [(mu1, 3.3, 97.0), (full1.total, 2.8, 94.0)] {
         let s = sampling_rate(0.1, total, 0.3).expect("a rate");
         quoted("sampling at 1K", 100.0 * s, rate, 1);
         let d = detection_probability(s, 100).expect("a probability");

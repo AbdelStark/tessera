@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual), [RFC-0024](RFC-0024-wide-requantization.md) ('Gadget selection': `RequantWide`)
 
 ## Summary
 
@@ -123,6 +123,7 @@ A `Requant`'s gadget depends on its key's signed width `b`, from range analysis,
 |---|---|---|---|
 | `b + ⌈log2 n⌉ ≤ B_max` | `Requant1` | `Requant { b, r_c, lo, hi }` | 1 commitment, 1 lookup |
 | otherwise, `s = b + ⌈log2 n⌉ − B_max`, with `s ≤ B_max`, `b ≤ 62` and `s ≤ r_c − 1` for every class | `RequantSplit` with split point `s` | `Range { s }`, `Requant { b − s, r_c − s, lo, hi }` | 2 commitments, 2 lookups |
+| otherwise, with `b ≤ 62`, `t + 2 + ⌈log2 n⌉ ≤ B_max` and `k + 1 ≤ B_max` | `RequantWide` with low part `s` and middle part `t` | `Range { s }` when `s ≥ 1`, `Range { t }`, `Range { k }`, `Requant { k + 1, [1], −2, 1 }`, `Requant { t + 2, r_c − s, lo, hi }` | 4 commitments, 5 lookups |
 | otherwise | `ERR-COMPILE-RANGE` | — | — |
 
 The split's conditions come from RFC-0009 Lemma 2:
@@ -131,7 +132,15 @@ The split's conditions come from RFC-0009 Lemma 2:
 - the halves are true integers: `b ≤ 62`;
 - the nested floor is the requantization: `s ≤ r_c − 1`, since `2^{r_c − 1}` must be a multiple of `2^s`.
 
-With one class at `B_max = 32`, keys of up to 32 bits take `Requant1`, and keys of 33 to 62 bits split. A `TableMap`, `Bitwise` or `SoftmaxRow` reads its own table once, which must hold at most `2^{B_max}` rows: these lookups have no split.
+A key the split cannot take, because the split would pass the least shift's rounding bit or its low part would not fit, takes `RequantWide` ([RFC-0024](RFC-0024-wide-requantization.md)). It has three parts:
+
+- a low part of `s = min(r_min − 1, B_max)` bits, below every class's rounding bit;
+- a middle part of `t = (r_max − s) + ⌈log2 M⌉` bits, `M = max(|lo|, |hi|, 1)`, past which every class saturates;
+- a top part of `k = b − s − t` bits, which enters only through its saturation `clamp(h1, −2, 1)`.
+
+Its conditions come from RFC-0009 Lemma 11: `b ≤ 62`, and its reduced and top tables fit, `t + 2 + ⌈log2 n⌉ ≤ B_max` and `k + 1 ≤ B_max`. The first gadget that applies is the cheapest.
+
+With one class at `B_max = 32`, keys of up to 32 bits take `Requant1`. Keys of 33 to 62 bits split, or take `RequantWide` when their shift is too small for the split. A `TableMap`, `Bitwise` or `SoftmaxRow` reads its own table once, which must hold at most `2^{B_max}` rows: these lookups have no split.
 
 `B_max = 32` is the largest table whose prover-side cost is amortized over a 16K-token batch ([08 §4](../spec/08-performance-budget.md#4-memory-budgets)). The verifier's cost to evaluate a table does not depend on `b`. Every v1 table is a piecewise function whose non-constant core has at most 2^24 entries; for a clamped requantization the core is the output range, 256 values for INT8. Its multilinear extension is evaluated in time proportional to the core ([RFC-0008](RFC-0008-logup-and-tables.md#structured-evaluation)).
 
