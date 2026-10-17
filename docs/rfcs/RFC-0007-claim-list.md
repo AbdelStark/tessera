@@ -49,7 +49,7 @@ pub struct ClaimList {                       // schema 0x0201, version 1
 pub struct PublicQuantSpec {
     pub act_exponents: Vec<(QuantPoint, i8)>,      // per-tensor activation scales 2^e, sorted
     pub residual_exponent: i8, pub residual_bits: u8,   // 20
-    pub rsqrt_kappa: u8,                           // 16
+    pub rsqrt_kappa: u8,                           // RFC-0023: 30 at 8B
     pub rms_eps_int: u64,
     pub exp_sigma: u8,                             // 16
     pub score_scales: Vec<(u32 /*layer*/, Rational)>,   // σ_q σ_k / sqrt(d_head)

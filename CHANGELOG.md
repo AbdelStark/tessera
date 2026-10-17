@@ -298,6 +298,11 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
+  - `κ` is the largest value, at most 31, with `⌊d · 2^{2κ} / e⌋ < 2^64`: RFC-0022's range check on the root stays one 32-bit lookup.
+  - The root `ρ ≈ 2^κ / rms` keeps about `κ − log2(rms)` bits. At `κ = 16`, a row of `rms = 2^{12}` had a 6% scale error and a saturated row a root of 0. At 8B's `κ = 30`, every row INT20 allows keeps at least 11 bits.
+  - No gadget, table or schema changes, and the cost per token is unchanged. `tessera_quant.integer_model.norm_kappa` computes the rule for the quantizer, and a property test checks it.
+  - Llama-3.1 8B's and 405B's shapes lower at `κ = 30`, every root's range the full 32 bits.
 - RFC-0022, accepted, makes `D`'s residual stream saturate, and bounds its norms' roots over all inputs ([#284](https://github.com/AbdelStark/tessera/issues/284), [#285](https://github.com/AbdelStark/tessera/issues/285)):
   - Each residual update clamps the sum, `res ← clamp(res + ⌊(acc + 2^{r−1}) / 2^r⌋, INT20)`, instead of adding a clamped update. RFC-0005's unsaturated sum reached `2^62` in 8B's norms and passed `P` in 405B's.
   - A residual site of one class proves the sum with the `Requant` it already had, through the key `acc + 2^r · res`: no commitment more. A site of several classes adds one `Requant`, which clamps `2(res + u)`.

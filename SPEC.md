@@ -63,6 +63,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0019](docs/rfcs/RFC-0019-verifier.md) | Independent verifier | v0.3–v1.0 |
 | [RFC-0020](docs/rfcs/RFC-0020-cost-model.md) | Cost model and unit-cost measurement gate | v0.1 |
 | [RFC-0022](docs/rfcs/RFC-0022-saturating-residual.md) | A saturating residual stream and complete norms (amends RFC-0005, RFC-0006, RFC-0009) | v0.2 |
+| [RFC-0023](docs/rfcs/RFC-0023-norm-precision.md) | The norm's precision: choosing κ per model (amends RFC-0005) | v0.2 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 

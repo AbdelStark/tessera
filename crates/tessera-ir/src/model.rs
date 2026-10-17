@@ -133,7 +133,8 @@ pub struct PublicQuantSpec {
     pub residual_exponent: i8,
     /// The residual stream's width: 20.
     pub residual_bits: u8,
-    /// `κ` of the reciprocal square root: 16.
+    /// `κ` of the reciprocal square root: the largest, at most 31, with `⌊d · 2^{2κ} / e⌋ < 2^64`
+    /// (RFC-0023).
     pub rsqrt_kappa: u8,
     /// `e`, the exact integer form of `d · ε / σ_res^2`, rounded up.
     pub rms_eps_int: u64,

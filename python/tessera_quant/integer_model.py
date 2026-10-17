@@ -122,6 +122,7 @@ class PublicQuantSpec:
     residual_exponent: int
     residual_bits: int
     rsqrt_kappa: int
+    """The precision kappa of the norms' root, as `norm_kappa` chooses it (RFC-0023)."""
     rms_eps_int: int
     """RMSNorm's `ε` in the residual's integer units, rounded up (RFC-0005)."""
     exp_sigma: int
@@ -131,6 +132,27 @@ class PublicQuantSpec:
     """Each rescale site's class shifts `r`, from 1 to 63, at most four."""
     rope: RopeSpec
     logits_bits: int
+
+
+def norm_kappa(d_model: int, rms_eps_int: int) -> int:
+    """The precision kappa of `D`'s norms (RFC-0023).
+
+    The largest kappa, at most 31, with `floor(d * 2^(2 kappa) / e) < 2^64`: the root's range
+    check of RFC-0022 then stays one 32-bit lookup, and the root keeps about
+    `kappa - log2(rms)` bits. 30 at Llama-3.1-8B with a residual scale of `2^-7`.
+
+    Raises:
+        ValueError: for a width outside `[1, 2^32)` or an epsilon term below 1.
+    """
+    if not 1 <= d_model < 1 << 32:
+        raise ValueError("the residual's width lies in [1, 2^32)")
+    if rms_eps_int < 1:
+        raise ValueError("RMSNorm's epsilon term is at least 1")
+    # d < 2^32 and e >= 1 make kappa = 16 fit: d * 2^32 < 2^64.
+    kappa = 31
+    while (d_model << (2 * kappa)) // rms_eps_int >= 1 << 64:
+        kappa -= 1
+    return kappa
 
 
 @dataclass(frozen=True, eq=False)
