@@ -101,7 +101,13 @@ Every constant (`s_e`, `e`, all shifts, `σ_q σ_k / √d_head` as an exact rati
 
 ### Calibration
 
-- **Default calibration set:** 512 sequences of 2,048 tokens drawn with a fixed seed from a pinned revision of the C4 `en` validation split, identified by dataset name, revision and the BLAKE3 digest of the selected documents.
+- **Default calibration set:** 512 sequences of 2,048 tokens drawn with a fixed seed from a pinned revision of the C4 `en` validation split, identified by dataset name, revision and the BLAKE3 digest of the selected documents. The revision is `allenai/c4` at commit `1588ec454efa1a09f29cd18ddd04fe05fc8653a2`, and the documents are the `text` fields of its eight `en/c4-validation.*.json.gz` files, in file and line order.
+- **Draw:** defined exactly, so that a seed, the documents and the tokenizer fix the sequences on any machine and with any library version.
+  - A SplitMix64 stream, seeded with the seed, gives uniform integers by rejection: `uniform(n)` draws `x` and returns `x mod n` once `x < 2^64 − (2^64 mod n)`.
+  - The documents are visited in the order of a Fisher–Yates shuffle of their indices: for `i` from `N − 1` down to 1, swap positions `i` and `uniform(i + 1)`.
+  - A visited document is tokenized without special tokens. One of `t ≥ L − 1` tokens gives a sequence: the beginning-of-text token, then its `L − 1` tokens from position `uniform(t − L + 2)`. Shorter documents are skipped, and no document gives two sequences.
+  - The first 512 sequences form the calibration set and the next 64 the held-out split.
+  - The selection digest is BLAKE3 in key-derivation mode, under the context `tessera-quant 2026-10-17 calibration selection v1`, of the sequence count (u64), then, for each sequence in draw order, the document's index and window start (u64 each), its text's byte length (u64) and UTF-8 bytes, and the sequence's tokens (u32 each), every integer little-endian. Each document's content hash, which the hygiene check compares, is BLAKE3 of its UTF-8 bytes under the context `tessera-quant 2026-10-17 document v1`.
 - **Deployment calibration:** an operator may supply its own set (recommended for bounded mode); it is recorded the same way.
 - **Migration strength:** `α` is chosen from `{0.5, 0.6, 0.7, 0.8}` by minimizing mean KL divergence to the BF16 reference on a 64-sequence split held out from the calibration set. The chosen value is recorded.
 - **Statistics:** activations are captured from a deterministic BF16 forward pass and reduced in float64 on CPU. The statistics file is an artifact with a digest; everything after it is exactly reproducible on any machine.
@@ -137,7 +143,7 @@ If `pot` fails a gate, the compiler switches the worst tensors (ranked by per-te
 
 ### Python packaging
 
-`python/pyproject.toml`: `requires-python = ">=3.11"`; dependencies `torch>=2.4,<3` (deterministic algorithms, `float8` dtypes for FP8 deployment proxies), `safetensors>=0.4` (safe loading), `transformers>=4.45` (Llama-3.1 RoPE scaling and configuration parsing), `numpy>=1.26`, `datasets>=2.20` (pinned revisions). Exact versions are locked in `uv.lock`, which resolves for the supported platforms of [09 §8](../spec/09-release-and-versioning.md#8-supported-platforms). Lint with `ruff`, types with `pyright` in strict mode, tests with `pytest` and `hypothesis`, on Python 3.11 to 3.13.
+`python/pyproject.toml`: `requires-python = ">=3.11"`; dependencies `torch>=2.4,<3` (deterministic algorithms, `float8` dtypes for FP8 deployment proxies), `safetensors>=0.4` (safe loading), `transformers>=4.45` (Llama-3.1 RoPE scaling and configuration parsing), `numpy>=1.26`, `datasets>=2.20` (pinned revisions), `blake3>=1.0` (the calibration set's digests). Exact versions are locked in `uv.lock`, which resolves for the supported platforms of [09 §8](../spec/09-release-and-versioning.md#8-supported-platforms). Lint with `ruff`, types with `pyright` in strict mode, tests with `pytest` and `hypothesis`, on Python 3.11 to 3.13.
 
 PyTorch comes from its own index, through exactly one of two extras:
 

@@ -17,3 +17,13 @@ class ArchitectureError(TesseraQuantError):
     """A checkpoint outside what `ArchSpec` supports, or not the expected one (`ERR-QUANT-ARCH`)."""
 
     code = "ERR-QUANT-ARCH"
+
+
+class CalibrationError(TesseraQuantError):
+    """Calibration that cannot be trusted (`ERR-QUANT-CALIB`).
+
+    Too few usable documents, an overlap with evaluation data, a malformed dataset file, or
+    non-finite or degenerate statistics.
+    """
+
+    code = "ERR-QUANT-CALIB"
