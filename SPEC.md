@@ -75,6 +75,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0032](docs/rfcs/RFC-0032-zero-knowledge-tree-levels.md) | Zero knowledge of the tree levels and the LogUp roots (amends RFC-0008, RFC-0010, RFC-0013, RFC-0014) | v0.4 |
 | [RFC-0033](docs/rfcs/RFC-0033-tree-level-rejections.md) | Rejection reasons for the leaf stage's sumchecks (amends 04, RFC-0010, RFC-0019) | v0.3 |
 | [RFC-0034](docs/rfcs/RFC-0034-causal-blocks.md) | Causal blocks: the score tensors without their masked half (amends RFC-0006, RFC-0011, RFC-0018, RFC-0020, RFC-0030; resolves RISK-11) | v0.3 |
+| [RFC-0035](docs/rfcs/RFC-0035-padded-rows.md) | Padded rows satisfy every row gadget (amends RFC-0009, RFC-0010, RFC-0011, RFC-0014, RFC-0017) | v0.3 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 

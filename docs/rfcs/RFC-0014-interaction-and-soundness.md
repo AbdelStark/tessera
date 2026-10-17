@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3 (protocol), v0.4 (zero-knowledge messages), v1.0 (live transport)
-- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Transcript schedule', rows 4 and 5, and 'Soundness budget', in `tessera-protocol/2`)
+- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Transcript schedule', rows 4 and 5, and 'Soundness budget', in `tessera-protocol/2`), [RFC-0035](RFC-0035-padded-rows.md) ('Transcript schedule', row 6: the zero-check point)
 
 ## Summary
 
@@ -82,7 +82,7 @@ Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{c}`, `{T}` are decimal
 | 3 | live: absorb `seed`; NI: grind `seed-pow`, then squeeze | `seed` |
 | 4 | squeeze `Fp2` × 2, then absorb the fraction trees' roots ([RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree)); in `tessera-protocol/2`, the masked LogUp identity sumcheck in place of the roots ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#the-logup-identity-sumcheck)) | `logup/alpha`, `logup/beta`, `logup/roots`; `tessera-protocol/2`: `logup/identity/zk-sum`, `logup/identity/zk-rho`, `logup/identity/gamma`, `logup/identity/round/{j}`, `logup/identity/r/{j}`, `logup/identity/evals` |
 | 5 | per tree level `ℓ`: squeeze the root point of the forests that join at `ℓ` ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)), squeeze `γ_ℓ`, and `λ_ℓ` at a level with fraction trees, absorb round messages, squeeze challenges, absorb evaluations, squeeze the line challenge; after the last level, absorb the lookup trees' value evaluations | `tree/{ℓ}/root/{c}`, `tree/{ℓ}/gamma`, `tree/{ℓ}/lambda`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line`, `logup/values`; `tessera-protocol/2` adds `tree/{ℓ}/zk-sum` and `tree/{ℓ}/zk-rho`, absorbed and squeezed before `tree/{ℓ}/gamma` ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#masked-tree-levels)) |
-| 6 | per stage `k`: absorb masked sum, squeeze `ρ_k`, squeeze `γ_k`, rounds, final evaluations | `stage/{k}/zk-sum`, `stage/{k}/zk-rho`, `stage/{k}/gamma`, `stage/{k}/round/{j}`, `stage/{k}/r/{j}`, `stage/{k}/evals` |
+| 6 | per stage `k`: absorb masked sum, squeeze `ρ_k`, squeeze the zero-check point if the stage holds a `ZeroCheck` ([RFC-0010](RFC-0010-proof-schedule.md#batching-within-a-stage)), squeeze `γ_k`, rounds, final evaluations | `stage/{k}/zk-sum`, `stage/{k}/zk-rho`, `stage/{k}/zero/{c}`, `stage/{k}/gamma`, `stage/{k}/round/{j}`, `stage/{k}/r/{j}`, `stage/{k}/evals` |
 | 7 | absorb the advice groups' blinding claims, then each weight matrix's; squeeze the opening challenges | `pcs/advice/blinding`, `pcs/weights/{T}/blinding`, `pcs/advice/gamma`, `pcs/advice/xi`, `pcs/weights/{T}/gamma`, `pcs/weights/{T}/xi` |
 | 8 | absorb combined rows | `pcs/advice/combined`, `pcs/weights/{T}/combined` |
 | 9 | absorb scoring claims | `scoring` |

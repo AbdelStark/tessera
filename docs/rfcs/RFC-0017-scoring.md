@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3 (exact, greedy), v0.4 (sampling, bounded mode)
+- Amended by: [RFC-0035](RFC-0035-padded-rows.md) ('In-circuit scoring', constraints 3 and 4: the row selector `ψ`)
 
 ## Summary
 
@@ -68,8 +69,8 @@ Per output token, committed: match bit `m_t`; integer part `I_t ∈ [0, 64)`; fr
 
 1. `m_t ∈ {0, 1}`; if `m_t = 1` then `h_{y_t} = h_{ŷ_t}` (zero-check over the vocabulary of `m_t (h_y − h_ŷ)`).
 2. If `m_t = 1`: `b_t = c_match = ⌈−log2(1 − ε)⌉_8` (a public constant in units of 2^-8 bits). Valid because `q_t(y_t) ≥ 1 − ε`.
-3. If `m_t = 0`: `b_t = k + I_t + f_t / 2^8` with the constraint `(e_{y_t} + 1) · 2^{I_t} · E2[f_t] ≥ (Z + V) · 2^{16}`, where `E2[f] = ⌊2^{f/2^8} · 2^{16}⌋` is a 256-row public table and `2^{I_t}` comes from a 64-row `Pow2` table. Because `E2` rounds down, the check implies `2^{-(b_t)} ≤ ε p̂_t(y_t) ≤ q_t(y_t)`. The products exceed `P`, so the comparison uses `BigIntCompare` ([RFC-0009](RFC-0009-gadgets.md#bigintcompare)).
-4. `b_t = m_t · c_match + (1 − m_t)(k + I_t + f_t/2^8)`, a degree-2 virtual expression.
+3. If `m_t = 0`: `b_t = k + I_t + f_t / 2^8` with the constraint `(e_{y_t} + ψ_t) · 2^{I_t} · E2[f_t] ≥ ψ_t·(Z + V) · 2^{16}`, `ψ_t` the row selector, 1 on a real token and 0 on a padded one ([RFC-0035](RFC-0035-padded-rows.md#the-relations)), where `E2[f] = ⌊2^{f/2^8} · 2^{16}⌋` is a 256-row public table and `2^{I_t}` comes from a 64-row `Pow2` table. Because `E2` rounds down, the check implies `2^{-(b_t)} ≤ ε p̂_t(y_t) ≤ q_t(y_t)`. The products exceed `P`, so the comparison uses `BigIntCompare` ([RFC-0009](RFC-0009-gadgets.md#bigintcompare)).
+4. `b_t = ψ_t · (m_t · c_match + (1 − m_t)(k + I_t + f_t/2^8))`, a virtual expression of degree 3 whose public factor `ψ_t` makes a padded row's `b_t` 0.
 5. Per-request `Û_r = Σ_{t ∈ r} b_t` (fixed point, units of 2^-8 bits) is a public claim; per-token `b_t` values stay hidden.
 
 **One-sided freedom.** The prover chooses `m_t`, `I_t`, `f_t`. Claiming a mismatch when tokens match, or a larger `I_t` or `f_t` than needed, raises `Û`; no choice lowers it below a valid bound. This is the rule of source §6, principle 5.
