@@ -18,7 +18,7 @@ RFC-0005 lets the quantizer rescale a tensor in `affine` mode: each output chann
 
 ## Motivation
 
-[RFC-0005](RFC-0005-integer-model.md#scale-policy) 'Scale policy' keeps `affine` as a per-tensor fallback where `pot` misses a fidelity gate: the compiler switches the worst tensors to it until the gate passes ('Evaluation'). `tessera_quant.quantize` implements it for the Q, K, V, O, up and down projections (#81). It writes:
+[RFC-0005](RFC-0005-integer-model.md#scale-policy) 'Scale policy' keeps `affine` as a per-tensor fallback where `pot` misses a fidelity gate: the compiler switches the worst tensors to it until the gate passes ('Evaluation'). `tessera_quant.scales` implements it for the Q, K, V, O, up and down projections (#81). It writes:
 
 - each affine site as `(point, [r])` in `shift_class_sets`;
 - the multipliers in the hidden `ChannelParams`.

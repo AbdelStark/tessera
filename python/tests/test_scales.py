@@ -2,7 +2,7 @@
 """W8A8 quantization (RFC-0005 'Scale policy', 'Integer semantics').
 
 A tiny Llama-3.1 goes through the pipeline: its BF16 statistics are captured, the migration
-transforms it, and `quantize` gives `D`'s weights and constants, in both profiles.
+transforms it, and `choose` gives `D`'s weights and constants, in both profiles.
 
 - **Weights.** No weight clips, each channel's scale is the least that holds it, a tensor has at
   most four exponents, RoPE pairs share theirs, and the embedding, the LM head and `minimal`'s up
@@ -47,7 +47,7 @@ from tessera_quant.integer_model import (
     norm_kappa,
 )
 from tessera_quant.migration import transform
-from tessera_quant.quantize import Quantized, exponent, quantize
+from tessera_quant.scales import Quantized, choose, exponent
 
 ARCH = TINY_ARCH
 SOURCE = DatasetIdentity(
@@ -119,7 +119,7 @@ def row_exponents(quantized: Quantized, name: str) -> list[int]:
 def pipeline(tmp_path_factory: pytest.TempPathFactory) -> dict[Profile, Any]:
     weights, maxima = migrated(tmp_path_factory.mktemp("quantize"))
     return {
-        profile: (weights, maxima, quantize(ARCH, profile, weights, maxima)) for profile in Profile
+        profile: (weights, maxima, choose(ARCH, profile, weights, maxima)) for profile in Profile
     }
 
 
@@ -179,7 +179,7 @@ def test_a_weight_takes_at_most_four_exponents_and_rope_pairs_share_theirs(
     for k in range(rows.shape[0]):
         rows[k] = rows[k] / rows[k].abs().max() * 2.0 ** (k % 10)
     wide[gate] = rows
-    spread = quantize(ARCH, Profile.Servable, wide, maxima)
+    spread = choose(ARCH, Profile.Servable, wide, maxima)
     assert len({float(x) for x in spread.scales[gate]}) == 4
     assert len(sets(spread)[LayerPoint(0, Site.Silu)]) == 4
 
@@ -307,7 +307,7 @@ def test_score_scales_and_silu_exponents_are_as_fine_as_allowed(
     arch, weights, maxima = synthetic(torch.full((4, 1024), 0.5, dtype=torch.float64))
     for model, d in (
         (quantized, ARCH.d_head),
-        (quantize(arch, Profile.Servable, weights, maxima), 128),
+        (choose(arch, Profile.Servable, weights, maxima), 128),
     ):
         exponents = act(model)
         for layer, scale in model.quant.public.score_scales:
@@ -454,7 +454,7 @@ def test_the_quantized_model_keeps_the_float_models_predictions(
 def test_affine_switches_the_named_weights_only(pipeline: dict[Profile, Any]) -> None:
     weights, maxima, _ = pipeline[Profile.Servable]
     down = "model.layers.0.mlp.down_proj.weight"
-    quantized = quantize(ARCH, Profile.Servable, weights, maxima, affine=[down])
+    quantized = choose(ARCH, Profile.Servable, weights, maxima, affine=[down])
     affine = [c for c in quantized.quant.channels if c.multiplier.size]
     assert [(c.ty, c.layer) for c in affine] == [(WeightType.Down, 0)]
     (params,) = affine
@@ -477,7 +477,7 @@ def test_affine_switches_the_named_weights_only(pipeline: dict[Profile, Any]) ->
     for m, sigma in zip(params.multiplier.tolist(), sigmas, strict=True):
         assert abs(int(m) / 2**r - sigma / 2.0**offset) <= 2.0 ** -(r + 1) * 1.0000001
     # Everything else is as without affine.
-    plain = quantize(ARCH, Profile.Servable, weights, maxima)
+    plain = choose(ARCH, Profile.Servable, weights, maxima)
     for found, before in zip(quantized.weights, plain.weights, strict=True):
         if (found.ty, found.layer) != (WeightType.Down, 0):
             assert (found.data == before.data).all(), (found.ty, found.layer)
@@ -500,7 +500,7 @@ def test_affine_multipliers_fit_16_bits_and_ignore_zero_rows(
     zero[1] = 0
     found: dict[str, tuple[int, torch.Tensor]] = {}
     for case, w in (("top", rows), ("zero", zero)):
-        quantized = quantize(ARCH, Profile.Servable, {**weights, down: w}, maxima, affine=[down])
+        quantized = choose(ARCH, Profile.Servable, {**weights, down: w}, maxima, affine=[down])
         (params,) = [c for c in quantized.quant.channels if c.multiplier.size]
         r = affine_shifts(quantized)[LayerPoint(0, Site.MlpResidual)]
         found[case] = (r, torch.tensor(params.multiplier.astype("int64")))
@@ -516,26 +516,26 @@ def test_affine_multipliers_fit_16_bits_and_ignore_zero_rows(
 def test_affine_refuses_what_cannot_take_it(pipeline: dict[Profile, Any]) -> None:
     weights, maxima, _ = pipeline[Profile.Servable]
     with pytest.raises(TesseraQuantError, match="affine applies to Q, K, V, O, up and down"):
-        quantize(
+        choose(
             ARCH, Profile.Servable, weights, maxima, affine=["model.layers.0.mlp.gate_proj.weight"]
         )
     with pytest.raises(TesseraQuantError, match="lacks"):
-        quantize(
+        choose(
             ARCH, Profile.Servable, weights, maxima, affine=["model.layers.9.mlp.up_proj.weight"]
         )
     weights_m, maxima_m, _ = pipeline[Profile.Minimal]
     with pytest.raises(TesseraQuantError, match="minimal's up projection"):
-        quantize(
+        choose(
             ARCH, Profile.Minimal, weights_m, maxima_m, affine=["model.layers.0.mlp.up_proj.weight"]
         )
     for name in ("self_attn.o_proj", "mlp.down_proj"):
         with pytest.raises(TesseraQuantError, match="minimal's O and down keys exceed 62 bits"):
-            quantize(
+            choose(
                 ARCH, Profile.Minimal, weights_m, maxima_m, affine=[f"model.layers.0.{name}.weight"]
             )
     # The sites minimal keeps after Q, K and V take it.
     names = [f"model.layers.0.self_attn.{n}_proj.weight" for n in "qkv"]
-    quantized = quantize(ARCH, Profile.Minimal, weights_m, maxima_m, affine=names)
+    quantized = choose(ARCH, Profile.Minimal, weights_m, maxima_m, affine=names)
     assert list(affine_shifts(quantized)) == [
         LayerPoint(0, site) for site in (Site.RopeQ, Site.RopeK, Site.V)
     ]
@@ -545,14 +545,14 @@ def test_quantization_is_deterministic_and_refuses_missing_statistics(
     pipeline: dict[Profile, Any],
 ) -> None:
     weights, maxima, quantized = pipeline[Profile.Servable]
-    again = quantize(ARCH, Profile.Servable, weights, maxima)
+    again = choose(ARCH, Profile.Servable, weights, maxima)
     assert again.quant.public == quantized.quant.public
     assert all(
         (x.data == y.data).all() for x, y in zip(again.weights, quantized.weights, strict=True)
     )
     partial = {n: v for n, v in maxima.items() if n != "layers.1.silu"}
     with pytest.raises(CalibrationError, match=r"lack layers\.1\.silu"):
-        quantize(ARCH, Profile.Servable, weights, partial)
+        choose(ARCH, Profile.Servable, weights, partial)
 
 
 def test_each_channels_class_is_its_own_shift(pipeline: dict[Profile, Any]) -> None:
@@ -593,7 +593,7 @@ def test_the_embedding_is_no_finer_than_the_residual(pipeline: dict[Profile, Any
         n: v * 2.0**20 if n.endswith(("attn_input", "mlp_input")) or n == "final.input" else v
         for n, v in maxima.items()
     }
-    quantized = quantize(ARCH, Profile.Servable, weights, large)
+    quantized = choose(ARCH, Profile.Servable, weights, large)
     public = quantized.quant.public
     embed = float(weights["model.embed_tokens.weight"].abs().max())
     assert exponent(embed, 127) < public.residual_exponent
@@ -610,7 +610,7 @@ def test_the_residual_holds_every_tokens_embedding(pipeline: dict[Profile, Any])
     weights, maxima, _ = pipeline[Profile.Servable]
     embed = weights["model.embed_tokens.weight"].clone()
     embed[ARCH.vocab - 1] *= 2.0**12
-    quantized = quantize(
+    quantized = choose(
         ARCH, Profile.Servable, {**weights, "model.embed_tokens.weight": embed}, maxima
     )
     public = quantized.quant.public
@@ -648,7 +648,7 @@ def test_silu_takes_the_finest_input_exponent_its_core_allows() -> None:
     # Gate rows of one exponent: the floor r = 1 gives a core of exactly 2^24, which fits.
     rows = torch.full((4, 1024), 0.5, dtype=torch.float64)
     arch, weights, maxima = synthetic(rows)
-    quantized = quantize(arch, Profile.Servable, weights, maxima)
+    quantized = choose(arch, Profile.Servable, weights, maxima)
     ((_, in_exp),) = quantized.quant.silu_in_exponents
     assert sets(quantized)[LayerPoint(0, Site.Silu)] == [1]
     y2 = act(quantized)[LayerPoint(0, Site.MlpNorm)]
@@ -659,7 +659,7 @@ def test_silu_takes_the_finest_input_exponent_its_core_allows() -> None:
     # Two exponents: the floor's shifts 1 and 2 give 2^24 + 2^23 values, so h coarsens by a bit.
     rows[2:] *= 2
     arch, weights, maxima = synthetic(rows)
-    quantized = quantize(arch, Profile.Servable, weights, maxima)
+    quantized = choose(arch, Profile.Servable, weights, maxima)
     assert sets(quantized)[LayerPoint(0, Site.Silu)] == [2, 3]
 
 
@@ -668,5 +668,5 @@ def test_the_epsilon_term_rounds_up_only_what_is_not_whole(pipeline: dict[Profil
     weights, maxima, quantized = pipeline[Profile.Servable]
     e_res = quantized.quant.public.residual_exponent
     exact = replace(ARCH, rms_eps=Fraction(1, 1 << 20))
-    term = quantize(exact, Profile.Servable, weights, maxima).quant.public.rms_eps_int
+    term = choose(exact, Profile.Servable, weights, maxima).quant.public.rms_eps_int
     assert term == ARCH.d_model * Fraction(1, 1 << 20) * Fraction(4) ** -e_res

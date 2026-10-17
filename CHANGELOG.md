@@ -400,6 +400,24 @@ All notable changes to the prover release train are recorded here: the crates un
     - lowerings of one token and of the whole context give the same claim list;
     - it decodes from its encoding and from its envelope to itself.
 
+- `D`'s assembly and export in `tessera_quant` (RFC-0005 'Pipeline', steps 4 to 6; 02 §4; [#86](https://github.com/AbdelStark/tessera/issues/86)):
+  - `calibrate(model, calibration)` returns a `CalibrationResult`, the calibration set and its statistics. `tessera_quant.capture.write_calibration` writes them as before: the secret statistics file and its `tessera.calibration/1` report.
+  - `quantize(model, calib, profile=..., scales=...)` chooses the migration strength among RFC-0005's `{1/2, 3/5, 7/10, 4/5}`. It keeps the one whose `D` diverges least from the BF16 reference on the held-out split, the smallest of equal ones. `D` runs through the integer reference, and its logits are taken at their real scale. It then assembles `D` with its `Provenance`:
+    - each checkpoint file's BLAKE3, sorted by name;
+    - the calibration's identity;
+    - the statistics digest;
+    - the strength chosen;
+    - the versions of Python, torch, transformers, safetensors, NumPy, datasets and BLAKE3.
+  - `export(d, path)` writes the artifact as a secret file and returns its digest.
+  - `affine` scales are refused until the reference computes affine sites ([#301](https://github.com/AbdelStark/tessera/issues/301)).
+  - The module that chooses scales and shifts is now `tessera_quant.scales`, its function `choose`, so that the top-level `quantize` of 02 §4 does not collide with it. 02 §4 gives the interface as built.
+  - The tests on a tiny Llama:
+    - each candidate's divergence is computed independently, and `quantize` keeps the least divergent candidate's `D`, byte for byte;
+    - every provenance field is what it names, and the profile asked for is `D`'s;
+    - two runs give the same bytes, the export reads back, and no float reaches `D`;
+    - each refusal is tested.
+  - Each of 11 bugs planted in the assembly fails a test, and a no-op control survives.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

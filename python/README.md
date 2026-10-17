@@ -23,6 +23,19 @@ model = import_checkpoint(Path("Llama-3.1-8B"))
 q = model.tensor("model.layers.0.self_attn.q_proj.weight")  # BF16, read on demand
 ```
 
+From a checkpoint and a calibration set to the artifact `D` (RFC-0005 'Pipeline'):
+
+```python
+from tessera_quant import calibrate, export, quantize
+from tessera_quant.calibration import fetch_c4_validation, draw
+
+source, documents = fetch_c4_validation()
+calibration = draw(documents, tokenize, bos, source=source, seed=0)  # 512 sequences, 64 held out
+calib = calibrate(model, calibration, device="cuda")  # the per-channel maxima, secret
+d = quantize(model, calib)  # chooses the migration strength on the held-out split
+digest = export(d, Path("llama-3.1-8b.d"))  # a secret file, mode 0600
+```
+
 The front-end and the Rust tools exchange TCE artifacts only ([RFC-0003](../docs/rfcs/RFC-0003-canonical-encoding.md)). `tessera_quant.tce` writes them as secret files, streamed and renamed into place, and reads them mapped, digest first:
 
 ```python
