@@ -247,6 +247,10 @@ All notable changes to the prover release train are recorded here: the crates un
   - `tessera_quant.calibration.draw` draws 512 sequences of 2,048 tokens and a held-out split of 64 from a seed, the documents and a tokenizer. The draw is exact, through SplitMix64, rejection-sampled integers and a Fisher–Yates order, so the same inputs give the same sequences on any machine and with any library version. RFC-0005 now states it.
   - A BLAKE3 selection digest identifies the sequences, and a content hash identifies each document. `check_disjoint` refuses an evaluation set that shares a document with `ERR-QUANT-CALIB`.
   - `fetch_c4_validation` reads C4's `en` validation split at the pinned revision `1588ec45`. `blake3` joins the package's dependencies.
+- Calibration statistics in `tessera-quant` (RFC-0005 'Calibration', 'Determinism'), the second part of #73:
+  - `tessera_quant.capture.calibrate` runs each calibration sequence alone through Hugging Face's Llama in BF16, with deterministic algorithms. It records every quantization point's per-channel absolute maxima in float64. The model is built from the checked checkpoint's safetensors files, never through `from_pretrained`, which would unpickle a `.bin` file. Its output equals Hugging Face's own loader's bit for bit.
+  - The statistics go to a secret artifact, a safetensors file written with mode 0600 through an atomic rename. A `tessera.calibration/1` report, with its schema in `spec/schemas/` and an example under `docs/perf/examples/`, names them by digest and shape only.
+  - A non-finite or all-zero point raises `ERR-QUANT-CALIB`.
 
 ### Changed
 

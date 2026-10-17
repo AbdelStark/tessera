@@ -1,0 +1,148 @@
+{
+  "schema": "tessera.calibration/1",
+  "tessera_quant": "0.1.0",
+  "architecture": {
+    "family": "LlamaV3",
+    "layers": 2,
+    "d_model": 32,
+    "d_ff": 64,
+    "heads": 4,
+    "kv_heads": 2,
+    "d_head": 8,
+    "vocab": 64
+  },
+  "dataset": {
+    "name": "fixture",
+    "config": "en",
+    "split": "validation",
+    "revision": "0000000000000000000000000000000000000000",
+    "files": [
+      "fixture"
+    ]
+  },
+  "seed": 11,
+  "sequences": 3,
+  "held_out": 0,
+  "tokens_per_sequence": 12,
+  "selection_digest": "a8691897b2011fcb93210c7aa27e719f41e7bc1d3dd5ad8295859f7409ddd576",
+  "statistics_digest": "a14d4c6e4dbdcc1bc091b29b14c22b79634ef0a92b67c45f406ea9a9ad983ec2",
+  "points": [
+    {
+      "name": "layers.0.attn_input",
+      "channels": 32
+    },
+    {
+      "name": "layers.0.attn_norm",
+      "channels": 32
+    },
+    {
+      "name": "layers.0.q",
+      "channels": 32
+    },
+    {
+      "name": "layers.0.k",
+      "channels": 16
+    },
+    {
+      "name": "layers.0.v",
+      "channels": 16
+    },
+    {
+      "name": "layers.0.attn_out",
+      "channels": 32
+    },
+    {
+      "name": "layers.0.mlp_input",
+      "channels": 32
+    },
+    {
+      "name": "layers.0.mlp_norm",
+      "channels": 32
+    },
+    {
+      "name": "layers.0.gate",
+      "channels": 64
+    },
+    {
+      "name": "layers.0.up",
+      "channels": 64
+    },
+    {
+      "name": "layers.0.silu",
+      "channels": 64
+    },
+    {
+      "name": "layers.0.h",
+      "channels": 64
+    },
+    {
+      "name": "layers.1.attn_input",
+      "channels": 32
+    },
+    {
+      "name": "layers.1.attn_norm",
+      "channels": 32
+    },
+    {
+      "name": "layers.1.q",
+      "channels": 32
+    },
+    {
+      "name": "layers.1.k",
+      "channels": 16
+    },
+    {
+      "name": "layers.1.v",
+      "channels": 16
+    },
+    {
+      "name": "layers.1.attn_out",
+      "channels": 32
+    },
+    {
+      "name": "layers.1.mlp_input",
+      "channels": 32
+    },
+    {
+      "name": "layers.1.mlp_norm",
+      "channels": 32
+    },
+    {
+      "name": "layers.1.gate",
+      "channels": 64
+    },
+    {
+      "name": "layers.1.up",
+      "channels": 64
+    },
+    {
+      "name": "layers.1.silu",
+      "channels": 64
+    },
+    {
+      "name": "layers.1.h",
+      "channels": 64
+    },
+    {
+      "name": "final.input",
+      "channels": 32
+    },
+    {
+      "name": "final.norm",
+      "channels": 32
+    }
+  ],
+  "environment": {
+    "device": "cpu",
+    "batch_size": 1,
+    "deterministic_algorithms": true,
+    "python": "3.13.11",
+    "libraries": {
+      "torch": "2.14.1",
+      "transformers": "5.20.1",
+      "safetensors": "0.8.0",
+      "numpy": "2.5.4",
+      "blake3": "1.0.11"
+    }
+  }
+}

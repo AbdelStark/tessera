@@ -5,7 +5,9 @@ RFC-0005 specifies `D`, its quantization and its calibration. `import_checkpoint
 checkpoint, untrusted input, from safetensors files only and checks it against `ArchSpec`
 (RFC-0005 'Pipeline', step 1). `tessera_quant.calibration` draws the calibration set exactly
 from a seed and a pinned dataset, and checks evaluation data disjoint from it (RFC-0005
-'Calibration'). Quantization follows.
+'Calibration'). `tessera_quant.capture` runs the calibration set through the BF16 reference
+and keeps each quantization point's per-channel maxima in a secret statistics file, with a
+`tessera.calibration/1` report beside it. Quantization follows.
 """
 
 from importlib.metadata import version

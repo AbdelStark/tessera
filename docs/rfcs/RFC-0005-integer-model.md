@@ -111,6 +111,11 @@ Every constant (`s_e`, `e`, all shifts, `σ_q σ_k / √d_head` as an exact rati
 - **Deployment calibration:** an operator may supply its own set (recommended for bounded mode); it is recorded the same way.
 - **Migration strength:** `α` is chosen from `{0.5, 0.6, 0.7, 0.8}` by minimizing mean KL divergence to the BF16 reference on a 64-sequence split held out from the calibration set. The chosen value is recorded.
 - **Statistics:** activations are captured from a deterministic BF16 forward pass and reduced in float64 on CPU. The statistics file is an artifact with a digest; everything after it is exactly reproducible on any machine.
+  - The BF16 reference is Hugging Face's Llama implementation. It is built from the checked checkpoint's configuration and safetensors files, never through `from_pretrained`, which would unpickle a `.bin` file. Each calibration sequence runs alone.
+  - Every quantization point records each channel's absolute maximum: the residual stream entering each norm, each norm's output before its gain, the queries and keys after RoPE, the values, the attention output, the gate and up projections, SiLU of the gate and its product with the up projection, and the final norm's input and output.
+  - The file is a safetensors file of these float64 vectors with one metadata entry of canonical JSON. Its digest is BLAKE3 under the context `tessera-quant 2026-10-17 calibration statistics v1`.
+  - The statistics follow from the weights, so the file is a secret artifact ([06 §7](../spec/06-security.md#7-secrets-handling)). The `tessera.calibration/1` report names it by digest and shape only.
+  - A non-finite maximum, or a point whose channels are all zero, raises `ERR-QUANT-CALIB`.
 
 ### Determinism
 
