@@ -539,6 +539,11 @@ All notable changes to the prover release train are recorded here: the crates un
 - `tessera_quant.RopeSpec` takes the integer fields of 03 §2, in place of fractions: `theta`, `factor`, `low_freq_factor`, `high_freq_factor`, `original_max` and `bits`. `ArchSpec.family` is the enum `ArchFamily`. `read_config` refuses, with `ERR-QUANT-ARCH`, a RoPE parameter that is not an integer of its field's width, and a size of 2^32 or more ([#74](https://github.com/AbdelStark/tessera/issues/74)).
 - The minimum supported Rust version is 1.88, up from 1.85 (09 §2): the field needs `core::hint::select_unpredictable`. The `msrv` CI job, renamed from `msrv (1.85)`, checks both workspaces with 1.88.0 ([#242](https://github.com/AbdelStark/tessera/issues/242)).
 
+- The proximity test's field term carries its tensor generator's factor ([#254](https://github.com/AbdelStark/tessera/issues/254)):
+  - **The correction.** RFC-0011 draws the proximity coefficients as `eq(ξ*, row)`, a tensor over the row index's `ϑ` bits, so the false-witness probability is `ϑ·n/|Fp2|` (Diamond–Posen; Diamond–Gruen, Theorems 2 and 3), not the `n/|Fp2|` of independent coefficients.
+  - **At 405B.** The term is about `2^{−100.6}` for advice (`ϑ` up to 21) and at most `2^{−101.8}` per weight matrix (`ϑ_T` up to 18). `live-64` keeps about 100 bits one shot, `ni-100` about 120 with the seed's grinding: no parameter changes.
+  - **Where it lands.** RFC-0011's soundness and RFC-0014's budget carry the term. RFC-0012 names the weights' generator, `eq(ξ*_T, row)` under `pcs/weights/{T}/xi`. The calculators take each commitment's `ϑ`, and RFC-0014's Johnson-bound alternative notes that no list-decoding bound is known for this generator.
+
 ### Removed
 
 - The `TableSetManifest` artifact (schema `0x0203`, `.tts`), which three documents named and none defined (RFC-0029, accepted, [#316](https://github.com/AbdelStark/tessera/issues/316)):

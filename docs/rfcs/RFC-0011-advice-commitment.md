@@ -93,7 +93,7 @@ After the last stage (RFC-0010):
 
    A failure of 1 or 2 is `Reject(MerklePath)` at the smallest queried index: a multiproof fails as a whole, never at one column. A failure of 3 is `Reject(Proximity)` at the first `j` that fails.
 
-Soundness: if the committed rows are `δ`-far from the code for `δ < (1 − ρ)/2`, the proximity check passes with probability at most `(1 − δ)^{τ_A} + n/|Fp2|`; otherwise each row decodes uniquely and the evaluation checks bind every claim to the decoded rows (Ligero, Brakedown). The bound takes the `τ_A` draws to be independent, which drawing with replacement makes them. Each draw lands outside the agreeing columns with probability at least `δ`, whether or not it repeats an earlier one, so checking a repeated column once loses nothing. Conservatively each query gives `−log2((1 + ρ)/2) ≈ 0.415` bits ([RFC-0014](RFC-0014-interaction-and-soundness.md#parameter-sets)).
+Soundness: if the committed rows are `δ`-far from the code for `δ < (1 − ρ)/2`, the proximity check passes with probability at most `(1 − δ)^{τ_A} + ϑ·n/|Fp2|`, where `ϑ = ν − log2 k` is the row index's bits. The coefficients of step 3 are a tensor, `eq(ξ*, row)`, whose `ϑ` coordinates each cost one line proximity gap (Diamond–Posen; Diamond–Gruen, Theorems 2 and 3; [RFC-0014](RFC-0014-interaction-and-soundness.md#soundness-budget)); otherwise each row decodes uniquely and the evaluation checks bind every claim to the decoded rows (Ligero, Brakedown). The bound takes the `τ_A` draws to be independent, which drawing with replacement makes them. Each draw lands outside the agreeing columns with probability at least `δ`, whether or not it repeats an earlier one, so checking a repeated column once loses nothing. Conservatively each query gives `−log2((1 + ρ)/2) ≈ 0.415` bits ([RFC-0014](RFC-0014-interaction-and-soundness.md#parameter-sets)).
 
 ### Sizes at the default parameters (16K tokens, 16K context, 405B)
 
@@ -163,3 +163,5 @@ None.
 - Ames, Hazay, Ishai, Venkitasubramaniam, "Ligero", CCS 2017.
 - Golovnev, Lee, Setty, Thaler, Wahby, "Brakedown", CRYPTO 2023.
 - Ben-Sasson, Carmon, Ishai, Kopparty, Saraf, "Proximity gaps for Reed–Solomon codes", FOCS 2020.
+- Diamond, Posen, "Proximity Testing with Logarithmic Randomness", ePrint 2023/630, 2024.
+- Diamond, Gruen, "Proximity Gaps in Interleaved Codes", ePrint 2024/1351, 2025.
