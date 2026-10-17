@@ -107,7 +107,8 @@
               "weight_pass",
               "native_rate",
               "streaming_pass",
-              "column_answer"
+              "column_answer",
+              "row_combination"
             ]
           },
           "normalization": {
@@ -214,6 +215,8 @@
               "regen",
               "streaming",
               "column_answers",
+              "row_combination",
+              "tables",
               "total"
             ],
             "additionalProperties": false,
@@ -239,6 +242,16 @@
                 "minimum": 0
               },
               "column_answers": {
+                "type": "number",
+                "minimum": 0
+              },
+              "row_combination": {
+                "description": "The opening pass's combination of every committed element into the combined rows (RFC-0018 P4).",
+                "type": "number",
+                "minimum": 0
+              },
+              "tables": {
+                "description": "The table side of LogUp: each row's multiplicity and fraction-tree leaf, shared by the batch's tokens.",
                 "type": "number",
                 "minimum": 0
               },

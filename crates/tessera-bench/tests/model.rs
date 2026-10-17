@@ -4,9 +4,10 @@
 //! every count of proof work, and with the native rate it is measured against, and falls with
 //! native work, each input moving the terms it enters and no other; the streaming term is zero
 //! while a batch's leaves fit in memory and steps up one pass per doubling of them beyond it;
-//! the column answers price every committed element; each table row costs what a token's
-//! committed lookup costs, once per batch; the corrected projections the documents quote are the
-//! model's; and an input the model cannot price is refused, never turned into a number.
+//! the column answers and the row combination price every committed element; each table row
+//! costs what a token's committed lookup costs, once per batch; the corrected projections the
+//! documents quote are the model's; and an input the model cannot price is refused, never turned
+//! into a number.
 
 use tessera_bench::{
     Counts, MemoryModel, ModelError, ModelReport, MuBreakdown, Problem, Scenario, UnitCosts,
@@ -14,8 +15,8 @@ use tessera_bench::{
 };
 
 /// The source's model with streamed passes priced at RFC-0018's 7 ps per score, column answers
-/// at 15 ps per committed element, five regenerations and 2 · 10^10 table rows, so that every
-/// term is positive.
+/// at 15 ps and the row combination at 2 ps per committed element, five regenerations and
+/// 2 · 10^10 table rows, so that every term is positive.
 fn every_term() -> (Counts, UnitCosts, MemoryModel) {
     let counts = Counts {
         regen_full_equivalents: 5.0,
@@ -25,6 +26,7 @@ fn every_term() -> (Counts, UnitCosts, MemoryModel) {
     let costs = UnitCosts {
         streaming_pass_ps: 7.0,
         column_answer_ps: 15.0,
+        row_combination_ps: 2.0,
         ..UnitCosts::SOURCE
     };
     (counts, costs, MemoryModel::NODE_405B)
@@ -33,7 +35,7 @@ fn every_term() -> (Counts, UnitCosts, MemoryModel) {
 const CONTEXTS: [u32; 3] = [1024, 16_384, 131_072];
 const BATCH: u32 = Scenario::SOURCE.batch_tokens;
 
-fn terms(m: &MuBreakdown) -> [f64; 7] {
+fn terms(m: &MuBreakdown) -> [f64; 8] {
     [
         m.linear,
         m.attention,
@@ -41,6 +43,7 @@ fn terms(m: &MuBreakdown) -> [f64; 7] {
         m.regen,
         m.streaming,
         m.column_answers,
+        m.row_combination,
         m.tables,
     ]
 }
@@ -53,7 +56,7 @@ enum Move {
     Same,
 }
 
-fn moves(before: &MuBreakdown, after: &MuBreakdown) -> [Move; 7] {
+fn moves(before: &MuBreakdown, after: &MuBreakdown) -> [Move; 8] {
     let (b, a) = (terms(before), terms(after));
     core::array::from_fn(|t| match a[t].partial_cmp(&b[t]) {
         Some(core::cmp::Ordering::Greater) => Move::Up,
@@ -67,84 +70,89 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
     use Move::{Down, Same, Up};
     let (counts, costs, memory) = every_term();
     // Each input raised by half, with the terms it must move: linear, attention, weights, regen,
-    // streaming, column answers, tables, in that order.
-    type Raise = (&'static str, fn(&mut Counts, &mut UnitCosts), [Move; 7]);
-    let raises: [Raise; 15] = [
+    // streaming, column answers, row combination, tables, in that order.
+    type Raise = (&'static str, fn(&mut Counts, &mut UnitCosts), [Move; 8]);
+    let raises: [Raise; 16] = [
         (
             "commit_ps",
             |_, u| u.commit_ps *= 1.5,
-            [Up, Up, Same, Same, Same, Same, Up],
+            [Up, Up, Same, Same, Same, Same, Same, Up],
         ),
         (
             "lookup_ps",
             |_, u| u.lookup_ps *= 1.5,
-            [Up, Up, Same, Same, Same, Same, Up],
+            [Up, Up, Same, Same, Same, Same, Same, Up],
         ),
         (
             "product_leaf_ps",
             |_, u| u.product_leaf_ps *= 1.5,
-            [Same, Up, Same, Same, Same, Same, Same],
+            [Same, Up, Same, Same, Same, Same, Same, Same],
         ),
         (
             "glue_fraction",
             |_, u| u.glue_fraction *= 1.5,
-            [Up, Up, Same, Same, Same, Same, Up],
+            [Up, Up, Same, Same, Same, Same, Same, Up],
         ),
         (
             "weight_pass_gpu_s",
             |_, u| u.weight_pass_gpu_s *= 1.5,
-            [Same, Same, Up, Same, Same, Same, Same],
+            [Same, Same, Up, Same, Same, Same, Same, Same],
         ),
         (
             "streaming_pass_ps",
             |_, u| u.streaming_pass_ps *= 1.5,
-            [Same, Same, Same, Same, Up, Same, Same],
+            [Same, Same, Same, Same, Up, Same, Same, Same],
         ),
         (
             "column_answer_ps",
             |_, u| u.column_answer_ps *= 1.5,
-            [Same, Same, Same, Same, Same, Up, Same],
+            [Same, Same, Same, Same, Same, Up, Same, Same],
+        ),
+        (
+            "row_combination_ps",
+            |_, u| u.row_combination_ps *= 1.5,
+            [Same, Same, Same, Same, Same, Same, Up, Same],
         ),
         // A faster native path makes the same proof a larger multiple of it.
         (
             "native_ops_per_s",
             |_, u| u.native_ops_per_s *= 1.5,
-            [Up, Up, Up, Same, Up, Up, Up],
+            [Up, Up, Up, Same, Up, Up, Up, Up],
         ),
         (
             "commits_per_token",
             |c, _| c.commits_per_token *= 1.5,
-            [Up, Same, Same, Same, Same, Up, Same],
+            [Up, Same, Same, Same, Same, Up, Up, Same],
         ),
         (
             "lookups_per_token",
             |c, _| c.lookups_per_token *= 1.5,
-            [Up, Same, Same, Same, Same, Same, Same],
+            [Up, Same, Same, Same, Same, Same, Same, Same],
         ),
         (
             "scores_per_token_per_ctx",
             |c, _| c.scores_per_token_per_ctx *= 1.5,
-            [Same, Up, Same, Same, Up, Up, Same],
+            [Same, Up, Same, Same, Up, Up, Up, Same],
         ),
         (
             "native_ops_lin",
             |c, _| c.native_ops_lin *= 1.5,
-            [Down, Down, Down, Same, Down, Down, Down],
+            [Down, Down, Down, Same, Down, Down, Down, Down],
         ),
         (
             "native_ops_att_per_ctx",
             |c, _| c.native_ops_att_per_ctx *= 1.5,
-            [Down, Down, Down, Same, Down, Down, Down],
+            [Down, Down, Down, Same, Down, Down, Down, Down],
         ),
         (
             "regen_full_equivalents",
             |c, _| c.regen_full_equivalents *= 1.5,
-            [Same, Same, Same, Up, Same, Same, Same],
+            [Same, Same, Same, Up, Same, Same, Same, Same],
         ),
         (
             "table_rows",
             |c, _| c.table_rows *= 1.5,
-            [Same, Same, Same, Same, Same, Same, Up],
+            [Same, Same, Same, Same, Same, Same, Same, Up],
         ),
     ];
     for (name, raise, expected) in raises {
@@ -251,26 +259,48 @@ fn the_streaming_term_steps_one_pass_per_doubling_of_the_leaves() {
 }
 
 /// The column answers evaluate every element the witness pass commits, `C` per token in the
-/// linear layers and one per score, and nothing else: priced at the commitment's cost, with
-/// lookups, product leaves and glue free, they cost exactly what committing does.
+/// linear layers and one per score, and nothing else; so does the row combination, which folds
+/// each into the opening's combined rows. Priced at the commitment's cost, with lookups,
+/// product leaves and glue free, each costs exactly what committing does.
 #[test]
-fn the_column_answers_price_every_committed_element() {
+fn the_column_answers_and_the_row_combination_price_every_committed_element() {
     let (counts, _, memory) = every_term();
-    let costs = UnitCosts {
+    let free = UnitCosts {
         lookup_ps: 0.0,
         product_leaf_ps: 0.0,
         glue_fraction: 0.0,
-        column_answer_ps: UnitCosts::SOURCE.commit_ps,
         ..UnitCosts::SOURCE
     };
-    for context in CONTEXTS {
-        let m = mu(&counts, &costs, &memory, context, BATCH).expect("a projection");
-        let committing = m.linear + m.attention;
-        assert!(
-            (m.column_answers - committing).abs() <= 1e-12 * committing,
-            "at {context}: {} against {committing}",
-            m.column_answers
-        );
+    // A term's name, the unit costs that price it at c_c, and the term.
+    type Priced = (&'static str, UnitCosts, fn(&MuBreakdown) -> f64);
+    let priced: [Priced; 2] = [
+        (
+            "column answers",
+            UnitCosts {
+                column_answer_ps: UnitCosts::SOURCE.commit_ps,
+                ..free
+            },
+            |m| m.column_answers,
+        ),
+        (
+            "row combination",
+            UnitCosts {
+                row_combination_ps: UnitCosts::SOURCE.commit_ps,
+                ..free
+            },
+            |m| m.row_combination,
+        ),
+    ];
+    for (name, costs, term) in priced {
+        for context in CONTEXTS {
+            let m = mu(&counts, &costs, &memory, context, BATCH).expect("a projection");
+            let committing = m.linear + m.attention;
+            assert!(
+                (term(&m) - committing).abs() <= 1e-12 * committing,
+                "{name} at {context}: {} against {committing}",
+                term(&m)
+            );
+        }
     }
 }
 
@@ -371,6 +401,17 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
     let per_ps = |context| at(&corrected, context, 1.0, 0.0).column_answers;
     quoted("1K per ps of c_a", per_ps(k1), 0.064, 3);
     quoted("16K per ps of c_a", per_ps(k16), 0.23, 2);
+    // 08 §3: a picosecond of the row combination costs what one of the column answers does,
+    // since both price every committed element.
+    for context in [k1, k16] {
+        let costs = UnitCosts {
+            row_combination_ps: 1.0,
+            ..UnitCosts::SOURCE
+        };
+        let m =
+            mu(&corrected, &costs, &MemoryModel::NODE_405B, context, BATCH).expect("a projection");
+        assert_eq!(m.row_combination, per_ps(context), "at {context}");
+    }
     let (full1, full16) = (
         at(&corrected, k1, 30.0, 0.0),
         at(&corrected, k16, 30.0, 0.0),
@@ -597,6 +638,7 @@ fn the_report_states_each_input_and_term_under_its_own_name() {
         ("native_ops_per_s", costs.native_ops_per_s),
         ("streaming_pass_ps", costs.streaming_pass_ps),
         ("column_answer_ps", costs.column_answer_ps),
+        ("row_combination_ps", costs.row_combination_ps),
     ] {
         states(&json["inputs"]["unit_costs"], key, value);
     }
@@ -609,6 +651,7 @@ fn the_report_states_each_input_and_term_under_its_own_name() {
             ("regen", p.mu.regen),
             ("streaming", p.mu.streaming),
             ("column_answers", p.mu.column_answers),
+            ("row_combination", p.mu.row_combination),
             ("tables", p.mu.tables),
             ("total", p.mu.total),
         ] {
@@ -650,6 +693,10 @@ fn inputs_the_model_cannot_price_are_refused() {
     assert_eq!(
         with_costs(|u| u.column_answer_ps = -1.0),
         refused("column_answer_ps", Problem::Negative)
+    );
+    assert_eq!(
+        with_costs(|u| u.row_combination_ps = f64::NAN),
+        refused("row_combination_ps", Problem::NotFinite)
     );
     let with_counts = |change: fn(&mut Counts), context: u32| {
         let mut c = counts;

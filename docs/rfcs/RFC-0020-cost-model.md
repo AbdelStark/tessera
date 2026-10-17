@@ -35,7 +35,8 @@ Every performance number in the source and in this corpus is a projection from a
 pub struct UnitCosts { pub commit_ps: f64, pub lookup_ps: f64, pub product_leaf_ps: f64,
                        pub glue_fraction: f64, pub weight_pass_gpu_s: f64, pub native_ops_per_s: f64,
                        pub streaming_pass_ps: f64,                       // per score per streamed pass
-                       pub column_answer_ps: f64 }                       // per committed element, P5
+                       pub column_answer_ps: f64,                        // per committed element, P5
+                       pub row_combination_ps: f64 }                     // per committed element, P4
 pub struct Counts {                       // from the compiler's CommitmentReport
     pub commits_per_token: f64, pub lookups_per_token: f64,          // linear layers
     pub scores_per_token_per_ctx: f64,                               // A = heads × layers / 2
@@ -47,14 +48,16 @@ pub struct MemoryModel { pub free_bytes: f64, pub bytes_per_leaf: f64 }  // RISK
 pub fn mu(counts: &Counts, u: &UnitCosts, mem: &MemoryModel, context: u32, batch_tokens: u32)
     -> Result<MuBreakdown, ModelError>;
 pub struct MuBreakdown { pub linear: f64, pub attention: f64, pub weights: f64, pub regen: f64,
-                         pub streaming: f64, pub column_answers: f64, pub tables: f64,
+                         pub streaming: f64, pub column_answers: f64, pub row_combination: f64,
+                         pub tables: f64,
                          pub total: f64 }
 ```
 
-`μ` follows [08 §1](../spec/08-performance-budget.md#1-cost-model): the source's formula plus `n_regen` and three more terms:
+`μ` follows [08 §1](../spec/08-performance-budget.md#1-cost-model): the source's formula plus `n_regen` and four more terms:
 
 - a streaming term `c(S) · streaming_pass_ps · A · S / native`, where `c(S) = max(0, ⌈log2(N_level(S) · bytes_per_leaf / free_bytes)⌉)` and `N_level(S) = A · S · batch_tokens` is the batch's attention leaves ([RFC-0018 'Leaf levels'](RFC-0018-gpu-prover-runtime.md#pass-structure)). This counts the attention trees' leaf level alone; [#329](https://github.com/AbdelStark/tessera/issues/329) covers the rest of the leaf stage;
 - a column-answer term `(C + A · S) · column_answer_ps / native`, P5's evaluation of every committed element at the queried columns ([RFC-0018 'Column answers'](RFC-0018-gpu-prover-runtime.md#pass-structure)). A token commits `C` elements in its linear layers and one per score. P5 runs no sumcheck, so the term carries no glue.
+- a row-combination term `(C + A · S) · row_combination_ps / native`: P4's combination of every committed element into the opening's combined rows ([RFC-0018 'Opening pass'](RFC-0018-gpu-prover-runtime.md#pass-structure)). It carries no glue either.
 - a table term `(1 + glue) · M · (c_c + c_ℓ) / batch_tokens / native`. A proof commits one multiplicity per table row and builds the table's fraction tree over every row, however few lookups the table serves ([RFC-0008](RFC-0008-logup-and-tables.md)). Each of the `M` rows therefore costs one committed element and one tree leaf, priced as a lookup, once per proof. `M` is the commitment report's multiplicities ([#304](https://github.com/AbdelStark/tessera/issues/304)).
 
 The weight column answers have no term. The prover reads them from its store of the epoch's codewords, overlapped with P5 ([RFC-0012 'Column answers'](RFC-0012-weight-commitment.md#column-answers)). A prover without the store evaluates them, about 1.3 GPU-s per 405B proof unit at `live-64`, which belongs in `weight_pass_gpu_s`.
@@ -63,7 +66,7 @@ Floating-point is acceptable here: the model is a planning tool, not part of the
 
 `tessera bench model --plan plan.tep --context S` reads counts from the commitment report; with `--source-defaults` it uses the source's counts and unit costs. Outputs: `MuBreakdown` per context, proof time per request on `G` GPUs, sampling rate for a target amortized overhead, and daily detection probability for a given violation count (as in [RFC-0016](RFC-0016-audit-sampling.md#calculators)).
 
-**Golden test.** With source defaults, `regen_full_equivalents = 0`, no streaming, no column answers and no table rows, the model reproduces the source's §5 chart data and §8 table: `μ` at 1K, 2K, 4K, 8K, 16K, 32K, 64K and 128K within ±0.05, and the sampling and detection columns within ±0.1 percentage point, computed from that table's `μ` column, which the source rounds to one decimal. [`spec/vectors/cost-model/`](../../spec/vectors/cost-model/README.md) records each figure with its line and each input with its provenance: `F_lin`, which the source writes as 8.1×10^11, is two operations per parameter, 2 × 405,853,388,800.
+**Golden test.** With source defaults, `regen_full_equivalents = 0`, no streaming, no column answers, no row combination and no table rows, the model reproduces the source's §5 chart data and §8 table: `μ` at 1K, 2K, 4K, 8K, 16K, 32K, 64K and 128K within ±0.05, and the sampling and detection columns within ±0.1 percentage point, computed from that table's `μ` column, which the source rounds to one decimal. [`spec/vectors/cost-model/`](../../spec/vectors/cost-model/README.md) records each figure with its line and each input with its provenance: `F_lin`, which the source writes as 8.1×10^11, is two operations per parameter, 2 × 405,853,388,800.
 
 ### Measurement protocol (v0.1 gate)
 
@@ -79,6 +82,7 @@ Floating-point is acceptable here: the model is a planning tool, not part of the
 | Native rate | INT8 GEMMs at 405B layer shapes with INT32 accumulation | all eight per-layer GEMM shapes | fraction of 1,979 TOPS achieved |
 | Streaming pass | Regenerate scores and fold one attention tile's leaves | 2^30 scores | ps per score |
 | Column answers `c_a` | Evaluate rows at `τ_A` distinct queried columns, hashing nothing: the `c_c` benchmark's encoder, and each query-only evaluation of [RFC-0018 'Column answers'](RFC-0018-gpu-prover-runtime.md#pass-structure) | the `c_c` benchmark's rows | wall time / committed elements, cheapest evaluation |
+| Row combination `c_r` | Combine rows into a proximity row and two groups' combined rows, in blocks of `B = 32` rows on tensor cores ([RFC-0018 'Opening pass'](RFC-0018-gpu-prover-runtime.md#pass-structure)) | the `c_c` benchmark's rows | wall time / committed elements |
 
 **Statistics.** Each benchmark runs 3 warm-up iterations and 10 measured iterations; the report gives median, minimum, maximum and coefficient of variation. A coefficient of variation above 3% is flagged and the run repeated. Every benchmark's output digest is compared with the CPU reference on a subsample, so a fast but wrong kernel cannot pass.
 
@@ -121,7 +125,7 @@ v0.1 delivers the model, its golden test, the microbenchmarks, the report and th
 ## Testing Strategy
 
 - Golden test against the source's tables, as above.
-- Model unit tests: monotonicity in each unit cost; the streaming term is zero when leaves fit in memory and steps up by one pass per doubling of `N_level` beyond it; the column-answer term priced at `c_c`, with glue and the other unit costs at zero, equals the linear and attention terms, since P5 evaluates exactly the elements P1 commits; each table row costs what a token's committed lookup costs, once per batch; the corrected projections and streaming figures that [08 §3](../spec/08-performance-budget.md#3-end-to-end-targets-llama-31-405b-one-8h100-node), SC-2 and RISK-10 quote are the model's.
+- Model unit tests: monotonicity in each unit cost; the streaming term is zero when leaves fit in memory and steps up by one pass per doubling of `N_level` beyond it; the column-answer and row-combination terms priced at `c_c`, with glue and the other unit costs at zero, each equal the linear and attention terms, since P4 and P5 handle exactly the elements P1 commits; each table row costs what a token's committed lookup costs, once per batch; the corrected projections and streaming figures that [08 §3](../spec/08-performance-budget.md#3-end-to-end-targets-llama-31-405b-one-8h100-node), SC-2 and RISK-10 quote are the model's.
 - Benchmark correctness: output digests match CPU references; a deliberately slowed kernel (sleep injection) changes the reported unit cost proportionally.
 - Report validation: JSON Schema validation in CI for every committed report.
 

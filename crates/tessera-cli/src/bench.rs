@@ -109,7 +109,7 @@ pub(crate) fn model(args: &ModelArgs, json: bool) -> Result<(), TesseraError> {
 /// The projections as a table, one row per context.
 fn table(report: &ModelReport) -> String {
     let mut text = format!(
-        "{:>8} {:>8} {:>10} {:>8} {:>6} {:>10} {:>8} {:>7} {:>8} {:>7} {:>12} {:>9} {:>10}\n",
+        "{:>8} {:>8} {:>10} {:>8} {:>6} {:>10} {:>8} {:>8} {:>7} {:>8} {:>7} {:>12} {:>9} {:>10}\n",
         "context",
         "linear",
         "attention",
@@ -117,6 +117,7 @@ fn table(report: &ModelReport) -> String {
         "regen",
         "streaming",
         "answers",
+        "combine",
         "tables",
         "μ",
         "passes",
@@ -126,7 +127,7 @@ fn table(report: &ModelReport) -> String {
     );
     for p in &report.projections {
         text.push_str(&format!(
-            "{:>8} {:>8.3} {:>10.3} {:>8.3} {:>6.3} {:>10.3} {:>8.3} {:>7.3} {:>8.3} {:>7} {:>10.2} s {:>8.3}% {:>9.3}%\n",
+            "{:>8} {:>8.3} {:>10.3} {:>8.3} {:>6.3} {:>10.3} {:>8.3} {:>8.3} {:>7.3} {:>8.3} {:>7} {:>10.2} s {:>8.3}% {:>9.3}%\n",
             p.context,
             p.mu.linear,
             p.mu.attention,
@@ -134,6 +135,7 @@ fn table(report: &ModelReport) -> String {
             p.mu.regen,
             p.mu.streaming,
             p.mu.column_answers,
+            p.mu.row_combination,
             p.mu.tables,
             p.mu.total,
             p.streaming_passes,

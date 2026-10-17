@@ -16,6 +16,7 @@ This directory holds measured performance: the CPU microbenchmarks' baselines no
 | `sumcheck/product-3` | a degree-3 sumcheck of three `Fp` tables of `2^20` entries | entry |
 | `logup/prove` | the LogUp stage of `2^18` lookups into `2^16` rows with values | lookup |
 | `trees/forest` | the levels of a product forest of `2^10` trees of `2^12` leaves ([RFC-0010](../rfcs/RFC-0010-proof-schedule.md#tree-levels)) | leaf |
+| `pcs/combine` | the combined rows of 4 claim groups and the proximity row over 64 rows of `2^16` columns ([RFC-0011](../rfcs/RFC-0011-advice-commitment.md#opening-protocol) step 4) | product |
 
 Each runs with RFC-0020's measurement protocol: 3 warm-up runs, then 10 measured runs. It reports their median, minimum, maximum and coefficient of variation, in nanoseconds per unit. A coefficient above 3% is flagged as noisy, and the run should be repeated.
 
