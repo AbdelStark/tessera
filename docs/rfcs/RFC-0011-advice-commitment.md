@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.1 (scheme), v0.3 (layout and openings)
+- Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Column digests and root': `commitment_id` and `layout_digest`)
 
 ## Summary
 
@@ -51,12 +52,13 @@ The verifier must locate every committed tensor from public data, so the layout 
 
 - Within each segment, column `j` is chained over row blocks of `B = 32` non-zero rows ([RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests)), giving one segment digest per column.
 - `leaf_j = H("column-merge", d_j^{(1)} ‖ … ‖ d_j^{(S)})`.
-- The root is the Merkle root over the `n` leaves. `commitment_id` binds the layout parameters, `S`, `B`, `P_A` and the batch digest.
+- The root is the Merkle root over the `n` leaves.
+- Every segment's chains start from one `commitment_id`, the hash of the advice descriptor ([RFC-0031](RFC-0031-commitment-id.md#the-descriptor)): the statement digest, the proof unit, `AdviceLayoutParams` and the unit's non-zero rows. `AdviceCommitment.layout_digest` is that `commitment_id`; the verifier derives its own and rejects another (`Reject(StatementMismatch)`).
 
 ```rust
 pub struct AdviceLayoutParams { pub log2_k: u8, pub log2_inv_rate: u8, pub mask_coeffs: u32,
                                 pub row_block: u32, pub segments: u32 }
-pub struct AdviceCommitment { pub root: Digest, pub layout_digest: Digest }
+pub struct AdviceCommitment { pub root: Digest, pub layout_digest: Digest }  // layout_digest: the commitment_id
 
 pub struct StreamingCommitter { /* chain state: 32 bytes per column per segment */ }
 impl StreamingCommitter {

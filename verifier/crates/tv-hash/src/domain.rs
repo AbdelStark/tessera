@@ -26,7 +26,7 @@ macro_rules! domains {
 
         impl Domain {
             /// Every domain, in the order of RFC-0004's table.
-            pub const ALL: [Domain; 18] = [$(Domain::$variant,)*];
+            pub const ALL: [Domain; 19] = [$(Domain::$variant,)*];
 
             /// The domain's name in RFC-0004's table, such as `"merkle-node"`.
             pub const fn name(self) -> &'static str {
@@ -59,6 +59,8 @@ macro_rules! domains {
 domains! {
     /// `envelope`: an artifact envelope's header and payload (RFC-0003 'Envelope').
     Envelope => "envelope",
+    /// `commitment-id`: `TCE(CommitmentDescriptor)`, a commitment's identifier (RFC-0031).
+    CommitmentId => "commitment-id",
     /// `column-init`: `commitment_id ‖ u64(column)`, the start of a column's chain.
     ColumnInit => "column-init",
     /// `column-step`: `chain ‖ symbols`, one block of rows of a column.

@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.1
+- Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Hash function and domains': `commitment-id`; 'Column digests': what `commitment_id` binds)
 
 ## Summary
 
@@ -35,6 +36,7 @@ The source sets 30 ps per committed 64-bit element, including rate-1/2 encoding 
 | Domain | Input | Used by |
 |---|---|---|
 | `envelope` | Envelope header and payload | RFC-0003 |
+| `commitment-id` | `TCE(CommitmentDescriptor)` | `commitment_id`, the start of every column chain (RFC-0031) |
 | `column-init` | `commitment_id: Digest ‖ column: u64` | Column digests |
 | `column-step` | `chain: Digest ‖ symbols: [Fp; ≤ B]` | Column digests |
 | `merkle-node` | `left: Digest ‖ right: Digest` | Merkle trees |
@@ -56,7 +58,7 @@ Context strings are distinct ASCII strings, so outputs of different domains are 
 
 ### Column digests
 
-A committed matrix has `m` rows of codewords of length `n` (RFC-0011). Rows are produced in blocks of `B` rows. `B` is a public commitment parameter, recorded in the commitment's layout; the advice commitment uses 32 ([RFC-0011](RFC-0011-advice-commitment.md#column-digests-and-root)). For column `j`:
+A committed matrix has `m` rows of codewords of length `n` (RFC-0011). Rows are produced in blocks of `B` rows. `B` is a public commitment parameter: the parameter set's row block, 32 in production, for advice and weight commitments alike ([RFC-0011](RFC-0011-advice-commitment.md#column-digests-and-root), [RFC-0031](RFC-0031-commitment-id.md#the-weight-matrices-row-block)). For column `j`:
 
 ```text
 d_j[0]   = H("column-init",  commitment_id ‖ u64(j))
@@ -64,7 +66,7 @@ d_j[i+1] = H("column-step",  d_j[i] ‖ symbols of rows iB .. min((i+1)B, m) −
 leaf_j   = d_j[ceil(m / B)]
 ```
 
-The symbols of a step are their 8-byte TCE encodings, concatenated with no length prefix: `B` and `m` fix how many there are. The prover keeps one 32-byte chain value per column: 256 MiB for `n = 2^23`. The verifier, given an opened column (all `m` symbols), recomputes the chain. `commitment_id` binds the digest to the commitment's descriptor (shape, rate, `B`, purpose), so columns of different commitments never collide.
+The symbols of a step are their 8-byte TCE encodings, concatenated with no length prefix: `B` and `m` fix how many there are. The prover keeps one 32-byte chain value per column: 256 MiB for `n = 2^23`. The verifier, given an opened column (all `m` symbols), recomputes the chain. `commitment_id = H("commitment-id", TCE(CommitmentDescriptor))` ([RFC-0031](RFC-0031-commitment-id.md#the-descriptor)) binds the chains to the commitment's purpose, context, code, `B` and row count, so columns of different commitments start from different chains.
 
 ### Merkle trees
 

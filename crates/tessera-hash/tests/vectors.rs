@@ -2,7 +2,8 @@
 
 //! `spec/vectors/hash/hash.json`, written by an independent oracle (`generate.py`, with its own
 //! BLAKE3 checked against the official vectors): every domain's context string and digests,
-//! Merkle roots and canonical multiproofs, and chained column digests.
+//! Merkle roots and canonical multiproofs, chained column digests, and RFC-0031's `commitment_id`
+//! of a commitment descriptor.
 
 mod common;
 
@@ -25,6 +26,20 @@ fn digests(value: &Value) -> Vec<Digest> {
         .iter()
         .map(|d| common::digest(d.as_str().expect("hex")))
         .collect()
+}
+
+/// RFC-0031: a commitment's identifier is `H("commitment-id", TCE(CommitmentDescriptor))`, here
+/// over the oracle's encoding of each descriptor, advice and weight matrix.
+#[test]
+fn every_commitment_id_is_its_descriptors_hash() {
+    let file = load();
+    let cases = file["commitment_ids"].as_array().expect("commitment ids");
+    assert_eq!(cases.len(), 4);
+    for case in cases {
+        let tce = common::bytes(case["tce"].as_str().expect("hex"));
+        let expected = common::digest(case["commitment_id"].as_str().expect("hex"));
+        assert_eq!(hash(Domain::CommitmentId, &tce), expected, "{case}");
+    }
 }
 
 #[test]

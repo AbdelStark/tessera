@@ -1,5 +1,5 @@
 {
- "description": "RFC-0004 hashing reference vectors from an independent BLAKE3 (checked against 35 official vectors): H(domain, x) = BLAKE3.derive_key(context, x) for every domain on inputs of length 0, 1, 64 and 1025 filled with i mod 251; Merkle trees with canonical multiproofs; chained column digests with row block `block`",
+ "description": "RFC-0004 hashing reference vectors from an independent BLAKE3 (checked against 35 official vectors): H(domain, x) = BLAKE3.derive_key(context, x) for every domain on inputs of length 0, 1, 64 and 1025 filled with i mod 251; Merkle trees with canonical multiproofs; chained column digests with row block `block`; commitment_id from the TCE of a CommitmentDescriptor (RFC-0031)",
  "seed": "0x07e55e7a4a5e0004",
  "input_lengths": [
   0,
@@ -16,6 +16,16 @@
     "b22d8487ee420cc11988e6138335d5616336b0ac2b8489b3b48454fe28b15b5c",
     "54efc3a4d958b9534fdc43e90bedaa95871b9ef7628fbd17a94bfe20dbb7ad89",
     "db70e74480c1a756f65333f7d5c6ee8933333cb1e3b7d7a0277a39055749c8b3"
+   ]
+  },
+  {
+   "name": "commitment-id",
+   "context": "tessera/v1/commitment-id",
+   "digests": [
+    "12e25518774e822cd5a59ffd59ed550a10c6a53a94fb841611373b7809116d5f",
+    "80fb0c4c740c881cf21c88104bf38cbae76969c98aaddb6fbb915d5c292c1e78",
+    "e18c752491ab49e76bd631436a61ba2d94edded9768eee87377456a30f68f622",
+    "11bb4f5ba0e81e998d1b5570aa0564ddf97db7485af8aef5ecea2361c159665e"
    ]
   },
   {
@@ -2895,6 +2905,78 @@
     "8f53db2b5ceff81293931962a9e70d06b647449710fe1d9b6b72781a7bdfdc50",
     "d9566af9a994d4d791539b81ef2df1eaf113fb5da06bd29ab9d71e49509f858e"
    ]
+  }
+ ],
+ "commitment_ids": [
+  {
+   "descriptor": {
+    "kind": "Advice",
+    "statement_digest": "2d60a2596e27841c90ed2c6b8a1074567fa59a602ef62d28679317661a27dd61",
+    "unit": 0,
+    "layout": {
+     "log2_k": 10,
+     "log2_inv_rate": 1,
+     "mask_coeffs": 16,
+     "row_block": 4,
+     "segments": 1
+    },
+    "rows": 37
+   },
+   "tce": "00002d60a2596e27841c90ed2c6b8a1074567fa59a602ef62d28679317661a27dd61000000000a011000000004000000010000002500000000000000",
+   "commitment_id": "2740e70076f2478857006d13dbf70c1637d017c53680817787ba9ee40d814256"
+  },
+  {
+   "descriptor": {
+    "kind": "Advice",
+    "statement_digest": "caa16b31a053f49000ff8589e5f2bf0ac4f2dad24f85552df9ee496174657298",
+    "unit": 3,
+    "layout": {
+     "log2_k": 22,
+     "log2_inv_rate": 1,
+     "mask_coeffs": 200,
+     "row_block": 32,
+     "segments": 8
+    },
+    "rows": 580000
+   },
+   "tce": "0000caa16b31a053f49000ff8589e5f2bf0ac4f2dad24f85552df9ee496174657298030000001601c80000002000000008000000a0d9080000000000",
+   "commitment_id": "3250b8ae43ca084f2977fb3818b7fc6ae2755f37744f9bded936699c994dbf2e"
+  },
+  {
+   "descriptor": {
+    "kind": "WeightMatrix",
+    "layout": {
+     "log2_k": 8,
+     "log2_inv_rate": 2,
+     "mask_coeffs": 64,
+     "blinding_rows": 32
+    },
+    "matrix": "Q",
+    "log2_k": 8,
+    "row_block": 4,
+    "rows": 36,
+    "epoch": 0
+   },
+   "tce": "01000802400000002000000001000804000000240000000000000000000000",
+   "commitment_id": "5a8b7a4485c0e9a1e9c48f6f5296f9ed34bd2b1f9663de6d75b7338974ba03f7"
+  },
+  {
+   "descriptor": {
+    "kind": "WeightMatrix",
+    "layout": {
+     "log2_k": 20,
+     "log2_inv_rate": 2,
+     "mask_coeffs": 65536,
+     "blinding_rows": 4096
+    },
+    "matrix": "ChannelParams",
+    "log2_k": 17,
+    "row_block": 32,
+    "rows": 5230,
+    "epoch": 7
+   },
+   "tce": "010014020000010000100000090011200000006e1400000000000007000000",
+   "commitment_id": "39bcc0d8c06bcc9c55f76ab1b7f163d5f43ab0bc9e61716f84eed4e55e05a573"
   }
  ]
 }

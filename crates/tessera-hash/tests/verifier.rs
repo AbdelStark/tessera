@@ -27,7 +27,7 @@ const CHUNK: usize = 1024;
 /// Every domain on both sides, paired by RFC-0004's table order and checked by context string.
 fn domain_pairs() -> Vec<(Domain, tv_hash::Domain)> {
     let pairs: Vec<_> = Domain::ALL.into_iter().zip(tv_hash::Domain::ALL).collect();
-    assert_eq!(pairs.len(), 18);
+    assert_eq!(pairs.len(), 19);
     for (prover, verifier) in &pairs {
         assert_eq!(prover.context(), verifier.context());
     }

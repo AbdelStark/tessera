@@ -2,7 +2,7 @@
 
 //! `tv-hash` against `spec/vectors/hash/hash.json` (RFC-0004 'Testing Strategy'), written by an
 //! independent Python oracle with its own BLAKE3: every domain, every Merkle tree and canonical
-//! opening, every column-digest matrix. And the envelope vectors of `spec/vectors/codec/`, whose
+//! opening, every column-digest matrix, every `commitment_id` of RFC-0031. And the envelope vectors of `spec/vectors/codec/`, whose
 //! digests are `H("envelope", ·)`, opened with this crate's hash.
 
 mod support;
@@ -31,7 +31,7 @@ fn every_domain_hashes_every_vector_input() {
         .collect();
     assert_eq!(lengths, [0, 1, 64, 1025]);
     let domains = list(&file, "domains");
-    assert_eq!(domains.len(), 18, "every domain of RFC-0004");
+    assert_eq!(domains.len(), 19, "every domain of RFC-0004 and RFC-0031");
     // The vectors list the domains in RFC-0004's table order, as `Domain::ALL` does.
     for (domain, vector) in Domain::ALL.into_iter().zip(domains) {
         assert_eq!(domain.name(), text(vector, "name"));
@@ -58,6 +58,25 @@ fn every_domain_hashes_every_vector_input() {
                 "{domain:?} blockwise, {len}"
             );
         }
+    }
+}
+
+/// RFC-0031: a commitment's identifier is `H("commitment-id", TCE(CommitmentDescriptor))`, here
+/// over the oracle's encoding of each descriptor, advice and weight matrix.
+#[test]
+fn every_commitment_id_is_its_descriptors_hash() {
+    let file = read_vectors("hash/hash.json");
+    let cases = list(&file, "commitment_ids");
+    assert_eq!(cases.len(), 4);
+    for case in cases {
+        let tce = hex(text(case, "tce"));
+        let expected = digest_hex(text(case, "commitment_id"));
+        assert_eq!(
+            hash(Domain::CommitmentId, &tce),
+            expected,
+            "{}",
+            text(case, "tce")
+        );
     }
 }
 
