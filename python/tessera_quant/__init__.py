@@ -12,14 +12,23 @@ and keeps each quantization point's per-channel maxima in a secret statistics fi
 
 from importlib.metadata import version
 
-from tessera_quant.arch import ArchSpec, RopeSpec, read_config, tensor_shapes
+from tessera_quant.arch import ArchFamily, ArchSpec, RopeSpec, read_config, tensor_shapes
 from tessera_quant.checkpoint import FloatModel, import_checkpoint
-from tessera_quant.errors import ArchitectureError, CalibrationError, TesseraQuantError
+from tessera_quant.errors import (
+    ArchitectureError,
+    CalibrationError,
+    CodecError,
+    EncodeError,
+    TesseraQuantError,
+)
 
 __all__ = [
+    "ArchFamily",
     "ArchSpec",
     "ArchitectureError",
     "CalibrationError",
+    "CodecError",
+    "EncodeError",
     "FloatModel",
     "RopeSpec",
     "TesseraQuantError",

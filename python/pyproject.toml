@@ -92,6 +92,8 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, and their names say what they check.
 "tests/**" = ["D", "S101"]
+# A codec's `encode` and `decode` are documented once, on `Codec`.
+"tessera_quant/tce.py" = ["D102"]
 
 [tool.pyright]
 include = ["tessera_quant", "tests"]

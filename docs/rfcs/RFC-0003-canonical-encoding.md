@@ -146,7 +146,7 @@ So that independent decoders return the same code, at the same offset, for every
 |---|---|---|
 | Prover side | `crates/tessera-codec` | `Encode`/`Decode` traits plus a derive macro for structs and enums (`crates/tessera-codec-derive`) |
 | Verifier side | `verifier/crates/tv-codec` | Hand-written decoders and the encoders needed to recompute digests; no shared macro |
-| Python | `python/tessera_quant/tce.py` | Writer and reader for `IntegerModel`, `TokenFile`, `LogitsFile` |
+| Python | `python/tessera_quant/tce.py`, with `IntegerModel` in `integer_model.py` | Codecs built from the type's parts, and the envelope; a streaming writer and a memory-mapped reader for `IntegerModel`, `TokenFile` and `LogitsFile` |
 
 Each implementation is tested against the same golden vectors (RFC-0001, "Shared artifacts that are not code").
 
@@ -195,7 +195,7 @@ Lands in v0.1 before any artifact is written. The envelope's `envelope_version` 
 - Non-canonical corpus: `Fp` values `≥ P`, `bool` value 2, unknown enum tag, unsorted map, non-reduced rational, ASCII byte `0x7F`, trailing payload byte, non-zero `reserved`, each rejected with the right code at the right offset by all three implementations.
 - Hostile lengths: a `Vec` length of 2^63 with 16 remaining bytes is rejected without allocation (asserted with a counting allocator in Rust).
 - Fuzzing: `cargo-fuzz` targets for every verifier-side decoder (nightly 1 h; 24 CPU-hours before v1.0).
-- Cross-language: the Python writer's `IntegerModel` for each conformance model decodes in both Rust readers to identical values.
+- Cross-language: for each model of `spec/vectors/model/`, the Python writer's `IntegerModel` equals the Rust writer's byte for byte, and the prover's reader and the Python reader decode it to the same value. The verifier never reads `IntegerModel`, a secret artifact ([03 §5](../spec/03-data-model.md#5-artifact-catalog)); the envelope vectors check its reader against both writers.
 
 ## Open Questions
 

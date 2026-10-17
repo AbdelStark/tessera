@@ -118,6 +118,14 @@ def unexpected(w: Weights) -> None:
         (TINY | {"hidden_size": 36, "head_dim": 9}, None, "odd"),
         (TINY | {"head_dim": 16}, None, "head_dim"),
         (TINY | {"num_hidden_layers": 2.0}, None, "num_hidden_layers"),
+        # ArchSpec's fields are integers of fixed width (03 §2).
+        (TINY | {"rope_theta": 500000.5}, None, "rope_theta is not an integer below 2\\^32"),
+        (
+            TINY | {"rope_scaling": TINY["rope_scaling"] | {"factor": 65536.0}},
+            None,
+            "factor is not an integer below 2\\^16",
+        ),
+        (TINY | {"vocab_size": 1 << 32}, None, "vocab_size is not a positive integer below 2\\^32"),
         ({k: v for k, v in TINY.items() if k != "vocab_size"}, None, "vocab_size"),
         (TINY | {"torch_dtype": "float32"}, None, "torch_dtype"),
     ],

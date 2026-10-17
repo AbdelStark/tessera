@@ -5,6 +5,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import Enum
 from fractions import Fraction
 from typing import Any, cast
 
@@ -14,21 +15,40 @@ ROPE_CONSTANT_BITS = 14
 """The bits of `D`'s fixed-point RoPE constants (03 §2, RFC-0005 'Integer semantics')."""
 
 
+class ArchFamily(Enum):
+    """The model family (03 §2)."""
+
+    LlamaV3 = 0
+    """Llama-3 and Llama-3.1, the only family of v1."""
+
+
 @dataclass(frozen=True)
 class RopeSpec:
-    """RoPE as Llama-3.1 defines it: the base and the `llama3` frequency scaling, exactly."""
+    """Llama-3.1's RoPE (03 §2): the integer parameters of RFC-0008's `Rope` table.
 
-    theta: Fraction
-    factor: Fraction
-    low_freq_factor: Fraction
-    high_freq_factor: Fraction
-    original_max_position_embeddings: int
-    constant_bits: int = ROPE_CONSTANT_BITS
+    The base and the `llama3` frequency scaling, each an integer, as `D` requires.
+    """
+
+    theta: int
+    """The base `θ`, below 2^32."""
+    factor: int
+    """The scaling `factor`, below 2^16."""
+    low_freq_factor: int
+    """`low_freq_factor`, below 2^16."""
+    high_freq_factor: int
+    """`high_freq_factor`, below 2^16."""
+    original_max: int
+    """`original_max_position_embeddings`, below 2^32."""
+    bits: int = ROPE_CONSTANT_BITS
+    """The precision of the fixed-point constants."""
 
 
 @dataclass(frozen=True)
 class ArchSpec:
-    """The architecture parameters of a Llama-3.1 model (03 §2). `rms_eps` is exact."""
+    """The architecture parameters of a Llama-3.1 model (03 §2), each below 2^32.
+
+    `rms_eps` is exact.
+    """
 
     n_layers: int
     d_model: int
@@ -40,7 +60,7 @@ class ArchSpec:
     max_context: int
     rope: RopeSpec
     rms_eps: Fraction
-    family: str = "LlamaV3"
+    family: ArchFamily = ArchFamily.LlamaV3
 
 
 def read_config(text: str) -> ArchSpec:
@@ -72,11 +92,19 @@ class _Config:
             raise ArchitectureError(f"config.json has no {key}")
         return self._values[key]
 
-    def integer(self, key: str) -> int:
+    def integer(self, key: str, bits: int = 32) -> int:
+        """A positive integer below `2^bits`, the width of its `ArchSpec` field."""
         value = self.value(key)
-        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            raise ArchitectureError(f"config.json's {key} is not a positive integer")
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 < value < 1 << bits:
+            raise ArchitectureError(f"config.json's {key} is not a positive integer below 2^{bits}")
         return value
+
+    def whole(self, key: str, bits: int) -> int:
+        """An integer below `2^bits`, written with or without a fractional part: `500000.0`."""
+        exact = self.exact(key)
+        if exact.denominator != 1 or exact >= 1 << bits:
+            raise ArchitectureError(f"config.json's {key} is not an integer below 2^{bits}")
+        return exact.numerator
 
     def exact(self, key: str) -> Fraction:
         value = self.value(key)
@@ -118,11 +146,11 @@ def _arch(config: _Config) -> ArchSpec:
     scaling = config.section("rope_scaling")
     scaling.expect("rope_type", "llama3")
     rope = RopeSpec(
-        theta=config.exact("rope_theta"),
-        factor=scaling.exact("factor"),
-        low_freq_factor=scaling.exact("low_freq_factor"),
-        high_freq_factor=scaling.exact("high_freq_factor"),
-        original_max_position_embeddings=scaling.integer("original_max_position_embeddings"),
+        theta=config.whole("rope_theta", 32),
+        factor=scaling.whole("factor", 16),
+        low_freq_factor=scaling.whole("low_freq_factor", 16),
+        high_freq_factor=scaling.whole("high_freq_factor", 16),
+        original_max=scaling.integer("original_max_position_embeddings"),
     )
     return ArchSpec(
         n_layers=config.integer("num_hidden_layers"),
