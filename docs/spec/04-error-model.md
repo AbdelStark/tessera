@@ -54,7 +54,7 @@ Codes are stable tier-A identifiers ([02 §1](02-public-api.md#1-stability-tiers
 | `ERR-CODEC-DIGEST` | Input | Envelope digest does not match payload | Codec | 65 |
 | `ERR-CODEC-LIMIT` | Input | A length exceeds the configured resource limit | Codec | 65 |
 | `ERR-QUANT-ARCH` | Model | Checkpoint architecture outside `ArchSpec` support | Front-end | 65 |
-| `ERR-QUANT-CALIB` | Model | Calibration produced non-finite or degenerate statistics | Front-end | 20 |
+| `ERR-QUANT-CALIB` | Model | Calibration produced non-finite or degenerate statistics, or its data failed a hygiene check: too few usable documents, a malformed file, or a document shared with evaluation data | Front-end | 20 |
 | `ERR-COMPILE-RANGE` | Model | A lookup key cannot fit any gadget's table bound | Compiler | 20 |
 | `ERR-COMPILE-WRAP` | Model | A lookup key cannot be proven a true integer | Compiler | 20 |
 | `ERR-COMPILE-PROFILE` | Model | `servable` profile constraints unsatisfiable | Compiler | 20 |

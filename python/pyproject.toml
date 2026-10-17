@@ -9,6 +9,7 @@ license = "Apache-2.0 OR MIT"
 # Nothing is published while the repository is private (09 §9).
 classifiers = ["Private :: Do Not Upload"]
 dependencies = [
+    "blake3>=1.0",
     "datasets>=2.20",
     "numpy>=1.26",
     "safetensors>=0.4",

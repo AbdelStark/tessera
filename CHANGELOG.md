@@ -243,6 +243,10 @@ All notable changes to the prover release train are recorded here: the crates un
   - `RopeTable` holds a specification and its digest. The core is every pair, at most `2^24`; Llama-3.1-405B has 8,388,608. `RopeConstants` gives any pair on demand, without the digest, for the witness engine's `Rotate`. `GeneratedTable` refuses a `Rope` kind, and `RopeTable` refuses any other.
   - The tables oracle checks every pair of two test tables, and 4,008 sampled pairs of Llama-3.1's 131,072-position table, against 40-digit references. It also pins the digest of the 8K-context table. A Rust test checks 10^6 more sampled pairs against an f64 implementation of Hugging Face's Llama-3 RoPE, all within one unit.
 - `cargo xtask lint` rejects a `|` inside a code span of a Markdown table row: GitHub splits the row's cells there, so the row renders shifted. Of the 18 such rows in six documents, 17 now write it `\|`, and RFC-0005's Scores bound drops its pipes ([#268](https://github.com/AbdelStark/tessera/issues/268)).
+- The calibration set of `tessera-quant` (RFC-0005 'Calibration'), the first part of #73:
+  - `tessera_quant.calibration.draw` draws 512 sequences of 2,048 tokens and a held-out split of 64 from a seed, the documents and a tokenizer. The draw is exact, through SplitMix64, rejection-sampled integers and a Fisher–Yates order, so the same inputs give the same sequences on any machine and with any library version. RFC-0005 now states it.
+  - A BLAKE3 selection digest identifies the sequences, and a content hash identifies each document. `check_disjoint` refuses an evaluation set that shares a document with `ERR-QUANT-CALIB`.
+  - `fetch_c4_validation` reads C4's `en` validation split at the pinned revision `1588ec45`. `blake3` joins the package's dependencies.
 
 ### Changed
 
