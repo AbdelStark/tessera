@@ -139,6 +139,7 @@ fn servable() -> IntegerModel {
                 affine_sites: Vec::new(),
                 rope: ROPE,
                 logits_bits: 28,
+                logits_exponent: -11,
             },
             silu_in_exponents: vec![(0, -9)],
             channels: vec![
@@ -231,6 +232,7 @@ fn minimal() -> IntegerModel {
                 affine_sites,
                 rope: ROPE,
                 logits_bits: 28,
+                logits_exponent: 7,
             },
             silu_in_exponents: vec![(0, -8)],
             channels: vec![
@@ -393,6 +395,7 @@ fn value(m: &IntegerModel) -> Value {
                     .map(|(point_, r)| json!([point(point_), number(r)])).collect::<Vec<_>>(),
                 "rope": rope(&q.rope),
                 "logits_bits": number(q.logits_bits),
+                "logits_exponent": number(q.logits_exponent),
             },
             "silu_in_exponents": m.quant.silu_in_exponents.iter()
                 .map(|(layer, e)| json!([number(layer), number(e)])).collect::<Vec<_>>(),

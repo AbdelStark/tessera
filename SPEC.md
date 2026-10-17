@@ -67,6 +67,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0024](docs/rfcs/RFC-0024-wide-requantization.md) | Wide requantization: keys too wide for their shift (amends RFC-0005, RFC-0006, RFC-0009) | v0.2 |
 | [RFC-0025](docs/rfcs/RFC-0025-affine-sites.md) | Affine rescale sites in the claim list (amends RFC-0005, RFC-0006, RFC-0007, RFC-0010) | v0.2 |
 | [RFC-0026](docs/rfcs/RFC-0026-claim-list-layout.md) | The claim list's commitment layout, scoring and anchor (amends RFC-0007, RFC-0012) | v0.2 |
+| [RFC-0027](docs/rfcs/RFC-0027-logits-exponent.md) | The scale of `D`'s logits (amends RFC-0007, RFC-0026) | v0.2 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 

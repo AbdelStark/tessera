@@ -565,6 +565,7 @@ pub fn llama(
         affine_sites: Vec::new(),
         rope: ROPE,
         logits_bits: 28,
+        logits_exponent: -11,
     };
     let silu = (0..layers).map(|l| (l, -6)).collect();
     (arch, quant, silu)

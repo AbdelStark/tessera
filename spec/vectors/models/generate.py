@@ -173,7 +173,8 @@ PUBLIC_QUANT_SPEC = struct(
     ("act_exponents", vec(pair(QUANT_POINT, I8))), ("residual_exponent", I8),
     ("residual_bits", U8), ("rsqrt_kappa", U8), ("rms_eps_int", U64), ("exp_sigma", U8),
     ("score_scales", vec(pair(U32, RATIONAL))), ("shift_class_sets", vec(pair(QUANT_POINT, vec(I8)))),
-    ("affine_sites", vec(pair(QUANT_POINT, I8))), ("rope", ROPE_SPEC), ("logits_bits", U8))
+    ("affine_sites", vec(pair(QUANT_POINT, I8))), ("rope", ROPE_SPEC), ("logits_bits", U8),
+    ("logits_exponent", I8))
 CHANNEL_PARAMS = struct(("ty", WEIGHT_TYPE), ("layer", U32), ("class", vec(U8)), ("multiplier", vec(U16)))
 QUANT_SPEC = struct(("public", PUBLIC_QUANT_SPEC), ("silu_in_exponents", vec(pair(U32, I8))),
                     ("channels", vec(CHANNEL_PARAMS)))
@@ -472,6 +473,7 @@ RESIDUAL_EXPONENT = -10  # σ_res = 2^−10
 EMBED_EXPONENT = -3      # so s_e = 7: 127 · 2^7 < 2^19
 INT8_EXPONENT = -3       # the other INT8 points' exponents; D's arithmetic reads only Silu's
 SILU_IN_EXP = -7         # h · 2^−7: |h| ≤ 2^10 spans silu over [−8, 8]
+LOGITS_EXPONENT = -10    # RFC-0027: no float model stands behind these logits; any scale names them
 
 # name, seed, profile, shape, the classes of each weight's channels, the sequences' lengths, and
 # what to push past its range.
@@ -660,7 +662,7 @@ def integer_model(spec, model, constants):
                 "residual_bits": model["residual_bits"], "rsqrt_kappa": model["kappa"],
                 "rms_eps_int": model["rms_eps_int"], "exp_sigma": model["exp_sigma"],
                 "score_scales": scales, "shift_class_sets": sets, "affine_sites": [], "rope": rope,
-                "logits_bits": 28,
+                "logits_bits": 28, "logits_exponent": LOGITS_EXPONENT,
             },
             "silu_in_exponents": [[layer, model["silu_in_exp"]] for layer in range(n_layers)],
             "channels": channels,

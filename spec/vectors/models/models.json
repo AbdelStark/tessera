@@ -6,8 +6,8 @@
   {
    "name": "tiny-2-servable",
    "file": "tiny-2-servable.d",
-   "bytes": 166863,
-   "digest": "105aff02cc3edfc730e500a9f921737426df64a9d65e23ce33f526d152d7d5a0",
+   "bytes": 166864,
+   "digest": "061ec250bb0190076b6bfa571c94ccf1da782de16d9a2fbd893365354ff9143a",
    "profile": "Servable",
    "shape": {
     "n_layers": 2,
@@ -117,8 +117,8 @@
   {
    "name": "tiny-2-minimal",
    "file": "tiny-2-minimal.d",
-   "bytes": 166163,
-   "digest": "2c40b7719bc1633b4a8ca1277144d431b732512b4061eae29c7875eb20d6c75b",
+   "bytes": 166164,
+   "digest": "6239deac10fab3871c0ed1bf2c72688335550255712faad3d85b6a8aacdd24b8",
    "profile": "Minimal",
    "shape": {
     "n_layers": 2,
@@ -212,8 +212,8 @@
   {
    "name": "tiny-4-servable",
    "file": "tiny-4-servable.d",
-   "bytes": 2105663,
-   "digest": "5781bf99894a74a0fe0772efcadf3f95c0fb96201e8062e9d24795a366d2c117",
+   "bytes": 2105664,
+   "digest": "3caf6bb0fcfc42c48a1034e5fa652a86ae68711e3caea5b2db7c681c67abdffc",
    "profile": "Servable",
    "shape": {
     "n_layers": 4,

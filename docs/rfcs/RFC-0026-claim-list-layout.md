@@ -8,6 +8,7 @@
   - [RFC-0007](RFC-0007-claim-list.md#schema) 'Schema': `ClaimList`'s `scoring` and `anchor` fields, and `CommitmentLayout`'s `WeightLayoutParams`; 'Verifier validation', step 7;
   - [RFC-0012](RFC-0012-weight-commitment.md#layout) 'Layout': the fields of `WeightLayoutParams`, which `R_W` hashes.
 - Origin: [#85](https://github.com/AbdelStark/tessera/issues/85)
+- Amended by: [RFC-0027](RFC-0027-logits-exponent.md) ('Motivation': `PublicQuantSpec` now carries the logits' scale)
 
 ## Summary
 
