@@ -145,12 +145,13 @@ def quantize(model: FloatModel, calib: CalibrationResult, *, profile: Literal["s
 def export(model: IntegerModel, out: Path) -> bytes: ...           # the artifact's digest
 def run_reference(model: IntegerModel, tokens: npt.NDArray[np.uint32]) -> npt.NDArray[np.int64]: ...
 def evaluate_fidelity(model: IntegerModel, reference: FloatModel, spec: EvalSpec, *,
-                      seed: int = 0) -> FidelityReport: ...
+                      seed: int = 0, device: str = "cpu") -> FidelityReport: ...
 ```
 
 - **The calibration set** comes from `tessera_quant.calibration.draw`, which defines it exactly from a seed and the documents ([RFC-0005](../rfcs/RFC-0005-integer-model.md#calibration) 'Calibration'). Its held-out split serves `quantize`.
 - **`quantize` chooses the migration strength** among `alphas`: the one whose `D` diverges least from the BF16 reference on the held-out split ([RFC-0005](../rfcs/RFC-0005-integer-model.md#calibration)). `D` runs through `run_reference` for this. It records the strength and its sources in `Provenance`.
 - **`export`** writes `D` as a secret artifact and returns the envelope's digest.
+- **`evaluate_fidelity`** measures RFC-0005's metrics with their intervals, on an `EvalSpec`: the perplexity documents and the agreement prompts as token sequences with their data identities, the reference continuation's length, and the calibration's document hashes, which no evaluation document may share. Its report is `tessera.fidelity/1`.
 
 All functions are deterministic given their arguments: they set `torch.use_deterministic_algorithms(True)`, fix every RNG from the calibration set's seed, and record library versions in their reports and in `Provenance` ([RFC-0005](../rfcs/RFC-0005-integer-model.md#determinism)).
 

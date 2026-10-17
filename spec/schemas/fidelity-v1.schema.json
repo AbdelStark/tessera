@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/fidelity-v1.schema.json",
+  "title": "tessera.fidelity/1",
+  "description": "How closely D follows its BF16 reference (RFC-0005 'Fidelity evaluation'): the perplexity ratio with its bootstrap interval over documents, teacher-forced top-1 agreement with its Wilson interval, and the mean per-token KL(ref ‖ D) with its bootstrap interval over prompts. Written by `tessera_quant.fidelity.evaluate_fidelity`; it records the seed, the data's identities and digests, the library versions and D's provenance digests.",
+  "type": "object",
+  "required": [
+    "schema",
+    "tessera_quant",
+    "model",
+    "seed",
+    "resamples",
+    "perplexity",
+    "agreement",
+    "environment"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "interval": {
+      "description": "An estimate with its 95% interval: low ≤ estimate ≤ high.",
+      "type": "object",
+      "required": [
+        "estimate",
+        "low",
+        "high"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "estimate": {
+          "type": "number"
+        },
+        "low": {
+          "type": "number"
+        },
+        "high": {
+          "type": "number"
+        }
+      }
+    },
+    "rate": {
+      "description": "A rate with its 95% Wilson interval, and the agreeing tokens.",
+      "type": "object",
+      "required": [
+        "estimate",
+        "low",
+        "high",
+        "agreeing"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "estimate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "low": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "high": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "agreeing": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "dataset": {
+      "description": "Where the documents come from: the dataset, its pinned revision, and the files read.",
+      "type": "object",
+      "required": [
+        "name",
+        "config",
+        "split",
+        "revision",
+        "files"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config": {
+          "type": "string",
+          "minLength": 1
+        },
+        "split": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "description": "The dataset's commit, 40 hex digits.",
+          "type": "string",
+          "minLength": 40,
+          "maxLength": 40
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": "tessera.fidelity/1"
+    },
+    "tessera_quant": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The version of tessera-quant that evaluated."
+    },
+    "model": {
+      "description": "D: its shape, and the provenance that identifies it.",
+      "type": "object",
+      "required": [
+        "profile",
+        "layers",
+        "d_model",
+        "vocab",
+        "alpha",
+        "statistics_digest",
+        "calibration_selection"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "enum": [
+            "servable",
+            "minimal"
+          ]
+        },
+        "layers": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "d_model": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "vocab": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "alpha": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The migration strength chosen, as a fraction."
+        },
+        "statistics_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "calibration_selection": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        }
+      }
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The seed of the bootstrap and of the reference's deterministic runs."
+    },
+    "resamples": {
+      "description": "Bootstrap resamples.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "perplexity": {
+      "type": "object",
+      "required": [
+        "dataset",
+        "sequences",
+        "tokens",
+        "digest",
+        "reference",
+        "model",
+        "ratio"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "dataset": {
+          "$ref": "#/$defs/dataset"
+        },
+        "sequences": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tokens": {
+          "description": "The tokens scored.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "description": "BLAKE3 of the token sequences, as `EvalSet.digest` defines it."
+        },
+        "reference": {
+          "description": "The reference's perplexity.",
+          "type": "number",
+          "minimum": 1
+        },
+        "model": {
+          "description": "D's perplexity.",
+          "type": "number",
+          "minimum": 1
+        },
+        "ratio": {
+          "$ref": "#/$defs/interval"
+        }
+      }
+    },
+    "agreement": {
+      "type": "object",
+      "required": [
+        "dataset",
+        "sequences",
+        "tokens",
+        "digest",
+        "continuation",
+        "top1",
+        "kl"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "dataset": {
+          "$ref": "#/$defs/dataset"
+        },
+        "sequences": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tokens": {
+          "description": "The tokens scored.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "description": "BLAKE3 of the token sequences, as `EvalSet.digest` defines it."
+        },
+        "continuation": {
+          "description": "The reference's greedy tokens after each prompt.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "top1": {
+          "$ref": "#/$defs/rate"
+        },
+        "kl": {
+          "$ref": "#/$defs/interval"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": [
+        "device",
+        "python",
+        "libraries"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "type": "string",
+          "minLength": 1
+        },
+        "python": {
+          "type": "string",
+          "minLength": 1
+        },
+        "libraries": {
+          "type": "object",
+          "required": [
+            "blake3",
+            "numpy",
+            "safetensors",
+            "torch",
+            "transformers"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "blake3": {
+              "type": "string",
+              "minLength": 1
+            },
+            "numpy": {
+              "type": "string",
+              "minLength": 1
+            },
+            "safetensors": {
+              "type": "string",
+              "minLength": 1
+            },
+            "torch": {
+              "type": "string",
+              "minLength": 1
+            },
+            "transformers": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}
