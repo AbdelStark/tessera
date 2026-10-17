@@ -2,8 +2,8 @@
 """The tiny conformance models of `spec/vectors/models/` (07 §5), as tessera-quant reads them.
 
 Each artifact decodes under the `IntegerModel` limits, with the digest the index states, into the
-shapes the index states, and encodes back to its bytes. The PyTorch reference (#89) is to give
-each sequence's logits.
+shapes the index states, and encodes back to its bytes. `test_reference.py` checks that the
+integer reference gives each sequence's residuals and logits.
 """
 
 import json

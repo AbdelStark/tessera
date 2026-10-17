@@ -47,6 +47,16 @@ softmax = lookup_table(0, Exp(key_bits=22, sigma=16, scale=Fraction(1, 2896)))
 softmax.lookup(np.array([0, 2896, 100000]))  # array([65536, 24109, 0]): round(2^16 · e^(-k/2896))
 ```
 
+`run_reference` computes `D`'s logits on a sequence in int64, exactly as RFC-0005 defines them, and `tessera_quant.reference.trace` also returns every tensor `D` commits, for differential tests. Both refuse a model whose values could leave int64 rather than wrap:
+
+```python
+import numpy as np
+
+from tessera_quant import run_reference
+
+logits = run_reference(d, np.array([128000, 791, 6864], dtype=np.uint32))  # int64, [3, vocab]
+```
+
 ## Checks
 
 The `python` CI job runs these on Python 3.11, 3.12 and 3.13:

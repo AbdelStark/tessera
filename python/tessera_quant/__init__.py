@@ -14,7 +14,9 @@ statistics that follow (RFC-0005 'Pipeline', steps 2 and 4). `tessera_quant.quan
 
 `D` reaches the Rust tools as a TCE artifact (RFC-0003): `tessera_quant.tce` reads and writes
 them, and `tessera_quant.integer_model` defines `D`. `tessera_quant.tables` generates the lookup
-tables `D` uses and their digests, equal to the Rust generators' (RFC-0008).
+tables `D` uses and their digests, equal to the Rust generators' (RFC-0008). `run_reference`, from
+`tessera_quant.reference`, computes `D`'s logits in int64, the integer reference that the Rust
+engine is checked against bit for bit (SC-7).
 """
 
 from importlib.metadata import version
@@ -29,6 +31,7 @@ from tessera_quant.errors import (
     TableError,
     TesseraQuantError,
 )
+from tessera_quant.reference import run_reference
 
 __all__ = [
     "ArchFamily",
@@ -44,6 +47,7 @@ __all__ = [
     "__version__",
     "import_checkpoint",
     "read_config",
+    "run_reference",
     "tensor_shapes",
 ]
 

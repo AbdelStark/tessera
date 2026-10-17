@@ -376,6 +376,13 @@ All notable changes to the prover release train are recorded here: the crates un
     - 34 lies outside RFC-0008's tables. By RFC-0006's selection rule, which the test applies, it would change one gadget: the four-class down projection's update.
   - The reports put LogUp's table side at 20 to 28 · 10^9 rows per proof: 76 to 104 GiB of multiplicity counters and 0.15 to 0.20 of `μ`. The cost model leaves that term out, which [#304](https://github.com/AbdelStark/tessera/issues/304) adds. A balanced split point would cut it two- to fourfold ([#303](https://github.com/AbdelStark/tessera/issues/303)), and 08 §4 records the counters.
 
+- The integer reference for `D` in `tessera_quant.reference` (RFC-0005 'Integer semantics', [#89](https://github.com/AbdelStark/tessera/issues/89)):
+  - `run_reference(model, tokens)` gives `D`'s logits on a sequence in PyTorch's int64 (02 §4). `trace` also returns every tensor `D` commits: the residual at each layer boundary, each site's output, each norm's root, and each layer's attention maxima, exponentials and reciprocals. Each is keyed by the site's point for the Rust differential test ([#91](https://github.com/AbdelStark/tessera/issues/91)).
+  - Before each product, its bound is computed from its operands' largest magnitudes, and a product that could reach `2^63` is refused. The norm's root, whose `d · 2^{2κ}` reaches `2^{94}`, is computed in Python's integers. The tables come from `tessera_quant.tables`, generated once per definition and kept for the next sequence.
+  - It refuses affine sites until their lowering ([#301](https://github.com/AbdelStark/tessera/issues/301)), tokens outside the vocabulary, and sequences past the context.
+  - On every sequence of the conformance models, it gives the oracle's residual at every layer boundary and its logits, bit for bit. Tests cover `rq`'s ties, negative ties and saturation at shifts 1, 2, 7 and 40, a zero residual row's root, determinism, and each refusal.
+  - Each of 16 bugs planted in the reference fails a test, and a no-op control survives. Two more resize the `Exp` and `Silu` tables without changing a value, so they are equivalent.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
