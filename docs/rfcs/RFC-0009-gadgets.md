@@ -4,11 +4,11 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide')
 
 ## Summary
 
-A gadget is a constraint pattern that pins a committed value to the unique result of a non-arithmetic operation. This RFC specifies every gadget used upstream of the logits and in scoring: `Requant1`, `RequantSplit`, `NonNeg`, `BigIntCompare`, `SoftmaxRow` (max certificate and reciprocal bracket), `RsqrtRow`, `OneHot`, `Argmax` and `InverseCdf`. For each: committed values, lookups, sumcheck relations, cost, and a uniqueness lemma with its proof. Uniqueness upstream of the logits is the soundness rule the whole statement rests on (source §6, principle 5).
+A gadget is a constraint pattern that pins a committed value to the unique result of a non-arithmetic operation. This RFC specifies every gadget used upstream of the logits and in scoring: `Requant1`, `RequantSplit`, `RequantWide`, `NonNeg`, `BigIntCompare`, `SoftmaxRow` (max certificate and reciprocal bracket), `RsqrtRow`, `OneHot`, `Argmax` and `InverseCdf`. For each: committed values, lookups, sumcheck relations, cost, and a uniqueness lemma with its proof. Uniqueness upstream of the logits is the soundness rule the whole statement rests on (source §6, principle 5).
 
 ## Motivation
 
@@ -49,6 +49,31 @@ Inputs as `Requant1` with `B_max < b ≤ 2·B_max − 2` and shift `r`. Split po
 - Lookups: `z_lo ∈ [0, 2^s)`; `(pack(c, z_hi), y) ∈ Requant { b − s, classes, r_by_class − s, lo, hi }` with the offset folded into the table's `lo`/`hi` bookkeeping.
 - Cost: 2 commitments, 2 lookups.
 - Lemma 2. `z_lo = z_off mod 2^s` and `z_hi = floor(z_off / 2^s)` are the only values passing both lookups, and then `y = clamp(floor((z + 2^{r−1}) / 2^r), lo, hi)`. Proof: suppose `z_lo' ∈ [0, 2^s)` and `t = (z_off − z_lo')·2^{−s} mod P` lies in `[0, 2^{b−s})`. Then `2^s t ≡ z_off − z_lo' (mod P)`, both sides lie in `(−2^s, 2^b)` with `b ≤ 62`, so by Lemma 0 `2^s t = z_off − z_lo'`, forcing `z_lo' ≡ z_off (mod 2^s)`, hence `z_lo' = z_lo`. For the output: since `2^{r−1}` is a multiple of `2^s` when `s ≤ r − 1`, `floor((z_off + 2^{r−1}) / 2^r) = floor((z_hi + 2^{r−1−s}) / 2^{r−s})` by nested floor division, which is what the reduced table computes.
+
+### RequantWide
+
+Inputs as `Requant1`, for a key that `RequantSplit` cannot take ([RFC-0024](RFC-0024-wide-requantization.md)): `b ≤ 62`, shifts `r_c` from `r_min` to `r_max`, and `M = max(|lo|, |hi|, 1)`. The key has three parts: `s = min(r_min − 1, B_max)` low bits, `t = (r_max − s) + ⌈log2 M⌉` middle bits and `k = b − s − t` top bits. The preconditions `t + 2 + ⌈log2 n⌉ ≤ B_max` and `k + 1 ≤ B_max` are checked at claim-list validation.
+
+- Committed: `z_lo` (when `s ≥ 1`), `h0`, `g`, `y`.
+- Virtual:
+  - `z_off = z + 2^{b−1}`;
+  - `w_off = (z_off − z_lo) · (2^s)^{−1}`;
+  - `h1_off = (w_off − h0) · (2^t)^{−1}`, and `h1 = h1_off − 2^{k−1}`;
+  - `w' = h0 + 2^t · g`.
+- Lookups:
+  - `z_lo ∈ [0, 2^s)`;
+  - `h0 ∈ [0, 2^t)`;
+  - `h1_off ∈ [0, 2^k)`;
+  - `(pack(0, 2·h1), g) ∈ Requant { k + 1, [1], −2, 1 }`, so `g = clamp(h1, −2, 1)`;
+  - `(pack(c, w'), y) ∈ Requant { t + 2, r_by_class − s, lo, hi }`.
+- Cost: 4 commitments, 5 lookups; 3 and 4 when `s = 0`.
+- Lemma 11. The digits of `z_off` in the radix `(2^s, 2^t)` are the only `z_lo`, `h0`, `h1_off` passing the three `Range` lookups, and then `y = clamp(floor((z + 2^{r_c−1}) / 2^{r_c}), lo, hi)`.
+  - *Uniqueness.* The lookups make the three values integers below `2^s`, `2^t` and `2^k`. Then `2^{s+t} h1_off + 2^s h0 + z_lo ≡ z_off`, with both sides in `[0, 2^b)` and `b ≤ 62`, so Lemma 0 gives equality and the digits follow. `g` and `y` are functions of their keys.
+  - *The value.* Let `w = floor(z / 2^s) = 2^t h1 + h0` and `r' = r_c − s`. Since `s ≤ r_c − 1`, nested floor division reduces the requantization to `q(w) = floor((w + 2^{r'−1}) / 2^{r'})`, as in Lemma 2.
+    - For `−2 ≤ h1 ≤ 1`, `w' = w`.
+    - For `h1 ≥ 2`, both `w` and `w' = h0 + 2^t` are at least `2^t`, where `q ≥ 2^{t−r'} ≥ M ≥ hi`.
+    - For `h1 ≤ −3`, both are at most `−2^t − 1`, where `q ≤ −2^{t−r'} ≤ −M ≤ lo`.
+  - *Why the top part's range check.* Without it, the half-integer `h1_off = m + 1/2` reaches the saturation table's odd key `2m + 1`, and `h0 − 2^{t−1}` passes with another `y`.
 
 ### NonNeg
 
@@ -133,6 +158,7 @@ Vocabulary exponentials `e_v = Exp_T[c − ℓ_v]` from a `SoftmaxRow`-style max
 |---|---|---|---|---|
 | `Requant1` | element | 1 | 1 | 0 |
 | `RequantSplit` | element | 2 | 2 | 0 |
+| `RequantWide` | element | 4 | 5 | 0 |
 | `SoftmaxRow` | score | 1 | 1 | 1 |
 | `SoftmaxRow` | row | about 6 | about 6 | 0 |
 | `RsqrtRow` | row | about 20 | about 30 | 0 |
@@ -152,12 +178,12 @@ Vocabulary exponentials `e_v = Exp_T[c − ℓ_v]` from a `SoftmaxRow`-style max
 ## Drawbacks
 
 - `BigIntCompare` adds limb bookkeeping that is easy to get subtly wrong; it is confined to per-row and per-output-token gadgets.
-- `RequantSplit` doubles the cost of wide rescales (RISK-2).
+- `RequantSplit` doubles the cost of wide rescales (RISK-2), and `RequantWide` quadruples it where a key is too wide for its shift.
 - Bounded-mode sampling needs a second one-hot vector per output token.
 
 ## Migration / Rollout
 
-`Requant1`, `RequantSplit`, `NonNeg`, `SoftmaxRow`, `RsqrtRow` and `OneHot` land in v0.3 (exact mode with greedy decoding needs `Argmax` too). `InverseCdf` lands in v0.4 with the sampler PRF.
+`Requant1`, `RequantSplit`, `RequantWide`, `NonNeg`, `SoftmaxRow`, `RsqrtRow` and `OneHot` land in v0.3 (exact mode with greedy decoding needs `Argmax` too). `InverseCdf` lands in v0.4 with the sampler PRF.
 
 ## Testing Strategy
 
@@ -165,8 +191,8 @@ For each gadget, all on random instances at small and production widths:
 
 - Completeness: honest witnesses pass for 10^4 random inputs, including boundary inputs (all scores equal; a single valid position; `u = 0`; `u = 2^55 − 1`; `z` at both ends of its range; ties in `Argmax`).
 - Alternative witnesses, each rejected: a `SoftmaxRow` forest whose masked leaves are 0, or the keys of the masked positions' real scores, at the stage that consumes the leaf claim; `c_q` replaced by the second-largest score or by `max + 1`; `R_q ± 1`; `ρ ± 1`; `z_lo + 2^s` and `z_lo − 1`; a one-hot vector with two ones, or one one at the wrong index; `y` replaced by a later tie in `Argmax`; `ŷ ± 1` in `InverseCdf`.
-- Lemma checks by exhaustion at toy sizes: for `b ≤ 12`, enumerate all `z_lo'` and confirm only one passes (`RequantSplit`); for 3-element rows with scores in `[−8, 8]`, enumerate all `c` (`SoftmaxRow`).
-- Soundness over `F65537`: wrap-based attacks that succeed when a precondition is violated (for example `s > r − 1`, or limb bounds too wide) are demonstrated to succeed there, confirming the preconditions are necessary, and to fail when the preconditions hold.
+- Lemma checks by exhaustion at toy sizes: for `b ≤ 12`, enumerate all `z_lo'` and confirm only one passes (`RequantSplit`); for `b ≤ 14` over `F65537`, enumerate all `(z_lo', h0')` and confirm only the digits pass (`RequantWide`); for 3-element rows with scores in `[−8, 8]`, enumerate all `c` (`SoftmaxRow`).
+- Soundness over `F65537`: wrap-based attacks that succeed when a precondition is violated (for example `s > r − 1`, limb bounds too wide, or `RequantWide` without its top part's range check) are demonstrated to succeed there, confirming the preconditions are necessary, and to fail when the preconditions hold.
 
 ## Open Questions
 

@@ -132,7 +132,7 @@ Exit criteria per milestone are in [SPEC.md](../../SPEC.md#release-plan).
 | [#115](https://github.com/AbdelStark/tessera/issues/115) | pcs: implement the streaming committer with segments and zero-row skipping | pcs | p0 | m | RFC-0011 |
 | [#116](https://github.com/AbdelStark/tessera/issues/116) | verifier: implement advice layout derivation and grouped opening checks | verifier | p0 | m | RFC-0011, RFC-0019 |
 | [#117](https://github.com/AbdelStark/tessera/issues/117) | verifier: implement independent range re-derivation | verifier | p0 | l | RFC-0007, RFC-0006, s06-security |
-| [#118](https://github.com/AbdelStark/tessera/issues/118) | gadgets: implement Requant1, RequantSplit and NonNeg | compiler | p0 | m | RFC-0009 |
+| [#118](https://github.com/AbdelStark/tessera/issues/118) | gadgets: implement Requant1, RequantSplit, RequantWide and NonNeg | compiler | p0 | m | RFC-0009, RFC-0024 |
 | [#119](https://github.com/AbdelStark/tessera/issues/119) | pcs: implement the grouped opening protocol and column answers | pcs | p0 | l | RFC-0011 |
 | [#120](https://github.com/AbdelStark/tessera/issues/120) | test: add constraint-system digest conformance between compiler and verifier | compiler | p1 | m | RFC-0007, s07-testing |
 | [#121](https://github.com/AbdelStark/tessera/issues/121) | gadgets: implement BigIntCompare | compiler | p0 | m | RFC-0009 |

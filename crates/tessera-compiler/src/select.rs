@@ -1,16 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Gadget selection and table sizing (RFC-0006 'Gadget selection', RFC-0009).
+//! Gadget selection and table sizing (RFC-0006 'Gadget selection', RFC-0009, RFC-0024).
 //!
-//! Every gadget-backed node gets its gadget, numbered in node order. A `Requant` takes one of two
-//! by its key's signed width `b`, from range analysis, and its `n` shift classes, whose index
-//! takes `⌈log2 n⌉` more key bits in a table:
+//! Every gadget-backed node gets its gadget, numbered in node order. A `Requant` takes one of
+//! three by its key's signed width `b`, from range analysis, and its `n` shift classes, whose
+//! index takes `⌈log2 n⌉` more key bits in a table. The first that applies is cheapest:
 //!
 //! - **`Requant1`** reads `Requant { b, r_by_class, lo, hi }` once, when `b + ⌈log2 n⌉ ≤ B_max`.
 //! - **`RequantSplit`** sends the low `s = b + ⌈log2 n⌉ − B_max` bits of the offset key to
 //!   `Range { s }` and `⌊z / 2^s⌋` to `Requant { b − s, r_by_class − s, lo, hi }`. The nested floor
 //!   is the requantization only when `s ≤ r_c − 1` for every class, the halves are true integers
 //!   only when `b ≤ 62` (RFC-0009 Lemma 2), and the low part's table must fit too: `s ≤ B_max`.
+//! - **`RequantWide`** takes a key too wide for its shift (RFC-0024). Below every class's rounding
+//!   bit, `s = min(r_min − 1, B_max)` low bits go to `Range { s }`. The rest, `w = ⌊z / 2^s⌋`,
+//!   splits into a middle `h0` of `t` bits and a top `h1` of `k = b − s − t` bits, each checked by
+//!   a `Range` table. `t` is the least width past which every class saturates. The top part's
+//!   only effect is its saturation `g = clamp(h1, −2, 1)`, read from `Requant { k + 1, [1], −2,
+//!   1 }` at the key `2·h1`, so `Requant { t + 2, r_by_class − s, lo, hi }` of `h0 + 2^t · g` is
+//!   the output. Its keys are true integers when `b ≤ 62`, and its tables must fit `B_max`.
 //!
 //! Any other key is `ERR-COMPILE-RANGE`. A `TableMap`, `Bitwise` or `SoftmaxRow` reads a table of
 //! its own, which must hold at most `2^{B_max}` rows, since those lookups have no split.
@@ -42,6 +49,24 @@ pub enum Gadget {
         /// `Range { s }`, which checks the low bits.
         low: TableId,
         /// The reduced `Requant` table of `⌊z / 2^s⌋`.
+        high: TableId,
+    },
+    /// `RequantWide`: the low `split` bits, a middle of `middle` bits, and a top part that only
+    /// saturates (RFC-0024).
+    RequantWide {
+        /// `s`, the low bits, below every class's rounding bit.
+        split: u8,
+        /// `t`, the middle part's bits: the reduced keys that need not saturate.
+        middle: u8,
+        /// `Range { s }`, which checks the low bits, or `None` when `s = 0`.
+        low: Option<TableId>,
+        /// `Range { t }`, which checks the middle part.
+        mid: TableId,
+        /// `Range { k }`, which checks the top part, so that its doubled key is even.
+        top: TableId,
+        /// `Requant { k + 1, [1], −2, 1 }`, the top part's saturation `clamp(h1, −2, 1)`.
+        sign: TableId,
+        /// The reduced `Requant` table of the middle part and the saturation.
         high: TableId,
     },
     /// One lookup into the node's table: `TableMap` and `Bitwise`.
@@ -194,16 +219,10 @@ impl Selector<'_> {
             return Err(refuse("a requantization key has at most 62 bits"));
         }
         let split = b + class_bits - self.max;
-        if split > self.max {
-            return Err(refuse(
-                "a split key's low part fits a table of 2^{B_max} rows",
-            ));
-        }
-        let least = shifts.iter().copied().min().unwrap_or(0);
-        if split >= u32::from(least) {
-            return Err(refuse(
-                "a split key keeps its rounding: s ≤ r − 1 for every class",
-            ));
+        let least = u32::from(shifts.iter().copied().min().unwrap_or(1));
+        // The low part's table fits, and the nested floor keeps every class's rounding bit.
+        if split > self.max || split >= least {
+            return self.wide(node, b, class_bits, &shifts, lo, hi);
         }
         let low = self.table(
             node,
@@ -223,6 +242,85 @@ impl Selector<'_> {
         Ok(Gadget::RequantSplit {
             split: narrow(split),
             low,
+            high,
+        })
+    }
+
+    /// `RequantWide` for a key of `b ≤ 62` bits that `RequantSplit` cannot take (RFC-0024).
+    fn wide(
+        &mut self,
+        node: &Node,
+        b: u32,
+        class_bits: u32,
+        shifts: &[u8],
+        lo: i32,
+        hi: i32,
+    ) -> Result<Gadget, CompileError> {
+        let refuse = |rule| CompileError::Range {
+            node: node.id,
+            input: 0,
+            rule,
+        };
+        let (least, most) = match (shifts.iter().min(), shifts.iter().max()) {
+            (Some(&least), Some(&most)) => (u32::from(least), u32::from(most)),
+            _ => return Err(refuse("a requantization has a shift class")),
+        };
+        // The low bits stop below every class's rounding bit, and fit a table.
+        let split = (least - 1).min(self.max);
+        // Past `|w| ≥ 2^t`, every class saturates: `2^{t − (r_c − s)} ≥ max(hi, −lo)`.
+        let bound = u64::from(hi.unsigned_abs().max(lo.unsigned_abs()).max(1));
+        let middle = most - split + bound.next_power_of_two().trailing_zeros();
+        // `h0 + 2^t · g` lies in `[−2^{t+1}, 2^{t+1})`, with the class index.
+        if middle + 2 + class_bits > self.max {
+            return Err(refuse(
+                "a wide key's reduced table fits 2^{B_max} rows: t + 2 + ⌈log2 n⌉ ≤ B_max",
+            ));
+        }
+        // At least 3: the split failed `s' ≤ r_min − 1` or `s' ≤ B_max` for `s' = b + ⌈log2 n⌉ −
+        // B_max`, and `t ≤ B_max − 2 − ⌈log2 n⌉` (RFC-0024). Saturating, a mistake reaches the
+        // generator's refusal of a `Range` of 0 bits.
+        let top = b.saturating_sub(split + middle);
+        if top + 1 > self.max {
+            return Err(refuse(
+                "a wide key's top part fits a table of 2^{B_max} rows: k + 1 ≤ B_max",
+            ));
+        }
+        let low = match split {
+            0 => None,
+            bits => Some(self.table(node, TableKind::Range { bits: narrow(bits) })?),
+        };
+        let mid = self.table(
+            node,
+            TableKind::Range {
+                bits: narrow(middle),
+            },
+        )?;
+        let top_range = self.table(node, TableKind::Range { bits: narrow(top) })?;
+        let sign = self.table(
+            node,
+            TableKind::Requant {
+                b: narrow(top + 1),
+                r_by_class: vec![1],
+                lo: -2,
+                hi: 1,
+            },
+        )?;
+        let high = self.table(
+            node,
+            TableKind::Requant {
+                b: narrow(middle + 2),
+                r_by_class: shifts.iter().map(|&r| r - narrow(split)).collect(),
+                lo,
+                hi,
+            },
+        )?;
+        Ok(Gadget::RequantWide {
+            split: narrow(split),
+            middle: narrow(middle),
+            low,
+            mid,
+            top: top_range,
+            sign,
             high,
         })
     }

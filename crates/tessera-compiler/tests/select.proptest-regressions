@@ -5,3 +5,6 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc a1bd474092208119205b663a5b4c7e0df9e881e8cd5d55d3ba6b9a2acba0ff20 # shrinks to b = 33, extra = 1, seed = 0, lo = -1, span = 0
+cc ab3f41c3cfb2c2023f6c1bb86e39bae6b1d3e5fc86d67f438547683420196000 # shrinks to least = 1, n = 2, below = 162309, above = 0, seed = 2614382437417382799
+cc af99f8831eeaa400921b45549d8045ede4d2d2fdf992061c6fa505da1243eb7e # shrinks to least = 1, n = 1, below = 0, above = 524289, seed = 4077106837097435999
+cc 01a09a2ae2475d1da472109a235081728d1979f48a405df86794790d41c8735e # shrinks to least = 15, n = 3, below = 0, above = 8193, seed = 9526165252481209302

@@ -47,7 +47,7 @@ Canonical terms used across the corpus. When a document uses one of these words,
 | Rate `ρ` | Reed–Solomon code rate: 1/2 for advice, 1/4 for weights. |
 | Recorder | Network tap or attested NIC that digests encrypted transcripts and signs the log. |
 | Requantization (rescale) | Integer division by a power of two with rounding and clamping that maps a wide accumulator to a narrow integer type. |
-| `Requant1`, `RequantSplit` | Single-lookup requantization; two-commitment requantization for keys wider than the table bound (RFC-0009). |
+| `Requant1`, `RequantSplit`, `RequantWide` | Single-lookup requantization; two-commitment requantization for keys wider than the table bound; four-commitment requantization for keys too wide for their shift, whose top part enters only through its saturation (RFC-0009, RFC-0024). |
 | Round 1, 2, 3 | Commitments; seed and sumcheck responses; column queries and answers (RFC-0014). |
 | Sampling rate `s` | Probability that a recorded request is selected for proof. |
 | Seed | The single externally supplied random value from which every challenge of one proof derives. |

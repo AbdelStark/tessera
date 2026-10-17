@@ -11,9 +11,9 @@
 //!   analysis'); [`check_profile`] checks the profile's constraints S1 to S3 (RFC-0005
 //!   'Profiles').
 //!
-//! - [`select`] gives every gadget-backed node its gadget, `Requant1` or `RequantSplit` for a
-//!   requantization by its key's width, and sizes and shares the tables (RFC-0006 'Gadget
-//!   selection').
+//! - [`select`] gives every gadget-backed node its gadget, `Requant1`, `RequantSplit` or
+//!   `RequantWide` for a requantization by its key's width and shift, and sizes and shares the
+//!   tables (RFC-0006 'Gadget selection', RFC-0024).
 //!
 //! Tiling and emission follow.
 
