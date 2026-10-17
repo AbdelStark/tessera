@@ -47,7 +47,7 @@ fn codes_equal_the_specification_table() {
             (code, cells[1].to_owned(), exit)
         })
         .collect();
-    assert_eq!(rows.len(), 25, "04 §3 lists 25 codes");
+    assert_eq!(rows.len(), 26, "04 §3 lists 26 codes");
     assert_eq!(implemented(), rows);
 }
 

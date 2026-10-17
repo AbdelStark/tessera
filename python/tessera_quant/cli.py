@@ -81,6 +81,7 @@ EXIT_CODES: dict[str, int] = {
     "ERR-PROTO-COINTOSS": 20,
     "ERR-PROTO-REUSE": 70,
     "ERR-PROTO-TIMEOUT": 20,
+    "ERR-PROTO-QUERIES": 20,
     "ERR-RES-MEMORY": 20,
     "ERR-RES-DEVICE": 20,
     "ERR-RES-IO": 20,
