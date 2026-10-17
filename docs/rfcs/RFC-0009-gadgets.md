@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide'), [RFC-0028](RFC-0028-balanced-split.md) ('RequantSplit': the split point), [RFC-0030](RFC-0030-masked-exponentials.md) ('SoftmaxRow': every position looked up, the leaf claims' reduction, Lemma 5)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide'), [RFC-0028](RFC-0028-balanced-split.md) ('RequantSplit': the split point), [RFC-0030](RFC-0030-masked-exponentials.md) ('SoftmaxRow': every position looked up, the leaf claims' reduction, Lemma 5), [RFC-0035](RFC-0035-padded-rows.md) ('RsqrtRow', 'SoftmaxRow', 'OneHot', 'InverseCdf': the row selector `ψ` on padded rows)
 
 ## Summary
 
@@ -99,11 +99,11 @@ Proves `X ≤ Y` for non-negative integers given in base `2^L` limbs that may ex
 For query row `q` of a sequence of `n` positions, with valid key positions `i ∈ V_q` (causal mask: `C(q, i) = [i ≤ q < n]`, public, [RFC-0030](RFC-0030-masked-exponentials.md#the-causal-selector)) and virtual scores `x_qi` (true integers, `|x| ≤ 2^21`). Every other position of the padded score tensor is masked: padded rows and columns, and, where the tensor is stacked, every position of a padded layer or head.
 
 - Committed: row maximum `c_q`; exponentials `e_qi` at every position, 0 at masked ones; reciprocal `R_q`; limbs of two `NonNeg` instances.
-- Virtual: keys `k_qi = c_q − x_qi`; lookup keys `κ_qi = C(q, i)·k_qi + (1 − C(q, i))·K_0`, with `K_0 = 2^{key_bits} − 1` the table's last key; row sum `s_q = Σ_i e_qi`, which equals `Σ_{i ∈ V_q} e_qi` because the masked `e` are 0; bracket slacks `a_q = 2^{2σ} − R_q s_q` and `b_q = s_q − 1 − a_q`.
+- Virtual: keys `k_qi = c_q − x_qi`; lookup keys `κ_qi = C(q, i)·k_qi + (1 − C(q, i))·K_0`, with `K_0 = 2^{key_bits} − 1` the table's last key; row sum `s_q = Σ_i e_qi`, which equals `Σ_{i ∈ V_q} e_qi` because the masked `e` are 0; bracket slacks `a_q = ψ_q·2^{2σ} − R_q s_q` and `b_q = s_q − ψ_q − a_q`, with `ψ_q` the row selector, 1 on a real row and 0 on a padded one ([RFC-0035](RFC-0035-padded-rows.md#the-row-selector)).
 - Relations:
   1. Lookup `(κ_qi, e_qi) ∈ Exp { key_bits, σ, scale }` at every position of the padded score tensor: the key `k_qi` at a valid position, `K_0` at a masked one. The table maps `K_0` to 0: `key_bits` is the narrowest width, from the spread's up, whose last key lies in the zero tail ([RFC-0030](RFC-0030-masked-exponentials.md#relation-1-every-position-looked-up)).
   2. Product tree: `Π_{i ∈ V_q} k_qi = 0`, one tree per row. The rows' trees form one forest ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels') of one height `h`, so row `q`'s tree has `2^h` leaves. Leaf `i` is `L_qi = C(q, i)·k_qi + 1 − C(q, i)`, with `C` the public causal selector. Every masked position's leaf is the constant 1, so the tree's product is exactly `Π_{i ∈ V_q} k_qi`. A padded row's tree has every leaf 1, and its public root value is 1.
-  3. `R_q ∈ [0, 2^{σ+1})`; `NonNeg(a_q, σ + 18)`; `NonNeg(b_q, σ + 18)`.
+  3. `R_q ∈ [0, 2^{σ+1})`; `NonNeg(a_q, σ + 18)`; `NonNeg(b_q, σ + 18)`. On a padded row `s_q = 0`, so both slacks are 0, and a padding zero-check pins `c_q` and `R_q` to 0 ([RFC-0035](RFC-0035-padded-rows.md)).
 - The forest's leaf claim `L̃(r)` and the lookup's key claim `κ̃(ρ)` go to the stage that produces the keys. It proves each as the sum it stands for, an `Elementwise` relation of degree 3 ([RFC-0030](RFC-0030-masked-exponentials.md#relation-2-the-trees)):
   - `Σ_x eq(r, x)·C(x)·k(x) = L̃(r) − 1 + C̃(r)`;
   - `Σ_x eq(ρ, x)·C(x)·k(x) = κ̃(ρ) − K_0·(1 − C̃(ρ))`.
@@ -118,9 +118,9 @@ For query row `q` of a sequence of `n` positions, with valid key positions `i �
 
 ### RsqrtRow
 
-For a residual row with virtual `u = Σ_i res_i^2 + e` (true integer, `u < 2^55`), dimension `d`, precision `κ`, constant `N = d · 2^{2κ}`:
+For a residual row with virtual `u = ψ·(Σ_i res_i^2 + e)` (true integer, `u < 2^55`), dimension `d`, precision `κ`, constant `N = d · 2^{2κ}`, and row selector `ψ`, 1 on a real row and 0 on a padded one ([RFC-0035](RFC-0035-padded-rows.md)):
 
-- Committed: `ρ`; limbs of `u` (with a recomposition relation, exact because `u < 2^55 < P`); `BigIntCompare` witnesses for `ρ^2 u ≤ N` and `N + 1 ≤ (ρ + 1)^2 u`.
+- Committed: `ρ`; limbs of `u` (with a recomposition relation, exact because `u < 2^55 < P`); `BigIntCompare` witnesses for `ρ^2 u ≤ ψ·N` and `ψ·(N + 1) ≤ (ρ + 1)^2 u`. On a padded row `u = 0`, both comparisons are `0 ≤ 0`, and a padding zero-check pins `ρ` to 0.
 - Lookups: `ρ ∈ [0, 2^w)`, with `w` the bit length of `⌊√(N / e)⌋`, the largest root of any row, at most 32 ([RFC-0022](RFC-0022-saturating-residual.md#complete-norms)); limb and carry range checks.
 - Cost: about 20 commitments and 30 lookups per row (one row per token per norm).
 - Lemma 7. The constraints hold iff `ρ = max{ρ : ρ^2 u ≤ N}`. Proof: Lemma 4 makes both inequalities exact over the integers; they bracket `ρ` uniquely.
@@ -131,7 +131,7 @@ For a residual row with virtual `u = Σ_i res_i^2 + e` (true integer, `u < 2^55`
 For a token `t ∈ [0, vocab)` (committed in the token stream, RFC-0015):
 
 - Committed: `h ∈ {0,1}^{vocab}`.
-- Relations: zero-check `Σ_x eq(r, x) h(x)(1 − h(x)) = 0` (degree 3); `Σ_v h_v = 1`; `Σ_v v · h_v = t`.
+- Relations: zero-check `Σ_x eq(r, x) h(x)(1 − h(x)) = 0` (degree 3); `Σ_v h_v = ψ_t`, with `ψ_t` the row selector, 1 on a real token and 0 on a padded one ([RFC-0035](RFC-0035-padded-rows.md)); `Σ_v v · h_v = t`. A padded row's `h` and `t` are therefore 0.
 - Cost: `vocab` commitments per token (0.75% of the linear-layer count at 405B).
 - Lemma 8. The relations hold iff `h` is the indicator of `t`, except with probability at most `3 log2(vocab) / |Fp2|` over the zero-check challenge. Proof: booleanity plus sum one leaves exactly one non-zero entry; the weighted sum fixes its index.
 - The one-hot vector of the token at position `p + 1` is reused by `Argmax` and `InverseCdf` at position `p` (teacher forcing).
@@ -152,7 +152,7 @@ Logits `ℓ_v` (virtual true integers, `< 2^28`), output token `y` with one-hot 
 Vocabulary exponentials `e_v = Exp_T[c − ℓ_v]` from a `SoftmaxRow`-style max certificate over the vocabulary (temperature folded into the table scale), partition `Z = Σ_v e_v < 2^{σ+18}`, PRF output `u ∈ [0, 2^{32})` (committed, produced by the AES gadget of RFC-0017), sampled token `ŷ` with one-hot `ĥ`:
 
 - Virtual: `C_≤ = Σ_v e_v Σ_{w ≥ v} ĥ_w` (prefix sum through `ŷ`), `C_< = C_≤ − Σ_v ĥ_v e_v`.
-- Relations: `BigIntCompare(C_< · 2^{32} ≤ u · Z)` and `BigIntCompare(u · Z + 1 ≤ C_≤ · 2^{32})`.
+- Relations: `BigIntCompare(C_< · 2^{32} ≤ u · Z)` and `BigIntCompare(u · Z + ψ ≤ C_≤ · 2^{32})`, with `ψ` the row selector ([RFC-0035](RFC-0035-padded-rows.md)). On a padded row the vocabulary certificate masks every position as `SoftmaxRow` masks a padded query, so `e`, `Z` and `C` are 0 and both comparisons are `0 ≤ 0`; a padding zero-check pins the certificate's maximum to 0.
 - Cost per output token: the vocabulary max certificate (`vocab` lookups, commitments and product leaves), one one-hot vector if `ŷ ≠ y` is possible (bounded mode), and two comparators.
 - Lemma 10. Holds iff `ŷ = min{v : C(v) · 2^{32} > u · Z}`, the inverse-CDF sample. Proof: Lemma 8 fixes `ĥ`; Lemma 4 makes the comparisons exact; the prefix sums are monotone, so the bracket identifies one index.
 
