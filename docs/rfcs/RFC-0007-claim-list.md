@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Schema': `PublicQuantSpec`'s affine sites; 'Public and hidden quantization data'; 'Verifier validation', step 5)
+- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Schema': `PublicQuantSpec`'s affine sites; 'Public and hidden quantization data'; 'Verifier validation', step 5), [RFC-0026](RFC-0026-claim-list-layout.md) ('Schema': `scoring` and `anchor` join with their circuits, and `WeightLayoutParams`' fields; 'Verifier validation', step 7)
 
 ## Summary
 
@@ -42,10 +42,8 @@ pub struct ClaimList {                       // schema 0x0201, version 1
     pub tables: Vec<TableSpec>,              // definitions + digests, sorted by TableId
     pub gadget_policy: GadgetPolicy,
     pub layout: CommitmentLayout,
-    pub scoring: ScoringTemplate,            // RFC-0017
-    pub anchor: AnchorSpec,                  // RFC-0015
     pub params: ParamSetId,                  // RFC-0014
-}
+}                                            // scoring and anchor join with their circuits (RFC-0026)
 
 pub struct PublicQuantSpec {
     pub act_exponents: Vec<(QuantPoint, i8)>,      // per-tensor activation scales 2^e, sorted
@@ -63,9 +61,9 @@ pub struct PublicQuantSpec {
 pub struct GadgetPolicy { pub max_log2_rows: u8 /* B_max = 32 */, pub query_block: u32 /* 512 */,
                           pub limb_bits: u8 /* 16 */ }
 
-pub struct CommitmentLayout {
-    pub advice: AdviceLayoutParams,          // message width log2, rate, row-block B, padding columns (RFC-0011)
-    pub weights: WeightLayoutParams,         // per-type shape, rate, padding, blinding rows (RFC-0012)
+pub struct CommitmentLayout {               // the parameter set's values (RFC-0026)
+    pub advice: AdviceLayoutParams,          // log2 k, log2 inverse rate, P_A, row block B, segments S (RFC-0011)
+    pub weights: WeightLayoutParams,         // log2 k_W, log2 inverse rate, P_W, B_W (RFC-0012, RFC-0026)
 }
 ```
 
@@ -110,7 +108,7 @@ Before reading any proof message, the verifier runs these checks in order and re
 4. Tables: each `TableSpec` is regenerated from its definition by the verifier's own generator; the digest must match.
 5. Ranges: the verifier lowers the claim list into its own graph and re-derives every range from public data with its own analysis (INV-IR-5), affine sites included ([RFC-0025](RFC-0025-affine-sites.md)). Every lookup key must fit its table and the centered field range, and every split gadget must satisfy its preconditions.
 6. Layout: commitment parameters are those the parameter set prescribes, and the derived advice layout fits within the protocol's maximum matrix size.
-7. Scoring and anchor templates name supported variants.
+7. Scoring and anchor templates name supported variants, once they join the claim list ([RFC-0026](RFC-0026-claim-list-layout.md)).
 
 The derived constraint system has a canonical digest (`ConstraintSystemDigest`, computed by both the compiler and the verifier with independent code). It is not part of the protocol; CI compares the two digests on every conformance model to detect lowering divergence early.
 

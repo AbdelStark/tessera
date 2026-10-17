@@ -14,17 +14,21 @@
 //! - [`select`] gives every gadget-backed node its gadget, `Requant1`, `RequantSplit` or
 //!   `RequantWide` for a requantization by its key's width and shift, and sizes and shares the
 //!   tables (RFC-0006 'Gadget selection', RFC-0024).
+//! - [`claim_list`] emits the claim list from public data alone (RFC-0007, RFC-0026), and
+//!   [`report`] the commitment report (RFC-0006 'Outputs').
 //!
-//! Tiling and emission follow.
+//! Tiling follows.
 
 #![forbid(unsafe_code)]
 
+mod claim;
 mod error;
 mod lower;
 mod range;
 mod report;
 mod select;
 
+pub use claim::claim_list;
 pub use error::CompileError;
 pub use lower::{Lowering, PublicModel, check_profile, lower, validate};
 pub use range::{HALF_FIELD, Range, Ranges, analyze};

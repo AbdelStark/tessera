@@ -146,7 +146,7 @@ pub struct TableSpec {                         // RFC-0008 'Table specifications
 ## 4. Statement and protocol types
 
 ```rust
-pub struct ClaimList { /* RFC-0007; schema 0x0201 */ }
+pub struct ClaimList { /* RFC-0007, RFC-0026; schema 0x0201 */ }
 pub struct PublicStatement {
     pub claim_list_digest: Digest,
     pub weights_root: Digest, pub weights_epoch: u32,

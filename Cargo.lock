@@ -622,6 +622,7 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "tessera-codec",
+ "tessera-hash",
  "tessera-tables",
 ]
 
@@ -856,6 +857,7 @@ dependencies = [
  "proc-macro2",
  "serde_json",
  "tessera-codec",
+ "tessera-compiler",
  "tessera-field",
  "tessera-ir",
  "toml",
