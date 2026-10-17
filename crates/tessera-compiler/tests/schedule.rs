@@ -485,7 +485,8 @@ fn layers_that_are_not_one_template_are_refused() {
         "a layer's outputs are read in the layer, but for its checkpoint"
     );
 
-    // A single affine site makes layer 0 another template than layer 1.
+    // A single affine site would make layer 0 another template than layer 1: the lowering refuses
+    // its claim list first (RFC-0038).
     let (arch, mut quant, silu) = llama(Profile::Servable, 2, 256, 2, 1, 512);
     let at = QuantPoint::Layer {
         layer: 0,
@@ -499,11 +500,12 @@ fn layers_that_are_not_one_template_are_refused() {
         quant: &quant,
         silu_in_exponents: &silu,
     };
-    let lowered = lower(model, 5).expect("the model lowers");
-    assert!(matches!(
-        derive_schedule(&lowered),
-        Err(CompileError::Schedule { .. })
-    ));
+    assert_eq!(
+        lower(model, 5),
+        Err(CompileError::Model {
+            rule: "each site is affine in every layer or in none"
+        })
+    );
 }
 
 /// A committed tensor inside the layer of `width` nodes from node `first`, of `like`'s shape and

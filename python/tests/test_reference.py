@@ -9,6 +9,8 @@
   encoding of the prompt, are not the reference's to compute. The oracle, `generate.py`,
   computes `D` in Python's integers and shares no code with this package; the CPU engine is
   held to the same traces (`crates/tessera-e2e/tests/differential.rs`).
+- **One route per site.** A residual site of one shift in every layer takes two steps in every
+  layer once one layer's shift is 63 (RFC-0038).
 - **Located.** A divergence is reported at its first tensor, in the trace's order, and its index:
   one seeded at a drawn index of each tensor in turn is found there, and a channel of `V` moved
   to another class shows up at layer 1's `V`, in that channel.
@@ -217,6 +219,23 @@ def test_a_channel_moved_to_another_class_diverges_at_its_site_and_channel() -> 
     assert divergence is not None
     assert (divergence.tensor, divergence.index[1]) == ("layer 1 V", channel), divergence
     assert divergence.oracle != divergence.reference
+
+
+def test_a_residual_site_takes_one_route_in_every_layer() -> None:
+    # tiny-4-servable's AttnResidual has one shift in every layer: the fused key, which commits no
+    # update. The shift 63 in layer 3 alone sends every layer's through two steps, as the
+    # compiler lowers the site (RFC-0038).
+    (entry,) = (m for m in INDEX["models"] if m["name"] == "tiny-4-servable")
+    model = load(entry)
+    sequence = tokens(entry["sequences"][0]["tokens"])
+    public = model.quant.public
+    sites = [LayerPoint(layer, Site.AttnResidual) for layer in range(model.arch.n_layers)]
+    assert all(len(dict(public.shift_class_sets)[p]) == 1 for p in sites)
+    assert not set(sites) & set(trace(model, sequence).updates)
+    sets = [(p, [63] if p == sites[3] else s) for p, s in public.shift_class_sets]
+    steep = replace(public, shift_class_sets=sets)
+    found = trace(replace(model, quant=replace(model.quant, public=steep)), sequence)
+    assert set(sites) <= set(found.updates)
 
 
 def test_a_zero_row_takes_its_root_from_epsilon_alone() -> None:

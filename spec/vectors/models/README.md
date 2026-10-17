@@ -11,7 +11,10 @@ The tiny conformance models of [07 §5](../../../docs/spec/07-testing-strategy.m
 
 The 16-bit residual is legal, since `residual_bits` lies in 2 to 31, and it catches an engine that assumes INT20.
 
-`tiny-2-affine` rescales six sites in `affine` mode ([RFC-0025](../../../docs/rfcs/RFC-0025-affine-sites.md)), beside `pot` ones: layer 0's `RopeQ`, `RopeK`, `AttnResidual` and `Up`, and layer 1's `V` and `MlpResidual`. Each weight before one carries a multiplier per output channel, drawn from `[2^{14}, 2^{16})`, the two rows of a RoPE pair sharing theirs. The site rescales `x_c · M_c` with one shift, the least that keeps its outputs in range. Its affine `Up` and `V` are pushed to clamp, and its affine residual sites take the fused key.
+`tiny-2-affine` rescales eight sites in `affine` mode ([RFC-0025](../../../docs/rfcs/RFC-0025-affine-sites.md)), beside `pot` ones: `RopeQ`, `RopeK`, `AttnResidual` and `Up`, in both layers, since every layer rescales each site alike ([RFC-0038](../../../docs/rfcs/RFC-0038-uniform-layers.md)). Each weight before one carries a multiplier per output channel, drawn from `[2^{14}, 2^{16})`, the two rows of a RoPE pair sharing theirs. The site rescales `x_c · M_c` with one shift, the least that keeps its outputs in range.
+
+- Layer 0's affine `Up` and layer 1's `pot` `V` are pushed to clamp.
+- Its affine `AttnResidual` takes the fused key, and its `MlpResidual`, of three classes, two steps.
 
 ## How they are made
 
@@ -52,7 +55,7 @@ For each model and sequence of `models.json`, in the same order, `models[].seque
 | `embedding` | `[n, d_model]` | the residual stream before the first layer, `x0 · 2^{s_e}` |
 | `layer l AttnNorm root`, `layer l MlpNorm root`, `FinalNorm root` | `[n]` | a norm's `ρ` |
 | `layer l <Site>`, `FinalNorm` | `[n, channels]` | a rescale site's output, the `Silu` table's for `Silu`; the residual sites' are the residual stream |
-| `layer l AttnResidual update`, `layer l MlpResidual update` | `[n, d_model]` | a two-step residual site's `u = rq(acc, r_c, −(2^bits − 1), 2^bits − 1)` ([RFC-0022](../../../docs/rfcs/RFC-0022-saturating-residual.md)); a site of one class below 63 has none |
+| `layer l AttnResidual update`, `layer l MlpResidual update` | `[n, d_model]` | a two-step residual site's `u = rq(acc, r_c, −(2^bits − 1), 2^bits − 1)` ([RFC-0022](../../../docs/rfcs/RFC-0022-saturating-residual.md)); a site of one shift below 63 in every layer has none ([RFC-0038](../../../docs/rfcs/RFC-0038-uniform-layers.md#the-residuals-route)) |
 | `layer l maxima` | `[n_heads, n]` | each row's maximum score, its max certificate's `c` |
 | `layer l exponentials` | `[n_heads, n, n]` | the exponentials, 0 past the diagonal |
 | `layer l reciprocals` | `[n_heads, n]` | `R = ⌊2^{2σ} / Σ e⌋` |

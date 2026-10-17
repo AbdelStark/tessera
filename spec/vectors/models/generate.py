@@ -288,6 +288,7 @@ class Run:
         self.events = Events()
         self.kept = []
         self.lengths = []
+        self.routes = {}
 
     def keep(self, name, rows):
         """Keeps the tensor `name`: one row per position of every sequence, each a list of values
@@ -354,7 +355,11 @@ class Run:
             self.c[key] = [base + k for k in range(n)]
         shifts = self.c[key]
         half = 1 << (self.m["residual_bits"] - 1)
-        if n > 1 or shifts == [63]:
+        two_steps = n > 1 or shifts == [63]
+        # RFC-0038: a site takes one route in every layer, so each layer's must be the same.
+        self.routes.setdefault(key[2], set()).add(two_steps)
+        require(len(self.routes[key[2]]) == 1, f"{key}: a residual site takes one route in every layer")
+        if two_steps:
             # RFC-0022's two steps commit u = rq(acc, r_c, −(2^bits − 1), 2^bits − 1) first.
             wide = 2 * half - 1
             updates = [[rounded(x, shifts[k]) for x, k in zip(row, classes)] for row in acc]
@@ -582,13 +587,14 @@ MODELS = [
                  "update_clamp": {1: ["MlpResidual"]}},
     },
     {
-        # RFC-0025: affine sites beside pot ones, an affine RoPE site, both residual routes.
+        # RFC-0025: affine sites beside pot ones, an affine RoPE site, both residual routes;
+        # every layer's sites rescaled alike (RFC-0038).
         "name": "tiny-2-affine", "seed": 0x7E55_E7A0_0301_0002, "profile": "Servable",
         "shape": {"n_layers": 2, "d_model": 64, "n_heads": 4, "n_kv_heads": 2, "d_head": 16,
                   "d_ff": 192, "vocab": 512, "max_context": 64},
         "classes": {"Q": 2, "K": 2, "V": 3, "O": 2, "Gate": 2, "Up": 2, "Down": 3},
         "lengths": [5, 8],
-        "affine": {0: ["RopeQ", "RopeK", "AttnResidual", "Up"], 1: ["V", "MlpResidual"]},
+        "affine": {0: ["RopeQ", "RopeK", "AttnResidual", "Up"], 1: ["RopeQ", "RopeK", "AttnResidual", "Up"]},
         "plan": {"push": {0: {"Up": 1}, 1: {"V": 1}}, "silu_reach": {}, "exp_reach": {},
                  "update_clamp": {}},
     },

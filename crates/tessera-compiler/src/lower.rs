@@ -493,6 +493,18 @@ fn check_public(model: PublicModel<'_>) -> Result<(), CompileError> {
         }
     }
     let layers = || 0..arch.n_layers;
+    // RFC-0038: every layer rescales each site alike, so that the layers lower to one template.
+    for &site in sites(model.profile) {
+        let at = |layer| QuantPoint::Layer { layer, site };
+        let affine_in = |layer| self::affine(quant, at(layer)).is_some();
+        if layers().any(|layer| affine_in(layer) != affine_in(0)) {
+            return refuse("each site is affine in every layer or in none");
+        }
+        let several = |layer| shifts(quant, at(layer)).is_ok_and(|s| s.len() > 1);
+        if !affine_in(0) && layers().any(|layer| several(layer) != several(0)) {
+            return refuse("each pot site has one class in every layer, or several in every layer");
+        }
+    }
     if !quant.score_scales.iter().map(|&(l, _)| l).eq(layers()) {
         return refuse("score_scales holds one scale per layer, sorted");
     }
@@ -757,11 +769,13 @@ impl<'a> Builder<'a> {
     /// accumulator at `point`, within `[−2^{bits−1}, 2^{bits−1} − 1]` (RFC-0022). At an affine
     /// site the key is `acc · m` with one shift (RFC-0025):
     ///
-    /// - a site of one shift, with `2^r` a constant, rescales the fused key `acc + 2^r · res`,
-    ///   whose rounding is the accumulator's since `2^r · res` is a multiple of `2^r`;
-    /// - otherwise, with hidden class shifts or `r = 63`: `u = rq(acc, r_c)` within
+    /// - a site of one shift in every layer, with `2^r` a constant in each, rescales the fused key
+    ///   `acc + 2^r · res`, whose rounding is the accumulator's since `2^r · res` is a multiple of
+    ///   `2^r`;
+    /// - otherwise, with hidden class shifts or `r = 63` in some layer: `u = rq(acc, r_c)` within
     ///   `±(2^{bits} − 1)`, then `rq(2(res + u), 1)` clamps the sum. The first clamp binds only
-    ///   where the sum saturates anyway.
+    ///   where the sum saturates anyway, so a layer of one shift computes what the fused key
+    ///   would. Every layer takes one route, so that the layers lower alike (RFC-0038).
     fn residual(
         &mut self,
         acc: TensorId,
@@ -772,7 +786,8 @@ impl<'a> Builder<'a> {
         let bits = self.model.quant.residual_bits;
         let half = 1i64 << (bits - 1);
         let (acc, shifts, classes) = self.key(acc, point, d)?;
-        if let [r] = shifts[..]
+        if self.fused(point)
+            && let [r] = shifts[..]
             && let Some(power) = 1i64.checked_shl(u32::from(r)).filter(|&p| p > 0)
         {
             let power = self.graph.constant(vec![power])?;
@@ -801,6 +816,22 @@ impl<'a> Builder<'a> {
         let output = self.node(op, &[doubled], advice(&[n, d]))?;
         self.sites.push((point, output));
         Ok(output)
+    }
+
+    /// Whether the residual site of `point` takes the fused key, in every layer alike
+    /// (RFC-0038): it has one shift, of one class or affine, at most 62, in each.
+    fn fused(&self, point: QuantPoint) -> bool {
+        let QuantPoint::Layer { site, .. } = point else {
+            return false;
+        };
+        let quant = self.model.quant;
+        (0..self.model.arch.n_layers).all(|layer| {
+            let at = QuantPoint::Layer { layer, site };
+            match affine(quant, at) {
+                Some(r) => (1..=62).contains(&r),
+                None => matches!(shifts(quant, at).as_deref(), Ok([r]) if *r <= 62),
+            }
+        })
     }
 
     /// `W x` for the weight `(ty, layer)` of `rows × cols`, declared here.

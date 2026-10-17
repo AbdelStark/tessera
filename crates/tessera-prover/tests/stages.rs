@@ -57,9 +57,14 @@ fn conformance(name: &str) -> (IntegerModel, Vec<u32>) {
     (model, tokens)
 }
 
-/// The conformance models whose layers lower alike. `tiny-2-affine`'s layer 0 has affine sites
-/// that layer 1 has not, so its layers are not one template (#348).
-const MODELS: [&str; 3] = ["tiny-2-servable", "tiny-2-minimal", "tiny-4-servable"];
+/// Every conformance model: each rescales every layer's sites alike (RFC-0038), so its layers
+/// lower to one template.
+const MODELS: [&str; 4] = [
+    "tiny-2-servable",
+    "tiny-2-minimal",
+    "tiny-2-affine",
+    "tiny-4-servable",
+];
 
 /// A model lowered for its tokens, its schedule, and its witness.
 fn setup(name: &str) -> (Lowering, StageSchedule, Witness) {
@@ -751,19 +756,6 @@ fn every_stage_of_the_conformance_models_verifies() {
         );
         assert_eq!(proof.stages.len() + 1, schedule.stage_count(), "{name}");
     }
-}
-
-/// `tiny-2-affine`'s layers are not one template, so it has no schedule: `ERR-INTERNAL`, until
-/// the claim list rescales every layer's sites alike (#348).
-#[test]
-fn a_model_whose_layers_differ_has_no_schedule() {
-    let (model, tokens) = conformance("tiny-2-affine");
-    let n = u32::try_from(tokens.len()).expect("small");
-    let lowering = lower(PublicModel::of(&model), n).expect("the model lowers");
-    assert!(matches!(
-        derive_schedule(&lowering),
-        Err(tessera_compiler::CompileError::Schedule { .. })
-    ));
 }
 
 /// A split that does not add up is rejected at its stage, `Reject(Sumcheck { stage: 0, round: 0

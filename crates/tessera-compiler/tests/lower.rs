@@ -186,13 +186,14 @@ fn tiny(seed: u64, profile: Profile, shape: Shape) -> IntegerModel {
     };
     let mut shift_class_sets = Vec::new();
     let mut channels = Vec::new();
+    // RFC-0038: a site has one class in every layer or several in every layer.
+    let several: Vec<bool> = sites(profile)
+        .into_iter()
+        .map(|site| weight_of(site).is_some() && rng.range(0, 3) > 0)
+        .collect();
     for layer in 0..shape.layers {
-        for site in sites(profile) {
-            let count = if weight_of(site).is_some() {
-                rng.range(1, 4)
-            } else {
-                1
-            };
+        for (site, &several) in sites(profile).into_iter().zip(&several) {
+            let count = if several { rng.range(2, 4) } else { 1 };
             let (from, to) = estimate(site);
             let shifts: Vec<i8> = (0..count).map(|_| shift(&mut rng, from, to)).collect();
             shift_class_sets.push((QuantPoint::Layer { layer, site }, shifts));
@@ -874,7 +875,14 @@ fn residual_sites(model: &IntegerModel, keep: fn(usize) -> bool) -> usize {
 fn servable_keeps_s1_to_s3_and_minimal_rescales_eight_tensors_per_layer() {
     for (profile, per_layer) in [(Profile::Servable, 11), (Profile::Minimal, 8)] {
         let shape = SHAPES[0];
-        let model = tiny(5, profile, shape);
+        // A model with residual sites of both routes: one class at one site, several at the other.
+        let model = (5..)
+            .map(|seed| tiny(seed, profile, shape))
+            .find(|m| {
+                residual_sites(m, |count| count > 1) > 0
+                    && residual_sites(m, |count| count == 1) > 0
+            })
+            .expect("a model of both routes");
         let lowering = lowered(&model, 6).lowering;
         let graph = &lowering.graph;
         // Each layer's rescales, then the final norm's: Requant nodes and the SiLU lookup, and the
@@ -885,7 +893,6 @@ fn servable_keeps_s1_to_s3_and_minimal_rescales_eight_tensors_per_layer() {
             .filter(|n| matches!(n.op, Op::Requant { .. } | Op::TableMap { .. }))
             .count();
         let classed_residuals = residual_sites(&model, |count| count > 1);
-        assert!(classed_residuals > 0 && residual_sites(&model, |count| count == 1) > 0);
         assert_eq!(
             rescales,
             per_layer * shape.layers as usize + 1 + classed_residuals
@@ -1331,9 +1338,11 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
 /// `shift_class_sets` to `affine_sites`, and the weight before it carries multipliers, no classes.
 /// `base` with layer 0's `site` affine, of shift `r`, its multipliers `1, 2, 3, …`.
 fn with_affine(base: &IntegerModel, site: Site, r: i8) -> IntegerModel {
-    let point = QuantPoint::Layer { layer: 0, site };
-    with_affine_at(base, point, r, |c| {
-        u16::try_from(c % 65_535 + 1).expect("16 bits")
+    (0..base.arch.n_layers).fold(base.clone(), |model, layer| {
+        let point = QuantPoint::Layer { layer, site };
+        with_affine_at(&model, point, r, |c| {
+            u16::try_from(c % 65_535 + 1).expect("16 bits")
+        })
     })
 }
 
@@ -1410,7 +1419,8 @@ fn affine_sites_keep_rfc_0025s_rules() {
         let model = with_affine(&base, site, 20);
         assert_eq!(validate(&model), Ok(()), "{site:?}");
         let lowering = lower(PublicModel::of(&model), 4).expect("an affine site lowers");
-        assert_eq!(lowering.multipliers.len(), 1, "{site:?}");
+        let layers = base.arch.n_layers as usize;
+        assert_eq!(lowering.multipliers.len(), layers, "{site:?}");
     }
     let affine = with_affine(&base, Site::V, 20);
     let moved = |m: &mut IntegerModel, point: QuantPoint| {
@@ -1521,6 +1531,54 @@ fn affine_sites_keep_rfc_0025s_rules() {
     }
 }
 
+/// RFC-0038: every layer rescales each site alike. A site affine in one layer only, or of one
+/// class in one layer and several in another, is refused, naming the rule; a site whose number of
+/// classes differs between layers, all of them several, lowers.
+#[test]
+fn every_layer_rescales_each_site_alike() {
+    let lowers = |model: &IntegerModel| lower(PublicModel::of(model), 4).map(|_| ());
+    let model_rule = |rule| Err(CompileError::Model { rule });
+    let base = tiny(41, Profile::Servable, SHAPES[0]);
+    assert_eq!(lowers(&base), Ok(()));
+    // An affine site in layer 0 alone.
+    let point = QuantPoint::Layer {
+        layer: 0,
+        site: Site::RopeQ,
+    };
+    let r = base_shift(&base, point) + 15;
+    let once = with_affine_at(&base, point, r, |c| {
+        u16::try_from(c % 7 + 1).expect("small")
+    });
+    let rule = "each site is affine in every layer or in none";
+    assert_eq!(validate(&once), model_rule(rule));
+    assert_eq!(lowers(&once), model_rule(rule));
+    // One class in layer 1, several in layer 0, at a site after a weight.
+    let set = |m: &IntegerModel, layer| {
+        m.quant
+            .public
+            .shift_class_sets
+            .iter()
+            .position(|&(p, _)| {
+                p == QuantPoint::Layer {
+                    layer,
+                    site: Site::V,
+                }
+            })
+            .expect("V is pot")
+    };
+    let mut several = base.clone();
+    let (at0, at1) = (set(&several, 0), set(&several, 1));
+    several.quant.public.shift_class_sets[at0].1 = vec![9, 10];
+    several.quant.public.shift_class_sets[at1].1 = vec![9, 10, 11];
+    assert_eq!(lowers(&several), Ok(()), "several classes, two and three");
+    let mut mixed = several.clone();
+    mixed.quant.public.shift_class_sets[at1].1 = vec![9];
+    assert_eq!(
+        lowers(&mixed),
+        model_rule("each pot site has one class in every layer, or several in every layer")
+    );
+}
+
 /// RFC-0025's semantics at every affine site, on random tiny models of both profiles: each site
 /// that can take `affine` does with probability one half, its multipliers drawn from `[1, 2^{16})`,
 /// and the lowered graph, every value inside its analyzed range, gives the reference's logits.
@@ -1551,11 +1609,12 @@ fn affine_sites_compute_rfc_0025s_semantics() {
         for (k, &shape) in SHAPES.iter().enumerate() {
             for trial in 0..3u64 {
                 let mut model = tiny(rng.next() ^ trial, profile, shape);
-                for layer in 0..shape.layers {
-                    for site in affine_sites(profile) {
-                        if rng.next().is_multiple_of(2) {
-                            continue;
-                        }
+                // RFC-0038: a site is affine in every layer or in none.
+                for site in affine_sites(profile) {
+                    if rng.next().is_multiple_of(2) {
+                        continue;
+                    }
+                    for layer in 0..shape.layers {
                         let point = QuantPoint::Layer { layer, site };
                         let r = base_shift(&model, point) + 15;
                         let draws: Vec<u16> = (0..1024)
@@ -1596,30 +1655,44 @@ fn affine_sites_compute_rfc_0025s_semantics() {
         }
     }
     check(&extreme, &mut rng, "weights at ±127");
-    // A residual site of shift 63 takes the two-step update, as a pot site of several classes.
+    // A residual site of shift 63 takes the two-step update, as a pot site of several classes,
+    // and so does that site in every other layer (RFC-0038).
     let base = tiny(rng.next(), Profile::Servable, SHAPES[0]);
-    let point = QuantPoint::Layer {
-        layer: 0,
-        site: Site::MlpResidual,
-    };
-    let steep = with_affine_at(&base, point, 63, |c| u16::try_from(c + 1).expect("16 bits"));
+    let steep = (0..SHAPES[0].layers).fold(base, |model, layer| {
+        let point = QuantPoint::Layer {
+            layer,
+            site: Site::MlpResidual,
+        };
+        let r = if layer == 0 {
+            63
+        } else {
+            base_shift(&model, point) + 15
+        };
+        with_affine_at(&model, point, r, |c| u16::try_from(c + 1).expect("16 bits"))
+    });
     let lowering = lower(PublicModel::of(&steep), 2).expect("the model lowers");
-    let output = lowering
-        .sites
-        .iter()
-        .find(|(p, _)| *p == point)
-        .map(|&(_, t)| t)
-        .expect("the site");
-    let producer = lowering.graph.producer(output).expect("a node");
-    let node = &lowering.graph.nodes[producer.0 as usize];
-    let Op::Requant { shift, .. } = node.op else {
-        panic!("a residual site's output is a Requant's")
-    };
-    assert_eq!(
-        lowering.graph.shift_classes[shift.0 as usize],
-        [1],
-        "the sum's clamp"
-    );
+    for layer in 0..SHAPES[0].layers {
+        let point = QuantPoint::Layer {
+            layer,
+            site: Site::MlpResidual,
+        };
+        let output = lowering
+            .sites
+            .iter()
+            .find(|(p, _)| *p == point)
+            .map(|&(_, t)| t)
+            .expect("the site");
+        let producer = lowering.graph.producer(output).expect("a node");
+        let node = &lowering.graph.nodes[producer.0 as usize];
+        let Op::Requant { shift, .. } = node.op else {
+            panic!("a residual site's output is a Requant's")
+        };
+        assert_eq!(
+            lowering.graph.shift_classes[shift.0 as usize],
+            [1],
+            "layer {layer}: the sum's clamp"
+        );
+    }
     check(&steep, &mut rng, "a residual shift of 63");
 }
 

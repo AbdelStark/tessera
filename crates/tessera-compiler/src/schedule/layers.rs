@@ -381,7 +381,11 @@ fn same_op(graph: &Graph, base: &Op, op: &Op, layer: u32) -> bool {
                 lo: lo_b,
                 hi: hi_b,
             },
-        ) => classes(*a) == classes(*b) && lo == lo_b && hi == hi_b,
+        ) => {
+            // One class or several: their number is the table's, and the nodes are alike.
+            let several = |s| classes(s).map(|n| n > 1);
+            several(*a) == several(*b) && lo == lo_b && hi == hi_b
+        }
         (Op::Rotate { .. }, Op::Rotate { .. })
         | (Op::TableMap { .. }, Op::TableMap { .. })
         | (Op::Bitwise { .. }, Op::Bitwise { .. }) => true,

@@ -63,7 +63,7 @@ A layer of one shift whose site takes two steps computes the same output as the 
 
 Two transformations meet the rule and leave `D` unchanged:
 
-- **More classes.** A `pot` site of classes `r, …, r + k − 1` takes `r, …, r + k' − 1` for any `k < k' ≤ 4` with `r + k' − 1 ≤ 63`. The class vector keeps every channel's class, so no channel takes the new ones. This lets a site of one class join layers of several. Only the table grows: `k'·2^b` rows instead of `k·2^b`.
+- **More classes.** A `pot` site of `k` classes may take further shifts in `[1, 63]`, up to `k' ≤ 4` classes in all. The class vector still maps each channel to its own shift, so no channel takes the new ones. This lets a site of one class `r` join layers of several: `tessera-quant` adds `r + 1`, or 62 beside 63. Only the table grows: `k'·2^b` rows instead of `k·2^b`. At SiLU a new class of shift `r'` adds `2^{b − r'}` values to the table's core (RFC-0008); where the core would pass `2^{24}`, the transformation does not apply, and the quantizer takes the next coarser input exponent instead.
 - **Affine for `pot`.** Let a `pot` site have classes `r_min` to `r_max`, with `r_max − r_min ≤ 15`. It is exactly the affine site of shift `r_max` whose multiplier for a channel of class `c` is `2^{r_max − r_c}`, in `[1, 2^15]`. The reason is that `rq(x·2^k, r + k, lo, hi) = rq(x, r, lo, hi)` for every `k ≥ 0`: the numerator and the denominator of RFC-0005's rounding scale together. This lets a layer's `pot` site join layers where it is affine.
 
   The affine key is at most `r_max − r_min` bits wider. It must still pass range analysis: in `minimal`, the O and down projections refuse `affine` in every layer (RFC-0025).
@@ -79,7 +79,7 @@ The quantizer chooses per site, over all layers: affine if any layer needs it, o
 ## Drawbacks
 
 - **Two steps at every layer** of a residual site whose quantization needs several classes in any layer. That is one more committed value and lookup per element (RFC-0022 'Alternatives' 2 counts the cost), so the quantizer should prefer one class at residual sites.
-- **Wider keys** in layers that take `affine` for `pot`, and larger tables in layers that take more classes.
+- **Wider keys** in layers that take `affine` for `pot`, larger tables in layers that take more classes, and at SiLU, where the core is full, an input exponent one coarser.
 
 ## Migration / Rollout
 
@@ -87,7 +87,7 @@ v0.3, for #348:
 
 1. this RFC;
 2. the check in `tessera-compiler` and the residual's route chosen per site;
-3. the conformance models of `spec/vectors/models/` rescaled alike, `tiny-2-affine` among them, and `tessera-quant`'s quantizer once it chooses classes.
+3. the conformance models of `spec/vectors/models/` rescaled alike, `tiny-2-affine` among them, and `tessera-quant`'s quantizer: more classes where a layer needs them, and `affine` in every layer or in none.
 
 The independent verifier checks the rule with its claim-list validation (#107).
 

@@ -34,6 +34,10 @@ chooses the strength and assembles `D`:
   and the multipliers in the weight's `ChannelParams`, with no classes. Q, K, V, O, up and down
   can, except `minimal`'s O and down, whose keys would exceed 62 bits. `tessera_quant.quantize`
   with `affine` scales names every weight that can take them.
+- **Every layer alike** (RFC-0038), so that the layers lower to one template: `affine` names a
+  weight in every layer or in none, and a `pot` site whose channels share one shift `r` in a
+  layer, while they take several in another, takes one class more there that no channel uses:
+  `r + 1`, or 62 beside 63. At SiLU that class counts toward the table's core.
 
 Weights and statistics are secret-class (05 §3): errors name tensors and sites, never a value.
 """
@@ -87,6 +91,18 @@ _AFFINE_NAMES = frozenset({"q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "d
 _AFFINE = frozenset(
     {WeightType.Q, WeightType.K, WeightType.V, WeightType.O, WeightType.Up, WeightType.Down}
 )
+
+_CLASSED = (
+    (Site.RopeQ, "self_attn.q_proj", True),
+    (Site.RopeK, "self_attn.k_proj", True),
+    (Site.V, "self_attn.v_proj", False),
+    (Site.AttnResidual, "self_attn.o_proj", False),
+    (Site.Silu, "mlp.gate_proj", False),
+    (Site.Up, "mlp.up_proj", False),
+    (Site.MlpResidual, "mlp.down_proj", False),
+)
+"""Each site whose classes follow a weight's row exponents: the weight's module, and whether the
+rows of its RoPE pairs share an exponent."""
 
 
 @dataclass(frozen=True, eq=False)
@@ -157,6 +173,8 @@ class _Quantizer:
         self.channels: list[ChannelParams] = []
         self.tensors: list[WeightTensor] = []
         self.scales: dict[str, torch.Tensor] = {}
+        self.exponents: dict[str, list[int]] = {}
+        self.several: frozenset[Site] = frozenset()
 
     def run(self) -> Quantized:
         arch = self.arch
@@ -166,6 +184,21 @@ class _Quantizer:
         for name in sorted(self.affine):
             if name.rsplit(".", 2)[-2] not in _AFFINE_NAMES:
                 raise TesseraQuantError(f"{name}: affine applies to Q, K, V, O, up and down")
+        layers = range(arch.n_layers)
+        for _, module, _ in _CLASSED:
+            named = [layer for layer in layers if _name(layer, module) in self.affine]
+            if named and len(named) < arch.n_layers:
+                raise TesseraQuantError(
+                    f"affine names {module} in layers {named} only: every layer or none (RFC-0038)"
+                )
+        # A site takes several classes in every layer once one layer's channels need several.
+        self.several = frozenset(
+            site
+            for site, module, pairs in _CLASSED
+            if (site is not Site.Up or self.profile is Profile.Servable)
+            and _name(0, module) not in self.affine
+            and any(len(set(self._exponents(_name(layer, module), pairs))) > 1 for layer in layers)
+        )
         residual = max(
             self._maximum(name)
             for layer in range(arch.n_layers)
@@ -325,7 +358,7 @@ class _Quantizer:
                 )
             self._affine(name, ty, layer, w, point, offset, pairs=pairs)
             return
-        exponents = _row_exponents(w, self.arch.d_head if pairs else None)
+        exponents = self._exponents(name, pairs)
         shifts = [self._shift(offset - e, f"{name}'s site") for e in exponents]
         self._store(name, ty, layer, w, exponents)
         self._classes(ty, layer, point, shifts)
@@ -386,32 +419,54 @@ class _Quantizer:
         holds at most `2^24`.
         """
         w = self._float(name)
-        exponents = _row_exponents(w, None)
+        exponents = self._exponents(name, False)
         self._store(name, WeightType.Gate, layer, w, exponents)
         # The compiler's key width: the gate accumulator of INT8 activations lies within
         # +-127 * 128 * d_model (RFC-0006 'Llama lowering').
         b = (127 * 128 * self.arch.d_model).bit_length() + 1
-        classes = sorted(set(exponents))
-        in_exp = max(e_y2 + e + 1 for e in classes)
-        while sum(1 << max(b - (in_exp - e_y2 - e), 0) for e in classes) > SILU_CORE:
+        distinct = sorted(set(exponents))
+
+        def classes(in_exp: int) -> list[int]:
+            return self._padded(Site.Silu, sorted(in_exp - e_y2 - e for e in distinct))
+
+        in_exp = max(e_y2 + e + 1 for e in distinct)
+        while sum(1 << max(b - r, 0) for r in classes(in_exp)) > SILU_CORE:
             in_exp += 1
         shifts = [in_exp - e_y2 - e for e in exponents]
-        if not (-64 <= in_exp <= 0 and 1 <= 63 - in_exp + e_a <= 126 and max(shifts) < b):
+        if not (-64 <= in_exp <= 0 and 1 <= 63 - in_exp + e_a <= 126 and max(classes(in_exp)) < b):
             raise CalibrationError(f"layer {layer}: no Silu table takes the gate's scales")
         self._classes(WeightType.Gate, layer, LayerPoint(layer, Site.Silu), shifts)
         return in_exp
 
-    def _classes(self, ty: WeightType, layer: int, point: QuantPoint, shifts: list[int]) -> None:
-        """Records the site's classes, its distinct shifts ascending.
+    def _classes(self, ty: WeightType, layer: int, point: LayerPoint, shifts: list[int]) -> None:
+        """Records the site's classes, its distinct shifts ascending, `_padded`.
 
         With several, each channel's class joins the hidden `ChannelParams`.
         """
-        distinct = sorted(set(shifts))
+        distinct = self._padded(point.site, sorted(set(shifts)))
         self.sets.append((point, distinct))
         if len(distinct) > 1:
             index = {r: k for k, r in enumerate(distinct)}
             classes = np.asarray([index[r] for r in shifts], dtype=np.uint8)
             self.channels.append(ChannelParams(ty, layer, classes, np.zeros(0, dtype=np.uint16)))
+
+    def _padded(self, site: Site, distinct: list[int]) -> list[int]:
+        """A site's classes: its distinct shifts, and one more if another layer's need several.
+
+        No channel takes the extra class, so `D` computes what it computed without it (RFC-0038
+        'What the quantizer can do').
+        """
+        if len(distinct) > 1 or site not in self.several:
+            return distinct
+        (r,) = distinct
+        return [r, r + 1] if r < 63 else [r - 1, r]
+
+    def _exponents(self, name: str, pairs: bool) -> list[int]:
+        """The weight's row exponents, `_row_exponents`, computed once."""
+        if name not in self.exponents:
+            d_head = self.arch.d_head if pairs else None
+            self.exponents[name] = _row_exponents(self._float(name), d_head)
+        return self.exponents[name]
 
     def _store(
         self, name: str, ty: WeightType, layer: int, w: torch.Tensor, exponents: list[int]
@@ -453,6 +508,11 @@ def _row_exponents(w: torch.Tensor, d_head: int | None) -> list[int]:
         return [0] * len(exponents)
     low = max(present) - (WINDOW - 1)
     return [low if e is None else max(e, low) for e in exponents]
+
+
+def _name(layer: int, module: str) -> str:
+    """The Hugging Face name of a layer's weight in `module`."""
+    return f"model.layers.{layer}.{module}.weight"
 
 
 def _pair_maxima(maxima: torch.Tensor, d_head: int) -> torch.Tensor:
