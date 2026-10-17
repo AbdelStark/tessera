@@ -102,11 +102,18 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 | LogUp identity (`N + T ≤ 2^{38}` per instance) | `(N + T)/\|Fp2\|`; `2(N + T)/\|Fp2\|` in `tessera-protocol/2`, which counts zero denominators (RFC-0032) | about 90 bits, one shot: `α` derives from a seed the prover cannot retry | 90 + `g_seed` = 110 bits |
 | Tuple compression | included in the LogUp bound (joint polynomial in `α, β`) | — | — |
 | Opening evaluation checks | `T_g/\|Fp2\|` per claim group of `T_g` claims, `1/\|Fp2\|` per weight matrix ([RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings)) | ≥ 110 bits | same |
-| Proximity per commitment | `((1 + ρ')/2)^τ + n/\|Fp2\|` | `τ · b(ρ') ≥ 64` bits, one shot | `τ · b(ρ') + g_query ≥ 100` bits |
+| Proximity per commitment | `((1 + ρ')/2)^τ + ϑ·n/\|Fp2\|` | `τ · b(ρ') ≥ 64` bits, one shot; the field term about 100 bits | `τ · b(ρ') + g_query ≥ 100` bits; the field term about 120 bits with `g_seed` |
 | Weight linking | `ν/\|Fp2\|` | ≥ 120 bits | ≥ 120 bits |
 | Hash collisions | BLAKE3, 256-bit output | 128 bits | 128 bits |
 
-`b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients. The bound takes the queries to be independent. Both modes draw column indices uniformly with replacement, and a repeated index is checked once at no cost in soundness ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7). In `tessera-protocol/1` the verifier also rejects a zero LogUp root denominator, of a lookup tree or a table tree, and any zero denominator.
+`b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients.
+
+The field term is the tensor generator's. The proximity coefficients are `eq(ξ*, row)` for a random point `ξ*` with one coordinate per bit of the row index ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 3), not independent uniform values. Folding those `ϑ` coordinates one at a time costs one line proximity gap each. The false-witness probability is therefore `ϑ·n/|Fp2|`, with `n` the codeword length (Diamond and Posen, 'Proximity Testing with Logarithmic Randomness' (2024); Diamond and Gruen, 'Proximity Gaps in Interleaved Codes' (2025), Theorems 2 and 3).
+- **`ϑ` for advice** is `ν − log2 k`, every bit of the row index: about 20 at 405B, 16K tokens and 16K context, whose 5.8×10^5 non-zero rows span a row index of 20 or 21 bits. The term is then `21 · 2^23/2^128 ≈ 2^{−100.6}`.
+- **`ϑ_T` for weight matrix `T`** is `⌈log2⌉` of its data and blinding rows: at most 18 at 405B. The term is at most `18 · 2^22/2^128 ≈ 2^{−101.8}`.
+- **Both targets hold.** `live-64` keeps about 100 bits one shot. `ni-100` keeps about 120 with the seed's 20 bits of grinding, since `ξ*` is squeezed after the seed.
+
+The bound holds in the unique-decoding regime only, `δ < (1 − ρ')/2`, where this table works. The bound takes the queries to be independent. Both modes draw column indices uniformly with replacement, and a repeated index is checked once at no cost in soundness ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7). In `tessera-protocol/1` the verifier also rejects a zero LogUp root denominator, of a lookup tree or a table tree, and any zero denominator.
 
 ### Grinding
 
@@ -149,13 +156,13 @@ Session deadlines (per message) are configuration, not protocol; defaults are 1 
 
 ### Soundness calculator
 
-`tessera params check` (prover side) and `tessera-verify params` (verifier side, independent code) take a parameter set and statement sizes (lookups and table rows per instance, rounds, degrees, committed rows) and print every row of the soundness table with its bits and the minimum. CI runs both for every parameter set at the 405B 16K-token sizes and fails if any bound misses its target or the two calculators disagree.
+`tessera params check` (prover side) and `tessera-verify params` (verifier side, independent code) take a parameter set and statement sizes (lookups and table rows per instance, rounds, degrees, committed rows) and print every row of the soundness table with its bits and the minimum. The committed rows give each commitment's `ϑ`: the advice row index's bits, and each weight matrix's. CI runs both for every parameter set at the 405B 16K-token sizes and fails if any bound misses its target or the two calculators disagree.
 
 ## Alternatives Considered
 
 1. **Non-interactive only.** Rejected as the default: the source's default is the bilateral live protocol (source §10), which reaches 64-bit proximity with 155 columns instead of 193 plus grinding, and keeps proofs non-transferable unless the parties want them transferable.
 2. **Verifier-chosen seed without a coin toss.** Rejected: a malicious verifier could pick challenges adversarially, and the masked-sumcheck simulation of RFC-0013 assumes uniform challenges.
-3. **Johnson-bound (list-decoding) proximity analysis.** Considered: about 0.5 bits per query at rate 1/2 instead of 0.415. Rejected: provable bounds in that regime carry field-size terms that erode the margin, and conjectured bounds are not acceptable for treaty use.
+3. **Johnson-bound (list-decoding) proximity analysis.** Considered: about 0.5 bits per query at rate 1/2 instead of 0.415. Rejected: provable bounds in that regime carry field-size terms that erode the margin, and conjectured bounds are not acceptable for treaty use. For the tensor generator RFC-0011 draws its coefficients with, no list-decoding bound is known at all.
 4. **A larger extension field for LogUp only.** Considered to remove reliance on grinding for RISK-5. Rejected: the fraction tree would run in `Fp4`, more than doubling the cost of the dominant lookup term; 20 bits of grinding costs milliseconds.
 5. **Public randomness beacon.** Deferred (Non-Goals).
 
@@ -174,7 +181,7 @@ v0.3: messages, both modes, transcript schedule and the calculator, without zero
 - State machines: every out-of-order message is rejected with `ERR-PROTO-ORDER` on both sides; a second `SeedReveal` for the same `Round1` is refused by the prover (`ERR-PROTO-REUSE`); a reveal that does not match `c_V` yields `ERR-PROTO-COINTOSS`.
 - Transcript vectors: for each conformance model and both modes, the full sequence of labels and challenges matches pinned vectors on both sides.
 - Grinding: a non-interactive proof with a seed nonce one bit short of 20 is rejected with `Reject(ProofOfWork)`.
-- Calculator: both implementations agree on every row for 1,000 random size profiles; `live-64` and `ni-100` meet their targets at 405B sizes; a profile with `N + T = 2^{50}` makes the LogUp row fail its target, proving the check is live.
+- Calculator: both implementations agree on every row for 1,000 random size profiles; `live-64` and `ni-100` meet their targets at 405B sizes; the proximity row's field term grows by `n/|Fp2|` with each row-index bit a profile's rows add; a profile with `N + T = 2^{50}` makes the LogUp row fail its target, proving the check is live.
 - Transports: the stream and directory transports deliver byte-identical envelopes; a TLS peer without a valid client certificate is refused.
 
 ## Open Questions
@@ -185,5 +192,7 @@ v0.3: messages, both modes, transcript schedule and the calculator, without zero
 
 - Source §2 (security targets), §7 ("Interaction and soundness"), §10 (verification model).
 - Ben-Sasson, Carmon, Ishai, Kopparty, Saraf, "Proximity gaps for Reed–Solomon codes", FOCS 2020.
+- Diamond, Posen, "Proximity Testing with Logarithmic Randomness", ePrint 2023/630, IACR Communications in Cryptology 1(1), 2024.
+- Diamond, Gruen, "Proximity Gaps in Interleaved Codes", ePrint 2024/1351, IACR Communications in Cryptology 1(4), 2025: Theorem 2 (interleaving keeps line proximity gaps within unique decoding), Theorem 3 and Definition 2 (tensor gaps for `ϑ` random values at `ϑ·ε/q`).
 - Canetti et al., "Fiat–Shamir: from practice to theory", STOC 2019; Ben-Sasson, Chiesa, Spooner, TCC 2016 (round-by-round and state-restoration soundness).
 - [RFC-0004](RFC-0004-hashing-and-transcript.md), [RFC-0011](RFC-0011-advice-commitment.md), [RFC-0012](RFC-0012-weight-commitment.md), [RFC-0013](RFC-0013-zero-knowledge.md).
