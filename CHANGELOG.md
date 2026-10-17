@@ -465,6 +465,15 @@ All notable changes to the prover release train are recorded here: the crates un
     - A reference of another architecture in `evaluate_fidelity` becomes `ERR-QUANT-ARCH`. All four were `ERR-INTERNAL`.
   - Tests: an end-to-end run on a tiny checkpoint with its tokenizer, and each failure's exit status. Six bugs planted in the command line each fail a test: hashes not excluded, the selection digest unchecked, the reference unchecked, the seed ignored, the logits reordered, and affine scales accepted.
 
+- The `tessera` command tree of 02 §2.2 ([#68](https://github.com/AbdelStark/tessera/issues/68)):
+  - Every command, each with its arguments, value checks and help: `compile`, `commit-weights`, `weights refresh`, `prove`, `audit sample`, `audit batch`, `audit plan`, `params check`, `bench unit-costs`, `bench model` and `recorder ref`. `tessera --help` ends with the whole list, generated from the tree.
+  - The commands to come check the envelope of each TCE artifact they read, in constant memory (RFC-0003). They then exit with `ERR-USAGE`, naming the issue that implements them.
+  - `--json` is a global flag. A failure prints `{"command", "error": {"code", "message"}}` on stdout, as well as its line on stderr (02 §2).
+  - Exit statuses are the error codes' of 04 §3: a malformed artifact exits 65 with its fault's code, an unreadable one 20, a malformed argument 64.
+  - `bench model` takes `--plan` or `--source-defaults`, exactly one, and moves to its own module.
+  - Every command's outcome leaves through one exit point, where [#95](https://github.com/AbdelStark/tessera/issues/95) will write the run manifest of 05 §6.
+  - Tests: through the built binary, the help lists every command of 02 §2.2. Each command to come is refused naming its issue, after its artifacts are checked. Five envelope faults exit 65 with their codes, and ten malformed arguments exit 64.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

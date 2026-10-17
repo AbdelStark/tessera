@@ -16,7 +16,7 @@ Tier A is the treaty-facing contract: two parties pin a protocol version, not a 
 
 ## 2. Command-line interface
 
-Every command reads and writes TCE artifacts, prints human-readable progress to stderr, and with `--json` prints one JSON object to stdout describing its result. JSON output is informational and never hashed.
+Every command reads and writes TCE artifacts, prints human-readable progress to stderr, and with `--json` prints one JSON object to stdout describing its result, or `{"command", "error": {"code", "message"}}` when it fails. JSON output is informational and never hashed.
 
 ### 2.1 `tessera-quant` (Python)
 
@@ -33,7 +33,7 @@ tessera-quant reference --model MODEL.d --tokens TOKENS.ttk --out LOGITS.tlg
 - **`compile`** draws the calibration set from `--seed` (default 0) and captures its statistics on `--device` (default `cpu`). It then quantizes and exports `D`, a secret artifact, and `--report` writes the calibration's `tessera.calibration/1` report. On the CPU, the same seed gives the same artifact byte for byte. `--scales affine` is refused with `ERR-USAGE` before any work until [#301](https://github.com/AbdelStark/tessera/issues/301).
 - **`eval`** measures `D` against the checkpoint it was compiled from, whose file digests `D`'s provenance records; another reference is `ERR-QUANT-ARCH`. It redraws `D`'s calibration set from its provenance and the specification's calibration source, refusing with `ERR-QUANT-CALIB` a source that does not give the recorded selection digest back. It then draws the evaluation documents and prompts from `--seed`, skipping every calibration document (`tessera_quant.fidelity.select`), and writes a `tessera.fidelity/1` report.
 - **`reference`** reads a `TokenFile` and writes a `LogitsFile`: the logits of every position of every sequence, in order.
-- **Exit codes** are each error code's ([04 §3](04-error-model.md#3-error-codes)): 0 on success, 64 for usage, 65 for a malformed input, 20 for a calibration or I/O failure, 70 for a bug. With `--json`, a failure prints `{"command", "error": {"code", "message"}}`.
+- **Exit codes** are each error code's ([04 §3](04-error-model.md#3-error-codes)): 0 on success, 64 for usage, 65 for a malformed input, 20 for a calibration or I/O failure, 70 for a bug.
 
 ### 2.2 `tessera` (Rust, prover side)
 
@@ -46,7 +46,7 @@ tessera prove           --plan plan.tep --model MODEL.d --weights WEIGHTS.twc --
                         --transcripts DIR (--live ENDPOINT | --out PROOF.tnp)
                         [--backend {cpu,gpu}] [--devices 0,1,...] [--memory-budget GIB]
 tessera audit sample    --manifest MANIFEST.tlm --seed SEED.tsd --rate FLOAT --out SAMPLE.tas
-tessera audit batch     --sample SAMPLE.tas --min-tokens 16384 --out-dir DIR
+tessera audit batch     --sample SAMPLE.tas [--min-tokens 16384] --out-dir DIR
 tessera audit plan      --policy POLICY.json --traffic PROFILE.json --plan plan.tep   # detection and overhead
 tessera params check    --params PARAMSET [--lookups N] [--table-rows T]   # soundness report
 tessera bench unit-costs --device INT --out UNIT_COSTS.json
