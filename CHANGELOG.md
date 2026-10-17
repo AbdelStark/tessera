@@ -257,9 +257,16 @@ All notable changes to the prover release train are recorded here: the crates un
   - `RopeSpec` takes the `Rope` table's integer parameters. `Provenance` and `CalibrationIdentity` record the checkpoint's shard digests, the calibration set's identity, the statistics digest, `α` and library versions.
   - The Rust types live in `tessera-ir` with TCE encodings. Debug forms show shapes, never a weight or a channel's class. `spec/vectors/model/integer-model.json`, written by `cargo xtask gen-vectors`, pins a sealed model and its value for the Python writer to check.
   - The claim list's missing public data for affine-mode rescales is [#274](https://github.com/AbdelStark/tessera/issues/274).
+- The Tessera Canonical Encoding in `tessera-quant` (RFC-0003, [#74](https://github.com/AbdelStark/tessera/issues/74)):
+  - `tessera_quant.tce` reads and writes every TCE type: integers, `bool`, `Fp`, `Fp2`, `Ascii`, `Rational`, arrays, `Vec`, `Option`, pairs, maps, structs and enums. Integer sequences are NumPy arrays: decoding returns read-only views of the input, and encoding writes an array's own memory and casts nothing. For every input the reader reports the code and offset RFC-0003 fixes. It passes the 51 golden, 43 non-canonical, 11 boundary and 52 envelope vectors of `spec/vectors/codec/`, as the Rust readers do.
+  - `write_artifact` streams an envelope to a secret file, mode 0600 through an atomic rename. A sizing pass fills the header; the payload is then written and hashed on the way. `read_artifact` maps the file and checks the digest over it before decoding anything. Writing a memory-mapped 1 GiB weight and reading it back takes about 11 and 15 KiB of allocations.
+  - The writer refuses a value its readers would refuse under the same limits, before the file exists, with the code and offset they would report. It never converts a value to fit: an array of another dtype, a bool for an integer or a float for a `Rational` is `ERR-INTERNAL`.
+  - `tessera_quant.integer_model` defines `IntegerModel` field by field from 03 §2. `TokenFile` and `LogitsFile` live in `tce`. No `repr` shows a weight, a channel parameter, a token or a logit.
+  - `spec/vectors/model/integer-model.json` now holds two one-layer models: servable with power-of-two scales, and minimal with affine multipliers. Between them they hold every weight type, rescale site and quantization point, and a map of seven entries, so each enum tag and each canonical order is pinned. Python decodes both to their values and writes them back byte for byte.
 
 ### Changed
 
+- `tessera_quant.RopeSpec` takes the integer fields of 03 §2, in place of fractions: `theta`, `factor`, `low_freq_factor`, `high_freq_factor`, `original_max` and `bits`. `ArchSpec.family` is the enum `ArchFamily`. `read_config` refuses, with `ERR-QUANT-ARCH`, a RoPE parameter that is not an integer of its field's width, and a size of 2^32 or more ([#74](https://github.com/AbdelStark/tessera/issues/74)).
 - The minimum supported Rust version is 1.88, up from 1.85 (09 §2): the field needs `core::hint::select_unpredictable`. The `msrv` CI job, renamed from `msrv (1.85)`, checks both workspaces with 1.88.0 ([#242](https://github.com/AbdelStark/tessera/issues/242)).
 
 ### Security

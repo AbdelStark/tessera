@@ -23,6 +23,17 @@ model = import_checkpoint(Path("Llama-3.1-8B"))
 q = model.tensor("model.layers.0.self_attn.q_proj.weight")  # BF16, read on demand
 ```
 
+The front-end and the Rust tools exchange TCE artifacts only ([RFC-0003](../docs/rfcs/RFC-0003-canonical-encoding.md)). `tessera_quant.tce` writes them as secret files, streamed and renamed into place, and reads them mapped, digest first:
+
+```python
+from tessera_quant.integer_model import INTEGER_MODEL
+from tessera_quant.tce import INTEGER_MODEL_LIMITS, read_artifact, write_artifact
+
+d = read_artifact(Path("model.d"), INTEGER_MODEL, limits=INTEGER_MODEL_LIMITS)
+d.weights[0].data  # INT8, a read-only view of the mapped file
+write_artifact(Path("copy.d"), INTEGER_MODEL, d, limits=INTEGER_MODEL_LIMITS)  # mode 0600
+```
+
 ## Checks
 
 The `python` CI job runs these on Python 3.11, 3.12 and 3.13:

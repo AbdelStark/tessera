@@ -3,7 +3,7 @@
 These files pin the Tessera Canonical Encoding ([RFC-0003](../../../docs/rfcs/RFC-0003-canonical-encoding.md)) for every implementation:
 - the prover's `tessera-codec`;
 - the verifier's `tv-codec`;
-- the Python reader.
+- `tessera-quant`'s `tessera_quant.tce`, in Python.
 
 `cargo xtask gen-vectors` writes them from cases defined next to the prover's types, and a prover test fails while they are stale. Every implementation checks them with its own decoders.
 

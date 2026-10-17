@@ -44,6 +44,7 @@ from tessera_quant.arch import ArchSpec
 from tessera_quant.calibration import CalibrationSet
 from tessera_quant.checkpoint import FloatModel
 from tessera_quant.errors import CalibrationError, TesseraQuantError
+from tessera_quant.tce import secret_file
 
 STATISTICS_SCHEMA = "tessera.calibration-statistics/1"
 """The schema the statistics file names in its metadata."""
@@ -307,22 +308,8 @@ def write_secret(path: Path, data: bytes) -> None:
 
     The file appears whole or not at all, and is never readable by others, even while written.
     """
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        with os.fdopen(descriptor, "wb") as file:
-            file.write(data)
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(temporary, path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
-    directory = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
+    with secret_file(path) as file:
+        file.write(data)
 
 
 def calibration_report(
@@ -341,7 +328,7 @@ def calibration_report(
         "schema": REPORT_SCHEMA,
         "tessera_quant": version("tessera-quant"),
         "architecture": {
-            "family": arch.family,
+            "family": arch.family.name,
             "layers": arch.n_layers,
             "d_model": arch.d_model,
             "d_ff": arch.d_ff,

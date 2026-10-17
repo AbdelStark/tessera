@@ -65,13 +65,7 @@ TINY_ARCH = ArchSpec(
     d_ff=64,
     vocab=64,
     max_context=256,
-    rope=RopeSpec(
-        theta=Fraction(500000),
-        factor=Fraction(8),
-        low_freq_factor=Fraction(1),
-        high_freq_factor=Fraction(4),
-        original_max_position_embeddings=128,
-    ),
+    rope=RopeSpec(theta=500000, factor=8, low_freq_factor=1, high_freq_factor=4, original_max=128),
     rms_eps=Fraction(1, 100000),
 )
 

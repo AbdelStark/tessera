@@ -27,3 +27,34 @@ class CalibrationError(TesseraQuantError):
     """
 
     code = "ERR-QUANT-CALIB"
+
+
+class CodecError(TesseraQuantError):
+    """Bytes outside the Tessera Canonical Encoding (RFC-0003), or a value too large to read back.
+
+    `code` is one of the `ERR-CODEC-*` codes of 04 §3, and `offset` is the first byte the
+    failing check reads, counted from the start of the input: the code and offset RFC-0003
+    'Limits' and 'Envelope' fix, so that every reader reports the same. The message holds both
+    and nothing read from the input, which may be secret-class data (05 §3).
+
+    A writer raises it, with `ERR-CODEC-LIMIT`, for a value its readers would refuse under the
+    limits it writes for, at the offset where they would.
+    """
+
+    offset: int
+    """The offset of the first byte the failing check reads."""
+
+    def __init__(self, code: str, offset: int) -> None:
+        """An error with `code` at `offset`."""
+        super().__init__(f"{code} at byte {offset}")
+        self.code = code
+        self.offset = offset
+
+
+class EncodeError(TesseraQuantError):
+    """A value its TCE type cannot hold (`ERR-INTERNAL`).
+
+    An integer out of range, text outside printable ASCII, an array of another dtype: a bug in
+    the code that built the value, which nothing converts silently. The message names the type,
+    never the value (05 §3).
+    """
