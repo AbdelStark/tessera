@@ -86,7 +86,7 @@ v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)) are `μ(1K) �
 
 ## 6. Regression gates
 
-- Microbenchmarks (`cargo bench -p tessera-bench`, [docs/perf](../perf/README.md)): field, NTT, BLAKE3 column hashing, sumcheck round, LogUp layer, Merkle opening, each run with RFC-0020's measurement protocol (3 warm-up runs, 10 measured runs) and stored as a `tessera.microbenchmarks/1` baseline per runner class. Gate: median of 10 runs regresses by more than 5% against the stored baseline on the same runner class.
+- Microbenchmarks (`cargo bench -p tessera-bench`, [docs/perf](../perf/README.md)): field, NTT, BLAKE3 column hashing, sumcheck round, LogUp layer, product-forest levels, Merkle opening, each run with RFC-0020's measurement protocol (3 warm-up runs, 10 measured runs) and stored as a `tessera.microbenchmarks/1` baseline per runner class. Gate: median of 10 runs regresses by more than 5% against the stored baseline on the same runner class.
 - GPU unit costs: nightly on the H100 runner with locked clocks (`nvidia-smi -lgc`). Gate: more than 5% regression in any unit cost.
 - End-to-end: nightly 8B proof at 1K context on the GPU runner (from v0.5). Gate: `μ` regresses by more than 10%.
 - A failing gate opens an issue labeled `type:perf` with the run manifests of baseline and candidate attached.

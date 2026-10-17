@@ -13,6 +13,7 @@
 //! | `merkle/multiproof` | 64 canonical multiproofs of 155 indices in a tree of `2^20` leaves | opening |
 //! | `sumcheck/product-3` | a degree-3 sumcheck of three `Fp` tables of `2^20` entries | entry |
 //! | `logup/prove` | the LogUp stage of `2^18` lookups into `2^16` rows with values | lookup |
+//! | `trees/forest` | the levels of a product forest of `2^10` trees of `2^12` leaves | leaf |
 //!
 //! `cargo bench -p tessera-bench --bench primitives` prints them. With `-- --runner-class NAME
 //! --out FILE` it also writes a `tessera.microbenchmarks/1` baseline, a relative `FILE` being
@@ -39,7 +40,7 @@ use tessera_hash::{
 };
 use tessera_logup::{LogUpInstance, TreeId, Tuples, multiplicities, prove_logup};
 use tessera_pcs::NttPlan;
-use tessera_sumcheck::{Instance, Prefix, Table, prove_batch};
+use tessera_sumcheck::{Forest, Instance, Prefix, Table, prove_batch, prove_forests};
 
 type Fp = Goldilocks;
 type Fp2 = GoldilocksExt2;
@@ -90,6 +91,8 @@ struct Sizes {
     sumcheck_log: u32,
     lookups_log: u32,
     rows_log: u32,
+    /// `(s, h)`: a product forest of `2^s` trees of height `h`.
+    forest: (usize, usize),
 }
 
 const FULL: Sizes = Sizes {
@@ -102,6 +105,7 @@ const FULL: Sizes = Sizes {
     sumcheck_log: 20,
     lookups_log: 18,
     rows_log: 16,
+    forest: (10, 12),
 };
 
 const SMOKE: Sizes = Sizes {
@@ -114,6 +118,7 @@ const SMOKE: Sizes = Sizes {
     sumcheck_log: 10,
     lookups_log: 8,
     rows_log: 6,
+    forest: (2, 4),
 };
 
 /// A benchmark: its name, its unit of work, its units per run and the run.
@@ -266,6 +271,19 @@ fn benchmarks(s: &Sizes) -> Vec<Bench> {
                 prove_logup::<Fp2, _>(&mut transcript(), &[instance], &[], &TreeId::paired(1))
                     .expect("a well-formed stage");
             black_box(proven.into_claims());
+        }),
+    ));
+
+    let (trees_log, height) = s.forest;
+    let leaves = rng.fps(1 << (trees_log + height));
+    list.push((
+        "trees/forest",
+        "leaf",
+        leaves.len(),
+        Box::new(move || {
+            let forest = Forest::<Fp2>::new(&leaves, height);
+            let proven = prove_forests(&mut transcript(), &[forest]).expect("a well-formed forest");
+            let _ = black_box(proven);
         }),
     ));
     list

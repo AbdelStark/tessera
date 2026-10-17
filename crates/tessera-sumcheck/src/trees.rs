@@ -7,27 +7,17 @@ use core::alloc::Layout;
 use core::fmt;
 
 use tessera_codec::{Secret, Zeroize};
-use tessera_field::Field;
 use tessera_poly::PolyField;
 
-use crate::contract::eq_weights;
 use crate::forest::{Halves, build_levels, label, leaf_level, shape};
-use crate::prover::prove_batch_after_gamma;
-use crate::{
-    Claim, Forest, Instance, Prefix, SumcheckError, SumcheckProof, SumcheckTranscript, Table, Term,
-};
-
-/// The degree of every tree level's sumcheck: `eq(r, x)·Ṽ(0 ‖ x)·Ṽ(1 ‖ x)` and
-/// `eq(r, x)·N(0 ‖ x)·D(1 ‖ x)` have degree 3 in each variable (RFC-0010 'Relations',
-/// `ProductTreeLevel` and `FractionTreeLevel`).
-const LEVEL_DEGREE: usize = 3;
+use crate::level::{LevelInstance, LevelNumerators, LevelTables, product_claim, prove_level};
+use crate::{Claim, Forest, Prefix, SumcheckError, SumcheckProof, SumcheckTranscript};
 
 /// The numerators of a fraction tree's leaves.
 pub enum LeafNumerators<'a, B> {
     /// Every numerator is 1, as in a LogUp lookup tree, whose leaves are `(1, α − a_i)`. They are
     /// never stored: the level above adds denominators where it would multiply by them, and the
-    /// last level's sumcheck reads no numerator, whose evaluations `N_0 = N_1 = 1` come from
-    /// tables of 1 evaluated once at its point.
+    /// last level's sumcheck reads no numerator and sends `N_0 = N_1 = 1`.
     Unit,
     /// One numerator per leaf in the prime subfield, as a LogUp table tree's `−m_j`.
     Base(&'a [B]),
@@ -580,54 +570,58 @@ impl<F: PolyField> State<F> {
         }
     }
 
-    /// Numerators of 1 for the level `t` this tree proves now, its own level `t + 1` being its
-    /// leaves with numerators of 1; empty otherwise. The table's values are needed only for the
-    /// final evaluations `N_0 = N_1 = 1`: no term reads them.
-    fn unit_numerators(&self, t: usize) -> Vec<F::Base> {
-        match &self.kind {
-            Kind::Fraction(tree) => match tree.levels.get(t + 1) {
-                Some(FractionLevel {
-                    numerators: Numerators::Unit,
-                    ..
-                }) => vec![F::Base::ONE; 1 << t],
-                _ => Vec::new(),
-            },
-            Kind::Forest { .. } => Vec::new(),
+    /// The sum the level proves for this tree at its own level `t`: at the level it joins, a
+    /// forest's root claim at its root point and a fraction tree's root `p + λ·q`; after, the
+    /// claims the level above left, `p + λ·q` for a fraction tree with the level's `λ`.
+    fn level_claim(&self, t: usize, lambda: F) -> F {
+        match (&self.claim, &self.kind) {
+            (Some(LevelClaim::Product(claim)), _) => claim.value,
+            (Some(LevelClaim::Fraction(claim)), _) => claim.numerator + lambda * claim.denominator,
+            (None, Kind::Forest { levels, .. }) => levels.get(t + 1).map_or(F::ZERO, |below| {
+                product_claim(&self.point, &below.even, &below.odd)
+            }),
+            (None, Kind::Fraction(tree)) => tree.root.0 + lambda * tree.root.1,
         }
     }
 
-    /// The instance proving the tree's level `t` from its level `t + 1`, with the public factor
-    /// `eq(r, ·)` and, for a fraction tree, the challenge `λ`; `ones` are numerators of 1 when
-    /// level `t + 1` has them.
-    fn instance<'s>(
-        &'s self,
-        t: usize,
-        eq: &'s [F],
-        ones: &'s [F::Base],
-        lambda: F,
-    ) -> Instance<'s, F> {
-        let eq = Table::ext(eq).public();
-        match &self.kind {
+    /// The tree's level `t` as an instance of the level's sumcheck, proving `claim`, with the
+    /// level's `λ` for a fraction tree.
+    fn level_instance(&self, t: usize, claim: F, lambda: F) -> LevelInstance<'_, F> {
+        let tables = match &self.kind {
             Kind::Forest { levels, .. } => {
-                let below = levels.get(t + 1);
-                let (even, odd) = below.map_or((&[][..], &[][..]), |b| (&b.even[..], &b.odd[..]));
-                Instance::new(vec![eq, Table::base(even), Table::base(odd)])
+                let (even, odd) = levels
+                    .get(t + 1)
+                    .map_or((&[][..], &[][..]), |b| (&b.even[..], &b.odd[..]));
+                LevelTables::Product { even, odd }
             }
             Kind::Fraction(tree) => {
                 let below = tree.levels.get(t + 1);
-                let (n_even, n_odd, unit) = match below.map(|b| &b.numerators) {
-                    Some(Numerators::Base(n)) => (Table::base(&n.even), Table::base(&n.odd), false),
-                    Some(Numerators::Ext(n)) => (Table::ext(&n.even), Table::ext(&n.odd), false),
-                    Some(Numerators::Unit) | None => (Table::base(ones), Table::base(ones), true),
+                let numerators = match below.map(|b| &b.numerators) {
+                    Some(Numerators::Base(n)) => LevelNumerators::Base {
+                        even: &n.even,
+                        odd: &n.odd,
+                    },
+                    Some(Numerators::Ext(n)) => LevelNumerators::Ext {
+                        even: &n.even,
+                        odd: &n.odd,
+                    },
+                    Some(Numerators::Unit) | None => LevelNumerators::Unit,
                 };
                 let (d_even, d_odd) = below.map_or((&[][..], &[][..]), |b| {
                     (&b.denominators.even[..], &b.denominators.odd[..])
                 });
-                Instance::sum_of_products(
-                    vec![eq, n_even, n_odd, Table::ext(d_even), Table::ext(d_odd)],
-                    fraction_terms(lambda, unit),
-                )
+                LevelTables::Fraction {
+                    numerators,
+                    d_even,
+                    d_odd,
+                    lambda,
+                }
             }
+        };
+        LevelInstance {
+            point: &self.point,
+            claim,
+            tables,
         }
     }
 
@@ -646,22 +640,6 @@ impl<F: PolyField> State<F> {
             }
         }
     }
-}
-
-/// The terms of a fraction tree's level over its tables `[eq, N_0, N_1, D_0, D_1]`:
-/// `eq·(N_0·D_1 + N_1·D_0 + λ·D_0·D_1)` (RFC-0010 'Tree levels', step 2). With numerators of 1,
-/// `N_0 = N_1 = 1` leaves `eq·(D_1 + D_0 + λ·D_0·D_1)`, the same polynomial, whose terms read no
-/// numerator.
-fn fraction_terms<F: Field>(lambda: F, unit_numerators: bool) -> Vec<Term<F>> {
-    let (n0_d1, n1_d0) = match unit_numerators {
-        true => (vec![0, 4], vec![0, 3]),
-        false => (vec![0, 1, 4], vec![0, 2, 3]),
-    };
-    vec![
-        Term::new(F::ONE, n0_d1),
-        Term::new(F::ONE, n1_d0),
-        Term::new(lambda, vec![0, 3, 4]),
-    ]
 }
 
 /// Proves the levels of a leaf stage's trees on `transcript`, product forests and LogUp fraction
@@ -694,21 +672,25 @@ fn fraction_terms<F: Field>(lambda: F, unit_numerators: bool) -> Vec<Term<F>> {
 /// A level of forests alone squeezes no `λ`, so a batch of forests alone runs exactly as
 /// [`prove_forests`](crate::prove_forests). After level `H − 1` every tree stands at its leaves.
 ///
-/// The prover never needs a claim's value, and takes none: a forest's root claim is the
-/// verifier's, from public root values, and a fraction tree's is its root, which the caller sends
-/// before the first level (`logup/roots`).
+/// The prover takes no claim. A forest's root claim is the verifier's, from public root values,
+/// and a fraction tree's is its root, which the caller sends before the first level
+/// (`logup/roots`). The prover computes both itself, for the level kernel, which needs each
+/// instance's claim.
 ///
 /// # Algorithm
 ///
 /// - **Forests** build their levels as [`prove_forests`](crate::prove_forests) does, in the prime
 ///   subfield; **fraction trees** come built, by [`FractionTree::new`].
-/// - **A fraction tree's level** is one sum-of-products [`Instance`] over the shared tables
-///   `[eq, N_0, N_1, D_0, D_1]`, each bound once per round: `eq` multiplies once per pair, and
-///   the terms of weight 1 share a sum, so a pair costs 5 products per node. When level `t + 1`
-///   holds leaves with numerators of 1, the terms read no numerator, 3 products per node, and
-///   the numerator tables, 1 everywhere, are bound for their evaluations alone.
-/// - Each instance's `eq` table is built for its level and dropped after it, and each tree level
-///   once its sumcheck has run.
+/// - **Each level** runs the split-`eq` kernel of `level.rs`:
+///   - `eq(r_i, ·)` is never built or bound: it is a scalar, the current variable's line, and two
+///     tables of about `√N` entries rebuilt each round;
+///   - each round sums `v(0)` and `v(2)` over the pairs and recovers `v(1)` from the instance's
+///     claim (Gruen);
+///   - the messages are the batch prover's over `[eq, …]` instances.
+/// - **A fraction tree's level** reads `N(0)·D(1) + N(1)·D(0) + λ·D(0)·D(1)` from its four
+///   tables on each pair. When level `t + 1` holds leaves with numerators of 1, it reads no
+///   numerator, and its evaluations `N_0 = N_1 = 1` come from no table.
+/// - Each tree level is dropped once its sumcheck has run.
 ///
 /// Control flow depends on shapes only, never on a leaf (INV-ARCH-2). Leaves, levels and nodes
 /// are secret-class values (05 §3): no debug form or error shows one.
@@ -798,32 +780,17 @@ where
             .any(|&i| matches!(states[i].kind, Kind::Fraction(_)));
         let lambda = fractions.then(|| transcript.challenge(&label(tag, format_args!("lambda"))));
 
-        let eqs: Vec<Vec<F>> = active
+        let lambda_value = lambda.unwrap_or(F::ZERO);
+        let instances: Vec<LevelInstance<'_, F>> = active
             .iter()
-            .map(|&i| eq_weights(&states[i].point))
-            .collect();
-        let ones: Vec<Vec<F::Base>> = active
-            .iter()
-            .map(|&i| states[i].unit_numerators(level - states[i].join))
-            .collect();
-        let instances: Vec<Instance<'_, F>> = active
-            .iter()
-            .zip(eqs.iter().zip(&ones))
-            .map(|(&i, (eq, ones))| {
+            .map(|&i| {
                 let state = &states[i];
-                state.instance(level - state.join, eq, ones, lambda.unwrap_or(F::ZERO))
+                let t = level - state.join;
+                state.level_instance(t, state.level_claim(t, lambda_value), lambda_value)
             })
             .collect();
-        let proven = prove_batch_after_gamma(
-            transcript,
-            Prefix::Tree(tag),
-            LEVEL_DEGREE,
-            &instances,
-            gamma,
-        )?;
+        let proven = prove_level(transcript, Prefix::Tree(tag), &instances, gamma);
         drop(instances);
-        drop(ones);
-        drop(eqs);
         let rho = transcript.challenge(&label(tag, format_args!("line")));
 
         let mut next_claims = Vec::with_capacity(active.len());

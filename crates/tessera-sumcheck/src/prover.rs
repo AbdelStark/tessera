@@ -272,6 +272,25 @@ pub struct ProvenBatch<F> {
 }
 
 impl<F> ProvenBatch<F> {
+    /// A batch proven elsewhere in the crate, as the tree levels are ([`crate::level`]): its
+    /// messages, `γ`, its point, each instance's variables and the range of its final
+    /// evaluations.
+    pub(crate) fn from_parts(
+        proof: SumcheckProof<F>,
+        gamma: F,
+        point: Vec<F>,
+        vars: Vec<usize>,
+        evals: Vec<Range<usize>>,
+    ) -> Self {
+        Self {
+            proof,
+            gamma,
+            point,
+            vars,
+            evals,
+        }
+    }
+
     /// The messages.
     pub fn proof(&self) -> &SumcheckProof<F> {
         &self.proof
@@ -461,13 +480,13 @@ impl Degree {
 
 /// Labels built from RFC-0014's patterns into one reused buffer, so that the rounds allocate
 /// nothing for them.
-struct Labels {
+pub(crate) struct Labels {
     prefix: Prefix,
     text: String,
 }
 
 impl Labels {
-    fn new(prefix: Prefix) -> Self {
+    pub(crate) fn new(prefix: Prefix) -> Self {
         Self {
             prefix,
             text: String::with_capacity(32),
@@ -487,17 +506,17 @@ impl Labels {
     }
 
     /// `<prefix>/round/{j}`, round `j` counted from 0.
-    fn round(&mut self, j: usize) -> &str {
+    pub(crate) fn round(&mut self, j: usize) -> &str {
         self.build(format_args!("round/{j}"))
     }
 
     /// `<prefix>/r/{j}`, round `j` counted from 0.
-    fn challenge(&mut self, j: usize) -> &str {
+    pub(crate) fn challenge(&mut self, j: usize) -> &str {
         self.build(format_args!("r/{j}"))
     }
 
     /// `<prefix>/evals`.
-    fn evals(&mut self) -> &str {
+    pub(crate) fn evals(&mut self) -> &str {
         self.build(format_args!("evals"))
     }
 }
@@ -830,7 +849,9 @@ where
 
 /// [`prove_batch`] with `γ` already squeezed under `<prefix>/gamma`, for a caller that squeezes
 /// more challenges between `γ` and the first round, such as a tree level's `λ`, and builds its
-/// instances from them (RFC-0014 'Transcript schedule', row 5).
+/// instances from them (RFC-0014 'Transcript schedule', row 5). The tree levels run the
+/// split-`eq` kernel of [`crate::level`] instead; this is the reference its tests compare it to.
+#[cfg(test)]
 pub(crate) fn prove_batch_after_gamma<F, T>(
     transcript: &mut T,
     prefix: Prefix,
@@ -932,7 +953,7 @@ where
 /// `2^exponent` in the prime subfield, `exponent ≤ 62`: the scale of a padding round. A unit test
 /// replaces it by 1, to show that the verifier rejects a prover that omits it; the replacement
 /// exists only in the crate's own test build.
-fn padding_scale<B: PrimeField>(exponent: usize) -> B {
+pub(crate) fn padding_scale<B: PrimeField>(exponent: usize) -> B {
     #[cfg(test)]
     if tests::OMIT_SCALING.with(core::cell::Cell::get) {
         return B::ONE;
