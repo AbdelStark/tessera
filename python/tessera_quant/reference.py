@@ -14,7 +14,8 @@ against it bit for bit (SC-7, 07 §5), and the fidelity harness runs it.
   (RFC-0006 'Llama lowering'). The last few tables generated are kept for the next sequence.
   `rq` is its closed form.
 - **One sequence** at positions 0 to `n - 1`, as one lowering covers.
-- **Affine sites** are refused until their lowering lands (RFC-0025, #301).
+- **Affine sites** rescale `x_c * M_c` with one shift, `M_c` the multiplier of the weight's output
+  channel (RFC-0025).
 
 Weights, tokens and every tensor computed are secret-class (05 §3). A `Trace` shows no values,
 and errors name tensors and sites, never a value.
@@ -29,7 +30,7 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
-from tessera_quant.errors import ArchitectureError, TesseraQuantError, UsageError
+from tessera_quant.errors import TesseraQuantError, UsageError
 from tessera_quant.integer_model import (
     EmbedPoint,
     FinalNormPoint,
@@ -104,8 +105,6 @@ def trace(model: IntegerModel, tokens: npt.NDArray[np.uint32]) -> Trace:
     Deterministic: CPU int64 arithmetic only.
 
     Raises:
-        ArchitectureError: for a model with affine sites, which the reference computes only
-            with #301.
         UsageError: for a token outside the vocabulary, or a sequence empty or longer than the
             context.
         TesseraQuantError: for a product that could leave int64.
@@ -119,10 +118,6 @@ class _Forward:
     def __init__(self, model: IntegerModel, tokens: npt.NDArray[np.uint32]) -> None:
         arch = model.arch
         public = model.quant.public
-        if public.affine_sites:
-            raise ArchitectureError(
-                "the reference computes no affine site until RFC-0025's lowering lands (#301)"
-            )
         n = len(tokens)
         if not 1 <= n <= arch.max_context:
             raise UsageError("a sequence has 1 to max_context tokens")
@@ -132,8 +127,12 @@ class _Forward:
         self.tokens = torch.as_tensor(tokens.astype(np.int64))
         self.n = n
         self.shifts = dict(public.shift_class_sets)
+        self.affine = dict(public.affine_sites)
         self.exponents = dict(public.act_exponents)
-        self.classes = {(c.ty, c.layer): c.class_ for c in model.quant.channels}
+        self.classes = {(c.ty, c.layer): c.class_ for c in model.quant.channels if len(c.class_)}
+        self.multipliers = {
+            (c.ty, c.layer): c.multiplier for c in model.quant.channels if len(c.multiplier)
+        }
         self.weights = {(w.ty, w.layer): w for w in model.weights}
         rope = arch.rope
         constants = RopeConstants.of(
@@ -181,6 +180,22 @@ class _Forward:
             return shifts
         return shifts[torch.as_tensor(classes.astype(np.int64))]
 
+    def key(
+        self, x: torch.Tensor, point: QuantPoint, ty: WeightType | None, layer: int
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """What the site at `point` rescales, with each channel's shift.
+
+        At a `pot` site, `x` and its classes' shifts; at an affine site, `x_c * M_c` and the one
+        shift (RFC-0025).
+        """
+        if point not in self.affine:
+            return x, self.per_channel(point, ty, layer)
+        if ty is None:
+            raise TesseraQuantError(f"{point}: an affine site follows a weight")
+        m = torch.as_tensor(self.multipliers[ty, layer].astype(np.int64))
+        _bounded(_largest(x) * _largest(m), f"{point}'s affine key")
+        return x * m, torch.tensor(self.affine[point], dtype=torch.int64)
+
     def requant(
         self,
         x: torch.Tensor,
@@ -189,8 +204,8 @@ class _Forward:
         layer: int,
         bounds: tuple[int, int] = INT8,
     ) -> torch.Tensor:
-        """The site at `point`: `rq` with each channel's shift, into `bounds`."""
-        y = rq(x, self.per_channel(point, ty, layer), *bounds)
+        """The site at `point`: `rq` of its key with each channel's shift, into `bounds`."""
+        y = rq(*self.key(x, point, ty, layer), *bounds)
         self.sites[point] = y
         return y
 
@@ -285,12 +300,14 @@ class _Forward:
         """`res <- clamp(res + floor((acc + 2^(r-1)) / 2^r), INT20)`, `r` the channel's shift.
 
         A site of several classes, or of the one shift 63, sums in two steps (RFC-0022): its update
-        clamped within `2^b - 1` first, which changes no sum.
+        clamped within `2^b - 1` first, which changes no sum. An affine site rescales
+        `acc_c * M_c` (RFC-0025).
         """
-        shift = self.per_channel(point, ty, point.layer)
+        key, shift = self.key(acc, point, ty, point.layer)
         half = torch.bitwise_left_shift(torch.ones_like(shift), shift - 1)
-        update = torch.bitwise_right_shift(acc + half, shift)
-        if len(self.shifts[point]) > 1 or self.shifts[point] == [63]:
+        update = torch.bitwise_right_shift(key + half, shift)
+        shifts = [self.affine[point]] if point in self.affine else self.shifts[point]
+        if len(shifts) > 1 or shifts == [63]:
             wide = 2 * self.half - 1
             self.updates[point] = torch.clamp(update, -wide, wide)
         out = torch.clamp(res + update, -self.half, self.half - 1)

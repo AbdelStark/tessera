@@ -23,7 +23,9 @@ use std::thread;
 
 use tessera_codec::{Secret, SecretBuf};
 use tessera_compiler::Lowering;
-use tessera_ir::{Graph, IntRange, IntegerModel, LogitsFile, Node, Op, TableId, TensorId};
+use tessera_ir::{
+    Broadcast, Graph, IntRange, IntegerModel, LogitsFile, Node, Op, TableId, TensorId,
+};
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableKind, TableSpec};
 
 use crate::WitnessError;
@@ -293,6 +295,28 @@ impl<'a> Engine<'a> {
             }
             values[tensor.0 as usize] = Some(buffer);
         }
+        // RFC-0025: an affine site's multipliers, one per output channel of the weight before it.
+        for &(weight, tensor) in &lowering.multipliers {
+            let params = model
+                .quant
+                .channels
+                .iter()
+                .find(|c| (c.ty, c.layer) == (weight.ty, weight.layer))
+                .ok_or(WitnessError::Model {
+                    rule: "the model holds the multipliers of every affine site",
+                })?;
+            let len = elements(&graph.tensors[tensor.0 as usize].shape);
+            if params.multiplier.len() != len {
+                return Err(WitnessError::Model {
+                    rule: "a multiplier vector holds one multiplier per output channel",
+                });
+            }
+            let mut buffer = zeros(tensor, len)?;
+            for (slot, &m) in buffer.iter_mut().zip(&params.multiplier) {
+                *slot = i64::from(m);
+            }
+            values[tensor.0 as usize] = Some(buffer);
+        }
         Ok(())
     }
 
@@ -492,12 +516,23 @@ impl<'a> Engine<'a> {
                 });
                 vec![y]
             }
-            Op::Mul => {
+            Op::Mul { broadcast } => {
                 let (a, b) = (input(0)?, input(1)?);
-                let ratio = a.len() / b.len();
                 let mut y = zeros(out(0), a.len())?;
-                for (i, (slot, &v)) in y.iter_mut().zip(a).enumerate() {
-                    *slot = v * b[i / ratio];
+                match broadcast {
+                    // One value of `b` per row: `a`'s elements `[i · ratio, (i + 1) · ratio)`.
+                    Broadcast::Trailing => {
+                        let ratio = a.len() / b.len();
+                        for (i, (slot, &v)) in y.iter_mut().zip(a).enumerate() {
+                            *slot = v * b[i / ratio];
+                        }
+                    }
+                    // One value of `b` per channel of `a`'s last axis.
+                    Broadcast::Leading => {
+                        for (slot, (&v, &m)) in y.iter_mut().zip(a.iter().zip(b.iter().cycle())) {
+                            *slot = v * m;
+                        }
+                    }
                 }
                 vec![y]
             }

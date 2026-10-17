@@ -618,3 +618,109 @@ fn nodes_without_a_gadget_are_left_out() {
     assert!(selection.gadgets.is_empty());
     assert!(selection.tables.is_empty());
 }
+
+/// `quant` with the site at `point` affine, of shift `r` (RFC-0025): out of `shift_class_sets`,
+/// into `affine_sites` in order.
+fn make_affine(quant: &mut tessera_ir::PublicQuantSpec, point: tessera_ir::QuantPoint, r: i8) {
+    quant.shift_class_sets.retain(|&(p, _)| p != point);
+    let at = quant.affine_sites.partition_point(|&(p, _)| p < point);
+    quant.affine_sites.insert(at, (point, r));
+}
+
+/// RFC-0025 at 405B's shape: each affine site's key is its `pot` key times a 16-bit multiplier,
+/// within the bound of RFC-0025's table and above `2^{15}` times the `pot` one. Every such key
+/// is wider than a table, so it takes `RequantSplit` or `RequantWide`, as its width and shift
+/// allow, never one lookup.
+#[test]
+fn affine_keys_are_16_bits_wider_and_take_the_split_or_the_wide_gadget() {
+    use tessera_ir::{QuantPoint, Site};
+    let (arch, mut quant, silu) = llama(Profile::Servable, 1, 16_384, 128, 8, 53_248);
+    // The pot shifts of `llama`, 16 bits higher.
+    let affine = [
+        (Site::RopeQ, 38),
+        (Site::RopeK, 38),
+        (Site::V, 24),
+        (Site::AttnResidual, 20),
+        (Site::Up, 24),
+        (Site::MlpResidual, 20),
+    ];
+    for (site, r) in affine {
+        make_affine(&mut quant, QuantPoint::Layer { layer: 0, site }, r);
+    }
+    let model = PublicModel {
+        arch: &arch,
+        profile: Profile::Servable,
+        quant: &quant,
+        silu_in_exponents: &silu,
+    };
+    let lowering = lower(model, 16).expect("405B's shape lowers with affine sites");
+    let ranges = analyze(&lowering.graph, &lowering.tables).expect("analyzes");
+    let selection = select(
+        &lowering.graph,
+        &ranges,
+        &lowering.tables,
+        &GadgetPolicy::default(),
+    )
+    .expect("every gadget fits");
+    assert_eq!(lowering.multipliers.len(), affine.len());
+    let pot = 127i128 * 128;
+    for (site, r) in affine {
+        let point = QuantPoint::Layer { layer: 0, site };
+        let &(_, output) = lowering
+            .sites
+            .iter()
+            .find(|(p, _)| *p == point)
+            .expect("the site");
+        let node =
+            &lowering.graph.nodes[lowering.graph.producer(output).expect("a node").0 as usize];
+        let key = lowering.graph.tensors[node.inputs[0].0 as usize].range;
+        let bound = key.lo.abs().max(key.hi);
+        let residual = 1i128 << (19 + r);
+        // RFC-0025's table, and the pot key's bound times 2^{15} below it.
+        let (above, below) = match site {
+            Site::V | Site::Up => ((pot * 16_384) << 15, 1 << 44),
+            Site::RopeQ | Site::RopeK => ((pot * 16_384) << 29, 1 << 60),
+            Site::AttnResidual => (((pot * 16_384) << 15) + residual, (1 << 44) + residual),
+            _ => (((pot * 53_248) << 15) + residual, (1 << 46) + residual),
+        };
+        assert!(above < bound && bound < below, "{site:?}: {bound}");
+        let gadget = selection.of(node.id).map(|(_, g)| g);
+        assert!(
+            matches!(
+                gadget,
+                Some(Gadget::RequantSplit { .. } | Gadget::RequantWide { .. })
+            ),
+            "{site:?}: {gadget:?}"
+        );
+    }
+}
+
+/// In `minimal`, the O and down projections' accumulators are not requantized: with a multiplier
+/// their keys pass 62 bits, and an affine site there is refused with `ERR-COMPILE-RANGE`
+/// (RFC-0025).
+#[test]
+fn minimal_refuses_affine_o_and_down_projections() {
+    use tessera_ir::{QuantPoint, Site};
+    for (site, r) in [(Site::AttnResidual, 53), (Site::MlpResidual, 33)] {
+        let (arch, mut quant, silu) = llama(Profile::Minimal, 1, 16_384, 128, 8, 53_248);
+        make_affine(&mut quant, QuantPoint::Layer { layer: 0, site }, r);
+        let model = PublicModel {
+            arch: &arch,
+            profile: Profile::Minimal,
+            quant: &quant,
+            silu_in_exponents: &silu,
+        };
+        let error = lower(model, 16)
+            .and_then(|lowering| {
+                let ranges = analyze(&lowering.graph, &lowering.tables)?;
+                select(
+                    &lowering.graph,
+                    &ranges,
+                    &lowering.tables,
+                    &GadgetPolicy::default(),
+                )
+            })
+            .expect_err("refused");
+        assert_eq!(error.code(), ErrorCode::CompileRange, "{site:?}: {error}");
+    }
+}

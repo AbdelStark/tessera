@@ -6,8 +6,8 @@
 use tessera_tables::TableId;
 
 use crate::{
-    CommitmentClass, ConstRef, IntRange, IntType, IrError, NodeId, NodeKind, Op, OpClass,
-    ShiftClassRef, TensorDecl, TensorId, TensorSpec, WeightRef,
+    Broadcast, CommitmentClass, ConstRef, IntRange, IntType, IrError, NodeId, NodeKind, Op,
+    OpClass, ShiftClassRef, TensorDecl, TensorId, TensorSpec, WeightRef,
 };
 
 /// The most elements one tensor may hold: `2^48`, beyond any v1 tile.
@@ -300,11 +300,17 @@ impl Graph {
                     return fail("the output is the operands' product shape");
                 }
             }
-            Op::Mul => {
+            Op::Mul { broadcast } => {
                 arity(2, 1, "takes two tensors and produces one")?;
                 let (a, b) = (inputs[0].shape, inputs[1].shape);
-                if b.len() > a.len() || a[..b.len()] != *b {
-                    return fail("the second operand has the first's shape or a prefix of it");
+                match broadcast {
+                    Broadcast::Trailing if b.len() > a.len() || a[..b.len()] != *b => {
+                        return fail("the second operand has the first's shape or a prefix of it");
+                    }
+                    Broadcast::Leading if b.len() != 1 || a.last() != b.first() => {
+                        return fail("the second operand has the first's last axis");
+                    }
+                    _ => {}
                 }
                 if outputs[0].shape != a {
                     return fail("the output has the first operand's shape");

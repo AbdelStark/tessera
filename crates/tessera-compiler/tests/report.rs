@@ -29,8 +29,8 @@ use tessera_compiler::{
     CommitmentReport, Gadget, PublicModel, Selection, analyze, lower, report, select, stage_count,
 };
 use tessera_ir::{
-    GadgetPolicy, GraphBuilder, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, Site, TableId,
-    TensorId, WeightRef, WeightType,
+    Broadcast, GadgetPolicy, GraphBuilder, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint,
+    Site, TableId, TensorId, WeightRef, WeightType,
 };
 
 /// `d_model`, `n_heads`, `n_kv_heads` and `d_ff`.
@@ -252,19 +252,38 @@ fn the_parameters_are_llama_8bs_without_its_norm_gains() {
     );
 }
 
+/// Each layer's `site` affine (RFC-0025), its shift 16 bits above the `pot` one.
+fn affine_at(site: Site) -> impl FnOnce(&mut PublicQuantSpec) {
+    move |quant| {
+        let points: Vec<(QuantPoint, i8)> = quant
+            .shift_class_sets
+            .iter()
+            .filter(|(p, _)| matches!(p, QuantPoint::Layer { site: s, .. } if *s == site))
+            .map(|(p, shifts)| (*p, shifts[0] + 16))
+            .collect();
+        quant
+            .shift_class_sets
+            .retain(|(p, _)| points.iter().all(|(q, _)| q != p));
+        quant.affine_sites.extend(points);
+        quant.affine_sites.sort_by_key(|&(p, _)| p);
+    }
+}
+
 #[test]
 fn the_stage_count_is_rfc_0010s_at_every_depth() {
+    let stages = |profile, layers, quant: fn(&mut PublicQuantSpec)| {
+        report_with(profile, layers, B8, 3, quant, |_| {}).stages
+    };
     for layers in [2, 4, 8] {
-        assert_eq!(
-            report_of(Profile::Servable, layers, B8, 3).stages,
-            3,
-            "{layers}"
-        );
-        assert_eq!(
-            report_of(Profile::Minimal, layers, B8, 3).stages,
-            4,
-            "{layers}"
-        );
+        assert_eq!(stages(Profile::Servable, layers, |_| {}), 3, "{layers}");
+        assert_eq!(stages(Profile::Minimal, layers, |_| {}), 4, "{layers}");
+        // RFC-0025: an affine RoPE site's key is `Mul ← Rotate ← MatMulWeight`, three relations,
+        // so `servable` takes `minimal`'s four stages; an affine `V`'s two keep it at three.
+        let rope = |q: &mut PublicQuantSpec| affine_at(Site::RopeQ)(q);
+        let v = |q: &mut PublicQuantSpec| affine_at(Site::V)(q);
+        assert_eq!(stages(Profile::Servable, layers, rope), 4, "{layers}");
+        assert_eq!(stages(Profile::Servable, layers, v), 3, "{layers}");
+        assert_eq!(stages(Profile::Minimal, layers, rope), 4, "{layers}");
     }
 }
 
@@ -324,7 +343,14 @@ fn each_sumcheck_relation_adds_a_stage_and_each_claim_map_none() {
         "MatMulAct"
     );
     assert_eq!(
-        stages_of(&[4, 8], |g, x, y| one(g, Op::Mul, &[x, y], virt(&[4, 8]))),
+        stages_of(&[4, 8], |g, x, y| one(
+            g,
+            Op::Mul {
+                broadcast: Broadcast::Trailing
+            },
+            &[x, y],
+            virt(&[4, 8])
+        )),
         2,
         "Mul"
     );
@@ -413,7 +439,14 @@ fn each_sumcheck_relation_adds_a_stage_and_each_claim_map_none() {
                 hi: 127,
             };
             let committed = one(g, op, &[acc], decl(&[4, 8], ADVICE, -128, 127));
-            one(g, Op::Mul, &[committed, y], virt(&[4, 8]))
+            one(
+                g,
+                Op::Mul {
+                    broadcast: Broadcast::Trailing,
+                },
+                &[committed, y],
+                virt(&[4, 8]),
+            )
         }),
         2,
         "Mul after a committed requantization"

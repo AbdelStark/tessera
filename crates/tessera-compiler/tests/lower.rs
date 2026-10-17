@@ -411,9 +411,35 @@ fn reference(model: &IntegerModel, tables: &ReferenceTables, tokens: &[u32]) -> 
             .find(|p| p.ty == ty && p.layer == layer)
             .map_or(0, |p| usize::from(p.class[c]))
     };
+    // RFC-0025: an affine site's one shift, and channel c's multiplier at the weight before it.
+    let affine = |point: QuantPoint| -> Option<u8> {
+        quant
+            .affine_sites
+            .iter()
+            .find(|(p, _)| *p == point)
+            .map(|&(_, r)| u8::try_from(r).expect("a shift"))
+    };
+    let multiplier = |ty: WeightType, layer: u32, c: usize| -> i128 {
+        model
+            .quant
+            .channels
+            .iter()
+            .find(|p| p.ty == ty && p.layer == layer)
+            .map(|p| i128::from(p.multiplier[c]))
+            .expect("the multipliers")
+    };
     let half = 1i64 << (quant.residual_bits - 1);
-    // A rescale of `x` at a site: rq per channel, with the class of its weight's channel.
+    // A rescale of `x` at a site: rq per channel, with the class of its weight's channel; at an
+    // affine site, rq(x_c · M_c, r) with the one shift.
     let rescale = |x: &[i128], point: QuantPoint, after: Option<WeightType>, lo: i64, hi: i64| {
+        if let (Some(r), QuantPoint::Layer { layer, .. }) = (affine(point), point) {
+            let ty = after.expect("an affine site follows a weight");
+            return x
+                .iter()
+                .enumerate()
+                .map(|(c, &v)| rq(v * multiplier(ty, layer, c), r, lo, hi))
+                .collect();
+        }
         let set = shifts(point);
         let QuantPoint::Layer { layer, .. } = point else {
             return x.iter().map(|&v| rq(v, set[0], lo, hi)).collect::<Vec<_>>();
@@ -427,14 +453,17 @@ fn reference(model: &IntegerModel, tables: &ReferenceTables, tokens: &[u32]) -> 
             .collect()
     };
     // RFC-0022: res ← clamp(res + ⌊(acc + 2^{r−1}) / 2^r⌋), the sum saturated within the
-    // residual's bits rather than the update, r the shift of the class of W's channel.
+    // residual's bits rather than the update, r the shift of the class of W's channel; at an
+    // affine site, acc_c · M_c with the one shift (RFC-0025).
     let saturate = |res: &mut [i128], acc: &[i128], point: QuantPoint, ty: WeightType| {
-        let set = shifts(point);
         let QuantPoint::Layer { layer, .. } = point else {
             unreachable!("a residual site is a layer's")
         };
         for (c, (x, &a)) in res.iter_mut().zip(acc).enumerate() {
-            let r = set[class_of(ty, layer, c)];
+            let (a, r) = match affine(point) {
+                Some(r) => (a * multiplier(ty, layer, c), r),
+                None => (a, shifts(point)[class_of(ty, layer, c)]),
+            };
             let update = (a + (1i128 << (r - 1))) >> r;
             *x = (*x + update).clamp(-i128::from(half), i128::from(half) - 1);
         }
@@ -616,6 +645,18 @@ fn inputs(
             params.class.iter().map(|&c| i128::from(c)).collect(),
         ));
     }
+    for &(weight, tensor) in &lowering.multipliers {
+        let params = model
+            .quant
+            .channels
+            .iter()
+            .find(|c| (c.ty, c.layer) == (weight.ty, weight.layer))
+            .expect("the multipliers");
+        inputs.push((
+            tensor,
+            params.multiplier.iter().map(|&m| i128::from(m)).collect(),
+        ));
+    }
     inputs
 }
 
@@ -712,7 +753,7 @@ fn the_conformance_models_lower_to_the_oracles_logits() {
     let text = fs::read_to_string(dir.join("models.json")).expect("the index");
     let index: serde_json::Value = serde_json::from_str(&text).expect("JSON");
     let models = index["models"].as_array().expect("models");
-    assert_eq!(models.len(), 3, "every conformance model");
+    assert_eq!(models.len(), 4, "every conformance model");
     let mut sequences = 0;
     for entry in models {
         let name = entry["name"].as_str().expect("a name");
@@ -752,7 +793,7 @@ fn the_conformance_models_lower_to_the_oracles_logits() {
             sequences += 1;
         }
     }
-    assert_eq!(sequences, 6, "two sequences per model");
+    assert_eq!(sequences, 8, "two sequences per model");
 }
 
 #[test]
@@ -877,7 +918,7 @@ fn servable_keeps_s1_to_s3_and_minimal_rescales_eight_tensors_per_layer() {
                 | Op::Reshape
                 | Op::GatherPublic { .. }
                 | Op::MatMulAct { .. }
-                | Op::Mul
+                | Op::Mul { .. }
                 | Op::SumSquares { .. }
                 | Op::OneHot { .. }
                 | Op::Requant { .. }
@@ -1287,9 +1328,26 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
 /// Every norm of `graph`: its sum's range and its root's.
 /// `base` with layer 0's `site` made affine with the shift `r` (RFC-0025): the site moves from
 /// `shift_class_sets` to `affine_sites`, and the weight before it carries multipliers, no classes.
+/// `base` with layer 0's `site` affine, of shift `r`, its multipliers `1, 2, 3, …`.
 fn with_affine(base: &IntegerModel, site: Site, r: i8) -> IntegerModel {
-    let mut model = base.clone();
     let point = QuantPoint::Layer { layer: 0, site };
+    with_affine_at(base, point, r, |c| {
+        u16::try_from(c % 65_535 + 1).expect("16 bits")
+    })
+}
+
+/// `base` with the site at `point` affine (RFC-0025): its shift `r`, and `multiplier(c)` for each
+/// output channel `c` of the weight before it, in place of its classes.
+fn with_affine_at(
+    base: &IntegerModel,
+    point: QuantPoint,
+    r: i8,
+    multiplier: impl Fn(usize) -> u16,
+) -> IntegerModel {
+    let mut model = base.clone();
+    let QuantPoint::Layer { layer, site } = point else {
+        panic!("an affine site is a layer's");
+    };
     let public = &mut model.quant.public;
     public.shift_class_sets.retain(|&(p, _)| p != point);
     let at = public.affine_sites.partition_point(|&(p, _)| p < point);
@@ -1298,20 +1356,18 @@ fn with_affine(base: &IntegerModel, site: Site, r: i8) -> IntegerModel {
     let rows = model
         .weights
         .iter()
-        .find(|w| (w.ty, w.layer) == (ty, 0))
+        .find(|w| (w.ty, w.layer) == (ty, layer))
         .expect("the weight")
         .rows;
-    let multiplier = (0..rows)
-        .map(|c| u16::try_from(c % 65_535 + 1).expect("16 bits"))
-        .collect();
+    let multiplier = (0..rows as usize).map(multiplier).collect();
     let channels = &mut model.quant.channels;
-    channels.retain(|c| (c.ty, c.layer) != (ty, 0));
-    let at = channels.partition_point(|c| (c.ty, c.layer) < (ty, 0));
+    channels.retain(|c| (c.ty, c.layer) != (ty, layer));
+    let at = channels.partition_point(|c| (c.ty, c.layer) < (ty, layer));
     channels.insert(
         at,
         ChannelParams {
             ty,
-            layer: 0,
+            layer,
             class: Vec::new(),
             multiplier,
         },
@@ -1319,26 +1375,41 @@ fn with_affine(base: &IntegerModel, site: Site, r: i8) -> IntegerModel {
     model
 }
 
+/// The sites after a weight that can take `affine` in `profile` (RFC-0025): not `minimal`'s O
+/// and down, whose keys would pass 62 bits.
+fn affine_sites(profile: Profile) -> Vec<Site> {
+    let mut sites = vec![Site::RopeQ, Site::RopeK, Site::V];
+    if profile == Profile::Servable {
+        sites.extend([Site::AttnResidual, Site::Up, Site::MlpResidual]);
+    }
+    sites
+}
+
+/// The least shift of the `pot` site at `point`, which an affine shift sits 15 bits above: a
+/// multiplier near `2^{15}` keeps the site's output on the same scale.
+fn base_shift(model: &IntegerModel, point: QuantPoint) -> i8 {
+    let (_, shifts) = model
+        .quant
+        .public
+        .shift_class_sets
+        .iter()
+        .find(|(p, _)| *p == point)
+        .expect("a pot site");
+    shifts[0]
+}
+
 #[test]
-fn affine_sites_keep_rfc_0025s_rules_and_wait_for_their_lowering() {
+fn affine_sites_keep_rfc_0025s_rules() {
     const SITES: &str = "shift_class_sets and affine_sites hold each site of the profile and the \
                          final norm, once each in one of them, each sorted";
     let base = tiny(31, Profile::Servable, SHAPES[0]);
     let model_rule = |rule| CompileError::Model { rule };
-    let lowers_later =
-        model_rule("the compiler lowers no affine site until RFC-0025's lowering lands (#301)");
     // Each site after the Q, K, V, O, up or down projection may be affine.
-    for site in [
-        Site::RopeQ,
-        Site::RopeK,
-        Site::V,
-        Site::AttnResidual,
-        Site::Up,
-        Site::MlpResidual,
-    ] {
+    for site in affine_sites(Profile::Servable) {
         let model = with_affine(&base, site, 20);
         assert_eq!(validate(&model), Ok(()), "{site:?}");
-        assert_eq!(lower(PublicModel::of(&model), 4), Err(lowers_later));
+        let lowering = lower(PublicModel::of(&model), 4).expect("an affine site lowers");
+        assert_eq!(lowering.multipliers.len(), 1, "{site:?}");
     }
     let affine = with_affine(&base, Site::V, 20);
     let moved = |m: &mut IntegerModel, point: QuantPoint| {
@@ -1449,6 +1520,108 @@ fn affine_sites_keep_rfc_0025s_rules_and_wait_for_their_lowering() {
     }
 }
 
+/// RFC-0025's semantics at every affine site, on random tiny models of both profiles: each site
+/// that can take `affine` does with probability one half, its multipliers drawn from `[1, 2^{16})`,
+/// and the lowered graph, every value inside its analyzed range, gives the reference's logits.
+/// Two models go to the ends of the keys' ranges: weights at ±127 with multipliers of 1 and
+/// `2^{16} − 1`, and a residual site whose shift of 63 takes the two-step update.
+#[test]
+fn affine_sites_compute_rfc_0025s_semantics() {
+    let mut rng = Seeded(0x0301_AFF1);
+    let mut lowered_sites: Vec<Site> = Vec::new();
+    let check = |model: &IntegerModel, rng: &mut Seeded, what: &str| {
+        let tables = reference_tables(model);
+        let context = model.arch.max_context;
+        for n in [1, context / 2 + 1, context] {
+            let lowered = lowered(model, n);
+            let tokens: Vec<u32> = (0..n)
+                .map(|_| {
+                    u32::try_from(rng.range(0, i128::from(model.arch.vocab) - 1)).expect("a token")
+                })
+                .collect();
+            assert_eq!(
+                run(model, &lowered, &tokens),
+                reference(model, &tables, &tokens),
+                "{what}, n = {n}"
+            );
+        }
+    };
+    for profile in [Profile::Servable, Profile::Minimal] {
+        for (k, &shape) in SHAPES.iter().enumerate() {
+            for trial in 0..3u64 {
+                let mut model = tiny(rng.next() ^ trial, profile, shape);
+                for layer in 0..shape.layers {
+                    for site in affine_sites(profile) {
+                        if rng.next().is_multiple_of(2) {
+                            continue;
+                        }
+                        let point = QuantPoint::Layer { layer, site };
+                        let r = base_shift(&model, point) + 15;
+                        let draws: Vec<u16> = (0..1024)
+                            .map(|_| u16::try_from(rng.range(1, 65_535)).expect("16 bits"))
+                            .collect();
+                        model = with_affine_at(&model, point, r, |c| draws[c % draws.len()]);
+                        lowered_sites.push(site);
+                    }
+                }
+                check(
+                    &model,
+                    &mut rng,
+                    &format!("{profile:?}, shape {k}, trial {trial}"),
+                );
+            }
+        }
+    }
+    for site in affine_sites(Profile::Servable) {
+        assert!(lowered_sites.contains(&site), "{site:?} is lowered affine");
+    }
+    // The ends of the keys' ranges: every weight ±127, multipliers 1 and 2^16 − 1 by channel.
+    let mut extreme = tiny(rng.next(), Profile::Servable, SHAPES[0]);
+    for w in &mut extreme.weights {
+        for (i, x) in w.data.iter_mut().enumerate() {
+            *x = if i % 3 == 0 { -127 } else { 127 };
+        }
+    }
+    for layer in 0..SHAPES[0].layers {
+        for site in affine_sites(Profile::Servable) {
+            let point = QuantPoint::Layer { layer, site };
+            let r = base_shift(&extreme, point) + 15;
+            extreme = with_affine_at(
+                &extreme,
+                point,
+                r,
+                |c| if c % 2 == 0 { 1 } else { u16::MAX },
+            );
+        }
+    }
+    check(&extreme, &mut rng, "weights at ±127");
+    // A residual site of shift 63 takes the two-step update, as a pot site of several classes.
+    let base = tiny(rng.next(), Profile::Servable, SHAPES[0]);
+    let point = QuantPoint::Layer {
+        layer: 0,
+        site: Site::MlpResidual,
+    };
+    let steep = with_affine_at(&base, point, 63, |c| u16::try_from(c + 1).expect("16 bits"));
+    let lowering = lower(PublicModel::of(&steep), 2).expect("the model lowers");
+    let output = lowering
+        .sites
+        .iter()
+        .find(|(p, _)| *p == point)
+        .map(|&(_, t)| t)
+        .expect("the site");
+    let producer = lowering.graph.producer(output).expect("a node");
+    let node = &lowering.graph.nodes[producer.0 as usize];
+    let Op::Requant { shift, .. } = node.op else {
+        panic!("a residual site's output is a Requant's")
+    };
+    assert_eq!(
+        lowering.graph.shift_classes[shift.0 as usize],
+        [1],
+        "the sum's clamp"
+    );
+    check(&steep, &mut rng, "a residual shift of 63");
+}
+
 fn norms(graph: &tessera_ir::Graph) -> Vec<(IntRange, IntRange)> {
     let range = |t: tessera_ir::TensorId| graph.tensors[t.0 as usize].range;
     graph
@@ -1524,7 +1697,7 @@ fn llama_shapes_lower_from_their_public_part_alone() {
         let output = graph
             .nodes
             .iter()
-            .find(|n| n.op == Op::Mul && n.inputs[1] == softmax.outputs[1])
+            .find(|n| matches!(n.op, Op::Mul { .. }) && n.inputs[1] == softmax.outputs[1])
             .expect("R · PV");
         assert_eq!(
             range(output.outputs[0]),

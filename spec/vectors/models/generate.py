@@ -255,6 +255,12 @@ class Events:
         return {kind: self.total(kind) for kind in KINDS}
 
 
+def affine_key(rows, multipliers):
+    """RFC-0025: an affine site rescales x_c · M_c, with one shift for every channel."""
+    keyed = [[x * m for x, m in zip(row, multipliers)] for row in rows]
+    return keyed, [0] * len(multipliers)
+
+
 def label(key):
     """A site's name in the traces: "layer 0 RopeQ", or "FinalNorm"."""
     return "FinalNorm" if key[0] == "FinalNorm" else f"layer {key[1]} {key[2]}"
@@ -308,9 +314,12 @@ class Run:
 
     # -- sites ----------------------------------------------------------------------------------
 
-    def requant(self, key, values, classes, push=0, bounds=INT8):
+    def requant(self, key, values, classes, push=0, bounds=INT8, multipliers=None):
         """y_c = rq(x_c, r_{class c}, lo, hi): the least base shift keeping every y inside
-        [lo, hi], `push` bits less when the plan wants this site to clamp."""
+        [lo, hi], `push` bits less when the plan wants this site to clamp. At an affine site
+        (RFC-0025), y_c = rq(x_c · M_c, r, lo, hi) with one shift."""
+        if multipliers is not None:
+            values, classes = affine_key(values, multipliers)
         n = max(classes) + 1
         lo, hi = bounds
         if self.choosing:
@@ -329,9 +338,12 @@ class Run:
         self.keep(label(key), out)
         return out
 
-    def residual(self, key, res, acc, classes, push=0):
+    def residual(self, key, res, acc, classes, push=0, multipliers=None):
         """res ← clamp(res + ⌊(acc + 2^(r−1)) / 2^r⌋, INT20), r the channel's class shift
-        (RFC-0022). The base is the least keeping updates within 2^13, or 2^(13 + push)."""
+        (RFC-0022). The base is the least keeping updates within 2^13, or 2^(13 + push). At an
+        affine site (RFC-0025), acc_c · M_c with one shift."""
+        if multipliers is not None:
+            acc, classes = affine_key(acc, multipliers)
         n = max(classes) + 1
         if self.choosing:
             target = 1 << (13 + push)
@@ -481,6 +493,11 @@ class Run:
         self.keep("embedding", res)
         checkpoints = [res]
         classes = m["classes"]
+
+        def mult(ty, layer):
+            """The multipliers of the weight before an affine site, or None at a pot site."""
+            return m["multipliers"].get((ty, layer))
+
         for layer in range(m["n_layers"]):
             def site(name, layer=layer):
                 return ("Layer", layer, name)
@@ -488,17 +505,19 @@ class Run:
             push = self.plan["push"].get(layer, {})
             y = self.norm(site("AttnNorm"), res)
             q = self.rope([matvec(w["Q", layer], x) for x in y], m["n_heads"], positions)
-            q = self.requant(site("RopeQ"), q, classes["Q", layer], push=push.get("RopeQ", 0))
+            q = self.requant(site("RopeQ"), q, classes["Q", layer], push=push.get("RopeQ", 0),
+                             multipliers=mult("Q", layer))
             k = self.rope([matvec(w["K", layer], x) for x in y], m["n_kv_heads"], positions)
-            k = self.requant(site("RopeK"), k, classes["K", layer], push=push.get("RopeK", 0))
+            k = self.requant(site("RopeK"), k, classes["K", layer], push=push.get("RopeK", 0),
+                             multipliers=mult("K", layer))
             v = self.requant(site("V"), [matvec(w["V", layer], x) for x in y], classes["V", layer],
-                             push=push.get("V", 0))
+                             push=push.get("V", 0), multipliers=mult("V", layer))
             o = self.attention(layer, q, k, v, lengths)
             if servable:
                 o = self.requant(site("AttnOut"), o, [0] * d, push=push.get("AttnOut", 0))
             acc = [matvec(w["O", layer], x) for x in o]
             res = self.residual(site("AttnResidual"), res, acc, classes["O", layer],
-                                push=push.get("AttnResidual", 0))
+                                push=push.get("AttnResidual", 0), multipliers=mult("O", layer))
             y2 = self.norm(site("MlpNorm"), res)
             g = [matvec(w["Gate", layer], x) for x in y2]
             in_exp = m["silu_in_exp"]
@@ -506,14 +525,15 @@ class Run:
                           self.plan["silu_reach"].get(layer, 10))
             u = [matvec(w["Up", layer], x) for x in y2]
             if servable:
-                u8 = self.requant(site("Up"), u, classes["Up", layer], push=push.get("Up", 0))
+                u8 = self.requant(site("Up"), u, classes["Up", layer], push=push.get("Up", 0),
+                                  multipliers=mult("Up", layer))
                 h = self.requant(site("Product"), [[x * z for x, z in zip(ar, ur)] for ar, ur in zip(a, u8)],
                                  [0] * m["d_ff"], push=push.get("Product", 0))
             else:
                 h = [[x * z for x, z in zip(ar, ur)] for ar, ur in zip(a, u)]
             acc = [matvec(w["Down", layer], x) for x in h]
             res = self.residual(site("MlpResidual"), res, acc, classes["Down", layer],
-                                push=push.get("MlpResidual", 0))
+                                push=push.get("MlpResidual", 0), multipliers=mult("Down", layer))
             checkpoints.append(res)
         y = self.norm(("FinalNorm",), res)
         logits = [matvec(w["LmHead", 0], x) for x in y]
@@ -560,6 +580,17 @@ MODELS = [
         "lengths": [7, 4],
         "plan": {"push": {1: {"MlpResidual": 8}}, "silu_reach": {}, "exp_reach": {0: 24},
                  "update_clamp": {1: ["MlpResidual"]}},
+    },
+    {
+        # RFC-0025: affine sites beside pot ones, an affine RoPE site, both residual routes.
+        "name": "tiny-2-affine", "seed": 0x7E55_E7A0_0301_0002, "profile": "Servable",
+        "shape": {"n_layers": 2, "d_model": 64, "n_heads": 4, "n_kv_heads": 2, "d_head": 16,
+                  "d_ff": 192, "vocab": 512, "max_context": 64},
+        "classes": {"Q": 2, "K": 2, "V": 3, "O": 2, "Gate": 2, "Up": 2, "Down": 3},
+        "lengths": [5, 8],
+        "affine": {0: ["RopeQ", "RopeK", "AttnResidual", "Up"], 1: ["V", "MlpResidual"]},
+        "plan": {"push": {0: {"Up": 1}, 1: {"V": 1}}, "silu_reach": {}, "exp_reach": {},
+                 "update_clamp": {}},
     },
     {
         "name": "tiny-4-servable", "seed": 0x7E55_E7A0_0083_0004, "profile": "Servable",
@@ -654,6 +685,23 @@ def build(spec):
         # No site follows W_Up in minimal: its channels have no class.
         for layer in range(shape["n_layers"]):
             classes["Up", layer] = [0] * shape["d_ff"]
+    # RFC-0025: the weight before each affine site carries a multiplier per output channel, in
+    # [2^14, 2^16), the two rows of a RoPE pair sharing theirs as they share a scale.
+    multipliers = {}
+    for layer, sites in spec.get("affine", {}).items():
+        for site in sites:
+            ty = AFTER[site]
+            rows = weights[ty, layer]["rows"]
+            if ty in ("Q", "K"):
+                half = shape["d_head"] // 2
+                drawn = [0] * rows
+                for head in range(rows // shape["d_head"]):
+                    for i in range(half):
+                        m = (1 << 14) + rng.below(3 << 14)
+                        drawn[head * shape["d_head"] + i] = drawn[head * shape["d_head"] + i + half] = m
+            else:
+                drawn = [(1 << 14) + rng.below(3 << 14) for _ in range(rows)]
+            multipliers[ty, layer] = drawn
     sequences = []
     for n in spec["lengths"]:
         sequences.append([rng.below(vocab) for _ in range(n)])
@@ -670,11 +718,17 @@ def build(spec):
         return cache[position, i]
 
     model = dict(shape, profile=spec["profile"], weights=weights, classes=classes,
+                 multipliers=multipliers,
                  residual_bits=spec.get("residual_bits", 20), residual_exponent=RESIDUAL_EXPONENT,
                  embed_exponent=EMBED_EXPONENT,
                  rms_eps_int=eps, kappa=kappa_for(d, eps), exp_sigma=16, silu_in_exp=SILU_IN_EXP,
                  silu_out_exp=INT8_EXPONENT, rope_table=rope_table)
     return model, sequences
+
+
+AFTER = {"RopeQ": "Q", "RopeK": "K", "V": "V", "AttnResidual": "O", "Silu": "Gate", "Up": "Up",
+         "MlpResidual": "Down"}
+"""The weight before each site that follows one."""
 
 
 def sites_of(profile):
@@ -692,10 +746,9 @@ def point(key):
 def integer_model(spec, model, constants):
     """D as 03 §2 lays it out: the public constants, the hidden channel classes, the weights."""
     n_layers, profile = model["n_layers"], model["profile"]
-    after = {"RopeQ": "Q", "RopeK": "K", "V": "V", "AttnResidual": "O", "Silu": "Gate", "Up": "Up",
-             "MlpResidual": "Down"}
     act = [[{"Embed": None}, model["embed_exponent"]]]
     sets = []
+    affine = []
     channels = []
     for layer in range(n_layers):
         for site in sites_of(profile):
@@ -703,9 +756,15 @@ def integer_model(spec, model, constants):
             if site not in ("AttnResidual", "MlpResidual"):
                 act.append([point(key), INT8_EXPONENT])
             shifts = constants[key]
+            if site in spec.get("affine", {}).get(layer, ()):
+                ty = AFTER[site]
+                affine.append([point(key), shifts[0]])
+                channels.append({"ty": {ty: None}, "layer": layer, "class": [],
+                                 "multiplier": model["multipliers"][ty, layer]})
+                continue
             sets.append([point(key), shifts])
             if len(shifts) > 1:
-                ty = after[site]
+                ty = AFTER[site]
                 channels.append({"ty": {ty: None}, "layer": layer, "class": model["classes"][ty, layer],
                                  "multiplier": []})
     act.append([{"FinalNorm": None}, INT8_EXPONENT])
@@ -728,7 +787,7 @@ def integer_model(spec, model, constants):
                 "act_exponents": act, "residual_exponent": model["residual_exponent"],
                 "residual_bits": model["residual_bits"], "rsqrt_kappa": model["kappa"],
                 "rms_eps_int": model["rms_eps_int"], "exp_sigma": model["exp_sigma"],
-                "score_scales": scales, "shift_class_sets": sets, "affine_sites": [], "rope": rope,
+                "score_scales": scales, "shift_class_sets": sets, "affine_sites": affine, "rope": rope,
                 "logits_bits": 28, "logits_exponent": LOGITS_EXPONENT,
             },
             "silu_in_exponents": [[layer, model["silu_in_exp"]] for layer in range(n_layers)],

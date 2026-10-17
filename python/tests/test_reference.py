@@ -16,7 +16,7 @@
   diagonal. Two runs are identical, and the trace shows no value.
 - **A zero row.** A token whose embedding is zero gives a residual row of zeros, whose root comes
   from the norm's `e` alone (RFC-0022 'Complete norms').
-- **Refusals.** An affine site, a token outside the vocabulary, an empty sequence or one past
+- **Refusals.** A token outside the vocabulary, an empty sequence or one past
   the context, and a model whose sums of squares would leave int64.
 """
 
@@ -198,7 +198,7 @@ def test_a_divergence_seeded_in_any_tensor_is_found_where_it_was_seeded() -> Non
             assert first_divergence(wrong, found) == expected, entry["name"]
             seeded += 1
     # Every traced tensor but the one-hot tokens.
-    assert seeded == (41 - 1) + (35 - 1) + (73 - 1)
+    assert seeded == (41 - 1) + (35 - 1) + (39 - 1) + (73 - 1)
 
 
 def test_a_channel_moved_to_another_class_diverges_at_its_site_and_channel() -> None:
@@ -237,16 +237,7 @@ def test_a_zero_row_takes_its_root_from_epsilon_alone() -> None:
 def test_what_the_reference_cannot_compute_is_refused() -> None:
     entry = INDEX["models"][0]
     model = load(entry)
-    sequence = tokens(entry["sequences"][0]["tokens"])
     public = model.quant.public
-    point = LayerPoint(0, Site.V)
-    affine = replace(
-        public,
-        shift_class_sets=[item for item in public.shift_class_sets if item[0] != point],
-        affine_sites=[(point, 9)],
-    )
-    with pytest.raises(TesseraQuantError, match="affine site"):
-        trace(replace(model, quant=replace(model.quant, public=affine)), sequence)
     with pytest.raises(TesseraQuantError, match=r"\[0, vocab\)"):
         trace(model, tokens([0, model.arch.vocab]))
     with pytest.raises(TesseraQuantError, match="1 to max_context"):

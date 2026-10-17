@@ -124,7 +124,7 @@ fn the_engine_computes_the_conformance_vectors() {
             checked += 1;
         }
     }
-    assert_eq!(checked, 6, "every sequence of every model");
+    assert_eq!(checked, 8, "every sequence of every model");
 }
 
 /// SplitMix64, for drawing adversarial inputs reproducibly.

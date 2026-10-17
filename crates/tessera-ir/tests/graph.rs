@@ -6,8 +6,8 @@
 //! builder as it was.
 
 use tessera_ir::{
-    CommitmentClass, Graph, GraphBuilder, IntRange, IntType, IrError, Node, NodeId, NodeKind, Op,
-    OpClass, PrfRef, TableId, TensorDecl, TensorId, WeightRef, WeightType,
+    Broadcast, CommitmentClass, Graph, GraphBuilder, IntRange, IntType, IrError, Node, NodeId,
+    NodeKind, Op, OpClass, PrfRef, TableId, TensorDecl, TensorId, WeightRef, WeightType,
 };
 
 const T: u32 = 4; // tokens
@@ -120,7 +120,14 @@ fn block() -> Graph {
         &[ss],
         advice(&[T]),
     );
-    let n = one(&mut b, Op::Mul, &[r, rho], virt(&[T, D]));
+    let n = one(
+        &mut b,
+        Op::Mul {
+            broadcast: Broadcast::Trailing,
+        },
+        &[r, rho],
+        virt(&[T, D]),
+    );
     let requant = |shift| Op::Requant {
         shift,
         lo: -128,
@@ -171,7 +178,14 @@ fn block() -> Graph {
         &[exps, v8],
         virt(&[T, D]),
     );
-    let attn = one(&mut b, Op::Mul, &[pv, recip], virt(&[T, D]));
+    let attn = one(
+        &mut b,
+        Op::Mul {
+            broadcast: Broadcast::Trailing,
+        },
+        &[pv, recip],
+        virt(&[T, D]),
+    );
     let attn8 = one(
         &mut b,
         requant(two_classes),
@@ -211,7 +225,14 @@ fn block() -> Graph {
         lookup(&[T, F], 3),
     );
     let u8_ = one(&mut b, requant(one_class), &[u], lookup(&[T, F], 0));
-    let p = one(&mut b, Op::Mul, &[g8, u8_], virt(&[T, F]));
+    let p = one(
+        &mut b,
+        Op::Mul {
+            broadcast: Broadcast::Trailing,
+        },
+        &[g8, u8_],
+        virt(&[T, F]),
+    );
     let p8 = one(&mut b, requant(one_class), &[p], lookup(&[T, F], 0));
     let down = one(
         &mut b,
@@ -386,7 +407,9 @@ fn each_operation_rule_broken_alone_is_refused() {
             ),
         ),
         (
-            Op::Mul,
+            Op::Mul {
+                broadcast: Broadcast::Trailing,
+            },
             vec![a, c],
             vec![lookup(&[T, D], 0)],
             op_error(
@@ -609,7 +632,9 @@ fn each_operation_rule_broken_alone_is_refused() {
         ),
         // Mul's broadcast.
         (
-            Op::Mul,
+            Op::Mul {
+                broadcast: Broadcast::Trailing,
+            },
             vec![a, classes],
             vec![virt(&[T, D])],
             op_error(
@@ -618,10 +643,21 @@ fn each_operation_rule_broken_alone_is_refused() {
             ),
         ),
         (
-            Op::Mul,
+            Op::Mul {
+                broadcast: Broadcast::Trailing,
+            },
             vec![a, positions],
             vec![virt(&[T])],
             op_error("Mul", "the output has the first operand's shape"),
+        ),
+        // A leading broadcast takes one value per channel of the last axis, not per row.
+        (
+            Op::Mul {
+                broadcast: Broadcast::Leading,
+            },
+            vec![a, positions],
+            vec![virt(&[T, D])],
+            op_error("Mul", "the second operand has the first's last axis"),
         ),
         // OneHot.
         (
@@ -913,7 +949,9 @@ fn each_operation_rule_broken_alone_is_refused() {
             op_error("MatMulAct", "takes two tensors and produces one"),
         ),
         (
-            Op::Mul,
+            Op::Mul {
+                broadcast: Broadcast::Trailing,
+            },
             vec![a],
             vec![virt(&[T, D])],
             op_error("Mul", "takes two tensors and produces one"),

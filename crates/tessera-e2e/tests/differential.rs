@@ -281,8 +281,9 @@ fn the_engine_computes_every_committed_tensor_of_the_oracle() {
             checked += trace.len();
         }
     }
-    // 41 tensors on each sequence of tiny-2-servable, 35 of tiny-2-minimal, 73 of tiny-4-servable.
-    assert_eq!(checked, 2 * (41 + 35 + 73));
+    // 41 tensors on each sequence of tiny-2-servable, 35 of tiny-2-minimal, 39 of tiny-2-affine
+    // and 73 of tiny-4-servable.
+    assert_eq!(checked, 2 * (41 + 35 + 39 + 73));
 }
 
 /// SplitMix64, for drawing where to seed a divergence.
@@ -329,7 +330,7 @@ fn a_divergence_seeded_in_any_tensor_is_found_where_it_was_seeded() {
         }
     }
     // Every traced tensor but the maxima, two of tiny-2's layers and four of tiny-4's.
-    assert_eq!(seeded, (41 - 2) + (35 - 2) + (73 - 4));
+    assert_eq!(seeded, (41 - 2) + (35 - 2) + (39 - 2) + (73 - 4));
 }
 
 #[test]

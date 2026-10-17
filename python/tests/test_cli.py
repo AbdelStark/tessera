@@ -157,6 +157,27 @@ def test_compile_writes_d_reproducibly_from_its_seed(tree: Path, compiled: dict[
     assert other["calibration"]["selection_digest"] != calibration["selection_digest"]
 
 
+def test_compile_takes_affine_scales(tree: Path) -> None:
+    status, result = run(
+        "compile",
+        "--checkpoint",
+        tree / "checkpoint",
+        "--calibration",
+        tree / "calibration.json",
+        "--profile",
+        "servable",
+        "--scales",
+        "affine",
+        "--out",
+        tree / "affine.d",
+    )
+    assert status == 0, result
+    assert result["scales"] == "affine"
+    d = read_artifact(tree / "affine.d", INTEGER_MODEL, limits=INTEGER_MODEL_LIMITS)
+    # Every site after Q, K, V, O, up and down, in both layers (RFC-0025).
+    assert len(d.quant.public.affine_sites) == 2 * 6
+
+
 def evaluate(tree: Path, spec: str) -> tuple[int, dict[str, Any]]:
     return run(
         "eval",
@@ -229,29 +250,13 @@ def test_failures_exit_with_their_codes_status(tree: Path, compiled: dict[str, A
         status, result = run(*argv)
         return status, result["error"]["code"]
 
-    # Arguments: missing, out of range, and an option not offered yet, refused before any work.
+    # Arguments: missing, and out of range.
     assert refused("compile") == (64, "ERR-USAGE")
     assert refused("reference", "--model", "m", "--tokens", "t", "--out", "o", "--seed", "1") == (
         64,
         "ERR-USAGE",
     )
     assert compile_d(tree, "negative.d", -1)[1]["error"]["code"] == "ERR-USAGE"
-    status, result = run(
-        "compile",
-        "--checkpoint",
-        tree / "absent",
-        "--calibration",
-        tree / "calibration.json",
-        "--profile",
-        "servable",
-        "--scales",
-        "affine",
-        "--out",
-        tree / "affine.d",
-    )
-    assert (status, result["error"]["code"]) == (64, "ERR-USAGE")
-    assert "#301" in result["error"]["message"]
-    assert not (tree / "affine.d").exists()
     # Specifications: another schema, a key the schema lacks.
     spec = json.loads((tree / "calibration.json").read_text(encoding="utf-8"))
     for wrong in ({**spec, "schema": "tessera.eval-spec/1"}, {**spec, "seed": 3}):

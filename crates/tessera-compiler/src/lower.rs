@@ -28,9 +28,9 @@
 //!   integer type holding it.
 
 use tessera_ir::{
-    ArchSpec, CommitmentClass, ConstRef, Graph, GraphBuilder, IntRange, IntType, IntegerModel,
-    IrError, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, Site, TableId, TensorDecl,
-    TensorId, WeightRef, WeightType,
+    ArchSpec, Broadcast, CommitmentClass, ConstRef, Graph, GraphBuilder, IntRange, IntType,
+    IntegerModel, IrError, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, Site, TableId,
+    TensorDecl, TensorId, WeightRef, WeightType,
 };
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableKind, TableSpec};
 
@@ -99,6 +99,9 @@ pub struct Lowering {
     /// The channel-class vector of each weight whose site has several classes, `[rows]`: its
     /// `ChannelParams` classes, committed with the weights (RFC-0012).
     pub classes: Vec<(WeightRef, TensorId)>,
+    /// The multipliers of each weight before an affine site, `[rows]`: its `ChannelParams`
+    /// multipliers, committed with the weights (RFC-0025).
+    pub multipliers: Vec<(WeightRef, TensorId)>,
 }
 
 /// Checks `model` whole: its public part as [`lower`] does, and its weights, channel classes and
@@ -176,17 +179,13 @@ pub fn validate(model: &IntegerModel) -> Result<(), CompileError> {
 /// # Errors
 ///
 /// - [`CompileError::Model`] when the public part breaks a rule of RFC-0005, RFC-0006 'Llama
-///   lowering', RFC-0007 'Verifier validation' or RFC-0025, or has an affine site, which the
-///   lowering does not take yet (#301); [`CompileError::ModelTable`] when a table it defines is
-///   one RFC-0008 refuses;
+///   lowering', RFC-0007 'Verifier validation' or RFC-0025; [`CompileError::ModelTable`] when a
+///   table it defines is one RFC-0008 refuses;
 /// - [`CompileError::Usage`] for no position, or more than `max_context`;
 /// - [`CompileError::Range`] and [`CompileError::Wrap`] when range analysis refuses the graph;
 /// - [`CompileError::Profile`] when it breaks a constraint of its profile.
 pub fn lower(model: PublicModel<'_>, positions: u32) -> Result<Lowering, CompileError> {
     check_public(model)?;
-    if !model.quant.affine_sites.is_empty() {
-        return refuse("the compiler lowers no affine site until RFC-0025's lowering lands (#301)");
-    }
     if positions == 0 || positions > model.arch.max_context {
         return Err(CompileError::Usage {
             rule: "a sequence has 1 to max_context positions",
@@ -213,6 +212,7 @@ pub fn lower(model: PublicModel<'_>, positions: u32) -> Result<Lowering, Compile
         logits,
         checkpoints,
         classes: builder.classes,
+        multipliers: builder.multipliers,
         sites: builder.sites,
     })
 }
@@ -579,6 +579,7 @@ struct Builder<'a> {
     graph: GraphBuilder,
     tables: Vec<TableSpec>,
     classes: Vec<(WeightRef, TensorId)>,
+    multipliers: Vec<(WeightRef, TensorId)>,
     /// Each rescale site's output, in building order.
     sites: Vec<(QuantPoint, TensorId)>,
     tokens: TensorId,
@@ -679,6 +680,7 @@ impl<'a> Builder<'a> {
             graph,
             tables: vec![rope.spec().clone()],
             classes: Vec::new(),
+            multipliers: Vec::new(),
             sites: Vec::new(),
             tokens,
             positions,
@@ -750,23 +752,36 @@ impl<'a> Builder<'a> {
         let a = self.silu(layer, gate)?;
         let h = if servable {
             let up = self.rescale(up, point(Site::Up), ff, INT8)?;
-            let product = self.node(Op::Mul, &[a, up], virt(&[n, ff]))?;
+            let product = self.node(
+                Op::Mul {
+                    broadcast: Broadcast::Trailing,
+                },
+                &[a, up],
+                virt(&[n, ff]),
+            )?;
             self.rescale(product, point(Site::Product), ff, INT8)?
         } else {
-            self.node(Op::Mul, &[a, up], virt(&[n, ff]))?
+            self.node(
+                Op::Mul {
+                    broadcast: Broadcast::Trailing,
+                },
+                &[a, up],
+                virt(&[n, ff]),
+            )?
         };
         let acc = self.matmul(WeightType::Down, layer, h, d, ff)?;
         self.residual(acc, residual, point(Site::MlpResidual))
     }
 
     /// The saturating sum `clamp(res + ⌊(acc + 2^{r−1}) / 2^r⌋)` of the residual and the
-    /// accumulator at `point`, within `[−2^{bits−1}, 2^{bits−1} − 1]` (RFC-0022):
+    /// accumulator at `point`, within `[−2^{bits−1}, 2^{bits−1} − 1]` (RFC-0022). At an affine
+    /// site the key is `acc · m` with one shift (RFC-0025):
     ///
-    /// - a site of one class, with `2^r` a constant, rescales the fused key `acc + 2^r · res`,
+    /// - a site of one shift, with `2^r` a constant, rescales the fused key `acc + 2^r · res`,
     ///   whose rounding is the accumulator's since `2^r · res` is a multiple of `2^r`;
-    /// - otherwise the classes' shifts are hidden: `u = rq(acc, r_c)` within `±(2^{bits} − 1)`,
-    ///   then `rq(2(res + u), 1)` clamps the sum. The first clamp binds only where the sum
-    ///   saturates anyway.
+    /// - otherwise, with hidden class shifts or `r = 63`: `u = rq(acc, r_c)` within
+    ///   `±(2^{bits} − 1)`, then `rq(2(res + u), 1)` clamps the sum. The first clamp binds only
+    ///   where the sum saturates anyway.
     fn residual(
         &mut self,
         acc: TensorId,
@@ -776,7 +791,7 @@ impl<'a> Builder<'a> {
         let (n, d) = (self.n, self.model.arch.d_model);
         let bits = self.model.quant.residual_bits;
         let half = 1i64 << (bits - 1);
-        let shifts = shifts(self.model.quant, point)?;
+        let (acc, shifts, classes) = self.key(acc, point, d)?;
         if let [r] = shifts[..]
             && let Some(power) = 1i64.checked_shl(u32::from(r)).filter(|&p| p > 0)
         {
@@ -793,7 +808,7 @@ impl<'a> Builder<'a> {
             self.sites.push((point, output));
             return Ok(output);
         }
-        let update = self.requantize(acc, point, d, (1 - 2 * half, 2 * half - 1))?;
+        let update = self.requant(acc, shifts, classes, d, (1 - 2 * half, 2 * half - 1))?;
         let sum = self.node(Op::Add, &[residual, update], virt(&[n, d]))?;
         let two = self.graph.constant(vec![2])?;
         let doubled = self.node(Op::ConstMul { c: two }, &[sum], virt(&[n, d]))?;
@@ -834,7 +849,13 @@ impl<'a> Builder<'a> {
             dim: d,
         };
         let rho = self.node(rsqrt, &[squares], advice(&[n]))?;
-        let scaled = self.node(Op::Mul, &[residual, rho], virt(&[n, d]))?;
+        let scaled = self.node(
+            Op::Mul {
+                broadcast: Broadcast::Trailing,
+            },
+            &[residual, rho],
+            virt(&[n, d]),
+        )?;
         self.rescale(scaled, point, d, INT8)
     }
 
@@ -863,27 +884,96 @@ impl<'a> Builder<'a> {
         Ok(output)
     }
 
-    /// `rq` at `point` on `[n, channels]`, saturating to `range`, with the channel classes of the
-    /// weight before it when the site has several.
+    /// `rq` at `point` on `[n, channels]`, saturating to `range`: [`key`](Self::key)'s key and
+    /// shifts.
     fn requantize(
         &mut self,
         x: TensorId,
         point: QuantPoint,
         channels: u32,
+        range: (i64, i64),
+    ) -> Result<TensorId, CompileError> {
+        let (key, shifts, classes) = self.key(x, point, channels)?;
+        self.requant(key, shifts, classes, channels, range)
+    }
+
+    /// What the site at `point` rescales of `x [n, channels]`, with its shifts and its
+    /// channel-class vector:
+    ///
+    /// - at a `pot` site, `x` itself, with the site's class shifts and, when it has several, the
+    ///   classes of the weight before it;
+    /// - at an affine site, `x · m`, `m` the weight's multipliers broadcast over the positions,
+    ///   with its one shift (RFC-0025).
+    fn key(
+        &mut self,
+        x: TensorId,
+        point: QuantPoint,
+        channels: u32,
+    ) -> Result<(TensorId, Vec<u8>, Option<TensorId>), CompileError> {
+        if let Some(r) = affine(self.model.quant, point) {
+            // From 1 to 63, checked with the public rules.
+            let r = u8::try_from(r).unwrap_or(u8::MAX);
+            let m = self.multiplier_vector(point, channels)?;
+            let mul = Op::Mul {
+                broadcast: Broadcast::Leading,
+            };
+            let key = self.node(mul, &[x, m], virt(&[self.n, channels]))?;
+            return Ok((key, vec![r], None));
+        }
+        let shifts = shifts(self.model.quant, point)?;
+        let classes = match shifts.len() {
+            1 => None,
+            count => Some(self.class_vector(point, channels, count)?),
+        };
+        Ok((x, shifts, classes))
+    }
+
+    /// `rq(key, r_c, lo, hi)` on `[n, channels]`, `r_c` the class's shift among `shifts`.
+    fn requant(
+        &mut self,
+        key: TensorId,
+        shifts: Vec<u8>,
+        classes: Option<TensorId>,
+        channels: u32,
         (lo, hi): (i64, i64),
     ) -> Result<TensorId, CompileError> {
-        let shifts = shifts(self.model.quant, point)?;
-        let count = shifts.len();
         let shift = self.graph.shift_classes(shifts)?;
-        let mut inputs = vec![x];
-        if count > 1 {
-            inputs.push(self.class_vector(point, channels, count)?);
-        }
+        let mut inputs = vec![key];
+        inputs.extend(classes);
         Ok(self.node(
             Op::Requant { shift, lo, hi },
             &inputs,
             advice(&[self.n, channels]),
         )?)
+    }
+
+    /// The committed multipliers of the output channels of the weight before the affine site
+    /// `point`, each in `[0, 2^{16} − 1]` (RFC-0025).
+    fn multiplier_vector(
+        &mut self,
+        point: QuantPoint,
+        channels: u32,
+    ) -> Result<TensorId, CompileError> {
+        let weight = self.weight_before(point)?;
+        let kind = NodeKind::Committed {
+            commitment: CommitmentClass::Weight,
+        };
+        let multipliers = self
+            .graph
+            .input(whole(&[channels], u32::from(u16::MAX), kind))?;
+        self.multipliers.push((weight, multipliers));
+        Ok(multipliers)
+    }
+
+    /// The weight whose output channels the site at `point` rescales.
+    fn weight_before(&self, point: QuantPoint) -> Result<WeightRef, CompileError> {
+        match point {
+            QuantPoint::Layer { layer, site } => after(site).map(|ty| WeightRef { ty, layer }),
+            QuantPoint::Embed | QuantPoint::FinalNorm => None,
+        }
+        .ok_or(CompileError::Model {
+            rule: "a site after no weight has one class",
+        })
     }
 
     /// The committed classes of the output channels of the weight before `point`.
@@ -893,13 +983,7 @@ impl<'a> Builder<'a> {
         channels: u32,
         count: usize,
     ) -> Result<TensorId, CompileError> {
-        let weight = match point {
-            QuantPoint::Layer { layer, site } => after(site).map(|ty| WeightRef { ty, layer }),
-            QuantPoint::Embed | QuantPoint::FinalNorm => None,
-        }
-        .ok_or(CompileError::Model {
-            rule: "a site after no weight has one class",
-        })?;
+        let weight = self.weight_before(point)?;
         // One to four classes, checked with the public rules.
         let last = u32::try_from(count - 1).unwrap_or(0);
         let kind = NodeKind::Committed {
@@ -964,7 +1048,13 @@ impl<'a> Builder<'a> {
             &[e, v],
             virt(&[h, n, dh]),
         )?;
-        let o = self.node(Op::Mul, &[pv, r], virt(&[h, n, dh]))?;
+        let o = self.node(
+            Op::Mul {
+                broadcast: Broadcast::Trailing,
+            },
+            &[pv, r],
+            virt(&[h, n, dh]),
+        )?;
         let rows = self.node(Op::Reshape, &[o], virt(&[h * n, dh]))?;
         let back = self.back;
         let rows = self.node(

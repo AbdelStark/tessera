@@ -10,8 +10,9 @@
 use tessera_codec::Rational;
 use tessera_compiler::{Range, Ranges, analyze};
 use tessera_ir::{
-    ArchFamily, ArchSpec, CommitmentClass, Graph, GraphBuilder, IntRange, IntType, Node, NodeKind,
-    Op, Profile, PublicQuantSpec, QuantPoint, RopeSpec, Site, TableId, TensorDecl, TensorId,
+    ArchFamily, ArchSpec, Broadcast, CommitmentClass, Graph, GraphBuilder, IntRange, IntType, Node,
+    NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, RopeSpec, Site, TableId, TensorDecl,
+    TensorId,
 };
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableKind, TableSpec};
 
@@ -329,14 +330,22 @@ impl Run<'_> {
                 }
                 vec![y]
             }
-            Op::Mul => {
-                let trailing = elements(shape(0)) / elements(shape(1));
-                vec![
-                    x(0).iter()
-                        .enumerate()
-                        .map(|(i, &a)| a * x(1)[i / trailing])
+            Op::Mul { broadcast } => {
+                let (a, b) = (x(0), x(1));
+                vec![match broadcast {
+                    Broadcast::Trailing => {
+                        let trailing = elements(shape(0)) / elements(shape(1));
+                        a.iter()
+                            .enumerate()
+                            .map(|(i, &v)| v * b[i / trailing])
+                            .collect()
+                    }
+                    Broadcast::Leading => a
+                        .iter()
+                        .zip(b.iter().cycle())
+                        .map(|(&v, &m)| v * m)
                         .collect(),
-                ]
+                }]
             }
             Op::OneHot { vocab } => {
                 let v = *vocab as usize;
