@@ -11,7 +11,7 @@ Tessera proves that a committed integer language model `D` produced a recorded t
 
 The design is a sumcheck/GKR proof over the Goldilocks field in which matmuls and attention products are never committed. Only lookup outputs, per-row scalars and weights are. Every layer, head and query block is proven in a constant number of batched stages under one seed. Softmax is pinned by a max certificate at one lookup, one commitment and one product-tree leaf per score. A persistent weight commitment is opened by the same pass that folds the weights for the sumcheck. An independent verifier rebuilds every constraint from a public claim list and shares no code with the prover.
 
-The source projects a proof multiplier of 3.2 at 1K tokens and 18.8 at 16K for Llama-3.1-405B on one 8×H100 node. This corpus finds four costs the source's model leaves out, rescale decompositions (RISK-2), witness regeneration (RISK-9), memory-bound tree levels (RISK-10) and the table side of LogUp, and restates the projection as about 10.6 to 11.5 at 1K and 26 to 27 at 16K, or up to 13.9 and 46 with the unmeasured column answers and streaming at their upper estimates. Both remain four orders of magnitude below the best published frontier-scale proof. Every figure is a projection until milestone v0.1 measures the unit costs on H100 and records a go/no-go decision against a rule fixed in advance ([RFC-0020](docs/rfcs/RFC-0020-cost-model.md#decision-rule)).
+The source projects a proof multiplier of 3.2 at 1K tokens and 18.8 at 16K for Llama-3.1-405B on one 8×H100 node. This corpus finds four costs the source's model leaves out, rescale decompositions (RISK-2), witness regeneration (RISK-9), memory-bound tree levels (RISK-10) and the table side of LogUp, and restates the projection as about 10.6 to 11.5 at 1K and 26 to 27 at 16K, or up to 14.3 and 47 with the unmeasured column answers and streaming at their upper estimates. Their streaming covers the attention trees' leaf level alone. Under RFC-0018's current rules, the rest of the leaf stage streams too and adds an order of magnitude more ([#329](https://github.com/AbdelStark/tessera/issues/329)). Both remain four orders of magnitude below the best published frontier-scale proof. Every figure is a projection until milestone v0.1 measures the unit costs on H100 and records a go/no-go decision against a rule fixed in advance ([RFC-0020](docs/rfcs/RFC-0020-cost-model.md#decision-rule)).
 
 Sub-10% overhead is an amortized property, reached by recording every request and proving an unpredictable sample in full. It is not a per-request cost, and this corpus never claims it is.
 
@@ -105,7 +105,7 @@ Full statements and resolution plans are in [00 §9](docs/spec/00-overview.md#9-
 | RISK-7 | W8A8 fidelity and bounded-mode `Û` at 405B unmeasured | v0.2 and v0.4 fidelity studies |
 | RISK-8 | BLAKE3 throughput within the committed-element budget | v0.1 measurement |
 | RISK-9 | Witness regeneration absent from the source cost model | Explicit `n_regen` term; measured at v0.3 and v0.5 |
-| RISK-10 | Tree leaf levels exceed device memory at long context | Pass structure and proof units (RFC-0018); measured at v0.5 |
+| RISK-10 | Tree leaf levels exceed device memory | Pass structure and proof units (RFC-0018); the whole leaf stage's streaming in #329; measured at v0.5 |
 
 ## Open questions
 
@@ -119,7 +119,7 @@ Full statements and resolution plans are in [00 §9](docs/spec/00-overview.md#9-
 | OQ-0014-1 | Live-session deadlines and retry policy | @AbdelStark | v1.0 |
 | OQ-0015-1 | Recorder placement when clients use TLS | @AbdelStark | Before the first bilateral pilot (v1.0) |
 | OQ-0017-1 | CDF-window predictor for bounded mode? | @AbdelStark | v0.4 fidelity study |
-| OQ-0018-1 | Streaming versus smaller proof units at long context | @AbdelStark | v0.5 |
+| OQ-0018-1 | Streaming versus smaller proof units | @AbdelStark | v0.5 |
 | OQ-0019-1 | Route to mechanized verifier proofs | @AbdelStark | v1.1 planning |
 | OQ-0020-1 | B200 as reference hardware for v1.0 claims? | @AbdelStark | v0.5 |
 | OQ-SEC-1 | Post-quantum recorder signatures (ML-DSA-65)? | @AbdelStark | v1.0 |
