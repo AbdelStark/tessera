@@ -580,6 +580,16 @@ All notable changes to the prover release train are recorded here: the crates un
   - **The residual's route** is chosen once for all layers: the fused key when every layer's site has one shift of at most 62, two steps otherwise.
   - **The quantizer** can meet the rule without changing `D`, by giving a site unused classes or by turning a `pot` site whose classes span at most 15 bits into the affine site of shift `r_max` with multipliers `2^{r_max − r_c}`.
   - Amended: RFC-0007 'Verifier validation' step 2, RFC-0022 'Proposed Design' and RFC-0037 'Layers and kinds'.
+- `tessera-compiler` and `tessera-quant` rescale every layer's sites alike, as RFC-0038 requires ([#348](https://github.com/AbdelStark/tessera/issues/348)):
+  - **The rule.** `validate` and `lower` refuse a claim list whose site is affine in some layers and not in others ("each site is affine in every layer or in none"). They also refuse one whose `pot` site has one class in some layers and several in others ("each pot site has one class in every layer, or several in every layer").
+  - **The residual's route.** A residual site takes the fused key in every layer when each layer's site has one shift of at most 62, and two steps in every layer otherwise. A shift of 63 in one layer sends every layer of that site through two steps.
+  - **The schedule** stacks layers whose sites have different numbers of classes, several in each.
+  - **`spec/vectors/models/`.** `tiny-2-affine` is affine at `RopeQ`, `RopeK`, `AttnResidual` and `Up` in both layers, and its layers now lower alike. The claim-list vectors are regenerated with it.
+  - **The lowering tests' models** draw one class or several once per site, and their affine sites in every layer.
+  - **`tessera-prover`'s stage tests** prove every stage of all four conformance models, `tiny-2-affine` among them.
+  - **The quantizer.** A site whose channels share one shift `r` in a layer, while another layer's need several, takes one class more there that no channel uses: `r + 1`, or 62 beside 63. `D` computes what it computed without it. At SiLU that class counts toward the table's core, which can coarsen that layer's input exponent by one. `choose` refuses `affine` named for a weight in some layers only.
+  - **The integer reference** and the conformance oracle route each residual site once for all layers, as the compiler lowers it. The oracle refuses a model whose layers would route a site differently.
+  - Amended: RFC-0038 'What the quantizer can do' allows any unused shift as a class, and RFC-0005 'Scale policy' points to it.
 
 ### Changed
 

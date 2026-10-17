@@ -74,6 +74,7 @@ The semantics below fix the rest of the policy:
 - **The score scale** `σ_q σ_k / √d_head` is the rational `2^{e_q + e_k} · n / 2^{40}`, `n` the integer nearest `2^{40} / √d_head`.
 - **SiLU's input exponent** is the finest at which its table's core holds at most `2^{24}` values: `Σ_c 2^{b − r_c}` over the gate's classes, at the lowering's key width `b` ([RFC-0008](RFC-0008-logup-and-tables.md#table-specifications)).
 - **In `affine` mode**, `M_c = round(2^r · f_c)`, `f_c` the real factor from channel `c`'s accumulator to the site's output, and `r` is the largest shift at which every `M_c` fits 16 bits. A zero row takes the largest channel's scale, so that it changes no other multiplier. The site computes `rq(x · M_c, r)`, `x` what a `pot` site rescales, and the claim list names it with its shift ([RFC-0025](RFC-0025-affine-sites.md)). It follows the Q, K, V, O, up or down projection, but not `minimal`'s O or down, whose keys would exceed 62 bits.
+- **Every layer alike** ([RFC-0038](RFC-0038-uniform-layers.md#what-the-quantizer-can-do)), so that the layers lower to one template: a weight takes `affine` in every layer or in none, and a `pot` site whose channels share one shift `r` in a layer, while they need several in another, takes one class more there that no channel uses: `r + 1`, or 62 beside 63. At SiLU that class counts toward the core.
 
 ### Integer semantics
 

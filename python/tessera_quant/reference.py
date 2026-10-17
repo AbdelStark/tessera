@@ -65,8 +65,8 @@ class Trace:
     """Each rescale site's output, `[n, channels]`, by its point."""
     updates: dict[QuantPoint, torch.Tensor] = field(repr=False)
     """Each residual site of two steps, `[n, d_model]`: the update `u = rq(acc, r_c, -(2^b - 1),
-    2^b - 1)` committed before the sum, `b` the residual's bits (RFC-0022). A site of one class
-    below 63 has none."""
+    2^b - 1)` committed before the sum, `b` the residual's bits (RFC-0022). A site of one shift
+    below 63 in every layer has none (RFC-0038)."""
     roots: dict[QuantPoint, torch.Tensor] = field(repr=False)
     """Each norm's root `rho`, `[n]`, by the point of the norm's output."""
     maxima: dict[int, torch.Tensor] = field(repr=False)
@@ -134,6 +134,17 @@ class _Forward:
             (c.ty, c.layer): c.multiplier for c in model.quant.channels if len(c.multiplier)
         }
         self.weights = {(w.ty, w.layer): w for w in model.weights}
+
+        def one_shift(point: LayerPoint) -> bool:
+            shifts = [self.affine[point]] if point in self.affine else self.shifts.get(point, [])
+            return len(shifts) == 1 and shifts[0] <= 62
+
+        # RFC-0038: a residual site takes one route in every layer.
+        self.two_steps = {
+            site
+            for site in (Site.AttnResidual, Site.MlpResidual)
+            if not all(one_shift(LayerPoint(layer, site)) for layer in range(arch.n_layers))
+        }
         rope = arch.rope
         constants = RopeConstants.of(
             Rope(
@@ -299,15 +310,14 @@ class _Forward:
     ) -> torch.Tensor:
         """`res <- clamp(res + floor((acc + 2^(r-1)) / 2^r), INT20)`, `r` the channel's shift.
 
-        A site of several classes, or of the one shift 63, sums in two steps (RFC-0022): its update
-        clamped within `2^b - 1` first, which changes no sum. An affine site rescales
-        `acc_c * M_c` (RFC-0025).
+        A site sums in two steps (RFC-0022) unless it has one shift of at most 62 in every layer
+        (RFC-0038): its update clamped within `2^b - 1` first, which changes no sum. An affine
+        site rescales `acc_c * M_c` (RFC-0025).
         """
         key, shift = self.key(acc, point, ty, point.layer)
         half = torch.bitwise_left_shift(torch.ones_like(shift), shift - 1)
         update = torch.bitwise_right_shift(key + half, shift)
-        shifts = [self.affine[point]] if point in self.affine else self.shifts[point]
-        if len(shifts) > 1 or shifts == [63]:
+        if point.site in self.two_steps:
             wide = 2 * self.half - 1
             self.updates[point] = torch.clamp(update, -wide, wide)
         out = torch.clamp(res + update, -self.half, self.half - 1)

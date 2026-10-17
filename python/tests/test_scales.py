@@ -15,7 +15,11 @@ transforms it, and `choose` gives `D`'s weights and constants, in both profiles.
   as `D` holds them, gives logits close to the float model's.
 - **affine** switches the named weights only, states each switched site and its shift in
   `affine_sites` (RFC-0025), keeps every multiplier within 16 bits where the largest rounds up,
-  and refuses what cannot take it.
+  and refuses what cannot take it, a weight named in some layers and not others among them.
+- **Every layer alike** (RFC-0038). A site whose channels share one shift in a layer, while
+  another layer's need several, takes one class more there that no channel uses: above the
+  shift, or below 63. `D` computes the logits it computes without that class, and a residual site
+  of one shift in one layer and several in another takes two steps in both.
 """
 
 import math
@@ -25,6 +29,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any, cast
 
+import numpy as np
 import pytest
 import torch
 from checkpoints import TINY, TINY_ARCH, tensors, write
@@ -37,16 +42,20 @@ from tessera_quant import CalibrationError, TesseraQuantError, import_checkpoint
 from tessera_quant.calibration import DatasetIdentity, draw
 from tessera_quant.capture import capture, points
 from tessera_quant.integer_model import (
+    CalibrationIdentity,
     EmbedPoint,
     FinalNormPoint,
+    IntegerModel,
     LayerPoint,
     Profile,
+    Provenance,
     QuantPoint,
     Site,
     WeightType,
     norm_kappa,
 )
 from tessera_quant.migration import transform
+from tessera_quant.reference import run_reference, trace
 from tessera_quant.scales import Quantized, choose, exponent
 
 ARCH = TINY_ARCH
@@ -461,20 +470,21 @@ def test_the_quantized_model_keeps_the_float_models_predictions(
 
 def test_affine_switches_the_named_weights_only(pipeline: dict[Profile, Any]) -> None:
     weights, maxima, _ = pipeline[Profile.Servable]
-    down = "model.layers.0.mlp.down_proj.weight"
-    quantized = choose(ARCH, Profile.Servable, weights, maxima, affine=[down])
+    downs = [f"model.layers.{layer}.mlp.down_proj.weight" for layer in range(ARCH.n_layers)]
+    down = downs[0]
+    quantized = choose(ARCH, Profile.Servable, weights, maxima, affine=downs)
     affine = [c for c in quantized.quant.channels if c.multiplier.size]
-    assert [(c.ty, c.layer) for c in affine] == [(WeightType.Down, 0)]
-    (params,) = affine
+    assert [(c.ty, c.layer) for c in affine] == [(WeightType.Down, 0), (WeightType.Down, 1)]
+    params = affine[0]
     assert params.multiplier.size == ARCH.d_model
     assert int(params.multiplier.min()) >= 1
     assert params.class_.size == 0
     # Each row's largest weight is exactly 127 at its scale max|w_c| / 127.
     q = weight(quantized, WeightType.Down, 0)
     assert bool((q.abs().amax(dim=1) == 127).all())
-    # The site and its one shift are public, in affine_sites rather than shift_class_sets.
+    # The sites and their one shift are public, in affine_sites rather than shift_class_sets.
     site = LayerPoint(0, Site.MlpResidual)
-    assert list(affine_shifts(quantized)) == [site]
+    assert list(affine_shifts(quantized)) == [site, LayerPoint(1, Site.MlpResidual)]
     assert site not in sets(quantized)
     r = affine_shifts(quantized)[site]
     assert 1 <= r <= 63
@@ -487,7 +497,7 @@ def test_affine_switches_the_named_weights_only(pipeline: dict[Profile, Any]) ->
     # Everything else is as without affine.
     plain = choose(ARCH, Profile.Servable, weights, maxima)
     for found, before in zip(quantized.weights, plain.weights, strict=True):
-        if (found.ty, found.layer) != (WeightType.Down, 0):
+        if found.ty is not WeightType.Down:
             assert (found.data == before.data).all(), (found.ty, found.layer)
 
 
@@ -507,9 +517,10 @@ def test_affine_multipliers_fit_16_bits_and_ignore_zero_rows(
     zero = rows.clone()
     zero[1] = 0
     found: dict[str, tuple[int, torch.Tensor]] = {}
+    downs = [f"model.layers.{layer}.mlp.down_proj.weight" for layer in range(ARCH.n_layers)]
     for case, w in (("top", rows), ("zero", zero)):
-        quantized = choose(ARCH, Profile.Servable, {**weights, down: w}, maxima, affine=[down])
-        (params,) = [c for c in quantized.quant.channels if c.multiplier.size]
+        quantized = choose(ARCH, Profile.Servable, {**weights, down: w}, maxima, affine=downs)
+        (params,) = [c for c in quantized.quant.channels if c.multiplier.size and c.layer == 0]
         r = affine_shifts(quantized)[LayerPoint(0, Site.MlpResidual)]
         found[case] = (r, torch.tensor(params.multiplier.astype("int64")))
     r, m = found["top"]
@@ -531,21 +542,28 @@ def test_affine_refuses_what_cannot_take_it(pipeline: dict[Profile, Any]) -> Non
         choose(
             ARCH, Profile.Servable, weights, maxima, affine=["model.layers.9.mlp.up_proj.weight"]
         )
+    # RFC-0038: a weight takes affine in every layer or in none.
+    with pytest.raises(TesseraQuantError, match=r"mlp\.down_proj in layers \[1\] only"):
+        choose(
+            ARCH, Profile.Servable, weights, maxima, affine=["model.layers.1.mlp.down_proj.weight"]
+        )
+
+    def every(module: str) -> list[str]:
+        return [f"model.layers.{layer}.{module}.weight" for layer in range(ARCH.n_layers)]
+
     weights_m, maxima_m, _ = pipeline[Profile.Minimal]
     with pytest.raises(TesseraQuantError, match="minimal's up projection"):
-        choose(
-            ARCH, Profile.Minimal, weights_m, maxima_m, affine=["model.layers.0.mlp.up_proj.weight"]
-        )
+        choose(ARCH, Profile.Minimal, weights_m, maxima_m, affine=every("mlp.up_proj"))
     for name in ("self_attn.o_proj", "mlp.down_proj"):
         with pytest.raises(TesseraQuantError, match="minimal's O and down keys exceed 62 bits"):
-            choose(
-                ARCH, Profile.Minimal, weights_m, maxima_m, affine=[f"model.layers.0.{name}.weight"]
-            )
+            choose(ARCH, Profile.Minimal, weights_m, maxima_m, affine=every(name))
     # The sites minimal keeps after Q, K and V take it.
-    names = [f"model.layers.0.self_attn.{n}_proj.weight" for n in "qkv"]
+    names = [name for n in "qkv" for name in every(f"self_attn.{n}_proj")]
     quantized = choose(ARCH, Profile.Minimal, weights_m, maxima_m, affine=names)
     assert list(affine_shifts(quantized)) == [
-        LayerPoint(0, site) for site in (Site.RopeQ, Site.RopeK, Site.V)
+        LayerPoint(layer, site)
+        for layer in range(ARCH.n_layers)
+        for site in (Site.RopeQ, Site.RopeK, Site.V)
     ]
 
 
@@ -593,6 +611,90 @@ def test_each_channels_class_is_its_own_shift(pipeline: dict[Profile, Any]) -> N
             assert set(per_channel) == set(expected[point])
 
 
+def counts(quantized: Quantized) -> dict[Site, list[int]]:
+    """Each layer site's number of classes, layer by layer."""
+    out: dict[Site, list[int]] = {}
+    for point, shifts in quantized.quant.public.shift_class_sets:
+        if isinstance(point, LayerPoint):
+            out.setdefault(point.site, []).append(len(shifts))
+    return out
+
+
+def equalized(w: torch.Tensor) -> torch.Tensor:
+    """`w` with every row's largest magnitude the tensor's: one exponent for all its rows."""
+    return w / w.abs().amax(dim=1, keepdim=True) * w.abs().max()
+
+
+def integer_model(profile: Profile, quantized: Quantized) -> IntegerModel:
+    """`D` of `quantized`, under a provenance the reference does not read."""
+    identity = CalibrationIdentity(
+        "fixture", "en", "validation", "0" * 40, ["fixture"], 11, 6, 0, 16, bytes(32)
+    )
+    provenance = Provenance("0", [], identity, bytes(32), Fraction(1, 2), {})
+    return IntegerModel(ARCH, profile, quantized.quant, quantized.weights, provenance)
+
+
+def one_class(model: IntegerModel, point: LayerPoint, ty: WeightType) -> IntegerModel:
+    """`model` with the site at `point` back to the one shift its channels take, and no class
+    vector for the weight `ty` before it."""
+    public = model.quant.public
+    (params,) = (c for c in model.quant.channels if (c.ty, c.layer) == (ty, point.layer))
+    shifts = dict(public.shift_class_sets)[point]
+    used = sorted({shifts[int(k)] for k in params.class_})
+    sets = [(p, used if p == point else s) for p, s in public.shift_class_sets]
+    channels = [c for c in model.quant.channels if c is not params]
+    quant = replace(model.quant, public=replace(public, shift_class_sets=sets), channels=channels)
+    return replace(model, quant=quant)
+
+
+@pytest.mark.parametrize(
+    ("seed", "module", "point", "ty"),
+    [
+        # Seed 1 draws layer 1's K within one exponent, and layer 0's within two.
+        (1, None, LayerPoint(1, Site.RopeK), WeightType.K),
+        (7, "mlp.gate_proj", LayerPoint(1, Site.Silu), WeightType.Gate),
+        (7, "self_attn.o_proj", LayerPoint(0, Site.AttnResidual), WeightType.O),
+        # Scaled to the shift 63, which has no class above it.
+        (7, "mlp.down_proj", LayerPoint(1, Site.MlpResidual), WeightType.Down),
+    ],
+    ids=["rope-k", "silu", "attn-residual", "steep-residual"],
+)
+def test_a_site_of_one_class_takes_another_where_a_layer_needs_several(
+    tmp_path: Path, seed: int, module: str | None, point: LayerPoint, ty: WeightType
+) -> None:
+    site = point.site
+    name = None if module is None else f"model.layers.{point.layer}.{module}.weight"
+    weights, maxima = migrated(tmp_path, seed)
+    steep = site is Site.MlpResidual
+    sequence = np.array([1, 7, 9, 3, 12], dtype=np.uint32)
+    for profile in Profile:
+        w = dict(weights)
+        if name is not None:
+            # Every row at the tensor's largest magnitude: one exponent, so one shift at the site.
+            w[name] = equalized(weights[name])
+        if name is not None and steep:
+            (r,) = expected_sets(choose(ARCH, profile, w, maxima), profile)[point]
+            w[name] = w[name] * 2.0 ** (r - 63)
+        quantized = choose(ARCH, profile, w, maxima)
+        for each, n in counts(quantized).items():
+            assert all(k == 1 for k in n) or all(k > 1 for k in n), (profile, each, n)
+        (r,) = expected_sets(quantized, profile)[point]
+        assert r == 63 if steep else r < 63
+        shifts = sets(quantized)[point]
+        assert shifts == ([62, 63] if steep else [r, r + 1]), (profile, shifts)
+        # No channel takes the class added, so D computes what it computes without it.
+        (params,) = (c for c in quantized.quant.channels if (c.ty, c.layer) == (ty, point.layer))
+        assert {shifts[int(k)] for k in params.class_} == {r}
+        d = integer_model(profile, quantized)
+        alone = one_class(d, point, ty)
+        assert (run_reference(d, sequence) == run_reference(alone, sequence)).all()
+        if site in (Site.AttnResidual, Site.MlpResidual):
+            # Two steps in every layer, as the compiler lowers the site.
+            found = trace(d, sequence).updates
+            layers = {p.layer for p in found if isinstance(p, LayerPoint) and p.site is site}
+            assert layers == set(range(ARCH.n_layers)), profile
+
+
 def test_the_embedding_is_no_finer_than_the_residual(pipeline: dict[Profile, Any]) -> None:
     # A residual far larger than the embedding: the embedding's exponent rises to the residual's,
     # so that its shift into the residual is 0 rather than negative.
@@ -629,11 +731,19 @@ def test_the_residual_holds_every_tokens_embedding(pipeline: dict[Profile, Any])
 
 
 def synthetic(
-    gate_rows: torch.Tensor,
+    *gate_rows: torch.Tensor,
 ) -> tuple[Any, dict[str, torch.Tensor], dict[str, torch.Tensor]]:
-    """A one-layer model of width 1024, whose gate key takes 25 bits: SiLU's core can bind."""
+    """A model of width 1024, a layer per gate given, whose gate key takes 25 bits: SiLU's core
+    can bind."""
     arch = replace(
-        ARCH, n_layers=1, d_model=1024, n_heads=8, n_kv_heads=8, d_head=128, d_ff=4, vocab=8
+        ARCH,
+        n_layers=len(gate_rows),
+        d_model=1024,
+        n_heads=8,
+        n_kv_heads=8,
+        d_head=128,
+        d_ff=4,
+        vocab=8,
     )
     generator = torch.Generator().manual_seed(3)
     shapes = tensor_shapes(arch)
@@ -642,7 +752,8 @@ def synthetic(
         for n, s in shapes.items()
     }
     weights["model.embed_tokens.weight"] *= 50
-    weights["model.layers.0.mlp.gate_proj.weight"] = gate_rows
+    for layer, rows in enumerate(gate_rows):
+        weights[f"model.layers.{layer}.mlp.gate_proj.weight"] = rows
     # Activations near 1, and a residual near 2^10 as Llama's outliers make it.
     maxima = {
         name: torch.ones(width, dtype=torch.float64)
@@ -665,10 +776,18 @@ def test_silu_takes_the_finest_input_exponent_its_core_allows() -> None:
     }
     assert in_exp == y2 + e + 1
     # Two exponents: the floor's shifts 1 and 2 give 2^24 + 2^23 values, so h coarsens by a bit.
-    rows[2:] *= 2
-    arch, weights, maxima = synthetic(rows)
+    two = rows.clone()
+    two[2:] *= 2
+    arch, weights, maxima = synthetic(two)
     quantized = choose(arch, Profile.Servable, weights, maxima)
     assert sets(quantized)[LayerPoint(0, Site.Silu)] == [2, 3]
+    # RFC-0038: beside a layer of two exponents, a layer of one takes a class more, whose 2^23
+    # values pass the core too: that layer's h coarsens by a bit, to the shift 2 beside 3.
+    arch, weights, maxima = synthetic(two, rows)
+    quantized = choose(arch, Profile.Servable, weights, maxima)
+    assert sets(quantized)[LayerPoint(1, Site.Silu)] == [2, 3]
+    in_exp = dict(quantized.quant.silu_in_exponents)[1]
+    assert in_exp == act(quantized)[LayerPoint(1, Site.MlpNorm)] + e + 2
 
 
 def test_the_epsilon_term_rounds_up_only_what_is_not_whole(pipeline: dict[Profile, Any]) -> None:
