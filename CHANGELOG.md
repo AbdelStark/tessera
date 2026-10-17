@@ -337,6 +337,21 @@ All notable changes to the prover release train are recorded here: the crates un
   - The operations no lowering emits yet (`Sub`, `Slice`, `Sum`, `ConstAdd`, `Bitwise`) give RFC-0006's values on a graph built for them. A zero residual row takes its root from ε alone. Each malformed request, model and input is refused with its code.
   - Each of 23 bugs planted in the engine fails a test, and a no-op control survives.
 
+- The commitment report in `tessera-compiler` (RFC-0006 'Outputs', [#84](https://github.com/AbdelStark/tessera/issues/84)):
+  - `report(model, &lowering, &selection, &policy)` counts what a lowered model commits and looks up, by the definition of each selected gadget in RFC-0009 and RFC-0024. Committed elements fall in four classes (lookup outputs, split limbs, row scalars, one-hot entries), counted with the lookups per layer per token and per token. Scores are counted apart, with their product-tree leaves.
+  - It also gives each site's requantized elements, each table's rows and lookups, the multiplicities and RFC-0010's stage count, which `stage_count` computes for any graph: 3 in `servable` and 4 in `minimal`, at any depth. `Lowering` now lists each site's output.
+  - `CommitmentReport::to_json` writes `tessera.commitment-report/1` (`spec/schemas/commitment-report-v1.schema.json`). It carries the projections of `μ` that `tessera-bench`'s cost model gives for the report's counts, with the unit costs, memory, scenario and regenerations they assume.
+  - `docs/perf/examples/commitment-report-405b.json` reports Llama-3.1-405B in `servable`, every site with one shift class. It requantizes RISK-2's 260,096 elements per layer per token, and commits 327,464 elements with 327,612 lookups. That is RISK-2's count with one exponent per tensor at O and down, plus 808 row scalars. At the source's unit costs and five regenerations, `μ(1K)` is 11.0, against 08's 11.5 with the quantizer's per-channel classes at O and down. [#88](https://github.com/AbdelStark/tessera/issues/88) reports those. A test keeps the file current, and `cargo xtask lint` checks it against the schema.
+  - The report states what it does not count exactly. `RsqrtRow` costs RFC-0009's estimate of 20 commitments and 30 lookups per row until [#118](https://github.com/AbdelStark/tessera/issues/118) fixes its limbs. The multiplicities leave out the range tables of `SoftmaxRow`'s and `RsqrtRow`'s checks, which the selection does not allocate yet ([#118](https://github.com/AbdelStark/tessera/issues/118), [#122](https://github.com/AbdelStark/tessera/issues/122)). The opening groups `G` and the masks join the report with the stage schedule ([#113](https://github.com/AbdelStark/tessera/issues/113), [#149](https://github.com/AbdelStark/tessera/issues/149), [#154](https://github.com/AbdelStark/tessera/issues/154)).
+  - RISK-2's `servable` count of 359,424 per layer per token at 405B holds with two shift classes at the residual sites. With three or four, the down projection's update key, 31 bits and two of classes, splits: 375,808. 00 §9 now says so.
+  - Tests check the counts against figures derived by hand from RFC-0005, RFC-0009 and RFC-0024:
+    - the source's 137,216 elements for `minimal` at 405B, and RISK-2's `servable` count;
+    - each class at 8B in both profiles, the two-step residual update, and `RequantWide` with and without low bits;
+    - the embedding's one-hot vector, the final norm, and Llama-3.1-8B's published parameter count without its folded norm gains;
+    - each sumcheck relation and claim map on a chain built by hand.
+  - RFC-0010's longest `servable` chains are two relations, the attention output's and RoPE's, not one through the committed `o8`; RFC-0010 now says so.
+  - Each of 38 bugs planted in the report and in the lowering's record of sites fails a test. A 39th is equivalent, since the first checkpoint's producer is no gadget, and a no-op control survives.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

@@ -207,7 +207,7 @@ pub struct CompileOutput {
 }
 ```
 
-`CommitmentReport` gives, per layer per token and in total for a reference batch: requantized elements by tensor; committed elements by class (lookup outputs, split limbs, per-row scalars, one-hot vectors, multiplicities, masks); lookups by table; product-tree leaves; table row counts; stage count; and the cost-model projection of `μ` at 1K, 4K, 16K and 128K using the current unit costs ([RFC-0020](RFC-0020-cost-model.md#executable-cost-model)).
+`CommitmentReport` gives, per layer per token and in total for a reference batch: requantized elements by tensor; committed elements by class (lookup outputs, split limbs, per-row scalars, one-hot vectors, multiplicities, masks); lookups by table; product-tree leaves; table row counts; stage count; and the cost-model projection of `μ` at 1K, 4K, 16K and 128K using the current unit costs ([RFC-0020](RFC-0020-cost-model.md#executable-cost-model)). The opening groups `G` and the masks follow from the claim points of the stage schedule, and join the report with it ([#113](https://github.com/AbdelStark/tessera/issues/113), [#149](https://github.com/AbdelStark/tessera/issues/149), [#154](https://github.com/AbdelStark/tessera/issues/154)).
 
 ### Invariants
 

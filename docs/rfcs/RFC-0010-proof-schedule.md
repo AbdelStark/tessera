@@ -74,7 +74,12 @@ Claims on a `Linear` target become claims on its inputs at the same point with p
 - **Reduction stages.** A virtual claim is assigned to the stage equal to its distance from the leaf stage in the dependency DAG of virtual tensors. Stage `k` proves every relation instance whose target claims arose in stage `k − 1`, across all layers, heads and blocks, in one batched sumcheck. Its outputs are claims on inputs: committed tensors go to the opening pool; virtual tensors go to stage `k + 1`.
 - **Termination.** The schedule ends when no virtual claim remains. Every chain ends at committed tensors because every non-arithmetic output is committed (INV-IR-3).
 
-For the `servable` Llama template the longest chain is: requantization key of the residual update ← O-projection (`MatMulWeight`) ← attention output requantization key ← `R_q · PV` (`Elementwise`) ← `PV` (`MatMulAct`) ← committed `e`, `v`. In the `minimal` template one more stage appears because the attention output is not committed. The compiler's commitment report lists the stage count; it must be identical for 2-, 4-, 8- and 126-layer models of the same template.
+For the `servable` Llama template the longest chains have two relations, so it has three stages:
+
+- the attention output's requantization key ← `R_q · PV` (`Elementwise`) ← `PV` (`MatMulAct`) ← committed `e`, `v`;
+- RoPE's key ← `Rotate` ← the Q or K projection (`MatMulWeight`).
+
+The O projection reads the committed `o8`, so the residual update's key is one relation from committed tensors. The `minimal` template has three relations and one more stage. Its attention output is not committed, so the residual update's key ← O-projection (`MatMulWeight`) ← `R_q · PV` ← `PV` makes three. So does the down projection's, through `a · u` (`Elementwise`) and the up projection. The compiler's commitment report lists the stage count; it must be identical for 2-, 4-, 8- and 126-layer models of the same template.
 
 ### Tree levels
 

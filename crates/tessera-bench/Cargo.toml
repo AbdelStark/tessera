@@ -13,8 +13,10 @@ serde_json = "1"
 
 [dev-dependencies]
 tessera-codec = { path = "../tessera-codec" }
+tessera-compiler = { path = "../tessera-compiler" }
 tessera-field = { path = "../tessera-field" }
 tessera-hash = { path = "../tessera-hash" }
+tessera-ir = { path = "../tessera-ir" }
 tessera-logup = { path = "../tessera-logup" }
 tessera-pcs = { path = "../tessera-pcs" }
 tessera-sumcheck = { path = "../tessera-sumcheck" }
