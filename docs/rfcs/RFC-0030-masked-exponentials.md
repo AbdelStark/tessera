@@ -72,8 +72,9 @@ For every position `(q, i)` of the padded score tensor, `(κ_qi, e_qi) ∈ Exp {
 
 - **The lookup side.** `SoftmaxRow`'s lookups are the positions of its score tensor, in that tensor's index order. The value polynomial is `e` itself, committed advice, so the value claim of RFC-0008 'Fraction tree' lands on `ẽ`.
 - **The key polynomial `κ`** is virtual. Its leaf claim `κ̃(ρ)` goes to the stage that produces the keys. That stage proves an `Elementwise` relation of degree 3, `Σ_x eq(ρ, x)·C(x)·k(x) = κ̃(ρ) − K_0·(1 − C̃(ρ))`. The verifier evaluates its public factor `C` at the stage's final point, and the relation ends on `k̃`, where `k = c − x` is `Linear`.
-- **The precondition.** `Exp[K_0] = 0`: the table's zero tail ([RFC-0008](RFC-0008-logup-and-tables.md#fixed-point-generators) 'Fixed-point generators') is not empty.
-  - **The rule.** `key_bits` is the narrowest width, from the spread's up, whose last key maps to 0 ('Range analysis' below). A value at key `k` does not depend on the table's width, and the zero tail is a suffix, so the rule is well defined.
+- **The precondition.** `Exp[K_0] = 0`: the table's last key maps to 0.
+  - A non-empty zero tail ([RFC-0008](RFC-0008-logup-and-tables.md#fixed-point-generators) 'Fixed-point generators') ensures it, but does not follow from it: values can round to 0 at keys below the tail's first, `z`. The check reads the value, not `z`.
+  - **The rule.** `key_bits` is the narrowest width, from the spread's up, whose last key maps to 0 ('Range analysis' below). A value at key `k` does not depend on the table's width, so the rule is well defined.
   - **The bound.** RFC-0008 refuses a zero tail that starts past key `2^24`, so the rule never widens a table past 25 bits. A scale that would need more is refused, as its table is.
 
 ### Relation 2: the trees

@@ -704,6 +704,9 @@ dependencies = [
  "tessera-field",
  "tessera-hash",
  "tessera-poly",
+ "tv-codec",
+ "tv-field",
+ "tv-tables",
 ]
 
 [[package]]
@@ -772,6 +775,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tv-codec"
+version = "0.1.0"
+dependencies = [
+ "tv-field",
+]
+
+[[package]]
 name = "tv-core"
 version = "0.1.0"
 dependencies = [
@@ -788,6 +798,15 @@ name = "tv-hash"
 version = "0.1.0"
 dependencies = [
  "tv-field",
+]
+
+[[package]]
+name = "tv-tables"
+version = "0.1.0"
+dependencies = [
+ "tv-codec",
+ "tv-field",
+ "tv-hash",
 ]
 
 [[package]]

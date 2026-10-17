@@ -70,11 +70,11 @@ An instance, with at least one lookup, proves its identity with two fraction tre
 | Kind | Key | Value | Rows | Used by |
 |---|---|---|---|---|
 | `Range { bits }` | `x ∈ [0, 2^bits)` | none | `2^bits` | Split remainders, limbs, brackets |
-| `Requant { b, classes, r_by_class, lo, hi }` | `(class, k)`, `k ∈ [−2^{b−1}, 2^{b−1})` | `clamp(floor((k + 2^{r−1}) / 2^r), lo, hi)` | `\|classes\| · 2^b` | `Requant1` (RFC-0009) |
+| `Requant { b, r_by_class, lo, hi }` | `(class, k)`, `k ∈ [−2^{b−1}, 2^{b−1})` | `clamp(floor((k + 2^{r−1}) / 2^r), lo, hi)` | `\|r_by_class\| · 2^b` | `Requant1` (RFC-0009) |
 | `Silu { b, r_by_class, in_exp, out_exp }` | `(class, k)` | `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)`, `h = k >> r_c` | `\|r_by_class\| · 2^b` | MLP |
 | `Exp { key_bits, sigma, scale }` | `k ∈ [0, 2^{key_bits})` | `round(2^σ · exp(−k · scale))` | `2^{key_bits}` | Softmax, vocabulary softmax |
-| `Exp2Frac { frac_bits, out_bits }` | `f ∈ [0, 2^{frac_bits})` | `⌊2^{f/2^{frac_bits}} · 2^{out_bits}⌋` | 2^8 | Scoring bound (RFC-0017) |
-| `Pow2 { max_exp }` | `i ∈ [0, max_exp)` | `2^i` | 64 | Scoring bound (RFC-0017) |
+| `Exp2Frac { frac_bits, out_bits }` | `f ∈ [0, 2^{frac_bits})` | `⌊2^{f/2^{frac_bits}} · 2^{out_bits}⌋`, from below | `2^{frac_bits}` | Scoring bound (RFC-0017) |
+| `Pow2 { max_exp }` | `i ∈ [0, max_exp)` | `2^i` | `max_exp` | Scoring bound (RFC-0017) |
 | `Bitwise8 { op }` | `(a, b)`, 8-bit each | `a ⊕ b`, `a ∧ b` | 2^16 | SHA-256 |
 | `AesSbox`, `Gf256Mul { c }` | `x`, 8-bit | S-box, `c · x` in GF(2^8) | 2^8 | AES-128 |
 | `Rope { theta, factor, low_freq_factor, high_freq_factor, original_max, bits, max_context, d_head }` | `(position, frequency)` | `(C, S)`, 14-bit | `max_context · d_head / 2` | Public constants for `Rotate`, not a lookup table |
@@ -147,7 +147,7 @@ The verifier needs `t̃(ρ)` at the random point where the table tree ends, over
 - A class of `Requant` has `x = k + 2^{b−1}`, the offset key. Before its clamp, `⌊(k + 2^{r−1})/2^r⌋ = (x >> r) + x_{r−1} − 2^{b−1−r}` for `r < b`, and 0 for `r ≥ b`. That is affine in the bits of `x`: its rounding reads bit `r − 1`, so it does not depend on `x >> r` alone. It never decreases with `x`, so the clamp holds `lo` on a prefix of the class and `hi` on a suffix. `valũe` is then `lo·LT(ρ, a)`, plus the affine prefix sum's difference between `c` and `a`, plus `hi·(1 − LT(ρ, c))`: `O(n)` per class, whatever `b`, `lo` and `hi`.
 - For `Silu`, `value(x)` depends only on its class and the high bits `h = x >> r`, so `valũe(ρ) = f̃(ρ_high)`: the low variables sum out because `Σ_{x_low} eq(ρ_low, x_low) = 1`. `Exp` has no shift.
 - Their `f` is piecewise: constant below `a`, a dense core on `[a, c)` of at most 2^24 explicit values, and constant on `[c, 2^{n_h})`. Then `f̃(ρ) = A·LT(ρ, a) + Σ_{h=a}^{c−1} f(h)·eq(ρ, h) + C·(1 − LT(ρ, c))`. The dense middle term costs `O(core)`. `[a, c)` is cut into at most `2n` aligned blocks, each an inner product with an `eq` table built by doubling. No step divides: updating `eq` along a Gray code would divide by `ρ_i` and `1 − ρ_i`, which fails at a coordinate 0 or 1.
-- `Range` has no value, so `t̃` is `kẽy`'s closed form. `Pow2`, `Bitwise8`, `AesSbox` and `Gf256Mul` are small enough to evaluate by enumeration.
+- `Range` has no value, so `t̃` is `kẽy`'s closed form. `Pow2`, `Bitwise8`, `AesSbox`, `Gf256Mul` and `Exp2Frac` are small enough to evaluate by enumeration.
 
 Verifier cost per table: `O(n · core)`, at most a few times 2^24 field operations, and `O(n)` per class for `Range` and `Requant`. It does not depend on the 2^32 row count the prover enumerates.
 

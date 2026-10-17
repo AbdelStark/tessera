@@ -711,6 +711,14 @@ def main():
         # The scaled frequencies in Q64, pinned before any rounding to `bits`.
         entry["frequencies"] = [hex(w) for w in rope_omegas(p)]
         cases.append(entry)
+    # A Silu table whose arguments pass 128·LN2, about 88.7: there exp_neg's n reaches 128, and
+    # E is 0 by the rule 'or 0 when n ≥ 128' rather than by the shift y >> n. At in_exp = 0,
+    # h = ±89 gives n = 128 exactly and h = −128 gives n = 184. Every h is checked and every row
+    # listed, with lookups at h = ±89.
+    require(exp_neg(89 << 64)[1] == 128 and exp_neg(88 << 64)[1] == 126, "Silu's n at h = 89")
+    check_silu(8, [0], 0, 0)
+    lookups = edges(-128, 128) + [(-89, 0), (89, 0)]
+    cases.append(case("silu-b8-wide-arguments", 36, silu(8, [0], 0, 0), lookups))
     llama = rope(500000, 8, 1, 4, 8192, 14, 131072, 128)["Rope"]
     rng = hash_oracle.splitmix64(0x7E55_E7A0_0071_0003)
     sample = [(next(rng) % 131072, next(rng) % 64) for _ in range(4000)]

@@ -63,7 +63,7 @@ def table_id(case: dict[str, Any]) -> int:
 
 def test_every_kind_of_d_has_vectors() -> None:
     assert sorted({next(iter(c["kind"])) for c in CASES}) == sorted(KINDS)
-    assert len(CASES) == 20
+    assert len(CASES) == 21
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c["name"])

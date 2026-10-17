@@ -8,5 +8,16 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+# The verifier's own field, codec and hash, nothing else: the generators and the structured
+# evaluation are written from RFC-0008, not from the prover's crates (SP-6, RFC-0001). The crate
+# documentation discloses one exposure, to doc comments of `tessera-tables`.
+[dependencies]
+tv-codec = { path = "../tv-codec" }
+tv-field = { path = "../tv-field" }
+tv-hash = { path = "../tv-hash" }
+
+[dev-dependencies]
+tv-testkit = { path = "../tv-testkit" }
+
 [lints]
 workspace = true

@@ -50,7 +50,7 @@ fn integer(value: &Value) -> i64 {
 #[test]
 fn every_vector_regenerates_with_its_digest_rows_and_lookups() {
     let cases = cases();
-    assert_eq!(cases.len(), 33);
+    assert_eq!(cases.len(), 34);
     for case in &cases {
         let name = case["name"].as_str().expect("a name");
         let spec = spec_of(case);

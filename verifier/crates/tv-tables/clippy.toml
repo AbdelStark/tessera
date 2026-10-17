@@ -1,0 +1,9 @@
+# RFC-0019 'Dependencies': `tv-tables` denies `clippy::arithmetic_side_effects`, as `tv-core`
+# does, and field arithmetic is exempt through its own types. `Fp` and `Fp2` operations are
+# total (RFC-0002): they never overflow or panic. Every other type stays under the lint, so the
+# generators' integer arithmetic is checked: a bound of RFC-0008 'Fixed-point generators' that
+# failed would be an error, never a wrapped value.
+#
+# This file applies to this crate only, which cannot depend on the prover's crates, so it shadows
+# none of the rules of the root clippy.toml that matter here.
+arithmetic-side-effects-allowed = ["tv_field::Fp", "tv_field::Fp2"]
