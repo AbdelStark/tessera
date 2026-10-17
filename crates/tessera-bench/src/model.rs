@@ -65,6 +65,9 @@ pub struct Counts {
     pub native_ops_att_per_ctx: f64,
     /// `n_regen`: witness regenerations, each about one native forward pass (RISK-9).
     pub regen_full_equivalents: f64,
+    /// `M`: table rows a proof commits a multiplicity for and builds its fraction tree over, all
+    /// its tables together: the commitment report's multiplicities (RFC-0008).
+    pub table_rows: f64,
 }
 
 impl Counts {
@@ -76,7 +79,8 @@ impl Counts {
     ///   each;
     /// - `F_lin = 2 · 405,853,388,800`, two operations per parameter: the source writes
     ///   `8.1×10^11`, and this is the reading that reproduces its chart;
-    /// - no regeneration, which the source's model leaves out (RISK-9).
+    /// - no regeneration, which the source's model leaves out (RISK-9);
+    /// - no table rows, which it leaves out too.
     pub const SOURCE_405B: Self = Self {
         commits_per_token: 137_216.0 * 126.0,
         lookups_per_token: 137_216.0 * 126.0,
@@ -84,6 +88,7 @@ impl Counts {
         native_ops_lin: 2.0 * 405_853_388_800.0,
         native_ops_att_per_ctx: 512.0 * 8_064.0,
         regen_full_equivalents: 0.0,
+        table_rows: 0.0,
     };
 }
 
@@ -121,6 +126,9 @@ pub struct MuBreakdown {
     pub streaming: f64,
     /// The column answers' evaluation of every committed element (RFC-0018 P5).
     pub column_answers: f64,
+    /// The table side of LogUp: each table row's multiplicity and fraction-tree leaf, shared by
+    /// the batch's tokens (RFC-0008).
+    pub tables: f64,
     /// The sum of the terms.
     pub total: f64,
 }
@@ -174,7 +182,8 @@ impl Counts {
         )?;
         input("native_ops_lin", self.native_ops_lin, false)?;
         input("native_ops_att_per_ctx", self.native_ops_att_per_ctx, false)?;
-        input("regen_full_equivalents", self.regen_full_equivalents, false)
+        input("regen_full_equivalents", self.regen_full_equivalents, false)?;
+        input("table_rows", self.table_rows, false)
     }
 
     /// Native seconds per token at `context` on one GPU, `(F_lin + F_att·S)/R`, positive.
@@ -235,14 +244,16 @@ pub fn streaming_passes(
 ///
 /// ```text
 /// μ(S) = [(1 + glue)·(C·c_c + K·c_ℓ) + (1 + glue)·A·S·(c_c + c_ℓ + c_π) + W/T
-///         + c(S)·c_s·A·S + (C + A·S)·c_a] / [(F_lin + F_att·S)/R]  +  n_regen
+///         + c(S)·c_s·A·S + (C + A·S)·c_a + (1 + glue)·M·(c_c + c_ℓ)/T]
+///        / [(F_lin + F_att·S)/R]  +  n_regen
 /// ```
 ///
-/// with `c_s` the streamed pass's cost per score, [`streaming_passes`] its count `c(S)`, and
-/// `c_a` the column answers' cost per committed element, of which a token commits `C` in its
-/// linear layers and one per attention score. With the source's counts and unit costs, which
-/// regenerate nothing, stream nothing and price no column answers, this is the source's formula
-/// (source §5).
+/// with `T` the batch's tokens, `c_s` the streamed pass's cost per score, [`streaming_passes`]
+/// its count `c(S)`, and `c_a` the column answers' cost per committed element, of which a token
+/// commits `C` in its linear layers and one per attention score. Each of the `M` table rows
+/// costs one committed multiplicity and one fraction-tree leaf, priced as a lookup, once per
+/// proof. With the source's counts and unit costs, which regenerate nothing, stream nothing,
+/// price no column answers and count no table rows, this is the source's formula (source §5).
 ///
 /// # Errors
 ///
@@ -284,13 +295,15 @@ pub fn mu(
     let streaming = f64::from(passes) * u.streaming_pass_ps * counts.scores_per_token_per_ctx * s;
     let committed = counts.commits_per_token + counts.scores_per_token_per_ctx * s;
     let column_answers = committed * u.column_answer_ps;
+    let tables = glue * counts.table_rows * (u.commit_ps + u.lookup_ps) / f64::from(batch_tokens);
     let linear = output("linear", linear * PS / native)?;
     let attention = output("attention", attention * PS / native)?;
     let weights = output("weights", weights / native)?;
     let streaming = output("streaming", streaming * PS / native)?;
     let column_answers = output("column_answers", column_answers * PS / native)?;
+    let tables = output("tables", tables * PS / native)?;
     let regen = counts.regen_full_equivalents;
-    let total = linear + attention + weights + regen + streaming + column_answers;
+    let total = linear + attention + weights + regen + streaming + column_answers + tables;
     let total = output("total", total)?;
     Ok(MuBreakdown {
         linear,
@@ -299,6 +312,7 @@ pub fn mu(
         regen,
         streaming,
         column_answers,
+        tables,
         total,
     })
 }

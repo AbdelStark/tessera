@@ -18,7 +18,7 @@ What the reports assume:
   - One is RISK-2's variant with one exponent per tensor.
   - Four is the most the quantizer allows ([RFC-0005](../../rfcs/RFC-0005-integer-model.md#scale-policy)). Three classes commit what four do, since the class index takes two bits either way.
   - A site's shifts change its gadget only where a split would reach a class's rounding bit. Here, that is at the residual sites.
-- **Projections.** `μ` at 1K, 4K, 16K and 128K uses the source's unit costs, memory and scenario, with five regenerations, as 08 §3 does. It leaves out the table side, which [#304](https://github.com/AbdelStark/tessera/issues/304) adds (below).
+- **Projections.** `μ` at 1K, 4K, 16K and 128K uses the source's unit costs, memory and scenario, with five regenerations, as 08 §3 does. It includes the table side: each row's multiplicity and fraction-tree leaf, shared by the 16K-token batch ([#304](https://github.com/AbdelStark/tessera/issues/304), below).
 
 ## Counts
 
@@ -26,15 +26,15 @@ Per layer per token, then per token. Committed elements are lookup outputs, spli
 
 | Profile | Classes | `B_max` | Committed, per layer | Lookups, per layer | Committed, per token | Lookups, per token | `μ(1K)` | `μ(16K)` | Table rows |
 |---|---|---|---|---|---|---|---|---|---|
-| `servable` | 1 | 32 | 327,464 | 327,612 | 41,421,508 | 41,311,910 | 11.00 | 26.34 | 22.0 · 10^9 |
-| `servable` | 2 | 32 | 360,232 | 360,380 | 45,550,276 | 45,440,678 | 11.48 | 26.79 | 24.7 · 10^9 |
-| `servable` | 4 | 32 | 376,616 | 376,764 | 47,614,660 | 47,505,062 | 11.73 | 27.01 | 27.9 · 10^9 |
-| `servable` | 1 | 30 | 343,848 | 343,996 | 43,485,892 | 43,376,294 | 11.24 | 26.56 | 8.1 · 10^9 |
-| `servable` | 2 | 30 | 376,616 | 376,764 | 47,614,660 | 47,505,062 | 11.73 | 27.01 | 8.6 · 10^9 |
-| `minimal` | 1 | 32 | 253,736 | 270,268 | 32,131,780 | 34,086,566 | 10.05 | 25.46 | 24.2 · 10^9 |
-| `minimal` | 2 | 32 | 286,504 | 303,036 | 36,260,548 | 38,215,334 | 10.53 | 25.91 | 20.5 · 10^9 |
-| `minimal` | 4 | 32 | 286,504 | 303,036 | 36,260,548 | 38,215,334 | 10.53 | 25.91 | 23.9 · 10^9 |
-| `minimal` | 1 | 30 | 286,504 | 319,420 | 36,260,548 | 40,279,718 | 10.67 | 26.03 | 5.8 · 10^9 |
+| `servable` | 1 | 32 | 327,464 | 327,612 | 41,421,508 | 41,311,910 | 11.16 | 26.49 | 22.0 · 10^9 |
+| `servable` | 2 | 32 | 360,232 | 360,380 | 45,550,276 | 45,440,678 | 11.66 | 26.95 | 24.7 · 10^9 |
+| `servable` | 4 | 32 | 376,616 | 376,764 | 47,614,660 | 47,505,062 | 11.93 | 27.20 | 27.9 · 10^9 |
+| `servable` | 1 | 30 | 343,848 | 343,996 | 43,485,892 | 43,376,294 | 11.30 | 26.62 | 8.1 · 10^9 |
+| `servable` | 2 | 30 | 376,616 | 376,764 | 47,614,660 | 47,505,062 | 11.79 | 27.07 | 8.6 · 10^9 |
+| `minimal` | 1 | 32 | 253,736 | 270,268 | 32,131,780 | 34,086,566 | 10.22 | 25.62 | 24.2 · 10^9 |
+| `minimal` | 2 | 32 | 286,504 | 303,036 | 36,260,548 | 38,215,334 | 10.68 | 26.04 | 20.5 · 10^9 |
+| `minimal` | 4 | 32 | 286,504 | 303,036 | 36,260,548 | 38,215,334 | 10.70 | 26.07 | 23.9 · 10^9 |
+| `minimal` | 1 | 30 | 286,504 | 319,420 | 36,260,548 | 40,279,718 | 10.71 | 26.07 | 5.8 · 10^9 |
 
 `B_max = 30` refuses three configurations, each for one table:
 
@@ -50,7 +50,7 @@ At the default `B_max = 32`, the rescales commit RISK-2's figures: the committed
 - **`servable`**: 326,656 with one class and RISK-2's 359,424 with two. With four, 375,808: the down projection's update key is 31 bits plus two class bits, so it splits.
 - **`minimal`**: 252,928 commitments and 269,312 lookups with one class, and RISK-2's upper bound with more: 285,696 and 302,080.
 
-The quantizer's real class counts at O and down decide which line applies. With two classes, `μ(1K)` is 11.48 in `servable` and 10.53 in `minimal`, the 11.5 and 10.5 that 08 §3 projects.
+The quantizer's real class counts at O and down decide which line applies. With two classes, `μ(1K)` is 11.66 in `servable` and 10.68 in `minimal`, the table side included. 08 §3's 11.6 and 10.7 count the rescales alone.
 
 ## OQ-0006-1: the table bound
 
@@ -58,7 +58,7 @@ The quantizer's real class counts at O and down decide which line applies. With 
 
 **The table side.** Each proof commits one multiplicity per table row and builds the table's fraction tree over every row ([RFC-0008](../../rfcs/RFC-0008-logup-and-tables.md)).
 
-- Priced as one committed element and one tree leaf per row, `(1 + glue) · rows · (c_c + c_ℓ)`, and amortized over the 16K-token batch, it adds this much to `μ`. The cost model does not count it yet ([#304](https://github.com/AbdelStark/tessera/issues/304)).
+- The cost model prices it as one committed element and one tree leaf per row, `(1 + glue) · M · (c_c + c_ℓ)`, shared by the 16K-token batch ([#304](https://github.com/AbdelStark/tessera/issues/304)). The projections above include it. It adds this much to `μ(1K)`.
 - Its multiplicity counters take 4 bytes per row (08 §4).
 
 | Configuration | Table term at 30 | at 32 | Counters at 30 | at 32 |
@@ -71,8 +71,8 @@ The quantizer's real class counts at O and down decide which line applies. With 
 
 **Against 30.** At 30, one site per layer changes gadget.
 
-- In `servable`, the down projection's residual key of 31 bits splits: 16,384 more commitments and lookups per layer per token. `μ(1K)` rises by 0.24 or 0.25, against a table term 0.10 to 0.12 smaller.
-- In `minimal`, the O projection's 61-bit residual key takes `RequantWide` instead of `RequantSplit`, since its low part would exceed 30 bits. That costs 32,768 more commitments and 49,152 more lookups per layer per token. `μ(1K)` rises by 0.62, against a table term 0.13 smaller.
+- In `servable`, the down projection's residual key of 31 bits splits: 16,384 more commitments and lookups per layer per token. `μ(1K)` rises by 0.13 or 0.14: the split costs 0.24 or 0.25, and the smaller tables save 0.10 to 0.12.
+- In `minimal`, the O projection's 61-bit residual key takes `RequantWide` instead of `RequantSplit`, since its low part would exceed 30 bits. That costs 32,768 more commitments and 49,152 more lookups per layer per token. `μ(1K)` rises by 0.49: the wider gadget costs 0.62, and the smaller tables save 0.13.
 - Where 30 compiles, it costs more than it saves. It also refuses three of the six configurations.
 
 **Against 34.** RFC-0008 bounds every table at `2^{32}` rows, so 34 needs a superseding RFC.

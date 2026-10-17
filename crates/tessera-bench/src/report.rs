@@ -209,6 +209,7 @@ impl ModelReport {
                 "regen_full_equivalents",
                 number("regen_full_equivalents", c.regen_full_equivalents)?,
             ),
+            ("table_rows", number("table_rows", c.table_rows)?),
         ]);
         let unit_costs = object([
             ("commit_ps", number("commit_ps", u.commit_ps)?),
@@ -266,6 +267,7 @@ impl ModelReport {
                         "column_answers",
                         number("column_answers", p.mu.column_answers)?,
                     ),
+                    ("tables", number("tables", p.mu.tables)?),
                     ("total", number("total", p.mu.total)?),
                 ]);
                 Ok(object([

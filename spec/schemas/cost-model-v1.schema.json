@@ -36,7 +36,8 @@
             "scores_per_token_per_ctx",
             "native_ops_lin",
             "native_ops_att_per_ctx",
-            "regen_full_equivalents"
+            "regen_full_equivalents",
+            "table_rows"
           ],
           "additionalProperties": false,
           "properties": {
@@ -61,6 +62,11 @@
               "minimum": 0
             },
             "regen_full_equivalents": {
+              "type": "number",
+              "minimum": 0
+            },
+            "table_rows": {
+              "description": "M: table rows a proof commits a multiplicity for, all its tables together (RFC-0008).",
               "type": "number",
               "minimum": 0
             }
@@ -195,6 +201,7 @@
               "regen",
               "streaming",
               "column_answers",
+              "tables",
               "total"
             ],
             "additionalProperties": false,
@@ -220,6 +227,11 @@
                 "minimum": 0
               },
               "column_answers": {
+                "type": "number",
+                "minimum": 0
+              },
+              "tables": {
+                "description": "The table side of LogUp: each row's multiplicity and fraction-tree leaf, shared by the batch's tokens.",
                 "type": "number",
                 "minimum": 0
               },
