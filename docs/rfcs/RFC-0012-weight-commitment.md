@@ -79,7 +79,7 @@ Transitions, each persisted (fsync, atomic rename) before the corresponding mess
 
 | Event | Precondition | Effect |
 |---|---|---|
-| `reserve` (before `Round1`) | For every matrix: `next_blinding_row + 6 ≤ B_W − 4` and `|opened_columns| + τ_W ≤ P_W − τ_link`. Blinding rows `B_W − 4` to `B_W − 1` and `τ_link` columns of headroom are reserved exclusively for the linking proof | Burns six blinding rows per matrix; records them in `Round1` |
+| `reserve` (before `Round1`) | For every matrix: `next_blinding_row + 6 ≤ B_W − 4` and `\|opened_columns\| + τ_W ≤ P_W − τ_link`. Blinding rows `B_W − 4` to `B_W − 1` and `τ_link` columns of headroom are reserved exclusively for the linking proof | Burns six blinding rows per matrix; records them in `Round1` |
 | `record_queries` (before `Round3Response`) | Queries are those of the current session | Adds the distinct query indices to `opened_columns` |
 | `abort` | Any time | Nothing is released: burned rows and opened columns stay burned |
 | `refresh` | Any time; required when `reserve` fails | Produces epoch `e + 1` and a `WeightLinkProof` |

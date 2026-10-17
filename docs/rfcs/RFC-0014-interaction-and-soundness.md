@@ -95,14 +95,14 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 
 | Component | Error bound | Live mode | Non-interactive mode |
 |---|---|---|---|
-| Sumcheck and tree rounds (degree `d ≤ 7`) | `d/|Fp2|` per round, round-by-round | ≥ 125 bits per round under Fiat–Shamir | same |
-| All rounds, union bound (405B, 16K tokens, about 10^4 rounds) | `Σ d/|Fp2|` | ≥ 112 bits | ≥ 112 bits |
-| Product-forest root claim (`2^s` trees, `s ≤ 32`) | `s/|Fp2|` per forest | ≥ 120 bits | same |
-| LogUp identity (`N + T ≤ 2^{38}` per instance) | `(N + T)/|Fp2|` | about 90 bits, one shot: `α` derives from a seed the prover cannot retry | 90 + `g_seed` = 110 bits |
+| Sumcheck and tree rounds (degree `d ≤ 7`) | `d/\|Fp2\|` per round, round-by-round | ≥ 125 bits per round under Fiat–Shamir | same |
+| All rounds, union bound (405B, 16K tokens, about 10^4 rounds) | `Σ d/\|Fp2\|` | ≥ 112 bits | ≥ 112 bits |
+| Product-forest root claim (`2^s` trees, `s ≤ 32`) | `s/\|Fp2\|` per forest | ≥ 120 bits | same |
+| LogUp identity (`N + T ≤ 2^{38}` per instance) | `(N + T)/\|Fp2\|` | about 90 bits, one shot: `α` derives from a seed the prover cannot retry | 90 + `g_seed` = 110 bits |
 | Tuple compression | included in the LogUp bound (joint polynomial in `α, β`) | — | — |
-| Opening evaluation checks | `T_g/|Fp2|` per claim group of `T_g` claims, `1/|Fp2|` per weight matrix ([RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings)) | ≥ 110 bits | same |
-| Proximity per commitment | `((1 + ρ')/2)^τ + n/|Fp2|` | `τ · b(ρ') ≥ 64` bits, one shot | `τ · b(ρ') + g_query ≥ 100` bits |
-| Weight linking | `ν/|Fp2|` | ≥ 120 bits | ≥ 120 bits |
+| Opening evaluation checks | `T_g/\|Fp2\|` per claim group of `T_g` claims, `1/\|Fp2\|` per weight matrix ([RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings)) | ≥ 110 bits | same |
+| Proximity per commitment | `((1 + ρ')/2)^τ + n/\|Fp2\|` | `τ · b(ρ') ≥ 64` bits, one shot | `τ · b(ρ') + g_query ≥ 100` bits |
+| Weight linking | `ν/\|Fp2\|` | ≥ 120 bits | ≥ 120 bits |
 | Hash collisions | BLAKE3, 256-bit output | 128 bits | 128 bits |
 
 `b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients. The bound takes the queries to be independent. Both modes draw column indices uniformly with replacement, and a repeated index is checked once at no cost in soundness ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7). The verifier also rejects a zero LogUp root denominator, of a lookup tree or a table tree, and any zero denominator.

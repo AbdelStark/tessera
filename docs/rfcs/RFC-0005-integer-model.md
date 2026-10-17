@@ -53,8 +53,8 @@ Each tensor `t` has a real scale `σ_t` with `real ≈ int · σ_t`.
 
 | Quantity | `pot` mode (default) | `affine` mode |
 |---|---|---|
-| Activations (INT8) | Per tensor, `σ = 2^e`, `e = ceil(log2(max|a| / 127))` | Per tensor, `σ = max|a| / 127` |
-| Weights (INT8) | Per output channel, `σ_c = 2^{e_c}`, rounded up so no weight clips | Per output channel, `σ_c = max|w_c| / 127` |
+| Activations (INT8) | Per tensor, `σ = 2^e`, `e = ceil(log2(max\|a\| / 127))` | Per tensor, `σ = max\|a\| / 127` |
+| Weights (INT8) | Per output channel, `σ_c = 2^{e_c}`, rounded up so no weight clips | Per output channel, `σ_c = max\|w_c\| / 127` |
 | Residual (INT20) | Per model, `σ_res = 2^e`, with one bit of headroom over the calibration maximum | Same |
 | Requantization | Shift `r_c = e_out − e_in − e_c` per output channel, grouped into shift classes | 16-bit multiplier `M_c` and shift `r` |
 

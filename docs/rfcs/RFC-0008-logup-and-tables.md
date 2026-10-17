@@ -69,8 +69,8 @@ An instance, with at least one lookup, proves its identity with two fraction tre
 | Kind | Key | Value | Rows | Used by |
 |---|---|---|---|---|
 | `Range { bits }` | `x ∈ [0, 2^bits)` | none | `2^bits` | Split remainders, limbs, brackets |
-| `Requant { b, classes, r_by_class, lo, hi }` | `(class, k)`, `k ∈ [−2^{b−1}, 2^{b−1})` | `clamp(floor((k + 2^{r−1}) / 2^r), lo, hi)` | `|classes| · 2^b` | `Requant1` (RFC-0009) |
-| `Silu { b, r_by_class, in_exp, out_exp }` | `(class, k)` | `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)`, `h = k >> r_c` | `|r_by_class| · 2^b` | MLP |
+| `Requant { b, classes, r_by_class, lo, hi }` | `(class, k)`, `k ∈ [−2^{b−1}, 2^{b−1})` | `clamp(floor((k + 2^{r−1}) / 2^r), lo, hi)` | `\|classes\| · 2^b` | `Requant1` (RFC-0009) |
+| `Silu { b, r_by_class, in_exp, out_exp }` | `(class, k)` | `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)`, `h = k >> r_c` | `\|r_by_class\| · 2^b` | MLP |
 | `Exp { key_bits, sigma, scale }` | `k ∈ [0, 2^{key_bits})` | `round(2^σ · exp(−k · scale))` | `2^{key_bits}` | Softmax, vocabulary softmax |
 | `Exp2Frac { frac_bits, out_bits }` | `f ∈ [0, 2^{frac_bits})` | `⌊2^{f/2^{frac_bits}} · 2^{out_bits}⌋` | 2^8 | Scoring bound (RFC-0017) |
 | `Pow2 { max_exp }` | `i ∈ [0, max_exp)` | `2^i` | 64 | Scoring bound (RFC-0017) |
@@ -113,7 +113,7 @@ Row `j` of each kind, for `j < T`, is below; rows `T` to `2^{log2_rows} − 1` r
 | Kind | `T` | Key of row `j` | Value of row `j` | Parameters allowed |
 |---|---|---|---|---|
 | `Range` | `2^bits` | `j` | 0 | `1 ≤ bits ≤ 32` |
-| `Requant` | `n · 2^b`, `n = |r_by_class|` | `j` | `rq(k, r_c, lo, hi)` of [RFC-0005](RFC-0005-integer-model.md#integer-semantics), for the class `c = ⌊j / 2^b⌋` and `k = (j mod 2^b) − 2^{b−1}` | `b ≥ 1`, `1 ≤ n ≤ 4`, `b + ⌈log2 n⌉ ≤ 32`, `1 ≤ r_c ≤ 63`, `lo ≤ hi` |
+| `Requant` | `n · 2^b`, `n = \|r_by_class\|` | `j` | `rq(k, r_c, lo, hi)` of [RFC-0005](RFC-0005-integer-model.md#integer-semantics), for the class `c = ⌊j / 2^b⌋` and `k = (j mod 2^b) − 2^{b−1}` | `b ≥ 1`, `1 ≤ n ≤ 4`, `b + ⌈log2 n⌉ ≤ 32`, `1 ≤ r_c ≤ 63`, `lo ≤ hi` |
 | `Pow2` | `max_exp` | `j` | `2^j` | `1 ≤ max_exp ≤ 63`, so that every value is in the centered range |
 | `Bitwise8` | `2^16` | `j` | `(j mod 2^8) ⊕ ⌊j / 2^8⌋` for `Xor`, `∧` for `And` | any |
 | `AesSbox` | `2^8` | `j` | `S(j)`, the S-box of FIPS-197 §5.1.1 | none |
@@ -121,7 +121,7 @@ Row `j` of each kind, for `j < T`, is below; rows `T` to `2^{log2_rows} − 1` r
 | `Exp` | `2^key_bits` | `j` | `round(2^σ · e^{−j · scale})` as 'Fixed-point generators' computes it | `1 ≤ key_bits ≤ 32`, `σ ≤ 32`, `scale > 0`; the zero tail starts by key `2^24` |
 | `Exp2Frac` | `2^frac_bits` | `j` | `⌊2^out_bits · 2^{j / 2^frac_bits}⌋` from below, as 'Fixed-point generators' computes it | `1 ≤ frac_bits ≤ 16`, `1 ≤ out_bits ≤ 56` |
 | `Rope` | `max_context · d_head / 2` pairs | the pair of position `⌊j / (d_head/2)⌋` and frequency `j mod (d_head/2)` | `(C, S) = (round(2^bits · cos(p·ω_i)), round(2^bits · sin(p·ω_i)))` as 'Fixed-point generators' computes them | `θ ≥ 2`, `factor ≥ 1`, `1 ≤ low_freq_factor < high_freq_factor`, `original_max ≥ 1`, `1 ≤ bits ≤ 30`, an even `d_head ≥ 2`, `1 ≤ max_context`, at most `2^24` pairs |
-| `Silu` | `n · 2^b`, `n = |r_by_class|` | `j` | `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)` as 'Fixed-point generators' computes it, for `c = ⌊j / 2^b⌋`, `k = (j mod 2^b) − 2^{b−1}` and `h = k >> r_c` | `b ≥ 1`, `1 ≤ n ≤ 4`, `b + ⌈log2 n⌉ ≤ 32`, `r_c < b`, `Σ_c 2^{b − r_c} ≤ 2^24`, `−64 ≤ in_exp ≤ 0`, `1 ≤ 63 − in_exp + out_exp ≤ 126` |
+| `Silu` | `n · 2^b`, `n = \|r_by_class\|` | `j` | `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)` as 'Fixed-point generators' computes it, for `c = ⌊j / 2^b⌋`, `k = (j mod 2^b) − 2^{b−1}` and `h = k >> r_c` | `b ≥ 1`, `1 ≤ n ≤ 4`, `b + ⌈log2 n⌉ ≤ 32`, `r_c < b`, `Σ_c 2^{b − r_c} ≤ 2^24`, `−64 ≤ in_exp ≤ 0`, `1 ≤ 63 − in_exp + out_exp ≤ 126` |
 
 A lookup's key is the row's key:
 

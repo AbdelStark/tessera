@@ -242,6 +242,7 @@ All notable changes to the prover release train are recorded here: the crates un
     Every intermediate stays below `2^128`.
   - `RopeTable` holds a specification and its digest. The core is every pair, at most `2^24`; Llama-3.1-405B has 8,388,608. `RopeConstants` gives any pair on demand, without the digest, for the witness engine's `Rotate`. `GeneratedTable` refuses a `Rope` kind, and `RopeTable` refuses any other.
   - The tables oracle checks every pair of two test tables, and 4,008 sampled pairs of Llama-3.1's 131,072-position table, against 40-digit references. It also pins the digest of the 8K-context table. A Rust test checks 10^6 more sampled pairs against an f64 implementation of Hugging Face's Llama-3 RoPE, all within one unit.
+- `cargo xtask lint` rejects a `|` inside a code span of a Markdown table row: GitHub splits the row's cells there, so the row renders shifted. Of the 18 such rows in six documents, 17 now write it `\|`, and RFC-0005's Scores bound drops its pipes ([#268](https://github.com/AbdelStark/tessera/issues/268)).
 
 ### Changed
 

@@ -43,7 +43,7 @@ Fiat–Shamir soundness requires that the transcript commits to exactly what the
 | `Vec<T>` | `u64` length `n`, then `n` encodings of `T` | `n` above the limit; `n · min_size(T)` above the remaining bytes |
 | `Bytes` | `Vec<u8>` | As `Vec` |
 | `Ascii` | `Vec<u8>` whose bytes are in `0x20..=0x7E` | Any other byte |
-| `Rational` | `i64` numerator, `u64` denominator; denominator `> 0`; `gcd(|num|, den) = 1` | Zero denominator; non-reduced fraction |
+| `Rational` | `i64` numerator, `u64` denominator; denominator `> 0`; `gcd(\|num\|, den) = 1` | Zero denominator; non-reduced fraction |
 
 ### Composite types
 

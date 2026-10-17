@@ -18,7 +18,7 @@ pub(crate) fn checks(repo: &Path) -> io::Result<Vec<(&'static str, Vec<String>)>
         ("SPDX headers (09 §7)", spdx::check(repo, &files)?),
         ("manifest licenses (09 §7)", licenses::check(repo, &files)?),
         (
-            "Markdown links and anchors (07 §9)",
+            "Markdown links, anchors and table cells (07 §9)",
             links::check(repo, &files)?,
         ),
         ("dependency-policy files (09 §7)", deny_policy::check(repo)?),
