@@ -8,10 +8,12 @@
 //! arithmetic, by summing each product over the hypercube; public factors are evaluated by the
 //! verifier's own `eq` or by summing the table against `eq` at each vertex. None of it uses the
 //! prover's algorithms. [`forests`] does the same for batches of product forests, around
-//! `tv_core::tree::verify_product_level`, and [`matmul`] for stages of matmul relations.
+//! `tv_core::tree::verify_product_level`, [`matmul`] for stages of matmul relations, and
+//! [`elementwise`] for stages of elementwise relations and zero-checks.
 
 #![allow(dead_code)] // each test binary uses part of it
 
+pub mod elementwise;
 pub mod forests;
 pub mod matmul;
 

@@ -10,8 +10,9 @@ use common::{Fp, Fp2, Session, SplitMix64, TestInstance, TestTable, prove_and_ve
 use tessera_codec::{DecodeLimits, decode, encode};
 use tessera_field::{Field, PrimeField, QuadraticExtension};
 use tessera_sumcheck::{
-    Forest, Instance, MatMulAct, MatMulActShape, MatMulWeight, MatMulWeightShape, Prefix,
-    RightLayout, SumcheckProof, Table, prove_batch, prove_forests,
+    Claim, Elementwise, ElementwiseShape, Forest, Input, Instance, Linear, LinearClaim,
+    LinearInput, MatMulAct, MatMulActShape, MatMulWeight, MatMulWeightShape, Placement, Prefix,
+    RightLayout, SumcheckProof, Table, Term, prove_batch, prove_forests,
 };
 
 fn element_bytes(x: Fp2) -> Vec<u8> {
@@ -283,4 +284,105 @@ fn matmul_debug_forms_show_shapes_never_values() {
     assert_hidden(&format!("{claims:#?}"), &secrets, "claims");
     assert_hidden(&format!("{tables:#?}"), &secrets, "tables");
     assert_hidden(&format!("{weight:#?}"), &secrets, "a relation");
+}
+
+#[test]
+fn elementwise_and_linear_debug_forms_show_shapes_never_values() {
+    let mut rng = SplitMix64::new(0x99_0503);
+    let mut large = |n: usize| -> Vec<Fp> {
+        (0..n)
+            .map(|_| Fp::from_u64_reduced(rng.next_u64() | 1 << 40))
+            .collect()
+    };
+    let (x, cos, sin, r) = (large(16), large(16), large(16), large(4));
+    let weight = Fp2::from(Fp::from_u64_reduced(0x1234_5678_9abc));
+    let lift = |values: &[Fp]| values.iter().map(|&v| Fp2::from(v)).collect::<Vec<_>>();
+    let mut secrets: Vec<String> = [&x, &cos, &sin, &r]
+        .into_iter()
+        .flat_map(|values| forms(&lift(values)))
+        .collect();
+    secrets.extend(forms(&[weight]));
+    let session = Session::random(&mut rng);
+
+    let rotate = Elementwise::<Fp2>::rotate(&x, &cos, &sin, 3, 4).expect("a rotation");
+    assert_eq!(
+        format!("{:?}", rotate.inputs()),
+        "[Operand { len: 16 }, Partner { len: 16, bit: 3 }, Public { len: 16 }, \
+         Public { len: 16 }]"
+    );
+    let scaled = Elementwise::<Fp2>::new(
+        ElementwiseShape::elementwise(4),
+        vec![
+            Input::Broadcast {
+                operand: &r,
+                low_vars: 2,
+            },
+            Input::Operand(&x),
+        ],
+        vec![Term::new(weight, vec![0, 1])],
+    )
+    .expect("a relation");
+    assert_eq!(
+        format!("{scaled:?}"),
+        "Elementwise { shape: ElementwiseShape { vars: 4, summed_vars: 0 }, inputs: \
+         [Broadcast { len: 4, low_vars: 2 }, Operand { len: 16 }], terms: \
+         [Term { factors: [0, 1], .. }] }"
+    );
+    for relation in [&rotate, &scaled] {
+        let point = rng.fp2s(4);
+        secrets.extend(forms(&point));
+        let tables = relation.tables(&point).expect("a point");
+        assert_hidden(&format!("{tables:#?}"), &secrets, "tables");
+        assert_hidden(&format!("{:?}", tables.instance()), &secrets, "an instance");
+        let proven = prove_batch(
+            &mut session.transcript(),
+            Prefix::Stage(1),
+            3,
+            &[tables.instance()],
+        )
+        .expect("a stage");
+        let claims = tables
+            .claims(
+                proven.instance_point(0).expect("an instance"),
+                proven.instance_evals(0).expect("an instance"),
+            )
+            .expect("the instance's results");
+        let values: Vec<Fp2> = claims.iter().map(|claim| claim.value).collect();
+        secrets.extend(forms(&values));
+        assert_hidden(&format!("{claims:#?}"), &secrets, "claims");
+    }
+
+    // A claim on a linear combination shows its polynomials and numbers of coordinates.
+    let point = rng.fp2s(3);
+    let value = rng.fp2();
+    secrets.extend(forms(&point));
+    secrets.extend(forms(&[value]));
+    let linear = Linear::new(
+        3,
+        vec![
+            LinearInput {
+                coefficient: weight,
+                poly: "res",
+                placement: Placement::Same,
+            },
+            LinearInput {
+                coefficient: weight,
+                poly: "max",
+                placement: Placement::Broadcast {
+                    low_vars: 1,
+                    vars: 2,
+                },
+            },
+        ],
+    )
+    .expect("a relation");
+    let mut claim = LinearClaim::single("next", Claim { point, value });
+    claim.substitute(&"next", &linear).expect("a point");
+    assert_eq!(
+        format!("{claim:?}"),
+        "LinearClaim { terms: [LinearTerm { poly: \"res\", vars: 3, .. }, \
+         LinearTerm { poly: \"max\", vars: 2, .. }], .. }"
+    );
+    assert_hidden(&format!("{claim:#?}"), &secrets, "a linear claim");
+    assert_hidden(&format!("{linear:#?}"), &secrets, "a linear relation");
 }

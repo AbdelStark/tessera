@@ -366,16 +366,6 @@ fn each_sumcheck_relation_adds_a_stage_and_each_claim_map_none() {
         "SumSquares"
     );
     assert_eq!(
-        stages_of(&[4], |g, x, _| one(
-            g,
-            Op::Sum { axis: 1 },
-            &[x],
-            virt(&[4])
-        )),
-        2,
-        "Sum"
-    );
-    assert_eq!(
         stages_of(&[4, 8], |g, x, _| {
             let c = g.constant((1..=8).collect()).expect("per channel");
             one(g, Op::ConstMul { c }, &[x], virt(&[4, 8]))
@@ -383,7 +373,18 @@ fn each_sumcheck_relation_adds_a_stage_and_each_claim_map_none() {
         2,
         "ConstMul per channel"
     );
-    // Claim maps.
+    // Claim maps. A sum over an axis is one: its claim lands at `(½, …, ½)` on the axis
+    // (RFC-0010 'Relations').
+    assert_eq!(
+        stages_of(&[4], |g, x, _| one(
+            g,
+            Op::Sum { axis: 1 },
+            &[x],
+            virt(&[4])
+        )),
+        1,
+        "Sum"
+    );
     assert_eq!(
         stages_of(&[4, 8], |g, x, _| {
             let c = g.constant(vec![3]).expect("one constant");

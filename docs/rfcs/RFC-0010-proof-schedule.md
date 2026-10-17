@@ -68,7 +68,15 @@ Either has degree 3 in the stacking variables and 2 in the others. It ends with 
 
 In `QKᵀ` the second operand is `Kᵀ`, with `K` stored row-major as `(b, c, j)`. Since `B̃(j, c) = K̃(c, j)`, the claim on `B` lands on `K` with its coordinates reordered, at `r_j ‖ r_c ‖ ρ_b`.
 
-Claims on a `Linear` target become claims on its inputs at the same point with public coefficients, so linear chains (residual stream sums, `c_q − x_qi`, offsets) cost nothing.
+`Elementwise`, `SumSquares` and `ZeroCheck` are sums of weighted products of inputs against `eq`: on `n` variables, `T̃(r) = Σ_x eq(r, x_high)·Σ_t w_t·Π_{f ∈ t} I_f(x)`, with `x_high` the target's variables. `SumSquares` sums its row's low `m` variables, so its target and `eq` have the other `n − m`; the others have all `n`. Each input is read at every vertex `x` in one of four ways. The final evaluations are those of the operand inputs, in the order the relation lists its inputs, and each is a claim at the instance's point `r'` or at a point derived from it:
+- **Operand** `A(x)`: the claim is at `r'`.
+- **Partner** `X(x ⊕ 2^b)`, the entry whose index differs in bit `b`: the claim is on `X̃` at `r'` with coordinate `b` replaced by `1 − r'_{b+1}`, since `X̃(x ⊕ 2^b)` is `X̃` with `x_{b+1}` replaced by `1 − x_{b+1}`. `Rotate` is `Ỹ(r) = Σ_x eq(r, x)·(X̃(x)·C(x) + X̃(x ⊕ 2^b)·S_±(x))`, its inputs `X`, `X`'s partner, `C` and `S_±`. Here `b` is the bit of `d_head/2` in the index, which pairs `x_i` with `x_{i + d_head/2}`; `C` is the pair's cosine at both members; and `S_±` is its sine, negated at the low member. So `Rotate` sends two evaluations, two claims on `X` ([RFC-0005](RFC-0005-integer-model.md#integer-semantics) 'RoPE').
+- **Broadcast** `R(x_{k+1}, …, x_{k+j})`, constant in the other variables: the claim is at the coordinates `k` to `k + j − 1` of `r'`. A scalar-by-row product broadcasts over the low variables, as `R_q` over the rows of `PV` (`Mul`'s `Trailing`, `k = n − j`); a channel's value broadcasts over the rows (`Leading`, `k = 0`).
+- **Public**, such as RoPE's constants or a selector: the verifier evaluates it at `r'`, and the proof sends nothing for it.
+
+`ZeroCheck`'s `h·(1 − h)` and `(1 − ψ)·w` each send one evaluation, `h̃(r')` or `w̃(r')`.
+
+Claims on a `Linear` target become claims on its inputs with public coefficients, so linear chains (residual stream sums, `c_q − x_qi`, offsets) cost nothing. An input with the target's variables takes the same point. A broadcast input, such as `c_q` in `c_q − x_qi`, takes the coordinates it has. A sum over an input's `j` lowest variables, such as a row sum `s_q = Σ_i e_qi`, takes `(½, …, ½) ‖ r` with its coefficient times `2^j`: for multilinear `Ĩ`, `Σ_{x ∈ {0,1}^j} Ĩ(x ‖ y) = 2^j·Ĩ(½, …, ½ ‖ y)`. A public input, an offset's constants, is evaluated by the verifier and moves to the claim's value. The result is one claim on a linear combination of tensors, each at its own point, which the next stage or the openings check as a whole.
 
 ### Stages
 

@@ -10,8 +10,10 @@
 //! run together (RFC-0010 'Tree levels', RFC-0008 'Fraction tree'), and returns the leaf claims
 //! later checks owe; [`prove_forests`] is its batch of forests alone. [`MatMulWeight`] and
 //! [`MatMulAct`] build the instances of the matmul relations of RFC-0010 'Relations', stacked
-//! over layers or heads, and map their sumchecks' results to claims on their operands. The other
-//! relations of the stages, masking (RFC-0013) and the stage schedule build on them.
+//! over layers or heads, and map their sumchecks' results to claims on their operands;
+//! [`Elementwise`] does the same for `Mul`, `Rotate`, `SumSquares` and `ZeroCheck`, and
+//! [`Linear`] propagates claims through linear relations without a sumcheck. Masking (RFC-0013)
+//! and the stage schedule build on them.
 //!
 //! # Protocol
 //!
@@ -217,6 +219,64 @@
 //! # Ok::<(), tessera_sumcheck::SumcheckError>(())
 //! ```
 //!
+//! # Elementwise relations
+//!
+//! An [`Elementwise`] relation on `n` variables is a sum of weighted products of its [`Input`]s
+//! against `eq` at its target's point, `T̃(r) = Σ_x eq(r, x_high)·Σ_t w_t·Π_{f ∈ t} I_f(x)`: an
+//! operand, read at each vertex, at each entry's RoPE partner, or broadcast over some variables;
+//! or a public table, which the verifier evaluates. Its target has the high `n − m` variables:
+//! all of them but for `SumSquares`, which sums the low `m`. The steps are the matmuls':
+//! `tables` from the input claim's point, [`prove_batch`] on their instance, then `claims`, one
+//! per operand input. A `ZeroCheck`'s point is the stage's, from [`zero_check_point`], and its
+//! claim 0.
+//!
+//! ```
+//! use tessera_codec::Ascii;
+//! use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField};
+//! use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
+//! use tessera_poly::evaluate_base;
+//! use tessera_sumcheck::{Elementwise, Input, Prefix, prove_batch, zero_check_point};
+//!
+//! let context = SessionContext {
+//!     protocol: Ascii::new("tessera-protocol/1").expect("ASCII"),
+//!     mode: Mode::NonInteractive,
+//!     params: ParamSetId(Ascii::new("test-small/1").expect("ASCII")),
+//!     statement_digest: [0; 32],
+//!     session_id: [0; 16],
+//! };
+//! let fp = Goldilocks::from_u64_reduced;
+//! // 2^2 rows of 2^3 entries, each row scaled by its own factor: R_q times the rows of PV.
+//! let pv: Vec<Goldilocks> = (0..32).map(|k| fp(3 * k + 1)).collect();
+//! let r: Vec<Goldilocks> = (0..4).map(|k| fp(k + 7)).collect();
+//! let scaled = Elementwise::<GoldilocksExt2>::mul(
+//!     Input::Broadcast { operand: &r, low_vars: 3 },
+//!     Input::Operand(&pv),
+//!     5,
+//! )?;
+//! // A one-hot row, whose booleanity is a zero-check at the stage's point.
+//! let h: Vec<Goldilocks> = [0, 0, 1, 0, 0, 0, 0, 0].into_iter().map(fp).collect();
+//! let boolean = Elementwise::<GoldilocksExt2>::booleanity(Input::Operand(&h), 3)?;
+//!
+//! let mut transcript = Transcript::new(&context);
+//! let z: Vec<GoldilocksExt2> = zero_check_point(&mut transcript, 1, 3);
+//! let point: Vec<GoldilocksExt2> = (1..=5).map(|k| GoldilocksExt2::from(fp(11 * k))).collect();
+//! let tables = [scaled.tables(&point)?, boolean.tables(&z)?];
+//! let instances = [tables[0].instance(), tables[1].instance()];
+//! let proven = prove_batch(&mut transcript, Prefix::Stage(1), 3, &instances)?;
+//! // R at the high 2 coordinates of the instance's point, PV at all 5.
+//! let at = proven.instance_point(0).expect("an instance");
+//! let claims = tables[0].claims(at, proven.instance_evals(0).expect("an instance"))?;
+//! assert_eq!(claims[0].point, at[3..]);
+//! assert_eq!(Ok(claims[0].value), evaluate_base(&r, &claims[0].point));
+//! assert_eq!(Ok(claims[1].value), evaluate_base(&pv, at));
+//! # Ok::<(), tessera_sumcheck::SumcheckError>(())
+//! ```
+//!
+//! A [`Linear`] relation, a target that is a public linear combination of its inputs, costs no
+//! sumcheck: [`LinearClaim::substitute`] replaces a claim on its target by the combination of
+//! its inputs, each at the point its [`Placement`] gives, so a residual stream's claim after
+//! its last layer ends on its first state and every update.
+//!
 //! # Algorithm
 //!
 //! - **Round values.** On a pair `(a, b) = (T[2t], T[2t + 1])` a table is `a + z·Δ` with
@@ -277,10 +337,12 @@ compile_error!(
 
 mod claim;
 mod contract;
+mod elementwise;
 mod error;
 mod forest;
 mod kernel;
 mod level;
+mod linear;
 mod matmul;
 mod proof;
 mod prover;
@@ -289,8 +351,10 @@ mod transcript;
 mod trees;
 
 pub use claim::Claim;
+pub use elementwise::{Elementwise, ElementwiseShape, ElementwiseTables, Input, zero_check_point};
 pub use error::SumcheckError;
 pub use forest::{Forest, ProvenForests, ProvenLevel, check_forests, prove_forests};
+pub use linear::{Linear, LinearClaim, LinearInput, LinearTerm, Placement};
 pub use matmul::{
     MatMulAct, MatMulActClaims, MatMulActShape, MatMulActTables, MatMulWeight, MatMulWeightClaims,
     MatMulWeightShape, MatMulWeightTables, Operand, RightLayout,

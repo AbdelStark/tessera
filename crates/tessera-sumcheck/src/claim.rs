@@ -12,9 +12,12 @@ use core::fmt;
 /// The point lists its coordinates lowest variable first: coordinate `k` sets bit `k` of the
 /// table's index (RFC-0010 'Multilinear extensions'). Which table a claim is on comes from where
 /// it is found: a forest's level ([`ProvenLevel::next_claims`](crate::ProvenLevel::next_claims))
-/// or leaves ([`ProvenForests::leaf_claims`](crate::ProvenForests::leaf_claims)), or a matmul's
+/// or leaves ([`ProvenForests::leaf_claims`](crate::ProvenForests::leaf_claims)), a matmul's
 /// operand, by the field that holds it ([`MatMulWeightClaims`](crate::MatMulWeightClaims),
-/// [`MatMulActClaims`](crate::MatMulActClaims)).
+/// [`MatMulActClaims`](crate::MatMulActClaims)), or an elementwise relation's input, by its
+/// position among the inputs the proof evaluates
+/// ([`ElementwiseTables::claims`](crate::ElementwiseTables::claims)). A claim on a linear
+/// combination of tables is a [`LinearClaim`](crate::LinearClaim), which names them.
 ///
 /// The value is protocol-class data, a function of secret-class tables (05 §3): the debug form
 /// shows the number of coordinates only.
