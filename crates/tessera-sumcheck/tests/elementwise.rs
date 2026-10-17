@@ -7,9 +7,9 @@
 //! RFCs, from the true targets' extensions at the input points and the claim 0 for a zero-check.
 //!
 //! - Each kind verifies alone at every size from 1 to 12 variables and at 20, a product and a
-//!   rotation at 24, and all of them in one stage, its zero-checks at the stage's zero-check
-//!   point; every claim is at the point the verifier derives, with the operand's extension there.
-//! - `rotate`'s relation is RoPE's rotation of each pair, as RFC-0005 states it.
+//!   pairwise product at 24, and all of them in one stage, its zero-checks at the stage's
+//!   zero-check point; every claim is at the point the verifier derives, with the operand's
+//!   extension there. RoPE's `Rotate` has its own tests, in `rotate.rs`.
 //! - A prover whose operand or public table differs in one entry, and a stage with one round
 //!   value or final evaluation changed, fail the final check, `FinalMismatch { round: n_max }`.
 //! - A zero-check rejects one non-boolean entry, and one non-zero value on a padded row, and
@@ -20,7 +20,7 @@ mod common;
 use common::elementwise::{
     At, Build, Case, CaseInput, Read, prove_and_verify_cases, prove_cases, verdict,
 };
-use common::{Fp, Fp2, Session, SplitMix64, TvFp2, tv_fp, tv_proof};
+use common::{Fp, Fp2, Session, SplitMix64, tv_proof};
 use tessera_field::{Field, PrimeField};
 use tessera_sumcheck::{Elementwise, ElementwiseShape, Input, MAX_DEGREE, SumcheckError, Term};
 use tv_core::sumcheck as tv;
@@ -94,36 +94,20 @@ fn by_constants(rng: &mut SplitMix64, vars: usize) -> Case {
     }
 }
 
-/// RoPE on the pairs that differ in bit `bit`: `Y = X ⊙ C + X_⊕ ⊙ S_±`, with `C` and `S_±` random
-/// public tables of the shape RFC-0005's constants take: `C` equal on a pair's two members, `S_±`
-/// opposite.
-fn rotation(rng: &mut SplitMix64, vars: usize, bit: usize) -> Case {
+/// `Z[x] = X[x]·X[x ⊕ 2^b]`: each entry times its partner, the entry whose index differs in bit
+/// `b`.
+fn pairwise(rng: &mut SplitMix64, vars: usize, bit: usize) -> Case {
     let x = rng.fps(1 << vars);
-    let (cos, sin) = rope_constants(rng, vars, bit);
     Case {
-        build: Build::Rotate,
+        build: Build::New,
         shape: elementwise(vars),
         inputs: vec![
             input(Read::Operand, x.clone()),
             input(Read::Partner(bit), x),
-            input(Read::Public, cos),
-            input(Read::Public, sin),
         ],
-        terms: vec![(one(), vec![0, 2]), (one(), vec![1, 3])],
+        terms: vec![(one(), vec![0, 1])],
         at: At::Point(rng.fp2s(vars)),
     }
-}
-
-/// `C` at every entry, equal on each pair, and `S_±`: `−S` at a pair's low member, `S` at its
-/// high one.
-fn rope_constants(rng: &mut SplitMix64, vars: usize, bit: usize) -> (Vec<Fp>, Vec<Fp>) {
-    let mut cos = rng.fps(1 << vars);
-    let mut sin = rng.fps(1 << vars);
-    for x in (0..1usize << vars).filter(|x| (x >> bit) & 1 == 1) {
-        cos[x] = cos[x ^ (1 << bit)];
-        sin[x] = -sin[x ^ (1 << bit)];
-    }
-    (cos, sin)
 }
 
 /// `U[y] = Σ_x X[y, x]²` over rows of `2^summed` entries.
@@ -207,8 +191,8 @@ fn every_kind(rng: &mut SplitMix64, vars: usize) -> Vec<Case> {
         by_row(rng, vars, vars / 2),
         by_channel(rng, vars, vars - vars / 3),
         by_constants(rng, vars),
-        rotation(rng, vars, vars - 1),
-        rotation(rng, vars, 0),
+        pairwise(rng, vars, vars - 1),
+        pairwise(rng, vars, 0),
         squares(rng, vars, vars / 2),
         squares(rng, vars, vars),
         booleanity(rng, vars),
@@ -225,21 +209,26 @@ fn degree(cases: &[Case]) -> usize {
         .expect("a case")
 }
 
-/// Every kind alone at 1 to 12 variables and at 20, and a product and a rotation at 24, the
-/// top of RFC-0010's range.
+/// Every kind alone at 1 to 12 variables and at 20, and a product and a pairwise product at 24,
+/// the top of RFC-0010's range.
 #[test]
 fn each_relation_verifies_alone_from_one_to_twenty_four_variables() {
     let mut rng = SplitMix64::new(0x99_0001);
     let session = Session::random(&mut rng);
-    for case in [product(&mut rng, 24), rotation(&mut rng, 24, 6)] {
+    for case in [product(&mut rng, 24), pairwise(&mut rng, 24, 6)] {
         let proven = prove_and_verify_cases(&session, 1, 3, &[case]);
         assert_eq!(proven.proven.proof().rounds.len(), 24);
     }
     for vars in (1..=12).chain([20]) {
         for (k, case) in every_kind(&mut rng, vars).into_iter().enumerate() {
+            // RFC-0010: the most factors a term has, plus one for `eq` when the target has
+            // variables.
             let degree = case.relation().degree();
+            let factors = case.terms.iter().map(|(_, f)| f.len()).max().unwrap_or(0);
+            let with_eq = usize::from(case.shape.summed_vars < vars);
+            assert_eq!(degree, factors + with_eq, "{vars} variables, case {k}");
             let expected = match case.build {
-                Build::New => 4,
+                Build::New if factors == 3 => 4,
                 Build::SumSquares if case.shape.summed_vars == vars => 2,
                 _ => 3,
             };
@@ -271,34 +260,6 @@ fn a_stage_of_every_relation_verifies_with_its_zero_checks_at_the_stage_point() 
     assert_eq!(proven.zero.len(), 11);
 }
 
-/// The relation `rotate` proves, written in `common::elementwise` from RFC-0010 as
-/// `X ⊙ C + X_⊕ ⊙ S_±`, is RFC-0005's RoPE: each pair `(a, b) = (x_i, x_{i+m})` becomes
-/// `(a·C − b·S, a·S + b·C)`, here on rows of `2m = 2^4` entries, 2^3 heads and 2^2 positions.
-#[test]
-fn rotate_is_ropes_rotation_of_each_pair() {
-    let mut rng = SplitMix64::new(0x99_0003);
-    let session = Session::random(&mut rng);
-    let (vars, bit) = (9, 3);
-    let case = rotation(&mut rng, vars, bit);
-    let [x, _, cos, sin] = [0, 1, 2, 3].map(|k| case.inputs[k].values.clone());
-    let m = 1 << bit;
-    let rope: Vec<TvFp2> = (0..1usize << vars)
-        .map(|index| {
-            let low = index & !m;
-            let (a, b) = (tv_fp(x[low]), tv_fp(x[low | m]));
-            // C and S of the pair's frequency, at its low member: S_± holds −S there.
-            let (c, s) = (tv_fp(cos[low]), -tv_fp(sin[low]));
-            TvFp2::from(if index & m == 0 {
-                a * c - b * s
-            } else {
-                a * s + b * c
-            })
-        })
-        .collect();
-    assert_eq!(case.target(), rope);
-    let _ = prove_and_verify_cases(&session, 2, 3, &[case]);
-}
-
 fn final_mismatch(rounds: usize) -> Result<(), tv::SumcheckError> {
     Err(tv::SumcheckError::FinalMismatch {
         round: rounds as u32,
@@ -307,8 +268,9 @@ fn final_mismatch(rounds: usize) -> Result<(), tv::SumcheckError> {
 
 /// A prover whose input `k` differs in one entry from the case's, operand or public table,
 /// proving against the true claim, fails the final check: alone, and among the other kinds in
-/// one stage. A rotation's partner is its operand, changed with it. The zero-checks' claim is 0
-/// whatever the witness, so their own test changes them where the check must catch it.
+/// one stage. A pairwise product's partner is its operand, changed with it. The zero-checks'
+/// claim is 0 whatever the witness, so their own test changes them where the check must catch
+/// it.
 #[test]
 fn a_prover_with_one_input_entry_changed_fails_the_final_check() {
     let mut rng = SplitMix64::new(0x99_0004);
