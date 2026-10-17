@@ -344,7 +344,8 @@
         "scores_per_token_per_ctx",
         "native_ops_lin",
         "native_ops_att_per_ctx",
-        "table_rows"
+        "table_rows",
+        "score_block"
       ],
       "additionalProperties": false,
       "properties": {
@@ -370,6 +371,11 @@
         },
         "table_rows": {
           "description": "M: table rows a proof commits a multiplicity for, all its tables together (RFC-0008).",
+          "type": "number",
+          "minimum": 0
+        },
+        "score_block": {
+          "description": "b, the score block of RFC-0034: a token commits A·(S + min(S, b)) scores at context S.",
           "type": "number",
           "minimum": 0
         }

@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
+- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Cost': who pays for the masked half)
 - Supersedes, on acceptance:
   - [RFC-0009](RFC-0009-gadgets.md#softmaxrow) 'SoftmaxRow': relation 1, the reduction of the trees' leaf claim, and Lemma 5;
   - [RFC-0010](RFC-0010-proof-schedule.md#multilinear-extensions) 'Multilinear extensions': the causal selector; 'Tree levels': `SoftmaxRow`'s public root values;
@@ -125,7 +126,7 @@ No other relation needs the selector.
 ### Cost
 
 - **Lookups.** The `Exp` instance's lookup side covers the padded square instead of the causal half. Every masked lookup is the same tuple `(K_0, 0)`, so its leaf is the constant `(1, α − K_0)`. The masked entries of `e` were committed before this RFC too, since `e` has the scores' full shape.
-- **Who pays for the masked half.** Whether the masked half costs anything depends on the advice layout and on whether the tree provers skip constant subtrees; neither is specified yet. The cost model counts valid scores only (RISK-11, [#321](https://github.com/AbdelStark/tessera/issues/321)). If the masked half were paid in full, 405B's attention term would double: +1.13 on `μ(1K)` and +16.8 on `μ(16K)`. Commitments alone would add 37% of that.
+- **Who pays for the masked half.** [RFC-0034](RFC-0034-causal-blocks.md) settles it. The advice layout skips the blocks above the diagonal, and the tree and lookup provers evaluate constant subtrees in closed form. What remains is committed: the diagonal blocks' masked halves, `A·b` elements per token, about 0.2 on `μ` at 405B. Paid in full, the masked half would have doubled 405B's attention term: +1.13 on `μ(1K)` and +16.8 on `μ(16K)`.
 - **The proof.** One more `Elementwise` instance in the stage that produces the keys: no stage, challenge or commitment is added.
 - **Soundness.** The instance adds its sumcheck's error. LogUp's `(N + T)/|Fp2|` counts the `Exp` instance's `N` over the padded square, about `2^{42}` lookups for one 405B request at 16K. The soundness calculator counts them ([RFC-0014](RFC-0014-interaction-and-soundness.md)).
 

@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2 (CPU witness engine), v0.3 (CPU prover), v0.5 (GPU prover), v1.0 (405B)
+- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Kernels': constant subtrees in closed form; 'Testing Strategy')
 
 ## Summary
 
@@ -57,8 +58,8 @@ pub trait ProverBackend {
 | Goldilocks and `Fp2` arithmetic library | All | 32-bit limb multiplies, branch-free reduction ([RFC-0002](RFC-0002-field-arithmetic.md)) |
 | Coset NTT (sizes 2^10–2^23) and RS encode with vanishing mask | Advice and weight commitments | Batched rows; canonical output |
 | BLAKE3 column-chain and Merkle kernels | Commitments | Byte-identical to the CPU reference ([RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests)) |
-| Fraction-tree build and level sumcheck | LogUp-GKR | Bottom-up build fused with leaf generation; the level sumcheck as the product tree's |
-| Product-tree build and level sumcheck | Max certificate | `eq` never materialized: per instance a scalar, the current variable's line and two tables of about `√N` entries, in shared memory; two node sums per round, the third recovered from the instance's claim (Gruen), about 15 `Fp`-multiplication equivalents per leaf against 25.5 with an `eq` table ([#258](https://github.com/AbdelStark/tessera/issues/258)) |
+| Fraction-tree build and level sumcheck | LogUp-GKR | Bottom-up build fused with leaf generation; the level sumcheck as the product tree's; a subtree of constant leaves, such as the masked scores', in closed form ([RFC-0034](RFC-0034-causal-blocks.md#constant-leaves)) |
+| Product-tree build and level sumcheck | Max certificate | `eq` never materialized: per instance a scalar, the current variable's line and two tables of about `√N` entries, in shared memory; two node sums per round, the third recovered from the instance's claim (Gruen), about 15 `Fp`-multiplication equivalents per leaf against 25.5 with an `eq` table ([#258](https://github.com/AbdelStark/tessera/issues/258)); a subtree of constant leaves in closed form (RFC-0034) |
 | Sumcheck round kernels (degree ≤ 7) with `eq` tables | Stages | Front-padded batching |
 | Table gather | Witness and leaf generation | Piecewise tables keep the dense core in L2 where it fits |
 | Limb-decomposed folds | Weight fold, tensor folds over tokens, query folds, the opening's row combination | `Fp2` coefficients split into 8-bit limbs; INT8 GEMMs; exact recombination |
@@ -171,6 +172,7 @@ v0.2: CPU witness engine. v0.3: CPU prover backend with the pass structure and c
 - Kernels: each GPU kernel against its CPU reference on random inputs, including NTT sizes 2^10–2^23 and BLAKE3 chains with partial blocks.
 - Backends: full proofs from CPU and GPU backends are byte-identical with pinned masking randomness.
 - Streaming: a test forces a 1 MiB memory budget on a tiny model so that every tree level streams; the proof equals the in-memory proof byte for byte; the pass counter matches `c` from the formula.
+- Constant subtrees: the lookup and tree provers' messages equal the dense provers' byte for byte when they evaluate the masked scores' subtrees in closed form, for sequence lengths that are and are not powers of two ([RFC-0034](RFC-0034-causal-blocks.md#testing-strategy)).
 - Column answers: for every evaluation the planner can pick, P5's symbols equal those of each row's whole codeword at the queried columns, repeated and boundary indices included; the pass counter counts P5 once per proof unit.
 - Proof units: splitting one request into two layer-range units yields a proof that verifies; tampering with a boundary residual in one unit is rejected by the linking claim.
 - Crash consistency: fault injection kills the prover after each phase; the resumed prover sends byte-identical messages.

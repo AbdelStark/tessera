@@ -18,7 +18,7 @@ What the reports assume:
   - One is RISK-2's variant with one exponent per tensor.
   - Four is the most the quantizer allows ([RFC-0005](../../rfcs/RFC-0005-integer-model.md#scale-policy)). Three classes commit what four do, since the class index takes two bits either way.
   - A site's shifts change its gadget only where a split would reach a class's rounding bit. Here, that is at the residual sites.
-- **Projections.** `μ` at 1K, 4K, 16K and 128K uses the source's unit costs, memory and scenario, with five regenerations, as 08 §3 does. It includes the table side: each row's multiplicity and fraction-tree leaf, shared by the 16K-token batch ([#304](https://github.com/AbdelStark/tessera/issues/304), below). Splits take [RFC-0028](../../rfcs/RFC-0028-balanced-split.md)'s balanced point.
+- **Projections.** `μ` at 1K, 4K, 16K and 128K uses the source's unit costs, memory and scenario, with five regenerations, as 08 §3 does. It includes the table side: each row's multiplicity and fraction-tree leaf, shared by the 16K-token batch ([#304](https://github.com/AbdelStark/tessera/issues/304), below). It also includes the masked halves of the score tensors' diagonal blocks, which the layout commits: 405B's score block is 512 ([RFC-0034](../../rfcs/RFC-0034-causal-blocks.md)). Splits take [RFC-0028](../../rfcs/RFC-0028-balanced-split.md)'s balanced point.
 
 ## Counts
 
@@ -26,15 +26,15 @@ Per layer per token, then per token. Committed elements are lookup outputs, spli
 
 | Profile | Classes | `B_max` | Committed, per layer | Lookups, per layer | Committed, per token | Lookups, per token | `μ(1K)` | `μ(16K)` | Table rows |
 |---|---|---|---|---|---|---|---|---|---|
-| `servable` | 1 | 32 | 327,464 | 327,612 | 41,421,508 | 41,311,910 | 11.04 | 26.37 | 5.0 · 10^9 |
-| `servable` | 2 | 32 | 360,232 | 360,380 | 45,550,276 | 45,440,678 | 11.54 | 26.84 | 7.7 · 10^9 |
-| `servable` | 4 | 32 | 376,616 | 376,764 | 47,614,660 | 47,505,062 | 11.78 | 27.06 | 7.7 · 10^9 |
-| `servable` | 1 | 30 | 343,848 | 343,996 | 43,485,892 | 43,376,294 | 11.26 | 26.58 | 3.1 · 10^9 |
-| `servable` | 2 | 30 | 376,616 | 376,764 | 47,614,660 | 47,505,062 | 11.75 | 27.04 | 3.9 · 10^9 |
-| `minimal` | 1 | 32 | 253,736 | 270,268 | 32,131,780 | 34,086,566 | 10.10 | 25.50 | 6.6 · 10^9 |
-| `minimal` | 2 | 32 | 286,504 | 303,036 | 36,260,548 | 38,215,334 | 10.58 | 25.95 | 6.7 · 10^9 |
-| `minimal` | 4 | 32 | 286,504 | 303,036 | 36,260,548 | 38,215,334 | 10.61 | 25.98 | 11.2 · 10^9 |
-| `minimal` | 1 | 30 | 286,504 | 319,420 | 36,260,548 | 40,279,718 | 10.69 | 26.05 | 2.6 · 10^9 |
+| `servable` | 1 | 32 | 327,464 | 327,612 | 41,421,508 | 41,311,910 | 11.24 | 26.56 | 5.0 · 10^9 |
+| `servable` | 2 | 32 | 360,232 | 360,380 | 45,550,276 | 45,440,678 | 11.75 | 27.03 | 7.7 · 10^9 |
+| `servable` | 4 | 32 | 376,616 | 376,764 | 47,614,660 | 47,505,062 | 11.99 | 27.26 | 7.7 · 10^9 |
+| `servable` | 1 | 30 | 343,848 | 343,996 | 43,485,892 | 43,376,294 | 11.47 | 26.78 | 3.1 · 10^9 |
+| `servable` | 2 | 30 | 376,616 | 376,764 | 47,614,660 | 47,505,062 | 11.96 | 27.23 | 3.9 · 10^9 |
+| `minimal` | 1 | 32 | 253,736 | 270,268 | 32,131,780 | 34,086,566 | 10.30 | 25.69 | 6.6 · 10^9 |
+| `minimal` | 2 | 32 | 286,504 | 303,036 | 36,260,548 | 38,215,334 | 10.79 | 26.14 | 6.7 · 10^9 |
+| `minimal` | 4 | 32 | 286,504 | 303,036 | 36,260,548 | 38,215,334 | 10.82 | 26.17 | 11.2 · 10^9 |
+| `minimal` | 1 | 30 | 286,504 | 319,420 | 36,260,548 | 40,279,718 | 10.90 | 26.24 | 2.6 · 10^9 |
 
 `B_max = 30` refuses three configurations, each for one table:
 
@@ -50,7 +50,7 @@ At the default `B_max = 32`, the rescales commit RISK-2's figures: the committed
 - **`servable`**: 326,656 with one class and RISK-2's 359,424 with two. With four, 375,808: the down projection's update key is 31 bits plus two class bits, so it splits.
 - **`minimal`**: 252,928 commitments and 269,312 lookups with one class, and RISK-2's upper bound with more: 285,696 and 302,080.
 
-The quantizer's real class counts at O and down decide which line applies. With two classes, `μ(1K)` is 11.54 in `servable` and 10.58 in `minimal`, the table side included. 08 §3's 11.5 and 10.6 count the rescales alone.
+The quantizer's real class counts at O and down decide which line applies. With two classes, `μ(1K)` is 11.75 in `servable` and 10.79 in `minimal`, the table side and the score tensors' diagonal blocks included. 08 §3's 11.7 and 10.8 count the rescales alone.
 
 ## OQ-0006-1: the table bound
 

@@ -569,6 +569,16 @@ All notable changes to the prover release train are recorded here: the crates un
   - **The fallback** evaluates only the queried symbols, as RFC-0018 does for advice rows. At 405B that is about 1.3 GPU-s of tensor-core products, plus 581 GB of masks and blinding rows regenerated from `masks_seed`. Re-encoding every row per proof, about 14 GPU-s, is rejected.
   - **Where it lands.** RFC-0018's pass table gains a WA row, and its 'Column answers' says that only advice codewords are never stored. RFC-0020 says why the model has no term for the answers. 08 §4 budgets the storage, and 06 §7 lists the store among the secret artifacts.
   - **08 §5's weight openings** are about 0.35 GB: `τ_W = 97` columns over 10 matrices, blinding rows included. It had said under 0.3 GB, from 95 columns over 9 types.
+- RFC-0034, accepted, takes the masked half of the score tensors out of the proof's work ([#321](https://github.com/AbdelStark/tessera/issues/321)):
+  - **The layout.** Within an attention tile, `e`'s variables are ordered `(i_hi, h, q, i_lo)`. Each advice row then holds a block of keys against the tile's queries. The blocks above the diagonal are zero rows, which RFC-0011 rule 4 skips, and only the diagonal blocks' masked halves stay committed.
+  - **Constant leaves.** The masked lookups `(K_0, 0)` and tree leaves of 1 form at most `n` dyadic subtrees per row. The tree and lookup provers evaluate them in closed form (RFC-0018 'Kernels'), and no message changes.
+  - **The cost.** `Counts::score_block` (`b`) prices it. A token commits `A·(S + min(S, b))` scores, and looks up and multiplies `A·S`; the column answers and the row combination take the committed count. The commitment report gives `b = max(512, 2^{22 − 9 − log2 g})`: 512 at 405B, 2,048 at 8B. The source counts no block, so the golden test is unchanged.
+  - **The projections.** 405B's rise by 0.21 at 1K and 0.19 at 16K: `minimal` to about 10.8 and 26.1, `servable` to 11.7 and 27.0. With streaming at its upper estimate, `servable` now passes its 1K ceiling, at about 12.2. Paid in full, the masked half would have added 1.13 and 16.8.
+  - **Where it lands.** 08 §1 and §3, SC-2, RISK-9, RISK-10, `SPEC.md` and `docs/perf/v0.2/` restate the projections, and RISK-11 is resolved.
+  - **Tests.**
+    - The committed scores match a count of the layout's rows, row by row, for key blocks as wide as, wider than and narrower than the query blocks.
+    - `score_block` moves exactly the attention, column-answer and row-combination terms.
+    - The restated figures are the model's.
 
 ### Removed
 

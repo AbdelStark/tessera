@@ -15,12 +15,13 @@ use tessera_bench::{
 };
 
 /// The source's model with streamed passes priced at RFC-0018's 7 ps per score, column answers
-/// at 15 ps and the row combination at 2 ps per committed element, five regenerations and
-/// 2 · 10^10 table rows, so that every term is positive.
+/// at 15 ps and the row combination at 2 ps per committed element, five regenerations,
+/// 2 · 10^10 table rows and a score block of 512 (RFC-0034), so that every term is positive.
 fn every_term() -> (Counts, UnitCosts, MemoryModel) {
     let counts = Counts {
         regen_full_equivalents: 5.0,
         table_rows: 2e10,
+        score_block: 512.0,
         ..Counts::SOURCE_405B
     };
     let costs = UnitCosts {
@@ -72,7 +73,7 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
     // Each input raised by half, with the terms it must move: linear, attention, weights, regen,
     // streaming, column answers, row combination, tables, in that order.
     type Raise = (&'static str, fn(&mut Counts, &mut UnitCosts), [Move; 8]);
-    let raises: [Raise; 16] = [
+    let raises: [Raise; 17] = [
         (
             "commit_ps",
             |_, u| u.commit_ps *= 1.5,
@@ -148,6 +149,11 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
             "regen_full_equivalents",
             |c, _| c.regen_full_equivalents *= 1.5,
             [Same, Same, Same, Up, Same, Same, Same, Same],
+        ),
+        (
+            "score_block",
+            |c, _| c.score_block *= 1.5,
+            [Same, Up, Same, Same, Same, Up, Up, Same],
         ),
         (
             "table_rows",
@@ -340,7 +346,8 @@ fn each_table_row_costs_a_committed_lookup_once_per_batch() {
 /// commitments and 302,080 lookups per layer per token over 126 layers (RFC-0024's wide rescale
 /// and RFC-0022's two steps at classed residual sites), five regenerations (RFC-0018 P1 to P5), and
 /// the table rows of the two-class report at `B_max = 32` with RFC-0028's balanced split
-/// (`docs/perf/v0.2/`). The column answers are free or priced as committing is, 30 ps per element.
+/// (`docs/perf/v0.2/`), and RFC-0034's score block of 512. The column answers are free or priced
+/// as committing is, 30 ps per element.
 /// The streamed passes over the attention leaves are free or priced at RFC-0018's 6 or 8 ps per
 /// score. A change to the model that moves one fails here until the documents follow.
 #[test]
@@ -350,6 +357,7 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         lookups_per_token: 302_080.0 * 126.0,
         regen_full_equivalents: 5.0,
         table_rows: 6_659_571_712.0,
+        score_block: 512.0,
         ..Counts::SOURCE_405B
     };
     let at = |counts: &Counts, context: u32, column_answer_ps: f64, streaming_pass_ps: f64| {
@@ -384,8 +392,26 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         at(&corrected, k1, 0.0, 0.0).total,
         at(&corrected, k16, 0.0, 0.0).total,
     );
-    quoted("μ(1K)", mu1, 10.6, 1);
-    quoted("μ(16K)", mu16, 25.9, 1);
+    quoted("μ(1K)", mu1, 10.8, 1);
+    quoted("μ(16K)", mu16, 26.1, 1);
+    // RFC-0034: the diagonal blocks' masked halves, which the layout cannot skip, add 0.21 at 1K
+    // and 0.19 at 16K.
+    let valid_half = Counts {
+        score_block: 0.0,
+        ..corrected
+    };
+    quoted(
+        "diagonal blocks at 1K",
+        mu1 - at(&valid_half, k1, 0.0, 0.0).total,
+        0.21,
+        2,
+    );
+    quoted(
+        "diagonal blocks at 16K",
+        mu16 - at(&valid_half, k16, 0.0, 0.0).total,
+        0.19,
+        2,
+    );
     quoted(
         "1K table term",
         at(&corrected, k1, 0.0, 0.0).tables,
@@ -399,7 +425,7 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         3,
     );
     let per_ps = |context| at(&corrected, context, 1.0, 0.0).column_answers;
-    quoted("1K per ps of c_a", per_ps(k1), 0.064, 3);
+    quoted("1K per ps of c_a", per_ps(k1), 0.070, 3);
     quoted("16K per ps of c_a", per_ps(k16), 0.23, 2);
     // 08 §3: a picosecond of the row combination costs what one of the column answers does,
     // since both price every committed element.
@@ -416,25 +442,25 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         at(&corrected, k1, 30.0, 0.0),
         at(&corrected, k16, 30.0, 0.0),
     );
-    quoted("1K column answers at c_c", full1.column_answers, 1.9, 1);
-    quoted("16K column answers at c_c", full16.column_answers, 6.8, 1);
-    quoted("μ(1K) at c_c", full1.total, 12.5, 1);
+    quoted("1K column answers at c_c", full1.column_answers, 2.1, 1);
+    quoted("16K column answers at c_c", full16.column_answers, 7.0, 1);
+    quoted("μ(1K) at c_c", full1.total, 12.9, 1);
     // SC-2's headroom: ceilings of 12 and 45 over the corrected figures.
-    quoted("1K headroom", 12.0 / mu1, 1.14, 2);
-    quoted("16K headroom", 45.0 / mu16, 1.74, 2);
-    quoted("16K headroom at c_c", 45.0 / full16.total, 1.37, 2);
+    quoted("1K headroom", 12.0 / mu1, 1.11, 2);
+    quoted("16K headroom", 45.0 / mu16, 1.72, 2);
+    quoted("16K headroom at c_c", 45.0 / full16.total, 1.36, 2);
     quoted(
         "1K excess at c_c",
         100.0 * (full1.total / 12.0 - 1.0),
-        4.0,
+        7.0,
         0,
     );
     // RISK-10, 08 §3 and SC-2: the streamed passes over the attention leaves at 6 and 8 ps per
     // score, and their share of the attention term. They do not depend on the profile.
     for (context, low, high, share_low, share_high, digits) in [
-        (k1, 0.36, 0.48, 32.0, 42.0, 2),
-        (k4, 2.0, 2.7, 45.0, 59.0, 1),
-        (k16, 9.6, 12.8, 57.0, 76.0, 1),
+        (k1, 0.36, 0.48, 27.0, 36.0, 2),
+        (k4, 2.0, 2.7, 43.0, 57.0, 1),
+        (k16, 9.6, 12.8, 57.0, 75.0, 1),
     ] {
         let attention = at(&corrected, context, 0.0, 0.0).attention;
         for (ps, figure, share) in [(6.0, low, share_low), (8.0, high, share_high)] {
@@ -453,29 +479,29 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
             );
         }
     }
-    // 08 §3 and SC-2: at c_c with the upper streaming estimate, 8% above the 1K ceiling and 1.3%
-    // above the 16K one.
+    // 08 §3 and SC-2: at c_c with the upper streaming estimate, 11% above the 1K ceiling and
+    // 2.1% above the 16K one.
     let (all1, all16) = (
         at(&corrected, k1, 30.0, 8.0),
         at(&corrected, k16, 30.0, 8.0),
     );
-    quoted("μ(1K) at c_c with streaming", all1.total, 13.0, 1);
+    quoted("μ(1K) at c_c with streaming", all1.total, 13.4, 1);
     quoted(
         "1K excess at c_c with streaming",
         100.0 * (all1.total / 12.0 - 1.0),
-        8.0,
+        11.0,
         0,
     );
-    quoted("μ(16K) at c_c with streaming", all16.total, 45.6, 1);
+    quoted("μ(16K) at c_c with streaming", all16.total, 45.9, 1);
     quoted(
         "16K excess at c_c with streaming",
         100.0 * (all16.total / 45.0 - 1.0),
-        1.3,
+        2.1,
         1,
     );
     // RISK-10 and 08 §3: with the upper streaming estimate, the ceilings hold while c_a stays below
-    // about 15 ps at 1K and 27 ps at 16K.
-    for (context, ceiling, room) in [(k1, 12.0, 15.0), (k16, 45.0, 27.0)] {
+    // about 11 ps at 1K and 26 ps at 16K.
+    for (context, ceiling, room) in [(k1, 12.0, 11.0), (k16, 45.0, 26.0)] {
         let streamed = at(&corrected, context, 0.0, 8.0).total;
         quoted(
             &format!("c_a that meets the ceiling at {context}"),
@@ -485,7 +511,7 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         );
     }
     // 08 §3's sampling rate for 10% overhead at η = 0.3, and daily detection of 100 violations.
-    for (total, rate, detection) in [(mu1, 3.2, 96.0), (full1.total, 2.7, 93.0)] {
+    for (total, rate, detection) in [(mu1, 3.1, 96.0), (full1.total, 2.6, 93.0)] {
         let s = sampling_rate(0.1, total, 0.3).expect("a rate");
         quoted("sampling at 1K", 100.0 * s, rate, 1);
         let d = detection_probability(s, 100).expect("a probability");
@@ -496,8 +522,8 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
 /// The same projections at the default `servable` profile's count, which 00 §7 SC-2, 00 §9 RISK-2,
 /// 00 §9 RISK-10, 08 §3 and `SPEC.md` quote beside `minimal`'s: 359,424 commitments and lookups per
 /// layer per token under RFC-0006's selection rule, with RFC-0022's two steps at both classed
-/// residual sites, over 126 layers, and the two-class report's table rows at `B_max = 32` with the
-/// balanced split.
+/// residual sites, over 126 layers, the two-class report's table rows at `B_max = 32` with the
+/// balanced split, and RFC-0034's score block of 512.
 #[test]
 fn the_servable_projections_are_the_ones_the_documents_quote() {
     let servable = Counts {
@@ -505,6 +531,7 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
         lookups_per_token: 359_424.0 * 126.0,
         regen_full_equivalents: 5.0,
         table_rows: 7_693_467_648.0,
+        score_block: 512.0,
         ..Counts::SOURCE_405B
     };
     let at = |context: u32, column_answer_ps: f64, streaming_pass_ps: f64| {
@@ -525,56 +552,57 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
     let (k1, k16) = (1024, 16_384);
     quoted("linear term at 1K", at(k1, 0.0, 0.0).linear, 5.3, 1);
     let (mu1, mu16) = (at(k1, 0.0, 0.0).total, at(k16, 0.0, 0.0).total);
-    quoted("μ(1K)", mu1, 11.5, 1);
-    quoted("μ(16K)", mu16, 26.8, 1);
+    quoted("μ(1K)", mu1, 11.7, 1);
+    quoted("μ(16K)", mu16, 27.0, 1);
     quoted("1K table term", at(k1, 0.0, 0.0).tables, 0.055, 3);
     quoted("16K table term", at(k16, 0.0, 0.0).tables, 0.051, 3);
     quoted(
         "1K per ps of c_a",
         at(k1, 1.0, 0.0).column_answers,
-        0.078,
+        0.084,
         3,
     );
     quoted(
         "16K per ps of c_a",
         at(k16, 1.0, 0.0).column_answers,
-        0.24,
+        0.25,
         2,
     );
     let (full1, full16) = (at(k1, 30.0, 0.0), at(k16, 30.0, 0.0));
-    quoted("1K column answers at c_c", full1.column_answers, 2.3, 1);
-    quoted("16K column answers at c_c", full16.column_answers, 7.2, 1);
-    quoted("μ(1K) at c_c", full1.total, 13.9, 1);
-    quoted("μ(16K) at c_c", full16.total, 34.0, 1);
-    // SC-2's headroom, and the 1K ceiling missed by 15% at c_a = c_c.
-    quoted("1K headroom", 12.0 / mu1, 1.04, 2);
-    quoted("16K headroom", 45.0 / mu16, 1.68, 2);
+    quoted("1K column answers at c_c", full1.column_answers, 2.5, 1);
+    quoted("16K column answers at c_c", full16.column_answers, 7.4, 1);
+    quoted("μ(1K) at c_c", full1.total, 14.2, 1);
+    quoted("μ(16K) at c_c", full16.total, 34.4, 1);
+    // SC-2's headroom, and the 1K ceiling missed by 19% at c_a = c_c.
+    quoted("1K headroom", 12.0 / mu1, 1.02, 2);
+    quoted("16K headroom", 45.0 / mu16, 1.67, 2);
     quoted(
         "1K excess at c_c",
         100.0 * (full1.total / 12.0 - 1.0),
-        15.0,
-        0,
-    );
-    // SC-2, RISK-10 and 08 §3: the upper streaming estimate alone brings the 1K projection to
-    // about 12.0, the ceiling, and leaves the column answers no room under it.
-    let streamed1 = at(k1, 0.0, 8.0).total;
-    quoted("μ(1K) with streaming", streamed1, 12.0, 1);
-    let room = (12.0 - streamed1) / at(k1, 1.0, 0.0).column_answers;
-    assert!(
-        (0.0..0.1).contains(&room),
-        "servable's 1K ceiling leaves {room} ps per element for the column answers"
-    );
-    // With the column answers priced as committing as well: 14.3 at 1K and 46.8 at 16K, 19% and
-    // 4% above the ceilings; `SPEC.md` rounds them to 14.3 and 47.
-    let (all1, all16) = (at(k1, 30.0, 8.0), at(k16, 30.0, 8.0));
-    quoted("μ(1K) at c_c with streaming", all1.total, 14.3, 1);
-    quoted(
-        "1K excess at c_c with streaming",
-        100.0 * (all1.total / 12.0 - 1.0),
         19.0,
         0,
     );
-    quoted("μ(16K) at c_c with streaming", all16.total, 46.8, 1);
+    // SC-2, RISK-10 and 08 §3: the upper streaming estimate alone brings the 1K projection to
+    // about 12.2, 1.7% above the ceiling, which leaves the column answers no room.
+    let streamed1 = at(k1, 0.0, 8.0).total;
+    quoted("μ(1K) with streaming", streamed1, 12.2, 1);
+    quoted(
+        "1K excess with streaming",
+        100.0 * (streamed1 / 12.0 - 1.0),
+        1.7,
+        1,
+    );
+    // With the column answers priced as committing as well: 14.7 at 1K and 47.2 at 16K, 23% and
+    // 5% above the ceilings; `SPEC.md` rounds them to 14.7 and 47.
+    let (all1, all16) = (at(k1, 30.0, 8.0), at(k16, 30.0, 8.0));
+    quoted("μ(1K) at c_c with streaming", all1.total, 14.7, 1);
+    quoted(
+        "1K excess at c_c with streaming",
+        100.0 * (all1.total / 12.0 - 1.0),
+        23.0,
+        0,
+    );
+    quoted("μ(16K) at c_c with streaming", all16.total, 47.2, 1);
     quoted(
         "μ(16K) at c_c with streaming, SPEC.md",
         all16.total,
@@ -584,14 +612,62 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
     quoted(
         "16K excess at c_c with streaming",
         100.0 * (all16.total / 45.0 - 1.0),
-        4.0,
+        5.0,
         0,
     );
-    for (total, rate, detection) in [(mu1, 2.9, 95.0), (full1.total, 2.4, 91.0)] {
+    for (total, rate, detection) in [(mu1, 2.8, 94.0), (full1.total, 2.3, 91.0)] {
         let s = sampling_rate(0.1, total, 0.3).expect("a rate");
         quoted("sampling at 1K", 100.0 * s, rate, 1);
         let d = detection_probability(s, 100).expect("a probability");
         quoted("detection at 1K", 100.0 * d, detection, 0);
+    }
+}
+
+/// RFC-0034's closed form: at context `S`, a token commits `A·(S + min(S, b))` scores, with
+/// `b = max(Q, 2^w)`. Here the layout's rows are counted one by one: in each query block, every
+/// key block whose first key does not follow the block's last query. The model's committed
+/// scores, priced at one picosecond each, match the count for key blocks as wide as, wider and
+/// narrower than the query blocks, and for a sequence shorter than a block.
+#[test]
+fn the_committed_scores_are_the_layouts_rows() {
+    // (log2 Q, w, log2 S).
+    for (log2_q, w, log2_s) in [(3u32, 3u32, 7u32), (3, 5, 8), (5, 3, 8), (3, 5, 4)] {
+        let (q, s) = (1u64 << log2_q, 1u64 << log2_s);
+        let keys = 1u64 << w.min(log2_s);
+        let mut committed = 0u64;
+        for block in 0..s / q {
+            for row in 0..s / keys {
+                if row * keys < (block + 1) * q {
+                    committed += q * keys;
+                }
+            }
+        }
+        // One score per token per unit of context is half a score for each of two (layer, head)
+        // pairs, so a token commits 2·committed/S of them.
+        let counts = Counts {
+            commits_per_token: 0.0,
+            lookups_per_token: 0.0,
+            scores_per_token_per_ctx: 1.0,
+            score_block: q.max(1 << w) as f64,
+            ..Counts::SOURCE_405B
+        };
+        let costs = UnitCosts {
+            commit_ps: 1.0,
+            lookup_ps: 0.0,
+            product_leaf_ps: 0.0,
+            glue_fraction: 0.0,
+            ..UnitCosts::SOURCE
+        };
+        let context = u32::try_from(s).expect("a small context");
+        let m = mu(&counts, &costs, &MemoryModel::NODE_405B, context, BATCH).expect("a projection");
+        let native = (counts.native_ops_lin + counts.native_ops_att_per_ctx * s as f64)
+            / costs.native_ops_per_s;
+        let modelled = m.attention * native / 1e-12;
+        let counted = 2.0 * committed as f64 / s as f64;
+        assert!(
+            (modelled - counted).abs() <= 1e-9 * counted,
+            "Q = 2^{log2_q}, 2^{w} keys, S = 2^{log2_s}: the model commits {modelled}, the layout {counted}"
+        );
     }
 }
 
@@ -626,6 +702,7 @@ fn the_report_states_each_input_and_term_under_its_own_name() {
         ("native_ops_att_per_ctx", counts.native_ops_att_per_ctx),
         ("regen_full_equivalents", counts.regen_full_equivalents),
         ("table_rows", counts.table_rows),
+        ("score_block", counts.score_block),
     ] {
         states(&json["inputs"]["counts"], key, value);
     }
@@ -710,6 +787,10 @@ fn inputs_the_model_cannot_price_are_refused() {
     assert_eq!(
         with_counts(|c| c.table_rows = -1.0, 1024),
         refused("table_rows", Problem::Negative)
+    );
+    assert_eq!(
+        with_counts(|c| c.score_block = f64::INFINITY, 1024),
+        refused("score_block", Problem::NotFinite)
     );
     assert_eq!(
         with_counts(|c| c.native_ops_lin = 0.0, 0),

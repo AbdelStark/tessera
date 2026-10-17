@@ -136,6 +136,19 @@ impl CommitmentReport {
         f64::from(self.shape[2]) * f64::from(self.shape[0]) / 2.0
     }
 
+    /// `b`, the score block of RFC-0034: at context `S`, a token commits `A·(S + min(S, b))`
+    /// scores. An attention tile holds the `g` query heads of a KV head and `Q = 512` queries
+    /// (RFC-0006), and an advice row of the production parameter sets holds `2^22` entries
+    /// (RFC-0014). A row therefore holds `2^w` keys, `w = 22 − log2 Q − log2 g`, and
+    /// `b = max(Q, 2^w)`: 512 for Llama-3.1-405B's `g = 16`, 2,048 for 8B's `g = 4`.
+    pub fn score_block(&self) -> u64 {
+        const LOG2_K: u32 = 22;
+        const LOG2_Q: u32 = 9;
+        let group = (self.shape[2] / self.shape[3].max(1)).max(1);
+        let w = LOG2_K.saturating_sub(LOG2_Q + group.next_power_of_two().ilog2());
+        (1u64 << LOG2_Q).max(1 << w)
+    }
+
     /// Committed multiplicities per proof: one per row of the selection's tables (RFC-0008),
     /// without the row gadgets' range tables.
     pub fn multiplicities(&self) -> u64 {
@@ -143,8 +156,9 @@ impl CommitmentReport {
     }
 
     /// The counts of RFC-0020's cost model, under the names of `tessera.cost-model/1`. `F_att`
-    /// counts `4 · d_head` operations per score, the products of `QK^T` and `PV`, and the table
-    /// rows are the [`multiplicities`](Self::multiplicities).
+    /// counts `4 · d_head` operations per score, the products of `QK^T` and `PV`, the table rows
+    /// are the [`multiplicities`](Self::multiplicities), and the score block is
+    /// [`score_block`](Self::score_block).
     #[allow(clippy::cast_precision_loss)]
     pub fn counts(&self) -> Value {
         let a = self.scores_per_token_per_ctx();
@@ -155,6 +169,7 @@ impl CommitmentReport {
             "native_ops_lin": 2.0 * self.parameters as f64,
             "native_ops_att_per_ctx": 4.0 * f64::from(self.shape[4]) * a,
             "table_rows": self.multiplicities() as f64,
+            "score_block": self.score_block() as f64,
         })
     }
 
