@@ -1,0 +1,57 @@
+# Nightly jobs (docs/spec/07-testing-strategy.md §2). For now the soundness calibration of 07 §4
+# alone (docs/testing/soundness-calibration.md); the deep property tests, end-to-end subsets and
+# fuzzing hour of 07 §2 are #96. The calibration also runs on pull requests that change it, and on
+# demand. Third-party actions are pinned by commit SHA (TB-4 in docs/spec/06-security.md).
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  pull_request:
+    branches: [main]
+    paths:
+      - crates/tessera-e2e/tests/soundness_calibration.rs
+      - crates/tessera-e2e/tests/calibration/**
+      - crates/tessera-logup/tests/calibration.rs
+      - .github/workflows/nightly.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  soundness-calibration:
+    name: soundness calibration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build the harness
+        run: |
+          cargo test --locked -p tessera-e2e --test soundness_calibration --no-run
+          cargo test --locked -p tessera-logup --test calibration --no-run
+      # The dev profile keeps overflow checks and debug assertions on, at about 1.1 times the
+      # release profile's time. The measurement must finish within 10 minutes (#104).
+      - name: Cheating provers against the analytic rates over F65537 (07 §4)
+        timeout-minutes: 10
+        run: cargo test --locked -p tessera-e2e --test soundness_calibration -- --ignored --nocapture
+      - name: Random bad lookups far below the LogUp bound (RFC-0008 'Testing Strategy')
+        timeout-minutes: 10
+        run: cargo test --locked -p tessera-logup --test calibration -- --ignored --nocapture
