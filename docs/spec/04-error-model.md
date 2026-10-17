@@ -38,7 +38,15 @@ pub enum RejectReason {
     Budget { epoch: u32 },                                          // REJ-BUDGET
     Params { name: ParamSetName },                                  // REJ-PARAMS
 }
+
+pub enum StatementField {                    // RFC-0039: one variant per check, in check order
+    ProtocolVersion, Architecture, Quantization, Rescaling { site: Site }, Profile,
+    Table { table: TableId }, GadgetPolicy, Gadget { gadget: GadgetId }, Layout, Template,
+    ClaimListDigest, WeightsRoot, WeightsEpoch, ManifestDigest, Batch, Predictor, LayoutDigest,
+}
 ```
+
+`StatementMismatch` names the first check that fails, as [RFC-0039](../rfcs/RFC-0039-statement-fields.md#the-checks) maps them. The checks are claim-list validation ([RFC-0007](../rfcs/RFC-0007-claim-list.md#verifier-validation)), then the statement and the advice commitment's `layout_digest` ([RFC-0019](../rfcs/RFC-0019-verifier.md#check-order) step 4). Its payload is public: a site type, a table's index or a gadget's index.
 
 `Sumcheck` names a reduction stage by its `stage/{k}/…` index, and `TreeLevel` a level of the leaf stage by its `tree/{ℓ}/…` index ([RFC-0033](../rfcs/RFC-0033-tree-level-rejections.md)). `LogUpIdentity` is `tessera-protocol/2`'s identity sumcheck, which combines every LogUp instance and so names no table. Their `round` counts from 0 as the labels do, with `n_max` for the final evaluations and check ([RFC-0010](../rfcs/RFC-0010-proof-schedule.md#sumcheck-messages)). Every rejection exits 10 ([02 §2.4](02-public-api.md#24-exit-codes)).
 

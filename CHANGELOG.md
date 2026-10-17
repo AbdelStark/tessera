@@ -590,6 +590,13 @@ All notable changes to the prover release train are recorded here: the crates un
   - **The quantizer.** A site whose channels share one shift `r` in a layer, while another layer's need several, takes one class more there that no channel uses: `r + 1`, or 62 beside 63. `D` computes what it computed without it. At SiLU that class counts toward the table's core, which can coarsen that layer's input exponent by one. `choose` refuses `affine` named for a weight in some layers only.
   - **The integer reference** and the conformance oracle route each residual site once for all layers, as the compiler lowers it. The oracle refuses a model whose layers would route a site differently.
   - Amended: RFC-0038 'What the quantizer can do' allows any unused shift as a class, and RFC-0005 'Scale policy' points to it.
+- RFC-0039, accepted, defines `StatementField`, the payload of `Reject(StatementMismatch)`, and every check that returns it ([#346](https://github.com/AbdelStark/tessera/issues/346)):
+  - **One variant per check, in check order.** The claim list's checks are `ProtocolVersion`, `Architecture`, `Quantization`, `Rescaling { site }`, `Profile`, `Table { table }`, `GadgetPolicy`, `Gadget { gadget }`, `Layout` and `Template`. The statement's are `ClaimListDigest`, `WeightsRoot`, `WeightsEpoch`, `ManifestDigest`, `Batch` and `Predictor`, and the advice commitment's is `LayoutDigest`. Every payload is public: a site type, a table's index or a gadget's index.
+  - **RFC-0007 'Verifier validation' names each check's field and states every rule.**
+    - Step 1 accepts the parameter set first, as RFC-0019 orders it.
+    - Step 2 lists the architecture rules and the public quantization rules, which were split between 03 §2, RFC-0025 and the compiler.
+    - Step 5 checks `max_log2_rows` first, then each gadget in node order, then that the derived tables are the claim list's, id for id.
+  - 04 §2 declares the type.
 
 ### Changed
 

@@ -79,6 +79,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0036](docs/rfcs/RFC-0036-protocol-messages.md) | Protocol messages and session state machines (amends RFC-0014, 01, 02, 03, 04) | v0.3 |
 | [RFC-0037](docs/rfcs/RFC-0037-stage-schedule.md) | Stage schedule: stacked layers, split claims and the claim pool (amends RFC-0006, RFC-0010, RFC-0011, RFC-0014, RFC-0036) | v0.3 |
 | [RFC-0038](docs/rfcs/RFC-0038-uniform-layers.md) | One template for every layer: every layer's sites rescaled alike (amends RFC-0007, RFC-0022, RFC-0037) | v0.3 |
+| [RFC-0039](docs/rfcs/RFC-0039-statement-fields.md) | Statement fields: the payload of `Reject(StatementMismatch)`, one variant per check (amends 04, RFC-0007) | v0.3 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 
