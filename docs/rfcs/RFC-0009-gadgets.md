@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check)
 
 ## Summary
 
@@ -60,7 +61,7 @@ Proves a virtual true integer `v ∈ [0, 2^k)` for `k ≤ 62` with `n = ceil(k /
 
 ### BigIntCompare
 
-Proves `X ≤ Y` for non-negative integers given in base `2^L` limbs that may exceed `P` as whole numbers (used where products such as `ρ^2 · u` reach 2^89).
+Proves `X ≤ Y` for non-negative integers given in base `2^L` limbs that may exceed `P` as whole numbers (used where products such as `ρ^2 · u` reach `2^{2w+55}`, with `w` the bit length of `RsqrtRow`'s largest root: `2^{91}` at `w = 18`).
 
 - Inputs: limb vectors `x_j`, `y_j` (each a committed or virtual true integer in `[0, 2^L)` for limbs, or an exact limb-product sum bounded below 2^40).
 - Committed: difference limbs `d_j ∈ [0, 2^L)` and borrows `β_j ∈ {0, 1}` such that `y_j − x_j − β_{j−1} = d_j − 2^L β_j` for every `j`, with `β_{−1} = 0` and final borrow `β_last = 0`.
@@ -91,10 +92,10 @@ For query row `q` with valid key positions `i ∈ V_q` (causal mask: `i ≤ q`, 
 For a residual row with virtual `u = Σ_i res_i^2 + e` (true integer, `u < 2^55`), dimension `d`, precision `κ`, constant `N = d · 2^{2κ}`:
 
 - Committed: `ρ`; limbs of `u` (with a recomposition relation, exact because `u < 2^55 < P`); `BigIntCompare` witnesses for `ρ^2 u ≤ N` and `N + 1 ≤ (ρ + 1)^2 u`.
-- Lookups: `ρ ∈ [0, 2^{κ+1})`; limb and carry range checks.
+- Lookups: `ρ ∈ [0, 2^w)`, with `w` the bit length of `⌊√(N / e)⌋`, the largest root of any row, at most 32 ([RFC-0022](RFC-0022-saturating-residual.md#complete-norms)); limb and carry range checks.
 - Cost: about 20 commitments and 30 lookups per row (one row per token per norm).
 - Lemma 7. The constraints hold iff `ρ = max{ρ : ρ^2 u ≤ N}`. Proof: Lemma 4 makes both inequalities exact over the integers; they bracket `ρ` uniquely.
-- Completeness. The honest `ρ = ⌊√(N / u)⌋` passes the range check iff `d < 4u`. Range analysis requires it of every row: with `u ≥ e`, a model needs `4e > d` ([#285](https://github.com/AbdelStark/tessera/issues/285)).
+- Completeness. `u ≥ e` gives the honest `ρ = ⌊√(N / u)⌋ ≤ ⌊√(N / e)⌋ < 2^w`, so every row's root passes the range check. The `BigIntCompare` witnesses' products stay below `2^{2w+55}`.
 
 ### OneHot
 

@@ -414,7 +414,7 @@ impl Graph {
                 if *dim == 0 {
                     return fail("the rows have at least one element");
                 }
-                // The roots' range check `ρ < 2^{κ+1}` is one lookup of at most 32 bits.
+                // Keeps `N = dim · 2^{2κ}` below `2^94`, an exact `u128` in the analysis.
                 if *kappa > 31 {
                     return fail("κ ≤ 31");
                 }

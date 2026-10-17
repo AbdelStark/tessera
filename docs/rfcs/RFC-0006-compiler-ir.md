@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual)
 
 ## Summary
 
@@ -82,7 +83,7 @@ A graph's nodes are in topological order. Every input is a graph input, a tensor
 | `Requant` | `x` (, `c`) → `y` | `y = x`; `c [x's last axis]`, the channel classes, when the set has more than one class | `c` is `Committed { Weight }`; `y` is a lookup output or advice; `lo ≤ hi` |
 | `TableMap` | `x` (, `c`) → `y` | `y = x`; `c [x's last axis]`, the channel classes, when the table has several classes | `c` is `Committed { Weight }`; `y` is `LookupOutput { table }` |
 | `SoftmaxRow` | `s` → `e`, `R` | `s […, n, n]`, its last two axes the query and key positions of one sequence; `e = s`; `R` is `s` without its last axis | `e` is `LookupOutput { exp_table }`, `R` advice; row `q` sees keys `i ≤ q`, and `e` is 0 at the others |
-| `RsqrtRow` | `u` → `ρ` | `ρ = u` | `ρ` is advice; `dim ≥ 1`, and `κ ≤ 31` so that `ρ`'s range check is one lookup |
+| `RsqrtRow` | `u` → `ρ` | `ρ = u` | `ρ` is advice; `dim ≥ 1`, and `κ ≤ 31`, so that `N = dim · 2^{2κ}` stays below `2^{94}` |
 | `Argmax`, `InverseCdf` | `ℓ`, `h` → none | `h = ℓ`: one one-hot entry per logit | certificates: every value they commit is internal advice |
 | `Bitwise` | `a`, `b` → `y` | all equal | `y` is `LookupOutput { table }` |
 
@@ -93,7 +94,7 @@ The IR is the prover's (tier C). The verifier re-derives what it checks from the
 - Ranges are exact integer intervals computed with `i128` endpoints; an interval that would leave `i128` is marked unbounded.
 - Inputs: token ids in `[0, vocab)`; positions in `[0, max_context)`; weights in `[−127, 127]`; activations of each type over their full type range. Ranges hold for every admissible input, never for calibration statistics.
 - Transfer functions: interval arithmetic for `Add`, `Sub`, `ConstMul` and `ConstAdd` (over the constant's least and greatest values), `Sum` (scaled by axis length), `MatMulWeight` (using only the public bound `max|W| · fan_in · max|x|`, `max|W| = 127`, never the actual weight values: bounds derived from secret weights would leak them through the claim list and could not be re-derived by the verifier), `Rotate` (each output is `a·C − b·S` or `a·S + b·C` with `|C|, |S| ≤ 2^bits` of its `Rope` table, so at most `2^{bits+1} · max|x|`), `Mul`, `SumSquares` (0 at least when the range holds 0), `MatMulAct` (the products' interval, scaled by the inner length). `Reshape`, `Slice` and `GatherPublic` keep their input's range.
-- Gadget outputs take the range their gadget's lookups enforce (RFC-0009): `[lo, hi]` after `Requant`; a table's values after `TableMap` and `Bitwise` (`[−128, 127]` for `Silu`, `[0, 2^σ]` for `Exp`, `[0, 255]` for the byte tables); `[0, 1]` after `OneHot`; `e` in the `Exp` table's values and `R ∈ [0, 2^{σ+1})` after `SoftmaxRow`; `ρ ∈ [0, 2^{κ+1})` after `RsqrtRow`.
+- Gadget outputs take the range their gadget's lookups enforce (RFC-0009): `[lo, hi]` after `Requant`; a table's values after `TableMap` and `Bitwise` (`[−128, 127]` for `Silu`, `[0, 2^σ]` for `Exp`, `[0, 255]` for the byte tables); `[0, 1]` after `OneHot`; `e` in the `Exp` table's values and `R ∈ [0, 2^{σ+1})` after `SoftmaxRow`; `ρ ∈ [0, 2^w)` after `RsqrtRow`, with `w` the bit length of `⌊√(d · 2^{2κ} / e)⌋`, the largest root of any row ([RFC-0022](RFC-0022-saturating-residual.md#complete-norms)).
 - **Relational facts.** Gadgets may emit facts that tighten downstream bounds. v1 has two. `SoftmaxRow` emits `R_q · Σ_i e_qi ≤ 2^{2σ}`, so `R_q · Σ_i e_qi v_i` is bounded by `2^{2σ} · max|v|` rather than by the product of the individual bounds. Each fact has a proof obligation in RFC-0009 and is re-derived by the verifier. The fact applies to a `Mul(MatMulAct(e, v), R)` node, untransposed, whose `e` and `R` are the two outputs of one `SoftmaxRow`, as the lowering builds the attention output. Its range is then `[2^{2σ} · min(v_lo, 0), 2^{2σ} · max(v_hi, 0)]`, since `e ≥ 0` and `R ≥ 0`: for INT8 values and `σ = 16`, RFC-0005's `[−2^39, 127 · 2^32]`. It holds for honest values, whose exponentials vanish at masked positions; [#279](https://github.com/AbdelStark/tessera/issues/279) makes the protocol enforce that. `OneHot` emits that its vectors hold exactly one 1 (RFC-0009 Lemma 8), so a `MatMulWeight` whose input is a `OneHot` output selects a column of its weight and takes the weight's range: the embedding rows stay INT8, `[−127, 127]`, where the public bound would be `127 · vocab`.
 
 **True-integer rule.** A tensor used as a lookup key or a gadget input that requires an integer must have a bounded range inside `(−(P−1)/2, (P−1)/2)` and, for keys, inside its table's key domain. Intermediate virtual tensors may exceed that range: they are computed modulo `P`, and because every key is an integer-linear or polynomial function of them whose own exact range is bounded, the key's field value equals its true integer value. The analysis therefore never needs to track wraps explicitly; it checks bounds only where integrality matters.
@@ -107,7 +108,7 @@ The integrality-requiring inputs, each with the domain it must lie in (every dom
 | `TableMap` | key; channel classes | the table's keys: `[−2^{b−1}, 2^{b−1})` for `Silu`, `[0, 2^{key_bits})` for `Exp`; `[0, classes)`, given exactly when the table has several classes (otherwise `ERR-INTERNAL`) |
 | `Bitwise` | both operands | `[0, 256)` |
 | `SoftmaxRow` | scores | `[−2^21, 2^21]`, with a spread `x_hi − x_lo` below `2^{key_bits}` of its `Exp` table, since each key is the row maximum less a score. INT8 heads of width 128 reach `2^21` at `q = k = −128`. |
-| `RsqrtRow` | sums of squares | `u ≥ 0`, `d < 4(u + e)` and `u + e < 2^55`. The middle inequality keeps the honest `ρ` below `2^{κ+1}`, inside the gadget's range check; with `u` able to reach 0 it needs `4e > d` ([#285](https://github.com/AbdelStark/tessera/issues/285)). |
+| `RsqrtRow` | sums of squares | `u ≥ 0` and `u + e < 2^55`; the node needs `e ≥ 1`, and `w ≤ 32` for its range check to be one lookup |
 | `Argmax`, `InverseCdf` | logits; one-hot entries | the centered field range; `[0, 1]` |
 
 Violations: an integrality-requiring input with an unbounded range raises `ERR-COMPILE-WRAP`; one whose range leaves its domain raises `ERR-COMPILE-RANGE`, and so does a key outside every feasible gadget's bound (gadget selection).
@@ -126,7 +127,7 @@ For each `Requant` and `TableMap` node, with key bit width `b` (signed range wid
 
 ### Llama lowering
 
-The lowering instantiates the profile's template from [RFC-0005](RFC-0005-integer-model.md#integer-semantics) per layer: embedding (`OneHot` then `MatMulWeight` on `Embed`), attention norm (`SumSquares`, `RsqrtRow`, `Mul`, `Requant`), Q/K/V (`MatMulWeight`), RoPE (`Rotate`, `Requant`), V (`Requant`), attention (`MatMulAct`, `SoftmaxRow`, `MatMulAct`, `Mul` by `R_q`), O projection, residual (`Requant`, `Add`), MLP norm, gate and up, `TableMap` (SiLU), product and down projection per profile, residual, final norm, LM head. Scoring nodes (RFC-0017) consume the logits; anchor circuits (RFC-0015) consume the token streams that also feed `OneHot`.
+The lowering instantiates the profile's template from [RFC-0005](RFC-0005-integer-model.md#integer-semantics) per layer: embedding (`OneHot` then `MatMulWeight` on `Embed`), attention norm (`SumSquares`, `RsqrtRow`, `Mul`, `Requant`), Q/K/V (`MatMulWeight`), RoPE (`Rotate`, `Requant`), V (`Requant`), attention (`MatMulAct`, `SoftmaxRow`, `MatMulAct`, `Mul` by `R_q`), O projection, saturating residual (`Requant`), MLP norm, gate and up, `TableMap` (SiLU), product and down projection per profile, saturating residual, final norm, LM head. Scoring nodes (RFC-0017) consume the logits; anchor circuits (RFC-0015) consume the token streams that also feed `OneHot`.
 
 It reads only the public part of `D`: the architecture, the profile, `PublicQuantSpec` and each layer's `Silu` input exponent. The graph is therefore what the verifier re-derives from the claim list (INV-IR-5). One graph covers one sequence of `n ≤ max_context` tokens at positions `0` to `n − 1`.
 
@@ -135,7 +136,12 @@ It reads only the public part of `D`: the architecture, the profile, `PublicQuan
   - Attention runs head-major. `GatherPublic` reorders the rows of Q to `[n_heads, n, d_head]`, and those of K and V to the same shape, with query head `h` reading KV head `h / (n_heads / n_kv_heads)`.
   - One `MatMulAct` then forms every head's scores `[n_heads, n, n]`, one causal `SoftmaxRow` their exponentials and reciprocals, and `Mul(MatMulAct(e, v), R)` the attention output: the softmax fact's pattern.
   - A last `GatherPublic` returns the output to `[n, d_model]`.
-- **Rescales.** Each `Requant` names its site's shift classes and takes the channel classes when there are several, as does the `Silu` lookup. INT8 sites saturate to `[−128, 127]`, the residual updates to `[−2^{19}, 2^{19} − 1]`. The embedding enters the residual by `ConstMul` with `2^{s_e}`, `s_e = e_Embed − residual_exponent` ([03 §2](../spec/03-data-model.md#quantization)).
+- **Rescales.** Each `Requant` names its site's shift classes and takes the channel classes when there are several, as does the `Silu` lookup. INT8 sites saturate to `[−128, 127]`. The embedding enters the residual by `ConstMul` with `2^{s_e}`, `s_e = e_Embed − residual_exponent` ([03 §2](../spec/03-data-model.md#quantization)).
+- **The residual** saturates its sum within `[−2^{19}, 2^{19} − 1]` ([RFC-0022](RFC-0022-saturating-residual.md#saturating-residual)):
+  - a site of one class, whose `2^r` fits a constant (`r ≤ 62`), rescales the fused key `Add(acc, ConstMul(res, 2^r))` with its shift;
+  - a site of several classes rescales `acc` with its classes within `±(2^{20} − 1)`, then clamps `2(res + u)` with the shift 1.
+
+  Either way, the residual after an update is a `Requant` output.
 - **Tables.** Table 0 is RoPE's. Each layer then names an `Exp` table for its score scale and a `Silu` table, numbered in order of first use; a definition met before reuses its table.
   - Key widths come from public bounds. `key_bits` is the bit length of the scores' spread `128 · 255 · d_head`, 22 at `d_head = 128`.
   - `b` is the least width with `2^{b−1} > 127 · 128 · d_model`, the gate accumulator's bound: 27 at 8B.

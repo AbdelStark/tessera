@@ -448,6 +448,19 @@ fn reference(model: &IntegerModel, tables: &ReferenceTables, tokens: &[u32]) -> 
             })
             .collect()
     };
+    // RFC-0022: res ← clamp(res + ⌊(acc + 2^{r−1}) / 2^r⌋), the sum saturated within the
+    // residual's bits rather than the update, r the shift of the class of W's channel.
+    let saturate = |res: &mut [i128], acc: &[i128], point: QuantPoint, ty: WeightType| {
+        let set = shifts(point);
+        let QuantPoint::Layer { layer, .. } = point else {
+            unreachable!("a residual site is a layer's")
+        };
+        for (c, (x, &a)) in res.iter_mut().zip(acc).enumerate() {
+            let r = set[class_of(ty, layer, c)];
+            let update = (a + (1i128 << (r - 1))) >> r;
+            *x = (*x + update).clamp(-i128::from(half), i128::from(half) - 1);
+        }
+    };
     // y = rq(res · ρ, r) with ρ = max{ρ : ρ^2 (Σ res^2 + e) ≤ d · 2^{2κ}}, by bisection: ρ = 0
     // fits, and ρ = d · 2^κ + 1 does not.
     let norm = |res: &[i128], point: QuantPoint| {
@@ -552,16 +565,7 @@ fn reference(model: &IntegerModel, tables: &ReferenceTables, tokens: &[u32]) -> 
                 Profile::Minimal => o,
             };
             let acc = apply(weight(WeightType::O, layer), &o);
-            let update = rescale(
-                &acc,
-                point(Site::AttnResidual),
-                Some(WeightType::O),
-                -half,
-                half - 1,
-            );
-            for (r, u) in res[p].iter_mut().zip(update) {
-                *r += u;
-            }
+            saturate(&mut res[p], &acc, point(Site::AttnResidual), WeightType::O);
         }
         let silu = &tables.silu[layer as usize];
         for r in &mut res {
@@ -586,16 +590,7 @@ fn reference(model: &IntegerModel, tables: &ReferenceTables, tokens: &[u32]) -> 
                 Profile::Minimal => a.iter().zip(&u).map(|(a, u)| a * u).collect(),
             };
             let acc = apply(weight(WeightType::Down, layer), &h);
-            let update = rescale(
-                &acc,
-                point(Site::MlpResidual),
-                Some(WeightType::Down),
-                -half,
-                half - 1,
-            );
-            for (x, u) in r.iter_mut().zip(update) {
-                *x += u;
-            }
+            saturate(r, &acc, point(Site::MlpResidual), WeightType::Down);
         }
     }
     let head = weight(WeightType::LmHead, 0);
@@ -686,12 +681,15 @@ fn lowered(model: &IntegerModel, n: u32) -> Lowered {
 #[test]
 fn lowered_graphs_compute_the_reference_logits_in_both_profiles() {
     let mut rng = Seeded(0x10E5_0078);
-    let mut distinct = 0;
-    let mut runs = 0;
+    let (mut distinct, mut runs) = (0, 0);
+    // Residual sites by route: the fused key for one class, two steps for several (RFC-0022).
+    let (mut fused, mut two_step) = (0, 0);
     for profile in [Profile::Servable, Profile::Minimal] {
         for (k, &shape) in SHAPES.iter().enumerate() {
             for trial in 0..3u64 {
                 let model = tiny(rng.next() ^ trial, profile, shape);
+                fused += residual_sites(&model, |count| count == 1);
+                two_step += residual_sites(&model, |count| count > 1);
                 let tables = reference_tables(&model);
                 for n in [1, 2, shape.context / 2 + 1, shape.context] {
                     let lowered = lowered(&model, n);
@@ -720,6 +718,10 @@ fn lowered_graphs_compute_the_reference_logits_in_both_profiles() {
     }
     // The models are not degenerate: the logits of nearly every run differ across the vocabulary.
     assert!(distinct * 10 >= runs * 9, "{distinct} of {runs} runs");
+    assert!(
+        fused >= 10 && two_step >= 10,
+        "{fused} fused, {two_step} in two steps"
+    );
 }
 
 #[test]
@@ -776,6 +778,26 @@ fn every_lowered_value_stays_in_range_on_random_and_adversarial_inputs() {
 
 // ----- Profiles ----------------------------------------------------------------------------------
 
+/// The residual sites of `model` whose class count `keep` accepts.
+fn residual_sites(model: &IntegerModel, keep: fn(usize) -> bool) -> usize {
+    model
+        .quant
+        .public
+        .shift_class_sets
+        .iter()
+        .filter(|(point, shifts)| {
+            let residual = matches!(
+                point,
+                QuantPoint::Layer {
+                    site: Site::AttnResidual | Site::MlpResidual,
+                    ..
+                }
+            );
+            residual && keep(shifts.len())
+        })
+        .count()
+}
+
 #[test]
 fn servable_keeps_s1_to_s3_and_minimal_rescales_eight_tensors_per_layer() {
     for (profile, per_layer) in [(Profile::Servable, 11), (Profile::Minimal, 8)] {
@@ -783,13 +805,19 @@ fn servable_keeps_s1_to_s3_and_minimal_rescales_eight_tensors_per_layer() {
         let model = tiny(5, profile, shape);
         let lowering = lowered(&model, 6).lowering;
         let graph = &lowering.graph;
-        // Each layer's rescales, then the final norm's: Requant nodes and the SiLU lookup.
+        // Each layer's rescales, then the final norm's: Requant nodes and the SiLU lookup, and the
+        // sum's clamp of each residual site of several classes (RFC-0022).
         let rescales = graph
             .nodes
             .iter()
             .filter(|n| matches!(n.op, Op::Requant { .. } | Op::TableMap { .. }))
             .count();
-        assert_eq!(rescales, per_layer * shape.layers as usize + 1);
+        let classed_residuals = residual_sites(&model, |count| count > 1);
+        assert!(classed_residuals > 0 && residual_sites(&model, |count| count == 1) > 0);
+        assert_eq!(
+            rescales,
+            per_layer * shape.layers as usize + 1 + classed_residuals
+        );
         // S1, S2: every weight matmul's operands and accumulator, as the lowering keeps them.
         for node in &graph.nodes {
             let Op::MatMulWeight { weight } = node.op else {
@@ -1058,8 +1086,8 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
             Box::new(|m| m.quant.silu_in_exponents[0].0 = 5),
         ),
         (
-            "the residual has 2 to 32 bits",
-            Box::new(|m| m.quant.public.residual_bits = 33),
+            "the residual has 2 to 31 bits",
+            Box::new(|m| m.quant.public.residual_bits = 32),
         ),
         (
             "the embedding's shift into the residual keeps INT8 rows inside it",
@@ -1080,7 +1108,7 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
             Box::new(|m| m.quant.public.rms_eps_int = 0),
         ),
         (
-            "κ ≤ 31: the roots' range check is one lookup of at most 32 bits",
+            "κ ≤ 31, so that N = d · 2^{2κ} stays below 2^94",
             Box::new(|m| m.quant.public.rsqrt_kappa = 32),
         ),
     ];
@@ -1198,8 +1226,8 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
     for (bits, shift, valid) in [
         (20, 12, true),
         (20, 13, false),
-        (32, 24, true),
-        (32, 25, false),
+        (31, 23, true),
+        (31, 24, false),
     ] {
         let mut model = base.clone();
         let quant = &mut model.quant.public;
@@ -1226,7 +1254,8 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
 // ----- Real shapes -------------------------------------------------------------------------------
 
 /// The public part of a model of Llama-3.1's shape and `layers` layers, quantized as RFC-0005
-/// describes: every site of one class.
+/// describes, every site of one class. The residual's scale is `2^{−7}`, so that RMSNorm's
+/// `e = ⌈d · ε / σ_res^2⌉` is below `d / 4` (#285's case).
 fn llama(
     profile: Profile,
     layers: u32,
@@ -1249,6 +1278,8 @@ fn llama(
         rms_eps: Rational::new(1, 100_000).expect("a rational"),
     };
     let mut act_exponents = vec![(QuantPoint::Embed, -6)];
+    // ⌈d · 10^{−5} · 2^{14}⌉: 672 at 8B, 2685 at 405B.
+    let eps = (u64::from(d) * (1 << 14)).div_ceil(100_000);
     let mut shift_class_sets = Vec::new();
     for layer in 0..layers {
         for site in sites(profile) {
@@ -1265,10 +1296,10 @@ fn llama(
     shift_class_sets.push((QuantPoint::FinalNorm, vec![12]));
     let quant = PublicQuantSpec {
         act_exponents,
-        residual_exponent: -8,
+        residual_exponent: -7,
         residual_bits: 20,
         rsqrt_kappa: 16,
-        rms_eps_int: u64::from(d / 4 + 1),
+        rms_eps_int: eps,
         exp_sigma: 16,
         score_scales: (0..layers)
             .map(|l| (l, Rational::new(1, 1 << 14).expect("a scale")))
@@ -1281,11 +1312,24 @@ fn llama(
     (arch, quant, silu)
 }
 
+/// Every norm of `graph`: its sum's range and its root's.
+fn norms(graph: &tessera_ir::Graph) -> Vec<(IntRange, IntRange)> {
+    let range = |t: tessera_ir::TensorId| graph.tensors[t.0 as usize].range;
+    graph
+        .nodes
+        .iter()
+        .filter(|n| matches!(n.op, Op::RsqrtRow { .. }))
+        .map(|n| (range(n.inputs[0]), range(n.outputs[0])))
+        .collect()
+}
+
 #[test]
 fn llama_shapes_lower_from_their_public_part_alone() {
-    // 8B's shape over two layers: a third would leave RsqrtRow's u + e < 2^55 (#284).
+    // 8B's shape through all 32 layers: the saturating residual keeps every norm's sum at most
+    // d · 2^38 (RFC-0022, #284), and e = 672 < d / 4 gives roots of 18 bits, all of them inside
+    // the range check (#285).
     for profile in [Profile::Servable, Profile::Minimal] {
-        let (arch, quant, silu) = llama(profile, 2, 4096, 32, 8, 14_336);
+        let (arch, quant, silu) = llama(profile, 32, 4096, 32, 8, 14_336);
         let model = PublicModel {
             arch: &arch,
             profile,
@@ -1294,6 +1338,21 @@ fn llama_shapes_lower_from_their_public_part_alone() {
         };
         let lowering = lower(model, 64).expect("8B's shape lowers");
         let graph = &lowering.graph;
+        // The first norm reads the embedding's 127 · 2^{s_e}, s_e = 1; every later one the
+        // saturated residual.
+        let norms = norms(graph);
+        assert_eq!(norms.len(), 2 * 32 + 1);
+        for (k, (sum, root)) in norms.into_iter().enumerate() {
+            let top = if k == 0 { 4096 * 254 * 254 } else { 4096 << 38 };
+            assert_eq!(sum, IntRange { lo: 0, hi: top });
+            assert_eq!(
+                root,
+                IntRange {
+                    lo: 0,
+                    hi: (1 << 18) - 1
+                }
+            );
+        }
         let range = |t: tessera_ir::TensorId| graph.tensors[t.0 as usize].range;
         let find = |op: fn(&Op) -> bool| graph.nodes.iter().find(|n| op(&n.op)).expect("a node");
         // The embedding rows stay INT8 by the one-hot fact.
@@ -1367,9 +1426,9 @@ fn llama_shapes_lower_from_their_public_part_alone() {
         );
         assert!(lowering.classes.is_empty());
     }
-    // 405B's widest accumulator, minimal's O projection, fits RequantSplit's 62 bits:
-    // 127 · 16384 · 2^39 < 2^60.
-    let (arch, quant, silu) = llama(Profile::Minimal, 1, 16_384, 128, 8, 53_248);
+    // 405B's shape through all 126 layers. Its widest accumulator, minimal's O projection, fits
+    // RequantSplit's 62 bits: 127 · 16384 · 2^39 < 2^60.
+    let (arch, quant, silu) = llama(Profile::Minimal, 126, 16_384, 128, 8, 53_248);
     let model = PublicModel {
         arch: &arch,
         profile: Profile::Minimal,
@@ -1378,6 +1437,23 @@ fn llama_shapes_lower_from_their_public_part_alone() {
     };
     let lowering = lower(model, 8).expect("405B's shape lowers");
     let graph = &lowering.graph;
+    let norms = norms(graph);
+    assert_eq!(norms.len(), 2 * 126 + 1);
+    for (k, (sum, root)) in norms.into_iter().enumerate() {
+        let top = if k == 0 {
+            16_384 * 254 * 254
+        } else {
+            16_384 << 38
+        };
+        assert_eq!(sum, IntRange { lo: 0, hi: top });
+        assert_eq!(
+            root,
+            IntRange {
+                lo: 0,
+                hi: (1 << 18) - 1
+            }
+        );
+    }
     let o = graph
         .nodes
         .iter()
@@ -1396,4 +1472,72 @@ fn llama_shapes_lower_from_their_public_part_alone() {
     let acc = graph.tensors[o.outputs[0].0 as usize].range;
     assert_eq!(acc.hi, 127 * 16_384 * (1 << 39));
     assert!(acc.hi < 1 << 60);
+}
+
+#[test]
+fn the_residual_saturates_as_rfc_0022_defines() {
+    // Residual shifts of 1 and 2 make the updates dwarf INT20: the sum saturates at both bounds,
+    // through the fused key of a site of one class and the two steps of a site of several, whose
+    // first clamp binds too. The lowered graph keeps the reference's logits throughout. κ = 28,
+    // with every norm's shift 12 wider, keeps a saturated row's root near 2^9: at κ = 16 it is 0,
+    // and every norm after saturation would output 0 whatever the residual held.
+    let mut rng = Seeded(0x5A7_0284);
+    let (mut low, mut high) = (false, false);
+    for profile in [Profile::Servable, Profile::Minimal] {
+        for &shape in &SHAPES {
+            let mut model = tiny(rng.next(), profile, shape);
+            model.quant.public.rsqrt_kappa = 28;
+            for (point, shifts) in &mut model.quant.public.shift_class_sets {
+                let (residual, norm) = match point {
+                    QuantPoint::Layer { site, .. } => (
+                        matches!(site, Site::AttnResidual | Site::MlpResidual),
+                        matches!(site, Site::AttnNorm | Site::MlpNorm),
+                    ),
+                    QuantPoint::FinalNorm => (false, true),
+                    QuantPoint::Embed => (false, false),
+                };
+                if residual {
+                    for (k, r) in shifts.iter_mut().enumerate() {
+                        *r = 1 + i8::try_from(k % 2).expect("small");
+                    }
+                }
+                if norm {
+                    shifts[0] += 12;
+                }
+            }
+            let tables = reference_tables(&model);
+            let lowered = lowered(&model, shape.context);
+            let lowering = &lowered.lowering;
+            for _ in 0..4 {
+                let tokens: Vec<u32> = (0..shape.context)
+                    .map(|_| {
+                        u32::try_from(rng.range(0, i128::from(shape.vocab) - 1)).expect("a token")
+                    })
+                    .collect();
+                assert_eq!(
+                    run(&model, &lowered, &tokens),
+                    reference(&model, &tables, &tokens),
+                    "{profile:?}"
+                );
+                let values = evaluate(
+                    &lowering.graph,
+                    &lowered.tables,
+                    inputs(&model, lowering, &tokens),
+                );
+                for node in &lowering.graph.nodes {
+                    if let Op::Requant {
+                        lo: -524_288,
+                        hi: 524_287,
+                        ..
+                    } = node.op
+                    {
+                        let out = &values[node.outputs[0].0 as usize];
+                        low |= out.contains(&-524_288);
+                        high |= out.contains(&524_287);
+                    }
+                }
+            }
+        }
+    }
+    assert!(low && high, "the residual reached both of its bounds");
 }
