@@ -16,380 +16,17 @@
 //!   `ERR-COMPILE-WRAP` for no bound and `ERR-COMPILE-RANGE` for a bound outside what the gadget
 //!   or its table accepts.
 
+mod common;
+
+use common::{ADVICE, Lookup, WEIGHT, check_run, decl, elements, evaluate, lookup, one, out, virt};
 use proptest::prelude::*;
 use tessera_codec::Rational;
 use tessera_codec::error::ErrorCode;
 use tessera_compiler::{CompileError, HALF_FIELD, Range, analyze};
 use tessera_ir::{
-    CommitmentClass, Graph, GraphBuilder, IntRange, IntType, NodeId, NodeKind, Op, TableId,
-    TensorDecl, TensorId, WeightRef, WeightType,
+    Graph, GraphBuilder, NodeId, NodeKind, Op, TableId, TensorId, WeightRef, WeightType,
 };
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableKind, TableSpec};
-
-// ----- Building graphs -------------------------------------------------------------------------
-
-const ADVICE: NodeKind = NodeKind::Committed {
-    commitment: CommitmentClass::Advice,
-};
-
-fn decl(shape: &[u32], kind: NodeKind, lo: i128, hi: i128) -> TensorDecl {
-    TensorDecl {
-        shape: shape.to_vec(),
-        ty: IntType::I32,
-        range: IntRange { lo, hi },
-        kind,
-    }
-}
-
-/// An output: its declared range is the analysis's to compute, so any placeholder will do.
-fn out(shape: &[u32], kind: NodeKind) -> TensorDecl {
-    decl(shape, kind, 0, 0)
-}
-
-fn virt(shape: &[u32]) -> TensorDecl {
-    out(shape, NodeKind::Virtual)
-}
-
-fn lookup(shape: &[u32], table: u32) -> TensorDecl {
-    out(
-        shape,
-        NodeKind::LookupOutput {
-            table: TableId(table),
-        },
-    )
-}
-
-fn one(builder: &mut GraphBuilder, op: Op, inputs: &[TensorId], output: TensorDecl) -> TensorId {
-    builder
-        .node(op, inputs, vec![output])
-        .expect("a valid node")[0]
-}
-
-// ----- An exact interpreter of the IR ---------------------------------------------------------
-
-/// The honest values of every tensor, flat and row-major, from the inputs' values.
-struct Run<'a> {
-    graph: &'a Graph,
-    tables: &'a [Box<dyn Lookup>],
-    values: Vec<Option<Vec<i128>>>,
-}
-
-/// What the interpreter needs of a table: the value of a key, and RoPE's pairs.
-trait Lookup {
-    fn id(&self) -> TableId;
-    fn value(&self, key: i128) -> i128;
-    fn rope(&self, _position: u32, _frequency: u32) -> (i128, i128) {
-        unreachable!("not a RoPE table")
-    }
-}
-
-impl Lookup for GeneratedTable {
-    fn id(&self) -> TableId {
-        self.spec().id
-    }
-    fn value(&self, key: i128) -> i128 {
-        let key = i64::try_from(key).expect("a key in i64");
-        i128::from(self.lookup(key, 0).expect("a key inside the table"))
-    }
-}
-
-impl Lookup for RopeTable {
-    fn id(&self) -> TableId {
-        self.spec().id
-    }
-    fn value(&self, _key: i128) -> i128 {
-        unreachable!("RoPE is no lookup table")
-    }
-    fn rope(&self, position: u32, frequency: u32) -> (i128, i128) {
-        let (c, s) = self.constants().at(position, frequency).expect("a pair");
-        (i128::from(c), i128::from(s))
-    }
-}
-
-fn elements(shape: &[u32]) -> usize {
-    shape.iter().map(|&d| d as usize).product()
-}
-
-fn rq(x: i128, r: u8, lo: i64, hi: i64) -> i128 {
-    ((x + (1 << (r - 1))) >> r).clamp(i128::from(lo), i128::from(hi))
-}
-
-fn isqrt(n: i128) -> i128 {
-    let mut r = (n as f64).sqrt() as i128;
-    while r * r > n {
-        r -= 1;
-    }
-    while (r + 1) * (r + 1) <= n {
-        r += 1;
-    }
-    r
-}
-
-impl Run<'_> {
-    fn get(&self, t: TensorId) -> &[i128] {
-        self.values[t.0 as usize].as_deref().expect("computed")
-    }
-
-    fn shape(&self, t: TensorId) -> &[u32] {
-        &self.graph.tensors[t.0 as usize].shape
-    }
-
-    fn table(&self, id: TableId) -> &dyn Lookup {
-        self.tables
-            .iter()
-            .find(|t| t.id() == id)
-            .expect("a table")
-            .as_ref()
-    }
-
-    fn run(&mut self) {
-        for node in &self.graph.nodes {
-            let outputs = self.node(node);
-            for (&t, v) in node.outputs.iter().zip(outputs) {
-                self.values[t.0 as usize] = Some(v);
-            }
-        }
-    }
-
-    fn node(&self, node: &tessera_ir::Node) -> Vec<Vec<i128>> {
-        let x = |k: usize| self.get(node.inputs[k]);
-        let shape = |k: usize| self.shape(node.inputs[k]);
-        let last = |k: usize| *shape(k).last().expect("an axis") as usize;
-        match &node.op {
-            Op::MatMulWeight { .. } => {
-                let w = self.shape(node.inputs[1]);
-                let (rows, cols) = (w[0] as usize, w[1] as usize);
-                let (input, weight) = (x(0), x(1));
-                let mut y = Vec::new();
-                for row in input.chunks(cols) {
-                    for o in 0..rows {
-                        y.push((0..cols).map(|i| weight[o * cols + i] * row[i]).sum());
-                    }
-                }
-                vec![y]
-            }
-            Op::Add => vec![x(0).iter().zip(x(1)).map(|(a, b)| a + b).collect()],
-            Op::Sub => vec![x(0).iter().zip(x(1)).map(|(a, b)| a - b).collect()],
-            Op::ConstMul { c } | Op::ConstAdd { c } => {
-                let values = &self.graph.constants[c.0 as usize];
-                let n = last(0);
-                let y = x(0).iter().enumerate().map(|(i, &v)| {
-                    let c = i128::from(if values.len() == 1 {
-                        values[0]
-                    } else {
-                        values[i % n]
-                    });
-                    if matches!(node.op, Op::ConstMul { .. }) {
-                        c * v
-                    } else {
-                        c + v
-                    }
-                });
-                vec![y.collect()]
-            }
-            Op::Rotate { rope } => {
-                let table = self.table(*rope);
-                let (n, width) = (shape(0)[0] as usize, last(0));
-                let per_row = elements(shape(0)) / n;
-                let positions = x(1);
-                let mut y = x(0).to_vec();
-                for (pair, chunk) in y.chunks_mut(2).enumerate() {
-                    let row = pair * 2 / per_row;
-                    let frequency = ((pair * 2) % width) / 2;
-                    let p = u32::try_from(positions[row]).expect("a position");
-                    let (c, s) = table.rope(p, u32::try_from(frequency).expect("small"));
-                    let (a, b) = (chunk[0], chunk[1]);
-                    chunk[0] = a * c - b * s;
-                    chunk[1] = a * s + b * c;
-                }
-                vec![y]
-            }
-            Op::Sum { axis } | Op::SumSquares { axis } => {
-                let s = shape(0);
-                let axis = usize::from(*axis);
-                let inner: usize = s[axis + 1..].iter().map(|&d| d as usize).product();
-                let len = s[axis] as usize;
-                let outer = elements(s) / (inner * len);
-                let square = matches!(node.op, Op::SumSquares { .. });
-                let mut y = Vec::new();
-                for o in 0..outer {
-                    for i in 0..inner {
-                        y.push(
-                            (0..len)
-                                .map(|k| x(0)[(o * len + k) * inner + i])
-                                .map(|v| if square { v * v } else { v })
-                                .sum(),
-                        );
-                    }
-                }
-                vec![y]
-            }
-            Op::Reshape => vec![x(0).to_vec()],
-            Op::Slice { axis, start, len } => {
-                let s = shape(0);
-                let axis = usize::from(*axis);
-                let inner: usize = s[axis + 1..].iter().map(|&d| d as usize).product();
-                let full = s[axis] as usize;
-                let outer = elements(s) / (inner * full);
-                let mut y = Vec::new();
-                for o in 0..outer {
-                    for k in *start as usize..(*start + *len) as usize {
-                        y.extend_from_slice(&x(0)[(o * full + k) * inner..][..inner]);
-                    }
-                }
-                vec![y]
-            }
-            Op::GatherPublic { index } => {
-                let row = elements(shape(0)) / shape(0)[0] as usize;
-                let rows = &self.graph.constants[index.0 as usize];
-                vec![
-                    rows.iter()
-                        .flat_map(|&r| x(0)[r as usize * row..][..row].to_vec())
-                        .collect(),
-                ]
-            }
-            Op::MatMulAct { transpose_rhs } => {
-                let (a, b) = (shape(0), shape(1));
-                let r = a.len();
-                let (m, k) = (a[r - 2] as usize, a[r - 1] as usize);
-                let n = if *transpose_rhs { b[r - 2] } else { b[r - 1] } as usize;
-                let batches = elements(a) / (m * k);
-                let mut y = Vec::new();
-                for batch in 0..batches {
-                    let (lhs, rhs) = (&x(0)[batch * m * k..], &x(1)[batch * k * n..]);
-                    for i in 0..m {
-                        for j in 0..n {
-                            y.push(
-                                (0..k)
-                                    .map(|t| {
-                                        let right = if *transpose_rhs {
-                                            rhs[j * k + t]
-                                        } else {
-                                            rhs[t * n + j]
-                                        };
-                                        lhs[i * k + t] * right
-                                    })
-                                    .sum(),
-                            );
-                        }
-                    }
-                }
-                vec![y]
-            }
-            Op::Mul => {
-                let trailing = elements(shape(0)) / elements(shape(1));
-                vec![
-                    x(0).iter()
-                        .enumerate()
-                        .map(|(i, &a)| a * x(1)[i / trailing])
-                        .collect(),
-                ]
-            }
-            Op::OneHot { vocab } => {
-                let v = *vocab as usize;
-                vec![
-                    x(0).iter()
-                        .flat_map(|&t| (0..v).map(move |j| i128::from(j as i128 == t)))
-                        .collect(),
-                ]
-            }
-            Op::Requant { shift, lo, hi } => {
-                let classes = &self.graph.shift_classes[shift.0 as usize];
-                let n = last(0);
-                let y = x(0).iter().enumerate().map(|(i, &v)| {
-                    let class = if node.inputs.len() > 1 {
-                        x(1)[i % n] as usize
-                    } else {
-                        0
-                    };
-                    rq(v, classes[class], *lo, *hi)
-                });
-                vec![y.collect()]
-            }
-            Op::TableMap { table } => {
-                let t = self.table(*table);
-                vec![x(0).iter().map(|&k| t.value(k)).collect()]
-            }
-            Op::SoftmaxRow { exp_table, sigma } => {
-                let t = self.table(*exp_table);
-                let n = last(0);
-                let (mut e, mut r) = (Vec::new(), Vec::new());
-                for row in x(0).chunks(n) {
-                    let max = *row.iter().max().expect("a score");
-                    let exps: Vec<i128> = row.iter().map(|&s| t.value(max - s)).collect();
-                    let sum: i128 = exps.iter().sum();
-                    r.push((1i128 << (2 * u32::from(*sigma))) / sum);
-                    e.extend(exps);
-                }
-                vec![e, r]
-            }
-            Op::RsqrtRow { kappa, eps_int } => {
-                // d is the row length the sums of squares ran over.
-                let d = self
-                    .graph
-                    .nodes
-                    .iter()
-                    .find(|n| n.outputs.contains(&node.inputs[0]))
-                    .map_or(1, |p| match p.op {
-                        Op::SumSquares { axis } => {
-                            i128::from(self.shape(p.inputs[0])[usize::from(axis)])
-                        }
-                        _ => 1,
-                    });
-                let big = d << (2 * u32::from(*kappa));
-                vec![
-                    x(0).iter()
-                        .map(|&u| isqrt(big / (u + i128::from(*eps_int))))
-                        .collect(),
-                ]
-            }
-            Op::Bitwise { table } => {
-                let t = self.table(*table);
-                vec![
-                    x(0).iter()
-                        .zip(x(1))
-                        .map(|(&a, &b)| t.value(a + 256 * b))
-                        .collect(),
-                ]
-            }
-            Op::Argmax | Op::InverseCdf { .. } => Vec::new(),
-        }
-    }
-}
-
-/// Runs `graph` on the inputs' values and checks every tensor against its analyzed range.
-fn check_run(
-    graph: &Graph,
-    tables: &[Box<dyn Lookup>],
-    specs: &[TableSpec],
-    inputs: Vec<(TensorId, Vec<i128>)>,
-) {
-    let ranges = analyze(graph, specs).expect("the graph analyzes");
-    let mut run = Run {
-        graph,
-        tables,
-        values: vec![None; graph.tensors.len()],
-    };
-    for (t, v) in inputs {
-        assert_eq!(v.len(), elements(&graph.tensors[t.0 as usize].shape));
-        run.values[t.0 as usize] = Some(v);
-    }
-    run.run();
-    for (k, values) in run.values.iter().enumerate() {
-        let Some(values) = values else { continue };
-        let range = ranges.all()[k];
-        if let Range::Bounded(r) = range {
-            for &v in values {
-                assert!(
-                    r.lo <= v && v <= r.hi,
-                    "tensor {k}: {v} outside [{}, {}]",
-                    r.lo,
-                    r.hi
-                );
-            }
-        }
-    }
-}
 
 // ----- Soundness, operation by operation -------------------------------------------------------
 
@@ -672,6 +309,7 @@ fn layer(n: u32) -> Layer {
         Op::RsqrtRow {
             kappa: 16,
             eps_int: 3,
+            dim: d,
         },
         &[squares],
         out(&[n], ADVICE),
@@ -954,19 +592,17 @@ fn the_softmax_fact_bounds_the_attention_output_as_rfc_0005_states() {
     for row in 0..n as usize {
         s[row * n as usize] = 1 << 20;
     }
-    let values = vec![(scores, s), (v, vec![-128; (n * 4) as usize])];
-    let mut run = Run {
-        graph: &graph,
-        tables: &tables,
-        values: vec![None; graph.tensors.len()],
-    };
-    for (t, x) in values.clone() {
-        run.values[t.0 as usize] = Some(x);
-    }
     let others = TensorId(1);
-    run.values[others.0 as usize] = Some(vec![0; (n * n) as usize]);
-    run.run();
-    assert_eq!(run.get(y).iter().min(), Some(&-(1i128 << 39)));
+    let values = evaluate(
+        &graph,
+        &tables,
+        vec![
+            (scores, s),
+            (others, vec![0; (n * n) as usize]),
+            (v, vec![-128; (n * 4) as usize]),
+        ],
+    );
+    assert_eq!(values[y.0 as usize].iter().min(), Some(&-(1i128 << 39)));
 
     // With R from another softmax, only the operands' bounds apply: R ≤ 2^{σ+1} − 1, and PV is
     // n terms of e ≤ 2^σ times v in [−128, 127].
@@ -1078,16 +714,7 @@ fn each_true_integer_rule_refuses_a_graph_that_breaks_only_it() {
     // A class index past the shift classes.
     let mut g = GraphBuilder::new();
     let x = g.input(decl(&[2, 3], ADVICE, -100, 100)).expect("x");
-    let classes = g
-        .input(decl(
-            &[3],
-            NodeKind::Committed {
-                commitment: CommitmentClass::Weight,
-            },
-            0,
-            2,
-        ))
-        .expect("classes");
+    let classes = g.input(decl(&[3], WEIGHT, 0, 2)).expect("classes");
     let shift = g.shift_classes(vec![8, 9]).expect("shifts");
     one(
         &mut g,
@@ -1120,7 +747,7 @@ fn each_true_integer_rule_refuses_a_graph_that_breaks_only_it() {
         range(0, 0, "a key lies in its table's keys")
     );
 
-    // Scores at 2^21; and scores of spread 2^16, one key past a 16-bit Exp table's.
+    // Scores one past 2^21; and scores of spread 2^16, one key past a 16-bit Exp table's.
     let narrow = GeneratedTable::new(
         TableId(4),
         TableKind::Exp {
@@ -1133,7 +760,7 @@ fn each_true_integer_rule_refuses_a_graph_that_breaks_only_it() {
     let mut with_narrow = specs.clone();
     with_narrow.push(narrow.spec().clone());
     for (table, lo, hi, rule) in [
-        (EXP, 0, 1 << 21, "a score lies in (−2^21, 2^21)"),
+        (EXP, 0, (1 << 21) + 1, "a score lies in [−2^21, 2^21]"),
         (
             4,
             -(1 << 15),
@@ -1155,22 +782,26 @@ fn each_true_integer_rule_refuses_a_graph_that_breaks_only_it() {
         assert_eq!(refused(&g.finish(), &with_narrow), range(0, 0, rule));
     }
 
-    // A sum of squares whose epsilon reaches 2^55.
-    let mut g = GraphBuilder::new();
-    let u = g.input(decl(&[2], ADVICE, 0, (1 << 55) - 3)).expect("u");
-    one(
-        &mut g,
-        Op::RsqrtRow {
-            kappa: 16,
-            eps_int: 3,
-        },
-        &[u],
-        out(&[2], ADVICE),
-    );
-    assert_eq!(
-        refused(&g.finish(), &specs),
-        range(0, 0, "u + e lies in [0, 2^55)")
-    );
+    // A sum of squares whose epsilon reaches 2^55; and one small enough that its root would leave
+    // the gadget's range check, d ≥ 4(u + e).
+    for (lo, hi, eps) in [(1 << 20, (1 << 55) - 3, 3), (0, 1 << 20, 4)] {
+        let mut g = GraphBuilder::new();
+        let u = g.input(decl(&[2], ADVICE, lo, hi)).expect("u");
+        one(
+            &mut g,
+            Op::RsqrtRow {
+                kappa: 16,
+                eps_int: eps,
+                dim: 16,
+            },
+            &[u],
+            out(&[2], ADVICE),
+        );
+        assert_eq!(
+            refused(&g.finish(), &specs),
+            range(0, 0, "u ≥ 0 and d < 4(u + e), with u + e < 2^55")
+        );
+    }
 
     // A table the specifications lack is a bug, not a range.
     let mut g = GraphBuilder::new();
@@ -1183,4 +814,204 @@ fn each_true_integer_rule_refuses_a_graph_that_breaks_only_it() {
     );
     let error = refused(&g.finish(), &specs);
     assert_eq!(error.code(), ErrorCode::Internal);
+}
+
+// ----- Classed tables, the one-hot fact, and the bounds at their edges --------------------------
+
+#[test]
+fn a_classed_table_takes_the_channel_classes_and_only_it() {
+    let silu = GeneratedTable::new(
+        TableId(6),
+        TableKind::Silu {
+            b: 12,
+            r_by_class: vec![3, 5],
+            in_exp: -4,
+            out_exp: -3,
+        },
+    )
+    .expect("a Silu table of two classes");
+    let (mut tables, mut specs) = layer_tables();
+    specs.push(silu.spec().clone());
+    tables.push(Box::new(silu));
+    let build = |table: u32, with_classes: bool, last_class: i128| {
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(&[2, 3], ADVICE, -2048, 2047)).expect("keys");
+        let mut inputs = vec![x];
+        if with_classes {
+            inputs.push(g.input(decl(&[3], WEIGHT, 0, last_class)).expect("classes"));
+        }
+        one(
+            &mut g,
+            Op::TableMap {
+                table: TableId(table),
+            },
+            &inputs,
+            lookup(&[2, 3], table),
+        );
+        (g.finish(), inputs)
+    };
+    // Every key of each class through the interpreter: values inside the table's.
+    let (graph, inputs) = build(6, true, 1);
+    for classes in [[0, 1, 1], [1, 0, 0]] {
+        let keys = (0..4096i128).step_by(683).map(|k| k - 2048);
+        for start in keys {
+            let values = vec![
+                (
+                    inputs[0],
+                    (0..6).map(|i| (start + 701 * i) % 2048).collect(),
+                ),
+                (inputs[1], classes.to_vec()),
+            ];
+            check_run(&graph, &tables, &specs, values);
+        }
+    }
+    // A class past the table's two.
+    let (graph, _) = build(6, true, 2);
+    assert_eq!(
+        refused(&graph, &specs),
+        CompileError::Range {
+            node: NodeId(0),
+            input: 1,
+            rule: "a channel class indexes the table's classes",
+        }
+    );
+    // The classes missing for a classed table, or given to a table of one class: a lowering bug.
+    for (table, with_classes) in [(6, false), (SILU, true)] {
+        let (graph, _) = build(table, with_classes, 0);
+        let error = refused(&graph, &specs);
+        assert_eq!(
+            error,
+            CompileError::Table {
+                node: NodeId(0),
+                table: TableId(table),
+                rule: "the channel classes come with a table of several classes, and only with one",
+            }
+        );
+        assert_eq!(error.code(), ErrorCode::Internal);
+    }
+}
+
+#[test]
+fn a_one_hot_vector_selects_a_column_within_the_weights_range() {
+    let vocab = 300u32;
+    let mut g = GraphBuilder::new();
+    let t = g
+        .input(decl(&[4], ADVICE, 0, i128::from(vocab) - 1))
+        .expect("tokens");
+    let h = one(&mut g, Op::OneHot { vocab }, &[t], out(&[4, vocab], ADVICE));
+    let embed = WeightRef {
+        ty: WeightType::Embed,
+        layer: 0,
+    };
+    let e = g.weight(embed, 8, vocab).expect("the embedding");
+    let x = one(
+        &mut g,
+        Op::MatMulWeight { weight: embed },
+        &[h, e],
+        virt(&[4, 8]),
+    );
+    // The same product over an advice vector of 0s and 1s: nothing makes it one-hot.
+    let bits = g.input(decl(&[4, vocab], ADVICE, 0, 1)).expect("bits");
+    let y = one(
+        &mut g,
+        Op::MatMulWeight { weight: embed },
+        &[bits, e],
+        virt(&[4, 8]),
+    );
+    let graph = g.finish();
+    let weights: Vec<i128> = (0..8 * vocab)
+        .map(|i| if i % 3 == 0 { -127 } else { 127 })
+        .collect();
+    let tokens = vec![0, 299, 150, 7];
+    let (ranges, values) = check_run(
+        &graph,
+        &[],
+        &[],
+        vec![
+            (t, tokens.clone()),
+            (e, weights.clone()),
+            (bits, vec![1; (4 * vocab) as usize]),
+        ],
+    );
+    assert_eq!(ranges.of(x), Some(Range::new(-127, 127)));
+    let reach = 127 * i128::from(vocab);
+    assert_eq!(ranges.of(y), Some(Range::new(-reach, reach)));
+    // Each row is the token's column of the embedding.
+    for (row, &token) in tokens.iter().enumerate() {
+        for c in 0..8usize {
+            let column = weights[c * vocab as usize + token as usize];
+            assert_eq!(values[x.0 as usize][row * 8 + c], column);
+        }
+    }
+}
+
+#[test]
+fn int8_heads_of_width_128_reach_2_21_and_their_scores_pass() {
+    // q = k = −128 in every coordinate gives 2^21 exactly: the bound is inclusive.
+    let (tables, specs) = layer_tables();
+    let n = 3u32;
+    let mut g = GraphBuilder::new();
+    let q = g
+        .input(decl(&[n, 128], ADVICE, -128, 127))
+        .expect("queries");
+    let k = g.input(decl(&[n, 128], ADVICE, -128, 127)).expect("keys");
+    let scores = one(
+        &mut g,
+        Op::MatMulAct {
+            transpose_rhs: true,
+        },
+        &[q, k],
+        virt(&[n, n]),
+    );
+    g.node(
+        Op::SoftmaxRow {
+            exp_table: TableId(EXP),
+            sigma: SIGMA,
+        },
+        &[scores],
+        vec![lookup(&[n, n], EXP), out(&[n], ADVICE)],
+    )
+    .expect("a softmax");
+    let graph = g.finish();
+    let corner = vec![-128; (n * 128) as usize];
+    let (ranges, values) = check_run(
+        &graph,
+        &tables,
+        &specs,
+        vec![(q, corner.clone()), (k, corner)],
+    );
+    assert_eq!(
+        ranges.of(scores),
+        Some(Range::new(-(1 << 21) + (1 << 14), 1 << 21))
+    );
+    assert!(values[scores.0 as usize].iter().all(|&x| x == 1 << 21));
+}
+
+#[test]
+fn the_root_bound_is_the_gadget_range_checks_exact_completeness_edge() {
+    // With u able to reach 0, the analysis accepts exactly when the honest root of u = 0 passes
+    // the gadget's range check ρ < 2^{κ+1}.
+    for dim in [1u32, 4, 16, 17, 4096, 16384] {
+        for eps in [1u64, 2, 1023, 1024, 1025, 4096, 4097] {
+            let mut g = GraphBuilder::new();
+            let u = g.input(decl(&[1], ADVICE, 0, 1 << 40)).expect("u");
+            let rho = one(
+                &mut g,
+                Op::RsqrtRow {
+                    kappa: 16,
+                    eps_int: eps,
+                    dim,
+                },
+                &[u],
+                out(&[1], ADVICE),
+            );
+            let graph = g.finish();
+            let root = evaluate(&graph, &[], vec![(u, vec![0])])[rho.0 as usize][0];
+            assert_eq!(
+                analyze(&graph, &[]).is_ok(),
+                root < 1 << 17,
+                "d = {dim}, e = {eps}, root {root}"
+            );
+        }
+    }
 }

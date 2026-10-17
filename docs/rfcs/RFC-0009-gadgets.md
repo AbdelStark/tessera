@@ -70,7 +70,7 @@ Proves `X ≤ Y` for non-negative integers given in base `2^L` limbs that may ex
 
 ### SoftmaxRow
 
-For query row `q` with valid key positions `i ∈ V_q` (causal mask: `i ≤ q`, public), virtual scores `x_qi` (true integers, `|x| < 2^21`):
+For query row `q` with valid key positions `i ∈ V_q` (causal mask: `i ≤ q`, public), virtual scores `x_qi` (true integers, `|x| ≤ 2^21`):
 
 - Committed: row maximum `c_q`; exponentials `e_qi`; reciprocal `R_q`; limbs of two `NonNeg` instances.
 - Virtual: keys `k_qi = c_q − x_qi`; row sum `s_q = Σ_{i ∈ V_q} e_qi`; bracket slacks `a_q = 2^{2σ} − R_q s_q` and `b_q = s_q − 1 − a_q`.
@@ -94,6 +94,7 @@ For a residual row with virtual `u = Σ_i res_i^2 + e` (true integer, `u < 2^55`
 - Lookups: `ρ ∈ [0, 2^{κ+1})`; limb and carry range checks.
 - Cost: about 20 commitments and 30 lookups per row (one row per token per norm).
 - Lemma 7. The constraints hold iff `ρ = max{ρ : ρ^2 u ≤ N}`. Proof: Lemma 4 makes both inequalities exact over the integers; they bracket `ρ` uniquely.
+- Completeness. The honest `ρ = ⌊√(N / u)⌋` passes the range check iff `d < 4u`. Range analysis requires it of every row: with `u ≥ e`, a model needs `4e > d` ([#285](https://github.com/AbdelStark/tessera/issues/285)).
 
 ### OneHot
 
@@ -104,6 +105,7 @@ For a token `t ∈ [0, vocab)` (committed in the token stream, RFC-0015):
 - Cost: `vocab` commitments per token (0.75% of the linear-layer count at 405B).
 - Lemma 8. The relations hold iff `h` is the indicator of `t`, except with probability at most `3 log2(vocab) / |Fp2|` over the zero-check challenge. Proof: booleanity plus sum one leaves exactly one non-zero entry; the weighted sum fixes its index.
 - The one-hot vector of the token at position `p + 1` is reused by `Argmax` and `InverseCdf` at position `p` (teacher forcing).
+- Relational fact emitted: `h` holds exactly one 1, so `W · h` is the column `t` of `W`, and range analysis gives it `W`'s range.
 
 ### Argmax (greedy decoding)
 

@@ -48,7 +48,7 @@ pub enum Op {
     Requant { shift: ShiftClassRef, lo: i64, hi: i64 },
     TableMap { table: TableId },                 // SiLU and other single-input nonlinearities
     SoftmaxRow { exp_table: TableId, sigma: u8 },// max certificate + reciprocal bracket
-    RsqrtRow { kappa: u8, eps_int: u64 },        // multi-limb bracket
+    RsqrtRow { kappa: u8, eps_int: u64, dim: u32 }, // multi-limb bracket over rows of dim
     Argmax, InverseCdf { prf: PrfRef },          // scoring certificates (RFC-0017)
     Bitwise { table: TableId },                  // AES and SHA-256 sub-operations (RFC-0015)
 }
@@ -71,7 +71,7 @@ A graph's nodes are in topological order. Every input is a graph input, a tensor
 | `MatMulWeight` | `x`, `W` → `y` | `W [out, in]`, `x […, in]`, `y […, out]` | `W` is the weight tensor its `WeightRef` declares |
 | `Add`, `Sub` | `a`, `b` → `y` | all equal | |
 | `ConstMul`, `ConstAdd` | `x` → `y` | `y = x`; the constant has 1 value or `x`'s last axis | |
-| `Rotate` | `x`, `pos` → `y` | `x [n, …, 2m]`, `pos [n]`, `y = x` | `pos` is `Public` |
+| `Rotate` | `x`, `pos` → `y` | `x [n, …, 2m]`, `pos [n]`, `y = x` | `pos` is `Public`; the pair `(x_i, x_{i+m})` of each last-axis vector turns by its row's position at frequency `i`, Llama's `rotate_half` layout |
 | `Sum`, `SumSquares` | `x` → `y` | `y` is `x` without the axis | |
 | `Reshape` | `x` → `y` | equal element counts | |
 | `Slice` | `x` → `y` | `start + len` within the axis, `len ≥ 1`; `y` is `x` with that axis of length `len` | |
@@ -80,9 +80,9 @@ A graph's nodes are in topological order. Every input is a graph input, a tensor
 | `Mul` | `a`, `b` → `y` | `b`'s shape is `a`'s or a prefix of it, broadcast over the trailing axes; `y = a` | |
 | `OneHot` | `t` → `h` | `h` is `t` with an axis of `vocab ≥ 1` added | `h` is `Committed { Advice }` |
 | `Requant` | `x` (, `c`) → `y` | `y = x`; `c [x's last axis]`, the channel classes, when the set has more than one class | `c` is `Committed { Weight }`; `y` is a lookup output or advice; `lo ≤ hi` |
-| `TableMap` | `x` → `y` | `y = x` | `y` is `LookupOutput { table }` |
-| `SoftmaxRow` | `s` → `e`, `R` | `e = s`; `R` is `s` without its last axis | `e` is `LookupOutput { exp_table }`, `R` advice |
-| `RsqrtRow` | `u` → `ρ` | `ρ = u` | `ρ` is advice |
+| `TableMap` | `x` (, `c`) → `y` | `y = x`; `c [x's last axis]`, the channel classes, when the table has several classes | `c` is `Committed { Weight }`; `y` is `LookupOutput { table }` |
+| `SoftmaxRow` | `s` → `e`, `R` | `s […, n, n]`, its last two axes the query and key positions of one sequence; `e = s`; `R` is `s` without its last axis | `e` is `LookupOutput { exp_table }`, `R` advice; row `q` sees keys `i ≤ q`, and `e` is 0 at the others |
+| `RsqrtRow` | `u` → `ρ` | `ρ = u` | `ρ` is advice; `dim ≥ 1`, and `κ ≤ 31` so that `ρ`'s range check is one lookup |
 | `Argmax`, `InverseCdf` | `ℓ`, `h` → none | `h = ℓ`: one one-hot entry per logit | certificates: every value they commit is internal advice |
 | `Bitwise` | `a`, `b` → `y` | all equal | `y` is `LookupOutput { table }` |
 
@@ -94,7 +94,7 @@ The IR is the prover's (tier C). The verifier re-derives what it checks from the
 - Inputs: token ids in `[0, vocab)`; positions in `[0, max_context)`; weights in `[−127, 127]`; activations of each type over their full type range. Ranges hold for every admissible input, never for calibration statistics.
 - Transfer functions: interval arithmetic for `Add`, `Sub`, `ConstMul` and `ConstAdd` (over the constant's least and greatest values), `Sum` (scaled by axis length), `MatMulWeight` (using only the public bound `max|W| · fan_in · max|x|`, `max|W| = 127`, never the actual weight values: bounds derived from secret weights would leak them through the claim list and could not be re-derived by the verifier), `Rotate` (each output is `a·C − b·S` or `a·S + b·C` with `|C|, |S| ≤ 2^bits` of its `Rope` table, so at most `2^{bits+1} · max|x|`), `Mul`, `SumSquares` (0 at least when the range holds 0), `MatMulAct` (the products' interval, scaled by the inner length). `Reshape`, `Slice` and `GatherPublic` keep their input's range.
 - Gadget outputs take the range their gadget's lookups enforce (RFC-0009): `[lo, hi]` after `Requant`; a table's values after `TableMap` and `Bitwise` (`[−128, 127]` for `Silu`, `[0, 2^σ]` for `Exp`, `[0, 255]` for the byte tables); `[0, 1]` after `OneHot`; `e` in the `Exp` table's values and `R ∈ [0, 2^{σ+1})` after `SoftmaxRow`; `ρ ∈ [0, 2^{κ+1})` after `RsqrtRow`.
-- **Relational facts.** Gadgets may emit facts that tighten downstream bounds. v1 has one: `SoftmaxRow` emits `R_q · Σ_i e_qi ≤ 2^{2σ}`, so `R_q · Σ_i e_qi v_i` is bounded by `2^{2σ} · max|v|` rather than by the product of the individual bounds. Each fact has a proof obligation in RFC-0009 and is re-derived by the verifier. The fact applies to a `Mul(MatMulAct(e, v), R)` node, untransposed, whose `e` and `R` are the two outputs of one `SoftmaxRow`, as the lowering builds the attention output. Its range is then `[2^{2σ} · min(v_lo, 0), 2^{2σ} · max(v_hi, 0)]`, since `e ≥ 0` and `R ≥ 0`: for INT8 values and `σ = 16`, RFC-0005's `[−2^39, 127 · 2^32]`. It holds for honest values, whose exponentials vanish at masked positions; [#279](https://github.com/AbdelStark/tessera/issues/279) makes the protocol enforce that.
+- **Relational facts.** Gadgets may emit facts that tighten downstream bounds. v1 has two. `SoftmaxRow` emits `R_q · Σ_i e_qi ≤ 2^{2σ}`, so `R_q · Σ_i e_qi v_i` is bounded by `2^{2σ} · max|v|` rather than by the product of the individual bounds. Each fact has a proof obligation in RFC-0009 and is re-derived by the verifier. The fact applies to a `Mul(MatMulAct(e, v), R)` node, untransposed, whose `e` and `R` are the two outputs of one `SoftmaxRow`, as the lowering builds the attention output. Its range is then `[2^{2σ} · min(v_lo, 0), 2^{2σ} · max(v_hi, 0)]`, since `e ≥ 0` and `R ≥ 0`: for INT8 values and `σ = 16`, RFC-0005's `[−2^39, 127 · 2^32]`. It holds for honest values, whose exponentials vanish at masked positions; [#279](https://github.com/AbdelStark/tessera/issues/279) makes the protocol enforce that. `OneHot` emits that its vectors hold exactly one 1 (RFC-0009 Lemma 8), so a `MatMulWeight` whose input is a `OneHot` output selects a column of its weight and takes the weight's range: the embedding rows stay INT8, `[−127, 127]`, where the public bound would be `127 · vocab`.
 
 **True-integer rule.** A tensor used as a lookup key or a gadget input that requires an integer must have a bounded range inside `(−(P−1)/2, (P−1)/2)` and, for keys, inside its table's key domain. Intermediate virtual tensors may exceed that range: they are computed modulo `P`, and because every key is an integer-linear or polynomial function of them whose own exact range is bounded, the key's field value equals its true integer value. The analysis therefore never needs to track wraps explicitly; it checks bounds only where integrality matters.
 
@@ -104,10 +104,10 @@ The integrality-requiring inputs, each with the domain it must lie in (every dom
 |---|---|---|
 | `OneHot` | tokens | `[0, vocab)` |
 | `Requant` | key; channel classes | the centered field range; `[0, classes)` |
-| `TableMap` | key | the table's keys: `[−2^{b−1}, 2^{b−1})` for `Silu`, `[0, 2^{key_bits})` for `Exp` |
+| `TableMap` | key; channel classes | the table's keys: `[−2^{b−1}, 2^{b−1})` for `Silu`, `[0, 2^{key_bits})` for `Exp`; `[0, classes)`, given exactly when the table has several classes (otherwise `ERR-INTERNAL`) |
 | `Bitwise` | both operands | `[0, 256)` |
-| `SoftmaxRow` | scores | `(−2^21, 2^21)`, with a spread `x_hi − x_lo` below `2^{key_bits}` of its `Exp` table, since each key is the row maximum less a score |
-| `RsqrtRow` | sums of squares | `u ≥ 0` and `u + e < 2^55` |
+| `SoftmaxRow` | scores | `[−2^21, 2^21]`, with a spread `x_hi − x_lo` below `2^{key_bits}` of its `Exp` table, since each key is the row maximum less a score. INT8 heads of width 128 reach `2^21` at `q = k = −128`. |
+| `RsqrtRow` | sums of squares | `u ≥ 0`, `d < 4(u + e)` and `u + e < 2^55`. The middle inequality keeps the honest `ρ` below `2^{κ+1}`, inside the gadget's range check; with `u` able to reach 0 it needs `4e > d` ([#285](https://github.com/AbdelStark/tessera/issues/285)). |
 | `Argmax`, `InverseCdf` | logits; one-hot entries | the centered field range; `[0, 1]` |
 
 Violations: an integrality-requiring input with an unbounded range raises `ERR-COMPILE-WRAP`; one whose range leaves its domain raises `ERR-COMPILE-RANGE`, and so does a key outside every feasible gadget's bound (gadget selection).
@@ -126,7 +126,39 @@ For each `Requant` and `TableMap` node, with key bit width `b` (signed range wid
 
 ### Llama lowering
 
-The lowering instantiates the profile's template from [RFC-0005](RFC-0005-integer-model.md#integer-semantics) per layer: embedding (`OneHot` then `MatMulWeight` on `Embed`), attention norm (`SumSquares`, `RsqrtRow`, `Mul`, `Requant`), Q/K/V (`MatMulWeight`), RoPE (`Rotate`, `Requant`), V (`Requant`), attention per KV group (`MatMulAct`, `SoftmaxRow`, `MatMulAct`, `Mul` by `R_q`), O projection, residual (`Requant`, `Add`), MLP norm, gate and up, `TableMap` (SiLU), product and down projection per profile, residual, final norm, LM head. Scoring nodes (RFC-0017) consume the logits; anchor circuits (RFC-0015) consume the token streams that also feed `OneHot`.
+The lowering instantiates the profile's template from [RFC-0005](RFC-0005-integer-model.md#integer-semantics) per layer: embedding (`OneHot` then `MatMulWeight` on `Embed`), attention norm (`SumSquares`, `RsqrtRow`, `Mul`, `Requant`), Q/K/V (`MatMulWeight`), RoPE (`Rotate`, `Requant`), V (`Requant`), attention (`MatMulAct`, `SoftmaxRow`, `MatMulAct`, `Mul` by `R_q`), O projection, residual (`Requant`, `Add`), MLP norm, gate and up, `TableMap` (SiLU), product and down projection per profile, residual, final norm, LM head. Scoring nodes (RFC-0017) consume the logits; anchor circuits (RFC-0015) consume the token streams that also feed `OneHot`.
+
+It reads only the public part of `D`: the architecture, the profile, `PublicQuantSpec` and each layer's `Silu` input exponent. The graph is therefore what the verifier re-derives from the claim list (INV-IR-5). One graph covers one sequence of `n ≤ max_context` tokens at positions `0` to `n − 1`.
+
+- **Inputs.** The tokens `[n]`, committed advice in `[0, vocab)`; the positions `[n]`, public; each weight matrix; and, for each site of several classes, the classes of the weight before it, `[rows]` in `[0, classes)`, committed with the weights.
+- **Layout.** Activations are position-major, `[n, channels]`. RoPE rotates Q and K as `[n, heads, d_head]`, pairing `x_i` with `x_{i + d_head/2}`.
+  - Attention runs head-major. `GatherPublic` reorders the rows of Q to `[n_heads, n, d_head]`, and those of K and V to the same shape, with query head `h` reading KV head `h / (n_heads / n_kv_heads)`.
+  - One `MatMulAct` then forms every head's scores `[n_heads, n, n]`, one causal `SoftmaxRow` their exponentials and reciprocals, and `Mul(MatMulAct(e, v), R)` the attention output: the softmax fact's pattern.
+  - A last `GatherPublic` returns the output to `[n, d_model]`.
+- **Rescales.** Each `Requant` names its site's shift classes and takes the channel classes when there are several, as does the `Silu` lookup. INT8 sites saturate to `[−128, 127]`, the residual updates to `[−2^{19}, 2^{19} − 1]`. The embedding enters the residual by `ConstMul` with `2^{s_e}`, `s_e = e_Embed − residual_exponent` ([03 §2](../spec/03-data-model.md#quantization)).
+- **Tables.** Table 0 is RoPE's. Each layer then names an `Exp` table for its score scale and a `Silu` table, numbered in order of first use; a definition met before reuses its table.
+  - Key widths come from public bounds. `key_bits` is the bit length of the scores' spread `128 · 255 · d_head`, 22 at `d_head = 128`.
+  - `b` is the least width with `2^{b−1} > 127 · 128 · d_model`, the gate accumulator's bound: 27 at 8B.
+- **Checks.** Range analysis must accept the graph. Then the graph must keep its profile's constraints, read on the forward pass with its ranges (`ERR-COMPILE-PROFILE`):
+  - S1: every weight matmul's operands are INT8, except, in `minimal`, the O and down projections';
+  - S2 (`servable`): every weight matmul's accumulator fits INT32;
+  - S3: every `TableMap` applies a `Silu` table, and no scoring or anchor node is part of `D`.
+
+  Every tensor then carries its analyzed range and the narrowest integer type holding it.
+- **Validation** (`ERR-QUANT-ARCH`). The lowering refuses a public part that breaks RFC-0007's architecture rules (`d_model = n_heads · d_head`, `n_kv_heads` dividing `n_heads`, `vocab ≤ 2^18`, `max_context ≤ 2^17`). It also refuses:
+  - an odd `d_head`;
+  - quantization data that misses or repeats a point of the profile;
+  - a site after no weight with several classes;
+  - a shift outside `[1, 63]`, or a score scale that is not positive;
+  - an embedding shift that would push INT8 rows out of the residual;
+  - `e = 0`, or `κ > 31`;
+  - a table RFC-0008 refuses.
+
+  The prover also checks the hidden part before lowering:
+  - one weight per type and layer, in `(ty, layer)` order, with its architecture's shape and entries in `[−127, 127]`;
+  - a `ChannelParams` for each weight a site of several classes rescales and for no other, with one class per output channel, each inside the site's classes.
+
+  Affine rescales are refused until the claim list carries their public data ([#274](https://github.com/AbdelStark/tessera/issues/274)).
 
 ### Tiling and the execution plan
 
@@ -180,6 +212,7 @@ v0.2 delivers IR, range analysis, gadget selection, Llama lowering and the commi
 - Range soundness: the integer engine runs 10^4 random and 10^3 adversarial inputs (maximal-magnitude activations, all-equal scores, extreme positions) on each conformance model; every observed value lies within its declared range.
 - Gadget selection: synthetic nodes at `b = B_max`, `B_max + 1`, `2·B_max − 2`, `2·B_max − 1` select `Requant1`, `RequantSplit`, `RequantSplit`, `ERR-COMPILE-RANGE`.
 - Relational fact: a test removes the softmax fact and checks that the O-projection key range grows to the product bound.
+- Lowering: seeded tiny models are lowered in both profiles, with grouped-query attention and sites of one to four classes. An exact interpreter of the IR runs each graph to the logits of an independent token-by-token implementation of RFC-0005's semantics, and every value stays inside its tensor's range. Llama-3.1 8B's and 405B's shapes lower from their public part alone.
 - Determinism: compiling twice yields identical claim-list, plan and table-manifest bytes.
 - Report: for the `minimal` profile at 405B shapes, requantized elements per layer per token equal 137,216, matching the source; committed elements are reported separately with split limbs.
 - Golden claim lists for the tiny conformance models in `spec/vectors/claims/`.

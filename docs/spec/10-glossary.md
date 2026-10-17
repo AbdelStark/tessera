@@ -42,7 +42,7 @@ Canonical terms used across the corpus. When a document uses one of these words,
 | Parameter set | A named, versioned bundle of protocol parameters (`live-64`, `ni-100`, `test-small`). |
 | Predictor | The committed distribution against which outputs are scored to compute `Û` (RFC-0017). |
 | Product tree | A GKR circuit computing a product of many values; used to prove a zero product in the max certificate. |
-| Profile | Compilation profile of `D`: `servable` (every matmul operand is INT8; exact mode available) or `minimal` (fewest commitments; bounded mode only). |
+| Profile | Compilation profile of `D`: `servable` (every weight matmul's operands are INT8; exact mode available) or `minimal` (fewest commitments; bounded mode only). |
 | Proximity test | Check that a committed matrix is close to a codeword matrix, using a random combined row and column queries. |
 | Rate `ρ` | Reed–Solomon code rate: 1/2 for advice, 1/4 for weights. |
 | Recorder | Network tap or attested NIC that digests encrypted transcripts and signs the log. |
