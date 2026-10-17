@@ -383,6 +383,23 @@ All notable changes to the prover release train are recorded here: the crates un
   - On every sequence of the conformance models, it gives the oracle's residual at every layer boundary and its logits, bit for bit. Tests cover `rq`'s ties, negative ties and saturation at shifts 1, 2, 7 and 40, a zero residual row's root, determinism, and each refusal.
   - Each of 16 bugs planted in the reference fails a test, and a no-op control survives. Two more resize the `Exp` and `Silu` tables without changing a value, so they are equivalent.
 
+- The claim list in `tessera-ir` and its emission in `tessera-compiler`, with RFC-0026, accepted ([#85](https://github.com/AbdelStark/tessera/issues/85)):
+  - `ClaimList` (schema `0x0201`) holds:
+    - the protocol version, 0 until `tessera-protocol/1`;
+    - the architecture, the profile and `PublicQuantSpec`;
+    - every table, with its digest;
+    - the gadget policy;
+    - the commitments' layout, `AdviceLayoutParams` and `WeightLayoutParams`;
+    - the parameter set.
+  - `ClaimList::digest` is `H("claim-list", TCE(ClaimList))`.
+  - RFC-0026 defines `WeightLayoutParams` from RFC-0012 and RFC-0014: `log2 k_W`, the rate, `P_W` and `B_W`. It takes scoring and the anchor out of the claim list until their circuits define what each states ([#152](https://github.com/AbdelStark/tessera/issues/152), [#155](https://github.com/AbdelStark/tessera/issues/155), [#137](https://github.com/AbdelStark/tessera/issues/137) to [#146](https://github.com/AbdelStark/tessera/issues/146)), so no field is a guess.
+  - `tessera_compiler::claim_list(model, &selection, &policy, layout, params)` builds it from the public part of `D` and the selection's tables. The parameter set is the caller's, `tessera-protocol`'s ([#103](https://github.com/AbdelStark/tessera/issues/103)).
+  - `spec/vectors/claims/` holds the conformance models' claim lists for `test-small/1`, sealed, with their digests. `cargo xtask gen-vectors` writes them after the models' oracle, and a test keeps them current.
+  - Tests:
+    - changing every weight and channel class leaves a claim list's bytes unchanged (INV-CL-1);
+    - lowerings of one token and of the whole context give the same claim list;
+    - it decodes from its encoding and from its envelope to itself.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

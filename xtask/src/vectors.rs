@@ -7,7 +7,9 @@
 //!   `tessera-field` define, which the verifier and the Python package check with their own
 //!   decoders;
 //! - the files of every set with an independent Python oracle, `spec/vectors/<set>/generate.py`,
-//!   by running the oracle.
+//!   by running the oracle;
+//! - the golden claim lists, `spec/vectors/claims/`, which the compiler emits from the models the
+//!   models' oracle writes, so after it.
 //!
 //! `--check` compares instead of writing: the codec vectors with what would be written, and the
 //! oracles' files with what the oracles write when run on a copy of `spec/vectors/`, so a check
@@ -198,6 +200,29 @@ pub(crate) fn run(repo: &Path, check: bool) -> io::Result<bool> {
             run_oracle(repo, set)?.map_err(io::Error::other)?;
             println!("wrote spec/vectors/{set}/ with its oracle");
         }
+    }
+    // The claim lists come from the conformance models: a tree without them has none.
+    if !repo.join(crate::claim_vectors::MODELS).is_file() {
+        return Ok(current);
+    }
+    let claims = crate::claim_vectors::render(repo).map_err(io::Error::other)?;
+    let target = repo.join(crate::claim_vectors::PATH);
+    if check {
+        if fs::read_to_string(&target).ok().as_deref() == Some(claims.as_str()) {
+            println!("ok    {}", crate::claim_vectors::PATH);
+        } else {
+            println!(
+                "FAIL  {} is out of date: run `cargo xtask gen-vectors`",
+                crate::claim_vectors::PATH
+            );
+            current = false;
+        }
+    } else {
+        if let Some(dir) = target.parent() {
+            fs::create_dir_all(dir)?;
+        }
+        fs::write(&target, claims)?;
+        println!("wrote {}", crate::claim_vectors::PATH);
     }
     Ok(current)
 }
@@ -398,6 +423,19 @@ mod tests {
             Vec::<String>::new()
         );
         assert!(super::run(root, true).unwrap());
+    }
+
+    #[test]
+    fn claim_vectors_are_current() {
+        let root = repo::root();
+        let path = crate::claim_vectors::PATH;
+        let committed = fs::read_to_string(root.join(path))
+            .unwrap_or_else(|e| panic!("{path}: {e}; run `cargo xtask gen-vectors`"));
+        let rendered = crate::claim_vectors::render(&root).expect("the claim lists");
+        assert!(
+            committed == rendered,
+            "{path} is out of date: run `cargo xtask gen-vectors`"
+        );
     }
 
     #[test]

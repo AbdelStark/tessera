@@ -26,7 +26,10 @@ mod model;
 mod op;
 mod types;
 
-pub use claim::GadgetPolicy;
+pub use claim::{
+    AdviceLayoutParams, ClaimList, CommitmentLayout, GadgetPolicy, PROTOCOL_VERSION,
+    WeightLayoutParams,
+};
 pub use error::IrError;
 pub use files::LogitsFile;
 pub use graph::{Graph, GraphBuilder, Node};
@@ -35,6 +38,7 @@ pub use model::{
     Provenance, PublicQuantSpec, QuantPoint, QuantSpec, RopeSpec, Site, WeightTensor,
 };
 pub use op::{Op, OpClass};
+pub use tessera_hash::ParamSetId;
 pub use tessera_tables::TableId;
 pub use types::{
     CommitmentClass, ConstRef, GadgetId, IntRange, IntType, NodeId, NodeKind, PrfRef,

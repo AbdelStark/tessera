@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 tessera-codec = { path = "../tessera-codec" }
+tessera-hash = { path = "../tessera-hash" }
 tessera-tables = { path = "../tessera-tables" }
 
 [dev-dependencies]

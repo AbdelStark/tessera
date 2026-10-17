@@ -11,6 +11,7 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 mod branchless;
+mod claim_vectors;
 mod deny_policy;
 mod deps;
 mod isolation;
