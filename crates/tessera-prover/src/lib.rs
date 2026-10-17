@@ -3,6 +3,10 @@
 //! Orchestration of the witness pass, commitments, stages and openings over the CPU and GPU
 //! backends (RFC-0018).
 //!
+//! [`ReleaseSchedule`] fixes when a message that a verifier can time leaves the prover in
+//! `tessera-protocol/2`: at a slot that public data determines, whatever its secret-dependent
+//! work took (RFC-0018 'Release schedule', INV-ARCH-2).
+//!
 //! # Features
 //!
 //! - `test-rng` seeds masking randomness so that tests are reproducible. Tests only: a release
@@ -11,6 +15,10 @@
 //!   with it fails to compile.
 
 #![forbid(unsafe_code)]
+
+mod release;
+
+pub use release::{Release, ReleaseSchedule, ScheduleError};
 
 // Test-only features cannot reach a release build (RFC-0001 'Cargo features').
 #[cfg(all(feature = "test-rng", not(debug_assertions)))]

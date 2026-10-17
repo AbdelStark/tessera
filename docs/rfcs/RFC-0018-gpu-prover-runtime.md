@@ -117,11 +117,34 @@ Budgets per device and host come from `ProverConfig.memory_budget`. The planner 
 - Every phase is a deterministic function of inputs, the per-proof seed, the session seed and verifier messages. After a crash, the prover reruns completed phases to rebuild state and resumes; messages already sent are reproduced byte for byte and compared before continuing.
 - The per-proof seed file is deleted after `Round3Response` is sent.
 
+### Release schedule
+
+A verifier can time the prover by when its messages arrive:
+- in live mode, `Round1`, `Round2Response` and `Round3Response`, each timed from the verifier's message before it;
+- in either mode, the proof, timed from the request.
+
+The work behind each message depends on secrets beyond its values. Multiplicity counting increments the counter of each lookup's row, and `Exp`, `Exp2Frac` and `Silu` read their dense core at a key ('Determinism'). Caches, atomic contention and memory banks make that work faster or slower with how the keys spread, and power limits move the clocks with the data. `tessera-protocol/2` promises zero knowledge, so none of these durations may reach a verifier. Each message a verifier can time is therefore released on a schedule that public data fixes:
+
+1. **Budget.** Before the work behind a message starts, the prover computes its budget `D = d_0 + Σ_u d_u · n_u` from public data alone:
+   - the message's work counts `n_u` (committed elements, lookups, scores and tokens), from the claim list and the batch's shapes;
+   - the coefficients in `ProverConfig.release`, which come from calibration runs on public inputs, never from the timings of a session that proved secret data.
+2. **Release.** Timed from its trigger, a message is released at `D` if its work is done by then. The trigger is the receipt of the verifier's preceding message or of the request, at the time the transport records on a monotonic clock. It is not the time the prover reaches the message, which other work on the node could delay. Otherwise it is released at the first slot `2^j · D` that the work meets, for `j` from 1 to `L = ProverConfig.release.doublings`.
+   - The `Prover` method that yields the message returns at that time ([02 §3.1](../spec/02-public-api.md#31-prover)), so a caller cannot send it early.
+   - A message is complete before its first byte leaves, so its transfer time depends only on its length, which is public, and on the network.
+3. **Overrun.** Work that misses the last slot aborts the session with `ERR-RES-TIME`. Each release past `D`, and each abort, increments `tessera_release_overruns_total` ([05 §4](../spec/05-observability.md#4-metrics)), so that operators recalibrate before overruns become common.
+
+A release time therefore reveals only the public statement and which of the `L + 1` slots the message took. A message whose work meets its budget reveals nothing; one that overruns reveals at most `log2(L + 1)` bits.
+
+- **Phase records.** The prover's own records of how long its phases took stay on its side of TB-1 ([06 §3](../spec/06-security.md#3-trust-boundaries)). These are the run manifest's `tessera_phase_seconds` and the unit costs derived from it. Published, they would undo the schedule.
+- **Verifier deadline.** A verifier's session deadline (`ERR-PROTO-TIMEOUT`) must exceed each message's last slot.
+- **Cost.** The schedule costs latency, not throughput: the node works on other proof units or batches while a message waits.
+- **`tessera-protocol/1`** promises no hiding, and releases each message when it is ready.
+
 ### Determinism
 
 - Field reductions are exact, so the order of GPU reductions and all-reduces does not change results.
 - Integer GEMMs are exact under S2.
-- Nothing in a kernel's control flow depends on secret values (INV-ARCH-2); data-dependent table gathers are memory accesses whose addresses depend on secrets, which is acceptable because the verifier observes no timing or memory traffic of the prover node.
+- Nothing in a kernel's control flow depends on secret values (INV-ARCH-2). Memory addresses do, in two places: multiplicity counting, which increments the counter of each lookup's row (RFC-0008), and the reads of the `Exp`, `Exp2Frac` and `Silu` dense cores at a key. Neither reaches a verifier, which times the prover only through the release schedule.
 
 ## Alternatives Considered
 
@@ -140,7 +163,7 @@ Budgets per device and host come from `ProverConfig.memory_budget`. The planner 
 
 ## Migration / Rollout
 
-v0.2: CPU witness engine. v0.3: CPU prover backend with the pass structure and counters, in memory for tiny models and with forced streaming in tests. v0.5: GPU backend, partitioning, streaming, measured on 8B and 70B. v1.0: 405B with the pass planner tuned against SC-2.
+v0.2: CPU witness engine. v0.3: CPU prover backend with the pass structure and counters, in memory for tiny models and with forced streaming in tests, and the release schedule's slots. v0.4: the release schedule in every `tessera-protocol/2` session. v0.5: GPU backend, partitioning, streaming, measured on 8B and 70B. v1.0: 405B with the pass planner tuned against SC-2.
 
 ## Testing Strategy
 
@@ -151,6 +174,11 @@ v0.2: CPU witness engine. v0.3: CPU prover backend with the pass structure and c
 - Column answers: for every evaluation the planner can pick, P5's symbols equal those of each row's whole codeword at the queried columns, repeated and boundary indices included; the pass counter counts P5 once per proof unit.
 - Proof units: splitting one request into two layer-range units yields a proof that verifies; tampering with a boundary residual in one unit is rejected by the linking claim.
 - Crash consistency: fault injection kills the prover after each phase; the resumed prover sends byte-identical messages.
+- Release schedule:
+  - work that meets its budget is released at the budget;
+  - every duration within a later slot is released at that slot's instant;
+  - work past the last slot aborts with `ERR-RES-TIME`;
+  - on a tiny model in `tessera-protocol/2`, each message leaves at its budget whatever the witness, including witnesses whose keys concentrate on one table row or spread over all of them.
 - Performance: `tessera bench` reports pass counts and per-pass times nightly on the GPU runner.
 
 ## Open Questions

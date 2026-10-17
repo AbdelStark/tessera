@@ -206,8 +206,10 @@ pub(crate) fn ceil_log2(n: usize) -> usize {
 /// Multiplicities are field elements: a count stays below `2^{h_a} < 2^{61}` and is reduced
 /// modulo the field's characteristic.
 ///
-/// Counting reads each lookup's row once; the memory it touches depends on the rows, which the
-/// verifier observes no more than any table gather of the witness (RFC-0018 'Determinism').
+/// Counting increments the counter of each lookup's row, so the memory it touches depends on the
+/// rows. INV-ARCH-2 allows that and nothing more: control flow follows the lengths only, and a
+/// verifier times the prover only through the release schedule of RFC-0018, which public data
+/// fixes.
 ///
 /// The rows, which lookup hits which row, are secret-class: they come in their [`Secret`], and
 /// the counts and the multiplicities, a histogram of them, are [`SecretBuf`]s, cleared when they
