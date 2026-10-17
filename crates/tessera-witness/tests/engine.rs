@@ -13,8 +13,8 @@
 //!   one of the lowering's weights or with a class its site lacks: each is refused with its code,
 //!   as is each malformed input of a graph run on its own.
 //! - **Operations.** The operations no lowering emits yet, `Sub`, `Slice`, `Sum`, `ConstAdd` and
-//!   `Bitwise`, give RFC-0006's values on a graph built for them; a residual row of zeros takes its
-//!   root from ε alone.
+//!   `Bitwise`, and RFC-0037's `Transpose` and `Expand`, give their values on a graph built for
+//!   them; a residual row of zeros takes its root from ε alone.
 
 use std::fs;
 use std::num::NonZeroUsize;
@@ -343,13 +343,14 @@ fn buffer(values: &[i64]) -> SecretBuf<i64> {
     b
 }
 
-/// A graph of `Sub`, `Slice`, `Sum`, `ConstAdd` and `Bitwise` over inputs `x` and `z` of shape
-/// `[2, 3, 4]` and bytes `a` and `b` of shape `[6]`, with the `Xor` table it reads.
+/// A graph of `Sub`, `Slice`, `Sum`, `ConstAdd`, `Bitwise`, `Transpose` and `Expand` over inputs
+/// `x` and `z` of shape `[2, 3, 4]` and bytes `a` and `b` of shape `[6]`, with the `Xor` table it
+/// reads.
 fn operations() -> (
     Graph,
     Vec<tessera_tables::TableSpec>,
     [TensorId; 4],
-    [TensorId; 5],
+    [TensorId; 7],
 ) {
     let mut g = GraphBuilder::new();
     let wide = |shape: &[u32]| decl(shape, NodeKind::Virtual, -(1 << 20), 1 << 20);
@@ -380,19 +381,29 @@ fn operations() -> (
         &[a, b],
         decl(&[6], NodeKind::LookupOutput { table: TableId(0) }, 0, 255),
     );
+    // Axes of three lengths, none a power of two but 4, as attention's head layouts have.
+    let transposed = one(
+        Op::Transpose {
+            perm: vec![2, 0, 1],
+        },
+        &[x],
+        wide(&[4, 2, 3]),
+    );
+    let expanded = one(Op::Expand { axis: 1, len: 3 }, &[x], wide(&[2, 3, 3, 4]));
     let table = GeneratedTable::new(TableId(0), TableKind::Bitwise8 { op: BitOp::Xor })
         .expect("the Xor table");
     (
         g.finish(),
         vec![table.spec().clone()],
         [x, z, a, b],
-        [sub, slice, sum, add, xor],
+        [sub, slice, sum, add, xor, transposed, expanded],
     )
 }
 
 #[test]
 fn the_operations_no_lowering_emits_yet_follow_rfc_0006() {
-    let (graph, tables, [x, z, a, b], [sub, slice, sum, add, xor]) = operations();
+    let (graph, tables, [x, z, a, b], [sub, slice, sum, add, xor, transposed, expanded]) =
+        operations();
     let engine = Engine::for_graph(&graph, &tables).expect("the tables");
     let xs: Vec<i64> = (0..24).map(|i| (i * 37) % 91 - 45).collect();
     let zs: Vec<i64> = (0..24).map(|i| (i * 53) % 97 - 48).collect();
@@ -422,11 +433,25 @@ fn the_operations_no_lowering_emits_yet_follow_rfc_0006() {
         .map(|(i, v)| v + [1, -2, 3, -4][i % 4])
         .collect();
     let expected_xor: Vec<i64> = as_.iter().zip(&bs).map(|(p, q)| p ^ q).collect();
+    // Output (k, o, j) of the transpose is input (o, j, k); output (o, c, j, k) of the expand is
+    // input (o, j, k) for each copy c.
+    let expected_transposed: Vec<i64> = (0..4)
+        .flat_map(|k| (0..2).flat_map(move |o| (0..3).map(move |j| (o, j, k))))
+        .map(|(o, j, k)| at(o, j, k))
+        .collect();
+    let expected_expanded: Vec<i64> = (0..2)
+        .flat_map(|o| {
+            (0..3).flat_map(move |_c| (0..3).flat_map(move |j| (0..4).map(move |k| (o, j, k))))
+        })
+        .map(|(o, j, k)| at(o, j, k))
+        .collect();
     assert_eq!(values(&witness, sub), expected_sub);
     assert_eq!(values(&witness, slice), expected_slice);
     assert_eq!(values(&witness, sum), expected_sum);
     assert_eq!(values(&witness, add), expected_add);
     assert_eq!(values(&witness, xor), expected_xor);
+    assert_eq!(values(&witness, transposed), expected_transposed);
+    assert_eq!(values(&witness, expanded), expected_expanded);
     assert!(
         witness.logits().is_none(),
         "a graph's run has no model's logits"

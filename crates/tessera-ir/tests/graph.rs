@@ -269,6 +269,20 @@ fn block() -> Graph {
         &[out],
         virt(&[2, D]),
     );
+    let swapped = one(
+        &mut b,
+        Op::Transpose { perm: vec![1, 0] },
+        &[out],
+        virt(&[D, T]),
+    );
+    one(
+        &mut b,
+        Op::Expand { axis: 1, len: 3 },
+        &[swapped],
+        virt(&[D, 3, T]),
+    );
+    // A linear output that is committed advice, proven equal to its relation (RFC-0037).
+    one(&mut b, Op::ConstMul { c: scalar }, &[out], advice(&[T, D]));
     let out8 = one(&mut b, requant(one_class), &[out], lookup(&[T, D], 0));
     let logits = one(
         &mut b,
@@ -303,22 +317,36 @@ fn a_block_with_every_operation_builds_identically_and_validates() {
     );
     assert_eq!(graph.validate(), Ok(()));
     let names: std::collections::BTreeSet<&str> = graph.nodes.iter().map(|n| n.op.name()).collect();
-    assert_eq!(names.len(), 21, "every operation of RFC-0006: {names:?}");
+    assert_eq!(names.len(), 23, "every operation of RFC-0006: {names:?}");
     for (position, tensor) in (0u32..).zip(&graph.tensors) {
         assert_eq!(tensor.id, TensorId(position));
     }
     // The constraint-system view: inputs have no producer, every other tensor has its node, and
-    // classes follow the operation set.
+    // classes follow the operation set: a linear or degree-2 node's output is virtual, or
+    // committed advice when it is not a matmul (RFC-0037).
+    let advice_kind = NodeKind::Committed {
+        commitment: CommitmentClass::Advice,
+    };
+    let mut committed_linear = 0;
     for node in &graph.nodes {
         for &output in &node.outputs {
             assert_eq!(graph.producer(output), Some(node.id));
         }
         if node.op.class() != OpClass::Gadget {
             for &output in &node.outputs {
-                assert_eq!(graph.tensors[output.0 as usize].kind, NodeKind::Virtual);
+                let kind = graph.tensors[output.0 as usize].kind;
+                if kind == advice_kind {
+                    committed_linear += 1;
+                } else {
+                    assert_eq!(kind, NodeKind::Virtual);
+                }
             }
         }
     }
+    assert_eq!(
+        committed_linear, 1,
+        "the block's one committed linear output"
+    );
     assert_eq!(graph.producer(TensorId(0)), None);
     assert_eq!(
         Op::MatMulAct {
@@ -400,10 +428,16 @@ fn each_operation_rule_broken_alone_is_refused() {
         (
             Op::Add,
             vec![a, c],
-            vec![advice(&[T, D])],
+            vec![decl(
+                &[T, D],
+                NodeKind::Committed {
+                    commitment: CommitmentClass::Weight,
+                },
+            )],
             op_error(
                 "Add",
-                "a linear or degree-2 operation produces a virtual tensor",
+                "a linear or degree-2 operation produces a virtual tensor, or committed advice if \
+                 it is not a matmul",
             ),
         ),
         (
@@ -414,7 +448,20 @@ fn each_operation_rule_broken_alone_is_refused() {
             vec![lookup(&[T, D], 0)],
             op_error(
                 "Mul",
-                "a linear or degree-2 operation produces a virtual tensor",
+                "a linear or degree-2 operation produces a virtual tensor, or committed advice if \
+                 it is not a matmul",
+            ),
+        ),
+        (
+            Op::MatMulWeight {
+                weight: weight(WeightType::Q),
+            },
+            vec![a, wq],
+            vec![advice(&[T, D])],
+            op_error(
+                "MatMulWeight",
+                "a linear or degree-2 operation produces a virtual tensor, or committed advice if \
+                 it is not a matmul",
             ),
         ),
         // MatMulWeight.
@@ -601,6 +648,58 @@ fn each_operation_rule_broken_alone_is_refused() {
             vec![positions],
             vec![virt(&[3])],
             op_error("GatherPublic", "the output has one row per index"),
+        ),
+        // Transpose and Expand.
+        (
+            Op::Transpose { perm: vec![0] },
+            vec![a],
+            vec![virt(&[T, D])],
+            op_error(
+                "Transpose",
+                "the permutation names each of the input's axes once",
+            ),
+        ),
+        (
+            Op::Transpose { perm: vec![1, 1] },
+            vec![a],
+            vec![virt(&[D, D])],
+            op_error(
+                "Transpose",
+                "the permutation names each of the input's axes once",
+            ),
+        ),
+        (
+            Op::Transpose { perm: vec![0, 2] },
+            vec![a],
+            vec![virt(&[T, D])],
+            op_error(
+                "Transpose",
+                "the permutation names each of the input's axes once",
+            ),
+        ),
+        (
+            Op::Transpose { perm: vec![1, 0] },
+            vec![a],
+            vec![virt(&[T, D])],
+            op_error(
+                "Transpose",
+                "the output is the input with its axes permuted",
+            ),
+        ),
+        (
+            Op::Expand { axis: 3, len: 2 },
+            vec![a],
+            vec![virt(&[T, D, 2])],
+            op_error("Expand", "the new axis is at most the input's rank"),
+        ),
+        (
+            Op::Expand { axis: 2, len: 4 },
+            vec![a],
+            vec![virt(&[T, 4, D])],
+            op_error(
+                "Expand",
+                "the output is the input with the new axis inserted",
+            ),
         ),
         // MatMulAct.
         (
@@ -1142,7 +1241,8 @@ fn a_graph_assembled_otherwise_is_validated_rule_by_rule() {
         op_error_at(
             2,
             "Add",
-            "a linear or degree-2 operation produces a virtual tensor",
+            "a linear or degree-2 operation produces a virtual tensor, or committed advice if it \
+             is not a matmul",
         ),
     );
     // A graph input that no node produces but is virtual.

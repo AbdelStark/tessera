@@ -605,6 +605,7 @@
         "split_limbs",
         "row_scalars",
         "one_hot",
+        "checkpoints",
         "total"
       ],
       "additionalProperties": false,
@@ -622,6 +623,10 @@
           "minimum": 0
         },
         "one_hot": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checkpoints": {
           "type": "integer",
           "minimum": 0
         },

@@ -10,11 +10,15 @@
 //!   [`IntegerModel`], its weights and hidden channel classes, against the public part.
 //! - **Layout.** Activations are position-major, `[n, channels]`. RoPE rotates the pairs
 //!   `(x_i, x_{i + d_head/2})` of each head, the layout of Hugging Face checkpoints. Attention
-//!   runs head-major: `GatherPublic` reorders the queries' rows to `[n_heads, n, d_head]`, and the
-//!   keys' and values' to the same shape with each KV head repeated for its group of queries, so
-//!   one `MatMulAct` forms every head's scores, one causal `SoftmaxRow` their exponentials and
+//!   runs head-major: `Transpose` takes the queries, keys and values from `[n, heads, d_head]` to
+//!   `[heads, n, d_head]`, and `Expand` repeats each KV head for its group of query heads, so one
+//!   `MatMulAct` forms every head's scores, one causal `SoftmaxRow` their exponentials and
 //!   reciprocals, and `Mul(MatMulAct(e, v), R)` the attention output: the pattern the softmax
-//!   fact bounds. A last gather returns the heads to position-major order.
+//!   fact bounds. A last `Transpose` returns the heads to position-major order. Every claim on
+//!   these layouts moves coordinates (RFC-0037 'Head layouts').
+//! - **The first checkpoint.** The residual that enters the first layer, the embedding scaled by
+//!   `2^{s_e}`, is committed advice, which stage 1 proves equal to its `ConstMul`: every layer then
+//!   reads a committed residual (RFC-0037 'The committed first checkpoint').
 //! - **Residual.** Each update saturates the residual's sum at INT20 (RFC-0022): a site of one
 //!   class rescales the fused key `acc + 2^r · res`, a site of several takes two `Requant`s.
 //!   Every norm then reads a residual bounded over all inputs.
@@ -29,9 +33,9 @@
 
 use tessera_codec::Rational;
 use tessera_ir::{
-    ArchSpec, Broadcast, CommitmentClass, ConstRef, Graph, GraphBuilder, IntRange, IntType,
-    IntegerModel, IrError, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, Site, TableId,
-    TensorDecl, TensorId, WeightRef, WeightType,
+    ArchSpec, Broadcast, CommitmentClass, Graph, GraphBuilder, IntRange, IntType, IntegerModel,
+    IrError, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, Site, TableId, TensorDecl,
+    TensorId, WeightRef, WeightType,
 };
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableKind, TableSpec};
 
@@ -585,13 +589,6 @@ struct Builder<'a> {
     sites: Vec<(QuantPoint, TensorId)>,
     tokens: TensorId,
     positions: TensorId,
-    /// Gathers the queries' rows `[n · n_heads, d_head]` into head-major order.
-    queries: ConstRef,
-    /// Gathers the keys' or values' rows `[n · n_kv_heads, d_head]` into head-major order, each KV
-    /// head once per query head of its group.
-    keys: ConstRef,
-    /// Gathers head-major rows `[n_heads · n, d_head]` back into position-major order.
-    back: ConstRef,
 }
 
 fn decl(shape: &[u32], kind: NodeKind) -> TensorDecl {
@@ -645,22 +642,6 @@ impl<'a> Builder<'a> {
             },
         ))?;
         let positions = graph.input(whole(&[n], n - 1, NodeKind::Public))?;
-        // Row `head · n + p` of the head-major layout is row `p · heads + head` of the
-        // position-major one, with the KV head `head / group` for keys and values.
-        let (h, kv) = (i64::from(arch.n_heads), i64::from(arch.n_kv_heads));
-        let (group, count) = (h / kv, i64::from(n));
-        let queries = (0..h)
-            .flat_map(|head| (0..count).map(move |p| p * h + head))
-            .collect();
-        let keys = (0..h)
-            .flat_map(|head| (0..count).map(move |p| p * kv + head / group))
-            .collect();
-        let back = (0..count)
-            .flat_map(|p| (0..h).map(move |head| head * count + p))
-            .collect();
-        let queries = graph.constant(queries)?;
-        let keys = graph.constant(keys)?;
-        let back = graph.constant(back)?;
         let rope = arch.rope;
         let kind = TableKind::Rope {
             theta: rope.theta,
@@ -685,9 +666,6 @@ impl<'a> Builder<'a> {
             sites: Vec::new(),
             tokens,
             positions,
-            queries,
-            keys,
-            back,
         })
     }
 
@@ -711,7 +689,8 @@ impl<'a> Builder<'a> {
         let scale = self
             .graph
             .constant(vec![1 << embed_shift(self.model.quant)?])?;
-        let mut residual = self.node(Op::ConstMul { c: scale }, &[x0], virt(&[n, d]))?;
+        // The first checkpoint is committed: every layer reads a committed residual (RFC-0037).
+        let mut residual = self.node(Op::ConstMul { c: scale }, &[x0], advice(&[n, d]))?;
         let mut checkpoints = vec![residual];
         for layer in 0..arch.n_layers {
             residual = self.layer(layer, residual)?;
@@ -1005,10 +984,9 @@ impl<'a> Builder<'a> {
     ) -> Result<TensorId, CompileError> {
         let arch = self.model.arch;
         let (n, h, kv, dh) = (self.n, arch.n_heads, arch.n_kv_heads, arch.d_head);
-        let (queries, keys) = (self.queries, self.keys);
-        let q = self.heads(q, h, queries)?;
-        let k = self.heads(k, kv, keys)?;
-        let v = self.heads(v, kv, keys)?;
+        let q = self.heads(q, h)?;
+        let k = self.heads(k, kv)?;
+        let v = self.heads(v, kv)?;
         let scores = self.node(
             Op::MatMulAct {
                 transpose_rhs: true,
@@ -1052,28 +1030,43 @@ impl<'a> Builder<'a> {
             &[pv, r],
             virt(&[h, n, dh]),
         )?;
-        let rows = self.node(Op::Reshape, &[o], virt(&[h * n, dh]))?;
-        let back = self.back;
-        let rows = self.node(
-            Op::GatherPublic { index: back },
-            &[rows],
-            virt(&[n * h, dh]),
+        let swapped = self.node(
+            Op::Transpose {
+                perm: vec![1, 0, 2],
+            },
+            &[o],
+            virt(&[n, h, dh]),
         )?;
-        Ok(self.node(Op::Reshape, &[rows], virt(&[n, h * dh]))?)
+        Ok(self.node(Op::Reshape, &[swapped], virt(&[n, h * dh]))?)
     }
 
-    /// `[n, heads · d_head]` gathered into `[n_heads, n, d_head]` by `index`.
-    fn heads(
-        &mut self,
-        x: TensorId,
-        heads: u32,
-        index: ConstRef,
-    ) -> Result<TensorId, CompileError> {
+    /// `[n, heads · d_head]` laid out head-major as `[n_heads, n, d_head]`: split into heads,
+    /// transposed, and, for `heads` KV heads, each repeated for its `n_heads / heads` query heads
+    /// (RFC-0037 'Head layouts').
+    fn heads(&mut self, x: TensorId, heads: u32) -> Result<TensorId, CompileError> {
         let arch = self.model.arch;
         let (n, h, dh) = (self.n, arch.n_heads, arch.d_head);
-        let rows = self.node(Op::Reshape, &[x], virt(&[n * heads, dh]))?;
-        let gathered = self.node(Op::GatherPublic { index }, &[rows], virt(&[h * n, dh]))?;
-        Ok(self.node(Op::Reshape, &[gathered], virt(&[h, n, dh]))?)
+        let split = self.node(Op::Reshape, &[x], virt(&[n, heads, dh]))?;
+        let major = self.node(
+            Op::Transpose {
+                perm: vec![1, 0, 2],
+            },
+            &[split],
+            virt(&[heads, n, dh]),
+        )?;
+        if heads == h {
+            return Ok(major);
+        }
+        let group = h / heads;
+        let repeated = self.node(
+            Op::Expand {
+                axis: 1,
+                len: group,
+            },
+            &[major],
+            virt(&[heads, group, n, dh]),
+        )?;
+        Ok(self.node(Op::Reshape, &[repeated], virt(&[h, n, dh]))?)
     }
 
     /// `a = T_silu[g]`, with the gate's channel classes when the site has several.

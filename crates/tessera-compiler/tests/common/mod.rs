@@ -302,6 +302,42 @@ impl Run<'_> {
                         .collect(),
                 ]
             }
+            Op::Transpose { perm } => {
+                // Output element by element: decompose its index, then read the input there.
+                let s: Vec<usize> = shape(0).iter().map(|&d| d as usize).collect();
+                let out: Vec<usize> = perm.iter().map(|&a| s[usize::from(a)]).collect();
+                let y = (0..elements(shape(0)))
+                    .map(|flat| {
+                        let mut digits = vec![0usize; out.len()];
+                        let mut rest = flat;
+                        for k in (0..out.len()).rev() {
+                            digits[k] = rest % out[k];
+                            rest /= out[k];
+                        }
+                        let mut at = vec![0usize; s.len()];
+                        for (k, &a) in perm.iter().enumerate() {
+                            at[usize::from(a)] = digits[k];
+                        }
+                        let index = at.iter().zip(&s).fold(0, |i, (&d, &n)| i * n + d);
+                        x(0)[index]
+                    })
+                    .collect();
+                vec![y]
+            }
+            Op::Expand { axis, len } => {
+                // Output element by element: drop the new axis's digit from its index.
+                let s: Vec<usize> = shape(0).iter().map(|&d| d as usize).collect();
+                let axis = usize::from(*axis);
+                let inner: usize = s[axis..].iter().product();
+                let copies = *len as usize;
+                let y = (0..elements(shape(0)) * copies)
+                    .map(|flat| {
+                        let (outer, within) = (flat / (copies * inner), flat % inner);
+                        x(0)[outer * inner + within]
+                    })
+                    .collect();
+                vec![y]
+            }
             Op::MatMulAct { transpose_rhs } => {
                 let (a, b) = (shape(0), shape(1));
                 let r = a.len();

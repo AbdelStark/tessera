@@ -916,7 +916,8 @@ fn servable_keeps_s1_to_s3_and_minimal_rescales_eight_tensors_per_layer() {
                 | Op::ConstMul { .. }
                 | Op::Rotate { .. }
                 | Op::Reshape
-                | Op::GatherPublic { .. }
+                | Op::Transpose { .. }
+                | Op::Expand { .. }
                 | Op::MatMulAct { .. }
                 | Op::Mul { .. }
                 | Op::SumSquares { .. }

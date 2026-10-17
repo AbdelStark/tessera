@@ -35,7 +35,10 @@
 //! #149, #154).
 
 use serde_json::{Map, Value, json};
-use tessera_ir::{GadgetPolicy, Graph, NodeId, NodeKind, Op, Profile, QuantPoint, Site, TensorId};
+use tessera_ir::{
+    CommitmentClass, GadgetPolicy, Graph, NodeId, NodeKind, Op, OpClass, Profile, QuantPoint, Site,
+    TensorId,
+};
 use tessera_tables::{TableId, TableKind};
 
 use crate::{CompileError, Gadget, Lowering, PublicModel, Selection};
@@ -59,6 +62,9 @@ pub struct Tally {
     pub row_scalars: u64,
     /// One-hot entries.
     pub one_hot: u64,
+    /// Linear outputs committed as advice, which stage 1 proves equal to their relation: the
+    /// first checkpoint, the embedding scaled into the residual (RFC-0037).
+    pub checkpoints: u64,
     /// Lookups.
     pub lookups: u64,
 }
@@ -66,7 +72,7 @@ pub struct Tally {
 impl Tally {
     /// Every committed element.
     pub fn committed(&self) -> u64 {
-        self.lookup_outputs + self.split_limbs + self.row_scalars + self.one_hot
+        self.lookup_outputs + self.split_limbs + self.row_scalars + self.one_hot + self.checkpoints
     }
 
     fn per_token(self, n: u64) -> Result<Self, CompileError> {
@@ -75,6 +81,7 @@ impl Tally {
             split_limbs: per_token(self.split_limbs, n)?,
             row_scalars: per_token(self.row_scalars, n)?,
             one_hot: per_token(self.one_hot, n)?,
+            checkpoints: per_token(self.checkpoints, n)?,
             lookups: per_token(self.lookups, n)?,
         })
     }
@@ -198,6 +205,7 @@ impl CommitmentReport {
                 "split_limbs": t.split_limbs,
                 "row_scalars": t.row_scalars,
                 "one_hot": t.one_hot,
+                "checkpoints": t.checkpoints,
                 "total": t.committed(),
             })
         };
@@ -397,6 +405,22 @@ pub fn report(
             add(&mut layer, tally);
         }
     }
+    // Linear outputs committed as advice (RFC-0037): none is inside a layer.
+    for node in &graph.nodes {
+        if node.op.class() == OpClass::Gadget {
+            continue;
+        }
+        for &output in &node.outputs {
+            if matches!(
+                graph.tensors[output.0 as usize].kind,
+                NodeKind::Committed {
+                    commitment: CommitmentClass::Advice
+                }
+            ) {
+                whole.checkpoints += elements(graph, Some(output));
+            }
+        }
+    }
     for t in &mut tables {
         t.lookups_per_token = per_token(t.lookups_per_token, n)?;
     }
@@ -450,6 +474,7 @@ fn add(total: &mut Tally, part: Tally) {
     total.split_limbs += part.split_limbs;
     total.row_scalars += part.row_scalars;
     total.one_hot += part.one_hot;
+    total.checkpoints += part.checkpoints;
     total.lookups += part.lookups;
 }
 
@@ -470,7 +495,9 @@ fn producer(graph: &Graph, tensor: TensorId) -> Result<NodeId, CompileError> {
 }
 
 /// RFC-0010's stage count of `graph`: the leaf stage, then one per sumcheck relation on the
-/// longest chain from a gadget's input down to committed tensors.
+/// longest chain from a gadget's input, or from a linear output committed as advice, down to
+/// committed tensors. Stage 1 proves such an output equal to its relation by a zero-check, whose
+/// claims on the node's inputs go on (RFC-0037).
 pub fn stage_count(graph: &Graph) -> u32 {
     // The sumcheck relations a claim on each tensor still needs: none on a committed one, which
     // is opened.
@@ -492,12 +519,36 @@ pub fn stage_count(graph: &Graph) -> u32 {
     let deepest = graph
         .nodes
         .iter()
-        .filter(|n| matches!(n.op.class(), tessera_ir::OpClass::Gadget))
+        .filter(|n| matches!(n.op.class(), OpClass::Gadget))
         .flat_map(|n| n.inputs.iter())
         .map(|&t| depth[t.0 as usize])
         .max()
         .unwrap_or(0);
-    1 + deepest
+    let committed_linear = graph
+        .nodes
+        .iter()
+        .filter(|n| n.op.class() != OpClass::Gadget)
+        .filter(|n| {
+            n.outputs.iter().any(|&t| {
+                matches!(
+                    graph.tensors[t.0 as usize].kind,
+                    NodeKind::Committed {
+                        commitment: CommitmentClass::Advice
+                    }
+                )
+            })
+        })
+        .map(|n| {
+            1 + n
+                .inputs
+                .iter()
+                .map(|&t| depth[t.0 as usize])
+                .max()
+                .unwrap_or(0)
+        })
+        .max()
+        .unwrap_or(0);
+    1 + deepest.max(committed_linear)
 }
 
 /// Whether RFC-0010 proves `op` by a sumcheck rather than mapping a claim onto its inputs. A
