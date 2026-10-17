@@ -328,6 +328,15 @@ All notable changes to the prover release train are recorded here: the crates un
   - The compiler's lowering, run on its exact interpreter, gives every sequence's logits bit for bit, as does its token-by-token reference. That differential test catches 6 of 8 bugs planted in the oracle, and the oracle's own checks refuse the other 2.
   - The prover (`tessera-e2e`), the verifier (`tv-codec`) and `tessera-quant` each load every artifact. `spec/vectors/README.md` maps every vector set and who writes it.
 
+- The CPU reference integer engine in `tessera-witness` (RFC-0018 'Witness engine', [#82](https://github.com/AbdelStark/tessera/issues/82)):
+  - `Engine::new(&lowering).run(&model, &tokens)` computes every tensor of `D` on a sequence, by the semantics of RFC-0006's operations, in `i64`. `Engine::for_graph(...).evaluate(inputs)` runs any graph from its inputs' values, and checks that each input is given once, whole and inside its declared range.
+  - Debug builds check every value against its tensor's analyzed range (INV-DM-2). The matrix products split rows among threads with `std::thread::scope`, and each value is one thread's exact sum, so the thread count changes nothing.
+  - The prompt arrives in a `Secret`, which `secret-access.toml` now lets the engine read. Every tensor lives in a `SecretBuf`, and the logits leave as a `LogitsFile`, the secret-class artifact `0x0602`, which `tessera-ir` now defines with a redacted debug form. `unsafe-debug-dump` adds a dump of every tensor.
+  - `tessera-compiler`'s `Lowering` names its checkpoints: the residual after the embedding and after each layer.
+  - On the conformance models, the engine reproduces the oracle's logits and every layer-boundary residual bit for bit. 10^3 adversarial runs, with weights at ±127 and tokens at the vocabulary's ends, stay inside every range. One to eight threads give identical tensors.
+  - The operations no lowering emits yet (`Sub`, `Slice`, `Sum`, `ConstAdd`, `Bitwise`) give RFC-0006's values on a graph built for them. A zero residual row takes its root from ε alone. Each malformed request, model and input is refused with its code.
+  - Each of 23 bugs planted in the engine fails a test, and a no-op control survives.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

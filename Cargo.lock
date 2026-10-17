@@ -700,6 +700,13 @@ dependencies = [
 [[package]]
 name = "tessera-witness"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tessera-codec",
+ "tessera-compiler",
+ "tessera-ir",
+ "tessera-tables",
+]
 
 [[package]]
 name = "toml"

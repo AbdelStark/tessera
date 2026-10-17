@@ -20,6 +20,7 @@
 
 mod claim;
 mod error;
+mod files;
 mod graph;
 mod model;
 mod op;
@@ -27,6 +28,7 @@ mod types;
 
 pub use claim::GadgetPolicy;
 pub use error::IrError;
+pub use files::LogitsFile;
 pub use graph::{Graph, GraphBuilder, Node};
 pub use model::{
     ArchFamily, ArchSpec, CalibrationIdentity, ChannelParams, Digest, IntegerModel, Profile,
