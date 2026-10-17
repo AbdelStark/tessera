@@ -582,6 +582,7 @@ dependencies = [
  "tessera-codec",
  "tessera-compiler",
  "tessera-ir",
+ "tessera-witness",
 ]
 
 [[package]]

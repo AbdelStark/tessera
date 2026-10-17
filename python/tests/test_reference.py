@@ -3,12 +3,17 @@
 
 - **`rq`.** Ties round half up, negative ones too; values saturate; shifts of 1, 2, 7 and 40, and
   one shift per channel, agree with Python's integers.
-- **The conformance models.** On every sequence of `spec/vectors/models/`, the reference gives
-  the oracle's residual at every layer boundary and its logits, bit for bit. The oracle,
-  `generate.py`, computes `D` in Python's integers and shares no code with this package.
-- **The trace.** It holds every site's output, every norm's root and each layer's maxima,
-  exponentials and reciprocals. Each row of exponentials holds its maximum's `2^sigma` and
-  nothing past the diagonal. Two runs are identical, and the trace shows no value.
+- **The conformance models (SC-7).** On every sequence of `spec/vectors/models/`, the trace holds
+  every tensor of the oracle's `traces.json`, bit for bit: every tensor `D` commits, the
+  residual stream before the first layer and the logits. Only the one-hot tokens, the circuit's
+  encoding of the prompt, are not the reference's to compute. The oracle, `generate.py`,
+  computes `D` in Python's integers and shares no code with this package; the CPU engine is
+  held to the same traces (`crates/tessera-e2e/tests/differential.rs`).
+- **Located.** A divergence is reported at its first tensor, in the trace's order, and its index:
+  one seeded at a drawn index of each tensor in turn is found there, and a channel of `V` moved
+  to another class shows up at layer 1's `V`, in that channel.
+- **The trace.** Each row of exponentials holds its maximum's `2^sigma` and nothing past the
+  diagonal. Two runs are identical, and the trace shows no value.
 - **A zero row.** A token whose embedding is zero gives a residual row of zeros, whose root comes
   from the norm's `e` alone (RFC-0022 'Complete norms').
 - **Refusals.** An affine site, a token outside the vocabulary, an empty sequence or one past
@@ -17,7 +22,7 @@
 
 import json
 import math
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -33,29 +38,19 @@ from tessera_quant.integer_model import (
     FinalNormPoint,
     IntegerModel,
     LayerPoint,
-    Profile,
+    QuantPoint,
     Site,
     WeightType,
 )
-from tessera_quant.reference import rq, run_reference, trace
+from tessera_quant.reference import Trace, rq, run_reference, trace
 from tessera_quant.tce import INTEGER_MODEL_LIMITS, unseal
 
 MODELS = Path(__file__).resolve().parents[2] / "spec" / "vectors" / "models"
 INDEX: dict[str, Any] = json.loads((MODELS / "models.json").read_text(encoding="utf-8"))
+TRACES: dict[str, Any] = json.loads((MODELS / "traces.json").read_text(encoding="utf-8"))
 
-SITES = {
-    Profile.Servable: list(Site),
-    Profile.Minimal: [
-        Site.AttnNorm,
-        Site.RopeQ,
-        Site.RopeK,
-        Site.V,
-        Site.AttnResidual,
-        Site.MlpNorm,
-        Site.Silu,
-        Site.MlpResidual,
-    ],
-}
+NOT_COMPUTED = {"one-hot"}
+"""The traced tensors the reference does not compute: the circuit's encoding of the prompt."""
 
 
 def load(entry: dict[str, Any]) -> IntegerModel:
@@ -104,53 +99,124 @@ def test_rq_rounds_half_up_and_saturates() -> None:
     ]
 
 
+def traces(entry: dict[str, Any]) -> list[list[dict[str, Any]]]:
+    """The oracle's trace of each sequence of the model `entry`: its tensors, in order."""
+    (model,) = (m for m in TRACES["models"] if m["name"] == entry["name"])
+    return [sequence["tensors"] for sequence in model["sequences"]]
+
+
+def label(point: QuantPoint) -> str:
+    """A site's name in the traces: "layer 0 RopeQ", or "FinalNorm"."""
+    if isinstance(point, LayerPoint):
+        return f"layer {point.layer} {point.site.name}"
+    assert isinstance(point, FinalNormPoint)
+    return "FinalNorm"
+
+
+def named(found: Trace) -> dict[str, torch.Tensor]:
+    """Each tensor of `found` under its name in the traces.
+
+    The residual stream after each layer is that layer's `MlpResidual` output.
+    """
+    for layer, residual in enumerate(found.residuals[1:]):
+        assert residual is found.sites[LayerPoint(layer, Site.MlpResidual)]
+    tensors = {"embedding": found.residuals[0], "logits": found.logits}
+    tensors |= {label(p): t for p, t in found.sites.items()}
+    tensors |= {f"{label(p)} update": t for p, t in found.updates.items()}
+    tensors |= {f"{label(p)} root": t for p, t in found.roots.items()}
+    for layer in found.maxima:
+        tensors[f"layer {layer} maxima"] = found.maxima[layer]
+        tensors[f"layer {layer} exponentials"] = found.exponentials[layer]
+        tensors[f"layer {layer} reciprocals"] = found.reciprocals[layer]
+    return tensors
+
+
+@dataclass(frozen=True)
+class Divergence:
+    """The first place where the reference's values differ from the oracle's."""
+
+    tensor: str
+    index: tuple[int, ...]
+    oracle: int
+    reference: int
+
+
+def first_divergence(
+    traced: list[dict[str, Any]], found: dict[str, torch.Tensor]
+) -> Divergence | None:
+    """The first divergence of `found` from the trace, tensor by tensor in the trace's order.
+
+    The reference must compute exactly the traced tensors it computes at all, each of its shape.
+    """
+    assert {t["name"] for t in traced} - NOT_COMPUTED == set(found)
+    for t in traced:
+        if t["name"] in NOT_COMPUTED:
+            continue
+        values = found[t["name"]]
+        assert values.dtype == torch.int64
+        assert list(values.shape) == t["shape"], t["name"]
+        expected = np.array(t["values"], dtype=np.int64)
+        flat: npt.NDArray[np.int64] = values.reshape(-1).numpy()
+        differ = expected != flat
+        if bool(differ.any()):
+            # The first difference: argmax takes the first of equal maxima.
+            i = int(differ.argmax())
+            index = tuple(int(k) for k in np.unravel_index(i, t["shape"]))
+            return Divergence(t["name"], index, int(expected[i]), int(flat[i]))
+    return None
+
+
 @pytest.mark.parametrize("entry", INDEX["models"], ids=lambda entry: entry["name"])
-def test_the_conformance_models_give_the_oracles_values(entry: dict[str, Any]) -> None:
+def test_the_reference_computes_every_committed_tensor_of_the_oracle(
+    entry: dict[str, Any],
+) -> None:
     model = load(entry)
-    for sequence in entry["sequences"]:
+    for sequence, traced in zip(entry["sequences"], traces(entry), strict=True):
         found = trace(model, tokens(sequence["tokens"]))
-        assert len(found.residuals) == model.arch.n_layers + 1
-        for layer, (residual, expected) in enumerate(
-            zip(found.residuals, sequence["residuals"], strict=True)
-        ):
-            assert listed(residual) == expected, (entry["name"], layer)
-        assert listed(found.logits) == sequence["logits"], entry["name"]
+        divergence = first_divergence(traced, named(found))
+        assert divergence is None, f"{entry['name']}: {divergence}"
         logits: Any = run_reference(model, tokens(sequence["tokens"])).tolist()
         assert logits == sequence["logits"]
+        assert repr(found) == "Trace()"
 
 
-@pytest.mark.parametrize("entry", INDEX["models"][:2], ids=lambda entry: entry["name"])
-def test_the_trace_holds_every_committed_tensor_and_repeats(entry: dict[str, Any]) -> None:
+def test_a_divergence_seeded_in_any_tensor_is_found_where_it_was_seeded() -> None:
+    rng = np.random.Generator(np.random.PCG64(91))
+    seeded = 0
+    for entry in INDEX["models"]:
+        sequence, traced = entry["sequences"][1], traces(entry)[1]
+        found = named(trace(load(entry), tokens(sequence["tokens"])))
+        for k, t in enumerate(traced):
+            if t["name"] in NOT_COMPUTED:
+                continue
+            i = int(rng.integers(len(t["values"])))
+            values = list(t["values"])
+            values[i] += 1
+            wrong = [*traced[:k], {**t, "values": values}, *traced[k + 1 :]]
+            index = tuple(int(x) for x in np.unravel_index(i, t["shape"]))
+            expected = Divergence(t["name"], index, values[i], t["values"][i])
+            assert first_divergence(wrong, found) == expected, entry["name"]
+            seeded += 1
+    # Every traced tensor but the one-hot tokens.
+    assert seeded == (41 - 1) + (35 - 1) + (73 - 1)
+
+
+def test_a_channel_moved_to_another_class_diverges_at_its_site_and_channel() -> None:
+    entry = INDEX["models"][0]
     model = load(entry)
-    arch, sigma = model.arch, model.quant.public.exp_sigma
-    sequence = tokens(entry["sequences"][0]["tokens"])
-    first, second = trace(model, sequence), trace(model, sequence)
-    n = len(sequence)
-    points = [
-        LayerPoint(layer, site) for layer in range(arch.n_layers) for site in SITES[model.profile]
-    ]
-    assert set(first.sites) == {*points, FinalNormPoint()}
-    norms = {Site.AttnNorm, Site.MlpNorm}
-    assert set(first.roots) == {p for p in points if p.site in norms} | {FinalNormPoint()}
-    layers = set(range(arch.n_layers))
-    assert set(first.maxima) == set(first.exponentials) == set(first.reciprocals) == layers
-    for e in first.exponentials.values():
-        assert e.shape == (arch.n_heads, n, n)
-        # The max certificate: each row's maximum has key 0, so e = Exp[0] = 2^sigma there, and
-        # the causal mask leaves nothing past the diagonal.
-        assert bool((e.amax(dim=2) == 1 << sigma).all())
-        assert not bool(e.triu(diagonal=1).any())
-    tensors = [
-        *zip(first.residuals, second.residuals, strict=True),
-        *((first.sites[p], second.sites[p]) for p in first.sites),
-        *((first.roots[p], second.roots[p]) for p in first.roots),
-        *((first.maxima[k], second.maxima[k]) for k in first.maxima),
-        *((first.exponentials[k], second.exponentials[k]) for k in first.exponentials),
-        *((first.reciprocals[k], second.reciprocals[k]) for k in first.reciprocals),
-        (first.logits, second.logits),
-    ]
-    assert all(a.dtype == torch.int64 and torch.equal(a, b) for a, b in tensors)
-    assert repr(first) == "Trace()"
+    sequence, traced = entry["sequences"][1], traces(entry)[1]
+    params = next(c for c in model.quant.channels if c.ty is WeightType.V and c.layer == 1)
+    classes = int(params.class_.max()) + 1
+    assert classes > 1
+    channel = int(np.random.Generator(np.random.PCG64(92)).integers(len(params.class_)))
+    moved = params.class_.copy()
+    moved[channel] = (moved[channel] + 1) % classes
+    channels = [replace(c, class_=moved) if c is params else c for c in model.quant.channels]
+    other = replace(model, quant=replace(model.quant, channels=channels))
+    divergence = first_divergence(traced, named(trace(other, tokens(sequence["tokens"]))))
+    assert divergence is not None
+    assert (divergence.tensor, divergence.index[1]) == ("layer 1 V", channel), divergence
+    assert divergence.oracle != divergence.reference
 
 
 def test_a_zero_row_takes_its_root_from_epsilon_alone() -> None:

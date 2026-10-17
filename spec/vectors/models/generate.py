@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 """Tiny conformance models of D (07 §5): Llama-3.1-architecture models with random INT8
-weights, their IntegerModel artifacts, token sequences, and what D computes on them, the residual
-stream at every layer boundary and the logits.
+weights, their IntegerModel artifacts, token sequences, and what D computes on them: the residual
+stream at every layer boundary and the logits, and every tensor D commits (the traces).
 
 This script is the independent oracle. It is written from RFC-0005 ('Integer semantics',
 'Profiles'), as RFC-0022 (the saturating residual) and RFC-0023 (the norm's κ) amend it, from
@@ -18,14 +18,14 @@ The models are built so that their values are worth checking:
 - channels take one to four shift classes, the RoPE pairs sharing theirs, as RFC-0005's scale
   policy makes them;
 - a few sites are pushed past their range on purpose, so that the vectors exercise every clamp:
-  an INT8 requantization, the Silu table's, the residual's INT20 (RFC-0022), and an attention
-  layer whose scale sends exponentials to 0.
+  an INT8 requantization, the Silu table's, the residual's saturation and a two-step update's
+  clamp at INT20 and INT16 (RFC-0022), and an attention layer whose scale sends exponentials to 0.
 
 Before writing anything it checks that its encoder writes the two models of ../model/ byte for
 byte, and afterwards that every clamp it was asked for happened.
 
 Usage: python3 spec/vectors/models/generate.py
-(rewrites models.json and the *.d artifacts)
+(rewrites models.json, traces.json and the *.d artifacts)
 """
 
 import importlib.util
@@ -232,13 +232,14 @@ def matvec(weight, x):
     return [sum(map(int.__mul__, data[i * cols:(i + 1) * cols], x)) for i in range(rows)]
 
 
-KINDS = ("requant_clamped", "silu_clamped", "residual_saturated", "exp_zero")
+KINDS = ("requant_clamped", "silu_clamped", "residual_saturated", "update_clamped", "exp_zero")
 
 
 class Events:
     """How often each clamp was reached, and where, so that the vectors are known to exercise it:
     a requantization that clamped, a Silu value at the table's clamp, a residual sum saturated at
-    its width (RFC-0022), an attention weight whose exponential is 0."""
+    its width and a two-step update clamped within ±(2^bits − 1) (RFC-0022), an attention weight
+    whose exponential is 0."""
 
     def __init__(self):
         self.at = {}
@@ -254,12 +255,23 @@ class Events:
         return {kind: self.total(kind) for kind in KINDS}
 
 
+def label(key):
+    """A site's name in the traces: "layer 0 RopeQ", or "FinalNorm"."""
+    return "FinalNorm" if key[0] == "FinalNorm" else f"layer {key[1]} {key[2]}"
+
+
+class Each(list):
+    """A tensor already split by sequence: one (shape, values flat in row-major order) each."""
+
+
 class Run:
     """D's forward pass over several sequences at once (RFC-0005 'Integer semantics').
 
     With `constants` None, the pass chooses each site's constants as it reaches the site, from the
     values every sequence gives there, and records them; otherwise it applies the recorded ones.
     The values of one sequence depend on that sequence alone either way.
+
+    The pass keeps every tensor D commits, in the order it computes them, for the traces.
     """
 
     def __init__(self, model, plan, constants=None):
@@ -268,6 +280,31 @@ class Run:
         self.choosing = constants is None
         self.c = {} if constants is None else constants
         self.events = Events()
+        self.kept = []
+        self.lengths = []
+
+    def keep(self, name, rows):
+        """Keeps the tensor `name`: one row per position of every sequence, each a list of values
+        or one value; or an `Each`."""
+        self.kept.append((name, rows))
+
+    def traces(self):
+        """Each sequence's tensors, in the order the pass computed them: name, shape and values."""
+        out = [[] for _ in self.lengths]
+        for name, rows in self.kept:
+            parts = rows
+            if not isinstance(rows, Each):
+                parts, start = [], 0
+                for n in self.lengths:
+                    part = rows[start:start + n]
+                    start += n
+                    if isinstance(part[0], list):
+                        parts.append(([n, len(part[0])], [x for row in part for x in row]))
+                    else:
+                        parts.append(([n], part))
+            for s, (shape, values) in enumerate(parts):
+                out[s].append({"name": name, "shape": shape, "values": values})
+        return out
 
     # -- sites ----------------------------------------------------------------------------------
 
@@ -289,6 +326,7 @@ class Run:
             y = [rounded(x, shifts[k]) for x, k in zip(row, classes)]
             self.events.add("requant_clamped", key, sum(1 for v in y if v < lo or v > hi))
             out.append([min(max(v, lo), hi) for v in y])
+        self.keep(label(key), out)
         return out
 
     def residual(self, key, res, acc, classes, push=0):
@@ -304,22 +342,31 @@ class Run:
             self.c[key] = [base + k for k in range(n)]
         shifts = self.c[key]
         half = 1 << (self.m["residual_bits"] - 1)
+        if n > 1 or shifts == [63]:
+            # RFC-0022's two steps commit u = rq(acc, r_c, −(2^bits − 1), 2^bits − 1) first.
+            wide = 2 * half - 1
+            updates = [[rounded(x, shifts[k]) for x, k in zip(row, classes)] for row in acc]
+            self.events.add("update_clamped", key, sum(1 for row in updates for u in row if abs(u) > wide))
+            self.keep(label(key) + " update", [[min(max(u, -wide), wide) for u in row] for row in updates])
         out = []
         for row, update in zip(res, acc):
             s = [r + rounded(x, shifts[k]) for r, x, k in zip(row, update, classes)]
             self.events.add("residual_saturated", key, sum(1 for v in s if v < -half or v > half - 1))
             out.append([min(max(v, -half), half - 1) for v in s])
+        self.keep(label(key), out)
         return out
 
     def norm(self, key, res):
         """ρ = max{ρ : ρ²(s + e) ≤ d·2^(2κ)}, y_i = rq(res_i·ρ, r_n, −128, 127)."""
         d, kappa, eps = self.m["d_model"], self.m["kappa"], self.m["rms_eps_int"]
-        products = []
+        roots, products = [], []
         for row in res:
             s = sum(x * x for x in row)
             rho = math.isqrt(((d << (2 * kappa)) // (s + eps)))
             require(rho * rho * (s + eps) <= d << (2 * kappa) < (rho + 1) ** 2 * (s + eps), "ρ's bracket")
+            roots.append(rho)
             products.append([x * rho for x in row])
+        self.keep(label(key) + " root", roots)
         return self.requant(key, products, [0] * d)
 
     def rope(self, values, n_heads, positions):
@@ -355,20 +402,24 @@ class Run:
                     scores = [sum(map(int.__mul__, qt, k[start + i][kv * dh:(kv + 1) * dh]))
                               for i in range(t + 1)]
                     top = max(scores)
-                    seq.append((h, t, [top - x for x in scores]))
+                    seq.append((h, t, top, [top - x for x in scores]))
             spreads.append(seq)
             start += n
         key = ("score_scale", layer)
         if self.choosing:
-            widest = max(max(row) for seq in spreads for _, _, row in seq)
+            widest = max(max(row) for seq in spreads for _, _, _, row in seq)
             reach = self.plan["exp_reach"].get(layer, 8)
             self.c[key] = Fraction(reach, max(widest, 1))
         scale = self.c[key]
         out = []
+        # The max certificates' maxima, the exponentials, 0 past the diagonal, and the
+        # reciprocals of each sequence, head-major: [n_heads, n] and [n_heads, n, n].
+        maxima, exponentials, reciprocals = Each(), Each(), Each()
         start = 0
         for n, seq in zip(lengths, spreads):
             rows = [[0] * (nh * dh) for _ in range(n)]
-            for h, t, row in seq:
+            tops, es, rs = [0] * (nh * n), [0] * (nh * n * n), [0] * (nh * n)
+            for h, t, top, row in seq:
                 kv = h // group
                 e = [tables.exp_value(x, sigma, scale.numerator, scale.denominator) for x in row]
                 self.events.add("exp_zero", ("Layer", layer, "Exp"), e.count(0))
@@ -377,8 +428,16 @@ class Run:
                 r = (1 << (2 * sigma)) // total
                 for j in range(dh):
                     rows[t][h * dh + j] = r * sum(w * v[start + i][kv * dh + j] for i, w in enumerate(e))
+                tops[h * n + t], rs[h * n + t] = top, r
+                es[(h * n + t) * n:(h * n + t) * n + t + 1] = e
             out.extend(rows)
+            maxima.append(([nh, n], tops))
+            exponentials.append(([nh, n, n], es))
+            reciprocals.append(([nh, n], rs))
             start += n
+        self.keep(f"layer {layer} maxima", maxima)
+        self.keep(f"layer {layer} exponentials", exponentials)
+        self.keep(f"layer {layer} reciprocals", reciprocals)
         return out
 
     def silu(self, key, g, classes, in_exp, out_exp, reach):
@@ -400,6 +459,7 @@ class Run:
             a = [tables.silu_value(x >> shifts[k], in_exp, out_exp) for x, k in zip(row, classes)]
             self.events.add("silu_clamped", key, sum(1 for x in a if x in INT8))
             out.append(a)
+        self.keep(label(key), out)
         return out
 
     # -- the model ------------------------------------------------------------------------------
@@ -408,13 +468,17 @@ class Run:
         m, w = self.m, self.m["weights"]
         servable = m["profile"] == "Servable"
         lengths = [len(s) for s in sequences]
+        self.lengths = lengths
         tokens = [t for s in sequences for t in s]
         positions = [p for s in sequences for p in range(len(s))]
-        d = m["d_model"]
+        d, vocab = m["d_model"], m["vocab"]
         s_e = m["embed_exponent"] - m["residual_exponent"]
         embed = w["Embed", 0]
-        # x0 is column `token` of the transposed embedding: res = x0 · 2^s_e.
-        res = [[embed["data"][c * m["vocab"] + t] << s_e for c in range(d)] for t in tokens]
+        # The committed one-hot tokens (RFC-0009 'OneHot'). x0 is column `token` of the transposed
+        # embedding: res = x0 · 2^s_e.
+        self.keep("one-hot", [[int(i == t) for i in range(vocab)] for t in tokens])
+        res = [[embed["data"][c * vocab + t] << s_e for c in range(d)] for t in tokens]
+        self.keep("embedding", res)
         checkpoints = [res]
         classes = m["classes"]
         for layer in range(m["n_layers"]):
@@ -453,6 +517,7 @@ class Run:
             checkpoints.append(res)
         y = self.norm(("FinalNorm",), res)
         logits = [matvec(w["LmHead", 0], x) for x in y]
+        self.keep("logits", logits)
         # Back to one list per sequence.
         def split(rows):
             parts, start = [], 0
@@ -484,7 +549,8 @@ MODELS = [
                   "d_ff": 192, "vocab": 512, "max_context": 64},
         "classes": {"Q": 3, "K": 2, "V": 4, "O": 4, "Gate": 2, "Up": 3, "Down": 4},
         "lengths": [6, 9],
-        "plan": {"push": {1: {"RopeQ": 1, "Product": 1}}, "silu_reach": {1: 12}, "exp_reach": {}},
+        "plan": {"push": {1: {"RopeQ": 1, "Product": 1}}, "silu_reach": {1: 12}, "exp_reach": {},
+                 "update_clamp": {}},
     },
     {
         "name": "tiny-2-minimal", "seed": 0x7E55_E7A0_0083_0003, "profile": "Minimal",
@@ -492,7 +558,8 @@ MODELS = [
                   "d_ff": 192, "vocab": 512, "max_context": 64},
         "classes": {"Q": 2, "K": 3, "V": 1, "O": 3, "Gate": 4, "Up": 1, "Down": 4},
         "lengths": [7, 4],
-        "plan": {"push": {1: {"MlpResidual": 7}}, "silu_reach": {}, "exp_reach": {0: 24}},
+        "plan": {"push": {1: {"MlpResidual": 8}}, "silu_reach": {}, "exp_reach": {0: 24},
+                 "update_clamp": {1: ["MlpResidual"]}},
     },
     {
         "name": "tiny-4-servable", "seed": 0x7E55_E7A0_0083_0004, "profile": "Servable",
@@ -501,8 +568,8 @@ MODELS = [
         "classes": {"Q": 4, "K": 4, "V": 2, "O": 1, "Gate": 3, "Up": 4, "Down": 2},
         "lengths": [5, 8],
         "residual_bits": 16,
-        "plan": {"push": {2: {"V": 1}, 3: {"AttnResidual": 3}}, "silu_reach": {2: 12},
-                 "exp_reach": {1: 24}},
+        "plan": {"push": {2: {"V": 1, "Product": 5, "MlpResidual": 4}, 3: {"AttnResidual": 3}},
+                 "silu_reach": {2: 12}, "exp_reach": {1: 24}, "update_clamp": {2: ["MlpResidual"]}},
     },
 ]
 
@@ -711,11 +778,28 @@ def planned(spec, events):
     for layer in plan["exp_reach"]:
         require(events.at.get(("exp_zero", ("Layer", layer, "Exp")), 0) > 0,
                 f"{spec['name']}: layer {layer}'s exponentials do not reach 0")
+    for layer, sites in plan["update_clamp"].items():
+        for site in sites:
+            require(events.at.get(("update_clamped", ("Layer", layer, site)), 0) > 0,
+                    f"{spec['name']}: layer {layer}'s {site} update does not clamp")
+
+
+def traced(spec, model, checkpoints, logits, traces):
+    """Each sequence's traces name each tensor once, and hold its residual stream and logits."""
+    boundaries = ["embedding"] + [f"layer {l} MlpResidual" for l in range(model["n_layers"])]
+    for s, tensors in enumerate(traces):
+        named = {t["name"]: t["values"] for t in tensors}
+        require(len(named) == len(tensors), f"{spec['name']}: a tensor is traced once")
+        for k, name in enumerate(boundaries):
+            require(named[name] == [x for row in checkpoints[k][s] for x in row],
+                    f"{spec['name']}: {name} is the residual stream")
+        require(named["logits"] == [x for row in logits[s] for x in row], f"{spec['name']}: logits")
 
 
 def main():
     check_encoder()
     entries = []
+    traces = []
     total = Events()
     for spec in MODELS:
         model, sequences = build(spec)
@@ -724,6 +808,10 @@ def main():
         # The constants chosen, applied afresh, give the same values: D is a function of them.
         replay = Run(model, spec["plan"], chooser.c)
         require(replay.forward(sequences) == (checkpoints, logits), f"{spec['name']} replays")
+        require(replay.traces() == chooser.traces(), f"{spec['name']}'s traces replay")
+        traced(spec, model, checkpoints, logits, replay.traces())
+        traces.append({"name": spec["name"],
+                       "sequences": [{"tensors": tensors} for tensors in replay.traces()]})
         events = replay.events
         planned(spec, events)
         for (kind, key), n in events.at.items():
@@ -759,6 +847,14 @@ def main():
         "models": entries,
     }
     (HERE / "models.json").write_text(compact(document) + "\n", encoding="utf-8")
+    document = {
+        "description": "Every tensor D commits on each sequence of models.json, with the residual "
+        "stream before the first layer and the logits, in the order the forward pass computes them: "
+        "each a name, a shape, and its values flat in row-major order. The CPU engine and the "
+        "PyTorch reference are checked against them (SC-7). Written by generate.py; see README.md.",
+        "models": traces,
+    }
+    (HERE / "traces.json").write_text(compact(document) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
