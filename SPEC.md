@@ -69,6 +69,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0026](docs/rfcs/RFC-0026-claim-list-layout.md) | The claim list's commitment layout, scoring and anchor (amends RFC-0007, RFC-0012) | v0.2 |
 | [RFC-0027](docs/rfcs/RFC-0027-logits-exponent.md) | The scale of `D`'s logits (amends RFC-0007, RFC-0026) | v0.2 |
 | [RFC-0028](docs/rfcs/RFC-0028-balanced-split.md) | A balanced split point for `RequantSplit` (amends RFC-0006, RFC-0009) | v0.2 |
+| [RFC-0029](docs/rfcs/RFC-0029-table-set.md) | The claim list is the table set: `TableSetManifest` retired (amends RFC-0006) | v0.2 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 

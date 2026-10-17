@@ -139,7 +139,7 @@ struct CompileArgs {
     model: PathBuf,
     #[arg(long, value_name = "PARAMSET", value_parser = PARAM_SETS)]
     params: String,
-    /// Where claims.tcl, plan.tep, tables/ and commitment-report.json go.
+    /// Where claims.tcl, plan.tep and commitment-report.json go.
     #[arg(long, value_name = "DIR")]
     out_dir: PathBuf,
 }

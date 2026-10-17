@@ -39,7 +39,7 @@ tessera-quant reference --model MODEL.d --tokens TOKENS.ttk --out LOGITS.tlg
 
 ```text
 tessera compile         --model MODEL.d --params PARAMSET --out-dir DIR
-                        # writes claims.tcl, plan.tep, tables/, commitment-report.json
+                        # writes claims.tcl, plan.tep, commitment-report.json
 tessera commit-weights  --model MODEL.d --plan plan.tep --out WEIGHTS.twc
 tessera weights refresh --weights WEIGHTS.twc --out WEIGHTS2.twc        # emits linking proof
 tessera prove           --plan plan.tep --model MODEL.d --weights WEIGHTS.twc --sample SAMPLE.tas

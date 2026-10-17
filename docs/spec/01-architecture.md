@@ -12,7 +12,7 @@ Tessera has four lanes (source §7). The diagram and the prose below say the sam
 flowchart TB
     subgraph OFF["Offline, once per model"]
         Q["tessera-quant (Python)<br/>checkpoint to integer model D"]
-        C["tessera compile<br/>D to claim list + plan + tables"]
+        C["tessera compile<br/>D to claim list + plan"]
         W["tessera commit-weights<br/>persistent weight commitment R_W"]
         Q --> C --> W
     end
@@ -37,13 +37,13 @@ flowchart TB
         V1 --> V2 --> V3 --> V4
     end
     PROD -->|sampled transcripts| AUD
-    OFF -->|R_W, plan, tables| AUD
+    OFF -->|R_W, plan| AUD
     OFF -.->|public claim list| VER
     VER -->|seed share, column queries| AUD
     AUD -->|commitments, round messages, openings| VER
 ```
 
-**Offline.** The Python front-end turns a Llama-3.1 checkpoint into the integer model `D`. The Rust compiler turns `D` into a public claim list, a prover-private execution plan and the table set. The prover commits the weights once into a persistent commitment with root `R_W`.
+**Offline.** The Python front-end turns a Llama-3.1 checkpoint into the integer model `D`. The Rust compiler turns `D` into a public claim list, which defines every table, and a prover-private execution plan. The prover commits the weights once into a persistent commitment with root `R_W`.
 
 **Production.** The serving engine answers requests. Every transcript passes the recorder, which digests the encrypted stream and appends to a log. At the end of each period the log is frozen and signed before any sample is drawn.
 
@@ -99,7 +99,7 @@ Rules, each enforced by a CI check ([RFC-0001](../rfcs/RFC-0001-workspace-and-ve
 | Step | Actor | Input | Output artifact (schema, [03](03-data-model.md)) | Visibility |
 |---|---|---|---|---|
 | 1. Quantize | `tessera-quant compile` | Checkpoint, calibration set | `IntegerModel` (`D`), `CalibrationReport` | Secret (weights) |
-| 2. Compile | `tessera compile` | `IntegerModel` | `ClaimList`, `ExecutionPlan`, `TableSet`, `CommitmentReport` | Public, private, public, public |
+| 2. Compile | `tessera compile` | `IntegerModel` | `ClaimList`, `ExecutionPlan`, `CommitmentReport` | Public, private, public |
 | 3. Commit weights | `tessera commit-weights` | `IntegerModel` | `WeightCommitment` (public root `R_W` + private state) | Mixed |
 | 4. Serve and record | Engine + recorder | Requests | `DigestLogEntry` stream | Public digests |
 | 5. Freeze | Recorder | Entries of one period | `LogManifest` (signed) | Public |

@@ -532,6 +532,13 @@ All notable changes to the prover release train are recorded here: the crates un
 - `tessera_quant.RopeSpec` takes the integer fields of 03 §2, in place of fractions: `theta`, `factor`, `low_freq_factor`, `high_freq_factor`, `original_max` and `bits`. `ArchSpec.family` is the enum `ArchFamily`. `read_config` refuses, with `ERR-QUANT-ARCH`, a RoPE parameter that is not an integer of its field's width, and a size of 2^32 or more ([#74](https://github.com/AbdelStark/tessera/issues/74)).
 - The minimum supported Rust version is 1.88, up from 1.85 (09 §2): the field needs `core::hint::select_unpredictable`. The `msrv` CI job, renamed from `msrv (1.85)`, checks both workspaces with 1.88.0 ([#242](https://github.com/AbdelStark/tessera/issues/242)).
 
+### Removed
+
+- The `TableSetManifest` artifact (schema `0x0203`, `.tts`), which three documents named and none defined (RFC-0029, accepted, [#316](https://github.com/AbdelStark/tessera/issues/316)):
+  - **The claim list is the table set.** Its `tables` carry every table's kind, parameters, `log2_rows` and digest. Every party builds each table from its specification and checks the digest. A manifest would have restated them, bound by no statement digest. Materialized rows would take 33 to 57 GiB at 405B, for values that are closed forms or gathers from a core.
+  - **What changes.** `tessera compile` writes `claims.tcl`, `plan.tep` and `commitment-report.json`, and `CompileOutput` has no `tables`. `0x0203` and `.tts` leave the catalog and `tessera-codec`'s registry, and stay unassigned. 01, 02 §2.2, 03 §5 and RFC-0006 'Outputs' are amended.
+  - **The cost.** A prover rebuilds 405B's tables from their specifications in 2.7 s on one core. RoPE's independent pairs take 2.6 s of it. The verifier's claim-list validation already does the same work.
+
 ### Security
 
 - The field's arithmetic is now branch-free in the code x86_64 runs, not only in its source (INV-ARCH-2, [#242](https://github.com/AbdelStark/tessera/issues/242)):
