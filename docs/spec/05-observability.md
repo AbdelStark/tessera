@@ -25,7 +25,7 @@
 | PUBLIC | Shapes, ids, digests, roots, `Û`, parameter-set names, counts, timings, device models | Allowed | Allowed | Allowed |
 | PROTOCOL | Sumcheck round messages, openings, column data, combined rows after blinding | Never logged; sizes only | Sizes only | Protocol artifacts only |
 | PRIVATE | Execution plan, budget cursor detail, prover configuration | `debug` level only | Identifiers only | Private artifacts |
-| SECRET | Weights, activations, prompt and output tokens, logits, lookup multiplicities, sampler and transcript keys, masking randomness, per-proof secret seeds, blinding rows | Never | Never | Secret artifacts only, never in reports |
+| SECRET | Weights, activations, prompt and output tokens, logits, lookup multiplicities, sampler and transcript keys, masking randomness, per-proof secret seeds, blinding rows; and what the proving engines derive from them that no message carries: bound tables, partial products, contractions, tree levels | Never | Never | Secret artifacts only, never in reports |
 
 Enforcement by type:
 
@@ -36,12 +36,17 @@ pub struct Secret<T: Zeroize>(T);
 
 /// Marker for values cleared for telemetry. Only Public<T> fields may appear in tracing events and PublicContext.
 pub struct Public<T>(pub T);
+
+/// Values derived from secret-class data, in a vector that clears every allocation it releases (OBS-6).
+/// No Debug, Display, Clone or TCE Encode; lends its values, as a slice, to the code that holds it.
+pub struct SecretBuf<T: Copy + Zeroize>(Vec<T>);
 ```
 
-- **OBS-1.** Tracing events and `PublicContext` accept only `Public<T>` and primitive identifier types. A `clippy.toml` disallowed-methods rule forbids `expose_secret` outside the witness engine, gadget witness generation, commitment encoding and key handling modules. Those modules opt in with `#[allow(clippy::disallowed_methods)]`. `cargo xtask lint` accepts that allowance, and any use of `expose_secret` by name under any `cfg`, only in the files `secret-access.toml` lists, each with a reason. It also rejects lint and clippy configuration that would switch the rule off, and code pulled in other than through `mod` (`include!`, `#[path]`), which its scan could not see.
+- **OBS-1.** Tracing events and `PublicContext` accept only `Public<T>` and primitive identifier types. A `clippy.toml` disallowed-methods rule forbids `expose_secret` outside the witness engine, gadget witness generation, commitment encoding and key handling modules, and outside the proving engines' entry points that take secret-class tables by reference to their `Secret` (`Table::secret_base`, `Forest::secret`, `MatMulWeight::secret`, …). Those modules opt in with `#[allow(clippy::disallowed_methods)]`. `secret-access.toml` lists, each with a reason, the files that compute on secret-class values: the readers, which take values out of `Secret<T>`, and the borrowers (`borrows = true`), engine code that computes on tables a reader lends it by reference for the length of a call, such as the sumcheck kernel and `tessera-poly`'s evaluation. A listed file hands no secret-class value, or reference to one, to code outside the list, beyond arithmetic on single values. `cargo xtask lint` accepts the allowance, and any use of `expose_secret` by name under any `cfg`, only in a reader; it rejects a reader that names no accessor, and a borrower that names one, switches the rule off or is not a prover source. It also rejects lint and clippy configuration that would switch the rule off, and code pulled in other than through `mod` (`include!`, `#[path]`), which its scan could not see.
 - **OBS-2.** Key material (`Secret<[u8; 16]>` AES keys, sampler keys, per-proof seeds) is zeroized on drop.
 - **OBS-3. Canary scan.** The end-to-end CI job builds a tiny model whose weights and prompts contain canary patterns (distinctive 64-bit values and token ids). After proving and verifying, CI scans every log line, JSON report, protocol artifact and error message for each canary in decimal, hex and little-endian byte forms. Any match outside secret-class artifacts fails the build.
 - **OBS-4.** Debug dumps of secret tensors exist only behind the `unsafe-debug-dump` cargo feature, which release builds reject at compile time (`compile_error!` under `cfg(all(feature = "unsafe-debug-dump", not(debug_assertions)))`).
+- **OBS-6.** A value derived from secret-class data is secret-class until a protocol message carries it. A proving engine holds the tables it derives, such as bound tables, products of table entries, contractions and tree levels, in `SecretBuf`s, allocated at their size where it is known. A `SecretBuf` overwrites its whole allocation, spare capacity included, with zeros that an optimization barrier keeps the compiler from removing, when it drops, and the allocation it leaves when it grows; a `Secret<Vec<_>>` clears its vector's whole capacity, with volatile writes, when it drops. A derived value outside a buffer, such as a small array of sums, is cleared where it is held. Clearing cannot reach registers, stack copies, or a copy taken out of the buffer (`to_vec`); a reviewer treats such a copy as a leak.
 
 ## 4. Metrics
 

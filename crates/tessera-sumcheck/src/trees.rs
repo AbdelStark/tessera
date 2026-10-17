@@ -6,6 +6,7 @@
 use core::alloc::Layout;
 use core::fmt;
 
+use tessera_codec::{Secret, Zeroize};
 use tessera_field::Field;
 use tessera_poly::PolyField;
 
@@ -30,6 +31,17 @@ pub enum LeafNumerators<'a, B> {
     Unit,
     /// One numerator per leaf in the prime subfield, as a LogUp table tree's `−m_j`.
     Base(&'a [B]),
+}
+
+impl<'a, B: Zeroize> LeafNumerators<'a, B> {
+    /// Secret-class numerators in their [`Secret`], as a LogUp table tree's `−m_j`, which count
+    /// how often each row is looked up: [`LeafNumerators::Base`] on the values, which the tree
+    /// reads to build its levels, and its levels clear themselves when they drop (05 §3 OBS-1,
+    /// OBS-6).
+    #[allow(clippy::disallowed_methods)]
+    pub fn secret(values: &'a Secret<Vec<B>>) -> Self {
+        Self::Base(values.expose_secret())
+    }
 }
 
 /// Shows the kind and the length, never a numerator (05 §3).
@@ -115,31 +127,27 @@ fn combine<F: PolyField, N: Numerator<F>>(
     denominators: &Halves<F>,
 ) -> FractionLevel<F> {
     let half = denominators.even.len() / 2;
-    let mut numerators = Halves {
-        even: Vec::with_capacity(half),
-        odd: Vec::with_capacity(half),
-    };
-    let mut products = Halves {
-        even: Vec::with_capacity(half),
-        odd: Vec::with_capacity(half),
-    };
+    let mut numerators = Halves::zeroed(half);
+    let mut products = Halves::zeroed(half);
     let mut n_even = n_even;
     let mut n_odd = n_odd;
-    for (de, d_o) in denominators
+    let outputs = (numerators.even.iter_mut().zip(numerators.odd.iter_mut()))
+        .zip(products.even.iter_mut().zip(products.odd.iter_mut()));
+    let inputs = denominators
         .even
         .chunks_exact(2)
-        .zip(denominators.odd.chunks_exact(2))
-    {
+        .zip(denominators.odd.chunks_exact(2));
+    for (((n0, n1), (p0, p1)), (de, d_o)) in outputs.zip(inputs) {
         // Entries 2y and 2y + 1 of the level: left children de, right children d_o.
         let (Some(l0), Some(r0), Some(l1), Some(r1)) =
             (n_even.next(), n_odd.next(), n_even.next(), n_odd.next())
         else {
             break;
         };
-        numerators.even.push(N::cross(l0, de[0], r0, d_o[0]));
-        products.even.push(de[0] * d_o[0]);
-        numerators.odd.push(N::cross(l1, de[1], r1, d_o[1]));
-        products.odd.push(de[1] * d_o[1]);
+        *n0 = N::cross(l0, de[0], r0, d_o[0]);
+        *p0 = de[0] * d_o[0];
+        *n1 = N::cross(l1, de[1], r1, d_o[1]);
+        *p1 = de[1] * d_o[1];
     }
     FractionLevel {
         numerators: Numerators::Ext(numerators),
@@ -261,12 +269,11 @@ impl<F: PolyField> FractionTree<F> {
                 levels: Vec::new(),
             });
         }
-        let half = leaves / 2;
-        let mut even = Vec::with_capacity(half);
-        let mut odd = Vec::with_capacity(half);
-        for x in 0..half {
-            even.push(denominators(2 * x));
-            odd.push(denominators(2 * x + 1));
+        let mut halves = Halves::zeroed(leaves / 2);
+        let outputs = halves.even.iter_mut().zip(halves.odd.iter_mut());
+        for (x, (even, odd)) in outputs.enumerate() {
+            *even = denominators(2 * x);
+            *odd = denominators(2 * x + 1);
         }
         let leaf_numerators = match numerators {
             LeafNumerators::Unit => Numerators::Unit,
@@ -276,7 +283,7 @@ impl<F: PolyField> FractionTree<F> {
         levels.resize_with(height + 1, FractionLevel::empty);
         levels[height] = FractionLevel {
             numerators: leaf_numerators,
-            denominators: Halves { even, odd },
+            denominators: halves,
         };
         for t in (1..height).rev() {
             levels[t] = level_above_fractions(&levels[t + 1]);

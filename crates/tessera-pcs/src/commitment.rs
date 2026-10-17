@@ -49,8 +49,7 @@
 //! shape, and it has no `Display` and no `Clone`. Control flow depends on lengths, the public
 //! layout and public indices, never on a row, a mask or a symbol (INV-ARCH-2). Like the
 //! encoder's buffers, the commitment holds its secrets in plain `Vec`s and does not clear them
-//! when it drops. The field types do not implement `Zeroize` yet, and #229 decides how
-//! engines hold and clear secret tables.
+//! when it drops, until #264 moves them into `SecretBuf`s (05 §3 OBS-6).
 
 use core::fmt;
 use core::num::NonZeroUsize;

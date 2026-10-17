@@ -28,7 +28,7 @@ mod secret;
 mod tce;
 mod types;
 
-pub use secret::{Public, Secret};
+pub use secret::{Public, Secret, SecretBuf};
 pub use tce::{
     DEPTH_CEILING, Decode, DecodeError, DecodeLimits, Encode, Reader, Sink, decode, encode,
 };

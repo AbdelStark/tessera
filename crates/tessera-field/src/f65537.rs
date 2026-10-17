@@ -9,6 +9,8 @@
 use core::fmt;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
+use tessera_codec::Zeroize;
+
 use crate::{Field, PrimeField};
 
 const P: u64 = 65_537;
@@ -17,6 +19,14 @@ const P: u64 = 65_537;
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct F65537(u64);
+
+/// Clears the element to zero with a volatile write, which the compiler keeps (05 §3 OBS-2,
+/// OBS-6).
+impl Zeroize for F65537 {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
 
 impl F65537 {
     /// A generator of the multiplicative group (`3`).

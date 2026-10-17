@@ -8,6 +8,7 @@ use std::fs;
 use std::path::Path;
 
 use serde_json::Value;
+use tessera_codec::SecretBuf;
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_poly::{
     RoundPoly, bind_lowest, bind_lowest_in_place, causal_selector, eq, eq_table, evaluate,
@@ -86,7 +87,8 @@ fn table_evaluations_and_bindings_match_the_oracle() {
                 assert_eq!(table.len(), 1 << n);
                 assert_eq!(evaluate_base(&table, &point), Ok(value), "Fp, 2^{n}");
                 if let Some(bound) = bound {
-                    assert_eq!(bind_lowest(&table, point[0]), Ok(bound), "Fp, 2^{n}");
+                    let found = bind_lowest(&table, point[0]).map(|bound| bound.to_vec());
+                    assert_eq!(found, Ok(bound), "Fp, 2^{n}");
                 }
                 fp_sizes.push(n);
             }
@@ -95,9 +97,9 @@ fn table_evaluations_and_bindings_match_the_oracle() {
                 assert_eq!(table.len(), 1 << n);
                 assert_eq!(evaluate(&table, &point), Ok(value), "Fp2, 2^{n}");
                 if let Some(bound) = bound {
-                    let mut in_place = table.clone();
+                    let mut in_place: SecretBuf<Fp2> = table.iter().copied().collect();
                     bind_lowest_in_place(&mut in_place, point[0]).expect("a variable");
-                    assert_eq!(in_place, bound, "Fp2, 2^{n}");
+                    assert_eq!(in_place[..], bound[..], "Fp2, 2^{n}");
                 }
                 fp2_sizes.push(n);
             }

@@ -121,8 +121,8 @@
 //! indices only ([`PcsError`]). The `Debug` forms of the plan, the encoder and the commitment
 //! show their sizes, and those of combined rows and answers their lengths. Control flow depends
 //! on lengths, the public layout and public indices, never on values (INV-ARCH-2). Buffers of
-//! secret values are plain vectors, freed without being cleared: how secret tables reach the
-//! engines and are cleared is #229's to decide.
+//! secret values are plain vectors, freed without being cleared, until #264 moves them into
+//! `SecretBuf`s (05 §3 OBS-6).
 //!
 //! # Features
 //!

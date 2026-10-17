@@ -16,6 +16,8 @@
 use core::fmt;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
+use tessera_codec::Zeroize;
+
 use crate::{Field, PrimeField};
 
 /// `P = 2^64 − 2^32 + 1`.
@@ -180,6 +182,14 @@ const ROOTS: [u64; 33] = {
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Goldilocks(u64);
+
+/// Clears the element to zero with a volatile write, which the compiler keeps (05 §3 OBS-2,
+/// OBS-6).
+impl Zeroize for Goldilocks {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
 
 impl Goldilocks {
     /// The modulus `P`.

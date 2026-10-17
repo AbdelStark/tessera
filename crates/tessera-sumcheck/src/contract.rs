@@ -38,10 +38,13 @@
 //!   pass over the output per column, 1.0 to 6.5 ns.
 //!
 //! Control flow depends on lengths only, never on a value (INV-ARCH-2). Operands and their
-//! contractions are secret-class values (05 §3) that nothing here shows.
+//! contractions are secret-class values (05 §3) that nothing here shows: a contraction is a
+//! [`SecretBuf`], allocated once at its size and cleared when it drops (OBS-6). The `eq` tables
+//! are public, from challenges.
 
 use core::alloc::Layout;
 
+use tessera_codec::SecretBuf;
 use tessera_field::Field;
 use tessera_poly::{PolyField, eq_table};
 
@@ -90,9 +93,9 @@ pub(crate) fn contract_middle<F: PolyField>(
     table: &[F::Base],
     weights: &[F],
     inner: usize,
-) -> Vec<F> {
+) -> SecretBuf<F> {
     let layer = weights.len() * inner;
-    let mut out = Vec::with_capacity(table.len() / weights.len());
+    let mut out = SecretBuf::with_capacity(table.len() / weights.len());
     if inner < GROUP {
         for layer in table.chunks_exact(layer) {
             narrow_columns(layer, weights, inner, &mut out);
@@ -136,7 +139,12 @@ fn add_panel<F: PolyField>(panel: &[F::Base], weights: &[F], inner: usize, sums:
 
 /// Appends the `inner < GROUP` column sums of one layer of `weights.len()` rows: `GROUP` sums
 /// run over the layer `GROUP` entries at a time, sum `k` taking column `k mod inner`.
-fn narrow_columns<F: PolyField>(layer: &[F::Base], weights: &[F], inner: usize, out: &mut Vec<F>) {
+fn narrow_columns<F: PolyField>(
+    layer: &[F::Base],
+    weights: &[F],
+    inner: usize,
+    out: &mut SecretBuf<F>,
+) {
     let mut sums = [F::ZERO; GROUP];
     let mut chunks = layer.chunks_exact(GROUP);
     for (chunk, rows) in (&mut chunks).zip(weights.chunks_exact(GROUP / inner)) {
@@ -166,9 +174,9 @@ fn narrow_columns<F: PolyField>(layer: &[F::Base], weights: &[F], inner: usize, 
 /// `out[k] = Σ_c weights[c]·table[k·C + c]` for every `k` below `table.len() / C`.
 ///
 /// `C` is a power of two that divides `table.len()`, as the shapes of the caller ensure.
-pub(crate) fn contract_low<F: PolyField>(table: &[F::Base], weights: &[F]) -> Vec<F> {
+pub(crate) fn contract_low<F: PolyField>(table: &[F::Base], weights: &[F]) -> SecretBuf<F> {
     let width = weights.len();
-    let mut out = Vec::with_capacity(table.len() / width);
+    let mut out = SecretBuf::with_capacity(table.len() / width);
     let mut groups = table.chunks_exact(GROUP * width);
     for group in &mut groups {
         let (r01, r23) = group.split_at(2 * width);
@@ -239,7 +247,7 @@ mod tests {
                         .collect();
                     let shape = format!("2^{outer} x 2^{mid} x 2^{inner}");
                     assert!(
-                        contract_middle(&table, &weights, i) == expected,
+                        contract_middle(&table, &weights, i)[..] == expected[..],
                         "middle, {shape}"
                     );
                     // The same table as 2^(outer + mid) rows of 2^inner entries.
@@ -252,7 +260,10 @@ mod tests {
                                 .fold(Fp2::ZERO, |sum, (&t, &e)| sum + e * Fp2::from(t))
                         })
                         .collect();
-                    assert!(contract_low(&table, &weights) == expected, "low, {shape}");
+                    assert!(
+                        contract_low(&table, &weights)[..] == expected[..],
+                        "low, {shape}"
+                    );
                 }
             }
         }

@@ -8,12 +8,17 @@ use core::fmt;
 use core::hash::Hash;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
+use tessera_codec::Zeroize;
+
 /// A finite field.
 ///
 /// `Debug` is required in addition to the RFC's list so that generic code and tests can report
 /// values; a secret value is wrapped in `Secret` before it reaches anything that prints.
+/// [`Zeroize`] is required so that secret-class values, and what the engines derive from them,
+/// can be cleared (05 §3 OBS-2, OBS-6): every element clears to zero.
 pub trait Field:
     Copy
+    + Zeroize
     + Eq
     + Hash
     + fmt::Debug

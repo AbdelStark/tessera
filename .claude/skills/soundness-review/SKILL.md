@@ -42,9 +42,9 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 - Each mask row, blinding row and masking polynomial is used in exactly one revealed combination; masking randomness comes from the per-proof seed, never from the transcript.
 
 ## Secrets (05 §3, 06 §7)
-- Every secret-class value of the 05 §3 table lives in `Secret<T>` from the moment it is read or derived, and none reaches `Debug`, `Display`, an error, a metric, a log or a report.
-- `expose_secret` appears only in files that `secret-access.toml` lists with a reason. A listed file hands neither the value nor a reference to it to code outside the list: no function returns it, and no trait impl or exported macro exposes it.
-- A secret that moves or grows lives on the heap (`Secret<Box<_>>`, `Secret<Vec<_>>` sized up front), so zeroization reaches its only copy (OBS-2).
+- Every secret-class value of the 05 §3 table lives in `Secret<T>` from the moment it is read, and every table derived from one in a `SecretBuf` until a message carries it (OBS-6); none reaches `Debug`, `Display`, an error, a metric, a log or a report.
+- `expose_secret` appears only in the readers `secret-access.toml` lists with a reason; a borrower (`borrows = true`) computes on tables a reader lends it and names no accessor. A listed file hands neither the value nor a reference to it to code outside the list: no function returns it, and no trait impl or exported macro exposes it. An engine takes a secret table by reference to its `Secret` (`Table::secret_base`), never as a slice its caller exposed.
+- A secret that moves or grows lives on the heap (`Secret<Box<_>>`, `Secret<Vec<_>>` sized up front), so zeroization reaches its only copy (OBS-2). A buffer of derived values is a `SecretBuf`, which also clears the allocation it leaves when it grows; a plain `Vec` of them, a copy taken out (`to_vec`), or a derived array kept in a struct and never cleared is a finding.
 - Randomness comes from `getrandom`; only the `test-rng` feature pins it, in test builds.
 
 ## Verifier robustness (RFC-0019)

@@ -11,6 +11,7 @@
 
 use core::fmt;
 
+use tessera_codec::{Secret, SecretBuf};
 use tessera_poly::PolyField;
 
 use crate::contract::{contract_low, contract_middle, eq_high, eq_weights};
@@ -165,7 +166,7 @@ fn degree(stack_vars: usize) -> usize {
 /// `F`.
 enum Factor<'a, F: PolyField> {
     AsIs(&'a [F::Base]),
-    Contracted(Vec<F>),
+    Contracted(SecretBuf<F>),
 }
 
 impl<F: PolyField> Factor<'_, F> {
@@ -347,6 +348,22 @@ impl<'a, F: PolyField> MatMulWeight<'a, F> {
         check_operand(Operand::W, w.len(), &[layer_vars, out_vars, in_vars])?;
         check_operand(Operand::X, x.len(), &[layer_vars, token_vars, in_vars])?;
         Ok(Self { w, x, shape })
+    }
+
+    /// [`new`](Self::new) on secret-class operands, each in its [`Secret`]: the relation reads
+    /// them to contract them, and its contractions clear themselves when they drop (05 §3 OBS-1,
+    /// OBS-6).
+    ///
+    /// # Errors
+    ///
+    /// As [`new`](Self::new).
+    #[allow(clippy::disallowed_methods)]
+    pub fn secret(
+        w: &'a Secret<Vec<F::Base>>,
+        x: &'a Secret<Vec<F::Base>>,
+        shape: MatMulWeightShape,
+    ) -> Result<Self, SumcheckError> {
+        Self::new(w.expose_secret(), x.expose_secret(), shape)
     }
 
     /// The shape.
@@ -554,6 +571,22 @@ impl<'a, F: PolyField> MatMulAct<'a, F> {
             layout,
             shape,
         })
+    }
+
+    /// [`new`](Self::new) on secret-class operands, each in its [`Secret`], as
+    /// [`MatMulWeight::secret`].
+    ///
+    /// # Errors
+    ///
+    /// As [`new`](Self::new).
+    #[allow(clippy::disallowed_methods)]
+    pub fn secret(
+        a: &'a Secret<Vec<F::Base>>,
+        b: &'a Secret<Vec<F::Base>>,
+        layout: RightLayout,
+        shape: MatMulActShape,
+    ) -> Result<Self, SumcheckError> {
+        Self::new(a.expose_secret(), b.expose_secret(), layout, shape)
     }
 
     /// The shape.
