@@ -25,6 +25,8 @@ pub enum RejectReason {
     Malformed { artifact: ArtifactKind, code: ErrorCode },          // REJ-MALFORMED
     StatementMismatch { field: StatementField },                    // REJ-STATEMENT
     Sumcheck { stage: StageId, round: u32 },                        // REJ-SUMCHECK
+    TreeLevel { level: u32, round: u32 },                           // REJ-TREE
+    LogUpIdentity { round: u32 },                                   // REJ-LOGUP-IDENTITY (tessera-protocol/2)
     Lookup { table: TableId },                                      // REJ-LOOKUP
     Gadget { gadget: GadgetId },                                    // REJ-GADGET
     MerklePath { commitment: CommitmentClass, column: u32 },        // REJ-PCS-MERKLE
@@ -37,6 +39,8 @@ pub enum RejectReason {
     Params { name: ParamSetName },                                  // REJ-PARAMS
 }
 ```
+
+`Sumcheck` names a reduction stage by its `stage/{k}/…` index, and `TreeLevel` a level of the leaf stage by its `tree/{ℓ}/…` index ([RFC-0033](../rfcs/RFC-0033-tree-level-rejections.md)). `LogUpIdentity` is `tessera-protocol/2`'s identity sumcheck, which combines every LogUp instance and so names no table. Their `round` counts from 0 as the labels do, with `n_max` for the final evaluations and check ([RFC-0010](../rfcs/RFC-0010-proof-schedule.md#sumcheck-messages)). Every rejection exits 10 ([02 §2.4](02-public-api.md#24-exit-codes)).
 
 The verifier stops at the first failed check and reports it. Check order is fixed ([RFC-0019](../rfcs/RFC-0019-verifier.md#check-order)) so that a given invalid proof always yields the same reason.
 

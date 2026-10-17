@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3 (driver), v0.4 (zero-knowledge checks, anchor, scoring), v1.0 (hardening)
-- Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Check order', step 4: the advice commitment's `layout_digest`), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Check order', step 7, in `tessera-protocol/2`)
+- Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Check order', step 4: the advice commitment's `layout_digest`), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Check order', step 7, in `tessera-protocol/2`), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Check order', step 7: the reasons of the leaf stage's sumchecks)
 
 ## Summary
 
@@ -73,10 +73,10 @@ Checks run in this order; the first failure determines the verdict.
 6. Transcript: rebuild `SessionContext`, absorb `Round1`, derive or check the seed (coin-toss transcript, or proof-of-work nonce in non-interactive mode; `Reject(ProofOfWork)`).
 7. Tree levels, in this order:
    1. The LogUp roots: for each instance, `d_a ≠ 0`, `d_t ≠ 0` and `n_a·d_t + n_t·d_a = 0` ([RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree)) (`Reject(Lookup)`).
-   2. The levels of the fraction trees and the product forests, from the root (`Reject(Sumcheck)`).
+   2. The levels of the fraction trees and the product forests, from the root (`Reject(TreeLevel { level, round })`, [RFC-0033](RFC-0033-tree-level-rejections.md)).
    3. Each LogUp instance's leaf checks: the lookup tree's numerator claim is 1, and the table tree's denominator claim is `α − t̃(ρ)` (`Reject(Lookup)`).
 
-   In `tessera-protocol/2` ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)), step 7.1 is the LogUp identity sumcheck, with its final check (`Reject(Sumcheck)`). Step 7.2 runs masked, and step 7.3 reads the padding trees' coordinate and the masked extensions of keys, values and multiplicities.
+   In `tessera-protocol/2` ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)), step 7.1 is the LogUp identity sumcheck, with its final check (`Reject(LogUpIdentity { round })`, [RFC-0033](RFC-0033-tree-level-rejections.md)). Step 7.2 runs masked, and step 7.3 reads the padding trees' coordinate and the masked extensions of keys, values and multiplicities.
 8. Stages in schedule order, including masked-sumcheck terms and gadget final checks (`Reject(Sumcheck)`, `Reject(Gadget)`).
 9. Opening groups for advice and every weight matrix: `Σ γ v = ⟨u'_g, eq⟩` per group (`Reject(Evaluation)`).
 10. Column queries: live, the verifier draws them now from its CSPRNG; non-interactive, from the transcript after the query proof-of-work.

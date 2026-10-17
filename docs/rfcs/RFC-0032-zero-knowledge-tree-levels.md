@@ -228,8 +228,8 @@ The design and its labels are settled now, before `tessera-protocol/1` freezes t
   - a lone LogUp tree's level 1.
 - **The root leak.** A distinguisher computing `Π_i(α − a_i)` from `d_a/d_t` tells two lookup multisets apart against RFC-0013's masking pair, and is at chance here.
 - **Soundness, each rejected:**
-  - an invalid multiset, at the identity sumcheck: `Reject(Sumcheck)`;
-  - a level's evaluations shifted by a mask value: `Reject(Sumcheck)`;
+  - an invalid multiset, at the identity sumcheck: `Reject(LogUpIdentity)` ([RFC-0033](RFC-0033-tree-level-rejections.md));
+  - a level's evaluations shifted by a mask value: `Reject(TreeLevel)`;
   - a value evaluation `e'(p_low)` off by one: `Reject(Evaluation)` at the opening.
 
   Over `F65537`, the identity's false-accept rate stays within `2(N + T)/|F|`.

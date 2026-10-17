@@ -73,6 +73,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0030](docs/rfcs/RFC-0030-masked-exponentials.md) | `SoftmaxRow` pins its masked exponentials to zero (amends RFC-0006, RFC-0007, RFC-0009, RFC-0010) | v0.3 |
 | [RFC-0031](docs/rfcs/RFC-0031-commitment-id.md) | `commitment_id`, where every column chain starts (amends RFC-0004, RFC-0011, RFC-0012, RFC-0019) | v0.3 |
 | [RFC-0032](docs/rfcs/RFC-0032-zero-knowledge-tree-levels.md) | Zero knowledge of the tree levels and the LogUp roots (amends RFC-0008, RFC-0010, RFC-0013, RFC-0014) | v0.4 |
+| [RFC-0033](docs/rfcs/RFC-0033-tree-level-rejections.md) | Rejection reasons for the leaf stage's sumchecks (amends 04, RFC-0010, RFC-0019) | v0.3 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 

@@ -123,7 +123,8 @@ impl Batch {
 /// order of the crate documentation. Rounds are counted from 0, as their labels count them.
 ///
 /// `MissingRound`, `RoundLength`, `ExtraRound`, `EvaluationCount` and `FinalMismatch` judge the
-/// proof: `Reject(Sumcheck { stage, round })` in 04 §2, with `round` from
+/// proof: `Reject(Sumcheck { stage, round })` in 04 §2 for a reduction stage, and
+/// `Reject(TreeLevel { level, round })` for a tree level (RFC-0033), with `round` from
 /// [`rejected_round`](Self::rejected_round). The others judge what the verifier passes in, the
 /// schedule's degree, instances and relations, or the verifier itself: from a correct verifier
 /// they never come, and they mean a fault of the verifier (`Inconclusive(ERR-INTERNAL)`), not of
@@ -186,7 +187,8 @@ pub enum SumcheckError {
 }
 
 impl SumcheckError {
-    /// The round of `Reject(Sumcheck { stage, round })` (04 §2) for a fault of the proof, or
+    /// The round of `Reject(Sumcheck { stage, round })` or `Reject(TreeLevel { level, round })`
+    /// (04 §2) for a fault of the proof, or
     /// `None` for a fault of the verifier, which is `Inconclusive(ERR-INTERNAL)`.
     pub fn rejected_round(&self) -> Option<u32> {
         match *self {

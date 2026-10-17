@@ -514,6 +514,11 @@ All notable changes to the prover release train are recorded here: the crates un
   - **The weights' row block.** Weight matrices chain their columns over the parameter set's row block, which no document had stated.
   - **Where it lands.** RFC-0004, RFC-0011, RFC-0012 and RFC-0019 are amended. `tessera-hash` gains `Domain::CommitmentId`. `spec/vectors/hash/` lists the domain and four descriptors with their encodings and identifiers, from the oracle.
 
+- The leaf stage's sumchecks have rejection reasons of their own (RFC-0033, accepted, [#225](https://github.com/AbdelStark/tessera/issues/225)):
+  - **`TreeLevel { level, round }`, `REJ-TREE`.** A failed tree level was reported as `Reject(Sumcheck { stage, round })`, but a tree level has no `StageId`. The new reason names its `ℓ` and the round within it.
+  - **`LogUpIdentity { round }`, `REJ-LOGUP-IDENTITY`.** `tessera-protocol/2`'s identity sumcheck combines every LogUp instance, so its failure names no table.
+  - **Amended.** 04 §2, RFC-0010 'Sumcheck messages', RFC-0019 step 7 and RFC-0032. 07 §4's tamper corpus mutates one round coefficient and one evaluation per tree level.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
