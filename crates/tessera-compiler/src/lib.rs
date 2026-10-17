@@ -16,6 +16,9 @@
 //!   tables (RFC-0006 'Gadget selection', RFC-0024).
 //! - [`claim_list`] emits the claim list from public data alone (RFC-0007, RFC-0026), and
 //!   [`report`] the commitment report (RFC-0006 'Outputs').
+//! - [`derive_schedule`] derives the stage schedule from a lowering: the claims each stage leaves,
+//!   their splits, the relation instances that prove them and the claim pool (RFC-0010 'Stages',
+//!   RFC-0037).
 //!
 //! Tiling follows.
 
@@ -26,6 +29,7 @@ mod error;
 mod lower;
 mod range;
 mod report;
+pub mod schedule;
 mod select;
 
 pub use claim::claim_list;
@@ -33,4 +37,5 @@ pub use error::CompileError;
 pub use lower::{Lowering, PublicModel, check_profile, lower, validate};
 pub use range::{HALF_FIELD, Range, Ranges, analyze};
 pub use report::{CommitmentReport, SCHEMA as REPORT_SCHEMA, TableUse, Tally, report, stage_count};
+pub use schedule::{StageSchedule, derive_schedule};
 pub use select::{Gadget, Selection, select};

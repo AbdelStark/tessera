@@ -69,6 +69,14 @@ pub enum CompileError {
     },
     /// The graph breaks a rule of RFC-0006 'Operation set' (`ERR-INTERNAL`).
     Graph(IrError),
+    /// The graph has no stage schedule: its layers are not one template, or a claim reaches an
+    /// operation RFC-0037 maps no claim through (`ERR-INTERNAL`, RFC-0037 'Layers and kinds').
+    Schedule {
+        /// The node, when one breaks the rule.
+        node: Option<NodeId>,
+        /// The rule.
+        rule: &'static str,
+    },
 }
 
 impl CompileError {
@@ -80,7 +88,7 @@ impl CompileError {
             Self::Profile { .. } => ErrorCode::CompileProfile,
             Self::Model { .. } | Self::ModelTable { .. } => ErrorCode::QuantArch,
             Self::Usage { .. } => ErrorCode::Usage,
-            Self::Table { .. } | Self::Graph(_) => ErrorCode::Internal,
+            Self::Table { .. } | Self::Graph(_) | Self::Schedule { .. } => ErrorCode::Internal,
         }
     }
 }
@@ -105,6 +113,11 @@ impl fmt::Display for CompileError {
                 write!(f, "node {}, table {}: {rule}", node.0, table.0)
             }
             Self::Graph(error) => error.fmt(f),
+            Self::Schedule {
+                node: Some(node),
+                rule,
+            } => write!(f, "node {}: {rule}", node.0),
+            Self::Schedule { node: None, rule } => write!(f, "the stage schedule: {rule}"),
         }
     }
 }

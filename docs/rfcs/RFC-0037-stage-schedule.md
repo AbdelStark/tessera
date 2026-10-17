@@ -62,7 +62,7 @@ The lowering's checkpoints `c_0, …, c_L` are the residual stream after the emb
 - **Layers.**
   - Layer `ℓ` holds the nodes after `c_ℓ`'s producer, up to and including `c_{ℓ+1}`'s, in node order.
   - The nodes up to `c_0`'s producer are the prologue, and those after `c_L`'s producer the epilogue.
-- **The template.** Every layer has the same nodes, in the same order. Their operations are equal up to their layer's own weights, shift classes and tables, and their shapes are equal. Each input is one of:
+- **The template.** Every layer has the same nodes, in the same order. Their operations are equal up to their layer's own weights, constants, shift classes and tables, and their shapes are equal. Each input is one of:
   - the same position's output in its own layer;
   - its layer's checkpoint `c_ℓ`;
   - a graph input, such as the positions or the layer's own weight, classes and multipliers.
@@ -141,9 +141,12 @@ Through a linear node, a claim on its output becomes terms on its inputs, as [RF
 
 ### Splits
 
-The verifier computes a claim's public atoms and moves them to its value. The claim is then ready for the next stage when it is one virtual atom, or committed atoms of one commitment at one point. Otherwise the stage `k` that produced it splits it:
+The verifier computes a claim's public atoms and moves them to its value. The claim is then ready for the next stage when it is one virtual atom of coefficient 1, or committed atoms of one commitment at one point. Otherwise the stage `k` that produced it splits it:
 
-- **What is sent.** The prover sends one value for each virtual atom, and one for each group of committed atoms of one commitment at one point, in atom order. They go under `stage/{k}/split`, after the stage's final evaluations, as one `Vec<Fp2>` covering every claim the stage splits, claim by claim. The leaf stage is stage 0, and its values follow `logup/values`.
+- **What is sent.** The prover sends one value for each virtual atom, and one for each group of committed atoms of one commitment at one point, in atom order. A group takes the place of its first atom.
+  - **Where.** The values go under `stage/{k}/split`, after the stage's final evaluations, as one `Vec<Fp2>` covering every claim the stage splits, claim by claim.
+  - **The order of claims.** A reduction stage's claims come by instance, then by evaluation. The leaf stage's come by site, then by layer, as 'The layer point' orders them.
+  - **The leaf stage** is stage 0, and its values follow `logup/values`.
 - **The check.** The verifier checks that the values, weighted by their coefficients, give the claim's value. A mismatch is `Reject(Sumcheck { stage: k, round: n_k })`, with `n_k` the stage's number of rounds (0 for the leaf stage).
 - **The result.** Each value becomes one claim: a virtual atom's for the next stage, a committed group's for the pool.
 - **Example.** The residual key's claim `acc + 2^r·X_in` at `(r ‖ ρ)` splits into `acc`'s virtual atom and `X_in`'s committed group: two values.
@@ -163,6 +166,10 @@ The verifier computes a claim's public atoms and moves them to its value. The cl
 
 The leaf stage leaves its gadgets' claims one layer at a time. Each lookup site's layers sit at one point `r_s` (the leaf layout, with the gadgets of #118).
 
+- **Its claims on the graph.**
+  - The leaf stage leaves one claim on each input of each gadget, at a point of its site, and one on the logits, which the scoring certificates read (RFC-0017).
+  - Its sites come in node order, a template position once for all its layers, and the logits last.
+  - The gadgets' own committed values and relations are RFC-0009's (#118).
 - **Drawing it.** Stage 1 draws the layer point `ρ_1`: `λ` coordinates under `stage/1/layer/{c}`, after the leaf stage's splits and before the zero-check point and `γ_1`.
 - **Stacking.** A site's claims `v_ℓ` become the stacked claim `X̃(r_s ‖ ρ_1) = Σ_ℓ eq(ρ_1, ℓ)·v_ℓ`. A padded layer's `v_ℓ` is 0.
 - **Soundness.** A false `v_ℓ` survives with probability at most `λ/|Fp2|` over `ρ_1`.

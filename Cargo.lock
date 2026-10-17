@@ -570,6 +570,7 @@ dependencies = [
  "proptest",
  "serde_json",
  "tessera-codec",
+ "tessera-field",
  "tessera-ir",
  "tessera-tables",
 ]

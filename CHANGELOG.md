@@ -554,6 +554,15 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Sessions.** The prover's and the verifier's live states, each refusal with its code, in RFC-0014's order: 02 §3's calls now follow it.
   - **`ERR-PROTO-QUERIES`**, for column queries of the wrong matrices or count, or past their codeword (INV-PROTO-3), in 04 §3, `tessera-codec`'s `ErrorCode`, `spec/vectors/errors/codes.json` and `tessera-quant`'s exit codes.
   - Amended: RFC-0014 'Messages', 'Session order' and 'Transcript schedule'; 01 §5, 02 §3, 03 §4, 04 §3 and RFC-0010 OQ-0010-1. 01 §5 no longer puts the anchor's key commitment in Round 1: RFC-0015 logs it at session open.
+- `tessera-compiler`'s `derive_schedule` derives the stage schedule of a lowered graph from the graph and its checkpoints alone (RFC-0037, INV-SCH-1), toward [#113](https://github.com/AbdelStark/tessera/issues/113):
+  - **Layers.** `LayerMap` reads the layers off the checkpoints and checks they are one template, node for node. A graph whose layers differ is refused as `ERR-INTERNAL`, naming the rule (`CompileError::Schedule`).
+  - **Claims.** The leaf stage leaves one claim per gadget input, one per layer for a site in the layers, and one on the logits. Each claim maps through `Add`, `Sub`, `ConstMul`, `Sum`, `Reshape`, `Transpose` and `Expand` onto atoms, at points whose coordinates name the challenges that set them. A claim that is neither one virtual atom of coefficient 1 nor committed atoms of one commitment at one point is split, one value per part.
+  - **Stages.** Stage `k` holds one instance per virtual part of stage `k − 1`, stacked over the layers, then in stage 1 the equality zero-checks of committed linear outputs. Every committed part reaches the claim pool, the leaf stage's stacked at the layer point.
+  - **Tests.**
+    - INV-SCH-2 to INV-SCH-5 are checked on tiny Llama models of 2, 3, 4 and 8 layers, in both profiles, with pot, classed and affine sites: 3 stages for `servable` and 4 for `minimal` or an affine RoPE site, as the commitment report counts them, and one pool claim per weight type.
+    - On an honest witness at random coordinates, every claim equals its atoms, every pool claim equals its group, and every matmul, product and sum of squares holds at its evaluations' points. This includes a hand-built template of every linear map.
+    - 25 mutations of the derivation are caught.
+  - RFC-0037 now states that per-layer constants belong to a layer's own template, that a ready virtual atom has coefficient 1, the order of split claims, and the leaf stage's claims on the graph.
 
 ### Changed
 
