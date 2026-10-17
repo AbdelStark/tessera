@@ -202,7 +202,7 @@ v0.2 delivers the pipeline for 8B and the tiny conformance models; 70B and 405B 
 - Integer reference (PyTorch, int64 tensors) against the Rust CPU engine on all conformance models: every intermediate tensor bit-identical ([07 §5](../spec/07-testing-strategy.md#5-differential-and-conformance-tests)).
 - Range assertions: the reference engine asserts each tensor's declared range on the 8B nightly run.
 - Determinism: two runs of statistics-to-`IntegerModel` give identical digests.
-- Fidelity: the gates above, run on every PR that touches `python/tessera_quant/quantize` or `calib`, on 8B with a reduced set (128 documents) and in full nightly.
+- Fidelity: the gates above, run on every PR that touches `python/tessera_quant/scales.py`, `assemble.py` or `calibration.py`, on 8B with a reduced set (128 documents) and in full nightly.
 - Data hygiene: disjointness test on content hashes.
 
 ## Open Questions

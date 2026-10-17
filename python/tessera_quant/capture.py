@@ -27,9 +27,9 @@ rename (06 §7), and a report names them by digest and shape only.
 import json
 import os
 import platform
-from collections.abc import Generator, Mapping
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any, cast
@@ -41,7 +41,7 @@ from transformers import AttentionInterface, LlamaConfig, LlamaForCausalLM, mask
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, eager_attention_forward
 
 from tessera_quant.arch import ArchSpec
-from tessera_quant.calibration import CalibrationSet
+from tessera_quant.calibration import CalibrationSet, Window
 from tessera_quant.checkpoint import FloatModel
 from tessera_quant.errors import CalibrationError, TesseraQuantError
 from tessera_quant.tce import secret_file
@@ -53,10 +53,10 @@ REPORT_SCHEMA = "tessera.calibration/1"
 """The calibration report's schema (03 §5), `spec/schemas/calibration-v1.schema.json`."""
 
 STATISTICS_FILE = "statistics.safetensors"
-"""The statistics file `calibrate` writes, a secret artifact."""
+"""The statistics file `write_calibration` writes, a secret artifact."""
 
 REPORT_FILE = "calibration.json"
-"""The report `calibrate` writes beside it."""
+"""The report `write_calibration` writes beside it."""
 
 _STATISTICS_CONTEXT = "tessera-quant 2026-10-17 calibration statistics v1"
 _ATTENTION = "tessera_capture"
@@ -187,6 +187,24 @@ def reference_model(model: FloatModel, device: str = "cpu") -> LlamaForCausalLM:
     llama.model.rotary_emb = LlamaRotaryEmbedding(config).to(device)
     llama.eval()
     return llama
+
+
+def reference_logits(
+    model: FloatModel, windows: Sequence[Window], seed: int, device: str = "cpu"
+) -> torch.Tensor:
+    """The BF16 reference's logits on each window, run alone, in float64: `[positions, vocab]`.
+
+    The windows' positions follow one another, window by window. They run under deterministic
+    algorithms and `seed`, as the capture does.
+    """
+    llama = reference_model(model, device)
+    rows: list[torch.Tensor] = []
+    with _deterministic(seed), torch.no_grad():
+        for window in windows:
+            tokens = torch.tensor([window.tokens], dtype=torch.long, device=device)
+            output: Any = llama(input_ids=tokens)
+            rows.append(cast(torch.Tensor, output.logits)[0].to("cpu", torch.float64))
+    return torch.cat(rows)
 
 
 @contextmanager
@@ -361,21 +379,45 @@ def calibration_report(
     }
 
 
-def calibrate(
-    model: FloatModel, calibration: CalibrationSet, directory: Path, device: str = "cpu"
-) -> dict[str, Any]:
-    """Captures the statistics and writes them, with their report, into `directory`.
+@dataclass(frozen=True, eq=False)
+class CalibrationResult:
+    """A calibration: its sequences and the statistics captured on them (02 §4): secret-class."""
 
-    The statistics go to `statistics.safetensors` as a secret artifact, and the report to
-    `calibration.json`. Returns the report.
+    calibration: CalibrationSet
+    statistics: Statistics = field(repr=False)
+    data: bytes = field(repr=False)
+    """The statistics file's bytes, which `digest` names."""
+
+    @property
+    def digest(self) -> bytes:
+        """The statistics digest that `Provenance` records (RFC-0005 'Calibration')."""
+        return statistics_digest(self.data)
+
+
+def calibrate(
+    model: FloatModel, calibration: CalibrationSet, device: str = "cpu"
+) -> CalibrationResult:
+    """Captures the statistics of `model` on the calibration set (02 §4, RFC-0005 'Pipeline', 3).
 
     Raises:
         CalibrationError: as `capture`.
         TesseraQuantError: as `capture`.
     """
-    data = capture(model, calibration, device).to_bytes(calibration)
-    report = calibration_report(model, calibration, data, device)
-    write_secret(directory / STATISTICS_FILE, data)
+    statistics = capture(model, calibration, device)
+    return CalibrationResult(calibration, statistics, statistics.to_bytes(calibration))
+
+
+def write_calibration(
+    model: FloatModel, result: CalibrationResult, directory: Path, device: str = "cpu"
+) -> dict[str, Any]:
+    """Writes a calibration's statistics, with their report, into `directory`.
+
+    The statistics go to `statistics.safetensors` as a secret artifact, and the report to
+    `calibration.json`. Returns the report. `device` is the one the statistics were captured on,
+    which the report records.
+    """
+    report = calibration_report(model, result.calibration, result.data, device)
+    write_secret(directory / STATISTICS_FILE, result.data)
     text = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
     (directory / REPORT_FILE).write_text(text, encoding="utf-8")
     return report

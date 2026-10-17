@@ -138,17 +138,21 @@ The verifier API never panics on any input. Every malformed byte sequence yields
 
 ```python
 def import_checkpoint(path: Path, *, expected: ArchSpec | None = None) -> FloatModel: ...
-def calibrate(model: FloatModel, spec: CalibrationSpec, *, smoothquant_alpha: float = 0.5,
-              seed: int = 0) -> CalibrationResult: ...
+def calibrate(model: FloatModel, calibration: CalibrationSet, device: str = "cpu") -> CalibrationResult: ...
 def quantize(model: FloatModel, calib: CalibrationResult, *, profile: Literal["servable", "minimal"] = "servable",
-             scales: Literal["pot", "affine"] = "pot") -> IntegerModel: ...
-def export(model: IntegerModel, out: Path) -> ArtifactDigest: ...
+             scales: Literal["pot", "affine"] = "pot", alphas: tuple[Fraction, ...] = ALPHAS,
+             device: str = "cpu") -> IntegerModel: ...
+def export(model: IntegerModel, out: Path) -> bytes: ...           # the artifact's digest
 def run_reference(model: IntegerModel, tokens: npt.NDArray[np.uint32]) -> npt.NDArray[np.int64]: ...
 def evaluate_fidelity(model: IntegerModel, reference: FloatModel, spec: EvalSpec, *,
                       seed: int = 0) -> FidelityReport: ...
 ```
 
-All functions are deterministic given their arguments: they set `torch.use_deterministic_algorithms(True)`, fix every RNG from `seed`, and record library versions in their reports ([RFC-0005](../rfcs/RFC-0005-integer-model.md#determinism)).
+- **The calibration set** comes from `tessera_quant.calibration.draw`, which defines it exactly from a seed and the documents ([RFC-0005](../rfcs/RFC-0005-integer-model.md#calibration) 'Calibration'). Its held-out split serves `quantize`.
+- **`quantize` chooses the migration strength** among `alphas`: the one whose `D` diverges least from the BF16 reference on the held-out split ([RFC-0005](../rfcs/RFC-0005-integer-model.md#calibration)). `D` runs through `run_reference` for this. It records the strength and its sources in `Provenance`.
+- **`export`** writes `D` as a secret artifact and returns the envelope's digest.
+
+All functions are deterministic given their arguments: they set `torch.use_deterministic_algorithms(True)`, fix every RNG from the calibration set's seed, and record library versions in their reports and in `Provenance` ([RFC-0005](../rfcs/RFC-0005-integer-model.md#determinism)).
 
 ## 5. Parameter sets (tier A)
 

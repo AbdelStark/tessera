@@ -29,6 +29,7 @@ from tessera_quant.capture import (
     points,
     reference_model,
     statistics_digest,
+    write_calibration,
     write_secret,
 )
 
@@ -195,7 +196,7 @@ def test_calibrate_keeps_the_statistics_secret_and_reports_them_by_digest(tmp_pa
     model = import_checkpoint(checkpoint(tmp_path))
     out = tmp_path / "out"
     out.mkdir()
-    report = calibrate(model, sequences(), out)
+    report = write_calibration(model, calibrate(model, sequences()), out)
     data = (out / STATISTICS_FILE).read_bytes()
     assert stat.S_IMODE((out / STATISTICS_FILE).stat().st_mode) == 0o600
     assert report["statistics_digest"] == statistics_digest(data).hex()

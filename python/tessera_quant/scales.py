@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 OR MIT
-"""W8A8 quantization of a migrated model (RFC-0005 'Scale policy', 'Integer semantics').
+"""`D`'s scales and shifts for a migrated model (RFC-0005 'Scale policy', 'Integer semantics').
 
-`quantize` turns the float64 weights and statistics of `tessera_quant.migration.transform` into
-`D`'s INT8 weights and its `QuantSpec`:
+`choose` turns the float64 weights and statistics of `tessera_quant.migration.transform` into
+`D`'s INT8 weights and its `QuantSpec`, for one migration strength. `tessera_quant.quantize`
+chooses the strength and assembles `D`:
 
 - **Weights**, per output channel: `sigma_c = 2^e_c`, the least power of two that keeps every
   weight of the channel within +-127, rounded to nearest even, so no weight clips. A tensor holds
@@ -32,7 +33,7 @@
   largest at which every multiplier still fits. The site goes in `affine_sites` with its shift,
   and the multipliers in the weight's `ChannelParams`, with no classes. Q, K, V, O, up and down
   can, except `minimal`'s O and down, whose keys would exceed 62 bits; the compiler lowers no
-  affine site yet (#301).
+  affine site yet, and `tessera_quant.quantize` chooses none (#301).
 
 Weights and statistics are secret-class (05 §3): errors name tensors and sites, never a value.
 """
@@ -116,7 +117,7 @@ def exponent(maximum: float, limit: int) -> int:
     return e
 
 
-def quantize(
+def choose(
     arch: ArchSpec,
     profile: Profile,
     weights: Mapping[str, torch.Tensor],
