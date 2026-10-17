@@ -490,6 +490,52 @@ impl<'a> Engine<'a> {
                 }
                 vec![y]
             }
+            Op::Transpose { perm } => {
+                let x = input(0)?;
+                let dims: Vec<usize> = shape(0).iter().map(|&d| d as usize).collect();
+                // The input's stride of each axis, row-major, and the output's axes in order.
+                let mut strides = vec![1usize; dims.len()];
+                for a in (0..dims.len().saturating_sub(1)).rev() {
+                    strides[a] = strides[a + 1] * dims[a + 1];
+                }
+                let axes: Vec<(usize, usize)> = perm
+                    .iter()
+                    .map(|&a| (dims[usize::from(a)], strides[usize::from(a)]))
+                    .collect();
+                let mut y = zeros(out(0), x.len())?;
+                // Walk the output in row-major order, the input's position following it.
+                let mut index = vec![0usize; axes.len()];
+                let mut from = 0usize;
+                for value in y.iter_mut() {
+                    *value = x[from];
+                    for k in (0..axes.len()).rev() {
+                        let (length, stride) = axes[k];
+                        index[k] += 1;
+                        from += stride;
+                        if index[k] < length {
+                            break;
+                        }
+                        from -= length * stride;
+                        index[k] = 0;
+                    }
+                }
+                vec![y]
+            }
+            Op::Expand { axis, len: copies } => {
+                let x = input(0)?;
+                let dims = shape(0);
+                let axis = usize::from(*axis);
+                let inner: usize = dims[axis..].iter().map(|&d| d as usize).product();
+                let copies = *copies as usize;
+                let mut y = zeros(out(0), x.len() * copies)?;
+                for (o, row) in x.chunks_exact(inner.max(1)).enumerate() {
+                    for j in 0..copies {
+                        let at = (o * copies + j) * inner;
+                        y[at..at + inner].copy_from_slice(row);
+                    }
+                }
+                vec![y]
+            }
             Op::MatMulAct { transpose_rhs } => {
                 let (a, b) = (input(0)?, input(1)?);
                 let (sa, sb) = (shape(0), shape(1));

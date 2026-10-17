@@ -219,7 +219,11 @@ impl Analysis<'_> {
                 let n = i128::from(self.shape(node.inputs[0])[usize::from(*axis)]);
                 bounded(0, &|x| mul(square(x)?, point(n)))
             }
-            Op::Reshape | Op::Slice { .. } | Op::GatherPublic { .. } => Ok(vec![input(0)]),
+            Op::Reshape
+            | Op::Slice { .. }
+            | Op::GatherPublic { .. }
+            | Op::Transpose { .. }
+            | Op::Expand { .. } => Ok(vec![input(0)]),
             Op::MatMulAct { .. } => {
                 let inner = i128::from(*self.shape(node.inputs[0]).last().unwrap_or(&1));
                 let product = input(0)

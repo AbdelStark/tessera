@@ -165,9 +165,23 @@ impl Graph {
                 fail(rule)
             }
         };
-        // Linear and degree-2 operations produce virtual tensors (RFC-0006).
-        if op.class() != OpClass::Gadget && outputs.iter().any(|o| o.kind != NodeKind::Virtual) {
-            return fail("a linear or degree-2 operation produces a virtual tensor");
+        // Linear and degree-2 operations produce virtual tensors, except that one other than a
+        // matmul may produce committed advice, which stage 1 proves equal to its relation
+        // (RFC-0006, RFC-0037 'The committed first checkpoint').
+        let matmul = matches!(op, Op::MatMulWeight { .. } | Op::MatMulAct { .. });
+        let allowed = |kind: NodeKind| {
+            kind == NodeKind::Virtual
+                || (!matmul
+                    && kind
+                        == NodeKind::Committed {
+                            commitment: CommitmentClass::Advice,
+                        })
+        };
+        if op.class() != OpClass::Gadget && !outputs.iter().all(|o| allowed(o.kind)) {
+            return fail(
+                "a linear or degree-2 operation produces a virtual tensor, or committed advice if \
+                 it is not a matmul",
+            );
         }
         match op {
             Op::MatMulWeight { weight } => {
@@ -276,6 +290,35 @@ impl Graph {
                 expected.extend_from_slice(&x[1..]);
                 if outputs[0].shape != expected {
                     return fail("the output has one row per index");
+                }
+            }
+            Op::Transpose { perm } => {
+                arity(1, 1, "takes one tensor and produces one")?;
+                let x = inputs[0].shape;
+                let mut seen = vec![false; x.len()];
+                let permutation = perm.len() == x.len()
+                    && perm.iter().all(|&axis| {
+                        seen.get_mut(usize::from(axis))
+                            .is_some_and(|seen| !core::mem::replace(seen, true))
+                    });
+                if !permutation {
+                    return fail("the permutation names each of the input's axes once");
+                }
+                let expected: Vec<u32> = perm.iter().map(|&axis| x[usize::from(axis)]).collect();
+                if outputs[0].shape != expected {
+                    return fail("the output is the input with its axes permuted");
+                }
+            }
+            Op::Expand { axis, len } => {
+                arity(1, 1, "takes one tensor and produces one")?;
+                let (x, axis) = (inputs[0].shape, usize::from(*axis));
+                if axis > x.len() {
+                    return fail("the new axis is at most the input's rank");
+                }
+                let mut expected = x.to_vec();
+                expected.insert(axis, *len);
+                if outputs[0].shape != expected {
+                    return fail("the output is the input with the new axis inserted");
                 }
             }
             Op::MatMulAct { transpose_rhs } => {

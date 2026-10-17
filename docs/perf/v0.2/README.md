@@ -22,19 +22,19 @@ What the reports assume:
 
 ## Counts
 
-Per layer per token, then per token. Committed elements are lookup outputs, split limbs and row scalars; per token they also include the embedding's one-hot vector and the final norm. Table rows are per proof.
+Per layer per token, then per token. Committed elements are lookup outputs, split limbs and row scalars; per token they also include the embedding's one-hot vector, the first checkpoint ([RFC-0037](../../rfcs/RFC-0037-stage-schedule.md#the-committed-first-checkpoint)) and the final norm. Table rows are per proof.
 
 | Profile | Classes | `B_max` | Committed, per layer | Lookups, per layer | Committed, per token | Lookups, per token | `μ(1K)` | `μ(16K)` | Table rows |
 |---|---|---|---|---|---|---|---|---|---|
-| `servable` | 1 | 32 | 327,464 | 327,612 | 41,421,508 | 41,311,910 | 11.24 | 26.56 | 5.0 · 10^9 |
-| `servable` | 2 | 32 | 360,232 | 360,380 | 45,550,276 | 45,440,678 | 11.75 | 27.03 | 7.7 · 10^9 |
-| `servable` | 4 | 32 | 376,616 | 376,764 | 47,614,660 | 47,505,062 | 11.99 | 27.26 | 7.7 · 10^9 |
-| `servable` | 1 | 30 | 343,848 | 343,996 | 43,485,892 | 43,376,294 | 11.47 | 26.78 | 3.1 · 10^9 |
-| `servable` | 2 | 30 | 376,616 | 376,764 | 47,614,660 | 47,505,062 | 11.96 | 27.23 | 3.9 · 10^9 |
-| `minimal` | 1 | 32 | 253,736 | 270,268 | 32,131,780 | 34,086,566 | 10.30 | 25.69 | 6.6 · 10^9 |
-| `minimal` | 2 | 32 | 286,504 | 303,036 | 36,260,548 | 38,215,334 | 10.79 | 26.14 | 6.7 · 10^9 |
-| `minimal` | 4 | 32 | 286,504 | 303,036 | 36,260,548 | 38,215,334 | 10.82 | 26.17 | 11.2 · 10^9 |
-| `minimal` | 1 | 30 | 286,504 | 319,420 | 36,260,548 | 40,279,718 | 10.90 | 26.24 | 2.6 · 10^9 |
+| `servable` | 1 | 32 | 327,464 | 327,612 | 41,437,892 | 41,311,910 | 11.24 | 26.57 | 5.0 · 10^9 |
+| `servable` | 2 | 32 | 360,232 | 360,380 | 45,566,660 | 45,440,678 | 11.75 | 27.03 | 7.7 · 10^9 |
+| `servable` | 4 | 32 | 376,616 | 376,764 | 47,631,044 | 47,505,062 | 11.99 | 27.26 | 7.7 · 10^9 |
+| `servable` | 1 | 30 | 343,848 | 343,996 | 43,502,276 | 43,376,294 | 11.47 | 26.78 | 3.1 · 10^9 |
+| `servable` | 2 | 30 | 376,616 | 376,764 | 47,631,044 | 47,505,062 | 11.96 | 27.23 | 3.9 · 10^9 |
+| `minimal` | 1 | 32 | 253,736 | 270,268 | 32,148,164 | 34,086,566 | 10.31 | 25.69 | 6.6 · 10^9 |
+| `minimal` | 2 | 32 | 286,504 | 303,036 | 36,276,932 | 38,215,334 | 10.79 | 26.14 | 6.7 · 10^9 |
+| `minimal` | 4 | 32 | 286,504 | 303,036 | 36,276,932 | 38,215,334 | 10.82 | 26.17 | 11.2 · 10^9 |
+| `minimal` | 1 | 30 | 286,504 | 319,420 | 36,276,932 | 40,279,718 | 10.90 | 26.25 | 2.6 · 10^9 |
 
 `B_max = 30` refuses three configurations, each for one table:
 

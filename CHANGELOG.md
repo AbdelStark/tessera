@@ -645,6 +645,17 @@ All notable changes to the prover release train are recorded here: the crates un
 
     Each of these is rejected at the final check: one changed entry of `X`, `C` or `S`, every changed round value, and every changed evaluation. The elementwise tests keep their partner reads with a pairwise product.
 
+- The IR and the Llama lowering follow RFC-0037 ([#113](https://github.com/AbdelStark/tessera/issues/113)):
+  - **`Transpose` and `Expand`.** These two `tessera-ir` operations are linear. `Transpose { perm }` permutes the input's axes, and `Expand { axis, len }` repeats it along a new axis. The graph checks that a permutation names each axis once, that a new axis sits at most at the rank, and that the output's shape is right. The witness engine and the range analysis implement both, and so does the compiler tests' reference evaluator, element by element.
+  - **Committed linear outputs.** A linear or degree-2 node other than a matmul may produce committed advice, which stage 1 proves equal to its relation. The graph refuses any other committed output of such a node.
+  - **Head layouts.** Attention's head layouts use `Transpose` and `Expand` in place of `GatherPublic`, whose three index constants are gone from the graph. Every claim on these layouts moves coordinates, even when `n` is not a power of two.
+  - **The first checkpoint is committed advice.** This is the residual entering the first layer, the embedding scaled by `2^{s_e}`.
+  - **The commitment report.** It counts committed linear outputs in a new class, `checkpoints`: `d_model` per token, 16,384 at 405B. The class is in `commitment-report-v1.schema.json`. The stage count adds each such output's zero-check and its inputs' chain, and stays 3 in `servable` and 4 in `minimal`.
+  - **The v0.2 reports**, regenerated, commit 16,384 more elements per token, so `μ` moves by about 0.001. Three figures of the README's table move by 0.01, all at one class:
+    - `servable`'s `μ(16K)` at `B_max = 32`, now 26.57;
+    - `minimal`'s `μ(1K)` at `B_max = 32`, now 10.31;
+    - `minimal`'s `μ(16K)` at `B_max = 30`, now 26.25.
+
 ### Removed
 
 - The `TableSetManifest` artifact (schema `0x0203`, `.tts`), which three documents named and none defined (RFC-0029, accepted, [#316](https://github.com/AbdelStark/tessera/issues/316)):

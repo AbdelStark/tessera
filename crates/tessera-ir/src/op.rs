@@ -59,6 +59,20 @@ pub enum Op {
         /// The indices, in output order.
         index: ConstRef,
     },
+    /// The axes in another order: the output's axis `i` is the input's axis `perm[i]`
+    /// (RFC-0037 'Head layouts').
+    Transpose {
+        /// The permutation of the input's axes, outermost first.
+        perm: Vec<u8>,
+    },
+    /// The input repeated along a new axis of `len` positions, inserted before axis `axis`
+    /// (RFC-0037 'Head layouts').
+    Expand {
+        /// The new axis's place, counted from the outermost: from 0 to the input's rank.
+        axis: u8,
+        /// Its length, at least 1.
+        len: u32,
+    },
     /// The product of two activation matrices over their last two axes, the leading axes
     /// batched: `PV`, or `QK^T` with the right operand transposed.
     MatMulAct {
@@ -170,6 +184,8 @@ impl Op {
             Self::Reshape => "Reshape",
             Self::Slice { .. } => "Slice",
             Self::GatherPublic { .. } => "GatherPublic",
+            Self::Transpose { .. } => "Transpose",
+            Self::Expand { .. } => "Expand",
             Self::MatMulAct { .. } => "MatMulAct",
             Self::Mul { .. } => "Mul",
             Self::SumSquares { .. } => "SumSquares",
@@ -196,7 +212,9 @@ impl Op {
             | Self::Sum { .. }
             | Self::Reshape
             | Self::Slice { .. }
-            | Self::GatherPublic { .. } => OpClass::Linear,
+            | Self::GatherPublic { .. }
+            | Self::Transpose { .. }
+            | Self::Expand { .. } => OpClass::Linear,
             Self::MatMulAct { .. } | Self::Mul { .. } | Self::SumSquares { .. } => OpClass::Degree2,
             Self::OneHot { .. }
             | Self::Requant { .. }
