@@ -61,10 +61,19 @@ Each tensor `t` has a real scale `σ_t` with `real ≈ int · σ_t`.
 |---|---|---|
 | Activations (INT8) | Per tensor, `σ = 2^e`, `e = ceil(log2(max\|a\| / 127))` | Per tensor, `σ = max\|a\| / 127` |
 | Weights (INT8) | Per output channel, `σ_c = 2^{e_c}`, rounded up so no weight clips | Per output channel, `σ_c = max\|w_c\| / 127` |
-| Residual (INT20) | Per model, `σ_res = 2^e`, with one bit of headroom over the calibration maximum | Same |
+| Residual (INT20) | Per model, `σ_res = 2^e`, with one bit of headroom over the calibration maximum and every embedding row | Same |
 | Requantization | Shift `r_c = e_out − e_in − e_c` per output channel, grouped into shift classes | 16-bit multiplier `M_c` and shift `r` |
 
 In `pot` mode a requantization is a pure shift. The quantizer limits each tensor to at most 4 consecutive weight-exponent classes (channels below the window are raised to its lowest exponent), and the lookup key is the tuple `(class_c, acc)`, so one tuple table per tensor kind serves every channel while the channel-to-class assignment stays hidden ([RFC-0009](RFC-0009-gadgets.md#requant1), [RFC-0007](RFC-0007-claim-list.md#public-and-hidden-quantization-data)). In `affine` mode the key is `acc · M_c`, which is wide and needs the split gadget ([RFC-0009](RFC-0009-gadgets.md#requantsplit)). The compiler may use `affine` per tensor where fidelity requires it; the commitment report shows the cost.
+
+The semantics below fix the rest of the policy:
+
+- **One exponent per tensor** where nothing after the matmul applies a per-channel factor: the embedding, whose rows enter the residual through one shift `s_e`; the LM head, whose logits compare across the vocabulary; and, in `minimal`, `W_up`, whose output multiplies SiLU's unrequantized. The embedding's exponent is at least the residual's, so that `s_e ≥ 0`. The residual's maximum covers every embedding row, since any token can enter, so that `127 · 2^{s_e} < 2^{19}`.
+- **RoPE pairs.** Rows `i` and `i + d_head/2` of each head share an exponent, since the rotation adds them.
+- **Shifts** lie in `[1, 63]`. Exponents that give another shift fail with `ERR-QUANT-CALIB`.
+- **The score scale** `σ_q σ_k / √d_head` is the rational `2^{e_q + e_k} · n / 2^{40}`, `n` the integer nearest `2^{40} / √d_head`.
+- **SiLU's input exponent** is the finest at which its table's core holds at most `2^{24}` values: `Σ_c 2^{b − r_c}` over the gate's classes, at the lowering's key width `b` ([RFC-0008](RFC-0008-logup-and-tables.md#table-specifications)).
+- **In `affine` mode**, `M_c = round(2^r · f_c)`, `f_c` the real factor from channel `c`'s accumulator to the site's output, and `r` is the largest shift at which every `M_c` fits 16 bits. A zero row takes the largest channel's scale, so that it changes no other multiplier.
 
 ### Integer semantics
 

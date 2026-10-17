@@ -304,6 +304,15 @@ All notable changes to the prover release train are recorded here: the crates un
   - Keys at 32, 33, 62 and 63 bits take `Requant1`, `RequantSplit`, `RequantSplit` and a refusal. A property test checks that the split tables compute `rq(z, r)` across the widths.
   - Llama-3.1 8B's 32 layers read exactly the tables its first two do. `minimal` 8B is refused at its down projection's residual, whose key is too wide for its shift ([#292](https://github.com/AbdelStark/tessera/issues/292)).
 
+- W8A8 quantization in `tessera_quant.quantize` (RFC-0005 'Scale policy', step 5, [#81](https://github.com/AbdelStark/tessera/issues/81)):
+  - `quantize(arch, profile, weights, maxima)` turns a migrated model and its statistics into `D`'s INT8 weights and `QuantSpec`, in either profile.
+  - Weights take power-of-two scales per output channel: the least that keeps a row inside ±127, rounded to nearest even, so no weight clips. A tensor holds at most four consecutive exponents. RoPE pairs share theirs. The embedding, the LM head and `minimal`'s up projection take one per tensor, since nothing after them applies a per-channel factor.
+  - Each site's shift classes follow from the exponents by RFC-0005's semantics, each in `[1, 63]` or `ERR-QUANT-CALIB`, and the hidden `ChannelParams` map channels to them.
+  - The residual's scale covers both the calibration's stream and every embedding row, so a token the calibration never saw still enters INT20. `κ` follows RFC-0023. The score scale is the multiple of `2^{−40}` nearest `1/√d_head`, times `2^{e_q + e_k}`. SiLU's input exponent is the finest its table allows.
+  - `affine=[...]` gives the named Q, K, V, O, up or down weights per-channel scales and 16-bit multipliers under one shift. The compiler refuses them until [#274](https://github.com/AbdelStark/tessera/issues/274).
+  - On a tiny Llama-like model, with weights and activations rounded to their scales in float64, the logits' error is 2% of the largest, KL divergence `2.3 · 10^{−6}` and top-1 agreement 99.2% in both profiles. Every site's shifts equal RFC-0005's formulas, written out independently in the tests. Of 25 planted bugs, 24 fail a test; the 25th is equivalent at the head sizes tested.
+  - RFC-0005's scale policy now states the rules its semantics force: the per-tensor weights, the RoPE pairs, the shifts' range, the score scale's rational, SiLU's input exponent and the affine shift.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
