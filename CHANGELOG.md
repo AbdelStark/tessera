@@ -507,6 +507,13 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Amended.** RFC-0006 'Gadget selection', RFC-0009 'RequantSplit' and RFC-0023's example. The golden claim lists are regenerated with the conformance models' smaller split tables.
   - **Tests.** The selection tests pin the split at each boundary against the rule computed independently in the test: balanced, clamped by the rounding bit, where Lemma 2's bounds meet, and with classes. Lemma 2's property test checks the split tables at the new points, over shifts up to past the balanced point.
 
+- `commitment_id`, where every column chain starts, is defined (RFC-0031, accepted, [#219](https://github.com/AbdelStark/tessera/issues/219)):
+  - **The formula.** `commitment_id = H("commitment-id", TCE(CommitmentDescriptor))`, under a new hash domain between `envelope` and `column-init`.
+  - **The advice descriptor** holds the statement digest, the proof unit, `AdviceLayoutParams` and the unit's non-zero rows. `AdviceCommitment.layout_digest` is its `commitment_id`, and the verifier checks it at step 4.
+  - **A weight matrix's descriptor** holds `WeightLayoutParams`, the matrix, its message width, its row block, its rows and the epoch.
+  - **The weights' row block.** Weight matrices chain their columns over the parameter set's row block, which no document had stated.
+  - **Where it lands.** RFC-0004, RFC-0011, RFC-0012 and RFC-0019 are amended. `tessera-hash` gains `Domain::CommitmentId`. `spec/vectors/hash/` lists the domain and four descriptors with their encodings and identifiers, from the oracle.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

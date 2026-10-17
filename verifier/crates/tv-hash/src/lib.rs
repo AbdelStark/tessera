@@ -12,7 +12,7 @@
 //!
 //! | Item | What it computes or checks |
 //! |---|---|
-//! | [`hash`], [`DomainHasher`], [`Domain`] | `H(domain, bytes)` for the 18 domains of RFC-0004 |
+//! | [`hash`], [`DomainHasher`], [`Domain`] | `H(domain, bytes)` for the 19 domains of RFC-0004 |
 //! | [`column::column_digest`] | a column's chained digest, its Merkle leaf |
 //! | [`merkle::node`], [`merkle::verify_multiproof`] | a commitment tree's nodes and canonical multiproofs |
 //! | [`transcript::Transcript`] | the Fiat–Shamir transcript, its challenges and proof-of-work checks |

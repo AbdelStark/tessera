@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 """Reference vectors for RFC-0004 hashing: the hash domains, Merkle trees with canonical
-multiproofs, and chained column digests.
+multiproofs, chained column digests, and RFC-0031's commitment_id of a commitment descriptor.
 
 This script is the independent oracle. It carries its own BLAKE3, written from the BLAKE3
 specification and checked against the official test vectors in ../blake3/test_vectors.json
@@ -166,6 +166,7 @@ PREFIX = "tessera/v1/"
 # RFC-0004 'Hash function and domains', in table order.
 DOMAINS = [
     "envelope",
+    "commitment-id",
     "column-init",
     "column-step",
     "merkle-node",
@@ -252,6 +253,51 @@ def hex64(x):
     return f"0x{x:016x}"
 
 
+# ----- commitment_id (RFC-0031) ---------------------------------------------------------------
+
+# RFC-0012 'Layout', in table order: the declaration order of `WeightMatrix`.
+WEIGHT_MATRICES = ["Embed", "Q", "K", "V", "O", "Gate", "Up", "Down", "LmHead", "ChannelParams"]
+
+
+def le(x, width):
+    """A fixed-width little-endian unsigned integer (RFC-0003)."""
+    require(0 <= x < 2 ** (8 * width), f"{x} fits {width} bytes")
+    return x.to_bytes(width, "little")
+
+
+def tce_descriptor(d):
+    """TCE(CommitmentDescriptor) of RFC-0031: a u16 variant tag, then the variant's fields in
+    declaration order, with `AdviceLayoutParams` and `WeightLayoutParams` as RFC-0026 lays them
+    out and `WeightMatrix` as a u16 tag."""
+    layout = d["layout"]
+    if d["kind"] == "Advice":
+        require(len(d["statement_digest"]) == 64, "a 32-byte statement digest")
+        return (
+            le(0, 2)
+            + bytes.fromhex(d["statement_digest"])
+            + le(d["unit"], 4)
+            + le(layout["log2_k"], 1)
+            + le(layout["log2_inv_rate"], 1)
+            + le(layout["mask_coeffs"], 4)
+            + le(layout["row_block"], 4)
+            + le(layout["segments"], 4)
+            + le(d["rows"], 8)
+        )
+    require(d["kind"] == "WeightMatrix", "a descriptor kind")
+    return (
+        le(1, 2)
+        + le(layout["log2_k"], 1)
+        + le(layout["log2_inv_rate"], 1)
+        + le(layout["mask_coeffs"], 4)
+        + le(layout["blinding_rows"], 4)
+        + le(WEIGHT_MATRICES.index(d["matrix"]), 2)
+        + le(d["log2_k"], 1)
+        + le(d["row_block"], 4)
+        + le(d["rows"], 8)
+        + le(d["epoch"], 4)
+    )
+
+
 def main():
     checked = check_official_vectors()
     rng = splitmix64(SEED)
@@ -303,18 +349,42 @@ def main():
             }
         )
 
+    # test-small/1's layouts (RFC-0014 'Parameter sets') and production-like ones.
+    small_advice = {"log2_k": 10, "log2_inv_rate": 1, "mask_coeffs": 16, "row_block": 4, "segments": 1}
+    large_advice = {"log2_k": 22, "log2_inv_rate": 1, "mask_coeffs": 200, "row_block": 32, "segments": 8}
+    small_weights = {"log2_k": 8, "log2_inv_rate": 2, "mask_coeffs": 64, "blinding_rows": 32}
+    large_weights = {"log2_k": 20, "log2_inv_rate": 2, "mask_coeffs": 65536, "blinding_rows": 4096}
+    descriptors = [
+        {"kind": "Advice", "statement_digest": digest_from(rng).hex(), "unit": 0,
+         "layout": small_advice, "rows": 37},
+        {"kind": "Advice", "statement_digest": digest_from(rng).hex(), "unit": 3,
+         "layout": large_advice, "rows": 580_000},
+        {"kind": "WeightMatrix", "layout": small_weights, "matrix": "Q", "log2_k": 8,
+         "row_block": 4, "rows": 4 + 32, "epoch": 0},
+        {"kind": "WeightMatrix", "layout": large_weights, "matrix": "ChannelParams", "log2_k": 17,
+         "row_block": 32, "rows": 9 * 126 + 4096, "epoch": 7},
+    ]
+    commitment_ids = []
+    for d in descriptors:
+        tce = tce_descriptor(d)
+        commitment_ids.append(
+            {"descriptor": d, "tce": tce.hex(), "commitment_id": H("commitment-id", tce).hex()}
+        )
+
     vectors = {
         "description": (
             "RFC-0004 hashing reference vectors from an independent BLAKE3 (checked against "
             f"{checked} official vectors): H(domain, x) = BLAKE3.derive_key(context, x) for every "
             "domain on inputs of length 0, 1, 64 and 1025 filled with i mod 251; Merkle trees with "
-            "canonical multiproofs; chained column digests with row block `block`"
+            "canonical multiproofs; chained column digests with row block `block`; commitment_id "
+            "from the TCE of a CommitmentDescriptor (RFC-0031)"
         ),
         "seed": hex64(SEED),
         "input_lengths": lengths,
         "domains": domains,
         "merkle": trees,
         "columns": matrices,
+        "commitment_ids": commitment_ids,
     }
     (HERE / "hash.json").write_text(json.dumps(vectors, indent=1) + "\n")
 

@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3 (binding), v0.4 (hiding budget and refresh)
-- Amended by: [RFC-0026](RFC-0026-claim-list-layout.md) ('Layout': the fields of `WeightLayoutParams`)
+- Amended by: [RFC-0026](RFC-0026-claim-list-layout.md) ('Layout': the fields of `WeightLayoutParams`), [RFC-0031](RFC-0031-commitment-id.md) ('Layout': each matrix's `commitment_id` and row block)
 
 ## Summary
 
@@ -43,6 +43,7 @@ The source keeps VerInf's "persistent weight commitment, opened-column budget, r
 - Rate 1/4: codewords of length `n_T = 4 k_T` on the coset `7·L_T`.
 - Each row's encoding carries a vanishing mask with `P_W = 2^16` random coefficients (RFC-0011 encoding), so the effective rate is `ρ' = (k_T + P_W)/n_T ≈ 0.266`.
 - Each matrix has `B_W = 4096` blinding rows: random message rows appended after the data rows, committed with them, each used at most once. RFC-0013's masks are over `Fp2`, so each blinding row it uses is two of these. A proof consumes six per matrix: two for the evaluation combined row, two for the proximity combined row, and two as the mask row of the masked extension ([RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions)).
+- Each matrix chains its columns over blocks of the parameter set's row block `B` ([RFC-0014](RFC-0014-interaction-and-soundness.md#parameter-sets)), from its own `commitment_id`: the hash of its `WeightMatrix` descriptor, which holds `WeightLayoutParams`, the matrix, its message width, `B`, its rows and the epoch ([RFC-0031](RFC-0031-commitment-id.md#the-descriptor)).
 - `R_W = H("weights-root", TCE(WeightLayoutParams) ‖ root_Embed ‖ … ‖ root_ChannelParams ‖ u32(epoch))`. `WeightLayoutParams` holds `log2 k_W`, the inverse rate's `log2`, `P_W` and `B_W`, the parameter set's values; the shapes and padding follow from the architecture ([RFC-0026](RFC-0026-claim-list-layout.md)).
 
 ### Opening by the folding pass

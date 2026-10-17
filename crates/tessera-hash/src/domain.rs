@@ -41,6 +41,9 @@ macro_rules! domains {
 domains! {
     /// Envelope header and payload (RFC-0003).
     Envelope => "envelope",
+    /// A commitment's identifier: `TCE(CommitmentDescriptor)` (RFC-0031), from which every
+    /// column chain of the commitment starts.
+    CommitmentId => "commitment-id",
     /// The first link of a column chain: `commitment_id ‖ column` (RFC-0004 'Column digests').
     ColumnInit => "column-init",
     /// A link of a column chain: `chain ‖ symbols`.

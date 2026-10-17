@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3 (driver), v0.4 (zero-knowledge checks, anchor, scoring), v1.0 (hardening)
+- Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Check order', step 4: the advice commitment's `layout_digest`)
 
 ## Summary
 
@@ -67,7 +68,7 @@ Checks run in this order; the first failure determines the verdict.
 1. Decode every input under `ResourceLimits` (`Reject(Malformed)` or `Inconclusive(ERR-RES-*)`).
 2. Accept the parameter set (`Reject(Params)`).
 3. Validate and lower the claim list: [RFC-0007](RFC-0007-claim-list.md#verifier-validation) steps 1–7, including table regeneration and range re-derivation (`Reject(StatementMismatch)`).
-4. Bind the statement: claim-list digest; `weights_root` and `epoch` equal to the ledger's current root for that model; manifest signature under a pinned key; sample membership and no prior acceptance of the batch's requests; anchor entries' inclusion proofs ([RFC-0015](RFC-0015-transcript-anchor.md#verifier-checks), [RFC-0016](RFC-0016-audit-sampling.md#verifier-checks)).
+4. Bind the statement: claim-list digest; `weights_root` and `epoch` equal to the ledger's current root for that model; manifest signature under a pinned key; sample membership and no prior acceptance of the batch's requests; anchor entries' inclusion proofs ([RFC-0015](RFC-0015-transcript-anchor.md#verifier-checks), [RFC-0016](RFC-0016-audit-sampling.md#verifier-checks)); the advice commitment's `layout_digest` equal to the `commitment_id` the verifier derives ([RFC-0031](RFC-0031-commitment-id.md#layout_digest), `Reject(StatementMismatch)`).
 5. Weight reservation: declared blinding rows unused in this epoch according to the ledger (`Reject(Budget)`).
 6. Transcript: rebuild `SessionContext`, absorb `Round1`, derive or check the seed (coin-toss transcript, or proof-of-work nonce in non-interactive mode; `Reject(ProofOfWork)`).
 7. Tree levels, in this order:

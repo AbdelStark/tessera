@@ -71,6 +71,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0028](docs/rfcs/RFC-0028-balanced-split.md) | A balanced split point for `RequantSplit` (amends RFC-0006, RFC-0009) | v0.2 |
 | [RFC-0029](docs/rfcs/RFC-0029-table-set.md) | The claim list is the table set: `TableSetManifest` retired (amends RFC-0006) | v0.2 |
 | [RFC-0030](docs/rfcs/RFC-0030-masked-exponentials.md) | `SoftmaxRow` pins its masked exponentials to zero (amends RFC-0006, RFC-0007, RFC-0009, RFC-0010) | v0.3 |
+| [RFC-0031](docs/rfcs/RFC-0031-commitment-id.md) | `commitment_id`, where every column chain starts (amends RFC-0004, RFC-0011, RFC-0012, RFC-0019) | v0.3 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 

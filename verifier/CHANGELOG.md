@@ -68,6 +68,10 @@ All notable changes to the verifier release train are recorded here: the crates 
 - `tv-codec` opens every tiny conformance model of `spec/vectors/models/` (07 §5): each artifact frames as an `IntegerModel` envelope under `DecodeLimits::INTEGER_MODEL`, its digest recomputed by the test kit's BLAKE3 and equal to the index's ([#83](https://github.com/AbdelStark/tessera/issues/83)).
 - `tv-codec` opens the fourth conformance model, `tiny-2-affine`, whose affine sites put multipliers in its `ChannelParams` (RFC-0025, [#301](https://github.com/AbdelStark/tessera/issues/301)).
 
+- `tv-hash` hashes under the `commitment-id` domain of RFC-0031, the identifier every column chain starts from ([#219](https://github.com/AbdelStark/tessera/issues/219)):
+  - `Domain::ALL` holds 19 domains in RFC-0004's table order, `commitment-id` second.
+  - The hash vectors' four descriptors reach their `commitment_id`.
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).
