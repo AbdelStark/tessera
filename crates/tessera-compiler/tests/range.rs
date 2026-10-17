@@ -24,7 +24,7 @@ use tessera_codec::Rational;
 use tessera_codec::error::ErrorCode;
 use tessera_compiler::{CompileError, HALF_FIELD, Range, analyze};
 use tessera_ir::{
-    Graph, GraphBuilder, NodeId, NodeKind, Op, TableId, TensorId, WeightRef, WeightType,
+    Broadcast, Graph, GraphBuilder, NodeId, NodeKind, Op, TableId, TensorId, WeightRef, WeightType,
 };
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableKind, TableSpec};
 
@@ -71,7 +71,7 @@ fn single_op(op: Op, a: (i128, i128), b: (i128, i128), seed: u64) {
     let c = g.constant(vec![-3, 7, 0, 5]).expect("a constant");
     let inputs: Vec<TensorId>;
     let output = match op {
-        Op::Add | Op::Sub | Op::Mul => {
+        Op::Add | Op::Sub | Op::Mul { .. } => {
             inputs = vec![x, y];
             virt(&shape)
         }
@@ -121,7 +121,7 @@ proptest! {
         let op = [
             Op::Add,
             Op::Sub,
-            Op::Mul,
+            Op::Mul { broadcast: Broadcast::Trailing },
             Op::ConstMul { c: tessera_ir::ConstRef(0) },
             Op::ConstAdd { c: tessera_ir::ConstRef(0) },
             Op::Sum { axis: 1 },
@@ -314,7 +314,14 @@ fn layer(n: u32) -> Layer {
         &[squares],
         out(&[n], ADVICE),
     );
-    let scaled = one(&mut g, Op::Mul, &[residual, rho], virt(&[n, d]));
+    let scaled = one(
+        &mut g,
+        Op::Mul {
+            broadcast: Broadcast::Trailing,
+        },
+        &[residual, rho],
+        virt(&[n, d]),
+    );
     let y = int8(&mut g, scaled, r12, &[n, d]);
     // Q, K, V, and RoPE on Q and K.
     let (wq, q_w) = weight(&mut g, WeightType::Q, 2 * dh, d);
@@ -396,7 +403,14 @@ fn layer(n: u32) -> Layer {
         &[softmax[0], v8],
         virt(&[n, dh]),
     );
-    let attention = one(&mut g, Op::Mul, &[pv, softmax[1]], virt(&[n, dh]));
+    let attention = one(
+        &mut g,
+        Op::Mul {
+            broadcast: Broadcast::Trailing,
+        },
+        &[pv, softmax[1]],
+        virt(&[n, dh]),
+    );
     let o8 = int8(&mut g, attention, r12, &[n, dh]);
     // O projection back to the residual, then the MLP: gate and up, SiLU, product, down.
     let (wo, o_w) = weight(&mut g, WeightType::O, d, dh);
@@ -441,7 +455,14 @@ fn layer(n: u32) -> Layer {
         lookup(&[n, ff], SILU),
     );
     let u8 = int8(&mut g, up, r8, &[n, ff]);
-    let product = one(&mut g, Op::Mul, &[a, u8], virt(&[n, ff]));
+    let product = one(
+        &mut g,
+        Op::Mul {
+            broadcast: Broadcast::Trailing,
+        },
+        &[a, u8],
+        virt(&[n, ff]),
+    );
     let h = int8(&mut g, product, r8, &[n, ff]);
     let (wd, d_w) = weight(&mut g, WeightType::Down, d, ff);
     let down = one(
@@ -574,7 +595,14 @@ fn attention(n: u32, same: bool) -> (Graph, TensorId, TensorId, TensorId) {
         virt(&[n, 4]),
     );
     let r = if same { first[1] } else { second[1] };
-    let y = one(&mut g, Op::Mul, &[pv, r], virt(&[n, 4]));
+    let y = one(
+        &mut g,
+        Op::Mul {
+            broadcast: Broadcast::Trailing,
+        },
+        &[pv, r],
+        virt(&[n, 4]),
+    );
     (g.finish(), scores, v, y)
 }
 

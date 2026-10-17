@@ -37,7 +37,7 @@ pub use model::{
     ArchFamily, ArchSpec, CalibrationIdentity, ChannelParams, Digest, IntegerModel, Profile,
     Provenance, PublicQuantSpec, QuantPoint, QuantSpec, RopeSpec, Site, WeightTensor,
 };
-pub use op::{Op, OpClass};
+pub use op::{Broadcast, Op, OpClass};
 pub use tessera_hash::ParamSetId;
 pub use tessera_tables::TableId;
 pub use types::{

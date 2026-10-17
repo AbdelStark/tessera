@@ -66,8 +66,11 @@ pub enum Op {
         /// `QK^T`, rather than `[…, k, n]`.
         transpose_rhs: bool,
     },
-    /// The elementwise product. The second operand may be broadcast over trailing axes.
-    Mul,
+    /// The elementwise product `a · b`, with `b` broadcast as `broadcast` says.
+    Mul {
+        /// How `b`'s shape meets `a`'s.
+        broadcast: Broadcast,
+    },
     /// The sum of squares over one axis.
     SumSquares {
         /// The axis, counted from the outermost.
@@ -128,6 +131,18 @@ pub enum Op {
     },
 }
 
+/// How `Mul`'s second operand `b` meets its first `a` (RFC-0006 'Operation set'). Shapes alone
+/// cannot say: when `a`'s first and last axes have equal lengths, `b` of that length fits both.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Broadcast {
+    /// `b`'s shape is `a`'s, or a prefix of it, broadcast over the trailing axes: one value per
+    /// row, such as a norm's root or a softmax row's reciprocal.
+    Trailing,
+    /// `b`'s shape is `a`'s last axis, broadcast over the leading axes: one value per channel,
+    /// such as an affine site's multipliers (RFC-0025).
+    Leading,
+}
+
 /// How a node's relation enters the proof (RFC-0006, RFC-0010): linear and degree-2 operations
 /// produce virtual tensors whose claims reduce through sumchecks; gadget-backed ones produce
 /// committed tensors.
@@ -156,7 +171,7 @@ impl Op {
             Self::Slice { .. } => "Slice",
             Self::GatherPublic { .. } => "GatherPublic",
             Self::MatMulAct { .. } => "MatMulAct",
-            Self::Mul => "Mul",
+            Self::Mul { .. } => "Mul",
             Self::SumSquares { .. } => "SumSquares",
             Self::OneHot { .. } => "OneHot",
             Self::Requant { .. } => "Requant",
@@ -182,7 +197,7 @@ impl Op {
             | Self::Reshape
             | Self::Slice { .. }
             | Self::GatherPublic { .. } => OpClass::Linear,
-            Self::MatMulAct { .. } | Self::Mul | Self::SumSquares { .. } => OpClass::Degree2,
+            Self::MatMulAct { .. } | Self::Mul { .. } | Self::SumSquares { .. } => OpClass::Degree2,
             Self::OneHot { .. }
             | Self::Requant { .. }
             | Self::TableMap { .. }

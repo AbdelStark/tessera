@@ -228,7 +228,7 @@ impl Analysis<'_> {
                     .and_then(|(a, b)| mul(mul(a, b)?, point(inner)));
                 Ok(vec![lift(product)])
             }
-            Op::Mul => {
+            Op::Mul { .. } => {
                 if let Some(range) = self.softmax_fact(node) {
                     return Ok(vec![range]);
                 }

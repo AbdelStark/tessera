@@ -23,7 +23,7 @@ fn every_conformance_model_opens_with_the_index_digest() {
         .get("models")
         .and_then(|m| m.as_array())
         .expect("models");
-    assert_eq!(models.len(), 3, "every conformance model");
+    assert_eq!(models.len(), 4, "every conformance model");
     for entry in models {
         let field = |key: &str| entry.get(key).and_then(|v| v.as_str()).expect(key);
         let path = vectors_dir().join("models").join(field("file"));

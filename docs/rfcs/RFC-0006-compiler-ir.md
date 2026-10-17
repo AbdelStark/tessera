@@ -42,7 +42,7 @@ pub enum Op {
     GatherPublic { index: ConstRef },
     // Virtual, degree 2
     MatMulAct { transpose_rhs: bool },           // activation x activation: QK^T (transposed), PV
-    Mul,                                         // elementwise product
+    Mul { broadcast: Broadcast },                // elementwise product: Trailing or Leading
     SumSquares { axis: u8 },
     // Gadget-backed: produce committed advice
     OneHot { vocab: u32 },                       // committed one-hot token vector
@@ -78,7 +78,7 @@ A graph's nodes are in topological order. Every input is a graph input, a tensor
 | `Slice` | `x` → `y` | `start + len` within the axis, `len ≥ 1`; `y` is `x` with that axis of length `len` | |
 | `GatherPublic` | `x` → `y` | each index a row of `x`'s outermost axis; `y` has one such row per index | |
 | `MatMulAct` | `a`, `b` → `y` | equal leading axes; `a […, m, k]`, `b […, k, n]` or, transposed, `b […, n, k]`; `y […, m, n]` | |
-| `Mul` | `a`, `b` → `y` | `b`'s shape is `a`'s, a prefix of it, broadcast over the trailing axes, or its last axis, broadcast over the leading axes; `y = a` | |
+| `Mul` | `a`, `b` → `y` | with `Trailing`, `b`'s shape is `a`'s or a prefix of it, broadcast over the trailing axes; with `Leading`, `a`'s last axis, broadcast over the leading axes; `y = a` | The broadcast is stated, not inferred: when `a`'s first and last axes have equal lengths, a `b` of that length fits both |
 | `OneHot` | `t` → `h` | `h` is `t` with an axis of `vocab ≥ 1` added | `h` is `Committed { Advice }` |
 | `Requant` | `x` (, `c`) → `y` | `y = x`; `c [x's last axis]`, the channel classes, when the set has more than one class | `c` is `Committed { Weight }`; `y` is a lookup output or advice; `lo ≤ hi` |
 | `TableMap` | `x` (, `c`) → `y` | `y = x`; `c [x's last axis]`, the channel classes, when the table has several classes | `c` is `Committed { Weight }`; `y` is `LookupOutput { table }` |
@@ -187,8 +187,6 @@ It reads only the public part of `D`: the architecture, the profile, `PublicQuan
   - a `ChannelParams` for each weight a site of several classes or an affine site rescales and for no other;
   - at a site of several classes, one class per output channel, each inside the site's classes, and no multiplier;
   - at an affine site, one multiplier per output channel, each in `[1, 2^{16})`, and no class.
-
-  The compiler refuses affine sites until it implements their lowering ([#301](https://github.com/AbdelStark/tessera/issues/301)).
 
 ### Tiling and the execution plan
 

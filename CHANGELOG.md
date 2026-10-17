@@ -486,6 +486,19 @@ All notable changes to the prover release train are recorded here: the crates un
     - every input moves exactly the terms it enters, the table rows included;
     - the restated figures are the model's.
 
+- Affine rescale sites compile and run end to end (RFC-0025, [#301](https://github.com/AbdelStark/tessera/issues/301)):
+  - **Lowering.** The weight before each affine site adds its multipliers as a committed input, `[rows]` in `[0, 2^16 − 1]`. An INT8 site rescales `Mul(x, m)` with its one shift. A residual site takes the fused key `acc · m + 2^r · res`, or the two-step update when `r = 63`. `Lowering::multipliers` names the inputs, and the refusal of affine sites is gone.
+  - **`Mul`'s broadcast** is a field of the operation: `Mul { broadcast: Trailing }` for one value per row, `Leading` for one per channel. Shapes alone cannot say which applies, since a `[n, n]` operand fits both, as a norm's root does at `n = d_model` positions. RFC-0006 and RFC-0025 say so.
+  - **The CPU engine** computes the leading broadcast and binds the multipliers from `ChannelParams`.
+  - **The PyTorch reference** computes affine sites. `tessera_quant.quantize`, and `tessera-quant compile --scales affine`, give every weight that can take them a multiplier per channel: Q, K and V, and in `servable` O, up and down.
+  - **A conformance model.** `spec/vectors/models/tiny-2-affine` has six affine sites beside `pot` ones, computed independently by the oracle. Its traces and claim list join the vectors.
+  - Tests:
+    - on random tiny models of both profiles, with weights at ±127 and multipliers at 1 and `2^16 − 1`, and at a residual shift of 63, the lowered graph gives the reference's RFC-0025 semantics, every value in its range;
+    - at 405B's shape, each affine key is 16 bits wider than its `pot` one, within RFC-0025's bounds, and takes `RequantSplit` or `RequantWide`;
+    - `minimal`'s affine O and down are refused with `ERR-COMPILE-RANGE`;
+    - an affine RoPE site gives `servable` four stages;
+    - the CPU engine and the PyTorch reference reproduce every traced tensor of the affine conformance model.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

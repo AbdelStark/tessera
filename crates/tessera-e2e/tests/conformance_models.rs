@@ -46,7 +46,12 @@ fn every_conformance_model_loads_validates_and_lowers() {
         .collect();
     assert_eq!(
         names,
-        ["tiny-2-servable", "tiny-2-minimal", "tiny-4-servable"]
+        [
+            "tiny-2-servable",
+            "tiny-2-minimal",
+            "tiny-2-affine",
+            "tiny-4-servable"
+        ]
     );
     for entry in models {
         let name = entry["name"].as_str().expect("a name");

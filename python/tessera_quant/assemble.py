@@ -23,6 +23,7 @@ import blake3
 import numpy as np
 import torch
 
+from tessera_quant.arch import ArchSpec
 from tessera_quant.capture import CalibrationResult, reference_logits
 from tessera_quant.checkpoint import FloatModel
 from tessera_quant.errors import CalibrationError, UsageError
@@ -65,7 +66,9 @@ def quantize(
     """The integer model `D` of `model`, calibrated by `calib` (02 §4).
 
     The migration strength is the one of `alphas` whose `D` diverges least from the BF16 reference
-    on the held-out split, the smallest of equal ones (RFC-0005 'Calibration').
+    on the held-out split, the smallest of equal ones (RFC-0005 'Calibration'). With `affine`
+    scales, every weight that can take them does (RFC-0025): Q, K and V, and in `servable` O, up
+    and down too.
 
     Raises:
         CalibrationError: for an empty held-out split, or as `tessera_quant.scales.choose`.
@@ -89,9 +92,11 @@ def quantize(
         provenance = _provenance(checkpoint, calib, alpha)
         return IntegerModel(arch, the_profile, q.quant, q.weights, provenance)
 
+    affine = affine_weights(arch, the_profile) if scales == "affine" else ()
+
     def quantized(alpha: Fraction) -> Quantized:
         migrated, migrated_maxima = transform(arch, weights, maxima, alpha)
-        return choose(arch, the_profile, migrated, migrated_maxima)
+        return choose(arch, the_profile, migrated, migrated_maxima, affine=affine)
 
     def divergence(alpha: Fraction) -> float:
         q = quantized(alpha)
@@ -109,17 +114,30 @@ def check_options(profile: str, scales: str) -> Profile:
     """The profile `quantize` builds for `profile`, once `profile` and `scales` are its options.
 
     Raises:
-        UsageError: for `affine` scales, which the reference computes only with #301, or an
-            unknown profile.
+        UsageError: for scales other than `pot` and `affine`, or an unknown profile.
     """
-    if scales != "pot":
-        raise UsageError(
-            "affine scales are chosen once the integer reference computes affine sites (#301)"
-        )
+    if scales not in ("pot", "affine"):
+        raise UsageError(f"no scales {scales!r}: pot or affine")
     profiles = {"servable": Profile.Servable, "minimal": Profile.Minimal}
     if profile not in profiles:
         raise UsageError(f"no profile {profile!r}: servable or minimal")
     return profiles[profile]
+
+
+def affine_weights(arch: ArchSpec, profile: Profile) -> tuple[str, ...]:
+    """The Hugging Face names of the weights that can take `affine` scales (RFC-0025).
+
+    Q, K and V in every layer, and in `servable` O, up and down too. `minimal`'s O and down keys
+    would exceed 62 bits, and its up projection has no site.
+    """
+    attention = ("q_proj", "k_proj", "v_proj")
+    names: list[str] = []
+    for layer in range(arch.n_layers):
+        names += [f"model.layers.{layer}.self_attn.{w}.weight" for w in attention]
+        if profile is Profile.Servable:
+            names.append(f"model.layers.{layer}.self_attn.o_proj.weight")
+            names += [f"model.layers.{layer}.mlp.{w}.weight" for w in ("up_proj", "down_proj")]
+    return tuple(names)
 
 
 def checkpoint_digests(model: FloatModel) -> list[tuple[str, bytes]]:

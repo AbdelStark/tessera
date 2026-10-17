@@ -12,7 +12,9 @@ A tiny Llama-3.1 at Llama's magnitudes is calibrated, quantized and exported.
 - **Determinism.** Two runs give the same bytes. The export is a secret file whose last 32 bytes
   are the digest returned, and reads back to the same `D`.
 - **Exactness.** No float reaches `D`: every field is an integer, a rational, text or bytes.
-- **Refusals.** An empty held-out split, `affine` scales until #301, and an unknown profile.
+- **Affine scales.** Every weight that can take them does, in both profiles: its site in
+  `affine_sites`, its multipliers in place of classes. The reference runs the result.
+- **Refusals.** An empty held-out split, and an unknown profile.
 """
 
 import math
@@ -21,7 +23,7 @@ from dataclasses import fields, is_dataclass, replace
 from enum import Enum
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import blake3
 import numpy as np
@@ -41,9 +43,16 @@ from tessera_quant import (
 from tessera_quant.calibration import DatasetIdentity, draw
 from tessera_quant.capture import reference_logits
 from tessera_quant.checkpoint import FloatModel
-from tessera_quant.integer_model import INTEGER_MODEL, FinalNormPoint, IntegerModel, Profile
+from tessera_quant.integer_model import (
+    INTEGER_MODEL,
+    FinalNormPoint,
+    IntegerModel,
+    LayerPoint,
+    Profile,
+    Site,
+)
 from tessera_quant.migration import ALPHAS, fold, mean_kl
-from tessera_quant.reference import trace
+from tessera_quant.reference import run_reference, trace
 from tessera_quant.scales import exponent
 from tessera_quant.tce import INTEGER_MODEL_LIMITS, encode, read_artifact
 
@@ -183,10 +192,35 @@ def test_what_quantize_cannot_do_is_refused(
     calibrated: tuple[FloatModel, CalibrationResult],
 ) -> None:
     model, calib = calibrated
-    with pytest.raises(TesseraQuantError, match="#301"):
-        quantize(model, calib, scales="affine")
     with pytest.raises(TesseraQuantError, match="no profile"):
         quantize(model, calib, profile="tiny")  # pyright: ignore[reportArgumentType]
     empty = CalibrationResult(replace(calib.calibration, held_out=()), calib.statistics, calib.data)
     with pytest.raises(CalibrationError, match="held-out split"):
         quantize(model, empty)
+
+
+def test_affine_scales_give_every_weight_that_can_take_them_a_multiplier(
+    calibrated: tuple[FloatModel, CalibrationResult],
+) -> None:
+    model, calib = calibrated
+    every = [Site.RopeQ, Site.RopeK, Site.V, Site.AttnResidual, Site.Up, Site.MlpResidual]
+    # minimal's O and down keys would pass 62 bits, and its up projection has no site.
+    cases: list[tuple[Literal["servable", "minimal"], list[Site]]] = [
+        ("servable", every),
+        ("minimal", every[:3]),
+    ]
+    for profile, sites in cases:
+        d = quantize(model, calib, profile=profile, scales="affine", alphas=(Fraction(3, 5),))
+        public = d.quant.public
+        points = [p for p, _ in public.affine_sites]
+        assert points == [LayerPoint(layer, s) for layer in range(2) for s in sites], profile
+        assert not {p for p, _ in public.shift_class_sets} & set(points)
+        with_multipliers = [c for c in d.quant.channels if len(c.multiplier)]
+        assert len(with_multipliers) == len(points)
+        assert all(len(c.class_) == 0 for c in with_multipliers)
+        logits = run_reference(d, np.array([1, 7, 9], dtype=np.uint32))
+        assert logits.shape == (3, TINY_ARCH.vocab)
+        assert encode(INTEGER_MODEL.codec, d) == encode(
+            INTEGER_MODEL.codec,
+            quantize(model, calib, profile=profile, scales="affine", alphas=(Fraction(3, 5),)),
+        )

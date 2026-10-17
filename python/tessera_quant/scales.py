@@ -32,8 +32,8 @@ chooses the strength and assembles `D`:
   scales `max|w_c| / 127`, and its site a 16-bit multiplier per channel with one shift, the
   largest at which every multiplier still fits. The site goes in `affine_sites` with its shift,
   and the multipliers in the weight's `ChannelParams`, with no classes. Q, K, V, O, up and down
-  can, except `minimal`'s O and down, whose keys would exceed 62 bits; the compiler lowers no
-  affine site yet, and `tessera_quant.quantize` chooses none (#301).
+  can, except `minimal`'s O and down, whose keys would exceed 62 bits. `tessera_quant.quantize`
+  with `affine` scales names every weight that can take them.
 
 Weights and statistics are secret-class (05 §3): errors name tensors and sites, never a value.
 """

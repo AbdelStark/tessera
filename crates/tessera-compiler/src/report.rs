@@ -489,7 +489,7 @@ fn sumcheck(graph: &Graph, op: &Op) -> bool {
     match op {
         Op::MatMulWeight { .. }
         | Op::MatMulAct { .. }
-        | Op::Mul
+        | Op::Mul { .. }
         | Op::Rotate { .. }
         | Op::SumSquares { .. }
         | Op::Sum { .. } => true,

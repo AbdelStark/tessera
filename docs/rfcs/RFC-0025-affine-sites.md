@@ -102,7 +102,7 @@ Activation scales stay powers of two in both modes. Every exponent the claim lis
 - **Input.** The weight's multipliers, `m [rows]`, `Committed { Weight }` with the range `[0, 2^{16} − 1]`.
 - **INT8 site.** The key is `Mul(x, m)`, rescaled by a `Requant` with the one shift `r`.
 - **Residual site.** It is lowered as a site of one class, with `Mul(acc, m)` in place of `acc`. When `2^r` fits a constant (`r ≤ 62`), the fused key is `Add(Mul(acc, m), ConstMul(res, 2^r))`. Otherwise it takes the two-step update. Both equal the semantics above, since `res · 2^r` is a multiple of `2^r`.
-- **`Mul`'s broadcast.** `Mul`'s second operand may have the shape of the first's last axis, broadcast over the leading axes. That is how `m` multiplies `[n, rows]`. [RFC-0006](RFC-0006-compiler-ir.md#operation-set) 'Operation set' now reads: "`b`'s shape is `a`'s, a prefix of it, broadcast over the trailing axes, or its last axis, broadcast over the leading axes".
+- **`Mul`'s broadcast.** `Mul`'s second operand may have the shape of the first's last axis, broadcast over the leading axes. That is how `m` multiplies `[n, rows]`. Shapes alone cannot say which broadcast applies: for `a [n, n]` and `b [n]`, as a norm's root at `n = d_model` positions, both fit. `Mul` therefore states it, `Mul { broadcast: Trailing }` for one value per row and `Mul { broadcast: Leading }` for one per channel ([RFC-0006](RFC-0006-compiler-ir.md#operation-set) 'Operation set').
 
 Range analysis needs no new rule: `Mul` takes its operands' interval product, so the key's bound is `max|x| · (2^{16} − 1)`. Gadget selection is unchanged ([RFC-0006](RFC-0006-compiler-ir.md#gadget-selection)): the key is 16 bits wider than at a `pot` site, and takes `RequantSplit` or `RequantWide` as its shift allows. At 405B:
 
@@ -184,7 +184,7 @@ The proof proves the multiplier's product, not its range.
 ## Migration / Rollout
 
 - **This RFC's change.** The claim-list field, the quantizer's output and the encodings change in v0.2.
-- **Lowering affine sites.** The compiler refuses them until it implements the lowering above ([#301](https://github.com/AbdelStark/tessera/issues/301)). That refusal now reads the claim list's `affine_sites`, not the hidden multipliers.
+- **Lowering affine sites.** The compiler lowers them as above since [#301](https://github.com/AbdelStark/tessera/issues/301). The PyTorch reference computes them, and `tessera_quant.quantize` takes `affine` scales.
 - **The verifier.** Its lowering of affine sites lands with its claim-list validation ([#107](https://github.com/AbdelStark/tessera/issues/107)).
 
 ## Testing Strategy
@@ -192,7 +192,7 @@ The proof proves the multiplier's product, not its range.
 - **Encoding.** The `IntegerModel` vectors hold two affine sites. `tessera-ir` writes them, and `tessera-quant`'s codec and the conformance models' oracle each encode them byte for byte.
 - **The quantizer.** An affine weight's site appears in `affine_sites` with its shift and not in `shift_class_sets`. Its `ChannelParams` has multipliers and no classes. `minimal`'s O and down refuse `affine`.
 - **Validation.** Each rule refuses a public part that breaks only it: a site in both lists, a site in neither, an affine `AttnNorm`, an affine shift of 0 or 64. The hidden checks are tested the same way.
-- **With the lowering (#301):**
+- **With the lowering ([#301](https://github.com/AbdelStark/tessera/issues/301)):**
   - the lowered graph, on the compiler's exact interpreter, gives the semantics above at every affine site, ends of the range included;
   - selection takes `RequantSplit` or `RequantWide` at the bounds above;
   - an affine Q gives `servable` four stages;

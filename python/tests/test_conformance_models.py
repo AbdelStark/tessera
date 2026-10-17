@@ -22,7 +22,7 @@ INDEX: dict[str, Any] = json.loads((MODELS / "models.json").read_text(encoding="
 def test_the_index_lists_every_model() -> None:
     assert (INDEX["schema"], INDEX["version"]) == ("0x0101", "1")
     names = [entry["name"] for entry in INDEX["models"]]
-    assert names == ["tiny-2-servable", "tiny-2-minimal", "tiny-4-servable"]
+    assert names == ["tiny-2-servable", "tiny-2-minimal", "tiny-2-affine", "tiny-4-servable"]
 
 
 @pytest.mark.parametrize("entry", INDEX["models"], ids=lambda entry: entry["name"])

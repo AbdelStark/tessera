@@ -6,9 +6,12 @@ The tiny conformance models of [07 §5](../../../docs/spec/07-testing-strategy.m
 |---|---|---|---|
 | `tiny-2-servable.d` | 2 layers, `d_model` 64, 4 heads of 16, 2 KV heads, `d_ff` 192, vocabulary 512 | `servable` | INT20 |
 | `tiny-2-minimal.d` | as above, other weights | `minimal` | INT20 |
+| `tiny-2-affine.d` | as above, other weights, with affine sites | `servable` | INT20 |
 | `tiny-4-servable.d` | 4 layers, `d_model` 256, 8 heads of 32, 2 KV heads, `d_ff` 384, vocabulary 512 | `servable` | INT16 |
 
 The 16-bit residual is legal, since `residual_bits` lies in 2 to 31, and it catches an engine that assumes INT20.
+
+`tiny-2-affine` rescales six sites in `affine` mode ([RFC-0025](../../../docs/rfcs/RFC-0025-affine-sites.md)), beside `pot` ones: layer 0's `RopeQ`, `RopeK`, `AttnResidual` and `Up`, and layer 1's `V` and `MlpResidual`. Each weight before one carries a multiplier per output channel, drawn from `[2^{14}, 2^{16})`, the two rows of a RoPE pair sharing theirs. The site rescales `x_c · M_c` with one shift, the least that keeps its outputs in range. Its affine `Up` and `V` are pushed to clamp, and its affine residual sites take the fused key.
 
 ## How they are made
 
