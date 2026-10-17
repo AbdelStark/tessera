@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.1 (scheme), v0.3 (layout and openings)
-- Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Column digests and root': `commitment_id` and `layout_digest`)
+- Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Column digests and root': `commitment_id` and `layout_digest`), [RFC-0034](RFC-0034-causal-blocks.md) ('Canonical advice layout': the score tensors' layout and their masked blocks)
 
 ## Summary
 
@@ -33,10 +33,10 @@ The source states: "Advice is RS-encoded (rate 1/2) row by row during the witnes
 
 The verifier must locate every committed tensor from public data, so the layout is a deterministic function of the claim list and the batch descriptor:
 
-1. Every committed tensor `X` has a multilinear domain of `n_X` variables obtained by padding each dimension to a power of two, with padded dimensions ordered most significant so that padding forms whole rows.
+1. Every committed tensor `X` has a multilinear domain of `n_X` variables obtained by padding each dimension to a power of two, with padded dimensions ordered most significant so that padding forms whole rows. A score tensor `e` orders each attention tile's variables `(i_hi, h, q, i_lo)` instead, so that its rows are blocks of keys ([RFC-0034](RFC-0034-causal-blocks.md#causal-layout)).
 2. Tensors are allocated in production order (layer, then tile kind, then head, then query block, as in [RFC-0006](RFC-0006-compiler-ir.md#tiling-and-the-execution-plan)), each at the next offset aligned to `2^{max(n_X, log2 k)}`. Every tensor therefore occupies whole rows; tensors smaller than a row get one row.
-3. The advice polynomial `Ã` has `ν` variables; its matrix view has row index = high `ν − log2 k` bits and column index = low `log2 k` bits. A claim `X̃(r) = v` is the claim `Ã(r ‖ base_X) = v`, where `base_X` is the tensor's fixed row-offset bits.
-4. **Zero rows.** Rows that hold only padding or alignment gaps are public and are skipped: not encoded, not hashed, not opened. They cost nothing.
+3. The advice polynomial `Ã` has `ν` variables; its matrix view has row index = high `ν − log2 k` bits and column index = low `log2 k` bits. A claim `X̃(r) = v` is the claim `Ã(r ‖ base_X) = v`, where `base_X` is the tensor's fixed row-offset bits. For a score tensor, `r` is taken in the order of rule 1.
+4. **Zero rows.** Rows that hold only padding or alignment gaps are public and are skipped: not encoded, not hashed, not opened. They cost nothing. So are a score tensor's rows that hold only masked positions, which are zero ([RFC-0034](RFC-0034-causal-blocks.md#zero-rows)).
 5. The rows are partitioned into `S` contiguous segments (public, default 8), aligned to layer boundaries, so that each GPU can commit its own segment ([RFC-0018](RFC-0018-gpu-prover-runtime.md#partitioning)).
 
 ### Encoding

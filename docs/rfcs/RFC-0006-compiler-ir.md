@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual), [RFC-0024](RFC-0024-wide-requantization.md) ('Gadget selection': `RequantWide`), [RFC-0025](RFC-0025-affine-sites.md) ('Operation set': `Mul`'s broadcast; 'Llama lowering': affine sites), [RFC-0028](RFC-0028-balanced-split.md) ('Gadget selection': the split point), [RFC-0029](RFC-0029-table-set.md) ('Outputs': the claim list is the table set), [RFC-0030](RFC-0030-masked-exponentials.md) ('Range analysis': `SoftmaxRow`'s table width and the softmax fact's ground)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual), [RFC-0024](RFC-0024-wide-requantization.md) ('Gadget selection': `RequantWide`), [RFC-0025](RFC-0025-affine-sites.md) ('Operation set': `Mul`'s broadcast; 'Llama lowering': affine sites), [RFC-0028](RFC-0028-balanced-split.md) ('Gadget selection': the split point), [RFC-0029](RFC-0029-table-set.md) ('Outputs': the claim list is the table set), [RFC-0030](RFC-0030-masked-exponentials.md) ('Range analysis': `SoftmaxRow`'s table width and the softmax fact's ground), [RFC-0034](RFC-0034-causal-blocks.md) ('Tiling and the execution plan': `e`'s order within an attention tile)
 
 ## Summary
 
@@ -194,6 +194,7 @@ It reads only the public part of `D`: the architecture, the profile, `PublicQuan
 ### Tiling and the execution plan
 
 - Linear tiles are `(layer, operation)`; attention tiles are `(layer, kv_head, query_block)` with query blocks of 512 positions by default.
+- Within an attention tile, `e`'s variables are ordered `(i_hi, h, q, i_lo)`, so that each advice row holds a block of keys against the tile's queries and heads, and the blocks above the diagonal are zero rows ([RFC-0034](RFC-0034-causal-blocks.md#causal-layout)).
 - Each tile's committed tensors occupy a contiguous range of advice rows (RFC-0011), assigned in a fixed traversal order: layer, then tile kind, then head, then query block.
 - The `ExecutionPlan` (schema `0x0202`, private) lists tiles, their advice row ranges, the stage each relation joins (RFC-0010), and device assignments (RFC-0018). It contains no secret values.
 

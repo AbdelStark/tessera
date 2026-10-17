@@ -151,6 +151,7 @@ fn report_json(
         native_ops_att_per_ctx: number("native_ops_att_per_ctx"),
         regen_full_equivalents: 5.0,
         table_rows: number("table_rows"),
+        score_block: number("score_block"),
     };
     let cost_model = ModelReport::new(
         false,

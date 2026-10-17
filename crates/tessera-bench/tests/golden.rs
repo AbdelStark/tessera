@@ -235,6 +235,10 @@ fn the_source_defaults_are_the_vectors_inputs() {
         c.regen_full_equivalents, 0.0,
         "the source counts no regeneration"
     );
+    assert_eq!(
+        c.score_block, 0.0,
+        "the source commits the valid half of the scores alone"
+    );
     assert_eq!(f64::from(s.batch_tokens), input("batch_tokens"));
     let scenario = &v["section_8"];
     assert_eq!(u64::from(s.gpus), scenario["gpus"].as_u64().expect("G"));

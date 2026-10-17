@@ -210,6 +210,7 @@ impl ModelReport {
                 number("regen_full_equivalents", c.regen_full_equivalents)?,
             ),
             ("table_rows", number("table_rows", c.table_rows)?),
+            ("score_block", number("score_block", c.score_block)?),
         ]);
         let unit_costs = object([
             ("commit_ps", number("commit_ps", u.commit_ps)?),

@@ -74,6 +74,11 @@ pub struct Counts {
     /// `M`: table rows a proof commits a multiplicity for and builds its fraction tree over, all
     /// its tables together: the commitment report's multiplicities (RFC-0008).
     pub table_rows: f64,
+    /// `b`: the score block of RFC-0034. At context `S` a token commits `A·(S + min(S, b))`
+    /// scores: the valid half, and the masked halves of the blocks on the diagonal, which the
+    /// advice layout cannot skip. Its lookups and tree leaves stay `A·S`: the masked ones are
+    /// constant subtrees. A block of 0 commits the valid half alone.
+    pub score_block: f64,
 }
 
 impl Counts {
@@ -86,7 +91,8 @@ impl Counts {
     /// - `F_lin = 2 · 405,853,388,800`, two operations per parameter: the source writes
     ///   `8.1×10^11`, and this is the reading that reproduces its chart;
     /// - no regeneration, which the source's model leaves out (RISK-9);
-    /// - no table rows, which it leaves out too.
+    /// - no table rows, which it leaves out too;
+    /// - no score block: the source commits the valid half of the scores alone.
     pub const SOURCE_405B: Self = Self {
         commits_per_token: 137_216.0 * 126.0,
         lookups_per_token: 137_216.0 * 126.0,
@@ -95,6 +101,7 @@ impl Counts {
         native_ops_att_per_ctx: 512.0 * 8_064.0,
         regen_full_equivalents: 0.0,
         table_rows: 0.0,
+        score_block: 0.0,
     };
 }
 
@@ -193,7 +200,8 @@ impl Counts {
         input("native_ops_lin", self.native_ops_lin, false)?;
         input("native_ops_att_per_ctx", self.native_ops_att_per_ctx, false)?;
         input("regen_full_equivalents", self.regen_full_equivalents, false)?;
-        input("table_rows", self.table_rows, false)
+        input("table_rows", self.table_rows, false)?;
+        input("score_block", self.score_block, false)
     }
 
     /// Native seconds per token at `context` on one GPU, `(F_lin + F_att·S)/R`, positive.
@@ -253,18 +261,19 @@ pub fn streaming_passes(
 /// (08 §1, RFC-0020 'Executable cost model'):
 ///
 /// ```text
-/// μ(S) = [(1 + glue)·(C·c_c + K·c_ℓ) + (1 + glue)·A·S·(c_c + c_ℓ + c_π) + W/T
-///         + c(S)·c_s·A·S + (C + A·S)·(c_a + c_r) + (1 + glue)·M·(c_c + c_ℓ)/T]
-///        / [(F_lin + F_att·S)/R]  +  n_regen
+/// μ(S) = [(1 + glue)·(C·c_c + K·c_ℓ) + (1 + glue)·A·(S'·c_c + S·(c_ℓ + c_π)) + W/T
+///         + c(S)·c_s·A·S + (C + A·S')·(c_a + c_r) + (1 + glue)·M·(c_c + c_ℓ)/T]
+///        / [(F_lin + F_att·S)/R]  +  n_regen,        S' = S + min(S, b)
 /// ```
 ///
 /// with `T` the batch's tokens, `c_s` the streamed pass's cost per score, [`streaming_passes`]
 /// its count `c(S)`, and `c_a` and `c_r` the column answers' and the row combination's costs per
-/// committed element, of which a token commits `C` in its linear layers and one per attention
-/// score. Each of the `M` table rows costs one committed multiplicity and one fraction-tree leaf,
-/// priced as a lookup, once per proof. With the source's counts and unit costs, which regenerate
-/// nothing, stream nothing, price neither the column answers nor the row combination and count
-/// no table rows, this is the source's formula (source §5).
+/// committed element. A token commits `C` elements in its linear layers and `A·S'` scores, `b`
+/// the score block (RFC-0034), and looks up and multiplies `A·S` of them. Each of the `M` table
+/// rows costs one committed multiplicity and one fraction-tree leaf, priced as a lookup, once per
+/// proof. The source's counts and unit costs regenerate nothing, stream nothing, price neither
+/// the column answers nor the row combination, and count no table rows and no score block. With
+/// them, this is the source's formula (source §5).
 ///
 /// # Errors
 ///
@@ -300,11 +309,14 @@ pub fn mu(
     let glue = 1.0 + u.glue_fraction;
     let linear =
         glue * (counts.commits_per_token * u.commit_ps + counts.lookups_per_token * u.lookup_ps);
+    // The diagonal blocks' masked halves: committed, never looked up or multiplied (RFC-0034).
+    let diagonal = counts.scores_per_token_per_ctx * s.min(counts.score_block);
     let per_score = u.commit_ps + u.lookup_ps + u.product_leaf_ps;
-    let attention = glue * counts.scores_per_token_per_ctx * s * per_score;
+    let attention =
+        glue * counts.scores_per_token_per_ctx * s * per_score + glue * diagonal * u.commit_ps;
     let weights = u.weight_pass_gpu_s / f64::from(batch_tokens);
     let streaming = f64::from(passes) * u.streaming_pass_ps * counts.scores_per_token_per_ctx * s;
-    let committed = counts.commits_per_token + counts.scores_per_token_per_ctx * s;
+    let committed = counts.commits_per_token + counts.scores_per_token_per_ctx * s + diagonal;
     let column_answers = committed * u.column_answer_ps;
     let row_combination = committed * u.row_combination_ps;
     let tables = glue * counts.table_rows * (u.commit_ps + u.lookup_ps) / f64::from(batch_tokens);

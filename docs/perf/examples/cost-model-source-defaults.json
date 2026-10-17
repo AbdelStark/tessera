@@ -6,6 +6,7 @@
       "native_ops_att_per_ctx": 4128768.0,
       "native_ops_lin": 811706777600.0,
       "regen_full_equivalents": 0.0,
+      "score_block": 0.0,
       "scores_per_token_per_ctx": 8064.0,
       "table_rows": 0.0
     },

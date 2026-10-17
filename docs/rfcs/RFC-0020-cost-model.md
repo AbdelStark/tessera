@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.1
+- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Executable cost model': the score block)
 
 ## Summary
 
@@ -43,6 +44,7 @@ pub struct Counts {                       // from the compiler's CommitmentRepor
     pub native_ops_lin: f64, pub native_ops_att_per_ctx: f64,
     pub regen_full_equivalents: f64,                                 // RISK-9
     pub table_rows: f64,                  // M: table rows per proof, the report's multiplicities
+    pub score_block: f64,                 // b: RFC-0034's score block, 0 for the valid half alone
 }
 pub struct MemoryModel { pub free_bytes: f64, pub bytes_per_leaf: f64 }  // RISK-10 streaming passes
 pub fn mu(counts: &Counts, u: &UnitCosts, mem: &MemoryModel, context: u32, batch_tokens: u32)
@@ -53,11 +55,11 @@ pub struct MuBreakdown { pub linear: f64, pub attention: f64, pub weights: f64, 
                          pub total: f64 }
 ```
 
-`μ` follows [08 §1](../spec/08-performance-budget.md#1-cost-model): the source's formula plus `n_regen` and four more terms:
+`μ` follows [08 §1](../spec/08-performance-budget.md#1-cost-model): the source's formula plus `n_regen` and four more terms. A token commits `A·S'` scores, `S' = S + min(S, score_block)`, and looks up and multiplies `A·S` of them ([RFC-0034](RFC-0034-causal-blocks.md#cost)):
 
 - a streaming term `c(S) · streaming_pass_ps · A · S / native`, where `c(S) = max(0, ⌈log2(N_level(S) · bytes_per_leaf / free_bytes)⌉)` and `N_level(S) = A · S · batch_tokens` is the batch's attention leaves ([RFC-0018 'Leaf levels'](RFC-0018-gpu-prover-runtime.md#pass-structure)). This counts the attention trees' leaf level alone; [#329](https://github.com/AbdelStark/tessera/issues/329) covers the rest of the leaf stage;
-- a column-answer term `(C + A · S) · column_answer_ps / native`, P5's evaluation of every committed element at the queried columns ([RFC-0018 'Column answers'](RFC-0018-gpu-prover-runtime.md#pass-structure)). A token commits `C` elements in its linear layers and one per score. P5 runs no sumcheck, so the term carries no glue.
-- a row-combination term `(C + A · S) · row_combination_ps / native`: P4's combination of every committed element into the opening's combined rows ([RFC-0018 'Opening pass'](RFC-0018-gpu-prover-runtime.md#pass-structure)). It carries no glue either.
+- a column-answer term `(C + A · S') · column_answer_ps / native`, P5's evaluation of every committed element at the queried columns ([RFC-0018 'Column answers'](RFC-0018-gpu-prover-runtime.md#pass-structure)). A token commits `C` elements in its linear layers and one per score. P5 runs no sumcheck, so the term carries no glue.
+- a row-combination term `(C + A · S') · row_combination_ps / native`: P4's combination of every committed element into the opening's combined rows ([RFC-0018 'Opening pass'](RFC-0018-gpu-prover-runtime.md#pass-structure)). It carries no glue either.
 - a table term `(1 + glue) · M · (c_c + c_ℓ) / batch_tokens / native`. A proof commits one multiplicity per table row and builds the table's fraction tree over every row, however few lookups the table serves ([RFC-0008](RFC-0008-logup-and-tables.md)). Each of the `M` rows therefore costs one committed element and one tree leaf, priced as a lookup, once per proof. `M` is the commitment report's multiplicities ([#304](https://github.com/AbdelStark/tessera/issues/304)).
 
 The weight column answers have no term. The prover reads them from its store of the epoch's codewords, overlapped with P5 ([RFC-0012 'Column answers'](RFC-0012-weight-commitment.md#column-answers)). A prover without the store evaluates them, about 1.3 GPU-s per 405B proof unit at `live-64`, which belongs in `weight_pass_gpu_s`.
@@ -66,7 +68,7 @@ Floating-point is acceptable here: the model is a planning tool, not part of the
 
 `tessera bench model --plan plan.tep --context S` reads counts from the commitment report; with `--source-defaults` it uses the source's counts and unit costs. Outputs: `MuBreakdown` per context, proof time per request on `G` GPUs, sampling rate for a target amortized overhead, and daily detection probability for a given violation count (as in [RFC-0016](RFC-0016-audit-sampling.md#calculators)).
 
-**Golden test.** With source defaults, `regen_full_equivalents = 0`, no streaming, no column answers, no row combination and no table rows, the model reproduces the source's §5 chart data and §8 table: `μ` at 1K, 2K, 4K, 8K, 16K, 32K, 64K and 128K within ±0.05, and the sampling and detection columns within ±0.1 percentage point, computed from that table's `μ` column, which the source rounds to one decimal. [`spec/vectors/cost-model/`](../../spec/vectors/cost-model/README.md) records each figure with its line and each input with its provenance: `F_lin`, which the source writes as 8.1×10^11, is two operations per parameter, 2 × 405,853,388,800.
+**Golden test.** With source defaults, `regen_full_equivalents = 0`, no streaming, no column answers, no row combination, no table rows and no score block, the model reproduces the source's §5 chart data and §8 table: `μ` at 1K, 2K, 4K, 8K, 16K, 32K, 64K and 128K within ±0.05, and the sampling and detection columns within ±0.1 percentage point, computed from that table's `μ` column, which the source rounds to one decimal. [`spec/vectors/cost-model/`](../../spec/vectors/cost-model/README.md) records each figure with its line and each input with its provenance: `F_lin`, which the source writes as 8.1×10^11, is two operations per parameter, 2 × 405,853,388,800.
 
 ### Measurement protocol (v0.1 gate)
 
