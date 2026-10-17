@@ -153,13 +153,19 @@ class QuantSpec:
     """Every quantization constant of `D` (03 §2 'Quantization')."""
 
     public: PublicQuantSpec
+    silu_in_exponents: list[tuple[int, int]]
+    """Each layer's `Silu` table input exponent, sorted by layer: public, in the table's spec."""
     channels: list[ChannelParams]
     """The hidden part, sorted by `(ty, layer)`."""
 
 
 @dataclass(frozen=True, eq=False)
 class WeightTensor:
-    """One INT8 weight matrix, row-major, as a flat array: secret-class."""
+    """One INT8 weight matrix, row-major, as a flat array: secret-class.
+
+    Its rows are its output channels, so `Embed` holds the transposed embedding: `d_model` rows of
+    `vocab` entries.
+    """
 
     ty: WeightType
     layer: int
@@ -334,7 +340,17 @@ INTEGER_MODEL: Schema[IntegerModel] = Schema(
         [
             ("arch", _ARCH),
             ("profile", UnitEnum(Profile)),
-            ("quant", Struct(QuantSpec, [("public", _PUBLIC), ("channels", Seq(_CHANNELS))])),
+            (
+                "quant",
+                Struct(
+                    QuantSpec,
+                    [
+                        ("public", _PUBLIC),
+                        ("silu_in_exponents", Seq(Pair(U32, I8))),
+                        ("channels", Seq(_CHANNELS)),
+                    ],
+                ),
+            ),
             ("weights", Seq(_WEIGHT)),
             ("provenance", _PROVENANCE),
         ],

@@ -54,7 +54,8 @@ fn arch() -> ArchSpec {
 fn weights(seed: i8) -> Vec<WeightTensor> {
     let (d, q, kv, ff, vocab) = (4, 4, 2, 8, 6);
     [
-        (WeightType::Embed, vocab, d),
+        // The transposed embedding: its rows are its output channels (03 §2).
+        (WeightType::Embed, d, vocab),
         (WeightType::Q, q, d),
         (WeightType::K, kv, d),
         (WeightType::V, kv, d),
@@ -138,6 +139,7 @@ fn servable() -> IntegerModel {
                 rope: ROPE,
                 logits_bits: 28,
             },
+            silu_in_exponents: vec![(0, -9)],
             channels: vec![
                 ChannelParams {
                     ty: WeightType::V,
@@ -222,6 +224,7 @@ fn minimal() -> IntegerModel {
                 rope: ROPE,
                 logits_bits: 28,
             },
+            silu_in_exponents: vec![(0, -8)],
             channels: vec![
                 ChannelParams {
                     ty: WeightType::V,
@@ -381,6 +384,8 @@ fn value(m: &IntegerModel) -> Value {
                 "rope": rope(&q.rope),
                 "logits_bits": number(q.logits_bits),
             },
+            "silu_in_exponents": m.quant.silu_in_exponents.iter()
+                .map(|(layer, e)| json!([number(layer), number(e)])).collect::<Vec<_>>(),
             "channels": m.quant.channels.iter().map(|ch| json!({
                 "ty": weight_type(ch.ty),
                 "layer": number(ch.layer),

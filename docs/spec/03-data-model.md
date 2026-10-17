@@ -50,9 +50,10 @@ pub struct IntegerModel {              // artifact "D", schema 0x0101
 }
 
 pub struct WeightTensor { pub ty: WeightType, pub layer: u32, pub rows: u32, pub cols: u32, pub data: Vec<i8> }
+                                       // rows: output channels; Embed is d_model × vocab, transposed
 ```
 
-The source names seven per-layer weight types (source §7). The data model adds `Embed` and `LmHead`: the embedding is applied as a matmul with a committed one-hot token vector, and the LM head produces the logits ([RFC-0006](../rfcs/RFC-0006-compiler-ir.md#llama-lowering)). RMSNorm gains are folded into the following weights at quantization time and do not appear as separate tensors. Per-channel quantities derived from weights (power-of-two shift classes, affine multipliers) are secret: they are committed with the weights as channel-parameter vectors ([RFC-0012](../rfcs/RFC-0012-weight-commitment.md#layout)) and enter lookups through tuple keys, so the claim list never reveals them ([RFC-0007](../rfcs/RFC-0007-claim-list.md#public-and-hidden-quantization-data)).
+The source names seven per-layer weight types (source §7). The data model adds `Embed` and `LmHead`: the embedding is applied as a matmul with a committed one-hot token vector, and the LM head produces the logits ([RFC-0006](../rfcs/RFC-0006-compiler-ir.md#llama-lowering)). A weight's rows are its output channels and its columns its inputs, as `MatMulWeight` applies it. So `Embed` holds the transposed embedding, `d_model × vocab`, as RFC-0012 lays it out. RMSNorm gains are folded into the following weights at quantization time and do not appear as separate tensors. Per-channel quantities derived from weights (power-of-two shift classes, affine multipliers) are secret: they are committed with the weights as channel-parameter vectors ([RFC-0012](../rfcs/RFC-0012-weight-commitment.md#layout)) and enter lookups through tuple keys, so the claim list never reveals them ([RFC-0007](../rfcs/RFC-0007-claim-list.md#public-and-hidden-quantization-data)).
 
 ### Quantization
 
@@ -61,6 +62,7 @@ The source names seven per-layer weight types (source §7). The data model adds 
 ```rust
 pub struct QuantSpec {
     pub public: PublicQuantSpec,       // RFC-0007, the copy the claim list carries
+    pub silu_in_exponents: Vec<(u32, i8)>,  // per layer: in_exp of its Silu table; public in the table's TableSpec
     pub channels: Vec<ChannelParams>,  // hidden; one per weight whose outputs a classed site rescales, sorted by (ty, layer)
 }
 
@@ -91,6 +93,7 @@ pub enum Site {                        // the rescales of a layer, in the order 
 ```
 
 - **Points.** `PublicQuantSpec.act_exponents` gives the exponent `e` of each INT8 tensor's scale `2^e`, and `shift_class_sets` each rescale site's class shifts `r`, from 1 to 63, at most four (RFC-0005 'Scale policy'). They are the `r_by_class` of the site's `Requant` table (RFC-0008). A site after a weight takes the classes of that weight's output channels. Every other site has one class. The embedding's shift into the residual is the difference of their exponents: `res = x0 · 2^{e_Embed − residual_exponent}`.
+- **SiLU.** Each layer's `Silu` table computes `silu(h · 2^{in_exp})` for `h = g >> r_c`, the gate accumulator `g` shifted by its channel's class shift. The quantizer chooses `in_exp`, and with it each `r_c = in_exp − e_y − e_c` for the hidden weight exponents `e_c`, so public data cannot give it: `silu_in_exponents` records it, sorted by layer. It is public, and the claim list states it in the table's `TableSpec` rather than in `PublicQuantSpec`. The table's other parameters come from `PublicQuantSpec`: its `out_exp` is the `Silu` point's exponent, its `r_by_class` the site's shift classes.
 - **Channels.** A `ChannelParams` exists for each weight followed by a site with more than one class, or by an affine site. `class[c]` indexes the site's shifts; `multiplier` is empty unless the site is affine. The public parameters of affine sites are not yet in the claim list ([#274](https://github.com/AbdelStark/tessera/issues/274)).
 
 ### Provenance
