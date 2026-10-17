@@ -18,12 +18,14 @@
 
 #![forbid(unsafe_code)]
 
+mod claim;
 mod error;
 mod graph;
 mod model;
 mod op;
 mod types;
 
+pub use claim::GadgetPolicy;
 pub use error::IrError;
 pub use graph::{Graph, GraphBuilder, Node};
 pub use model::{

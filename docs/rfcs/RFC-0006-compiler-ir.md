@@ -115,15 +115,27 @@ Violations: an integrality-requiring input with an unbounded range raises `ERR-C
 
 ### Gadget selection
 
-For each `Requant` and `TableMap` node, with key bit width `b` (signed range width) and dropped bits `r`:
+Every gadget-backed node takes a gadget, numbered in node order (`GadgetId`). `B_max` is `GadgetPolicy.max_log2_rows`, from 1 to 32 and 32 by default ([RFC-0007](RFC-0007-claim-list.md#schema)).
 
-| Condition | Gadget | Cost per element |
-|---|---|---|
-| `b ≤ B_max` | `Requant1` / single-lookup `TableMap` | 1 commitment, 1 lookup |
-| `B_max < b ≤ 2 · B_max − 2` | `RequantSplit` with split point `s = b − B_max` | 2 commitments, 2 lookups |
-| otherwise | `ERR-COMPILE-RANGE` | — |
+A `Requant`'s gadget depends on its key's signed width `b`, from range analysis, and on its `n` shift classes `r_c`. The class index takes `⌈log2 n⌉` of a table's key bits ([RFC-0008](RFC-0008-logup-and-tables.md#table-kinds) 'Requant'):
 
-`B_max = 32` by default (`TableLimits.max_log2_rows`), the largest table whose prover-side cost is amortized over a 16K-token batch ([08 §4](../spec/08-performance-budget.md#4-memory-budgets)). The verifier's cost to evaluate a table does not depend on `b`: every v1 table is a piecewise function whose non-constant core has at most 2^24 entries (for a clamped requantization the core is the output range, 256 values for INT8), and its multilinear extension is evaluated in time proportional to the core ([RFC-0008](RFC-0008-logup-and-tables.md#structured-evaluation)). Tables with identical definitions are shared across layers and channels; a requantization table is identified by `(shift, lo, hi, b)`.
+| Condition | Gadget | Tables | Cost per element |
+|---|---|---|---|
+| `b + ⌈log2 n⌉ ≤ B_max` | `Requant1` | `Requant { b, r_c, lo, hi }` | 1 commitment, 1 lookup |
+| otherwise, `s = b + ⌈log2 n⌉ − B_max`, with `s ≤ B_max`, `b ≤ 62` and `s ≤ r_c − 1` for every class | `RequantSplit` with split point `s` | `Range { s }`, `Requant { b − s, r_c − s, lo, hi }` | 2 commitments, 2 lookups |
+| otherwise | `ERR-COMPILE-RANGE` | — | — |
+
+The split's conditions come from RFC-0009 Lemma 2:
+
+- the low part's table fits: `s ≤ B_max`;
+- the halves are true integers: `b ≤ 62`;
+- the nested floor is the requantization: `s ≤ r_c − 1`, since `2^{r_c − 1}` must be a multiple of `2^s`.
+
+With one class at `B_max = 32`, keys of up to 32 bits take `Requant1`, and keys of 33 to 62 bits split. A `TableMap`, `Bitwise` or `SoftmaxRow` reads its own table once, which must hold at most `2^{B_max}` rows: these lookups have no split.
+
+`B_max = 32` is the largest table whose prover-side cost is amortized over a 16K-token batch ([08 §4](../spec/08-performance-budget.md#4-memory-budgets)). The verifier's cost to evaluate a table does not depend on `b`. Every v1 table is a piecewise function whose non-constant core has at most 2^24 entries; for a clamped requantization the core is the output range, 256 values for INT8. Its multilinear extension is evaluated in time proportional to the core ([RFC-0008](RFC-0008-logup-and-tables.md#structured-evaluation)).
+
+Tables with identical definitions are shared across layers and channels: a requantization table is identified by its kind and `(b, r_c, lo, hi)`. New tables are numbered after the lowering's, in order of first use.
 
 ### Llama lowering
 
@@ -175,7 +187,7 @@ It reads only the public part of `D`: the architecture, the profile, `PublicQuan
 ### Outputs
 
 ```rust
-pub fn compile(model: &IntegerModel, params: &ParamSet, limits: &TableLimits)
+pub fn compile(model: &IntegerModel, params: &ParamSet, policy: &GadgetPolicy)
     -> Result<CompileOutput, CompileError>;
 
 pub struct CompileOutput {

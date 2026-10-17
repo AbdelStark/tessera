@@ -7,10 +7,11 @@
 
 #![allow(dead_code)] // each test binary uses part of it
 
+use tessera_codec::Rational;
 use tessera_compiler::{Range, Ranges, analyze};
 use tessera_ir::{
-    CommitmentClass, Graph, GraphBuilder, IntRange, IntType, Node, NodeKind, Op, TableId,
-    TensorDecl, TensorId,
+    ArchFamily, ArchSpec, CommitmentClass, Graph, GraphBuilder, IntRange, IntType, Node, NodeKind,
+    Op, Profile, PublicQuantSpec, QuantPoint, RopeSpec, Site, TableId, TensorDecl, TensorId,
 };
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableKind, TableSpec};
 
@@ -457,4 +458,113 @@ impl Seeded {
         let span = u128::try_from(hi - lo + 1).expect("lo ≤ hi");
         lo + i128::try_from(u128::from(self.next()) % span).expect("small")
     }
+}
+
+// ----- Llama-3.1 shapes -------------------------------------------------------------------------
+
+pub const ROPE: RopeSpec = RopeSpec {
+    theta: 500_000,
+    factor: 8,
+    low_freq_factor: 1,
+    high_freq_factor: 4,
+    original_max: 8192,
+    bits: 14,
+};
+
+pub fn sites(profile: Profile) -> Vec<Site> {
+    let all = [
+        Site::AttnNorm,
+        Site::RopeQ,
+        Site::RopeK,
+        Site::V,
+        Site::AttnOut,
+        Site::AttnResidual,
+        Site::MlpNorm,
+        Site::Silu,
+        Site::Up,
+        Site::Product,
+        Site::MlpResidual,
+    ];
+    let servable_only = [Site::AttnOut, Site::Up, Site::Product];
+    all.into_iter()
+        .filter(|s| profile == Profile::Servable || !servable_only.contains(s))
+        .collect()
+}
+
+/// The public part of a model of Llama-3.1's shape and `layers` layers, quantized as RFC-0005
+/// describes, every site of one class. The residual's scale is `2^{−7}`, so that RMSNorm's
+/// `e = ⌈d · ε / σ_res^2⌉` is below `d / 4` (#285's case), and `κ` is RFC-0023's: the largest,
+/// at most 31, with `⌊d · 2^{2κ} / e⌋ < 2^64`.
+pub fn llama(
+    profile: Profile,
+    layers: u32,
+    d: u32,
+    heads: u32,
+    kv_heads: u32,
+    d_ff: u32,
+) -> (ArchSpec, PublicQuantSpec, Vec<(u32, i8)>) {
+    let arch = ArchSpec {
+        family: ArchFamily::LlamaV3,
+        n_layers: layers,
+        d_model: d,
+        n_heads: heads,
+        n_kv_heads: kv_heads,
+        d_head: 128,
+        d_ff,
+        vocab: 128_256,
+        max_context: 131_072,
+        rope: ROPE,
+        rms_eps: Rational::new(1, 100_000).expect("a rational"),
+    };
+    let mut act_exponents = vec![(QuantPoint::Embed, -6)];
+    // ⌈d · 10^{−5} · 2^{14}⌉: 672 at 8B, 2685 at 405B; then κ = 30 at both.
+    let eps = (u64::from(d) * (1 << 14)).div_ceil(100_000);
+    let kappa = (0..=31u8)
+        .rev()
+        .find(|&k| (u128::from(d) << (2 * k)) / u128::from(eps) < 1 << 64)
+        .expect("κ = 0 fits");
+    let mut shift_class_sets = Vec::new();
+    for layer in 0..layers {
+        for site in sites(profile) {
+            let point = QuantPoint::Layer { layer, site };
+            if !matches!(site, Site::AttnResidual | Site::MlpResidual) {
+                act_exponents.push((point, -3));
+            }
+            // Shifts of the size scales give: a norm's κ + e_y; RoPE's 14-bit constants and the
+            // attention output's 2^{2σ} in theirs; a Silu shift wide enough that its 2^{b − r}
+            // values of h stay below 2^24. `minimal`'s residual sites read unrequantized inputs.
+            let minimal = profile == Profile::Minimal;
+            let r = match site {
+                Site::AttnNorm | Site::MlpNorm => i8::try_from(kappa).expect("small") - 3,
+                Site::RopeQ | Site::RopeK => 22,
+                Site::V | Site::Up => 8,
+                Site::AttnOut => 32,
+                Site::AttnResidual if minimal => 37,
+                Site::MlpResidual if minimal => 17,
+                Site::AttnResidual | Site::MlpResidual => 4,
+                Site::Silu => 20,
+                Site::Product => 5,
+            };
+            shift_class_sets.push((point, vec![r]));
+        }
+    }
+    act_exponents.push((QuantPoint::FinalNorm, -3));
+    let final_shift = i8::try_from(kappa).expect("small") - 3;
+    shift_class_sets.push((QuantPoint::FinalNorm, vec![final_shift]));
+    let quant = PublicQuantSpec {
+        act_exponents,
+        residual_exponent: -7,
+        residual_bits: 20,
+        rsqrt_kappa: kappa,
+        rms_eps_int: eps,
+        exp_sigma: 16,
+        score_scales: (0..layers)
+            .map(|l| (l, Rational::new(1, 1 << 14).expect("a scale")))
+            .collect(),
+        shift_class_sets,
+        rope: ROPE,
+        logits_bits: 28,
+    };
+    let silu = (0..layers).map(|l| (l, -6)).collect();
+    (arch, quant, silu)
 }

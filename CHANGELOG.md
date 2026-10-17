@@ -296,6 +296,14 @@ All notable changes to the prover release train are recorded here: the crates un
   - In float64 on 64 sequences, each transform keeps a tiny Llama's logits within `10^{-12}` relative. An independent recorder finds the maxima each one predicts. 18 planted bugs each fail a test.
   - RFC-0005 now says where each migration factor goes. The norm-fed inputs have no place for one in `D` ([#289](https://github.com/AbdelStark/tessera/issues/289)).
 
+- Gadget selection and table sizing in `tessera-compiler` (RFC-0006 'Gadget selection', [#80](https://github.com/AbdelStark/tessera/issues/80)):
+  - `select(graph, ranges, tables, policy)` gives every gadget-backed node its gadget, numbered in node order.
+  - A requantization takes `Requant1` when its key and class index fit `B_max` bits, and `RequantSplit` past that.
+  - The split needs a low part of at most `B_max` bits, a key of at most 62 bits, and `s ≤ r − 1` for every class's shift; otherwise `ERR-COMPILE-RANGE`. A `TableMap`, `Bitwise` or `SoftmaxRow` table must hold at most `2^{B_max}` rows.
+  - Tables are shared by definition and numbered after the lowering's. `GadgetPolicy` (RFC-0007) joins the IR crate, and RFC-0006 now counts the class index's bits and states the split's three conditions.
+  - Keys at 32, 33, 62 and 63 bits take `Requant1`, `RequantSplit`, `RequantSplit` and a refusal. A property test checks that the split tables compute `rq(z, r)` across the widths.
+  - Llama-3.1 8B's 32 layers read exactly the tables its first two do. `minimal` 8B is refused at its down projection's residual, whose key is too wide for its shift ([#292](https://github.com/AbdelStark/tessera/issues/292)).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
