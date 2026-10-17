@@ -218,12 +218,19 @@ impl Selector<'_> {
         if b > SPLIT_KEY_BITS {
             return Err(refuse("a requantization key has at most 62 bits"));
         }
-        let split = b + class_bits - self.max;
+        // Lemma 2's split points: from the least that fits the high table, `b + ⌈log2 n⌉ − B_max`,
+        // to the most that fits the low one and keeps every class's rounding bit,
+        // `min(r_min − 1, B_max)`. None: the key takes `RequantWide`.
+        let fits = b + class_bits - self.max;
         let least = u32::from(shifts.iter().copied().min().unwrap_or(1));
-        // The low part's table fits, and the nested floor keeps every class's rounding bit.
-        if split > self.max || split >= least {
+        let most = (least - 1).min(self.max);
+        if fits > most {
             return self.wide(node, b, class_bits, &shifts, lo, hi);
         }
+        // RFC-0028: the balanced point, which minimizes the two tables' rows,
+        // `2^s + 2^{b + ⌈log2 n⌉ − s}`. On a tie the low `Range`, which only `s` defines and other
+        // sites share, takes the extra bit.
+        let split = (b + class_bits).div_ceil(2).clamp(fits, most);
         let low = self.table(
             node,
             TableKind::Range {

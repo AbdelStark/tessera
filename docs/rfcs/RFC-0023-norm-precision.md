@@ -53,7 +53,7 @@ the largest `κ` for which RFC-0022's check `ρ < 2^w`, `w = bitlen(⌊√(d · 
 
 None per token. Each row's `BigIntCompare` witnesses of RFC-0009 'RsqrtRow' bound `ρ^2 u` by `2^{2w+55}`, `2^{119}` at `w = 32`: two more 16-bit limbs per comparison, once per row and norm.
 
-The norm's key `res · ρ` reaches `2^{19+w} = 2^{51}`, which RFC-0005's `κ = 16` already split. Its split point is `s = 52 − 32 = 20`, so `RequantSplit` needs `r_n ≥ 21`; `r_n = κ + e_y` is 27 at `e_y = −3`.
+The norm's key `res · ρ` reaches `2^{19+w} = 2^{51}`, which RFC-0005's `κ = 16` already split. Its split point is at least `s = 52 − 32 = 20`, so `RequantSplit` needs `r_n ≥ 21`; `r_n = κ + e_y` is 27 at `e_y = −3`, where [RFC-0028](RFC-0028-balanced-split.md) balances the split at `s = 26`.
 
 ### Changes to other documents
 

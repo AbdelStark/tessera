@@ -499,6 +499,14 @@ All notable changes to the prover release train are recorded here: the crates un
     - an affine RoPE site gives `servable` four stages;
     - the CPU engine and the PyTorch reference reproduce every traced tensor of the affine conformance model.
 
+- `RequantSplit` splits its key at a balanced point (RFC-0028, accepted, [#303](https://github.com/AbdelStark/tessera/issues/303)):
+  - **The rule.** RFC-0006 took the least split that fits the high table, `s = b + ⌈log2 n⌉ − B_max`, so the high table always had `2^{B_max}` rows. The selection now takes `s = clamp(⌈(b + ⌈log2 n⌉)/2⌉, b + ⌈log2 n⌉ − B_max, min(r_min − 1, B_max))`: inside Lemma 2's bounds, the point that balances the two tables' rows, `2^s + 2^{b + ⌈log2 n⌉ − s}`. On a tie, the extra bit goes to the shared `Range { s }`.
+  - **What it changes.** Every element still costs two commitments and two lookups. The per-token counts do not change; the tables shrink.
+  - **At 405B, with `B_max = 32`.** The commitment reports' table rows fall from 20 to 28 · 10^9 to 5 to 11 · 10^9, and the multiplicity counters from 76 to 104 GiB to 19 to 42 GiB. The table term falls from 0.15 to 0.20 of `μ(1K)` to 0.04 to 0.08.
+  - **Restated.** The corrected projections are about 10.6 and 25.9 at 1K and 16K for `minimal`, and 11.5 and 26.8 for `servable`, in 00, 08, `SPEC.md`, the v0.2 reports and OQ-0006-1's analysis. Keeping `B_max = 32` still holds: 34 now gains about 0.18 of `μ(1K)`.
+  - **Amended.** RFC-0006 'Gadget selection', RFC-0009 'RequantSplit' and RFC-0023's example. The golden claim lists are regenerated with the conformance models' smaller split tables.
+  - **Tests.** The selection tests pin the split at each boundary against the rule computed independently in the test: balanced, clamped by the rounding bit, where Lemma 2's bounds meet, and with classes. Lemma 2's property test checks the split tables at the new points, over shifts up to past the balanced point.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

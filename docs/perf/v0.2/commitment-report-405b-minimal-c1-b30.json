@@ -5,7 +5,7 @@
     "native_ops_att_per_ctx": 4128768.0,
     "native_ops_lin": 811698487296.0,
     "scores_per_token_per_ctx": 8064.0,
-    "table_rows": 5751523616.0
+    "table_rows": 2604728608.0
   },
   "estimates": [
     {
@@ -33,7 +33,7 @@
   },
   "multiplicities": {
     "excludes": "the range tables of SoftmaxRow's and RsqrtRow's checks, which the selection does not allocate yet (#118, #122)",
-    "total": 5751523616
+    "total": 2604728608
   },
   "per_layer_per_token": {
     "committed": {
@@ -99,70 +99,70 @@
   "projections": [
     {
       "context": 1024,
-      "detection": 0.9576180535680952,
+      "detection": 0.9579035808240252,
       "mu": {
         "attention": 1.1332044117420268,
         "column_answers": 0.0,
         "linear": 4.516974547185679,
         "regen": 5.0,
         "streaming": 0.0,
-        "tables": 0.04112490773292894,
-        "total": 10.712621421582805,
+        "tables": 0.01862449514687352,
+        "total": 10.690121008996748,
         "weights": 0.021317554922167414
       },
-      "proof_time_s": 0.9422358820607902,
-      "sampling_rate": 0.031115944474782248,
+      "proof_time_s": 0.9402568430127902,
+      "sampling_rate": 0.031181436866131063,
       "streaming_passes": 5
     },
     {
       "context": 4096,
-      "detection": 0.9105889815591406,
+      "detection": 0.9109353499571728,
       "mu": {
         "attention": 4.463433570734373,
         "column_answers": 0.0,
         "linear": 4.44783298210697,
         "regen": 5.0,
         "streaming": 0.0,
-        "tables": 0.040495406624461584,
-        "total": 13.97275320546248,
+        "tables": 0.018339409027878673,
+        "total": 13.950597207865895,
         "weights": 0.020991245996674724
       },
-      "proof_time_s": 4.992350099540044,
-      "sampling_rate": 0.02385595225449346,
+      "proof_time_s": 4.984433943348043,
+      "sampling_rate": 0.02389383969493341,
       "streaming_passes": 7
     },
     {
       "context": 16384,
-      "detection": 0.7238232297066266,
+      "detection": 0.7241097041468344,
       "mu": {
         "attention": 16.823652195066106,
         "column_answers": 0.0,
         "linear": 4.191212545614278,
         "regen": 5.0,
         "streaming": 0.0,
-        "tables": 0.0381589994424195,
-        "total": 26.072803883379816,
+        "tables": 0.01728130563940053,
+        "total": 26.051926189576797,
         "weights": 0.019780143257011964
       },
-      "proof_time_s": 39.543905538910295,
-      "sampling_rate": 0.012784713712583004,
+      "proof_time_s": 39.51224091414229,
+      "sampling_rate": 0.012794959225191489,
       "streaming_passes": 9
     },
     {
       "context": 131072,
-      "detection": 0.2957313272744583,
+      "detection": 0.2957665733443263,
       "mu": {
         "attention": 87.48123888537518,
         "column_answers": 0.0,
         "linear": 2.7242335795389354,
         "regen": 5.0,
         "streaming": 0.0,
-        "tables": 0.02480285275711563,
-        "total": 95.24313215322476,
+        "tables": 0.01123262364023835,
+        "total": 95.22956192410788,
         "weights": 0.012856835553527138
       },
-      "proof_time_s": 1777.9142948206247,
-      "sampling_rate": 0.00349981490315832,
+      "proof_time_s": 1777.6609778224806,
+      "sampling_rate": 0.0035003136273899864,
       "streaming_passes": 12
     }
   ],
@@ -196,131 +196,117 @@
     {
       "id": 3,
       "kind": "Range",
-      "lookups_per_token": 16384,
-      "rows": 2048,
+      "lookups_per_token": 2209792,
+      "rows": 2097152,
       "score_lookups": 0
     },
     {
       "id": 4,
       "kind": "Requant",
       "lookups_per_token": 16384,
-      "rows": 1073741824,
+      "rows": 1048576,
       "score_lookups": 0
     },
     {
       "id": 5,
-      "kind": "Range",
+      "kind": "Requant",
       "lookups_per_token": 2193408,
-      "rows": 16384,
+      "rows": 8388608,
       "score_lookups": 0
     },
     {
       "id": 6,
-      "kind": "Requant",
-      "lookups_per_token": 2193408,
-      "rows": 1073741824,
-      "score_lookups": 0
-    },
-    {
-      "id": 7,
       "kind": "Requant",
       "lookups_per_token": 129024,
       "rows": 536870912,
       "score_lookups": 0
     },
     {
-      "id": 8,
+      "id": 7,
       "kind": "Range",
       "lookups_per_token": 2064384,
       "rows": 1073741824,
       "score_lookups": 0
     },
     {
-      "id": 9,
+      "id": 8,
       "kind": "Range",
-      "lookups_per_token": 2064384,
+      "lookups_per_token": 6193152,
       "rows": 67108864,
       "score_lookups": 0
     },
     {
-      "id": 10,
+      "id": 9,
       "kind": "Range",
       "lookups_per_token": 16384,
       "rows": 32,
       "score_lookups": 0
     },
     {
-      "id": 11,
+      "id": 10,
       "kind": "Requant",
       "lookups_per_token": 16384,
       "rows": 64,
       "score_lookups": 0
     },
     {
-      "id": 12,
+      "id": 11,
       "kind": "Requant",
       "lookups_per_token": 2064384,
       "rows": 268435456,
       "score_lookups": 0
     },
     {
-      "id": 13,
-      "kind": "Range",
-      "lookups_per_token": 4128768,
-      "rows": 4194304,
-      "score_lookups": 0
-    },
-    {
-      "id": 14,
+      "id": 12,
       "kind": "Requant",
       "lookups_per_token": 4128768,
-      "rows": 1073741824,
+      "rows": 67108864,
       "score_lookups": 0
     },
     {
-      "id": 15,
+      "id": 13,
       "kind": "Range",
       "lookups_per_token": 2064384,
       "rows": 65536,
       "score_lookups": 0
     },
     {
-      "id": 16,
+      "id": 14,
       "kind": "Range",
       "lookups_per_token": 2064384,
       "rows": 1048576,
       "score_lookups": 0
     },
     {
-      "id": 17,
+      "id": 15,
       "kind": "Range",
       "lookups_per_token": 2064384,
       "rows": 8388608,
       "score_lookups": 0
     },
     {
-      "id": 18,
+      "id": 16,
       "kind": "Requant",
       "lookups_per_token": 2064384,
       "rows": 16777216,
       "score_lookups": 0
     },
     {
-      "id": 19,
+      "id": 17,
       "kind": "Requant",
       "lookups_per_token": 2064384,
       "rows": 4194304,
       "score_lookups": 0
     },
     {
-      "id": 20,
+      "id": 18,
       "kind": "Range",
       "lookups_per_token": 2048000,
       "rows": 64,
       "score_lookups": 0
     },
     {
-      "id": 21,
+      "id": 19,
       "kind": "Requant",
       "lookups_per_token": 2048000,
       "rows": 128,
