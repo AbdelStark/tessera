@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide')
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide'), [RFC-0028](RFC-0028-balanced-split.md) ('RequantSplit': the split point)
 
 ## Summary
 
@@ -43,7 +43,7 @@ Inputs: virtual key `z` (true integer, `b ≤ B_max` signed bits), hidden channe
 
 ### RequantSplit
 
-Inputs as `Requant1` with `B_max < b ≤ 2·B_max − 2` and shift `r`. Split point `s = b − B_max`, precondition `s ≤ r − 1` (checked at claim-list validation).
+Inputs as `Requant1` with `B_max < b ≤ 2·B_max − 2` and shift `r`. Lemma 2 holds for any split point `s` with `b − B_max ≤ s ≤ min(r − 1, B_max)` (checked at claim-list validation); [RFC-0028](RFC-0028-balanced-split.md) fixes the one that balances the two tables, `s = clamp(⌈b/2⌉, b − B_max, min(r − 1, B_max))` for one class.
 
 - Committed: `z_lo`, `y`. Virtual: `z_off = z + 2^{b−1}`; `z_hi = (z_off − z_lo) · (2^s)^{−1}`.
 - Lookups: `z_lo ∈ [0, 2^s)`; `(pack(c, z_hi), y) ∈ Requant { b − s, classes, r_by_class − s, lo, hi }` with the offset folded into the table's `lo`/`hi` bookkeeping.

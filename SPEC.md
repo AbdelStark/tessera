@@ -11,7 +11,7 @@ Tessera proves that a committed integer language model `D` produced a recorded t
 
 The design is a sumcheck/GKR proof over the Goldilocks field in which matmuls and attention products are never committed. Only lookup outputs, per-row scalars and weights are. Every layer, head and query block is proven in a constant number of batched stages under one seed. Softmax is pinned by a max certificate at one lookup, one commitment and one product-tree leaf per score. A persistent weight commitment is opened by the same pass that folds the weights for the sumcheck. An independent verifier rebuilds every constraint from a public claim list and shares no code with the prover.
 
-The source projects a proof multiplier of 3.2 at 1K tokens and 18.8 at 16K for Llama-3.1-405B on one 8×H100 node. This corpus finds four costs the source's model leaves out, rescale decompositions (RISK-2), witness regeneration (RISK-9), memory-bound tree levels (RISK-10) and the table side of LogUp, and restates the projection as about 10.7 to 11.6 at 1K and 26 to 27 at 16K, or up to 14.0 and 46 with the unmeasured column answers and streaming at their upper estimates. Both remain four orders of magnitude below the best published frontier-scale proof. Every figure is a projection until milestone v0.1 measures the unit costs on H100 and records a go/no-go decision against a rule fixed in advance ([RFC-0020](docs/rfcs/RFC-0020-cost-model.md#decision-rule)).
+The source projects a proof multiplier of 3.2 at 1K tokens and 18.8 at 16K for Llama-3.1-405B on one 8×H100 node. This corpus finds four costs the source's model leaves out, rescale decompositions (RISK-2), witness regeneration (RISK-9), memory-bound tree levels (RISK-10) and the table side of LogUp, and restates the projection as about 10.6 to 11.5 at 1K and 26 to 27 at 16K, or up to 13.9 and 46 with the unmeasured column answers and streaming at their upper estimates. Both remain four orders of magnitude below the best published frontier-scale proof. Every figure is a projection until milestone v0.1 measures the unit costs on H100 and records a go/no-go decision against a rule fixed in advance ([RFC-0020](docs/rfcs/RFC-0020-cost-model.md#decision-rule)).
 
 Sub-10% overhead is an amortized property, reached by recording every request and proving an unpredictable sample in full. It is not a per-request cost, and this corpus never claims it is.
 
@@ -68,6 +68,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0025](docs/rfcs/RFC-0025-affine-sites.md) | Affine rescale sites in the claim list (amends RFC-0005, RFC-0006, RFC-0007, RFC-0010) | v0.2 |
 | [RFC-0026](docs/rfcs/RFC-0026-claim-list-layout.md) | The claim list's commitment layout, scoring and anchor (amends RFC-0007, RFC-0012) | v0.2 |
 | [RFC-0027](docs/rfcs/RFC-0027-logits-exponent.md) | The scale of `D`'s logits (amends RFC-0007, RFC-0026) | v0.2 |
+| [RFC-0028](docs/rfcs/RFC-0028-balanced-split.md) | A balanced split point for `RequantSplit` (amends RFC-0006, RFC-0009) | v0.2 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 

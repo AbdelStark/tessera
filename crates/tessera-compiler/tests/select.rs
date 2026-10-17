@@ -102,8 +102,10 @@ fn requant_keys_take_their_gadget_by_width_at_each_boundary() {
             hi: 127
         }
     );
-    // b = B_max + 1 and 2·B_max − 2: split, the low part `b − B_max` bits.
-    for (b, r, split) in [(33, 8, 1), (62, 31, 30)] {
+    // b = B_max + 1 to 2·B_max − 2: split. RFC-0028 balances the two tables at `s = ⌈b/2⌉`,
+    // inside Lemma 2's bounds: at least `b − B_max`, so the high table fits, and below the
+    // rounding bit `r`.
+    for (b, r, split) in [(33, 40, 17), (33, 8, 7), (48, 40, 24), (62, 31, 30)] {
         let selection = selected(&requant(b, &[r]), &[], &default).expect("selects");
         let Gadget::RequantSplit {
             split: s,
@@ -113,12 +115,12 @@ fn requant_keys_take_their_gadget_by_width_at_each_boundary() {
         else {
             panic!("RequantSplit expected at b = {b}");
         };
-        assert_eq!(s, split);
+        assert_eq!(s, split, "b = {b}, r = {r}");
         assert_eq!(kind(&selection, low), &TableKind::Range { bits: split });
         assert_eq!(
             kind(&selection, high),
             &TableKind::Requant {
-                b: 32,
+                b: u8::try_from(b).expect("small") - split,
                 r_by_class: vec![r - split],
                 lo: -128,
                 hi: 127
@@ -134,27 +136,33 @@ fn requant_keys_take_their_gadget_by_width_at_each_boundary() {
 #[test]
 fn a_tables_classes_take_key_bits_before_the_split() {
     let default = GadgetPolicy::default();
-    // Two classes take one bit, three or four take two.
-    for (shifts, whole) in [
-        (&[8u8, 9][..], 31),
-        (&[8, 9, 10][..], 30),
-        (&[8, 9, 10, 11][..], 30),
-    ] {
-        let selection = selected(&requant(whole, shifts), &[], &default).expect("selects");
-        assert!(
-            matches!(selection.gadgets[0].1, Gadget::Requant1 { .. }),
-            "{shifts:?}"
-        );
-        let selection = selected(&requant(whole + 1, shifts), &[], &default).expect("selects");
-        let Gadget::RequantSplit { split, high, .. } = selection.gadgets[0].1 else {
-            panic!("RequantSplit expected for {shifts:?}");
-        };
-        assert_eq!(split, 1);
-        let reduced: Vec<u8> = shifts.iter().map(|r| r - 1).collect();
-        assert!(matches!(
-            kind(&selection, high),
-            TableKind::Requant { b, r_by_class, .. } if *b == whole as u8 && *r_by_class == reduced
-        ));
+    // Two classes take one bit, three or four take two: the key of `whole` bits fits one table,
+    // and one more bit splits.
+    for (classes, whole) in [(2u8, 31u8), (3, 30), (4, 30)] {
+        let class_bits = 32 - whole;
+        // From a shift of 8, the split stops below the rounding bit; from 40, it balances the
+        // tables at `⌈(b + ⌈log2 n⌉)/2⌉` (RFC-0028).
+        for (base, split) in [(8u8, 7u8), (40, (whole + 1 + class_bits).div_ceil(2))] {
+            let shifts: Vec<u8> = (base..base + classes).collect();
+            let selection =
+                selected(&requant(u32::from(whole), &shifts), &[], &default).expect("selects");
+            assert!(
+                matches!(selection.gadgets[0].1, Gadget::Requant1 { .. }),
+                "{shifts:?}"
+            );
+            let selection =
+                selected(&requant(u32::from(whole) + 1, &shifts), &[], &default).expect("selects");
+            let Gadget::RequantSplit { split: s, high, .. } = selection.gadgets[0].1 else {
+                panic!("RequantSplit expected for {shifts:?}");
+            };
+            assert_eq!(s, split, "{shifts:?}");
+            let reduced: Vec<u8> = shifts.iter().map(|r| r - split).collect();
+            assert!(matches!(
+                kind(&selection, high),
+                TableKind::Requant { b, r_by_class, .. }
+                    if *b == whole + 1 - split && *r_by_class == reduced
+            ));
+        }
     }
 }
 
@@ -384,12 +392,13 @@ proptest! {
 
     #[test]
     fn the_split_tables_compute_the_requantization(
-        b in 33u32..=62, extra in 1u8..=8, seed in any::<u64>(), lo in -200i32..=0, span in 0i32..=400,
+        b in 33u32..=62, extra in 1u8..=31, seed in any::<u64>(), lo in -200i32..=0, span in 0i32..=400,
     ) {
-        // The least shift the split allows, a few bits more: the low part passes its Range table
-        // and the reduced table returns rq(z, r, lo, hi) on keys across the width.
-        let split = b - 32;
-        let r = u8::try_from(split).expect("small") + extra;
+        // A shift from just above the least split to past the balanced point: the split is
+        // RFC-0028's, the balanced `⌈b/2⌉` inside Lemma 2's bounds; the low part passes its Range
+        // table and the reduced table returns rq(z, r, lo, hi) on keys across the width.
+        let r = u8::try_from(b - 32).expect("small") + extra;
+        let split = b.div_ceil(2).clamp(b - 32, (u32::from(r) - 1).min(32));
         let hi = lo + span;
         let mut g = GraphBuilder::new();
         let half = 1i128 << (b - 1);

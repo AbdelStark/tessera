@@ -300,7 +300,8 @@ fn each_table_row_costs_a_committed_lookup_once_per_batch() {
 /// the source's model with RISK-2's upper bound for `minimal`, 285,696 commitments and 302,080
 /// lookups per layer per token over 126 layers (RFC-0024's wide rescale and RFC-0022's two steps
 /// at classed residual sites), five regenerations (RFC-0018 P1 to P5) and the table rows of the
-/// two-class report at `B_max = 32` (`docs/perf/v0.2/`), with the column answers free or priced as
+/// two-class report at `B_max = 32` with RFC-0028's balanced split (`docs/perf/v0.2/`), with the
+/// column answers free or priced as
 /// committing is, 30 ps per element. A change to the model that moves one fails here until the
 /// documents follow.
 #[test]
@@ -309,7 +310,7 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         commits_per_token: 285_696.0 * 126.0,
         lookups_per_token: 302_080.0 * 126.0,
         regen_full_equivalents: 5.0,
-        table_rows: 20_467_229_184.0,
+        table_rows: 6_659_571_712.0,
         ..Counts::SOURCE_405B
     };
     let at = |counts: &Counts, context: u32, column_answer_ps: f64| {
@@ -343,10 +344,10 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         at(&corrected, k1, 0.0).total,
         at(&corrected, k16, 0.0).total,
     );
-    quoted("μ(1K)", mu1, 10.7, 1);
-    quoted("μ(16K)", mu16, 26.0, 1);
-    quoted("1K table term", at(&corrected, k1, 0.0).tables, 0.15, 2);
-    quoted("16K table term", at(&corrected, k16, 0.0).tables, 0.14, 2);
+    quoted("μ(1K)", mu1, 10.6, 1);
+    quoted("μ(16K)", mu16, 25.9, 1);
+    quoted("1K table term", at(&corrected, k1, 0.0).tables, 0.048, 3);
+    quoted("16K table term", at(&corrected, k16, 0.0).tables, 0.044, 3);
     quoted(
         "1K per ps of c_a",
         at(&corrected, k1, 1.0).column_answers,
@@ -362,28 +363,28 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
     let (full1, full16) = (at(&corrected, k1, 30.0), at(&corrected, k16, 30.0));
     quoted("1K column answers at c_c", full1.column_answers, 1.9, 1);
     quoted("16K column answers at c_c", full16.column_answers, 6.8, 1);
-    quoted("μ(1K) at c_c", full1.total, 12.6, 1);
+    quoted("μ(1K) at c_c", full1.total, 12.5, 1);
     // SC-2's headroom: ceilings of 12 and 45 over the corrected figures.
-    quoted("1K headroom", 12.0 / mu1, 1.13, 2);
-    quoted("16K headroom", 45.0 / mu16, 1.73, 2);
+    quoted("1K headroom", 12.0 / mu1, 1.14, 2);
+    quoted("16K headroom", 45.0 / mu16, 1.74, 2);
     quoted("16K headroom at c_c", 45.0 / full16.total, 1.37, 2);
-    // 08 §3: at c_c, 5% above the 1K ceiling, and 0.4% below the 16K one with RISK-10's upper
+    // 08 §3: at c_c, 4% above the 1K ceiling, and 0.6% below the 16K one with RISK-10's upper
     // streaming estimate, about 12.
     quoted(
         "1K excess at c_c",
         100.0 * (full1.total / 12.0 - 1.0),
-        5.0,
+        4.0,
         0,
     );
-    quoted("16K at c_c with streaming", full16.total + 12.0, 44.8, 1);
+    quoted("16K at c_c with streaming", full16.total + 12.0, 44.7, 1);
     quoted(
         "16K margin at c_c with streaming",
         100.0 * (1.0 - (full16.total + 12.0) / 45.0),
-        0.4,
+        0.6,
         1,
     );
     // 08 §3's sampling rate for 10% overhead at η = 0.3, and daily detection of 100 violations.
-    for (total, rate, detection) in [(mu1, 3.1, 96.0), (full1.total, 2.6, 93.0)] {
+    for (total, rate, detection) in [(mu1, 3.2, 96.0), (full1.total, 2.7, 93.0)] {
         let s = sampling_rate(0.1, total, 0.3).expect("a rate");
         quoted("sampling at 1K", 100.0 * s, rate, 1);
         let d = detection_probability(s, 100).expect("a probability");
@@ -394,14 +395,14 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
 /// The same projections at the default `servable` profile's count, which 00 §7 SC-2, 00 §9 RISK-2
 /// and 08 §3 quote beside `minimal`'s: 359,424 commitments and lookups per layer per token under
 /// RFC-0006's selection rule, with RFC-0022's two steps at both classed residual sites, over 126
-/// layers, and the two-class report's table rows at `B_max = 32`.
+/// layers, and the two-class report's table rows at `B_max = 32` with the balanced split.
 #[test]
 fn the_servable_projections_are_the_ones_the_documents_quote() {
     let servable = Counts {
         commits_per_token: 359_424.0 * 126.0,
         lookups_per_token: 359_424.0 * 126.0,
         regen_full_equivalents: 5.0,
-        table_rows: 24_718_156_544.0,
+        table_rows: 7_693_467_648.0,
         ..Counts::SOURCE_405B
     };
     let at = |context: u32, column_answer_ps: f64| {
@@ -421,24 +422,24 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
     let (k1, k16) = (1024, 16_384);
     quoted("linear term at 1K", at(k1, 0.0).linear, 5.3, 1);
     let (mu1, mu16) = (at(k1, 0.0).total, at(k16, 0.0).total);
-    quoted("μ(1K)", mu1, 11.6, 1);
-    quoted("μ(16K)", mu16, 26.9, 1);
-    quoted("1K table term", at(k1, 0.0).tables, 0.18, 2);
-    quoted("16K table term", at(k16, 0.0).tables, 0.16, 2);
+    quoted("μ(1K)", mu1, 11.5, 1);
+    quoted("μ(16K)", mu16, 26.8, 1);
+    quoted("1K table term", at(k1, 0.0).tables, 0.055, 3);
+    quoted("16K table term", at(k16, 0.0).tables, 0.051, 3);
     quoted("1K per ps of c_a", at(k1, 1.0).column_answers, 0.078, 3);
     quoted("16K per ps of c_a", at(k16, 1.0).column_answers, 0.24, 2);
     let (full1, full16) = (at(k1, 30.0), at(k16, 30.0));
     quoted("1K column answers at c_c", full1.column_answers, 2.3, 1);
     quoted("16K column answers at c_c", full16.column_answers, 7.2, 1);
-    quoted("μ(1K) at c_c", full1.total, 14.0, 1);
-    quoted("μ(16K) at c_c", full16.total, 34.1, 1);
-    // SC-2's headroom, and the 1K ceiling missed by 16% at c_a = c_c.
-    quoted("1K headroom", 12.0 / mu1, 1.03, 2);
-    quoted("16K headroom", 45.0 / mu16, 1.67, 2);
+    quoted("μ(1K) at c_c", full1.total, 13.9, 1);
+    quoted("μ(16K) at c_c", full16.total, 34.0, 1);
+    // SC-2's headroom, and the 1K ceiling missed by 15% at c_a = c_c.
+    quoted("1K headroom", 12.0 / mu1, 1.04, 2);
+    quoted("16K headroom", 45.0 / mu16, 1.68, 2);
     quoted(
         "1K excess at c_c",
         100.0 * (full1.total / 12.0 - 1.0),
-        16.0,
+        15.0,
         0,
     );
     // With the upper streaming estimate of RISK-10, about 12 at 16K: 2% above the ceiling.

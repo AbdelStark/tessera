@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual), [RFC-0024](RFC-0024-wide-requantization.md) ('Gadget selection': `RequantWide`), [RFC-0025](RFC-0025-affine-sites.md) ('Operation set': `Mul`'s broadcast; 'Llama lowering': affine sites)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual), [RFC-0024](RFC-0024-wide-requantization.md) ('Gadget selection': `RequantWide`), [RFC-0025](RFC-0025-affine-sites.md) ('Operation set': `Mul`'s broadcast; 'Llama lowering': affine sites), [RFC-0028](RFC-0028-balanced-split.md) ('Gadget selection': the split point)
 
 ## Summary
 
@@ -122,15 +122,18 @@ A `Requant`'s gadget depends on its key's signed width `b`, from range analysis,
 | Condition | Gadget | Tables | Cost per element |
 |---|---|---|---|
 | `b + ⌈log2 n⌉ ≤ B_max` | `Requant1` | `Requant { b, r_c, lo, hi }` | 1 commitment, 1 lookup |
-| otherwise, `s = b + ⌈log2 n⌉ − B_max`, with `s ≤ B_max`, `b ≤ 62` and `s ≤ r_c − 1` for every class | `RequantSplit` with split point `s` | `Range { s }`, `Requant { b − s, r_c − s, lo, hi }` | 2 commitments, 2 lookups |
+| otherwise, with `b ≤ 62` and `b + ⌈log2 n⌉ − B_max ≤ min(r_min − 1, B_max)`: `s = clamp(⌈(b + ⌈log2 n⌉)/2⌉, b + ⌈log2 n⌉ − B_max, min(r_min − 1, B_max))` ([RFC-0028](RFC-0028-balanced-split.md)) | `RequantSplit` with split point `s` | `Range { s }`, `Requant { b − s, r_c − s, lo, hi }` | 2 commitments, 2 lookups |
 | otherwise, with `b ≤ 62`, `t + 2 + ⌈log2 n⌉ ≤ B_max` and `k + 1 ≤ B_max` | `RequantWide` with low part `s` and middle part `t` | `Range { s }` when `s ≥ 1`, `Range { t }`, `Range { k }`, `Requant { k + 1, [1], −2, 1 }`, `Requant { t + 2, r_c − s, lo, hi }` | 4 commitments, 5 lookups |
 | otherwise | `ERR-COMPILE-RANGE` | — | — |
 
 The split's conditions come from RFC-0009 Lemma 2:
 
+- the high part's table fits: `s ≥ b + ⌈log2 n⌉ − B_max`;
 - the low part's table fits: `s ≤ B_max`;
 - the halves are true integers: `b ≤ 62`;
 - the nested floor is the requantization: `s ≤ r_c − 1`, since `2^{r_c − 1}` must be a multiple of `2^s`.
+
+Between these bounds the split takes the point that balances the two tables' rows, `2^s + 2^{b + ⌈log2 n⌉ − s}`, the extra bit in `Range { s }` on a tie ([RFC-0028](RFC-0028-balanced-split.md)).
 
 A key the split cannot take, because the split would pass the least shift's rounding bit or its low part would not fit, takes `RequantWide` ([RFC-0024](RFC-0024-wide-requantization.md)). It has three parts:
 
