@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Integer semantics': the residual rows and the norm row's range)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Integer semantics': the residual rows and the norm row's range), [RFC-0023](RFC-0023-norm-precision.md) (the norm's `κ`)
 
 ## Summary
 
@@ -73,7 +73,7 @@ All operations are on integers; `rq(x, r, lo, hi) = clamp(floor((x + 2^{r−1}) 
 | Step | Operation | Range (worst case) |
 |---|---|---|
 | Embed | `x0 = onehot(token)^T · E` (INT8 row), `res = x0 · 2^{s_e}` | INT20 |
-| Attn norm | `s = Σ res_i^2`; `ρ = max{ρ ∈ ℕ : ρ^2 (s + e) ≤ d · 2^{2κ}}`, `κ = 16`, `e` = exact integer form of `d·ε/σ_res^2` rounded up; `y_i = rq(res_i · ρ, r_n, −128, 127)` | `s ≤ d · 2^38`; `ρ < 2^w`, `w` the bit length of `⌊√(d · 2^{2κ} / e)⌋` ([RFC-0022](RFC-0022-saturating-residual.md#complete-norms)); key `< 2^{19+w}` |
+| Attn norm | `s = Σ res_i^2`; `ρ = max{ρ ∈ ℕ : ρ^2 (s + e) ≤ d · 2^{2κ}}`, `κ` the largest, at most 31, with `⌊d · 2^{2κ} / e⌋ < 2^64` ([RFC-0023](RFC-0023-norm-precision.md)), `e` = exact integer form of `d·ε/σ_res^2` rounded up; `y_i = rq(res_i · ρ, r_n, −128, 127)` | `s ≤ d · 2^38`; `ρ < 2^w`, `w` the bit length of `⌊√(d · 2^{2κ} / e)⌋` ([RFC-0022](RFC-0022-saturating-residual.md#complete-norms)); key `< 2^{19+w}` |
 | Q, K, V | `acc = W y` (INT32) | `< 2^29` |
 | RoPE | Each head's pairs `(a, b) = (x_i, x_{i + d_head/2})`, the layout of Hugging Face checkpoints: `(a, b) ↦ (a·C − b·S, a·S + b·C)` with `C, S` 14-bit constants of frequency `i` from the RoPE table ([RFC-0008](RFC-0008-logup-and-tables.md#table-kinds)); then `q = rq(·, r_q, −128, 127)`, same for `k` | key `< 2^44` |
 | V | `v = rq(acc, r_v,c, −128, 127)` | key `< 2^29` |

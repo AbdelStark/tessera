@@ -1255,7 +1255,8 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
 
 /// The public part of a model of Llama-3.1's shape and `layers` layers, quantized as RFC-0005
 /// describes, every site of one class. The residual's scale is `2^{−7}`, so that RMSNorm's
-/// `e = ⌈d · ε / σ_res^2⌉` is below `d / 4` (#285's case).
+/// `e = ⌈d · ε / σ_res^2⌉` is below `d / 4` (#285's case), and `κ` is RFC-0023's: the largest,
+/// at most 31, with `⌊d · 2^{2κ} / e⌋ < 2^64`.
 fn llama(
     profile: Profile,
     layers: u32,
@@ -1278,8 +1279,12 @@ fn llama(
         rms_eps: Rational::new(1, 100_000).expect("a rational"),
     };
     let mut act_exponents = vec![(QuantPoint::Embed, -6)];
-    // ⌈d · 10^{−5} · 2^{14}⌉: 672 at 8B, 2685 at 405B.
+    // ⌈d · 10^{−5} · 2^{14}⌉: 672 at 8B, 2685 at 405B; then κ = 30 at both.
     let eps = (u64::from(d) * (1 << 14)).div_ceil(100_000);
+    let kappa = (0..=31u8)
+        .rev()
+        .find(|&k| (u128::from(d) << (2 * k)) / u128::from(eps) < 1 << 64)
+        .expect("κ = 0 fits");
     let mut shift_class_sets = Vec::new();
     for layer in 0..layers {
         for site in sites(profile) {
@@ -1287,18 +1292,24 @@ fn llama(
             if !matches!(site, Site::AttnResidual | Site::MlpResidual) {
                 act_exponents.push((point, -3));
             }
-            // A Silu shift wide enough that its 2^{b − r} values of h stay below 2^24.
-            let r = if site == Site::Silu { 20 } else { 12 };
+            // A Silu shift wide enough that its 2^{b − r} values of h stay below 2^24, and a
+            // norm's κ + e_y.
+            let r = match site {
+                Site::Silu => 20,
+                Site::AttnNorm | Site::MlpNorm => i8::try_from(kappa).expect("small") - 3,
+                _ => 12,
+            };
             shift_class_sets.push((point, vec![r]));
         }
     }
     act_exponents.push((QuantPoint::FinalNorm, -3));
-    shift_class_sets.push((QuantPoint::FinalNorm, vec![12]));
+    let final_shift = i8::try_from(kappa).expect("small") - 3;
+    shift_class_sets.push((QuantPoint::FinalNorm, vec![final_shift]));
     let quant = PublicQuantSpec {
         act_exponents,
         residual_exponent: -7,
         residual_bits: 20,
-        rsqrt_kappa: 16,
+        rsqrt_kappa: kappa,
         rms_eps_int: eps,
         exp_sigma: 16,
         score_scales: (0..layers)
@@ -1326,8 +1337,8 @@ fn norms(graph: &tessera_ir::Graph) -> Vec<(IntRange, IntRange)> {
 #[test]
 fn llama_shapes_lower_from_their_public_part_alone() {
     // 8B's shape through all 32 layers: the saturating residual keeps every norm's sum at most
-    // d · 2^38 (RFC-0022, #284), and e = 672 < d / 4 gives roots of 18 bits, all of them inside
-    // the range check (#285).
+    // d · 2^38 (RFC-0022, #284). With e = 672 < d / 4 and RFC-0023's κ = 30, the largest root
+    // takes the full 32 bits of one lookup, and every root lies inside the range check (#285).
     for profile in [Profile::Servable, Profile::Minimal] {
         let (arch, quant, silu) = llama(profile, 32, 4096, 32, 8, 14_336);
         let model = PublicModel {
@@ -1349,7 +1360,7 @@ fn llama_shapes_lower_from_their_public_part_alone() {
                 root,
                 IntRange {
                     lo: 0,
-                    hi: (1 << 18) - 1
+                    hi: (1 << 32) - 1
                 }
             );
         }
@@ -1450,7 +1461,7 @@ fn llama_shapes_lower_from_their_public_part_alone() {
             root,
             IntRange {
                 lo: 0,
-                hi: (1 << 18) - 1
+                hi: (1 << 32) - 1
             }
         );
     }
