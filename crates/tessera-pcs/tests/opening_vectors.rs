@@ -28,6 +28,7 @@ use std::path::Path;
 use common::openings::{Matrix, Verifier, tv_columns, tv_combined, tv_fp2, tv_fp2s, tv_groups};
 use common::{Fp, Replay};
 use serde_json::Value;
+use tessera_codec::Secret;
 use tessera_field::{Field, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_hash::Digest;
 use tessera_pcs::{
@@ -165,8 +166,9 @@ fn every_honest_opening_is_reproduced_value_by_value_and_verifies() {
         assert!(masks.iter().all(|mask| mask.len() == p), "{name}");
         let values = rows.concat();
         let mut source = Replay::new(masks.concat());
-        let commitment = ReferenceCommitment::commit(params, layout, values.clone(), &mut source)
-            .expect("valid inputs");
+        let commitment =
+            ReferenceCommitment::commit(params, layout, Secret::new(values.clone()), &mut source)
+                .expect("valid inputs");
         let layout = commitment.layout();
         assert_eq!(source.drawn, n_rows * p, "{name}: P_A draws per row");
 

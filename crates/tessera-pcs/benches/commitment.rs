@@ -7,7 +7,9 @@
 //! - `open`: the combined rows of 16 groups of 40 claims in all and the proximity row, in
 //!   nanoseconds per opened element (each of the `N·k` values combined into all `G + 1` rows)
 //!   and per product of an `Fp2` coefficient by an `Fp` value, `(G + 1)·N·(k + P_A)` of them;
-//! - `answer`: 155 queries, `τ_A` of `live-64`, in nanoseconds per answered symbol.
+//! - `answer`: 155 queries, `τ_A` of `live-64`, in nanoseconds per answered symbol;
+//! - `drop`: dropping a commitment, which clears its rows, masks and codewords (05 §3 OBS-6), in
+//!   nanoseconds per committed element.
 //!
 //! The rows lie in 8 segments of consecutive rows, with `P_A = min(200, k)` and `B = 32`.
 //! `cargo bench -p tessera-pcs --bench commitment` runs it and reports the fastest of several
@@ -22,6 +24,7 @@ use std::hint::black_box;
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
+use tessera_codec::Secret;
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_pcs::{ClaimGroup, CommitmentParams, ReferenceCommitment, RowClaim, RowLayout};
 
@@ -91,8 +94,9 @@ fn run(rng: &mut SplitMix64, log_k: u32, rows: usize, runs: usize) {
         let layout = layout(rows);
         let mut masks = SplitMix64(0x7E55_E7A0_0054_0B01);
         let start = Instant::now();
-        let committed = ReferenceCommitment::commit(params, layout, input, &mut || masks.fp())
-            .expect("valid inputs");
+        let committed =
+            ReferenceCommitment::commit(params, layout, Secret::new(input), &mut || masks.fp())
+                .expect("valid inputs");
         let elapsed = start.elapsed();
         commitment = Some(committed);
         elapsed
@@ -148,6 +152,22 @@ fn run(rng: &mut SplitMix64, log_k: u32, rows: usize, runs: usize) {
         "answered symbol",
         time,
     );
+
+    drop(commitment);
+    let time = fastest(runs, || {
+        let mut masks = SplitMix64(0x7E55_E7A0_0054_0B02);
+        let committed = ReferenceCommitment::commit(
+            params,
+            layout(rows),
+            Secret::new(values.clone()),
+            &mut || masks.fp(),
+        )
+        .expect("valid inputs");
+        let start = Instant::now();
+        drop(black_box(committed));
+        start.elapsed()
+    });
+    report("drop", log_k, rows, rows * k, "committed element", time);
 }
 
 fn main() {

@@ -19,6 +19,7 @@
 
 use core::num::NonZeroUsize;
 
+use tessera_codec::{Secret, SecretBuf};
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tv_core::opening as tv;
 
@@ -230,17 +231,20 @@ fn a_corrupted_row_is_rejected_at_the_rate_of_its_distance() {
 
     // The honest prover: the same rows and masks, committed by `commit`, verify.
     let mut replay = masks.iter().copied();
-    let honest = ReferenceCommitment::commit(params, layout.clone(), values.clone(), &mut || {
-        replay.next().expect("P_A per row")
-    })
+    let honest = ReferenceCommitment::commit(
+        params,
+        layout.clone(),
+        Secret::new(values.clone()),
+        &mut || replay.next().expect("P_A per row"),
+    )
     .expect("valid inputs");
     let encoded = ReferenceCommitment::from_encoded(
         params,
         shape,
         layout.clone(),
-        values.clone(),
-        masks.clone(),
-        codewords.clone(),
+        Secret::new(values.clone()),
+        masks.iter().copied().collect::<SecretBuf<Fp>>(),
+        codewords.iter().copied().collect::<SecretBuf<Fp>>(),
     );
     assert_eq!(honest.root(), encoded.root());
     let combined = tv_combined(&honest);
@@ -277,9 +281,9 @@ fn a_corrupted_row_is_rejected_at_the_rate_of_its_distance() {
             params,
             shape,
             layout.clone(),
-            values.clone(),
-            masks.clone(),
-            corrupted,
+            Secret::new(values.clone()),
+            masks.iter().copied().collect::<SecretBuf<Fp>>(),
+            corrupted.into_iter().collect::<SecretBuf<Fp>>(),
         );
         assert_ne!(cheating.root(), honest.root());
         // The honest combined rows, from the row's message.

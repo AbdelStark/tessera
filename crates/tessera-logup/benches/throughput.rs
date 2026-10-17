@@ -21,7 +21,7 @@
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
-use tessera_codec::Ascii;
+use tessera_codec::{Ascii, Secret, SecretBuf};
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_logup::{LogUpInstance, TreeId, Tuples, multiplicities, prove_logup};
@@ -85,10 +85,10 @@ fn report(what: &str, lookups: usize, time: Duration) {
 struct Columns {
     keys: Vec<Fp>,
     values: Vec<Fp>,
-    rows: Vec<u32>,
+    rows: Secret<Vec<u32>>,
     lookup_keys: Vec<Fp>,
     lookup_values: Vec<Fp>,
-    multiplicities: Vec<Fp>,
+    multiplicities: SecretBuf<Fp>,
 }
 
 impl Columns {
@@ -102,12 +102,13 @@ impl Columns {
             .collect();
         let lookup_keys = lookup_rows.iter().map(|&r| keys[r as usize]).collect();
         let lookup_values = lookup_rows.iter().map(|&r| values[r as usize]).collect();
+        let rows = Secret::new(lookup_rows);
         let multiplicities =
-            multiplicities(Tuples::new(&keys, Some(&values)), &lookup_rows).expect("rows");
+            multiplicities(Tuples::new(&keys, Some(&values)), &rows).expect("rows");
         Self {
             keys,
             values,
-            rows: lookup_rows,
+            rows,
             lookup_keys,
             lookup_values,
             multiplicities,

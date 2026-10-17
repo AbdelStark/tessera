@@ -22,6 +22,7 @@ use common::openings::{
     Matrix, TvFp2, Verifier, eq_at, tv_columns, tv_combined, tv_fp, tv_fp2, tv_fp2s, tv_groups,
 };
 use common::{Fp, SplitMix64};
+use tessera_codec::Secret;
 use tessera_field::{GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_pcs::{ClaimGroup, CommitmentParams, ReferenceCommitment, RowClaim, RowLayout};
 
@@ -123,8 +124,9 @@ fn prove_and_verify(case: Case, rng: &mut SplitMix64) {
     } = case;
     let mask_coeffs = params.mask_coeffs;
     let mut masks = || rng.fp();
-    let commitment = ReferenceCommitment::commit(params, layout, values.clone(), &mut masks)
-        .expect("valid inputs");
+    let commitment =
+        ReferenceCommitment::commit(params, layout, Secret::new(values.clone()), &mut masks)
+            .expect("valid inputs");
     let layout = commitment.layout();
     let combined = commitment.open(&groups, &xi_point).expect("valid points");
     assert_eq!(combined.len(), groups.len() + 1);
@@ -332,9 +334,13 @@ fn combined_rows_and_row_coefficients_are_their_definitions() {
                 row_block: NonZeroUsize::new(32).expect("non-zero"),
                 commitment_id: [3; 32],
             };
-            let commitment =
-                ReferenceCommitment::commit(params, layout.clone(), values.clone(), &mut masks)
-                    .expect("valid inputs");
+            let commitment = ReferenceCommitment::commit(
+                params,
+                layout.clone(),
+                Secret::new(values.clone()),
+                &mut masks,
+            )
+            .expect("valid inputs");
             let rows: Vec<u64> = layout.row_indices().collect();
             assert_eq!(drawn.len(), rows.len() * mask_coeffs, "P_A draws per row");
 
@@ -401,9 +407,13 @@ fn debug_forms_show_shapes_and_counts_only() {
         commitment_id: [5; 32],
     };
     let layout = RowLayout::new(3, vec![vec![0, 2], vec![5]]).expect("valid");
-    let commitment =
-        ReferenceCommitment::commit(params, layout, vec![canary; 3 * 16], &mut || canary)
-            .expect("valid inputs");
+    let commitment = ReferenceCommitment::commit(
+        params,
+        layout,
+        Secret::new(vec![canary; 3 * 16]),
+        &mut || canary,
+    )
+    .expect("valid inputs");
     assert_eq!(
         format!("{commitment:?}"),
         "ReferenceCommitment { message_len: 16, codeword_len: 32, mask_coeffs: 3, row_block: 2, \
@@ -458,8 +468,10 @@ fn every_leaf_and_the_root_are_the_verifiers_hashes_of_the_committed_columns() {
         };
         let values = rng.fps(layout.rows() * k);
         let commitment =
-            ReferenceCommitment::commit(params, layout.clone(), values, &mut || rng.fp())
-                .expect("valid inputs");
+            ReferenceCommitment::commit(params, layout.clone(), Secret::new(values), &mut || {
+                rng.fp()
+            })
+            .expect("valid inputs");
         let n = 2 * k;
         let all: Vec<u64> = (0..n as u64).collect();
         let answer = commitment.answer(&all).expect("valid queries");

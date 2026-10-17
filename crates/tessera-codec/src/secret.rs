@@ -109,11 +109,11 @@ impl<T: Copy> SecretBuf<T> {
         Ok(Self(values))
     }
 
-    /// `len` copies of `value`, with room for exactly `len`.
+    /// `len` copies of `value`, with room for exactly `len`. Built by `vec!`, which allocates
+    /// exactly `len` and takes memory the allocator has already zeroed when `value` is a zero
+    /// integer.
     pub fn filled(value: T, len: usize) -> Self {
-        let mut values = Vec::with_capacity(len);
-        values.resize(len, value);
-        Self(values)
+        Self(vec![value; len])
     }
 
     /// The number of values it holds without growing.

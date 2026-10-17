@@ -27,6 +27,7 @@ use common::SplitMix64;
 use common::openings::{
     Matrix, TvFp, TvFp2, Verifier, eq_at, tv_columns, tv_combined, tv_fp2s, tv_groups,
 };
+use tessera_codec::Secret;
 use tessera_field::{Field, GoldilocksExt2, QuadraticExtension};
 use tessera_hash::Digest;
 use tessera_pcs::{ClaimGroup, CommitmentParams, ReferenceCommitment, RowClaim, RowLayout};
@@ -91,8 +92,10 @@ impl Opened {
         };
         let mut masks = SplitMix64::new(seed ^ 0xFFFF);
         let commitment =
-            ReferenceCommitment::commit(params, layout, values.clone(), &mut || masks.fp())
-                .expect("valid inputs");
+            ReferenceCommitment::commit(params, layout, Secret::new(values.clone()), &mut || {
+                masks.fp()
+            })
+            .expect("valid inputs");
         let combined = commitment.open(&groups, &xi_point).expect("valid points");
         let answer = commitment.answer(&queries).expect("valid queries");
         let matrix = Matrix {

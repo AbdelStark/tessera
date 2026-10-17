@@ -6,6 +6,7 @@
 
 use core::fmt;
 
+use tessera_codec::SecretBuf;
 use tessera_field::Field;
 use tessera_poly::{PolyField, evaluate_base};
 use tessera_sumcheck::{
@@ -252,7 +253,7 @@ fn trees<F: PolyField>(
         beta,
         padding,
     )?;
-    let negated: Vec<F::Base> = instance.multiplicities.iter().map(|&m| -m).collect();
+    let negated: SecretBuf<F::Base> = instance.multiplicities.iter().map(|&m| -m).collect();
     let rows = tree(
         table,
         instance.table_height(),
@@ -271,8 +272,8 @@ fn value_at<F: PolyField>(values: &[F::Base], padding: F::Base, point: &[F]) -> 
     let value = match values.len() == leaves {
         true => evaluate_base(values, point),
         false => {
-            let mut padded = Vec::with_capacity(leaves);
-            padded.extend_from_slice(values);
+            let mut padded = SecretBuf::with_capacity(leaves);
+            padded.extend(values.iter().copied());
             padded.resize(leaves, padding);
             evaluate_base(&padded, point)
         }
@@ -327,9 +328,8 @@ fn value_at<F: PolyField>(values: &[F::Base], padding: F::Base, point: &[F]) -> 
 ///
 /// Control flow depends on shapes only, never on a lookup, a value or a multiplicity
 /// (INV-ARCH-2). Every column and every tree node is a secret-class value (05 §3): no debug form
-/// or error shows one. Each tree's levels are `SecretBuf`s, which clear themselves as the levels
-/// are dropped (OBS-6); the multiplicities, their negations and the padded value column are plain
-/// vectors until #264.
+/// or error shows one. Every buffer derived from them, each tree's levels, the negated
+/// multiplicities and the padded value column, is a `SecretBuf`, cleared as it drops (OBS-6).
 ///
 /// # Errors
 ///
