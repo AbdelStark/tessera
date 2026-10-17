@@ -2,6 +2,11 @@
 # changelog entry for every change to a release train, and a DCO sign-off on every commit.
 # A separate workflow so that adding or removing the `no-changelog` label re-runs only this
 # check. Event data reaches the shell through environment variables, never by interpolation.
+#
+# No concurrency group: a pull request opened with labels fires one event per label, and a
+# group would cancel all but the last run. A cancelled run of this required check leaves the
+# pull request blocked although a later run passed, so every run finishes instead. Each reads
+# the same commits and takes under a minute.
 name: pr-policy
 
 on:
@@ -11,10 +16,6 @@ on:
 
 permissions:
   contents: read
-
-concurrency:
-  group: pr-policy-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
   pr-policy:
