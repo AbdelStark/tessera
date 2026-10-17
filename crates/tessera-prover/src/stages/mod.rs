@@ -1,0 +1,608 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! The reduction stages of a stage schedule (RFC-0010 'Stages', RFC-0037), proven over a
+//! [`WitnessSource`].
+//!
+//! A [`StageProver`] walks a [`StageSchedule`] in order:
+//!
+//! 1. **The leaf stage** leaves its claims at its points. Until the gadgets' leaf stage (#118),
+//!    [`StageProver::leaf`] takes the points and computes the claims' true values from the
+//!    witness. [`StageProver::leaf_splits`] then sends the values of the claims the leaf stage
+//!    splits, under `stage/0/split`.
+//! 2. **Stage `k`**, [`StageProver::prove_stage`], proves one batched sumcheck.
+//!    - In stage 1 it first squeezes the layer point `ρ_1` (`stage/1/layer/{c}`), which stacks
+//!      the leaf stage's per-layer values, and the zero-check point (`stage/1/zero/{c}`).
+//!    - Each instance is its relation over the witness's tables at its claim's point:
+//!      `MatMulWeight`, `MatMulAct`, `Elementwise` for products, sums of squares and the equality
+//!      zero-checks, and `Rotate`'s kernel. Stacked instances stack their kinds' layers.
+//!    - After the evaluations, the stage sends its split claims' values under `stage/{k}/split`,
+//!      claim by claim and part by part (RFC-0037 'Splits').
+//! 3. **The pool** ends with every committed part's value, [`StageProver::pool`]: what the
+//!    openings prove (RFC-0011, RFC-0012).
+//!
+//! Every claim an instance leaves is checked against the schedule's point for it, so a relation
+//! and the schedule cannot disagree silently. The witness's tables are secret-class (05 §3): this
+//! module borrows them, and keeps what it derives in `SecretBuf`s that clear their memory.
+
+mod relations;
+mod tables;
+
+use std::collections::HashMap;
+use std::fmt;
+
+use tessera_codec::error::ErrorCode;
+use tessera_compiler::Lowering;
+use tessera_compiler::schedule::{
+    Atom, Claim, Coord, Factor, Layers, NodeRef, Part, Source, StageSchedule,
+};
+use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
+use tessera_ir::{Op, TensorId};
+use tessera_poly::{eq, evaluate_base, less_than};
+use tessera_sumcheck::{
+    Prefix, SumcheckError, SumcheckProof, SumcheckTranscript, prove_batch, zero_check_point,
+};
+
+use relations::{Arena, build};
+
+/// The witness a stage proves over: every tensor's values, true integers, flat and row-major.
+/// They are secret-class (05 §3): a source lends them, by reference and for a call.
+pub trait WitnessSource {
+    /// The values of `tensor`, or `None` when the witness lacks it.
+    fn values(&self, tensor: TensorId) -> Option<&[i64]>;
+}
+
+/// The CPU engine's witness, every tensor in memory.
+impl WitnessSource for tessera_witness::Witness {
+    fn values(&self, tensor: TensorId) -> Option<&[i64]> {
+        self.tensor(tensor).map(|buffer| &buffer[..])
+    }
+}
+
+/// A reduction stage's messages (RFC-0036 'StageProof'): its sumcheck, then the values of the
+/// claims it splits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StageProof {
+    /// The stage, from 1.
+    pub stage: u16,
+    /// Its rounds and final evaluations (RFC-0010 'Sumcheck messages').
+    pub sumcheck: SumcheckProof<GoldilocksExt2>,
+    /// The values of its split claims' parts, claim by claim (RFC-0037 'Splits').
+    pub splits: Vec<GoldilocksExt2>,
+}
+
+/// Why a stage cannot be proven.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StageError {
+    /// The schedule names what the stages do not prove, or disagrees with a relation or the
+    /// witness: a bug (`ERR-INTERNAL`).
+    Internal {
+        /// The rule broken.
+        rule: &'static str,
+    },
+    /// A relation refused its tables (`ERR-INTERNAL`).
+    Sumcheck(SumcheckError),
+    /// A table does not fit in memory (`ERR-RES-MEMORY`).
+    Memory,
+}
+
+impl StageError {
+    /// The stable code of 04 §3.
+    pub fn code(&self) -> ErrorCode {
+        match self {
+            Self::Internal { .. } | Self::Sumcheck(_) => ErrorCode::Internal,
+            Self::Memory => ErrorCode::ResMemory,
+        }
+    }
+}
+
+impl fmt::Display for StageError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Internal { rule } => write!(f, "the stages break a rule: {rule}"),
+            Self::Sumcheck(error) => write!(f, "a relation refused its tables: {error}"),
+            Self::Memory => f.write_str("a stage's table does not fit in memory"),
+        }
+    }
+}
+
+impl std::error::Error for StageError {}
+
+impl From<SumcheckError> for StageError {
+    fn from(error: SumcheckError) -> Self {
+        Self::Sumcheck(error)
+    }
+}
+
+/// Proves a [`StageSchedule`]'s stages over a [`WitnessSource`], in order.
+pub struct StageProver<'a, W: WitnessSource + ?Sized> {
+    lowering: &'a Lowering,
+    schedule: &'a StageSchedule,
+    witness: &'a W,
+    /// The challenges drawn so far, by coordinate.
+    coords: HashMap<Coord, GoldilocksExt2>,
+    /// Each stage's claims' values: one per layer for a leaf claim in the layers, else one.
+    claims: Vec<Vec<Vec<GoldilocksExt2>>>,
+    /// Each stage's parts' values, as its claims'.
+    parts: Vec<Vec<Vec<Vec<GoldilocksExt2>>>>,
+    /// The pool's values, as the stages reach them.
+    pool: Vec<Option<GoldilocksExt2>>,
+}
+
+/// Shows the progress, never a value (05 §3).
+impl<W: WitnessSource + ?Sized> fmt::Debug for StageProver<'_, W> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StageProver")
+            .field("stages", &self.claims.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
+    /// A prover of `schedule`, derived from `lowering`, over `witness`.
+    pub fn new(lowering: &'a Lowering, schedule: &'a StageSchedule, witness: &'a W) -> Self {
+        Self {
+            lowering,
+            schedule,
+            witness,
+            coords: HashMap::new(),
+            claims: Vec::new(),
+            parts: Vec::new(),
+            pool: vec![None; schedule.pool.len()],
+        }
+    }
+
+    /// The value of `coord`, once drawn: `½` for a sum's.
+    pub fn challenge(&self, coord: Coord) -> Option<GoldilocksExt2> {
+        if coord == Coord::Half {
+            return GoldilocksExt2::from(Goldilocks::from_u64_reduced(2)).inverse();
+        }
+        self.coords.get(&coord).copied()
+    }
+
+    /// The leaf stage's claims at `points`, site `s`'s at `points[s]` (#118's leaf layout), with
+    /// their true values from the witness: one per layer for a site in the layers, else one.
+    ///
+    /// # Errors
+    ///
+    /// [`StageError::Internal`] when a point has the wrong number of coordinates or the leaf stage
+    /// was proven already; [`StageError::Memory`] when a table does not fit.
+    pub fn leaf(
+        &mut self,
+        points: &[Vec<GoldilocksExt2>],
+    ) -> Result<Vec<Vec<GoldilocksExt2>>, StageError> {
+        let leaf = &self.schedule.stages[0];
+        if !self.claims.is_empty() || points.len() != leaf.claims.len() {
+            return internal("the leaf stage comes first, with one point per site");
+        }
+        for (s, (claim, point)) in leaf.claims.iter().zip(points).enumerate() {
+            if point.len() != claim.point.len() {
+                return internal("a leaf point has its site's coordinates");
+            }
+            let site = u32::try_from(s).unwrap_or(u32::MAX);
+            for (index, &value) in (0u32..).zip(point) {
+                self.coords.insert(Coord::Leaf { site, index }, value);
+            }
+        }
+        let mut values = Vec::with_capacity(leaf.claims.len());
+        for claim in &leaf.claims {
+            let mut per_layer = Vec::new();
+            for layer in self.layers_of(claim) {
+                per_layer.push(self.claim_value(claim, layer)?);
+            }
+            values.push(per_layer);
+        }
+        self.claims.push(values.clone());
+        Ok(values)
+    }
+
+    /// Stage 0's splits (RFC-0037 'Splits'): the values of the leaf claims' parts, claim by claim,
+    /// layer by layer and part by part, absorbed under `stage/0/split`.
+    ///
+    /// # Errors
+    ///
+    /// [`StageError::Internal`] before [`leaf`](Self::leaf), or after the splits;
+    /// [`StageError::Memory`] when a table does not fit.
+    pub fn leaf_splits<T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
+        &mut self,
+        transcript: &mut T,
+    ) -> Result<Vec<GoldilocksExt2>, StageError> {
+        if self.claims.len() != 1 || !self.parts.is_empty() {
+            return internal("the leaf stage's splits follow its claims");
+        }
+        let splits = self.split(0, transcript)?;
+        Ok(splits)
+    }
+
+    /// Proves stage `k`, from 1: its points in stage 1, its batched sumcheck, then its splits.
+    ///
+    /// # Errors
+    ///
+    /// [`StageError::Internal`] out of order, or when a relation's claim is not the schedule's;
+    /// [`StageError::Sumcheck`] when a relation refuses its tables; [`StageError::Memory`] when a
+    /// table does not fit.
+    pub fn prove_stage<T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
+        &mut self,
+        transcript: &mut T,
+        k: u16,
+    ) -> Result<StageProof, StageError> {
+        let index = usize::from(k);
+        if index == 0 || self.parts.len() != index {
+            return internal("the stages are proven in order, after the leaf stage's splits");
+        }
+        let stage = self
+            .schedule
+            .stages
+            .get(index)
+            .ok_or(StageError::Internal {
+                rule: "the schedule has the stage",
+            })?;
+        if k == 1 {
+            for c in 0..self.schedule.layers.vars {
+                let rho = transcript.challenge(&format!("stage/1/layer/{c}"));
+                self.coords.insert(Coord::Layer(c), rho);
+            }
+            if stage.zero_vars > 0 {
+                let z = zero_check_point(transcript, 1, stage.zero_vars as usize);
+                for (c, value) in (0u32..).zip(z) {
+                    self.coords.insert(Coord::Zero(c), value);
+                }
+            }
+            self.fill_pool(0)?;
+        }
+        // Each instance's tables at its claim's point.
+        let mut arena = Arena::default();
+        let mut plans = Vec::with_capacity(stage.instances.len());
+        let mut points = Vec::with_capacity(stage.instances.len());
+        for instance in &stage.instances {
+            plans.push(self.plan(stage, instance, &mut arena)?);
+            let mut point = self.point(&instance.point)?;
+            if let Layers::Eq(rho) = &instance.layers {
+                point.extend(self.point(rho)?);
+            }
+            points.push(point);
+        }
+        let (built, degree) = build(&arena, &plans, &points)?;
+        let instances: Vec<_> = built.iter().map(|b| b.instance()).collect();
+        let proven = prove_batch(transcript, Prefix::Stage(u32::from(k)), degree, &instances)?;
+        for (round, &r) in (0u32..).zip(proven.point()) {
+            self.coords.insert(Coord::Round { stage: k, round }, r);
+        }
+        // The claims the evaluations leave, each where the schedule says.
+        let mut values = vec![Vec::new(); stage.claims.len()];
+        for (i, (instance, tables)) in stage.instances.iter().zip(&built).enumerate() {
+            let point = proven.instance_point(i).ok_or(StageError::Internal {
+                rule: "the batch proves every instance",
+            })?;
+            let evals = proven.instance_evals(i).ok_or(StageError::Internal {
+                rule: "the batch proves every instance",
+            })?;
+            let claims = tables.claims(point, evals)?;
+            if claims.len() != instance.claims.len() {
+                return internal("an instance's evaluations are its schedule's claims");
+            }
+            let spread = plans[i].spread();
+            for (j, (c, claim)) in instance.claims.clone().zip(&claims).enumerate() {
+                let spec = &stage.claims[c];
+                let mut expected = self.point(&spec.point)?;
+                if let Layers::Eq(rho) = &spec.layers {
+                    expected.extend(self.point(rho)?);
+                }
+                if !self.lands(&claim.point, &expected, spread.contains(&j)) {
+                    return internal("a relation's claim is at the schedule's point");
+                }
+                values[c] = vec![claim.value];
+            }
+        }
+        self.claims.push(values);
+        let splits = self.split(index, transcript)?;
+        Ok(StageProof {
+            stage: k,
+            sumcheck: proven.into_proof(),
+            splits,
+        })
+    }
+
+    /// The pool's claims' values (RFC-0037 'The claim pool'), each once its stage is proven.
+    pub fn pool(&self) -> &[Option<GoldilocksExt2>] {
+        &self.pool
+    }
+
+    /// Whether a relation's claim at `actual` is the schedule's at `expected`. An operand laid out
+    /// over the rows (`spread`) is claimed at the rows' coordinates too, between its channels' and
+    /// its layers': the schedule's point has the channels' and the layers' alone.
+    fn lands(&self, actual: &[GoldilocksExt2], expected: &[GoldilocksExt2], spread: bool) -> bool {
+        if !spread {
+            return actual == expected;
+        }
+        let lambda = self.schedule.layers.vars as usize;
+        let Some(low) = expected.len().checked_sub(lambda) else {
+            return false;
+        };
+        actual.len() >= expected.len()
+            && actual[..low] == expected[..low]
+            && actual[actual.len() - lambda..] == expected[low..]
+    }
+
+    /// Records the parts' values of stage `index`'s claims, sends the split ones' under
+    /// `stage/{index}/split`, and fills the pool.
+    fn split<T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
+        &mut self,
+        index: usize,
+        transcript: &mut T,
+    ) -> Result<Vec<GoldilocksExt2>, StageError> {
+        let stage = &self.schedule.stages[index];
+        let mut splits = Vec::new();
+        let mut parts = Vec::with_capacity(stage.claims.len());
+        for (c, claim) in stage.claims.iter().enumerate() {
+            let layers = self.layers_of(claim);
+            let mut values: Vec<Vec<GoldilocksExt2>> =
+                vec![Vec::with_capacity(layers.len()); claim.parts.len()];
+            for (l, &layer) in layers.iter().enumerate() {
+                for (p, part) in claim.parts.iter().enumerate() {
+                    let value = if claim.split {
+                        let value = self.part_value(claim, part, layer)?;
+                        splits.push(value);
+                        value
+                    } else {
+                        self.claims[index][c][l]
+                    };
+                    values[p].push(value);
+                }
+            }
+            parts.push(values);
+        }
+        transcript.absorb_message(&format!("stage/{index}/split"), &splits);
+        self.parts.push(parts);
+        // The leaf stage's committed parts are stacked at ρ_1, which stage 1 draws.
+        if index > 0 {
+            self.fill_pool(index)?;
+        }
+        Ok(splits)
+    }
+
+    /// The pool's values of stage `index`'s committed parts: a leaf claim's per-layer values
+    /// stacked at `ρ_1`.
+    fn fill_pool(&mut self, index: usize) -> Result<(), StageError> {
+        let stage = &self.schedule.stages[index];
+        let rho: Vec<Coord> = (0..self.schedule.layers.vars).map(Coord::Layer).collect();
+        for (c, claim) in stage.claims.iter().enumerate() {
+            for (p, part) in claim.parts.iter().enumerate() {
+                if let Part::Pool { claim: pool, .. } = part {
+                    let per_layer = &self.parts[index][c][p];
+                    let value = if claim.layers == Layers::Each {
+                        self.stack(&rho, per_layer)?
+                    } else {
+                        per_layer[0]
+                    };
+                    self.pool[*pool] = Some(value);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// `Σ_ℓ eq(ρ, ℓ)·v_ℓ` over the real layers, the padded ones' values being 0.
+    fn stack(
+        &self,
+        rho: &[Coord],
+        values: &[GoldilocksExt2],
+    ) -> Result<GoldilocksExt2, StageError> {
+        let rho = self.point(rho)?;
+        let mut sum = GoldilocksExt2::ZERO;
+        for (layer, &value) in (0u64..).zip(values) {
+            sum += eq_vertex(&rho, layer) * value;
+        }
+        Ok(sum)
+    }
+
+    /// The value an instance of the next stage proves for part `part` of `claim` of stage
+    /// `index`: a leaf claim's per-layer values stacked at `ρ_1`.
+    pub(super) fn part_claim(
+        &self,
+        index: usize,
+        claim: usize,
+        part: usize,
+    ) -> Result<GoldilocksExt2, StageError> {
+        let values = &self.parts[index][claim][part];
+        if index == 0 && self.schedule.stages[0].claims[claim].layers == Layers::Each {
+            let rho: Vec<Coord> = (0..self.schedule.layers.vars).map(Coord::Layer).collect();
+            return self.stack(&rho, values);
+        }
+        Ok(values[0])
+    }
+
+    /// The layers a claim's values run over: each real layer for a leaf claim in the layers.
+    fn layers_of(&self, claim: &Claim) -> Vec<Option<u32>> {
+        match claim.layers {
+            Layers::Each => (0..self.schedule.layers.count).map(Some).collect(),
+            _ => vec![None],
+        }
+    }
+
+    /// A claim's true value, in `layer` for a leaf claim in the layers.
+    fn claim_value(&self, claim: &Claim, layer: Option<u32>) -> Result<GoldilocksExt2, StageError> {
+        let mut value = GoldilocksExt2::ZERO;
+        for (l, w) in self.weights(&claim.layers, layer)? {
+            value += w * self.extension(claim.kind, l, &claim.point)?;
+        }
+        Ok(value)
+    }
+
+    /// A part's value: a virtual atom's without its coefficient, a committed group's with them.
+    fn part_value(
+        &self,
+        claim: &Claim,
+        part: &Part,
+        layer: Option<u32>,
+    ) -> Result<GoldilocksExt2, StageError> {
+        match part {
+            Part::Instance { atom, .. } => self.atom_value(&claim.atoms[*atom], layer, false),
+            Part::Pool { atoms, .. } => {
+                let mut sum = GoldilocksExt2::ZERO;
+                for &i in atoms {
+                    sum += self.atom_value(&claim.atoms[i], layer, true)?;
+                }
+                Ok(sum)
+            }
+        }
+    }
+
+    /// `Σ_ℓ w(ℓ)·c(ℓ)·X̃_{κ,ℓ}(r)` of an atom, `c` left out when `with_coefficient` is false.
+    fn atom_value(
+        &self,
+        atom: &Atom,
+        layer: Option<u32>,
+        with_coefficient: bool,
+    ) -> Result<GoldilocksExt2, StageError> {
+        let mut value = GoldilocksExt2::ZERO;
+        for (l, w) in self.weights(&atom.layers, layer)? {
+            let c = if with_coefficient {
+                self.coefficient(&atom.coefficient, l)?
+            } else {
+                GoldilocksExt2::ONE
+            };
+            value += w * c * self.extension(atom.kind, l, &atom.point)?;
+        }
+        Ok(value)
+    }
+
+    /// The layers `layers` weighs, each with its weight: the real layers only, a padded layer's
+    /// tensors being 0.
+    fn weights(
+        &self,
+        layers: &Layers,
+        each: Option<u32>,
+    ) -> Result<Vec<(u32, GoldilocksExt2)>, StageError> {
+        let one = GoldilocksExt2::ONE;
+        Ok(match layers {
+            Layers::None => vec![(0, one)],
+            Layers::Each => vec![(
+                each.ok_or(StageError::Internal {
+                    rule: "a leaf claim's layer",
+                })?,
+                one,
+            )],
+            Layers::One(layer) => vec![(*layer, one)],
+            Layers::Eq(rho) => {
+                let rho = self.point(rho)?;
+                (0..self.schedule.layers.count)
+                    .map(|l| (l, eq_vertex(&rho, u64::from(l))))
+                    .collect()
+            }
+        })
+    }
+
+    /// A coefficient's value in `layer`.
+    fn coefficient(
+        &self,
+        products: &[Vec<Factor>],
+        layer: u32,
+    ) -> Result<GoldilocksExt2, StageError> {
+        let mut sum = GoldilocksExt2::ZERO;
+        for product in products {
+            let mut value = GoldilocksExt2::ONE;
+            for factor in product {
+                value *= match factor {
+                    Factor::Minus => -GoldilocksExt2::ONE,
+                    Factor::Pow2(j) => {
+                        GoldilocksExt2::from(Goldilocks::from_u64_reduced(1u64 << j))
+                    }
+                    Factor::Constant(node) => self.constant(*node, layer)?,
+                    Factor::Lt { coords, len } => {
+                        let r = self.point(coords)?;
+                        less_than(&r, u64::from(*len)).map_err(|_| StageError::Internal {
+                            rule: "an Expand's length fits its axis",
+                        })?
+                    }
+                };
+            }
+            sum += value;
+        }
+        Ok(sum)
+    }
+
+    /// The scalar constant of a `ConstMul`, in `layer` at a template position.
+    fn constant(&self, node: NodeRef, layer: u32) -> Result<GoldilocksExt2, StageError> {
+        let id = match node {
+            NodeRef::Node(id) => id,
+            NodeRef::Position(position) => self.schedule.layers.node(position, layer),
+        };
+        match self.lowering.graph.nodes[id.0 as usize].op {
+            Op::ConstMul { c } => match self
+                .lowering
+                .graph
+                .constants
+                .get(c.0 as usize)
+                .map(Vec::as_slice)
+            {
+                Some(&[scalar]) => Ok(GoldilocksExt2::from(Goldilocks::from_i64(scalar))),
+                _ => internal("a coefficient's ConstMul is by one constant"),
+            },
+            _ => internal("a coefficient's constant is a ConstMul's"),
+        }
+    }
+
+    /// `X̃(point)` of `kind`'s tensor in `layer`.
+    fn extension(
+        &self,
+        kind: tessera_compiler::schedule::Kind,
+        layer: u32,
+        point: &[Coord],
+    ) -> Result<GoldilocksExt2, StageError> {
+        let table = self.slice(kind, layer)?;
+        let r = self.point(point)?;
+        evaluate_base::<GoldilocksExt2>(&table, &r).map_err(|_| StageError::Internal {
+            rule: "a claim's point has its tensor's coordinates",
+        })
+    }
+
+    /// The values of `coords`, every one drawn.
+    fn point(&self, coords: &[Coord]) -> Result<Vec<GoldilocksExt2>, StageError> {
+        coords
+            .iter()
+            .map(|&c| {
+                self.challenge(c).ok_or(StageError::Internal {
+                    rule: "a claim's coordinates are drawn before it",
+                })
+            })
+            .collect()
+    }
+
+    /// Every instance claim of stage `k`, in instance order: a virtual part's value, or 0 for a
+    /// zero-check.
+    pub fn instance_claims(&self, k: u16) -> Result<Vec<GoldilocksExt2>, StageError> {
+        let stage = self
+            .schedule
+            .stages
+            .get(usize::from(k))
+            .ok_or(StageError::Internal {
+                rule: "the schedule has the stage",
+            })?;
+        stage
+            .instances
+            .iter()
+            .map(|instance| match instance.source {
+                Source::Part { claim, part } => self.part_claim(usize::from(k) - 1, claim, part),
+                Source::ZeroCheck => Ok(GoldilocksExt2::ZERO),
+            })
+            .collect()
+    }
+}
+
+/// `eq(ρ, ℓ)` at the vertex `ℓ`, `ρ[0]` its lowest bit.
+fn eq_vertex(rho: &[GoldilocksExt2], layer: u64) -> GoldilocksExt2 {
+    let bits: Vec<GoldilocksExt2> = (0..rho.len())
+        .map(|j| {
+            if (layer >> j) & 1 == 1 {
+                GoldilocksExt2::ONE
+            } else {
+                GoldilocksExt2::ZERO
+            }
+        })
+        .collect();
+    eq(rho, &bits).unwrap_or(GoldilocksExt2::ZERO)
+}
+
+fn internal<T>(rule: &'static str) -> Result<T, StageError> {
+    Err(StageError::Internal { rule })
+}

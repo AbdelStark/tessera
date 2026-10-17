@@ -8,6 +8,20 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dependencies]
+tessera-codec = { path = "../tessera-codec" }
+tessera-compiler = { path = "../tessera-compiler" }
+tessera-field = { path = "../tessera-field" }
+tessera-ir = { path = "../tessera-ir" }
+tessera-poly = { path = "../tessera-poly" }
+tessera-sumcheck = { path = "../tessera-sumcheck" }
+tessera-tables = { path = "../tessera-tables" }
+tessera-witness = { path = "../tessera-witness" }
+
+[dev-dependencies]
+serde_json = "1"
+tessera-hash = { path = "../tessera-hash" }
+
 [features]
 # Test-only: seeded masking randomness, so tests are reproducible. A release build with it fails to compile.
 test-rng = []
