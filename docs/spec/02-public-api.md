@@ -104,14 +104,15 @@ pub struct Prover<'a> { /* private */ }
 impl<'a> Prover<'a> {
     pub fn new(plan: &'a ExecutionPlan, model: &'a IntegerModel,
                weights: &'a mut WeightCommitmentState, cfg: ProverConfig) -> Result<Self, ProverError>;
-    pub fn start(&mut self, batch: &ProofBatch) -> Result<Round1, ProverError>;
-    pub fn on_seed(&mut self, seed: &Seed) -> Result<Round2Response, ProverError>;
+    pub fn start(&mut self, batch: &ProofBatch, commit: &SeedCommit)
+        -> Result<(Round1, ProverSeedShare), ProverError>;
+    pub fn on_seed(&mut self, reveal: &SeedReveal) -> Result<Round2Response, ProverError>;
     pub fn on_queries(&mut self, queries: &ColumnQueries) -> Result<Round3Response, ProverError>;
     pub fn prove_non_interactive(&mut self, batch: &ProofBatch) -> Result<NiProof, ProverError>;
 }
 ```
 
-`Prover` is a state machine: `start → on_seed → on_queries` in live mode. Calling a method out of order returns `ProverError::Protocol(OutOfOrder)` and leaves the state unchanged. `prove_non_interactive` runs all three internally. In `tessera-protocol/2`, each method that yields a message returns at that message's release time, on the schedule of [RFC-0018 'Release schedule'](../rfcs/RFC-0018-gpu-prover-runtime.md#release-schedule), so that no caller can send it early. `WeightCommitmentState` is borrowed mutably because every proof consumes hiding budget ([RFC-0012](../rfcs/RFC-0012-weight-commitment.md#budget-state-machine)).
+`Prover` is a state machine: `start → on_seed → on_queries` in live mode, in the session order of [RFC-0014](../rfcs/RFC-0014-interaction-and-soundness.md#session-order-live-mode) and the states of [RFC-0036](../rfcs/RFC-0036-protocol-messages.md#the-provers-live-session). Calling a method out of order returns `ProverError::Protocol(OutOfOrder)` and leaves the state unchanged. `prove_non_interactive` runs all three internally. In `tessera-protocol/2`, each method that yields a message returns at that message's release time, on the schedule of [RFC-0018 'Release schedule'](../rfcs/RFC-0018-gpu-prover-runtime.md#release-schedule), so that no caller can send it early. `WeightCommitmentState` is borrowed mutably because every proof consumes hiding budget ([RFC-0012](../rfcs/RFC-0012-weight-commitment.md#budget-state-machine)).
 
 ### 3.2 Verifier
 
@@ -128,8 +129,8 @@ pub fn verify_non_interactive(claims: &ClaimList, statement: &PublicStatement,
 pub struct LiveVerifier { /* private */ }
 impl LiveVerifier {
     pub fn new(claims: ClaimList, statement: PublicStatement, cfg: VerifierConfig) -> Self;
-    pub fn on_round1(&mut self, m: &Round1) -> Result<SeedCommit, Verdict>;     // verifier commits to its share
-    pub fn on_prover_share(&mut self, s: &ProverSeedShare) -> Result<SeedReveal, Verdict>;
+    pub fn start(&mut self) -> SeedCommit;                                       // verifier commits to its share
+    pub fn on_round1(&mut self, m: &Round1, s: &ProverSeedShare) -> Result<SeedReveal, Verdict>;
     pub fn on_round2(&mut self, m: &Round2Response) -> Result<ColumnQueries, Verdict>;
     pub fn on_round3(&mut self, m: &Round3Response) -> Verdict;
 }

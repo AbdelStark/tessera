@@ -112,6 +112,8 @@ error_codes! {
         "Attempt to answer a second seed for the same `Round1`.";
     ProtoTimeout => "ERR-PROTO-TIMEOUT", Protocol, 20,
         "The peer did not respond within the session deadline.";
+    ProtoQueries => "ERR-PROTO-QUERIES", Protocol, 20,
+        "Column queries of the wrong matrices or count, or past their codeword.";
     ResMemory => "ERR-RES-MEMORY", Resource, 20, "Memory budget exceeded.";
     ResDevice => "ERR-RES-DEVICE", Resource, 20, "GPU driver or kernel error.";
     ResIo => "ERR-RES-IO", Resource, 20, "Filesystem or network I/O failure.";

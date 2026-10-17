@@ -21,6 +21,7 @@
     {"code": "ERR-PROTO-COINTOSS", "class": "Protocol", "exit": 20},
     {"code": "ERR-PROTO-REUSE", "class": "Protocol", "exit": 70},
     {"code": "ERR-PROTO-TIMEOUT", "class": "Protocol", "exit": 20},
+    {"code": "ERR-PROTO-QUERIES", "class": "Protocol", "exit": 20},
     {"code": "ERR-RES-MEMORY", "class": "Resource", "exit": 20},
     {"code": "ERR-RES-DEVICE", "class": "Resource", "exit": 20},
     {"code": "ERR-RES-IO", "class": "Resource", "exit": 20},

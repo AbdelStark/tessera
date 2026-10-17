@@ -547,6 +547,13 @@ All notable changes to the prover release train are recorded here: the crates un
 
     These are all rejected at the final check: a prover with one operand or public entry changed; every changed round value or evaluation; a non-boolean entry; a value on a padded row.
 
+- RFC-0036, accepted, defines the protocol messages and the session state machines ([#98](https://github.com/AbdelStark/tessera/issues/98)):
+  - **Layouts.** Schema version 1 of `SeedCommit`, `ProverSeedShare`, `SeedReveal`, `Round1`, `Round2Response`, `ColumnQueries`, `Round3Response` and `NiProof` is `tessera-protocol/1`, field by field in TCE. It defines the types no document had: `LogUpProof`, `TreeProof`, `WeightCombinedRows`, `ScoringClaims`, `FixedBits`, `MatrixQueries`, `MatrixColumns` and the seed messages. `tessera-protocol/2`'s fields come in schema version 2, with RFC-0013 and RFC-0032.
+  - **Transcript.** The bytes each label of RFC-0014's schedule absorbs, and `{T}` spelled as RFC-0031's `WeightMatrix` names.
+  - **Sessions.** The prover's and the verifier's live states, each refusal with its code, in RFC-0014's order: 02 §3's calls now follow it.
+  - **`ERR-PROTO-QUERIES`**, for column queries of the wrong matrices or count, or past their codeword (INV-PROTO-3), in 04 §3, `tessera-codec`'s `ErrorCode`, `spec/vectors/errors/codes.json` and `tessera-quant`'s exit codes.
+  - Amended: RFC-0014 'Messages', 'Session order' and 'Transcript schedule'; 01 §5, 02 §3, 03 §4, 04 §3 and RFC-0010 OQ-0010-1. 01 §5 no longer puts the anchor's key commitment in Round 1: RFC-0015 logs it at session open.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

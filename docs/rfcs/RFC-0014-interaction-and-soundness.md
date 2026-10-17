@@ -31,7 +31,7 @@ The source's interaction design: "Round 1: every commitment; weights by referenc
 
 | Step | Direction | Message (schema) | Content |
 |---|---|---|---|
-| 0 | V → P | `SeedCommit` (`0x0501`) | `session_id`, `c_V = H("coin-commit", s_V)` for a fresh 32-byte `s_V` |
+| 0 | V → P | `SeedCommit` (`0x0501`) | `session_id`, chosen by the verifier, and `c_V = H("coin-commit", s_V)` for a fresh 32-byte `s_V` |
 | 1 | P → V | `Round1` (`0x0510`) + `ProverSeedShare` (`0x0502`) | Commitments; fresh 32-byte `s_P` |
 | 2 | V → P | `SeedReveal` (`0x0503`) | `s_V`; prover checks `c_V` |
 | 3 | P → V | `Round2Response` (`0x0511`) | Tree levels, stages, masked sums, combined rows, `Û` claims |
@@ -44,6 +44,8 @@ The source's interaction design: "Round 1: every commitment; weights by referenc
 In **non-interactive mode** the prover produces `NiProof` (`0x0520`) = `Round1`, a seed proof-of-work nonce, `Round2Response`, a query proof-of-work nonce and `Round3Response`; the seed and queries are squeezed from the transcript.
 
 ### Messages
+
+[RFC-0036](RFC-0036-protocol-messages.md) defines every message field by field, with the prover's and the verifier's session state machines. Its schema version 1 is `tessera-protocol/1`, which has none of the zero-knowledge items below: the weight reservation, the blinding claims and the masked sums. `tessera-protocol/2` adds them in schema version 2. The struct below lists the messages' parts:
 
 ```rust
 pub struct Round1 {
@@ -88,7 +90,7 @@ Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{c}`, `{T}` are decimal
 | 9 | absorb scoring claims | `scoring` |
 | 10 | live: absorb `ColumnQueries`; NI: grind `query-pow`, then squeeze indices | `queries`, `pcs/advice/queries`, `pcs/weights/{T}/queries` |
 
-Both sides construct labels from these patterns only; the full expanded list for a claim list is part of the derived constraint system and covered by transcript vectors. In `tessera-protocol/2`, rows 4 and 5 are [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)'s: a masked LogUp identity sumcheck in place of `logup/roots`, and masked tree levels.
+Both sides construct labels from these patterns only; the full expanded list for a claim list is part of the derived constraint system and covered by transcript vectors. What each label absorbs, the spelling of `{T}` as a matrix's name, and the labels `tessera-protocol/1` leaves out (`zk-sum`, `zk-rho` and the blinding claims) are [RFC-0036](RFC-0036-protocol-messages.md#what-the-transcript-absorbs)'s. In `tessera-protocol/2`, rows 4 and 5 are [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)'s: a masked LogUp identity sumcheck in place of `logup/roots`, and masked tree levels.
 
 ### Soundness budget
 

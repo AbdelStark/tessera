@@ -198,7 +198,7 @@ The sumcheck engine, matmul relation and product tree land in v0.1 (needed for u
 
 ## Open Questions
 
-- **OQ-0010-1** (resolved). How does one level order fraction trees and product trees, lay out their evaluations under `tree/{ℓ}/evals`, and combine a fraction tree's numerator and denominator claims? 'Tree levels' answers it. Instances of both kinds are numbered in schedule order. A fraction tree sends `N_0, N_1, D_0, D_1` where a forest sends `u, w`. A level with fraction trees squeezes `λ` after `γ`, and each fraction tree enters with the claim `p + λ·q`. The types of RFC-0014's `Round2Response` that carry these messages are still to be written.
+- **OQ-0010-1** (resolved). How does one level order fraction trees and product trees, lay out their evaluations under `tree/{ℓ}/evals`, and combine a fraction tree's numerator and denominator claims? 'Tree levels' answers it. Instances of both kinds are numbered in schedule order. A fraction tree sends `N_0, N_1, D_0, D_1` where a forest sends `u, w`. A level with fraction trees squeezes `λ` after `γ`, and each fraction tree enters with the claim `p + λ·q`. [RFC-0036](RFC-0036-protocol-messages.md#round2response) gives the types of `Round2Response` that carry them, `TreeProof` and `LogUpProof`.
 
 ## References
 

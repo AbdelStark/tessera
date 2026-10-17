@@ -70,6 +70,7 @@ Codes are stable tier-A identifiers ([02 §1](02-public-api.md#1-stability-tiers
 | `ERR-PROTO-COINTOSS` | Protocol | Seed reveal does not match its commitment | Both | 20 |
 | `ERR-PROTO-REUSE` | Protocol | Attempt to answer a second seed for the same `Round1` | Prover | 70 |
 | `ERR-PROTO-TIMEOUT` | Protocol | Peer did not respond within the session deadline | Both | 20 |
+| `ERR-PROTO-QUERIES` | Protocol | Column queries for other matrices, of another count than `τ_A` or `τ_W`, or past the codeword ([RFC-0036](../rfcs/RFC-0036-protocol-messages.md#errors)) | Prover | 20 |
 | `ERR-RES-MEMORY` | Resource | Memory budget exceeded | Both | 20 |
 | `ERR-RES-DEVICE` | Resource | GPU driver or kernel error | Prover | 20 |
 | `ERR-RES-IO` | Resource | Filesystem or network I/O failure | Both | 20 |
