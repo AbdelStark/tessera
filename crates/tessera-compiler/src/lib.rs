@@ -11,14 +11,20 @@
 //!   analysis'); [`check_profile`] checks the profile's constraints S1 to S3 (RFC-0005
 //!   'Profiles').
 //!
-//! Gadget selection, tiling and emission follow.
+//! - [`select`] gives every gadget-backed node its gadget, `Requant1` or `RequantSplit` for a
+//!   requantization by its key's width, and sizes and shares the tables (RFC-0006 'Gadget
+//!   selection').
+//!
+//! Tiling and emission follow.
 
 #![forbid(unsafe_code)]
 
 mod error;
 mod lower;
 mod range;
+mod select;
 
 pub use error::CompileError;
 pub use lower::{Lowering, PublicModel, check_profile, lower, validate};
 pub use range::{HALF_FIELD, Range, Ranges, analyze};
+pub use select::{Gadget, Selection, select};

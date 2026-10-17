@@ -17,7 +17,7 @@
 
 mod common;
 
-use common::{Lookup, Seeded, check_ranges, evaluate, regenerate, rq};
+use common::{Lookup, ROPE, Seeded, check_ranges, evaluate, llama, regenerate, rq, sites};
 use tessera_codec::error::ErrorCode;
 use tessera_codec::{Ascii, Map, Rational};
 use tessera_compiler::{
@@ -25,8 +25,8 @@ use tessera_compiler::{
 };
 use tessera_ir::{
     ArchFamily, ArchSpec, CalibrationIdentity, ChannelParams, IntRange, IntegerModel, NodeKind, Op,
-    Profile, Provenance, PublicQuantSpec, QuantPoint, QuantSpec, RopeSpec, Site, TableId,
-    WeightRef, WeightTensor, WeightType,
+    Profile, Provenance, PublicQuantSpec, QuantPoint, QuantSpec, Site, TableId, WeightRef,
+    WeightTensor, WeightType,
 };
 use tessera_tables::{GeneratedTable, RopeConstants, Table, TableKind};
 
@@ -84,35 +84,6 @@ const SHAPES: [Shape; 4] = [
         context: 12,
     },
 ];
-
-const ROPE: RopeSpec = RopeSpec {
-    theta: 500_000,
-    factor: 8,
-    low_freq_factor: 1,
-    high_freq_factor: 4,
-    original_max: 8192,
-    bits: 14,
-};
-
-fn sites(profile: Profile) -> Vec<Site> {
-    let all = [
-        Site::AttnNorm,
-        Site::RopeQ,
-        Site::RopeK,
-        Site::V,
-        Site::AttnOut,
-        Site::AttnResidual,
-        Site::MlpNorm,
-        Site::Silu,
-        Site::Up,
-        Site::Product,
-        Site::MlpResidual,
-    ];
-    let servable_only = [Site::AttnOut, Site::Up, Site::Product];
-    all.into_iter()
-        .filter(|s| profile == Profile::Servable || !servable_only.contains(s))
-        .collect()
-}
 
 /// The weight before `site`, whose output channels its classes follow.
 fn weight_of(site: Site) -> Option<WeightType> {
@@ -1252,76 +1223,6 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
 }
 
 // ----- Real shapes -------------------------------------------------------------------------------
-
-/// The public part of a model of Llama-3.1's shape and `layers` layers, quantized as RFC-0005
-/// describes, every site of one class. The residual's scale is `2^{−7}`, so that RMSNorm's
-/// `e = ⌈d · ε / σ_res^2⌉` is below `d / 4` (#285's case), and `κ` is RFC-0023's: the largest,
-/// at most 31, with `⌊d · 2^{2κ} / e⌋ < 2^64`.
-fn llama(
-    profile: Profile,
-    layers: u32,
-    d: u32,
-    heads: u32,
-    kv_heads: u32,
-    d_ff: u32,
-) -> (ArchSpec, PublicQuantSpec, Vec<(u32, i8)>) {
-    let arch = ArchSpec {
-        family: ArchFamily::LlamaV3,
-        n_layers: layers,
-        d_model: d,
-        n_heads: heads,
-        n_kv_heads: kv_heads,
-        d_head: 128,
-        d_ff,
-        vocab: 128_256,
-        max_context: 131_072,
-        rope: ROPE,
-        rms_eps: Rational::new(1, 100_000).expect("a rational"),
-    };
-    let mut act_exponents = vec![(QuantPoint::Embed, -6)];
-    // ⌈d · 10^{−5} · 2^{14}⌉: 672 at 8B, 2685 at 405B; then κ = 30 at both.
-    let eps = (u64::from(d) * (1 << 14)).div_ceil(100_000);
-    let kappa = (0..=31u8)
-        .rev()
-        .find(|&k| (u128::from(d) << (2 * k)) / u128::from(eps) < 1 << 64)
-        .expect("κ = 0 fits");
-    let mut shift_class_sets = Vec::new();
-    for layer in 0..layers {
-        for site in sites(profile) {
-            let point = QuantPoint::Layer { layer, site };
-            if !matches!(site, Site::AttnResidual | Site::MlpResidual) {
-                act_exponents.push((point, -3));
-            }
-            // A Silu shift wide enough that its 2^{b − r} values of h stay below 2^24, and a
-            // norm's κ + e_y.
-            let r = match site {
-                Site::Silu => 20,
-                Site::AttnNorm | Site::MlpNorm => i8::try_from(kappa).expect("small") - 3,
-                _ => 12,
-            };
-            shift_class_sets.push((point, vec![r]));
-        }
-    }
-    act_exponents.push((QuantPoint::FinalNorm, -3));
-    let final_shift = i8::try_from(kappa).expect("small") - 3;
-    shift_class_sets.push((QuantPoint::FinalNorm, vec![final_shift]));
-    let quant = PublicQuantSpec {
-        act_exponents,
-        residual_exponent: -7,
-        residual_bits: 20,
-        rsqrt_kappa: kappa,
-        rms_eps_int: eps,
-        exp_sigma: 16,
-        score_scales: (0..layers)
-            .map(|l| (l, Rational::new(1, 1 << 14).expect("a scale")))
-            .collect(),
-        shift_class_sets,
-        rope: ROPE,
-        logits_bits: 28,
-    };
-    let silu = (0..layers).map(|l| (l, -6)).collect();
-    (arch, quant, silu)
-}
 
 /// Every norm of `graph`: its sum's range and its root's.
 fn norms(graph: &tessera_ir::Graph) -> Vec<(IntRange, IntRange)> {
