@@ -8,6 +8,10 @@ from a seed and a pinned dataset, and checks evaluation data disjoint from it (R
 'Calibration'). `tessera_quant.capture` runs the calibration set through the BF16 reference
 and keeps each quantization point's per-channel maxima in a secret statistics file, with a
 `tessera.calibration/1` report beside it. Quantization follows.
+
+`D` reaches the Rust tools as a TCE artifact (RFC-0003): `tessera_quant.tce` reads and writes
+them, and `tessera_quant.integer_model` defines `D`. `tessera_quant.tables` generates the lookup
+tables `D` uses and their digests, equal to the Rust generators' (RFC-0008).
 """
 
 from importlib.metadata import version
@@ -19,6 +23,7 @@ from tessera_quant.errors import (
     CalibrationError,
     CodecError,
     EncodeError,
+    TableError,
     TesseraQuantError,
 )
 
@@ -31,6 +36,7 @@ __all__ = [
     "EncodeError",
     "FloatModel",
     "RopeSpec",
+    "TableError",
     "TesseraQuantError",
     "__version__",
     "import_checkpoint",
