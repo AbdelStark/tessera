@@ -579,6 +579,11 @@ All notable changes to the prover release train are recorded here: the crates un
     - The committed scores match a count of the layout's rows, row by row, for key blocks as wide as, wider than and narrower than the query blocks.
     - `score_block` moves exactly the attention, column-answer and row-combination terms.
     - The restated figures are the model's.
+- RFC-0012 defines the `ChannelParams` matrix's layout ([#331](https://github.com/AbdelStark/tessera/issues/331)):
+  - **The rule.** The matrix holds the tensor `[types, n_layers, C]`, with `C` the widest padded output among the weights that have a `ChannelParams`. Each entry is the channel's class index or affine multiplier, or 0, and the message width is `k_W`.
+  - **Why `k_W`.** A narrower message would raise the rate above the one `τ_W` is computed for. A `2^16`-wide message with `P_W = 2^16` has rate 1/2, where `live-64`'s 97 queries give about 40 bits instead of 64.
+  - **At 405B.** Rows hold 16 layers of one type, 8 rows per type that has a `ChannelParams`.
+  - **The vectors.** The production `ChannelParams` descriptor in `spec/vectors/hash/` follows the rule: `log2_k = 20` and `2 · 8 + 4096` rows for `servable` with two classes. Its encoding and `commitment_id` are regenerated, and both workspaces check them.
 
 ### Removed
 

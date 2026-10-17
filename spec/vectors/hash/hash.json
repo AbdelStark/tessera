@@ -2970,13 +2970,13 @@
      "blinding_rows": 4096
     },
     "matrix": "ChannelParams",
-    "log2_k": 17,
+    "log2_k": 20,
     "row_block": 32,
-    "rows": 5230,
+    "rows": 4112,
     "epoch": 7
    },
-   "tce": "010014020000010000100000090011200000006e1400000000000007000000",
-   "commitment_id": "39bcc0d8c06bcc9c55f76ab1b7f163d5f43ab0bc9e61716f84eed4e55e05a573"
+   "tce": "01001402000001000010000009001420000000101000000000000007000000",
+   "commitment_id": "c85be583f73f87f64f5a4cb207698de38ba8b6cd87186a66bfff186ec2a1c6c8"
   }
  ]
 }
