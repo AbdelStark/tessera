@@ -82,7 +82,7 @@ The proof system itself relies only on hash functions and information-theoretic 
 
 - Randomness comes from the operating system CSPRNG (`getrandom`). Test builds may pin masking randomness only through the `test-rng` feature, which release builds reject.
 - Secret values live in `Secret<T>` wrappers, zeroized on drop ([05 §3](05-observability.md#3-data-classification-and-redaction)). What the proving engines derive from them, such as bound tables, partial products, contractions and tree levels, lives in `SecretBuf`, which clears every allocation it releases, when it drops and when it grows (OBS-6). An engine reads a secret table only through an entry point that takes it by reference to its `Secret`, in a file `secret-access.toml` lists (OBS-1).
-- Secret artifacts (`IntegerModel`, `WeightCommitmentState`, per-proof seed files) are written with mode 0600 through atomic rename. Encryption at rest is the operator's responsibility (encrypted volumes); v1 has no built-in key-management integration.
+- Secret artifacts (`IntegerModel`, `WeightCommitmentState`, the weights' codeword store ([RFC-0012](../rfcs/RFC-0012-weight-commitment.md#column-answers)), per-proof seed files) are written with mode 0600 through atomic rename. Encryption at rest is the operator's responsibility (encrypted volumes); v1 has no built-in key-management integration.
 - The per-proof secret seed is persisted before `Round1` is sent so that crash recovery reproduces identical messages ([RFC-0018](../rfcs/RFC-0018-gpu-prover-runtime.md#crash-consistency)), and deleted after `Round3Response` is sent.
 
 ## 8. Disclosure policy

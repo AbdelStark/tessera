@@ -20,7 +20,7 @@ The proof multiplier for a model at context `S` (source §5):
 | `A` | Scores per token per unit context: heads × layers / 2 | 8,064 |
 | `c_c`, `c_ℓ`, `c_π` | Unit costs: committed element, lookup, product-tree leaf | 30, 40, 12 ps (assumed) |
 | 1.15 | Sumcheck glue factor | assumed |
-| `W/T` | Weight pass per token: 0.24 GPU-s per 16K-token batch | — |
+| `W/T` | Weight pass per token: 0.24 GPU-s per 16K-token batch. The weight column answers add no GPU time: they are read from the epoch's stored codewords ([RFC-0012](../rfcs/RFC-0012-weight-commitment.md#column-answers)) | — |
 | `F_lin`, `F_att` | Native INT8 operations per token: linear, attention per unit context | 8.1×10^11, 4.1×10^6 |
 | `R` | Native rate: 60% of 1,979 TOPS dense INT8 on H100 SXM | 1.19×10^15 op/s |
 | `M` | Table rows per proof: one committed multiplicity and one fraction-tree leaf each ([RFC-0008](../rfcs/RFC-0008-logup-and-tables.md)) | 6.7×10^9 for `minimal` and 7.7×10^9 for `servable`, with two classes at `B_max = 32` and [RFC-0028](../rfcs/RFC-0028-balanced-split.md)'s balanced split ([`docs/perf/v0.2/`](../perf/v0.2/README.md)) |
@@ -70,6 +70,7 @@ v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)) are `μ(1K) �
 | Column-digest state | 32 bytes × codeword length (2^23 → 256 MiB) | Chained column digests ([RFC-0011](../rfcs/RFC-0011-advice-commitment.md#column-digests-and-root)) |
 | LogUp multiplicity counters | ≤ 2^32 rows per table × 4 bytes, sharded across GPUs; 405B's tables hold 19 to 42 GiB in all ([`docs/perf/v0.2/`](../perf/v0.2/README.md)) | Table-side cost amortized over the batch, 0.04 to 0.08 of `μ(1K)` at `B_max = 32` with [RFC-0028](../rfcs/RFC-0028-balanced-split.md)'s balanced split, which cut it from 0.15 to 0.20 (§3) |
 | Host RAM, prover node | ≤ 1 TiB | Weight staging and checkpoint streaming |
+| Storage, prover node | About 15.2 TB per epoch at 405B, twice that during a refresh | The weights' stored codewords, from which the column answers are read ([RFC-0012](../rfcs/RFC-0012-weight-commitment.md#column-answers)) |
 | Host RAM, verifier | ≤ 64 GiB | SC-3 |
 
 ## 5. Proof size and verification budgets
@@ -79,7 +80,7 @@ v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)) are `μ(1K) �
 | Opened advice columns | `τ_A = 155` columns × column length × 8 bytes | about 0.73 GB with message width 2^22 |
 | Combined rows | at most 17 rows (one per claim group plus proximity) × 2^22 × 16 bytes | at most 1.14 GB |
 | Sumcheck messages | about 6 stages × ≤ 50 rounds × degree ≤ 4 × 16 bytes × batch factors | < 10 MB |
-| Weight openings | `τ_W = 95` columns per weight type × 9 types | < 0.3 GB |
+| Weight openings | `τ_W = 97` columns at most per matrix × 10 matrices, each column holding every non-zero data row and the 4,096 blinding rows | about 0.35 GB |
 | **Total proof** | **≤ 4 GiB (gate), 2 GiB (target)** | about 2 GB |
 | Verification time | ≤ 300 s on 32 cores | seconds to tens of seconds: column hashing, column combinations, combined-row re-encoding, table MLEs |
 | Dense table evaluation | ≤ 20 dense tables of ≤ 2^24 rows | about 2 s single-threaded |
