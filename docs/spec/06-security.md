@@ -28,7 +28,7 @@ Out of scope: an adversary that subverts the recorder itself (the recorder is a 
 
 | ID | Boundary | What crosses | Control |
 |---|---|---|---|
-| TB-1 | Prover node ↔ verifier | Protocol messages only | Zero knowledge; canonical encoding; mutually authenticated TLS 1.3 for live sessions |
+| TB-1 | Prover node ↔ verifier | Protocol messages, and when they are sent | Zero knowledge; canonical encoding; mutually authenticated TLS 1.3 for live sessions; the release schedule (INV-ARCH-2) |
 | TB-2 | Serving engine ↔ recorder | AES-128-CTR encrypted transcript frames | Key commitment recorded at session open |
 | TB-3 | Recorder ↔ both parties | Signed `LogManifest`, digest entries | Ed25519 signatures; manifest frozen before sampling |
 | TB-4 | Verifier build ↔ upstream code | Dependencies | Allowlist, `cargo-vet` audits, vendored sources, reproducible build |
@@ -63,7 +63,7 @@ Out of scope: an adversary that subverts the recorder itself (the recorder is a 
 | Reseeding a `Round1` to collect two transcripts over the same commitments | ADV-V | The prover answers at most one seed per `Round1`; aborts force fresh commitments and masks (INV-PROTO-1) |
 | Adaptive column queries to reconstruct weights | ADV-V | Padding columns make any `≤ P_W` opened columns perfectly hiding; the budget state machine refuses to exceed it; refresh with a linking proof |
 | Reading weights from combined rows | ADV-V | One fresh `Fp2` blinding row, two committed rows, per revealed combination ([RFC-0013](../rfcs/RFC-0013-zero-knowledge.md#hiding-openings)) |
-| Timing side channel | ADV-V | Prover control flow depends only on public data (INV-ARCH-2) |
+| Timing side channel | ADV-V | Control flow depends only on public data. Every message a verifier can time is released on a public schedule, which hides the data-dependent memory accesses of multiplicity counting and table reads. An overrun reveals at most which slot a message took. Phase timings stay on the prover's side (INV-ARCH-2, [RFC-0018 'Release schedule'](../rfcs/RFC-0018-gpu-prover-runtime.md#release-schedule)). An attacker sharing the prover's hardware is outside this model. |
 | Session hijack or replay | ADV-N | Mutually authenticated TLS 1.3; session ids bound into the transcript; manifest and batch digests in the statement |
 | Verifier denial of service | ADV-P | Size and memory limits checked before allocation; fuzzed decoders |
 | Malicious checkpoint | ADV-S | Safetensors-only loading; shape and dtype validation against `ArchSpec` |

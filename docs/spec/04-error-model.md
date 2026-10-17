@@ -73,7 +73,7 @@ Codes are stable tier-A identifiers ([02 §1](02-public-api.md#1-stability-tiers
 | `ERR-RES-MEMORY` | Resource | Memory budget exceeded | Both | 20 |
 | `ERR-RES-DEVICE` | Resource | GPU driver or kernel error | Prover | 20 |
 | `ERR-RES-IO` | Resource | Filesystem or network I/O failure | Both | 20 |
-| `ERR-RES-TIME` | Resource | Wall-time limit exceeded | Verifier | 20 |
+| `ERR-RES-TIME` | Resource | Wall-time limit exceeded, or a message missed the last slot of its release schedule | Both | 20 |
 | `ERR-INTERNAL` | Internal | Invariant violation (a bug) | Both | 70 |
 
 A lookup key outside its table range in an honest witness is `ERR-INTERNAL`, not a completeness failure: [INV-DM-2](03-data-model.md#6-invariants) guarantees it cannot happen, so its occurrence is a range-analysis bug.

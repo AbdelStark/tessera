@@ -21,10 +21,11 @@ const MAX_CORE: u64 = 1 << 24;
 ///
 /// [`index`](Table::index) and [`lookup`](Table::lookup) take a witness's key, which is secret
 /// (05 §3). The arithmetic kinds compute the row and the value with no memory access that
-/// depends on the key, and select a class's shift without indexing by it (INV-ARCH-2). The
-/// fixed-point kinds, `Exp` and `Exp2Frac`, read their value from the generated core at the
-/// key, an access #257 reconciles with INV-ARCH-2. Whether the key is in the table is the one
-/// outcome that depends on it, and an honest witness's keys always are (INV-DM-2).
+/// depends on the key, and select a class's shift without indexing by it (INV-ARCH-2). `Exp`,
+/// `Exp2Frac` and `Silu` read their value from their dense core at the key. INV-ARCH-2 allows
+/// that memory access: a verifier times the prover only through the release schedule of
+/// RFC-0018, which public data fixes. Whether the key is in the table is the one outcome that
+/// depends on it, and an honest witness's keys always are (INV-DM-2).
 pub trait Table {
     /// The specification, digest included.
     fn spec(&self) -> &TableSpec;

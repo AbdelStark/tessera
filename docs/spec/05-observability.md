@@ -66,8 +66,9 @@ Metrics are collected in-process and written to the run manifest at the end of e
 | `tessera_proof_bytes` | gauge | `part` (round1, sumcheck, openings, columns) | bytes |
 | `tessera_weight_budget_remaining` | gauge | `weight_type`, `resource` (columns, blinding_rows) | count |
 | `tessera_verifier_seconds` | histogram | `check` | s |
+| `tessera_release_overruns_total` | counter | `message` (round1, round2, round3, proof), `slot` | releases |
 
-Derived unit costs (`tessera_unit_cost_ps`) are computed per run as phase time divided by element counts, so every production run doubles as a unit-cost measurement ([RFC-0020](../rfcs/RFC-0020-cost-model.md#continuous-measurement)).
+Derived unit costs (`tessera_unit_cost_ps`) are computed per run as phase time divided by element counts, so every production run doubles as a unit-cost measurement ([RFC-0020](../rfcs/RFC-0020-cost-model.md#continuous-measurement)). Phase and stage times depend on secret data, so they and the unit costs derived from them stay on the prover's side of TB-1 ([06 §3](06-security.md#3-trust-boundaries)). A verifier sees only when messages are released, on the schedule of INV-ARCH-2 ([RFC-0018 'Release schedule'](../rfcs/RFC-0018-gpu-prover-runtime.md#release-schedule)).
 
 ## 5. Tracing
 

@@ -579,6 +579,12 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Security
 
+- INV-ARCH-2 says what the prover's timing may depend on, and a release schedule keeps it from a verifier ([#257](https://github.com/AbdelStark/tessera/issues/257)):
+  - **The gap.** The invariant said memory access patterns depend on public data only. Yet multiplicity counting increments the counter of each lookup's row, and `Exp`, `Exp2Frac` and `Silu` read their dense core at a key. RFC-0018 excused those reads because "the verifier observes no timing". It does: a live verifier times every reply, and caches, atomics and power-limited clocks make that work faster or slower with how the keys spread.
+  - **The schedule.** In `tessera-protocol/2`, each message a verifier can time leaves at a budget `D` fixed by public data, or at the first of `2D, …, 2^L·D` that its work meets (RFC-0018 'Release schedule'). The work aborts with `ERR-RES-TIME` past the last slot. A release reveals at most which slot it took, `log2(L + 1)` bits, and nothing when the work meets its budget. 02 §3.1 specifies that the `Prover` methods return at the release time, and adds `release` to `ProverConfig`.
+  - **Invariant and threat model.** INV-ARCH-2 keeps control flow public and names the two data-dependent accesses. 06's TB-1 and its timing threat, RFC-0013's non-goal and 04 §3's `ERR-RES-TIME` follow. Phase timings in run manifests and metrics stay on the prover's side of TB-1 (05 §4), and a new counter, `tessera_release_overruns_total`, records overruns.
+  - **Code.** `tessera_prover::ReleaseSchedule` computes the slots. Its tests check that every duration within a slot leaves at the same instant, and that a release is the first slot the work meets. Two mutants fail them. `multiplicities` and the `Table` readers state the accesses they make, `Silu`'s included.
+
 - Zero knowledge of the tree levels and the LogUp roots is settled for `tessera-protocol/2` (RFC-0032, accepted, [#224](https://github.com/AbdelStark/tessera/issues/224)). No code hides anything yet: zero knowledge is v0.4.
   - **The leaks.**
     - Tree levels sent their round messages unmasked.

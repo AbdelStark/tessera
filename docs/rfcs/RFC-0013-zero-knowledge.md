@@ -25,7 +25,7 @@ The verifier is a counterparty state; weights, prompts, outputs and activations 
 
 - Hiding the architecture, sequence lengths or `Û` (public by statement design).
 - A ZK-STARK wrapper (source §10 alternative; rejected below).
-- Side channels outside the protocol messages; timing is handled by INV-ARCH-2.
+- Side channels outside the protocol messages; message timing is handled by INV-ARCH-2 and [RFC-0018 'Release schedule'](RFC-0018-gpu-prover-runtime.md#release-schedule).
 
 ## Proposed Design
 

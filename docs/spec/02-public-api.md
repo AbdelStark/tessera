@@ -93,6 +93,7 @@ pub struct ProverConfig {
     pub mode: Mode,
     pub memory_budget: MemoryBudget, // per device and host, bytes
     pub mask_rng: MaskRng,           // OsRng in production; Seeded(u64) only with the `test-rng` feature
+    pub release: ReleaseConfig,      // tessera-protocol/2: budget coefficients and doublings (RFC-0018)
 }
 
 pub enum Backend { Cpu { threads: usize }, Gpu { devices: Vec<u32> } }
@@ -110,7 +111,7 @@ impl<'a> Prover<'a> {
 }
 ```
 
-`Prover` is a state machine: `start → on_seed → on_queries` in live mode. Calling a method out of order returns `ProverError::Protocol(OutOfOrder)` and leaves the state unchanged. `prove_non_interactive` runs all three internally. `WeightCommitmentState` is borrowed mutably because every proof consumes hiding budget ([RFC-0012](../rfcs/RFC-0012-weight-commitment.md#budget-state-machine)).
+`Prover` is a state machine: `start → on_seed → on_queries` in live mode. Calling a method out of order returns `ProverError::Protocol(OutOfOrder)` and leaves the state unchanged. `prove_non_interactive` runs all three internally. In `tessera-protocol/2`, each method that yields a message returns at that message's release time, on the schedule of [RFC-0018 'Release schedule'](../rfcs/RFC-0018-gpu-prover-runtime.md#release-schedule), so that no caller can send it early. `WeightCommitmentState` is borrowed mutably because every proof consumes hiding budget ([RFC-0012](../rfcs/RFC-0012-weight-commitment.md#budget-state-machine)).
 
 ### 3.2 Verifier
 
