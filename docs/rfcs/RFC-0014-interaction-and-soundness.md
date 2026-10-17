@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3 (protocol), v0.4 (zero-knowledge messages), v1.0 (live transport)
+- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Transcript schedule', rows 4 and 5, and 'Soundness budget', in `tessera-protocol/2`)
 
 ## Summary
 
@@ -79,15 +80,15 @@ Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{c}`, `{T}` are decimal
 | 1 | init | `SessionContext` (protocol, mode, params, statement digest, session id) |
 | 2 | absorb | `round1` |
 | 3 | live: absorb `seed`; NI: grind `seed-pow`, then squeeze | `seed` |
-| 4 | squeeze `Fp2` × 2, then absorb the fraction trees' roots ([RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree)) | `logup/alpha`, `logup/beta`, `logup/roots` |
-| 5 | per tree level `ℓ`: squeeze the root point of the forests that join at `ℓ` ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)), squeeze `γ_ℓ`, and `λ_ℓ` at a level with fraction trees, absorb round messages, squeeze challenges, absorb evaluations, squeeze the line challenge; after the last level, absorb the lookup trees' value evaluations | `tree/{ℓ}/root/{c}`, `tree/{ℓ}/gamma`, `tree/{ℓ}/lambda`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line`, `logup/values` |
+| 4 | squeeze `Fp2` × 2, then absorb the fraction trees' roots ([RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree)); in `tessera-protocol/2`, the masked LogUp identity sumcheck in place of the roots ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#the-logup-identity-sumcheck)) | `logup/alpha`, `logup/beta`, `logup/roots`; `tessera-protocol/2`: `logup/identity/zk-sum`, `logup/identity/zk-rho`, `logup/identity/gamma`, `logup/identity/round/{j}`, `logup/identity/r/{j}`, `logup/identity/evals` |
+| 5 | per tree level `ℓ`: squeeze the root point of the forests that join at `ℓ` ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)), squeeze `γ_ℓ`, and `λ_ℓ` at a level with fraction trees, absorb round messages, squeeze challenges, absorb evaluations, squeeze the line challenge; after the last level, absorb the lookup trees' value evaluations | `tree/{ℓ}/root/{c}`, `tree/{ℓ}/gamma`, `tree/{ℓ}/lambda`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line`, `logup/values`; `tessera-protocol/2` adds `tree/{ℓ}/zk-sum` and `tree/{ℓ}/zk-rho`, absorbed and squeezed before `tree/{ℓ}/gamma` ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#masked-tree-levels)) |
 | 6 | per stage `k`: absorb masked sum, squeeze `ρ_k`, squeeze `γ_k`, rounds, final evaluations | `stage/{k}/zk-sum`, `stage/{k}/zk-rho`, `stage/{k}/gamma`, `stage/{k}/round/{j}`, `stage/{k}/r/{j}`, `stage/{k}/evals` |
 | 7 | absorb the advice groups' blinding claims, then each weight matrix's; squeeze the opening challenges | `pcs/advice/blinding`, `pcs/weights/{T}/blinding`, `pcs/advice/gamma`, `pcs/advice/xi`, `pcs/weights/{T}/gamma`, `pcs/weights/{T}/xi` |
 | 8 | absorb combined rows | `pcs/advice/combined`, `pcs/weights/{T}/combined` |
 | 9 | absorb scoring claims | `scoring` |
 | 10 | live: absorb `ColumnQueries`; NI: grind `query-pow`, then squeeze indices | `queries`, `pcs/advice/queries`, `pcs/weights/{T}/queries` |
 
-Both sides construct labels from these patterns only; the full expanded list for a claim list is part of the derived constraint system and covered by transcript vectors.
+Both sides construct labels from these patterns only; the full expanded list for a claim list is part of the derived constraint system and covered by transcript vectors. In `tessera-protocol/2`, rows 4 and 5 are [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)'s: a masked LogUp identity sumcheck in place of `logup/roots`, and masked tree levels.
 
 ### Soundness budget
 
@@ -98,14 +99,14 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 | Sumcheck and tree rounds (degree `d ≤ 7`) | `d/\|Fp2\|` per round, round-by-round | ≥ 125 bits per round under Fiat–Shamir | same |
 | All rounds, union bound (405B, 16K tokens, about 10^4 rounds) | `Σ d/\|Fp2\|` | ≥ 112 bits | ≥ 112 bits |
 | Product-forest root claim (`2^s` trees, `s ≤ 32`) | `s/\|Fp2\|` per forest | ≥ 120 bits | same |
-| LogUp identity (`N + T ≤ 2^{38}` per instance) | `(N + T)/\|Fp2\|` | about 90 bits, one shot: `α` derives from a seed the prover cannot retry | 90 + `g_seed` = 110 bits |
+| LogUp identity (`N + T ≤ 2^{38}` per instance) | `(N + T)/\|Fp2\|`; `2(N + T)/\|Fp2\|` in `tessera-protocol/2`, which counts zero denominators (RFC-0032) | about 90 bits, one shot: `α` derives from a seed the prover cannot retry | 90 + `g_seed` = 110 bits |
 | Tuple compression | included in the LogUp bound (joint polynomial in `α, β`) | — | — |
 | Opening evaluation checks | `T_g/\|Fp2\|` per claim group of `T_g` claims, `1/\|Fp2\|` per weight matrix ([RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings)) | ≥ 110 bits | same |
 | Proximity per commitment | `((1 + ρ')/2)^τ + n/\|Fp2\|` | `τ · b(ρ') ≥ 64` bits, one shot | `τ · b(ρ') + g_query ≥ 100` bits |
 | Weight linking | `ν/\|Fp2\|` | ≥ 120 bits | ≥ 120 bits |
 | Hash collisions | BLAKE3, 256-bit output | 128 bits | 128 bits |
 
-`b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients. The bound takes the queries to be independent. Both modes draw column indices uniformly with replacement, and a repeated index is checked once at no cost in soundness ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7). The verifier also rejects a zero LogUp root denominator, of a lookup tree or a table tree, and any zero denominator.
+`b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients. The bound takes the queries to be independent. Both modes draw column indices uniformly with replacement, and a repeated index is checked once at no cost in soundness ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7). In `tessera-protocol/1` the verifier also rejects a zero LogUp root denominator, of a lookup tree or a table tree, and any zero denominator.
 
 ### Grinding
 

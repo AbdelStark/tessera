@@ -4,10 +4,11 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.4
+- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('What the verifier sees': tree levels and LogUp roots; 'Masked extensions': `Z` spares the lowest variable; 'LogUp and product-tree roots'; OQ-0013-2)
 
 ## Summary
 
-Tessera is made zero-knowledge with four mechanisms, each tied to one kind of revealed data: (1) every sumcheck is masked with a committed random polynomial so its round messages are simulatable; (2) every tensor whose evaluation crosses a stage boundary is replaced by a masked extension `V' = Ṽ + Z·R_V`, which agrees with `Ṽ` on the hypercube but has uniformly random evaluations off it; (3) every commitment uses vanishing-polynomial encoding masks so that opened columns are uniform, and every revealed combined row includes a fresh blinding row; (4) every LogUp instance's two fraction trees include a pair of masking leaves whose fractions cancel, so that their roots reveal nothing. Challenges derive from a coin-tossed seed, so the construction holds against a malicious verifier. Layers are sumcheck variables, so each proof reveals one masked evaluation per tensor kind rather than one per layer, which keeps the weight-commitment budget affordable.
+Tessera is made zero-knowledge with four mechanisms, each tied to one kind of revealed data: (1) every sumcheck is masked with a committed random polynomial so its round messages are simulatable; (2) every tensor whose evaluation crosses a stage boundary is replaced by a masked extension `V' = Ṽ + Z·R_V`, which agrees with `Ṽ` on the hypercube but has uniformly random evaluations off it; (3) every commitment uses vanishing-polynomial encoding masks so that opened columns are uniform, and every revealed combined row includes a fresh blinding row; (4) every tree level is a masked sumcheck over masked extensions that spare its pair bit, and LogUp roots are never sent: a masked sumcheck proves the LogUp identity at them ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)). Challenges derive from a coin-tossed seed, so the construction holds against a malicious verifier. Layers are sumcheck variables, so each proof reveals one masked evaluation per tensor kind rather than one per layer, which keeps the weight-commitment budget affordable.
 
 ## Motivation
 
@@ -36,15 +37,16 @@ The verifier is a counterparty state; weights, prompts, outputs and activations 
 | Seed | Coin toss (live) or hash with proof-of-work (non-interactive) | Both parties |
 | Sumcheck round messages | Masked sumcheck | Committed masking polynomial `G_k` over `Fp2` per stage |
 | Final evaluations of each stage | Masked extensions | One `Fp2` mask row `R_V` per stacked tensor kind |
-| LogUp roots `(n_a, d_a)`, `(n_t, d_t)` | A pair of masking leaves `(μ, δ)`, `(−μ, δ)` | One committed `μ` and `δ` in `Fp2` per instance |
+| Tree-level and LogUp-identity round messages | Masked sumcheck ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)) | `G_ℓ` per tree level, and the identity's |
+| Tree-level evaluations at the pair bit, and their mask values | Masked extensions that spare the pair bit ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)) | One `Fp2` mask row per level and polynomial |
+| LogUp roots | Not sent: the identity sumcheck's final evaluations, masked ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)) | The root levels' mask rows |
 | Combined rows `u_g` | Blinding rows | One fresh `Fp2` blinding row per revealed combination |
 | Opened columns | Vanishing encoding masks | `P_A` (advice) or `P_W` (weights) coefficients per row |
 | `Û`, lengths, digests | Public by design | — |
 
 **Masks over `Fp2`.** Committed values are in `Fp`, but every value in the table above but the columns is in `Fp2` (`Fp[X]/(X^2 − 7)`). A mask drawn from `Fp` and scaled by any public coefficient covers one `Fp`-dimension of an `Fp2` value and leaves the other one unmasked:
 - an `Fp` blinding row leaves `Σ_row Im(c_g(row))·A_row` in the clear, `k` linear combinations of the witness, or of the weights, per combined row;
-- `Fp` coefficients of a masking polynomial leave each round-message coefficient's component off the line through `ρ_k`;
-- `Fp` masking leaves leave the root fraction's component off `Fp`.
+- `Fp` coefficients of a masking polynomial leave each round-message coefficient's component off the line through `ρ_k`.
 
 Every mask in this RFC is therefore uniform over `Fp2`. An `Fp2` mask value is two committed `Fp` values, and an `Fp2` row is two committed `Fp` rows, `B = B^{(0)} + X·B^{(1)}`, which enter a combination with the coefficients `1` and `X`.
 
@@ -68,14 +70,15 @@ The round messages are then simulatable from `H`, `Γ` and the final evaluation 
 For every stacked tensor `V` whose evaluation is revealed (as a stage output claim or an opening claim), define
 
 ```math
-V'(x) = \tilde V(x) + Z(x) \cdot \tilde R_V(x_{col}), \qquad Z(x) = \prod_i x_i (1 - x_i)
+V'(x) = \tilde V(x) + Z(x) \cdot \tilde R_V(x_{col}), \qquad Z(x) = \prod_{i \ge 2} x_i (1 - x_i)
 ```
 
 where `R_V` is a random `Fp2` advice row, two committed rows, over `V`'s column variables (its low `min(n_V, log2 k)` variables). Properties:
 
+- **`Z` spares the lowest variable `x_1`** ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)). It therefore also masks a point whose lowest coordinate is Boolean: a LogUp leaf level reads its keys, values and multiplicities there, at its pair bit. A masked tensor has two variables at least.
 - `V' = Ṽ` on the Boolean hypercube, so every sumcheck identity over the hypercube holds unchanged with `V'` in place of `Ṽ`.
 - `Z` vanishes at every summation point of every round except the last, so the prover's round computations change only in the last round.
-- `V'(p) = Ṽ(p) + Z(p) · R̃_V(p_col)`. For `p` off the hypercube, `Z(p) ≠ 0`, and the values `R̃_V(p_col^{(i)})` at the at most `e_V` revealed points are jointly uniform whenever the vectors `eq(p_col^{(i)}, ·)` are linearly independent over `Fp2`, which fails with probability at most `e_V^2 / |Fp2|`. An `Fp` row would need the `2e_V` real and imaginary parts of those vectors independent over `Fp`, which Schwartz–Zippel bounds only by about `2e_V·log2(k)/|Fp|`, near `2^-55`: hence the `Fp2` row.
+- `V'(p) = Ṽ(p) + Z(p) · R̃_V(p_col)`. For `p` whose coordinates other than the lowest are off `{0, 1}`, `Z(p) ≠ 0`, and the values `R̃_V(p_col^{(i)})` at the at most `e_V` revealed points are jointly uniform whenever the vectors `eq(p_col^{(i)}, ·)` are linearly independent over `Fp2`, which fails with probability at most `e_V^2 / |Fp2|`. An `Fp` row would need the `2e_V` real and imaginary parts of those vectors independent over `Fp`, which Schwartz–Zippel bounds only by about `2e_V·log2(k)/|Fp|`, near `2^-55`: hence the `Fp2` row.
 - **Committed tensors.** `V'(p)` is a linear functional of the advice vector (data positions plus `R_V`'s row) whose column part is `eq(p_col)` in both terms, so it falls in the same opening group as the data claim ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol)).
 - **Virtual tensors.** The producing relation proves `V'(p) = Σ_x rel(p, x)·inputs(x) + Z(p) Σ_{x_col} eq(p_col, x_col) R_V[x_col]`; the second sum is added to the stage's sumcheck over the column variables, so the verifier never learns `R̃_V(p_col)` itself, only `R̃_V` at the stage's final point (as in Libra's treatment of layer masks).
 - Degree: `V'` has degree at most 3 in each variable; round messages grow by a few coefficients.
@@ -95,12 +98,14 @@ Weights follow the same rule with the mask row stored as blinding rows of the we
 
 ### LogUp and product-tree roots
 
-- Each LogUp instance's two trees ([RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree)) include a pair of masking leaves: `(μ, δ)` in the lookup tree and `(−μ, δ)` in the table tree, with `μ` and `δ ≠ 0` uniform in `Fp2`, each committed as two `Fp` values. With `μ` and `δ` in `Fp`, the root fraction's component off `Fp`, and the class of the denominators' product in `Fp2^*/Fp^*`, would show.
-  - The two fractions cancel, so the instance's sum is unchanged.
-  - Each root `(n, d)` becomes uniform: `d` is multiplied by `δ`, and `n/d` is shifted by `μ/δ`.
-  - Without the pair, a lookup root would reveal its fraction `Σ_i 1/(α − a_i)`, a function of the secret lookup multiset. A zero-numerator leaf alone rescales `n` and `d` but keeps that fraction.
-  - The masking leaves change both trees' leaf claims. The lookup tree's numerators are 1 except at its masking leaf, and the table tree's denominators are `α − t` except at its masking leaf. How both leaf checks account for the committed `μ` and `δ` belongs to the tree levels' zero knowledge (OQ-0013-2).
-- Product-tree roots are zero by the statement (the max certificate), so they reveal nothing. Intermediate levels are masked extensions like any virtual tensor, except at the evaluations a level reveals, which OQ-0013-2 leaves open.
+[RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) supersedes this section's masking pair:
+- **It leaked.** It put `(μ, δ)` in the lookup tree and `(−μ, δ)` in the table tree. With one `δ` in both, the verifier learns `d_a/d_t`, and with the public table, `Π_i(α − a_i)`, a fingerprint of the secret lookups.
+- **Its accounting was open.** Its leaf checks would reveal `μ` and `δ`, which enter them with public coefficients.
+
+In `tessera-protocol/2`:
+- LogUp roots are not sent: a masked sumcheck over the two forests' root levels proves the LogUp identity.
+- Product-tree roots are public: zero by the max certificate, and one for padding trees.
+- Every level below a root is a masked extension that spares its pair bit, in a forest of two trees at least.
 
 ### Malicious verifier
 
@@ -114,7 +119,7 @@ Before any v0.4 implementation work merges, `docs/zk/simulator.md` must give a c
 
 1. The simulator plays the coin toss, programming the random oracle at `H("coin-toss", ·)` to a uniformly chosen seed.
 2. It commits to uniformly random rows in place of advice; roots are distributed identically because opened positions are uniform in both worlds and unopened leaves are random-oracle outputs of high-entropy inputs.
-3. For each stage in order, it samples the masked final evaluations uniformly subject to the stage's final-check equation, then simulates round messages with the masked-sumcheck simulator.
+3. For the LogUp identity sumcheck and each tree level, in order, it samples the masked final evaluations and mask values uniformly subject to each one's final equation, then simulates its rounds ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) 'For the simulator argument'). For each stage in order, it does the same.
 4. It samples each blinding claim `q_g` uniformly before `γ`, then each combined row `u'_g` uniformly subject to its group check, and each weight matrix's `u_T` likewise after `θ_T`.
 5. It answers column queries with uniform symbols consistent with the sampled combined rows (solvable because each queried column adds one linear constraint per row on independent mask coefficients).
 6. Indistinguishability error is bounded by the sum of degenerate events: `Z(p) = 0`, linearly dependent `eq` vectors, and the masked-sumcheck failure terms, each at most a small polynomial over `|Fp2|`.
@@ -165,18 +170,17 @@ v0.3 ships a sound, non-hiding protocol. v0.4 adds the four mechanisms behind th
   - one that sends `q_g` before `γ` but cancels the error of a claim it gives the coefficient 1;
   - one that splits a weight claim as `(v_T + Δ, q_T − Δ)`.
   Over the test field, a false claim with an honest `q_g` is accepted at a rate within `T_g/|F|`.
-- LogUp roots: the distribution of each instance's roots is independent of the key multiset.
+- LogUp roots: not sent; the identity sumcheck's final evaluations and every tree level's evaluations are independent of the key multiset ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)).
 - End-to-end simulator test: simulated and real transcripts of the tiny model are indistinguishable at significance 0.001 over 10^4 runs.
 - Budget: each proof consumes exactly six weight blinding rows per matrix and fails cleanly when they run out.
 - **Masks over `Fp2`.** Each of these distinguishers tells two witnesses apart with probability close to 1 when its mask is drawn from `Fp`, and is at chance with the masks of this RFC:
   - one that reads `u'_g` off the line of an `Fp` blinding row;
-  - one that reads a round-message coefficient off the line through `ρ_k`;
-  - one that reads the root fraction's component off `Fp`.
+  - one that reads a round-message coefficient off the line through `ρ_k`.
 
 ## Open Questions
 
 - **OQ-0013-1.** Can mask rows for small tensors (tree levels below 2^12 entries) be packed into shared rows without breaking the independence condition, to cut the mask-row count? Owner: @AbdelStark. Resolve during v0.4 with the simulator argument; adopt only if the argument covers it.
-- **OQ-0013-2.** A tree level reveals `Ṽ_{ℓ+1}(0 ‖ r'_i)` and `Ṽ_{ℓ+1}(1 ‖ r'_i)` ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels'), and fraction-tree levels reveal their numerators and denominators at the same points. These points have a Boolean coordinate, where `Z` vanishes, so masked extensions do not hide them. At the level where a single tree joins, they are exactly the two entries of its level 1: for a SoftmaxRow tree, the products of each half of the row's keys. A forest reveals its trees' level-1 entries combined at the level's random point. The round messages of tree levels are not masked either: RFC-0014's schedule has no `zk-sum` or `zk-rho` for them. How are tree levels made zero-knowledge, or why is what they reveal acceptable? Owner: @AbdelStark. Resolve before the label table freezes at `tessera-protocol/1` (v0.3), since the answer may add labels.
+- **OQ-0013-2** (resolved by [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md): masked tree levels, masked extensions that spare the pair bit in forests of two trees at least, and an identity sumcheck in place of revealed LogUp roots). A tree level reveals `Ṽ_{ℓ+1}(0 ‖ r'_i)` and `Ṽ_{ℓ+1}(1 ‖ r'_i)` ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels'), and fraction-tree levels reveal their numerators and denominators at the same points. These points have a Boolean coordinate, where `Z` vanishes, so masked extensions do not hide them. At the level where a single tree joins, they are exactly the two entries of its level 1: for a SoftmaxRow tree, the products of each half of the row's keys. A forest reveals its trees' level-1 entries combined at the level's random point. The round messages of tree levels are not masked either: RFC-0014's schedule has no `zk-sum` or `zk-rho` for them. How are tree levels made zero-knowledge, or why is what they reveal acceptable? Owner: @AbdelStark. Resolve before the label table freezes at `tessera-protocol/1` (v0.3), since the answer may add labels.
 
 ## References
 

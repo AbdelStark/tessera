@@ -548,6 +548,18 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Security
 
+- Zero knowledge of the tree levels and the LogUp roots is settled for `tessera-protocol/2` (RFC-0032, accepted, [#224](https://github.com/AbdelStark/tessera/issues/224)). No code hides anything yet: zero knowledge is v0.4.
+  - **The leaks.**
+    - Tree levels sent their round messages unmasked.
+    - Their evaluations sit at a Boolean pair bit, where RFC-0013's masked extensions vanish, so a lone LogUp tree revealed both halves of its fraction.
+    - RFC-0013's LogUp masking pair shared one `δ` between the two trees, so `d_a/d_t` revealed `Π_i(α − a_i)`, a fingerprint of the secret lookups, and its leaf checks would have revealed the masks.
+  - **The design.**
+    - Every tree level runs a masked sumcheck (`tree/{ℓ}/zk-sum`, `tree/{ℓ}/zk-rho`).
+    - Every forest holds at least two trees, a lone tree taking a public padding tree, and every level below a root is a masked extension that spares its pair bit.
+    - LogUp roots are not sent: a masked sumcheck over the two forests' root levels proves the identity (`logup/identity/*`). The masking pair goes.
+    - The leaf checks keep RFC-0008's form on the masked keys, values and multiplicities, whose masked extensions now spare their lowest variable.
+  - **Amended.** RFC-0008, RFC-0010, RFC-0013, RFC-0014 and RFC-0019 are amended for `tessera-protocol/2`, and OQ-0013-2 is resolved. `tessera-protocol/1` is unchanged.
+
 - `SoftmaxRow` pins its masked exponentials to zero (RFC-0030, accepted, [#279](https://github.com/AbdelStark/tessera/issues/279)):
   - **The gap.**
     - `e` is committed at the scores' full shape, and RFC-0006 says it is 0 past the causal mask. Only the valid positions were looked up, while `PV = MatMulAct(e, v)` sums every key position.

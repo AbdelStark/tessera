@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site), [RFC-0030](RFC-0030-masked-exponentials.md) ('Multilinear extensions': the causal selector's sequence length; 'Tree levels': `SoftmaxRow`'s root values)
+- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site), [RFC-0030](RFC-0030-masked-exponentials.md) ('Multilinear extensions': the causal selector's sequence length; 'Tree levels': `SoftmaxRow`'s root values), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Tree levels', in `tessera-protocol/2`: forests of two trees at least, masked levels)
 
 ## Summary
 
@@ -95,7 +95,7 @@ Product trees of one height that the schedule lists together are stacked into a 
   - A forest of one tree takes no challenge. Its root claim is its tree's root value, on the root level's zero variables.
   - If a forest's root level differs from its public values, its root claim holds with probability at most `s/|Fp2|` over the root point.
 
-The fraction trees of LogUp ([RFC-0008 'Fraction tree'](RFC-0008-logup-and-tables.md#fraction-tree)) run in the same levels, under the same labels: each instance's lookup tree and table tree.
+The fraction trees of LogUp ([RFC-0008 'Fraction tree'](RFC-0008-logup-and-tables.md#fraction-tree)) run in the same levels, under the same labels: each instance's lookup tree and table tree. In `tessera-protocol/2`, every forest holds at least two trees, a lone tree taking a public padding tree, and every level runs masked ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)).
 - Each fraction tree is an instance of its own, a single tree. It joins at level `H − h` like a forest of one tree.
 - Its root `(n, d)`, sent under `logup/roots`, gives the claims on its level 0.
 - It holds two claims at one point: `Ñ_t(r) = p` on its numerators and `D̃_t(r) = q` on its denominators.
