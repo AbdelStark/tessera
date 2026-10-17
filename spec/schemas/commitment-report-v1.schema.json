@@ -1,0 +1,606 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/commitment-report-v1.schema.json",
+  "title": "tessera.commitment-report/1",
+  "description": "What a lowered model commits and looks up, with the cost model's projections of its proof multiplier (RFC-0006 'Outputs', RFC-0020): tessera_compiler::CommitmentReport, its projections from tessera-bench.",
+  "type": "object",
+  "required": [
+    "schema",
+    "model",
+    "lowering",
+    "per_layer_per_token",
+    "per_token",
+    "per_score",
+    "sequence",
+    "tables",
+    "multiplicities",
+    "estimates",
+    "counts",
+    "projection_inputs",
+    "projections"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.commitment-report/1"
+    },
+    "model": {
+      "type": "object",
+      "required": [
+        "profile",
+        "n_layers",
+        "d_model",
+        "n_heads",
+        "n_kv_heads",
+        "d_head",
+        "d_ff",
+        "vocab",
+        "parameters"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "enum": [
+            "servable",
+            "minimal"
+          ]
+        },
+        "n_layers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "d_model": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_heads": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_kv_heads": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "d_head": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "d_ff": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "vocab": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "parameters": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "lowering": {
+      "type": "object",
+      "required": [
+        "positions",
+        "max_log2_rows",
+        "stages"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "positions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_log2_rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "stages": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "per_layer_per_token": {
+      "type": "object",
+      "required": [
+        "requantized",
+        "committed",
+        "lookups"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "requantized": {
+          "type": "object",
+          "required": [
+            "total"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "AttnNorm": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "RopeQ": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "RopeK": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "V": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "AttnOut": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "AttnResidual": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "MlpNorm": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "Silu": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "Up": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "Product": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "MlpResidual": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "committed": {
+          "$ref": "#/$defs/committed"
+        },
+        "lookups": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "per_token": {
+      "type": "object",
+      "required": [
+        "committed",
+        "lookups"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "committed": {
+          "$ref": "#/$defs/committed"
+        },
+        "lookups": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "per_score": {
+      "type": "object",
+      "required": [
+        "commitments",
+        "lookups",
+        "product_tree_leaves",
+        "scores_per_token_per_ctx"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "commitments": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lookups": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "product_tree_leaves": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scores_per_token_per_ctx": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "sequence": {
+      "type": "object",
+      "required": [
+        "scores",
+        "product_tree_leaves"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "scores": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "product_tree_leaves": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "rows",
+          "lookups_per_token",
+          "score_lookups"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "kind": {
+            "enum": [
+              "Range",
+              "Requant",
+              "Pow2",
+              "Bitwise8",
+              "AesSbox",
+              "Gf256Mul",
+              "Exp",
+              "Exp2Frac",
+              "Silu",
+              "Rope"
+            ]
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "lookups_per_token": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "score_lookups": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "multiplicities": {
+      "type": "object",
+      "required": [
+        "total",
+        "excludes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "excludes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "estimates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "gadget",
+          "commitments_per_row",
+          "lookups_per_row",
+          "why"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "gadget": {
+            "type": "string",
+            "minLength": 1
+          },
+          "commitments_per_row": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lookups_per_row": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "why": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "required": [
+        "commits_per_token",
+        "lookups_per_token",
+        "scores_per_token_per_ctx",
+        "native_ops_lin",
+        "native_ops_att_per_ctx"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "commits_per_token": {
+          "type": "number",
+          "minimum": 0
+        },
+        "lookups_per_token": {
+          "type": "number",
+          "minimum": 0
+        },
+        "scores_per_token_per_ctx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "native_ops_lin": {
+          "type": "number",
+          "minimum": 0
+        },
+        "native_ops_att_per_ctx": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "projection_inputs": {
+      "type": "object",
+      "required": [
+        "unit_costs",
+        "memory",
+        "scenario",
+        "regen_full_equivalents"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "unit_costs": {
+          "type": "object",
+          "required": [
+            "commit_ps",
+            "lookup_ps",
+            "product_leaf_ps",
+            "glue_fraction",
+            "weight_pass_gpu_s",
+            "streaming_pass_ps",
+            "column_answer_ps",
+            "native_ops_per_s"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "commit_ps": {
+              "type": "number",
+              "minimum": 0
+            },
+            "lookup_ps": {
+              "type": "number",
+              "minimum": 0
+            },
+            "product_leaf_ps": {
+              "type": "number",
+              "minimum": 0
+            },
+            "glue_fraction": {
+              "type": "number",
+              "minimum": 0
+            },
+            "weight_pass_gpu_s": {
+              "type": "number",
+              "minimum": 0
+            },
+            "streaming_pass_ps": {
+              "type": "number",
+              "minimum": 0
+            },
+            "column_answer_ps": {
+              "type": "number",
+              "minimum": 0
+            },
+            "native_ops_per_s": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "memory": {
+          "type": "object",
+          "required": [
+            "free_bytes",
+            "bytes_per_leaf"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "free_bytes": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "bytes_per_leaf": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "scenario": {
+          "type": "object",
+          "required": [
+            "gpus",
+            "batch_tokens",
+            "eta",
+            "target_overhead",
+            "violations"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "gpus": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "batch_tokens": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "eta": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "target_overhead": {
+              "type": "number",
+              "minimum": 0
+            },
+            "violations": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "regen_full_equivalents": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "projections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "context",
+          "mu",
+          "streaming_passes",
+          "proof_time_s",
+          "sampling_rate",
+          "detection"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mu": {
+            "type": "object",
+            "required": [
+              "linear",
+              "attention",
+              "weights",
+              "regen",
+              "streaming",
+              "column_answers",
+              "total"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "linear": {
+                "type": "number",
+                "minimum": 0
+              },
+              "attention": {
+                "type": "number",
+                "minimum": 0
+              },
+              "weights": {
+                "type": "number",
+                "minimum": 0
+              },
+              "regen": {
+                "type": "number",
+                "minimum": 0
+              },
+              "streaming": {
+                "type": "number",
+                "minimum": 0
+              },
+              "column_answers": {
+                "type": "number",
+                "minimum": 0
+              },
+              "total": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "streaming_passes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "proof_time_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "sampling_rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "detection": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "committed": {
+      "type": "object",
+      "required": [
+        "lookup_outputs",
+        "split_limbs",
+        "row_scalars",
+        "one_hot",
+        "total"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "lookup_outputs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "split_limbs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "row_scalars": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "one_hot": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

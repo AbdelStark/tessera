@@ -93,6 +93,9 @@ pub struct Lowering {
     /// each layer. These are the checkpoints from which any layer regenerates (RFC-0018 'Witness
     /// engine').
     pub checkpoints: Vec<TensorId>,
+    /// Each rescale site's output, in the order the lowering builds them: a `Requant` output, or
+    /// the `Silu` table's. A classed residual site's intermediate update is not its output.
+    pub sites: Vec<(QuantPoint, TensorId)>,
     /// The channel-class vector of each weight whose site has several classes, `[rows]`: its
     /// `ChannelParams` classes, committed with the weights (RFC-0012).
     pub classes: Vec<(WeightRef, TensorId)>,
@@ -187,6 +190,7 @@ pub fn lower(model: PublicModel<'_>, positions: u32) -> Result<Lowering, Compile
         logits,
         checkpoints,
         classes: builder.classes,
+        sites: builder.sites,
     })
 }
 
@@ -512,6 +516,8 @@ struct Builder<'a> {
     graph: GraphBuilder,
     tables: Vec<TableSpec>,
     classes: Vec<(WeightRef, TensorId)>,
+    /// Each rescale site's output, in building order.
+    sites: Vec<(QuantPoint, TensorId)>,
     tokens: TensorId,
     positions: TensorId,
     /// Gathers the queries' rows `[n · n_heads, d_head]` into head-major order.
@@ -610,6 +616,7 @@ impl<'a> Builder<'a> {
             graph,
             tables: vec![rope.spec().clone()],
             classes: Vec::new(),
+            sites: Vec::new(),
             tokens,
             positions,
             queries,
@@ -719,9 +726,11 @@ impl<'a> Builder<'a> {
                 lo: -half,
                 hi: half - 1,
             };
-            return Ok(self.node(op, &[key], advice(&[n, d]))?);
+            let output = self.node(op, &[key], advice(&[n, d]))?;
+            self.sites.push((point, output));
+            return Ok(output);
         }
-        let update = self.rescale(acc, point, d, (1 - 2 * half, 2 * half - 1))?;
+        let update = self.requantize(acc, point, d, (1 - 2 * half, 2 * half - 1))?;
         let sum = self.node(Op::Add, &[residual, update], virt(&[n, d]))?;
         let two = self.graph.constant(vec![2])?;
         let doubled = self.node(Op::ConstMul { c: two }, &[sum], virt(&[n, d]))?;
@@ -731,7 +740,9 @@ impl<'a> Builder<'a> {
             lo: -half,
             hi: half - 1,
         };
-        Ok(self.node(op, &[doubled], advice(&[n, d]))?)
+        let output = self.node(op, &[doubled], advice(&[n, d]))?;
+        self.sites.push((point, output));
+        Ok(output)
     }
 
     /// `W x` for the weight `(ty, layer)` of `rows × cols`, declared here.
@@ -776,9 +787,22 @@ impl<'a> Builder<'a> {
         Ok(self.node(Op::Reshape, &[rotated], virt(&[n, heads * dh]))?)
     }
 
+    /// [`requantize`](Self::requantize), as the output of the site at `point`.
+    fn rescale(
+        &mut self,
+        x: TensorId,
+        point: QuantPoint,
+        channels: u32,
+        range: (i64, i64),
+    ) -> Result<TensorId, CompileError> {
+        let output = self.requantize(x, point, channels, range)?;
+        self.sites.push((point, output));
+        Ok(output)
+    }
+
     /// `rq` at `point` on `[n, channels]`, saturating to `range`, with the channel classes of the
     /// weight before it when the site has several.
-    fn rescale(
+    fn requantize(
         &mut self,
         x: TensorId,
         point: QuantPoint,
@@ -933,11 +957,13 @@ impl<'a> Builder<'a> {
         if count > 1 {
             inputs.push(self.class_vector(point, ff, count)?);
         }
-        Ok(self.node(
+        let output = self.node(
             Op::TableMap { table },
             &inputs,
             decl(&[n, ff], NodeKind::LookupOutput { table }),
-        )?)
+        )?;
+        self.sites.push((point, output));
+        Ok(output)
     }
 
     /// The table of `kind`: an earlier one of the same definition, or a new one.

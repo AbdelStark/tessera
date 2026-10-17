@@ -522,8 +522,10 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "tessera-codec",
+ "tessera-compiler",
  "tessera-field",
  "tessera-hash",
+ "tessera-ir",
  "tessera-logup",
  "tessera-pcs",
  "tessera-sumcheck",

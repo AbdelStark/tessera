@@ -22,9 +22,11 @@
 mod error;
 mod lower;
 mod range;
+mod report;
 mod select;
 
 pub use error::CompileError;
 pub use lower::{Lowering, PublicModel, check_profile, lower, validate};
 pub use range::{HALF_FIELD, Range, Ranges, analyze};
+pub use report::{CommitmentReport, SCHEMA as REPORT_SCHEMA, TableUse, Tally, report, stage_count};
 pub use select::{Gadget, Selection, select};
