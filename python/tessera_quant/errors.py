@@ -58,3 +58,11 @@ class EncodeError(TesseraQuantError):
     the code that built the value, which nothing converts silently. The message names the type,
     never the value (05 §3).
     """
+
+
+class TableError(TesseraQuantError):
+    """Table parameters RFC-0008 does not allow, or a key outside its table (`ERR-INTERNAL`).
+
+    The compiler and the quantizer choose the parameters, and an honest witness's keys lie in their
+    tables (INV-DM-2), so either is a bug. The message names the kind and the rule, never a key.
+    """

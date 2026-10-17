@@ -34,6 +34,19 @@ d.weights[0].data  # INT8, a read-only view of the mapped file
 write_artifact(Path("copy.d"), INTEGER_MODEL, d, limits=INTEGER_MODEL_LIMITS)  # mode 0600
 ```
 
+`tessera_quant.tables` generates the lookup tables of `D` exactly as RFC-0008 defines them, with the digests the Rust generators compute:
+
+```python
+from fractions import Fraction
+
+import numpy as np
+
+from tessera_quant.tables import Exp, lookup_table
+
+softmax = lookup_table(0, Exp(key_bits=22, sigma=16, scale=Fraction(1, 2896)))
+softmax.lookup(np.array([0, 2896, 100000]))  # array([65536, 24109, 0]): round(2^16 · e^(-k/2896))
+```
+
 ## Checks
 
 The `python` CI job runs these on Python 3.11, 3.12 and 3.13:
