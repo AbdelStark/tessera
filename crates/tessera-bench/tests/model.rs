@@ -333,6 +333,62 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
     }
 }
 
+/// The same projections at the default `servable` profile's count, which 00 §7 SC-2, 00 §9 RISK-2
+/// and 08 §3 quote beside `minimal`'s: 326,656 commitments and lookups per layer per token under
+/// RFC-0006's selection rule, over 126 layers.
+#[test]
+fn the_servable_projections_are_the_ones_the_documents_quote() {
+    let servable = Counts {
+        commits_per_token: 326_656.0 * 126.0,
+        lookups_per_token: 326_656.0 * 126.0,
+        regen_full_equivalents: 5.0,
+        ..Counts::SOURCE_405B
+    };
+    let at = |context: u32, column_answer_ps: f64| {
+        let costs = UnitCosts {
+            column_answer_ps,
+            ..UnitCosts::SOURCE
+        };
+        mu(&servable, &costs, &MemoryModel::NODE_405B, context, BATCH).expect("a projection")
+    };
+    let quoted = |what: &str, value: f64, figure: f64, digits: i32| {
+        let half = 0.5 * 10f64.powi(-digits);
+        assert!(
+            (value - figure).abs() <= half,
+            "{what}: the model gives {value}, the documents {figure}"
+        );
+    };
+    let (k1, k16) = (1024, 16_384);
+    quoted("linear term at 1K", at(k1, 0.0).linear, 4.8, 1);
+    let (mu1, mu16) = (at(k1, 0.0).total, at(k16, 0.0).total);
+    quoted("μ(1K)", mu1, 11.0, 1);
+    quoted("μ(16K)", mu16, 26.3, 1);
+    quoted("1K per ps of c_a", at(k1, 1.0).column_answers, 0.072, 3);
+    quoted("16K per ps of c_a", at(k16, 1.0).column_answers, 0.23, 2);
+    let (full1, full16) = (at(k1, 30.0), at(k16, 30.0));
+    quoted("1K column answers at c_c", full1.column_answers, 2.2, 1);
+    quoted("16K column answers at c_c", full16.column_answers, 7.0, 1);
+    quoted("μ(1K) at c_c", full1.total, 13.1, 1);
+    quoted("μ(16K) at c_c", full16.total, 33.3, 1);
+    // SC-2's headroom, and the 1K ceiling missed by 9% at c_a = c_c.
+    quoted("1K headroom", 12.0 / mu1, 1.09, 2);
+    quoted("16K headroom", 45.0 / mu16, 1.71, 2);
+    quoted(
+        "1K excess at c_c",
+        100.0 * (full1.total / 12.0 - 1.0),
+        9.0,
+        0,
+    );
+    // With the upper streaming estimate of RISK-10, about 12 at 16K: at the ceiling.
+    quoted("16K at c_c with streaming", full16.total + 12.0, 45.0, 0);
+    for (total, rate, detection) in [(mu1, 3.0, 95.0), (full1.total, 2.5, 92.0)] {
+        let s = sampling_rate(0.1, total, 0.3).expect("a rate");
+        quoted("sampling at 1K", 100.0 * s, rate, 1);
+        let d = detection_probability(s, 100).expect("a probability");
+        quoted("detection at 1K", 100.0 * d, detection, 0);
+    }
+}
+
 /// The report states every input and every term under its own name. Here every term is
 /// positive and no two inputs or terms are equal, so a value written under another's key shows;
 /// with the source's defaults the regeneration, streaming and column-answer terms are all zero,
