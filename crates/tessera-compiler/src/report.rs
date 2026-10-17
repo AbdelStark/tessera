@@ -143,7 +143,8 @@ impl CommitmentReport {
     }
 
     /// The counts of RFC-0020's cost model, under the names of `tessera.cost-model/1`. `F_att`
-    /// counts `4 · d_head` operations per score, the products of `QK^T` and `PV`.
+    /// counts `4 · d_head` operations per score, the products of `QK^T` and `PV`, and the table
+    /// rows are the [`multiplicities`](Self::multiplicities).
     #[allow(clippy::cast_precision_loss)]
     pub fn counts(&self) -> Value {
         let a = self.scores_per_token_per_ctx();
@@ -153,6 +154,7 @@ impl CommitmentReport {
             "scores_per_token_per_ctx": a,
             "native_ops_lin": 2.0 * self.parameters as f64,
             "native_ops_att_per_ctx": 4.0 * f64::from(self.shape[4]) * a,
+            "table_rows": self.multiplicities() as f64,
         })
     }
 

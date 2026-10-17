@@ -4,9 +4,9 @@
 //! every count of proof work, and with the native rate it is measured against, and falls with
 //! native work, each input moving the terms it enters and no other; the streaming term is zero
 //! while a batch's leaves fit in memory and steps up one pass per doubling of them beyond it;
-//! the column answers price every committed element; the corrected projections the documents
-//! quote are the model's; and an input the model cannot price is refused, never turned into a
-//! number.
+//! the column answers price every committed element; each table row costs what a token's
+//! committed lookup costs, once per batch; the corrected projections the documents quote are the
+//! model's; and an input the model cannot price is refused, never turned into a number.
 
 use tessera_bench::{
     Counts, MemoryModel, ModelError, ModelReport, MuBreakdown, Problem, Scenario, UnitCosts,
@@ -14,10 +14,12 @@ use tessera_bench::{
 };
 
 /// The source's model with streamed passes priced at RFC-0018's 7 ps per score, column answers
-/// at 15 ps per committed element and five regenerations, so that every term is positive.
+/// at 15 ps per committed element, five regenerations and 2 · 10^10 table rows, so that every
+/// term is positive.
 fn every_term() -> (Counts, UnitCosts, MemoryModel) {
     let counts = Counts {
         regen_full_equivalents: 5.0,
+        table_rows: 2e10,
         ..Counts::SOURCE_405B
     };
     let costs = UnitCosts {
@@ -31,7 +33,7 @@ fn every_term() -> (Counts, UnitCosts, MemoryModel) {
 const CONTEXTS: [u32; 3] = [1024, 16_384, 131_072];
 const BATCH: u32 = Scenario::SOURCE.batch_tokens;
 
-fn terms(m: &MuBreakdown) -> [f64; 6] {
+fn terms(m: &MuBreakdown) -> [f64; 7] {
     [
         m.linear,
         m.attention,
@@ -39,6 +41,7 @@ fn terms(m: &MuBreakdown) -> [f64; 6] {
         m.regen,
         m.streaming,
         m.column_answers,
+        m.tables,
     ]
 }
 
@@ -50,7 +53,7 @@ enum Move {
     Same,
 }
 
-fn moves(before: &MuBreakdown, after: &MuBreakdown) -> [Move; 6] {
+fn moves(before: &MuBreakdown, after: &MuBreakdown) -> [Move; 7] {
     let (b, a) = (terms(before), terms(after));
     core::array::from_fn(|t| match a[t].partial_cmp(&b[t]) {
         Some(core::cmp::Ordering::Greater) => Move::Up,
@@ -64,79 +67,84 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
     use Move::{Down, Same, Up};
     let (counts, costs, memory) = every_term();
     // Each input raised by half, with the terms it must move: linear, attention, weights, regen,
-    // streaming, column answers, in that order.
-    type Raise = (&'static str, fn(&mut Counts, &mut UnitCosts), [Move; 6]);
-    let raises: [Raise; 14] = [
+    // streaming, column answers, tables, in that order.
+    type Raise = (&'static str, fn(&mut Counts, &mut UnitCosts), [Move; 7]);
+    let raises: [Raise; 15] = [
         (
             "commit_ps",
             |_, u| u.commit_ps *= 1.5,
-            [Up, Up, Same, Same, Same, Same],
+            [Up, Up, Same, Same, Same, Same, Up],
         ),
         (
             "lookup_ps",
             |_, u| u.lookup_ps *= 1.5,
-            [Up, Up, Same, Same, Same, Same],
+            [Up, Up, Same, Same, Same, Same, Up],
         ),
         (
             "product_leaf_ps",
             |_, u| u.product_leaf_ps *= 1.5,
-            [Same, Up, Same, Same, Same, Same],
+            [Same, Up, Same, Same, Same, Same, Same],
         ),
         (
             "glue_fraction",
             |_, u| u.glue_fraction *= 1.5,
-            [Up, Up, Same, Same, Same, Same],
+            [Up, Up, Same, Same, Same, Same, Up],
         ),
         (
             "weight_pass_gpu_s",
             |_, u| u.weight_pass_gpu_s *= 1.5,
-            [Same, Same, Up, Same, Same, Same],
+            [Same, Same, Up, Same, Same, Same, Same],
         ),
         (
             "streaming_pass_ps",
             |_, u| u.streaming_pass_ps *= 1.5,
-            [Same, Same, Same, Same, Up, Same],
+            [Same, Same, Same, Same, Up, Same, Same],
         ),
         (
             "column_answer_ps",
             |_, u| u.column_answer_ps *= 1.5,
-            [Same, Same, Same, Same, Same, Up],
+            [Same, Same, Same, Same, Same, Up, Same],
         ),
         // A faster native path makes the same proof a larger multiple of it.
         (
             "native_ops_per_s",
             |_, u| u.native_ops_per_s *= 1.5,
-            [Up, Up, Up, Same, Up, Up],
+            [Up, Up, Up, Same, Up, Up, Up],
         ),
         (
             "commits_per_token",
             |c, _| c.commits_per_token *= 1.5,
-            [Up, Same, Same, Same, Same, Up],
+            [Up, Same, Same, Same, Same, Up, Same],
         ),
         (
             "lookups_per_token",
             |c, _| c.lookups_per_token *= 1.5,
-            [Up, Same, Same, Same, Same, Same],
+            [Up, Same, Same, Same, Same, Same, Same],
         ),
         (
             "scores_per_token_per_ctx",
             |c, _| c.scores_per_token_per_ctx *= 1.5,
-            [Same, Up, Same, Same, Up, Up],
+            [Same, Up, Same, Same, Up, Up, Same],
         ),
         (
             "native_ops_lin",
             |c, _| c.native_ops_lin *= 1.5,
-            [Down, Down, Down, Same, Down, Down],
+            [Down, Down, Down, Same, Down, Down, Down],
         ),
         (
             "native_ops_att_per_ctx",
             |c, _| c.native_ops_att_per_ctx *= 1.5,
-            [Down, Down, Down, Same, Down, Down],
+            [Down, Down, Down, Same, Down, Down, Down],
         ),
         (
             "regen_full_equivalents",
             |c, _| c.regen_full_equivalents *= 1.5,
-            [Same, Same, Same, Up, Same, Same],
+            [Same, Same, Same, Up, Same, Same, Same],
+        ),
+        (
+            "table_rows",
+            |c, _| c.table_rows *= 1.5,
+            [Same, Same, Same, Same, Same, Same, Up],
         ),
     ];
     for (name, raise, expected) in raises {
@@ -257,18 +265,51 @@ fn the_column_answers_price_every_committed_element() {
     }
 }
 
+/// Each table row costs one committed multiplicity and one fraction-tree leaf, priced as a lookup:
+/// with as many lookups as commitments per token, the table term is the linear term times
+/// `M / (T · C)`, `T` the batch's tokens, so doubling the batch halves it. Without table rows, as
+/// in the source's counts, it is zero.
+#[test]
+fn each_table_row_costs_a_committed_lookup_once_per_batch() {
+    let (counts, costs, memory) = every_term();
+    let counts = Counts {
+        lookups_per_token: counts.commits_per_token,
+        ..counts
+    };
+    for context in CONTEXTS {
+        for batch in [BATCH, 2 * BATCH] {
+            let m = mu(&counts, &costs, &memory, context, batch).expect("a projection");
+            let ratio = counts.table_rows / (f64::from(batch) * counts.commits_per_token);
+            let expected = m.linear * ratio;
+            assert!(
+                (m.tables - expected).abs() <= 1e-12 * expected,
+                "at {context}, batch {batch}: {} against {expected}",
+                m.tables
+            );
+        }
+        let none = Counts {
+            table_rows: 0.0,
+            ..counts
+        };
+        let m = mu(&none, &costs, &memory, context, BATCH).expect("a projection");
+        assert_eq!(m.tables, 0.0);
+    }
+}
+
 /// The corrected 405B projections that 08 §3, SC-2 and RISK-9 quote, each to the digits quoted:
 /// the source's model with RISK-2's upper bound for `minimal`, 285,696 commitments and 302,080
 /// lookups per layer per token over 126 layers (RFC-0024's wide rescale and RFC-0022's two steps
-/// at classed residual sites), and five regenerations (RFC-0018 P1 to P5), with the column answers
-/// free or priced as committing is, 30 ps per element. A change to the model that moves one fails
-/// here until the documents follow.
+/// at classed residual sites), five regenerations (RFC-0018 P1 to P5) and the table rows of the
+/// two-class report at `B_max = 32` (`docs/perf/v0.2/`), with the column answers free or priced as
+/// committing is, 30 ps per element. A change to the model that moves one fails here until the
+/// documents follow.
 #[test]
 fn the_corrected_projections_are_the_ones_the_documents_quote() {
     let corrected = Counts {
         commits_per_token: 285_696.0 * 126.0,
         lookups_per_token: 302_080.0 * 126.0,
         regen_full_equivalents: 5.0,
+        table_rows: 20_467_229_184.0,
         ..Counts::SOURCE_405B
     };
     let at = |counts: &Counts, context: u32, column_answer_ps: f64| {
@@ -302,8 +343,10 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         at(&corrected, k1, 0.0).total,
         at(&corrected, k16, 0.0).total,
     );
-    quoted("μ(1K)", mu1, 10.5, 1);
-    quoted("μ(16K)", mu16, 25.9, 1);
+    quoted("μ(1K)", mu1, 10.7, 1);
+    quoted("μ(16K)", mu16, 26.0, 1);
+    quoted("1K table term", at(&corrected, k1, 0.0).tables, 0.15, 2);
+    quoted("16K table term", at(&corrected, k16, 0.0).tables, 0.14, 2);
     quoted(
         "1K per ps of c_a",
         at(&corrected, k1, 1.0).column_answers,
@@ -319,28 +362,28 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
     let (full1, full16) = (at(&corrected, k1, 30.0), at(&corrected, k16, 30.0));
     quoted("1K column answers at c_c", full1.column_answers, 1.9, 1);
     quoted("16K column answers at c_c", full16.column_answers, 6.8, 1);
-    quoted("μ(1K) at c_c", full1.total, 12.4, 1);
+    quoted("μ(1K) at c_c", full1.total, 12.6, 1);
     // SC-2's headroom: ceilings of 12 and 45 over the corrected figures.
-    quoted("1K headroom", 12.0 / mu1, 1.14, 2);
-    quoted("16K headroom", 45.0 / mu16, 1.74, 2);
-    quoted("16K headroom at c_c", 45.0 / full16.total, 1.38, 2);
-    // 08 §3: at c_c, 4% above the 1K ceiling, and within 1% of the 16K one with RISK-10's upper
+    quoted("1K headroom", 12.0 / mu1, 1.13, 2);
+    quoted("16K headroom", 45.0 / mu16, 1.73, 2);
+    quoted("16K headroom at c_c", 45.0 / full16.total, 1.37, 2);
+    // 08 §3: at c_c, 5% above the 1K ceiling, and 0.4% below the 16K one with RISK-10's upper
     // streaming estimate, about 12.
     quoted(
         "1K excess at c_c",
         100.0 * (full1.total / 12.0 - 1.0),
-        4.0,
+        5.0,
         0,
     );
-    quoted("16K at c_c with streaming", full16.total + 12.0, 44.7, 1);
+    quoted("16K at c_c with streaming", full16.total + 12.0, 44.8, 1);
     quoted(
         "16K margin at c_c with streaming",
         100.0 * (1.0 - (full16.total + 12.0) / 45.0),
-        1.0,
-        0,
+        0.4,
+        1,
     );
     // 08 §3's sampling rate for 10% overhead at η = 0.3, and daily detection of 100 violations.
-    for (total, rate, detection) in [(mu1, 3.2, 96.0), (full1.total, 2.7, 93.0)] {
+    for (total, rate, detection) in [(mu1, 3.1, 96.0), (full1.total, 2.6, 93.0)] {
         let s = sampling_rate(0.1, total, 0.3).expect("a rate");
         quoted("sampling at 1K", 100.0 * s, rate, 1);
         let d = detection_probability(s, 100).expect("a probability");
@@ -351,13 +394,14 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
 /// The same projections at the default `servable` profile's count, which 00 §7 SC-2, 00 §9 RISK-2
 /// and 08 §3 quote beside `minimal`'s: 359,424 commitments and lookups per layer per token under
 /// RFC-0006's selection rule, with RFC-0022's two steps at both classed residual sites, over 126
-/// layers.
+/// layers, and the two-class report's table rows at `B_max = 32`.
 #[test]
 fn the_servable_projections_are_the_ones_the_documents_quote() {
     let servable = Counts {
         commits_per_token: 359_424.0 * 126.0,
         lookups_per_token: 359_424.0 * 126.0,
         regen_full_equivalents: 5.0,
+        table_rows: 24_718_156_544.0,
         ..Counts::SOURCE_405B
     };
     let at = |context: u32, column_answer_ps: f64| {
@@ -377,22 +421,24 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
     let (k1, k16) = (1024, 16_384);
     quoted("linear term at 1K", at(k1, 0.0).linear, 5.3, 1);
     let (mu1, mu16) = (at(k1, 0.0).total, at(k16, 0.0).total);
-    quoted("μ(1K)", mu1, 11.5, 1);
-    quoted("μ(16K)", mu16, 26.8, 1);
+    quoted("μ(1K)", mu1, 11.6, 1);
+    quoted("μ(16K)", mu16, 26.9, 1);
+    quoted("1K table term", at(k1, 0.0).tables, 0.18, 2);
+    quoted("16K table term", at(k16, 0.0).tables, 0.16, 2);
     quoted("1K per ps of c_a", at(k1, 1.0).column_answers, 0.078, 3);
     quoted("16K per ps of c_a", at(k16, 1.0).column_answers, 0.24, 2);
     let (full1, full16) = (at(k1, 30.0), at(k16, 30.0));
     quoted("1K column answers at c_c", full1.column_answers, 2.3, 1);
     quoted("16K column answers at c_c", full16.column_answers, 7.2, 1);
-    quoted("μ(1K) at c_c", full1.total, 13.8, 1);
-    quoted("μ(16K) at c_c", full16.total, 34.0, 1);
-    // SC-2's headroom, and the 1K ceiling missed by 15% at c_a = c_c.
-    quoted("1K headroom", 12.0 / mu1, 1.05, 2);
-    quoted("16K headroom", 45.0 / mu16, 1.68, 2);
+    quoted("μ(1K) at c_c", full1.total, 14.0, 1);
+    quoted("μ(16K) at c_c", full16.total, 34.1, 1);
+    // SC-2's headroom, and the 1K ceiling missed by 16% at c_a = c_c.
+    quoted("1K headroom", 12.0 / mu1, 1.03, 2);
+    quoted("16K headroom", 45.0 / mu16, 1.67, 2);
     quoted(
         "1K excess at c_c",
         100.0 * (full1.total / 12.0 - 1.0),
-        15.0,
+        16.0,
         0,
     );
     // With the upper streaming estimate of RISK-10, about 12 at 16K: 2% above the ceiling.
@@ -441,6 +487,7 @@ fn the_report_states_each_input_and_term_under_its_own_name() {
         ("native_ops_lin", counts.native_ops_lin),
         ("native_ops_att_per_ctx", counts.native_ops_att_per_ctx),
         ("regen_full_equivalents", counts.regen_full_equivalents),
+        ("table_rows", counts.table_rows),
     ] {
         states(&json["inputs"]["counts"], key, value);
     }
@@ -465,6 +512,7 @@ fn the_report_states_each_input_and_term_under_its_own_name() {
             ("regen", p.mu.regen),
             ("streaming", p.mu.streaming),
             ("column_answers", p.mu.column_answers),
+            ("tables", p.mu.tables),
             ("total", p.mu.total),
         ] {
             states(&json["projections"][k]["mu"], key, value);
@@ -514,6 +562,10 @@ fn inputs_the_model_cannot_price_are_refused() {
     assert_eq!(
         with_counts(|c| c.regen_full_equivalents = -4.0, 1024),
         refused("regen_full_equivalents", Problem::Negative)
+    );
+    assert_eq!(
+        with_counts(|c| c.table_rows = -1.0, 1024),
+        refused("table_rows", Problem::Negative)
     );
     assert_eq!(
         with_counts(|c| c.native_ops_lin = 0.0, 0),

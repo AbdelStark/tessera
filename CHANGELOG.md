@@ -474,6 +474,18 @@ All notable changes to the prover release train are recorded here: the crates un
   - Every command's outcome leaves through one exit point, where [#95](https://github.com/AbdelStark/tessera/issues/95) will write the run manifest of 05 §6.
   - Tests: through the built binary, the help lists every command of 02 §2.2. Each command to come is refused naming its issue, after its artifacts are checked. Five envelope faults exit 65 with their codes, and ten malformed arguments exit 64.
 
+- The cost model prices the table side of LogUp (RFC-0020, 08 §1, [#304](https://github.com/AbdelStark/tessera/issues/304)):
+  - A proof commits one multiplicity per table row and builds the table's fraction tree over every row (RFC-0008). `mu` gains the term `(1 + glue) · M · (c_c + c_ℓ) / T`: each of the `M` rows costs one committed element and one tree leaf, priced as a lookup, once per batch of `T` tokens.
+  - `Counts` gains `table_rows`, `MuBreakdown` `tables`, and `tessera.cost-model/1` and `tessera.commitment-report/1` both, in place before a release (09 §3). The compiler's report gives its multiplicities as `table_rows`, and `tessera bench model` prints a `tables` column.
+  - The source's counts have no table rows, so the golden test still reproduces the source.
+  - With two classes at `B_max = 32`, 405B's tables hold 20.5 · 10^9 rows in `minimal` and 24.7 · 10^9 in `servable`. Shared by a 16K-token batch, that adds 0.15 and 0.18 to `μ(1K)`.
+  - The corrected projections become about 10.7 and 26.0 at 1K and 16K for `minimal`, and 11.6 and 26.9 for `servable`. 00 §1, SC-2, RISK-2, RISK-9, 08 §3, `SPEC.md` and the v0.2 reports restate them.
+  - With its smaller tables counted, `B_max = 30` costs 0.13 or 0.14 of `μ(1K)` in `servable` and 0.49 in `minimal`, not 0.24 to 0.62.
+  - Tests:
+    - each table row costs what a token's committed lookup costs, once per batch, and nothing without rows;
+    - every input moves exactly the terms it enters, the table rows included;
+    - the restated figures are the model's.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
