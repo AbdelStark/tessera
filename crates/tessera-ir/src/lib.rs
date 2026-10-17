@@ -20,11 +20,16 @@
 
 mod error;
 mod graph;
+mod model;
 mod op;
 mod types;
 
 pub use error::IrError;
 pub use graph::{Graph, GraphBuilder, Node};
+pub use model::{
+    ArchFamily, ArchSpec, CalibrationIdentity, ChannelParams, Digest, IntegerModel, Profile,
+    Provenance, PublicQuantSpec, QuantPoint, QuantSpec, RopeSpec, Site, WeightTensor,
+};
 pub use op::{Op, OpClass};
 pub use tessera_tables::TableId;
 pub use types::{

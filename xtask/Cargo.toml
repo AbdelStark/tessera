@@ -18,4 +18,6 @@ serde_json = "1"
 # The codec vectors come from the cases these crates define (`cargo xtask gen-vectors`).
 tessera-codec = { path = "../crates/tessera-codec" }
 tessera-field = { path = "../crates/tessera-field" }
+# The IntegerModel vector comes from its Rust types.
+tessera-ir = { path = "../crates/tessera-ir" }
 toml = { version = "1", default-features = false, features = ["std", "parse", "serde"] }

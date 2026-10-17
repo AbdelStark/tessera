@@ -67,6 +67,8 @@ pub struct CommitmentLayout {
 }
 ```
 
+`QuantPoint` names a quantized or rescaled tensor, as [03 §2](../spec/03-data-model.md#quantization) defines it, and orders both lists. `shift_class_sets` gives each rescale site its class shifts `r`, from 1 to 63: the `r_by_class` of its `Requant` table. `IntegerModel`'s `QuantSpec` holds this struct as its public part, beside the hidden per-channel classes.
+
 `claim_list_digest = H("claim-list", TCE(ClaimList))` (RFC-0004).
 
 ### Public and hidden quantization data

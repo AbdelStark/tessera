@@ -9,7 +9,11 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+tessera-codec = { path = "../tessera-codec" }
 tessera-tables = { path = "../tessera-tables" }
+
+[dev-dependencies]
+serde_json = "1"
 
 [lints]
 workspace = true

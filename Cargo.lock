@@ -605,6 +605,8 @@ dependencies = [
 name = "tessera-ir"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
+ "tessera-codec",
  "tessera-tables",
 ]
 
@@ -832,6 +834,7 @@ dependencies = [
  "serde_json",
  "tessera-codec",
  "tessera-field",
+ "tessera-ir",
  "toml",
 ]
 

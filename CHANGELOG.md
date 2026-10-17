@@ -251,6 +251,12 @@ All notable changes to the prover release train are recorded here: the crates un
   - `tessera_quant.capture.calibrate` runs each calibration sequence alone through Hugging Face's Llama in BF16, with deterministic algorithms. It records every quantization point's per-channel absolute maxima in float64. The model is built from the checked checkpoint's safetensors files, never through `from_pretrained`, which would unpickle a `.bin` file. Its output equals Hugging Face's own loader's bit for bit.
   - The statistics go to a secret artifact, a safetensors file written with mode 0600 through an atomic rename. A `tessera.calibration/1` report, with its schema in `spec/schemas/` and an example under `docs/perf/examples/`, names them by digest and shape only.
   - A non-finite or all-zero point raises `ERR-QUANT-CALIB`.
+- `IntegerModel`'s quantization constants and provenance, field by field (03 §2, [#273](https://github.com/AbdelStark/tessera/issues/273)):
+  - `QuantSpec` is the claim list's `PublicQuantSpec`, field for field, beside the hidden per-channel classes and affine multipliers that RFC-0012 commits with the weights.
+  - `QuantPoint` names every quantized or rescaled tensor: the embedding, each layer's rescales in RFC-0005's order (`Site`), and the final norm. RFC-0007's lists are ordered by it. `shift_class_sets` gives each site's class shifts, its `Requant` table's `r_by_class`.
+  - `RopeSpec` takes the `Rope` table's integer parameters. `Provenance` and `CalibrationIdentity` record the checkpoint's shard digests, the calibration set's identity, the statistics digest, `α` and library versions.
+  - The Rust types live in `tessera-ir` with TCE encodings. Debug forms show shapes, never a weight or a channel's class. `spec/vectors/model/integer-model.json`, written by `cargo xtask gen-vectors`, pins a sealed model and its value for the Python writer to check.
+  - The claim list's missing public data for affine-mode rescales is [#274](https://github.com/AbdelStark/tessera/issues/274).
 
 ### Changed
 

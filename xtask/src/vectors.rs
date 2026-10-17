@@ -152,6 +152,10 @@ pub(crate) fn render() -> Vec<(&'static str, String)> {
         ("spec/vectors/codec/golden.json", pretty(&golden)),
         ("spec/vectors/codec/noncanonical.json", pretty(&corpus)),
         ("spec/vectors/codec/envelope.json", pretty(&envelope)),
+        (
+            "spec/vectors/model/integer-model.json",
+            pretty(&crate::model_vectors::render()),
+        ),
     ]
 }
 

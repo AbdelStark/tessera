@@ -55,7 +55,18 @@ pub struct IntRange {
 }
 
 /// The weight matrices of `D`, one per type and layer (03 §2).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    tessera_codec::Encode,
+    tessera_codec::Decode,
+)]
 pub enum WeightType {
     /// The transposed embedding.
     Embed,
