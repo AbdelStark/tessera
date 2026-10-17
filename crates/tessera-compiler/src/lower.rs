@@ -15,6 +15,9 @@
 //!   one `MatMulAct` forms every head's scores, one causal `SoftmaxRow` their exponentials and
 //!   reciprocals, and `Mul(MatMulAct(e, v), R)` the attention output: the pattern the softmax
 //!   fact bounds. A last gather returns the heads to position-major order.
+//! - **Residual.** Each update saturates the residual's sum at INT20 (RFC-0022): a site of one
+//!   class rescales the fused key `acc + 2^r · res`, a site of several takes two `Requant`s.
+//!   Every norm then reads a residual bounded over all inputs.
 //! - **Tables.** RoPE's is table 0. Each layer's `Exp` table, for its score scale, and its `Silu`
 //!   table follow in order of first use; a layer whose table equals an earlier one shares it.
 //!   Their key widths come from public bounds: `Exp` keys cover the scores' spread
@@ -432,10 +435,11 @@ fn check_public(model: PublicModel<'_>) -> Result<(), CompileError> {
     if !model.silu_in_exponents.iter().map(|&(l, _)| l).eq(layers()) {
         return refuse("silu_in_exponents holds one exponent per layer, sorted");
     }
-    if !(2..=32).contains(&quant.residual_bits) {
-        return refuse("the residual has 2 to 32 bits");
+    // A saturating residual sum's update clamps within `±(2^{bits} − 1)`, a table's 32-bit value.
+    if !(2..=31).contains(&quant.residual_bits) {
+        return refuse("the residual has 2 to 31 bits");
     }
-    // 127 · 2^{s_e} < 2^{bits−1}: s_e ≤ 24 at 32 bits, so a shift of 64 or more fails anyway.
+    // 127 · 2^{s_e} < 2^{bits−1}: s_e ≤ 23 at 31 bits, so a shift of 64 or more fails anyway.
     let shift = embed_shift(quant)?;
     let inside = u32::try_from(shift)
         .ok()
@@ -448,7 +452,7 @@ fn check_public(model: PublicModel<'_>) -> Result<(), CompileError> {
         return refuse("RMSNorm's ε term e is at least 1, so that ρ exists");
     }
     if quant.rsqrt_kappa > 31 {
-        return refuse("κ ≤ 31: the roots' range check is one lookup of at most 32 bits");
+        return refuse("κ ≤ 31, so that N = d · 2^{2κ} stays below 2^94");
     }
     Ok(())
 }
@@ -644,7 +648,6 @@ impl<'a> Builder<'a> {
         let (q_width, kv_width) = (arch.n_heads * arch.d_head, arch.n_kv_heads * arch.d_head);
         let point = |site| QuantPoint::Layer { layer, site };
         let servable = self.model.profile == Profile::Servable;
-        let residual_range = self.residual();
 
         // Attention.
         let y = self.norm(residual, point(Site::AttnNorm))?;
@@ -661,8 +664,7 @@ impl<'a> Builder<'a> {
             o = self.rescale(o, point(Site::AttnOut), q_width, INT8)?;
         }
         let acc = self.matmul(WeightType::O, layer, o, d, q_width)?;
-        let update = self.rescale(acc, point(Site::AttnResidual), d, residual_range)?;
-        let residual = self.node(Op::Add, &[residual, update], virt(&[n, d]))?;
+        let residual = self.residual(acc, residual, point(Site::AttnResidual))?;
 
         // MLP.
         let y = self.norm(residual, point(Site::MlpNorm))?;
@@ -677,14 +679,52 @@ impl<'a> Builder<'a> {
             self.node(Op::Mul, &[a, up], virt(&[n, ff]))?
         };
         let acc = self.matmul(WeightType::Down, layer, h, d, ff)?;
-        let update = self.rescale(acc, point(Site::MlpResidual), d, residual_range)?;
-        Ok(self.node(Op::Add, &[residual, update], virt(&[n, d]))?)
+        self.residual(acc, residual, point(Site::MlpResidual))
     }
 
-    /// The residual's saturation range, `[−2^{bits−1}, 2^{bits−1} − 1]`.
-    fn residual(&self) -> (i64, i64) {
-        let half = 1i64 << (self.model.quant.residual_bits - 1);
-        (-half, half - 1)
+    /// The saturating sum `clamp(res + ⌊(acc + 2^{r−1}) / 2^r⌋)` of the residual and the
+    /// accumulator at `point`, within `[−2^{bits−1}, 2^{bits−1} − 1]` (RFC-0022):
+    ///
+    /// - a site of one class, with `2^r` a constant, rescales the fused key `acc + 2^r · res`,
+    ///   whose rounding is the accumulator's since `2^r · res` is a multiple of `2^r`;
+    /// - otherwise the classes' shifts are hidden: `u = rq(acc, r_c)` within `±(2^{bits} − 1)`,
+    ///   then `rq(2(res + u), 1)` clamps the sum. The first clamp binds only where the sum
+    ///   saturates anyway.
+    fn residual(
+        &mut self,
+        acc: TensorId,
+        residual: TensorId,
+        point: QuantPoint,
+    ) -> Result<TensorId, CompileError> {
+        let (n, d) = (self.n, self.model.arch.d_model);
+        let bits = self.model.quant.residual_bits;
+        let half = 1i64 << (bits - 1);
+        let shifts = shifts(self.model.quant, point)?;
+        if let [r] = shifts[..]
+            && let Some(power) = 1i64.checked_shl(u32::from(r)).filter(|&p| p > 0)
+        {
+            let power = self.graph.constant(vec![power])?;
+            let shifted = self.node(Op::ConstMul { c: power }, &[residual], virt(&[n, d]))?;
+            let key = self.node(Op::Add, &[acc, shifted], virt(&[n, d]))?;
+            let shift = self.graph.shift_classes(vec![r])?;
+            let op = Op::Requant {
+                shift,
+                lo: -half,
+                hi: half - 1,
+            };
+            return Ok(self.node(op, &[key], advice(&[n, d]))?);
+        }
+        let update = self.rescale(acc, point, d, (1 - 2 * half, 2 * half - 1))?;
+        let sum = self.node(Op::Add, &[residual, update], virt(&[n, d]))?;
+        let two = self.graph.constant(vec![2])?;
+        let doubled = self.node(Op::ConstMul { c: two }, &[sum], virt(&[n, d]))?;
+        let shift = self.graph.shift_classes(vec![1])?;
+        let op = Op::Requant {
+            shift,
+            lo: -half,
+            hi: half - 1,
+        };
+        Ok(self.node(op, &[doubled], advice(&[n, d]))?)
     }
 
     /// `W x` for the weight `(ty, layer)` of `rows × cols`, declared here.

@@ -782,25 +782,28 @@ fn each_true_integer_rule_refuses_a_graph_that_breaks_only_it() {
         assert_eq!(refused(&g.finish(), &with_narrow), range(0, 0, rule));
     }
 
-    // A sum of squares whose epsilon reaches 2^55; and one small enough that its root would leave
-    // the gadget's range check, d ≥ 4(u + e).
-    for (lo, hi, eps) in [(1 << 20, (1 << 55) - 3, 3), (0, 1 << 20, 4)] {
+    // A sum of squares whose epsilon reaches 2^55; then roots with no bound (e = 0), or past one
+    // lookup: d · 2^{2κ} / e of 2^94 has a root of 2^47, and one of 2^64 a root of 2^32, 33 bits.
+    let roots = "the roots' range check covers every row: e ≥ 1, and w ≤ 32";
+    for (hi, kappa, eps, dim, rule) in [
+        ((1 << 55) - 3, 16, 3, 16, "u + e lies in [0, 2^55)"),
+        (1 << 20, 16, 0, 16, roots),
+        (1 << 20, 31, 1, u32::MAX, roots),
+        (1 << 20, 17, 1, 1 << 30, roots),
+    ] {
         let mut g = GraphBuilder::new();
-        let u = g.input(decl(&[2], ADVICE, lo, hi)).expect("u");
+        let u = g.input(decl(&[2], ADVICE, 0, hi)).expect("u");
         one(
             &mut g,
             Op::RsqrtRow {
-                kappa: 16,
+                kappa,
                 eps_int: eps,
-                dim: 16,
+                dim,
             },
             &[u],
             out(&[2], ADVICE),
         );
-        assert_eq!(
-            refused(&g.finish(), &specs),
-            range(0, 0, "u ≥ 0 and d < 4(u + e), with u + e < 2^55")
-        );
+        assert_eq!(refused(&g.finish(), &specs), range(0, 0, rule));
     }
 
     // A table the specifications lack is a bug, not a range.
@@ -988,13 +991,34 @@ fn int8_heads_of_width_128_reach_2_21_and_their_scores_pass() {
 }
 
 #[test]
-fn the_root_bound_is_the_gadget_range_checks_exact_completeness_edge() {
-    // With u able to reach 0, the analysis accepts exactly when the honest root of u = 0 passes
-    // the gadget's range check ρ < 2^{κ+1}.
-    for dim in [1u32, 4, 16, 17, 4096, 16384] {
-        for eps in [1u64, 2, 1023, 1024, 1025, 4096, 4097] {
+fn a_root_of_32_bits_is_one_lookup() {
+    // d · 2^{2κ} / e = 2^62: the largest root is 2^31, and its check the widest one lookup takes.
+    let mut g = GraphBuilder::new();
+    let u = g.input(decl(&[1], ADVICE, 0, 1 << 40)).expect("u");
+    let rho = one(
+        &mut g,
+        Op::RsqrtRow {
+            kappa: 16,
+            eps_int: 1,
+            dim: 1 << 30,
+        },
+        &[u],
+        out(&[1], ADVICE),
+    );
+    let (ranges, values) = check_run(&g.finish(), &[], &[], vec![(u, vec![0])]);
+    assert_eq!(values[rho.0 as usize], [1 << 31]);
+    assert_eq!(ranges.of(rho), Some(Range::new(0, (1 << 32) - 1)));
+}
+
+#[test]
+fn the_root_range_is_the_bit_length_of_the_largest_honest_root() {
+    // RFC-0022: a zero sum gives the largest root, ⌊√(d · 2^{2κ} / e)⌋, and the analysis's range
+    // is exactly its bit length, so every honest root passes the check and no wider check is
+    // asked for. A sum of 4 · d, the root's other extreme here, stays inside too.
+    for dim in [1u32, 4, 16, 17, 4096, 16384, 1 << 20] {
+        for eps in [1u64, 2, 3, 1023, 1024, 1025, 4096, 4097, 1 << 30] {
             let mut g = GraphBuilder::new();
-            let u = g.input(decl(&[1], ADVICE, 0, 1 << 40)).expect("u");
+            let u = g.input(decl(&[2], ADVICE, 0, 1 << 40)).expect("u");
             let rho = one(
                 &mut g,
                 Op::RsqrtRow {
@@ -1003,15 +1027,19 @@ fn the_root_bound_is_the_gadget_range_checks_exact_completeness_edge() {
                     dim,
                 },
                 &[u],
-                out(&[1], ADVICE),
+                out(&[2], ADVICE),
             );
             let graph = g.finish();
-            let root = evaluate(&graph, &[], vec![(u, vec![0])])[rho.0 as usize][0];
-            assert_eq!(
-                analyze(&graph, &[]).is_ok(),
-                root < 1 << 17,
-                "d = {dim}, e = {eps}, root {root}"
-            );
+            let sums = vec![0, 4 * i128::from(dim)];
+            let (ranges, values) = check_run(&graph, &[], &[], vec![(u, sums)]);
+            let largest = values[rho.0 as usize][0];
+            let Some(Range::Bounded(range)) = ranges.of(rho) else {
+                unreachable!("a root's range is bounded")
+            };
+            // [0, 2^w − 1] with w the bit length of the largest root.
+            assert_eq!(range.lo, 0);
+            let w = 128 - largest.leading_zeros();
+            assert_eq!(range.hi, (1 << w) - 1, "d = {dim}, e = {eps}");
         }
     }
 }

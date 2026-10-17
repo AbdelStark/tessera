@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Integer semantics': the residual rows and the norm row's range)
 
 ## Summary
 
@@ -67,7 +68,7 @@ All operations are on integers; `rq(x, r, lo, hi) = clamp(floor((x + 2^{r−1}) 
 | Step | Operation | Range (worst case) |
 |---|---|---|
 | Embed | `x0 = onehot(token)^T · E` (INT8 row), `res = x0 · 2^{s_e}` | INT20 |
-| Attn norm | `s = Σ res_i^2`; `ρ = max{ρ ∈ ℕ : ρ^2 (s + e) ≤ d · 2^{2κ}}`, `κ = 16`, `e` = exact integer form of `d·ε/σ_res^2` rounded up; `y_i = rq(res_i · ρ, r_n, −128, 127)` | `s < 2^54`; key `< 2^37`; `ρ < 2^{κ+1}` for every row needs `4e > d` ([#285](https://github.com/AbdelStark/tessera/issues/285)) |
+| Attn norm | `s = Σ res_i^2`; `ρ = max{ρ ∈ ℕ : ρ^2 (s + e) ≤ d · 2^{2κ}}`, `κ = 16`, `e` = exact integer form of `d·ε/σ_res^2` rounded up; `y_i = rq(res_i · ρ, r_n, −128, 127)` | `s ≤ d · 2^38`; `ρ < 2^w`, `w` the bit length of `⌊√(d · 2^{2κ} / e)⌋` ([RFC-0022](RFC-0022-saturating-residual.md#complete-norms)); key `< 2^{19+w}` |
 | Q, K, V | `acc = W y` (INT32) | `< 2^29` |
 | RoPE | Each head's pairs `(a, b) = (x_i, x_{i + d_head/2})`, the layout of Hugging Face checkpoints: `(a, b) ↦ (a·C − b·S, a·S + b·C)` with `C, S` 14-bit constants of frequency `i` from the RoPE table ([RFC-0008](RFC-0008-logup-and-tables.md#table-kinds)); then `q = rq(·, r_q, −128, 127)`, same for `k` | key `< 2^44` |
 | V | `v = rq(acc, r_v,c, −128, 127)` | key `< 2^29` |
@@ -75,12 +76,12 @@ All operations are on integers; `rq(x, r, lo, hi) = clamp(floor((x + 2^{r−1}) 
 | Softmax | `c_q = max_i x_qi`; `e_qi = T_exp[c_q − x_qi]`, `T_exp[k] = round(2^σ · exp(−k · σ_q σ_k / √d_head))`, `σ = 16`; `s_q = Σ_i e_qi`; `R_q = floor(2^{2σ} / s_q)` | keys `≤ 2^22`; `s_q < 2^{σ+17}` |
 | Attention out | `o = R_q · Σ_i e_qi v_i` | `o ∈ [−2^39, 127 · 2^32]` using `R_q s_q ≤ 2^{2σ}`; `−2^39` is attained (one position, `v = −128`) |
 | O projection | `servable`: `o8 = rq(o, r_o, −128, 127)`, `acc = W_O o8`. `minimal`: `acc = W_O o` | `< 2^29` or `< 2^60` |
-| Residual | `res += rq(acc, r_res, −2^19, 2^19 − 1)` | INT20 |
+| Residual | `res ← clamp(res + ⌊(acc + 2^{r−1}) / 2^r⌋, −2^19, 2^19 − 1)`, `r = r_res,c`: the sum saturates ([RFC-0022](RFC-0022-saturating-residual.md#saturating-residual)) | INT20 |
 | MLP norm | as attention norm | |
 | Gate, up | `g = W_gate y`, `u = W_up y` | `< 2^29` |
 | SiLU | `a = T_silu[g]` (rescale-absorbing table, INT8 output) | key `< 2^29` |
 | Product | `servable`: `u8 = rq(u, r_u, −128, 127)`, `h = rq(a · u8, r_h, −128, 127)`, `acc = W_down h`. `minimal`: `acc = W_down (a · u)` | `< 2^30` or `< 2^58` |
-| Residual | `res += rq(acc, r_res, −2^19, 2^19 − 1)` | INT20 |
+| Residual | `res ← clamp(res + ⌊(acc + 2^{r−1}) / 2^r⌋, −2^19, 2^19 − 1)`, `r = r_res,c`: the sum saturates ([RFC-0022](RFC-0022-saturating-residual.md#saturating-residual)) | INT20 |
 | Final norm, logits | `ℓ = W_lm y` | `< 2^28` (INT28) |
 
 Every constant (`s_e`, `e`, all shifts, `σ_q σ_k / √d_head` as an exact rational for the table generator) is recorded in `QuantSpec` as an integer or rational ([03 INV-DM-6](../spec/03-data-model.md#6-invariants)).

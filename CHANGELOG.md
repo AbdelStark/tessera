@@ -289,6 +289,12 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- RFC-0022, accepted, makes `D`'s residual stream saturate, and bounds its norms' roots over all inputs ([#284](https://github.com/AbdelStark/tessera/issues/284), [#285](https://github.com/AbdelStark/tessera/issues/285)):
+  - Each residual update clamps the sum, `res ← clamp(res + ⌊(acc + 2^{r−1}) / 2^r⌋, INT20)`, instead of adding a clamped update. RFC-0005's unsaturated sum reached `2^62` in 8B's norms and passed `P` in 405B's.
+  - A residual site of one class proves the sum with the `Requant` it already had, through the key `acc + 2^r · res`: no commitment more. A site of several classes adds one `Requant`, which clamps `2(res + u)`.
+  - Wherever the residual stays inside INT20, `D`'s values are unchanged, and no input is left without a proof.
+  - `RsqrtRow`'s range check widens from `2^{κ+1}` to the bit length of the largest root any row can have, `⌊√(d · 2^{2κ} / e)⌋`. It replaces #78's refusal of models with `4e ≤ d`, which a residual scale above `2^{−8}` would have met at 8B.
+  - The compiler lowers Llama-3.1 8B's shape through all 32 layers, and 405B's through all 126, with every norm's sum at most `d · 2^38` and every root inside its 18-bit check. The residual's width is now at most 31 bits, since a classed site's update clamps within `±(2^{bits} − 1)`, a table value.
 - The IR and its range analysis, refined for the lowering ([#78](https://github.com/AbdelStark/tessera/issues/78)):
   - `Rotate` pairs `(x_i, x_{i+m})` of a last axis of `2m`: Llama's `rotate_half` layout, the order of Hugging Face checkpoints. RFC-0005 and RFC-0006 had not said which channels pair.
   - `RsqrtRow` carries its row length `dim`, so `N = dim · 2^{2κ}` no longer depends on the node that produced its input, and requires `κ ≤ 31`.
