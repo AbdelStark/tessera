@@ -182,6 +182,9 @@ impl fmt::Debug for ChannelParams {
 pub struct QuantSpec {
     /// The claim list's copy.
     pub public: PublicQuantSpec,
+    /// Each layer's `Silu` table input exponent `in_exp`, sorted by layer: public, stated by the
+    /// table's `TableSpec` in the claim list, but not derivable from the rest.
+    pub silu_in_exponents: Vec<(u32, i8)>,
     /// The hidden part: one per weight whose outputs a site of several classes, or an affine
     /// site, rescales, sorted by `(ty, layer)`.
     pub channels: Vec<ChannelParams>,
@@ -192,12 +195,14 @@ impl fmt::Debug for QuantSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("QuantSpec")
             .field("public", &self.public)
+            .field("silu_in_exponents", &self.silu_in_exponents)
             .field("channels", &self.channels)
             .finish()
     }
 }
 
-/// One INT8 weight matrix, row-major.
+/// One INT8 weight matrix, row-major: its rows are its output channels, so `Embed` holds the
+/// transposed embedding, `d_model × vocab` (03 §2, RFC-0012).
 #[derive(Clone, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct WeightTensor {
     /// The weight type.

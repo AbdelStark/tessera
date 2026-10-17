@@ -27,7 +27,7 @@ The two release trains are separate so the verifier can ship on its own schedule
 - The first protocol version, `tessera-protocol/1`, is assigned when the first end-to-end proof verifies (milestone v0.3). Before that, artifacts carry protocol version 0, which no release verifier accepts.
 - Any change to a tier-A surface (message layout, transcript labels, challenge derivation, table definitions, parameter sets, verdict semantics) increments the protocol version and requires an accepted RFC that supersedes the affected section.
 - A verifier release supports exactly the protocol versions listed in its release notes, at most two: the current one and the previous one.
-- Schema readers accept versions `v` and `v − 1`; writers emit `v` only. Readers never guess: unknown versions fail with `ERR-CODEC-VERSION`.
+- Schema readers accept versions `v` and `v − 1`; writers emit `v` only. Readers never guess: unknown versions fail with `ERR-CODEC-VERSION`. A TCE schema's version is frozen once a release writes an artifact of it; until then its layout changes in place with its writers and readers, as a JSON report's does.
 - A JSON report version (`tessera.<name>/<v>`, [03 §5](03-data-model.md#5-artifact-catalog)) is frozen once a release writes it, and a later change to its shape is version `v + 1`. Until then its schema under `spec/schemas/` changes in place with its writer, as artifacts carry protocol version 0 until the first protocol version is assigned.
 - The protocol version current at v1.0 (expected `tessera-protocol/2`, which adds zero knowledge in v0.4) is frozen there. The v1.0 release notes publish its full transcript-label list, parameter sets and table digests.
 

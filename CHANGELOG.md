@@ -281,6 +281,7 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- `IntegerModel`'s `QuantSpec` records each layer's SiLU input exponent, `silu_in_exponents`, in Rust, Python and 03 §2 ([#282](https://github.com/AbdelStark/tessera/issues/282)). The compiler needs it to emit the layer's `Silu` table. The quantizer chooses it with the hidden weight exponents, so no public field gives it, though the claim list states it in the table's specification. 03 §2 now says that a weight's rows are its output channels, so `Embed` holds the transposed embedding, `d_model × vocab`, as RFC-0012 lays it out. The model vectors held it the other way, and are regenerated.
 - `tessera_quant.RopeSpec` takes the integer fields of 03 §2, in place of fractions: `theta`, `factor`, `low_freq_factor`, `high_freq_factor`, `original_max` and `bits`. `ArchSpec.family` is the enum `ArchFamily`. `read_config` refuses, with `ERR-QUANT-ARCH`, a RoPE parameter that is not an integer of its field's width, and a size of 2^32 or more ([#74](https://github.com/AbdelStark/tessera/issues/74)).
 - The minimum supported Rust version is 1.88, up from 1.85 (09 §2): the field needs `core::hint::select_unpredictable`. The `msrv` CI job, renamed from `msrv (1.85)`, checks both workspaces with 1.88.0 ([#242](https://github.com/AbdelStark/tessera/issues/242)).
 
