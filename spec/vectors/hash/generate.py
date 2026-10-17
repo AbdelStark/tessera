@@ -361,8 +361,10 @@ def main():
          "layout": large_advice, "rows": 580_000},
         {"kind": "WeightMatrix", "layout": small_weights, "matrix": "Q", "log2_k": 8,
          "row_block": 4, "rows": 4 + 32, "epoch": 0},
-        {"kind": "WeightMatrix", "layout": large_weights, "matrix": "ChannelParams", "log2_k": 17,
-         "row_block": 32, "rows": 9 * 126 + 4096, "epoch": 7},
+        # `servable` with two classes at 405B: O and Down have a ChannelParams, 8 rows each of
+        # 16 layers, beside the 4,096 blinding rows (RFC-0012 'Layout').
+        {"kind": "WeightMatrix", "layout": large_weights, "matrix": "ChannelParams", "log2_k": 20,
+         "row_block": 32, "rows": 2 * 8 + 4096, "epoch": 7},
     ]
     commitment_ids = []
     for d in descriptors:
