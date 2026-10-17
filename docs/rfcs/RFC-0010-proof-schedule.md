@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site), [RFC-0030](RFC-0030-masked-exponentials.md) ('Multilinear extensions': the causal selector's sequence length; 'Tree levels': `SoftmaxRow`'s root values), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Tree levels', in `tessera-protocol/2`: forests of two trees at least, masked levels)
+- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site), [RFC-0030](RFC-0030-masked-exponentials.md) ('Multilinear extensions': the causal selector's sequence length; 'Tree levels': `SoftmaxRow`'s root values), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Tree levels', in `tessera-protocol/2`: forests of two trees at least, masked levels), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Sumcheck messages': a failed tree level's reason)
 
 ## Summary
 
@@ -130,7 +130,7 @@ The claims after a forest's last level are the leaf claims the next stage consum
 
 - Round `j`, from 1 to `n_max`, sends the round polynomial `p_j` of the stage's degree `d` as its evaluations at `0, 2, 3, …, d` (`p_j(0)` alone when `d = 1`): a `Vec<Fp2>` of `d` entries, absorbed as TCE under `stage/{k}/round/{j − 1}`. A message of another length is rejected (`Reject(Sumcheck)`). The verifier derives `p_j(1) = claim_j − p_j(0)`, squeezes the challenge `r_j ∈ Fp2` under `stage/{k}/r/{j − 1}`, and continues with `claim_{j+1} = p_j(r_j)`, `claim_1` being the stage's claim.
 - At the end, the prover sends the claimed evaluations of every input polynomial at the final point: instance by instance in schedule order, each at its own point, the last `n_i` challenges, and within an instance in the order its relation lists its inputs. They are absorbed as one TCE `Vec<Fp2>` under `stage/{k}/evals`. The verifier checks that the stage's batched combination of these evaluations, with public factors (`eq`, selectors, constants) it computes itself, equals `claim_{n_max + 1}`; a stage of `n_max = 0` has no rounds and checks its claim directly.
-- The verifier checks a stage's messages in this order and stops at the first failure, a `Reject(Sumcheck)` whose round counts from 0 as the labels do: for `j` from 1 to `n_max`, round `j` is present and holds `d` values (round `j − 1`); no round follows round `n_max` (round `n_max`); the final evaluations are as many as the instances' relations list, and the final check holds (both round `n_max`). A tree level is checked in the same order.
+- The verifier checks a stage's messages in this order and stops at the first failure, a `Reject(Sumcheck)` whose round counts from 0 as the labels do: for `j` from 1 to `n_max`, round `j` is present and holds `d` values (round `j − 1`); no round follows round `n_max` (round `n_max`); the final evaluations are as many as the instances' relations list, and the final check holds (both round `n_max`). A tree level is checked in the same order, a `Reject(TreeLevel { level, round })` whose `level` is its `ℓ` ([RFC-0033](RFC-0033-tree-level-rejections.md)).
 
 ```rust
 pub struct SumcheckProof { pub rounds: Vec<Vec<Fp2>>, pub final_evals: Vec<Fp2> }

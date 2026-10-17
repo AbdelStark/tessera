@@ -272,7 +272,8 @@
 //! [`sumcheck::SumcheckError`] says whose fault an error of a sumcheck or a tree level is:
 //!
 //! - The proof's: `MissingRound`, `RoundLength`, `ExtraRound`, `EvaluationCount` and
-//!   `FinalMismatch`, a `Reject(Sumcheck { stage, round })` in 04 §2, with `round` from
+//!   `FinalMismatch`, a `Reject(Sumcheck { stage, round })` in 04 §2 for a reduction stage and a
+//!   `Reject(TreeLevel { level, round })` for a tree level (RFC-0033), with `round` from
 //!   [`rejected_round`](sumcheck::SumcheckError::rejected_round). A failed final check is
 //!   reported at round `n_max`, one past the last round's index.
 //! - The verifier's: `Degree`, `NoInstances`, `EvaluationTotal` and `Relation` judge what the

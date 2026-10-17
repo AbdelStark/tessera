@@ -72,6 +72,8 @@ All notable changes to the verifier release train are recorded here: the crates 
   - `Domain::ALL` holds 19 domains in RFC-0004's table order, `commitment-id` second.
   - The hash vectors' four descriptors reach their `commitment_id`.
 
+- `tv-core`'s documentation maps a failed tree level to `Reject(TreeLevel { level, round })` of RFC-0033, and a failed reduction stage to `Reject(Sumcheck { stage, round })` ([#225](https://github.com/AbdelStark/tessera/issues/225)).
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).
