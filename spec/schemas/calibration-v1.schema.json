@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/calibration-v1.schema.json",
+  "title": "tessera.calibration/1",
+  "description": "A calibration by tessera-quant (RFC-0005 'Calibration'): the model's architecture, the data and its selection, the statistics by digest and shape, and the environment that reproduces them. Written by `tessera_quant.capture.calibrate` beside the statistics file, a secret artifact; no statistic appears here (05 §3).",
+  "type": "object",
+  "required": [
+    "schema",
+    "tessera_quant",
+    "architecture",
+    "dataset",
+    "seed",
+    "sequences",
+    "held_out",
+    "tokens_per_sequence",
+    "selection_digest",
+    "statistics_digest",
+    "points",
+    "environment"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.calibration/1"
+    },
+    "tessera_quant": {
+      "description": "The version of tessera-quant that calibrated.",
+      "type": "string",
+      "minLength": 1
+    },
+    "architecture": {
+      "description": "The model's shapes (03 §2).",
+      "type": "object",
+      "required": [
+        "family",
+        "layers",
+        "d_model",
+        "d_ff",
+        "heads",
+        "kv_heads",
+        "d_head",
+        "vocab"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "const": "LlamaV3"
+        },
+        "layers": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "d_model": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "d_ff": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "heads": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kv_heads": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "d_head": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "vocab": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "dataset": {
+      "description": "Where the documents come from: the dataset, its pinned revision, and the files read, in order.",
+      "type": "object",
+      "required": [
+        "name",
+        "config",
+        "split",
+        "revision",
+        "files"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config": {
+          "type": "string",
+          "minLength": 1
+        },
+        "split": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "description": "The dataset's commit, 40 hex digits.",
+          "type": "string",
+          "minLength": 40,
+          "maxLength": 40
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "seed": {
+      "description": "The seed of the draw and of every generator.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "sequences": {
+      "description": "Sequences in the calibration set.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "held_out": {
+      "description": "Sequences in the held-out split that chooses the migration strength.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "tokens_per_sequence": {
+      "description": "Tokens per sequence, the beginning-of-text token included.",
+      "type": "integer",
+      "minimum": 2
+    },
+    "selection_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "statistics_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "points": {
+      "description": "The quantization points of the statistics file, in forward order, each with its number of channels.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "channels"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "channels": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "environment": {
+      "description": "What reproduces the statistics: the same checkpoint and sequences on identical hardware and library versions (RFC-0005 'Determinism').",
+      "type": "object",
+      "required": [
+        "device",
+        "batch_size",
+        "deterministic_algorithms",
+        "python",
+        "libraries"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "type": "string",
+          "minLength": 1
+        },
+        "batch_size": {
+          "const": 1
+        },
+        "deterministic_algorithms": {
+          "const": true
+        },
+        "python": {
+          "type": "string",
+          "minLength": 1
+        },
+        "libraries": {
+          "type": "object",
+          "required": [
+            "torch",
+            "transformers",
+            "safetensors",
+            "numpy",
+            "blake3"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "torch": {
+              "type": "string",
+              "minLength": 1
+            },
+            "transformers": {
+              "type": "string",
+              "minLength": 1
+            },
+            "safetensors": {
+              "type": "string",
+              "minLength": 1
+            },
+            "numpy": {
+              "type": "string",
+              "minLength": 1
+            },
+            "blake3": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "description": "32 bytes of BLAKE3 in key-derivation mode, as 64 lowercase hex digits.",
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  }
+}
