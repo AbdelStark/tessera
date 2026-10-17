@@ -249,7 +249,9 @@ v0.2 delivers IR, range analysis, gadget selection, Llama lowering and the commi
 
 ## Open Questions
 
-- **OQ-0006-1.** Is `B_max = 32` the right default, against 30 or 34? Larger tables cost prover memory and table-side time per proof; smaller ones force more split gadgets. Owner: @AbdelStark. Resolve at the v0.2 gate using the 405B commitment report and the v0.1 unit costs.
+- **OQ-0006-1** (resolved). Is `B_max = 32` the right default, against 30 or 34? Larger tables cost prover memory and table-side time per proof; smaller ones force more split gadgets. Yes, by the 405B commitment reports ([`docs/perf/v0.2/`](../perf/v0.2/README.md), [#88](https://github.com/AbdelStark/tessera/issues/88)).
+  - At 30, three of six class configurations do not compile, and the others cost 0.24 to 0.62 more of `μ(1K)` than at 32, against at most 0.13 of table side saved.
+  - 34 lies outside RFC-0008's tables. It would gain about 0.2 of `μ(1K)`, and only with three or four classes at the down projection.
 
 ## References
 

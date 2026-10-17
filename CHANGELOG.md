@@ -366,6 +366,16 @@ All notable changes to the prover release train are recorded here: the crates un
     - The conformance models are regenerated.
   - The tests refuse each rule's breach alone, in the public and the hidden part. Each of 16 bugs planted in the checks and the quantizer fails a test, and a no-op control survives. A 17th survived in an affine branch that nothing reached yet, so the branch was removed.
 
+- Llama-3.1-405B's commitment reports in `docs/perf/v0.2/` ([#88](https://github.com/AbdelStark/tessera/issues/88)):
+  - Both profiles, with one, two or four shift classes at every site after a weight, at `B_max` 32 and 30. Each is a `tessera.commitment-report/1` report with the cost model's projections. `tessera-bench`'s test regenerates and compares all nine, and asserts that 30 refuses the other three configurations, each at the table it would need. The single-class `servable` report moves there from `docs/perf/examples/`.
+  - They settle RISK-2.
+    - At `B_max = 32` the rescales commit 326,656, 359,424 and 375,808 elements per layer per token in `servable` with one, two and four classes, and 252,928 and 285,696 in `minimal`.
+    - With two classes, `μ(1K)` is 11.48 and 10.53, as 08 §3 projects. 00 §9 and `SPEC.md` record the resolution.
+  - They answer OQ-0006-1: `B_max` stays 32.
+    - 30 refuses three configurations, and costs 0.24 to 0.62 more of `μ(1K)` in the others, against at most 0.13 of table side saved.
+    - 34 lies outside RFC-0008's tables. By RFC-0006's selection rule, which the test applies, it would change one gadget: the four-class down projection's update.
+  - The reports put LogUp's table side at 20 to 28 · 10^9 rows per proof: 76 to 104 GiB of multiplicity counters and 0.15 to 0.20 of `μ`. The cost model leaves that term out, which [#304](https://github.com/AbdelStark/tessera/issues/304) adds. A balanced split point would cut it two- to fourfold ([#303](https://github.com/AbdelStark/tessera/issues/303)), and 08 §4 records the counters.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
