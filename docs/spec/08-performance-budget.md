@@ -66,7 +66,7 @@ v1.0 release ceilings ([SC-2](00-overview.md#7-success-criteria)) are `μ(1K) �
 | GPU HBM per H100 (80 GB) | Weights ≤ 51 GB (405 GB / 8); working set ≤ 24 GB; reserve ≥ 5 GB | Weights stay resident for the witness pass and fold pass |
 | Witness residency | ≤ one tile per stream (INV-ARCH-3) | 16K-context witnesses reach terabytes |
 | Column-digest state | 32 bytes × codeword length (2^23 → 256 MiB) | Chained column digests ([RFC-0011](../rfcs/RFC-0011-advice-commitment.md#column-digests-and-root)) |
-| LogUp multiplicity counters | ≤ 2^32 rows per table × 4 bytes, sharded across GPUs | Table-side cost amortized over the batch |
+| LogUp multiplicity counters | ≤ 2^32 rows per table × 4 bytes, sharded across GPUs; 405B's tables hold 76 to 104 GiB in all ([`docs/perf/v0.2/`](../perf/v0.2/README.md)) | Table-side cost amortized over the batch; a balanced split would cut it two- to fourfold ([#303](https://github.com/AbdelStark/tessera/issues/303)) |
 | Host RAM, prover node | ≤ 1 TiB | Weight staging and checkpoint streaming |
 | Host RAM, verifier | ≤ 64 GiB | SC-3 |
 

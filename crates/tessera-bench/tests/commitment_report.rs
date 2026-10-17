@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The commitment report's committed example, `docs/perf/examples/commitment-report-405b.json`
-//! (RFC-0006 'Outputs'): Llama-3.1-405B's shape in the default `servable` profile, lowered for 16
-//! positions with the shifts of the compiler's lowering tests, and projected by the cost model at
-//! 1K, 4K, 16K and 128K. The projections take the source's unit costs, memory and scenario and
-//! five regenerations, as 08 §3 does.
+//! Llama-3.1-405B's commitment reports (RFC-0006 'Outputs'), committed in `docs/perf/v0.2/`: both
+//! profiles, with one, two or four shift classes at every site after a weight, at `B_max` of 30
+//! and 32. Each model is lowered for 16 positions with the shifts of the compiler's lowering
+//! tests. The cost model projects it at 1K, 4K, 16K and 128K with the source's unit costs, memory
+//! and scenario and five regenerations, as 08 §3 does.
 //!
-//! Every site has one shift class, so each residual site updates in one step. That is RISK-2's
-//! variant with one exponent per tensor at O and down, 32,768 commitments and lookups per layer per
-//! token below the quantizer's per-channel classes, which #88 reports.
+//! - **The reports.** `cargo xtask lint` validates each against its JSON Schema. This test keeps
+//!   them current, up to the last bits of numbers that platforms round differently, and
+//!   `TESSERA_WRITE_EXAMPLES=1` makes it rewrite them.
+//! - **`B_max = 30`** refuses three configurations, each for the one table it would need.
+//! - **`B_max = 34`** lies outside RFC-0008, whose tables hold at most `2^{32}` rows. Under
+//!   RFC-0006's selection rule it would change one gadget: with four classes, `servable`'s down
+//!   projection update, whose 33-bit key would fit one table.
 //!
-//! `cargo xtask lint` validates the file against its JSON Schema. This test keeps it current, up
-//! to the last bits of numbers that platforms round differently. `TESSERA_WRITE_EXAMPLES=1` makes
-//! it rewrite the file.
+//! `docs/perf/v0.2/README.md` reads these numbers and answers OQ-0006-1.
 
 use std::fs;
 use std::path::PathBuf;
@@ -20,9 +22,12 @@ use std::path::PathBuf;
 use serde_json::Value;
 use tessera_bench::{Counts, MemoryModel, ModelReport, Scenario, UnitCosts};
 use tessera_codec::Rational;
-use tessera_compiler::{CommitmentReport, PublicModel, analyze, lower, report, select};
+use tessera_compiler::{
+    CompileError, Gadget, Lowering, PublicModel, Range, Ranges, Selection, analyze, lower, report,
+    select,
+};
 use tessera_ir::{
-    ArchFamily, ArchSpec, GadgetPolicy, Profile, PublicQuantSpec, QuantPoint, RopeSpec, Site,
+    ArchFamily, ArchSpec, GadgetPolicy, Op, Profile, PublicQuantSpec, QuantPoint, RopeSpec, Site,
 };
 
 const ROPE: RopeSpec = RopeSpec {
@@ -34,13 +39,17 @@ const ROPE: RopeSpec = RopeSpec {
     bits: 14,
 };
 
-/// Llama-3.1-405B's public part in `servable`: every site of one class, with the shifts the
-/// compiler's lowering tests give the scales of RFC-0005, at a residual scale of `2^{−7}`.
-fn llama_405b() -> (ArchSpec, PublicQuantSpec, Vec<(u32, i8)>) {
-    let (layers, d) = (126, 16_384);
+const LAYERS: u32 = 126;
+const POSITIONS: u32 = 16;
+
+/// Llama-3.1-405B's public part in `profile`, at a residual scale of `2^{−7}`, with the shifts the
+/// compiler's lowering tests give the scales of RFC-0005. Every site after a weight takes
+/// `classes` shift classes, from its shift up; every other site one.
+fn llama_405b(profile: Profile, classes: i8) -> (ArchSpec, PublicQuantSpec, Vec<(u32, i8)>) {
+    let d = 16_384;
     let arch = ArchSpec {
         family: ArchFamily::LlamaV3,
-        n_layers: layers,
+        n_layers: LAYERS,
         d_model: d,
         n_heads: 128,
         n_kv_heads: 8,
@@ -57,35 +66,53 @@ fn llama_405b() -> (ArchSpec, PublicQuantSpec, Vec<(u32, i8)>) {
         .rev()
         .find(|&k| (u128::from(d) << (2 * k)) / u128::from(eps) < 1 << 64)
         .expect("κ = 0 fits");
-    let sites = [
-        (Site::AttnNorm, i8::try_from(kappa).expect("small") - 3),
-        (Site::RopeQ, 22),
-        (Site::RopeK, 22),
-        (Site::V, 8),
-        (Site::AttnOut, 32),
-        (Site::AttnResidual, 4),
-        (Site::MlpNorm, i8::try_from(kappa).expect("small") - 3),
-        (Site::Silu, 20),
-        (Site::Up, 8),
-        (Site::Product, 5),
-        (Site::MlpResidual, 4),
-    ];
+    let norm = i8::try_from(kappa).expect("small") - 3;
+    // `minimal`'s residual sites read the O and down projections' unrequantized inputs.
+    let sites: &[(Site, i8)] = match profile {
+        Profile::Servable => &[
+            (Site::AttnNorm, norm),
+            (Site::RopeQ, 22),
+            (Site::RopeK, 22),
+            (Site::V, 8),
+            (Site::AttnOut, 32),
+            (Site::AttnResidual, 4),
+            (Site::MlpNorm, norm),
+            (Site::Silu, 20),
+            (Site::Up, 8),
+            (Site::Product, 5),
+            (Site::MlpResidual, 4),
+        ],
+        Profile::Minimal => &[
+            (Site::AttnNorm, norm),
+            (Site::RopeQ, 22),
+            (Site::RopeK, 22),
+            (Site::V, 8),
+            (Site::AttnResidual, 37),
+            (Site::MlpNorm, norm),
+            (Site::Silu, 20),
+            (Site::MlpResidual, 17),
+        ],
+    };
     let mut act_exponents = vec![(QuantPoint::Embed, -6)];
     let mut shift_class_sets = Vec::new();
-    for layer in 0..layers {
-        for (site, r) in sites {
+    for layer in 0..LAYERS {
+        for &(site, r) in sites {
             let point = QuantPoint::Layer { layer, site };
-            if !matches!(site, Site::AttnResidual | Site::MlpResidual) {
+            let residual = matches!(site, Site::AttnResidual | Site::MlpResidual);
+            if !residual {
                 act_exponents.push((point, -3));
             }
-            shift_class_sets.push((point, vec![r]));
+            let after_a_weight = residual
+                || matches!(
+                    site,
+                    Site::RopeQ | Site::RopeK | Site::V | Site::Silu | Site::Up
+                );
+            let count = if after_a_weight { classes } else { 1 };
+            shift_class_sets.push((point, (r..r + count).collect()));
         }
     }
     act_exponents.push((QuantPoint::FinalNorm, -3));
-    shift_class_sets.push((
-        QuantPoint::FinalNorm,
-        vec![i8::try_from(kappa).expect("small") - 3],
-    ));
+    shift_class_sets.push((QuantPoint::FinalNorm, vec![norm]));
     let quant = PublicQuantSpec {
         act_exponents,
         residual_exponent: -7,
@@ -93,7 +120,7 @@ fn llama_405b() -> (ArchSpec, PublicQuantSpec, Vec<(u32, i8)>) {
         rsqrt_kappa: kappa,
         rms_eps_int: eps,
         exp_sigma: 16,
-        score_scales: (0..layers)
+        score_scales: (0..LAYERS)
             .map(|l| (l, Rational::new(1, 1 << 14).expect("a scale")))
             .collect(),
         shift_class_sets,
@@ -101,24 +128,18 @@ fn llama_405b() -> (ArchSpec, PublicQuantSpec, Vec<(u32, i8)>) {
         rope: ROPE,
         logits_bits: 28,
     };
-    let silu = (0..layers).map(|l| (l, -6)).collect();
+    let silu = (0..LAYERS).map(|l| (l, -6)).collect();
     (arch, quant, silu)
 }
 
-fn the_report() -> Value {
-    let (arch, quant, silu) = llama_405b();
-    let model = PublicModel {
-        arch: &arch,
-        profile: Profile::Servable,
-        quant: &quant,
-        silu_in_exponents: &silu,
-    };
-    let lowering = lower(model, 16).expect("405B's shape lowers");
-    let ranges = analyze(&lowering.graph, &lowering.tables).expect("ranges");
-    let policy = GadgetPolicy::default();
-    let selection =
-        select(&lowering.graph, &ranges, &lowering.tables, &policy).expect("every gadget fits");
-    let report: CommitmentReport = report(model, &lowering, &selection, &policy).expect("a report");
+/// The report of `selection` as `tessera.commitment-report/1`, with its projections.
+fn report_json(
+    model: PublicModel<'_>,
+    lowering: &Lowering,
+    selection: &Selection,
+    policy: &GadgetPolicy,
+) -> Value {
+    let report = report(model, lowering, selection, policy).expect("a report");
     let counts = report.counts();
     let number = |key: &str| counts[key].as_f64().expect("a count");
     let model_counts = Counts {
@@ -167,27 +188,137 @@ fn same(a: &Value, b: &Value) -> bool {
     }
 }
 
-#[test]
-fn the_committed_405b_example_is_the_reports() {
+/// Compares `report` with the committed file, after rewriting it under `TESSERA_WRITE_EXAMPLES`.
+fn check_committed(name: &str, report: &Value) {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/perf/examples/commitment-report-405b.json");
-    let report = the_report();
+        .join("../../docs/perf/v0.2")
+        .join(name);
     if std::env::var_os("TESSERA_WRITE_EXAMPLES").is_some() {
-        let text = serde_json::to_string_pretty(&report).expect("JSON") + "\n";
-        fs::write(&path, text).expect("the example");
+        let text = serde_json::to_string_pretty(report).expect("JSON") + "\n";
+        fs::write(&path, text).expect("the report");
     }
     let committed: Value =
-        serde_json::from_str(&fs::read_to_string(&path).expect("the committed example"))
+        serde_json::from_str(&fs::read_to_string(&path).expect("the committed report"))
             .expect("JSON");
     assert!(
-        same(&committed, &report),
+        same(&committed, report),
         "{} is stale: rerun this test with TESSERA_WRITE_EXAMPLES=1",
         path.display()
     );
-    // 405B's linear-layer count is RISK-2's, and the stages RFC-0010's.
-    assert_eq!(report["lowering"]["stages"], 3);
-    assert_eq!(
-        report["per_layer_per_token"]["requantized"]["total"],
-        260_096
-    );
+}
+
+/// The signed width `b` of a key in `[lo, hi]`: `2^{b−1} > hi` and `2^{b−1} ≥ −lo`, as gadget
+/// selection reads it (RFC-0006).
+fn signed_width(lo: i128, hi: i128) -> u32 {
+    let bits = |x: i128| u128::BITS - x.max(0).unsigned_abs().leading_zeros();
+    1 + bits(hi).max(bits(!lo))
+}
+
+/// Elements per layer per token whose requantization would change gadget at `B_max = 34`, by
+/// RFC-0006's selection rule: a split key of at most 34 bits with its class bits would take
+/// `Requant1`, and a wide key whose split `b + ⌈log2 n⌉ − 34` falls below every rounding bit would
+/// split. Tables of more than `2^{32}` rows are outside RFC-0008, so this is a hypothesis.
+fn changed_at_34(lowering: &Lowering, ranges: &Ranges, selection: &Selection) -> u64 {
+    let graph = &lowering.graph;
+    let mut changed = 0;
+    for &(node, gadget) in &selection.gadgets {
+        let node = &graph.nodes[node.0 as usize];
+        let Op::Requant { shift, .. } = &node.op else {
+            continue;
+        };
+        let shifts = &graph.shift_classes[shift.0 as usize];
+        let class_bits = usize::BITS - (shifts.len().max(1) - 1).leading_zeros();
+        let Some(Range::Bounded(key)) = ranges.of(node.inputs[0]) else {
+            panic!("every requantized key is bounded");
+        };
+        let width = signed_width(key.lo, key.hi) + class_bits;
+        let least = u32::from(shifts.iter().copied().min().expect("a class"));
+        let changes = match gadget {
+            Gadget::RequantSplit { .. } => width <= 34,
+            Gadget::RequantWide { .. } => width.saturating_sub(34) < least,
+            _ => false,
+        };
+        if changes {
+            let elements: u64 = graph.tensors[node.outputs[0].0 as usize]
+                .shape
+                .iter()
+                .map(|&n| u64::from(n))
+                .product();
+            changed += elements;
+        }
+    }
+    changed / u64::from(POSITIONS) / u64::from(LAYERS)
+}
+
+#[test]
+fn the_committed_405b_reports_are_the_compilers() {
+    for profile in [Profile::Servable, Profile::Minimal] {
+        let name = match profile {
+            Profile::Servable => "servable",
+            Profile::Minimal => "minimal",
+        };
+        for classes in [1, 2, 4] {
+            let (arch, quant, silu) = llama_405b(profile, classes);
+            let model = PublicModel {
+                arch: &arch,
+                profile,
+                quant: &quant,
+                silu_in_exponents: &silu,
+            };
+            let lowering = lower(model, POSITIONS).expect("405B's shape lowers");
+            let ranges = analyze(&lowering.graph, &lowering.tables).expect("ranges");
+            for b_max in [30u8, 32] {
+                let policy = GadgetPolicy {
+                    max_log2_rows: b_max,
+                    ..GadgetPolicy::default()
+                };
+                let case = format!("{name}, {classes} classes, B_max = {b_max}");
+                match select(&lowering.graph, &ranges, &lowering.tables, &policy) {
+                    Ok(selection) => {
+                        let report = report_json(model, &lowering, &selection, &policy);
+                        let file =
+                            format!("commitment-report-405b-{name}-c{classes}-b{b_max}.json");
+                        check_committed(&file, &report);
+                        // RFC-0010's stages, and RISK-2's requantized elements.
+                        let stages = if profile == Profile::Servable { 3 } else { 4 };
+                        assert_eq!(report["lowering"]["stages"], stages, "{case}");
+                        let requantized = if profile == Profile::Servable {
+                            260_096
+                        } else {
+                            137_216
+                        };
+                        assert_eq!(
+                            report["per_layer_per_token"]["requantized"]["total"], requantized,
+                            "{case}"
+                        );
+                        if b_max == 32 {
+                            let changed = changed_at_34(&lowering, &ranges, &selection);
+                            let expected = match (profile, classes) {
+                                (Profile::Servable, 4) => 16_384,
+                                _ => 0,
+                            };
+                            assert_eq!(changed, expected, "{case}");
+                        }
+                    }
+                    // A table of 2^31 rows: SiLU's, of 2^29 keys per gate class. And minimal's
+                    // classed O-projection update: its 61-bit key leaves a reduced table of 2^31
+                    // rows.
+                    Err(CompileError::Range { rule, .. }) => {
+                        let expected = match (profile, classes, b_max) {
+                            (Profile::Servable, 4, 30) => {
+                                "a lookup's table has at most 2^{B_max} rows"
+                            }
+                            (Profile::Minimal, 2 | 4, 30) => {
+                                "a wide key's reduced table fits 2^{B_max} rows: t + 2 + \
+                                 ⌈log2 n⌉ ≤ B_max"
+                            }
+                            _ => panic!("{case}: refused: {rule}"),
+                        };
+                        assert_eq!(rule, expected, "{case}");
+                    }
+                    Err(error) => panic!("{case}: {error}"),
+                }
+            }
+        }
+    }
 }

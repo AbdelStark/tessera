@@ -89,7 +89,7 @@ Full statements and resolution plans are in [00 §9](docs/spec/00-overview.md#9-
 | Risk | Summary | Resolved by |
 |---|---|---|
 | RISK-1 | Unit costs are assumptions | v0.1 measurement and decision rule |
-| RISK-2 | Wide-key rescales need two commitments, or four where the key is too wide for its shift, and a classed residual site two steps; up to +108% linear-layer commitments at 405B in `minimal` and +162% in `servable` | v0.2 commitment report |
+| RISK-2 | Wide-key rescales need two commitments, or four where the key is too wide for its shift, and a classed residual site two steps; up to +108% linear-layer commitments at 405B in `minimal` and +174% in `servable` | Resolved by the v0.2 commitment reports ([`docs/perf/v0.2/`](docs/perf/v0.2/README.md)) |
 | RISK-3 | The source's commitment-minimal `D` is not INT8-servable in exact mode | Profiles `servable` and `minimal` |
 | RISK-4 | `τ = 100` gives 41.5 bits, not 64 | `τ_A = 155`, `τ_W = 97` in `live-64` |
 | RISK-5 | LogUp error about 2^-90 at frontier volume | Live seed; 20-bit grinding in non-interactive mode |
@@ -106,7 +106,6 @@ Full statements and resolution plans are in [00 §9](docs/spec/00-overview.md#9-
 | OQ-0001-1 | Move the verifier to its own repository? | @AbdelStark | v1.0 release planning |
 | OQ-0004-1 | Reduce hashed volume if BLAKE3 alone exceeds 20 ps per element? | @AbdelStark | v0.1 gate |
 | OQ-0005-1 | Deployment-specific calibration for bounded mode? | @AbdelStark | v0.4 fidelity study |
-| OQ-0006-1 | Default `B_max`: 30, 32 or 34? | @AbdelStark | v0.2 gate |
 | OQ-0012-1 | Larger `B_W` and `P_W` for longer epochs? | @AbdelStark | v1.0 |
 | OQ-0013-1 | Pack mask rows of small tensors? | @AbdelStark | v0.4, with the simulator argument |
 | OQ-0014-1 | Live-session deadlines and retry policy | @AbdelStark | v1.0 |

@@ -1,6 +1,6 @@
 # Performance measurements
 
-This directory holds measured performance: the CPU microbenchmarks' baselines now, and the v0.1 H100 unit-cost reports of [RFC-0020](../rfcs/RFC-0020-cost-model.md#measurement-protocol-v01-gate) once they are measured. Every number in [08](../spec/08-performance-budget.md) stays a projection until a file here replaces it. Every JSON file here is a report whose JSON Schema is in [`spec/schemas/`](../../spec/schemas/README.md), and `cargo xtask lint` validates it. [`examples/`](examples/) holds `tessera bench model --source-defaults --json`'s report, which a test keeps current.
+This directory holds measured performance: the CPU microbenchmarks' baselines now, and the v0.1 H100 unit-cost reports of [RFC-0020](../rfcs/RFC-0020-cost-model.md#measurement-protocol-v01-gate) once they are measured. Every number in [08](../spec/08-performance-budget.md) stays a projection until a file here replaces it. Every JSON file here is a report whose JSON Schema is in [`spec/schemas/`](../../spec/schemas/README.md), and `cargo xtask lint` validates it. [`examples/`](examples/) holds example reports: `tessera bench model --source-defaults --json`'s and the calibration's. Tests keep them current. [`v0.2/`](v0.2/README.md) holds the compiler's commitment reports for Llama-3.1-405B, which settle RISK-2 and the table bound `B_max`.
 
 ## CPU microbenchmarks
 
