@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site), [RFC-0030](RFC-0030-masked-exponentials.md) ('Multilinear extensions': the causal selector's sequence length; 'Tree levels': `SoftmaxRow`'s root values), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Tree levels', in `tessera-protocol/2`: forests of two trees at least, masked levels), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Sumcheck messages': a failed tree level's reason)
+- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site), [RFC-0030](RFC-0030-masked-exponentials.md) ('Multilinear extensions': the causal selector's sequence length; 'Tree levels': `SoftmaxRow`'s root values), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Tree levels', in `tessera-protocol/2`: forests of two trees at least, masked levels), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Sumcheck messages': a failed tree level's reason), [RFC-0035](RFC-0035-padded-rows.md) ('Relations': the padding zero-check; 'Batching within a stage': the zero-check point)
 
 ## Summary
 
@@ -53,7 +53,8 @@ Every constraint in the derived constraint system is one of these relation kinds
 | `Elementwise` (`Mul`, `Rotate`, scalar-by-row) | `Z̃(r) = Σ_x eq(r, x) Ã(x) B̃(x)` (constants evaluated by the verifier) | 3 |
 | `SumSquares` | `Ũ(r) = Σ_x eq(r, x_row) X̃(x)^2` | 3 |
 | `Linear` (sums, adds, residual chains, selectors) | Evaluated directly from input claims at the same point; no sumcheck | — |
-| `ZeroCheck` (`OneHot` booleanity) | `0 = Σ_x eq(r, x) h̃(x)(1 − h̃(x))` | 3 |
+| `ZeroCheck` (`OneHot` booleanity) | `0 = Σ_x eq(z, x) h̃(x)(1 − h̃(x))` | 3 |
+| `ZeroCheck` (padding, [RFC-0035](RFC-0035-padded-rows.md#the-padding-zero-check)) | `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·w̃(x)`, `ψ` the public row selector | 3 |
 | `ProductTreeLevel` | `V_ℓ(r) = Σ_x eq(r, x) V_{ℓ+1}(x, 0) V_{ℓ+1}(x, 1)` | 3 |
 | `FractionTreeLevel` | LogUp-GKR level (RFC-0008) | 3 |
 
@@ -125,6 +126,7 @@ The claims after a forest's last level are the leaf claims the next stage consum
 - Instances with fewer variables than the stage maximum `n_max` are front-padded: each is treated as constant in the extra leading variables, the lowest `n_max − n_i`, which the first `n_max − n_i` rounds bind, hence the scaling of its claim by `2^{n_max − n_i}`. Its own variables take the last `n_i` challenges, so all instances share one round sequence, and the high coordinates of every instance, a stacked tensor's layer coordinate among them, are the stage's last challenges.
 - **Stacked layers.** Per-layer instances of one relation are stacked: the layer index becomes `⌈log2 n_layers⌉` extra sumcheck variables (padded layers are zero). A stage therefore ends with one claim per stacked tensor, at one point that includes a layer coordinate `ρ_ℓ`. For weights this yields a single claim `W̃_T(ρ_ℓ, r_o, r_i)` per weight type, opened with one folding pass ([RFC-0012](RFC-0012-weight-commitment.md#opening-by-the-folding-pass)); for zero knowledge it means one masked evaluation per tensor kind per proof rather than one per layer ([RFC-0013](RFC-0013-zero-knowledge.md#stacked-layers)).
 - All instances share the stage's round challenges `r_1 … r_{n_max}`; different relations and tensors of different shapes are combined with powers of `γ` as above.
+- **Zero-check point.** A stage that holds `ZeroCheck` instances squeezes one point just before `γ`, after `ρ` in `tessera-protocol/2`: coordinates `z_c`, `c = 0, 1, …`, under `stage/{k}/zero/{c}`, one per variable of its largest `ZeroCheck`. An instance of `n_i` variables takes the last `n_i` coordinates. Every `ZeroCheck` runs in stage 1, `OneHot`'s booleanity among them ([RFC-0035](RFC-0035-padded-rows.md#zero-check-points)). Each adds `n_i/|Fp2|` to its stage's error over its point.
 
 ### Sumcheck messages
 

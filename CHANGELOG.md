@@ -579,6 +579,19 @@ All notable changes to the prover release train are recorded here: the crates un
     - The committed scores match a count of the layout's rows, row by row, for key blocks as wide as, wider than and narrower than the query blocks.
     - `score_block` moves exactly the attention, column-answer and row-combination terms.
     - The restated figures are the model's.
+- RFC-0035, accepted, makes padded rows satisfy every row gadget ([#322](https://github.com/AbdelStark/tessera/issues/322)):
+  - **The gap.** RFC-0011 pads every dimension to a power of two with zeros, and five row relations had no witness on an all-zero row:
+    - `RsqrtRow`'s bracket;
+    - `SoftmaxRow`'s bracket;
+    - `OneHot`'s sum;
+    - `InverseCdf`'s certificate and comparison;
+    - the scoring bound's constraint 3, whose `b_t` would also have added `k` to `Û` for every padded row.
+
+    The honest prover could not complete a proof for a sequence whose length is not a power of two.
+  - **The row selector.** `ψ = [ℓ < n_layers]·[h < n_heads]·[t < n]` is public, and its extension is a product of `LT` predicates. Each failing relation multiplies its constants by `ψ`, so a padded row becomes the relation's instance at zero input.
+  - **Uniqueness.** That instance leaves a few values free: `RsqrtRow`'s `ρ`, `SoftmaxRow`'s `c_q` and `R_q`, and `InverseCdf`'s maximum. A padding zero-check `(1 − ψ)·w = 0` pins each of them, so every committed value upstream of the logits keeps one passing witness.
+  - **Zero-check points.** No document had said where a zero-check's point came from. Each stage with a `ZeroCheck` now squeezes it under `stage/{k}/zero/{c}` before `γ`, and every `ZeroCheck` runs in stage 1, `OneHot`'s booleanity included.
+  - **What it touches.** RFC-0009, RFC-0010, RFC-0011, RFC-0014 and RFC-0017 are amended. No commitment or lookup is added.
 
 ### Removed
 
