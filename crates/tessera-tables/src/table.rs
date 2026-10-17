@@ -6,12 +6,12 @@
 use core::hint::select_unpredictable;
 
 use tessera_codec::Encode;
-use tessera_field::{Goldilocks, PrimeField};
+use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField};
 use tessera_hash::{Digest, Domain, Hasher};
 
 use crate::fixed::{LN2, exp_neg, exp_pos};
-use crate::gf256;
 use crate::{BitOp, TableError, TableId, TableKind, TableSpec};
+use crate::{gf256, mle};
 
 /// The longest dense core a table may have (RFC-0008 'Structured evaluation').
 const MAX_CORE: u64 = 1 << 24;
@@ -48,6 +48,20 @@ pub trait Table {
     /// The value that a lookup of `key` in `class` returns, or `None` if the table has no such
     /// key.
     fn lookup(&self, key: i64, class: u8) -> Option<i64>;
+
+    /// `t̃(ρ) = kẽy(ρ) + β·valũe(ρ)`, the multilinear extension of the compressed rows
+    /// `key + β·value` over the table tree's `2^log2_rows` rows, padding included, at `rho`, its
+    /// lowest variable first (RFC-0008 'Structured evaluation'). The LogUp check compares it
+    /// with the table tree's final claim.
+    ///
+    /// # Errors
+    ///
+    /// [`TableError::Point`] when `rho` does not have `log2_rows` coordinates.
+    fn eval_mle(
+        &self,
+        rho: &[GoldilocksExt2],
+        beta: GoldilocksExt2,
+    ) -> Result<GoldilocksExt2, TableError>;
 }
 
 /// A table generated from its kind. The arithmetic kinds compute rows on demand. The
@@ -150,8 +164,13 @@ impl GeneratedTable {
         hasher.finalize()
     }
 
+    /// The values the fixed-point kinds generate when built (the struct's documentation).
+    pub(crate) fn core(&self) -> &[i64] {
+        &self.core
+    }
+
     /// The value of row `j < T`, the row whose key is `j`.
-    fn value(&self, j: u64) -> i64 {
+    pub(crate) fn value(&self, j: u64) -> i64 {
         // `j < T ≤ 2^32`, so it is a non-negative i64.
         let key = i64::try_from(j).unwrap_or(i64::MAX);
         match &self.spec.kind {
@@ -241,6 +260,14 @@ impl Table for GeneratedTable {
             }
         };
         u64::try_from(index).ok().filter(|_| inside)
+    }
+
+    fn eval_mle(
+        &self,
+        rho: &[GoldilocksExt2],
+        beta: GoldilocksExt2,
+    ) -> Result<GoldilocksExt2, TableError> {
+        mle::evaluate_table(self, rho, beta).map_err(TableError::Point)
     }
 
     fn lookup(&self, key: i64, class: u8) -> Option<i64> {

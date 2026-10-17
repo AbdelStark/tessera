@@ -263,6 +263,12 @@ All notable changes to the prover release train are recorded here: the crates un
   - The writer refuses a value its readers would refuse under the same limits, before the file exists, with the code and offset they would report. It never converts a value to fit: an array of another dtype, a bool for an integer or a float for a `Rational` is `ERR-INTERNAL`.
   - `tessera_quant.integer_model` defines `IntegerModel` field by field from 03 §2. `TokenFile` and `LogitsFile` live in `tce`. No `repr` shows a weight, a channel parameter, a token or a logit.
   - `spec/vectors/model/integer-model.json` now holds two one-layer models: servable with power-of-two scales, and minimal with affine multipliers. Between them they hold every weight type, rescale site and quantization point, and a map of seven entries, so each enum tag and each canonical order is pinned. Python decodes both to their values and writes them back byte for byte.
+- The structured evaluation of lookup tables in `tessera-tables` (RFC-0008 'Structured evaluation', [#75](https://github.com/AbdelStark/tessera/issues/75)):
+  - `Table::eval_mle(ρ, β)` gives `t̃(ρ) = kẽy(ρ) + β·valũe(ρ)` over the table tree's padded rows: the value the LogUp check compares with the table tree's claim.
+  - `Range` and `Requant` cost `O(n)` per class at any size. Before its clamp, a `Requant` class's value is affine in the bits of its offset key, and such a function's sum over a prefix of the cube has a closed form. A `2^32`-row table of four classes evaluates in 5.5 µs.
+  - `Silu` and `Exp` cost their dense core. The runs of equal values at either end of a core, such as `Silu`'s saturation, are differences of `LT`s, and the rest is cut into aligned blocks evaluated with `eq` tables. Nothing divides, so a point with a coordinate 0 or 1 is evaluated like any other. The largest cores, `Silu`'s `2^24` values and `Exp`'s 12.5 million, take 5.2 and 18 ms.
+  - A test compares it with the dense sum over every padded row: 30 tables of every kind with `b ≤ 16`, 100 points each, coordinates 0 and 1 included. `cargo bench -p tessera-tables` times every kind at production sizes.
+  - RFC-0008 now states two facts it had wrong. `Requant`'s rounding reads bit `r − 1`, so its value does not depend on `x >> r` alone. `Range`, at up to `2^32` rows, is a closed form rather than an enumeration. Its dense core is cut into aligned blocks rather than walked along a Gray code, which divides.
 
 ### Changed
 

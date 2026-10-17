@@ -142,11 +142,13 @@ Claim-list validation regenerates each spec from its kind and id. Any of the fol
 The verifier needs `t̃(ρ)` at the random point where the table tree ends, over its `2^{h_t}` rows, whose padding rows are copies of row 0. With `t = key + β·value` over the `T` rows, `t̃(ρ) = Σ_{j<T} eq(ρ, j)·t_j + t_0·(1 − LT(ρ, T))`: the padding term costs one `LT`, and vanishes when `T` is a power of two. On the `T` rows:
 
 - `key` is an affine function of the row index bits (offset encoding and class packing), so `kẽy(ρ)` is a closed-form `O(n)` expression.
-- For `Requant`, `Silu` and `Exp`, `value(x)` depends only on the high bits `h = x >> r`, so `valũe(ρ) = f̃(ρ_high)`: the low variables sum out because `Σ_{x_low} eq(ρ_low, x_low) = 1`.
-- Every `f` is piecewise: constant below `a`, a dense core on `[a, c)` of at most 2^24 explicit values, and constant or affine on `[c, 2^{n_h})`. Then `f̃(ρ) = A · LT(ρ, a) + Σ_{h=a}^{c−1} f(h) eq(ρ, h) + Σ_{h ≥ c} eq(ρ, h)(u·h + w)`, where `LT(ρ, a) = Σ_{h<a} eq(ρ, h)` and the weighted suffix sums have `O(n)` bit-recursive forms. The dense middle term costs `O(core)` with Gray-code updates of `eq`.
-- `Range`, `Pow2`, `Bitwise8`, `AesSbox` and `Gf256Mul` are small enough to evaluate by enumeration.
+- The sum over a prefix of an affine function of the bits, `Σ_{h<a} eq(ρ, h)·(w_0 + Σ_i w_i·h_i)`, has an `O(n)` closed form: at the highest bit `k` where `h` and `a` differ, `a_k = 1` and `h_k = 0`, the bits above are `a`'s, and over the free bits below, `eq` sums to 1 and each `h_i` to `ρ_i`. With all `w_i = 0` and `w_0 = 1` it is `LT(ρ, a) = Σ_{h<a} eq(ρ, h)`.
+- A class of `Requant` has `x = k + 2^{b−1}`, the offset key. Before its clamp, `⌊(k + 2^{r−1})/2^r⌋ = (x >> r) + x_{r−1} − 2^{b−1−r}` for `r < b`, and 0 for `r ≥ b`. That is affine in the bits of `x`: its rounding reads bit `r − 1`, so it does not depend on `x >> r` alone. It never decreases with `x`, so the clamp holds `lo` on a prefix of the class and `hi` on a suffix. `valũe` is then `lo·LT(ρ, a)`, plus the affine prefix sum's difference between `c` and `a`, plus `hi·(1 − LT(ρ, c))`: `O(n)` per class, whatever `b`, `lo` and `hi`.
+- For `Silu`, `value(x)` depends only on its class and the high bits `h = x >> r`, so `valũe(ρ) = f̃(ρ_high)`: the low variables sum out because `Σ_{x_low} eq(ρ_low, x_low) = 1`. `Exp` has no shift.
+- Their `f` is piecewise: constant below `a`, a dense core on `[a, c)` of at most 2^24 explicit values, and constant on `[c, 2^{n_h})`. Then `f̃(ρ) = A·LT(ρ, a) + Σ_{h=a}^{c−1} f(h)·eq(ρ, h) + C·(1 − LT(ρ, c))`. The dense middle term costs `O(core)`. `[a, c)` is cut into at most `2n` aligned blocks, each an inner product with an `eq` table built by doubling. No step divides: updating `eq` along a Gray code would divide by `ρ_i` and `1 − ρ_i`, which fails at a coordinate 0 or 1.
+- `Range` has no value, so `t̃` is `kẽy`'s closed form. `Pow2`, `Bitwise8`, `AesSbox` and `Gf256Mul` are small enough to evaluate by enumeration.
 
-Verifier cost per table: `O(n · core)`, at most a few times 2^24 field operations; independent of the 2^32 row count the prover enumerates.
+Verifier cost per table: `O(n · core)`, at most a few times 2^24 field operations, and `O(n)` per class for `Range` and `Requant`. It does not depend on the 2^32 row count the prover enumerates.
 
 ### Generators and digests
 
@@ -220,7 +222,7 @@ pub trait Table {
     fn spec(&self) -> &TableSpec;
     fn log2_rows(&self) -> u8;
     fn row(&self, index: u64) -> Option<(Fp, Fp)>;         // (key, value); None past the padded rows
-    fn eval_mle(&self, rho: &[Fp2], beta: Fp2) -> Fp2;     // structured evaluation of key + beta*value
+    fn eval_mle(&self, rho: &[Fp2], beta: Fp2) -> Result<Fp2, TableError>; // structured evaluation of key + beta*value
     fn index(&self, key: i64, class: u8) -> Option<u64>;   // the row a lookup hits, for multiplicities
     fn lookup(&self, key: i64, class: u8) -> Option<i64>;  // witness-side integer lookup
 }

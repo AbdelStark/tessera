@@ -12,9 +12,14 @@ publish.workspace = true
 tessera-codec = { path = "../tessera-codec" }
 tessera-field = { path = "../tessera-field" }
 tessera-hash = { path = "../tessera-hash" }
+tessera-poly = { path = "../tessera-poly" }
 
 [dev-dependencies]
 serde_json = "1"
+
+[[bench]]
+name = "mle"
+harness = false
 
 [lints]
 workspace = true

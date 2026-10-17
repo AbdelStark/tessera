@@ -5,6 +5,8 @@
 
 use core::fmt;
 
+use tessera_poly::PolyError;
+
 /// Why a table could not be built from its kind, or a claim list's table differs from the one
 /// its kind generates (RFC-0008 'Table specifications').
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -25,6 +27,9 @@ pub enum TableError {
     },
     /// The specification's digest is not the one its kind generates.
     Digest,
+    /// A point at which the table's multilinear extension cannot be evaluated: it needs one
+    /// coordinate per variable of the table tree, `log2_rows`.
+    Point(PolyError),
 }
 
 /// For example, `a Requant table needs 1 ≤ r_c ≤ 63 for every class`.
@@ -39,6 +44,7 @@ impl fmt::Display for TableError {
                 )
             }
             Self::Digest => f.write_str("the digest is not the one the table's kind generates"),
+            Self::Point(error) => write!(f, "the table's extension cannot be evaluated: {error}"),
         }
     }
 }
