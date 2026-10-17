@@ -3,6 +3,10 @@
 //! Orchestration of the witness pass, commitments, stages and openings over the CPU and GPU
 //! backends (RFC-0018).
 //!
+//! [`StageProver`] proves a stage schedule's reduction stages over a [`WitnessSource`]: each
+//! stage's batched sumcheck, its split values and the claim pool's values (RFC-0010 'Stages',
+//! RFC-0037).
+//!
 //! [`ReleaseSchedule`] fixes when a message that a verifier can time leaves the prover in
 //! `tessera-protocol/2`: at a slot that public data determines, whatever its secret-dependent
 //! work took (RFC-0018 'Release schedule', INV-ARCH-2).
@@ -17,8 +21,10 @@
 #![forbid(unsafe_code)]
 
 mod release;
+pub mod stages;
 
 pub use release::{Release, ReleaseSchedule, ScheduleError};
+pub use stages::{StageError, StageProof, StageProver, WitnessSource};
 
 // Test-only features cannot reach a release build (RFC-0001 'Cargo features').
 #[cfg(all(feature = "test-rng", not(debug_assertions)))]

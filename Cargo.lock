@@ -676,6 +676,18 @@ version = "0.1.0"
 [[package]]
 name = "tessera-prover"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tessera-codec",
+ "tessera-compiler",
+ "tessera-field",
+ "tessera-hash",
+ "tessera-ir",
+ "tessera-poly",
+ "tessera-sumcheck",
+ "tessera-tables",
+ "tessera-witness",
+]
 
 [[package]]
 name = "tessera-scoring"

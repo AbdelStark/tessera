@@ -565,6 +565,16 @@ All notable changes to the prover release train are recorded here: the crates un
 - The independent verifier's `tv-tables` is checked against the prover's tables ([#100](https://github.com/AbdelStark/tessera/issues/100)):
   - `tessera-tables`' differential test compares both crates on every kind: specification bytes, digests, rows at the edges, `eval_mle` at seeded points, and which parameters each refuses.
   - `spec/vectors/tables/` gains `silu-b8-wide-arguments`, a `Silu` table whose arguments reach `128·ln 2`, where `exp_neg`'s `n` reaches 128 and the value is 0 by its rule. Both workspaces and `tessera-quant` check it.
+- `tessera-prover`'s `StageProver` proves a stage schedule's reduction stages over a `WitnessSource`, which closes [#113](https://github.com/AbdelStark/tessera/issues/113) (RFC-0010 'Stages', RFC-0037):
+  - **Stages.** Stage `k` proves one batched sumcheck of its instances over the witness's tables: `MatMulWeight`, `MatMulAct`, `Elementwise` for products, sums of squares and the equality zero-checks, and `Rotate`'s kernel. Each is stacked over the layers where its kind is, at its claim's point.
+    - Stage 1 first draws the layer point that stacks the leaf stage's per-layer values, then the zero-check point.
+    - After the evaluations, each stage sends the values of the claims it splits, and every committed part's value reaches the pool.
+    - Every claim an instance leaves is checked against the schedule's point for it.
+  - **The leaf stage** is the gadgets' (#118). Until then, `StageProver::leaf` takes its points and computes its claims' true values.
+  - **Tests.**
+    - Every stage of the conformance models `tiny-2-servable`, `tiny-2-minimal` and `tiny-4-servable`, and of three hand-built templates (scaled relation outputs, every linear map, per-layer channel products), verifies through a verifier written in the test from the RFCs. The pool it ends with is the prover's and the committed tensors' extensions.
+    - A split that does not add up, and a changed round or evaluation, are rejected at their stage. 15 of 16 mutations of the stages are caught; the survivor removes the check of each claim against the schedule, which fires only when a relation and the schedule disagree.
+  - `tiny-2-affine` has no schedule: its layer 0 has affine sites that layer 1 has not (#348).
 
 ### Changed
 
