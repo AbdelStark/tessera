@@ -86,8 +86,8 @@ pub struct Round2Response {
     pub scoring: ScoringClaims,
 }
 pub struct LogUpProof { pub roots: Vec<Fp2>, pub values: Vec<Fp2> }
-pub struct TreeProof { pub levels: Vec<SumcheckProof> }
-pub struct StageProof { pub stage: StageId, pub sumcheck: SumcheckProof }      // RFC-0010; StageId(u16)
+pub struct TreeProof { pub levels: Vec<SumcheckProof>, pub splits: Vec<Fp2> }
+pub struct StageProof { pub stage: StageId, pub sumcheck: SumcheckProof, pub splits: Vec<Fp2> } // StageId(u16)
 pub struct SumcheckProof { pub rounds: Vec<Vec<Fp2>>, pub final_evals: Vec<Fp2> } // RFC-0010
 pub struct CombinedRow { pub u: Vec<Fp2>, pub mask: Vec<Fp2> }
 pub struct WeightCombinedRows { pub matrix: u8, pub evaluation: CombinedRow, pub proximity: CombinedRow }
@@ -102,10 +102,11 @@ pub struct FixedBits(pub u64);                                                  
 - **`trees`.**
   - `levels[ℓ]` is level `ℓ` of the leaf stage, from the roots: the one sumcheck of RFC-0010 'Tree levels' that its fraction trees and product forests share.
   - RFC-0014 named the field `product_trees`; its levels hold the fraction trees too.
+  - `splits` holds the values of the leaf stage's split claims, stage 0's ([RFC-0037](RFC-0037-stage-schedule.md#splits)).
   - The verifier reads the leaf stage in schedule order: `logup.roots`, then `trees.levels`, then `logup.values`. The order of the fields is not that of the transcript.
 - **`stages`.**
   - `stages[i]` is reduction stage `i + 1`, the leaf stage being stage 0.
-  - Its `sumcheck` holds the messages of RFC-0010 'Sumcheck messages'.
+  - Its `sumcheck` holds the messages of RFC-0010 'Sumcheck messages', and `splits` the values of the claims it splits ([RFC-0037](RFC-0037-stage-schedule.md#splits)).
 - **`advice_combined`.**
   - It holds RFC-0011's `G + 1` combined rows, the groups in group order, then the proximity row ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 5).
   - Each row's `u` holds `k` values. Its `mask` holds the `P_A` coefficients of the combined mask polynomial, constant first.
@@ -119,7 +120,8 @@ pub struct FixedBits(pub u64);                                                  
 **Shapes.** The schedule and the statement fix every length the decoder cannot check alone:
 - the stages, one per reduction stage, `stages[i].stage = i + 1`;
 - the matrices of `weight_combined`, those that have claims;
-- the scoring claims, one per request.
+- the scoring claims, one per request;
+- each stage's split values, one per value its split claims send ([RFC-0037](RFC-0037-stage-schedule.md#splits)).
 
 The verifier checks them when it decodes `Round2Response`, after RFC-0019 step 6, and a mismatch is `Reject(Malformed)`. Shapes inside a part are that part's checks: a sumcheck's rounds and evaluations are RFC-0010's (`Reject(Sumcheck)`, `Reject(TreeLevel)`), and the combined rows' are RFC-0011 step 6's (`Reject(Evaluation)`), for the weight matrices' rows as for the advice's.
 
@@ -170,6 +172,7 @@ Every value is absorbed as its TCE payload, under the label of [RFC-0014](RFC-00
 | 3 | `seed` | Live: the 32 bytes of `seed`. Non-interactive: the grind of `seed-pow` absorbs `seed_nonce` (RFC-0004 `grind`), then the seed is squeezed under `seed`. |
 | 4, 5 | `logup/roots`, `tree/{ℓ}/…`, `logup/values` | As RFC-0008 and RFC-0010 state: `TCE(Vec<Fp2>)` of `logup.roots`, each level's messages, then `TCE(Vec<Fp2>)` of `logup.values` |
 | 6 | `stage/{k}/…` | Each stage's messages, as RFC-0010 states. `tessera-protocol/1` has no masked sum, so `zk-sum` and `zk-rho` are not used. |
+| 4 to 6 | `stage/{k}/split` | `TCE(Vec<Fp2>)` of the stage's `splits`: stage 0's, `trees.splits`, after `logup/values`, and stage `k`'s after `stage/{k}/evals` ([RFC-0037](RFC-0037-stage-schedule.md#splits)) |
 | 7 | `pcs/advice/gamma`, `pcs/advice/xi`, then `pcs/weights/{T}/gamma`, `pcs/weights/{T}/xi` per opened matrix in id order | Nothing is absorbed: `tessera-protocol/1` has no blinding claim, so these challenges are squeezed directly. |
 | 8 | `pcs/advice/combined` | `TCE(Vec<CombinedRow>)` of `advice_combined` |
 | 8 | `pcs/weights/{T}/combined` | `TCE(WeightCombinedRows)` of the matrix's entry, matrix by matrix in id order |

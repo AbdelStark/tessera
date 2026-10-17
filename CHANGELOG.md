@@ -627,6 +627,16 @@ All notable changes to the prover release train are recorded here: the crates un
   - **At 405B.** Rows hold 16 layers of one type, 8 rows per type that has a `ChannelParams`.
   - **The vectors.** The production `ChannelParams` descriptor in `spec/vectors/hash/` follows the rule: `log2_k = 20` and `2 · 8 + 4096` rows for `servable` with two classes. Its encoding and `commitment_id` are regenerated, and both workspaces check them.
 
+- RFC-0037, accepted, makes the stage schedule a function of the graph, with one claim per weight type ([#113](https://github.com/AbdelStark/tessera/issues/113)):
+  - **Layers and kinds.** The lowering's checkpoints bound the layers. A tensor's kind is its node's position in the layer, stacked over the layers, and the layers must follow one template.
+  - **`Rotate`** is a product against a public kernel, of degree 2, that leaves one claim on its input. RFC-0010's partner form, which #99 implemented, left two, and so two claims on Q's and K's weights.
+  - **The first checkpoint is committed.** The embedding's scaled output is committed advice, proven equal to its `ConstMul` by a zero-check in stage 1. Every layer then reads a committed residual stream, and the embedding has one claim. A linear or degree-2 node other than a matmul may produce a committed tensor this way.
+  - **`Transpose` and `Expand`** join RFC-0006's operation set, and attention's head layouts use them in place of `GatherPublic`. Their claims move coordinates, which `GatherPublic`'s do not when `n` is not a power of two.
+  - **Splits.** A claim on several tensors splits into one claim per virtual term and one per committed group at one point. The prover sends their values under `stage/{k}/split`, in `TreeProof.splits` and `StageProof.splits`, and they must add up (`Reject(Sumcheck)`).
+  - **The layer point.** Stage 1 draws it under `stage/1/layer/{c}` and stacks the leaf stage's per-layer claims with it.
+  - **The pool.** It takes combinations of committed tensors at one point, and RFC-0011's grouping admits them.
+  - Amended: RFC-0006, RFC-0010, RFC-0011, RFC-0014 row 6 and RFC-0036.
+
 ### Removed
 
 - The `TableSetManifest` artifact (schema `0x0203`, `.tts`), which three documents named and none defined (RFC-0029, accepted, [#316](https://github.com/AbdelStark/tessera/issues/316)):

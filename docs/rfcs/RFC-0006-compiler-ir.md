@@ -40,6 +40,7 @@ pub enum Op {
     Rotate { rope: TableId },                    // RoPE pair rotation by public constants
     Sum { axis: u8 }, Reshape, Slice { axis: u8, start: u32, len: u32 },
     GatherPublic { index: ConstRef },
+    Transpose { perm: Vec<u8> }, Expand { axis: u8, len: u32 },   // head layouts, RFC-0037
     // Virtual, degree 2
     MatMulAct { transpose_rhs: bool },           // activation x activation: QK^T (transposed), PV
     Mul { broadcast: Broadcast },                // elementwise product: Trailing or Leading
@@ -63,7 +64,7 @@ pub struct Graph {                               // TensorSpec: 03 §3
 }
 ```
 
-Node kinds follow from the operation: linear and degree-2 operations produce `Virtual` tensors; gadget-backed operations produce `Committed` or `LookupOutput` tensors plus the gadget's internal advice (limbs, multiplicities), which stays inside the gadget. Weights are `Committed { Weight }`; constants and shapes are `Public`.
+Node kinds follow from the operation: linear and degree-2 operations produce `Virtual` tensors, except that one other than a matmul may produce a `Committed` tensor, which stage 1 proves equal to its relation by a zero-check ([RFC-0037](RFC-0037-stage-schedule.md#the-committed-first-checkpoint)); gadget-backed operations produce `Committed` or `LookupOutput` tensors plus the gadget's internal advice (limbs, multiplicities), which stays inside the gadget. Weights are `Committed { Weight }`; constants and shapes are `Public`.
 
 A graph's nodes are in topological order. Every input is a graph input, a tensor no node produces, which is `Public` or `Committed`, or the output of an earlier node. No tensor has two producers. Ids are dense in creation order, so the graph is a pure function of the calls that build it (INV-DM-5). A node keeps the rules of its operation. Shapes have at least one axis, each of length at least 1. `[…, n]` is any shape whose last axis is `n`, and removing a tensor's only axis leaves `[1]`.
 
@@ -77,6 +78,8 @@ A graph's nodes are in topological order. Every input is a graph input, a tensor
 | `Reshape` | `x` → `y` | equal element counts | |
 | `Slice` | `x` → `y` | `start + len` within the axis, `len ≥ 1`; `y` is `x` with that axis of length `len` | |
 | `GatherPublic` | `x` → `y` | each index a row of `x`'s outermost axis; `y` has one such row per index | |
+| `Transpose` | `x` → `y` | `y`'s axis `i` is `x`'s axis `perm[i]`, `perm` a permutation of `x`'s axes | |
+| `Expand` | `x` → `y` | `y` is `x` with an axis of length `len ≥ 1` inserted before axis `axis ≤ rank`, `x` repeated along it | |
 | `MatMulAct` | `a`, `b` → `y` | equal leading axes; `a […, m, k]`, `b […, k, n]` or, transposed, `b […, n, k]`; `y […, m, n]` | |
 | `Mul` | `a`, `b` → `y` | with `Trailing`, `b`'s shape is `a`'s or a prefix of it, broadcast over the trailing axes; with `Leading`, `a`'s last axis, broadcast over the leading axes; `y = a` | The broadcast is stated, not inferred: when `a`'s first and last axes have equal lengths, a `b` of that length fits both |
 | `OneHot` | `t` → `h` | `h` is `t` with an axis of `vocab ≥ 1` added | `h` is `Committed { Advice }` |
@@ -157,10 +160,10 @@ It reads only the public part of `D`: the architecture, the profile, `PublicQuan
 
 - **Inputs.** The tokens `[n]`, committed advice in `[0, vocab)`; the positions `[n]`, public; each weight matrix; for each site of several classes, the classes of the weight before it, `[rows]` in `[0, classes)`; and for each affine site, the multipliers of the weight before it, `[rows]` in `[0, 2^{16} − 1]` ([RFC-0025](RFC-0025-affine-sites.md)). Classes and multipliers are committed with the weights.
 - **Layout.** Activations are position-major, `[n, channels]`. RoPE rotates Q and K as `[n, heads, d_head]`, pairing `x_i` with `x_{i + d_head/2}`.
-  - Attention runs head-major. `GatherPublic` reorders the rows of Q to `[n_heads, n, d_head]`, and those of K and V to the same shape, with query head `h` reading KV head `h / (n_heads / n_kv_heads)`.
+  - Attention runs head-major. `Transpose` takes Q, K and V from `[n, heads, d_head]` to `[heads, n, d_head]`, and `Expand` then `Reshape` give K and V `[n_heads, n, d_head]`, with query head `h` reading KV head `h / (n_heads / n_kv_heads)` ([RFC-0037](RFC-0037-stage-schedule.md#head-layouts)).
   - One `MatMulAct` then forms every head's scores `[n_heads, n, n]`, one causal `SoftmaxRow` their exponentials and reciprocals, and `Mul(MatMulAct(e, v), R)` the attention output: the softmax fact's pattern.
-  - A last `GatherPublic` returns the output to `[n, d_model]`.
-- **Rescales.** Each `Requant` names its site's shift classes and takes the channel classes when there are several, as does the `Silu` lookup. An affine site's key is `Mul(x, m)`, with `x` what a `pot` site would rescale and `m` its multipliers, rescaled with its one shift; at a residual site `Mul(acc, m)` takes the place of `acc`. INT8 sites saturate to `[−128, 127]`. The embedding enters the residual by `ConstMul` with `2^{s_e}`, `s_e = e_Embed − residual_exponent` ([03 §2](../spec/03-data-model.md#quantization)).
+  - A last `Transpose` and `Reshape` return the output to `[n, d_model]`.
+- **Rescales.** Each `Requant` names its site's shift classes and takes the channel classes when there are several, as does the `Silu` lookup. An affine site's key is `Mul(x, m)`, with `x` what a `pot` site would rescale and `m` its multipliers, rescaled with its one shift; at a residual site `Mul(acc, m)` takes the place of `acc`. INT8 sites saturate to `[−128, 127]`. The embedding enters the residual by `ConstMul` with `2^{s_e}`, `s_e = e_Embed − residual_exponent` ([03 §2](../spec/03-data-model.md#quantization)), whose output, the first checkpoint, is committed advice ([RFC-0037](RFC-0037-stage-schedule.md#the-committed-first-checkpoint)).
 - **The residual** saturates its sum within `[−2^{19}, 2^{19} − 1]` ([RFC-0022](RFC-0022-saturating-residual.md#saturating-residual)):
   - a site of one class, whose `2^r` fits a constant (`r ≤ 62`), rescales the fused key `Add(acc, ConstMul(res, 2^r))` with its shift;
   - a site of several classes rescales `acc` with its classes within `±(2^{20} − 1)`, then clamps `2(res + u)` with the shift 1.
