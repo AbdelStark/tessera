@@ -231,10 +231,10 @@ fn random_bad_instances_accept_far_below_the_bound() {
     let _ = random_trials(200_000, 0x60_3001);
 }
 
-/// The same measurement over enough trials to see accepts: run in release,
-/// `cargo test --release -p tessera-logup --test calibration -- --ignored --nocapture`.
+/// The same measurement over enough trials to see accepts, which the nightly workflow runs:
+/// `cargo test --locked -p tessera-logup --test calibration -- --ignored --nocapture`.
 #[test]
-#[ignore = "long: 4·10^6 trials, about 80 s in release"]
+#[ignore = "long: 4·10^6 trials, about a minute; the nightly workflow runs it"]
 fn random_bad_instances_accept_far_below_the_bound_over_millions_of_trials() {
     let (accepted, _) = random_trials(4_000_000, 0x60_3003);
     assert!(accepted > 0, "enough trials to see accepts");

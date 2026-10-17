@@ -581,7 +581,11 @@ dependencies = [
  "serde_json",
  "tessera-codec",
  "tessera-compiler",
+ "tessera-field",
+ "tessera-hash",
  "tessera-ir",
+ "tessera-logup",
+ "tessera-sumcheck",
  "tessera-witness",
 ]
 
