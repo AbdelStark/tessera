@@ -11,6 +11,9 @@ publish.workspace = true
 [dependencies]
 tessera-codec = { path = "../tessera-codec" }
 tessera-hash = { path = "../tessera-hash" }
+# The commitments' layout parameters, which the claim list states, and the weight commitment that
+# commits D (RFC-0040 'Migration / Rollout').
+tessera-pcs = { path = "../tessera-pcs" }
 tessera-tables = { path = "../tessera-tables" }
 
 [dev-dependencies]

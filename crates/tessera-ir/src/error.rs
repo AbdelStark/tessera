@@ -7,7 +7,8 @@ use core::fmt;
 
 use crate::{NodeId, TensorId, WeightRef};
 
-/// Why a graph, or a node about to join one, breaks a rule of RFC-0006 'Operation set' or 03 §3.
+/// Why a graph, or a node about to join one, breaks a rule of RFC-0006 'Operation set' or 03 §3;
+/// or why a model's weights leave the domain the weight commitment takes them in (RFC-0040).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IrError {
     /// A tensor's description is not one 03 §1 and §3 allow.
@@ -74,6 +75,32 @@ pub enum IrError {
         /// What is out of place.
         rule: &'static str,
     },
+    /// A model of no layer. RFC-0007 'Verifier validation' requires `n_layers ≥ 1` in its
+    /// architecture consistency check (`Architecture`), as the compiler does; without a layer,
+    /// the per-layer weights have no layer count to pad to a power of two (RFC-0040 'The
+    /// matrices').
+    NoLayers,
+    /// A weight entry of −128: quantization rounds weights into `[−127, 127]` (RFC-0005
+    /// 'Pipeline', step 5), and range analysis and the compiler's validation take them there
+    /// (RFC-0006 'Range analysis', 'Llama lowering').
+    WeightOutOfRange {
+        /// The weight.
+        weight: WeightRef,
+    },
+    /// A channel's class at or above the shift classes of the site its weight's outputs reach:
+    /// each class indexes its site's shifts (03 §2 'Channels', RFC-0006 'Llama lowering').
+    ClassOutOfRange {
+        /// The weight.
+        weight: WeightRef,
+        /// The site's shift classes: every class lies below.
+        classes: usize,
+    },
+    /// A multiplier of 0: an affine site's multipliers lie in `[1, 2^16)` (03 §2 'Channels',
+    /// RFC-0025, RFC-0006 'Llama lowering').
+    MultiplierOutOfRange {
+        /// The weight.
+        weight: WeightRef,
+    },
 }
 
 /// For example, `node 3 (MatMulWeight): the weight's columns match the input's last axis`.
@@ -110,6 +137,23 @@ impl fmt::Display for IrError {
             }
             Self::Op { node, op, rule } => write!(f, "node {} ({op}): {rule}", node.0),
             Self::Id { rule } => write!(f, "ids: {rule}"),
+            Self::NoLayers => write!(f, "a model has at least one layer"),
+            Self::WeightOutOfRange { weight } => write!(
+                f,
+                "weight {:?} of layer {} has an entry outside [−127, 127]",
+                weight.ty, weight.layer
+            ),
+            Self::ClassOutOfRange { weight, classes } => write!(
+                f,
+                "a channel class of weight {:?} of layer {} is not below its site's {classes} \
+                 shift classes",
+                weight.ty, weight.layer
+            ),
+            Self::MultiplierOutOfRange { weight } => write!(
+                f,
+                "a multiplier of weight {:?} of layer {} is 0, outside [1, 2^16)",
+                weight.ty, weight.layer
+            ),
         }
     }
 }

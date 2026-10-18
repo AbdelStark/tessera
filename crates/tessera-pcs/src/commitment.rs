@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The reference tensor commitment of RFC-0011: a resident matrix, committed and opened without
-//! streaming ('Column digests and root', 'Opening protocol').
+//! streaming ('Column digests and root', 'Opening protocol'). A weight matrix of RFC-0012 is the
+//! same scheme with other parameters: rate 1/4, one chain per column, and no mask in
+//! `tessera-protocol/1` (RFC-0040 'Encoding, leaves and roots').
 //!
 //! # Commitment
 //!
@@ -11,7 +13,7 @@
 //!
 //! 1. It draws each non-zero row's `P_A` mask coefficients from the [`MaskSource`], `m_0` first,
 //!    row by row in layout order, and encodes the row with them ([`RowEncoder`], RFC-0011
-//!    'Encoding'): `n = 2k` symbols on the coset `7·L`.
+//!    'Encoding'): `n = 2^r·k` symbols on the coset `7·L`, `n = 2k` for the advice.
 //! 2. It chains each segment's columns over that segment's codewords, `B` rows per step
 //!    ([`ColumnChains`], RFC-0004 'Column digests'). This gives `d_j^(s)`, which for an empty
 //!    segment is the chain's first digest, `H("column-init", commitment_id ‖ u64(j))`.
@@ -20,8 +22,13 @@
 //! 4. It builds the Merkle tree over the `n` leaves ([`MerkleTree`]): its root is the
 //!    commitment.
 //!
+//! [`ReferenceCommitment::commit_unmasked`] commits a weight matrix of `tessera-protocol/1`: no
+//! mask is drawn in step 1, and its layout has one segment, whose chain's last digest is the leaf,
+//! `leaf_j = d_j[⌈m/B⌉]`, with no `column-merge` in step 3 (RFC-0040). A matrix of no row has the
+//! leaves `d_j[0]`.
+//!
 //! The commitment keeps what its openings need, resident: the rows, the masks, the codewords,
-//! the leaves and the tree. That is `N·(3k + P_A)` field elements and `3n` digests for `N`
+//! the leaves and the tree. That is `N·((1 + 2^r)·k + P)` field elements and `3n` digests for `N`
 //! non-zero rows, which is why it is a reference for tests and measurements: the streaming
 //! committer of RFC-0011 'Streaming procedure' holds one block of `B` codewords at a time and
 //! 32 bytes of chain state per column and segment.
@@ -71,45 +78,76 @@ type Fp2 = GoldilocksExt2;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CommitmentParams {
     /// `log2 k`. A row holds `k = 2^log2_k` values, the evaluations of a polynomial of degree
-    /// below `k` on the subgroup `H` of order `k`, and its codeword holds `n = 2k` symbols, at
-    /// rate 1/2. At most 31, so that `n ≤ 2^32`.
+    /// below `k` on the subgroup `H` of order `k`.
     pub log2_k: u32,
-    /// `P_A`, the mask coefficients of each row, from 1 to `k`.
+    /// `r`, the `log2` of the inverse rate: a row's codeword holds `n = 2^r·k` symbols. 1 for the
+    /// advice, rate 1/2 (RFC-0011 'Encoding'), 2 for a weight matrix, rate 1/4 (RFC-0012
+    /// 'Layout'). At least 1, with `log2_k + r ≤ 32`, so that `n ≤ 2^32`.
+    pub log2_inv_rate: u32,
+    /// `P`, the mask coefficients of each row: `P_A`, from 1 to `k`, for the advice, and 0 for a
+    /// weight matrix in `tessera-protocol/1` (RFC-0040).
     ///
     /// Hiding needs `P_A ≥ τ_A`. Soundness needs a rate `ρ = (k + P_A)/n` well below 1: at
     /// `P_A = k` the code is all of `Fp^n`, and the parameter sets keep `ρ ≤ 0.51` (RFC-0011
     /// 'Encoding', RFC-0014 'Parameter sets'). Both are rules of the parameter sets, which
     /// this crate does not check.
     pub mask_coeffs: usize,
-    /// `B`, the rows a column chain absorbs per step (RFC-0004 'Column digests'): 32 for the
-    /// advice commitment.
+    /// `B`, the rows a column chain absorbs per step (RFC-0004 'Column digests'): the parameter
+    /// set's row block, 32 in production and 4 at `test-small`, for the advice and the weights
+    /// alike (RFC-0031 'The weight matrices' row block').
     pub row_block: NonZeroUsize,
     /// The 32 bytes bound into the first digest of every column chain. They identify the
     /// commitment's descriptor, so that columns of different commitments never collide
-    /// (RFC-0011 'Column digests and root').
+    /// (RFC-0011 'Column digests and root', RFC-0031).
     pub commitment_id: Digest,
 }
 
-/// `k`, `n` and `P_A` of parameters that passed their checks.
+/// `k`, `n` and `P` of parameters that passed their checks, and how a column's leaf follows from
+/// its chains.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Shape {
     pub(crate) k: usize,
     pub(crate) n: usize,
     pub(crate) mask_coeffs: usize,
+    pub(crate) leaves: Leaves,
+}
+
+/// How a column's leaf follows from its chains.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Leaves {
+    /// The advice's: `H("column-merge", d_j^(1) ‖ … ‖ d_j^(S))` over every segment's chain
+    /// (RFC-0011 'Column digests and root').
+    Merged,
+    /// A weight matrix's: its one chain's last digest, `d_j[⌈m/B⌉]`, with no `column-merge`
+    /// (RFC-0040 'Encoding, leaves and roots').
+    Chained,
 }
 
 impl CommitmentParams {
-    /// Checks the parameters, in this order: [`PcsError::TooLong`] unless `n = 2k ≤ 2^32`,
-    /// [`PcsError::NoMask`] if `P_A = 0` and [`PcsError::MaskTooLarge`] if `P_A > k`.
-    pub(crate) fn shape(&self) -> Result<Shape, PcsError> {
-        let too_long = PcsError::TooLong {
-            log_len: self.log2_k.saturating_add(1),
-        };
-        if self.log2_k >= TWO_ADICITY {
+    /// `k` and `n = 2^r·k`, checked in this order: [`PcsError::InverseRate`] if `r = 0`, then
+    /// [`PcsError::TooLong`] unless `n ≤ 2^32`.
+    fn code(&self) -> Result<(usize, usize), PcsError> {
+        if self.log2_inv_rate == 0 {
+            return Err(PcsError::InverseRate {
+                log2_inv_rate: self.log2_inv_rate,
+            });
+        }
+        let log_n = self.log2_k.saturating_add(self.log2_inv_rate);
+        let too_long = PcsError::TooLong { log_len: log_n };
+        if log_n > TWO_ADICITY {
             return Err(too_long);
         }
         let k = 1usize.checked_shl(self.log2_k).ok_or(too_long)?;
-        let n = k.checked_mul(2).ok_or(too_long)?;
+        let n = 1usize.checked_shl(log_n).ok_or(too_long)?;
+        Ok((k, n))
+    }
+
+    /// Checks the parameters of a masked commitment whose leaves merge its segments, the
+    /// advice's, in this order: those of the code ([`PcsError::InverseRate`],
+    /// [`PcsError::TooLong`]), then [`PcsError::NoMask`] if `P_A = 0` and
+    /// [`PcsError::MaskTooLarge`] if `P_A > k`.
+    pub(crate) fn shape(&self) -> Result<Shape, PcsError> {
+        let (k, n) = self.code()?;
         if self.mask_coeffs == 0 {
             return Err(PcsError::NoMask);
         }
@@ -123,6 +161,25 @@ impl CommitmentParams {
             k,
             n,
             mask_coeffs: self.mask_coeffs,
+            leaves: Leaves::Merged,
+        })
+    }
+
+    /// Checks the parameters of an unmasked commitment of one chain per column, a weight
+    /// matrix's in `tessera-protocol/1`, in this order: those of the code, then
+    /// [`PcsError::UnexpectedMask`] unless `P = 0`.
+    fn unmasked_shape(&self) -> Result<Shape, PcsError> {
+        let (k, n) = self.code()?;
+        if self.mask_coeffs != 0 {
+            return Err(PcsError::UnexpectedMask {
+                mask_coeffs: self.mask_coeffs,
+            });
+        }
+        Ok(Shape {
+            k,
+            n,
+            mask_coeffs: 0,
+            leaves: Leaves::Chained,
         })
     }
 }
@@ -244,20 +301,20 @@ impl fmt::Debug for ReferenceCommitment {
 impl ReferenceCommitment {
     /// Commits to the matrix whose non-zero rows, listed by `layout`, hold `rows` (`N` rows of
     /// `k` values, one after another, in layout order) and whose other rows are zero. Each row
-    /// takes `P_A` mask coefficients from `mask`, row by row in layout order, `m_0` first.
+    /// takes `P_A` mask coefficients from `mask`, row by row in layout order, `m_0` first, and
+    /// each column's leaf merges its segments' chains (RFC-0011).
     ///
     /// The commitment takes the rows, secret-class values in their `Secret`, and keeps them for
-    /// its openings (05 §3 OBS-1). It allocates `N·(2k + P_A)` elements for the masks and
+    /// its openings (05 §3 OBS-1). It allocates `N·(n + P_A)` elements for the masks and
     /// codewords, cleared when it drops (OBS-6), and `3n` digests.
     ///
     /// # Errors
     ///
-    /// In this order, before anything is drawn or computed: [`PcsError::TooLong`] unless
-    /// `n = 2k ≤ 2^32`, [`PcsError::NoMask`] if `P_A = 0`, [`PcsError::MaskTooLarge`] if
-    /// `P_A > k`, and [`PcsError::MatrixLength`] unless `rows` holds `N·k` values. The layout
-    /// was checked when it was built ([`RowLayout::new`]). On error nothing is drawn from
-    /// `mask`, and `rows` is dropped.
-    #[allow(clippy::disallowed_methods)]
+    /// In this order, before anything is drawn or computed: [`PcsError::InverseRate`] if
+    /// `r = 0`, [`PcsError::TooLong`] unless `n = 2^r·k ≤ 2^32`, [`PcsError::NoMask`] if
+    /// `P_A = 0`, [`PcsError::MaskTooLarge`] if `P_A > k`, and [`PcsError::MatrixLength`] unless
+    /// `rows` holds `N·k` values. The layout was checked when it was built ([`RowLayout::new`]).
+    /// On error nothing is drawn from `mask`, and `rows` is dropped.
     pub fn commit<M: MaskSource + ?Sized>(
         params: CommitmentParams,
         layout: RowLayout,
@@ -265,6 +322,49 @@ impl ReferenceCommitment {
         mask: &mut M,
     ) -> Result<Self, PcsError> {
         let shape = params.shape()?;
+        Self::encode(params, shape, layout, rows, mask)
+    }
+
+    /// Commits to a weight matrix of `tessera-protocol/1` (RFC-0040 'Encoding, leaves and
+    /// roots'): the matrix whose committed rows, listed by `layout`'s one segment, hold `rows`,
+    /// and whose other rows are structurally zero. No row is masked, and each column is one chain
+    /// over the committed rows, whose last digest is the column's leaf, `leaf_j = d_j[⌈m/B⌉]`:
+    /// no `column-merge`. A matrix of no committed row has the leaves `d_j[0]`.
+    ///
+    /// It takes and keeps the rows as [`commit`](Self::commit) does, and allocates `N·n`
+    /// elements for the codewords.
+    ///
+    /// # Errors
+    ///
+    /// In this order, before anything is computed: [`PcsError::InverseRate`] if `r = 0`,
+    /// [`PcsError::TooLong`] unless `n = 2^r·k ≤ 2^32`, [`PcsError::UnexpectedMask`] unless
+    /// `P = 0`, [`PcsError::Segments`] unless the layout has one segment, and
+    /// [`PcsError::MatrixLength`] unless `rows` holds `N·k` values.
+    pub fn commit_unmasked(
+        params: CommitmentParams,
+        layout: RowLayout,
+        rows: Secret<Vec<Fp>>,
+    ) -> Result<Self, PcsError> {
+        let shape = params.unmasked_shape()?;
+        if layout.segments.len() != 1 {
+            return Err(PcsError::Segments {
+                segments: layout.segments.len(),
+            });
+        }
+        let mut none = || -> Fp { unreachable!("an unmasked encoding draws no mask coefficient") };
+        Self::encode(params, shape, layout, rows, &mut none)
+    }
+
+    /// Step 1 of the commitment on checked parameters: the masks and the codewords, then steps
+    /// 2 to 4.
+    #[allow(clippy::disallowed_methods)]
+    fn encode<M: MaskSource + ?Sized>(
+        params: CommitmentParams,
+        shape: Shape,
+        layout: RowLayout,
+        rows: Secret<Vec<Fp>>,
+        mask: &mut M,
+    ) -> Result<Self, PcsError> {
         let values = rows.expose_secret();
         // N·k with no product that could overflow.
         if !values.len().is_multiple_of(shape.k) || values.len() / shape.k != layout.rows {
@@ -274,19 +374,28 @@ impl ReferenceCommitment {
                 found: values.len(),
             });
         }
-        let encoder = RowEncoder::new(shape.k, shape.mask_coeffs)?;
-        // N·P_A ≤ N·k and N·n = 2·N·k: a vector of N·k elements exists, so neither overflows.
+        // N·n = 2^r·N·k elements, a length no buffer has when it overflows.
+        let symbols =
+            values
+                .len()
+                .checked_mul(shape.n / shape.k)
+                .ok_or(PcsError::CodewordLength {
+                    expected: usize::MAX,
+                    found: 0,
+                })?;
+        let encoder = RowEncoder::new(shape.k, params.log2_inv_rate, shape.mask_coeffs)?;
+        // N·P ≤ N·k: a vector of N·k elements exists, so it does not overflow.
         let mut masks = SecretBuf::filled(Fp::ZERO, layout.rows * shape.mask_coeffs);
         for coefficient in masks.iter_mut() {
             *coefficient = mask.draw();
         }
-        let mut codewords = SecretBuf::filled(Fp::ZERO, 2 * values.len());
-        // The encoder draws P_A coefficients per row, row after row: the masks just drawn.
+        let mut codewords = SecretBuf::filled(Fp::ZERO, symbols);
+        // The encoder draws P coefficients per row, row after row: the masks just drawn.
         let mut drawn = masks.iter().copied();
         let mut replay = || {
             drawn
                 .next()
-                .expect("the encoder draws P_A coefficients per row")
+                .expect("the encoder draws P coefficients per row")
         };
         encoder.encode_rows(values, &mut replay, &mut codewords)?;
         Ok(Self::from_encoded(
@@ -296,7 +405,8 @@ impl ReferenceCommitment {
 
     /// Steps 2 to 4 of the commitment, from the codewords: the chains of each segment, the
     /// leaves and the tree. The shapes are the caller's to check: `codewords` holds `N` rows
-    /// of `n` symbols, `rows` and `masks` `N` rows of `k` and `P_A`.
+    /// of `n` symbols, `rows` and `masks` `N` rows of `k` and `P`, and a commitment of chained
+    /// leaves has one segment.
     pub(crate) fn from_encoded(
         params: CommitmentParams,
         shape: Shape,
@@ -322,15 +432,18 @@ impl ReferenceCommitment {
             digests.push(chains.finish());
             rest = after;
         }
-        let leaves: Vec<Digest> = (0..n)
-            .map(|j| {
-                let mut merge = Hasher::new(Domain::ColumnMerge);
-                for segment in &digests {
-                    merge.update(&segment[j]);
-                }
-                merge.finalize()
-            })
-            .collect();
+        let leaves: Vec<Digest> = match shape.leaves {
+            Leaves::Chained => digests.pop().expect("a chained commitment has one segment"),
+            Leaves::Merged => (0..n)
+                .map(|j| {
+                    let mut merge = Hasher::new(Domain::ColumnMerge);
+                    for segment in &digests {
+                        merge.update(&segment[j]);
+                    }
+                    merge.finalize()
+                })
+                .collect(),
+        };
         let tree = MerkleTree::new(leaves.clone()).expect("n is a power of two");
         Self {
             params,
@@ -349,8 +462,9 @@ impl ReferenceCommitment {
         self.tree.root()
     }
 
-    /// The leaves `leaf_j = H("column-merge", d_j^(1) ‖ … ‖ d_j^(S))`, one per column, in
-    /// column order. Digests are public (05 §3).
+    /// The leaves, one per column, in column order: `leaf_j = H("column-merge", d_j^(1) ‖ … ‖
+    /// d_j^(S))` for [`commit`](Self::commit), and the one chain's `d_j[⌈m/B⌉]` for
+    /// [`commit_unmasked`](Self::commit_unmasked). Digests are public (05 §3).
     pub fn leaves(&self) -> &[Digest] {
         &self.leaves
     }
@@ -370,7 +484,7 @@ impl ReferenceCommitment {
         self.shape.k
     }
 
-    /// `n = 2k`, the symbols in a codeword and the columns of the commitment.
+    /// `n = 2^r·k`, the symbols in a codeword and the columns of the commitment.
     pub fn codeword_len(&self) -> usize {
         self.shape.n
     }

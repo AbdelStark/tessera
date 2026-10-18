@@ -300,6 +300,7 @@ fn benchmarks(s: &Sizes) -> Vec<Bench> {
     let (rows, k, groups_n, mask_coeffs) = (1usize << rows_log, 1usize << log2_k, 4, 16);
     let params = CommitmentParams {
         log2_k,
+        log2_inv_rate: 1,
         mask_coeffs,
         row_block: NonZeroUsize::new(32).expect("a block"),
         commitment_id: [0x65; 32],

@@ -25,11 +25,9 @@ mod graph;
 mod model;
 mod op;
 mod types;
+mod weights;
 
-pub use claim::{
-    AdviceLayoutParams, ClaimList, CommitmentLayout, GadgetPolicy, PROTOCOL_VERSION,
-    WeightLayoutParams,
-};
+pub use claim::{ClaimList, CommitmentLayout, GadgetPolicy, PROTOCOL_VERSION};
 pub use error::IrError;
 pub use files::LogitsFile;
 pub use graph::{Graph, GraphBuilder, Node};
@@ -39,6 +37,9 @@ pub use model::{
 };
 pub use op::{Broadcast, Op, OpClass};
 pub use tessera_hash::ParamSetId;
+// The claim list's commitment layouts are the commitment crate's, field for field (RFC-0040
+// 'Migration / Rollout').
+pub use tessera_pcs::{AdviceLayoutParams, WeightLayoutParams};
 pub use tessera_tables::TableId;
 pub use types::{
     CommitmentClass, ConstRef, GadgetId, IntRange, IntType, NodeId, NodeKind, PrfRef,

@@ -71,7 +71,7 @@ fn codewords_pass_the_degree_test_on_random_subsets_and_a_corrupted_one_fails() 
                 // P = k: degree below n, which every word of n symbols has.
                 continue;
             }
-            let encoder = RowEncoder::new(k, p).expect("valid parameters");
+            let encoder = RowEncoder::new(k, 1, p).expect("valid parameters");
             let row = rng.fps(k);
             let (codeword, _) = encode(&encoder, &row, &mut rng);
             for _ in 0..3 {
@@ -117,7 +117,7 @@ fn the_mask_vanishes_on_h_and_sits_in_the_top_coefficients() {
     for log_k in 0..=8 {
         let k = 1usize << log_k;
         for p in mask_counts(k) {
-            let encoder = RowEncoder::new(k, p).expect("valid parameters");
+            let encoder = RowEncoder::new(k, 1, p).expect("valid parameters");
             let row = rng.fps(k);
             let (codeword, mask) = encode(&encoder, &row, &mut rng);
             // g's coefficients, by the inverse DFT on 7·L as a sum.
@@ -151,7 +151,7 @@ fn noiseless_codewords_decode_to_their_row_whatever_the_mask() {
     for log_k in [0, 1, 2, 3, 5, 8, 11, 14, 16] {
         let k = 1usize << log_k;
         for p in mask_counts(k) {
-            let encoder = RowEncoder::new(k, p).expect("valid parameters");
+            let encoder = RowEncoder::new(k, 1, p).expect("valid parameters");
             let row = rng.fps(k);
             let (first, _) = encode(&encoder, &row, &mut rng);
             let (second, _) = encode(&encoder, &row, &mut rng);
@@ -172,7 +172,7 @@ fn noiseless_codewords_decode_to_their_row_whatever_the_mask() {
 #[test]
 fn a_zero_row_with_no_mask_is_the_zero_codeword_and_a_constant_row_a_constant_one() {
     for k in [1, 2, 64] {
-        let encoder = RowEncoder::new(k, 0).expect("valid parameters");
+        let encoder = RowEncoder::new(k, 1, 0).expect("valid parameters");
         let mut codeword = vec![Fp::ONE; 2 * k];
         let mut never = || -> Fp { unreachable!("P = 0 draws nothing") };
         encoder
@@ -189,7 +189,7 @@ fn a_zero_row_with_no_mask_is_the_zero_codeword_and_a_constant_row_a_constant_on
 #[test]
 fn the_codeword_buffer_is_overwritten_whatever_it_held() {
     let mut rng = SplitMix64::new(0x7E55_E7A0_0047_0204);
-    let encoder = RowEncoder::new(256, 20).expect("valid parameters");
+    let encoder = RowEncoder::new(256, 1, 20).expect("valid parameters");
     let row = rng.fps(256);
     let mask = rng.fps(20);
     let mut clean = vec![Fp::ZERO; 512];
@@ -213,7 +213,7 @@ fn a_batch_is_its_rows_encoded_in_turn_from_one_source() {
         (1024, 200, 4),
         (16, 0, 0),
     ] {
-        let encoder = RowEncoder::new(k, p).expect("valid parameters");
+        let encoder = RowEncoder::new(k, 1, p).expect("valid parameters");
         let rows = rng.fps(k * count);
         let masks = rng.fps(p * count);
         let mut batch = vec![Fp::ZERO; 2 * k * count];
@@ -237,7 +237,7 @@ fn a_batch_is_its_rows_encoded_in_turn_from_one_source() {
 fn mask_coefficients_are_drawn_in_order_m0_first() {
     // Swapping two drawn coefficients changes the codeword: the order is part of the encoding.
     let mut rng = SplitMix64::new(0x7E55_E7A0_0047_0206);
-    let encoder = RowEncoder::new(32, 4).expect("valid parameters");
+    let encoder = RowEncoder::new(32, 1, 4).expect("valid parameters");
     let row = rng.fps(32);
     let mask = rng.fps(4);
     let mut swapped = mask.clone();
@@ -256,7 +256,7 @@ fn mask_coefficients_are_drawn_in_order_m0_first() {
 
 #[test]
 fn a_closure_is_a_mask_source_and_so_is_a_trait_object() {
-    let encoder = RowEncoder::new(4, 2).expect("valid parameters");
+    let encoder = RowEncoder::new(4, 1, 2).expect("valid parameters");
     let row = [Fp::ONE; 4];
     let mut counter = 0u64;
     let mut closure = || {
@@ -279,7 +279,7 @@ fn a_closure_is_a_mask_source_and_so_is_a_trait_object() {
 
 #[test]
 fn accessors_and_debug_show_the_parameters_only() {
-    let encoder = RowEncoder::new(1 << 10, 200).expect("valid parameters");
+    let encoder = RowEncoder::new(1 << 10, 1, 200).expect("valid parameters");
     assert_eq!(encoder.message_len(), 1024);
     assert_eq!(encoder.codeword_len(), 2048);
     assert_eq!(encoder.mask_coeffs(), 200);

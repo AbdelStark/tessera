@@ -86,6 +86,7 @@ impl Opened {
         let xi_point: Vec<Fp2> = (0..row_vars).map(|_| fp2(&mut rng)).collect();
         let params = CommitmentParams {
             log2_k,
+            log2_inv_rate: 1,
             mask_coeffs,
             row_block: NonZeroUsize::new(row_block).expect("non-zero"),
             commitment_id: [seed as u8; 32],

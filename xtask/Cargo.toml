@@ -21,4 +21,8 @@ tessera-field = { path = "../crates/tessera-field" }
 # The IntegerModel vector comes from its Rust types, and the claim lists from the compiler.
 tessera-compiler = { path = "../crates/tessera-compiler" }
 tessera-ir = { path = "../crates/tessera-ir" }
+# The weight commitment's golden vectors come from its Rust types; the states' bytes are laid
+# out from RFC-0040's field list (src/weight_vectors.rs). Never with a test-only feature: a normal
+# dependency's features reach every build of the workspace, release builds included.
+tessera-pcs = { path = "../crates/tessera-pcs" }
 toml = { version = "1", default-features = false, features = ["std", "parse", "serde"] }

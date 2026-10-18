@@ -36,7 +36,7 @@ fn a_length_that_is_not_a_power_of_two_is_refused() {
     for len in [0, 3, 5, 6, 7, 12, 1000, (1 << 20) + 1, usize::MAX] {
         let error = PcsError::NotPowerOfTwo { len };
         assert_eq!(NttPlan::new(len).map(|_| ()), Err(error));
-        assert_eq!(RowEncoder::new(len, 0).map(|_| ()), Err(error));
+        assert_eq!(RowEncoder::new(len, 1, 0).map(|_| ()), Err(error));
     }
 }
 
@@ -52,7 +52,7 @@ fn a_transform_above_two_to_the_thirty_two_points_is_refused() {
     // A row of 2^32 values would need a codeword of 2^33.
     for log_k in 32..usize::BITS {
         assert_eq!(
-            RowEncoder::new(1 << log_k, 0).map(|_| ()),
+            RowEncoder::new(1 << log_k, 1, 0).map(|_| ()),
             Err(PcsError::TooLong { log_len: log_k + 1 })
         );
     }
@@ -111,7 +111,7 @@ fn more_mask_coefficients_than_row_values_are_refused() {
         (2, usize::MAX),
     ] {
         assert_eq!(
-            RowEncoder::new(k, p).map(|_| ()),
+            RowEncoder::new(k, 1, p).map(|_| ()),
             Err(PcsError::MaskTooLarge {
                 mask_coeffs: p,
                 message_len: k
@@ -119,9 +119,9 @@ fn more_mask_coefficients_than_row_values_are_refused() {
         );
     }
     // P = k is the largest mask, and the length is checked first.
-    assert!(RowEncoder::new(8, 8).is_ok());
+    assert!(RowEncoder::new(8, 1, 8).is_ok());
     assert_eq!(
-        RowEncoder::new(6, 9).map(|_| ()),
+        RowEncoder::new(6, 1, 9).map(|_| ()),
         Err(PcsError::NotPowerOfTwo { len: 6 })
     );
 }
@@ -143,7 +143,7 @@ fn refused_row(encoder: &RowEncoder, row: &[Fp], codeword_len: usize, error: Pcs
 
 #[test]
 fn a_row_of_the_wrong_length_is_refused() {
-    let encoder = RowEncoder::new(8, 3).expect("valid parameters");
+    let encoder = RowEncoder::new(8, 1, 3).expect("valid parameters");
     for found in [0, 7, 9, 16] {
         let error = PcsError::RowLength { expected: 8, found };
         refused_row(&encoder, &vec![Fp::ONE; found], 16, error);
@@ -154,7 +154,7 @@ fn a_row_of_the_wrong_length_is_refused() {
 
 #[test]
 fn a_codeword_buffer_of_the_wrong_length_is_refused() {
-    let encoder = RowEncoder::new(8, 3).expect("valid parameters");
+    let encoder = RowEncoder::new(8, 1, 3).expect("valid parameters");
     for found in [0, 8, 15, 17, 32] {
         let error = PcsError::CodewordLength {
             expected: 16,
@@ -181,7 +181,7 @@ fn refused_rows(encoder: &RowEncoder, rows: usize, codewords: usize, error: PcsE
 
 #[test]
 fn a_batch_that_is_not_a_whole_number_of_rows_is_refused() {
-    let encoder = RowEncoder::new(8, 3).expect("valid parameters");
+    let encoder = RowEncoder::new(8, 1, 3).expect("valid parameters");
     for len in [1, 7, 9, 23] {
         let error = PcsError::PartialRow { len, row_len: 8 };
         refused_rows(&encoder, len, 2 * len, error);
@@ -192,7 +192,7 @@ fn a_batch_that_is_not_a_whole_number_of_rows_is_refused() {
 
 #[test]
 fn a_batch_codeword_buffer_of_the_wrong_length_is_refused() {
-    let encoder = RowEncoder::new(8, 3).expect("valid parameters");
+    let encoder = RowEncoder::new(8, 1, 3).expect("valid parameters");
     for (rows, found) in [(0, 1), (8, 0), (8, 15), (8, 32), (24, 47), (24, 16)] {
         let error = PcsError::CodewordLength {
             expected: 2 * rows,
@@ -317,6 +317,7 @@ fn every_error_says_what_was_wrong_in_numbers() {
 fn params(log2_k: u32, mask_coeffs: usize) -> CommitmentParams {
     CommitmentParams {
         log2_k,
+        log2_inv_rate: 1,
         mask_coeffs,
         row_block: NonZeroUsize::new(32).expect("non-zero"),
         commitment_id: [1; 32],

@@ -83,6 +83,7 @@ fn run(rng: &mut SplitMix64, log_k: u32, rows: usize, runs: usize) {
     let k = 1usize << log_k;
     let params = CommitmentParams {
         log2_k: log_k,
+        log2_inv_rate: 1,
         mask_coeffs: k.min(200),
         row_block: NonZeroUsize::new(32).expect("non-zero"),
         commitment_id: [0x54; 32],

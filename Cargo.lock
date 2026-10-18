@@ -548,6 +548,7 @@ version = "0.1.0"
 dependencies = [
  "allocation-counter",
  "blake3",
+ "getrandom 0.3.4",
  "proptest",
  "serde_json",
  "tessera-codec-derive",
@@ -645,6 +646,7 @@ dependencies = [
  "serde_json",
  "tessera-codec",
  "tessera-hash",
+ "tessera-pcs",
  "tessera-tables",
 ]
 
@@ -667,6 +669,7 @@ dependencies = [
 name = "tessera-pcs"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.3.4",
  "serde_json",
  "tessera-codec",
  "tessera-field",
@@ -924,6 +927,7 @@ dependencies = [
  "tessera-compiler",
  "tessera-field",
  "tessera-ir",
+ "tessera-pcs",
  "toml",
 ]
 

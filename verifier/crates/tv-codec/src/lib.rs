@@ -215,6 +215,7 @@ mod error;
 mod limits;
 mod rational;
 pub mod size;
+mod weights;
 
 pub use cursor::{Cursor, decode};
 pub use envelope::{
@@ -224,3 +225,4 @@ pub use envelope::{
 pub use error::{DecodeError, ErrorCode};
 pub use limits::DecodeLimits;
 pub use rational::Rational;
+pub use weights::{WEIGHTS_ROOT_CONTEXT, WeightCommitmentPublic, WeightLayoutParams};

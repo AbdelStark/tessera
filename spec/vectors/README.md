@@ -6,7 +6,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 |---|---|---|
 | [`blake3/`](blake3/README.md) | BLAKE3's official test vectors | copied unmodified from the BLAKE3 repository |
 | `claims/` | The conformance models' claim lists for `test-small/1`, RFC-0007 and RFC-0026: each sealed envelope and its digest | `cargo xtask gen-vectors`, from `tessera-compiler`'s emission, after the models' oracle |
-| [`codec/`](codec/README.md) | The canonical encoding, RFC-0003: golden values, non-canonical inputs, envelopes; the conformance models' execution plans, RFC-0041 | `cargo xtask gen-vectors`, from the cases of `tessera-codec` and `tessera-field`, and the plans from `tessera-compiler`'s derivation, after the models' oracle |
+| [`codec/`](codec/README.md) | The canonical encoding, RFC-0003: golden values, non-canonical inputs, envelopes; the conformance models' execution plans, RFC-0041; the weight commitment's artifacts, RFC-0040 | `cargo xtask gen-vectors`, from the cases of `tessera-codec` and `tessera-field`, and the plans from `tessera-compiler`'s derivation, after the models' oracle |
 | [`cost-model/`](cost-model/README.md) | The source's `μ` projections and the cost model on them, RFC-0020 | its oracle |
 | [`encoding/`](encoding/README.md) | The advice commitment's encoding conventions, RFC-0011: its transforms, coset and mask | its oracle |
 | `errors/` | The error codes of 04 §3, with their classes and exit codes | kept by hand; a test keeps it, the specification's table and the error enum equal |
@@ -24,6 +24,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | [`sumcheck/`](sumcheck/README.md) | Honest sumcheck proofs, RFC-0010 | its oracle |
 | `tables/` | RFC-0008's table kinds: specifications, digests, rows and lookups at the edges of their keys | its oracle |
 | `transcript/` | Fiat–Shamir transcript sessions, RFC-0004 | its oracle |
+| [`weights/`](weights/README.md) | The weight commitment of the conformance models at `test-small/1`, RFC-0040: each matrix's layout, `commitment_id` and root, `R_W` and the `.twr` artifacts; rows encoded at rate 1/4 | its oracle, after the models' |
 
 An oracle is the set's `generate.py`: an independent implementation in standard-library Python, written from the specification, sharing no code with `crates/`, `verifier/` or `python/`. Oracles may import one another, as `models/` takes its tables from `tables/` and its BLAKE3 from `hash/`.
 
