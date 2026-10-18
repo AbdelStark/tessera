@@ -80,7 +80,7 @@ Its TCE encoding is RFC-0003's: a `u16` tag, the variant's declaration index, th
 | 5.3 | the derived tables against the claim list's, id for id | `Table { table }`, the first id whose two specifications differ, or that only one side has |
 | 6 | the commitment parameters and the advice layout | `Layout` |
 | 7 | the scoring and anchor templates | `Template` |
-| RFC-0019 step 4 | the proof's `PublicStatement` against the one the verifier's inputs give | the first field that differs, in declaration order ([RFC-0036](RFC-0036-protocol-messages.md#round1)): `ClaimListDigest`, `WeightsRoot`, `WeightsEpoch`, `ManifestDigest`, `Batch`, `Predictor` |
+| RFC-0019 step 4 | the proof's `PublicStatement` against the one the verifier's inputs give | the first field that differs, in declaration order ([RFC-0036](RFC-0036-protocol-messages.md#round1)): `ClaimListDigest`, `WeightsRoot`, `WeightsEpoch`, `ManifestDigest`, `Batch`, `Predictor`. `Batch` includes a request outside the audit sample or already proven ([RFC-0043](RFC-0043-rejection-payloads.md#the-audit-samples-checks)) |
 | RFC-0019 step 4 | the weight commitment's layout against the claim list's ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-verifiers-weight-inputs)) | `Layout` |
 | RFC-0019 step 4 | `Round1`'s `layout_digest` against the `commitment_id` the verifier derives ([RFC-0031](RFC-0031-commitment-id.md#layout_digest)) | `LayoutDigest` |
 

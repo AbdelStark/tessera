@@ -619,6 +619,12 @@ All notable changes to the prover release train are recorded here: the crates un
   - **`tessera-compiler`** emits the field, and `PublicModel::of_claims` lowers a claim list from its own fields, as the verifier will. For every conformance model, that gives the graph and tables that lowering `D` gives.
   - **`spec/vectors/claims/claim-lists.json`** is regenerated.
   - Amended: RFC-0007 'Schema' and step 2, RFC-0026 'Schema' and 03 §2. RFC-0039's Non-Goals now say that `rms_eps_int` and `rsqrt_kappa` are stated constants, which validation does not derive from `rms_eps` (RFC-0023).
+- RFC-0043, accepted, defines the payloads of `Reject(Malformed)`, `Reject(ProofOfWork)`, `Reject(Anchor)` and `Reject(Params)` ([#353](https://github.com/AbdelStark/tessera/issues/353)):
+  - **`ArtifactKind`** is the schema id of an artifact the prover sends (`ProverSeedShare`, `Round1`, `Round2Response`, `Round3Response`, `NiProof`, or a batch's `DigestLogEntry`). One of the verifier's own inputs that fails to decode is `Inconclusive(ERR-CODEC-*)`, as 04 §5 already said and RFC-0019 step 1 now does.
+  - **`PowPhase`** is `{ Seed, Queries }`. **`ParamSetName`** is RFC-0014's `ParamSetId`.
+  - **`AnchorFailure`** is `{ ManifestSignature, Inclusion, Frames }`, RFC-0015's checks 1 and 2. `Anchor.request_id` is now an `Option<u64>`, `None` for the manifest's signature.
+  - **RFC-0016's checks** reject as `StatementMismatch { ManifestDigest }` and `{ Batch }`, a replayed request included.
+  - Amended: 04 §2, RFC-0015 and RFC-0016 'Verifier checks', RFC-0019 step 1 and RFC-0039 'The checks'.
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

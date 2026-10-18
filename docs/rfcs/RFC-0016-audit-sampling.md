@@ -72,6 +72,8 @@ For each proof:
 2. Every request in `statement.batch` is in `selected` and has not appeared in an earlier accepted batch.
 3. The anchor checks of RFC-0015 pass for every request.
 
+Checks 1 and 2 are statement fields of RFC-0019 step 4: `Reject(StatementMismatch { field: ManifestDigest })` and `{ field: Batch }`, a replayed request included. Check 3 fails as `Reject(Anchor)` ([RFC-0043](RFC-0043-rejection-payloads.md#the-audit-samples-checks)).
+
 At the deadline, the verifier emits the audit report.
 
 ### Audit report

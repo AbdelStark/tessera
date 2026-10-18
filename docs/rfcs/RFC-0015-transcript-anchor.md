@@ -124,7 +124,7 @@ Before `Round1`, the prover re-encrypts its stored transcripts, recomputes every
 3. The batch's requests equal the audit sample's requests for this manifest ([RFC-0016](RFC-0016-audit-sampling.md#verifier-checks)).
 4. The circuits' public inputs are exactly these digests and commitments.
 
-Any failure is `Reject(Anchor { request_id, kind })`.
+Checks 1 and 2 fail as `Reject(Anchor { request_id, kind })`, with the kinds of [RFC-0043](RFC-0043-rejection-payloads.md#anchor) and no request for the manifest's signature. Check 3 is RFC-0016's. Check 4 cannot fail on its own: the verifier makes the entries' digests and commitments the circuits' public inputs itself.
 
 ### Invariants
 
