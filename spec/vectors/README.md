@@ -6,7 +6,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 |---|---|---|
 | [`blake3/`](blake3/README.md) | BLAKE3's official test vectors | copied unmodified from the BLAKE3 repository |
 | `claims/` | The conformance models' claim lists for `test-small/1`, RFC-0007 and RFC-0026: each sealed envelope and its digest | `cargo xtask gen-vectors`, from `tessera-compiler`'s emission, after the models' oracle |
-| [`codec/`](codec/README.md) | The canonical encoding, RFC-0003: golden values, non-canonical inputs, envelopes | `cargo xtask gen-vectors`, from the cases of `tessera-codec` and `tessera-field` |
+| [`codec/`](codec/README.md) | The canonical encoding, RFC-0003: golden values, non-canonical inputs, envelopes; the conformance models' execution plans, RFC-0041 | `cargo xtask gen-vectors`, from the cases of `tessera-codec` and `tessera-field`, and the plans from `tessera-compiler`'s derivation, after the models' oracle |
 | [`cost-model/`](cost-model/README.md) | The source's `μ` projections and the cost model on them, RFC-0020 | its oracle |
 | [`encoding/`](encoding/README.md) | The advice commitment's encoding conventions, RFC-0011: its transforms, coset and mask | its oracle |
 | `errors/` | The error codes of 04 §3, with their classes and exit codes | kept by hand; a test keeps it, the specification's table and the error enum equal |

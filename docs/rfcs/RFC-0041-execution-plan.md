@@ -109,7 +109,7 @@ pub enum Tile {
 
 - **Sequence length.** A lowering's node and tensor ids do not depend on the sequence's length; only shapes do. The plan therefore holds one sequence's tiles for every length. An `Attention` tile stands for its query blocks, which a length of `n` expands into `N / Q'` tiles in order.
 - **Determinism.** `compile` writes the plan from the claim list it emits. Compiling twice gives the same bytes, as RFC-0006's determinism test requires, and the plan holds no secret value: the claim list is public, and the tiles follow from it.
-- **Checking.** The plan's readers, `tessera prove` and `tessera commit-weights`, also take `D`. Each compiles `D`'s claim list for the plan's parameter set and derives its tiles. A plan whose `claims` or `tiles` differ is refused (`ERR-USAGE`): it is not `D`'s plan. The verifier never reads a plan.
+- **Checking.** The plan's readers, `tessera prove` and `tessera commit-weights`, also take `D`. Each compiles `D`'s claim list for the plan's gadget policy, layout and parameter set, and derives its tiles. A plan whose `claims` or `tiles` differ is refused (`ERR-USAGE`): it is not `D`'s plan. The verifier never reads a plan.
 - **What the plan does not hold.**
   - **Row ranges** are the advice layout's: a function of the claim list and the batch (RFC-0011).
   - **Stage membership** is the stage schedule's, which the prover derives from the lowering, as the verifier does (RFC-0037).

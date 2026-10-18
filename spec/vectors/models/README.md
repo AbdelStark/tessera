@@ -64,6 +64,7 @@ For each model and sequence of `models.json`, in the same order, `models[].seque
 ## Who checks them
 
 - `crates/tessera-compiler` (`tests/lower.rs`) lowers each model and runs the graph on its exact interpreter. It checks every value against its analyzed range, and the logits bit for bit against `logits`, as does its token-by-token reference.
+- `crates/tessera-compiler` (`tests/plan.rs`) derives each model's execution plan (RFC-0041). Its tiles partition every committed element at lengths up to the context. Each attention tile holds the query heads that read its KV head's keys, as the maxima of `traces.json` show.
 - `crates/tessera-e2e` opens each artifact under the `IntegerModel` limits, checks it re-encodes to its bytes, and checks that the compiler validates, lowers and selects gadgets for every sequence (`tests/conformance_models.rs`). It runs the CPU engine on every sequence and compares each tensor of `traces.json` but the maxima, which the gadgets compute, reporting the first tensor and index that diverge. Every committed tensor of the lowering has its name in the traces (`tests/differential.rs`, SC-7).
 - `crates/tessera-witness` (`tests/engine.rs`) runs the CPU engine and gives `residuals` and `logits`.
 - `verifier/crates/tv-codec` (`tests/models.rs`) opens each envelope under the `IntegerModel` limits with the test kit's BLAKE3 and the index's digest.

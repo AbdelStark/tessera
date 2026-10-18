@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use tessera_codec::{Ascii, DecodeLimits, envelope, schema};
 use tessera_compiler::{PublicModel, analyze, claim_list, lower, select};
 use tessera_ir::{
-    AdviceLayoutParams, CommitmentLayout, GadgetPolicy, IntegerModel, ParamSetId,
+    AdviceLayoutParams, ClaimList, CommitmentLayout, GadgetPolicy, IntegerModel, ParamSetId,
     WeightLayoutParams,
 };
 
@@ -23,7 +23,7 @@ pub(crate) const PATH: &str = "spec/vectors/claims/claim-lists.json";
 pub(crate) const MODELS: &str = "spec/vectors/models/models.json";
 
 /// `test-small/1`, the parameter set of the conformance models' claim lists.
-const PARAMS: &str = "test-small/1";
+pub(crate) const PARAMS: &str = "test-small/1";
 
 /// `test-small/1`'s layout (RFC-0014 'Parameter sets').
 const LAYOUT: CommitmentLayout = CommitmentLayout {
@@ -42,19 +42,20 @@ const LAYOUT: CommitmentLayout = CommitmentLayout {
     },
 };
 
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// The claim lists of the conformance models in the tree at `repo`, as the file's text.
-pub(crate) fn render(repo: &Path) -> Result<String, String> {
+/// The conformance models in the tree at `repo`, in the index's order: each one's name, file and
+/// model.
+pub(crate) fn models(repo: &Path) -> Result<Vec<(String, String, IntegerModel)>, String> {
     let dir = repo.join("spec/vectors/models");
     let index = fs::read_to_string(repo.join(MODELS)).map_err(|e| format!("{MODELS}: {e}"))?;
     let index: Value = serde_json::from_str(&index).map_err(|e| format!("models.json: {e}"))?;
     let entries = index["models"]
         .as_array()
         .ok_or("models.json lists no models")?;
-    let mut cases = Vec::new();
+    let mut models = Vec::new();
     for entry in entries {
         let name = entry["name"].as_str().ok_or("a model without a name")?;
         let file = entry["file"].as_str().ok_or("a model without a file")?;
@@ -62,16 +63,29 @@ pub(crate) fn render(repo: &Path) -> Result<String, String> {
         let model: IntegerModel =
             envelope::open(&bytes, &schema::INTEGER_MODEL, DecodeLimits::INTEGER_MODEL)
                 .map_err(|e| format!("{file}: {e}"))?;
-        let public = PublicModel::of(&model);
-        // One token: every length gives the same tables, as the compiler's tests check.
-        let lowering = lower(public, 1).map_err(|e| format!("{name}: {e}"))?;
-        let ranges =
-            analyze(&lowering.graph, &lowering.tables).map_err(|e| format!("{name}: {e}"))?;
-        let policy = GadgetPolicy::default();
-        let selection = select(&lowering.graph, &ranges, &lowering.tables, &policy)
-            .map_err(|e| format!("{name}: {e}"))?;
-        let params = ParamSetId(Ascii::new(PARAMS).map_err(|_| "an ASCII parameter set")?);
-        let claims = claim_list(public, &selection, &policy, LAYOUT, params);
+        models.push((name.to_owned(), file.to_owned(), model));
+    }
+    Ok(models)
+}
+
+/// The claim list of the model `name` for `test-small/1`, under the default gadget policy.
+pub(crate) fn claims(name: &str, model: &IntegerModel) -> Result<ClaimList, String> {
+    let public = PublicModel::of(model);
+    // One token: every length gives the same tables, as the compiler's tests check.
+    let lowering = lower(public, 1).map_err(|e| format!("{name}: {e}"))?;
+    let ranges = analyze(&lowering.graph, &lowering.tables).map_err(|e| format!("{name}: {e}"))?;
+    let policy = GadgetPolicy::default();
+    let selection = select(&lowering.graph, &ranges, &lowering.tables, &policy)
+        .map_err(|e| format!("{name}: {e}"))?;
+    let params = ParamSetId(Ascii::new(PARAMS).map_err(|_| "an ASCII parameter set")?);
+    Ok(claim_list(public, &selection, &policy, LAYOUT, params))
+}
+
+/// The claim lists of the conformance models in the tree at `repo`, as the file's text.
+pub(crate) fn render(repo: &Path) -> Result<String, String> {
+    let mut cases = Vec::new();
+    for (name, file, model) in models(repo)? {
+        let claims = claims(&name, &model)?;
         let sealed = envelope::seal(&schema::CLAIM_LIST, &claims);
         cases.push(json!({
             "name": name,
