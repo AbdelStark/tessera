@@ -14,9 +14,14 @@ One issue, one branch, one pull request, merged before the next issue starts. [C
 5. **Document.** Rustdoc on every public item (`missing_docs` fails CI). A changelog entry for the release train the change touches. README and `AGENTS.md` when commands, gates or invariants change. Done when `cargo xtask lint` passes.
 6. **Validate**, narrow to wide: the crate's tests, then every command in `AGENTS.md`, in both workspaces. For code that decides acceptance or handles secrets, apply the `soundness-review` checklist; for code under `verifier/`, follow `verifier-independence`. Done when every gate is green and its result is recorded for the pull request, every count and figure from a run you made yourself: a delegated agent's report is a claim to check, not a result.
 7. **Commit** with `git commit -s`: an imperative subject of at most 72 characters with the issue's area prefix, a body that says why, and `Closes #N`. Done when `cargo xtask check-pr --base origin/main` passes.
-8. **Open the pull request**: `gh pr create --base main` with the sections of `.github/pull_request_template.md` (Problem, Solution, Validation, Caveats). Set the milestone with `gh api -X PATCH repos/AbdelStark/tessera/issues/<PR> -F milestone=<number>`; `gh pr edit` fails on this repository. Done when the pull request exists and links the issue.
-9. **Wait for CI**: `gh pr checks <PR> --watch`. On failure, read the failing step's log (`gh run view <run> --log-failed`), fix, push, and wait again. Done when the merge state is `CLEAN`.
-10. **Comment** on the issue: what was implemented, the pull-request link, and the validation results. Then merge with `gh pr merge <PR> --merge --delete-branch`, confirm the issue closed, and return to `main` with `git checkout main && git pull --ff-only`.
+8. **Open the pull request**: `gh pr create --base main --milestone <milestone> --label <label>…` with the sections of `.github/pull_request_template.md` (Problem, Solution, Validation, Caveats). `gh pr edit` fails on this repository, so a later change to the description goes through `gh api -X PATCH repos/AbdelStark/tessera/pulls/<PR> -F body=@<file>`. Done when the pull request exists and its `closingIssuesReferences` (GraphQL) name exactly the issues it closes.
+9. **Wait for CI**: `gh pr checks <PR> --watch`. On failure, read the failing step's log (`gh run view <run> --log-failed`), fix, push, and wait again.
+   - `main` requires branches to be up to date. When it moves first, rebase onto `origin/main`.
+   - Resolve every file that `git diff --name-only --diff-filter=U` lists. `CHANGELOG.md`, `SPEC.md`'s RFC index and 03 §5's catalog collect concurrent additions, so keep both sides' entries, in order.
+   - `cargo xtask lint` rejects a leftover conflict marker.
+
+   Done when the merge state is `CLEAN`.
+10. **Comment** on the issue: what was implemented, the pull-request link, and the validation results. Then merge with `gh pr merge <PR> --merge --match-head-commit <sha> --delete-branch`, `<sha>` being the head whose checks you saw pass, confirm the issue closed, and return to `main` with `git checkout main && git pull --ff-only`.
 
 ## When an issue cannot be completed here
 
