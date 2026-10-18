@@ -640,6 +640,12 @@ All notable changes to the prover release train are recorded here: the crates un
   - **`AnchorFailure`** is `{ ManifestSignature, Inclusion, Frames }`, RFC-0015's checks 1 and 2. `Anchor.request_id` is now an `Option<u64>`, `None` for the manifest's signature.
   - **RFC-0016's checks** reject as `StatementMismatch { ManifestDigest }` and `{ Batch }`, a replayed request included.
   - Amended: 04 §2, RFC-0015 and RFC-0016 'Verifier checks', RFC-0019 step 1 and RFC-0039 'The checks'.
+- RFC-0044, accepted, states the Llama lowering node by node, and conformance vectors hold the compiler to it ([#362](https://github.com/AbdelStark/tessera/issues/362)):
+  - **The statement.** It gives the id rules for tensors, nodes, constants, shift-class sets, tables and gadgets, and the graph inputs and their types. It gives the procedures: `matmul`, a site's key, `requant`, `rescale`, `norm`, RoPE, the head layouts and both residual routes. Then the prologue, a layer and the epilogue in order, and the `Exp` and `Silu` table rules. The verifier's lowering (#107) must reproduce every id.
+  - Amended: RFC-0006 'Range analysis' gives the positions' range as `[0, n)`.
+  - **The oracle.** `generate.py`, written from RFC-0044 alone, writes the graph each conformance model lowers to at `n` = 1, 4, 5 and `max_context`, every id in creation order: each input with its role, shape, kind, type and range; each node with its operation, parameters, inputs, and outputs' shapes and kinds; the constants, the shift-class sets, the weight list and the tables. `cargo xtask gen-vectors --check` covers it.
+  - **Every form.** Two variants of the models take the forms the models miss: affine `V` and `MlpResidual`, two steps at a site of one shift, a `Silu` site of one class, heads with no `Expand`, a shared `Exp` table, an `Exp` table wider than the spread, and one whose last key rounds to 0 before its zero tail.
+  - **`tessera-compiler`** lowers every case through its public API and compares the graph field by field (`tests/lowering_vectors.rs`). A difference is reported at its first item: the case, the input, node or entry, and the field. All 24 cases match.
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
