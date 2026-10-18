@@ -9,7 +9,8 @@
 //! - the files of every set with an independent Python oracle, `spec/vectors/<set>/generate.py`,
 //!   by running the oracle;
 //! - the golden claim lists, `spec/vectors/claims/`, which the compiler emits from the models the
-//!   models' oracle writes, so after it.
+//!   models' oracle writes, so after it, and the golden execution plans that carry them,
+//!   `spec/vectors/codec/execution-plan.json`.
 //!
 //! `--check` compares instead of writing: the codec vectors with what would be written, and the
 //! oracles' files with what the oracles write when run on a copy of `spec/vectors/`, so a check
@@ -201,30 +202,45 @@ pub(crate) fn run(repo: &Path, check: bool) -> io::Result<bool> {
             println!("wrote spec/vectors/{set}/ with its oracle");
         }
     }
-    // The claim lists come from the conformance models: a tree without them has none.
+    // The claim lists and the execution plans come from the conformance models: a tree without
+    // them has none.
     if !repo.join(crate::claim_vectors::MODELS).is_file() {
         return Ok(current);
     }
-    let claims = crate::claim_vectors::render(repo).map_err(io::Error::other)?;
-    let target = repo.join(crate::claim_vectors::PATH);
-    if check {
-        if fs::read_to_string(&target).ok().as_deref() == Some(claims.as_str()) {
-            println!("ok    {}", crate::claim_vectors::PATH);
+    for (path, contents) in from_models(repo)? {
+        let target = repo.join(path);
+        if check {
+            if fs::read_to_string(&target).ok().as_deref() == Some(contents.as_str()) {
+                println!("ok    {path}");
+            } else {
+                println!("FAIL  {path} is out of date: run `cargo xtask gen-vectors`");
+                current = false;
+            }
         } else {
-            println!(
-                "FAIL  {} is out of date: run `cargo xtask gen-vectors`",
-                crate::claim_vectors::PATH
-            );
-            current = false;
+            if let Some(dir) = target.parent() {
+                fs::create_dir_all(dir)?;
+            }
+            fs::write(&target, contents)?;
+            println!("wrote {path}");
         }
-    } else {
-        if let Some(dir) = target.parent() {
-            fs::create_dir_all(dir)?;
-        }
-        fs::write(&target, claims)?;
-        println!("wrote {}", crate::claim_vectors::PATH);
     }
     Ok(current)
+}
+
+/// The vector files the compiler derives from the conformance models in the tree at `repo`, by
+/// path from the repository root, with their contents: the claim lists, then the execution plans
+/// that carry them.
+pub(crate) fn from_models(repo: &Path) -> io::Result<Vec<(&'static str, String)>> {
+    Ok(vec![
+        (
+            crate::claim_vectors::PATH,
+            crate::claim_vectors::render(repo).map_err(io::Error::other)?,
+        ),
+        (
+            crate::plan_vectors::PATH,
+            crate::plan_vectors::render(repo).map_err(io::Error::other)?,
+        ),
+    ])
 }
 
 /// The sets with a Python oracle, each `spec/vectors/<set>/generate.py`, by name.
@@ -425,17 +441,20 @@ mod tests {
         assert!(super::run(root, true).unwrap());
     }
 
+    /// The claim lists and the execution plans the compiler derives from the conformance models.
     #[test]
-    fn claim_vectors_are_current() {
+    fn claim_and_plan_vectors_are_current() {
         let root = repo::root();
-        let path = crate::claim_vectors::PATH;
-        let committed = fs::read_to_string(root.join(path))
-            .unwrap_or_else(|e| panic!("{path}: {e}; run `cargo xtask gen-vectors`"));
-        let rendered = crate::claim_vectors::render(&root).expect("the claim lists");
-        assert!(
-            committed == rendered,
-            "{path} is out of date: run `cargo xtask gen-vectors`"
-        );
+        let rendered = super::from_models(&root).expect("the claim lists and the plans");
+        assert_eq!(rendered.len(), 2);
+        for (path, contents) in rendered {
+            let committed = fs::read_to_string(root.join(path))
+                .unwrap_or_else(|e| panic!("{path}: {e}; run `cargo xtask gen-vectors`"));
+            assert!(
+                committed == contents,
+                "{path} is out of date: run `cargo xtask gen-vectors`"
+            );
+        }
     }
 
     #[test]

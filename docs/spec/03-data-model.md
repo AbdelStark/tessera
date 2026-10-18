@@ -204,4 +204,4 @@ JSON reports and specifications are not TCE artifacts. Each carries a `"schema"`
 - Each artifact envelope carries `(schema_id: u16, version: u16)`. Any change to field order, type or meaning increments `version`.
 - Readers accept `version` and `version − 1`, never version 0, which no writer emits; writers emit only the current version ([09 §3](09-release-and-versioning.md#3-protocol-and-schema-versions)).
 - A schema version bump for any tier-A artifact implies a protocol version bump.
-- Golden vectors for every artifact type and version live in `spec/vectors/codec/` and are checked by both the prover-side and verifier-side decoders.
+- Golden vectors for every artifact type and version live under `spec/vectors/`: in `codec/`, or beside the generator that writes them (`model/`, `claims/`, `protocol/`). Every decoder of the type checks them: the prover's, and the verifier's for the artifacts the verifier reads.

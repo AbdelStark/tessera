@@ -646,6 +646,26 @@ All notable changes to the prover release train are recorded here: the crates un
   - **The oracle.** `generate.py`, written from RFC-0044 alone, writes the graph each conformance model lowers to at `n` = 1, 4, 5 and `max_context`, every id in creation order: each input with its role, shape, kind, type and range; each node with its operation, parameters, inputs, and outputs' shapes and kinds; the constants, the shift-class sets, the weight list and the tables. `cargo xtask gen-vectors --check` covers it.
   - **Every form.** Two variants of the models take the forms the models miss: affine `V` and `MlpResidual`, two steps at a site of one shift, a `Silu` site of one class, heads with no `Expand`, a shared `Exp` table, an `Exp` table wider than the spread, and one whose last key rounds to 0 before its zero tail.
   - **`tessera-compiler`** lowers every case through its public API and compares the graph field by field (`tests/lowering_vectors.rs`). A difference is reported at its first item: the case, the input, node or entry, and the field. All 24 cases match.
+- `tessera-compiler` derives the tiles and the execution plan of RFC-0041 ([#101](https://github.com/AbdelStark/tessera/issues/101)):
+  - **Tiles.** `tiles(model, &lowering, &selection)` gives a sequence's tiles in production order:
+    - `Tokens` first;
+    - then, in node order, a `Node` for each node that commits a value, and one `Attention` per KV head for each layer's `SoftmaxRow`;
+    - then a `Table` for each table a gadget's lookups read, by id. RoPE's table, which no lookup reads, has none.
+  - **Expansion.** `ExecutionPlan::expand(&lowering)` takes each attention tile at its `N / Q'` query blocks, `Q' = min(Q, N)`. It gives each tile's share of every graph tensor committed in the advice as one range per axis: for an attention tile, its KV head's query heads, its block's queries and every key. The values a gadget commits beyond its node's outputs, such as `SoftmaxRow`'s maxima and bracket limbs, are no graph tensor: they belong to the node's tile, as `Tile` documents.
+  - **The plan.** `ExecutionPlan { claims, tiles }` (`0x0202`) encodes as RFC-0003 has it, a tile's tag its declaration index.
+    - `plan(model, &claims)` builds it from the public part of `D` and the claim list `claim_list` emits for it. It refuses another claim list, and a `query_block` that is not a power of two (`ERR-USAGE`).
+    - `check_plan` refuses a plan whose claim list or tiles are not `D`'s (`ERR-USAGE`).
+  - `spec/vectors/codec/execution-plan.json` holds the conformance models' plans for `test-small/1`, sealed, with their tiles and their claim lists' digests. `cargo xtask gen-vectors` writes it after the models' oracle, and a test keeps it current.
+  - **Tests**, on the four conformance models at lengths from 1 to the context and query blocks of 512, 4 and 1:
+    - every element of every tensor committed in the advice lies in exactly one tile, counted element by element;
+    - the tiles follow the production order, with the read tables taken from the commitment report's lookups;
+    - a `SoftmaxRow` and an `Argmax` added outside the layers each take a node's tile, the `Argmax`'s holding no graph tensor;
+    - each attention tile holds the query heads whose maxima in the oracle's traces read its KV head's keys;
+    - node and tensor ids, and the tiles, are the same at every length from 1 to 17 and at the context;
+    - two builds give the same bytes, and a model whose weights hold a canary has the same plan, without the canary;
+    - a plan with one tile changed, removed, added or moved, or with another claim list, is refused;
+    - the golden plans decode to the compiler's, and every proper prefix of their payload is cut short.
+  - **Specification.** RFC-0007 step 6 states that `query_block` is a power of two. RFC-0041's plan check compiles for the plan's gadget policy, layout and parameter set. 03 §7 says where each artifact's golden vectors live.
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

@@ -19,14 +19,17 @@
 //! - [`derive_schedule`] derives the stage schedule from a lowering: the claims each stage leaves,
 //!   their splits, the relation instances that prove them and the claim pool (RFC-0010 'Stages',
 //!   RFC-0037).
-//!
-//! Tiling follows.
+//! - [`plan`] builds the execution plan from the public part of `D` and its claim list: the claim
+//!   list and the tiles of [`tiles`], which partition a sequence's committed values in production
+//!   order. [`ExecutionPlan::expand`] gives the tiles of one sequence with the elements each holds,
+//!   and [`check_plan`] refuses a plan that is not `D`'s (RFC-0041).
 
 #![forbid(unsafe_code)]
 
 mod claim;
 mod error;
 mod lower;
+mod plan;
 mod range;
 mod report;
 pub mod schedule;
@@ -35,6 +38,7 @@ mod select;
 pub use claim::claim_list;
 pub use error::CompileError;
 pub use lower::{Lowering, PublicModel, check_profile, lower, validate};
+pub use plan::{ExecutionPlan, QueryBlock, SequenceTile, Share, Tile, check_plan, plan, tiles};
 pub use range::{HALF_FIELD, Range, Ranges, analyze};
 pub use report::{CommitmentReport, SCHEMA as REPORT_SCHEMA, TableUse, Tally, report, stage_count};
 pub use schedule::{StageSchedule, derive_schedule};

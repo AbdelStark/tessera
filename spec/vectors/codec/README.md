@@ -5,13 +5,14 @@ These files pin the Tessera Canonical Encoding ([RFC-0003](../../../docs/rfcs/RF
 - the verifier's `tv-codec`;
 - `tessera-quant`'s `tessera_quant.tce`, in Python.
 
-`cargo xtask gen-vectors` writes them from cases defined next to the prover's types, and a prover test fails while they are stale. Every implementation checks them with its own decoders.
+`cargo xtask gen-vectors` writes them from cases defined next to the prover's types, and the execution plans from the conformance models, and a prover test fails while they are stale. Every implementation checks them with its own decoders, but for the execution plans, which only the prover reads.
 
 | File | What it pins |
 |---|---|
 | `golden.json` | Encodings of values: decoding `hex` as `type` gives `value`. Every proper prefix of `hex` is `ERR-CODEC-TRUNCATED`. |
 | `noncanonical.json` | `cases`: inputs that decoding as `type` must reject with `code` at `offset`, the first byte the failing check reads (RFC-0003 'Limits'), each for one reason. `accepted`: inputs sitting exactly at a limit, which decoding must accept. |
 | `envelope.json` | Envelopes (RFC-0003 'Envelope'): the payload a reader returns, or the `code` and `offset` it must report, in the order the RFC fixes. |
+| `execution-plan.json` | The conformance models' execution plans (schema `0x0202`), sealed: see 'Execution plans'. |
 
 Each file states the `limits` (`max_total_bytes`, `max_vec_len`, `max_depth`; RFC-0003 'Limits') its cases are read under.
 
@@ -76,3 +77,10 @@ What counts as one level is defined in RFC-0003 'Limits'. Each of these is one l
 - `Ascii`, `Rational` and `Fp2`.
 
 The depth cases sit at a limit and one level past it, for each kind.
+
+## Execution plans
+
+`execution-plan.json` holds the plan ([RFC-0041](../../../docs/rfcs/RFC-0041-execution-plan.md#the-plan)) of each conformance model of [`../models/`](../models/README.md), for `test-small/1` under the default gadget policy. `cargo xtask gen-vectors` writes it from the compiler's derivation, after the models' oracle, with the claim lists of `../claims/`.
+- **A case** names the model and gives the sealed `ExecutionPlan` envelope as `hex`, read under the `message` limits of RFC-0003.
+- **Its value.** The payload decodes to a plan whose `claims` is the same model's claim list in `../claims/`, with the digest `claim_list_digest`, and whose `tiles` are `tiles`, shown as 'Values' shows an enum value. A tile is `Tokens`, `Node { node }`, `Attention { node, kv_head }` or `Table { table }`, tagged 0 to 3.
+- **Its readers.** The verifier never reads a plan, so the compiler's tests alone check it: the hex decodes to the plan they derive, and every proper prefix of the payload is `ERR-CODEC-TRUNCATED`.
