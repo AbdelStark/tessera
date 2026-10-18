@@ -7,6 +7,11 @@
 //! stage's batched sumcheck, its split values and the claim pool's values (RFC-0010 'Stages',
 //! RFC-0037).
 //!
+//! [`leaf`] lays out the leaf stage's lookups (RFC-0045): each LogUp instance's column of blocks,
+//! its lookup tree's leaf order, the leaf point `P`, and the split values that turn its leaf
+//! claims into one claim per tensor a site's lookups read. [`prove_leaf`] proves the LogUp part
+//! and the split on a transcript.
+//!
 //! [`ReleaseSchedule`] fixes when a message that a verifier can time leaves the prover in
 //! `tessera-protocol/2`: at a slot that public data determines, whatever its secret-dependent
 //! work took (RFC-0018 'Release schedule', INV-ARCH-2).
@@ -20,9 +25,11 @@
 
 #![forbid(unsafe_code)]
 
+pub mod leaf;
 mod release;
 pub mod stages;
 
+pub use leaf::{LeafError, LeafLayout, ProvenLeaf, prove_leaf};
 pub use release::{Release, ReleaseSchedule, ScheduleError};
 pub use stages::{StageError, StageProof, StageProver, WitnessSource};
 
