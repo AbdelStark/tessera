@@ -27,6 +27,8 @@
 //! | [`Table::generate`] | the table a kind defines under an identifier, and the specification that names it |
 //! | [`Table::eval_mle`] | `t̃(ρ) = kẽy(ρ) + β·valũe(ρ)` over the padded rows |
 //! | [`Table::row`], [`Table::value`] | a padded row as field elements, a row's integer value |
+//! | [`exp_maps_to_zero`] | whether an `Exp` table maps one key to 0, without generating it |
+//! | [`TableKind::check_parameters`] | whether RFC-0008 allows a kind's parameters, without generating the table |
 //! | [`rope::Rope`], [`rope::constants`] | RoPE's frequencies and pairs, a `Rope` table's constants |
 //! | [`fixed`] | the pinned constants and the functions of RFC-0008 'Fixed-point generators' |
 //!
@@ -106,6 +108,10 @@
 //!   is 0 when `n ≥ σ + 2` and `(y·2^σ + 2^{63+n}) >> (64 + n)` otherwise. The zero tail is the
 //!   suffix of keys with `q ≥ 2^20` or `x ≥ (σ + 2)·LN2`; its first key `z`, or `T` when it is
 //!   empty, is the table's one piece, and its core the values of keys `0` to `z − 1`.
+//!   [`exp_maps_to_zero`]`(k, σ, scale)` tests one key's value against 0 without the table: the
+//!   value does not depend on `key_bits` (RFC-0030), and the last case is 0 exactly when
+//!   `y < 2^{63+n−σ}`, which is exact for every `σ` of a `u8`, those RFC-0008 refuses included.
+//!   The lowering's `Exp` width search reads it (RFC-0044 'The tables').
 //! - **Silu.** `(y, n) = exp_neg(|h|·2^{64 + in_exp})`, `E = y >> n` or 0 when `n ≥ 128`;
 //!   `σ = ⌊2^127 / (2^64 + E)⌋` for `h ≥ 0` and `⌊E·2^63 / (2^64 + E)⌋` for `h < 0`; the value is
 //!   `clamp((h·σ + 2^{s−1}) >> s, −128, 127)` with `s = 63 − in_exp + out_exp`. The core is the
@@ -121,7 +127,7 @@
 //!
 //! [`Table::generate`] and [`Table::from_spec`] check a kind's parameters (RFC-0008 'Table
 //! specifications', 'Parameters allowed') in this order, before anything is allocated, and the
-//! first rule that fails is the error:
+//! first rule that fails is the error. [`TableKind::check_parameters`] runs the same checks alone:
 //!
 //! | Kind | Rule, in order | Error |
 //! |---|---|---|
@@ -258,4 +264,4 @@ mod table;
 
 pub use error::TableError;
 pub use spec::{BitOp, TableId, TableKind, TableSpec};
-pub use table::{MAX_CORE, Table};
+pub use table::{MAX_CORE, Table, exp_maps_to_zero};

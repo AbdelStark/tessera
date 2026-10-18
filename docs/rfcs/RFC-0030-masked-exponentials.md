@@ -75,7 +75,7 @@ For every position `(q, i)` of the padded score tensor, `(κ_qi, e_qi) ∈ Exp {
 - **The precondition.** `Exp[K_0] = 0`: the table's last key maps to 0.
   - A non-empty zero tail ([RFC-0008](RFC-0008-logup-and-tables.md#fixed-point-generators) 'Fixed-point generators') ensures it, but does not follow from it: values can round to 0 at keys below the tail's first, `z`. The check reads the value, not `z`.
   - **The rule.** `key_bits` is the narrowest width, from the spread's up, whose last key maps to 0 ('Range analysis' below). A value at key `k` does not depend on the table's width, so the rule is well defined.
-  - **The bound.** RFC-0008 refuses a zero tail that starts past key `2^24`, so the rule never widens a table past 25 bits. A scale that would need more is refused, as its table is.
+  - **The bound.** RFC-0008 refuses a zero tail that starts past key `2^24`, so a table the rule widens and RFC-0008 allows has at most 24 bits: values round to 0 just before the zero tail starts, so a table widened to 25 bits has its tail past `2^{24}`. RFC-0007 step 2 checks that the width exists and that RFC-0008 allows its table. A scale that would need more is refused, as its table is.
 
 ### Relation 2: the trees
 

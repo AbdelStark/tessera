@@ -10,7 +10,9 @@
 //! LogUp-GKR's own checks of step 7: the roots before the first level and the leaf checks after
 //! the last (RFC-0008 'Fraction tree'). It also holds the opening checks of the advice
 //! commitment, steps 9 and 11: the group evaluations, then the queried columns' leaves,
-//! multiproof and consistency with the combined rows (RFC-0011 'Opening protocol'). They are
+//! multiproof and consistency with the combined rows (RFC-0011 'Opening protocol'), and the
+//! claim list: its decoding, its validation, RFC-0019 steps 2 and 3, and its Llama lowering
+//! (RFC-0007, RFC-0039, RFC-0044; 'Claim lists' below). They are
 //! written from the specification without reference to the prover's code, so that the two agree
 //! only because both follow the specification (SP-6, RFC-0001). Where the specification admits
 //! several algorithms this crate takes another than the prover's: a round polynomial is evaluated
@@ -29,13 +31,29 @@
 //! | [`sumcheck::eq`] | `eq(a, b)`, the public factor of RFC-0010 'Multilinear extensions' |
 //! | [`opening::check_evaluations`] | the advice opening's combined rows: their shape, and each group's claims against its combined row (RFC-0011 step 6) |
 //! | [`opening::Evaluated::check_columns`] | the answer to the column queries: its shape, the leaves and the multiproof, and every combined row against every queried column (RFC-0011 step 8) |
+//! | [`claims::ClaimList`] | the claim list's schema, decoded from its sealed envelope and encoded back for `claim_list_digest` (RFC-0007, RFC-0026, RFC-0042) |
+//! | [`params::ParamSet`] | the parameter sets the verifier accepts and the layout each prescribes (RFC-0014, RFC-0026) |
+//! | [`validation::validate`] | claim-list validation, RFC-0007 'Verifier validation' in RFC-0039's order: steps 1 to 4, 5.1, 6 and 7, and RFC-0019 step 2 before them |
+//! | [`validation::check_public`] | steps 2.1 to 2.3, which give the public part the lowering reads |
+//! | [`lowering::lower`] | the Llama lowering of a claim list's public part, node by node (RFC-0044) |
 //!
 //! The stage schedule (#114), the relations of the stages, the masked sumcheck of RFC-0013, the
 //! regeneration of the tables and the structured evaluation of `t̃` (#100), the stage that
 //! consumes the lookups' key claims, and the verifier's driver and verdicts (#128) build on
 //! these; so do the advice layout (#116), the transcript steps that squeeze the opening's
 //! challenges and queries, the hiding of RFC-0013 (blinding rows, `u'_g`, `q_g`) and the weight
-//! commitment (RFC-0012).
+//! commitment (RFC-0012). Claim-list validation's steps 5.2 and 5.3 (#117), the advice layout's
+//! fit of step 6 (#106) and `ConstraintSystemDigest` (#120) build on the lowering.
+//!
+//! # Claim lists
+//!
+//! The claim list is the verifier's own input: [`claims`] decodes it, [`validation`] checks it
+//! before any proof message is read, and [`lowering`] rebuilds the graph `D` lowers to from its
+//! fields alone, with code written from RFC-0044 and the documents it cites, not from the
+//! compiler (RFC-0001, INV-CL-2). Each module's documentation specifies what it computes and
+//! rejects, in order, and the tests check every rule against `spec/vectors/claims/`, the
+//! compiler's golden lists, and `spec/vectors/lowering/`, an independent oracle's graphs, and
+//! with claim lists that break exactly one rule.
 //!
 //! # Specification
 //!
@@ -466,8 +484,12 @@
 //!
 //! # Features
 //!
-//! - `test-params` accepts the `test-small` parameter set, which certifies nothing. Tests only: a
-//!   release build with it fails to compile.
+//! - `test-params` accepts the `test-small` parameter set, which certifies nothing
+//!   ([`params::ParamSet`] has no such variant without it). Tests only: a release build with it
+//!   fails to compile. The golden claim lists of `spec/vectors/claims/` name `test-small/1`, so
+//!   the tests that validate them as they are run with `cargo test -p tv-core --features
+//!   test-params`; without the feature the same lists are refused as `Reject(Params)`, and every
+//!   other claim-list test runs on their twins under `ni-100/1`.
 
 #![forbid(unsafe_code)]
 // Proofs come from a hostile prover and must be rejected with typed errors, never by panicking
@@ -501,9 +523,13 @@ compile_error!(
     "the `test-params` feature accepts parameter sets that certify nothing; it must not be enabled in a release build (RFC-0001 'Cargo features')"
 );
 
+pub mod claims;
 mod fiat_shamir;
 mod interpolation;
 pub mod logup;
+pub mod lowering;
 pub mod opening;
+pub mod params;
 pub mod sumcheck;
 pub mod tree;
+pub mod validation;

@@ -277,6 +277,21 @@ impl fmt::Debug for Table {
 
 // ----- Parameters -------------------------------------------------------------------------------
 
+impl TableKind {
+    /// Whether RFC-0008 allows the kind's parameters ('Table specifications', 'Parameters
+    /// allowed'), without generating the table: `⌈log2 T⌉` of its rows when it does, otherwise
+    /// the first rule it breaks. These are the checks [`Table::generate`] runs first, in the
+    /// same order and with the same errors, so the two always agree.
+    ///
+    /// Nothing is allocated or generated: `Exp`'s zero tail comes from its closed form, and the
+    /// classes of `Requant` and `Silu` are read in place, their number first. Claim-list
+    /// validation reads it to know that RFC-0008 allows the `Exp` table a score scale needs
+    /// (RFC-0007 'Verifier validation' step 2).
+    pub fn check_parameters(&self) -> Result<u8, TableError> {
+        ceil_log2(check(self)?.rows)
+    }
+}
+
 /// The parameter checks of RFC-0008 'Table specifications', each kind's rules in the order the
 /// crate documentation lists them, the first that fails the error.
 fn check(kind: &TableKind) -> Result<Shape, TableError> {
@@ -679,6 +694,44 @@ fn exp_value(key: u64, sigma: u8, scale: Rational) -> Result<i64, TableError> {
         .and_then(|sum| sum.checked_shr(n.saturating_add(64)))
         .ok_or(internal)?;
     i64::try_from(value).map_err(|_| internal)
+}
+
+/// Whether an `Exp` table of `sigma` and `scale` maps `key` to 0, by RFC-0008's rule, without
+/// generating the table. A value at a key does not depend on the table's width (RFC-0030
+/// 'Relation 1'), so no `key_bits` is needed: this is the test RFC-0044 'The tables' reads at
+/// each candidate width's last key, `2^{key_bits} − 1`.
+///
+/// It is exact for every `sigma` of a `u8`, not only the `σ ≤ 32` that RFC-0008 allows: the
+/// lowering derives definitions that validation refuses only later (RFC-0007 step 5.3), so the
+/// search must give one answer for each. With `k·num = q·den + m`, the value is 0 when
+/// `q ≥ 2^20`; otherwise `x = q·2^64 + ⌊m·2^64 / den⌋` and `(y, n) = exp_neg(x)`, and it is 0
+/// when `n ≥ σ + 2`; otherwise it is `(y·2^σ + 2^{63+n}) >> (64 + n)`, which is 0 exactly when
+/// `y·2^σ < 2^{63+n}`, that is when `y < 2^{63+n−σ}`, an exponent of at most 64 since
+/// `n ≤ σ + 1`. When that exponent is negative the value is not 0, since `y ≥ 1`. So no
+/// intermediate reaches `2^128`, whatever `σ` and `key`: `key·num < 2^127`, and `x < 2^85`.
+///
+/// A `scale` that is not positive is [`TableError::ExpScale`], as for a table.
+pub fn exp_maps_to_zero(key: u64, sigma: u8, scale: Rational) -> Result<bool, TableError> {
+    if scale.num() <= 0 {
+        return Err(TableError::ExpScale);
+    }
+    let ExpArgument::Point(x) = exp_argument(key, scale)? else {
+        return Ok(true);
+    };
+    let (y, n) = exp_neg(x).ok_or(TableError::Internal)?;
+    let sigma = u128::from(sigma);
+    if n >= sigma.saturating_add(2) {
+        return Ok(true);
+    }
+    // `n ≤ σ + 1`, so `63 + n − σ ≤ 64`.
+    let Some(exponent) = n.checked_add(63).and_then(|e| e.checked_sub(sigma)) else {
+        return Ok(false);
+    };
+    let bound = u32::try_from(exponent)
+        .ok()
+        .and_then(|e| 1u128.checked_shl(e))
+        .ok_or(TableError::Internal)?;
+    Ok(y < bound)
 }
 
 /// `Exp2Frac` of key `f`: `exp_pos(⌊f · LN2 / 2^frac_bits⌋) >> (62 − out_bits)`. The argument
