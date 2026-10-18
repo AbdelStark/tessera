@@ -54,7 +54,7 @@ pub struct ProverSeedShare { pub session_id: [u8; 16], pub share: [u8; 32] } // 
 pub struct SeedReveal { pub session_id: [u8; 16], pub share: [u8; 32] }      // s_V
 ```
 
-- **Choices.** In live mode the verifier chooses `session_id` and `s_V`, each fresh from its CSPRNG for every session (INV-PROTO-4). The prover chooses `s_P` fresh for every `Round1`.
+- **Choices.** In live mode the verifier chooses `session_id` and `s_V`, each fresh from its CSPRNG for every session (INV-PROTO-4). The prover chooses `s_P` fresh for every `Round1`. It derives `s_P` from its per-proof secret seed through a PRG under a label of its own ([RFC-0018](RFC-0018-gpu-prover-runtime.md#crash-consistency) 'Crash consistency'), so that a prover that resumes after a crash sends the `Round1` and the `s_P` it sent, byte for byte, and never a second share with one `Round1`. The per-proof seed is fresh for every proof and an abort discards it (INV-PROTO-1), so a retry has a fresh `s_P`.
 - **The seed.** `seed = H("coin-toss", s_V ‖ s_P)`. RFC-0004's `coin-commit` and `coin-toss` domains take the shares as their 32 bytes.
 - **Session binding.** Each seed message names its session, so neither side can mistake one session's share for another's.
 
@@ -62,7 +62,7 @@ pub struct SeedReveal { pub session_id: [u8; 16], pub share: [u8; 32] }      // 
 
 ```rust
 pub struct Round1 {
-    pub protocol_version: u16,          // 1
+    pub protocol_version: u16,          // 0 until tessera-protocol/1 is assigned (09 §3), then 1
     pub session_id: [u8; 16],
     pub statement: PublicStatement,     // 03 §4
     pub advice: AdviceCommitment,       // RFC-0011: { root, layout_digest }
@@ -70,7 +70,7 @@ pub struct Round1 {
 ```
 
 - **`session_id`.** In live mode it is `SeedCommit`'s. In non-interactive mode the prover chooses it fresh, and `SessionContext` binds it either way.
-- **`protocol_version`.** It is the protocol's number, `tessera-protocol/{protocol_version}`. A reader of another version answers `ERR-PROTO-VERSION`.
+- **`protocol_version`.** It is the protocol's number, `tessera-protocol/{protocol_version}`, the one the claim list states ([RFC-0007](RFC-0007-claim-list.md#schema)). It is 0 until `tessera-protocol/1` is assigned, when the first end-to-end proof verifies ([09 §3](../spec/09-release-and-versioning.md#3-protocol-and-schema-versions)), and 1 from then on. A reader of another version answers `ERR-PROTO-VERSION`.
 - **No reservation.** `tessera-protocol/1` burns no blinding rows ([RFC-0012](RFC-0012-weight-commitment.md#migration--rollout) 'Migration / Rollout'). Its epoch is `statement.weights_epoch`, so `Round1` holds no `WeightReservation`; version 2 adds one.
 - **`PublicStatement`** is 03 §4's. The verifier compares it with the statement its own inputs give: the audit sample's batch, the manifest, the claim list, and the ledger's root and epoch ([RFC-0019](RFC-0019-verifier.md#check-order) step 4). A difference is `Reject(StatementMismatch)`, naming the first field that differs in declaration order: `claim_list_digest`, `weights_root`, `weights_epoch`, `manifest_digest`, `batch`, `predictor`.
 
@@ -125,7 +125,7 @@ pub struct FixedBits(pub u64);                                                  
 
 The verifier checks them when it decodes `Round2Response`, after RFC-0019 step 6, and a mismatch is `Reject(Malformed)`. Shapes inside a part are that part's checks: a sumcheck's rounds and evaluations are RFC-0010's (`Reject(Sumcheck)`, `Reject(TreeLevel)`), and the combined rows' are RFC-0011 step 6's (`Reject(Evaluation)`), for the weight matrices' rows as for the advice's.
 
-**Matrix ids.** A `u8` matrix id is the declaration index of [RFC-0031](RFC-0031-commitment-id.md#the-descriptor)'s `WeightMatrix`, RFC-0012's table order: `Embed` 0, `Q` 1, `K` 2, `V` 3, `O` 4, `Gate` 5, `Up` 6, `Down` 7, `LmHead` 8, `ChannelParams` 9. A label's `{T}` is the variant's name as written there, so `pcs/weights/Q/gamma` and `pcs/weights/ChannelParams/xi`.
+**Matrix ids.** A `u8` matrix id is the declaration index of [RFC-0031](RFC-0031-commitment-id.md#the-descriptor)'s `WeightMatrix`, RFC-0012's table order: `Embed` 0, `Q` 1, `K` 2, `V` 3, `O` 4, `Gate` 5, `Up` 6, `Down` 7, `LmHead` 8, `ChannelParams` 9. A label's `{T}` is the variant's name as written there, so `pcs/weights/Q/gamma` and `pcs/weights/ChannelParams/xi`. Three sequences are keyed by matrix id: `weight_combined`, `ColumnQueries.weights` and `Round3Response.weight_columns`. In each, the ids are 0 to 9 and strictly increase. A decoder reads each entry's id, its first byte, before the rest of the entry, as RFC-0003 reads a map's key, and rejects an id above 9, or one not above the previous entry's, with `ERR-CODEC-NONCANONICAL` at that byte.
 
 ### `ColumnQueries`, `Round3Response` and `NiProof`
 
@@ -203,11 +203,12 @@ States: `Start`, `AwaitRound1`, `AwaitRound2`, `AwaitRound3`, `Done`. The verifi
 |---|---|---|---|
 | `Start` | — | Draws `session_id` and `s_V`, and sends `SeedCommit` | `AwaitRound1` |
 | `AwaitRound1` | `Round1`, `ProverSeedShare` | Both name the session. Runs [RFC-0019](RFC-0019-verifier.md#check-order) steps 1 to 6: decoding, parameters, claim list, statement, transcript and seed. Sends `SeedReveal`. | `AwaitRound2` |
-| `AwaitRound2` | `Round2Response` | Runs steps 7 to 9. Draws the column queries from its CSPRNG and absorbs them under `queries`. Sends `ColumnQueries`. | `AwaitRound3` |
-| `AwaitRound3` | `Round3Response` | Runs steps 10 to 13 and returns the verdict | `Done` |
+| `AwaitRound2` | `Round2Response` | Runs steps 7 to 9. Step 10 draws the column queries from its CSPRNG and absorbs them under `queries`. Sends `ColumnQueries`. | `AwaitRound3` |
+| `AwaitRound3` | `Round3Response` | Runs steps 11 to 13 and returns the verdict | `Done` |
 
 - **Out of order.** A message the state does not expect, or one that names another session, ends the session with `Inconclusive(ERR-PROTO-ORDER)`.
 - **Version.** A `protocol_version` other than its own ends it with `Inconclusive(ERR-PROTO-VERSION)`.
+- **Order of the checks on `Round1`.** The verifier checks, in this order: that the state is `AwaitRound1`, that `Round1` names the session, that `ProverSeedShare` names it, that `protocol_version` is its own, and then RFC-0019 steps 1 to 6. The first check that fails ends the session with its code, so that every verifier reports the same one.
 - **Only acceptance certifies** ([04 §1](../spec/04-error-model.md#1-principles)), so a prover gains nothing by forcing either verdict.
 
 ### Errors
@@ -245,7 +246,7 @@ Queries that arrive before `Round2Response` is sent are `ERR-PROTO-ORDER`, as an
 
 ## Migration / Rollout
 
-v0.3 (#98): the TCE types in `tessera-protocol`, the prover's and the verifier's state machines, `ERR-PROTO-QUERIES`, and golden vectors for every message, written by an independent oracle. The verifier's decoders follow in `tv-core` (#140). v0.4 defines schema version 2.
+v0.3 (#98): the TCE types in `tessera-protocol`, the prover's and the verifier's state machines, `ERR-PROTO-QUERIES`, and golden vectors for every message, written by an independent oracle. The verifier's decoders follow in `tv-core` (#128). v0.4 defines schema version 2.
 
 ## Testing Strategy
 
@@ -255,7 +256,7 @@ v0.3 (#98): the TCE types in `tessera-protocol`, the prover's and the verifier's
   - out-of-order messages give `ERR-PROTO-ORDER`;
   - a second `SeedReveal` gives `ERR-PROTO-REUSE`;
   - a reveal that fails its commitment gives `ERR-PROTO-COINTOSS` and an abort;
-  - queries of the wrong count, matrices or range give `ERR-PROTO-QUERIES`;
+  - queries of the wrong count, matrices or range give `ERR-PROTO-QUERIES`. The two paths differ: matrix ids reordered, repeated or unknown on the wire are a decoding error, `ERR-CODEC-NONCANONICAL` ('Matrix ids'), and a `ColumnQueries` that decodes but names other matrices than `weight_combined`'s is `ERR-PROTO-QUERIES`;
   - another `protocol_version` gives `ERR-PROTO-VERSION`.
 - **Transcript.** The bytes each label absorbs equal the table above, checked against the transcript vectors of #125.
 
