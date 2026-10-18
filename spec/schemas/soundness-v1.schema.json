@@ -1,0 +1,397 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/soundness-v1.schema.json",
+  "title": "tessera.soundness/1",
+  "description": "A parameter set's soundness report at a statement's sizes, written by `tessera params check --json` (tessera_protocol::SoundnessReport, RFC-0014 'Soundness calculator'). Every number is an exact integer: bits in FixedBits, units of 2^-8 bits, lower bounds rounded down; numerators, which reach 2^128, are decimal strings.",
+  "type": "object",
+  "required": [
+    "schema",
+    "params",
+    "statement",
+    "rows",
+    "minimum",
+    "meets_targets"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.soundness/1"
+    },
+    "params": {
+      "description": "The parameter set (RFC-0014 'Parameter sets'), its layout RFC-0026's.",
+      "type": "object",
+      "required": [
+        "id",
+        "mode",
+        "release",
+        "advice",
+        "weights",
+        "advice_queries",
+        "weight_queries",
+        "seed_pow",
+        "query_pow",
+        "targets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "enum": [
+            "live",
+            "non-interactive",
+            "either"
+          ]
+        },
+        "release": {
+          "description": "Whether a release verifier accepts the set.",
+          "type": "boolean"
+        },
+        "advice": {
+          "type": "object",
+          "required": [
+            "log2_k",
+            "log2_inv_rate",
+            "mask_coeffs",
+            "row_block",
+            "segments"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "log2_k": {
+              "$ref": "#/$defs/count"
+            },
+            "log2_inv_rate": {
+              "$ref": "#/$defs/count"
+            },
+            "mask_coeffs": {
+              "$ref": "#/$defs/count"
+            },
+            "row_block": {
+              "$ref": "#/$defs/count"
+            },
+            "segments": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        "weights": {
+          "type": "object",
+          "required": [
+            "log2_k",
+            "log2_inv_rate",
+            "mask_coeffs",
+            "blinding_rows"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "log2_k": {
+              "$ref": "#/$defs/count"
+            },
+            "log2_inv_rate": {
+              "$ref": "#/$defs/count"
+            },
+            "mask_coeffs": {
+              "$ref": "#/$defs/count"
+            },
+            "blinding_rows": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        "advice_queries": {
+          "description": "τ_A.",
+          "$ref": "#/$defs/count"
+        },
+        "weight_queries": {
+          "description": "τ_W.",
+          "$ref": "#/$defs/count"
+        },
+        "seed_pow": {
+          "description": "g_seed, bits.",
+          "$ref": "#/$defs/count"
+        },
+        "query_pow": {
+          "description": "g_query, bits.",
+          "$ref": "#/$defs/count"
+        },
+        "targets": {
+          "description": "The bits every row must reach, and those a proof of work covers; null for a set held to none.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "bits",
+            "one_shot"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "bits": {
+              "$ref": "#/$defs/count"
+            },
+            "one_shot": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        }
+      }
+    },
+    "statement": {
+      "description": "The statement's sizes (tessera_protocol::StatementSizes).",
+      "type": "object",
+      "required": [
+        "protocol",
+        "rounds",
+        "stages",
+        "tree_levels",
+        "zero_checks",
+        "forests",
+        "lookups",
+        "claim_groups",
+        "advice_rows",
+        "matrices"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "protocol": {
+          "description": "The n of tessera-protocol/n.",
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "rounds": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "count",
+              "degree"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "count": {
+                "$ref": "#/$defs/count"
+              },
+              "degree": {
+                "$ref": "#/$defs/count"
+              }
+            }
+          }
+        },
+        "stages": {
+          "$ref": "#/$defs/counts"
+        },
+        "tree_levels": {
+          "$ref": "#/$defs/counts"
+        },
+        "zero_checks": {
+          "$ref": "#/$defs/counts"
+        },
+        "forests": {
+          "$ref": "#/$defs/counts"
+        },
+        "lookups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "lookups",
+              "rows"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "lookups": {
+                "$ref": "#/$defs/count"
+              },
+              "rows": {
+                "$ref": "#/$defs/count"
+              }
+            }
+          }
+        },
+        "claim_groups": {
+          "$ref": "#/$defs/counts"
+        },
+        "advice_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "matrices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "matrix",
+              "width",
+              "rows",
+              "variables"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "matrix": {
+                "enum": [
+                  "Embed",
+                  "Q",
+                  "K",
+                  "V",
+                  "O",
+                  "Gate",
+                  "Up",
+                  "Down",
+                  "LmHead",
+                  "ChannelParams"
+                ]
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "rows": {
+                "$ref": "#/$defs/count"
+              },
+              "variables": {
+                "$ref": "#/$defs/count"
+              }
+            }
+          }
+        }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "$ref": "#/$defs/row"
+      }
+    },
+    "minimum": {
+      "description": "The index in rows of the row with the least margin over its target, or the fewest bits without targets.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "meets_targets": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    }
+  },
+  "$defs": {
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "counts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/count"
+      }
+    },
+    "row": {
+      "description": "A row of RFC-0014's soundness table. A field-form row states its numerator, a queries row its codeword, message, mask and queries, a field term its theta.",
+      "type": "object",
+      "required": [
+        "row",
+        "bits",
+        "grinding",
+        "covered_by",
+        "target",
+        "margin",
+        "pass"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "row": {
+          "enum": [
+            "rounds",
+            "union",
+            "forests",
+            "logup",
+            "openings",
+            "queries",
+            "field",
+            "linking",
+            "hash"
+          ]
+        },
+        "commitment": {
+          "description": "advice, or a weight matrix's name.",
+          "type": "string",
+          "minLength": 1
+        },
+        "numerator": {
+          "description": "c of the error bound c/|Fp2|, in decimal.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 39
+        },
+        "codeword": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "message": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mask": {
+          "$ref": "#/$defs/count"
+        },
+        "queries": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "theta": {
+          "$ref": "#/$defs/count"
+        },
+        "per_query_bits": {
+          "$ref": "#/$defs/count"
+        },
+        "bits": {
+          "description": "λ = g + max(0, −log2 ε) as a FixedBits lower bound, null for no term.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "grinding": {
+          "$ref": "#/$defs/count"
+        },
+        "covered_by": {
+          "enum": [
+            "seed-pow",
+            "query-pow",
+            null
+          ]
+        },
+        "target": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "margin": {
+          "description": "bits − 256·target, FixedBits.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "pass": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

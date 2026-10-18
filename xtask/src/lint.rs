@@ -35,7 +35,7 @@ pub(crate) fn checks(repo: &Path) -> io::Result<Vec<(&'static str, Vec<String>)>
             versions::check(repo)?,
         ),
         (
-            "no floating point in the table generators (RFC-0008)",
+            "no floating point in the table generators or the soundness calculator (RFC-0008, RFC-0014)",
             no_float::check(repo, &files)?,
         ),
         (

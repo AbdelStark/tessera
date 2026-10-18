@@ -267,8 +267,12 @@ mod tests {
         assert!(counted(1, 1).validate().is_ok());
         assert!(counted(MAX_COUNT, MAX_COUNT).validate().is_ok());
         // Every parameter set of RFC-0014: live-64/1, ni-100/1 and test-small/1.
-        for (advice, weights) in [(155, 97), (193, 122), (8, 8)] {
-            assert!(counted(advice, weights).validate().is_ok());
+        for set in crate::ParamSet::ALL {
+            assert!(
+                counted(set.advice_queries, set.weight_queries)
+                    .validate()
+                    .is_ok()
+            );
         }
     }
 }

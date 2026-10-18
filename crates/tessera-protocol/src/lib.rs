@@ -4,7 +4,7 @@
 //! sampling (RFC-0014, RFC-0016).
 //!
 //! This version holds the messages of `tessera-protocol/1` and the two live sessions, as
-//! RFC-0036 defines them.
+//! RFC-0036 defines them, the parameter sets and the soundness calculator, as RFC-0014 does.
 //!
 //! # Messages
 //!
@@ -62,6 +62,24 @@
 //! when it lets it go, revealed or not. Errors ([`ProtocolError`]) name messages, matrices,
 //! counts, positions and lengths only, never a query's index.
 //!
+//! # Parameter sets
+//!
+//! [`ParamSet`] holds RFC-0014's three sets, `live-64/1`, `ni-100/1` and `test-small/1`, each
+//! with the commitments' layout its claim list states (RFC-0026 'Schema'), its query counts, its
+//! proofs of work, whether a release verifier accepts it and the targets its soundness must reach.
+//! [`ParamSet::accept`] takes a set from its identifier, as a proof must (INV-PROTO-5), and
+//! refuses `test-small/1` without the `test-params` feature.
+//!
+//! # The soundness calculator
+//!
+//! [`SoundnessReport`] gives every row of RFC-0014's soundness table for a parameter set at a
+//! statement's [`StatementSizes`]: its exact error bound, its bits `λ = g + max(0, −log2 ε)` as
+//! a [`FixedBits`] lower bound `r` with `r ≤ 256·λ < r + 1 + 2^{-20}`, its target and whether it
+//! reaches it, then the minimum. The arithmetic is integers only, as RFC-0014 'Soundness
+//! calculator' specifies it, so that the verifier's independent calculator agrees bit for bit,
+//! and every decision compares integers, never rounded bits. [`StatementSizes::llama_405b_16k`]
+//! is the 405B 16K-token, 16K-context statement, each of its sizes documented with its source.
+//!
 //! # Features
 //!
 //! - `test-params` accepts the `test-small` parameter set, which certifies nothing. Tests only: a
@@ -78,17 +96,20 @@ compile_error!(
 mod error;
 mod matrix;
 mod message;
+mod params;
 mod prover;
 mod queries;
 mod round1;
 mod round2;
 mod round3;
 mod seed;
+mod soundness;
 mod verifier;
 
 pub use error::{ProtocolError, QueryFault};
 pub use matrix::WeightMatrix;
 pub use message::{Message, MessageKind};
+pub use params::{ParamMode, ParamSet, Targets};
 pub use prover::{ProverEngine, ProverSession, ProverState, SessionError};
 pub use queries::{MatrixCodeword, QueryShape};
 pub use round1::{
@@ -102,6 +123,10 @@ pub use round3::{
     ColumnQueries, MatrixColumns, MatrixQueries, MultiProof, NiProof, Round3Response,
 };
 pub use seed::{ProverSeedShare, SeedCommit, SeedReveal, coin_commitment, coin_toss};
+pub use soundness::{
+    Commitment, ErrorBound, LookupSizes, MatrixSizes, ProofOfWork, Rounds, RowKind,
+    SoundnessReport, SoundnessRow, StatementSizes,
+};
 /// The protocol version `Round1` carries and both sessions check, the claim list's: 0 until
 /// `tessera-protocol/1` is assigned, when the first end-to-end proof verifies, then 1
 /// (09 §3, RFC-0036 '`Round1`'). A reader of another version answers `ERR-PROTO-VERSION`.

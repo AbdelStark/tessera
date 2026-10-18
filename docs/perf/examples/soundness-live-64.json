@@ -1,0 +1,612 @@
+{
+  "meets_targets": true,
+  "minimum": 7,
+  "params": {
+    "advice": {
+      "log2_inv_rate": 1,
+      "log2_k": 22,
+      "mask_coeffs": 160,
+      "row_block": 32,
+      "segments": 8
+    },
+    "advice_queries": 155,
+    "id": "live-64/1",
+    "mode": "live",
+    "query_pow": 0,
+    "release": true,
+    "seed_pow": 0,
+    "targets": {
+      "bits": 100,
+      "one_shot": 64
+    },
+    "weight_queries": 97,
+    "weights": {
+      "blinding_rows": 4096,
+      "log2_inv_rate": 2,
+      "log2_k": 20,
+      "mask_coeffs": 65536
+    }
+  },
+  "rows": [
+    {
+      "bits": 31231,
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 5631,
+      "numerator": "64",
+      "pass": true,
+      "row": "rounds",
+      "target": 100
+    },
+    {
+      "bits": 28638,
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 3038,
+      "numerator": "71808",
+      "pass": true,
+      "row": "union",
+      "target": 100
+    },
+    {
+      "bits": 31537,
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 5937,
+      "numerator": "28",
+      "pass": true,
+      "row": "forests",
+      "target": 100
+    },
+    {
+      "bits": 22015,
+      "covered_by": "seed-pow",
+      "grinding": 0,
+      "margin": 5631,
+      "numerator": "4398050705408",
+      "pass": true,
+      "row": "logup",
+      "target": 64
+    },
+    {
+      "bits": 31231,
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 5631,
+      "numerator": "64",
+      "pass": true,
+      "row": "openings",
+      "target": 100
+    },
+    {
+      "bits": 16467,
+      "codeword": 8388608,
+      "commitment": "advice",
+      "covered_by": "query-pow",
+      "grinding": 0,
+      "margin": 83,
+      "mask": 160,
+      "message": 4194304,
+      "pass": true,
+      "per_query_bits": 106,
+      "queries": 155,
+      "row": "queries",
+      "target": 64
+    },
+    {
+      "bits": 25755,
+      "commitment": "advice",
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 155,
+      "numerator": "176160768",
+      "pass": true,
+      "row": "field",
+      "target": 100,
+      "theta": 21
+    },
+    {
+      "bits": 16392,
+      "codeword": 4194304,
+      "commitment": "Embed",
+      "covered_by": "query-pow",
+      "grinding": 0,
+      "margin": 8,
+      "mask": 65536,
+      "message": 1048576,
+      "pass": true,
+      "per_query_bits": 168,
+      "queries": 97,
+      "row": "queries",
+      "target": 64
+    },
+    {
+      "bits": 26188,
+      "commitment": "Embed",
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 588,
+      "numerator": "54525952",
+      "pass": true,
+      "row": "field",
+      "target": 100,
+      "theta": 13
+    },
+    {
+      "bits": 16392,
+      "codeword": 4194304,
+      "commitment": "Q",
+      "covered_by": "query-pow",
+      "grinding": 0,
+      "margin": 8,
+      "mask": 65536,
+      "message": 1048576,
+      "pass": true,
+      "per_query_bits": 168,
+      "queries": 97,
+      "row": "queries",
+      "target": 64
+    },
+    {
+      "bits": 26111,
+      "commitment": "Q",
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 511,
+      "numerator": "67108864",
+      "pass": true,
+      "row": "field",
+      "target": 100,
+      "theta": 16
+    },
+    {
+      "bits": 16392,
+      "codeword": 4194304,
+      "commitment": "K",
+      "covered_by": "query-pow",
+      "grinding": 0,
+      "margin": 8,
+      "mask": 65536,
+      "message": 1048576,
+      "pass": true,
+      "per_query_bits": 168,
+      "queries": 97,
+      "row": "queries",
+      "target": 64
+    },
+    {
+      "bits": 26188,
+      "commitment": "K",
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 588,
+      "numerator": "54525952",
+      "pass": true,
+      "row": "field",
+      "target": 100,
+      "theta": 13
+    },
+    {
+      "bits": 16392,
+      "codeword": 4194304,
+      "commitment": "V",
+      "covered_by": "query-pow",
+      "grinding": 0,
+      "margin": 8,
+      "mask": 65536,
+      "message": 1048576,
+      "pass": true,
+      "per_query_bits": 168,
+      "queries": 97,
+      "row": "queries",
+      "target": 64
+    },
+    {
+      "bits": 26188,
+      "commitment": "V",
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 588,
+      "numerator": "54525952",
+      "pass": true,
+      "row": "field",
+      "target": 100,
+      "theta": 13
+    },
+    {
+      "bits": 16392,
+      "codeword": 4194304,
+      "commitment": "O",
+      "covered_by": "query-pow",
+      "grinding": 0,
+      "margin": 8,
+      "mask": 65536,
+      "message": 1048576,
+      "pass": true,
+      "per_query_bits": 168,
+      "queries": 97,
+      "row": "queries",
+      "target": 64
+    },
+    {
+      "bits": 26111,
+      "commitment": "O",
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 511,
+      "numerator": "67108864",
+      "pass": true,
+      "row": "field",
+      "target": 100,
+      "theta": 16
+    },
+    {
+      "bits": 16392,
+      "codeword": 4194304,
+      "commitment": "Gate",
+      "covered_by": "query-pow",
+      "grinding": 0,
+      "margin": 8,
+      "mask": 65536,
+      "message": 1048576,
+      "pass": true,
+      "per_query_bits": 168,
+      "queries": 97,
+      "row": "queries",
+      "target": 64
+    },
+    {
+      "bits": 26089,
+      "commitment": "Gate",
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 489,
+      "numerator": "71303168",
+      "pass": true,
+      "row": "field",
+      "target": 100,
+      "theta": 17
+    },
+    {
+      "bits": 16392,
+      "codeword": 4194304,
+      "commitment": "Up",
+      "covered_by": "query-pow",
+      "grinding": 0,
+      "margin": 8,
+      "mask": 65536,
+      "message": 1048576,
+      "pass": true,
+      "per_query_bits": 168,
+      "queries": 97,
+      "row": "queries",
+      "target": 64
+    },
+    {
+      "bits": 26089,
+      "commitment": "Up",
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 489,
+      "numerator": "71303168",
+      "pass": true,
+      "row": "field",
+      "target": 100,
+      "theta": 17
+    },
+    {
+      "bits": 16392,
+      "codeword": 4194304,
+      "commitment": "Down",
+      "covered_by": "query-pow",
+      "grinding": 0,
+      "margin": 8,
+      "mask": 65536,
+      "message": 1048576,
+      "pass": true,
+      "per_query_bits": 168,
+      "queries": 97,
+      "row": "queries",
+      "target": 64
+    },
+    {
+      "bits": 26068,
+      "commitment": "Down",
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 468,
+      "numerator": "75497472",
+      "pass": true,
+      "row": "field",
+      "target": 100,
+      "theta": 18
+    },
+    {
+      "bits": 16392,
+      "codeword": 4194304,
+      "commitment": "LmHead",
+      "covered_by": "query-pow",
+      "grinding": 0,
+      "margin": 8,
+      "mask": 65536,
+      "message": 1048576,
+      "pass": true,
+      "per_query_bits": 168,
+      "queries": 97,
+      "row": "queries",
+      "target": 64
+    },
+    {
+      "bits": 26188,
+      "commitment": "LmHead",
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 588,
+      "numerator": "54525952",
+      "pass": true,
+      "row": "field",
+      "target": 100,
+      "theta": 13
+    },
+    {
+      "bits": 16392,
+      "codeword": 4194304,
+      "commitment": "ChannelParams",
+      "covered_by": "query-pow",
+      "grinding": 0,
+      "margin": 8,
+      "mask": 65536,
+      "message": 1048576,
+      "pass": true,
+      "per_query_bits": 168,
+      "queries": 97,
+      "row": "queries",
+      "target": 64
+    },
+    {
+      "bits": 26188,
+      "commitment": "ChannelParams",
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 588,
+      "numerator": "54525952",
+      "pass": true,
+      "row": "field",
+      "target": 100,
+      "theta": 13
+    },
+    {
+      "bits": 31434,
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 5834,
+      "numerator": "37",
+      "pass": true,
+      "row": "linking",
+      "target": 100
+    },
+    {
+      "bits": 32768,
+      "covered_by": null,
+      "grinding": 0,
+      "margin": 7168,
+      "pass": true,
+      "row": "hash",
+      "target": 100
+    }
+  ],
+  "schema": "tessera.soundness/1",
+  "statement": {
+    "advice_rows": 2097152,
+    "claim_groups": [
+      64,
+      64,
+      64,
+      64,
+      64,
+      64,
+      64,
+      64,
+      64,
+      64,
+      64,
+      64,
+      64,
+      64,
+      64,
+      64
+    ],
+    "forests": [
+      28
+    ],
+    "lookups": [
+      {
+        "lookups": 0,
+        "rows": 8388608
+      },
+      {
+        "lookups": 4398046511104,
+        "rows": 4194304
+      },
+      {
+        "lookups": 109924319232,
+        "rows": 1073741824
+      },
+      {
+        "lookups": 36205232128,
+        "rows": 2097152
+      },
+      {
+        "lookups": 268435456,
+        "rows": 1048576
+      },
+      {
+        "lookups": 35936796672,
+        "rows": 16777216
+      },
+      {
+        "lookups": 112038248448,
+        "rows": 1073741824
+      },
+      {
+        "lookups": 33822867456,
+        "rows": 1048576
+      },
+      {
+        "lookups": 33822867456,
+        "rows": 1048576
+      },
+      {
+        "lookups": 33822867456,
+        "rows": 1073741824
+      },
+      {
+        "lookups": 67645734912,
+        "rows": 8388608
+      },
+      {
+        "lookups": 67645734912,
+        "rows": 67108864
+      },
+      {
+        "lookups": 67645734912,
+        "rows": 67108864
+      },
+      {
+        "lookups": 109924319232,
+        "rows": 65536
+      },
+      {
+        "lookups": 33822867456,
+        "rows": 4294967296
+      }
+    ],
+    "matrices": [
+      {
+        "matrix": "Embed",
+        "rows": 2048,
+        "variables": 31,
+        "width": 1048576
+      },
+      {
+        "matrix": "Q",
+        "rows": 32256,
+        "variables": 35,
+        "width": 1048576
+      },
+      {
+        "matrix": "K",
+        "rows": 2016,
+        "variables": 31,
+        "width": 1048576
+      },
+      {
+        "matrix": "V",
+        "rows": 2016,
+        "variables": 31,
+        "width": 1048576
+      },
+      {
+        "matrix": "O",
+        "rows": 32256,
+        "variables": 35,
+        "width": 1048576
+      },
+      {
+        "matrix": "Gate",
+        "rows": 104832,
+        "variables": 37,
+        "width": 1048576
+      },
+      {
+        "matrix": "Up",
+        "rows": 104832,
+        "variables": 37,
+        "width": 1048576
+      },
+      {
+        "matrix": "Down",
+        "rows": 129024,
+        "variables": 37,
+        "width": 1048576
+      },
+      {
+        "matrix": "LmHead",
+        "rows": 2004,
+        "variables": 31,
+        "width": 1048576
+      },
+      {
+        "matrix": "ChannelParams",
+        "rows": 882,
+        "variables": 27,
+        "width": 1048576
+      }
+    ],
+    "protocol": 1,
+    "rounds": [
+      {
+        "count": 10000,
+        "degree": 7
+      }
+    ],
+    "stages": [
+      64,
+      64
+    ],
+    "tree_levels": [
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31,
+      31
+    ],
+    "zero_checks": [
+      42,
+      42,
+      42,
+      42,
+      42,
+      42,
+      42,
+      42
+    ]
+  }
+}

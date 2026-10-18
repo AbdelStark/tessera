@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! No floating point in the table generators (RFC-0008 'Generators and digests'): a table's
-//! values are the exact integers its generator defines, so the generators' sources name no
-//! `f32` or `f64` and write no floating-point literal. Comments and strings are not code: the
-//! sources are lexed, not searched.
+//! No floating point in the table generators (RFC-0008 'Generators and digests') or the soundness
+//! calculator (RFC-0014 'Soundness calculator'): a table's values are the exact integers its
+//! generator defines, and the calculator's bits and decisions are integers that both calculators
+//! must agree on bit for bit, so their sources name no `f32` or `f64` and write no
+//! floating-point literal. Comments and strings are not code: the sources are lexed, not
+//! searched.
 
 use std::fs;
 use std::io;
@@ -12,9 +14,13 @@ use std::str::FromStr;
 
 use proc_macro2::{TokenStream, TokenTree};
 
-/// The directories of the table generators, prover and verifier side.
-pub(crate) const GENERATORS: [&str; 2] =
-    ["crates/tessera-tables/src", "verifier/crates/tv-tables/src"];
+/// The directories that compute with integers only: the table generators, prover and verifier
+/// side, and the prover's soundness calculator.
+pub(crate) const INTEGER_ONLY: [&str; 3] = [
+    "crates/tessera-tables/src",
+    "verifier/crates/tv-tables/src",
+    "crates/tessera-protocol/src/soundness",
+];
 
 /// The integer suffixes, which a float test must not mistake for exponents (`usize` holds an
 /// `e`).
@@ -22,12 +28,12 @@ const INTEGER_SUFFIXES: [&str; 12] = [
     "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize",
 ];
 
-/// Checks the Rust files of `files` (relative to `repo`) inside a generator directory.
+/// Checks the Rust files of `files` (relative to `repo`) inside an integer-only directory.
 pub(crate) fn check(repo: &Path, files: &[PathBuf]) -> io::Result<Vec<String>> {
     let mut violations = Vec::new();
     for rel in files {
-        let in_generator = GENERATORS.iter().any(|dir| rel.starts_with(dir));
-        if !in_generator || rel.extension().is_none_or(|ext| ext != "rs") {
+        let integer_only = INTEGER_ONLY.iter().any(|dir| rel.starts_with(dir));
+        if !integer_only || rel.extension().is_none_or(|ext| ext != "rs") {
             continue;
         }
         let text = fs::read_to_string(repo.join(rel))?;
@@ -128,17 +134,24 @@ mod tests {
     }
 
     #[test]
-    fn only_generator_directories_are_checked() {
+    fn only_integer_only_directories_are_checked() {
         let fixture = crate::testing::Fixture::new("no-float");
         fixture.write("crates/tessera-tables/src/a.rs", "let x = 1.5;\n");
         fixture.write("verifier/crates/tv-tables/src/b.rs", "fn f(x: f64) {}\n");
         fixture.write("crates/tessera-bench/src/c.rs", "let x = 1.5;\n");
         fixture.write("crates/tessera-tables/src/d.txt", "1.5\n");
+        fixture.write(
+            "crates/tessera-protocol/src/soundness/e.rs",
+            "let bits = (x as f64).log2();\n",
+        );
+        fixture.write("crates/tessera-protocol/src/f.rs", "let x = 0.5;\n");
         let files = [
             "crates/tessera-tables/src/a.rs",
             "verifier/crates/tv-tables/src/b.rs",
             "crates/tessera-bench/src/c.rs",
             "crates/tessera-tables/src/d.txt",
+            "crates/tessera-protocol/src/soundness/e.rs",
+            "crates/tessera-protocol/src/f.rs",
         ]
         .map(PathBuf::from);
         let found = check(fixture.path(), &files).expect("the fixture is readable");
@@ -147,6 +160,7 @@ mod tests {
             [
                 "crates/tessera-tables/src/a.rs:1: the floating-point literal `1.5`",
                 "verifier/crates/tv-tables/src/b.rs:1: the type `f64`",
+                "crates/tessera-protocol/src/soundness/e.rs:1: the type `f64`",
             ]
         );
     }

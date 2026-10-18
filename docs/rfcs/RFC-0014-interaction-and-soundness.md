@@ -8,7 +8,7 @@
 
 ## Summary
 
-Tessera runs in two modes over the same messages. **Live mode** is a bilateral session: the prover commits, a coin toss fixes one seed, the prover sends every sumcheck and combined row, and the verifier draws column queries after everything else is fixed. **Non-interactive mode** derives the seed and the queries from the transcript, each behind 20 bits of proof-of-work. This RFC fixes the message schemas, the session order, the transcript schedule, the soundness accounting and three named parameter sets: `live-64` (64-bit live proximity, at least 100-bit algebraic soundness), `ni-100` (at least 100 bits throughout) and `test-small`.
+Tessera runs in two modes over the same messages. **Live mode** is a bilateral session: the prover commits, a coin toss fixes one seed, the prover sends every sumcheck and combined row, and the verifier draws column queries after everything else is fixed. **Non-interactive mode** derives the seed and the queries from the transcript, each behind 20 bits of proof-of-work. This RFC fixes the message schemas, the session order, the transcript schedule, the soundness accounting and three named parameter sets: `live-64` (64-bit live proximity; at least 100 bits for every challenge a prover can retry, and at least 64 for the one-shot LogUp identity, 86 at the 405B statement), `ni-100` (at least 100 bits throughout) and `test-small`.
 
 ## Motivation
 
@@ -104,7 +104,7 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 | LogUp identity (`N + T ≤ 2^{38}` per instance) | `(N + T)/\|Fp2\|`; `2(N + T)/\|Fp2\|` in `tessera-protocol/2`, which counts zero denominators (RFC-0032) | about 90 bits, one shot: `α` derives from a seed the prover cannot retry | 90 + `g_seed` = 110 bits |
 | Tuple compression | included in the LogUp bound (joint polynomial in `α, β`) | — | — |
 | Opening evaluation checks | `T_g/\|Fp2\|` per claim group of `T_g` claims, `1/\|Fp2\|` per weight matrix ([RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings)) | ≥ 110 bits | same |
-| Proximity per commitment | `((1 + ρ')/2)^τ + ϑ·n/\|Fp2\|` | `τ · b(ρ') ≥ 64` bits, one shot; the field term about 100 bits | `τ · b(ρ') + g_query ≥ 100` bits; the field term about 120 bits with `g_seed` |
+| Proximity per commitment | `((1 + ρ')/2)^τ + ϑ·n/\|Fp2\|` | `τ · b(ρ') ≥ 64` bits, one shot; the field term about 100 bits | `τ · b(ρ') + g_query ≥ 100` bits; the field term about 100 bits, which no proof of work covers |
 | Weight linking | `ν/\|Fp2\|` | ≥ 120 bits | ≥ 120 bits |
 | Hash collisions | BLAKE3, 256-bit output | 128 bits | 128 bits |
 
@@ -113,13 +113,18 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 The field term is the tensor generator's. The proximity coefficients are `eq(ξ*, row)` for a random point `ξ*` with one coordinate per bit of the row index ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 3), not independent uniform values. Folding those `ϑ` coordinates one at a time costs one line proximity gap each. The false-witness probability is therefore `ϑ·n/|Fp2|`, with `n` the codeword length (Diamond and Posen, 'Proximity Testing with Logarithmic Randomness' (2024); Diamond and Gruen, 'Proximity Gaps in Interleaved Codes' (2025), Theorems 2 and 3).
 - **`ϑ` for advice** is `ν − log2 k`, every bit of the row index: about 20 at 405B, 16K tokens and 16K context, whose 5.8×10^5 non-zero rows span a row index of 20 or 21 bits. The term is then `21 · 2^23/2^128 ≈ 2^{−100.6}`.
 - **`ϑ_T` for weight matrix `T`** is `⌈log2⌉` of its data and blinding rows: at most 18 at 405B. The term is at most `18 · 2^22/2^128 ≈ 2^{−101.8}`.
-- **Both targets hold.** `live-64` keeps about 100 bits one shot. `ni-100` keeps about 120 with the seed's 20 bits of grinding, since `ξ*` is squeezed after the seed.
+- **Both targets hold.** `live-64` and `ni-100` keep about 100 bits each, with no grinding: `ξ*` is squeezed after the stages' final evaluations, which a prover can vary without redoing a proof of work ('Grinding'), so the term meets its target alone.
 
 The bound holds in the unique-decoding regime only, `δ < (1 − ρ')/2`, where this table works. The bound takes the queries to be independent. Both modes draw column indices uniformly with replacement, and a repeated index is checked once at no cost in soundness ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7). In `tessera-protocol/1` the verifier also rejects a zero LogUp root denominator, of a lookup tree or a table tree, and any zero denominator.
 
 ### Grinding
 
-In non-interactive mode the seed is squeezed only after a nonce whose `H("pow", state ‖ Ascii("seed-pow") ‖ nonce)` has 20 leading zero bits; the queries likewise after `query-pow`. Each grinding step costs the honest prover about 2^20 BLAKE3 evaluations (milliseconds) and adds 20 bits to every bound an adversary could otherwise retry: the LogUp identity (RISK-5) and the proximity test.
+In non-interactive mode the seed is squeezed only after a nonce whose `H("pow", state ‖ Ascii("seed-pow") ‖ nonce)` has 20 leading zero bits; the queries likewise after `query-pow`. Each grinding step costs the honest prover about 2^20 BLAKE3 evaluations (milliseconds) and adds 20 bits to the bounds whose challenges it alone guards:
+
+- **`seed-pow`** to the LogUp identity (RISK-5): `α` and `β` are squeezed right after the seed, so a new pair costs a new nonce.
+- **`query-pow`** to each commitment's column queries, `((1 + ρ')/2)^τ`: the indices are squeezed right after its nonce.
+
+No proof of work covers any other bound. Their challenges follow prover messages that a cheating prover can vary without redoing a proof of work: the tree levels' and stages' challenges follow their own round messages, and the opening challenges of row 7 (`pcs/advice/gamma`, `pcs/advice/xi`, `pcs/weights/{T}/xi`) the stages' final evaluations. Each of those bounds meets its target alone, in the `2^{t − λ}` sense of 'Soundness budget'; the soundness calculator gives them no grinding bits.
 
 ### Parameter sets
 
@@ -158,7 +163,113 @@ Session deadlines (per message) are configuration, not protocol; defaults are 1 
 
 ### Soundness calculator
 
-`tessera params check` (prover side) and `tessera-verify params` (verifier side, independent code) take a parameter set and statement sizes (lookups and table rows per instance, rounds, degrees, committed rows) and print every row of the soundness table with its bits and the minimum. The committed rows give each commitment's `ϑ`: the advice row index's bits, and each weight matrix's. CI runs both for every parameter set at the 405B 16K-token sizes and fails if any bound misses its target or the two calculators disagree.
+`tessera params check` (prover side) and `tessera-verify params` (verifier side, independent code) take a parameter set and statement sizes (lookups and table rows per instance, rounds, degrees, committed rows) and print every row of the soundness table with its bits, its target, whether it reaches the target, and the minimum. The committed rows give each commitment's `ϑ`: the advice row index's bits, and each weight matrix's. CI runs both for every parameter set at the 405B 16K-token sizes and fails if any bound misses its target or the two calculators disagree.
+
+So that the two agree bit for bit, the rest of this section specifies the calculator to the integer. It computes with integers only: floating point decides nothing, and no platform's `log2` can move a bit. Both calculators reproduce the reports of [`spec/vectors/soundness/`](../../spec/vectors/soundness/README.md), which an independent oracle writes, and print the `tessera.soundness/1` report ([schema](../../spec/schemas/soundness-v1.schema.json)).
+
+**Statement sizes.**
+
+| Size | What it counts |
+|---|---|
+| `protocol` | The `n` of `tessera-protocol/n`: 1, or 2 with the zero-knowledge items |
+| `rounds` | Every round of every stage and tree level, as a count and a degree `d`; in `tessera-protocol/2`, the LogUp identity sumcheck's too |
+| `stages` | The instances `m` each reduction stage batches; in `tessera-protocol/2`, the identity sumcheck is one more |
+| `tree_levels` | The instances `m` each tree level batches: its fraction trees and product forests |
+| `zero_checks` | The variables `n_i` of each `ZeroCheck` ([RFC-0035](RFC-0035-padded-rows.md#zero-check-points)) |
+| `forests` | Each product forest's `s`: it holds `2^s` trees |
+| `lookups` | Each LogUp instance's lookups `N` and table rows `T` |
+| `claim_groups` | Each advice claim group's claims `T_g` |
+| `advice_rows` | The rows the advice row index spans, `2^{ν − log2 k}` |
+| `matrices` | Each opened weight matrix, in `WeightMatrix` order: its message width `k_T`, its committed data rows `m_T` and the variables `ν_T` of its polynomial |
+
+A calculator refuses, with `ERR-USAGE`: a `protocol` other than 1 or 2; `τ_A` or `τ_W` outside `1..=2^16`; a codeword of no symbol or of more than `2^32`, the advice's `n_A = 2^{log2 k + log2 inv_rate}` or a matrix's `n_T = k_T·2^{log2 inv_rate}`; `advice_rows = 0`; a matrix with `m_T + B_W = 0`; matrices not in strictly increasing `WeightMatrix` order.
+
+**Rows.** `q = |Fp2| = p^2`, `p = 2^64 − 2^32 + 1`. A numerator is an exact integer that saturates at `2^128 − 1`, and a maximum over no item is 0.
+
+| Row | Error bound `ε` | Grinding | Target |
+|---|---|---|---|
+| Sumcheck and tree rounds | `D/q`, `D` the largest of: each `d` of a nonzero count; each stage's and tree level's `m`; each `n_i`; 1 when there is a tree level, its line challenge; 1 in `tessera-protocol/2` when there is a stage or a level, its mask's `ρ` | — | `bits` |
+| All rounds, union bound | `U/q`, `U = Σ count·d + Σ_stages m + Σ_levels (m + 1) + Σ n_i`, plus the number of stages and levels in `tessera-protocol/2` | — | `bits` |
+| Product-forest root claims | `max s/q` | — | `bits` |
+| LogUp identity | `v·max(N + T)/q`, `v = 1`, and 2 in `tessera-protocol/2` | `g_seed` | `one_shot` |
+| Opening evaluation checks | `max(max T_g, 1 when a matrix is opened)/q` | — | `bits` |
+| Proximity queries, per commitment | `((n + k + P)/(2n))^τ`, `((1 + ρ')/2)^τ`: the advice's `n_A`, `k_A = 2^{log2 k}`, `P_A`, `τ_A`; each matrix's `n_T`, `k_T`, `P_W`, `τ_W` | `g_query` | `one_shot` |
+| Proximity field term, per commitment | `ϑ·n/q`, `ϑ_A = ⌈log2 advice_rows⌉`, `ϑ_T = ⌈log2(m_T + B_W)⌉` | — | `bits` |
+| Weight linking | `max ν_T/q` | — | `bits` |
+| Hash collisions | `2^{−128}` | — | `bits` |
+
+A report lists the rows in this order, the two proximity rows for the advice first and then for each matrix in order. A row's bits are `λ = g + max(0, −log2 ε)` for the grinding `g` that covers it: an error above 1 counts as 1. A row of `ε = 0` has no term: it has no bits, and it passes.
+
+- **Per item, the largest.** A row over several items, instances, forests or groups, takes the largest item's error, not their sum. The items are fixed before their challenge, and the verifier accepts only if every false one passes: the probability is at most the bound of any one of them. The union row is the exception, the sum RFC-0010 'Soundness of the schedule' states.
+- **Batching and lines.** A stage of `n` rounds of degree `d` batching `m` instances errs with probability at most `(n·d + m)/q`, as RFC-0010 states. A tree level adds its line challenge: `(n·d + m + 1)/q`, since with fraction trees `γ` and `λ` are a polynomial of total degree `m`, not `m − 1`, and the line challenge errs with probability `1/q` of its own.
+- **The union row counts every term of the rounds row**, so the rounds row never fails alone.
+
+**Targets.** SP-1 (06 §4). Each parameter set states two targets. `bits` is 100, for every row a prover can retry by varying its messages. `one_shot` is for the rows a proof of work covers, the LogUp identity and the column queries:
+
+- in a live session their challenges come from the coin-tossed seed and the verifier's draw, once: `live-64` gives them 64 bits, SP-1's per live audit;
+- a non-interactive proof retries them at its proofs of work's cost: `ni-100` gives them 100 bits, like every other row.
+
+`test-small` has no targets: no row passes or fails.
+
+**Bits.** A row's bits are a FixedBits lower bound on `λ`, in units of `2^{−8}` bits ([RFC-0036](RFC-0036-protocol-messages.md#round2response)), computed by LOG2.
+
+`LOG2(a, b, F)`, for integers `a ≥ b ≥ 1` and `W = 62`:
+
+1. `e` is the largest integer with `b·2^e ≤ a`.
+2. `y = ⌊a·2^W / (b·2^e)⌋`, so that `2^W ≤ y < 2^{W+1}`.
+3. `L = e`. Then `F` times: `y = ⌊y^2 / 2^W⌋` and `L = 2L`; if then `y ≥ 2^{W+1}`, `y = ⌊y/2⌋` and `L = L + 1`.
+4. The result is `L`.
+
+Every step rounds down, so `L ≤ 2^F·log2(a/b)`. Each rounding costs `log2 y` at most `2^{−W}/ln 2`, which the later steps scale by `2^{−i}`, so `L > 2^F·log2(a/b) − 1 − 4.33·2^{F−W}`. `y^2 < 2^{126}` fits a 128-bit integer; step 2's dividend needs 190 bits.
+
+- **A field-form row**, `ε = c/q`: `256·g` when `c ≥ q`, and `LOG2(q, c, 8) + 256·g` otherwise.
+- **A queries row**: with `A = 2n` and `B = n + k + P`, and `L = LOG2(A, B, 48)` when `B < A`, the per-query bits are `⌊L/2^{40}⌋` and the row's `⌊τ·L/2^{40}⌋ + 256·g`. When `B ≥ A`, `ρ' ≥ 1`: the per-query bits are 0 and the row's `256·g`.
+- **The hash row**: 32,768, 128 bits exactly.
+
+Every FixedBits `r`, per-query bits included, then satisfies `r ≤ 256·λ < r + 1 + 2^{−20}`: at most `2^{−8}·(1 + 2^{−20})` bits below the true value, never above. With `τ ≤ 2^{16}`, the queries' rounding costs at most `2^{−24}` bits beyond FixedBits' own.
+
+**Decisions.** A row passes exactly when `λ ≥ t` for its target `t`, decided by comparing integers:
+
+- **field form:** `t ≤ g`, or `c ≤ ⌊q / 2^{t−g}⌋`, which is `c·2^{t−g} ≤ q`;
+- **queries:** `t ≤ g`, or `A^τ ≥ 2^{t−g}·B^τ`;
+- **hash:** `t ≤ 128`.
+
+A FixedBits comparison would be sound but not exact: it fails a row up to `2^{−8}` bits above its target. Since `q < 2^{128}`, real numerators lie that close. `c = 2^{28}` gives `100 − 6.7·10^{−10}` bits and fails 100, while `c = 2^{28} − 1` gives `100 + 4.7·10^{−9}` and passes, and integers decide both by the definition, with no precision argument. LOG2 may decide a queries row first without changing the outcome, and the powers are large only near a tie:
+
+- `τ·L ≥ 2^{48}·(t − g)` passes;
+- `τ·(L + 2) ≤ 2^{48}·(t − g)` fails;
+- only a row within `τ·2^{−47}` bits of its target compares the powers.
+
+**The minimum** is the row with the least margin `r − 256·t`, the first of any that tie; under a set without targets, the row with the fewest bits; rows without a term are not counted. When every target is equal, as at `ni-100`, it is the row with the fewest bits. A report meets its targets when every row passes.
+
+**The 405B 16K-token, 16K-context statement** is the default: Llama-3.1-405B, `servable`, one batch of 16,384 tokens at 16,384 positions of context, under `tessera-protocol/1`. Each size comes from this RFC's text, from the compiler's commitment report ([`docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json`](../perf/v0.2/commitment-report-405b-servable-c2-b32.json)) or from the architecture by its RFC's rule. Where none gives a count, the default takes a bound:
+
+| Size | Value | Source |
+|---|---|---|
+| `rounds` | 10,000 of degree 7 | this table's "about 10^4 rounds" of "degree `d ≤ 7`" |
+| `stages` | 2, of at most 64 instances | `servable`'s two reduction stages (RFC-0010 'Stages'); the compiler's schedule batches 18 and 4 before the gadgets' relations join it |
+| `tree_levels` | 42, of at most 31 instances | the height of the tallest tree, the `Exp` lookup tree; two trees for each of the 15 instances, and the `SoftmaxRow` forest |
+| `zero_checks` | 8, of 42 variables | RFC-0035's four padding zero-checks, `OneHot`'s booleanity and the first checkpoint's equality, at most the score tensor's 42 variables |
+| `forests` | `s = 28` | the `SoftmaxRow` forest, `2^7` layers by `2^7` heads by `2^{14}` rows |
+| `lookups` | the report's 15 instances | `N` the lookups per token times 16,384, `T` the rows; `Exp`'s `N` is `2^{42}`, every position of the padded score tensor ([RFC-0030](RFC-0030-masked-exponentials.md#cost)) |
+| `claim_groups` | 16, of at most 64 claims | RFC-0011's target for `G`; the compiler's pool holds 38 claims before the gadgets' join |
+| `advice_rows` | `2^{21}` | the 21-bit row index of 'Soundness budget' |
+| `matrices` | the ten of RFC-0040 at `k_W = 2^{20}` | each `k_T = 2^{20}`; `m_T` from 'The matrices', `ChannelParams`' 882 from [RFC-0012](RFC-0012-weight-commitment.md#column-answers); `ν_T` the padded dimensions' bits |
+
+`--lookups N` and `--table-rows T` replace the instances with one of `N` lookups and `T` rows, a flag left out taking `Exp`'s. The CLI's other sizes are fixed until the compiler's schedule gives them.
+
+**At the default statement.** The calculator's lower bounds, in bits, against this RFC's figures:
+
+| Row | `live-64` | `ni-100` | This RFC |
+|---|---|---|---|
+| Sumcheck and tree rounds | 121.99 | 121.99 | ≥ 125: the batching challenges `m/q` count too |
+| All rounds, union bound | 111.86 | 111.86 | ≥ 112: `7·10^4/q` alone gives 111.90 |
+| LogUp identity | 85.99 | 105.99 | about 90, and 110: the `Exp` instance holds `2^{42}`, not `2^{38}` |
+| Advice queries | 64.32 | 80.09 + 20 | 64.3, and 80.1, which is 80.098 rounded to nearest |
+| Weight queries | 64.03 | 80.53 + 20 | 64.0 and 80.5 |
+| Field terms | 100.60, weights 101.82 | the same | about 100; 100.6 and 101.8 |
+
+Every row meets its target at both sets. `live-64`'s minimum is a weight matrix's queries, 64.03 bits for 64; `ni-100`'s the advice queries, 100.09 bits for 100.
 
 ## Alternatives Considered
 
@@ -183,7 +294,7 @@ v0.3: messages, both modes, transcript schedule and the calculator, without zero
 - State machines: every out-of-order message is rejected with `ERR-PROTO-ORDER` on both sides; a second `SeedReveal` for the same `Round1` is refused by the prover (`ERR-PROTO-REUSE`); a reveal that does not match `c_V` yields `ERR-PROTO-COINTOSS`.
 - Transcript vectors: for each conformance model and both modes, the full sequence of labels and challenges matches pinned vectors on both sides.
 - Grinding: a non-interactive proof with a seed nonce one bit short of 20 is rejected with `Reject(ProofOfWork)`.
-- Calculator: both implementations agree on every row for 1,000 random size profiles; `live-64` and `ni-100` meet their targets at 405B sizes; the proximity row's field term grows by `n/|Fp2|` with each row-index bit a profile's rows add; a profile with `N + T = 2^{50}` makes the LogUp row fail its target, proving the check is live.
+- Calculator: both implementations agree on every row for 1,000 random size profiles, and both reproduce the reports of `spec/vectors/soundness/`; `live-64` and `ni-100` meet their targets at 405B sizes; the proximity row's field term grows by `n/|Fp2|` with each row-index bit a profile's rows add; a profile with `N + T = 2^{50}` makes `ni-100`'s LogUp row fail its target, 98 bits for 100, proving the check is live (at `live-64` it gives 78 one-shot bits, which the 64-bit one-shot target accepts); for every row, a size or parameter that makes exactly that row miss its target.
 - Transports: the stream and directory transports deliver byte-identical envelopes; a TLS peer without a valid client certificate is refused.
 
 ## Open Questions
