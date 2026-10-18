@@ -33,9 +33,9 @@
 
 use tessera_codec::Rational;
 use tessera_ir::{
-    ArchSpec, Broadcast, CommitmentClass, Graph, GraphBuilder, IntRange, IntType, IntegerModel,
-    IrError, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, Site, TableId, TensorDecl,
-    TensorId, WeightRef, WeightType,
+    ArchSpec, Broadcast, ClaimList, CommitmentClass, Graph, GraphBuilder, IntRange, IntType,
+    IntegerModel, IrError, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, Site, TableId,
+    TensorDecl, TensorId, WeightRef, WeightType,
 };
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableKind, TableSpec};
 
@@ -73,6 +73,17 @@ impl<'a> PublicModel<'a> {
             profile: model.profile,
             quant: &model.quant.public,
             silu_in_exponents: &model.quant.silu_in_exponents,
+        }
+    }
+
+    /// The public part that `claims` states: everything [`lower`] reads, from the claim list
+    /// alone, as the verifier lowers it (RFC-0007 'Verifier validation' step 5, RFC-0042).
+    pub fn of_claims(claims: &'a ClaimList) -> Self {
+        Self {
+            arch: &claims.arch,
+            profile: claims.profile,
+            quant: &claims.quant,
+            silu_in_exponents: &claims.silu_in_exponents,
         }
     }
 }
