@@ -35,6 +35,7 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 ## Gadgets (RFC-0009)
 - Every committed value upstream of the logits has exactly one passing witness. The change carries an alternative-witness test for each gadget it touches.
 - Gadget preconditions (such as `s ≤ r − 1`) are checked at claim-list validation, by the verifier, from public data.
+- A range argument counts every term of the quantities it compares. A packed class term `2^b·c` multiplies a key's range by the class count `n`, so a split identity compares values up to `n·2^b`, not `2^b`. RFC-0009 Lemma 2's split dropped that term, which let `RequantSplit` wrap at `n = 4, b = 62` (#118).
 
 ## Zero knowledge (RFC-0013)
 - Every value sent to the verifier is public, uniformly masked, or determined by values already sent (INV-ZK-1).
@@ -56,4 +57,6 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 - For each check the change adds or modifies, a test that violates exactly that check and asserts the exact `RejectReason` or error code, seen red before the fix.
 - Property and fuzz oracles judge what was accepted without the code under test. They re-encode each accepted value from the value itself (rationals reduced, maps sorted, ranges checked), measure it against the limits, and predict error offsets. An oracle that echoes the input's own fields passes a decoder that skipped a check.
 - A mutation run in a scratch copy: disable, reorder or shift each check, one mutant at a time, with a no-op control. Every mutant that changes behaviour fails a test, and the pull request records the count caught.
+- A mutation run proves only that the checks present are tested. The review also lists each precondition the soundness argument needs and the line that enforces it; a missing one has no mutant to catch it.
+- Wrap attacks are probed over Goldilocks at the boundary widths, every class count included. The test field F65537 hides them: there `2^16 − P = −1`, while Goldilocks leaves a window of `2^64 − P = 2^32 − 1`.
 - A branch that honest hashing reaches only with negligible probability, such as a rejection-sampling retry or the cap on a squeeze loop, is driven by a stub source in a unit test. Without one, a mutant of the branch survives every test.
