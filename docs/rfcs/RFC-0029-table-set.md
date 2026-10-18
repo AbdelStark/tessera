@@ -49,7 +49,7 @@ The claim list's `tables: Vec<TableSpec>`, sorted by `TableId` ([RFC-0026](RFC-0
 - **The Python reference** (`tessera_quant.tables`) generates the same tables from the same kinds and parameters. The three implementations are checked against pinned digests ([RFC-0008](RFC-0008-logup-and-tables.md#generators-and-digests) 'Generators and digests').
 - **The commitment report** lists each table's kind, rows and lookups for a human reader (RFC-0006 'Outputs'). It is a JSON report, never read back into a proof.
 
-The prover reads the claim list its plan was compiled from. The execution plan's schema decides how the prover reaches it, whether the plan carries it or names it by digest ([#101](https://github.com/AbdelStark/tessera/issues/101)). This RFC adds nothing to the plan.
+The prover reads the claim list its plan was compiled from. The execution plan carries it ([RFC-0041](RFC-0041-execution-plan.md#the-plan)). This RFC adds nothing to the plan.
 
 ### Outputs
 

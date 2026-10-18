@@ -196,10 +196,10 @@ It reads only the public part of `D`: the architecture, the profile, `PublicQuan
 
 ### Tiling and the execution plan
 
-- Linear tiles are `(layer, operation)`; attention tiles are `(layer, kv_head, query_block)` with query blocks of 512 positions by default.
+- Linear tiles are `(layer, operation)`; attention tiles are `(layer, kv_head, query_block)` with query blocks of 512 positions by default. [RFC-0041](RFC-0041-execution-plan.md#tiles) defines what each holds, and the tiles of the tokens, the prologue, the epilogue and the tables.
 - Within an attention tile, `e`'s variables are ordered `(i_hi, h, q, i_lo)`, so that each advice row holds a block of keys against the tile's queries and heads, and the blocks above the diagonal are zero rows ([RFC-0034](RFC-0034-causal-blocks.md#causal-layout)).
-- Each tile's committed tensors occupy a contiguous range of advice rows (RFC-0011), assigned in a fixed traversal order: layer, then tile kind, then head, then query block.
-- The `ExecutionPlan` (schema `0x0202`, private) lists tiles, their advice row ranges, the stage each relation joins (RFC-0010), and device assignments (RFC-0018). It contains no secret values.
+- Each tile's committed tensors occupy a contiguous range of advice rows (RFC-0011), in [RFC-0041](RFC-0041-execution-plan.md#production-order)'s production order: node order, an attention node's tiles by KV head, then query block, and the tables' multiplicities last.
+- The `ExecutionPlan` (schema `0x0202`, private) holds the claim list and one sequence's tiles ([RFC-0041](RFC-0041-execution-plan.md#the-plan)). Row ranges are the advice layout's (RFC-0011), the stage schedule is derived (RFC-0037), and devices are assigned at prove time (RFC-0018). It contains no secret values.
 
 ### Outputs
 
