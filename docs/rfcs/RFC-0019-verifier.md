@@ -66,7 +66,7 @@ pub struct VerifyInputs {
 
 Checks run in this order; the first failure determines the verdict.
 
-1. Decode every input under `ResourceLimits` (`Reject(Malformed)` or `Inconclusive(ERR-RES-*)`).
+1. Decode every input under `ResourceLimits`: an artifact of the prover's that fails is `Reject(Malformed)`, one of the verifier's own inputs `Inconclusive(ERR-CODEC-*)` ([RFC-0043](RFC-0043-rejection-payloads.md#malformed)), and an exhausted resource `Inconclusive(ERR-RES-*)`.
 2. Accept the parameter set (`Reject(Params)`).
 3. Validate and lower the claim list: [RFC-0007](RFC-0007-claim-list.md#verifier-validation) steps 1–7, including table regeneration and range re-derivation (`Reject(StatementMismatch)`).
 4. Bind the statement: claim-list digest; `weights_root` and `epoch` equal to the ledger's current root for that model, which `weights` hashes to, with the claim list's weight layout ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-verifiers-weight-inputs)); manifest signature under a pinned key; sample membership and no prior acceptance of the batch's requests; anchor entries' inclusion proofs ([RFC-0015](RFC-0015-transcript-anchor.md#verifier-checks), [RFC-0016](RFC-0016-audit-sampling.md#verifier-checks)); the advice commitment's `layout_digest` equal to the `commitment_id` the verifier derives ([RFC-0031](RFC-0031-commitment-id.md#layout_digest), `Reject(StatementMismatch)`).

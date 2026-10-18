@@ -33,10 +33,10 @@ pub enum RejectReason {
     Proximity { commitment: CommitmentClass, column: u32 },         // REJ-PCS-PROXIMITY
     Evaluation { commitment: CommitmentClass },                     // REJ-PCS-EVAL
     ProofOfWork { phase: PowPhase },                                // REJ-POW
-    Anchor { request_id: u64, kind: AnchorFailure },                // REJ-ANCHOR
+    Anchor { request_id: Option<u64>, kind: AnchorFailure },        // REJ-ANCHOR
     UBoundExceeded { request_id: Option<u64>, uhat: FixedBits, bound: FixedBits }, // REJ-UHAT
     Budget { epoch: u32 },                                          // REJ-BUDGET
-    Params { name: ParamSetName },                                  // REJ-PARAMS
+    Params { name: ParamSetId },                                    // REJ-PARAMS
 }
 
 pub enum StatementField {                    // RFC-0039: one variant per check, in check order
@@ -44,7 +44,13 @@ pub enum StatementField {                    // RFC-0039: one variant per check,
     Table { table: TableId }, GadgetPolicy, Gadget { gadget: GadgetId }, Layout, Template,
     ClaimListDigest, WeightsRoot, WeightsEpoch, ManifestDigest, Batch, Predictor, LayoutDigest,
 }
+
+pub struct ArtifactKind(pub SchemaId);       // RFC-0043: the prover's artifact that failed to decode, 03 §5
+pub enum PowPhase { Seed, Queries }          // RFC-0043: NiProof's seed_nonce, then its query_nonce
+pub enum AnchorFailure { ManifestSignature, Inclusion, Frames }   // RFC-0043: RFC-0015's checks 1 and 2
 ```
+
+[RFC-0043](../rfcs/RFC-0043-rejection-payloads.md) defines the other payloads. `Malformed` names an artifact the prover sends; one of the verifier's own inputs that fails to decode is `Inconclusive(ERR-CODEC-*)`. `Anchor` names no request for a manifest-level failure. `Params` holds RFC-0014's `ParamSetId`.
 
 `StatementMismatch` names the first check that fails, as [RFC-0039](../rfcs/RFC-0039-statement-fields.md#the-checks) maps them. The checks are claim-list validation ([RFC-0007](../rfcs/RFC-0007-claim-list.md#verifier-validation)), then the statement and the advice commitment's `layout_digest` ([RFC-0019](../rfcs/RFC-0019-verifier.md#check-order) step 4). Its payload is public: a site type, a table's index or a gadget's index.
 
