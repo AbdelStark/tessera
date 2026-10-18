@@ -12,6 +12,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | `errors/` | The error codes of 04 §3, with their classes and exit codes | kept by hand; a test keeps it, the specification's table and the error enum equal |
 | `field/` | Goldilocks and its quadratic extension, RFC-0002 | its oracle |
 | `hash/` | Hash domains, Merkle multiproofs and column digests, RFC-0004; `commitment_id` of commitment descriptors, RFC-0031 | its oracle |
+| [`lowering/`](lowering/README.md) | The Llama lowering, RFC-0044: every input, node, constant, shift-class set, weight and table of the conformance models' graphs and of two variants', at several lengths | its oracle, which rebuilds the models with theirs |
 | [`model/`](model/README.md) | The encoding of `IntegerModel`, 03 §2: two one-layer models | `cargo xtask gen-vectors`, from `tessera-ir`'s types |
 | [`models/`](models/README.md) | Tiny conformance models with the residuals and logits `D` gives on their sequences, 07 §5 | its oracle |
 | [`pcs/`](pcs/README.md) | Openings of the advice commitment, RFC-0011 | its oracle |

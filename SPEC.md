@@ -84,6 +84,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0041](docs/rfcs/RFC-0041-execution-plan.md) | Tiles and the execution plan: what each tile holds, the production order, the plan as claim list and tiles (amends RFC-0006, RFC-0011, RFC-0029, 03) | v0.3 |
 | [RFC-0042](docs/rfcs/RFC-0042-silu-exponents.md) | SiLU exponents in the claim list: each layer's `Silu` table determined by public data (amends RFC-0007, RFC-0026, 03) | v0.3 |
 | [RFC-0043](docs/rfcs/RFC-0043-rejection-payloads.md) | Rejection payloads: `ArtifactKind`, `PowPhase`, `AnchorFailure` and `ParamSetId`; the anchor's and the audit sample's rejections (amends 04, RFC-0015, RFC-0016, RFC-0019, RFC-0039) | v0.3 |
+| [RFC-0044](docs/rfcs/RFC-0044-lowering-nodes.md) | The Llama lowering, node by node: every input, node, constant, shift-class set and table by id (amends RFC-0006) | v0.3 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 
