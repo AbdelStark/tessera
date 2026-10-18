@@ -6,8 +6,8 @@ use std::io;
 use std::path::Path;
 
 use crate::{
-    deny_policy, licenses, links, no_float, repo, reports, secret_access, spdx, unsafe_policy,
-    versions,
+    conflicts, deny_policy, licenses, links, no_float, repo, reports, secret_access, spdx,
+    unsafe_policy, versions,
 };
 
 /// The policies checked by `lint`, each with its violations.
@@ -37,6 +37,10 @@ pub(crate) fn checks(repo: &Path) -> io::Result<Vec<(&'static str, Vec<String>)>
         (
             "no floating point in the table generators (RFC-0008)",
             no_float::check(repo, &files)?,
+        ),
+        (
+            "no merge-conflict markers (07 §9)",
+            conflicts::check(repo, &files)?,
         ),
     ])
 }
