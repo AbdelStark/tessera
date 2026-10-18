@@ -612,6 +612,7 @@ All notable changes to the prover release train are recorded here: the crates un
   - **`ExecutionPlan`** (`0x0202`) holds the claim list and one sequence's tiles, which do not depend on its length. It holds no row ranges, which are the layout's, no stage membership, which is derived, and no devices, which are assigned at prove time.
   - A proof unit of `tessera-protocol/1` covers one request until #357 defines batches of several.
   - Amended: RFC-0006 'Tiling and the execution plan', RFC-0011 rule 2, RFC-0029 'The table set' and 03 §5.
+- `cargo xtask lint` rejects a merge-conflict marker in any file of the repository (07 §9). Markdown reads a marker as text, so one left in 03 §5's artifact catalog by a rebase had passed every other lint check before a codec test caught it in CI.
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

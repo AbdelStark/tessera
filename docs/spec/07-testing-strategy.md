@@ -92,6 +92,6 @@ Required properties, each a named test:
 | Verifier isolation | Yes | `cargo xtask check-isolation` ([RFC-0001](../rfcs/RFC-0001-workspace-and-verifier-independence.md#enforcement)) |
 | Dependency policy | Yes | `cargo deny check` (both workspaces); `cargo vet` (verifier) |
 | MSRV | Yes | Build with the minimum supported Rust version |
-| Docs | Yes | `cargo doc -D warnings`; link check on `docs/` |
+| Docs | Yes | `cargo doc -D warnings`; link check on `docs/`; no merge-conflict marker in any file (`cargo xtask lint`) |
 | GPU correctness | Yes for `gpu`-labeled PRs | Self-hosted runner |
 | Performance regression | Nightly, opens an issue on failure | `tessera bench` |

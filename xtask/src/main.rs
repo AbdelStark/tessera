@@ -12,6 +12,7 @@
 
 mod branchless;
 mod claim_vectors;
+mod conflicts;
 mod deny_policy;
 mod deps;
 mod isolation;

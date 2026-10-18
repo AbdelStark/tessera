@@ -43,7 +43,7 @@ The pull-request pipeline ([README](README.md#continuous-integration)) runs thes
 cargo fmt --all --check && cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 (cd verifier && cargo fmt --all --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked)
-cargo xtask lint                 # unsafe code, SPDX headers, licenses, Markdown links, policy files
+cargo xtask lint                 # unsafe code, SPDX headers, licenses, Markdown links, policy files, conflict markers
 cargo xtask check-isolation      # the verifier shares no code with the prover
 cargo xtask check-test-features  # test-only features fail release builds
 cargo xtask check-pr --base origin/main   # changelog entry and sign-off for your branch
