@@ -101,15 +101,34 @@ Everything a proof depends on is a function of `ClaimList`, `PublicStatement`, t
 
 ### Verifier validation
 
-Before reading any proof message, the verifier runs these checks in order and returns `Reject(StatementMismatch)` or `Reject(Params)` on the first failure:
+Before reading any proof message, the verifier runs these checks in order. The first failure is `Reject(Params)` or `Reject(StatementMismatch)`, whose field, given in parentheses, names the check ([RFC-0039](RFC-0039-statement-fields.md#the-checks)):
 
-1. `protocol_version` is supported; `params` names an allowed parameter set (`test-small` only with the `test-params` feature).
-2. Architecture consistency: `d_model = n_heads · d_head`; `n_heads mod n_kv_heads = 0`; `vocab`, `max_context` within protocol limits (v1: `vocab ≤ 2^18`, `max_context ≤ 2^17`). Every layer's sites are rescaled alike ([RFC-0038](RFC-0038-uniform-layers.md)): each site is affine in every layer or in none, and a `pot` site has one class in every layer or several in every layer.
-3. Profile constraints hold for the derived graph (S1–S3 of [RFC-0005](RFC-0005-integer-model.md#profiles)) when the profile claims them.
-4. Tables: each `TableSpec` is regenerated from its definition by the verifier's own generator; the digest must match.
-5. Ranges: the verifier lowers the claim list into its own graph and re-derives every range from public data with its own analysis (INV-IR-5), affine sites included ([RFC-0025](RFC-0025-affine-sites.md)). Every lookup must name a lookup table, not a `Rope` table ([RFC-0008](RFC-0008-logup-and-tables.md#table-kinds)), and its key must fit its table and the centered field range. Every split gadget must satisfy its preconditions. Every `SoftmaxRow`'s `Exp` table must map its last key to 0 ([RFC-0030](RFC-0030-masked-exponentials.md#range-analysis-and-validation)).
-6. Layout: commitment parameters are those the parameter set prescribes, and the derived advice layout fits within the protocol's maximum matrix size.
-7. Scoring and anchor templates name supported variants, once they join the claim list ([RFC-0026](RFC-0026-claim-list-layout.md)).
+1. `params` names an allowed parameter set (`test-small` only with the `test-params` feature), else `Reject(Params)`: [RFC-0019](RFC-0019-verifier.md#check-order) runs this check first, as its step 2. `protocol_version` is supported (`ProtocolVersion`).
+2. Architecture and quantization, in this order:
+   1. Architecture consistency (`Architecture`): `n_layers ≥ 1`; `n_kv_heads ≥ 1` divides `n_heads`; `d_head` is even, from 2 to `2^{16} − 2`; `d_model = n_heads · d_head`; `d_ff ≥ 1`; `vocab` and `max_context` within protocol limits (v1: `1 ≤ vocab ≤ 2^18`, `1 ≤ max_context ≤ 2^17`).
+   2. The public quantization data (`Quantization`):
+      - `quant.rope` is `arch.rope`;
+      - `act_exponents` holds the embedding, each INT8 site of the profile and the final norm, once each and sorted;
+      - each rescale site is in exactly one of `shift_class_sets` and `affine_sites`, both sorted;
+      - an affine site follows the Q, K, V, O, up or down projection, with a shift from 1 to 63 ([RFC-0025](RFC-0025-affine-sites.md#lowering));
+      - a `pot` site has one to four classes, each from 1 to 63, and one class if it follows no weight;
+      - `score_scales` holds one positive scale per layer, sorted;
+      - `residual_bits` lies from 2 to 31;
+      - the embedding's shift `s_e` into the residual keeps `127 · 2^{s_e} < 2^{residual_bits − 1}`;
+      - `rms_eps_int ≥ 1` and `rsqrt_kappa ≤ 31`.
+   3. Every layer's sites are rescaled alike ([RFC-0038](RFC-0038-uniform-layers.md)): each site is affine in every layer or in none, and a `pot` site has one class in every layer or several in every layer (`Rescaling { site }`, the first site in 03 §2's declaration order that breaks it).
+3. Profile constraints hold for the derived graph (S1–S3 of [RFC-0005](RFC-0005-integer-model.md#profiles)) when the profile claims them (`Profile`).
+4. Tables: each `TableSpec` is regenerated from its definition by the verifier's own generator; the digest must match (`Table { table }`, in `TableId` order).
+5. Ranges, in this order:
+   1. `max_log2_rows` lies from 1 to 32 (`GadgetPolicy`).
+   2. The verifier lowers the claim list into its own graph and re-derives every range from public data with its own analysis (INV-IR-5), affine sites included ([RFC-0025](RFC-0025-affine-sites.md)). At each gadget-backed node, in node order (`Gadget { gadget }`):
+      - some gadget takes its key within tables of at most `2^{max_log2_rows}` rows;
+      - its inputs lie in their domains and in the centered field range;
+      - its gadget's preconditions hold, those of a split gadget among them;
+      - a `SoftmaxRow`'s `Exp` table maps its last key to 0 ([RFC-0030](RFC-0030-masked-exponentials.md#range-analysis-and-validation)).
+   3. The tables the lowering derives are the claim list's, id for id (`Table { table }`, the first id that differs). A lookup names a lookup table, never a `Rope` table ([RFC-0008](RFC-0008-logup-and-tables.md#table-kinds)): no lowering derives one for a lookup.
+6. Layout: commitment parameters are those the parameter set prescribes, and the derived advice layout fits within the protocol's maximum matrix size (`Layout`).
+7. Scoring and anchor templates name supported variants, once they join the claim list ([RFC-0026](RFC-0026-claim-list-layout.md)) (`Template`).
 
 The derived constraint system has a canonical digest (`ConstraintSystemDigest`, computed by both the compiler and the verifier with independent code). It is not part of the protocol; CI compares the two digests on every conformance model to detect lowering divergence early.
 
@@ -140,7 +159,7 @@ The schema lands in v0.2 with the compiler. The verifier's validation lands in v
 
 - Golden claim lists for the conformance models, decoded by both workspaces.
 - Constraint-system digests from the compiler and the verifier agree on every conformance model and on 8B and 405B shapes.
-- Negative claim lists, each rejected at the expected validation step: inconsistent head counts; a tampered table digest; a table definition whose regenerated digest differs; a `GadgetPolicy` with `max_log2_rows = 40`; a claim list that marks a wide key as `Requant1`; an unsupported parameter set; `test-small` without the feature.
+- Negative claim lists, each rejected at the expected validation step with its field ([RFC-0039](RFC-0039-statement-fields.md)): inconsistent head counts; a tampered table digest; a table definition whose regenerated digest differs; a `GadgetPolicy` with `max_log2_rows = 40`; a claim list that marks a wide key as `Requant1`; an unsupported parameter set; `test-small` without the feature.
 - INV-CL-1: a test perturbs weights (keeping per-tensor statistics fixed) and asserts the claim list bytes are unchanged.
 
 ## Open Questions
