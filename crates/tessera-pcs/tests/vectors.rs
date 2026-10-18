@@ -112,7 +112,7 @@ fn encodings_match_the_oracle() {
             .expect("matching length");
         assert_eq!(values, row, "row of f, k = {k}");
 
-        let encoder = RowEncoder::new(k, p).expect("valid parameters");
+        let encoder = RowEncoder::new(k, 1, p).expect("valid parameters");
         let mut source = Replay::new(mask);
         let mut codeword = vec![Fp::default(); 2 * k];
         encoder

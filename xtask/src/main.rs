@@ -33,6 +33,7 @@ mod testing;
 mod unsafe_policy;
 mod vectors;
 mod versions;
+mod weight_vectors;
 
 use std::process::ExitCode;
 

@@ -59,8 +59,8 @@ impl Echo {
 }
 
 /// The types the targets decode, by selector: every type of the conformance vectors, plus a
-/// few compositions they do not hold.
-pub const TYPES: [&str; 36] = [
+/// few compositions they do not hold, and the artifacts whose decoders `tv-codec` exports.
+pub const TYPES: [&str; 37] = [
     "u8",
     "u16",
     "u32",
@@ -97,6 +97,7 @@ pub const TYPES: [&str; 36] = [
     "Shape",
     "Vec<Shape>",
     "Option<[Fp2; 2]>",
+    "WeightCommitmentPublic",
 ];
 
 /// Decodes one value of `TYPES[selector % TYPES.len()]`.
@@ -139,7 +140,8 @@ pub fn decode_as(selector: usize, c: &mut Cursor<'_>) -> Decoded {
         32 => sample(c),
         33 => shape(c),
         34 => seq(c, size::TAG, shape),
-        _ => option(c, |c| array(c, 2, size::FP2, fp2)),
+        35 => option(c, |c| array(c, 2, size::FP2, fp2)),
+        _ => weight_commitment_public(c),
     }
 }
 
@@ -367,4 +369,43 @@ pub fn shape(c: &mut Cursor<'_>) -> Decoded {
         };
         Ok(Echo::node(variant.to_le_bytes().to_vec(), fields, 0))
     })
+}
+
+/// `WeightCommitmentPublic`, schema `0x0301` (RFC-0040), decoded by `tv-codec`'s decoder and
+/// encoded here from RFC-0040's field list, never by the type's own `encode`: a struct of
+/// `layout`, itself a struct of `log2_k: u8`, `log2_inv_rate: u8`, `mask_coeffs: u32` and
+/// `blinding_rows: u32`; `roots: [Digest; 10]`; `epoch: u32`. Three levels deep: the struct,
+/// then the layout and the roots, then each root.
+pub fn weight_commitment_public(c: &mut Cursor<'_>) -> Decoded {
+    let value = tv_codec::WeightCommitmentPublic::decode(c)?;
+    let layout = Echo::node(
+        Vec::new(),
+        vec![
+            Echo::leaf(vec![value.layout.log2_k]),
+            Echo::leaf(vec![value.layout.log2_inv_rate]),
+            Echo::leaf(value.layout.mask_coeffs.to_le_bytes().to_vec()),
+            Echo::leaf(value.layout.blinding_rows.to_le_bytes().to_vec()),
+        ],
+        0,
+    );
+    let roots = value
+        .roots
+        .iter()
+        .map(|root| {
+            Echo::node(
+                Vec::new(),
+                root.iter().map(|&b| Echo::leaf(vec![b])).collect(),
+                0,
+            )
+        })
+        .collect();
+    Ok(Echo::node(
+        Vec::new(),
+        vec![
+            layout,
+            Echo::node(Vec::new(), roots, 0),
+            Echo::leaf(value.epoch.to_le_bytes().to_vec()),
+        ],
+        0,
+    ))
 }

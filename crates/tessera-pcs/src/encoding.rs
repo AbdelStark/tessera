@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Rate-1/2 Reed–Solomon encoding of rows with vanishing masks (RFC-0011 'Encoding').
+//! Reed–Solomon encoding of rows with vanishing masks (RFC-0011 'Encoding'), at rate `1/2^r`:
+//! rate 1/2 for the advice (RFC-0011), rate 1/4 for the weights (RFC-0012 'Layout', RFC-0040
+//! 'Encoding, leaves and roots').
 //!
 //! A row of `k` values is `f(ω_k^0), …, f(ω_k^{k−1})` for the polynomial `f` of degree below `k`.
 //! The encoding adds `Z_H·m`, with `Z_H = X^k − 1` vanishing on the subgroup `H` of order `k` and
 //! `m = Σ_{i < P} m_i·X^i` drawn from a [`MaskSource`], and evaluates `g = f + Z_H·m` on the coset
-//! `7·L` of the subgroup `L` of order `n = 2k`: symbol `j` is `g(7·ω_n^j)`.
+//! `7·L` of the subgroup `L` of order `n = 2^r·k`: symbol `j` is `g(7·ω_n^j)`. With `P = 0`, as
+//! for a weight row in `tessera-protocol/1`, `g = f`.
 //!
 //! # Algorithm
 //!
@@ -17,12 +20,13 @@
 //! 1. The Cooley–Tukey kernel with the twiddles of `ω_k^{−1}` turns the row, in natural order,
 //!    into `k·f_{rev_k(t)}` in position `t`, where `rev_k` reverses `log2 k` bits.
 //! 2. The coset NTT of `g` is the NTT of `g(7X)`, whose coefficients are `g_i·7^i`. In the
-//!    bit-reversed order of size `n`, coefficient `i < k` sits in position `2·rev_k(i)` and
-//!    coefficient `k + i` in position `2·rev_k(i) + 1`. So position `2t` receives the entry `t`
-//!    of step 1 times `7^{rev_k(t)}/k` (one precomputed table, which also absorbs the inverse
-//!    NTT's `1/k`), and position `2t + 1` receives zero.
+//!    bit-reversed order of size `n`, coefficient `i < k` sits in position `2^r·rev_k(i)` and
+//!    coefficient `k + i` in position `2^r·rev_k(i) + 2^{r−1}`: reversing `log2 n` bits sends the
+//!    low `log2 k` bits of an index to the top and bit `log2 k` to bit `r − 1`. So position `2^r·t`
+//!    receives the entry `t` of step 1 times `7^{rev_k(t)}/k` (one precomputed table, which also
+//!    absorbs the inverse NTT's `1/k`), and the `2^r − 1` positions after it receive zero.
 //! 3. For each `i < P`, the mask coefficient `m_i` is drawn and `m_i·7^i` subtracted in position
-//!    `2·rev_k(i)`, and `m_i·7^{k+i}` written in position `2·rev_k(i) + 1`.
+//!    `2^r·rev_k(i)`, and `m_i·7^{k+i}` written in position `2^r·rev_k(i) + 2^{r−1}`.
 //! 4. The Gentleman–Sande kernel with the twiddles of `ω_n` evaluates, from bit-reversed
 //!    coefficients, in natural order.
 //!
@@ -72,20 +76,22 @@ impl<F: FnMut() -> Goldilocks> MaskSource for F {
     }
 }
 
-/// The encoder of rows of `k` values into codewords of `n = 2k` symbols with `P` mask
-/// coefficients, `0 ≤ P ≤ k`, for `k` a power of two from `2^0` to `2^31`.
+/// The encoder of rows of `k` values into codewords of `n = 2^r·k` symbols with `P` mask
+/// coefficients, `0 ≤ P ≤ k`, at rate `1/2^r`, `r ≥ 1`, for `k` a power of two and `n ≤ 2^32`.
 ///
-/// It precomputes three tables, `2.5·k` elements (80 MiB at `k = 2^22`), once; each row then costs
-/// an inverse NTT of size `k`, a coset NTT of size `n` and `P` draws, and allocates nothing.
-/// Encoding is deterministic given the mask coefficients: the same row and mask give the same
-/// codeword.
+/// It precomputes three tables, `(1.5 + 2^{r−1})·k` elements (80 MiB at `k = 2^22` and rate 1/2),
+/// once; each row then costs an inverse NTT of size `k`, a coset NTT of size `n` and `P` draws,
+/// and allocates nothing. Encoding is deterministic given the mask coefficients: the same row and
+/// mask give the same codeword.
 #[derive(Clone)]
 pub struct RowEncoder {
     log_k: u32,
+    /// `r`: `n = 2^r·k`.
+    log_inv_rate: u32,
     mask_coeffs: usize,
     /// `ω_k^{−rev(t)}` for `t < k/2`: the inverse NTT of the row.
     inverse: Vec<Fp>,
-    /// `ω_n^{rev(t)}` for `t < k = n/2`: the NTT of the masked coefficients.
+    /// `ω_n^{rev(t)}` for `t < n/2`: the NTT of the masked coefficients.
     forward: Vec<Fp>,
     /// `7^{rev_k(t)}/k` for `t < k`.
     spread: Vec<Fp>,
@@ -105,19 +111,28 @@ impl fmt::Debug for RowEncoder {
 }
 
 impl RowEncoder {
-    /// The encoder of rows of `message_len = k` values with `mask_coeffs = P` mask coefficients.
+    /// The encoder of rows of `message_len = k` values into codewords of `n = 2^r·k` symbols,
+    /// `r = log2_inv_rate`, with `mask_coeffs = P` mask coefficients: `r = 1` for the advice,
+    /// `r = 2` for the weights.
     ///
     /// # Errors
     ///
     /// In this order: [`PcsError::NotPowerOfTwo`] if `k` is not a power of two;
-    /// [`PcsError::TooLong`] if the codeword's `2k` points exceed `2^32`; and
-    /// [`PcsError::MaskTooLarge`] if `P > k`.
-    pub fn new(message_len: usize, mask_coeffs: usize) -> Result<Self, PcsError> {
+    /// [`PcsError::InverseRate`] if `r = 0`, a code of rate 1; [`PcsError::TooLong`] if the
+    /// codeword's `n` points exceed `2^32`; and [`PcsError::MaskTooLarge`] if `P > k`.
+    pub fn new(
+        message_len: usize,
+        log2_inv_rate: u32,
+        mask_coeffs: usize,
+    ) -> Result<Self, PcsError> {
         if !message_len.is_power_of_two() {
             return Err(PcsError::NotPowerOfTwo { len: message_len });
         }
+        if log2_inv_rate == 0 {
+            return Err(PcsError::InverseRate { log2_inv_rate });
+        }
         let log_k = message_len.trailing_zeros();
-        let log_n = log_k + 1;
+        let log_n = log_k.saturating_add(log2_inv_rate);
         if log_n > TWO_ADICITY {
             return Err(PcsError::TooLong { log_len: log_n });
         }
@@ -132,6 +147,7 @@ impl RowEncoder {
         let forward = twiddles(log_n, false);
         Ok(Self {
             log_k,
+            log_inv_rate: log2_inv_rate,
             mask_coeffs,
             inverse: twiddles(log_k, true),
             forward,
@@ -145,9 +161,9 @@ impl RowEncoder {
         1 << self.log_k
     }
 
-    /// The number of symbols `n = 2k` in a codeword.
+    /// The number of symbols `n = 2^r·k` in a codeword.
     pub fn codeword_len(&self) -> usize {
-        2 << self.log_k
+        1 << (self.log_k + self.log_inv_rate)
     }
 
     /// The number of mask coefficients `P` drawn per row.
@@ -212,8 +228,15 @@ impl RowEncoder {
                 row_len: k,
             });
         }
-        // rows.len() ≤ isize::MAX / 8, so twice it fits.
-        let expected = rows.len() * 2;
+        // rows.len() ≤ isize::MAX / 8, so 2^r times it fits for r ≤ 3; past that, a length that
+        // overflows is one no buffer has.
+        let expected = rows
+            .len()
+            .checked_mul(n / k)
+            .ok_or(PcsError::CodewordLength {
+                expected: usize::MAX,
+                found: codewords.len(),
+            })?;
         if codewords.len() != expected {
             return Err(PcsError::CodewordLength {
                 expected,
@@ -229,19 +252,21 @@ impl RowEncoder {
     /// The four steps of the module's algorithm, on checked lengths.
     fn encode<M: MaskSource + ?Sized>(&self, row: &[Fp], mask: &mut M, codeword: &mut [Fp]) {
         let k = row.len();
-        // 1. k·f in bit-reversed order, in the low half.
+        let stride = 1 << self.log_inv_rate; // 2^r ≥ 2
+        // 1. k·f in bit-reversed order, in the first k positions.
         let low = &mut codeword[..k];
         low.copy_from_slice(row);
         cooley_tukey(low, &self.inverse, &Subgroup);
-        // 2. f_i·7^i in position 2·rev_k(i), zero in the odd positions.
+        // 2. f_i·7^i in position 2^r·rev_k(i), zero in the 2^r − 1 positions after it.
         spread(codeword, &self.spread);
-        // 3. The mask: −m_i·7^i in position 2·rev_k(i), m_i·7^{k+i} in the next one.
+        // 3. The mask: −m_i·7^i in position 2^r·rev_k(i), m_i·7^{k+i} in position
+        // 2^r·rev_k(i) + 2^{r−1}.
         let mut power = Fp::ONE; // 7^i
         for i in 0..self.mask_coeffs {
             let scaled = mask.draw() * power;
-            let even = 2 * reverse_bits(i, self.log_k);
-            codeword[even] -= scaled;
-            codeword[even + 1] = scaled * self.shift_pow_k;
+            let low = stride * reverse_bits(i, self.log_k);
+            codeword[low] -= scaled;
+            codeword[low + stride / 2] = scaled * self.shift_pow_k;
             power *= COSET_SHIFT;
         }
         // 4. The values of g at 7·ω_n^j, in natural order.
@@ -249,26 +274,28 @@ impl RowEncoder {
     }
 }
 
-/// Moves entry `t` of the low half, times `scale[t]`, to position `2t`, and writes zero in
-/// position `2t + 1`, for every `t < k = codeword.len()/2`, in place.
+/// Moves entry `t` of the first `k = scale.len()` entries, times `scale[t]`, to position `s·t`,
+/// and writes zero in positions `s·t + 1` to `s·t + s − 1`, for every `t < k`, in place, where
+/// `s = codeword.len()/k ≥ 2`.
 ///
-/// Entries `t ∈ [m/2, m)` move to `[m, 2m)`, which holds nothing left to move: the buffer's old
-/// contents for `m = k`, entries already moved below. So the moves run from the top down, each
-/// block between disjoint slices, and entry 0 stays where it is.
+/// Entries `t ∈ [m/2, m)` move to `[s·m/2, s·m)`, which holds nothing left to move, since
+/// `s·m/2 ≥ m`: the buffer's old contents for `m = k`, entries already moved below. So the moves
+/// run from the top down, each block between disjoint slices, and entry 0 stays where it is.
 fn spread(codeword: &mut [Fp], scale: &[Fp]) {
-    let mut m = codeword.len() / 2;
+    let stride = codeword.len() / scale.len();
+    let mut m = scale.len();
     while m >= 2 {
-        let (from, to) = codeword[..2 * m].split_at_mut(m);
-        for ((pair, &y), &s) in to
-            .chunks_exact_mut(2)
-            .zip(&from[m / 2..])
+        let (from, to) = codeword[..stride * m].split_at_mut(stride * m / 2);
+        for ((run, &y), &s) in to
+            .chunks_exact_mut(stride)
+            .zip(&from[m / 2..m])
             .zip(&scale[m / 2..m])
         {
-            pair[0] = y * s;
-            pair[1] = Fp::ZERO;
+            run[0] = y * s;
+            run[1..].fill(Fp::ZERO);
         }
         m /= 2;
     }
     codeword[0] *= scale[0];
-    codeword[1] = Fp::ZERO;
+    codeword[1..stride].fill(Fp::ZERO);
 }

@@ -4,7 +4,8 @@
 //! budget (RFC-0011, RFC-0012).
 //!
 //! The encoding of RFC-0011 'Encoding' and a non-streaming reference of its commitment and
-//! opening are here so far.
+//! opening are here so far, and the weight commitment as `tessera-protocol/1` commits it
+//! (RFC-0040): its layout, its roots, `R_W` and its two artifacts.
 //!
 //! # Encoding
 //!
@@ -12,9 +13,10 @@
 //!   the NTT, the inverse NTT and their coset variants in place, in natural order on both sides:
 //!   `ntt` maps the coefficients of `f` to `f(ω_n^0), …, f(ω_n^{n−1})` with
 //!   `ω_n = 7^((P − 1)/n)`, and `coset_ntt` to `f(s·ω_n^j)`.
-//! - [`RowEncoder`] encodes rows of `k` values into codewords of `n = 2k` symbols on the coset
-//!   `7·L`, adding a vanishing mask of `P` coefficients drawn from a [`MaskSource`]: `encode_row`
-//!   writes one codeword into a buffer the caller provides, `encode_rows` a block of them.
+//! - [`RowEncoder`] encodes rows of `k` values into codewords of `n = 2^r·k` symbols on the coset
+//!   `7·L`, rate 1/2 for the advice and 1/4 for the weights, adding a vanishing mask of `P`
+//!   coefficients drawn from a [`MaskSource`]: `encode_row` writes one codeword into a buffer the
+//!   caller provides, `encode_rows` a block of them.
 //!
 //! ```
 //! use tessera_field::{Goldilocks, PrimeField};
@@ -22,7 +24,7 @@
 //!
 //! let fp = Goldilocks::from_u64_reduced;
 //! let row: Vec<Goldilocks> = (1..=8).map(fp).collect();
-//! let encoder = RowEncoder::new(8, 2)?;
+//! let encoder = RowEncoder::new(8, 1, 2)?;
 //! let mut codeword = vec![Goldilocks::default(); encoder.codeword_len()];
 //! let mut masks = [fp(11), fp(12)].into_iter();
 //! let mut source = || masks.next().unwrap_or_default();
@@ -83,6 +85,7 @@
 //! // rows per step.
 //! let params = CommitmentParams {
 //!     log2_k: 2,
+//!     log2_inv_rate: 1,
 //!     mask_coeffs: 2,
 //!     row_block: NonZeroUsize::new(32).expect("non-zero"),
 //!     commitment_id: [7; 32],
@@ -116,6 +119,27 @@
 //! # Ok::<(), tessera_pcs::PcsError>(())
 //! ```
 //!
+//! # The weight commitment
+//!
+//! RFC-0040 commits the weights of `D` in ten matrices ([`WeightMatrix`]), on a layout that
+//! follows from public data alone.
+//!
+//! - [`WeightLayout`] takes the parameter set's [`WeightLayoutParams`] and the shapes of `D`
+//!   ([`WeightShapes`]): each weight type's `out × in`, the layers, and which weights have a
+//!   `ChannelParams`. It gives each matrix's message width `k_T`, row index and committed rows
+//!   ([`MatrixLayout`]), and writes the committed rows from `D`'s weights ([`ModelWeights`]).
+//! - [`WeightCommitment::commit`] commits each matrix with
+//!   [`ReferenceCommitment::commit_unmasked`]: rate 1/4, no mask, one chain per column from the
+//!   matrix's `commitment_id` ([`CommitmentDescriptor`], RFC-0031), the Merkle root over its
+//!   columns. [`WeightCommitmentPublic`] holds the layout, the ten roots and the epoch, and
+//!   `R_W` is the hash of its encoding.
+//! - [`WeightCommitmentState`] adds the masks' seed, drawn from the operating system's CSPRNG
+//!   into a private `Secret` that only the state's own file receives, and each matrix's budget
+//!   ([`TypeBudget`]). Each artifact is written by atomic rename, the state with mode 0600.
+//!
+//! `tessera-ir` gives the shapes from the architecture and lends the model's weights
+//! (`IntegerModel::weight_shapes`, `IntegerModel::model_weights`).
+//!
 //! # Secrets
 //!
 //! Rows, mask coefficients and codewords are secret-class, and combined rows and opened
@@ -128,8 +152,9 @@
 //!
 //! # Features
 //!
-//! - `test-rng` seeds masking randomness so that tests are reproducible. Tests only: a release
-//!   build with it fails to compile.
+//! - `test-rng` seeds masking randomness so that tests are reproducible, and gives other crates'
+//!   tests [`WeightCommitmentState`]'s `with_seed` and `sealed`, which this crate's own test build
+//!   has without it. Tests only: a release build with it fails to compile.
 
 #![forbid(unsafe_code)]
 
@@ -140,13 +165,21 @@ compile_error!(
 );
 
 mod commitment;
+mod descriptor;
 mod encoding;
 mod error;
 mod ntt;
 mod opening;
+mod weights;
 
 pub use commitment::{ColumnAnswer, CommitmentParams, ReferenceCommitment, RowLayout};
+pub use descriptor::{AdviceLayoutParams, CommitmentDescriptor, WeightLayoutParams, WeightMatrix};
 pub use encoding::{COSET_SHIFT, MaskSource, RowEncoder};
 pub use error::PcsError;
 pub use ntt::NttPlan;
 pub use opening::{ClaimGroup, CombinedRow, RowClaim};
+pub use weights::{
+    ChannelParamsRef, ChannelValues, MatrixKind, MatrixLayout, ModelWeights, OpenedColumns,
+    TypeBudget, WeightCommitment, WeightCommitmentPublic, WeightCommitmentState, WeightLayout,
+    WeightShape, WeightShapes, WeightTensorRef,
+};

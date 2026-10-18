@@ -159,6 +159,10 @@ pub(crate) fn render() -> Vec<(&'static str, String)> {
             "spec/vectors/model/integer-model.json",
             pretty(&crate::model_vectors::render()),
         ),
+        (
+            crate::weight_vectors::PATH,
+            pretty(&crate::weight_vectors::render()),
+        ),
     ]
 }
 

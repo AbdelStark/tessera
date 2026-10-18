@@ -8,10 +8,13 @@ Writes OUT_DIR/<target> for each target below, one file per seed, named by its S
 libFuzzer names corpus files:
 
 - decode: every input of codec/golden.json and codec/noncanonical.json behind every type selector
-  and each of the target's four limits, so that each input meets every decoder.
-- envelope: every codec/envelope.json input under each of the 32 reader configurations, with the
-  payload types the envelope vectors use; and every golden and non-canonical input as the payload
-  of a probe envelope, which the target reseals (configuration bit 4).
+  and each of the target's four limits, so that each input meets every decoder; and the payload of
+  every weight commitment artifact below as a WeightCommitmentPublic, under each limit.
+- envelope: every codec/envelope.json input under each of the 64 reader configurations, with the
+  payload types the envelope vectors use; every golden and non-canonical input as the payload of a
+  probe envelope, which the target reseals (configuration bit 5); and every weight commitment
+  artifact (schema 0x0301: the .twr files of weights/ and the 0x0301 cases of
+  codec/weight-commitment.json) under each configuration, as a WeightCommitmentPublic.
 - multiproof: every opening of hash/hash.json, at most its first 64 indices, in the target's tree
   of the same size; alone, and followed by each change the target's script knows.
 - inclusion: every tree size and leaf index of the golden proofs in rfc6962/inclusion/ that the
@@ -35,11 +38,18 @@ VECTORS = HERE.parent.parent / "spec" / "vectors" / "codec"
 HASH_VECTORS = HERE.parent.parent / "spec" / "vectors" / "hash" / "hash.json"
 INCLUSION_VECTORS = HERE.parent.parent / "spec" / "vectors" / "rfc6962" / "inclusion"
 SUMCHECK_VECTORS = HERE.parent.parent / "spec" / "vectors" / "sumcheck" / "sumcheck.json"
+WEIGHT_VECTORS = HERE.parent.parent / "spec" / "vectors" / "weights"
 
 # The decode target's limits, selected by its second byte.
 DECODE_LIMITS = 4
-# Envelope configuration bit 4: the target makes the declared length and the digest match.
-RESEAL = 0b1_0000
+# The envelope target's configurations: bits 0-2 the reader, 3-4 the limits, and bit 5, with
+# which the target makes the declared length and the digest match.
+ENVELOPE_CONFIGURATIONS = 64
+RESEAL = 0b10_0000
+# The weight commitment's public artifact: its schema, and its envelope's header and digest.
+WEIGHTS_PUBLIC = 0x0301
+HEADER_LEN = 20
+DIGEST_LEN = 32
 # Payload types of envelope.json, and the type the target uses for the deeper Option cases.
 ENVELOPE_PAYLOADS = ("Bytes", "Vec<u64>", "Option^8<u8>")
 # The proof targets' scripts (src/proofs.rs): the changes each knows, and the most indices a
@@ -173,9 +183,22 @@ def main():
     payloads = [names.index(name) for name in ENVELOPE_PAYLOADS]
     for case in envelopes:
         data = bytes.fromhex(case["hex"])
-        for config in range(32):
+        for config in range(ENVELOPE_CONFIGURATIONS):
             for selector in payloads:
                 write("envelope", bytes([config, selector]) + data)
+    public = names.index("WeightCommitmentPublic")
+    artifacts = [path.read_bytes() for path in sorted(WEIGHT_VECTORS.glob("*.twr"))]
+    commitments = json.loads((VECTORS / "weight-commitment.json").read_text())["cases"]
+    artifacts += [
+        bytes.fromhex(case["hex"]) for case in commitments if case["schema"] == WEIGHTS_PUBLIC
+    ]
+    if not artifacts:
+        sys.exit("seeds.py: no weight commitment artifact found")
+    for data in artifacts:
+        for config in range(ENVELOPE_CONFIGURATIONS):
+            write("envelope", bytes([config, public]) + data)
+        for limits in range(DECODE_LIMITS):
+            write("decode", bytes([public, limits]) + data[HEADER_LEN:-DIGEST_LEN])
 
     for seed in multiproof_seeds():
         write("multiproof", seed)

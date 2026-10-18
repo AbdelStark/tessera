@@ -89,7 +89,7 @@ fn transforms(rng: &mut SplitMix64, log_n: u32, runs: usize, coset: bool) {
 
 fn encoding(rng: &mut SplitMix64, log_k: u32, mask_coeffs: usize, runs: usize) {
     let k = 1usize << log_k;
-    let encoder = RowEncoder::new(k, mask_coeffs).expect("valid parameters");
+    let encoder = RowEncoder::new(k, 1, mask_coeffs).expect("valid parameters");
     let row = rng.fps(k);
     let mut codeword = vec![Fp::default(); 2 * k];
     let mut masks = SplitMix64(0x7E55_E7A0_0047_0402);
@@ -117,7 +117,7 @@ fn precomputation(log_n: u32, runs: usize) {
     let k = n / 2;
     let time = fastest(runs, || {
         let start = Instant::now();
-        black_box(RowEncoder::new(k, 200).expect("valid parameters"));
+        black_box(RowEncoder::new(k, 1, 200).expect("valid parameters"));
         start.elapsed()
     });
     // Tables of k/2, k and k entries.

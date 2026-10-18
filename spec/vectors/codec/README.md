@@ -13,8 +13,19 @@ These files pin the Tessera Canonical Encoding ([RFC-0003](../../../docs/rfcs/RF
 | `noncanonical.json` | `cases`: inputs that decoding as `type` must reject with `code` at `offset`, the first byte the failing check reads (RFC-0003 'Limits'), each for one reason. `accepted`: inputs sitting exactly at a limit, which decoding must accept. |
 | `envelope.json` | Envelopes (RFC-0003 'Envelope'): the payload a reader returns, or the `code` and `offset` it must report, in the order the RFC fixes. |
 | `execution-plan.json` | The conformance models' execution plans (schema `0x0202`), sealed: see 'Execution plans'. |
+| `weight-commitment.json` | Envelopes of the weight commitment's artifacts (RFC-0040): `WeightCommitmentPublic` (`0x0301`), each with `R_W`, and `WeightCommitmentState` (`0x0302`), with their values; and `rejected` states whose `opened_columns` is not strictly increasing, with the `code` and `offset` a reader must report. |
 
 Each file states the `limits` (`max_total_bytes`, `max_vec_len`, `max_depth`; RFC-0003 'Limits') its cases are read under.
+
+## The weight commitment's artifacts
+
+`weight-commitment.json` is read under RFC-0003's message limits (`"limits": "message"`). Each case opens as an envelope of its `schema` at its `version`, and its payload decodes as `type` to `value`, which encodes back to it.
+
+- **`WeightCommitmentPublic`.** `weights_root` is `R_W = H("weights-root", payload)`. `tessera-pcs` and `tv-codec` check every case; the verifier's reader refuses the state's envelopes, since it never reads the secret state.
+- **`WeightCommitmentState`.** `masks_seed` is its 32 bytes, and each budget's `opened_columns` strictly increase as integers. `tessera-pcs` checks every case and rejection.
+- **Rejections.** The `rejected` states list an index that is not above the one before it, at the `offset` of that index. One lists 256 before 1: sorted by their little-endian bytes, as a map's keys are, but not as integers, which is the order of RFC-0040.
+
+`tessera-quant` does not read these artifacts.
 
 ## Values
 

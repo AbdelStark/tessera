@@ -101,7 +101,7 @@ fn groups(case: &Value) -> Vec<ClaimGroup> {
 
 /// `enc(u) + Z_H·M` on `7·L`, each `Fp2` coordinate encoded as a row is, with its mask.
 fn encode_combined(row: &CombinedRow) -> Vec<Fp2> {
-    let encoder = RowEncoder::new(row.u.len(), row.mask.len()).expect("valid shape");
+    let encoder = RowEncoder::new(row.u.len(), 1, row.mask.len()).expect("valid shape");
     let coordinate = |values: &[Fp2], c: usize| -> Vec<Fp> {
         values.iter().map(|value| value.coeffs()[c]).collect()
     };
@@ -141,6 +141,7 @@ fn every_honest_opening_is_reproduced_value_by_value_and_verifies() {
         assert_eq!(number(&case["log2_inv_rate"]), 1, "{name}: rate 1/2");
         let params = CommitmentParams {
             log2_k: u32::try_from(number(&case["log2_k"])).expect("small"),
+            log2_inv_rate: 1,
             mask_coeffs: number(&case["mask_coeffs"]) as usize,
             row_block: NonZeroUsize::new(number(&case["row_block"]) as usize).expect("B ≥ 1"),
             commitment_id: digest(&case["commitment_id"]),

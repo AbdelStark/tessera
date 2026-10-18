@@ -2,10 +2,11 @@
 
 //! `Envelope::open`, then the payload decoders, on arbitrary bytes.
 //!
-//! The first byte configures the reader: bits 0–1 the schema it expects, bits 2–3 its limits,
-//! and bit 4 whether to reseal the input, that is, to make its declared length match and its
-//! digest verify so that the payload decoder is reached. The second byte selects the payload's
-//! type in `tv_fuzz::TYPES`; the rest is the envelope.
+//! The first byte configures the reader: bits 0–2 the schema it expects, among the five
+//! `READERS` modulo five, bits 3–4 its limits, and bit 5 whether to reseal the input, that is,
+//! to make its declared length match and its digest verify so that the payload decoder is
+//! reached. The second byte selects the payload's type in `tv_fuzz::TYPES`; the rest is the
+//! envelope.
 //!
 //! A rejection must be a fault of the input and point inside it; a payload error, inside the
 //! payload. An opened envelope must be, byte for byte, the envelope a writer of the version found
@@ -23,8 +24,9 @@ use tv_testkit::blake3;
 
 const CONTEXT: &str = "tessera/v1/envelope";
 
-/// The readers: the vectors' probe schema at version 3, and three schemas of the catalog.
-const READERS: [Expected; 4] = [
+/// The readers: the vectors' probe schema at version 3, and four schemas of the catalog (03 §5),
+/// the last the weight commitment's public artifact (RFC-0040).
+const READERS: [Expected; 5] = [
     Expected {
         schema_id: 0xFFF0,
         version: 3,
@@ -40,6 +42,10 @@ const READERS: [Expected; 4] = [
     Expected {
         schema_id: 0x0601,
         version: 2,
+    },
+    Expected {
+        schema_id: 0x0301,
+        version: 1,
     },
 ];
 
@@ -92,10 +98,10 @@ fuzz_target!(|data: &[u8]| {
     let [config, selector, envelope @ ..] = data else {
         return;
     };
-    let reader = READERS[usize::from(config & 0b11)];
-    let limits = LIMITS[usize::from((config >> 2) & 0b11)];
+    let reader = READERS[usize::from(config & 0b111) % READERS.len()];
+    let limits = LIMITS[usize::from((config >> 3) & 0b11)];
     let mut bytes = envelope.to_vec();
-    if config & 0b1_0000 != 0 {
+    if config & 0b10_0000 != 0 {
         reseal(&mut bytes);
     }
     let opened = Envelope::open(&bytes, reader, &limits, |signed| {

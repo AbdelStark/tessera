@@ -173,6 +173,7 @@ fn a_corrupted_row_is_rejected_at_the_rate_of_its_distance() {
     // middle one empty.
     let params = CommitmentParams {
         log2_k: 5,
+        log2_inv_rate: 1,
         mask_coeffs: 4,
         row_block: NonZeroUsize::new(2).expect("non-zero"),
         commitment_id: [0x54; 32],
@@ -185,7 +186,7 @@ fn a_corrupted_row_is_rejected_at_the_rate_of_its_distance() {
     let masks = rng.fps(rows.len() * shape.mask_coeffs);
     let mut codewords = vec![Fp::ZERO; rows.len() * n];
     let mut drawn = masks.iter().copied();
-    RowEncoder::new(k, shape.mask_coeffs)
+    RowEncoder::new(k, 1, shape.mask_coeffs)
         .expect("valid parameters")
         .encode_rows(
             &values,

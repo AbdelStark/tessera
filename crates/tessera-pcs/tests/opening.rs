@@ -262,6 +262,7 @@ fn random_claims_at_one_to_forty_points_verify() {
         let case = Case {
             params: CommitmentParams {
                 log2_k,
+                log2_inv_rate: 1,
                 mask_coeffs,
                 row_block: NonZeroUsize::new(row_block).expect("non-zero"),
                 commitment_id: core::array::from_fn(|i| (claims * 31 + i) as u8),
@@ -296,6 +297,7 @@ fn a_group_with_no_claim_and_an_opening_with_no_group_verify() {
         let case = Case {
             params: CommitmentParams {
                 log2_k,
+                log2_inv_rate: 1,
                 mask_coeffs: 3,
                 row_block: NonZeroUsize::new(2).expect("non-zero"),
                 commitment_id: [9; 32],
@@ -330,6 +332,7 @@ fn combined_rows_and_row_coefficients_are_their_definitions() {
             };
             let params = CommitmentParams {
                 log2_k,
+                log2_inv_rate: 1,
                 mask_coeffs,
                 row_block: NonZeroUsize::new(32).expect("non-zero"),
                 commitment_id: [3; 32],
@@ -402,6 +405,7 @@ fn debug_forms_show_shapes_and_counts_only() {
     let canary = Fp::from_u64_reduced(0x0123_4567_89AB_CDEF);
     let params = CommitmentParams {
         log2_k: 4,
+        log2_inv_rate: 1,
         mask_coeffs: 3,
         row_block: NonZeroUsize::new(2).expect("non-zero"),
         commitment_id: [5; 32],
@@ -462,6 +466,7 @@ fn every_leaf_and_the_root_are_the_verifiers_hashes_of_the_committed_columns() {
         empty_segment |= layout.segments().iter().any(Vec::is_empty);
         let params = CommitmentParams {
             log2_k,
+            log2_inv_rate: 1,
             mask_coeffs: k / 2,
             row_block: NonZeroUsize::new(row_block).expect("non-zero"),
             commitment_id: core::array::from_fn(|i| i as u8),

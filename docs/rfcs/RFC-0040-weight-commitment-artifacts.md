@@ -8,6 +8,7 @@
   - [RFC-0012](RFC-0012-weight-commitment.md#layout) 'Layout': the message width of a matrix whose input is wider than `k_W`, the position of every entry, the committed rows, an empty `ChannelParams`, the leaves and the first epoch;
   - [RFC-0012](RFC-0012-weight-commitment.md#budget-state-machine) 'Budget state machine': the fields of `WeightCommitmentState` and `TypeBudget`;
   - [RFC-0026](RFC-0026-claim-list-layout.md#schema) 'Schema': the weights' message width;
+  - [RFC-0031](RFC-0031-commitment-id.md#the-descriptor) 'The descriptor': a weight matrix's `rows`;
   - [RFC-0019](RFC-0019-verifier.md#inputs) 'Inputs' and 'Check order' step 4: the verifier reads the matrix roots from `WeightCommitmentPublic`;
   - [RFC-0039](RFC-0039-statement-fields.md#the-checks) 'The checks': the weight layout's check, at RFC-0019 step 4;
   - [02 §2](../spec/02-public-api.md#2-command-line-interface): `commit-weights` writes both artifacts, and `tessera-verify` reads the public one;
@@ -92,19 +93,19 @@ pub struct WeightCommitmentPublic {          // schema 0x0301, version 1, public
 ```rust
 pub struct WeightCommitmentState {           // schema 0x0302, version 1, secret, .twc
     pub public: WeightCommitmentPublic,
-    pub masks_seed: [u8; 32],                // secret-class: decoded into Secret<[u8; 32]>
+    pub masks_seed: [u8; 32],                // secret-class: decoded into a Secret that holds the 32 bytes on the heap
     pub budget: [TypeBudget; 10],            // in WeightMatrix order
 }
 
 pub struct TypeBudget {
-    pub opened_columns: Vec<u32>,            // distinct columns revealed this epoch, strictly increasing
+    pub opened_columns: Vec<u32>,            // distinct columns revealed this epoch, increasing as integers
     pub next_blinding_row: u32,              // blinding rows below it are burned
 }
 ```
 
 - **The budget's limits** are `WeightLayoutParams`' `P_W` and `B_W`. RFC-0012's `max_opened_columns` and `blinding_rows` are dropped, since they repeated them.
-- **`opened_columns`** is a set. Like a map's keys (RFC-0003 'Composite types'), it is strictly increasing, and a decoder rejects an unsorted or repeated index (`ERR-CODEC-NONCANONICAL`).
-- **`masks_seed`.** The committer draws it from the operating system's CSPRNG. A reader listed in `secret-access.toml` decodes it into `Secret<[u8; 32]>` and encodes it back (05 §3).
+- **`opened_columns`** is a set: its indices are strictly increasing as integers, and a decoder rejects an unsorted or repeated index (`ERR-CODEC-NONCANONICAL`). The order is numeric, not the byte order of a map's keys (RFC-0003 'Composite types').
+- **`masks_seed`.** The committer draws it from the operating system's CSPRNG. A reader listed in `secret-access.toml` decodes it into a `Secret` that holds the 32 bytes on the heap, so that no move copies them, and encodes it back only to write the state (05 §3, OBS-2).
 - **In `tessera-protocol/1`** the seed regenerates nothing, every `opened_columns` is empty, and every `next_blinding_row` is 0. The prover recomputes the commitment from `D` and the state, as RFC-0012 'Migration / Rollout' plans for v0.3: no masks, and codewords held in memory.
 - **Writing.** The state is written with mode 0600, by atomic rename: a new file in the target's directory, written, flushed to disk, renamed over the target, and the directory flushed ([06 §7](../spec/06-security.md#7-secrets-handling)). The public artifact is written by atomic rename too, with the default mode.
 

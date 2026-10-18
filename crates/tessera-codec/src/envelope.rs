@@ -28,15 +28,22 @@
 //!    offset 12, more is `ERR-CODEC-NONCANONICAL` at the first byte past the digest.
 //! 3. The digest (`ERR-CODEC-DIGEST`, at its offset).
 //! 4. The payload, decoded as the schema version found, which it must fill (INV-TCE-4).
+//!
+//! [`write_file`] writes an artifact by atomic rename, so that its path holds the previous
+//! file or the whole new one, never part of one, and gives a secret artifact mode 0600 from the
+//! moment it exists (06 §7).
 
 use core::fmt;
 use std::error::Error;
+use std::ffi::OsString;
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
 
 use zeroize::Zeroizing;
 
 use crate::error::{ErrorCode, SchemaId, TesseraError};
-use crate::schema::Schema;
+use crate::schema::{Class, Schema};
 use crate::{Decode, DecodeError, DecodeLimits, Encode, Sink, decode};
 
 /// The first four bytes of every envelope.
@@ -154,6 +161,168 @@ pub fn write<T: Encode + ?Sized, W: Write>(
     }
     out.write_all(&digest)?;
     Ok(digest)
+}
+
+/// Writes the envelope of `value`, as the current version of `schema`, to the file at `path` by
+/// atomic rename (06 §7), and returns its digest:
+///
+/// 1. a new file in `path`'s directory, `.<name>.<16 hex digits>.tmp`, its digits drawn from the
+///    operating system's CSPRNG, so that no other process can know the name beforehand. It is
+///    created exclusively: a name another file or a symbolic link already holds is never opened
+///    or followed, but drawn again, up to [`TEMPORARY_ATTEMPTS`] times. Its mode, set as it is
+///    created and before any byte is written, is 0600 when `schema` is secret-class and the
+///    default mode otherwise;
+/// 2. the envelope written to it as [`write()`] writes one, through a buffer that is cleared when
+///    it is freed, then flushed to disk;
+/// 3. the file renamed over `path`, then the directory flushed, so that the rename is durable.
+///
+/// The file is never readable by others, even while it is written, and `path` holds the
+/// previous file or the whole new one. If any step fails, or encoding the value panics, the new
+/// file is removed and `path` is left as it was; an error after the rename, in flushing the
+/// directory, is returned with the new file in place.
+///
+/// A process that stops between steps 1 and 3, by a crash or a kill, leaves its new file behind,
+/// beside `path`: `.<name>.<16 hex digits>.tmp`, of mode 0600 for a secret-class artifact, holding
+/// some or all of the envelope. No reader opens it, and it may be deleted.
+///
+/// # Errors
+///
+/// The operating system's: a directory that does not exist or cannot be written, a full disk,
+/// a CSPRNG that cannot be read. When every name drawn is taken, [`io::ErrorKind::AlreadyExists`]
+/// with a [`TemporaryNamesTaken`] inside. Only Unix systems set a mode, so a secret-class
+/// artifact elsewhere is [`io::ErrorKind::Unsupported`].
+pub fn write_file<T: Encode + ?Sized>(
+    path: &Path,
+    schema: &Schema,
+    value: &T,
+) -> io::Result<Digest> {
+    replace(path, schema.class == Class::Secret, |file| {
+        write(file, schema, value)
+    })
+}
+
+/// How many names [`write_file`] draws for its new file before it gives up. With 64 random bits
+/// a name, a draw meets an existing file only when the directory holds billions of them, or when
+/// the CSPRNG repeats.
+pub const TEMPORARY_ATTEMPTS: u32 = 8;
+
+/// Every name [`write_file`] drew for its new file was taken, by a file or a symbolic link: the
+/// error inside the [`io::ErrorKind::AlreadyExists`] it then returns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TemporaryNamesTaken {
+    /// The names drawn, each taken: [`TEMPORARY_ATTEMPTS`].
+    pub attempts: u32,
+}
+
+impl fmt::Display for TemporaryNamesTaken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "the {} names drawn for a new file beside the target were all taken",
+            self.attempts
+        )
+    }
+}
+
+impl Error for TemporaryNamesTaken {}
+
+/// The procedure of [`write_file`], with `contents` writing the new file.
+fn replace<R>(
+    path: &Path,
+    secret: bool,
+    contents: impl FnOnce(&mut File) -> io::Result<R>,
+) -> io::Result<R> {
+    let mut draw = || getrandom::u64().map_err(io::Error::from);
+    replace_with(path, secret, &mut draw, contents)
+}
+
+/// [`replace`], with the random part of each name the new file may take from `draw`.
+fn replace_with<R>(
+    path: &Path,
+    secret: bool,
+    draw: &mut dyn FnMut() -> io::Result<u64>,
+    contents: impl FnOnce(&mut File) -> io::Result<R>,
+) -> io::Result<R> {
+    let name = path
+        .file_name()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "the path names no file"))?;
+    let directory = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    let mut options = OpenOptions::new();
+    // Exclusive creation: an existing file or link at the name fails the open, and nothing is
+    // followed.
+    options.write(true).create_new(true);
+    if secret {
+        restrict(&mut options)?;
+    }
+    let (mut file, temporary) = 'open: {
+        for _ in 0..TEMPORARY_ATTEMPTS {
+            let mut temporary = OsString::from(".");
+            temporary.push(name);
+            temporary.push(format!(".{:016x}.tmp", draw()?));
+            let temporary = directory.join(temporary);
+            match options.open(&temporary) {
+                Ok(file) => break 'open (file, temporary),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error),
+            }
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            TemporaryNamesTaken {
+                attempts: TEMPORARY_ATTEMPTS,
+            },
+        ));
+    };
+    let guard = Removal(Some(temporary));
+    let written = contents(&mut file)?;
+    file.sync_all()?;
+    drop(file);
+    let temporary = guard.disarm();
+    if let Err(error) = fs::rename(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    File::open(directory)?.sync_all()?;
+    Ok(written)
+}
+
+/// Mode 0600 for a file about to be created: readable and writable by its owner alone.
+#[cfg(unix)]
+fn restrict(options: &mut OpenOptions) -> io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    options.mode(0o600);
+    Ok(())
+}
+
+/// No mode exists to set, so a secret-class artifact is not written.
+#[cfg(not(unix))]
+fn restrict(_: &mut OpenOptions) -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "secret-class artifacts are written with mode 0600, which only Unix systems have",
+    ))
+}
+
+/// Removes a new file when it drops, unless disarmed: after an error, and during a panic's
+/// unwinding, the file goes.
+struct Removal(Option<PathBuf>);
+
+impl Removal {
+    /// The path, no longer removed.
+    fn disarm(mut self) -> PathBuf {
+        self.0.take().unwrap_or_default()
+    }
+}
+
+impl Drop for Removal {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = fs::remove_file(path);
+        }
+    }
 }
 
 /// Checks an envelope of `schema` held in memory, in the order of the module documentation,
@@ -446,5 +615,94 @@ impl<W: Write> Sink for Tee<'_, W> {
         } else {
             self.buffer.extend_from_slice(bytes);
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::fs;
+    use std::io::Write as _;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+
+    use super::*;
+
+    /// A fresh scratch directory under the system's temporary directory.
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "tessera-codec-envelope-{name}-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("a scratch directory");
+        dir
+    }
+
+    /// A symbolic link planted at the first name drawn is neither opened nor followed: the name
+    /// is drawn again, and the write goes to a new file of mode 0600.
+    #[test]
+    fn a_link_planted_at_a_drawn_name_is_not_followed_and_another_name_is_drawn() {
+        let dir = scratch("planted");
+        let target = dir.join("state.twc");
+        let elsewhere = dir.join("elsewhere");
+        let planted = dir.join(format!(".state.twc.{:016x}.tmp", 1));
+        symlink(&elsewhere, &planted).expect("a link");
+        let mut draws = [1u64, 2].into_iter();
+        let mut draw = || -> io::Result<u64> { Ok(draws.next().expect("two draws")) };
+        replace_with(&target, true, &mut draw, |file| file.write_all(b"new")).expect("written");
+        assert_eq!(fs::read(&target).expect("the target"), b"new");
+        let mode = fs::metadata(&target)
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+        assert!(!elsewhere.exists(), "nothing was written through the link");
+        let link = fs::symlink_metadata(&planted).expect("the link");
+        assert!(link.file_type().is_symlink(), "the link is left as it was");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// When every name drawn is taken, the write fails with `AlreadyExists` and a
+    /// `TemporaryNamesTaken`, after exactly `TEMPORARY_ATTEMPTS` draws, and changes nothing.
+    #[test]
+    fn when_every_name_drawn_is_taken_the_write_fails_with_a_typed_error() {
+        let dir = scratch("taken");
+        let target = dir.join("state.twc");
+        fs::write(&target, b"previous").expect("a previous file");
+        let elsewhere = dir.join("elsewhere");
+        symlink(&elsewhere, dir.join(format!(".state.twc.{:016x}.tmp", 7))).expect("a link");
+        let mut draws = 0;
+        let mut draw = || -> io::Result<u64> {
+            draws += 1;
+            Ok(7)
+        };
+        let error = replace_with(&target, true, &mut draw, |file| file.write_all(b"new"))
+            .expect_err("every name is taken");
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        let inner = error
+            .get_ref()
+            .and_then(|e| e.downcast_ref::<TemporaryNamesTaken>());
+        assert_eq!(
+            inner,
+            Some(&TemporaryNamesTaken {
+                attempts: TEMPORARY_ATTEMPTS
+            })
+        );
+        assert_eq!(draws, TEMPORARY_ATTEMPTS);
+        assert_eq!(fs::read(&target).expect("the target"), b"previous");
+        assert!(!elsewhere.exists(), "nothing was written through the link");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A CSPRNG that cannot be read fails the write before any file is created.
+    #[test]
+    fn a_draw_that_fails_fails_the_write_before_any_file_exists() {
+        let dir = scratch("draw");
+        let target = dir.join("state.twc");
+        let mut draw = || -> io::Result<u64> { Err(io::Error::other("no entropy")) };
+        let error = replace_with(&target, true, &mut draw, |file| file.write_all(b"new"))
+            .expect_err("no name");
+        assert_eq!(error.to_string(), "no entropy");
+        assert_eq!(fs::read_dir(&dir).expect("the directory").count(), 0);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

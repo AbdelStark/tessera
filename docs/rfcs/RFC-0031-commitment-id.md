@@ -54,7 +54,7 @@ pub enum CommitmentDescriptor {          // TCE (RFC-0003): a u16 tag, then the 
         matrix: WeightMatrix,
         log2_k: u8,                      // the matrix's message width, k_T = 2^log2_k (RFC-0012)
         row_block: u32,                  // B
-        rows: u64,                       // its non-zero data rows and its B_W blinding rows
+        rows: u64,                       // its committed rows m_T, plus B_W from the version that adds blinding rows (RFC-0040)
         epoch: u32,
     },
 }

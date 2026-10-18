@@ -5,6 +5,8 @@
 
 use core::fmt;
 
+use crate::WeightMatrix;
+
 /// Why a transform, an encoding, a commitment, an opening or an answer was refused.
 ///
 /// The variants carry lengths, counts, exponents, positions and public indices (a layout's
@@ -21,10 +23,17 @@ pub enum PcsError {
     },
     /// A transform of more than `2^32` points: `Fp^*` has no larger power-of-two subgroup
     /// (`P − 1 = 2^32·(2^32 − 1)`). For a message of `k` values, the transform is the codeword's,
-    /// of `2k` points.
+    /// of `n = 2^r·k` points at rate `1/2^r`.
     TooLong {
         /// `log2` of the number of points asked for.
         log_len: u32,
+    },
+    /// A code of rate 1, `n = k`: an encoding needs `log2` of its inverse rate to be at least 1,
+    /// so that a codeword holds more symbols than its message and the masked polynomial, of degree
+    /// below `k + P ≤ 2k`, fits it.
+    InverseRate {
+        /// The `log2` of the inverse rate given.
+        log2_inv_rate: u32,
     },
     /// A slice handed to a transform does not have the plan's length.
     TransformLength {
@@ -47,7 +56,7 @@ pub enum PcsError {
         /// The message length `k`.
         row_len: usize,
     },
-    /// A codeword buffer does not hold `n = 2k` symbols per row.
+    /// A codeword buffer does not hold `n = 2^r·k` symbols per row.
     CodewordLength {
         /// The number of symbols needed.
         expected: usize,
@@ -55,7 +64,7 @@ pub enum PcsError {
         found: usize,
     },
     /// More mask coefficients than values in a row: the encoding needs `P ≤ k`, so that the
-    /// masked polynomial has degree below `n = 2k` and the codeword determines it.
+    /// masked polynomial has degree below `2k ≤ n` and the codeword determines it.
     MaskTooLarge {
         /// The number of mask coefficients `P` asked for.
         mask_coeffs: usize,
@@ -68,6 +77,18 @@ pub enum PcsError {
     /// coefficients, at least the parameter set's `τ_A`, and an opening's verifier refuses
     /// `P_A = 0`.
     NoMask,
+    /// Mask coefficients for a commitment that masks no row: a weight matrix in
+    /// `tessera-protocol/1` (RFC-0040 'Encoding, leaves and roots').
+    UnexpectedMask {
+        /// The number of mask coefficients `P` given.
+        mask_coeffs: usize,
+    },
+    /// A commitment of one chain per column whose layout does not have exactly one segment: a
+    /// weight matrix has no segments and no `column-merge` (RFC-0040).
+    Segments {
+        /// The number of segments given.
+        segments: usize,
+    },
     /// A row index of more than 64 bits: a row is a `u64`.
     RowVars {
         /// The bit count given.
@@ -140,6 +161,70 @@ pub enum PcsError {
         /// The number of columns `n`.
         columns: usize,
     },
+    /// A weight type with no output channel or no input channel: its matrix would hold no
+    /// entry (RFC-0040 'The matrices').
+    EmptyWeight {
+        /// The weight type.
+        matrix: WeightMatrix,
+    },
+    /// A weight tensor, or a weight's channel parameters, that the layout has no place for:
+    /// the channel parameters' matrix, a layer the type does not have (only layer 0 for
+    /// `Embed` and `LmHead`, `n_layers` layers for the others), or channel parameters for a
+    /// weight the shapes do not list.
+    WeightPlace {
+        /// The weight type.
+        matrix: WeightMatrix,
+        /// The layer.
+        layer: u32,
+        /// Whether the input is a weight's channel parameters rather than its tensor.
+        channels: bool,
+    },
+    /// A second weight tensor, or a second set of channel parameters, for one weight.
+    WeightTwice {
+        /// The weight type.
+        matrix: WeightMatrix,
+        /// The layer.
+        layer: u32,
+        /// Whether the input is a weight's channel parameters rather than its tensor.
+        channels: bool,
+    },
+    /// No weight tensor, or no channel parameters, for a weight the shapes have: the first in
+    /// `(type, layer)` order.
+    WeightMissing {
+        /// The weight type.
+        matrix: WeightMatrix,
+        /// The layer.
+        layer: u32,
+        /// Whether the input is a weight's channel parameters rather than its tensor.
+        channels: bool,
+    },
+    /// A weight tensor that does not hold `out · in` entries, or channel parameters that do not
+    /// hold one value per output channel.
+    WeightLength {
+        /// The weight type.
+        matrix: WeightMatrix,
+        /// The layer.
+        layer: u32,
+        /// Whether the input is a weight's channel parameters rather than its tensor.
+        channels: bool,
+        /// The entries or values its shape gives it.
+        expected: usize,
+        /// The entries or values given.
+        found: usize,
+    },
+    /// A matrix whose committed rows hold more values than a buffer can.
+    TooLarge {
+        /// The committed rows.
+        rows: u64,
+        /// The values in a row.
+        row_len: usize,
+    },
+    /// An opened column that is not above the one before it: a budget's opened columns are a
+    /// set, strictly increasing (RFC-0040 'WeightCommitmentState').
+    ColumnOrder {
+        /// The column's position in the list.
+        position: usize,
+    },
 }
 
 impl fmt::Display for PcsError {
@@ -154,6 +239,10 @@ impl fmt::Display for PcsError {
             Self::TooLong { log_len } => write!(
                 f,
                 "a transform of 2^{log_len} points needs a subgroup of order 2^{log_len}; the largest is 2^32"
+            ),
+            Self::InverseRate { log2_inv_rate } => write!(
+                f,
+                "a code's inverse rate is 2^1 or more, not 2^{log2_inv_rate}"
             ),
             Self::TransformLength { expected, found } => {
                 write!(f, "the plan transforms {expected} values, not {found}")
@@ -181,6 +270,14 @@ impl fmt::Display for PcsError {
             Self::NoMask => write!(
                 f,
                 "a commitment masks every row with at least 1 mask coefficient, not 0"
+            ),
+            Self::UnexpectedMask { mask_coeffs } => write!(
+                f,
+                "an unmasked commitment takes 0 mask coefficients, not {mask_coeffs}"
+            ),
+            Self::Segments { segments } => write!(
+                f,
+                "a commitment of one chain per column has 1 segment, not {segments}"
             ),
             Self::RowVars { row_vars } => {
                 write!(f, "a row index has at most 64 bits, not {row_vars}")
@@ -238,7 +335,57 @@ impl fmt::Display for PcsError {
                 f,
                 "query {position} asks for column {query} of a commitment of {columns} columns"
             ),
+            Self::EmptyWeight { matrix } => write!(
+                f,
+                "the {matrix:?} weight type has at least 1 output and 1 input channel"
+            ),
+            Self::WeightPlace {
+                matrix,
+                layer,
+                channels,
+            } => write!(
+                f,
+                "the layout has no place for {}",
+                what(*matrix, *layer, *channels)
+            ),
+            Self::WeightTwice {
+                matrix,
+                layer,
+                channels,
+            } => write!(f, "{} is given twice", what(*matrix, *layer, *channels)),
+            Self::WeightMissing {
+                matrix,
+                layer,
+                channels,
+            } => write!(f, "{} is missing", what(*matrix, *layer, *channels)),
+            Self::WeightLength {
+                matrix,
+                layer,
+                channels,
+                expected,
+                found,
+            } => write!(
+                f,
+                "{} holds {expected} values, not {found}",
+                what(*matrix, *layer, *channels)
+            ),
+            Self::TooLarge { rows, row_len } => write!(
+                f,
+                "{rows} committed rows of {row_len} values each do not fit in memory"
+            ),
+            Self::ColumnOrder { position } => {
+                write!(f, "opened column {position} is not above the one before it")
+            }
         }
+    }
+}
+
+/// `the Q weight of layer 3`, or `the channel parameters of the Q weight of layer 3`.
+fn what(matrix: WeightMatrix, layer: u32, channels: bool) -> String {
+    let weight = format!("the {matrix:?} weight of layer {layer}");
+    match channels {
+        true => format!("the channel parameters of {weight}"),
+        false => weight,
     }
 }
 

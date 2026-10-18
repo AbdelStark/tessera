@@ -1,0 +1,2104 @@
+{
+ "description": "The weight commitment of RFC-0040 at test-small/1: for each model, each matrix's layout, committed rows, commitment_id and root, then R_W and its WeightCommitmentPublic artifact; and rows encoded at rate 1/4. Written by generate.py; see README.md.",
+ "params": "test-small/1",
+ "layout": {
+  "log2_k": 8,
+  "log2_inv_rate": 2,
+  "mask_coeffs": 64,
+  "blinding_rows": 32
+ },
+ "row_block": 4,
+ "epoch": 0,
+ "schema": "0x0301",
+ "version": "1",
+ "seed": "0x07e55e7a00400102",
+ "official_blake3_cases_checked": 35,
+ "encoding": [
+  {
+   "k": 1,
+   "mask_coeffs": 0,
+   "row": ["0xa3e03f4fa44d2629"],
+   "mask": [],
+   "codeword": ["0xa3e03f4fa44d2629","0xa3e03f4fa44d2629","0xa3e03f4fa44d2629","0xa3e03f4fa44d2629"]
+  },
+  {
+   "k": 2,
+   "mask_coeffs": 0,
+   "row": ["0xa97d1772667320fe","0x6f84edd6aca600f0"],
+   "mask": [],
+   "codeword": ["0x5765944693da8127","0xeaabd02259577589","0x0e530cf2f7eabbc4","0x3e90d26fbc0e6301","0xc19c71027f3ea0c7","0x2e563526b9c1ac65","0x0aaef8571b2e6629","0xda7132d9570abeed"]
+  },
+  {
+   "k": 4,
+   "mask_coeffs": 0,
+   "row": ["0x402cd467e59602d7","0x574a2d9e3514db34","0x4c2682656bf0848f","0x6279d9bdccfecbde"],
+   "mask": [],
+   "codeword": ["0x9ae493c57097f5ad","0x208f0f52e568dc3b","0xf523586895be4104","0xadca788722cb4dc5","0x52ef0b42c3fd89e0","0x2ef08f477696e8fc","0x2a35d9c481e1f276","0xb4bb8dbe0fc254e2","0xaede35a253b3999e","0x2ebb6a2fb60af21b","0x404a7129f9bb1503","0x76c92833bc942b92","0xa965897dcb51154e","0xc7dc555f418f7726","0xe673bad1423ee5fc","0x6cc82faf64786040"]
+  },
+  {
+   "k": 8,
+   "mask_coeffs": 0,
+   "row": ["0x2fd7cd3daa91db98","0xb398addb36411b3d","0x89db2ba3a479b51a","0x22089ab194237c20","0x86a90700b8f95433","0x06b82c77341ff021","0x8797fb7f8e9304ff","0xac4aaa48fb38bd3d"],
+   "mask": [],
+   "codeword": ["0x1b515398f3445625","0xbb0bfdd038721673","0x7fef596a1e8c49c4","0x7ecb5c97a3bb72ad","0x95d848fd732660c0","0x1f9ef59be701c7a8","0xfeb2b0b5af6ad46b","0x9780342d9b253958","0x9f96a16dd9a60af7","0x7603b9050c396c3a","0x0a18b85dfb39bb8e","0xa279575ccec13294","0x95650677d1f4339f","0xef64e1989cfc9ba1","0xd5f11e141bc51361","0xac6eabd89b9fd1e9","0x96c47f5fbf02b8d2","0xde1be8481d77bbd7","0x87a7722ce7e55f97","0x7aef1783b6420ee1","0x2ed09e3dd28d84c3","0xafa3b063e0cb7b99","0x364e976e08bfeed5","0xff5cad6bd785e8b3","0x3c9f28c34b90fefd","0x46ab1b27ca6d585c","0x280a98b636acbd13","0x3896a644f27d513d","0x683e8fd1a12efc92","0x3c19d8cffefab8de","0x0beb97cb840d3602","0x38821b7e66ce354d"]
+  },
+  {
+   "k": 16,
+   "mask_coeffs": 0,
+   "row": ["0xc79eae766866b0ca","0x522337adcfb79e9c","0x1786113b04d39f3e","0xcd418eff05fdba62","0xc71d31b53fd4d4e0","0xe8032a88ad42d4b1","0xbf404b74faefab82","0x9a644ab3cc1a22a2","0xf669ce10096b61f2","0x9a5d17cc8050a143","0x2335c7eed32a4352","0x82a871fcd8147d0e","0x9ed152f5420a2404","0xfb7354a77dab14d3","0xe34276cfaf8057a7","0x8214d77f6f83cc15"],
+   "mask": [],
+   "codeword": ["0x68c0cb74ed5665f7","0xa073203c67bbb5d3","0xfb590fd168f7c082","0xa7e4f5580e91ef5d","0xc361c9b63f94a896","0x77050da8e0b686d8","0x1b428ff588402d2c","0x858f007df35ecd23","0x2bfafcab26a474d2","0x69ce6fdcf59f6459","0x2c7c5888d2b228e8","0x113438f18df8d0e1","0xc6eaf849e8b76a87","0x5ae282dbefcd0e31","0x59eee6f530dba871","0xc505d1e6ed84e157","0xa1448a9aa165d775","0xd1f8513233f772b4","0x8cbe60b04330919b","0xdace980554691ab7","0xf43d4f23619bf2a6","0x7f5fa3b0dd503507","0x017c897ce4bb735f","0x06de92c94e903f1c","0x0e7a3e54d727e9e1","0xc5ed87e56e4bcee8","0x6bf38d0efcb3ca07","0x2897006dd1ecde9a","0xd8590ff9e32ec4a7","0x38dfecf146cb5d55","0x958351ecba69419e","0x9dbec03c1f364dd2","0x4c0b98a278694c00","0xe245f25691f46d52","0x7ae46cd0e44fde2d","0x50cff0faabe1649b","0x9cb840873ef75ab1","0xb07799f682f5c4c7","0x5893ce6aee6ba36f","0xdce050e1be7385e3","0x66f5b578ed2de8fa","0xd82bf88385420dd5","0x506e5e4792acca9c","0x7bd82d2411f4fbf9","0x4cf67aaeba556fbf","0x265031549bcef1da","0xc97a848947d78e78","0xa9107f1eeef009c3","0x919e819ecbae2e5c","0xcf8bd6c10bc57987","0x2324ccddcfa824b7","0x508fdb9afaa65284","0xa5e173be19a6badf","0x13bd58719fbfcf87","0x456e010e12ea22cb","0xb41a61086ffe9f73","0x5a1e0033ba02bdaf","0xb3ebbdb92e0cc096","0x463c4b9ca970d705","0x56f4520c68bba73b","0x73e3dd6c12ea3404","0xe8d2611106fa8249","0x74a6ae79fdb37802","0xe3a72584ba9fc27e"]
+  },
+  {
+   "k": 32,
+   "mask_coeffs": 0,
+   "row": ["0x1bdfd4b90984b54d","0x665d7440f57068da","0x2c52a8a03d9c5952","0xb9cd95c0d708bacc","0x91187d4594642b18","0x309ff07b9973dce7","0xb5db1965eeea11f2","0x4fa0930d43a4de5f","0x47c3a868d9645131","0xe67c35522e154b1f","0xf095968c5a5cd7b8","0x042994e2dd97d58a","0x017ade611212a9a2","0xfb3f83993f9decb7","0x0c51d2433ca3f16a","0xe9d069e9b5d59857","0xed7b2ab12b102e25","0x8b45dd57280ab803","0xcc6d1bcd0d8cb8a0","0x7fa27236a1a7d5a7","0x7ed790564de3e157","0xdd4b0311680eb4c2","0x246f0f3e9df1e3bb","0xab57994666b838e3","0xe9fe018fc2643351","0x31b6ef19e34a61c0","0xef67aee878548f4a","0x0858337d2bc78f7c","0x859e58e6c32f15b4","0xa9d949512395c57c","0x740591bb97e3c9d7","0xa196fd737250adde"],
+   "mask": [],
+   "codeword": ["0x0ba691d8d5cbd79a","0x211ebf6286c8f09d","0xa9e52069efbefbbb","0x470b524ba569c618","0x0588faa118e28d90","0xc932d4cc8d0fcbf2","0xa265e03dcab04596","0x8c7729955f398bae","0xc1a35aeda3f2b4dc","0xe85b15c75bfb3cea","0x588153ffa8782711","0xd5a9196c0aeeb824","0xd1b474a282340656","0x71cab24e13236235","0xaf1e866c8143c502","0x709deb4283b0f789","0x344d482952aa4b5c","0x4081bb0620b2c4f4","0xdd100a8b7b937654","0xd44d76edaf6d70aa","0x47e5adeb0f577341","0x349fbef83c7de78b","0xaac97108e90331c8","0x3a3cd5d5cbe3fd5c","0x545b81ad9e1fa5bf","0x549e84ba9a55a6fd","0xd57f887fae3d711a","0x459a20e495eacb27","0x870d60ac5eb98c58","0x0ed080dea68568c6","0xb76e033722cff0a1","0x22329eb90c6600bc","0xda89a737e951454d","0x87d0eab6129441a8","0x7cd45e28ec4eef84","0xb972644a46f75205","0x77b46fad065ffdce","0xac5ad7b65e190fc3","0x77c596dff8771c1b","0x21a36437a67f13b4","0x68d14c0ba1a740c6","0xc3ce0d996d0380bd","0x5dc786c8065520ed","0x84cfe8c6278d7745","0x45e8007c97362113","0xcdab6c685d452230","0xf1d57fd46f088266","0x39cd2cb4be01f888","0xbce1570bcdc160be","0x45a222c0262f2fdd","0xb37a62f1457618d6","0x6f23b187ea2c43e7","0xfa98dfc4d251d877","0x5653ffe27cf69725","0x1fabc9f28796ec30","0x713fa27227e81440","0x1058c0bad38455ab","0xb37cf09370dece0d","0x9990374d51323fae","0x6f23b6668d46edb9","0x3a0f702541b697fd","0x8f5555a717e8a02a","0xbd08fde3ca5d7dbb","0x0b53b1d1bf3ee596","0x8942eba0939ddd4c","0xb306917a18cfc57b","0x393b77f3cceadbf6","0xe37eed1e99fe1836","0x8630d580c1b878ce","0xe0a621cf832e74cd","0xe7e1c630ea28b2aa","0x6ffa1f72c9fa411f","0xaa561dbc7405b818","0x4d45ca0ab5acc2c4","0x050c5a5073738b99","0x8c036355f861c7e5","0xdceb3afbefc9b944","0xa1a351adb8adf83d","0x8c3b348e51ef076c","0x29bd8aff310ad6ae","0x9046ab3bfe593b26","0x159ae88f9b1f4f29","0xe2e72815644542b3","0x54372be9fc3df1a0","0x6df22e256c4554a7","0xe8855c1e71e275cd","0xc318a4c22267d912","0x5c27ce6166e573cf","0xf55094894d5067d8","0xbd5c94c6ee02498d","0x1459d56134375a13","0x8aa3b29f7be4b030","0xe9d393e8106d7954","0xca97017772fc6a78","0x5ce5d88b5793d681","0xd11e00be5bedfaa1","0x688f4b3544d1c231","0x38bf0d2e945c25e1","0x88b4a258f84c9ee7","0xe3bcc79757276b24","0xc987401971b31195","0xc88d4de5b7a83274","0xb9ec3a7eb5e4754c","0x7f39a45822aec26c","0x602d76b835320528","0xc4f2e5e6501e7d60","0x11acf495214f136e","0xd703e23d096d158e","0x0c2a655b1207dab6","0x45af9ce6469023e1","0xa0cf80eab5ba2053","0x0f0e0f826094a2df","0x37031027ee1b5f40","0x464dce70a21d225d","0x3747bdd5e9503112","0xa0e308eab98239cc","0x525fcf43260a19f6","0xe4ce8078dc7eba45","0xf48cf3f28f4e1bd4","0x53eb49bea5fd3d17","0x1e9157dd5cfda7a6","0xb90e17b5477351dc","0xe83a9c112b75d7e9","0x3e51d7d7b467a0ea","0xd53e6563ad58d852","0xd477afb94647ea4b","0xe536f73bda7d3ec8","0x787ec7724caa7fd7"]
+  },
+  {
+   "k": 64,
+   "mask_coeffs": 0,
+   "row": ["0xa0fba5a675b1ecb2","0x3837ab02961d6145","0x3e56df9e9221fccc","0x140ce87ea904ffab","0x76005684f15ecd66","0x629d14b308461a5f","0x4bd63197e1ec6448","0x44a6e70376051d3a","0xd1998f0420eb9446","0x749380843ff70da7","0xf395a75e445271f9","0x4390f81ab8a3eae5","0x32c1b4c1e1a2a40d","0xa63e240cd8aa1b6c","0xe1350bf4fc4b397a","0xe7dca0ef45784d27","0xac415371f1c3f1f8","0xd284dd1a57964e17","0x8dd3526608c6ab0e","0x9720d41ce5a6cb88","0xd6a53f037e6a9895","0xcceb223842f6eb5e","0x91559929a541038a","0x118472e0614ea57a","0xbeb087f73a06fc53","0x6b3c93a65e98e39b","0x38dfef5c03d1eedd","0x71cd82b7bd2fe878","0x9451f3709fa9aca0","0x3b16251a30789d22","0xb272097f97faa07f","0x4f00f8d9335acfb7","0xfab3917553f769e9","0xbaa4a54f1d553be4","0xe2d0ce68044a318a","0x6d28e0981e644796","0x099de52b21436a2b","0xab53a17bdefb83c1","0xca1250f81c9a4017","0x2224a389e53f8831","0xcb9e5b03443bf290","0x1fe221ca377eabd6","0x5a5433e5eebb430e","0x139be143134499e1","0x70cc9d306851cff4","0xb2c402d0477f8f20","0xcdd5906a8e75f146","0xaf96601056a941ef","0x61e453723201975b","0x647ab8c746a0c026","0xaf18d705d921a263","0x57535889b850995c","0xdfb98941cb8c7bd9","0x8b3b4a60f4c10ce4","0xce0cd72a0b9d780f","0xf44e6de17eb667e9","0xd1353fbfabee5550","0xb3b4386f46db2770","0x89de58def6220b55","0xb82c645556831425","0xc7ec82fd2fb76a02","0xa03996e07cfcacc4","0xb33e12888da85470","0x7aed28ab492ff47b"],
+   "mask": [],
+   "codeword": ["0x9ea91db79c9d5498","0x037328528bb69894","0x4890af1367ef1bcf","0xc840f118cf0d10ab","0xb3c23f0136f86afc","0xcb333a1bf86ebdf6","0x8b6288e3bfaa5fa7","0x952a015ef2b1e540","0x51ffc379f5abba25","0xd7fc07c3561503a7","0xef9737691e2864f8","0xc8873c481fcb6efc","0xd74ea96b93be1c1d","0x65638fc7411192fa","0xcb93cc0d8218f641","0x08a6e6533537eeb0","0xf6e6a283bd86325f","0x746cc05f50ac956a","0x94661020fe1dab3a","0x7a35b3fa14b28161","0x4c8c58e307241520","0xaf2eafe11db98629","0xa8213cbe35abcefc","0xf7ed0029ef3d1226","0x002b4881bb27a10f","0xa973eab8eb338abc","0x4c725711f724163a","0x147224e444655124","0x5056b4cc1ed02293","0x7d1a064df0a53cb2","0xb15329aa4a64bb05","0x457723d3847b62c6","0xa327ab3b52993ead","0xd28f2cdecc2b6ba1","0xf40cb3054e136ea6","0x4d621c6c927f2a99","0x77375d37e89004e8","0xcce48252d70bdede","0x20d9d4d70711e19c","0x1468f89c871fff11","0x21f2d4c1cb615d14","0x97957a68b3af668f","0xc7d109d6396dc324","0x7210cf2989f30112","0xeeae5f2549c22c17","0x92a89f4a51872e98","0xb0fb901ab584db17","0x2c938c51be6001dd","0x8b440957d9f907fd","0x0b8c215d70c5c814","0x3e6278426c3fb810","0x16e4bf508cff6e61","0xc3e7ff2f469e6ac5","0x5f62fd8e5e7cc10f","0x322cd2a2b48509ab","0x1ede7912f8ad3505","0x1f495c773d37abe9","0xb9b80cfa7d577be8","0xc7807c656220c4b9","0x9a781a5f56be0181","0xb188af62db51222e","0xbc1d282ec6d2420e","0x675e557e25a950f8","0x655ebc4f20c753f9","0x82ec28b72a7bad94","0xffa03cd5319714a0","0x841f39a0bdfdb334","0x115b69165c6f0014","0xedd10e74f1c7a4f5","0xf87d235ce321c722","0x62e24ac27e1e6e3d","0x32b1886f26131912","0x286051e5a4bff83d","0x409b415aed8ce116","0xaf7a23a23d6eb7ea","0x7de47f1a8064c5bc","0xdd324a7a66c15bee","0x4234ba4875aa8154","0x30bf7aab9b452837","0xc3016bc2532c897d","0x2036d8866dfb5e1e","0x934c97aff21f9df5","0x73b7fc2788683a5c","0x9d6993f573dfdd9b","0xc1b8ffc316f228ee","0x004256c242dfd1df","0x548a2ca6adae7d92","0x40666e6341aba1e9","0x17d4268242ee7217","0x6390d71d08914ed4","0xb1180d9ae9a5ee0f","0x887154e9e2d5c8db","0xaa446b67a064848c","0xbf7baf68c7264746","0x91f2ffa34ced3541","0xe8912bae4fdc5553","0x54f708db75532475","0x34c4733fff43dd6a","0x414dc91cc51d10c3","0xce2acb3aa3bed8ac","0xf031487156f3a57b","0xc05e1ec18a3fcf64","0xadaff3a72451cbf3","0x2a9cc8252fd4e5eb","0x168ebd2bb056ee76","0xa5a4858e8dde68fe","0xd761d018ecd3f55c","0x6379dda092ae7aa7","0x4af8c67d20cc12eb","0x1d92bbdebac51b65","0x79da06e449e302ca","0x27a8532c99d78829","0x671e51a6de884859","0xff8829972eacf3de","0x8e51d11f84249052","0x09784d5647fa569d","0x141396b063f21c6f","0xe64a5c8840d422d7","0x8c3c78923d78e87b","0x8ae2a0b6c9978b37","0x1b7455c9bcb8f081","0x46fdc3e968660325","0x0c05b4ec9267e94a","0x0453ac45cafcbd59","0x4a598d40943f0182","0x5054e1484071cc96","0xa1f774b3e084b42a","0x83eb775407cfd231","0x7a9e6c17ae0143f9","0xda4abc79f6fdcebf","0x3124ae470186fe3b","0x940eaa544f2f8bd0","0x1b224310a7ed9e73","0x953ec90ae9dbe772","0x69f8992e9c62eecb","0xa8b86bf2caf448b2","0xf3e651320651b297","0x87790c7f69cc4788","0x6502676dee42f434","0xb26502180395b9cd","0xee5c0ddc914cc0ef","0x8c55f3d0e9160baa","0xb2b752ad20ece802","0x44a682780b9d62d4","0xc71b48d33690bc18","0x7c093c3b9947ae32","0x6ed0d302c1f1d3a2","0x9603be96600a3915","0x337c005383aa5e98","0xd3664092165ea5fa","0x6991417dfd2e79c8","0x68547aa6ffcd4019","0xb95908c689608a3e","0xfe57bba281b8e937","0x2ca55957f97bb46f","0x8ca239c5e5dc1ef1","0x6ee0eab32ee19a88","0xb8a41852507f8075","0x0b956248e5b03330","0x31efc2cb2410039d","0x4cf9c1dbbff4c274","0xf842f0f4be31cf7e","0x7e36d300db7a425d","0x2a9357d5c0529906","0x4e6a3510e57acae3","0x4a671c1eef828b5d","0x489a114ba798e026","0x51afb09206a4c8a8","0xc2878fb67c457b91","0x925d18ab72b79cdf","0x2963b2521f6f7f1e","0xaa9ea33ed6f17a8f","0x21ac44dfc40a8632","0xf0db80b4e2669e74","0x673e91b4eaf76d1d","0x50d2493fabd26e5c","0x0c21ea4bfba970f5","0x26a34d5c1f1b445b","0x154dbfbc20a4ce22","0x0d1b330d29d651b7","0xd775c62dabb6cf06","0x4f9e69f631d44144","0x1eef3d9663e24be7","0xf91e31caf3d5b23b","0x7b7eca143345aa74","0x28d2edbbaf01c782","0xc822e1968941c2bb","0x0f9b835edddcfd77","0x8dc7bc83bc1b34cf","0x34a40453af2b87e2","0x889db75fc5c48ff2","0x8afe0f627560724f","0xf405a480ca0a413b","0xfa02f15423556a5e","0xefcd593af93e2232","0x5536f71debd5a502","0x0c0f3c1a8c6b1cc5","0xa2dcf7573a781e64","0x74493d429b41ce16","0x2d077058247b4752","0x0748adf205108c06","0x2d20116c6a625185","0xfb57b9c4aa4467e0","0xc76b16fe373f8c19","0xd5bcfd6144689e14","0xa41711060727999b","0x16ef87f67f5a6440","0x0b4d65ca8b39cc73","0x5add10c5e98ef7e0","0x1bdac324f33dfb2e","0xa38178d0321e3bb9","0x1c359b58b77933ac","0x2a5436534dfda7c8","0xf376b14247e9c052","0xefbc9a5f756454c0","0x62258fe90ae1dcf8","0x8064f3fb1006ee8d","0x5ddf910b96b94e9a","0xff8d8fbfcf4c2b08","0x3711c450f157a893","0x056d09b761c047e4","0xbb44676c3c3178df","0xced087d77dd72f49","0x877ccba1fda5a555","0x09257f24a413d588","0x9988b12f5d29e052","0x681ac7337e4e5d41","0x0d657416148b7c8a","0x78f5451583855dfb","0x556bed01025b4962","0x368aff69977422c7","0x84bd7efea1fa5836","0xc9eec241b63fe1ff","0x60a5654503aa46a0","0x7857d1ce630f8cee","0xad3cc2e65d339a1d","0xd95e18d934ebf16f","0x99827b0df3120918","0x750775d314dc83fe","0x962a90c4349d4595","0x0cb1e7b7a9bd52a4","0x632d70384547d4f3","0xad0f6025b38fd808","0x8815ef98badb4ad3","0x7a7e71791705aec0","0xdfbeeea297fbd363","0xb3c4db6d15c74092","0x2a018ee15d195f03","0x02def880a6d0deb7","0xe6fdeb92535c206d","0x4e6ccdb2ec44c596","0xb47b285f5c13e382","0xa065a037c1a1a9fc","0x0759f161535669f4","0xb6fb4e44053de804","0xbfc08faeb3f6fe4a"]
+  },
+  {
+   "k": 4,
+   "mask_coeffs": 1,
+   "row": ["0x803dbe8e4a9b38cb","0xe4dc1207d44da0b8","0xa481887c777b8a58","0x290a03fc61452ecf"],
+   "mask": ["0x9a0c1faa3ee5ad2b"],
+   "codeword": ["0x6d410b57adc6fb05","0x52beb7b6ac525950","0x0f87642aeb18cabd","0x52e48f90a44647a1","0xdd242728bd01b8fb","0x9490757998fa5504","0x18e4006af8c7f2bd","0xc6a5037e551009b5","0x3f2c97b6931d79b3","0xa7df1db3e32d773d","0x3fd77aef1193cc8c","0xb97fa396c67e1d76","0x6fb7199f9ea11ae6","0xab5233f3ce25e927","0x335df96d6629e960","0x8760074941b13e7d"]
+  },
+  {
+   "k": 4,
+   "mask_coeffs": 2,
+   "row": ["0x1e71f6d470165e36","0xbd396098c1555249","0x59ad7733bd9ed8f8","0x6d0a8648b46bc826"],
+   "mask": ["0x63de63081aa4c6bd","0x6e63bfd6efad9eea"],
+   "codeword": ["0x3031ede5be6b3b83","0x8a19657bb92a2749","0x1a40f1538e4e0aa3","0xa0b3cbdcab93b791","0x3819fe679932ff15","0x2b486becdcf459a0","0x47ccbb20449ddaf2","0xe4ee14d37e440aec","0x1e430af73fbafe13","0x5f0ae6906565de26","0x4d3268985828246a","0x88c2f92275627835","0x2f561c2e2f39b9d0","0x04f89e7ef2b4a6f0","0xc0ae6911801f70da","0xfe096143e4532ca5"]
+  },
+  {
+   "k": 4,
+   "mask_coeffs": 4,
+   "row": ["0x4c42f3cb4b51e36e","0x904746e8b32b9a3a","0x680378c60e8f6c8c","0xc72287befb579fd5"],
+   "mask": ["0xcaf9218b4bfc7192","0x1aef61fb682e64ad","0xa76dd76df7a4ecaf","0x759cfd8f2c5b39dc"],
+   "codeword": ["0x690b836b7a402595","0xe8c15ecf912ce209","0x1af1c1e40fe12649","0xd510f1e6944a9dd9","0xad5ec7db8153d06a","0x4d8a993f69a7e1ca","0x0860d899ed6c102b","0x12d740ccc2ce2910","0x3406fb11d22f4f7d","0x90fc4568c819bffe","0x99b67aab1c570fe7","0x734cc215706526ce","0x3fa8fa3db54409d1","0x2f9a222589f6eb10","0x787414531439f1df","0x6d8015ab9c822af0"]
+  },
+  {
+   "k": 16,
+   "mask_coeffs": 1,
+   "row": ["0x8a0fc2401d2567a9","0x6c9ad47b5264613f","0xf5dfa9d639339ee6","0x3207a61e9a84ef08","0x4b1eae3e63209704","0xaf0f12fce967108b","0xe571f8867d638be9","0x23ed1ac4dfa8f053","0x6b48344defb93fa0","0x1d7eb5717a8ea8bd","0x96b69831424f093f","0xf8b43d06d329f4d7","0xb2e2d22acd6ca064","0x4ccc1976fc9c6305","0xab6f4fe7e293732b","0x1a8d81305060c9b6"],
+   "mask": ["0x4ec932fd898e7b9b"],
+   "codeword": ["0xbc392de017385b62","0x2876de7fa0d045d4","0xc204eebf4b50da10","0xc3b92e413a7b59f3","0x3867a47069c57dcc","0x6007c98eccc2d140","0x8c1af9fb1adda95a","0x9cf1a5c236022ed0","0x895dd22af7ab5080","0x1862ef6e2f55e30c","0x199e44ac0fedc7da","0xa825016605a1537d","0x71e0b33ed581f98c","0xfdb109a5bb9c15b3","0xd90bb2e9610c63ee","0x5cb25cf8b0fdca37","0x021768b6a8231d7b","0x974892b3b14a98c7","0x8f52e25a06a2fa6a","0x947c63046319f2fe","0x53a56054361aaa4a","0x33f62c80d1577f94","0x89bc727e6256d7c3","0x1b98d6c324972a48","0xb5d2ca03d5a822c3","0xa75ed6d10a7555c1","0xe6d93303c98c5dcf","0x9f9d9b5cd5089508","0xa817cb4f55edc4e2","0xec410678f57023e9","0xf24aa2bb71bb4800","0xc806fcae42642649","0x7738ca7fb4fdaf5a","0xcac0443261dc55b4","0xbb2a970940ee412b","0x30e546b23d7189ef","0x983e373bc2e51024","0x092afdfda7fb71e5","0x35bdd8ff5a47e7c0","0x06948fb9631b6620","0x74ec28bc360d6220","0xaa77517620446484","0xae3f22df32cee4d6","0xb4c44529a41fd56f","0x6116944e1b07f560","0x4d5aa819e4516a4e","0x3bcbe2641bda9235","0x97ede1fc9e92da95","0xef1a2f13e583c196","0xa48d956b55eecbed","0xdacf416a517da89c","0x4f358839db590389","0xd2fd69686e1c4e74","0xe3e85d085d7e7a5d","0x4ef01c9816b0b35c","0x5fa1b06bc17fbea8","0x26350d30d465c800","0x4440ed0e9ed9bbd7","0xe2eb64ba12fff852","0x4e4155f30b1875f6","0x8cbe0a8db1982307","0x9891d80f76dd98c5","0x0e2ba60bc64ccf46","0xf9da4cc39d4fa4f5"]
+  },
+  {
+   "k": 16,
+   "mask_coeffs": 8,
+   "row": ["0x562a14151742b94b","0x9700734e6b1efb54","0x80e00982cbd2dc90","0xadbf9b9589ad1d33","0x17ffd466f0783eaf","0x80d30204f119a2a1","0xcb504440a9e5c093","0x9b27067a76ef90ac","0x960293dfeaee9b23","0x771e65e5a7b4146b","0x0ded2246a694f765","0xb8c080a7c06ef9dd","0xf3c3e9fee1c69c24","0x388f622ace755671","0x94db61e640c7bfee","0x43ec46c29d4c57af"],
+   "mask": ["0x83a4ba57fc7d9737","0xe3fce041b729f701","0x1bdee301d6b4da62","0x46e2f048be382870","0x6f825e278945c579","0x7c0b7d412087573e","0x74ba2ee0dc7c99c3","0xf79bed75aba958d3"],
+   "codeword": ["0x560af00beca81110","0x71cdf63ea7e4ffcb","0xce83ffe3edc59ca4","0x1bad25e1b2fd1966","0xf18ff6eee2374b84","0x6088e91e182fd392","0x83a024eab9b7292c","0x3c7043f21034d124","0x2452e4236dd028a3","0x1bb665e287ab23d2","0x198a386ffa8908b7","0x8967c487595a3788","0x001428df9e02904b","0x77e70610ec755e5f","0x904a9546154fe4e9","0xcbeb9b97c60ea7f6","0x84cb7501980748d7","0x8fbbfbaaee0d36be","0xc525b9f82f2745cc","0xc5215c1c2ee605dc","0x2c429b0c3c08b68e","0x2b3ad110726f69e9","0x27745411703cf8be","0xc02aa4ffb4a1d191","0x0ca887e251b39c17","0xf482a4b54f5e83f1","0xddba625b5e47dba6","0x50522fc43c3ec314","0x208b5fb333558cc9","0xe8a2393028a42a66","0x5f3b7e13514b310f","0x3f412bfab631af23","0xa32b54cdd1a61e9f","0x6e2e5495162ef139","0x399f25d14436b1ee","0xd299ade665b974d1","0xd56e2398f0542fd6","0x56d1ea1e3ec5ec61","0x519370800d945bfb","0xbc23bbcc901e12d6","0xd11fabea62966b12","0xef5db04c06c91d4c","0x4e46dde393767855","0x58f77a7e67675655","0xea7394597c4274fb","0xb7b75ae0e0153075","0x96563472df95076f","0xec5fab1bd92b6ab5","0xb29183f3f0d9b9ba","0x25f402bf7b8b7bf9","0xde36e931797bc8a9","0xf0c5f0891fb0dd91","0xc968fa6e196e754d","0x9c212e985b92598b","0x4fac5ae280c344c3","0xf810100693cfc7bc","0x22bf426f86f06eed","0xc9bd3ac76d10081a","0xe022311f2af54089","0x491dd2fc13f5cde4","0xa4b241b461b2306e","0x530abad3a08035b9","0x0e29cd997ceb1c1a","0x620982d651227e4c"]
+  },
+  {
+   "k": 16,
+   "mask_coeffs": 16,
+   "row": ["0x0b5aa7f4d7f5bb61","0x26ec17114f399033","0x6be1132229cac622","0x2f08ec6df0a338c3","0x7d1a3c9b659a241f","0xcfadabbda10abfb6","0x2d7abb6aa637ee9c","0x4942917180e55ff7","0xaa7cdbc75802db3d","0x491b756c4b00528e","0xaa65805b4bd7ec91","0x89978211e5061edb","0xba6867fef3e337d3","0xf3839e75f0fe227e","0x63d1a4c7392fa91c","0x79ddce4e14afca17"],
+   "mask": ["0xf7f6b634bfb59675","0xd7bc3fdfde025565","0x0555725c2855ab6d","0x51cb85b9acb10109","0xf330c20fb33fe4f2","0xd6a71b47d8c9eb8f","0x4d38f4e7eac11cfa","0xfd22bafb7ac00481","0x8e964ec2c393f30e","0x5ef538fafda0c188","0x2145e0e92bc92951","0xfad090e9517fa701","0x6d4147f7bb495100","0x8332d85fd2a0571d","0xab23f4b56f80e6e9","0x087c832243bd2913"],
+   "codeword": ["0x9863f1fedd1d0ae5","0x80752d95aefa2e65","0x16b4733d88a320f0","0x62e3b5da33b613cf","0x43b464f0512d32a3","0xac5efc04aebd7a38","0x0dc5076a2123380e","0x80d4e5e6b9622b75","0xeda3f12acfd8058a","0x6a618e5ada125599","0xe8f25b95393471bb","0x3120b4b65f09e3a6","0xb61ad759dbff283c","0x6aa22dc71dda8230","0x688aeb32ff5c9c89","0x7051b5caf92d1438","0xdcd266eebf6edda5","0x576806de15268efa","0x4239976266e175ba","0xb31980114c5f873f","0xc4b71d2656c46ee1","0xe297e4a8176c7715","0x415bf88cf0dfe6f5","0x9de2e2776fb0f03d","0xb0e7bd00205ceb86","0x6823ffded800a728","0x92f7d15f00de4f59","0xfa16546bcc33b04d","0xa14fe763bb858abe","0xba25c113d549aead","0x12cb8c27c6012c74","0x2440c57baa396b51","0x3d695f2277c2e724","0xe4ba69bbe7c6dc21","0x8eeb51966ef71590","0xd298e61016dca150","0x4033721386bf6cbd","0x074098f19f6d0a1a","0x0fde35c9ee6e0925","0xf72892804b51e921","0xa307a93dfbb2434f","0xaf51ef368fdcc7f6","0x70068f5f36ae652b","0xeee9879a534f00c6","0x59e2f745b0f9f98a","0x56c277f0f7b2418e","0x1e0547f5ab0ebffb","0x9ddb10555675b2a3","0x32d2733bd642fc1e","0x73a5d3b652676afc","0xf922b8ebf001b216","0x67fa32cafc42e35b","0x775757e14cb2176a","0xf72cb6301eea268e","0x3d82694e590e97b2","0x5c81ec4ac75f5ec1","0x2aa461f6fd1e8817","0xdb032f6e9fd3bde2","0x8e67d6ab0f2dc896","0x04a161c3c44f2b7b","0xf2a7d387d53abc51","0x85829a45ce951dc2","0x422efa72f0438bfe","0x594b5781cb9f89d6"]
+  }
+ ],
+ "models": [
+  {
+   "name": "tiny-2-servable",
+   "model": "../models/tiny-2-servable.d",
+   "model_digest": "061ec250bb0190076b6bfa571c94ccf1da782de16d9a2fbd893365354ff9143a",
+   "arch": {
+    "n_layers": 2,
+    "d_model": 64,
+    "n_heads": 4,
+    "n_kv_heads": 2,
+    "d_head": 16,
+    "d_ff": 192,
+    "vocab": 512
+   },
+   "tensors": [
+    {
+     "matrix": "Embed",
+     "layer": 0,
+     "rows": 64,
+     "cols": 512,
+     "offset": 2415
+    },
+    {
+     "matrix": "Q",
+     "layer": 0,
+     "rows": 64,
+     "cols": 64,
+     "offset": 35205
+    },
+    {
+     "matrix": "Q",
+     "layer": 1,
+     "rows": 64,
+     "cols": 64,
+     "offset": 39323
+    },
+    {
+     "matrix": "K",
+     "layer": 0,
+     "rows": 32,
+     "cols": 64,
+     "offset": 43441
+    },
+    {
+     "matrix": "K",
+     "layer": 1,
+     "rows": 32,
+     "cols": 64,
+     "offset": 45511
+    },
+    {
+     "matrix": "V",
+     "layer": 0,
+     "rows": 32,
+     "cols": 64,
+     "offset": 47581
+    },
+    {
+     "matrix": "V",
+     "layer": 1,
+     "rows": 32,
+     "cols": 64,
+     "offset": 49651
+    },
+    {
+     "matrix": "O",
+     "layer": 0,
+     "rows": 64,
+     "cols": 64,
+     "offset": 51721
+    },
+    {
+     "matrix": "O",
+     "layer": 1,
+     "rows": 64,
+     "cols": 64,
+     "offset": 55839
+    },
+    {
+     "matrix": "Gate",
+     "layer": 0,
+     "rows": 192,
+     "cols": 64,
+     "offset": 59957
+    },
+    {
+     "matrix": "Gate",
+     "layer": 1,
+     "rows": 192,
+     "cols": 64,
+     "offset": 72267
+    },
+    {
+     "matrix": "Up",
+     "layer": 0,
+     "rows": 192,
+     "cols": 64,
+     "offset": 84577
+    },
+    {
+     "matrix": "Up",
+     "layer": 1,
+     "rows": 192,
+     "cols": 64,
+     "offset": 96887
+    },
+    {
+     "matrix": "Down",
+     "layer": 0,
+     "rows": 64,
+     "cols": 192,
+     "offset": 109197
+    },
+    {
+     "matrix": "Down",
+     "layer": 1,
+     "rows": 64,
+     "cols": 192,
+     "offset": 121507
+    },
+    {
+     "matrix": "LmHead",
+     "layer": 0,
+     "rows": 512,
+     "cols": 64,
+     "offset": 133817
+    }
+   ],
+   "channels": [
+    {
+     "matrix": "Q",
+     "layer": 0,
+     "kind": "class",
+     "count": 64,
+     "offset": 811
+    },
+    {
+     "matrix": "Q",
+     "layer": 1,
+     "kind": "class",
+     "count": 64,
+     "offset": 897
+    },
+    {
+     "matrix": "K",
+     "layer": 0,
+     "kind": "class",
+     "count": 32,
+     "offset": 983
+    },
+    {
+     "matrix": "K",
+     "layer": 1,
+     "kind": "class",
+     "count": 32,
+     "offset": 1037
+    },
+    {
+     "matrix": "V",
+     "layer": 0,
+     "kind": "class",
+     "count": 32,
+     "offset": 1091
+    },
+    {
+     "matrix": "V",
+     "layer": 1,
+     "kind": "class",
+     "count": 32,
+     "offset": 1145
+    },
+    {
+     "matrix": "O",
+     "layer": 0,
+     "kind": "class",
+     "count": 64,
+     "offset": 1199
+    },
+    {
+     "matrix": "O",
+     "layer": 1,
+     "kind": "class",
+     "count": 64,
+     "offset": 1285
+    },
+    {
+     "matrix": "Gate",
+     "layer": 0,
+     "kind": "class",
+     "count": 192,
+     "offset": 1371
+    },
+    {
+     "matrix": "Gate",
+     "layer": 1,
+     "kind": "class",
+     "count": 192,
+     "offset": 1585
+    },
+    {
+     "matrix": "Up",
+     "layer": 0,
+     "kind": "class",
+     "count": 192,
+     "offset": 1799
+    },
+    {
+     "matrix": "Up",
+     "layer": 1,
+     "kind": "class",
+     "count": 192,
+     "offset": 2013
+    },
+    {
+     "matrix": "Down",
+     "layer": 0,
+     "kind": "class",
+     "count": 64,
+     "offset": 2227
+    },
+    {
+     "matrix": "Down",
+     "layer": 1,
+     "kind": "class",
+     "count": 64,
+     "offset": 2313
+    }
+   ],
+   "matrices": [
+    {
+     "matrix": "Embed",
+     "out": 64,
+     "in": 512,
+     "layers": 1,
+     "log2_k": 9,
+     "a": 0,
+     "h": 6,
+     "row_vars": 6,
+     "rows": 64,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63],
+     "descriptor": "01000802400000002000000000000904000000400000000000000000000000",
+     "commitment_id": "4bf06ce9074e13bd0dc235cd4c73ba8ae41d9543c525531d71af04b99fbfbf26",
+     "root": "29f52fb6fffd9c820236813b1fdf4c02b041963664596283f331c3f4a7635990"
+    },
+    {
+     "matrix": "Q",
+     "out": 64,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 4,
+     "row_vars": 5,
+     "rows": 32,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+     "descriptor": "01000802400000002000000001000804000000200000000000000000000000",
+     "commitment_id": "ac2abf8aa8082e094551e76a64b8fcce8026dbae32723d62ad079d56eb83cfbe",
+     "root": "b9ff8b2777fbb45bc7bf11f9ce171da7780f56626180fb40c2e19d880843edce"
+    },
+    {
+     "matrix": "K",
+     "out": 32,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 3,
+     "row_vars": 4,
+     "rows": 16,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+     "descriptor": "01000802400000002000000002000804000000100000000000000000000000",
+     "commitment_id": "cbb9d92457b5e0d7527d495193d97af8450ae7b51f6e2e43e3e7e98114f423de",
+     "root": "1fed80d7302d62f445249b0018fc77953b366a931496625ceddd50ffd2215a86"
+    },
+    {
+     "matrix": "V",
+     "out": 32,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 3,
+     "row_vars": 4,
+     "rows": 16,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+     "descriptor": "01000802400000002000000003000804000000100000000000000000000000",
+     "commitment_id": "4019b52cd74b2fbcd9b4973b993652371c08d66e03117a5149e36f6c1dab97f7",
+     "root": "2c10bf931c93b48a1842defb83203d6b60fa14954d51a3e655557c95da3d4f77"
+    },
+    {
+     "matrix": "O",
+     "out": 64,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 4,
+     "row_vars": 5,
+     "rows": 32,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+     "descriptor": "01000802400000002000000004000804000000200000000000000000000000",
+     "commitment_id": "beead1ae87a5899fb55913cae8c34da2ee1f8e29f0bb698c45c8ee805d982812",
+     "root": "3bdd0f445e3dc48d062d71c45705ca68fad950c7ec0c724020c134d92cac49ef"
+    },
+    {
+     "matrix": "Gate",
+     "out": 192,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 6,
+     "row_vars": 7,
+     "rows": 96,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111],
+     "descriptor": "01000802400000002000000005000804000000600000000000000000000000",
+     "commitment_id": "b2d8fd979df4bf0b26010c21704c2ee78bf6d239f10e3186126fa32cab002df5",
+     "root": "46af51c7a78b7931e476ac53ed578d0f00d8624c3d78077f357b28b7963366ca"
+    },
+    {
+     "matrix": "Up",
+     "out": 192,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 6,
+     "row_vars": 7,
+     "rows": 96,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111],
+     "descriptor": "01000802400000002000000006000804000000600000000000000000000000",
+     "commitment_id": "889a5aca1ea5f9b424475a91c27d6d500ea1b535eda20d6969089aeb5f0bf2b2",
+     "root": "5624e055dd13d074dbc1fd46bba91f09ebcbe2e3b53c9b52e0aec3ddced5a9cd"
+    },
+    {
+     "matrix": "Down",
+     "out": 64,
+     "in": 192,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 0,
+     "h": 6,
+     "row_vars": 7,
+     "rows": 128,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127],
+     "descriptor": "01000802400000002000000007000804000000800000000000000000000000",
+     "commitment_id": "186a8e5ec6d039d18e90e271dbf545b78b5b668a8eec2f271e6fc2c27367550c",
+     "root": "807d00351a109664b3d250386d10bb63ff6dedbe2d2673c711062328d905224e"
+    },
+    {
+     "matrix": "LmHead",
+     "out": 512,
+     "in": 64,
+     "layers": 1,
+     "log2_k": 8,
+     "a": 2,
+     "h": 7,
+     "row_vars": 7,
+     "rows": 128,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127],
+     "descriptor": "01000802400000002000000008000804000000800000000000000000000000",
+     "commitment_id": "8026e1c07ba174445c1a21191121550bb415aa4d2013d1311e187d311fca2a46",
+     "root": "58216e5427816fb953cf8d6b03dda0d7e1e04bb7f6fe64e977a073fa479ca158"
+    },
+    {
+     "matrix": "ChannelParams",
+     "channel_width": 256,
+     "log2_k": 8,
+     "row_vars": 5,
+     "rows": 14,
+     "committed_rows": [2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+     "descriptor": "010008024000000020000000090008040000000e0000000000000000000000",
+     "commitment_id": "744031ee1449f8a73f67efcde0bfc49f3ed2de02cbb56d4832336f48c02f07ae",
+     "root": "1eddd813013f76e44646f87a38b66841d7a044da03a730a5b1f2af59b5ea075c"
+    }
+   ],
+   "public": "0802400000002000000029f52fb6fffd9c820236813b1fdf4c02b041963664596283f331c3f4a7635990b9ff8b2777fbb45bc7bf11f9ce171da7780f56626180fb40c2e19d880843edce1fed80d7302d62f445249b0018fc77953b366a931496625ceddd50ffd2215a862c10bf931c93b48a1842defb83203d6b60fa14954d51a3e655557c95da3d4f773bdd0f445e3dc48d062d71c45705ca68fad950c7ec0c724020c134d92cac49ef46af51c7a78b7931e476ac53ed578d0f00d8624c3d78077f357b28b7963366ca5624e055dd13d074dbc1fd46bba91f09ebcbe2e3b53c9b52e0aec3ddced5a9cd807d00351a109664b3d250386d10bb63ff6dedbe2d2673c711062328d905224e58216e5427816fb953cf8d6b03dda0d7e1e04bb7f6fe64e977a073fa479ca1581eddd813013f76e44646f87a38b66841d7a044da03a730a5b1f2af59b5ea075c00000000",
+   "weights_root": "8a9d73c95669c493ebff25bd2c10cfdb201a6b1fd83c270cf974d9547d8777d1",
+   "file": "tiny-2-servable.twr",
+   "bytes": 386,
+   "digest": "86f70cc1ed6633b18a786753ec4c7684c1e511fec8cb128558440f9664cdc157"
+  },
+  {
+   "name": "tiny-2-minimal",
+   "model": "../models/tiny-2-minimal.d",
+   "model_digest": "594a1ab03fd659e1a32c311395b9343d0a831335de82cef30968660edc9a2488",
+   "arch": {
+    "n_layers": 2,
+    "d_model": 64,
+    "n_heads": 4,
+    "n_kv_heads": 2,
+    "d_head": 16,
+    "d_ff": 192,
+    "vocab": 512
+   },
+   "tensors": [
+    {
+     "matrix": "Embed",
+     "layer": 0,
+     "rows": 64,
+     "cols": 512,
+     "offset": 1715
+    },
+    {
+     "matrix": "Q",
+     "layer": 0,
+     "rows": 64,
+     "cols": 64,
+     "offset": 34505
+    },
+    {
+     "matrix": "Q",
+     "layer": 1,
+     "rows": 64,
+     "cols": 64,
+     "offset": 38623
+    },
+    {
+     "matrix": "K",
+     "layer": 0,
+     "rows": 32,
+     "cols": 64,
+     "offset": 42741
+    },
+    {
+     "matrix": "K",
+     "layer": 1,
+     "rows": 32,
+     "cols": 64,
+     "offset": 44811
+    },
+    {
+     "matrix": "V",
+     "layer": 0,
+     "rows": 32,
+     "cols": 64,
+     "offset": 46881
+    },
+    {
+     "matrix": "V",
+     "layer": 1,
+     "rows": 32,
+     "cols": 64,
+     "offset": 48951
+    },
+    {
+     "matrix": "O",
+     "layer": 0,
+     "rows": 64,
+     "cols": 64,
+     "offset": 51021
+    },
+    {
+     "matrix": "O",
+     "layer": 1,
+     "rows": 64,
+     "cols": 64,
+     "offset": 55139
+    },
+    {
+     "matrix": "Gate",
+     "layer": 0,
+     "rows": 192,
+     "cols": 64,
+     "offset": 59257
+    },
+    {
+     "matrix": "Gate",
+     "layer": 1,
+     "rows": 192,
+     "cols": 64,
+     "offset": 71567
+    },
+    {
+     "matrix": "Up",
+     "layer": 0,
+     "rows": 192,
+     "cols": 64,
+     "offset": 83877
+    },
+    {
+     "matrix": "Up",
+     "layer": 1,
+     "rows": 192,
+     "cols": 64,
+     "offset": 96187
+    },
+    {
+     "matrix": "Down",
+     "layer": 0,
+     "rows": 64,
+     "cols": 192,
+     "offset": 108497
+    },
+    {
+     "matrix": "Down",
+     "layer": 1,
+     "rows": 64,
+     "cols": 192,
+     "offset": 120807
+    },
+    {
+     "matrix": "LmHead",
+     "layer": 0,
+     "rows": 512,
+     "cols": 64,
+     "offset": 133117
+    }
+   ],
+   "channels": [
+    {
+     "matrix": "Q",
+     "layer": 0,
+     "kind": "class",
+     "count": 64,
+     "offset": 647
+    },
+    {
+     "matrix": "Q",
+     "layer": 1,
+     "kind": "class",
+     "count": 64,
+     "offset": 733
+    },
+    {
+     "matrix": "K",
+     "layer": 0,
+     "kind": "class",
+     "count": 32,
+     "offset": 819
+    },
+    {
+     "matrix": "K",
+     "layer": 1,
+     "kind": "class",
+     "count": 32,
+     "offset": 873
+    },
+    {
+     "matrix": "O",
+     "layer": 0,
+     "kind": "class",
+     "count": 64,
+     "offset": 927
+    },
+    {
+     "matrix": "O",
+     "layer": 1,
+     "kind": "class",
+     "count": 64,
+     "offset": 1013
+    },
+    {
+     "matrix": "Gate",
+     "layer": 0,
+     "kind": "class",
+     "count": 192,
+     "offset": 1099
+    },
+    {
+     "matrix": "Gate",
+     "layer": 1,
+     "kind": "class",
+     "count": 192,
+     "offset": 1313
+    },
+    {
+     "matrix": "Down",
+     "layer": 0,
+     "kind": "class",
+     "count": 64,
+     "offset": 1527
+    },
+    {
+     "matrix": "Down",
+     "layer": 1,
+     "kind": "class",
+     "count": 64,
+     "offset": 1613
+    }
+   ],
+   "matrices": [
+    {
+     "matrix": "Embed",
+     "out": 64,
+     "in": 512,
+     "layers": 1,
+     "log2_k": 9,
+     "a": 0,
+     "h": 6,
+     "row_vars": 6,
+     "rows": 64,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63],
+     "descriptor": "01000802400000002000000000000904000000400000000000000000000000",
+     "commitment_id": "4bf06ce9074e13bd0dc235cd4c73ba8ae41d9543c525531d71af04b99fbfbf26",
+     "root": "dac2cf2d6ea30d00f619672a884f166e3f212d7443fa508234e3c8d0de91a8b8"
+    },
+    {
+     "matrix": "Q",
+     "out": 64,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 4,
+     "row_vars": 5,
+     "rows": 32,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+     "descriptor": "01000802400000002000000001000804000000200000000000000000000000",
+     "commitment_id": "ac2abf8aa8082e094551e76a64b8fcce8026dbae32723d62ad079d56eb83cfbe",
+     "root": "27f1deb9f07ab4e6c58f5868fe9ffd5c61c91089f9e100f00fa1b5b19eec59d2"
+    },
+    {
+     "matrix": "K",
+     "out": 32,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 3,
+     "row_vars": 4,
+     "rows": 16,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+     "descriptor": "01000802400000002000000002000804000000100000000000000000000000",
+     "commitment_id": "cbb9d92457b5e0d7527d495193d97af8450ae7b51f6e2e43e3e7e98114f423de",
+     "root": "37cc80015adaf3c25c057336103d53728c34e1cd50968cde2cef8e7d219b7e83"
+    },
+    {
+     "matrix": "V",
+     "out": 32,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 3,
+     "row_vars": 4,
+     "rows": 16,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+     "descriptor": "01000802400000002000000003000804000000100000000000000000000000",
+     "commitment_id": "4019b52cd74b2fbcd9b4973b993652371c08d66e03117a5149e36f6c1dab97f7",
+     "root": "b2f6994ca6acd8ca437adbec583726e24d2c9551d0cfb04b0a64df30335868b9"
+    },
+    {
+     "matrix": "O",
+     "out": 64,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 4,
+     "row_vars": 5,
+     "rows": 32,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+     "descriptor": "01000802400000002000000004000804000000200000000000000000000000",
+     "commitment_id": "beead1ae87a5899fb55913cae8c34da2ee1f8e29f0bb698c45c8ee805d982812",
+     "root": "feb2309247ac8f8b799a1febccfcdcc6e8cf0672ee4a9d5b0b3b717deda0836b"
+    },
+    {
+     "matrix": "Gate",
+     "out": 192,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 6,
+     "row_vars": 7,
+     "rows": 96,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111],
+     "descriptor": "01000802400000002000000005000804000000600000000000000000000000",
+     "commitment_id": "b2d8fd979df4bf0b26010c21704c2ee78bf6d239f10e3186126fa32cab002df5",
+     "root": "ece30617cb329ba789d4bbb86f3c72cd46941ae53f76252bb8839492998a38c1"
+    },
+    {
+     "matrix": "Up",
+     "out": 192,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 6,
+     "row_vars": 7,
+     "rows": 96,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111],
+     "descriptor": "01000802400000002000000006000804000000600000000000000000000000",
+     "commitment_id": "889a5aca1ea5f9b424475a91c27d6d500ea1b535eda20d6969089aeb5f0bf2b2",
+     "root": "be23d5057c4aad66aff941f54db7667e3a5bdd77945676be81d7bafd85aafc00"
+    },
+    {
+     "matrix": "Down",
+     "out": 64,
+     "in": 192,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 0,
+     "h": 6,
+     "row_vars": 7,
+     "rows": 128,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127],
+     "descriptor": "01000802400000002000000007000804000000800000000000000000000000",
+     "commitment_id": "186a8e5ec6d039d18e90e271dbf545b78b5b668a8eec2f271e6fc2c27367550c",
+     "root": "6807591f6c209bb4283960f5313281510b77ca516dd828427ce6c916679f93a3"
+    },
+    {
+     "matrix": "LmHead",
+     "out": 512,
+     "in": 64,
+     "layers": 1,
+     "log2_k": 8,
+     "a": 2,
+     "h": 7,
+     "row_vars": 7,
+     "rows": 128,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127],
+     "descriptor": "01000802400000002000000008000804000000800000000000000000000000",
+     "commitment_id": "8026e1c07ba174445c1a21191121550bb415aa4d2013d1311e187d311fca2a46",
+     "root": "c8931663965bf26dea8a09c7eb293fb0fab0a25bd8cb84d777ac9d9fe181bd34"
+    },
+    {
+     "matrix": "ChannelParams",
+     "channel_width": 256,
+     "log2_k": 8,
+     "row_vars": 5,
+     "rows": 10,
+     "committed_rows": [2,3,4,5,8,9,10,11,14,15],
+     "descriptor": "010008024000000020000000090008040000000a0000000000000000000000",
+     "commitment_id": "0c09a3a1e1b5fccdb6ed3547b9f59a50b536c3fc7e88670409f0d31e6d756931",
+     "root": "6d9cc4eb3b9cfc8c47fe194fbe94527c933c1f74fad91eb4c3472436c1f70f07"
+    }
+   ],
+   "public": "08024000000020000000dac2cf2d6ea30d00f619672a884f166e3f212d7443fa508234e3c8d0de91a8b827f1deb9f07ab4e6c58f5868fe9ffd5c61c91089f9e100f00fa1b5b19eec59d237cc80015adaf3c25c057336103d53728c34e1cd50968cde2cef8e7d219b7e83b2f6994ca6acd8ca437adbec583726e24d2c9551d0cfb04b0a64df30335868b9feb2309247ac8f8b799a1febccfcdcc6e8cf0672ee4a9d5b0b3b717deda0836bece30617cb329ba789d4bbb86f3c72cd46941ae53f76252bb8839492998a38c1be23d5057c4aad66aff941f54db7667e3a5bdd77945676be81d7bafd85aafc006807591f6c209bb4283960f5313281510b77ca516dd828427ce6c916679f93a3c8931663965bf26dea8a09c7eb293fb0fab0a25bd8cb84d777ac9d9fe181bd346d9cc4eb3b9cfc8c47fe194fbe94527c933c1f74fad91eb4c3472436c1f70f0700000000",
+   "weights_root": "a6f6605e741f6f9258dd396e3e8ec4637be392fe2e9f8adb3e502f803556ff48",
+   "file": "tiny-2-minimal.twr",
+   "bytes": 386,
+   "digest": "801ae105beb4875f2918b8bb3e59a6c793f7d742dc36b17919dcc123c81be71d"
+  },
+  {
+   "name": "tiny-2-affine",
+   "model": "../models/tiny-2-affine.d",
+   "model_digest": "c0229930793160c20e6f417c1863175c76f7492641909de864daee1114cc5040",
+   "arch": {
+    "n_layers": 2,
+    "d_model": 64,
+    "n_heads": 4,
+    "n_kv_heads": 2,
+    "d_head": 16,
+    "d_ff": 192,
+    "vocab": 512
+   },
+   "tensors": [
+    {
+     "matrix": "Embed",
+     "layer": 0,
+     "rows": 64,
+     "cols": 512,
+     "offset": 3035
+    },
+    {
+     "matrix": "Q",
+     "layer": 0,
+     "rows": 64,
+     "cols": 64,
+     "offset": 35825
+    },
+    {
+     "matrix": "Q",
+     "layer": 1,
+     "rows": 64,
+     "cols": 64,
+     "offset": 39943
+    },
+    {
+     "matrix": "K",
+     "layer": 0,
+     "rows": 32,
+     "cols": 64,
+     "offset": 44061
+    },
+    {
+     "matrix": "K",
+     "layer": 1,
+     "rows": 32,
+     "cols": 64,
+     "offset": 46131
+    },
+    {
+     "matrix": "V",
+     "layer": 0,
+     "rows": 32,
+     "cols": 64,
+     "offset": 48201
+    },
+    {
+     "matrix": "V",
+     "layer": 1,
+     "rows": 32,
+     "cols": 64,
+     "offset": 50271
+    },
+    {
+     "matrix": "O",
+     "layer": 0,
+     "rows": 64,
+     "cols": 64,
+     "offset": 52341
+    },
+    {
+     "matrix": "O",
+     "layer": 1,
+     "rows": 64,
+     "cols": 64,
+     "offset": 56459
+    },
+    {
+     "matrix": "Gate",
+     "layer": 0,
+     "rows": 192,
+     "cols": 64,
+     "offset": 60577
+    },
+    {
+     "matrix": "Gate",
+     "layer": 1,
+     "rows": 192,
+     "cols": 64,
+     "offset": 72887
+    },
+    {
+     "matrix": "Up",
+     "layer": 0,
+     "rows": 192,
+     "cols": 64,
+     "offset": 85197
+    },
+    {
+     "matrix": "Up",
+     "layer": 1,
+     "rows": 192,
+     "cols": 64,
+     "offset": 97507
+    },
+    {
+     "matrix": "Down",
+     "layer": 0,
+     "rows": 64,
+     "cols": 192,
+     "offset": 109817
+    },
+    {
+     "matrix": "Down",
+     "layer": 1,
+     "rows": 64,
+     "cols": 192,
+     "offset": 122127
+    },
+    {
+     "matrix": "LmHead",
+     "layer": 0,
+     "rows": 512,
+     "cols": 64,
+     "offset": 134437
+    }
+   ],
+   "channels": [
+    {
+     "matrix": "Q",
+     "layer": 0,
+     "kind": "multiplier",
+     "count": 64,
+     "offset": 735
+    },
+    {
+     "matrix": "Q",
+     "layer": 1,
+     "kind": "multiplier",
+     "count": 64,
+     "offset": 885
+    },
+    {
+     "matrix": "K",
+     "layer": 0,
+     "kind": "multiplier",
+     "count": 32,
+     "offset": 1035
+    },
+    {
+     "matrix": "K",
+     "layer": 1,
+     "kind": "multiplier",
+     "count": 32,
+     "offset": 1121
+    },
+    {
+     "matrix": "V",
+     "layer": 0,
+     "kind": "class",
+     "count": 32,
+     "offset": 1199
+    },
+    {
+     "matrix": "V",
+     "layer": 1,
+     "kind": "class",
+     "count": 32,
+     "offset": 1253
+    },
+    {
+     "matrix": "O",
+     "layer": 0,
+     "kind": "multiplier",
+     "count": 64,
+     "offset": 1315
+    },
+    {
+     "matrix": "O",
+     "layer": 1,
+     "kind": "multiplier",
+     "count": 64,
+     "offset": 1465
+    },
+    {
+     "matrix": "Gate",
+     "layer": 0,
+     "kind": "class",
+     "count": 192,
+     "offset": 1607
+    },
+    {
+     "matrix": "Gate",
+     "layer": 1,
+     "kind": "class",
+     "count": 192,
+     "offset": 1821
+    },
+    {
+     "matrix": "Up",
+     "layer": 0,
+     "kind": "multiplier",
+     "count": 192,
+     "offset": 2043
+    },
+    {
+     "matrix": "Up",
+     "layer": 1,
+     "kind": "multiplier",
+     "count": 192,
+     "offset": 2449
+    },
+    {
+     "matrix": "Down",
+     "layer": 0,
+     "kind": "class",
+     "count": 64,
+     "offset": 2847
+    },
+    {
+     "matrix": "Down",
+     "layer": 1,
+     "kind": "class",
+     "count": 64,
+     "offset": 2933
+    }
+   ],
+   "matrices": [
+    {
+     "matrix": "Embed",
+     "out": 64,
+     "in": 512,
+     "layers": 1,
+     "log2_k": 9,
+     "a": 0,
+     "h": 6,
+     "row_vars": 6,
+     "rows": 64,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63],
+     "descriptor": "01000802400000002000000000000904000000400000000000000000000000",
+     "commitment_id": "4bf06ce9074e13bd0dc235cd4c73ba8ae41d9543c525531d71af04b99fbfbf26",
+     "root": "7f1817aa0ee9b87064f38e4f100549285c60f578af7c6c044d3931fb28ba3215"
+    },
+    {
+     "matrix": "Q",
+     "out": 64,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 4,
+     "row_vars": 5,
+     "rows": 32,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+     "descriptor": "01000802400000002000000001000804000000200000000000000000000000",
+     "commitment_id": "ac2abf8aa8082e094551e76a64b8fcce8026dbae32723d62ad079d56eb83cfbe",
+     "root": "ece42762dc6e6365962456b825c1bfcdf5764fd3dc168dff80ed0dd5a088a353"
+    },
+    {
+     "matrix": "K",
+     "out": 32,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 3,
+     "row_vars": 4,
+     "rows": 16,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+     "descriptor": "01000802400000002000000002000804000000100000000000000000000000",
+     "commitment_id": "cbb9d92457b5e0d7527d495193d97af8450ae7b51f6e2e43e3e7e98114f423de",
+     "root": "fe1b4aa7600c6e5db5bc68a7d26d48208cba44a251734039ea9667f1216082b4"
+    },
+    {
+     "matrix": "V",
+     "out": 32,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 3,
+     "row_vars": 4,
+     "rows": 16,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+     "descriptor": "01000802400000002000000003000804000000100000000000000000000000",
+     "commitment_id": "4019b52cd74b2fbcd9b4973b993652371c08d66e03117a5149e36f6c1dab97f7",
+     "root": "2388dc88c5b92b87df64deaa48919b15da8b90a7e938fe57406fcef24788e539"
+    },
+    {
+     "matrix": "O",
+     "out": 64,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 4,
+     "row_vars": 5,
+     "rows": 32,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+     "descriptor": "01000802400000002000000004000804000000200000000000000000000000",
+     "commitment_id": "beead1ae87a5899fb55913cae8c34da2ee1f8e29f0bb698c45c8ee805d982812",
+     "root": "8a7eb3677b801bf92119379604c6b4a548c34907c80cd79af1fd635ddbbb539f"
+    },
+    {
+     "matrix": "Gate",
+     "out": 192,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 6,
+     "row_vars": 7,
+     "rows": 96,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111],
+     "descriptor": "01000802400000002000000005000804000000600000000000000000000000",
+     "commitment_id": "b2d8fd979df4bf0b26010c21704c2ee78bf6d239f10e3186126fa32cab002df5",
+     "root": "3b5b0178c54cf4c554eebde120615dd8fc285d0eee9687f4c63eb4887c4ad975"
+    },
+    {
+     "matrix": "Up",
+     "out": 192,
+     "in": 64,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 2,
+     "h": 6,
+     "row_vars": 7,
+     "rows": 96,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111],
+     "descriptor": "01000802400000002000000006000804000000600000000000000000000000",
+     "commitment_id": "889a5aca1ea5f9b424475a91c27d6d500ea1b535eda20d6969089aeb5f0bf2b2",
+     "root": "8263f1d522238b1a65445d988360ac8d2e9ec4f3842e4a234cbfce50009fac48"
+    },
+    {
+     "matrix": "Down",
+     "out": 64,
+     "in": 192,
+     "layers": 2,
+     "log2_k": 8,
+     "a": 0,
+     "h": 6,
+     "row_vars": 7,
+     "rows": 128,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127],
+     "descriptor": "01000802400000002000000007000804000000800000000000000000000000",
+     "commitment_id": "186a8e5ec6d039d18e90e271dbf545b78b5b668a8eec2f271e6fc2c27367550c",
+     "root": "91b2b977ecdc40328c4c1a0f0c96be1710a671151a6455427c3599cde05b0728"
+    },
+    {
+     "matrix": "LmHead",
+     "out": 512,
+     "in": 64,
+     "layers": 1,
+     "log2_k": 8,
+     "a": 2,
+     "h": 7,
+     "row_vars": 7,
+     "rows": 128,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127],
+     "descriptor": "01000802400000002000000008000804000000800000000000000000000000",
+     "commitment_id": "8026e1c07ba174445c1a21191121550bb415aa4d2013d1311e187d311fca2a46",
+     "root": "2137776934d41e4c5c1a7e5eb9e2668b3381a3a9be3a5e15c7a32b940cbf5ee7"
+    },
+    {
+     "matrix": "ChannelParams",
+     "channel_width": 256,
+     "log2_k": 8,
+     "row_vars": 5,
+     "rows": 14,
+     "committed_rows": [2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+     "descriptor": "010008024000000020000000090008040000000e0000000000000000000000",
+     "commitment_id": "744031ee1449f8a73f67efcde0bfc49f3ed2de02cbb56d4832336f48c02f07ae",
+     "root": "82bd985d75801c41e396d7510acd3939c892b7ab75e1d45213a2b174c372e283"
+    }
+   ],
+   "public": "080240000000200000007f1817aa0ee9b87064f38e4f100549285c60f578af7c6c044d3931fb28ba3215ece42762dc6e6365962456b825c1bfcdf5764fd3dc168dff80ed0dd5a088a353fe1b4aa7600c6e5db5bc68a7d26d48208cba44a251734039ea9667f1216082b42388dc88c5b92b87df64deaa48919b15da8b90a7e938fe57406fcef24788e5398a7eb3677b801bf92119379604c6b4a548c34907c80cd79af1fd635ddbbb539f3b5b0178c54cf4c554eebde120615dd8fc285d0eee9687f4c63eb4887c4ad9758263f1d522238b1a65445d988360ac8d2e9ec4f3842e4a234cbfce50009fac4891b2b977ecdc40328c4c1a0f0c96be1710a671151a6455427c3599cde05b07282137776934d41e4c5c1a7e5eb9e2668b3381a3a9be3a5e15c7a32b940cbf5ee782bd985d75801c41e396d7510acd3939c892b7ab75e1d45213a2b174c372e28300000000",
+   "weights_root": "055136973d97ece030bd42e2173182ef5517dd4d1b90c00fde93fa719b0007a4",
+   "file": "tiny-2-affine.twr",
+   "bytes": 386,
+   "digest": "891245bf5298d9b71ba38f1445c73ab6cc0a1b41b7410994cb51f6cacb26a8fc"
+  },
+  {
+   "name": "tiny-4-servable",
+   "model": "../models/tiny-4-servable.d",
+   "model_digest": "0dd822e630ef61e9d93efc3c7c6e84b62f50bd6dd23a3fe9fecfbc90c2222787",
+   "arch": {
+    "n_layers": 4,
+    "d_model": 256,
+    "n_heads": 8,
+    "n_kv_heads": 2,
+    "d_head": 32,
+    "d_ff": 384,
+    "vocab": 512
+   },
+   "tensors": [
+    {
+     "matrix": "Embed",
+     "layer": 0,
+     "rows": 256,
+     "cols": 512,
+     "offset": 7595
+    },
+    {
+     "matrix": "Q",
+     "layer": 0,
+     "rows": 256,
+     "cols": 256,
+     "offset": 138689
+    },
+    {
+     "matrix": "Q",
+     "layer": 1,
+     "rows": 256,
+     "cols": 256,
+     "offset": 204247
+    },
+    {
+     "matrix": "Q",
+     "layer": 2,
+     "rows": 256,
+     "cols": 256,
+     "offset": 269805
+    },
+    {
+     "matrix": "Q",
+     "layer": 3,
+     "rows": 256,
+     "cols": 256,
+     "offset": 335363
+    },
+    {
+     "matrix": "K",
+     "layer": 0,
+     "rows": 64,
+     "cols": 256,
+     "offset": 400921
+    },
+    {
+     "matrix": "K",
+     "layer": 1,
+     "rows": 64,
+     "cols": 256,
+     "offset": 417327
+    },
+    {
+     "matrix": "K",
+     "layer": 2,
+     "rows": 64,
+     "cols": 256,
+     "offset": 433733
+    },
+    {
+     "matrix": "K",
+     "layer": 3,
+     "rows": 64,
+     "cols": 256,
+     "offset": 450139
+    },
+    {
+     "matrix": "V",
+     "layer": 0,
+     "rows": 64,
+     "cols": 256,
+     "offset": 466545
+    },
+    {
+     "matrix": "V",
+     "layer": 1,
+     "rows": 64,
+     "cols": 256,
+     "offset": 482951
+    },
+    {
+     "matrix": "V",
+     "layer": 2,
+     "rows": 64,
+     "cols": 256,
+     "offset": 499357
+    },
+    {
+     "matrix": "V",
+     "layer": 3,
+     "rows": 64,
+     "cols": 256,
+     "offset": 515763
+    },
+    {
+     "matrix": "O",
+     "layer": 0,
+     "rows": 256,
+     "cols": 256,
+     "offset": 532169
+    },
+    {
+     "matrix": "O",
+     "layer": 1,
+     "rows": 256,
+     "cols": 256,
+     "offset": 597727
+    },
+    {
+     "matrix": "O",
+     "layer": 2,
+     "rows": 256,
+     "cols": 256,
+     "offset": 663285
+    },
+    {
+     "matrix": "O",
+     "layer": 3,
+     "rows": 256,
+     "cols": 256,
+     "offset": 728843
+    },
+    {
+     "matrix": "Gate",
+     "layer": 0,
+     "rows": 384,
+     "cols": 256,
+     "offset": 794401
+    },
+    {
+     "matrix": "Gate",
+     "layer": 1,
+     "rows": 384,
+     "cols": 256,
+     "offset": 892727
+    },
+    {
+     "matrix": "Gate",
+     "layer": 2,
+     "rows": 384,
+     "cols": 256,
+     "offset": 991053
+    },
+    {
+     "matrix": "Gate",
+     "layer": 3,
+     "rows": 384,
+     "cols": 256,
+     "offset": 1089379
+    },
+    {
+     "matrix": "Up",
+     "layer": 0,
+     "rows": 384,
+     "cols": 256,
+     "offset": 1187705
+    },
+    {
+     "matrix": "Up",
+     "layer": 1,
+     "rows": 384,
+     "cols": 256,
+     "offset": 1286031
+    },
+    {
+     "matrix": "Up",
+     "layer": 2,
+     "rows": 384,
+     "cols": 256,
+     "offset": 1384357
+    },
+    {
+     "matrix": "Up",
+     "layer": 3,
+     "rows": 384,
+     "cols": 256,
+     "offset": 1482683
+    },
+    {
+     "matrix": "Down",
+     "layer": 0,
+     "rows": 256,
+     "cols": 384,
+     "offset": 1581009
+    },
+    {
+     "matrix": "Down",
+     "layer": 1,
+     "rows": 256,
+     "cols": 384,
+     "offset": 1679335
+    },
+    {
+     "matrix": "Down",
+     "layer": 2,
+     "rows": 256,
+     "cols": 384,
+     "offset": 1777661
+    },
+    {
+     "matrix": "Down",
+     "layer": 3,
+     "rows": 256,
+     "cols": 384,
+     "offset": 1875987
+    },
+    {
+     "matrix": "LmHead",
+     "layer": 0,
+     "rows": 512,
+     "cols": 256,
+     "offset": 1974313
+    }
+   ],
+   "channels": [
+    {
+     "matrix": "Q",
+     "layer": 0,
+     "kind": "class",
+     "count": 256,
+     "offset": 1419
+    },
+    {
+     "matrix": "Q",
+     "layer": 1,
+     "kind": "class",
+     "count": 256,
+     "offset": 1697
+    },
+    {
+     "matrix": "Q",
+     "layer": 2,
+     "kind": "class",
+     "count": 256,
+     "offset": 1975
+    },
+    {
+     "matrix": "Q",
+     "layer": 3,
+     "kind": "class",
+     "count": 256,
+     "offset": 2253
+    },
+    {
+     "matrix": "K",
+     "layer": 0,
+     "kind": "class",
+     "count": 64,
+     "offset": 2531
+    },
+    {
+     "matrix": "K",
+     "layer": 1,
+     "kind": "class",
+     "count": 64,
+     "offset": 2617
+    },
+    {
+     "matrix": "K",
+     "layer": 2,
+     "kind": "class",
+     "count": 64,
+     "offset": 2703
+    },
+    {
+     "matrix": "K",
+     "layer": 3,
+     "kind": "class",
+     "count": 64,
+     "offset": 2789
+    },
+    {
+     "matrix": "V",
+     "layer": 0,
+     "kind": "class",
+     "count": 64,
+     "offset": 2875
+    },
+    {
+     "matrix": "V",
+     "layer": 1,
+     "kind": "class",
+     "count": 64,
+     "offset": 2961
+    },
+    {
+     "matrix": "V",
+     "layer": 2,
+     "kind": "class",
+     "count": 64,
+     "offset": 3047
+    },
+    {
+     "matrix": "V",
+     "layer": 3,
+     "kind": "class",
+     "count": 64,
+     "offset": 3133
+    },
+    {
+     "matrix": "Gate",
+     "layer": 0,
+     "kind": "class",
+     "count": 384,
+     "offset": 3219
+    },
+    {
+     "matrix": "Gate",
+     "layer": 1,
+     "kind": "class",
+     "count": 384,
+     "offset": 3625
+    },
+    {
+     "matrix": "Gate",
+     "layer": 2,
+     "kind": "class",
+     "count": 384,
+     "offset": 4031
+    },
+    {
+     "matrix": "Gate",
+     "layer": 3,
+     "kind": "class",
+     "count": 384,
+     "offset": 4437
+    },
+    {
+     "matrix": "Up",
+     "layer": 0,
+     "kind": "class",
+     "count": 384,
+     "offset": 4843
+    },
+    {
+     "matrix": "Up",
+     "layer": 1,
+     "kind": "class",
+     "count": 384,
+     "offset": 5249
+    },
+    {
+     "matrix": "Up",
+     "layer": 2,
+     "kind": "class",
+     "count": 384,
+     "offset": 5655
+    },
+    {
+     "matrix": "Up",
+     "layer": 3,
+     "kind": "class",
+     "count": 384,
+     "offset": 6061
+    },
+    {
+     "matrix": "Down",
+     "layer": 0,
+     "kind": "class",
+     "count": 256,
+     "offset": 6467
+    },
+    {
+     "matrix": "Down",
+     "layer": 1,
+     "kind": "class",
+     "count": 256,
+     "offset": 6745
+    },
+    {
+     "matrix": "Down",
+     "layer": 2,
+     "kind": "class",
+     "count": 256,
+     "offset": 7023
+    },
+    {
+     "matrix": "Down",
+     "layer": 3,
+     "kind": "class",
+     "count": 256,
+     "offset": 7301
+    }
+   ],
+   "matrices": [
+    {
+     "matrix": "Embed",
+     "out": 256,
+     "in": 512,
+     "layers": 1,
+     "log2_k": 9,
+     "a": 0,
+     "h": 8,
+     "row_vars": 8,
+     "rows": 256,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255],
+     "descriptor": "01000802400000002000000000000904000000000100000000000000000000",
+     "commitment_id": "534f4b8698cfdb03b76cef99eb9ff500880ca29b6632bc4cc5f8ccbef5bb9465",
+     "root": "87b96808d6d174b607cef61af6cf2a4f67e29bbea5f0a1b59537c5d1c15871cd"
+    },
+    {
+     "matrix": "Q",
+     "out": 256,
+     "in": 256,
+     "layers": 4,
+     "log2_k": 8,
+     "a": 0,
+     "h": 8,
+     "row_vars": 10,
+     "rows": 1024,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332,333,334,335,336,337,338,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,363,364,365,366,367,368,369,370,371,372,373,374,375,376,377,378,379,380,381,382,383,384,385,386,387,388,389,390,391,392,393,394,395,396,397,398,399,400,401,402,403,404,405,406,407,408,409,410,411,412,413,414,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,465,466,467,468,469,470,471,472,473,474,475,476,477,478,479,480,481,482,483,484,485,486,487,488,489,490,491,492,493,494,495,496,497,498,499,500,501,502,503,504,505,506,507,508,509,510,511,512,513,514,515,516,517,518,519,520,521,522,523,524,525,526,527,528,529,530,531,532,533,534,535,536,537,538,539,540,541,542,543,544,545,546,547,548,549,550,551,552,553,554,555,556,557,558,559,560,561,562,563,564,565,566,567,568,569,570,571,572,573,574,575,576,577,578,579,580,581,582,583,584,585,586,587,588,589,590,591,592,593,594,595,596,597,598,599,600,601,602,603,604,605,606,607,608,609,610,611,612,613,614,615,616,617,618,619,620,621,622,623,624,625,626,627,628,629,630,631,632,633,634,635,636,637,638,639,640,641,642,643,644,645,646,647,648,649,650,651,652,653,654,655,656,657,658,659,660,661,662,663,664,665,666,667,668,669,670,671,672,673,674,675,676,677,678,679,680,681,682,683,684,685,686,687,688,689,690,691,692,693,694,695,696,697,698,699,700,701,702,703,704,705,706,707,708,709,710,711,712,713,714,715,716,717,718,719,720,721,722,723,724,725,726,727,728,729,730,731,732,733,734,735,736,737,738,739,740,741,742,743,744,745,746,747,748,749,750,751,752,753,754,755,756,757,758,759,760,761,762,763,764,765,766,767,768,769,770,771,772,773,774,775,776,777,778,779,780,781,782,783,784,785,786,787,788,789,790,791,792,793,794,795,796,797,798,799,800,801,802,803,804,805,806,807,808,809,810,811,812,813,814,815,816,817,818,819,820,821,822,823,824,825,826,827,828,829,830,831,832,833,834,835,836,837,838,839,840,841,842,843,844,845,846,847,848,849,850,851,852,853,854,855,856,857,858,859,860,861,862,863,864,865,866,867,868,869,870,871,872,873,874,875,876,877,878,879,880,881,882,883,884,885,886,887,888,889,890,891,892,893,894,895,896,897,898,899,900,901,902,903,904,905,906,907,908,909,910,911,912,913,914,915,916,917,918,919,920,921,922,923,924,925,926,927,928,929,930,931,932,933,934,935,936,937,938,939,940,941,942,943,944,945,946,947,948,949,950,951,952,953,954,955,956,957,958,959,960,961,962,963,964,965,966,967,968,969,970,971,972,973,974,975,976,977,978,979,980,981,982,983,984,985,986,987,988,989,990,991,992,993,994,995,996,997,998,999,1000,1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1011,1012,1013,1014,1015,1016,1017,1018,1019,1020,1021,1022,1023],
+     "descriptor": "01000802400000002000000001000804000000000400000000000000000000",
+     "commitment_id": "ed34fcbe1956f8bad917be13a67623b3a305f78cfb7dddc9a0c58f1151f42279",
+     "root": "f9467bad3dccb8d9e8e67a7b1cf0603cdf334e24f377ab2ed436f28e603ee17e"
+    },
+    {
+     "matrix": "K",
+     "out": 64,
+     "in": 256,
+     "layers": 4,
+     "log2_k": 8,
+     "a": 0,
+     "h": 6,
+     "row_vars": 8,
+     "rows": 256,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255],
+     "descriptor": "01000802400000002000000002000804000000000100000000000000000000",
+     "commitment_id": "3cfccf5ed0e74493d3e2353b23b414fd7ea35852bfbb45001d0245fb2a3c4669",
+     "root": "4ada56504d22fa2045d972fcabf6fa49804e152444fc8015e429c6ce43fefee1"
+    },
+    {
+     "matrix": "V",
+     "out": 64,
+     "in": 256,
+     "layers": 4,
+     "log2_k": 8,
+     "a": 0,
+     "h": 6,
+     "row_vars": 8,
+     "rows": 256,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255],
+     "descriptor": "01000802400000002000000003000804000000000100000000000000000000",
+     "commitment_id": "b748cf2714e28373079732b0263c6d32a9fc9ae066b50b275dd8140db0004048",
+     "root": "e64761207682416bfff1be858370600cfb9682fb7a63afd90bcd16712c75db2c"
+    },
+    {
+     "matrix": "O",
+     "out": 256,
+     "in": 256,
+     "layers": 4,
+     "log2_k": 8,
+     "a": 0,
+     "h": 8,
+     "row_vars": 10,
+     "rows": 1024,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332,333,334,335,336,337,338,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,363,364,365,366,367,368,369,370,371,372,373,374,375,376,377,378,379,380,381,382,383,384,385,386,387,388,389,390,391,392,393,394,395,396,397,398,399,400,401,402,403,404,405,406,407,408,409,410,411,412,413,414,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,465,466,467,468,469,470,471,472,473,474,475,476,477,478,479,480,481,482,483,484,485,486,487,488,489,490,491,492,493,494,495,496,497,498,499,500,501,502,503,504,505,506,507,508,509,510,511,512,513,514,515,516,517,518,519,520,521,522,523,524,525,526,527,528,529,530,531,532,533,534,535,536,537,538,539,540,541,542,543,544,545,546,547,548,549,550,551,552,553,554,555,556,557,558,559,560,561,562,563,564,565,566,567,568,569,570,571,572,573,574,575,576,577,578,579,580,581,582,583,584,585,586,587,588,589,590,591,592,593,594,595,596,597,598,599,600,601,602,603,604,605,606,607,608,609,610,611,612,613,614,615,616,617,618,619,620,621,622,623,624,625,626,627,628,629,630,631,632,633,634,635,636,637,638,639,640,641,642,643,644,645,646,647,648,649,650,651,652,653,654,655,656,657,658,659,660,661,662,663,664,665,666,667,668,669,670,671,672,673,674,675,676,677,678,679,680,681,682,683,684,685,686,687,688,689,690,691,692,693,694,695,696,697,698,699,700,701,702,703,704,705,706,707,708,709,710,711,712,713,714,715,716,717,718,719,720,721,722,723,724,725,726,727,728,729,730,731,732,733,734,735,736,737,738,739,740,741,742,743,744,745,746,747,748,749,750,751,752,753,754,755,756,757,758,759,760,761,762,763,764,765,766,767,768,769,770,771,772,773,774,775,776,777,778,779,780,781,782,783,784,785,786,787,788,789,790,791,792,793,794,795,796,797,798,799,800,801,802,803,804,805,806,807,808,809,810,811,812,813,814,815,816,817,818,819,820,821,822,823,824,825,826,827,828,829,830,831,832,833,834,835,836,837,838,839,840,841,842,843,844,845,846,847,848,849,850,851,852,853,854,855,856,857,858,859,860,861,862,863,864,865,866,867,868,869,870,871,872,873,874,875,876,877,878,879,880,881,882,883,884,885,886,887,888,889,890,891,892,893,894,895,896,897,898,899,900,901,902,903,904,905,906,907,908,909,910,911,912,913,914,915,916,917,918,919,920,921,922,923,924,925,926,927,928,929,930,931,932,933,934,935,936,937,938,939,940,941,942,943,944,945,946,947,948,949,950,951,952,953,954,955,956,957,958,959,960,961,962,963,964,965,966,967,968,969,970,971,972,973,974,975,976,977,978,979,980,981,982,983,984,985,986,987,988,989,990,991,992,993,994,995,996,997,998,999,1000,1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1011,1012,1013,1014,1015,1016,1017,1018,1019,1020,1021,1022,1023],
+     "descriptor": "01000802400000002000000004000804000000000400000000000000000000",
+     "commitment_id": "27a4927b5a0c54dc6904580a58c31f6c263fe005b4b7dd479f4730aff3e9a8eb",
+     "root": "01c1e4579cd8cde3943595f4321ea8ec26cc747d17e9d894f505e9b969ff7f97"
+    },
+    {
+     "matrix": "Gate",
+     "out": 384,
+     "in": 256,
+     "layers": 4,
+     "log2_k": 8,
+     "a": 0,
+     "h": 9,
+     "row_vars": 11,
+     "rows": 1536,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332,333,334,335,336,337,338,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,363,364,365,366,367,368,369,370,371,372,373,374,375,376,377,378,379,380,381,382,383,512,513,514,515,516,517,518,519,520,521,522,523,524,525,526,527,528,529,530,531,532,533,534,535,536,537,538,539,540,541,542,543,544,545,546,547,548,549,550,551,552,553,554,555,556,557,558,559,560,561,562,563,564,565,566,567,568,569,570,571,572,573,574,575,576,577,578,579,580,581,582,583,584,585,586,587,588,589,590,591,592,593,594,595,596,597,598,599,600,601,602,603,604,605,606,607,608,609,610,611,612,613,614,615,616,617,618,619,620,621,622,623,624,625,626,627,628,629,630,631,632,633,634,635,636,637,638,639,640,641,642,643,644,645,646,647,648,649,650,651,652,653,654,655,656,657,658,659,660,661,662,663,664,665,666,667,668,669,670,671,672,673,674,675,676,677,678,679,680,681,682,683,684,685,686,687,688,689,690,691,692,693,694,695,696,697,698,699,700,701,702,703,704,705,706,707,708,709,710,711,712,713,714,715,716,717,718,719,720,721,722,723,724,725,726,727,728,729,730,731,732,733,734,735,736,737,738,739,740,741,742,743,744,745,746,747,748,749,750,751,752,753,754,755,756,757,758,759,760,761,762,763,764,765,766,767,768,769,770,771,772,773,774,775,776,777,778,779,780,781,782,783,784,785,786,787,788,789,790,791,792,793,794,795,796,797,798,799,800,801,802,803,804,805,806,807,808,809,810,811,812,813,814,815,816,817,818,819,820,821,822,823,824,825,826,827,828,829,830,831,832,833,834,835,836,837,838,839,840,841,842,843,844,845,846,847,848,849,850,851,852,853,854,855,856,857,858,859,860,861,862,863,864,865,866,867,868,869,870,871,872,873,874,875,876,877,878,879,880,881,882,883,884,885,886,887,888,889,890,891,892,893,894,895,1024,1025,1026,1027,1028,1029,1030,1031,1032,1033,1034,1035,1036,1037,1038,1039,1040,1041,1042,1043,1044,1045,1046,1047,1048,1049,1050,1051,1052,1053,1054,1055,1056,1057,1058,1059,1060,1061,1062,1063,1064,1065,1066,1067,1068,1069,1070,1071,1072,1073,1074,1075,1076,1077,1078,1079,1080,1081,1082,1083,1084,1085,1086,1087,1088,1089,1090,1091,1092,1093,1094,1095,1096,1097,1098,1099,1100,1101,1102,1103,1104,1105,1106,1107,1108,1109,1110,1111,1112,1113,1114,1115,1116,1117,1118,1119,1120,1121,1122,1123,1124,1125,1126,1127,1128,1129,1130,1131,1132,1133,1134,1135,1136,1137,1138,1139,1140,1141,1142,1143,1144,1145,1146,1147,1148,1149,1150,1151,1152,1153,1154,1155,1156,1157,1158,1159,1160,1161,1162,1163,1164,1165,1166,1167,1168,1169,1170,1171,1172,1173,1174,1175,1176,1177,1178,1179,1180,1181,1182,1183,1184,1185,1186,1187,1188,1189,1190,1191,1192,1193,1194,1195,1196,1197,1198,1199,1200,1201,1202,1203,1204,1205,1206,1207,1208,1209,1210,1211,1212,1213,1214,1215,1216,1217,1218,1219,1220,1221,1222,1223,1224,1225,1226,1227,1228,1229,1230,1231,1232,1233,1234,1235,1236,1237,1238,1239,1240,1241,1242,1243,1244,1245,1246,1247,1248,1249,1250,1251,1252,1253,1254,1255,1256,1257,1258,1259,1260,1261,1262,1263,1264,1265,1266,1267,1268,1269,1270,1271,1272,1273,1274,1275,1276,1277,1278,1279,1280,1281,1282,1283,1284,1285,1286,1287,1288,1289,1290,1291,1292,1293,1294,1295,1296,1297,1298,1299,1300,1301,1302,1303,1304,1305,1306,1307,1308,1309,1310,1311,1312,1313,1314,1315,1316,1317,1318,1319,1320,1321,1322,1323,1324,1325,1326,1327,1328,1329,1330,1331,1332,1333,1334,1335,1336,1337,1338,1339,1340,1341,1342,1343,1344,1345,1346,1347,1348,1349,1350,1351,1352,1353,1354,1355,1356,1357,1358,1359,1360,1361,1362,1363,1364,1365,1366,1367,1368,1369,1370,1371,1372,1373,1374,1375,1376,1377,1378,1379,1380,1381,1382,1383,1384,1385,1386,1387,1388,1389,1390,1391,1392,1393,1394,1395,1396,1397,1398,1399,1400,1401,1402,1403,1404,1405,1406,1407,1536,1537,1538,1539,1540,1541,1542,1543,1544,1545,1546,1547,1548,1549,1550,1551,1552,1553,1554,1555,1556,1557,1558,1559,1560,1561,1562,1563,1564,1565,1566,1567,1568,1569,1570,1571,1572,1573,1574,1575,1576,1577,1578,1579,1580,1581,1582,1583,1584,1585,1586,1587,1588,1589,1590,1591,1592,1593,1594,1595,1596,1597,1598,1599,1600,1601,1602,1603,1604,1605,1606,1607,1608,1609,1610,1611,1612,1613,1614,1615,1616,1617,1618,1619,1620,1621,1622,1623,1624,1625,1626,1627,1628,1629,1630,1631,1632,1633,1634,1635,1636,1637,1638,1639,1640,1641,1642,1643,1644,1645,1646,1647,1648,1649,1650,1651,1652,1653,1654,1655,1656,1657,1658,1659,1660,1661,1662,1663,1664,1665,1666,1667,1668,1669,1670,1671,1672,1673,1674,1675,1676,1677,1678,1679,1680,1681,1682,1683,1684,1685,1686,1687,1688,1689,1690,1691,1692,1693,1694,1695,1696,1697,1698,1699,1700,1701,1702,1703,1704,1705,1706,1707,1708,1709,1710,1711,1712,1713,1714,1715,1716,1717,1718,1719,1720,1721,1722,1723,1724,1725,1726,1727,1728,1729,1730,1731,1732,1733,1734,1735,1736,1737,1738,1739,1740,1741,1742,1743,1744,1745,1746,1747,1748,1749,1750,1751,1752,1753,1754,1755,1756,1757,1758,1759,1760,1761,1762,1763,1764,1765,1766,1767,1768,1769,1770,1771,1772,1773,1774,1775,1776,1777,1778,1779,1780,1781,1782,1783,1784,1785,1786,1787,1788,1789,1790,1791,1792,1793,1794,1795,1796,1797,1798,1799,1800,1801,1802,1803,1804,1805,1806,1807,1808,1809,1810,1811,1812,1813,1814,1815,1816,1817,1818,1819,1820,1821,1822,1823,1824,1825,1826,1827,1828,1829,1830,1831,1832,1833,1834,1835,1836,1837,1838,1839,1840,1841,1842,1843,1844,1845,1846,1847,1848,1849,1850,1851,1852,1853,1854,1855,1856,1857,1858,1859,1860,1861,1862,1863,1864,1865,1866,1867,1868,1869,1870,1871,1872,1873,1874,1875,1876,1877,1878,1879,1880,1881,1882,1883,1884,1885,1886,1887,1888,1889,1890,1891,1892,1893,1894,1895,1896,1897,1898,1899,1900,1901,1902,1903,1904,1905,1906,1907,1908,1909,1910,1911,1912,1913,1914,1915,1916,1917,1918,1919],
+     "descriptor": "01000802400000002000000005000804000000000600000000000000000000",
+     "commitment_id": "b430eddeac9bdf259bdc811d615a08f74da3a06838ddb371c264cc7d41ca977d",
+     "root": "c07b618ba9a6b02d7deaf93edee6ec8deb5115b36df186adfd36999853c9f483"
+    },
+    {
+     "matrix": "Up",
+     "out": 384,
+     "in": 256,
+     "layers": 4,
+     "log2_k": 8,
+     "a": 0,
+     "h": 9,
+     "row_vars": 11,
+     "rows": 1536,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332,333,334,335,336,337,338,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,363,364,365,366,367,368,369,370,371,372,373,374,375,376,377,378,379,380,381,382,383,512,513,514,515,516,517,518,519,520,521,522,523,524,525,526,527,528,529,530,531,532,533,534,535,536,537,538,539,540,541,542,543,544,545,546,547,548,549,550,551,552,553,554,555,556,557,558,559,560,561,562,563,564,565,566,567,568,569,570,571,572,573,574,575,576,577,578,579,580,581,582,583,584,585,586,587,588,589,590,591,592,593,594,595,596,597,598,599,600,601,602,603,604,605,606,607,608,609,610,611,612,613,614,615,616,617,618,619,620,621,622,623,624,625,626,627,628,629,630,631,632,633,634,635,636,637,638,639,640,641,642,643,644,645,646,647,648,649,650,651,652,653,654,655,656,657,658,659,660,661,662,663,664,665,666,667,668,669,670,671,672,673,674,675,676,677,678,679,680,681,682,683,684,685,686,687,688,689,690,691,692,693,694,695,696,697,698,699,700,701,702,703,704,705,706,707,708,709,710,711,712,713,714,715,716,717,718,719,720,721,722,723,724,725,726,727,728,729,730,731,732,733,734,735,736,737,738,739,740,741,742,743,744,745,746,747,748,749,750,751,752,753,754,755,756,757,758,759,760,761,762,763,764,765,766,767,768,769,770,771,772,773,774,775,776,777,778,779,780,781,782,783,784,785,786,787,788,789,790,791,792,793,794,795,796,797,798,799,800,801,802,803,804,805,806,807,808,809,810,811,812,813,814,815,816,817,818,819,820,821,822,823,824,825,826,827,828,829,830,831,832,833,834,835,836,837,838,839,840,841,842,843,844,845,846,847,848,849,850,851,852,853,854,855,856,857,858,859,860,861,862,863,864,865,866,867,868,869,870,871,872,873,874,875,876,877,878,879,880,881,882,883,884,885,886,887,888,889,890,891,892,893,894,895,1024,1025,1026,1027,1028,1029,1030,1031,1032,1033,1034,1035,1036,1037,1038,1039,1040,1041,1042,1043,1044,1045,1046,1047,1048,1049,1050,1051,1052,1053,1054,1055,1056,1057,1058,1059,1060,1061,1062,1063,1064,1065,1066,1067,1068,1069,1070,1071,1072,1073,1074,1075,1076,1077,1078,1079,1080,1081,1082,1083,1084,1085,1086,1087,1088,1089,1090,1091,1092,1093,1094,1095,1096,1097,1098,1099,1100,1101,1102,1103,1104,1105,1106,1107,1108,1109,1110,1111,1112,1113,1114,1115,1116,1117,1118,1119,1120,1121,1122,1123,1124,1125,1126,1127,1128,1129,1130,1131,1132,1133,1134,1135,1136,1137,1138,1139,1140,1141,1142,1143,1144,1145,1146,1147,1148,1149,1150,1151,1152,1153,1154,1155,1156,1157,1158,1159,1160,1161,1162,1163,1164,1165,1166,1167,1168,1169,1170,1171,1172,1173,1174,1175,1176,1177,1178,1179,1180,1181,1182,1183,1184,1185,1186,1187,1188,1189,1190,1191,1192,1193,1194,1195,1196,1197,1198,1199,1200,1201,1202,1203,1204,1205,1206,1207,1208,1209,1210,1211,1212,1213,1214,1215,1216,1217,1218,1219,1220,1221,1222,1223,1224,1225,1226,1227,1228,1229,1230,1231,1232,1233,1234,1235,1236,1237,1238,1239,1240,1241,1242,1243,1244,1245,1246,1247,1248,1249,1250,1251,1252,1253,1254,1255,1256,1257,1258,1259,1260,1261,1262,1263,1264,1265,1266,1267,1268,1269,1270,1271,1272,1273,1274,1275,1276,1277,1278,1279,1280,1281,1282,1283,1284,1285,1286,1287,1288,1289,1290,1291,1292,1293,1294,1295,1296,1297,1298,1299,1300,1301,1302,1303,1304,1305,1306,1307,1308,1309,1310,1311,1312,1313,1314,1315,1316,1317,1318,1319,1320,1321,1322,1323,1324,1325,1326,1327,1328,1329,1330,1331,1332,1333,1334,1335,1336,1337,1338,1339,1340,1341,1342,1343,1344,1345,1346,1347,1348,1349,1350,1351,1352,1353,1354,1355,1356,1357,1358,1359,1360,1361,1362,1363,1364,1365,1366,1367,1368,1369,1370,1371,1372,1373,1374,1375,1376,1377,1378,1379,1380,1381,1382,1383,1384,1385,1386,1387,1388,1389,1390,1391,1392,1393,1394,1395,1396,1397,1398,1399,1400,1401,1402,1403,1404,1405,1406,1407,1536,1537,1538,1539,1540,1541,1542,1543,1544,1545,1546,1547,1548,1549,1550,1551,1552,1553,1554,1555,1556,1557,1558,1559,1560,1561,1562,1563,1564,1565,1566,1567,1568,1569,1570,1571,1572,1573,1574,1575,1576,1577,1578,1579,1580,1581,1582,1583,1584,1585,1586,1587,1588,1589,1590,1591,1592,1593,1594,1595,1596,1597,1598,1599,1600,1601,1602,1603,1604,1605,1606,1607,1608,1609,1610,1611,1612,1613,1614,1615,1616,1617,1618,1619,1620,1621,1622,1623,1624,1625,1626,1627,1628,1629,1630,1631,1632,1633,1634,1635,1636,1637,1638,1639,1640,1641,1642,1643,1644,1645,1646,1647,1648,1649,1650,1651,1652,1653,1654,1655,1656,1657,1658,1659,1660,1661,1662,1663,1664,1665,1666,1667,1668,1669,1670,1671,1672,1673,1674,1675,1676,1677,1678,1679,1680,1681,1682,1683,1684,1685,1686,1687,1688,1689,1690,1691,1692,1693,1694,1695,1696,1697,1698,1699,1700,1701,1702,1703,1704,1705,1706,1707,1708,1709,1710,1711,1712,1713,1714,1715,1716,1717,1718,1719,1720,1721,1722,1723,1724,1725,1726,1727,1728,1729,1730,1731,1732,1733,1734,1735,1736,1737,1738,1739,1740,1741,1742,1743,1744,1745,1746,1747,1748,1749,1750,1751,1752,1753,1754,1755,1756,1757,1758,1759,1760,1761,1762,1763,1764,1765,1766,1767,1768,1769,1770,1771,1772,1773,1774,1775,1776,1777,1778,1779,1780,1781,1782,1783,1784,1785,1786,1787,1788,1789,1790,1791,1792,1793,1794,1795,1796,1797,1798,1799,1800,1801,1802,1803,1804,1805,1806,1807,1808,1809,1810,1811,1812,1813,1814,1815,1816,1817,1818,1819,1820,1821,1822,1823,1824,1825,1826,1827,1828,1829,1830,1831,1832,1833,1834,1835,1836,1837,1838,1839,1840,1841,1842,1843,1844,1845,1846,1847,1848,1849,1850,1851,1852,1853,1854,1855,1856,1857,1858,1859,1860,1861,1862,1863,1864,1865,1866,1867,1868,1869,1870,1871,1872,1873,1874,1875,1876,1877,1878,1879,1880,1881,1882,1883,1884,1885,1886,1887,1888,1889,1890,1891,1892,1893,1894,1895,1896,1897,1898,1899,1900,1901,1902,1903,1904,1905,1906,1907,1908,1909,1910,1911,1912,1913,1914,1915,1916,1917,1918,1919],
+     "descriptor": "01000802400000002000000006000804000000000600000000000000000000",
+     "commitment_id": "ff0579fe02fc52d4424ba1d17b8052e9966aebb2f7305ff0cdd23af4362114bc",
+     "root": "aceb74e5abec2b19509ef27a5c0aefd0baecd2451371ef5023943a8c2b2a0095"
+    },
+    {
+     "matrix": "Down",
+     "out": 256,
+     "in": 384,
+     "layers": 4,
+     "log2_k": 9,
+     "a": 0,
+     "h": 8,
+     "row_vars": 10,
+     "rows": 1024,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332,333,334,335,336,337,338,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,363,364,365,366,367,368,369,370,371,372,373,374,375,376,377,378,379,380,381,382,383,384,385,386,387,388,389,390,391,392,393,394,395,396,397,398,399,400,401,402,403,404,405,406,407,408,409,410,411,412,413,414,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,465,466,467,468,469,470,471,472,473,474,475,476,477,478,479,480,481,482,483,484,485,486,487,488,489,490,491,492,493,494,495,496,497,498,499,500,501,502,503,504,505,506,507,508,509,510,511,512,513,514,515,516,517,518,519,520,521,522,523,524,525,526,527,528,529,530,531,532,533,534,535,536,537,538,539,540,541,542,543,544,545,546,547,548,549,550,551,552,553,554,555,556,557,558,559,560,561,562,563,564,565,566,567,568,569,570,571,572,573,574,575,576,577,578,579,580,581,582,583,584,585,586,587,588,589,590,591,592,593,594,595,596,597,598,599,600,601,602,603,604,605,606,607,608,609,610,611,612,613,614,615,616,617,618,619,620,621,622,623,624,625,626,627,628,629,630,631,632,633,634,635,636,637,638,639,640,641,642,643,644,645,646,647,648,649,650,651,652,653,654,655,656,657,658,659,660,661,662,663,664,665,666,667,668,669,670,671,672,673,674,675,676,677,678,679,680,681,682,683,684,685,686,687,688,689,690,691,692,693,694,695,696,697,698,699,700,701,702,703,704,705,706,707,708,709,710,711,712,713,714,715,716,717,718,719,720,721,722,723,724,725,726,727,728,729,730,731,732,733,734,735,736,737,738,739,740,741,742,743,744,745,746,747,748,749,750,751,752,753,754,755,756,757,758,759,760,761,762,763,764,765,766,767,768,769,770,771,772,773,774,775,776,777,778,779,780,781,782,783,784,785,786,787,788,789,790,791,792,793,794,795,796,797,798,799,800,801,802,803,804,805,806,807,808,809,810,811,812,813,814,815,816,817,818,819,820,821,822,823,824,825,826,827,828,829,830,831,832,833,834,835,836,837,838,839,840,841,842,843,844,845,846,847,848,849,850,851,852,853,854,855,856,857,858,859,860,861,862,863,864,865,866,867,868,869,870,871,872,873,874,875,876,877,878,879,880,881,882,883,884,885,886,887,888,889,890,891,892,893,894,895,896,897,898,899,900,901,902,903,904,905,906,907,908,909,910,911,912,913,914,915,916,917,918,919,920,921,922,923,924,925,926,927,928,929,930,931,932,933,934,935,936,937,938,939,940,941,942,943,944,945,946,947,948,949,950,951,952,953,954,955,956,957,958,959,960,961,962,963,964,965,966,967,968,969,970,971,972,973,974,975,976,977,978,979,980,981,982,983,984,985,986,987,988,989,990,991,992,993,994,995,996,997,998,999,1000,1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1011,1012,1013,1014,1015,1016,1017,1018,1019,1020,1021,1022,1023],
+     "descriptor": "01000802400000002000000007000904000000000400000000000000000000",
+     "commitment_id": "209020f0b752ddbee4b1b95c854b6bc948a5dbff5a0ce38ae6edda10d5070c58",
+     "root": "527fbe7d270be358272569469caa4a1a066ee11151879c0ae5ba466b7486f7f3"
+    },
+    {
+     "matrix": "LmHead",
+     "out": 512,
+     "in": 256,
+     "layers": 1,
+     "log2_k": 8,
+     "a": 0,
+     "h": 9,
+     "row_vars": 9,
+     "rows": 512,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332,333,334,335,336,337,338,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,363,364,365,366,367,368,369,370,371,372,373,374,375,376,377,378,379,380,381,382,383,384,385,386,387,388,389,390,391,392,393,394,395,396,397,398,399,400,401,402,403,404,405,406,407,408,409,410,411,412,413,414,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,465,466,467,468,469,470,471,472,473,474,475,476,477,478,479,480,481,482,483,484,485,486,487,488,489,490,491,492,493,494,495,496,497,498,499,500,501,502,503,504,505,506,507,508,509,510,511],
+     "descriptor": "01000802400000002000000008000804000000000200000000000000000000",
+     "commitment_id": "d23fdcfb5c3c5a6fcf38ff9b65ff7f9cb95d91e7f64a8dba3f8d83516c10b0dd",
+     "root": "54e3ff90fbbd80632513d3a6873ddccf0b9c87520e075e72d0296498054fab94"
+    },
+    {
+     "matrix": "ChannelParams",
+     "channel_width": 512,
+     "log2_k": 8,
+     "row_vars": 7,
+     "rows": 32,
+     "committed_rows": [8,10,12,14,16,18,20,22,24,26,28,30,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,58,60,62],
+     "descriptor": "01000802400000002000000009000804000000200000000000000000000000",
+     "commitment_id": "55fec6cbf747655aa903e9b87504be020cbbd8f1e2dd25a474c1f4fbd0ffcbb8",
+     "root": "c64efc9904ac2b02143670ea091ec83d95d453600ec802b1d5e999ff72c86fec"
+    }
+   ],
+   "public": "0802400000002000000087b96808d6d174b607cef61af6cf2a4f67e29bbea5f0a1b59537c5d1c15871cdf9467bad3dccb8d9e8e67a7b1cf0603cdf334e24f377ab2ed436f28e603ee17e4ada56504d22fa2045d972fcabf6fa49804e152444fc8015e429c6ce43fefee1e64761207682416bfff1be858370600cfb9682fb7a63afd90bcd16712c75db2c01c1e4579cd8cde3943595f4321ea8ec26cc747d17e9d894f505e9b969ff7f97c07b618ba9a6b02d7deaf93edee6ec8deb5115b36df186adfd36999853c9f483aceb74e5abec2b19509ef27a5c0aefd0baecd2451371ef5023943a8c2b2a0095527fbe7d270be358272569469caa4a1a066ee11151879c0ae5ba466b7486f7f354e3ff90fbbd80632513d3a6873ddccf0b9c87520e075e72d0296498054fab94c64efc9904ac2b02143670ea091ec83d95d453600ec802b1d5e999ff72c86fec00000000",
+   "weights_root": "738457c8bfd48ae4201b06d4e05083f3d7784fdda09b5ccb4a739b32b42ddd45",
+   "file": "tiny-4-servable.twr",
+   "bytes": 386,
+   "digest": "b9f1a476e1570931a3b3380cf6824a9cf9b806e7fb1780a51ca96e19bd9a090f"
+  },
+  {
+   "name": "synthetic",
+   "arch": {
+    "n_layers": 3,
+    "d_model": 12,
+    "n_heads": 2,
+    "n_kv_heads": 1,
+    "d_head": 6,
+    "d_ff": 20,
+    "vocab": 300
+   },
+   "tensors": [
+    {
+     "matrix": "Embed",
+     "layer": 0,
+     "rows": 12,
+     "cols": 300,
+     "data": [-127,-63,-2,-51,-114,-79,19,79,-17,-111,-93,-108,-91,117,10,-54,-22,-32,-75,42,-119,-45,113,-125,86,96,61,89,-37,-98,9,-92,91,-93,77,-66,94,-46,12,-62,-69,-112,101,39,-66,83,111,-98,-77,-42,122,18,-107,9,-67,2,64,-3,-68,-75,-60,0,34,82,102,86,-102,64,-92,30,-12,64,-79,-46,41,48,14,24,123,93,-72,-108,-37,41,70,111,74,118,-119,98,-123,71,-19,12,57,84,-75,3,22,98,-80,111,51,104,-96,21,-81,127,-98,19,-70,77,-85,81,-96,54,89,-67,-21,10,-69,101,-51,-52,-51,-46,-83,-71,-7,-28,36,28,-2,-108,-106,99,-82,15,16,-117,-40,104,62,99,-125,42,-28,116,40,97,44,-72,95,63,-34,-124,117,-76,45,-117,-35,-45,-103,84,121,-22,54,-28,7,-74,-24,-63,44,-116,-95,-126,-59,-14,-112,-32,-95,55,119,-53,64,58,42,97,32,-18,-118,5,22,124,60,-79,108,-17,-2,13,43,63,43,101,-110,-10,-72,-41,79,-18,-52,-116,77,-121,-29,40,-84,-73,99,-53,-112,35,33,-12,-81,-121,66,62,70,-67,-19,-112,119,-28,-84,-24,43,15,118,-47,30,-100,-14,24,107,81,-15,87,115,77,26,62,-73,-66,88,44,-4,-77,-82,106,-111,-10,39,-41,16,-111,-58,76,-78,-56,105,-67,66,13,44,-50,-28,65,-4,-112,11,82,-19,101,-26,-113,24,-119,-22,29,-111,104,-31,42,81,104,41,56,116,-20,66,25,63,60,-61,103,6,8,-13,-26,-121,-44,57,-87,21,7,-108,67,15,118,33,63,-47,74,106,-114,12,-116,9,19,-39,-26,-124,-79,125,-51,49,-72,31,105,123,-19,3,-90,-71,11,-14,-120,14,-48,6,-2,110,-125,83,-96,-104,-42,-29,69,56,-109,-49,-81,110,-39,59,22,92,48,-96,-28,-121,68,-121,33,-74,81,-113,-88,57,110,9,77,-27,35,49,116,33,117,58,-127,9,-29,69,87,-22,85,-50,-122,-8,-126,55,32,-1,-96,102,5,-100,-49,-54,-53,47,108,-111,-89,30,125,33,-17,-98,87,31,-8,71,-103,64,-57,53,-15,95,97,-102,62,-28,50,-25,-21,42,-65,85,-103,-127,-25,-21,115,-53,70,78,120,6,-45,-52,-45,-80,-47,76,101,-102,-5,29,-28,-80,104,37,-102,-92,-61,36,-97,-19,-88,-58,-15,49,29,78,111,-50,37,96,-119,28,42,-52,123,-123,35,95,49,67,-73,39,-71,-4,0,86,44,104,45,-90,119,59,-53,-66,127,-2,-63,0,-97,-79,48,-71,-22,118,-9,-59,102,27,-77,0,43,3,-26,122,70,-33,-123,20,-118,38,-27,71,-34,1,106,97,6,96,119,114,79,-39,90,29,-7,77,54,55,-10,0,-37,-33,106,59,-3,-54,-18,-113,8,-73,-27,-74,53,-107,120,114,39,42,-16,-62,-68,-76,-113,71,-3,108,-127,-59,-124,7,39,93,-23,-89,-26,123,7,-13,-96,121,64,-122,-23,-21,14,-27,-62,20,-18,-124,40,-99,-74,1,5,-75,30,-123,-78,-14,69,-42,-33,-42,-36,93,-91,-71,-42,-45,-64,90,-87,30,-17,-116,116,-28,57,104,-62,-31,102,-55,-50,-86,-47,42,39,37,5,-114,-112,-18,-54,94,-8,-3,109,88,115,78,-37,-67,-2,-89,101,105,-106,81,-65,-61,-71,68,40,-122,-25,-49,-94,32,-98,-76,94,46,-15,-36,-61,7,-40,44,-51,8,-127,-1,-49,118,-72,57,-24,-82,0,-92,-52,118,116,-36,-127,-124,34,-92,-31,96,21,88,60,-65,99,-119,-97,-71,-58,-11,-70,62,21,-81,90,-43,-107,-23,-99,-27,-107,-28,37,84,38,-85,62,-94,-29,28,84,-124,-123,38,-80,57,-99,53,99,-45,42,-29,40,-108,0,8,127,-40,19,57,2,-22,-21,-52,51,-95,-25,60,19,-6,83,-17,111,-103,-116,-2,-102,61,41,-17,114,-16,15,44,88,12,98,-113,-109,-125,9,46,-115,42,-28,-14,74,23,-58,65,-83,124,-47,-29,-39,117,31,-54,58,17,-73,2,-82,71,-78,-66,-107,-121,59,8,-63,65,31,-101,-115,92,-117,90,-23,-34,96,27,-53,-123,31,66,-23,-93,-72,-36,102,-113,79,-74,-99,71,-39,-18,121,49,-49,108,51,121,-11,-124,79,61,54,-47,-91,-37,-114,110,-26,-17,121,106,-1,-33,-107,119,-96,-118,5,-96,-91,105,101,-2,-123,82,-5,0,58,-82,20,113,80,57,-121,-115,80,-5,-21,-93,-42,-119,82,-74,32,-95,95,-60,97,70,-81,-111,-112,37,-45,-89,0,11,14,-35,-98,-48,39,-19,18,44,-106,-13,55,-29,-116,66,-18,7,41,-113,-37,98,-44,97,106,83,34,2,117,-13,92,14,-79,-58,-8,-49,66,-100,-40,-53,57,-126,95,79,-6,52,95,-8,17,73,51,55,-26,-39,-11,-19,62,-48,9,39,-101,-25,-53,82,-87,-16,-10,-111,81,117,43,-25,-84,6,-24,72,-90,-4,63,-117,88,-10,-54,-65,65,-120,-16,3,48,-62,-117,-42,-76,-32,97,-78,-105,74,-112,66,43,-29,-115,23,35,114,90,-5,65,-50,-119,52,26,-124,13,-58,52,116,-84,-124,-4,96,-75,-51,43,-56,107,-34,-102,67,-51,71,-84,91,22,123,-86,106,113,95,42,53,49,57,-45,38,-65,62,38,-19,24,-8,-112,8,-124,41,-45,59,-62,-50,36,73,-104,-45,-104,-72,23,-30,-94,-118,-78,-67,-59,109,18,-18,108,-123,-24,10,-3,119,-114,97,-74,-62,-125,46,108,-37,-77,114,-55,-32,29,-81,14,42,-23,100,-60,96,43,-47,102,87,-18,115,55,-51,54,10,-6,-90,-32,-38,27,-126,22,60,83,0,-110,117,-39,90,124,24,4,11,-125,-125,3,50,95,105,113,-95,59,3,-88,93,-47,-2,-4,62,-127,99,82,16,121,62,-35,37,42,-64,70,9,106,59,35,-89,6,106,92,79,-6,-112,-110,-33,67,60,88,117,-76,-65,-119,114,77,59,35,25,58,14,-79,-45,-7,60,-64,-21,118,83,34,-80,-98,-1,9,85,-115,65,78,69,7,8,-97,46,-58,23,-32,-56,91,-108,-21,49,20,-26,21,-6,-59,113,-19,-71,114,20,92,45,5,110,-95,-14,72,-6,52,19,-24,102,-76,14,-103,119,103,-112,-77,-4,-99,-24,20,-49,29,-9,-75,46,13,95,-19,-60,58,13,126,14,-21,-97,19,-75,96,79,-19,-3,-45,-80,25,-121,-63,-16,-61,-126,36,85,-18,-54,-108,117,-21,-38,-40,-124,55,-27,91,124,-101,-62,111,39,-62,45,-32,32,57,-101,-48,93,-58,118,-80,-21,0,-83,-107,16,-115,-59,-3,-104,-47,70,122,-33,10,-45,10,109,113,-116,18,53,-62,10,107,-117,-10,-84,-40,71,-26,123,25,25,81,83,50,57,8,78,43,26,-86,72,15,44,-104,-27,9,-6,46,92,-36,-64,94,12,-28,-69,-71,-103,10,126,-81,-16,-45,68,-105,95,18,-122,-4,-85,61,-106,55,25,-21,70,98,71,-64,-71,-19,107,4,86,-73,117,-112,55,54,100,-30,0,-69,13,49,74,107,35,-6,8,-8,-57,-5,66,-33,-29,-10,111,-41,-1,-94,86,76,12,-16,-89,-104,14,100,115,67,-103,113,100,-24,91,-58,69,57,-27,54,20,26,-99,21,-100,-120,74,-123,36,-68,-41,9,45,-48,11,64,-40,-102,21,-120,-96,-4,-69,-106,3,-127,-122,-91,96,-33,28,-92,99,-113,42,-100,124,-40,37,-34,17,59,122,31,-61,-40,-79,-116,35,-5,-103,-7,98,89,64,-45,42,-54,-97,121,-121,39,29,60,-79,65,12,81,73,-104,-106,-114,-114,120,19,82,-88,117,90,19,115,101,33,42,74,34,81,-98,5,29,90,-108,-75,119,126,13,4,29,-30,104,-56,82,-76,-58,115,49,127,93,-118,118,125,1,-116,52,-18,37,-15,-59,4,42,56,39,-70,-60,-93,-63,46,-14,17,0,5,20,60,-7,-39,94,-57,55,-25,22,-7,-24,-31,-52,109,56,-54,33,-113,123,-95,-119,-3,-62,-50,6,-99,28,98,-81,-14,53,108,109,39,14,-7,82,-126,-63,-116,42,58,-43,-111,-127,-117,-101,75,-42,-83,15,91,-28,30,113,56,-48,-29,-48,-93,-10,-104,-49,68,57,117,-72,18,16,-20,45,-42,-104,101,73,-51,86,-81,-76,-110,-86,50,-104,-25,67,-56,38,35,-16,-2,-74,35,43,-111,-122,-117,-23,-1,-42,23,-110,70,-97,55,-5,-10,-77,-116,25,64,46,-61,-69,45,101,-90,-51,-115,-123,25,-92,41,104,68,-103,53,-60,-18,-103,47,-56,6,85,99,-11,-6,59,-2,-73,-76,71,-93,-50,-39,-71,-26,-19,-10,105,32,-10,-86,62,-106,-113,-122,-49,55,35,77,-89,23,-109,124,-32,122,97,-7,-42,-104,108,-67,14,122,-80,67,45,-62,109,103,-45,109,-21,-21,11,67,117,-106,-124,47,62,-65,-33,44,-50,-55,-103,-84,66,-79,99,30,94,51,118,-5,88,-127,109,-34,24,-86,-36,-54,37,-52,17,72,-109,44,71,-15,-2,87,63,48,-66,119,49,118,121,-26,-18,-51,-76,113,-77,-47,74,115,27,-14,37,-1,-113,96,26,-108,-76,40,-28,-21,-76,14,88,-40,42,16,-112,-99,66,126,-36,117,-32,0,-12,88,50,-127,17,-103,103,-92,68,-88,27,83,96,-12,-19,-52,-51,-56,98,23,-101,-14,-72,60,-127,118,-4,122,-36,22,68,77,33,11,124,58,-25,66,-65,26,-106,-10,104,42,70,88,19,109,99,-87,-12,-45,50,27,-33,6,-117,61,-110,71,-26,61,-35,31,-28,-70,113,-38,-34,-108,-77,63,13,60,-65,71,92,66,25,98,57,35,32,-87,-83,38,21,-80,-100,59,-50,-125,69,-62,-118,-6,94,-67,-26,96,1,-5,-89,120,14,64,95,3,-38,81,119,30,-96,121,110,20,-44,98,42,112,121,58,122,127,92,51,76,-89,10,-111,-8,101,76,-38,93,-95,82,-88,12,-56,70,-102,-114,117,98,96,-90,78,94,106,42,-114,9,-19,-79,-75,8,-21,-122,41,-81,122,60,29,-18,56,-51,-14,-33,66,46,-60,64,-24,114,-103,91,-110,-95,113,-114,91,-46,-25,-60,60,42,-26,17,-47,90,53,24,100,-41,-87,-11,-87,-35,-95,44,-35,-11,47,82,-40,-31,99,73,-10,5,-26,-20,-122,-57,31,-115,119,4,-49,13,-24,62,-122,21,-68,-15,10,-31,-14,111,-25,101,-61,-107,-30,59,-105,-50,114,-32,27,64,-77,99,-97,41,-118,-81,-69,-3,-81,98,50,109,-83,65,-16,71,-45,104,21,-79,-114,95,63,-115,119,-95,-58,-126,-121,-37,89,82,125,-126,-89,72,127,-35,90,-4,-83,9,-3,-22,54,-59,-82,13,46,12,-118,-84,-16,30,62,-32,60,-21,-82,-42,-89,12,-55,-68,12,-85,-70,-66,94,-101,-64,-8,88,113,-124,-102,36,32,-122,30,34,25,-38,-20,5,24,112,104,30,-1,-127,28,10,54,-107,-66,39,-34,-8,48,11,125,-96,98,-6,118,-114,25,34,55,-30,-10,109,-11,-67,36,-98,22,-38,84,-115,-68,-81,96,51,117,-3,3,-110,-13,-14,45,-39,-68,92,58,29,11,-22,-55,22,113,-85,-32,-23,16,85,-50,52,-25,114,-87,-6,-51,59,-37,-82,45,-110,78,-27,48,-102,-73,30,-22,-101,112,60,117,-89,-18,30,-19,73,-66,127,-51,-61,100,100,12,111,-57,-99,-69,46,-117,113,-31,72,-100,-74,-28,32,-5,-3,104,24,15,114,32,62,-69,89,-109,-93,-40,-26,-66,-86,-54,1,-92,-62,49,-4,-48,46,-19,12,-43,122,-125,-24,97,82,58,-99,-70,0,13,-50,-77,57,-50,58,100,64,68,72,11,-29,42,-63,-93,-21,-17,-51,102,80,103,-101,-124,1,-80,-79,-39,63,-63,59,22,-12,-20,-23,20,-62,115,-76,52,74,-20,0,-65,-10,-56,63,-13,-77,-74,34,-39,89,-26,25,73,24,-24,-83,-107,-108,-56,112,-123,-75,-110,-60,-50,121,98,-83,42,-51,107,52,-48,39,-51,82,109,64,-22,107,14,-24,-34,51,-39,67,83,-92,30,23,-87,-111,55,-70,53,4,30,-111,-98,-17,12,24,72,77,-108,-94,34,-32,69,14,28,122,-50,-37,-80,-23,40,-117,47,82,-93,-89,17,-45,116,-96,-126,-91,109,0,34,-37,-104,64,5,-103,10,-8,-51,-57,-31,27,112,-84,-116,-125,-114,-22,78,-96,97,-13,70,-25,-42,-65,44,125,36,117,-109,-101,-81,127,-88,-68,23,-23,-111,114,-50,-60,81,-5,22,-36,56,-68,10,-17,-56,116,65,3,-126,-115,23,1,21,-51,97,-22,109,-57,87,-69,-91,-124,26,-58,-88,-18,38,16,83,64,-21,25,-10,19,-15,94,1,-105,-123,56,67,-35,62,-104,93,103,-80,51,125,-54,37,38,-41,-112,84,16,-62,-46,112,-7,-101,-77,-110,72,55,11,107,-86,-70,48,-48,43,-100,87,63,102,5,21,120,71,44,-77,-89,69,-101,-19,67,2,-55,68,-59,-31,-65,-4,67,72,-36,2,87,49,29,98,-60,32,-31,122,116,75,125,-4,-34,-48,-48,75,113,77,26,-124,-83,-16,13,-8,81,86,34,72,-93,-37,-3,43,6,-49,54,30,114,22,59,-94,-44,92,109,93,-70,-80,-66,-55,-3,50,86,-10,-121,60,-112,-104,-2,50,100,-17,93,-79,-46,-52,-108,48,-18,91,-113,-42,121,65,-47,-31,-92,36,-15,-41,-34,-54,-49,67,-117,85,68,98,115,25,77,38,108,109,-46,98,16,-88,23,-62,50,24,-66,88,-91,-105,-8,54,64,-46,117,123,-110,118,2,22,-23,-119,-53,76,24,-116,93,2,59,-99,68,-62,44,89,126,-45,-41,-93,-17,-113,23,-57,-97,77,80,50,-36,45,-105,99,-46,-107,-8,43,112,68,-106,-11,27,5,-125,-124,-30,100,-33,105,127,-119,58,-49,51,-77,-97,-106,-3,108,-100,-64,-88,105,-91,7,-61,-123,-41,6,19,55,-14,42,54,-29,-76,-96,121,10,84,-41,-40,-73,21,-57,-43,40,-93,-31,108,-69,-101,106,67,1,17,114,-42,-117,86,-65,-33,-99,-112,69,78,45,-102,60,-126,18,-91,-112,-100,-79,104,26,-65,-5,30,118,-119,-36,-63,120,33,-24,-2,76,109,-10,-25,49,96,-12,-30,-74,-15,-109,-51,-110,29,7,72,-92,40,-124,-6,50,120,-47,23,124,-125,75,43,52,-76,-62,-88,-116,-7,108,13,-41,-46,62,95,-70,119,-42,-114,73,9,110,-67,123,105,-114,49,-11,-82,-74,-69,82,-27,-60,-108,-82,-8,-73,-85,11,-31,119,25,-82,112,102,0,-109,73,-57,12,-104,21,38,-69,65,0,-56,66,93,-2,62,-5,-55,-56,-100,-88,5,-31,3,77,-61,34,123,89,-55,-92,-12,-20,28,8,81,-71,94,109,27,32,-80,117,-87,114,36,-109,-7,-113,91,86,124,10,-12,71,-13,-1,-91,44,41,-51,49,92,-16,-95,22,61,-69,95,-78,-45,95,52,22,-39,-112,108,-116,-105,-88,-51,-3,-7,-16,-60,122,43,-38,-118,-8,-45,-28,69,-16,26,61,126,99,-46,122,77,102,-127,93,-59,-62,-117,-1,11,5,41,94,51,-50,-30,-74,-94,-42,119,-86,71,-43,36,21,56,79,27,-35,-53,-31,36,109,14,100,-106,107,22,53,66,-112,-112,-85,-29,-114,2,6,-8,-50,3,43,33,-117,-79,-94,10,74,21,-106,-11,-123,-85,-113,1,-93,98,-32,-27,126,-98,114,-35,118,-8,-11,26,-64,99,126,23,34,57,97,94,0,2,-55,-94,90,6,-61,94,-125,107,-11,39,-70,-18,-38,-83,-17,121,25,-92,-70,77,118,-7,-92,89,-23,27,117,-44,84,78,-37,-116,-21,10,-34,114,108,-42,7,111,-58,99,86,82,-26,-7,-57,-82,-4,-59,-112,-55,-127,-57,76,15,-125,-72,48,-122,39,94,-76,29,7,9,-23,-78,-15,86,-46,37,87,-112,113,-71,115,14,-124,94,83,-55,76,123,-55,-48,98,-114,-39,-14,48,22,69,103,55,-50,-67,122,-86,-99,96,-94,-37,-12,126,-75,-85,-26,-51,-69,-115,108,113,-13,-113,-61,-56,-109,127,69,-36,61,-99,64,60,-61,87,-29,92,49,-34,-94,-6,124,-32,18,-63,16,-96,97,-63,-59,40,-56,96,-110,45,-88,-23,-36,-64,-43,-61,-46,-94,104,39,-92,44,-5,3,64,107,13,-95,42,40,34,103,115,27,-70,-123,126,-40,7,-126,-83,-87,73,27,-67,-34,6,-122,33,-102,-40,14,67,32,43,32,-115,65,101,-74,-10,23,18,-115,-6,85,-65,-126,-8,-70,-89,74,7,7,-99,-4,23,25,-103,113,107,-48,-2,-102,65,-104,123,89,114,105,-10,78,25,-84,-13,-76,51,-100,87,124,19,-4,94,114,44,94,92,-39,117,-30,107,56,-8,-55,34,-59,105,-62,82,-51,109,-77,55,101,-36,45,-85,-51,-87,-92,-117,61,-45,-25,-46,109,116,37,37,30,68,-65,51,83,-118,-66,107,-1,-106,-83,117,-121,36,-11,66,14,78,-6,75,52,-59,-83,-78,32,31,-85,-120,70,-55,97,-112,102,35,-76,-80,-106,-50,13,100,-52,-6,-63,44,86,2,56,-50,-62,117,-89,119,-117,-43,-93,19,89,-41,-7,53,58,50,-72,57,82,-7,-50,122,-104,48,-17,67,-78,-18,5,29,-103,-32,19,-80,3,-33,-76,-93,84,-47,-53,-83,21,80,-111,124,-6,97,69,-16,-18,-23,-65,-96,62,-83,-20,-75,72,-77,-50,-2,98,-50,53,59,96,-92,-30,-121,-66,-108,63,-23,104,116,28,9,-83,-81,77,83,-40,-73,-24,-23,93,29,18,42,38,91,-4,-28,-100,-119,-75,-38,-77,-95,-40,-100,49,92,4,119,113,-63,98,5,48,-127,16,1,74,-75,-35,-7,55,89,-83,7,-96,16,-86,-46,-75,-66,-107,60,-64,-37,110,14,53,43,-22,63,26,-71,-97,46,10,92,26,-49,-126,-16,-85,61,-95,56,8,-105,107,-15,-16,127,-29,-57,113,-27,-54,-119,-54,98,-126,92,-4,14,-54,-89,-115,-89,24,-43,-69,16,-117,-77,56,-80,71,64,-69,20,-34,-99,82,-77,-109,118,-20,127]
+    },
+    {
+     "matrix": "Q",
+     "layer": 0,
+     "rows": 12,
+     "cols": 12,
+     "data": [78,0,-91,-20,-29,108,75,100,-34,-36,0,-44,-42,-67,-124,-48,-127,-6,-10,101,123,99,112,-49,51,103,-117,-102,70,48,5,-94,-61,-55,-109,-90,35,-26,-6,98,24,111,-124,122,-74,105,123,29,73,44,-83,-71,12,8,-38,-103,-110,41,-32,-70,94,24,-7,-88,19,-55,-120,51,-103,65,86,-113,126,-47,119,12,-39,9,7,58,43,-65,23,122,-1,-27,-45,-99,83,-10,29,20,-33,-113,70,43,102,0,-21,-31,-9,125,11,-53,87,40,94,-68,-69,-71,-65,-7,-13,-65,71,43,56,67,-58,-80,7,84,-121,103,30,-31,-33,6,-100,126,77,52,42,-54,61,-91,9,-53,-25,-81,-35,-28,78,125]
+    },
+    {
+     "matrix": "Q",
+     "layer": 1,
+     "rows": 12,
+     "cols": 12,
+     "data": [-126,-81,-21,-30,-66,10,21,126,62,-110,87,-97,26,28,69,-87,48,57,-39,-111,-67,77,-91,11,72,-15,32,-44,71,-93,-26,45,-31,-10,-16,-22,119,25,-15,90,-68,117,-18,114,-12,-13,29,37,-25,3,127,122,26,119,-71,-39,79,118,20,12,-82,85,32,-63,-8,72,70,66,-32,-95,-94,103,94,18,-54,-54,41,83,40,59,118,78,42,57,107,-120,-90,-83,8,-84,-79,118,-9,-51,69,-125,-121,16,3,44,84,-89,3,57,33,109,-80,70,45,-105,101,81,104,35,78,2,-66,127,-38,66,-120,4,85,67,-32,-112,80,-38,70,36,54,-2,106,49,-99,58,50,98,-38,25,-35,-70,-51,-86]
+    },
+    {
+     "matrix": "Q",
+     "layer": 2,
+     "rows": 12,
+     "cols": 12,
+     "data": [-105,-112,112,-111,100,-96,63,14,-52,39,-79,-111,126,-85,-52,76,-119,-117,-124,97,-66,17,30,20,-82,-53,-113,111,-55,-78,20,-12,32,-4,61,-104,-54,108,-62,-22,-108,-115,88,-90,83,46,-39,-100,100,-70,-40,60,-15,-36,96,23,30,-100,-92,107,62,-10,14,-47,41,-93,57,121,65,122,35,-81,-13,-102,-28,-124,-44,-72,-37,46,95,-28,-41,22,-49,83,47,-88,-29,-64,-17,32,18,-51,3,112,125,-8,-38,60,-119,102,-40,-30,62,-66,-23,121,1,34,117,52,27,-44,-118,127,11,-115,-45,89,-82,50,-35,-105,-112,88,-15,18,116,45,-51,57,89,-52,-51,-23,-99,-8,15,-55,10,14,109,43]
+    },
+    {
+     "matrix": "K",
+     "layer": 0,
+     "rows": 6,
+     "cols": 12,
+     "data": [-61,-59,-97,52,-64,-60,61,-90,-5,20,-3,-126,26,44,25,63,53,-73,88,-62,127,-87,98,-71,70,95,-8,102,105,10,48,124,-43,63,-50,65,-120,-97,-97,-107,58,-102,-28,21,-106,79,39,112,-20,42,78,-71,32,114,-30,-85,73,104,93,-15,-48,18,56,-107,-36,79,-75,74,34,36,-63,111]
+    },
+    {
+     "matrix": "K",
+     "layer": 1,
+     "rows": 6,
+     "cols": 12,
+     "data": [60,-35,112,35,-84,68,57,33,-103,113,18,-78,-98,-24,-28,51,-88,85,2,24,54,61,-106,89,-122,55,88,-75,116,51,18,87,-30,72,16,37,-116,-80,85,106,-92,-60,-6,106,-52,121,-16,8,66,97,67,-14,-88,-114,-14,99,60,56,-47,-13,125,110,61,121,-78,-82,5,-77,-109,-123,-43,-14]
+    },
+    {
+     "matrix": "K",
+     "layer": 2,
+     "rows": 6,
+     "cols": 12,
+     "data": [122,34,26,46,-98,-112,66,-101,60,50,97,60,50,-113,21,-46,-87,92,-22,36,-36,-120,-46,-118,-124,14,102,56,78,-44,61,-56,53,-8,9,-90,-47,96,-17,60,-26,-39,-81,48,-2,-99,-22,108,-45,40,-111,36,51,-10,-94,19,97,35,-106,-111,-105,85,14,-36,-60,87,60,2,-115,-22,-29,68]
+    },
+    {
+     "matrix": "V",
+     "layer": 0,
+     "rows": 6,
+     "cols": 12,
+     "data": [48,62,27,77,-63,-52,70,-110,87,-5,23,78,-10,18,67,-121,-41,122,-32,109,115,-100,-99,97,126,-67,110,36,34,12,15,104,-94,104,78,54,-93,-61,80,-14,-106,75,62,15,-46,53,-12,89,-88,65,91,-68,87,123,-40,74,-90,-127,78,-119,32,-44,-49,-110,60,-69,30,-96,-8,-6,28,-6]
+    },
+    {
+     "matrix": "V",
+     "layer": 1,
+     "rows": 6,
+     "cols": 12,
+     "data": [34,83,-109,-121,71,80,-54,-81,-101,116,112,-68,33,124,33,-53,57,35,97,-95,37,33,-74,36,119,-49,127,-66,79,55,-12,-94,78,-85,-114,-38,-95,-74,-14,-40,62,-50,-81,-37,31,100,60,14,26,105,-26,-82,26,44,62,91,12,110,109,-59,-116,-47,117,-120,-74,-104,103,-123,30,108,-79,22]
+    },
+    {
+     "matrix": "V",
+     "layer": 2,
+     "rows": 6,
+     "cols": 12,
+     "data": [75,-70,-125,-104,5,-23,-59,90,124,-49,113,70,-80,-12,-67,-20,91,-62,-93,-22,-29,112,76,-85,-69,-7,48,70,-11,-34,95,107,-12,-112,50,-70,-10,-116,36,97,82,-46,51,-23,91,73,-55,127,22,123,19,13,51,-23,62,89,40,91,-17,-107,27,-114,109,-20,72,-41,-107,91,61,15,-15,-36]
+    },
+    {
+     "matrix": "O",
+     "layer": 0,
+     "rows": 12,
+     "cols": 12,
+     "data": [57,-13,-112,-8,-47,78,44,47,-116,-33,124,-17,46,-94,59,7,-95,-48,-5,36,18,42,-37,66,-123,115,97,101,-104,-111,59,56,70,-8,46,-43,-119,-102,-64,-28,-50,33,-26,-91,-120,33,71,-26,-3,49,96,86,68,98,-110,-20,-42,46,23,44,-122,-14,-87,107,-59,126,30,111,56,55,63,-10,91,55,-14,-70,-111,101,46,-116,59,-34,-46,-7,-13,-74,108,-45,-29,7,114,48,52,94,8,32,-66,-60,61,-2,55,72,-125,76,109,47,25,59,-37,101,27,-110,-72,-34,88,-71,-117,74,-108,51,-35,127,44,11,126,-49,2,71,7,36,14,-81,66,-58,23,77,-7,-9,121,32,-89,27,10,45]
+    },
+    {
+     "matrix": "O",
+     "layer": 1,
+     "rows": 12,
+     "cols": 12,
+     "data": [108,1,-3,-18,-43,1,113,95,103,-25,-49,-120,-13,-55,49,40,109,110,-16,89,45,14,5,-61,72,-30,-111,-92,-30,-64,22,-33,85,14,-39,-62,20,85,69,-41,118,-85,56,64,-124,56,-40,68,-68,-39,-35,-114,24,106,98,-28,52,-30,-58,20,71,-54,68,117,110,84,-110,91,9,-29,32,-36,80,89,-110,-116,-4,110,-99,69,56,107,-114,36,-17,-111,5,95,96,-99,113,37,35,70,10,-123,-19,71,0,-68,-24,105,-67,10,-123,64,-65,73,-77,108,76,-44,-110,93,110,30,-1,-41,-97,-66,85,111,-116,-15,103,-112,-108,-32,110,20,39,-54,-111,122,-55,-121,-48,-38,-88,-100,-14,100,89,-70]
+    },
+    {
+     "matrix": "O",
+     "layer": 2,
+     "rows": 12,
+     "cols": 12,
+     "data": [-44,102,17,101,102,106,76,1,-93,31,75,92,-66,67,27,-19,-85,-40,114,-53,50,125,-90,-98,-86,126,-91,106,9,-12,35,-42,-22,9,-106,-61,26,-73,26,-34,-38,-9,120,-89,-25,-75,119,14,37,40,32,52,-26,61,-101,-120,-98,-18,98,-95,-52,-44,110,13,69,71,80,-108,81,-18,-75,54,101,51,-104,40,-95,-30,-22,20,-123,-13,44,95,-36,-18,-82,71,-84,-19,54,-79,-82,-36,122,-52,55,22,-23,-31,-4,67,-34,-121,-110,20,-3,-34,-64,101,102,63,57,120,-89,67,-9,105,-39,-81,-98,-43,-62,30,-30,-6,88,84,12,118,-79,63,-119,98,49,-117,6,-64,116,43,64,-53,-65,122]
+    },
+    {
+     "matrix": "Gate",
+     "layer": 0,
+     "rows": 20,
+     "cols": 12,
+     "data": [22,63,-2,120,123,85,10,-16,71,-20,-32,-16,13,-80,112,101,31,51,119,-108,-96,9,-44,-68,-13,88,-63,-84,-45,-41,-100,-52,102,61,25,49,105,76,61,33,-37,-30,88,103,-36,75,78,-59,-124,45,15,-6,30,103,116,-116,-103,-2,-65,-86,60,-93,-85,-85,56,64,28,-30,2,-12,99,100,95,11,-97,-43,101,-3,-43,-117,80,-109,89,-121,-114,23,93,21,61,46,-46,-56,13,-91,-121,68,101,74,-1,103,90,3,-8,-85,2,-69,80,56,-124,-70,-3,2,-63,111,-35,-64,-121,-118,69,-99,-53,34,-11,121,-117,-42,78,-109,24,-94,97,70,-25,-4,-76,-40,-39,14,-22,84,19,76,-88,59,113,-13,-76,-11,-89,83,-104,76,-86,15,91,-58,-82,-116,87,-60,31,-118,57,-46,7,45,40,-53,42,39,-111,-52,78,38,-110,79,-4,99,105,-62,75,-100,-81,-94,-119,-13,89,-49,103,-110,81,104,123,-71,115,72,-71,40,-19,22,36,65,-65,28,-94,-77,-67,-46,24,-53,-83,-12,-111,13,116,-36,113,-22,-86,-51,-81,-15,-33,126,-52,-45,-22,12,-94,-47,-39,-30,-111,7,91,-51,-67,78,-79,52]
+    },
+    {
+     "matrix": "Gate",
+     "layer": 1,
+     "rows": 20,
+     "cols": 12,
+     "data": [9,-33,107,26,53,126,-30,-11,-122,6,65,126,51,99,-44,0,-63,109,103,0,90,90,-84,-38,49,12,80,-71,-109,-5,0,54,30,112,80,76,2,-100,112,-126,-67,57,0,-16,-57,-68,113,49,11,-109,-119,-123,-117,-93,83,49,-93,-38,26,99,17,102,25,116,119,-32,-72,92,5,-101,3,-6,7,114,-74,-91,-9,94,13,-69,84,-49,1,-126,-53,119,-100,27,-101,-70,49,-111,-110,19,-70,121,-2,88,64,-31,26,79,-34,38,20,30,-42,-111,-115,99,13,-27,47,91,84,93,62,-98,80,117,-64,15,28,-91,3,-23,109,7,-20,12,-110,-84,55,-59,-42,-39,81,49,17,120,67,-36,-80,8,15,-110,4,-41,69,-98,11,-111,-50,49,49,49,88,84,98,36,116,70,42,92,84,85,14,-118,-59,117,29,-25,-20,-38,-70,24,114,48,43,63,-90,-118,120,-110,118,-126,-76,-53,42,58,-119,81,-86,11,-33,79,-79,-53,119,-82,-80,36,76,53,1,13,83,79,100,50,99,5,-74,68,38,-12,-75,-101,33,-17,12,78,85,92,44,1,-114,-112,39,56,-12,74,-100,-1,34,57,-29,51,27,-107]
+    },
+    {
+     "matrix": "Gate",
+     "layer": 2,
+     "rows": 20,
+     "cols": 12,
+     "data": [11,62,-77,-52,23,-51,-73,81,72,75,-79,73,-100,126,-2,-41,67,-7,28,113,40,-63,74,-107,69,-35,71,-71,-112,-126,64,-16,-64,-121,52,-29,3,-49,62,78,-100,61,-28,-59,71,36,64,-118,45,115,-75,-13,52,7,-47,-72,42,75,28,15,-113,-30,-92,-49,9,2,-13,-7,-42,88,40,-63,62,39,107,96,-113,-20,21,41,55,38,60,-21,-6,-125,-107,73,-94,-84,-85,-34,-82,-79,-56,63,-61,94,58,-72,113,103,52,-83,-36,-43,114,65,26,-66,99,11,2,39,-29,17,-29,-85,25,-79,-60,23,-14,-3,-119,-119,35,-34,-70,125,113,30,83,11,-38,-111,-91,82,-54,-35,-6,-68,-74,-102,-15,-70,31,22,-57,117,-100,-8,-90,-121,-9,113,-47,29,-93,92,-18,-79,89,52,-113,-4,48,-84,-36,93,-106,-121,44,-1,33,-38,12,-16,-99,124,-55,-125,-48,122,20,79,-81,54,41,6,75,-123,26,27,-60,-70,-96,15,-10,2,115,-98,-79,54,-127,84,69,67,127,-112,95,-2,-63,-99,-90,40,93,80,23,91,74,-25,-84,-93,-76,69,-105,85,-122,80,-53,-89,123,-34,41,14,93,-34,-125,-12]
+    },
+    {
+     "matrix": "Up",
+     "layer": 0,
+     "rows": 20,
+     "cols": 12,
+     "data": [118,10,-86,-20,5,-65,25,-30,-67,113,-12,48,41,-126,-63,-97,-29,78,121,18,-96,76,65,107,-109,-85,-6,55,52,88,68,-35,-25,-31,94,-89,-14,117,114,-58,-17,57,87,-75,114,52,-11,-17,110,113,-109,-57,-35,23,-77,7,5,-109,-56,82,-82,6,32,120,-49,-49,-40,-36,126,-95,-107,-14,-6,60,10,10,-53,-120,76,125,-70,-31,8,66,14,68,69,16,-112,62,-44,-113,-127,-102,55,-78,100,-21,-58,47,127,-82,82,19,-61,-63,-29,38,-24,-76,45,-62,50,126,-16,-108,122,97,58,118,-81,-74,118,-23,-92,-56,68,36,-118,-20,-111,116,-37,47,66,11,-33,95,17,16,-34,23,50,100,-99,116,-90,-122,-14,-50,81,-91,-13,-43,33,-110,106,-38,-30,10,-58,-40,21,-120,-105,-46,-52,88,-95,-38,-109,110,58,102,-116,-96,56,-121,-36,111,29,127,-8,-66,-23,-20,-104,-105,-86,127,39,-67,54,-96,-97,66,-5,-26,-127,-81,-59,69,25,6,-46,5,4,87,121,112,84,-122,85,-125,9,-82,15,76,127,23,72,54,-73,-25,9,-95,57,96,-85,-66,-65,46,-114,93,19,121,-21,17,-54,65]
+    },
+    {
+     "matrix": "Up",
+     "layer": 1,
+     "rows": 20,
+     "cols": 12,
+     "data": [71,73,52,-81,107,126,-112,-115,-77,81,114,20,-121,-62,15,-65,63,-29,-125,88,-120,-109,46,-103,-12,-99,-73,-86,-41,47,77,80,82,0,57,97,-116,9,39,4,99,-40,-42,86,59,-13,-64,106,58,115,3,59,75,-30,-24,-62,-98,124,33,-103,26,-126,-59,22,-11,88,69,-113,17,-7,-104,118,73,74,-105,-116,-69,-44,46,2,22,53,34,-36,54,31,-46,98,111,-68,123,5,83,-108,-121,-127,-116,-95,28,18,-73,117,55,114,78,109,19,97,105,-21,-61,-117,100,-21,-124,97,-20,29,48,108,27,-27,-87,-59,-108,30,-109,-50,-78,-41,-20,-72,101,98,27,-78,53,-2,23,114,-85,119,41,-85,95,-119,58,70,85,-84,-121,-8,3,54,-34,-87,-119,23,112,-119,-113,83,-87,-86,-45,-66,-44,-126,47,-127,-126,-101,118,100,-82,-8,-25,122,117,-106,59,-119,50,72,27,56,105,69,-21,-31,105,80,-17,40,-102,49,17,105,-104,78,71,40,-12,-58,49,-56,125,-110,-7,40,117,39,-12,-41,65,-69,64,-21,-96,-44,72,120,50,32,-118,-124,-124,9,-106,-63,8,-111,-71,-59,-74,51,10,-105,72,72]
+    },
+    {
+     "matrix": "Up",
+     "layer": 2,
+     "rows": 20,
+     "cols": 12,
+     "data": [-82,113,-43,40,120,-47,111,-108,-84,-102,-9,-19,123,97,107,97,96,122,-64,12,-126,-100,-72,-59,70,-59,30,-105,-2,118,37,-72,30,-124,-103,13,21,3,111,81,89,-86,95,106,-13,-77,107,-19,3,22,30,77,-87,38,78,35,66,78,106,-93,-109,-28,-2,48,86,-123,-40,123,-68,-69,53,-4,-55,8,32,-120,103,111,-127,40,107,36,-28,-38,77,88,-1,-44,127,-116,38,-54,-63,47,116,99,-77,-17,0,-117,110,114,126,-57,-16,30,50,114,-123,121,80,117,-77,8,38,-40,72,-116,114,-62,110,43,-16,111,-39,-85,87,18,-59,63,32,19,93,-37,-79,47,37,-87,-60,-28,21,-27,7,-104,-76,-2,72,-21,102,89,100,49,15,-3,75,115,-78,-79,1,-114,80,14,114,-63,-15,-106,-110,117,83,-93,-36,94,-16,77,-124,-72,88,37,97,60,67,-78,-78,-100,-50,-62,54,114,-121,47,-33,-46,57,0,113,23,-9,-65,-18,-103,-101,-37,11,-115,-52,-9,-52,-52,-80,-108,56,29,85,90,32,-118,-90,-33,-9,-32,-73,3,-87,23,-53,-9,-105,12,-20,2,8,-106,23,-123,-29,97,-33,19,67,-56]
+    },
+    {
+     "matrix": "Down",
+     "layer": 0,
+     "rows": 12,
+     "cols": 20,
+     "data": [-126,92,-34,90,-126,-112,95,93,45,-55,-51,43,-106,-114,-106,0,-53,10,40,126,70,-120,-43,-14,92,52,-68,127,-91,46,76,117,9,-117,-16,87,127,10,-90,123,45,59,-110,-45,56,16,-72,-16,0,-71,60,-18,40,93,26,-3,-71,-51,107,-91,95,-8,103,95,-83,-89,88,65,-105,-38,-93,-100,-111,73,-11,-4,-37,-123,-83,122,-10,110,-115,41,41,73,-118,125,4,-36,-117,-102,94,42,92,2,60,-95,-107,-27,86,-83,0,-97,124,73,-56,-49,44,-40,14,13,-13,108,-29,-46,-81,20,-25,-103,19,21,-43,-8,70,-75,16,60,-16,-70,-63,-117,52,-118,-29,-8,69,-124,63,-4,-78,-44,71,19,121,9,60,49,110,-41,86,38,-4,-101,-37,118,-7,-53,-27,25,79,-39,88,-119,-65,-63,-110,92,-119,81,9,-95,-45,-4,64,-97,-53,21,-107,-28,-56,97,-28,-69,-76,102,93,3,48,-31,-108,-77,-63,74,-73,100,-63,-49,85,-121,13,-76,-84,84,48,-68,-119,104,-124,-13,-108,-95,-103,59,51,74,39,54,-106,-45,115,-38,-26,-88,48,37,50,11,15,43,-41,-37,-62,2,-27,126,-48,-62,-93,44]
+    },
+    {
+     "matrix": "Down",
+     "layer": 1,
+     "rows": 12,
+     "cols": 20,
+     "data": [94,119,-118,9,29,84,110,-65,-125,116,79,56,-26,82,-95,-13,-1,58,56,-99,46,79,59,-49,69,-41,-127,-114,40,91,-14,111,-92,-107,113,23,58,38,5,-107,120,113,44,-74,23,108,-48,-41,16,53,-125,58,8,-47,50,-11,-11,-70,-70,51,108,-116,3,122,53,-36,47,38,-84,-15,-88,115,-87,-37,-25,122,-8,-15,0,-52,-102,-87,-43,-113,-81,89,106,73,-105,-124,18,-8,-100,-90,4,10,-50,106,7,-70,70,-104,-95,64,82,11,48,-44,-113,34,-80,74,-22,45,116,-8,-122,-18,-11,-75,104,0,30,73,-96,55,-64,-102,-122,-13,72,-122,-115,58,84,-70,-106,41,26,76,110,-86,8,66,-106,-102,-10,53,-38,7,112,30,97,-5,107,-48,77,-6,46,-24,-8,-105,92,-125,-52,69,117,-69,-120,78,15,120,-100,-32,-29,101,-1,-97,-4,85,-98,-76,118,-126,95,78,-115,-89,47,-113,-67,120,-92,-1,14,120,-70,35,-36,-42,-127,-5,92,-114,-38,-25,10,-40,78,-28,-52,126,81,42,7,42,26,111,-113,124,-24,-91,-62,-18,-40,91,-16,22,-117,-119,22,-121,63,61,-29,5,45,-125,5,-126]
+    },
+    {
+     "matrix": "Down",
+     "layer": 2,
+     "rows": 12,
+     "cols": 20,
+     "data": [24,39,-121,-3,104,-122,114,-37,103,39,-81,119,23,-13,-85,17,-30,77,0,-35,5,50,99,84,47,-35,95,56,-101,-117,39,-47,-122,-40,-39,-78,20,28,48,-119,18,96,-37,95,21,121,14,-66,-6,-20,-40,-65,50,35,56,22,-10,3,-11,38,-11,-6,58,16,-104,108,-43,-7,103,56,42,83,-54,-75,-11,29,-74,-86,36,-110,-73,-73,18,25,12,81,-25,118,-39,79,-55,-11,77,-86,99,108,-49,11,23,-55,116,81,57,116,29,100,103,7,-83,3,-98,31,20,18,-66,81,-92,-94,-40,43,-103,-20,-31,-34,27,-22,-48,86,-33,-42,73,-93,23,-81,71,-55,-2,-79,121,-105,76,-99,66,-39,-113,-25,44,-95,39,59,103,-80,-114,-38,-77,-83,100,77,8,-13,-124,8,53,-79,-12,87,-123,46,46,-22,126,-93,88,81,22,-55,-82,-69,26,23,37,-104,88,87,13,69,105,-38,-94,-91,108,62,65,-93,18,96,121,-16,97,111,90,-82,119,105,79,43,98,-57,33,41,20,-85,112,82,-108,22,78,-53,-90,-95,43,-9,104,57,60,102,60,73,-120,95,-3,-35,21,-70,69,49,117,-11,8,-77]
+    },
+    {
+     "matrix": "LmHead",
+     "layer": 0,
+     "rows": 300,
+     "cols": 12,
+     "data": [6,35,40,24,-116,-95,-126,71,117,64,-123,-37,87,-71,66,-123,-37,28,-43,61,93,126,-44,-1,122,124,109,57,-53,92,-5,13,-43,-104,-21,94,-66,-41,127,26,-91,-94,27,-31,-91,19,-29,51,-108,106,76,27,58,-23,-33,18,-18,36,-101,120,89,-79,83,75,-112,-59,-122,68,114,-54,-19,-76,81,40,86,73,14,3,101,-8,-10,-63,82,-80,49,108,4,62,50,49,0,-64,-24,83,-11,-47,76,-113,-2,13,-41,-71,-9,-19,-60,42,-82,-71,52,104,81,-44,-110,-14,77,103,125,40,64,78,-117,118,-10,-89,-8,66,58,-94,40,95,18,5,-71,-6,53,-82,-31,-39,122,-39,30,-110,30,-12,104,74,17,-85,-31,107,-85,92,-54,-81,-110,-7,31,-66,-9,89,85,31,-45,4,50,-62,36,80,-103,27,17,-95,-58,120,118,-120,99,20,52,-80,40,-91,41,-68,38,113,-78,-119,39,-9,-2,20,13,-63,-19,82,91,-29,-73,49,124,45,18,123,-67,-119,59,-126,127,21,111,25,-76,-95,126,35,109,-20,114,27,-124,40,47,30,94,1,68,127,52,-69,-107,-40,55,-70,30,-60,76,38,87,43,-76,-63,-38,-98,-20,60,-11,-104,87,-16,-66,-26,84,-24,66,-46,-54,-81,109,113,-82,53,64,13,-56,83,-15,-51,68,-110,90,73,23,53,21,-5,-103,-15,120,-51,-7,124,94,41,64,-22,56,33,69,113,110,-10,-100,-87,78,-87,-58,-39,9,-29,-71,11,40,78,74,-78,-102,108,-94,56,-55,-92,-2,106,61,-95,-43,57,94,-51,36,127,88,112,-54,-63,10,33,88,47,-71,-12,-52,64,-113,-108,-54,-41,23,-116,-47,77,66,-123,-6,71,-49,31,92,39,6,-39,-12,-103,-52,-117,-25,62,-72,-43,25,-56,78,49,-41,99,-63,-47,-119,-15,43,115,62,100,111,75,2,67,65,-2,-112,113,71,51,34,-8,-28,-108,86,95,-4,83,50,6,123,70,-78,-113,104,4,21,90,5,-26,53,-111,-97,28,-38,-3,-19,119,62,-71,41,-15,-30,-56,7,-77,-23,-81,100,-3,-112,69,102,-42,88,-84,25,78,-21,-7,0,-62,94,20,-45,71,45,-53,58,-98,-103,-110,-33,94,-120,-123,-70,-97,31,-9,-4,-7,-5,108,-121,20,30,-55,-98,37,9,-17,84,-119,-62,88,-67,20,-64,-85,111,-96,80,51,-21,-108,-67,-59,-89,-111,57,-49,-38,-70,95,-43,8,-4,-122,-116,47,30,124,-102,68,-58,-56,19,81,24,-126,2,-14,-69,60,-94,-20,-102,-58,17,122,37,-87,-39,51,109,-60,69,-71,1,12,-104,111,66,-5,-115,38,16,-8,-79,-125,-50,61,90,-9,55,-25,24,-38,-60,37,-101,-83,-14,65,14,-105,64,100,3,-88,-11,-77,-52,-71,-113,1,-5,-77,79,38,37,-16,-87,51,-125,63,20,116,56,-18,52,-12,44,-104,20,4,22,37,56,-104,-66,-19,96,-93,-13,-71,-34,-101,20,-61,68,85,88,90,-126,-5,-13,118,-16,33,19,32,-98,-19,-27,-53,-102,93,-34,56,-24,-11,81,67,5,-34,16,85,116,-14,-42,-74,-38,65,-43,-100,69,-74,-94,67,-67,37,-59,-51,101,64,-24,-122,41,-2,8,-94,-19,-77,-65,89,34,69,61,11,-13,100,-79,-48,-7,-31,115,-108,-108,4,66,3,117,-94,99,79,-36,38,25,42,-86,-14,-90,-93,-10,39,-66,60,3,66,77,-30,97,112,104,24,49,-33,22,-116,-6,101,-10,43,58,14,30,3,117,-79,18,19,-79,82,-76,-67,10,-19,74,-122,-53,21,-68,28,81,-74,-87,-89,55,-10,15,28,5,-73,-75,-14,100,-71,7,-69,-103,36,111,118,-10,-31,4,-96,-4,-66,-97,-114,-34,-75,74,28,-99,88,121,-93,86,-113,-69,109,54,-64,48,-120,38,95,10,105,39,-4,27,19,3,-22,-60,-110,-36,-27,-8,-74,4,76,-30,1,-40,4,78,-62,-102,42,-49,-1,-85,119,-98,36,-8,-5,-60,-66,-14,-29,95,125,-4,113,36,-55,58,83,-39,41,-91,52,55,21,92,106,-62,-37,92,10,49,-83,-116,-126,-12,7,104,64,14,-112,107,62,-119,-23,120,115,-28,-50,95,-38,-44,63,-82,-109,-86,9,-127,126,-102,98,3,12,-47,14,-54,42,114,-72,9,6,-102,-34,-65,-60,-92,-56,-52,64,123,54,-28,64,86,51,-47,116,-85,-90,49,-75,6,-79,95,1,-108,-30,-70,-67,17,-50,116,-51,59,-25,84,84,84,-21,-86,-38,89,87,0,108,112,-6,-116,39,105,-125,-124,73,-55,84,-5,-87,-43,20,76,-20,-62,-107,-3,-45,42,124,36,2,-46,112,-111,6,59,-29,-61,75,11,-58,-50,-17,-94,-1,116,55,-64,-18,15,112,117,-64,104,52,54,-91,84,-94,-105,122,-58,33,-127,-106,92,109,-64,81,-48,-46,29,46,58,8,1,-4,36,11,-110,19,-61,-29,68,118,20,109,10,-89,-52,15,88,93,-80,82,-79,-55,67,-6,-66,90,97,60,43,-124,49,-82,104,74,-37,-119,107,-79,30,21,125,-43,28,-89,-126,-50,5,103,49,-26,-29,-75,96,77,39,-4,71,-109,46,3,-6,-67,-65,-30,91,-127,-67,49,3,-23,108,-18,125,4,121,-66,43,100,-8,100,-48,9,-73,119,32,-112,-75,-46,-102,-74,-124,-95,71,-101,-115,-37,104,-122,38,-33,13,-85,116,8,-8,13,3,-12,106,39,84,-120,25,-6,107,68,-11,-22,-87,-15,-8,-33,-12,78,-25,-42,-44,-82,-3,-127,31,-124,123,-62,83,-67,64,65,9,-34,-41,-65,-51,62,20,72,105,18,-38,72,-119,-39,-64,18,114,-102,93,-36,65,6,20,32,18,-87,-76,-10,-125,-42,-45,102,89,-40,47,-58,-119,14,97,-4,-97,115,-92,1,-20,-28,123,-74,11,-36,91,-22,121,121,77,23,74,83,-7,25,-50,79,-41,1,-63,106,29,47,-26,-108,-35,-109,92,7,-104,46,103,-3,-5,-42,-57,-13,-109,-52,-56,-102,-64,-10,85,-60,5,68,-21,42,-89,29,117,-47,71,-69,-10,27,-84,-12,-55,-115,82,37,35,-21,81,4,-25,-5,112,-108,-89,30,-114,-88,-57,23,-91,-11,3,-82,-40,-107,68,109,43,-75,-35,-82,68,-14,-89,19,13,-81,-40,-86,-78,78,104,-95,-112,-114,111,-115,-117,18,102,-24,-106,55,65,-112,3,-25,-84,-67,35,-123,-4,-13,-91,127,-49,94,57,-12,-54,-54,-84,29,-59,-122,70,53,-79,-11,16,34,-124,52,-121,80,-29,36,66,-35,38,43,12,68,-122,-45,71,5,-41,2,-102,26,102,14,-109,78,-68,-23,-19,35,-97,29,118,-22,4,-100,125,10,73,-66,-62,122,-120,-68,69,7,-67,-90,-68,107,97,-19,12,4,-2,70,23,-58,-16,50,-71,-59,-45,12,-3,-80,64,5,-35,46,-70,-91,-103,3,38,58,-58,-103,39,117,28,111,48,-12,84,20,-2,73,8,-29,26,51,-108,-105,-40,93,-13,-31,-74,6,26,77,-19,107,80,91,21,116,24,5,-122,-96,-119,-95,-65,-4,-36,-68,-105,-22,-71,-68,-125,7,17,37,120,-76,-26,-101,114,25,110,26,-11,64,-16,69,111,-65,119,66,49,-71,-105,94,-109,-9,-39,102,-49,-16,75,-81,15,-66,93,-22,51,-22,-109,-96,59,100,124,40,7,98,60,43,-110,88,-15,-62,-103,127,33,31,-12,119,-98,24,-113,-63,-30,94,-65,-38,-20,-106,-21,-21,60,-53,-51,-41,-62,76,-83,30,87,4,-8,45,80,-48,-52,-105,61,-113,-86,39,108,76,12,-96,-110,-62,-26,-68,32,-59,73,-110,27,-80,117,61,-34,29,-114,56,-41,-126,-6,51,-70,111,-50,43,-4,38,-97,-114,48,34,1,-18,61,54,83,-89,56,-93,-96,-39,-91,13,85,-118,-4,-100,-20,72,34,69,103,-55,67,-77,-64,-35,9,120,-70,-11,-45,-9,40,-9,-54,3,-5,-86,-93,-126,-98,-17,32,-48,-125,-107,83,-47,-40,-45,42,47,60,-15,3,-32,63,-112,22,-100,-105,1,82,117,-122,96,-101,-23,36,-2,-44,-81,-83,120,-49,-121,-94,87,105,-53,40,115,95,-79,-70,112,81,68,10,-93,-95,-34,-117,-61,-36,-79,101,3,-30,-32,-44,-27,111,-110,13,-27,50,40,-106,-89,-80,-33,-112,-79,-3,89,-46,-13,-46,-126,97,-49,48,-60,50,89,74,-48,11,-91,-70,-7,37,12,69,-90,-56,113,100,96,74,-61,-106,-29,118,-57,90,-74,50,66,-73,14,118,39,-82,-118,-12,96,-18,-99,43,51,5,42,-61,-116,-104,26,-103,37,-115,-100,-95,-74,-35,-99,-84,27,-14,107,115,-60,-56,-19,60,-2,104,-90,-115,-49,-27,101,-29,-78,12,29,101,89,-125,-7,-40,4,-111,-79,-108,-38,105,-95,48,75,-34,-38,41,66,46,112,-15,125,37,36,92,-15,-95,56,26,75,67,110,-27,-18,116,122,113,-111,-65,16,116,118,-112,-98,8,-43,-101,-98,-65,-100,-40,38,76,-124,-2,-9,119,46,-23,109,-49,61,-115,123,-9,116,16,-99,-78,-116,-73,57,-117,0,-79,94,-47,-101,14,35,-76,45,-17,-50,60,-125,-83,-53,23,60,115,-53,-61,-127,47,113,-55,-36,-99,59,-56,-46,50,36,-68,78,-116,-16,-124,46,-80,72,-65,-41,-29,-127,-66,-87,60,14,82,95,3,62,-115,2,106,7,105,-23,-100,95,90,20,-127,8,-78,-17,46,-106,65,79,-11,116,-127,-46,114,89,82,24,7,25,-67,16,14,-16,-18,122,-112,28,20,-74,115,14,106,27,-44,-106,85,-58,-87,84,-55,44,-89,-107,43,-45,-12,14,42,100,108,-15,-92,-76,-37,42,-80,60,-114,112,54,-104,-36,-19,-80,118,112,-55,-30,-114,125,-50,-65,-82,106,-42,119,-82,25,-76,-87,4,-59,-85,36,-49,101,72,-30,-83,-47,-82,113,54,11,-50,21,-17,106,-6,-1,14,-3,114,-97,9,-38,-24,49,92,-106,56,-76,-127,92,36,127,-112,-84,10,-3,-120,-120,64,-80,50,25,111,-54,97,-7,92,5,80,-3,123,-104,63,-63,102,127,-54,67,116,85,76,123,-126,-6,-7,67,45,22,53,92,-7,-126,75,46,70,127,-56,22,43,119,54,59,51,-48,51,111,-11,-25,-45,73,19,-78,60,90,-19,-47,19,-104,-63,-23,105,-43,-126,75,20,38,67,-23,-116,-36,76,-76,67,-87,-6,95,-19,-83,-101,-107,94,41,-109,125,64,36,-120,-52,104,48,78,-117,58,79,66,50,53,-78,117,18,-13,20,69,121,-124,6,18,54,94,95,52,44,-21,-88,7,35,42,40,-10,-19,25,-75,-127,80,103,-84,-106,69,38,80,-71,-68,-82,-38,-127,-121,1,-16,74,-94,-18,-2,108,4,-53,73,-29,-83,-11,-96,7,-35,-92,-53,31,69,-15,-127,33,-21,-124,-15,84,-45,-79,112,45,-93,-27,-7,-29,62,-39,-87,49,39,-67,-111,-100,112,94,3,-50,35,-22,-86,45,97,-91,-112,-112,31,-65,21,-72,21,-21,44,-42,63,62,93,-124,12,35,109,-91,-93,-13,-120,-80,-58,34,99,-49,120,30,-83,-44,10,-63,-41,-41,-11,41,-89,-53,56,-7,84,-113,-98,69,-53,-31,-47,5,-60,8,127,-55,76,-102,-68,78,-121,-40,-88,-97,74,-110,-10,-37,39,64,-19,109,-97,46,-11,14,-105,25,22,-110,69,62,117,-41,-101,-9,82,6,40,-7,93,-105,86,-23,-34,-5,-38,-83,29,-114,-113,72,-33,16,-4,32,88,-56,-68,-100,119,-105,36,-60,-108,-27,90,29,38,29,77,-104,-126,17,66,9,63,-16,107,-53,87,54,54,-74,82,117,-122,34,-80,98,-58,32,27,-39,125,-108,5,43,-70,-40,92,-96,-35,-5,-35,93,89,82,99,-105,81,-43,-123,30,75,57,3,39,27,62,88,33,-11,-31,-39,-46,81,-111,65,111,44,-105,23,-111,-1,62,-103,125,-69,-83,79,33,17,-118,-70,106,-4,-108,-3,50,66,31,-116,71,58,10,-2,12,67,56,68,-81,-82,99,-31,-43,-111,-44,-68,27,-33,-106,105,-119,-69,48,47,83,-66,48,-62,-99,-25,22,85,93,110,-38,-52,49,19,15,-94,27,-54,4,-74,-20,-93,-69,61,-71,91,69,127,68,-69,46,30,-49,93,-104,103,-71,123,-110,-44,-71,-125,86,106,-123,77,-124,59,-40,40,111,-126,-88,-25,-25,95,31,90,13,-8,-58,-13,-60,-1,-15,-72,100,-81,-58,43,-98,-9,1,-77,-127,-53,-69,107,-40,-38,-110,-16,-38,114,-103,-8,-98,115,-115,-44,11,53,-98,-46,-13,-104,-83,66,-82,34,-48,77,53,-71,-27,102,18,10,106,-3,61,68,-15,38,50,-102,107,-104,95,60,-123,-108,-84,122,-91,-20,-63,-73,1,70,94,-85,34,21,16,65,61,-61,44,15,74,-63,-30,95,41,-68,60,-77,-42,-32,-115,124,5,-65,71,90,31,78,32,-112,120,-45,-73,-114,59,114,61,-118,25,-48,-93,-50,-56,-101,-92,49,38,77,-79,-38,5,-86,-42,-67,84,-80,29,-24,14,-124,-83,26,108,-75,-52,-10,-44,-41,-36,-118,80,-2,-121,-72,-7,51,64,84,-53,8,19,-87,122,-2,41,-91,83,-80,14,-31,49,124,24,-58,104,122,74,-24,-53,84,-123,-45,53,-105,-125,-18,98,-2,4,-16,65,-117,-66,-97,59,38,-81,-65,-75,91,-49,36,-23,-120,-110,-60,-66,90,12,68,-53,-118,-120,70,118,-72,-55,-36,111,-44,-23,-39,65,54,-63,-40,-93,68,-41,119,-33,33,119,-18,117,-77,-50,-122,100,51,-90,-106,-28,-85,-36,79,126,-29,73,-12,103,69,-90,-28,-79,59,-28,-4,-53,-46,-50,93,46,-125,-48,36,-50,43,-63,124,92,108,20,-30,-73,56,-12,47,-90,79,-79,-36,-49,-74,101,-62,61,52,55,9,-87,-27,32,4,-69,31,-23,35,-13,58,35,41,-85,28,57,-80,94,60,124,101,-73,107,-77,-102,-82,56,-2,-1,89,-107,108,30,16,-104,86,82,-107,-95,-21,35,-97,-42,114,73,-112,32,-47,20,24,-86,54,-11,-108,58,125,-70,-62,3,-114,-6,88,108,-53,120,90,-62,8,-109,75,-127,21,-88,77,-89,99,63,-10,87,87,86,105,-10,86,-63,17,-15,-17,64,54,8,60,96,12,-100,45,62,-117,71,126,-121,-10,-9,-108,-50,27,76,-121,27,120,123,-112,-91,-116,-98,77,126,-127,-56,39,21,67,16,43,15,-96,-110,-8,-105,11,-97,-89,-39,123,-97,-117,36,17,-69,80,111,27,89,-19,58,-107,86,62,-92,78,-83,41,0,125,23,32,5,13,-60,-120,5,-12,66,-104,11,80,46,55,103,-102,-35,62,-47,123,-112,-127,124,-52,-15,-69,-53,-91,-56,9,106,-64,-19,31,-45,92,81,89,-63,31,9,29,8,-80,35,72,53,122,-109,-68,18,97,-117,18,-97,58,49,59,59,126,127,-119,113,-40,126,117,-13,10,110,-97,51,-77,-6,43,57,-2,-31,48,22,47,-99,109,65,77,86,-18,66,81,-109,111,-89,22,-90,-68,17,-106,35,122,89,-68,-43,42,84,105,-11,4,-16,-3,-52,-58,-111,-61,-31,45,116,44,32,-27,82,118,-94,-96,-50,-82,84,-44,16,58,70,-3,-54,85,12,-31,0,32,89,16,-62,-98,-55,-10,-74,-35,-68,-54,12,-63,76,68,59,-64,68,-2,-8,78,20,124,-99,107,-106,50,-84,0,85,67,-85,-79,-14,-94,122,98,-115,-126,-19,-70,-20,0,58,9,0,-117,-37,-25,73,97,48,36,-62,-8,13,-49,59,-57,-40,108,24,61,23,-60,-124,-54,-44,-37,-76,99,52,95,41,-109,52,66,-28,-90,-99,43,-33,12,-26,92,5,56,46,98,86,-61,-33,3,-117,-52,-49,-49,10,-35,15,-1,71,-50,41,86,86,-14,59,-125,31,67,60,93,113,-8,116,-120,113,35,89,-20,-7,-46,51,-112,-84,-73,-56,85,-43,-122,-41,53,-111,-124,-6,-107,-25,81,-113,-96,80,99,-7,-42,111,-32,2,-87,55,-91,83,-65,-81,-26,30,-73,41,61,-56,-24,-79,-58,8,-33,-111,65,-30,-45,110,64,118,41,-2,-22,73,19,20,-71,118,50,7,-94,2,-77,-59,-114,-33,37,95,-74,-37,-87,57,89,-91,68,51,-8,8,86,-126,-119,52,-112,-116,-54,-75,60,29,-70,-114,44,99,72,15,-100,-25,87,-8,-33,35,-54,24,125,-39,-7,-48,40,-21,51,-15,-19,-50,97,-90,25,-98,-120,-119,-108,18,80,-90,-57,-38,64,7,-9,0,-127,-109,-87,-100,49,42,-92,-8,-95,-116,-105,109,34,-20,103,-109,-109,-14,-46,69,-75,-76,-11,106,49,31,106,-74,-82,71,4,-84,123,10,-32,-45,40,54,0,17,-45,67,-121,-72,-115,-64,110,-25,-74,124,-71,-106,45,11,42,68,-56,4,-61,44,-16,-80,-65,67,-70,19,-42,28,33,-35,-12,31,90,71,-33,2,55,7,-35,112,67,23,-92,54,-5,117,21,-67,97,-3,107,1,119,-79,93,-41,25,-64,-45,-36,-77,-18,-111,-89,124,74,122,-78,-44,-111,31,-53,24,-108,89,-6,-4,-51,-32,-35,26,-10,-75,-118,93,16,-72,51,-38,-84,-83,-41,55,69,-51,12,-82,11,63,99,1,-109,51,-79,74,-14,54,2,67,-18,59,-51,-82,-48,-113,-26,71,97,91,117,7,89,9,10,59,37,83,-49,5,113,-6,-99,-77,-125,-27,-47,-12,-4,-45,34,-66,59,13,-120,-19,-101,-4,-23,92,53,-2,-50,29,-42,-65,46,-31,-19,82,-28,90,-77,21,-48,100,52,59,-64,60,-125,15,23,51,-25,36,96,-57,-9,-89,28,-69,-67,-114,3,52,0,-10,-108,-65,49,-93,-122,104,-32,-118,-70,20,17,-32,104,-81,76,-31,-48,-70,15,-39,7,23,-124,-81,2,108,54,11,-7,-12,82,-71,-29,75,-100,69,60,109,-19,-112,-30,-29,-12,12,-26,-32,36,73,64,-60,8,33,11,-49,38,64,-66,40,-59,-28,-111,126,30,106,-106,-54,-28,-95,-26,-63,49,75,-123,118,69,-46,-91,22,79,100,-53,12,-36,115,-94,78,-67,-59,120,113,-28]
+    }
+   ],
+   "channels": [],
+   "matrices": [
+    {
+     "matrix": "Embed",
+     "out": 12,
+     "in": 300,
+     "layers": 1,
+     "log2_k": 9,
+     "a": 0,
+     "h": 4,
+     "row_vars": 4,
+     "rows": 12,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11],
+     "descriptor": "010008024000000020000000000009040000000c0000000000000000000000",
+     "commitment_id": "3f3d4db86a8cea3558b460974660dd40138744a1fac2dd017459ca1b99ee8d0a",
+     "root": "11650f13eece63798aee85c6991cbe882db6e9d9db7f42c9c6ce6afff35617d1"
+    },
+    {
+     "matrix": "Q",
+     "out": 12,
+     "in": 12,
+     "layers": 3,
+     "log2_k": 8,
+     "a": 4,
+     "h": 0,
+     "row_vars": 2,
+     "rows": 3,
+     "committed_rows": [0,1,2],
+     "descriptor": "01000802400000002000000001000804000000030000000000000000000000",
+     "commitment_id": "fda21af8497e6bfb4038c6e32741d0c238787e9413255b551412b90095e2f775",
+     "root": "f5fa7acb5ff1abb3726d172cde01d161d88e0b08b3a5cb5be4937a1cec0dfd34"
+    },
+    {
+     "matrix": "K",
+     "out": 6,
+     "in": 12,
+     "layers": 3,
+     "log2_k": 7,
+     "a": 3,
+     "h": 0,
+     "row_vars": 2,
+     "rows": 3,
+     "committed_rows": [0,1,2],
+     "descriptor": "01000802400000002000000002000704000000030000000000000000000000",
+     "commitment_id": "164e8d32213bb960808bfe7ff19a1e53667b83c290124b1bd1746337748e6abd",
+     "root": "e49ac12c1bab220a2c3394129f185c18f98f057d453bdab8bee7c1c9fb4c9c17"
+    },
+    {
+     "matrix": "V",
+     "out": 6,
+     "in": 12,
+     "layers": 3,
+     "log2_k": 7,
+     "a": 3,
+     "h": 0,
+     "row_vars": 2,
+     "rows": 3,
+     "committed_rows": [0,1,2],
+     "descriptor": "01000802400000002000000003000704000000030000000000000000000000",
+     "commitment_id": "6a3f5b0f4b51da7b842c2a752e57eb1b98983b51a3c97bbe0c8836f684ccea72",
+     "root": "02f73c7ad15d861c605654d3fa1992c37e50f38c175e74cd346d7585474cf4dd"
+    },
+    {
+     "matrix": "O",
+     "out": 12,
+     "in": 12,
+     "layers": 3,
+     "log2_k": 8,
+     "a": 4,
+     "h": 0,
+     "row_vars": 2,
+     "rows": 3,
+     "committed_rows": [0,1,2],
+     "descriptor": "01000802400000002000000004000804000000030000000000000000000000",
+     "commitment_id": "36187b32e498936391011e28be05e8f292bfe227b99f56385202b9bde3764477",
+     "root": "8a6e4a4790d64e4f3f8196a89dd7d1df7d5c8db08df44d94fc641eb8fc0c3b49"
+    },
+    {
+     "matrix": "Gate",
+     "out": 20,
+     "in": 12,
+     "layers": 3,
+     "log2_k": 8,
+     "a": 4,
+     "h": 1,
+     "row_vars": 3,
+     "rows": 6,
+     "committed_rows": [0,1,2,3,4,5],
+     "descriptor": "01000802400000002000000005000804000000060000000000000000000000",
+     "commitment_id": "4d3180c41363c33db69aa5af878e51abcbe45a9e30498a2f4629ebb649e718fa",
+     "root": "e7d7417d97720e75dbf94deb03a72d66d14d9b4b195c15fafd303c23f4e48661"
+    },
+    {
+     "matrix": "Up",
+     "out": 20,
+     "in": 12,
+     "layers": 3,
+     "log2_k": 8,
+     "a": 4,
+     "h": 1,
+     "row_vars": 3,
+     "rows": 6,
+     "committed_rows": [0,1,2,3,4,5],
+     "descriptor": "01000802400000002000000006000804000000060000000000000000000000",
+     "commitment_id": "b56f725305bce3a73cb955018101a5eb384a0f47b8795f3cade0113a844537cc",
+     "root": "eb17a0c1eedb18ed94ab2bb81ae75c7cff587023a3c3707b364a614df13a1cfe"
+    },
+    {
+     "matrix": "Down",
+     "out": 12,
+     "in": 20,
+     "layers": 3,
+     "log2_k": 8,
+     "a": 3,
+     "h": 1,
+     "row_vars": 3,
+     "rows": 6,
+     "committed_rows": [0,1,2,3,4,5],
+     "descriptor": "01000802400000002000000007000804000000060000000000000000000000",
+     "commitment_id": "ca92ae7bddc1549c41ac7bbdc5c671df2669a3bbba3c9ee300a125a96b80deab",
+     "root": "33882ff80debde97c61416c960e4473ace79cb8efbc3b08a76b4b05089090f17"
+    },
+    {
+     "matrix": "LmHead",
+     "out": 300,
+     "in": 12,
+     "layers": 1,
+     "log2_k": 8,
+     "a": 4,
+     "h": 5,
+     "row_vars": 5,
+     "rows": 19,
+     "committed_rows": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18],
+     "descriptor": "01000802400000002000000008000804000000130000000000000000000000",
+     "commitment_id": "3078716704d588344e8359742a27414f1ef89d4cd62fd8876b8611fdcbf36c62",
+     "root": "a83993bbd8f7d1cee8583ab70c824bed807a6b423735eb686c42b8393c947abc"
+    },
+    {
+     "matrix": "ChannelParams",
+     "channel_width": 1,
+     "log2_k": 6,
+     "row_vars": 0,
+     "rows": 0,
+     "committed_rows": [],
+     "descriptor": "01000802400000002000000009000604000000000000000000000000000000",
+     "commitment_id": "a47f66704b8389e0de1e228982716839a300ade96e959e081e457541eb9548da",
+     "root": "cac63c3ef82efe6f8f6963445c9bb2aa50cabdb26f142b36b3da656e2b192977"
+    }
+   ],
+   "public": "0802400000002000000011650f13eece63798aee85c6991cbe882db6e9d9db7f42c9c6ce6afff35617d1f5fa7acb5ff1abb3726d172cde01d161d88e0b08b3a5cb5be4937a1cec0dfd34e49ac12c1bab220a2c3394129f185c18f98f057d453bdab8bee7c1c9fb4c9c1702f73c7ad15d861c605654d3fa1992c37e50f38c175e74cd346d7585474cf4dd8a6e4a4790d64e4f3f8196a89dd7d1df7d5c8db08df44d94fc641eb8fc0c3b49e7d7417d97720e75dbf94deb03a72d66d14d9b4b195c15fafd303c23f4e48661eb17a0c1eedb18ed94ab2bb81ae75c7cff587023a3c3707b364a614df13a1cfe33882ff80debde97c61416c960e4473ace79cb8efbc3b08a76b4b05089090f17a83993bbd8f7d1cee8583ab70c824bed807a6b423735eb686c42b8393c947abccac63c3ef82efe6f8f6963445c9bb2aa50cabdb26f142b36b3da656e2b19297700000000",
+   "weights_root": "5c67260de651810a856d2df5cf99ffff1cff22a83624c0c5de8ad3120efb0c5c",
+   "file": "synthetic.twr",
+   "bytes": 386,
+   "digest": "99a9ded0539db099850ee533f8f7f93623ef5934db54743bdc0d5d1800fda0bb"
+  }
+ ]
+}
