@@ -38,14 +38,14 @@ The advice layout is not implemented yet (#106), so the layout can still change.
 An attention tile `(layer, kv_head, query_block)` holds `e[h, q, i]` for three ranges ([RFC-0006](RFC-0006-compiler-ir.md#tiling-and-the-execution-plan)):
 
 - the `g = n_heads / n_kv_heads` query heads of its KV head;
-- the `Q = 512` positions of its query block;
+- the `Q' = min(Q, N)` positions of its query block, with `Q = 512` the policy's `query_block` ([RFC-0046](RFC-0046-advice-segments.md#short-query-blocks));
 - the `N = 2^n` positions of the padded sequence.
 
 Row-major, the key index takes the lowest variables ([RFC-0010](RFC-0010-proof-schedule.md#multilinear-extensions)), so each advice row of `k` entries spans its queries against every key, and no row is all masked.
 
-The tile's layout splits the key index into `i = i_hi·2^w + i_lo`, with `w = min(n, log2 k − log2 Q − log2 g)`, and orders the tile's variables `(i_hi, h, q, i_lo)`, most significant first.
+The tile's layout splits the key index into `i = i_hi·2^w + i_lo`, with `w = min(n, log2 k − log2 Q' − log2 g)`, and orders the tile's variables `(i_hi, h, q, i_lo)`, most significant first.
 
-- **Rows.** The row index within the tile is `i_hi`. Each row holds `2^w` keys against all the tile's queries and heads, `g·Q·2^w = k` entries. When `log2 g + log2 Q + n ≤ log2 k`, `w = n` and the tile fits in one row, as RFC-0011 rule 2 places any tensor smaller than a row.
+- **Rows.** The row index within the tile is `i_hi`. Each row holds `2^w` keys against all the tile's queries and heads, `g·Q'·2^w = k` entries. When `log2 g + log2 Q' + n ≤ log2 k`, `w = n` and the tile fits in one row, as RFC-0011 rule 2 places any tensor smaller than a row.
 - **405B.** `g = 16` and `w = 9`: a row holds the block's 512 queries against 512 keys, for all 16 heads.
 - **8B.** `g = 4` and `w = 11`: 512 queries against 2,048 keys.
 - **Claims.** A claim `ẽ(r_h, r_q, r_i)` names its indices as before. RFC-0011 rule 3 maps it to `Ã` with the tile's coordinates in layout order: low variables first, the column sub-point `(r_{i,lo} ‖ r_q ‖ r_h)`, then `r_{i,hi}` and the tile's base bits. Relations name indices, not variable positions, so none changes.

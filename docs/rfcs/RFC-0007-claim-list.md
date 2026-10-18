@@ -129,7 +129,7 @@ Before reading any proof message, the verifier runs these checks in order. The f
       - its gadget's preconditions hold, those of a split gadget among them;
       - a `SoftmaxRow`'s `Exp` table maps its last key to 0 ([RFC-0030](RFC-0030-masked-exponentials.md#range-analysis-and-validation)).
    3. The tables the lowering derives are the claim list's, id for id (`Table { table }`, the first id that differs). A lookup names a lookup table, never a `Rope` table ([RFC-0008](RFC-0008-logup-and-tables.md#table-kinds)): no lowering derives one for a lookup.
-6. Layout: commitment parameters are those the parameter set prescribes, and the advice layout derives and fits within the protocol's maximum matrix size (`Layout`). Its attention tiles take `log2 query_block` ([RFC-0034](RFC-0034-causal-blocks.md#causal-layout)), so `query_block` is a power of two.
+6. Layout: commitment parameters are those the parameter set prescribes, and the advice layout derives and fits within the protocol's maximum matrix size (`Layout`). Its attention tiles take `log2 query_block` ([RFC-0034](RFC-0034-causal-blocks.md#causal-layout)), so `query_block` is a power of two, and a row holds one key against a tile's queries and heads: `g·min(query_block, N_max) ≤ k` ([RFC-0046](RFC-0046-advice-segments.md#rows-too-short-for-a-key)).
 7. Scoring and anchor templates name supported variants, once they join the claim list ([RFC-0026](RFC-0026-claim-list-layout.md)) (`Template`).
 
 The derived constraint system has a canonical digest (`ConstraintSystemDigest`, computed by both the compiler and the verifier with independent code). It is not part of the protocol; CI compares the two digests on every conformance model to detect lowering divergence early.

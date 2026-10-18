@@ -666,6 +666,11 @@ All notable changes to the prover release train are recorded here: the crates un
     - a plan with one tile changed, removed, added or moved, or with another claim list, is refused;
     - the golden plans decode to the compiler's, and every proper prefix of their payload is cut short.
   - **Specification.** RFC-0007 step 6 states that `query_block` is a power of two. RFC-0041's plan check compiles for the plan's gadget policy, layout and parameter set. 03 §7 says where each artifact's golden vectors live.
+- RFC-0046, accepted, makes the advice layout's segments and short attention tiles exact ([#106](https://github.com/AbdelStark/tessera/issues/106)):
+  - **Segments.** The first `L mod S` segments hold `⌈L/S⌉` layers and the others `⌊L/S⌋`, in order. Segment 0 also holds the tokens and the prologue, and segment `S − 1` the epilogue and the tables. A segment's rows run up to the next segment's first tile, and an empty segment's column digests are `d_j[0]`.
+  - **Short query blocks.** RFC-0034's attention layout reads RFC-0041's `Q' = min(Q, N)` for `Q`.
+  - **Layout.** RFC-0007 step 6 refuses a claim list with `g·min(query_block, N_max) > k`, whose rows could not hold one key against a tile's queries.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

@@ -37,7 +37,7 @@ The verifier must locate every committed tensor from public data, so the layout 
 2. Tensors are allocated tile by tile, in the production order of [RFC-0041](RFC-0041-execution-plan.md#production-order) (node order, an attention node's tiles by KV head, then query block, the tables' multiplicities last), each at the next offset aligned to `2^{max(n_X, log2 k)}`. An attention tile's share of a tensor is allocated as a tensor of its own. Every tensor therefore occupies whole rows; tensors smaller than a row get one row.
 3. The advice polynomial `Ã` has `ν` variables; its matrix view has row index = high `ν − log2 k` bits and column index = low `log2 k` bits. A claim `X̃(r) = v` is the claim `Ã(r ‖ base_X) = v`, where `base_X` is the tensor's fixed row-offset bits. For a score tensor, `r` is taken in the order of rule 1.
 4. **Zero rows.** Rows that hold only zero padding or alignment gaps are public and are skipped: not encoded, not hashed, not opened. They cost nothing. So are a score tensor's rows that hold only masked positions, which are zero ([RFC-0034](RFC-0034-causal-blocks.md#zero-rows)).
-5. The rows are partitioned into `S` contiguous segments (public, default 8), aligned to layer boundaries, so that each GPU can commit its own segment ([RFC-0018](RFC-0018-gpu-prover-runtime.md#partitioning)).
+5. The rows are partitioned into `S` contiguous segments (public, default 8), aligned to layer boundaries, so that each GPU can commit its own segment ([RFC-0018](RFC-0018-gpu-prover-runtime.md#partitioning)). [RFC-0046](RFC-0046-advice-segments.md#segments) fixes the layers and rows each segment holds.
 
 ### Encoding
 
