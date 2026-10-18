@@ -52,6 +52,7 @@ pub struct ClaimList {                       // schema 0x0201, version 1
     pub arch: ArchSpec,                      // 03 §2
     pub profile: Profile,
     pub quant: PublicQuantSpec,              // RFC-0007, RFC-0025
+    pub silu_in_exponents: Vec<(u32, i8)>,   // each layer's Silu input exponent, sorted (RFC-0042)
     pub tables: Vec<TableSpec>,              // definitions and digests, sorted by TableId
     pub gadget_policy: GadgetPolicy,
     pub layout: CommitmentLayout,

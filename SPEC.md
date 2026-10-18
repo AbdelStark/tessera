@@ -82,6 +82,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0039](docs/rfcs/RFC-0039-statement-fields.md) | Statement fields: the payload of `Reject(StatementMismatch)`, one variant per check (amends 04, RFC-0007) | v0.3 |
 | [RFC-0040](docs/rfcs/RFC-0040-weight-commitment-artifacts.md) | Weight commitment artifacts: `WeightCommitmentPublic` and `WeightCommitmentState`, every weight's position, the verifier's matrix roots (amends RFC-0012, RFC-0019, RFC-0025, RFC-0026, 02, 03) | v0.3 |
 | [RFC-0041](docs/rfcs/RFC-0041-execution-plan.md) | Tiles and the execution plan: what each tile holds, the production order, the plan as claim list and tiles (amends RFC-0006, RFC-0011, RFC-0029, 03) | v0.3 |
+| [RFC-0042](docs/rfcs/RFC-0042-silu-exponents.md) | SiLU exponents in the claim list: each layer's `Silu` table determined by public data (amends RFC-0007, RFC-0026, 03) | v0.3 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 

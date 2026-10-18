@@ -613,6 +613,12 @@ All notable changes to the prover release train are recorded here: the crates un
   - A proof unit of `tessera-protocol/1` covers one request until #357 defines batches of several.
   - Amended: RFC-0006 'Tiling and the execution plan', RFC-0011 rule 2, RFC-0029 'The table set' and 03 §5.
 - `cargo xtask lint` rejects a merge-conflict marker in any file of the repository (07 §9). Markdown reads a marker as text, so one left in 03 §5's artifact catalog by a rebase had passed every other lint check before a codec test caught it in CI.
+- RFC-0042, accepted, puts each layer's `Silu` input exponent in the claim list ([#358](https://github.com/AbdelStark/tessera/issues/358)):
+  - **The defect.** The lowering shares a table among layers whose definitions are equal, and the claim list stated `in_exp` only in the table. Models with `in_exp = (a, b, a)` and `(a, b, b)` therefore had byte-identical claim lists, against INV-CL-3 and INV-DM-3.
+  - **`ClaimList.silu_in_exponents`**, after `quant`, holds one exponent per layer, sorted. Claim-list validation step 2 checks its shape, and step 5.3 checks each layer's table against it.
+  - **`tessera-compiler`** emits the field, and `PublicModel::of_claims` lowers a claim list from its own fields, as the verifier will. For every conformance model, that gives the graph and tables that lowering `D` gives.
+  - **`spec/vectors/claims/claim-lists.json`** is regenerated.
+  - Amended: RFC-0007 'Schema' and step 2, RFC-0026 'Schema' and 03 §2. RFC-0039's Non-Goals now say that `rms_eps_int` and `rsqrt_kappa` are stated constants, which validation does not derive from `rms_eps` (RFC-0023).
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

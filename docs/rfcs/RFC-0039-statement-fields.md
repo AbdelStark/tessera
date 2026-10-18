@@ -29,7 +29,7 @@
 ## Non-Goals
 
 - The payloads of `Malformed`, `ProofOfWork`, `Anchor` and `Params` (#353).
-- New rules. Every rule below is one that a document states or that `tessera-compiler` applies. Recomputing `rms_eps_int` and `rsqrt_kappa` from `rms_eps` is not yet one of them, though RFC-0005 and RFC-0023 define both exactly: that is #354, and its failure will be `Quantization`.
+- New rules. Every rule below is one that a document states or that `tessera-compiler` applies. `rms_eps_int` and `rsqrt_kappa` are constants `D` states. RFC-0005 and RFC-0023 give the quantizer's rule for them, which validation does not enforce: another value gives a valid `D` of lower precision ([RFC-0023](RFC-0023-norm-precision.md#proposed-design)).
 
 ## Proposed Design
 

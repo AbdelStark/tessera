@@ -29,6 +29,7 @@ pub fn claim_list(
         arch: model.arch.clone(),
         profile: model.profile,
         quant: model.quant.clone(),
+        silu_in_exponents: model.silu_in_exponents.to_vec(),
         tables: selection.tables.clone(),
         gadget_policy: *policy,
         layout,

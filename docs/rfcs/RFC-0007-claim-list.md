@@ -39,6 +39,7 @@ pub struct ClaimList {                       // schema 0x0201, version 1
     pub arch: ArchSpec,                      // 03 §2
     pub profile: Profile,                    // Servable | Minimal
     pub quant: PublicQuantSpec,
+    pub silu_in_exponents: Vec<(u32, i8)>,   // each layer's Silu input exponent, sorted (RFC-0042)
     pub tables: Vec<TableSpec>,              // definitions + digests, sorted by TableId
     pub gadget_policy: GadgetPolicy,
     pub layout: CommitmentLayout,
@@ -113,6 +114,7 @@ Before reading any proof message, the verifier runs these checks in order. The f
       - an affine site follows the Q, K, V, O, up or down projection, with a shift from 1 to 63 ([RFC-0025](RFC-0025-affine-sites.md#lowering));
       - a `pot` site has one to four classes, each from 1 to 63, and one class if it follows no weight;
       - `score_scales` holds one positive scale per layer, sorted;
+      - `silu_in_exponents` holds one exponent per layer, sorted ([RFC-0042](RFC-0042-silu-exponents.md));
       - `residual_bits` lies from 2 to 31;
       - the embedding's shift `s_e` into the residual keeps `127 · 2^{s_e} < 2^{residual_bits − 1}`;
       - `rms_eps_int ≥ 1` and `rsqrt_kappa ≤ 31`.

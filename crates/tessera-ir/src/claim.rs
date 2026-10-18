@@ -27,6 +27,10 @@ pub struct ClaimList {
     pub profile: Profile,
     /// The public quantization data (RFC-0007, RFC-0025).
     pub quant: PublicQuantSpec,
+    /// Each layer's `Silu` input exponent, sorted by layer (03 §2). Its table's specification
+    /// repeats it, but a table that several layers share does not say which layers read it
+    /// (RFC-0042).
+    pub silu_in_exponents: Vec<(u32, i8)>,
     /// Every table, its definition and digest, sorted by id (RFC-0008).
     pub tables: Vec<TableSpec>,
     /// How gadgets are sized.

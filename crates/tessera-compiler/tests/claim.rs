@@ -8,15 +8,21 @@
 //! - **One claim list per model.** Lowerings of one token and of the whole context give the same
 //!   claim list: the tables do not depend on the sequence's length.
 //! - **Canonical.** It decodes from its encoding and from its envelope to itself.
+//! - **Each layer's `Silu` table** (RFC-0042). Two models whose layers share their `Silu` tables
+//!   differently list the same tables. Their claim lists still differ, and each lowers, from its
+//!   own fields alone, to its model's graph, as every conformance model's does.
+
+mod common;
 
 use std::fs;
 use std::path::Path;
 
+use common::llama;
 use tessera_codec::{Ascii, DecodeLimits, decode, encode, envelope, schema};
 use tessera_compiler::{PublicModel, analyze, claim_list, lower, select};
 use tessera_ir::{
     AdviceLayoutParams, ClaimList, CommitmentLayout, GadgetPolicy, IntegerModel, ParamSetId,
-    WeightLayoutParams,
+    Profile, WeightLayoutParams,
 };
 
 /// `test-small/1`'s layout (RFC-0014 'Parameter sets').
@@ -56,7 +62,11 @@ fn models() -> Vec<(String, IntegerModel)> {
 
 /// The claim list of `model`, lowered over `positions` tokens, for `test-small/1`.
 fn emitted(model: &IntegerModel, positions: u32) -> ClaimList {
-    let public = PublicModel::of(model);
+    of_public(PublicModel::of(model), positions)
+}
+
+/// The claim list of the public part `public`, lowered over `positions` tokens.
+fn of_public(public: PublicModel<'_>, positions: u32) -> ClaimList {
     let lowering = lower(public, positions).expect("the model lowers");
     let ranges = analyze(&lowering.graph, &lowering.tables).expect("ranges");
     let policy = GadgetPolicy::default();
@@ -96,6 +106,19 @@ fn one_claim_list_serves_every_sequence_length() {
 }
 
 #[test]
+fn a_claim_list_lowers_to_its_models_graph() {
+    for (name, model) in models() {
+        let claims = emitted(&model, 1);
+        for n in [1, 5, model.arch.max_context] {
+            let from_claims = lower(PublicModel::of_claims(&claims), n).expect("it lowers");
+            let from_model = lower(PublicModel::of(&model), n).expect("the model lowers");
+            assert_eq!(from_claims.graph, from_model.graph, "{name}, n = {n}");
+            assert_eq!(from_claims.tables, from_model.tables, "{name}, n = {n}");
+        }
+    }
+}
+
+#[test]
 fn the_claim_list_is_canonical() {
     for (name, model) in models() {
         let claims = emitted(&model, 1);
@@ -112,5 +135,45 @@ fn the_claim_list_is_canonical() {
             ids,
             (0..u32::try_from(ids.len()).expect("few")).collect::<Vec<_>>()
         );
+    }
+}
+
+#[test]
+fn the_claim_list_names_each_layers_silu_exponent() {
+    // Three layers alike but for their Silu input exponents: (a, b, a) shares layer 0's table at
+    // layer 2, and (a, b, b) layer 1's.
+    let (mut arch, quant, silu) = llama(Profile::Servable, 3, 256, 2, 1, 512);
+    // A short context keeps the RoPE table small.
+    arch.vocab = 300;
+    arch.max_context = 16;
+    let (a, b) = (silu[0].1, silu[0].1 - 1);
+    let claims = |exponents: [i8; 3]| {
+        let silu: Vec<(u32, i8)> = (0..3).zip(exponents).collect();
+        let public = PublicModel {
+            arch: &arch,
+            profile: Profile::Servable,
+            quant: &quant,
+            silu_in_exponents: &silu,
+        };
+        (of_public(public, 4), silu)
+    };
+    let (shared_first, first) = claims([a, b, a]);
+    let (shared_second, second) = claims([a, b, b]);
+    // The tables cannot tell the two apart (#358), so the claim list names the exponents.
+    assert_eq!(shared_first.tables, shared_second.tables);
+    assert_ne!(encode(&shared_first), encode(&shared_second));
+    for (claims, silu) in [(&shared_first, &first), (&shared_second, &second)] {
+        assert_eq!(&claims.silu_in_exponents, silu);
+        // From the claim list alone, as the verifier lowers it, the model's graph and tables.
+        let from_claims = lower(PublicModel::of_claims(claims), 4).expect("the claim list lowers");
+        let public = PublicModel {
+            arch: &arch,
+            profile: Profile::Servable,
+            quant: &quant,
+            silu_in_exponents: silu,
+        };
+        let from_model = lower(public, 4).expect("the model lowers");
+        assert_eq!(from_claims.graph, from_model.graph);
+        assert_eq!(from_claims.tables, from_model.tables);
     }
 }
