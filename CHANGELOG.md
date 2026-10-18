@@ -670,6 +670,10 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Segments.** The first `L mod S` segments hold `⌈L/S⌉` layers and the others `⌊L/S⌋`, in order. Segment 0 also holds the tokens and the prologue, and segment `S − 1` the epilogue and the tables. A segment's rows run up to the next segment's first tile, and an empty segment's column digests are `d_j[0]`.
   - **Short query blocks.** RFC-0034's attention layout reads RFC-0041's `Q' = min(Q, N)` for `Q`.
   - **Layout.** RFC-0007 step 6 refuses a claim list with `g·min(query_block, N_max) > k`, whose rows could not hold one key against a tile's queries.
+- RFC-0045, accepted, lays out the leaf stage's lookups and splits their claims ([#367](https://github.com/AbdelStark/tessera/issues/367)):
+  - **Blocks.** An instance's lookup column holds one block per lookup of a site at a layer, over its tensor's padded shape. Blocks are aligned and sorted by size, and row 0's tuple pads the column to a power of two.
+  - **Leaves.** The tree levels front-pad, so trees of different heights agree only on their lowest and highest coordinates. The lookup tree holds its column with bits 1 to `h − 1` reversed. Every block of `2^k` entries, in every instance, then lies at `P[0..k]`, with `P` the last tree level's challenges in reverse order. `tessera-logup` and the tree levels are unchanged.
+  - **The split.** Under `stage/0/split`, the prover sends each tensor's value at its point, per site and layer. The verifier checks each instance's key and value claims against them (`Reject(Sumcheck { stage: 0, round: 0 })`). The values are RFC-0037's per-layer claims, which stage 1 stacks under its layer point.
 
 ### Changed
 

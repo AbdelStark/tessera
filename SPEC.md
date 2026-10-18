@@ -85,6 +85,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0042](docs/rfcs/RFC-0042-silu-exponents.md) | SiLU exponents in the claim list: each layer's `Silu` table determined by public data (amends RFC-0007, RFC-0026, 03) | v0.3 |
 | [RFC-0043](docs/rfcs/RFC-0043-rejection-payloads.md) | Rejection payloads: `ArtifactKind`, `PowPhase`, `AnchorFailure` and `ParamSetId`; the anchor's and the audit sample's rejections (amends 04, RFC-0015, RFC-0016, RFC-0019, RFC-0039) | v0.3 |
 | [RFC-0044](docs/rfcs/RFC-0044-lowering-nodes.md) | The Llama lowering, node by node: every input, node, constant, shift-class set and table by id (amends RFC-0006) | v0.3 |
+| [RFC-0045](docs/rfcs/RFC-0045-leaf-layout.md) | The leaf layout: each LogUp instance's blocks, its lookup tree's leaf order, one point per block size, and the leaf stage's split values (amends RFC-0008, RFC-0037) | v0.3 |
 | [RFC-0046](docs/rfcs/RFC-0046-advice-segments.md) | Advice segments and short query blocks: the layers and rows each segment holds, an attention tile's `Q' = min(Q, N)` queries, and the refusal of rows too short for a key (amends RFC-0007, RFC-0011, RFC-0034) | v0.3 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.

@@ -146,7 +146,7 @@ The verifier computes a claim's public atoms and moves them to its value. The cl
 - **What is sent.** The prover sends one value for each virtual atom, and one for each group of committed atoms of one commitment at one point, in atom order. A group takes the place of its first atom.
   - **Where.** The values go under `stage/{k}/split`, after the stage's final evaluations, as one `Vec<Fp2>` covering every claim the stage splits, claim by claim.
   - **The order of claims.** A reduction stage's claims come by instance, then by evaluation. The leaf stage's come by site, then by layer, as 'The layer point' orders them.
-  - **The leaf stage** is stage 0, and its values follow `logup/values`.
+  - **The leaf stage** is stage 0, and its values follow `logup/values`: one per tensor, site and layer ([RFC-0045](RFC-0045-leaf-layout.md#the-split)).
 - **The check.** The verifier checks that the values, weighted by their coefficients, give the claim's value. A mismatch is `Reject(Sumcheck { stage: k, round: n_k })`, with `n_k` the stage's number of rounds (0 for the leaf stage).
 - **The result.** Each value becomes one claim: a virtual atom's for the next stage, a committed group's for the pool.
 - **Example.** The residual key's claim `acc + 2^r·X_in` at `(r ‖ ρ)` splits into `acc`'s virtual atom and `X_in`'s committed group: two values.
@@ -164,7 +164,7 @@ The verifier computes a claim's public atoms and moves them to its value. The cl
 
 ### The layer point
 
-The leaf stage leaves its gadgets' claims one layer at a time. Each lookup site's layers sit at one point `r_s` (the leaf layout, with the gadgets of #118).
+The leaf stage leaves its gadgets' claims one layer at a time. Each lookup site's layers sit at one point `r_s`: `P[0..k]` for its tensors of `2^k` entries ([RFC-0045](RFC-0045-leaf-layout.md#the-leaf-point)).
 
 - **Its claims on the graph.**
   - The leaf stage leaves one claim on each input of each gadget, at a point of its site, and one on the logits, which the scoring certificates read (RFC-0017).
