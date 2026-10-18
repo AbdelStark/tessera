@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The one error type of the crate (04 §1): why a session refused a message or cannot go on
-//! (RFC-0036 'The prover's live session', 'The verifier's live session', 'Errors').
+//! (RFC-0036 'The prover's live session', 'The verifier's live session', 'Errors'), why a
+//! parameter set is not accepted (RFC-0014 'Parameter sets', INV-PROTO-5), and why the soundness
+//! calculator cannot bound a statement's sizes (RFC-0014 'Soundness calculator').
 //!
-//! An error names messages, matrices, counts, positions and lengths, all public (05 §3). None
-//! holds a share, a seed, or anything a message carries: a refused query is named by its
+//! An error names messages, matrices, counts, positions, lengths and rules, all public (05 §3).
+//! None holds a share, a seed, or anything a message carries: a refused query is named by its
 //! position, not its index, as the queries' debug form shows counts only.
 
 use core::fmt;
@@ -81,13 +83,18 @@ impl fmt::Display for QueryFault {
     }
 }
 
-/// Why a session refused a message, or cannot go on.
+/// Why a session refused a message, or cannot go on; why a parameter set is refused; why sizes
+/// cannot be bounded.
 ///
 /// - A prover's session refuses a message with [`OutOfOrder`](Self::OutOfOrder),
 ///   [`OtherSession`](Self::OtherSession), [`Reuse`](Self::Reuse) or [`Queries`](Self::Queries),
 ///   and is left as it was. [`CoinToss`](Self::CoinToss) aborts it.
 /// - A verifier's session ends on any error, `Inconclusive` with its code: a message out of
 ///   order or of another session, another [`Version`](Self::Version), or a failure of its own.
+/// - [`ParamSet::accept`](crate::ParamSet::accept) refuses an identifier with
+///   [`UnknownParams`](Self::UnknownParams) or [`TestParams`](Self::TestParams), and
+///   [`SoundnessReport::new`](crate::SoundnessReport::new) refuses sizes with
+///   [`Sizes`](Self::Sizes): each a configuration the caller chose (`ERR-USAGE`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProtocolError {
     /// A message the session's state does not expect (`ERR-PROTO-ORDER`).
@@ -123,6 +130,18 @@ pub enum ProtocolError {
         /// The rule broken.
         rule: &'static str,
     },
+    /// An identifier that names none of RFC-0014's parameter sets, such as another version of
+    /// one (`ERR-USAGE`).
+    UnknownParams,
+    /// `test-small/1`, which certifies nothing: only a build with the `test-params` feature
+    /// accepts it, and no release build has it (RFC-0001 'Cargo features', `ERR-USAGE`).
+    TestParams,
+    /// Statement sizes or parameters the soundness calculator cannot bound, such as a codeword
+    /// past `2^32` symbols or a count of queries past `2^16` (`ERR-USAGE`).
+    Sizes {
+        /// The rule broken.
+        rule: &'static str,
+    },
 }
 
 impl ProtocolError {
@@ -136,6 +155,7 @@ impl ProtocolError {
             Self::Queries(_) => ErrorCode::ProtoQueries,
             Self::Randomness => ErrorCode::ResIo,
             Self::Internal { .. } => ErrorCode::Internal,
+            Self::UnknownParams | Self::TestParams | Self::Sizes { .. } => ErrorCode::Usage,
         }
     }
 }
@@ -158,6 +178,13 @@ impl fmt::Display for ProtocolError {
             Self::Queries(fault) => write!(f, "column queries refused: {fault}"),
             Self::Randomness => f.write_str("the operating system's random source failed"),
             Self::Internal { rule } => write!(f, "a rule of the session fails: {rule}"),
+            Self::UnknownParams => f.write_str("the identifier names none of RFC-0014's parameter sets"),
+            Self::TestParams => f.write_str(
+                "test-small/1 certifies nothing: only a build with the test-params feature accepts it",
+            ),
+            Self::Sizes { rule } => {
+                write!(f, "the soundness calculator cannot bound these sizes: {rule}")
+            }
         }
     }
 }
@@ -174,7 +201,11 @@ impl From<ProtocolError> for TesseraError {
             ProtocolError::Version { .. } => Some(MessageKind::Round1),
             ProtocolError::CoinToss | ProtocolError::Reuse => Some(MessageKind::SeedReveal),
             ProtocolError::Queries(_) => Some(MessageKind::ColumnQueries),
-            ProtocolError::Randomness | ProtocolError::Internal { .. } => None,
+            ProtocolError::Randomness
+            | ProtocolError::Internal { .. }
+            | ProtocolError::UnknownParams
+            | ProtocolError::TestParams
+            | ProtocolError::Sizes { .. } => None,
         };
         TesseraError::new(error.code()).with_context(PublicContext {
             schema: message.map(|message| message.schema().id),

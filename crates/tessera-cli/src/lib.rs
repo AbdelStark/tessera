@@ -20,9 +20,9 @@
 //! tessera recorder ref    --listen ADDR --log-dir DIR
 //! ```
 //!
-//! `tessera bench model` runs, in the `bench` module. Every other command checks its arguments
-//! and the envelope of each TCE artifact it reads (RFC-0003), then exits with `ERR-USAGE`, naming
-//! the issue that implements it.
+//! `tessera bench model` runs, in the `bench` module, and `tessera params check`, in the `params`
+//! module. Every other command checks its arguments and the envelope of each TCE artifact it
+//! reads (RFC-0003), then exits with `ERR-USAGE`, naming the issue that implements it.
 //!
 //! Every command prints its progress to stderr. With `--json` it prints one JSON object to
 //! stdout describing its result, or `{"command", "error": {"code", "message"}}` when it fails
@@ -39,6 +39,7 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 mod bench;
+mod params;
 
 use std::ffi::OsString;
 use std::fs::{self, File};
@@ -114,8 +115,8 @@ enum Audit {
 
 #[derive(Debug, Subcommand)]
 enum Params {
-    /// Reports a parameter set's soundness.
-    Check(CheckArgs),
+    /// Reports a parameter set's soundness, every row of RFC-0014's table.
+    Check(params::CheckArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -232,19 +233,6 @@ struct PlanArgs {
     traffic: PathBuf,
     #[arg(long, value_name = "plan.tep")]
     plan: PathBuf,
-}
-
-/// `tessera params check`.
-#[derive(Debug, Args)]
-struct CheckArgs {
-    #[arg(long, value_name = "PARAMSET", value_parser = PARAM_SETS)]
-    params: String,
-    /// Lookups the soundness bound counts.
-    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
-    lookups: Option<u64>,
-    /// Rows of the largest table.
-    #[arg(long, value_name = "T", value_parser = clap::value_parser!(u64).range(1..))]
-    table_rows: Option<u64>,
 }
 
 /// `tessera bench unit-costs`.
@@ -431,7 +419,7 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<(), TesseraError>) {
             "audit plan",
             pending("audit plan", &[Input::new(&a.plan, &EXECUTION_PLAN)], 157),
         ),
-        Command::Params(Params::Check(_)) => ("params check", pending("params check", &[], 103)),
+        Command::Params(Params::Check(a)) => ("params check", params::check(a, cli.json)),
         Command::Bench(Bench::UnitCosts(_)) => {
             ("bench unit-costs", pending("bench unit-costs", &[], 49))
         }

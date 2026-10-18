@@ -161,7 +161,7 @@ All claims on committed advice are collected in a pool keyed by polynomial. A cl
 
 ### Soundness of the schedule
 
-For a stage with `n` rounds of degree `d` and `m` batched instances, the error is at most `(n·d + m)/|Fp2|`. Each tree level contributes likewise, with `m` its instances. At a level with fraction trees, the combination `Σ_i γ^i·c_i` is a polynomial of total degree at most `m` in `γ` and `λ`, so `λ` adds nothing to that bound. Each forest's root claim adds at most `s/|Fp2|`. The total over all stages and levels is summed by the soundness calculator (RFC-0014); for 405B at 16K tokens it is below 2^-110.
+For a stage with `n` rounds of degree `d` and `m` batched instances, the error is at most `(n·d + m)/|Fp2|`. Each tree level contributes `(n·d + m + 1)/|Fp2|`, with `m` its instances: the line challenge `ρ` that joins each instance's two evaluations into one claim adds 1, since two distinct lines agree at one point at most. At a level with fraction trees, the combination `Σ_i γ^i·c_i` is a polynomial of total degree at most `m` in `γ` and `λ`, so `λ` adds nothing to that bound. Each forest's root claim adds at most `s/|Fp2|`. The total over all stages and levels is summed by the soundness calculator (RFC-0014); for 405B at 16K tokens it is below 2^-110.
 
 ### Invariants
 

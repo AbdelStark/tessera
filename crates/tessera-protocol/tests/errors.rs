@@ -65,6 +65,14 @@ fn cases() -> Vec<(ProtocolError, ErrorCode, Option<u16>)> {
             ErrorCode::Internal,
             None,
         ),
+        // A parameter set or sizes the caller chose: configuration (04 §3).
+        (ProtocolError::UnknownParams, ErrorCode::Usage, None),
+        (ProtocolError::TestParams, ErrorCode::Usage, None),
+        (
+            ProtocolError::Sizes { rule: "a rule" },
+            ErrorCode::Usage,
+            None,
+        ),
     ]);
     cases
 }
@@ -79,7 +87,10 @@ fn covered(error: ProtocolError) {
         | ProtocolError::Reuse
         | ProtocolError::Queries(_)
         | ProtocolError::Randomness
-        | ProtocolError::Internal { .. } => {}
+        | ProtocolError::Internal { .. }
+        | ProtocolError::UnknownParams
+        | ProtocolError::TestParams
+        | ProtocolError::Sizes { .. } => {}
     }
 }
 
@@ -99,11 +110,12 @@ fn every_error_crosses_with_its_code_and_its_schema() {
             "{error:?}"
         );
         assert!(crossed.source.is_none(), "{error:?}");
-        // 04 §3's exit codes: a second seed for one Round1 is an internal violation, 70.
-        let exit = if code == ErrorCode::ProtoReuse || code == ErrorCode::Internal {
-            70
-        } else {
-            20
+        // 04 §3's exit codes: a second seed for one Round1 is an internal violation, 70, and a
+        // configuration a usage error, 64.
+        let exit = match code {
+            ErrorCode::ProtoReuse | ErrorCode::Internal => 70,
+            ErrorCode::Usage => 64,
+            _ => 20,
         };
         assert_eq!(crossed.exit_code(), exit, "{error:?}");
     }
