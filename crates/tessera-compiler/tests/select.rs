@@ -6,7 +6,8 @@
 //!   `Requant1`, `RequantSplit`, `RequantSplit` and `ERR-COMPILE-RANGE`. A table of several
 //!   classes spends their index bits first.
 //! - **Too wide for the split.** A key whose split would pass a class's rounding bit, or whose
-//!   low part would not fit a table, takes `RequantWide`, whose five tables must fit `B_max`.
+//!   low part would not fit a table, takes `RequantWide`, whose five tables must fit `B_max`. So
+//!   does a key of `n` classes with `n·2^b ≥ P`, four classes at 62 bits (RFC-0009 Lemma 2).
 //! - **The tables compute the requantization.** The split's two lookups and the wide gadget's five
 //!   return `rq(z, r_c, lo, hi)` on random keys of every width and class, ends included.
 //! - **Sizing.** A lookup's table holds at most `2^{B_max}` rows, and `B_max` lies in `[1, 32]`.
@@ -282,6 +283,48 @@ fn a_split_keys_low_part_past_b_max_takes_requant_wide() {
             ]
         )
     );
+}
+
+#[test]
+fn a_split_whose_packed_keys_reach_p_takes_requant_wide() {
+    // RFC-0009 Lemma 2 needs n·2^b < P. Four classes at 62 bits, 4·2^62 = 2^64 > P, would split
+    // at s = 32 inside Lemma 2's bounds on s, but take RequantWide (RFC-0024):
+    // s = min(33 − 1, 32) = 32, t = (36 − 32) + ⌈log2 128⌉ = 11, k = 62 − 32 − 11 = 19.
+    let default = GadgetPolicy::default();
+    let selection = selected(&requant(62, &[33, 34, 35, 36]), &[], &default).expect("selects");
+    assert_eq!(
+        wide_tables(&selection, selection.gadgets[0].1),
+        (
+            32,
+            11,
+            vec![
+                range(32),
+                range(11),
+                range(19),
+                rq(20, &[1], -2, 1),
+                rq(13, &[1, 2, 3, 4], -128, 127)
+            ]
+        )
+    );
+    // Below P, the split keeps RFC-0028's balanced point, ⌈(b + 2)/2⌉ = 32 clamped to
+    // [b + 2 − 32, 32]: three classes at 62 bits, 3·2^62, and four at 61, 2^63.
+    for (b, shifts) in [(62u32, &[33u8, 34, 35][..]), (61, &[33, 34, 35, 36][..])] {
+        let selection = selected(&requant(b, shifts), &[], &default).expect("selects");
+        let Gadget::RequantSplit {
+            split: 32,
+            low,
+            high,
+        } = selection.gadgets[0].1
+        else {
+            panic!("RequantSplit at s = 32 expected for b = {b}, shifts {shifts:?}");
+        };
+        let reduced: Vec<u8> = shifts.iter().map(|r| r - 32).collect();
+        assert_eq!(kind(&selection, low), &range(32));
+        assert_eq!(
+            kind(&selection, high),
+            &rq(u8::try_from(b - 32).expect("small"), &reduced, -128, 127)
+        );
+    }
 }
 
 #[test]

@@ -7,17 +7,20 @@
 //! index takes `⌈log2 n⌉` more key bits in a table. The first that applies is cheapest:
 //!
 //! - **`Requant1`** reads `Requant { b, r_by_class, lo, hi }` once, when `b + ⌈log2 n⌉ ≤ B_max`.
-//! - **`RequantSplit`** sends the low `s = b + ⌈log2 n⌉ − B_max` bits of the offset key to
-//!   `Range { s }` and `⌊z / 2^s⌋` to `Requant { b − s, r_by_class − s, lo, hi }`. The nested floor
-//!   is the requantization only when `s ≤ r_c − 1` for every class, the halves are true integers
-//!   only when `b ≤ 62` (RFC-0009 Lemma 2), and the low part's table must fit too: `s ≤ B_max`.
-//! - **`RequantWide`** takes a key too wide for its shift (RFC-0024). Below every class's rounding
-//!   bit, `s = min(r_min − 1, B_max)` low bits go to `Range { s }`. The rest, `w = ⌊z / 2^s⌋`,
-//!   splits into a middle `h0` of `t` bits and a top `h1` of `k = b − s − t` bits, each checked by
-//!   a `Range` table. `t` is the least width past which every class saturates. The top part's
-//!   only effect is its saturation `g = clamp(h1, −2, 1)`, read from `Requant { k + 1, [1], −2,
-//!   1 }` at the key `2·h1`, so `Requant { t + 2, r_by_class − s, lo, hi }` of `h0 + 2^t · g` is
-//!   the output. Its keys are true integers when `b ≤ 62`, and its tables must fit `B_max`.
+//! - **`RequantSplit`** sends the low `s` bits of the offset key to `Range { s }` and `⌊z / 2^s⌋`
+//!   to `Requant { b − s, r_by_class − s, lo, hi }`, from `s = b + ⌈log2 n⌉ − B_max` at least, at
+//!   the point that balances the two tables (RFC-0028). The nested floor is the requantization
+//!   only when `s ≤ r_c − 1` for every class, the halves are true integers only when `b ≤ 62`,
+//!   the low part's table must fit too, `s ≤ B_max`, and the low part is unique only when
+//!   `n·2^b < P` (RFC-0009 Lemma 2).
+//! - **`RequantWide`** takes a key the split cannot (RFC-0024): one too wide for its shift, or of
+//!   four classes at 62 bits, where `n·2^b ≥ P`. Below every class's rounding bit,
+//!   `s = min(r_min − 1, B_max)` low bits go to `Range { s }`. The rest, `w = ⌊z / 2^s⌋`, splits
+//!   into a middle `h0` of `t` bits and a top `h1` of `k = b − s − t` bits, each checked by a
+//!   `Range` table. `t` is the least width past which every class saturates. The top part's only
+//!   effect is its saturation `g = clamp(h1, −2, 1)`, read from `Requant { k + 1, [1], −2, 1 }` at
+//!   the key `2·h1`, so `Requant { t + 2, r_by_class − s, lo, hi }` of `h0 + 2^t · g` is the
+//!   output. Its keys are true integers when `b ≤ 62`, and its tables must fit `B_max`.
 //!
 //! Any other key is `ERR-COMPILE-RANGE`. A `TableMap`, `Bitwise` or `SoftmaxRow` reads a table of
 //! its own, which must hold at most `2^{B_max}` rows, since those lookups have no split.
@@ -29,10 +32,14 @@
 use tessera_ir::{GadgetId, GadgetPolicy, Graph, Node, NodeId, Op, TableId};
 use tessera_tables::{GeneratedTable, Table, TableKind, TableSpec};
 
-use crate::{CompileError, Range, Ranges};
+use crate::{CompileError, HALF_FIELD, Range, Ranges};
 
 /// The bound of RFC-0009 Lemma 2 on a split key: both halves stay true integers.
 const SPLIT_KEY_BITS: u32 = 62;
+
+/// The Goldilocks prime `P = 2^64 − 2^32 + 1`, which bounds a split key of `n` classes:
+/// `n·2^b < P` (RFC-0009 Lemma 2).
+const PRIME: u128 = (2 * HALF_FIELD + 1) as u128;
 
 /// The gadget of a node (RFC-0009).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -174,7 +181,8 @@ impl Selector<'_> {
         }))
     }
 
-    /// `Requant1` or `RequantSplit` for the key of `node`, by its width.
+    /// `Requant1`, `RequantSplit` or `RequantWide` for the key of `node`, by its width, its
+    /// shifts and its number of classes.
     fn requant(
         &mut self,
         node: &Node,
@@ -224,7 +232,12 @@ impl Selector<'_> {
         let fits = b + class_bits - self.max;
         let least = u32::from(shifts.iter().copied().min().unwrap_or(1));
         let most = (least - 1).min(self.max);
-        if fits > most {
+        // Lemma 2 also needs `n·2^b < P`, whatever the split point: `z_lo + 2^s·j` and
+        // `z_off + 2^b·c` lie in `[0, n·2^b)`, and must not differ by `P`. Of keys of at most 62
+        // bits, it excludes four classes at 62. `RequantWide` takes them: its class term reads
+        // only values its lookups pin (RFC-0024 Lemma 11).
+        let packed = (shifts.len() as u128) << b;
+        if fits > most || packed >= PRIME {
             return self.wide(node, b, class_bits, &shifts, lo, hi);
         }
         // RFC-0028: the balanced point, which minimizes the two tables' rows,
@@ -253,7 +266,8 @@ impl Selector<'_> {
         })
     }
 
-    /// `RequantWide` for a key of `b ≤ 62` bits that `RequantSplit` cannot take (RFC-0024).
+    /// `RequantWide` for a key of `b ≤ 62` bits that `RequantSplit` cannot take (RFC-0024): its
+    /// split points are none, or its `n·2^b` reaches `P`.
     fn wide(
         &mut self,
         node: &Node,
@@ -283,9 +297,10 @@ impl Selector<'_> {
                 "a wide key's reduced table fits 2^{B_max} rows: t + 2 + ⌈log2 n⌉ ≤ B_max",
             ));
         }
-        // At least 3: the split failed `s' ≤ r_min − 1` or `s' ≤ B_max` for `s' = b + ⌈log2 n⌉ −
-        // B_max`, and `t ≤ B_max − 2 − ⌈log2 n⌉` (RFC-0024). Saturating, a mistake reaches the
-        // generator's refusal of a `Range` of 0 bits.
+        // At least 3 when the split failed `s' ≤ r_min − 1` or `s' ≤ B_max`, where
+        // `s' = b + ⌈log2 n⌉ − B_max`, since `t ≤ B_max − 2 − ⌈log2 n⌉` (RFC-0024). At least 2
+        // when only `n·2^b < P` failed: then `n = 4`, `b = 62`, `B_max = 32`, `s = 32` and
+        // `t ≤ 28`. Saturating, a mistake reaches the generator's refusal of a `Range` of 0 bits.
         let top = b.saturating_sub(split + middle);
         if top + 1 > self.max {
             return Err(refuse(

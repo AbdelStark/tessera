@@ -2,5 +2,104 @@
 
 //! Witness generation and constraint descriptions for the uniqueness gadgets and the anchor
 //! circuits (RFC-0009, RFC-0015, RFC-0017).
+//!
+//! A gadget pins a committed value to the unique result of a non-arithmetic operation, by lookups
+//! whose keys and values are affine in its input, its hidden class column, its committed tensors
+//! and constants (RFC-0009). This version holds the requantization and range gadgets:
+//!
+//! - [`Requant`]: `Requant1` and `RequantSplit` (RFC-0009 Lemmas 1 and 2, the split point of
+//!   RFC-0028) and `RequantWide` (RFC-0024 Lemma 11), built from the compiler's
+//!   [`Gadget`](tessera_compiler::Gadget) and the tables it names;
+//! - [`NonNeg`]: `v ∈ [0, 2^k)` by limbs (RFC-0009 Lemma 3).
+//!
+//! Each gives:
+//!
+//! - **its constraints**, [`Constraints`]: the committed tensors, the virtual values and the
+//!   lookups, each lookup's key and value an [`Affine`] form over [`Term`]s. The forms hold
+//!   element by element, so the same form turns a LogUp claim on a key or value column at a point
+//!   into claims on the input, the classes and the committed tensors there: what the leaf stage
+//!   and the verifier's final checks do with them (RFC-0037).
+//! - **its honest witness**, [`Witness`]: the committed tensors of the one assignment the lemma
+//!   admits.
+//!
+//! [`Lookups`] then evaluates the constraints on a witness into the LogUp prover's columns, one
+//! instance per table the gadget reads (RFC-0008 'Batching'), with the multiplicities an honest
+//! prover commits and the tables' rows, [`TableColumns`].
+//!
+//! ```
+//! use tessera_codec::Ascii;
+//! use tessera_compiler::Gadget;
+//! use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
+//! use tessera_gadgets::{Committed, Lookups, Requant, TableColumns, Term};
+//! use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
+//! use tessera_logup::{TreeId, prove_logup};
+//! use tessera_tables::{GeneratedTable, Table, TableId, TableKind};
+//!
+//! // Requant1 for keys of 4 signed bits, shifted by 2 and saturated to [−1, 1].
+//! let kind = TableKind::Requant { b: 4, r_by_class: vec![2], lo: -1, hi: 1 };
+//! let spec = GeneratedTable::new(TableId(0), kind)?.spec().clone();
+//! let gadget = Requant::new(&Gadget::Requant1 { table: TableId(0) }, &[spec])?;
+//! // Each key's output is ⌊(z + 2) / 4⌋, saturated.
+//! let keys = [-8, -3, -2, 1, 2, 5, 6, 7];
+//! let witness = gadget.witness(&keys, None)?;
+//! assert_eq!(witness.tensor(Committed::Y), Some(&[-1, -1, 0, 0, 1, 1, 1, 1][..]));
+//!
+//! // The one lookup is (z + 2^3, y): one term on the input, the constant 8.
+//! let constraints = gadget.constraints::<Goldilocks>();
+//! let key = &constraints.lookups[0].key;
+//! assert_eq!(key.constant, Goldilocks::from_u64_reduced(8));
+//! assert_eq!(key.terms, [(Goldilocks::ONE, Term::Input)]);
+//!
+//! // Its LogUp instance, with the multiplicities an honest prover commits.
+//! let lookups = Lookups::new(&constraints, &keys, None, &witness)?;
+//! let tables = gadget
+//!     .tables()
+//!     .into_iter()
+//!     .map(TableColumns::new)
+//!     .collect::<Result<Vec<_>, _>>()?;
+//! let multiplicities = lookups.multiplicities(&tables)?;
+//! let instances = lookups.instances(&tables, &multiplicities)?;
+//! let context = SessionContext {
+//!     protocol: Ascii::new("tessera-protocol/1").expect("ASCII"),
+//!     mode: Mode::NonInteractive,
+//!     params: ParamSetId(Ascii::new("test-small/1").expect("ASCII")),
+//!     statement_digest: [0; 32],
+//!     session_id: [0; 16],
+//! };
+//! let mut transcript = Transcript::new(&context);
+//! let proven = prove_logup::<GoldilocksExt2, _>(
+//!     &mut transcript,
+//!     &instances,
+//!     &[],
+//!     &TreeId::paired(instances.len()),
+//! )?;
+//! assert_eq!(proven.claims().len(), 1);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! # Secret-class data
+//!
+//! A gadget's input, its classes, its committed tensors and every column computed from them are
+//! secret-class (05 §3). The input and the classes are lent to [`Requant::witness`],
+//! [`NonNeg::witness`] and [`Lookups::new`] for the call. What they compute lives in
+//! `SecretBuf`s, which clear their memory (OBS-6), and the debug forms show shapes only. Control
+//! flow depends on public data only (INV-ARCH-2): an input outside the gadget's domain, the one
+//! outcome that depends on the values, is reported after every element is computed. Errors carry
+//! table identifiers, column names, lengths and rules, never a value or the position of the
+//! element that failed.
 
 #![forbid(unsafe_code)]
+
+mod constraints;
+mod error;
+mod lookups;
+mod non_neg;
+mod requant;
+mod witness;
+
+pub use constraints::{Affine, Committed, Constraints, Lookup, Term, Virtual};
+pub use error::{Column, GadgetError};
+pub use lookups::{Group, Lookups, TableColumns};
+pub use non_neg::NonNeg;
+pub use requant::Requant;
+pub use witness::Witness;

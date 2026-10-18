@@ -602,6 +602,21 @@ dependencies = [
 [[package]]
 name = "tessera-gadgets"
 version = "0.1.0"
+dependencies = [
+ "tessera-codec",
+ "tessera-compiler",
+ "tessera-field",
+ "tessera-hash",
+ "tessera-ir",
+ "tessera-logup",
+ "tessera-poly",
+ "tessera-tables",
+ "tv-codec",
+ "tv-core",
+ "tv-field",
+ "tv-hash",
+ "tv-tables",
+]
 
 [[package]]
 name = "tessera-gpu"

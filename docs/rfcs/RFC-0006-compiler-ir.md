@@ -125,7 +125,7 @@ A `Requant`'s gadget depends on its key's signed width `b`, from range analysis,
 | Condition | Gadget | Tables | Cost per element |
 |---|---|---|---|
 | `b + ⌈log2 n⌉ ≤ B_max` | `Requant1` | `Requant { b, r_c, lo, hi }` | 1 commitment, 1 lookup |
-| otherwise, with `b ≤ 62` and `b + ⌈log2 n⌉ − B_max ≤ min(r_min − 1, B_max)`: `s = clamp(⌈(b + ⌈log2 n⌉)/2⌉, b + ⌈log2 n⌉ − B_max, min(r_min − 1, B_max))` ([RFC-0028](RFC-0028-balanced-split.md)) | `RequantSplit` with split point `s` | `Range { s }`, `Requant { b − s, r_c − s, lo, hi }` | 2 commitments, 2 lookups |
+| otherwise, with `b ≤ 62`, `n · 2^b < P` and `b + ⌈log2 n⌉ − B_max ≤ min(r_min − 1, B_max)`: `s = clamp(⌈(b + ⌈log2 n⌉)/2⌉, b + ⌈log2 n⌉ − B_max, min(r_min − 1, B_max))` ([RFC-0028](RFC-0028-balanced-split.md)) | `RequantSplit` with split point `s` | `Range { s }`, `Requant { b − s, r_c − s, lo, hi }` | 2 commitments, 2 lookups |
 | otherwise, with `b ≤ 62`, `t + 2 + ⌈log2 n⌉ ≤ B_max` and `k + 1 ≤ B_max` | `RequantWide` with low part `s` and middle part `t` | `Range { s }` when `s ≥ 1`, `Range { t }`, `Range { k }`, `Requant { k + 1, [1], −2, 1 }`, `Requant { t + 2, r_c − s, lo, hi }` | 4 commitments, 5 lookups |
 | otherwise | `ERR-COMPILE-RANGE` | — | — |
 
@@ -134,11 +134,12 @@ The split's conditions come from RFC-0009 Lemma 2:
 - the high part's table fits: `s ≥ b + ⌈log2 n⌉ − B_max`;
 - the low part's table fits: `s ≤ B_max`;
 - the halves are true integers: `b ≤ 62`;
+- the low part is unique: `n · 2^b < P`, since the lemma's two sides lie in `[0, n · 2^b)` and must not differ by `P`;
 - the nested floor is the requantization: `s ≤ r_c − 1`, since `2^{r_c − 1}` must be a multiple of `2^s`.
 
 Between these bounds the split takes the point that balances the two tables' rows, `2^s + 2^{b + ⌈log2 n⌉ − s}`, the extra bit in `Range { s }` on a tie ([RFC-0028](RFC-0028-balanced-split.md)).
 
-A key the split cannot take, because the split would pass the least shift's rounding bit or its low part would not fit, takes `RequantWide` ([RFC-0024](RFC-0024-wide-requantization.md)). It has three parts:
+A key the split cannot take, because the split would pass the least shift's rounding bit, its low part would not fit, or `n · 2^b ≥ P`, takes `RequantWide` ([RFC-0024](RFC-0024-wide-requantization.md)). Of keys of at most 62 bits, `n · 2^b ≥ P` holds only for four classes at 62 bits, whatever the split point. `RequantWide`'s class term reads only values its lookups pin, so it takes them (RFC-0024 Lemma 11). It has three parts:
 
 - a low part of `s = min(r_min − 1, B_max)` bits, below every class's rounding bit;
 - a middle part of `t = (r_max − s) + ⌈log2 M⌉` bits, `M = max(|lo|, |hi|, 1)`, past which every class saturates;
@@ -244,7 +245,7 @@ v0.2 delivers IR, range analysis, gadget selection, Llama lowering and the commi
 ## Testing Strategy
 
 - Range soundness: the integer engine runs 10^4 random and 10^3 adversarial inputs (maximal-magnitude activations, all-equal scores, extreme positions) on each conformance model; every observed value lies within its declared range.
-- Gadget selection: synthetic nodes at `b = B_max`, `B_max + 1`, `2·B_max − 2`, `2·B_max − 1` select `Requant1`, `RequantSplit`, `RequantSplit`, `ERR-COMPILE-RANGE`.
+- Gadget selection: synthetic nodes at `b = B_max`, `B_max + 1`, `2·B_max − 2`, `2·B_max − 1` select `Requant1`, `RequantSplit`, `RequantSplit`, `ERR-COMPILE-RANGE`. At `2·B_max − 2 = 62` bits with shifts above 32, three classes split and four take `RequantWide`, since `4 · 2^62 > P`.
 - Relational fact: a test removes the softmax fact and checks that the O-projection key range grows to the product bound.
 - Lowering: seeded tiny models are lowered in both profiles, with grouped-query attention and sites of one to four classes. An exact interpreter of the IR runs each graph to the logits of an independent token-by-token implementation of RFC-0005's semantics, and every value stays inside its tensor's range. Llama-3.1 8B's and 405B's shapes lower from their public part alone.
 - Determinism: compiling twice yields identical claim-list and plan bytes.
