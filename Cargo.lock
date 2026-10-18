@@ -672,6 +672,17 @@ dependencies = [
 [[package]]
 name = "tessera-protocol"
 version = "0.1.0"
+dependencies = [
+ "allocation-counter",
+ "getrandom 0.4.3",
+ "proptest",
+ "serde_json",
+ "tessera-codec",
+ "tessera-field",
+ "tessera-hash",
+ "tessera-ir",
+ "tessera-sumcheck",
+]
 
 [[package]]
 name = "tessera-prover"

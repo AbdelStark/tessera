@@ -145,7 +145,7 @@ The claims after a forest's last level are the leaf claims the next stage consum
 
 ```rust
 pub struct SumcheckProof { pub rounds: Vec<Vec<Fp2>>, pub final_evals: Vec<Fp2> }
-pub struct StageProof { pub stage: StageId, pub sumcheck: SumcheckProof }
+pub struct StageProof { pub stage: StageId, pub sumcheck: SumcheckProof, pub splits: Vec<Fp2> }  // splits: RFC-0037 'Splits'
 pub struct Claim { pub poly: PolyRef, pub point: Vec<Fp2>, pub value: Fp2 }
 
 pub fn derive_schedule(cs: &ConstraintSystem) -> StageSchedule;    // prover and verifier each implement this

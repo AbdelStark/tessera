@@ -85,7 +85,7 @@ Checks run in this order; the first failure determines the verdict.
 12. Scoring: per-request `Û_r` and the batch total against `accept_bound` (`Reject(UBoundExceeded)`).
 13. Update the ledger (used blinding rows, opened weight columns, proven requests) and return `Accept(report)`.
 
-In live mode, steps 1–6 complete before `SeedReveal` is sent, steps 7–9 before `ColumnQueries`, and steps 10–13 after `Round3Response`.
+In live mode, steps 1–6 complete before `SeedReveal` is sent and steps 7–9 before `ColumnQueries`; step 10 draws the queries `ColumnQueries` carries, and steps 11–13 run after `Round3Response`.
 
 ### Ledger
 

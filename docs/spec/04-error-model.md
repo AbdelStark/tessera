@@ -87,7 +87,7 @@ Codes are stable tier-A identifiers ([02 §1](02-public-api.md#1-stability-tiers
 | `ERR-PROTO-QUERIES` | Protocol | Column queries for other matrices, of another count than `τ_A` or `τ_W`, or past the codeword ([RFC-0036](../rfcs/RFC-0036-protocol-messages.md#errors)) | Prover | 20 |
 | `ERR-RES-MEMORY` | Resource | Memory budget exceeded | Both | 20 |
 | `ERR-RES-DEVICE` | Resource | GPU driver or kernel error | Prover | 20 |
-| `ERR-RES-IO` | Resource | Filesystem or network I/O failure | Both | 20 |
+| `ERR-RES-IO` | Resource | Filesystem or network I/O failure, or a failure of the operating system's random source | Both | 20 |
 | `ERR-RES-TIME` | Resource | Wall-time limit exceeded, or a message missed the last slot of its release schedule | Both | 20 |
 | `ERR-INTERNAL` | Internal | Invariant violation (a bug) | Both | 70 |
 

@@ -16,6 +16,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | [`models/`](models/README.md) | Tiny conformance models with the residuals and logits `D` gives on their sequences, 07 §5 | its oracle |
 | [`pcs/`](pcs/README.md) | Openings of the advice commitment, RFC-0011 | its oracle |
 | [`poly/`](poly/README.md) | Multilinear extensions and their conventions, RFC-0010 | its oracle |
+| [`protocol/`](protocol/README.md) | The protocol messages of `tessera-protocol/1`, RFC-0036: encodings, envelopes, the coin toss and refused inputs | its oracle |
 | [`rfc6962/`](rfc6962/README.md) | RFC 6962 inclusion proofs, for RFC-0015's logs | copied unmodified from transparency-dev/merkle |
 | [`sha256/`](sha256/README.md) | NIST's SHA-256 test vectors (CAVP) | copied unmodified from NIST |
 | [`sumcheck/`](sumcheck/README.md) | Honest sumcheck proofs, RFC-0010 | its oracle |
