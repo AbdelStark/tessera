@@ -606,6 +606,12 @@ All notable changes to the prover release train are recorded here: the crates un
     - Every entry's position, the committed rows of padded layers and outputs, and `ChannelParams` with no live channel (`C = 1`) are defined.
     - A weight matrix's leaf is its single chain's last digest, with no `column-merge`, and the first epoch is 0.
   - Amended: RFC-0012 'Layout' and 'Budget state machine', RFC-0019 'Inputs' and steps 4 and 11, RFC-0025 'Hidden data', RFC-0026 'Schema', RFC-0039 'The checks' (the weight layout's check, `Layout`, at RFC-0019 step 4), 02 §2.2–2.3 and 03 §5. 00 RISK-4 now says `τ_W = 97`, as RFC-0014 computes it with the masks, rather than 95.
+- RFC-0041, accepted, defines the tiles of a sequence, their production order and the execution plan ([#101](https://github.com/AbdelStark/tessera/issues/101)):
+  - **Tiles** partition every committed value: the tokens, one tile per committing node, a layer's `SoftmaxRow` split by KV head and query block, and each lookup table's multiplicities.
+  - **The production order**, which the advice layout follows: node order, an attention node's tiles by KV head, then query block, and the tables last by id. Within a tile, the node's outputs come first, then its gadget's values.
+  - **`ExecutionPlan`** (`0x0202`) holds the claim list and one sequence's tiles, which do not depend on its length. It holds no row ranges, which are the layout's, no stage membership, which is derived, and no devices, which are assigned at prove time.
+  - A proof unit of `tessera-protocol/1` covers one request until #357 defines batches of several.
+  - Amended: RFC-0006 'Tiling and the execution plan', RFC-0011 rule 2, RFC-0029 'The table set' and 03 §5.
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

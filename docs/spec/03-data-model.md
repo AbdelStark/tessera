@@ -167,7 +167,7 @@ Protocol messages (`Round1`, `SeedCommit`, `ProverSeedShare`, `SeedReveal`, `Rou
 |---|---|---|---|---|---|
 | `IntegerModel` | `0x0101` | 1 | `.d` | Secret | RFC-0005 |
 | `ClaimList` | `0x0201` | 1 | `.tcl` | Public | RFC-0007 |
-| `ExecutionPlan` | `0x0202` | 1 | `.tep` | Private | RFC-0006 |
+| `ExecutionPlan` | `0x0202` | 1 | `.tep` | Private | RFC-0041 |
 | `WeightCommitmentPublic` | `0x0301` | 1 | `.twr` | Public | RFC-0040 |
 | `WeightCommitmentState` | `0x0302` | 1 | `.twc` | Secret | RFC-0040 |
 | `WeightLinkProof` | `0x0303` | 1 | `.twl` | Public | RFC-0012 |
