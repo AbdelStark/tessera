@@ -30,25 +30,28 @@ The source keeps VerInf's rule verbatim: "no prover freedom before the logits; d
 
 Notation: `L = 16` (limb width, `GadgetPolicy.limb_bits`); `B_max = 32`; "range check `v ∈ [0, 2^k)`" means one lookup into `Range { bits: k }` for `k ≤ B_max`; all named values are per instance; "virtual" values are expressions whose claims reduce through sumchecks (RFC-0010). A **true integer** has an exact range inside `(−(P−1)/2, (P−1)/2)` ([RFC-0006](RFC-0006-compiler-ir.md#range-analysis)).
 
-**Lemma 0 (small congruence).** If integers `a, b` satisfy `a ≡ b (mod P)` and `|a|, |b| < (P−1)/2`, then `a = b`. All lemmas below reduce to it by keeping every compared quantity below 2^62.
+**Lemma 0 (small congruence).** If integers `a, b` satisfy `a ≡ b (mod P)` and `|a|, |b| < (P−1)/2`, then `a = b`. The lemmas below reduce to it by keeping every compared quantity below 2^62, except Lemma 2. Its two sides lie in `[0, n · 2^b)`, and two integers in `[0, P)` that are congruent modulo `P` are equal, so it needs `n · 2^b < P`.
 
 ### Requant1
 
 Inputs: virtual key `z` (true integer, `b ≤ B_max` signed bits), hidden channel class `c` (committed with the weights, RFC-0012). Output: committed `y`.
 
-- Lookup: `(pack(c, z), y) ∈ Requant { b, classes, r_by_class, lo, hi }` with `pack(c, z) = (z + 2^{b−1}) + 2^b · c`.
+The requantization gadgets take `c` to be an integer in `[0, n)` for the site's `n` classes, its domain in [RFC-0006](RFC-0006-compiler-ir.md#range-analysis) 'Range analysis'. Lemmas 1, 2 and 11 rely on it. The lookups alone do not establish it: a class outside `[0, n)`, or a field element that is no integer, can reach the row of another key or class and pass with its output.
+
+- Lookup: `(pack(c, z), y) ∈ Requant { b, r_by_class, lo, hi }` with `pack(c, z) = (z + 2^{b−1}) + 2^b · c` ([RFC-0008](RFC-0008-logup-and-tables.md#table-specifications)). The class term is present only when the table has several classes.
 - Cost: 1 commitment, 1 lookup.
 - Lemma 1. Given `z` and `c`, exactly one `y` passes. Proof: the table is a function of its key.
 - The same gadget with a `Silu` table implements the SiLU activation.
 
 ### RequantSplit
 
-Inputs as `Requant1` with `B_max < b ≤ 2·B_max − 2` and shift `r`. Lemma 2 holds for any split point `s` with `b − B_max ≤ s ≤ min(r − 1, B_max)` (checked at claim-list validation); [RFC-0028](RFC-0028-balanced-split.md) fixes the one that balances the two tables, `s = clamp(⌈b/2⌉, b − B_max, min(r − 1, B_max))` for one class.
+Inputs as `Requant1` with `B_max < b ≤ 2·B_max − 2` and shift `r`. Lemma 2 holds for any split point `s` with `b − B_max ≤ s ≤ min(r − 1, B_max)`, when `n · 2^b < P` for the table's `n` classes (both checked at claim-list validation); [RFC-0028](RFC-0028-balanced-split.md) fixes the one that balances the two tables, `s = clamp(⌈b/2⌉, b − B_max, min(r − 1, B_max))` for one class. Of keys of at most 62 bits, `n · 2^b < P` excludes only four classes at `b = 62`, which take `RequantWide` ([RFC-0006](RFC-0006-compiler-ir.md#gadget-selection)).
 
 - Committed: `z_lo`, `y`. Virtual: `z_off = z + 2^{b−1}`; `z_hi = (z_off − z_lo) · (2^s)^{−1}`.
-- Lookups: `z_lo ∈ [0, 2^s)`; `(pack(c, z_hi), y) ∈ Requant { b − s, classes, r_by_class − s, lo, hi }` with the offset folded into the table's `lo`/`hi` bookkeeping.
+- Lookups: `z_lo ∈ [0, 2^s)`; `(pack(c, ⌊z / 2^s⌋), y) ∈ Requant { b − s, r_by_class − s, lo, hi }`. `z_hi = ⌊z_off / 2^s⌋` is already the offset encoding of `⌊z / 2^s⌋` in `b − s` bits, since `2^s` divides `2^{b−1}`, so the key is `z_hi + 2^{b−s} · c`: the packing adds only the class.
 - Cost: 2 commitments, 2 lookups.
-- Lemma 2. `z_lo = z_off mod 2^s` and `z_hi = floor(z_off / 2^s)` are the only values passing both lookups, and then `y = clamp(floor((z + 2^{r−1}) / 2^r), lo, hi)`. Proof: suppose `z_lo' ∈ [0, 2^s)` and `t = (z_off − z_lo')·2^{−s} mod P` lies in `[0, 2^{b−s})`. Then `2^s t ≡ z_off − z_lo' (mod P)`, both sides lie in `(−2^s, 2^b)` with `b ≤ 62`, so by Lemma 0 `2^s t = z_off − z_lo'`, forcing `z_lo' ≡ z_off (mod 2^s)`, hence `z_lo' = z_lo`. For the output: since `2^{r−1}` is a multiple of `2^s` when `s ≤ r − 1`, `floor((z_off + 2^{r−1}) / 2^r) = floor((z_hi + 2^{r−1−s}) / 2^{r−s})` by nested floor division, which is what the reduced table computes.
+- Lemma 2. Let `n · 2^b < P`, and let `c` be an integer in `[0, n)`, of shift `r`. Then `z_lo = z_off mod 2^s` is the only value passing both lookups, the high key is the row of `z_hi = floor(z_off / 2^s)` in class `c`, and `y = clamp(floor((z + 2^{r−1}) / 2^r), lo, hi)`. Proof: suppose `z_lo' ∈ [0, 2^s)` and the high key `(z_off − z_lo')·2^{−s} + 2^{b−s} · c` is the row `j ∈ [0, n · 2^{b−s})`. Then `z_lo' + 2^s · j ≡ z_off + 2^b · c (mod P)`. Both sides are integers in `[0, n · 2^b − 1]`, so they differ by less than `n · 2^b`, and `n · 2^b < P` makes them equal. Since `2^s` divides `2^b`, `z_lo' ≡ z_off (mod 2^s)`, hence `z_lo' = z_lo` and `j = z_hi + 2^{b−s} · c`. For the output: since `2^{r−1}` is a multiple of `2^s` when `s ≤ r − 1`, `floor((z_off + 2^{r−1}) / 2^r) = floor((z_hi + 2^{r−1−s}) / 2^{r−s})` by nested floor division, which is what the reduced table computes.
+  - *Why `n · 2^b < P`.* Four classes at `b = 62` break it, `4 · 2^62 = 2^64 > P`, and `2^32 · (2^32 − 1) = P − 1`. At the split `s = 32`, in class 0 at `z = −2^61 + d` with `0 ≤ d ≤ 2^32 − 2`, `z_lo' = d + 1` makes the high key `2^32 − 1`: the table's last row, class 3's largest key. It passes with that row's output: with shifts 33 to 36 and INT8 bounds, `127` where the true one is `−128`. Such a key takes `RequantWide`, whose class term reads only values its lookups pin (Lemma 11).
 
 ### RequantWide
 
@@ -82,7 +85,7 @@ Proves a virtual true integer `v ∈ [0, 2^k)` for `k ≤ 62` with `n = ceil(k /
 - Committed: limbs `v_0 … v_{n−2}`. Virtual: `v_{n−1} = (v − Σ_{j<n−1} v_j 2^{jL}) · 2^{−(n−1)L}`.
 - Lookups: `v_j ∈ [0, 2^L)` for `j < n − 1`; `v_{n−1} ∈ [0, 2^{k − (n−1)L})`.
 - Cost: `n − 1` commitments, `n` lookups.
-- Lemma 3. Passes iff `0 ≤ v < 2^k`, with unique limbs. Proof: as Lemma 2, applied limb by limb.
+- Lemma 3. Passes iff `0 ≤ v < 2^k`, with unique limbs. Proof: as Lemma 2, applied limb by limb, except that `v` may be negative: the limbs' sum, in `[0, 2^k)`, and `v`, a true integer, compare by Lemma 0.
 
 ### BigIntCompare
 
@@ -196,7 +199,7 @@ For each gadget, all on random instances at small and production widths:
 - Completeness: honest witnesses pass for 10^4 random inputs, including boundary inputs (all scores equal; a single valid position; `u = 0`; `u = 2^55 − 1`; `z` at both ends of its range; ties in `Argmax`).
 - Alternative witnesses, each rejected: a `SoftmaxRow` forest whose masked leaves are 0, or the keys of the masked positions' real scores, at the stage that consumes the leaf claim; `c_q` replaced by the second-largest score or by `max + 1`; `R_q ± 1`; `ρ ± 1`; `z_lo + 2^s` and `z_lo − 1`; a one-hot vector with two ones, or one one at the wrong index; `y` replaced by a later tie in `Argmax`; `ŷ ± 1` in `InverseCdf`.
 - Lemma checks by exhaustion at toy sizes: for `b ≤ 12`, enumerate all `z_lo'` and confirm only one passes (`RequantSplit`); for `b ≤ 14` over `F65537`, enumerate all `(z_lo', h0')` and confirm only the digits pass (`RequantWide`); for 3-element rows with scores in `[−8, 8]`, enumerate all `c` (`SoftmaxRow`).
-- Soundness over `F65537`: wrap-based attacks that succeed when a precondition is violated (for example `s > r − 1`, limb bounds too wide, or `RequantWide` without its top part's range check) are demonstrated to succeed there, confirming the preconditions are necessary, and to fail when the preconditions hold.
+- Soundness over `F65537`: wrap-based attacks that succeed when a precondition is violated (for example `s > r − 1`, `n · 2^b ≥ P` in `RequantSplit`, limb bounds too wide, or `RequantWide` without its top part's range check) are demonstrated to succeed there, confirming the preconditions are necessary, and to fail when the preconditions hold.
 
 ## Open Questions
 

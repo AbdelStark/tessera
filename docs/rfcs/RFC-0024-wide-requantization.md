@@ -81,7 +81,7 @@ Preconditions, checked at gadget selection and again by the verifier's validatio
 - `t + 2 + ⌈log2 n⌉ ≤ B_max`;
 - `k + 1 ≤ B_max`.
 
-When `RequantSplit`'s conditions fail and these hold, `k ≥ 3`.
+When `RequantSplit`'s bounds on its split point fail and these hold, `k ≥ 3`. When only its `n · 2^b < P` fails ([RFC-0009](RFC-0009-gadgets.md#requantsplit) Lemma 2), `n = 4`, `b = 62`, `B_max = 32` and `s = 32`, so `t ≤ 28` and `k ≥ 2`.
 
 **Lemma 11.** Given `z` and `c`, exactly one witness passes, and its output is `y = clamp(⌊(z + 2^{r_c − 1}) / 2^{r_c}⌋, lo, hi)`.
 
@@ -108,7 +108,7 @@ In every case lookup 5 returns `clamp(q(w), lo, hi)`. ∎
 | Condition | Gadget | Tables | Cost per element |
 |---|---|---|---|
 | `b + ⌈log2 n⌉ ≤ B_max` | `Requant1` | `Requant { b, r_c, lo, hi }` | 1 commitment, 1 lookup |
-| otherwise, `s = b + ⌈log2 n⌉ − B_max`, with `s ≤ B_max`, `b ≤ 62` and `s ≤ r_c − 1` for every class | `RequantSplit` | `Range { s }`, `Requant { b − s, r_c − s, lo, hi }` | 2 commitments, 2 lookups |
+| otherwise, `s = b + ⌈log2 n⌉ − B_max`, with `s ≤ B_max`, `b ≤ 62`, `n · 2^b < P` and `s ≤ r_c − 1` for every class | `RequantSplit` | `Range { s }`, `Requant { b − s, r_c − s, lo, hi }` | 2 commitments, 2 lookups |
 | otherwise, with `b ≤ 62`, `t + 2 + ⌈log2 n⌉ ≤ B_max` and `k + 1 ≤ B_max` | `RequantWide` | `Range { s }` when `s ≥ 1`, `Range { t }`, `Range { k }`, `Requant { k + 1, [1], −2, 1 }`, `Requant { t + 2, r_c − s, lo, hi }` | 4 commitments, 5 lookups |
 | otherwise | `ERR-COMPILE-RANGE` | — | — |
 

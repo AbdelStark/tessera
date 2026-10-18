@@ -8,5 +8,24 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dependencies]
+tessera-codec = { path = "../tessera-codec" }
+tessera-compiler = { path = "../tessera-compiler" }
+tessera-field = { path = "../tessera-field" }
+tessera-logup = { path = "../tessera-logup" }
+tessera-poly = { path = "../tessera-poly" }
+tessera-tables = { path = "../tessera-tables" }
+
+[dev-dependencies]
+tessera-hash = { path = "../tessera-hash" }
+tessera-ir = { path = "../tessera-ir" }
+# The verifier's independent LogUp checks, tables, field, codec and transcript: every LogUp proof
+# the tests produce from a gadget's witness is checked by them (DEP-2).
+tv-codec = { path = "../../verifier/crates/tv-codec" }
+tv-core = { path = "../../verifier/crates/tv-core" }
+tv-field = { path = "../../verifier/crates/tv-field" }
+tv-hash = { path = "../../verifier/crates/tv-hash" }
+tv-tables = { path = "../../verifier/crates/tv-tables" }
+
 [lints]
 workspace = true

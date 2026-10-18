@@ -32,7 +32,10 @@ impl<B> Clone for Tuples<'_, B> {
 impl<B> Copy for Tuples<'_, B> {}
 
 impl<'a, B> Tuples<'a, B> {
-    /// Keys and values, pair by pair: a public table, or test data.
+    /// Keys and values, pair by pair, from slices: a public table, test data, or secret-class
+    /// lookups that their holder lends from the `SecretBuf`s it computed them into, as a gadget's
+    /// lookups are (05 §3 OBS-6). Lookups held in their [`Secret`] take
+    /// [`secret`](Self::secret).
     pub fn new(keys: &'a [B], values: Option<&'a [B]>) -> Self {
         Self { keys, values }
     }

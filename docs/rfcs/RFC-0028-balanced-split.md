@@ -21,7 +21,7 @@ Each table costs its rows once per proof: a committed multiplicity and a fractio
 
 ### The split point
 
-For a key of signed width `b`, `n` shift classes from `r_min` up, and `c = ⌈log2 n⌉` class bits, RFC-0009 Lemma 2 holds for every `s` with:
+For a key of signed width `b` with `n · 2^b < P`, `n` shift classes from `r_min` up, and `c = ⌈log2 n⌉` class bits, RFC-0009 Lemma 2 holds for every `s` with:
 
 - `s ≥ b + c − B_max`, so that the high table, `n · 2^{b − s}` rows padded to `2^{b + c − s}`, fits `2^{B_max}`;
 - `s ≤ B_max`, so that `Range { s }` fits;
@@ -33,7 +33,7 @@ The two tables commit `2^s + 2^{b + c − s}` rows, padded to powers of two as t
 s = clamp(⌈(b + c) / 2⌉, b + c − B_max, min(r_min − 1, B_max))
 ```
 
-where `clamp(x, lo, hi) = max(lo, min(x, hi))`. The lower bound never binds: a non-empty interval needs `b + c − B_max ≤ B_max`, and then `⌈(b + c)/2⌉ ≥ b + c − B_max`. The rule states it anyway, as Lemma 2's own bound. When `b + c` is odd, `⌊·⌋` and `⌈·⌉` give the same sum. The rule takes `⌈·⌉`, which puts the extra bit in `Range { s }`: that table depends on `s` alone, so other sites share it, while the high table also depends on the shifts and the bounds. When the interval is empty, `b + c − B_max > min(r_min − 1, B_max)`, the key takes `RequantWide`, as before ([RFC-0024](RFC-0024-wide-requantization.md)).
+where `clamp(x, lo, hi) = max(lo, min(x, hi))`. The lower bound never binds: a non-empty interval needs `b + c − B_max ≤ B_max`, and then `⌈(b + c)/2⌉ ≥ b + c − B_max`. The rule states it anyway, as Lemma 2's own bound. When `b + c` is odd, `⌊·⌋` and `⌈·⌉` give the same sum. The rule takes `⌈·⌉`, which puts the extra bit in `Range { s }`: that table depends on `s` alone, so other sites share it, while the high table also depends on the shifts and the bounds. When the interval is empty, `b + c − B_max > min(r_min − 1, B_max)`, the key takes `RequantWide`, as before ([RFC-0024](RFC-0024-wide-requantization.md)). So does a key with `n · 2^b ≥ P`, whatever its interval: Lemma 2 also needs `n · 2^b < P`, for every `s` ([RFC-0009](RFC-0009-gadgets.md#requantsplit)). Of keys of at most 62 bits, that is four classes at `b = 62`.
 
 Everything the rule reads is public: `b` from range analysis, the shifts from the claim list, `B_max` from the gadget policy. A verifier that re-derives the selection ([RFC-0007](RFC-0007-claim-list.md#verifier-validation) step 5) finds the same `s` and regenerates the same tables.
 

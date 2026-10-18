@@ -10,7 +10,7 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 ## Field and integers (RFC-0002)
 - Every public operation returns a canonical value in `[0, P)`; decoders reject `x ≥ P`.
 - Arithmetic on secret values is branch-free: masks and selects, no data-dependent `if` (INV-ARCH-2). It must stay branch-free in the binary too. On x86_64, LLVM turns a plain mask select inside a loop into a jump on the data, so a select on secret values goes through `core::hint::select_unpredictable`. `cargo xtask check-branchless` reads the field's x86_64 loops (#242).
-- Integers enter the field only through `from_i64` and leave through `to_centered_i128`, and only as true integers. Every quantity compared modulo `P` is below `2^62` in absolute value, so Lemma 0 of RFC-0009 applies.
+- Integers enter the field only through `from_i64` and leave through `to_centered_i128`, and only as true integers. Two integers compared modulo `P` must differ by less than `P`: both below `2^62` in absolute value (RFC-0009 Lemma 0), or both in `[0, m)` with `m ≤ P`, as in Lemma 2's `[0, n·2^b)` with `n·2^b < P`.
 - Integer products and sums have a stated bound that rules out overflow; witness code uses checked or widened arithmetic, never silent wrapping.
 
 ## Encoding and transcript (RFC-0003, RFC-0004)
