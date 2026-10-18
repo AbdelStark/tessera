@@ -41,6 +41,7 @@ tessera-quant reference --model MODEL.d --tokens TOKENS.ttk --out LOGITS.tlg
 tessera compile         --model MODEL.d --params PARAMSET --out-dir DIR
                         # writes claims.tcl, plan.tep, commitment-report.json
 tessera commit-weights  --model MODEL.d --plan plan.tep --out WEIGHTS.twc
+                        # also writes WEIGHTS.twr, the public commitment, and prints R_W (RFC-0040)
 tessera weights refresh --weights WEIGHTS.twc --out WEIGHTS2.twc        # emits linking proof
 tessera prove           --plan plan.tep --model MODEL.d --weights WEIGHTS.twc --sample SAMPLE.tas
                         --transcripts DIR (--live ENDPOINT | --out PROOF.tnp)
@@ -58,9 +59,9 @@ tessera recorder ref    --listen ADDR --log-dir DIR                         # so
 ### 2.3 `tessera-verify` (Rust, verifier side, independent build)
 
 ```text
-tessera-verify verify   --claims claims.tcl --weights-root ROOT --manifest MANIFEST.tlm
+tessera-verify verify   --claims claims.tcl --weights-root ROOT --weights WEIGHTS.twr --manifest MANIFEST.tlm
                         --proof PROOF.tnp --bound UHAT [--out VERDICT.json]
-tessera-verify live     --claims claims.tcl --weights-root ROOT --manifest MANIFEST.tlm
+tessera-verify live     --claims claims.tcl --weights-root ROOT --weights WEIGHTS.twr --manifest MANIFEST.tlm
                         --connect ENDPOINT --bound UHAT [--out VERDICT.json]
 tessera-verify tables   --claims claims.tcl     # regenerates and prints table digests
 tessera-verify params   --params PARAMSET       # independent soundness report

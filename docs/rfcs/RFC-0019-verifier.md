@@ -58,6 +58,7 @@ pub struct VerifyInputs {
     pub anchor_entries: Vec<(DigestLogEntry, InclusionProof)>,
     pub recorder_keys: Vec<PublicKey>,        // pinned
     pub ledger: VerifierLedger,
+    pub weights: WeightCommitmentPublic,      // the epoch's weight commitment, from WEIGHTS.twr (RFC-0040)
 }
 ```
 
@@ -68,7 +69,7 @@ Checks run in this order; the first failure determines the verdict.
 1. Decode every input under `ResourceLimits` (`Reject(Malformed)` or `Inconclusive(ERR-RES-*)`).
 2. Accept the parameter set (`Reject(Params)`).
 3. Validate and lower the claim list: [RFC-0007](RFC-0007-claim-list.md#verifier-validation) steps 1–7, including table regeneration and range re-derivation (`Reject(StatementMismatch)`).
-4. Bind the statement: claim-list digest; `weights_root` and `epoch` equal to the ledger's current root for that model; manifest signature under a pinned key; sample membership and no prior acceptance of the batch's requests; anchor entries' inclusion proofs ([RFC-0015](RFC-0015-transcript-anchor.md#verifier-checks), [RFC-0016](RFC-0016-audit-sampling.md#verifier-checks)); the advice commitment's `layout_digest` equal to the `commitment_id` the verifier derives ([RFC-0031](RFC-0031-commitment-id.md#layout_digest), `Reject(StatementMismatch)`).
+4. Bind the statement: claim-list digest; `weights_root` and `epoch` equal to the ledger's current root for that model, which `weights` hashes to, with the claim list's weight layout ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-verifiers-weight-inputs)); manifest signature under a pinned key; sample membership and no prior acceptance of the batch's requests; anchor entries' inclusion proofs ([RFC-0015](RFC-0015-transcript-anchor.md#verifier-checks), [RFC-0016](RFC-0016-audit-sampling.md#verifier-checks)); the advice commitment's `layout_digest` equal to the `commitment_id` the verifier derives ([RFC-0031](RFC-0031-commitment-id.md#layout_digest), `Reject(StatementMismatch)`).
 5. Weight reservation: declared blinding rows unused in this epoch according to the ledger (`Reject(Budget)`).
 6. Transcript: rebuild `SessionContext`, absorb `Round1`, derive or check the seed (coin-toss transcript, or proof-of-work nonce in non-interactive mode; `Reject(ProofOfWork)`).
 7. Tree levels, in this order:
@@ -80,7 +81,7 @@ Checks run in this order; the first failure determines the verdict.
 8. Stages in schedule order, including masked-sumcheck terms and gadget final checks (`Reject(Sumcheck)`, `Reject(Gadget)`).
 9. Opening groups for advice and every weight matrix: `Σ γ v = ⟨u'_g, eq⟩` per group (`Reject(Evaluation)`).
 10. Column queries: live, the verifier draws them now from its CSPRNG; non-interactive, from the transcript after the query proof-of-work.
-11. Columns: leaf recomputation, multiproofs, consistency of every combined row with every opened column (`Reject(MerklePath)`, `Reject(Proximity)`).
+11. Columns: leaf recomputation, multiproofs against each matrix's root in `weights.roots` for the weights, consistency of every combined row with every opened column (`Reject(MerklePath)`, `Reject(Proximity)`).
 12. Scoring: per-request `Û_r` and the batch total against `accept_bound` (`Reject(UBoundExceeded)`).
 13. Update the ledger (used blinding rows, opened weight columns, proven requests) and return `Accept(report)`.
 
