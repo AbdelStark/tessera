@@ -44,7 +44,7 @@ for a challenge `α ∈ Fp2` drawn after the values and multiplicities are commi
 
 An instance, with at least one lookup, proves its identity with two fraction trees, one per side, so that neither side is padded to the other's size:
 
-- **The lookup tree** has `2^{h_a}` leaves, `h_a = ⌈log2 N⌉`. Leaf `i < N` is `(1, α − a_i)`. The `2^{h_a} − N` padding leaves repeat row 0, `(1, α − t_0)`, and the multiplicity of row 0 counts them.
+- **The lookup tree** has `2^{h_a}` leaves, `h_a = ⌈log2 N⌉`. Leaf `i < N` is `(1, α − a_i)`. The `2^{h_a} − N` padding leaves repeat row 0, `(1, α − t_0)`, and the multiplicity of row 0 counts them. In the leaf stage the lookups are an instance's column, its padding included, in the leaf order of [RFC-0045](RFC-0045-leaf-layout.md#the-leaves).
 - **The table tree** has `2^{h_t}` leaves, `h_t = ⌈log2 T⌉`. Leaf `j < T` is `(−m_j, α − t_j)`. The `2^{h_t} − T` padding leaves repeat row 0, `(−m_j, α − t_0)`, and an honest prover gives them multiplicity 0. A padding row is a copy of row 0, so a multiplicity there only counts more lookups of row 0, and the padding cannot admit a tuple that is not a row. Padding with a row of key and value 0 would admit the lookup `(0, 0)`: nothing checks a committed multiplicity there, and a non-zero one would balance it.
 - **Internal nodes.** `(n, d) = (n_L·d_R + n_R·d_L, d_L·d_R)`. Node `x` of level `ℓ` combines entries `2x` (left) and `2x + 1` (right) of level `ℓ + 1`, with the pair bit lowest, as in a product tree ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)). A root's `d` is the product of its leaves' denominators. When `d ≠ 0`, no leaf denominator is zero, and `n/d` is the sum of the leaves' fractions `Σ n_i/d_i`.
 - **Roots.** For every instance, the prover sends the roots `(n_a, d_a)` of the lookup tree and `(n_t, d_t)` of the table tree, in schedule order, before the first tree level (label `logup/roots`, RFC-0014; absorbed even when empty). The verifier checks `d_a ≠ 0`, `d_t ≠ 0` and `n_a·d_t + n_t·d_a = 0`, else `Reject(Lookup)`. The lookups' fractions and the rows' fractions then sum to zero, which is the identity of 'Relation'. In `tessera-protocol/2` the roots are not sent: a masked sumcheck proves this identity, each tree takes a padding tree, and the leaf checks below read the masked extensions of the keys, values and multiplicities ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)).
@@ -61,7 +61,7 @@ An instance, with at least one lookup, proves its identity with two fraction tre
 
 ### Batching
 
-- All lookups into one table definition, across every layer, head, token and channel, form one instance.
+- All lookups into one table definition, across every layer, head, token and channel, form one instance. Its lookups are blocks, one per lookup of a site at a layer, aligned and sorted by size ([RFC-0045](RFC-0045-leaf-layout.md#the-column)).
 - All instances run their GKR layers in one batched sumcheck per level, with a random combination: the lookup tree and the table tree of each instance, beside the product forests of the leaf stage. Trees of different heights join the batch at the level where their height matches, as in Stwo's LogUp-GKR batching ([RFC-0010 'Tree levels'](RFC-0010-proof-schedule.md#tree-levels)).
 - `α` and `β` are shared by all instances and derived from the transcript immediately after Round 1 (RFC-0014, label `logup/alpha`, `logup/beta`).
 
