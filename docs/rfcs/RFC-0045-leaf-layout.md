@@ -37,6 +37,7 @@ Two trees of different heights agree on their lowest coordinate and on their hig
 
 - The gadgets' lookups themselves, which RFC-0009 lists.
 - The claims of the product forests, which RFC-0009 and RFC-0030 route.
+- `tessera-protocol/2`'s masked leaf checks ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#leaf-checks) 'Leaf checks'). This layout is `tessera-protocol/1`'s.
 
 ## Proposed Design
 
@@ -66,6 +67,7 @@ The lookup tree's leaf `i` holds column entry `σ_h(i)`, where `σ_h` keeps bit 
 σ_h(i) = (i mod 2) + 2·rev_{h−1}(⌊i / 2⌋)
 ```
 
+- **Height 0.** `σ_0` is the identity: the column has one entry, leaf 0.
 - **Inverse.** `σ_h` is its own inverse.
 - **Padding.** The column's padding entries are explicit lookups. `tessera-logup` receives `2^h` lookups and pads none.
 - **The table tree** keeps its rows in order.
@@ -84,7 +86,10 @@ The lookup tree's leaf `i` holds column entry `σ_h(i)`, where `σ_h` keeps bit 
   ```
 
   `t_0` is row 0's key or value, and `LT(r, m) = Σ_{x<m} eq(r, x)` over `h` bits, which the verifier computes in `O(h)`.
-- **A site's point.** A site's tensors of `2^k` entries lie at `r_s = P[0..k]`, at every layer: RFC-0037's `r_s`. Blocks of one size share their point whatever their table, so a site's lookups into several tables read their tensors at one point.
+- **A site's point.** A site's blocks of `2^k` entries lie at `r_s = P[0..k]`, at every layer: RFC-0037's `r_s`.
+  - A tensor the site's lookups read over all of a block's axes lies at `r_s`.
+  - A tensor read over some of them lies at those axes' coordinates of `r_s`, `π_t(r_s)` ('The split').
+  - Blocks of one size share their point whatever their table, so a site's lookups into several tables read their tensors at one point.
 - **The multiplicities** keep their claim at the table tree's leaf point, in row order. They are committed, and their claim goes to the pool.
 
 ### The split
@@ -98,10 +103,15 @@ The lookup tree's leaf `i` holds column entry `σ_h(i)`, where `σ_h` keeps bit 
 - The values go under `stage/0/split`, after `logup/values` ([RFC-0037](RFC-0037-stage-schedule.md#splits)).
 - For each site in node order, and each of its real layers in order (once for a site outside the layers), the prover sends one value per tensor its lookups read.
 - Each value is the tensor's evaluation at its point.
-- The tensors come in the order the gadget's lookups first read them.
+- The tensors of a site at a layer come in this order:
+  1. lookup by lookup, in RFC-0009's order;
+  2. within a lookup, the key's tensors, then the value's;
+  3. within a form, in the order RFC-0009's formula names them, so the input before the class for `pack(c, z) = (z + 2^{b−1}) + 2^b·c`;
+  4. each tensor once per site and layer, at its first read.
 - Public tensors are not sent: constants, the causal selector and the row selector are the verifier's.
 
 **The check.**
+- Table order is ascending `TableId`. The instances take it in `logup/roots`, in `logup/values` and in this check, and their trees take it in the levels' schedule, each instance's lookup tree before its table tree.
 - For each instance in table order, the verifier evaluates its blocks' key forms from the sent values.
 - It checks that they give the key claim by the identity above. It checks the value claim the same way when the table has values.
 - A mismatch is `Reject(Sumcheck { stage: 0, round: 0 })`.
@@ -114,6 +124,7 @@ The lookup tree's leaf `i` holds column entry `σ_h(i)`, where `σ_h` keeps bit 
 **One claim per input.**
 - Every tensor a site's lookups read is read over one set of axes, so it has one point and one value per layer.
 - The schedule refuses, with `ERR-INTERNAL`, a gadget whose lookups read one tensor over two sets of axes.
+- Every real layer of a site reads the same tensors over the same axes, so stage 1 stacks each of them over the layers. The schedule refuses, with `ERR-INTERNAL`, a site whose layers' gadgets read different ones.
 
 **Soundness.**
 - The values are absorbed before `ρ_1` and every later challenge.

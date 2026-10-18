@@ -12,7 +12,9 @@ publish.workspace = true
 tessera-codec = { path = "../tessera-codec" }
 tessera-compiler = { path = "../tessera-compiler" }
 tessera-field = { path = "../tessera-field" }
+tessera-gadgets = { path = "../tessera-gadgets" }
 tessera-ir = { path = "../tessera-ir" }
+tessera-logup = { path = "../tessera-logup" }
 tessera-poly = { path = "../tessera-poly" }
 tessera-sumcheck = { path = "../tessera-sumcheck" }
 tessera-tables = { path = "../tessera-tables" }
@@ -21,6 +23,13 @@ tessera-witness = { path = "../tessera-witness" }
 [dev-dependencies]
 serde_json = "1"
 tessera-hash = { path = "../tessera-hash" }
+# The verifier's independent LogUp checks, tables, field, codec and transcript: the leaf stage's
+# LogUp proofs are checked by them before the in-test split check (DEP-2).
+tv-codec = { path = "../../verifier/crates/tv-codec" }
+tv-core = { path = "../../verifier/crates/tv-core" }
+tv-field = { path = "../../verifier/crates/tv-field" }
+tv-hash = { path = "../../verifier/crates/tv-hash" }
+tv-tables = { path = "../../verifier/crates/tv-tables" }
 
 [features]
 # Test-only: seeded masking randomness, so tests are reproducible. A release build with it fails to compile.
