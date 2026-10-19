@@ -29,6 +29,8 @@
 //! hi)`, and two nodes asking for the same one name one table. New tables follow the lowering's,
 //! numbered in order of first use, so the selection is a function of the graph (INV-IR-4).
 
+use std::collections::BTreeMap;
+
 use tessera_ir::{GadgetId, GadgetPolicy, Graph, Node, NodeId, Op, TableId};
 use tessera_tables::{GeneratedTable, Table, TableKind, TableSpec};
 
@@ -112,9 +114,16 @@ pub struct Selection {
     pub gadgets: Vec<(NodeId, Gadget)>,
     /// The tables, by id: those the graph names, then gadget auxiliary tables in first-use order.
     pub tables: Vec<TableSpec>,
+    reads: BTreeMap<NodeId, Vec<TableId>>,
 }
 
 impl Selection {
+    /// Every lookup of `node`, in canonical order, retaining repeated table ids.
+    /// Virtual top limbs and both comparison normalizers are included (RFC-0050).
+    /// Returns `None` for a node without a selected gadget.
+    pub fn reads(&self, node: NodeId) -> Option<&[TableId]> {
+        self.reads.get(&node).map(Vec::as_slice)
+    }
     /// The gadget of `node`, with its id, or `None` for a node without one.
     pub fn of(&self, node: NodeId) -> Option<(GadgetId, Gadget)> {
         let position = self.gadgets.iter().position(|&(n, _)| n == node)?;
@@ -150,16 +159,20 @@ pub fn select(
         max,
         limb_bits: policy.limb_bits,
         tables: tables.to_vec(),
+        reads: Vec::new(),
     };
     let mut gadgets = Vec::new();
+    let mut reads = BTreeMap::new();
     for node in &graph.nodes {
         if let Some(gadget) = selector.node(node)? {
             gadgets.push((node.id, gadget));
+            reads.insert(node.id, std::mem::take(&mut selector.reads));
         }
     }
     Ok(Selection {
         gadgets,
         tables: selector.tables,
+        reads,
     })
 }
 
@@ -169,6 +182,7 @@ struct Selector<'a> {
     max: u32,
     limb_bits: u8,
     tables: Vec<TableSpec>,
+    reads: Vec<TableId>,
 }
 
 impl Selector<'_> {
@@ -178,11 +192,14 @@ impl Selector<'_> {
                 let shifts = self.graph.shift_classes[shift.0 as usize].clone();
                 self.requant(node, shifts, *lo, *hi)?
             }
-            Op::TableMap { table } | Op::Bitwise { table } => Gadget::Lookup {
-                table: self.sized(node, *table)?,
-            },
+            Op::TableMap { table } | Op::Bitwise { table } => {
+                let table = self.sized(node, *table)?;
+                self.reads.push(table);
+                Gadget::Lookup { table }
+            }
             Op::SoftmaxRow { exp_table, sigma } => {
                 let exp = self.sized(node, *exp_table)?;
+                self.reads.push(exp);
                 let (reciprocal, limb, top) = self.softmax_ranges(node, *sigma)?;
                 Gadget::SoftmaxRow {
                     exp,
@@ -191,7 +208,10 @@ impl Selector<'_> {
                     top,
                 }
             }
-            Op::RsqrtRow { .. } => Gadget::RsqrtRow,
+            Op::RsqrtRow { .. } => {
+                self.rsqrt_ranges(node)?;
+                Gadget::RsqrtRow
+            }
             Op::OneHot { .. } => Gadget::OneHot,
             Op::Argmax => {
                 let table = self.table(node, TableKind::Range { bits: 29 })?;
@@ -204,7 +224,7 @@ impl Selector<'_> {
         }))
     }
 
-    /// RFC-0009 relation 3: R's range, then A and B's shared NonNeg ranges in first-use order.
+    /// RFC-0050: R's range, then every low limb and virtual top of A, then B.
     fn softmax_ranges(
         &mut self,
         node: &Node,
@@ -221,13 +241,71 @@ impl Selector<'_> {
         let k = u32::from(sigma) + 18;
         let n = k.div_ceil(l);
         let reciprocal = self.range_table(node, u32::from(sigma) + 1)?;
-        let limb = if n > 1 {
-            Some(self.range_table(node, l)?)
-        } else {
-            None
-        };
-        let top = self.range_table(node, k - (n - 1) * l)?;
+        let mut limb = None;
+        let mut top = None;
+        for _ in 0..2 {
+            for _ in 1..n {
+                limb = Some(self.range_table(node, l)?);
+            }
+            top = Some(self.range_table(node, k - (n - 1) * l)?);
+        }
+        let top = top.ok_or(CompileError::Usage {
+            rule: "both Softmax slacks have a top limb",
+        })?;
         Ok((reciprocal, limb, top))
+    }
+
+    fn rsqrt_ranges(&mut self, node: &Node) -> Result<(), CompileError> {
+        let refuse = || CompileError::Range {
+            node: node.id,
+            input: 0,
+            rule: "RFC-0050's complete Rsqrt range requests fit the public policy",
+        };
+        if self.limb_bits == 0 || u32::from(self.limb_bits) > self.max {
+            return Err(refuse());
+        }
+        let bound = node
+            .outputs
+            .first()
+            .and_then(|id| self.ranges.of(*id))
+            .and_then(Range::bounded)
+            .ok_or_else(refuse)?;
+        let high = u128::try_from(bound.hi).map_err(|_| refuse())?;
+        let w = high.checked_ilog2().map_or(1, |bits| bits + 1);
+        if w > 32 {
+            return Err(refuse());
+        }
+        let r = w.div_ceil(8) - 1;
+        let m = (2 * w + 55).div_ceil(8) as usize;
+        let lower = root_carries(w, false, m).ok_or_else(refuse)?;
+        let upper = root_carries(w, true, m).ok_or_else(refuse)?;
+        self.range_table(node, w)?;
+        for _ in 0..3 {
+            self.range_table(node, 16)?;
+        }
+        self.range_table(node, 7)?;
+        for _ in 0..r {
+            self.range_table(node, 8)?;
+        }
+        self.range_table(node, w - 8 * r)?;
+        let constants = vec![1; m];
+        for (left, right) in [(&lower, &constants), (&constants, &upper)] {
+            for carries in [left, right] {
+                for _ in 0..m {
+                    self.range_table(node, 8)?;
+                }
+                for &width in carries {
+                    self.range_table(node, width)?;
+                }
+            }
+            for _ in 0..m {
+                self.range_table(node, 8)?;
+            }
+            for _ in 0..m {
+                self.range_table(node, 1)?;
+            }
+        }
+        Ok(())
     }
 
     fn range_table(&mut self, node: &Node, bits: u32) -> Result<TableId, CompileError> {
@@ -432,7 +510,13 @@ impl Selector<'_> {
 
     /// The table of `kind`: one of the same definition, or a new one numbered after the others.
     fn table(&mut self, node: &Node, kind: TableKind) -> Result<TableId, CompileError> {
-        if let Some(spec) = self.tables.iter().find(|spec| spec.kind == kind) {
+        if let Some(spec) = self
+            .tables
+            .iter()
+            .filter(|spec| spec.kind == kind)
+            .min_by_key(|spec| spec.id)
+        {
+            self.reads.push(spec.id);
             return Ok(spec.id);
         }
         let next = self
@@ -448,8 +532,48 @@ impl Selector<'_> {
             rule: "the generator refuses a table selection built",
         })?;
         self.tables.push(table.spec().clone());
+        self.reads.push(id);
         Ok(id)
     }
+}
+
+fn polynomial_product(a: &[u128], b: &[u128]) -> Option<Vec<u128>> {
+    let mut out = vec![0u128; a.len().checked_add(b.len())?.checked_sub(1)?];
+    for (i, &x) in a.iter().enumerate() {
+        for (j, &y) in b.iter().enumerate() {
+            out[i + j] = out[i + j].checked_add(x.checked_mul(y)?)?;
+        }
+    }
+    Some(out)
+}
+
+// Whole weighted prefixes derive the carry widths independently of the verifier's recurrence.
+fn root_carries(width: u32, increment: bool, limbs: usize) -> Option<Vec<u32>> {
+    let count = width.div_ceil(8);
+    let mut root: Vec<_> = (0..count)
+        .map(|i| (1u128 << (width - 8 * i).min(8)) - 1)
+        .collect();
+    root[0] += u128::from(increment);
+    let square = polynomial_product(&root, &root)?;
+    let raw = polynomial_product(&square, &[65535, 0, 65535, 0, 65535, 0, 127])?;
+    if raw.len() > limbs {
+        return None;
+    }
+    let (mut prefix, mut previous_box) = (0u128, 0u128);
+    let mut widths = Vec::with_capacity(limbs);
+    for j in 0..limbs {
+        let a = raw.get(j).copied().unwrap_or(0);
+        prefix = prefix.checked_add(a.checked_mul(1u128.checked_shl(8 * j as u32)?)?)?;
+        let carry = prefix >> (8 * (j + 1));
+        let bits = (u128::BITS - carry.leading_zeros()).max(1);
+        let full_box = (1u128 << bits) - 1;
+        if a + previous_box >= 1 << 40 || 255 + 256 * full_box >= 1 << 40 {
+            return None;
+        }
+        previous_box = full_box;
+        widths.push(bits);
+    }
+    (prefix >> (8 * limbs) == 0).then_some(widths)
 }
 
 /// The least `b` with `[−2^{b−1}, 2^{b−1})` holding `[lo, hi]`: a `Requant` table's key width.

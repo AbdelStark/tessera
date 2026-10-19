@@ -200,12 +200,16 @@ pub fn indices(shape: &[u32], ranges: &[Range<u32>]) -> Vec<usize> {
     indices
 }
 
-/// The table counts this foundation cannot produce: the merged Softmax and Argmax auxiliaries.
+/// The table counts this foundation cannot produce: root and merged row-gadget auxiliaries.
 pub fn unsupported_table(selection: &Selection, tile: &tessera_compiler::SequenceTile) -> bool {
     let tessera_compiler::Tile::Table { table } = tile.tile else {
         return false;
     };
-    selection.gadgets.iter().any(|(_, gadget)| match gadget {
+    selection.gadgets.iter().any(|(node, gadget)| match gadget {
+        tessera_compiler::Gadget::RsqrtRow => selection
+            .reads(*node)
+            .unwrap()
+            .contains(&tessera_ir::TableId(table)),
         tessera_compiler::Gadget::SoftmaxRow {
             reciprocal,
             limb,
@@ -224,7 +228,7 @@ pub fn assert_unsupported(
     assert_eq!(
         result.expect_err("auxiliary table regeneration is unsupported"),
         tessera_witness::WitnessError::Usage {
-            rule: "auxiliary SoftmaxRow and Argmax multiplicities are not implemented"
+            rule: "auxiliary RsqrtRow, SoftmaxRow and Argmax multiplicities are not implemented"
         }
     );
 }

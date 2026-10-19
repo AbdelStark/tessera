@@ -403,30 +403,29 @@ impl Gadgets {
             };
             requant.push(gadget);
         }
-        let mut read: Vec<TableId> = selection
-            .gadgets
-            .iter()
-            .flat_map(|&(_, gadget)| reads(gadget))
-            .collect();
+        let mut read = Vec::new();
+        for &(node, _) in &selection.gadgets {
+            read.extend_from_slice(selection.reads(node).ok_or(WitnessError::Internal {
+                rule: "every selected gadget has its ordered lookup requests",
+            })?);
+        }
         read.sort_unstable();
         read.dedup();
-        let incomplete = selection
-            .gadgets
-            .iter()
-            .flat_map(|(_, gadget)| match *gadget {
-                Gadget::SoftmaxRow {
-                    reciprocal,
-                    limb,
-                    top,
-                    ..
-                } => limb
-                    .into_iter()
-                    .chain([reciprocal, top])
-                    .collect::<Vec<_>>(),
-                Gadget::Argmax { table } => vec![table],
-                _ => Vec::new(),
-            })
-            .collect();
+        let mut incomplete = Vec::new();
+        for &(node, gadget) in &selection.gadgets {
+            let requests = selection.reads(node).ok_or(WitnessError::Internal {
+                rule: "every selected gadget has its ordered lookup requests",
+            })?;
+            match gadget {
+                Gadget::SoftmaxRow { .. } => incomplete.extend_from_slice(
+                    requests.get(1..).ok_or(WitnessError::Internal {
+                        rule: "a Softmax gadget starts with its Exp lookup",
+                    })?,
+                ),
+                Gadget::RsqrtRow | Gadget::Argmax { .. } => incomplete.extend_from_slice(requests),
+                _ => {}
+            }
+        }
         Ok(Self {
             requant,
             read,
@@ -685,31 +684,6 @@ impl Gadgets {
     }
 }
 
-/// Every table selected for this gadget, including auxiliaries not implemented here yet.
-fn reads(gadget: Gadget) -> Vec<TableId> {
-    match gadget {
-        Gadget::Requant1 { table } | Gadget::Lookup { table } | Gadget::Argmax { table } => {
-            vec![table]
-        }
-        Gadget::SoftmaxRow {
-            exp,
-            reciprocal,
-            limb,
-            top,
-        } => limb.into_iter().chain([exp, reciprocal, top]).collect(),
-        Gadget::RequantSplit { low, high, .. } => vec![low, high],
-        Gadget::RequantWide {
-            low,
-            mid,
-            top,
-            sign,
-            high,
-            ..
-        } => low.into_iter().chain([mid, top, sign, high]).collect(),
-        Gadget::RsqrtRow | Gadget::OneHot | Gadget::InverseCdf => Vec::new(),
-    }
-}
-
 /// Each element's class, its output channel's: `classes[i mod channels]`, as the engine reads it.
 fn per_element(
     tensor: TensorId,
@@ -926,7 +900,9 @@ impl Gadgets {
         table: TableId,
     ) -> Result<u64, WitnessError> {
         if self.incomplete.contains(&table) {
-            return usage("auxiliary SoftmaxRow and Argmax multiplicities are not implemented");
+            return usage(
+                "auxiliary RsqrtRow, SoftmaxRow and Argmax multiplicities are not implemented",
+            );
         }
         match self
             .requant

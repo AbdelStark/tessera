@@ -396,7 +396,7 @@ pub fn snapshot(c: &ClaimList, n: u32) -> Value {
         }
     };
     let graph = json!({"length":n,"tensors":g.tensors.iter().map(|t|json!({"shape":t.shape,"kind":kind(t.kind),"producer":producers[t.id.0 as usize].map(|p|p.0)})).collect::<Vec<_>>(),"inputs":inputs,"nodes":g.nodes.iter().map(|node|json!({"op":op(&node.op),"inputs":node.inputs.iter().map(|t|t.0).collect::<Vec<_>>(),"outputs":node.outputs.iter().map(|t|t.0).collect::<Vec<_>>()})).collect::<Vec<_>>(),"constants":g.constants.iter().map(|v|{assert_eq!(v.len(),1);v[0].to_string()}).collect::<Vec<_>>(),"shifts":g.shift_classes,"weights":g.weights.iter().map(|(w,t)|json!([[weight(w.ty),w.layer],t.0])).collect::<Vec<_>>(),"tables":low.tables.iter().map(|t|json!({"id":t.id.0,"kind":table(&t.kind),"log2_rows":t.log2_rows})).collect::<Vec<_>>(),"checkpoints":low.checkpoints.iter().map(|t|t.0).collect::<Vec<_>>(),"routes":[residual(Site::AttnResidual),residual(Site::MlpResidual)]});
-    json!({"version":1,"graph":graph,"selection":selection_snapshot(&selected, g, c.gadget_policy.limb_bits),"ranges":ranges.all().iter().map(|r|r.bounded().map(|v|[v.lo.to_string(),v.hi.to_string()])).collect::<Vec<_>>(),"policy":[u64::from(c.gadget_policy.max_log2_rows),u64::from(c.gadget_policy.query_block),u64::from(c.gadget_policy.limb_bits)],"schedule":Context{low:&low,q:&q,producers}.schedule()})
+    json!({"version":1,"graph":graph,"selection":selection_snapshot(&selected),"ranges":ranges.all().iter().map(|r|r.bounded().map(|v|[v.lo.to_string(),v.hi.to_string()])).collect::<Vec<_>>(),"policy":[u64::from(c.gadget_policy.max_log2_rows),u64::from(c.gadget_policy.query_block),u64::from(c.gadget_policy.limb_bits)],"schedule":Context{low:&low,q:&q,producers}.schedule()})
 }
 
 /// Recursive canonical framing, independently written from the CI format description.
@@ -450,29 +450,32 @@ pub fn digest(tree: &Value) -> [u8; 32] {
     blake3::derive_key("tessera/ci/constraint-system-digest/1", &frame(tree))
 }
 
-fn selection_snapshot(
-    selection: &tessera_compiler::Selection,
-    graph: &tessera_ir::Graph,
-    limb_bits: u8,
-) -> Value {
+fn selection_snapshot(selection: &tessera_compiler::Selection) -> Value {
     use tessera_compiler::Gadget;
-    let choices:Vec<_>=selection.gadgets.iter().map(|(node,g)| {
-        let (pattern,tables)=match *g {
-            Gadget::Requant1{table}=>(json!(["Requant1"]),vec![table]),
-            Gadget::RequantSplit{split,low,high}=>(json!(["RequantSplit",split]),vec![low,high]),
-            Gadget::RequantWide{split,middle,low,mid,top,sign,high}=>(json!(["RequantWide",split,middle]),low.into_iter().chain([mid,top,sign,high]).collect()),
-            Gadget::Lookup{table}=>(json!(["Lookup"]),vec![table]),
-            Gadget::SoftmaxRow{exp,reciprocal,limb,top}=> {
-                let Op::SoftmaxRow{sigma,..}=graph.nodes[node.0 as usize].op else {panic!("Softmax selection belongs to a Softmax node")};
-                // RFC-0009: one family is reused by every full NonNeg limb.
-                let full=(u32::from(sigma)+18).div_ceil(u32::from(limb_bits))-1;
-                let repeated=limb.into_iter().flat_map(|id|std::iter::repeat_n(id,full as usize));
-                (json!(["SoftmaxRow"]),[exp,reciprocal].into_iter().chain(repeated).chain([top]).collect())
-            },
-            Gadget::RsqrtRow=>(json!(["RsqrtRow"]),Vec::new()),Gadget::OneHot=>(json!(["OneHot"]),Vec::new()),
-            Gadget::Argmax{..}|Gadget::InverseCdf=>panic!("scoring gadgets are outside the Llama lowering"),
-        };
-        json!({"node":node.0,"pattern":pattern,"tables":tables.into_iter().map(|t|t.0).collect::<Vec<_>>()})
-    }).collect();
+    let choices: Vec<_> = selection
+        .gadgets
+        .iter()
+        .map(|(node, g)| {
+            let pattern = match *g {
+                Gadget::Requant1 { .. } => json!(["Requant1"]),
+                Gadget::RequantSplit { split, .. } => json!(["RequantSplit", split]),
+                Gadget::RequantWide { split, middle, .. } => json!(["RequantWide", split, middle]),
+                Gadget::Lookup { .. } => json!(["Lookup"]),
+                Gadget::SoftmaxRow { .. } => json!(["SoftmaxRow"]),
+                Gadget::RsqrtRow => json!(["RsqrtRow"]),
+                Gadget::OneHot => json!(["OneHot"]),
+                Gadget::Argmax { .. } | Gadget::InverseCdf => {
+                    panic!("scoring gadgets are outside the Llama lowering")
+                }
+            };
+            let tables: Vec<_> = selection
+                .reads(*node)
+                .expect("every gadget has its ordered requests")
+                .iter()
+                .map(|t| t.0)
+                .collect();
+            json!({"node": node.0, "pattern": pattern, "tables": tables})
+        })
+        .collect();
     json!({"choices":choices,"tables":selection.tables.iter().map(|t|json!({"id":t.id.0,"kind":table(&t.kind),"log2_rows":t.log2_rows})).collect::<Vec<_>>()})
 }

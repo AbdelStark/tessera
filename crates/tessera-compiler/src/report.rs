@@ -13,18 +13,16 @@
 //! - **`SoftmaxRow`**: per valid score, the exponential and its lookup, and a leaf of its row's
 //!   product tree; per row, `c_q`, `R_q`, `R_q`'s range check, and the two `NonNeg` of its
 //!   reciprocal bracket, each of `⌈(σ + 18)/L⌉` limbs with one fewer committed;
-//! - **`RsqrtRow`**: RFC-0009's per-row figure, 20 commitments and 30 lookups, which it states
-//!   only approximately: its `BigIntCompare` carry chains are fixed with the gadget (#118). The
-//!   report lists it under `estimates`;
+//! - **`RsqrtRow`**: RFC-0050's exact width-derived columns and every range request,
+//!   including both virtual tops and all comparison arrays;
 //! - **`OneHot`**: `vocab` committed entries per token.
 //!
 //! Counts are per token: the lowering covers one sequence, and every count above is a multiple of
 //! its length. A layer's count comes from the first layer's nodes, between its checkpoints, since
 //! every layer lowers alike. Scores grow with the context, so they are counted apart, per score.
 //!
-//! The tables and their multiplicities are the selection's. The selection does not yet allocate
-//! the range tables that the row gadgets' checks read (#118, #122), so the report counts those
-//! lookups and leaves their tables out, and says so.
+//! The tables and their multiplicities follow the complete selected request lists. A table
+//! without a lookup has no multiplicities; RoPE is a public kernel, not a lookup.
 //!
 //! The stage count is RFC-0010's: the leaf stage, then one stage per sumcheck relation on the
 //! longest chain from a gadget's input down to committed tensors. `MatMulWeight`, `MatMulAct`,
@@ -45,9 +43,6 @@ use crate::{CompileError, Gadget, Lowering, PublicModel, Selection};
 
 /// The report's schema identifier (03 §5).
 pub const SCHEMA: &str = "tessera.commitment-report/1";
-
-/// RFC-0009 'RsqrtRow': about 20 commitments and 30 lookups per row.
-const RSQRT_ROW: (u64, u64) = (20, 30);
 
 /// Committed elements by class and lookups, over some part of the model.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -94,10 +89,9 @@ pub struct TableUse {
     pub id: TableId,
     /// Its kind, as RFC-0008 names it.
     pub kind: &'static str,
-    /// Its rows, `2^{log2_rows}`: one committed multiplicity each per proof.
+    /// Its actual table rows: one multiplicity each, excluding power-of-two padding.
     pub rows: u64,
-    /// Lookups into it per token, outside the scores. The row gadgets' range checks read no
-    /// table of the selection yet.
+    /// Lookups into it per token, outside the scores, including every auxiliary range.
     pub lookups_per_token: u64,
     /// Lookups into it by the scores of the lowering's sequence: one per score of each layer
     /// whose exponentials it holds.
@@ -157,10 +151,13 @@ impl CommitmentReport {
         (1u64 << LOG2_Q).max(1 << w)
     }
 
-    /// Committed multiplicities per proof: one per row of the selection's tables (RFC-0008),
-    /// without the row gadgets' range tables.
+    /// Multiplicities per proof, one per real row of every table a lookup reads (RFC-0008/0041).
     pub fn multiplicities(&self) -> u64 {
-        self.tables.iter().map(|t| t.rows).sum()
+        self.tables
+            .iter()
+            .filter(|t| t.lookups_per_token > 0 || t.score_lookups > 0)
+            .map(|t| t.rows)
+            .sum()
     }
 
     /// The counts of RFC-0020's cost model, under the names of `tessera.cost-model/1`. `F_att`
@@ -255,14 +252,9 @@ impl CommitmentReport {
             })).collect::<Vec<_>>(),
             "multiplicities": {
                 "total": self.multiplicities(),
-                "excludes": "the range tables of RsqrtRow's checks, which the selection does not allocate yet (#126)",
+                "excludes": "tables without lookups and power-of-two padding",
             },
-            "estimates": [{
-                "gadget": "RsqrtRow",
-                "commitments_per_row": RSQRT_ROW.0,
-                "lookups_per_row": RSQRT_ROW.1,
-                "why": "RFC-0009 states RsqrtRow's cost approximately until its limbs are fixed (#118)",
-            }],
+            "estimates": [],
             "counts": self.counts(),
             "projection_inputs": projection_inputs,
             "projections": cost_model["projections"],
@@ -311,11 +303,15 @@ pub fn report(
         tables.push(TableUse {
             id: spec.id,
             kind: kind_name(&spec.kind),
-            rows: 1u64
-                .checked_shl(u32::from(spec.log2_rows))
-                .ok_or(CompileError::Usage {
-                    rule: "a table has fewer than 2^64 rows",
-                })?,
+            rows: match &spec.kind {
+                TableKind::Requant { b, r_by_class, .. }
+                | TableKind::Silu { b, r_by_class, .. } => (1u64 << b) * r_by_class.len() as u64,
+                _ => 1u64
+                    .checked_shl(u32::from(spec.log2_rows))
+                    .ok_or(CompileError::Usage {
+                        rule: "a table has fewer than 2^64 rows",
+                    })?,
+            },
             lookups_per_token: 0,
             score_lookups: 0,
         });
@@ -395,8 +391,19 @@ pub fn report(
                 }
             }
             Gadget::RsqrtRow => {
-                tally.row_scalars = elements * RSQRT_ROW.0;
-                tally.lookups = elements * RSQRT_ROW.1;
+                let requests = selection.reads(node).ok_or(CompileError::Usage {
+                    rule: "every root has its complete canonical range requests",
+                })?;
+                let lookups = u64::try_from(requests.len()).map_err(|_| CompileError::Usage {
+                    rule: "a root's lookup count fits u64",
+                })?;
+                // Only the input/root tops are virtual; every other request has a committed value.
+                let columns = lookups.checked_sub(2).ok_or(CompileError::Usage {
+                    rule: "a root includes both virtual top requests",
+                })?;
+                tally.row_scalars = elements * columns;
+                tally.lookups = elements * lookups;
+                used.extend(requests.iter().map(|&id| (id, elements)));
             }
             Gadget::OneHot => tally.one_hot = elements,
             Gadget::Argmax { .. } | Gadget::InverseCdf => {

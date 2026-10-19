@@ -27,14 +27,10 @@
 use core::ops::Range;
 
 use tessera_codec::{Decode, Encode};
-use tessera_ir::{
-    ClaimList, CommitmentClass, Graph, Node, NodeKind, Op, OpClass, TableId, TensorId,
-};
+use tessera_ir::{ClaimList, CommitmentClass, Graph, Node, NodeKind, Op, OpClass, TensorId};
 
 use crate::schedule::LayerMap;
-use crate::{
-    CompileError, Gadget, Lowering, PublicModel, Selection, analyze, claim_list, lower, select,
-};
+use crate::{CompileError, Lowering, PublicModel, Selection, analyze, claim_list, lower, select};
 
 /// A `query_block` that is not a power of two: RFC-0007 step 6 refuses its claim list as `Layout`
 /// (RFC-0039).
@@ -60,7 +56,7 @@ const NOT_ATTENTION: &str = "an attention tile names a KV head of a SoftmaxRow o
 /// graph tensor: the tile owns them by definition. Within a tile the node's outputs come first, in
 /// output order, then the gadget's values, in the order RFC-0009 lists them:
 ///
-/// - `Requant1`, a [`Gadget::Lookup`] (`TableMap`, `Bitwise`) and `OneHot` commit their outputs
+/// - `Requant1`, a [`crate::Gadget::Lookup`] (`TableMap`, `Bitwise`) and `OneHot` commit their outputs
 ///   alone;
 /// - `RequantSplit` adds the low parts `z_lo`;
 /// - `RequantWide` adds `z_lo` when it has a low part, then the middle parts `h0` and the
@@ -284,11 +280,12 @@ pub fn tiles(
             tiles.push(Tile::Node { node: node.id.0 });
         }
     }
-    let mut read: Vec<TableId> = selection
-        .gadgets
-        .iter()
-        .flat_map(|&(_, gadget)| reads(gadget))
-        .collect();
+    let mut read = Vec::new();
+    for &(node, _) in &selection.gadgets {
+        read.extend_from_slice(selection.reads(node).ok_or(CompileError::Usage {
+            rule: "every selected gadget has its ordered lookup requests",
+        })?);
+    }
     read.sort_unstable();
     read.dedup();
     tiles.extend(read.into_iter().map(|table| Tile::Table { table: table.0 }));
@@ -411,33 +408,4 @@ fn rows(
         *q = queries.clone();
     }
     Some(share)
-}
-
-/// The tables `gadget`'s lookups read. RsqrtRow's remaining ranges join with #126.
-fn reads(gadget: Gadget) -> Vec<TableId> {
-    match gadget {
-        Gadget::Requant1 { table } | Gadget::Argmax { table } | Gadget::Lookup { table } => {
-            vec![table]
-        }
-        Gadget::SoftmaxRow {
-            exp,
-            reciprocal,
-            limb,
-            top,
-        } => [exp, reciprocal]
-            .into_iter()
-            .chain(limb)
-            .chain([top])
-            .collect(),
-        Gadget::RequantSplit { low, high, .. } => vec![low, high],
-        Gadget::RequantWide {
-            low,
-            mid,
-            top,
-            sign,
-            high,
-            ..
-        } => low.into_iter().chain([mid, top, sign, high]).collect(),
-        Gadget::RsqrtRow | Gadget::OneHot | Gadget::InverseCdf => Vec::new(),
-    }
 }

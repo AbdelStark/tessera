@@ -815,6 +815,7 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - Specify canonical gadget advice columns and complete auxiliary range-table ordering, with an explicit scalar-reference migration and the original root-bracket polynomial retained (RFC-0050, #407).
 - Add independent public model advice-layout vectors for RFC-0011/0047/0050, including complete auxiliary lookup requests and zero rows (#106).
+- Preserve complete ordered auxiliary lookup requests in compiler selections and derive plan/witness table sets and exact root report counts from them (RFC-0050, #106).
 
 ### Changed
 
