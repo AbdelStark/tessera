@@ -2,13 +2,92 @@
 
 | | |
 |---|---|
-| Status | `triaged` (2026-10-16) |
+| Status | `refuted` (2026-10-19, scoped E0 no-go for the historical blanket-sharing/zero-cost-split proposal; restricted raw identity remains true) |
 | Origin | [SUR-0002](../surveys/SUR-0002-lookups.md) Question 3 synthesis ("the once-per-proof table term is where RFC-0008 spends structure"; its wider-`B_max` seed priced ten `2^32` tables at about 9% of linear-layer lookups per proof) and ledger queue item 31; [RFC-0006 'Gadget selection'](../../docs/rfcs/RFC-0006-compiler-ir.md#gadget-selection) ("a requantization table is identified by `(shift, lo, hi, b)`"); [RFC-0008 Drawbacks](../../docs/rfcs/RFC-0008-logup-and-tables.md#drawbacks) ("a small table used rarely still pays its full row count per proof"); the cost model has no table-side term ([tools/cost_model.py](../tools/cost_model.py), read 2026-10-16: no parameter prices table rows; E0, primary). New |
 | Lever | `C_lin` and `K_lin` per token through the once-per-proof table side: LogUp-GKR commits `2^b` multiplicities and adds `2^b` fraction-tree leaves per distinct table definition per proof ([RFC-0008 'Relation', 'Fraction tree', 'Batching'](../../docs/rfcs/RFC-0008-logup-and-tables.md#relation)), amortized over the 16K-token batch; also multiplicity-counter memory ([08 §4](../../docs/spec/08-performance-budget.md#4-memory-budgets): `≤ 2^32` rows × 4 B per table) and the verifier's dense-table count ([08 §4](../../docs/spec/08-performance-budget.md#4-memory-budgets): `≤ 20` dense cores) |
 | Spec surfaces | RFC-0006 'Gadget selection' (the table identity rule `(shift, lo, hi, b)` → `(lo, hi, class-set shape)`, a public per-tensor dilation `j_t`); RFC-0008 'Table kinds' and 'Relation' (the lookup key carries a public scale `2^{j_t}`; `TableSetManifest` lists shared instances); RFC-0007 (nothing new is hidden: `j_t` is derived from `act_exponents` and `shift_class_sets`, which are public); RFC-0009 `RequantSplit` (split point `s + j_t`); RFC-0019 `tv-tables` (re-derives `j_t`, evaluates one MLE per shared table). Table definitions are tier A ([02 §1](../../docs/spec/02-public-api.md#1-stability-tiers)): promotion is an RFC amendment to RFC-0006 and RFC-0008. The cost-model term (4) is non-normative |
-| Priority | 0.13 (−1.7% × 0.3 / 4 at 1K, the short-context lever the note targets, at 10 distinct wide tables today; 1.0 at 50 tables; a tier-A amendment to RFC-0006 and RFC-0008); decided by the v0.2 `TableSetManifest`'s distinct-table count |
+| Priority | 0 for the original queued work; historical 2026-10-16 priority 0.13 (−1.7% × 0.3 / 4 at 1K, the short-context lever the note targets, at 10 distinct wide tables today; 1.0 at 50 tables; a tier-A amendment to RFC-0006 and RFC-0008); decided by the v0.2 `TableSetManifest`'s distinct-table count |
+
+## Current-spec preflight: scoped E0 no-go, 2026-10-19
+
+No EXP-0019 is opened and no experiment identifier is consumed. This is an analytic preflight of the historical proposal, not a new experiment or a claim of a soundness exploit. The blanket “one table per `(lo, hi)`”, zero-cost sharing of split tables, and missing-table-cost deliverables no longer justify the queued experiment. A narrower identity under explicit headroom and class-alignment conditions remains valid; any revised sharing/search proposal needs its own scope and preregistration.
+
+The specification reviewed is main `2a35a0c1cd023e4794bb6fa8b4dd17d7df293b23` through RFC-0049, in research checkout `b9b00b3935afeb1bcd3d17d0775655995fcb3d17`. Primary sources are [RFC-0028](../../docs/rfcs/RFC-0028-balanced-split.md), [RFC-0029](../../docs/rfcs/RFC-0029-table-set.md), [RFC-0008](../../docs/rfcs/RFC-0008-logup-and-tables.md#table-specifications), [RFC-0009](../../docs/rfcs/RFC-0009-gadgets.md#requantsplit), [RFC-0014](../../docs/rfcs/RFC-0014-interaction-and-soundness.md#soundness-budget), the committed reports below and the current [research baseline](../baseline.md#2-the-cost-model). No production or model changes were made.
+
+### The exact identity and signed key mapping
+
+For integers `z`, `r ≥ 1`, `j ≥ 0` and identical clamp bounds, the equality of rationals
+
+```text
+(2^j z + 2^(r+j−1)) / 2^(r+j) = (z + 2^(r−1)) / 2^r
+```
+
+proves equality after floor division and after saturation. This is nearest rounding with ties toward positive infinity, not nearest-even: at `r=1`, `z=1` gives 1 and `z=−1` gives 0. Scaling preserves both positive/negative ties and clamp boundaries. The valid signed interval is `−2^(b−1) ≤ z < 2^(b−1)`; its negative endpoint is included, contrary to the old strict-absolute-value shorthand.
+
+The row key is **offset and class packed**:
+
+```text
+p_b(c,z) = z + 2^(b−1) + 2^b c.
+p_(b+j)(c,2^j z) = 2^j p_b(c,z).
+```
+
+If the target width is instead `B ≥ b+j`, its required packed key is
+
+```text
+p_B(c,2^j z) = 2^j p_b(c,z)
+              + (2^(B−1) − 2^(b+j−1))
+              + (2^B − 2^(b+j)) c.
+```
+
+Ignoring either correction would select a different signed value or class. The map must use the original virtual value and the already-bound class; a prover cannot choose an arbitrary nonmultiple key. A common target needs the same clamp, a fixed public class-index map and one common `j` translating every aligned `r_by_class` entry. Same class count or output range alone is insufficient. Shifts must stay in `[1,63]`, and direct-table width must satisfy `B + ceil(log2 n) ≤ B_max ≤ 32`, for `1≤n≤4`.
+
+The current descriptor/digest binds the complete table kind, width, ordered shifts, bounds and id (RFC-0008). The scalar identity on a subset of rows does not make two existing descriptors or their digests equal. A future compiler may target one newly derived canonical table only through a specified, verifier-rederived transformation and a superseding tier-A RFC; it cannot alias existing ids merely by `(lo,hi)`.
+
+**Width counterexample to blanket sharing (E0 derivation).** Two allowed one-class direct tables with `b=32`, shifts 1 and 2, and INT8 clamps have the same output shape. Aligning shift 1 to 2 needs `j=1`. At the valid source key `z=−2^31`, the dilated signed value is `−2^32`, outside any allowed 32-bit direct-table domain. A 33-bit table exceeds `B_max=32`; adding a split changes commitments/lookups. In the unchanged key space the outputs also differ, e.g. key value `z=1` gives 1 at shift 1 and 0 at shift 2. Thus a universal single table with unchanged element cost does not follow from the raw equality. This is a range/cost obstruction, not an accepting forged witness.
+
+### The proposed split dilation does not merge new high-table definitions
+
+Write the original high descriptor as `(b−s, r_by_class−s, lo, hi)`. The historical rule `(b,r,s) → (b+j,r+j,s+j)` gives
+
+```text
+(b+j) − (s+j) = b−s,
+(r_c+j) − (s+j) = r_c−s.
+```
+
+The high descriptor is therefore **unchanged**, not newly aligned with another site's different descriptor. Existing identical high tables are already deduplicated. The candidate low witness is `2^j z_lo` and its range grows from `Range{s}` to `Range{s+j}`; that table may already be shared, but its row count does not stay tiny or free. RFC-0028 now chooses balanced splits, rather than the old minimum split that made every high table full.
+
+A valid scaled split still needs `s+j≤B_max`, `s+j≤r_min+j−1`, `b+j≤62`, the high width/class constraint, and `n·2^(b+j)<P`. The nested-rounding inequality is invariant when **both** split and shift change; increasing only the split can cross a rounding bit. Goldilocks nonwrap is a separate obligation: `4·2^62=2^64>P` fails, even if a small-field check or individual limb width looked harmless. Direct-table packed keys fit below `2^32<P`; split reconstruction uses the complete `[0,n·2^(b+j))` box below `P`, not just the signed accumulator bound.
+
+Choosing a different split than `s+j`, or scaling only a reduced high key, is a different table-selection optimization. It must count changed low/high rows and possible extra per-element gadgets against RFC-0028's current baseline. It is not validation of the original zero-cost rule.
+
+### Current counts, artifact and costs
+
+RFC-0029, originating at #316, retired `TableSetManifest`/`.tts`/schema `0x0203`. The canonical table set is `ClaimList.tables`; waiting for the retired artifact is not a dependency. The committed 405B reports below are primary E0 outputs for **synthetic public quantization profiles**, not manifests for a calibrated/deployed checkpoint. Counting their listed table entries with padded `rows ≥ 2^30` gives:
+
+| Report, `B_max=32` | All listed tables | Listed wide tables | Wide Requant/Silu entries |
+|---|---:|---:|---:|
+| [minimal, 1 class](../../docs/perf/v0.2/commitment-report-405b-minimal-c1-b32.json) | 17 | 3 | 2 |
+| [minimal, 2 classes](../../docs/perf/v0.2/commitment-report-405b-minimal-c2-b32.json) | 16 | 4 | 3 |
+| [minimal, 4 classes](../../docs/perf/v0.2/commitment-report-405b-minimal-c4-b32.json) | 17 | 4 | 3 |
+| [servable, 1 class](../../docs/perf/v0.2/commitment-report-405b-servable-c1-b32.json) | 15 | 2 | 2 |
+| [servable, 2 classes](../../docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json) | 15 | 4 | 4 |
+| [servable, 4 classes](../../docs/perf/v0.2/commitment-report-405b-servable-c4-b32.json) | 16 | 4 | 4 |
+
+The original kill threshold was at most six wide tables: the **listed benchmark profiles already lie below it** after balanced splitting. This defeats their original 10–50-wide-table gain premise. It does not establish a universal count for real quantization or for a complete future claim list: the report documents omitted row-gadget range-table allocation, and its table rows do not include the full descriptor/shift vector. No full real-model claim list was supplied for this unit. Consequently no actual candidate merge count, new μ improvement or claim that all possible model table sets satisfy the kill threshold is made.
+
+The table side is already priced by RFC-0020/#304 and `research/tools/cost_model.py` using the existing per-proof multiplicity/table-leaf input. Adding the old proposed term, or inflating both per-token counts with it again, would double-count. Historical 42/70-ps prices and 10/50-table μ scenarios below are retained only as provenance, not current evidence. Neither H100 table costs nor a surviving current gain were measured here.
+
+The current LogUp budget still names `N+T≤2^38` **per instance** in RFC-0014. Its error is `(N+T)/|Fp2|` in the unmasked protocol and `2(N+T)/|Fp2|` in the masked protocol (RFC-0032, zero denominators included), plus the separate sumcheck terms. Merging instances would require the exact public `N_shared=ΣN_site`, target `T`, per-instance checks and the proof-wide union; it cannot inherit the old asserted 1.6–2.5× margin. Counts must follow current padding and instance layout, not old tensor totals. No proposed merged-instance counts were supplied or certified.
+
+The optional SiLU/Exp extensions are not a substitute for the failed count/cost premise. SiLU needs identical input/output exponents and the current core bound; its preprocessing identity alone is not a new table-descriptor equivalence. Exp additionally needs a representable canonical scaled rational, legal key width and the zero-tail/core bound `z≤2^24`. No new fixed-point generator or optional hidden-factor construction was validated in this preflight.
+
+### Current disposition
+
+`refuted` for the **historical blanket-sharing/zero-cost-split and missing-cost-term proposal**, with no experiment opened. The restricted raw Requant identity survives under the stated bounds. A future follow-up requires a supplied canonical claim list (or an explicitly conditional synthetic study), a complete per-site class/width/shift map, current balanced-split comparison, exact distinct/padded row counts and a per-instance LogUp budget. It must not claim a real-model gain from a designed shift distribution. Full joint ZK and verifier-independence gates are not established by this E0 algebraic observation.
 
 ## Mechanism
+
+Historical 2026-10-16 proposal below. The current-spec preflight above supersedes its artifact, split-sharing, security-pass and cost-gap claims.
 
 Setting ([RFC-0005 'Integer semantics'](../../docs/rfcs/RFC-0005-integer-model.md#integer-semantics), [RFC-0008 'Table kinds'](../../docs/rfcs/RFC-0008-logup-and-tables.md#table-kinds)): every requantization is `rq(k, r, lo, hi) = clamp(floor((k + 2^{r−1}) / 2^r), lo, hi)` with a power-of-two shift `r` in `pot` mode; the table `Requant { b, classes, r_by_class, lo, hi }` has `|classes| · 2^b` rows and is shared only between tensors with identical definitions, i.e. identical `(shift, lo, hi, b)` (RFC-0006 'Gadget selection'). In the 405B `minimal` profile the eight requantized tensor kinds of 126 layers carry per-layer, per-class activation exponents, so the shift differs from layer to layer and the sharing rule produces many wide tables whose definitions differ only in `r`.
 
@@ -41,6 +120,8 @@ Verifier: `tv-tables` evaluates the shared table's MLE exactly as today (structu
 - Side effects in the same direction (E0, primary: 08 §4): multiplicity counters fall from `T × 2^32 × 4 B` (160 GB at `T = 10`, 800 GB at 50) to about 80 GB across the GPUs; the verifier's dense-table count stays inside the `≤ 20` cores budget, which 50 distinct tables would exceed.
 
 ## Expected gain
+
+Historical 2026-10-16 scenarios only; they are not a current gain estimate. The table-side term already exists and the listed benchmark profiles fail the original count premise.
 
 The cost model has no table-side term, so the scenario adds the amortized table side to both counts, `commits_per_token = lookups_per_token = 2.819×10^7 + T × 2^32 / 16,384`, pricing a table leaf at `lookup_ps` (upper end; at `leaf_ps` the term is 60% of this). The idea's gain is the difference between the with-table-side baseline (`T` = 10 or 50 distinct wide tables under today's identity rule) and the shared case (`T` = 5). Numbers measured on 2026-10-16 (E0, primary).
 
@@ -95,15 +176,17 @@ Evidence levels of the inputs: unit costs E0 primary (the model's assumptions, 0
 
 ## Security gate
 
+Current assessment, 2026-10-19. The restricted identity does not validate the historical table-sharing proposal or a protocol change.
+
 | Property | Effect | Pass |
 |---|---|---|
-| Soundness bits (G-4, RFC-0014) | The dilation is an exact integer identity. The dilated key `acc · 2^{j_t}` is a true integer whenever `acc` is (range analysis bounds `acc`, and the compiler checks `\|acc\| · 2^{j_t} < 2^{b_T − 1} ≤ 2^31 < (P − 1)/2`, INV-IR-2, Lemma 0), so its field value equals its integer value. The shared table is still a function of its key, so Lemma 1 (`Requant1`) holds unchanged, and Lemma 2 (`RequantSplit`) holds with `(s + j_t, r + j_t)`, whose precondition `s + j_t ≤ r + j_t − 1` is the old one. The LogUp error `(N + T)/\|Fp2\|` per instance (RFC-0014 budget line "`N + T ≤ 2^38` per instance") grows only through `N` (more lookups share one instance; `N` summed over the shared tensors is the same total as before, now in fewer instances, each still far below `2^38` at 16K: SUR-0002 counts `N ≈ 4.6×10^10 < 2^36` per table); `T = 2^32` per table is unchanged and there are fewer tables, so the union bound over instances shrinks. No challenge, label, absorption or opening changes (INV-FS-1..4 untouched). | pass (E0) |
-| Uniqueness upstream of the logits (SP-3, RFC-0009 Lemma 0) | Every committed output is still the unique table value of a determined key: `Requant1` by Lemma 1 on `(c, acc · 2^{j_t})`; `RequantSplit` by Lemma 2 with the shifted split point. No committed value is added or removed per element. | pass (E0) |
-| Zero knowledge (G-5, RFC-0013) | `j_t` is public but a function of data RFC-0007 already publishes (`act_exponents`, `shift_class_sets`); the table set and every key scale are functions of the claim list, so the claim-list shape is input-independent and the RFC-0013 simulator is unchanged; multiplicity columns stay committed advice under RFC-0011 masks with the `(0, δ)` leaf per tree. The optional hidden factor `f_c` (extension 3) reveals exactly what the hidden class index reveals today (membership in a public 4-element set) and is committed with the weights (RFC-0012 `ChannelParams`). | pass (E0) |
-| Verifier independence (SP-6) | The identity rule and the key scale are specification text: `tv-*` re-derives `j_t` from the public `QuantSpec` (SP-7, INV-IR-5) and evaluates one MLE per shared table definition; nothing prover-declared is trusted. | pass |
-| Post-quantum (hash-based commitments) | Unchanged. | pass |
+| Soundness bits (G-4, RFC-0014) | Raw Requant dilation is exact only with signed-offset/class mapping, shift/width limits and Goldilocks nonwrap enforced. The blanket width and zero-cost split claims are refuted above. A revised shared-instance relation and exact `N+T`/masked-factor/union budget have not been supplied. | unknown for any revised protocol; original scope refuted |
+| Uniqueness upstream of logits (SP-3) | Existing gadgets remain unchanged here. Correctly targeting a functional table preserves its one-output property, but does not establish all range/value premises or the optional hidden-factor construction. | unchanged surface only |
+| Zero knowledge (G-5, RFC-0013) | Public scaling reveals no extra parameter by itself. Full joint simulation under changed instances/masks was not reviewed; the historical shared `(0,δ)` root argument is superseded by RFC-0032. | unknown; no new ZK claim |
+| Verifier independence (SP-6) | A future implementation must be derived independently from an accepted RFC and a public canonical table set. No verifier code was added or approved. | conditional; not tested |
+| Post-quantum | No primitive changed in this preflight. | unchanged assumption |
 
-A `fail` anywhere rejects the idea. No `unknown` in this gate: the open input (the distinct-table count) is a cost input, not a security one.
+No failed or unknown security gate is overcome by the old gain projection. This disposition is a scoped analytic no-go, not a proof of a new accepting attack.
 
 ## Prior rejection check
 
@@ -134,6 +217,8 @@ Effort: `s` for the experiment; the RFC amendment to RFC-0006 and RFC-0008 is `m
 
 ## Refutations
 
+Historical sweep triage; the 2026-10-19 current-spec no-go above supersedes its “survives” conclusions for the original proposal.
+
 Sweep triage of 2026-10-16: four refuter agents who did not write the idea, one per lens; each argument is condensed from that refuter's verdict, with the cost-model reruns the scoring agent made to check disputed cells noted as such.
 
 | Lens | Verdict | Argument |
@@ -145,6 +230,8 @@ Sweep triage of 2026-10-16: four refuter agents who did not write the idea, one 
 
 ## Score
 
+Historical score retained below. Current priority is 0 for this refuted queued proposal; the surviving conditional identity is not a re-scored improvement.
+
 | Gain | Confidence | Cost | Priority |
 |---|---|---|---|
 | −1.7% μ(1K) at 10 distinct wide tables today (−13.3% at 50; −0.4% / −3.5% at 16K; E0 cost model under `corrected` with the amortized table side added to both counts; ×0.6 if a table leaf is priced at `leaf_ps`). The dilation identity is E0 exact (346,304 exhaustive and 10^6 sampled cases, zero violations, primary); the distinct-table count 10–50 is claim level. Scored at 1K as a short-context lever | 0.3: the identity is exact and every gate row passes, but the gain's only driver is a claim-level count that no artefact here can produce before the v0.2 `TableSetManifest`, every table is priced at the `2^32`-row maximum, and the tensors that would multiply the count have 0–1 bits of dilation slack | `l`: a tier-A amendment to RFC-0006 'Gadget selection' and RFC-0008 'Table kinds' plus `tv-tables`; the E0 experiment itself is one day (`s`) | 1.7 × 0.3 / 4 = 0.13 (1.0 at 50 tables) |
@@ -152,3 +239,5 @@ Sweep triage of 2026-10-16: four refuter agents who did not write the idea, one 
 ## Decision and links
 
 Triage 2026-10-16: `triaged` at priority 0.13. The identity check and the table-side term in `cost_model.py` (behind a parameter defaulting to 0) are worth a day and can be filed now as a research deliverable; the idea's standing is decided by the v0.2 `TableSetManifest`'s distinct-table count (kill criterion 1), so no experiment beyond that E0 check is queued until the count exists, and the RFC amendment waits for it. The verifier-side benefits (dense-core count, multiplicity memory) are the robust part and belong in the amendment's motivation if it is written; the planner check of RFC-0014's `N + T ≤ 2^38` line per shared instance goes with it. Experiments: none yet (the one-day E0 check, as EXP-NNNN when run). RFC or issue: none yet (an amendment to RFC-0006 and RFC-0008 if the v0.2 count justifies it). Ledger line updated on: pending consolidation (2026-10-16).
+
+Review 2026-10-19: original queued proposal `refuted` by the current-spec preflight above; no EXP-0019 created, no code or new cost term. The narrow raw identity is retained as a conditional future research input. Ledger consolidation belongs to the parent.

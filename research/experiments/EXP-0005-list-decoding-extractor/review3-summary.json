@@ -1,0 +1,321 @@
+{
+  "review": "EXP-0005 current Draft RFC-0021 third adversarial reading",
+  "date": "2026-10-19",
+  "verdict": "keep Draft; no full soundness/ZK approval",
+  "evidence_level": "E0 source-level proof review and independent exact arithmetic; not a Lean rebuild or protocol proof",
+  "reviewed_rfc_sha256": "57e24256f7985008878f54b40721169e883f016af3918a49aa1d14cb5d41b1bb",
+  "reviewed_checkout": "46d39e45e83561b2139ace790e48cf27cf6e4753",
+  "normative_main": "de5a70ca534a940e230c6f30a1518581bc117a26",
+  "report": "research/experiments/EXP-0005-list-decoding-extractor/review3.md",
+  "report_sha256": "7000a4b706d6c48315b5db2d9f058a565af19c6d76e21276a50295adf49f43dd",
+  "source_commit": "4dae3acff846125521b7b3998010885071746f16",
+  "source_manifest": [
+    {
+      "path": "ReedSolomon/MutualCorrelatedAgreement/LineToAffine.lean",
+      "url": "https://raw.githubusercontent.com/Verified-zkEVM/ArkLib/4dae3acff846125521b7b3998010885071746f16/ArkLib/Data/CodingTheory/ReedSolomon/MutualCorrelatedAgreement/LineToAffine.lean",
+      "sha256": "444bfca0d22111b4cb51c23a31537fce7444fe774460e3d11b7f31fec91b206f",
+      "bytes": 13208
+    },
+    {
+      "path": "ReedSolomon/MutualCorrelatedAgreement/Johnson/Agreement.lean",
+      "url": "https://raw.githubusercontent.com/Verified-zkEVM/ArkLib/4dae3acff846125521b7b3998010885071746f16/ArkLib/Data/CodingTheory/ReedSolomon/MutualCorrelatedAgreement/Johnson/Agreement.lean",
+      "sha256": "eb7f69e1b737e2c22be33a47cfdd047d35caab99c6c4f26eb4ce579d192f0fe2",
+      "bytes": 12512
+    },
+    {
+      "path": "ReedSolomon/MutualCorrelatedAgreement/Johnson/Probability.lean",
+      "url": "https://raw.githubusercontent.com/Verified-zkEVM/ArkLib/4dae3acff846125521b7b3998010885071746f16/ArkLib/Data/CodingTheory/ReedSolomon/MutualCorrelatedAgreement/Johnson/Probability.lean",
+      "sha256": "a9bbb4e6bcbdd96bdadbc6452dfe7a0c415d4be8269a6dff3b3711614c1458a9",
+      "bytes": 4667
+    },
+    {
+      "path": "HiddenDerivative/Parameters/Johnson/FiniteBounds.lean",
+      "url": "https://raw.githubusercontent.com/Verified-zkEVM/ArkLib/4dae3acff846125521b7b3998010885071746f16/ArkLib/Data/CodingTheory/HiddenDerivative/Parameters/Johnson/FiniteBounds.lean",
+      "sha256": "cae97029b320b85707a341a32f0589c8b824dd5e29b39645d918ff8a86d994cc",
+      "bytes": 41574
+    },
+    {
+      "path": "ReedSolomon/ListDecodability/PairwiseJohnson.lean",
+      "url": "https://raw.githubusercontent.com/Verified-zkEVM/ArkLib/4dae3acff846125521b7b3998010885071746f16/ArkLib/Data/CodingTheory/ReedSolomon/ListDecodability/PairwiseJohnson.lean",
+      "sha256": "48e0a30706c040c33bdd1fa6386fc3dfdefc05c4ffd0b09be841e5fa1ce78290",
+      "bytes": 8676
+    },
+    {
+      "path": "ProximityGenerator/Basic.lean",
+      "url": "https://raw.githubusercontent.com/Verified-zkEVM/ArkLib/4dae3acff846125521b7b3998010885071746f16/ArkLib/Data/CodingTheory/ProximityGenerator/Basic.lean",
+      "sha256": "f04d4f09bb10007658978a5e149d43ed594a916cd1e3d1bd814cb6ef5bac5570",
+      "bytes": 24365
+    },
+    {
+      "path": "ProximityGenerator/AffineGenerator.lean",
+      "url": "https://raw.githubusercontent.com/Verified-zkEVM/ArkLib/4dae3acff846125521b7b3998010885071746f16/ArkLib/Data/CodingTheory/ProximityGenerator/AffineGenerator.lean",
+      "sha256": "698c77fa330db2521a15f210658c6a5e357dcfa91247fdcbc6764a028629cf56",
+      "bytes": 23589
+    },
+    {
+      "path": "ReedSolomon/MutualCorrelatedAgreement/FullAgreement.lean",
+      "url": "https://raw.githubusercontent.com/Verified-zkEVM/ArkLib/4dae3acff846125521b7b3998010885071746f16/ArkLib/Data/CodingTheory/ReedSolomon/MutualCorrelatedAgreement/FullAgreement.lean",
+      "sha256": "246e2961aaf075130e64b906e4d0235acc2ee0e37853cf1d8f3037b658d87028",
+      "bytes": 6071
+    }
+  ],
+  "findings": [
+    {
+      "id": "R3-1",
+      "classification": "concrete completeness/count defect",
+      "finding": "Unmasked empty ChannelParams M=0 has no fixed first row; C=M-1 undefined",
+      "required": "explicit public-empty branch, zero draws and canonical checks/vector"
+    },
+    {
+      "id": "R3-2",
+      "classification": "proof exposition gap; E0 bridge supplied",
+      "finding": "fixed physical pair is not literal (1,x) generator on M rows",
+      "required": "virtual U_a+iU_b theorem family then split fixed polynomial over Fp"
+    },
+    {
+      "id": "R3-3",
+      "classification": "acceptance blocker/unknown; no invented leak",
+      "finding": "full stream combines other designated pairs and all epoch blinders; literal one-use invariants conflict; joint conditional freshness unproved",
+      "required": "reconcile invariants and prove joint simulator/rank accounting including masks/extension roles/epochs/links; do not silently exclude rows"
+    },
+    {
+      "id": "R3-4",
+      "classification": "layout clarification/vector gate",
+      "finding": "final R/bounds must include appended advice pairs; fixed public grouping/roles before seed",
+      "required": "power-of-two/max layout and RFC0047 permutation/empty-segment/reservation vectors"
+    },
+    {
+      "id": "R3-5",
+      "classification": "inherited claim-pool integration dependency",
+      "finding": "ChannelParams multiple site claims unresolved by RFC0045; weight L/q assumes one already-bound claim",
+      "required": "settle #105 mapping or account multi-claim reduction and budgets"
+    },
+    {
+      "id": "R3-6",
+      "classification": "evidence/tooling limitations",
+      "finding": "terms docstring stale independent shape; degree257 conservative; planning proximity uses floats and q approx2^128",
+      "required": "correct provenance; implement independent exact calculators/vectors before claiming gate passed"
+    }
+  ],
+  "decisions_left_open": [
+    "OQ-0021-4 per-commitment versus per-proof SP-1 target",
+    "OQ-0021-6 protocol identifiers and schema/parameter mapping"
+  ],
+  "arithmetic": {
+    "field_p": 18446744069414584321,
+    "field_q": 340282366762482138490186164457219031041,
+    "oracle": "independent Fraction integer comparisons; Decimal precision90 for displayed logarithms",
+    "cases": [
+      {
+        "name": "live advice",
+        "k": 4194304,
+        "P": 160,
+        "n": 8388608,
+        "D": 4194463,
+        "eta": "3/1000",
+        "A": 5956920,
+        "m": 118,
+        "mu": 167,
+        "h": 9361,
+        "L": 49,
+        "E0": "110007782818839124817/1762457",
+        "threshold_margin": "1762455.85442843643499968610643526293873312298132783034191212014635983547250061088547105554",
+        "field_bits": "82.1729891353260288814558625431207201209710209908295666940813138158916395286387927760359762",
+        "query_bits": "64.2024346296656265143881805157006726683064672942499680411620012780875530845974507347806805",
+        "claim_bits_T256_G16": "110.385290155212984555261423794938839695095750737712016798469369402403227452708319112611214",
+        "claim_bits_terms_conservative": "110.379665606019106448341564692264773093374641056173664762562073623929978475214847708039191",
+        "consistency_bits": "129.992890371970339410019062132004234461400738627859864869731463520742536579193674401697363",
+        "hypotheses": {
+          "positive_degree": true,
+          "degree_below_n_minus_2": true,
+          "positive_eta": true,
+          "agreement_below_one": true,
+          "dimension_threshold": true,
+          "pairwise_threshold": true,
+          "pairwise_positive": true,
+          "separating_50_pair_union_lt_field": true
+        }
+      },
+      {
+        "name": "NI advice",
+        "k": 4194304,
+        "P": 200,
+        "n": 8388608,
+        "D": 4194503,
+        "eta": "3/1000",
+        "A": 5956949,
+        "m": 118,
+        "mu": 167,
+        "h": 9361,
+        "L": 49,
+        "E0": "18334630451630265531/293741",
+        "threshold_margin": "1762444.13809616042393348296874713437400870280016263611116588011874516631253900642823411254",
+        "field_bits": "82.1729801324543279854548812819387084997357302545989951092196244197778881466658230443711158",
+        "query_bits": "80.4988591859201015315199983441411277683416045634391327317073432936690746222074735757825618",
+        "claim_bits_T256_G16": "110.385290155212984555261423794938839695095750737712016798469369402403227452708319112611214",
+        "claim_bits_terms_conservative": "110.379665606019106448341564692264773093374641056173664762562073623929978475214847708039191",
+        "consistency_bits": "162.988843062177948928937888770957745894096599127703038141731755413780392884966398604606611",
+        "hypotheses": {
+          "positive_degree": true,
+          "degree_below_n_minus_2": true,
+          "positive_eta": true,
+          "agreement_below_one": true,
+          "dimension_threshold": true,
+          "pairwise_threshold": true,
+          "pairwise_positive": true,
+          "separating_50_pair_union_lt_field": true
+        }
+      },
+      {
+        "name": "live weights",
+        "k": 1048576,
+        "P": 65536,
+        "n": 4194304,
+        "D": 1114111,
+        "eta": "1/200",
+        "A": 2182666,
+        "m": 52,
+        "mu": 101,
+        "h": 3458,
+        "L": 49,
+        "E0": "1598165209407922391/356185",
+        "threshold_margin": "1068553.35210111417480090583051039853740741578745757620166690742513242502906717942325074529",
+        "field_bits": "85.9711449736278596424770314390410448015593263770738638169945196826183699273106691261709376",
+        "query_bits": "64.0791525369340135739034332708764255414899797086214131171916806015561378699422711569105334",
+        "claim_bits_T256_G16": "110.385290155212984555261423794938839695095750737712016798469369402403227452708319112611214",
+        "claim_bits_terms_conservative": "110.379665606019106448341564692264773093374641056173664762562073623929978475214847708039191",
+        "consistency_bits": "130.052614850133680092739964535616295210460828330088225331452780596273631533132989085509871",
+        "hypotheses": {
+          "positive_degree": true,
+          "degree_below_n_minus_2": true,
+          "positive_eta": true,
+          "agreement_below_one": true,
+          "dimension_threshold": true,
+          "pairwise_threshold": true,
+          "pairwise_positive": true,
+          "separating_50_pair_union_lt_field": true
+        }
+      },
+      {
+        "name": "NI weights",
+        "k": 1048576,
+        "P": 65536,
+        "n": 4194304,
+        "D": 1114111,
+        "eta": "1/200",
+        "A": 2182666,
+        "m": 52,
+        "mu": 101,
+        "h": 3458,
+        "L": 49,
+        "E0": "1598165209407922391/356185",
+        "threshold_margin": "1068553.35210111417480090583051039853740741578745757620166690742513242502906717942325074529",
+        "field_bits": "85.9711449736278596424770314390410448015593263770738638169945196826183699273106691261709376",
+        "query_bits": "80.0989406711675169673792915885955319268624746357767663964896007519451723374278389461381668",
+        "claim_bits_T256_G16": "110.385290155212984555261423794938839695095750737712016798469369402403227452708319112611214",
+        "claim_bits_terms_conservative": "110.379665606019106448341564692264773093374641056173664762562073623929978475214847708039191",
+        "consistency_bits": "162.565768562667100115924955669520369013076035412610281664315975745342039416416236356887339",
+        "hypotheses": {
+          "positive_degree": true,
+          "degree_below_n_minus_2": true,
+          "positive_eta": true,
+          "agreement_below_one": true,
+          "dimension_threshold": true,
+          "pairwise_threshold": true,
+          "pairwise_positive": true,
+          "separating_50_pair_union_lt_field": true
+        }
+      }
+    ]
+  },
+  "checks": {
+    "pinned_sources": "freshly fetched/read eight primary files with SHA256",
+    "theorem_hypotheses": "all declared default arithmetic conditions pass",
+    "terms_reproduction": "byte identical to historical results/terms.txt",
+    "report_links": "all relative targets exist; no trailing whitespace",
+    "Lean_rebuild": "not run",
+    "production_verifier_tests": "not run; no implementation changes",
+    "timings": "none",
+    "persistent_oracle": "self-test and --check-summary pass; exact rational interval query-union decisions"
+  },
+  "historical_EXP0005_verdict": "inconclusive; untouched",
+  "limitations": [
+    "No full protocol reduction or complete joint malicious-verifier simulator",
+    "No proof of current compiler group/claim bounds",
+    "No acceptance decision for SP-1 union or protocol mapping",
+    "No implementation/performance/security promotion"
+  ],
+  "next": "parent records/fixes explicit Draft issues; recheck only changed claims, retain blockers until settled",
+  "followup": {
+    "rfc_sha256": "c22f39f13eb114bc2f607621eeb15b311d02ed70f50cca21776a1d0fe66fcde9",
+    "terms_sha256": "7563e3a9b161a70001fbf3e162a7dcf34550f278519f3595baed74a1a3e5aedd",
+    "method": "light diff reading only during exclusive EXP0018 timing; no math/test/build rerun",
+    "statuses": {
+      "R3-1": "coherent empty branch textual repair; clarify all scheduled non-xi draws unchanged; vectors pending",
+      "R3-2": "virtual pair bridge correctly repaired in prose",
+      "R3-3": "explicitly recorded OQ0021-7; remains unknown and blocks masked adoption",
+      "R3-4": "final span/public-slot rule clarified; vector gates open",
+      "R3-5": "current claim-pool integration dependency remains",
+      "R3-6": "docstring repaired; arithmetic code unchanged and remains planning approximation"
+    },
+    "new_theorem_assumptions": "none in reviewed textual repairs",
+    "overall": "keep Draft, no full soundness/ZK approval"
+  },
+  "query_union": {
+    "scope": "query-only sum for one advice plus ten weights; masked planning P_W=65536, not protocol/1 calibration or a policy decision",
+    "sum": "alpha_A^tau_A + 10*alpha_W^tau_W",
+    "proof": "exact Fraction powers using 160-bit rational radical enclosures; Decimal90 bits for display",
+    "alpha_advice_interval": [
+      "129730226407887394911621874594893568063547396213241/182687704666362864775460604089535377456991567872000",
+      "64865113203943697455810937297446784031773698106683/91343852333181432387730302044767688728495783936000"
+    ],
+    "alpha_weight_interval": [
+      "2376712103069730170419633357960668380045111955309/4567192616659071619386515102238384436424789196800",
+      "19013696824557841363357066863685347040360895642497/36537540933272572955092120817907075491398313574400"
+    ],
+    "cases": [
+      {
+        "tau_advice": 130,
+        "tau_weights": 68,
+        "query_bits_decimal90": "60.6305030716084599480709470296446716582942186921921686072993695079405882251754858580084675",
+        "exact_interval_status_vs_2pow_minus64": "fail",
+        "upper_ratio_to_2pow_minus64_decimal90": "10.3352180985637252904850029343303809203932136438769347180117104642611860006577231328320864"
+      },
+      {
+        "tau_advice": 138,
+        "tau_weights": 71,
+        "query_bits_decimal90": "63.5247146440120789000487619724844971740212168036501460922202779302487979637300043794068982",
+        "exact_interval_status_vs_2pow_minus64": "fail",
+        "upper_ratio_to_2pow_minus64_decimal90": "1.39019316409785332604920029797980777713664934749447083433966244396612910657392206563662608"
+      },
+      {
+        "tau_advice": 138,
+        "tau_weights": 72,
+        "query_bits_decimal90": "64.4142822368988092813787007573259254421828069328001273577122738701403364993550958010779935",
+        "exact_interval_status_vs_2pow_minus64": "pass",
+        "upper_ratio_to_2pow_minus64_decimal90": "0.750392733782644987006581925847287737216850659176017812018116590105360969741729743406052489"
+      }
+    ]
+  },
+  "persistent_oracle": {
+    "path": "research/experiments/EXP-0005-list-decoding-extractor/review3_exact.py",
+    "sha256": "e8983e766d4c9dd6aa969e8910f86d5eacad5784ed7f32aa337083065a7fc7b4",
+    "command": "python3 -I research/experiments/EXP-0005-list-decoding-extractor/review3_exact.py --self-test --check-summary research/experiments/EXP-0005-list-decoding-extractor/review3-summary.json",
+    "scope": "new review-only reproduction artifact; no historical experiment criteria/results changed"
+  },
+  "RFC0049_followup": {
+    "main": "2a35a0c1cd023e4794bb6fa8b4dd17d7df293b23",
+    "rfc49_sha256": "bf0c7a8c4c6de02d990331f937f82fe2274744543314bb27f34d60e592750043",
+    "reviewed_draft_sha256": "41585a8ce96e8b77b68dd91aa47cfa69ded051dc84b118c1c39d70c8e9d2ff02",
+    "overrides_prior_empty_branch_approval": true,
+    "required": [
+      "protocol1 weights tensor already early; advice timing moves; masked timing separately new",
+      "retain M0 no proximity/no xi/no queries-row rules, no empty placeholder component",
+      "advice allocated R versus unmasked weight committed-position m_T",
+      "weight P65536 profiles masked planning; protocol1 operational P0/B0",
+      "explicit fresh protocol/active-matrix schema mapping OQ6; multi-claim #386 remains open"
+    ],
+    "OQ4": "leave decision open; exact joint query sum fails138/71 and passes138/72 conditionally; no full target allocation",
+    "verdict": "keep Draft, no full soundness/ZK approval"
+  }
+}

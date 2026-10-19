@@ -1,0 +1,23 @@
+   Compiling marginal-forest v0.0.0 (/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0018-shared-point-marginal-forest)
+    Finished `release` profile [optimized] target(s) in 10.41s
+     Running `research/experiments/EXP-0018-shared-point-marginal-forest/target/release/marginal-forest check research/experiments/EXP-0018-shared-point-marginal-forest/results/check.json`
+control root210 accepted; wrong211/final-proof exact FinalMismatch round0; altered owed leaf mismatch caught
+controls: zero-variable, mixed heights/front padding, zero/one eq, scripted prior-eq-zero (split/full-eq exact), unit numerator, zero denominator passed
+checking production s3h4 0
+checking production s3h4 1
+checking production s3h4 2
+checking proxy s3h4 0
+checking proxy s3h4 1
+checking proxy s3h4 2
+checking production s0h7 0
+checking production s0h7 1
+checking production s0h7 2
+checking proxy s0h7 0
+checking proxy s0h7 1
+checking proxy s0h7 2
+checking production s2h3 0
+checking production s2h3 1
+checking production s2h3 2
+checking proxy s2h3 0
+checking proxy s2h3 1
+checking proxy s2h3 2

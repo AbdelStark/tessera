@@ -1,0 +1,15 @@
+[package]
+name = "normbound"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+
+[workspace]
+
+[dependencies]
+serde_json = "1"
+tessera-codec = { path = "../../../crates/tessera-codec" }
+tessera-compiler = { path = "../../../crates/tessera-compiler" }
+tessera-ir = { path = "../../../crates/tessera-ir" }
+tessera-tables = { path = "../../../crates/tessera-tables" }

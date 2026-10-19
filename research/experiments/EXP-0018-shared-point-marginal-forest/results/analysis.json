@@ -1,0 +1,1101 @@
+{
+  "evidence": "E1 CPU",
+  "primary_verdict": "inconclusive",
+  "proxy_verdict": "inconclusive",
+  "empirical_band_is_not_confidence_interval": true,
+  "raw_journal_samples_audited": 480,
+  "rows": [
+    {
+      "case": "production",
+      "shape": "s8h14",
+      "judged": true,
+      "attempts": [
+        {
+          "attempt": 0,
+          "arm_stats_seconds": [
+            {
+              "median": 0.07811708349999999,
+              "minimum": 0.077486584,
+              "maximum": 0.113468541,
+              "mean": 0.0815694042,
+              "sample_sd": 0.011212137954000527,
+              "cv": 0.13745519001842268
+            },
+            {
+              "median": 0.26713175,
+              "minimum": 0.264418583,
+              "maximum": 0.306701709,
+              "mean": 0.2717194541,
+              "sample_sd": 0.012739826482118386,
+              "cv": 0.046885956415287776
+            },
+            {
+              "median": 0.3447420835,
+              "minimum": 0.341222583,
+              "maximum": 0.353313292,
+              "mean": 0.3450615374,
+              "sample_sd": 0.0035525018440599548,
+              "cv": 0.010295270434449628
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.0768275215,
+            "minimum": 0.035136374000000026,
+            "maximum": 0.081808624,
+            "mean": 0.0733420833,
+            "sample_sd": 0.013786655744285543,
+            "cv": 0.18797742201966525
+          },
+          "ratio_stats": {
+            "median": 0.9842274123834309,
+            "minimum": 0.4518157447727024,
+            "maximum": 1.0448055560018428,
+            "mean": 0.9075459257084206,
+            "sample_sd": 0.18636353840793138,
+            "cv": 0.20534887891481415
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": false,
+          "verdict": "inconclusive",
+          "paired_F_B_covariance_seconds_squared": -7.574214232453622e-06,
+          "paired_F_B_correlation": -0.1673554114250726,
+          "variance_identity_residual": 0.0,
+          "subtraction_scale_amplification": 8.409646464187635,
+          "arm_last3_over_first3_minus1": [
+            0.006541556122441117,
+            -0.04493588517374658,
+            0.011506793512231717
+          ]
+        },
+        {
+          "attempt": 1,
+          "arm_stats_seconds": [
+            {
+              "median": 0.077785875,
+              "minimum": 0.076838958,
+              "maximum": 0.078219292,
+              "mean": 0.0777240833,
+              "sample_sd": 0.0004290926042388223,
+              "cv": 0.005520716179856473
+            },
+            {
+              "median": 0.264955875,
+              "minimum": 0.264329084,
+              "maximum": 0.26647275,
+              "mean": 0.2650741416,
+              "sample_sd": 0.0006311875755538875,
+              "cv": 0.0023811737038702064
+            },
+            {
+              "median": 0.34219962449999997,
+              "minimum": 0.341603458,
+              "maximum": 0.345581291,
+              "mean": 0.3432286998,
+              "sample_sd": 0.0017245046520353398,
+              "cv": 0.00502436029691052
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.07769037449999999,
+            "minimum": 0.07618004100000003,
+            "maximum": 0.08060087500000002,
+            "mean": 0.0781545582,
+            "sample_sd": 0.001662448423144809,
+            "cv": 0.02127129193015909
+          },
+          "ratio_stats": {
+            "median": 1.0050516194647952,
+            "minimum": 0.9785622450790562,
+            "maximum": 1.0441339352799444,
+            "mean": 1.0055826202748182,
+            "sample_sd": 0.022931779175679894,
+            "cv": 0.02280447047644162
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": true,
+          "verdict": "refuted",
+          "paired_F_B_covariance_seconds_squared": 3.042896454042304e-07,
+          "paired_F_B_correlation": 0.2795531320258453,
+          "variance_identity_residual": 0.0,
+          "subtraction_scale_amplification": 7.783331585642563,
+          "arm_last3_over_first3_minus1": [
+            -0.0018556107000681221,
+            -0.0022542981704197773,
+            0.0022068404320410018
+          ]
+        }
+      ],
+      "verdict": "refuted",
+      "warmup_records_audited": 9,
+      "warmups_per_arm_before_first_series": 3,
+      "fresh_warmups_before_registered_rerun": false,
+      "fixed_reps": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "case": "proxy",
+      "shape": "s8h14",
+      "judged": true,
+      "attempts": [
+        {
+          "attempt": 0,
+          "arm_stats_seconds": [
+            {
+              "median": 0.1341382915,
+              "minimum": 0.133394583,
+              "maximum": 0.134999958,
+              "mean": 0.1342037625,
+              "sample_sd": 0.0006053895627954069,
+              "cv": 0.004510973101781755
+            },
+            {
+              "median": 0.19104166649999998,
+              "minimum": 0.189986,
+              "maximum": 0.192318667,
+              "mean": 0.1910748875,
+              "sample_sd": 0.0007895836958120944,
+              "cv": 0.0041323258442954435
+            },
+            {
+              "median": 0.3115126875,
+              "minimum": 0.31081,
+              "maximum": 0.312648708,
+              "mean": 0.3115885208,
+              "sample_sd": 0.0006945065073461767,
+              "cv": 0.0022289219948252235
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.120429104,
+            "minimum": 0.118548333,
+            "maximum": 0.122381501,
+            "mean": 0.12051363329999999,
+            "sample_sd": 0.0012498714055042407,
+            "cv": 0.010371203417233963
+          },
+          "ratio_stats": {
+            "median": 0.8968148086267157,
+            "minimum": 0.8837750507622404,
+            "maximum": 0.9168292492842014,
+            "mean": 0.8980105580139252,
+            "sample_sd": 0.01057072054218316,
+            "cv": 0.011771265324053398
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": true,
+          "verdict": "inconclusive",
+          "paired_F_B_covariance_seconds_squared": -2.2819841442933758e-07,
+          "paired_F_B_correlation": -0.416138724067332,
+          "variance_identity_residual": 2.117582368135751e-22,
+          "subtraction_scale_amplification": 4.171008661308032,
+          "arm_last3_over_first3_minus1": [
+            -0.0027037962118534598,
+            -0.00841811253972291,
+            -0.0002712700834595072
+          ]
+        }
+      ],
+      "verdict": "inconclusive",
+      "warmup_records_audited": 9,
+      "warmups_per_arm_before_first_series": 3,
+      "fresh_warmups_before_registered_rerun": false,
+      "fixed_reps": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "case": "production",
+      "shape": "s10h12",
+      "judged": true,
+      "attempts": [
+        {
+          "attempt": 0,
+          "arm_stats_seconds": [
+            {
+              "median": 0.07774270850000001,
+              "minimum": 0.07737225,
+              "maximum": 0.088922375,
+              "mean": 0.0788901169,
+              "sample_sd": 0.0035346852297367583,
+              "cv": 0.04480517165689177
+            },
+            {
+              "median": 0.266896604,
+              "minimum": 0.264803875,
+              "maximum": 0.267993583,
+              "mean": 0.2668016917,
+              "sample_sd": 0.0008992806157510256,
+              "cv": 0.003370595628614695
+            },
+            {
+              "median": 0.3443475205,
+              "minimum": 0.342681417,
+              "maximum": 0.361973709,
+              "mean": 0.3463889501,
+              "sample_sd": 0.005796522727273771,
+              "cv": 0.01673414445120249
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.0781544585,
+            "minimum": 0.075653833,
+            "maximum": 0.09443845899999997,
+            "mean": 0.0795872584,
+            "sample_sd": 0.005474079500546303,
+            "cv": 0.0687808527469807
+          },
+          "ratio_stats": {
+            "median": 1.0029802704913524,
+            "minimum": 0.9777280305907653,
+            "maximum": 1.0620325761654474,
+            "mean": 1.0080652356713202,
+            "sample_sd": 0.02794175691283147,
+            "cv": 0.027718203072664913
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": false,
+          "verdict": "inconclusive",
+          "paired_F_B_covariance_seconds_squared": 2.2214174876828217e-06,
+          "paired_F_B_correlation": 0.4261548262761719,
+          "variance_identity_residual": 0.0,
+          "subtraction_scale_amplification": 7.704633305976524,
+          "arm_last3_over_first3_minus1": [
+            0.0012076788928490068,
+            0.0021021359242423543,
+            0.002817342749816154
+          ]
+        },
+        {
+          "attempt": 1,
+          "arm_stats_seconds": [
+            {
+              "median": 0.0782001665,
+              "minimum": 0.077475208,
+              "maximum": 0.081355917,
+              "mean": 0.0784517292,
+              "sample_sd": 0.0011360506508916266,
+              "cv": 0.01448088732366178
+            },
+            {
+              "median": 0.26580708350000004,
+              "minimum": 0.264492416,
+              "maximum": 0.275306417,
+              "mean": 0.2668205958,
+              "sample_sd": 0.0032633389103746,
+              "cv": 0.012230461072880191
+            },
+            {
+              "median": 0.343718729,
+              "minimum": 0.342127292,
+              "maximum": 0.356492667,
+              "mean": 0.3452658582,
+              "sample_sd": 0.004358219109119805,
+              "cv": 0.012622791989456561
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.07793175,
+            "minimum": 0.073602958,
+            "maximum": 0.08766512500000001,
+            "mean": 0.0784452624,
+            "sample_sd": 0.0037276640712850468,
+            "cv": 0.04751930144968254
+          },
+          "ratio_stats": {
+            "median": 1.0011107174354106,
+            "minimum": 0.9047031944830761,
+            "maximum": 1.1091539401244221,
+            "mean": 1.0001882643155555,
+            "sample_sd": 0.050834563034618134,
+            "cv": 0.050824994501815136
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": false,
+          "verdict": "inconclusive",
+          "paired_F_B_covariance_seconds_squared": 7.873987609356252e-06,
+          "paired_F_B_correlation": 0.5536349354782988,
+          "variance_identity_residual": 3.3881317890172014e-21,
+          "subtraction_scale_amplification": 7.80272046103832,
+          "arm_last3_over_first3_minus1": [
+            0.004613986956484073,
+            0.0027196693294235796,
+            0.001550920541166123
+          ]
+        }
+      ],
+      "verdict": "inconclusive",
+      "warmup_records_audited": 9,
+      "warmups_per_arm_before_first_series": 3,
+      "fresh_warmups_before_registered_rerun": false,
+      "fixed_reps": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "case": "proxy",
+      "shape": "s10h12",
+      "judged": true,
+      "attempts": [
+        {
+          "attempt": 0,
+          "arm_stats_seconds": [
+            {
+              "median": 0.1347448545,
+              "minimum": 0.133584708,
+              "maximum": 0.143195917,
+              "mean": 0.1355371418,
+              "sample_sd": 0.002738294137421197,
+              "cv": 0.020203274918264482
+            },
+            {
+              "median": 0.1922791665,
+              "minimum": 0.191649833,
+              "maximum": 0.225016,
+              "mean": 0.1969903,
+              "sample_sd": 0.01103324996626626,
+              "cv": 0.05600910281504348
+            },
+            {
+              "median": 0.3134975625,
+              "minimum": 0.311337375,
+              "maximum": 0.348347,
+              "mean": 0.3186674543,
+              "sample_sd": 0.012060110451000921,
+              "cv": 0.037845441347290176
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.121253625,
+            "minimum": 0.11959358400000003,
+            "maximum": 0.124178126,
+            "mean": 0.1216771543,
+            "sample_sd": 0.0016538684606859718,
+            "cv": 0.013592267753141986
+          },
+          "ratio_stats": {
+            "median": 0.8967841524142252,
+            "minimum": 0.8667975777549578,
+            "maximum": 0.9232419028082168,
+            "mean": 0.897947220141394,
+            "sample_sd": 0.015544278251329478,
+            "cv": 0.017310904140759874
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": false,
+          "verdict": "inconclusive",
+          "paired_F_B_covariance_seconds_squared": 0.00013222179401160212,
+          "paired_F_B_correlation": 0.9936840129538542,
+          "variance_identity_residual": -3.3034284942917713e-20,
+          "subtraction_scale_amplification": 4.237917604718342,
+          "arm_last3_over_first3_minus1": [
+            -0.0194948249187592,
+            -0.08020564607390801,
+            -0.061382964838916254
+          ]
+        },
+        {
+          "attempt": 1,
+          "arm_stats_seconds": [
+            {
+              "median": 0.1346831665,
+              "minimum": 0.133326125,
+              "maximum": 0.135778417,
+              "mean": 0.1346255459,
+              "sample_sd": 0.0006456781618488827,
+              "cv": 0.004796104316847065
+            },
+            {
+              "median": 0.19162475,
+              "minimum": 0.189866583,
+              "maximum": 0.192975375,
+              "mean": 0.1915412624,
+              "sample_sd": 0.0009964571341002971,
+              "cv": 0.005202310570655909
+            },
+            {
+              "median": 0.312703375,
+              "minimum": 0.309976959,
+              "maximum": 0.317412667,
+              "mean": 0.3128499917,
+              "sample_sd": 0.0022923440722004826,
+              "cv": 0.007327294655640173
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.12132906250000002,
+            "minimum": 0.11868799999999999,
+            "maximum": 0.125328792,
+            "mean": 0.1213087293,
+            "sample_sd": 0.0018681941421061698,
+            "cv": 0.015400327353904364
+          },
+          "ratio_stats": {
+            "median": 0.8998974111876297,
+            "minimum": 0.8794111205643985,
+            "maximum": 0.9292703312079507,
+            "mean": 0.9010861827595822,
+            "sample_sd": 0.013442506042559636,
+            "cv": 0.014918113605284541
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": true,
+          "verdict": "inconclusive",
+          "paired_F_B_covariance_seconds_squared": 1.3788094064261307e-06,
+          "paired_F_B_correlation": 0.6036230460532187,
+          "variance_identity_residual": -4.235164736271502e-22,
+          "subtraction_scale_amplification": 4.157913919390135,
+          "arm_last3_over_first3_minus1": [
+            -0.002307322975847015,
+            -0.0008316650229887035,
+            -1.610404737695248e-05
+          ]
+        }
+      ],
+      "verdict": "inconclusive",
+      "warmup_records_audited": 9,
+      "warmups_per_arm_before_first_series": 3,
+      "fresh_warmups_before_registered_rerun": false,
+      "fixed_reps": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "case": "production",
+      "shape": "s0h22",
+      "judged": true,
+      "attempts": [
+        {
+          "attempt": 0,
+          "arm_stats_seconds": [
+            {
+              "median": 0.0779822295,
+              "minimum": 0.077397833,
+              "maximum": 0.078658083,
+              "mean": 0.0780213208,
+              "sample_sd": 0.00040939120140786944,
+              "cv": 0.005247170865734298
+            },
+            {
+              "median": 0.26680987450000004,
+              "minimum": 0.264337458,
+              "maximum": 0.270769792,
+              "mean": 0.2670671958,
+              "sample_sd": 0.0019987434668320295,
+              "cv": 0.007484047079780023
+            },
+            {
+              "median": 0.3438161875,
+              "minimum": 0.341711833,
+              "maximum": 0.350370375,
+              "mean": 0.3444854624,
+              "sample_sd": 0.0026878031605385784,
+              "cv": 0.007802370357845843
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.07755854199999998,
+            "minimum": 0.07094204100000001,
+            "maximum": 0.083968708,
+            "mean": 0.0774182666,
+            "sample_sd": 0.004003115136954699,
+            "cv": 0.05170763067633317
+          },
+          "ratio_stats": {
+            "median": 0.993134051003997,
+            "minimum": 0.9165894993468359,
+            "maximum": 1.0709127721175171,
+            "mean": 0.992079241866109,
+            "sample_sd": 0.04672010119051495,
+            "cv": 0.047093114359125256
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": false,
+          "verdict": "inconclusive",
+          "paired_F_B_covariance_seconds_squared": -2.402834761855474e-06,
+          "paired_F_B_correlation": -0.44726960794293286,
+          "variance_identity_residual": 0.0,
+          "subtraction_scale_amplification": 7.899332871397562,
+          "arm_last3_over_first3_minus1": [
+            0.0011428244618634231,
+            0.0020010787751125747,
+            -0.0020202067885869424
+          ]
+        },
+        {
+          "attempt": 1,
+          "arm_stats_seconds": [
+            {
+              "median": 0.0780891245,
+              "minimum": 0.076803958,
+              "maximum": 0.0784605,
+              "mean": 0.0779523374,
+              "sample_sd": 0.000464633569625975,
+              "cv": 0.005960482842763032
+            },
+            {
+              "median": 0.2658827085,
+              "minimum": 0.26459275,
+              "maximum": 0.268496917,
+              "mean": 0.2659749544,
+              "sample_sd": 0.0011487632137030645,
+              "cv": 0.004319065365739055
+            },
+            {
+              "median": 0.3432963955,
+              "minimum": 0.340336791,
+              "maximum": 0.345190917,
+              "mean": 0.3429864706,
+              "sample_sd": 0.0016074301560709352,
+              "cv": 0.004686570153216228
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.07678681200000001,
+            "minimum": 0.074451708,
+            "maximum": 0.07992237499999999,
+            "mean": 0.07701151619999999,
+            "sample_sd": 0.0015322800955195886,
+            "cv": 0.019896765719301455
+          },
+          "ratio_stats": {
+            "median": 0.9850597276513013,
+            "minimum": 0.9516054602622767,
+            "maximum": 1.0284332365023756,
+            "mean": 0.9879563345349944,
+            "sample_sd": 0.020185282605675616,
+            "cv": 0.02043135096165592
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": true,
+          "verdict": "refuted",
+          "paired_F_B_covariance_seconds_squared": 7.778031683390522e-07,
+          "paired_F_B_correlation": 0.4212181499911089,
+          "variance_identity_residual": -4.235164736271502e-22,
+          "subtraction_scale_amplification": 7.907407295014405,
+          "arm_last3_over_first3_minus1": [
+            -0.006860478713302975,
+            0.002137198259172468,
+            -0.004014924774635276
+          ]
+        }
+      ],
+      "verdict": "refuted",
+      "warmup_records_audited": 9,
+      "warmups_per_arm_before_first_series": 3,
+      "fresh_warmups_before_registered_rerun": false,
+      "fixed_reps": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "case": "proxy",
+      "shape": "s0h22",
+      "judged": true,
+      "attempts": [
+        {
+          "attempt": 0,
+          "arm_stats_seconds": [
+            {
+              "median": 0.134010813,
+              "minimum": 0.132349167,
+              "maximum": 0.134949209,
+              "mean": 0.1340218918,
+              "sample_sd": 0.0007793085118034379,
+              "cv": 0.0058147851917087915
+            },
+            {
+              "median": 0.19098133350000002,
+              "minimum": 0.189750292,
+              "maximum": 0.192411667,
+              "mean": 0.1911257124,
+              "sample_sd": 0.0009689387295071561,
+              "cv": 0.005069640904617269
+            },
+            {
+              "median": 0.3106575835,
+              "minimum": 0.309422917,
+              "maximum": 0.312595167,
+              "mean": 0.310787721,
+              "sample_sd": 0.0010882154860615714,
+              "cv": 0.0035014751630472922
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.11949354150000001,
+            "minimum": 0.118474417,
+            "maximum": 0.12165375,
+            "mean": 0.1196620086,
+            "sample_sd": 0.0009891686845098445,
+            "cv": 0.008266355346051283
+          },
+          "ratio_stats": {
+            "median": 0.8920012589501874,
+            "minimum": 0.8786475510204731,
+            "maximum": 0.9133746569028274,
+            "mean": 0.8928971062359369,
+            "sample_sd": 0.01062585308690828,
+            "cv": 0.011900422806500317
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": true,
+          "verdict": "inconclusive",
+          "paired_F_B_covariance_seconds_squared": 5.723002596141137e-07,
+          "paired_F_B_correlation": 0.5427661134868419,
+          "variance_identity_residual": 0.0,
+          "subtraction_scale_amplification": 4.194425944142142,
+          "arm_last3_over_first3_minus1": [
+            0.0107756507136334,
+            0.00929268728491972,
+            0.00405485647135384
+          ]
+        }
+      ],
+      "verdict": "inconclusive",
+      "warmup_records_audited": 9,
+      "warmups_per_arm_before_first_series": 3,
+      "fresh_warmups_before_registered_rerun": false,
+      "fixed_reps": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "case": "production",
+      "shape": "s6h14",
+      "judged": false,
+      "attempts": [
+        {
+          "attempt": 0,
+          "arm_stats_seconds": [
+            {
+              "median": 0.019815057375,
+              "minimum": 0.019668125,
+              "maximum": 0.02039335425,
+              "mean": 0.019840742725,
+              "sample_sd": 0.0002103833637478008,
+              "cv": 0.010603603235211086
+            },
+            {
+              "median": 0.0668059375,
+              "minimum": 0.066377666,
+              "maximum": 0.067229708,
+              "mean": 0.0667940707,
+              "sample_sd": 0.0003119947858118618,
+              "cv": 0.004670995232693039
+            },
+            {
+              "median": 0.08693235399999999,
+              "minimum": 0.08572925,
+              "maximum": 0.087760875,
+              "mean": 0.0866774874,
+              "sample_sd": 0.0006562275107666036,
+              "cv": 0.0075709106303259496
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.019883707999999993,
+            "minimum": 0.019253042000000012,
+            "maximum": 0.020695167,
+            "mean": 0.0198834167,
+            "sample_sd": 0.0004424690725960495,
+            "cv": 0.022253171035541867
+          },
+          "ratio_stats": {
+            "median": 1.0018663235703364,
+            "minimum": 0.9776575741600668,
+            "maximum": 1.0271552459767033,
+            "mean": 1.0020937367771674,
+            "sample_sd": 0.015993111706018734,
+            "cv": 0.015959696302916895
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": true,
+          "verdict": "refuted",
+          "paired_F_B_covariance_seconds_squared": 1.6609820602835714e-07,
+          "paired_F_B_correlation": 0.8112658085091713,
+          "variance_identity_residual": 0.0,
+          "subtraction_scale_amplification": 7.7185707273338,
+          "arm_last3_over_first3_minus1": [
+            -0.016794439084436785,
+            -0.008384364786160114,
+            -0.013996995078002228
+          ]
+        }
+      ],
+      "verdict": "refuted",
+      "warmup_records_audited": 9,
+      "warmups_per_arm_before_first_series": 3,
+      "fresh_warmups_before_registered_rerun": false,
+      "fixed_reps": [
+        4,
+        1,
+        1
+      ]
+    },
+    {
+      "case": "proxy",
+      "shape": "s6h14",
+      "judged": false,
+      "attempts": [
+        {
+          "attempt": 0,
+          "arm_stats_seconds": [
+            {
+              "median": 0.03361522925,
+              "minimum": 0.033519042,
+              "maximum": 0.0370341875,
+              "mean": 0.0340229396,
+              "sample_sd": 0.0010738757505523529,
+              "cv": 0.03156328533564903
+            },
+            {
+              "median": 0.047783624999999996,
+              "minimum": 0.047563104,
+              "maximum": 0.0497470415,
+              "mean": 0.04794943325,
+              "sample_sd": 0.0006370248596030976,
+              "cv": 0.013285347008832427
+            },
+            {
+              "median": 0.07812483349999999,
+              "minimum": 0.077530959,
+              "maximum": 0.078970541,
+              "mean": 0.0782184793,
+              "sample_sd": 0.0005430828685098633,
+              "cv": 0.006943152991084336
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.030177635999999997,
+            "minimum": 0.029223499500000007,
+            "maximum": 0.031101729,
+            "mean": 0.030269046049999998,
+            "sample_sd": 0.0006230614317437996,
+            "cv": 0.020584111924591017
+          },
+          "ratio_stats": {
+            "median": 0.898297155213934,
+            "minimum": 0.7890951975117587,
+            "maximum": 0.9278823959228907,
+            "mean": 0.8906509336088727,
+            "sample_sd": 0.03801261970282461,
+            "cv": 0.042679593394461944
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": false,
+          "verdict": "inconclusive",
+          "paired_F_B_covariance_seconds_squared": 1.5626706304730713e-07,
+          "paired_F_B_correlation": 0.45169466994374163,
+          "variance_identity_residual": -5.293955920339377e-23,
+          "subtraction_scale_amplification": 4.1682156861365645,
+          "arm_last3_over_first3_minus1": [
+            -0.03182657452857718,
+            -0.01633947661147339,
+            -0.0034311726618592164
+          ]
+        },
+        {
+          "attempt": 1,
+          "arm_stats_seconds": [
+            {
+              "median": 0.0336292605,
+              "minimum": 0.033505917,
+              "maximum": 0.033732646,
+              "mean": 0.03362549165,
+              "sample_sd": 6.347642719285104e-05,
+              "cv": 0.0018877471845932412
+            },
+            {
+              "median": 0.04774037525,
+              "minimum": 0.047652708,
+              "maximum": 0.047867708,
+              "mean": 0.04773361665,
+              "sample_sd": 6.093057982976786e-05,
+              "cv": 0.0012764710513459043
+            },
+            {
+              "median": 0.0776764375,
+              "minimum": 0.077422583,
+              "maximum": 0.078174125,
+              "mean": 0.0777326874,
+              "sample_sd": 0.00026004519062877295,
+              "cv": 0.003345377592448617
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.02998907325,
+            "minimum": 0.029681624500000003,
+            "maximum": 0.030306416999999995,
+            "mean": 0.029999070750000002,
+            "sample_sd": 0.00022865488499558922,
+            "cv": 0.007622065593334727
+          },
+          "ratio_stats": {
+            "median": 0.8915375596466082,
+            "minimum": 0.8830071918903443,
+            "maximum": 0.9041201588364227,
+            "mean": 0.8921620994240276,
+            "sample_sd": 0.007889511699096659,
+            "cv": 0.0088431370310284
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": true,
+          "verdict": "inconclusive",
+          "paired_F_B_covariance_seconds_squared": 9.526490147600219e-09,
+          "paired_F_B_correlation": 0.601241272738291,
+          "variance_identity_residual": 1.3234889800848443e-23,
+          "subtraction_scale_amplification": 4.18233968297168,
+          "arm_last3_over_first3_minus1": [
+            0.002094146624907589,
+            -0.00011892238337696259,
+            -0.00262859532173898
+          ]
+        }
+      ],
+      "verdict": "inconclusive",
+      "warmup_records_audited": 9,
+      "warmups_per_arm_before_first_series": 3,
+      "fresh_warmups_before_registered_rerun": false,
+      "fixed_reps": [
+        2,
+        2,
+        1
+      ]
+    },
+    {
+      "case": "production",
+      "shape": "s7h14",
+      "judged": false,
+      "attempts": [
+        {
+          "attempt": 0,
+          "arm_stats_seconds": [
+            {
+              "median": 0.039067093750000004,
+              "minimum": 0.0389345415,
+              "maximum": 0.039358979,
+              "mean": 0.0390940332,
+              "sample_sd": 0.00012694329835626048,
+              "cv": 0.0032471271947520745
+            },
+            {
+              "median": 0.13273447900000002,
+              "minimum": 0.132332458,
+              "maximum": 0.136111167,
+              "mean": 0.1331560167,
+              "sample_sd": 0.0011246562225259045,
+              "cv": 0.008446153995878015
+            },
+            {
+              "median": 0.1718014585,
+              "minimum": 0.1714005,
+              "maximum": 0.175988416,
+              "mean": 0.172255175,
+              "sample_sd": 0.0013762328869256772,
+              "cv": 0.00798950096521441
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.03901924999999999,
+            "minimum": 0.035553082999999985,
+            "maximum": 0.04355975000000001,
+            "mean": 0.039099158300000006,
+            "sample_sd": 0.0020260681467361647,
+            "cv": 0.05181871515469847
+          },
+          "ratio_stats": {
+            "median": 0.9971217505367446,
+            "minimum": 0.9033029794802345,
+            "maximum": 1.118794477135425,
+            "mean": 1.0002525940598743,
+            "sample_sd": 0.054259883639349554,
+            "cv": 0.05424618137616307
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": false,
+          "verdict": "inconclusive",
+          "paired_F_B_covariance_seconds_squared": -4.7304177864844776e-07,
+          "paired_F_B_correlation": -0.3056242261355048,
+          "variance_identity_residual": 0.0,
+          "subtraction_scale_amplification": 7.811196071195218,
+          "arm_last3_over_first3_minus1": [
+            0.0038948522538972963,
+            0.005905897606558019,
+            0.0014303328404701166
+          ]
+        },
+        {
+          "attempt": 1,
+          "arm_stats_seconds": [
+            {
+              "median": 0.03917857275,
+              "minimum": 0.0388799795,
+              "maximum": 0.039625896,
+              "mean": 0.0392161542,
+              "sample_sd": 0.00023143880765768538,
+              "cv": 0.005901619176560801
+            },
+            {
+              "median": 0.1334353755,
+              "minimum": 0.132809125,
+              "maximum": 0.133895458,
+              "mean": 0.1334197209,
+              "sample_sd": 0.0003630908200236301,
+              "cv": 0.00272141792513396
+            },
+            {
+              "median": 0.172082917,
+              "minimum": 0.17105425,
+              "maximum": 0.173650917,
+              "mean": 0.1720481834,
+              "sample_sd": 0.0008068410385575998,
+              "cv": 0.00468962253836619
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.038576542000000005,
+            "minimum": 0.03792241599999999,
+            "maximum": 0.04009254199999998,
+            "mean": 0.0386284625,
+            "sample_sd": 0.0006250072599980523,
+            "cv": 0.016179967297379548
+          },
+          "ratio_stats": {
+            "median": 0.9835534347968715,
+            "minimum": 0.9603568568984688,
+            "maximum": 1.0117762889197504,
+            "mean": 0.9850075281015619,
+            "sample_sd": 0.014254869173318979,
+            "cv": 0.014471837794775911
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": true,
+          "verdict": "refuted",
+          "paired_F_B_covariance_seconds_squared": 1.9609666501793273e-07,
+          "paired_F_B_correlation": 0.6693711020960861,
+          "variance_identity_residual": -5.293955920339377e-23,
+          "subtraction_scale_amplification": 7.907845265650944,
+          "arm_last3_over_first3_minus1": [
+            0.0005636065652339095,
+            0.0026990351395601575,
+            0.001422454705381604
+          ]
+        }
+      ],
+      "verdict": "refuted",
+      "warmup_records_audited": 9,
+      "warmups_per_arm_before_first_series": 3,
+      "fresh_warmups_before_registered_rerun": false,
+      "fixed_reps": [
+        2,
+        1,
+        1
+      ]
+    },
+    {
+      "case": "proxy",
+      "shape": "s7h14",
+      "judged": false,
+      "attempts": [
+        {
+          "attempt": 0,
+          "arm_stats_seconds": [
+            {
+              "median": 0.06746570800000001,
+              "minimum": 0.066844125,
+              "maximum": 0.067764958,
+              "mean": 0.0674660499,
+              "sample_sd": 0.00027102255064618934,
+              "cv": 0.004017169391833467
+            },
+            {
+              "median": 0.096102625,
+              "minimum": 0.095401083,
+              "maximum": 0.097006083,
+              "mean": 0.0961115914,
+              "sample_sd": 0.0005289702473914558,
+              "cv": 0.005503709174785923
+            },
+            {
+              "median": 0.1563021455,
+              "minimum": 0.155816,
+              "maximum": 0.156660208,
+              "mean": 0.1562938333,
+              "sample_sd": 0.0003108020919016697,
+              "cv": 0.0019885755268737766
+            }
+          ],
+          "marginal_stats_seconds": {
+            "median": 0.06018102049999999,
+            "minimum": 0.059358584000000006,
+            "maximum": 0.06121037500000001,
+            "mean": 0.060182241899999996,
+            "sample_sd": 0.0005799873881650769,
+            "cv": 0.009637184821542464
+          },
+          "ratio_stats": {
+            "median": 0.8924039016740173,
+            "minimum": 0.880243171370413,
+            "maximum": 0.9032747426774766,
+            "mean": 0.892035913426543,
+            "sample_sd": 0.007609233665480478,
+            "cv": 0.008530187575353803
+          },
+          "duration_floor_passed": true,
+          "all_marginals_positive": true,
+          "noise_passed": true,
+          "verdict": "inconclusive",
+          "paired_F_B_covariance_seconds_squared": 2.0011046262642075e-08,
+          "paired_F_B_correlation": 0.12171794670089822,
+          "variance_identity_residual": 0.0,
+          "subtraction_scale_amplification": 4.194018313897343,
+          "arm_last3_over_first3_minus1": [
+            -0.0038775673224257234,
+            0.0065501441766877555,
+            2.276879068019433e-05
+          ]
+        }
+      ],
+      "verdict": "inconclusive",
+      "warmup_records_audited": 9,
+      "warmups_per_arm_before_first_series": 3,
+      "fresh_warmups_before_registered_rerun": false,
+      "fixed_reps": [
+        1,
+        1,
+        1
+      ]
+    }
+  ],
+  "warmup_records_audited": 90,
+  "warmup_method": "Three per arm once per comparison; immediate full ten-block rerun without fresh warmups; same fixed repetitions and arm orders.",
+  "gpu_evidence": false,
+  "changes_model_leaf_unit_cost": false
+}

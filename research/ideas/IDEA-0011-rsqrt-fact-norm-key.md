@@ -1,14 +1,24 @@
-# IDEA-0011: `RsqrtRow` relational fact bounds the RMSNorm key at `2^κ · √d`, turning both norm rescales into `Requant1`
+# IDEA-0011: RMSNorm relational bound and the current split-count kill criterion
 
 | | |
 |---|---|
-| Status | `triaged` (2026-10-16) |
+| Status | `refuted` for the current commitment/lookup count-saving claim (EXP-0017, 2026-10-19); relational bound survives |
 | Origin | RISK-2 ([00 §9](../../docs/spec/00-overview.md#9-risks): "RMSNorm products near 2^36"); the relational-fact mechanism of [RFC-0006 'Range analysis'](../../docs/rfcs/RFC-0006-compiler-ir.md#range-analysis), which v1 uses once (the `SoftmaxRow` fact); [SUR-0002](../surveys/SUR-0002-lookups.md) Question 3 synthesis (the split gadget is the remaining count lever) and its "wider `B_max`" seed / OQ-0006-1, which this idea dominates for the norm case; new |
-| Lever | `C_lin`, `K_lin`: the two norm rescales are 2 × 16,384 = 32,768 of the +82,944 commitments and lookups per layer per token that RISK-2 adds (E0, primary: 220,160 − 137,216, 00 §9 and SUR-0002 Q3). Also the norm `Requant` table's rows (2^37-key split table → one 2^25-row table) and its multiplicity memory |
+| Lever | Current `C_lin`/`K_lin` gain is zero at κ30; exact joint width38 remains split at 405B. Logical table rows fall by 134,217,728 after sharing. The κ16 commitment/lookup claim and earlier table estimates are historical below. |
 | Spec surfaces | RFC-0006 'Range analysis' (a second relational fact) and the range cell of RFC-0005 'Integer semantics' (attn norm: "key `< 2^37`" tightens); RFC-0009 `RsqrtRow` (the fact and its proof obligation, one sentence; no new committed value). No change to `D`, to the claim-list schema or to any TCE format. Table definitions are tier A ([02 §1](../../docs/spec/02-public-api.md#1-stability-tiers)) and the norm's `Requant` table changes `(b, s)`, so promotion goes through an RFC amendment; before 1.0 no protocol version is frozen |
-| Priority | 0.9 (2026-10-19 conditional re-score: 5.92% reduction at 1K × 0.6 / 4, current counted profile; historical scores retained below) |
+| Priority | 0 (EXP-0017: current count gain is zero; confidence 0.95 in this scoped refutation; historical scores retained below) |
 
-## Mechanism
+## Current result: EXP-0017 (2026-10-19)
+
+[EXP-0017](../experiments/EXP-0017-rmsnorm-relational-bound/README.md) refutes the current count-saving hypothesis at RFC-0023's κ30. The exact ordinary 405B key interval is `[-137438952750,137438952750]`, width 38: narrower than the compiler's interval width52, but still `RequantSplit`, with two commitments and two lookups per element. Baseline and candidate therefore both count `C=45,566,660`, `K=45,440,678` per token; per-layer saving is zero. The first embedding-derived norm and final norm are explicitly included. At 8B the current exact width is37, also split.
+
+The algebraic implication remains valid with exact integer brackets, epsilon>=1 and the padding zero pin. Complete coordinate-magnitude enumeration and 93,600 toy rows with 954,440 candidate roots pass; 160,877 production-table key outputs match independent integer rounding/saturation. The historical κ16 controls do become single (405B width24,8B width23), so their count saving cannot be carried into current κ30.
+
+There is a separate exact table-row reduction: `M=7,693,467,648` to `7,559,249,920` (−134,217,728), after deduplicating all table definitions and retaining the old first norm's Range21 where another site uses it. The current conditional `counted` model prices this at only −0.0082784% μ(1K) and−0.0024214% μ(16K), with its existing omissions; no GPU performance or memory measurement is claimed. This is a possible separately scoped follow-up, not validation of this idea's count hypothesis.
+
+The mechanism, security table, four-lens reviews and scores below are historical κ16 notes. They are retained as provenance and are not fresh approval of current production changes or the full protocol. RFC-0022/0023/0028/0035 already address the old residual, root-range, split and padding assumptions. Priority moves 0.9→0, confidence 0.6→0.95 for the scoped count refutation; no production promotion is recommended. Raw records, independent checks, mutations and limitations are linked in the experiment report.
+
+## Mechanism (historical κ16 proposal)
 
 Setting ([RFC-0005 'Integer semantics'](../../docs/rfcs/RFC-0005-integer-model.md#integer-semantics), [RFC-0009 `RsqrtRow`](../../docs/rfcs/RFC-0009-gadgets.md#rsqrtrow)): for a residual row `res ∈ ℤ^d`, `u = Σ_i res_i² + e` with `e ≥ 1` the exact integer form of `d·ε/σ_res²` rounded up, `N = d · 2^{2κ}` with `κ = 16`, and `ρ = max{ρ ∈ ℕ : ρ² u ≤ N}`. `RsqrtRow` commits `ρ` and the limbs of `u`, proves `ρ² u ≤ N` and `N + 1 ≤ (ρ + 1)² u` with `BigIntCompare` (exact over the integers, Lemma 4), and Lemma 7 makes `ρ` unique. The norm's requantization key is `z_i = res_i · ρ`, today bounded by interval arithmetic as `|res_i| < 2^19` times `ρ < 2^{κ+1}`, so `|z_i| < 2^36`, signed width `b = 37` (RFC-0005 states "key `< 2^37`"), above `B_max = 32`: [RFC-0006 'Gadget selection'](../../docs/rfcs/RFC-0006-compiler-ir.md#gadget-selection) picks `RequantSplit` with split point `s = 5`, two commitments and two lookups per element.
 

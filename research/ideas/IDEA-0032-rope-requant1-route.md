@@ -1,12 +1,137 @@
-# IDEA-0032: RoPE requantization as `Requant1`: norm-certified Q/K accumulators, 9-bit RoPE constants and a per-table `B_max` of 34 for a single-class RoPE table
+# IDEA-0032: Certified RoPE ranges with a per-table width limit
 
 | | |
 |---|---|
-| Status | `triaged` (2026-10-17, priority 0.1; primary of the merge with IDEA-0028, which contributes the `p_row` calibration, the removed-table credit and the 8-byte-counter accounting) |
-| Origin | [SUR-0009](../surveys/SUR-0009-compiler.md) seeds "Weight-row norm certificate", "`‖y‖₂` relational fact" and "Per-table `B_max`: 34 bits for the RoPE requantization table only" (its Synthesis Question 1 shows the three are needed together and corrects the premise of ledger queue item 26, "below 2^32 with 9-bit constants", to 33–34 bits of magnitude); OQ-0006-1 (`B_max` 30/32/34, "resolve at the v0.2 gate"); RISK-2 ([00 §9](../../docs/spec/00-overview.md#9-risks): "RoPE-rotated Q/K accumulators near 2^44"); [SUR-0002](../surveys/SUR-0002-lookups.md)'s "wider `B_max`" seed (all tables widened together; negative). New here: the single-class condition on the RoPE table (a 4-class table at `2^36` rows loses), the explicit `TableLimits` map by table kind, the LogUp-error and counter-memory accounting, and a synthetic E1 test of RoPE constant width against the INT8 requantization step |
-| Lever | `C_lin` and `K_lin`: the RoPE rescales of Q and K are 17,408 committed elements and lookups per layer per token (16,384 Q + 1,024 K at 405B), `2.19×10^6` per token over 126 layers, the second-largest RISK-2 split group after the two norms and the one [IDEA-0011](IDEA-0011-rsqrt-fact-norm-key.md) does not touch (E0, primary: 00 §9, [RFC-0005 'Integer semantics'](../../docs/rfcs/RFC-0005-integer-model.md#integer-semantics), SUR-0009 [E0-this] (a)). In exchange one `2^34`-row RoPE `Requant` table per proof: `1.72×10^10` table-side leaves and committed multiplicities per 16K-token batch, `1.05×10^6` per token amortized (E0, primary: [RFC-0008 'Relation', 'Fraction tree'](../../docs/rfcs/RFC-0008-logup-and-tables.md#relation)), and `2^34 × 4 B = 64 GiB` of multiplicity counters, 8 GiB per GPU sharded over the 8-GPU unit (E0, primary: [08 §4](../../docs/spec/08-performance-budget.md#4-memory-budgets)) |
-| Spec surfaces | RFC-0005 'Integer semantics' (RoPE row: "14-bit constants" → a public `QuantSpec.rope.bits` of 9; the Q/K accumulator range cell `< 2^29` → the certified bound; a per-tensor `‖w_row‖₂ ≤ 2^k` constraint in the quantizer, 'Scale policy'); RFC-0006 'Range analysis' (`MatMulWeight` transfer uses `2^k · bound(‖y‖₂)`; a second and third relational fact) and 'Gadget selection' (`TableLimits.max_log2_rows` becomes a map by table kind; the `b ≤ B_max` row compares against the table's own limit); RFC-0008 'Table kinds' (`Rope { bits }` at 9; `Requant { b: 34, classes: 1 }` for the RoPE rescale) and 'Generators'; RFC-0009 (a weight-row norm gadget: four committed scalars and one degree-2 relation per row at the weight commitment); RFC-0012 (the certificate's scalars live beside `ChannelParams`); RFC-0014 (the LogUp budget line gains an instance at `T = 2^34`); RFC-0019 `tv-tables` (re-derives `b = 34` and evaluates the structured MLE). Table definitions, `TableLimits` and `QuantSpec` are tier A ([02 §1](../../docs/spec/02-public-api.md#1-stability-tiers)): a superseding RFC amending RFC-0005, RFC-0006 and RFC-0008; no protocol version is frozen before v0.3 |
-| Priority | 0.2 (2026-10-19 conditional re-score: 2.09% reduction at 1K × 0.3 / 4, current counted profile; historical scores retained below) |
+| Status | `shelved` (2026-10-19: public-cap/domain/ZK policy, wider-table specification and E2 fidelity/serving evidence needed) |
+| Origin | Merge of [IDEA-0028](IDEA-0028-per-table-bmax-rope-calibrated.md) into this route; [SUR-0009](../surveys/SUR-0009-compiler.md), current RFC-0023/0028/0047/0048 and the current c2/B32 compiler report |
+| Lever | Conditional removal of one RoPE split limb and one lookup per Q/K output; shared weight-row norm argument also supports the distinct [IDEA-0031](IDEA-0031-fused-gated-product-rescale.md) fusion proposal |
+| Spec surfaces | RFC-0005/0006/0007/0008/0009/0012/0013/0014/0019/0031/0040/0047/0048: model semantics, cap policy, certificate commitment/opening, table limits, soundness accounting and independent verifier derivation; no such production change is made here |
+| Priority | 0 active while shelved; historical conditional 0.2 retained below, with no current net performance claim |
+
+## Decision and scope of the merge
+
+This is the canonical merged note. IDEA-0028 is shelved as absorbed here: the repository vocabulary has no `merged` status. This note incorporates its per-table break-even rule, exact table-sharing test, eight-byte-counter accounting and proposed table-side calibration. No new idea ID, experiment, harness, production edit or promotion is created. IDEA-0031 remains separately shelved for real-weight/fidelity and serving evidence; the [shared certificate](#shared-weight-row-norm-certificate) below is its reference too. Its own model-placement change is not merged into the RoPE route.
+
+This 2026-10-19 revision is E0 analytic reasoning from the current specification and existing public compiler records, including [EXP-0017's raw probe](../experiments/EXP-0017-rmsnorm-relational-bound/results/compiler.json). It is not a new experiment. The original proposal and its four-lens reviews are preserved under [historical proposal](#historical-proposal-and-reviews). Their `pass` labels are historical, not current security approval. The present complete protocol/cap-disclosure/ZK gate remains unresolved. No model weights were inspected and no fidelity result is inferred from synthetic data or local rounding bounds.
+
+## Current baseline and route
+
+The [405B servable c2/B32 report](../../docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json) counts `C=45,566,660`, `K=45,440,678`, `M=7,693,467,648` per token/proof as appropriate (E0 compiler counts; RsqrtRow's row costs remain estimated). Q/K RoPE requantizations cover 16,384+1,024=17,408 outputs per layer/token, or 2,193,408 per token across 126 layers. A 16,384-token batch therefore has `N_split=35,936,796,672` candidate split removals (E0 shape arithmetic), conditional on replacing every such site. Their existing full key has signed width 44, shift classes 22/23 and two classes. Under RFC-0028's rounding-bit clamp its split is 21, its shared low table is `Range{21}` and its high table is `Requant{b23,r[1,2],lo−128,hi127}`, with `2^24` padded rows. It is not a `2^32` high table.
+
+These are the current compiler's conservative endpoints. Weights are in `[-127,127]` under RFC-0048's model-domain assumption, norm outputs in `[-128,127]`, so a length 16,384 accumulator is symmetrically bounded by 266,338,304. `Rotate` uses inclusive `abs(C),abs(S)<=2^bits`: with current bits 14 its declared symmetric key endpoint is 8,727,373,545,472 and signed width 44. Treating `2^bits` as excluded, omitting the negative INT8 endpoint, or dropping the signed bit understates the width.
+
+The proposed route combines a public certified row-norm cap, the current norm-output bound, lower-precision public RoPE constants and, only where necessary, a table limit above 32 bits. None is already a production range rule. All current ordinary RMSNorm keys remain split at κ30: [EXP-0017](../experiments/EXP-0017-rmsnorm-relational-bound/README.md) refutes IDEA-0011's current count-saving claim. This route gets no norm-removal credit and does not create a split-free profile. Changing RoPE precision or the quantized weight policy changes `D` and requires real-model fidelity gates and bit-exact serving evidence.
+
+## Shared weight-row norm certificate
+
+This section is shared by this Q/K route and [IDEA-0031](IDEA-0031-fused-gated-product-rescale.md). It states an integer implication and the protocol obligations a future RFC would have to discharge; it is not an implemented or fully reviewed certificate protocol.
+
+### Integer statement and the whole-sum bound
+
+For each true output row `w` of a named tensor, of true fan-in `d`, fix a public integer `k` and `B=2^k`. Under the domain premise `w_i in[-127,127]`, define `W=sum_i w_i^2`, so `0<=W<=16129*d`. Commit four auxiliary integers and range-check each `s_j in[0,2^(k+1))`. The proposed row relation is
+
+```text
+sum_i w_i^2 + s_0^2 + s_1^2 + s_2^2 + s_3^2 = 2^(2k).
+```
+
+All sums here are integers before interpreting the relation in Goldilocks. With `U=2^(k+1)-1`, the complete left side is at most `L=16129*d+4*U^2`; the right side is `B^2`. A sufficient centered-integer policy is `max(L,B^2)<(P-1)/2`, `P=2^64-2^32+1`, with each intermediate sum/product bounded by those nonnegative totals. Lemma 0 then lifts the field congruence to equality. Bounding one square alone does not establish this. At `d=16384,0<=k<=13`, the largest permitted left side is 1,337,868,292, below 2^31, and `B^2<=67,108,864` (E0 exact arithmetic). The accepted equality implies `W<=B^2`; a row above the cap has no integer slack witness. Conversely, every nonnegative integer `B^2-W` is a sum of four integer squares; each root is at mostB and fits the chosen range. No existence claim is made when the difference is negative.
+
+A future policy must check the displayed inequality for every supported shape/cap. It must reject unsupported large caps or use a separately proved limb comparison; it cannot extrapolate the k<=13 argument to arbitrary k. Every root needs its range lookup, including the high bits of its box, and every true row needs a zero-check of its own relation. Proving only the total sum over rows permits an over-cap row to cancel an under-cap row. Padded output rows use a public selector ψ and the relation `ψ*(sum_i w_i^2-B^2)+sum_j s_j^2=0`, with explicit zero pins for all four auxiliaries; padded input weights must satisfy the publisher's zero-domain premise or an independent domain proof. Do not require the nonzero slackB on a row whose committed padding is prescribed to be zero.
+
+### RFC-0048 trust boundary and a concrete cancellation attack
+
+[RFC-0048](../../docs/rfcs/RFC-0048-weight-trust.md) separates arbitrary-commitment uniqueness from integer-model fidelity/totality. Its publisher-validated `R_W` supplies weights in `[-127,127]`, valid channel classes/multipliers and zero padding. Conditional on that premise, the whole-sum argument above is an integer norm proof over the bound weights. The certificate does not itself prove those domains.
+
+For an untrusted arbitrary-field commitment, take two row entries `w_0=1`, `w_1=2^48` in Goldilocks. Since `(2^48)^2=-1 mod P`, their squares sum to0. Set `s_0=B` and the other auxiliaries0: every auxiliary range check and the field relation passes, while the centered integer interpretation of the second weight is far outside INT8 and violates the proposed small row norm (E0 algebraic counterexample). An integer-norm guarantee independent of the RFC-0048 domain premise therefore needs independent domain binding/range proofs for the committed weights and padding. The same issue applies to classes and affine multipliers where their domains enter a value/range argument. It is not repaired by an additional range check only on the slack.
+
+This attack does not refute RFC-0048's uniqueness guarantee: a malformed root can name a different or partial field-valued function. It refutes using this bare sum-of-squares relation as an unconditional integer-weight-domain proof. A future narrower-table design must retain the arbitrary-commitment uniqueness argument separately. Any new table's packed-key box must remain injective below P; widening a table alone does not establish the integer value half for malformed classes or keys.
+
+### Public policy, binding, zero knowledge and cost obligations
+
+The cap must be a public policy fixed independently of secret weights/inputs, for example an architecture/tensor-type policy that the quantizer must meet or reject. Publishing the smallest successful k, a per-row measured norm, an adaptive fallback or a secret-dependent subset discloses a weight predicate; public shift classes do not establish that such additional disclosure is free. A fixed cap still defines a public acceptance predicate, and any public success/failure or fallback policy must be part of the stated leakage model. SP-7 requires the verifier to derive the permitted cap, fan-in, root widths, integer bounds and table choice from authenticated public policy; a prover cannot merely assert a narrower range.
+
+A policy ID/version, cap assignment, tensor/type/layer/row coverage, true/padded dimensions and domain-assurance mode must be bound to the claim list and `R_W`/epoch. The four auxiliary columns need a defined commitment descriptor and openings linked to those same weight rows; the current `ChannelParams` schema and ten-root weight descriptor do not silently contain them. A separate epoch certificate root is a possible design option, not a specification decision made here. Its commitment and all claims must be fixed before their zero-check/batching/opening challenges. Every row must be covered, including all layers and affected types. A cached verification result must key on the exact weight root, epoch, claim-list digest, cap-policy/domain-assurance mode, proof parameters and verifier/certificate version; it is not transferable to another root, cap or epoch.
+
+The four-square decompositions are intentionally nonunique auxiliary witnesses. They do not enter the computation of `D` or select an output, but they are still secret-class data that must be hidden. A future certificate needs masked zero-checks, hiding commitments/openings, a simulator and a disclosure policy; it cannot expose row norms, slack roots or unmasked evaluations. The extra relation/lookups, sumcheck degrees, padding selectors, LogUp populations, proof mode/grinding and openings need a fresh RFC-0014 budget. An epoch proof consumes its own RFC-0012/0013 mask/blinding/opened-column budget; reusing it with fresh challenges is not free, and the present epoch cache is not a new universally reusable ZK proof. Protocol/2 and its fresh budget obligations cannot be inferred from a protocol/1 arithmetic demonstration.
+
+For Q/K only, shapes give 2,193,408 true rows and 8,773,632 auxiliary scalars plus as many range lookups. W_up alone for IDEA-0031 gives 6,709,248 rows and 26,836,992 scalars/lookups. The combined scope is 8,902,656 rows and 35,610,624 scalars/lookups (E0 shape counts, before padding, masks, blinding and row-relation work). Q/K's square sums read 35,936,796,672 weight coefficients; W_up's read 109,924,319,232. Thus “four scalars per row” is not a complete epoch cost, and the historical 7.9e7-scalar all-tensor estimate is not the Q/K-only count. No certificate cost is credited as zero or already amortized in the current model.
+
+### Current norm-output bound and both consumers
+
+On a real row let `z_i=rho*res_i`, `u=sum res_i^2+e`, `e>=1`, and use the exact root bracket `rho^2*u<=d*2^(2κ)`. Then `sum z_i^2<=d*2^(2κ)`; on a padded row the rho zero pin makes z and the norm output zero. Round-half-up by shift `r_n`, then clamp to INT8: componentwise rounding error is at most 1/2, and clamping to `[-128,127]` does not increase magnitude. Consequently
+
+```text
+||y||_2 <= sqrt(d) * (2^(κ-r_n) + 1/2),
+|w dot y| <= 2^k * sqrt(d) * (2^(κ-r_n) + 1/2).
+```
+
+At current 405B, RFC-0023/fixture values κ30, `r_n=27`, `d=16384` give `||y||_2<=1088`, hence the conservative integer accumulator bound `A_k=1088*2^k` (E0). The analogous 8B bound uses `sqrt(4096)=64`, giving 544. The general derivation must use integer/rational square-root ceilings where dimensions are not perfect squares; no floating-point estimate may set a table width. Clamp can only improve this bound, but no further improvement is credited here.
+
+For this route, retain the current compiler's conservative `Rotate` transfer `abs(key)<=A_k*2^(bits+1)`. Its signed width covers the inclusive symmetric interval `[-K,K]`, so it is `b=1+bitlen(K)` for K>0. There is one extra bit even if a power-of-two endpoint is attained. The current powers give:
+
+| k / maximum row RMS at 405B | A_k | RoPE bits 9: signed b | RoPE bits 10: signed b | IDEA-0031 key `a*u`: signed b |
+|---|---|---|---|---|
+| 10 / 8 | 1,114,112 | 32 | 33 | 29 |
+| 11 / 16 | 2,228,224 | 33 | 34 | 30 |
+| 12 / 32 | 4,456,448 | 34 | 35 | 31 |
+| 13 / 64 | 8,912,896 | 35 | 36 | 32 |
+
+The final column uses `a in[-128,127]`, `u in[-A_k,A_k]`, hence the inclusive symmetric product bound `128*A_k`. A fused single table under current `B_max=32` needs `b+ceil(log2 n)<=32`: k13 permits one class, k12 two, k11 four in these conservative power-of-two examples. This is an E0 sufficient range condition for IDEA-0031, not evidence its new `D`, quantizer or serving kernel passes fidelity. The old strict `abs(u)<2^23` target was stronger than necessary for a signed 32-bit `a*u` key. Using the precise product endpoints is what decides the gadget.
+
+For RoPE, the same class-bit rule applies: with k11 and bits 9 the conservative signed width is 33, so one/two/four classes need 33/34/35 table bits; k12 and bits 9 need 34/35/36. The old claim that the route inherently requires a single class is not current. A stronger cap k10 gives b32 at bits 9, fitting one class under the existing 32-bit cap, but its real-model feasibility is unknown. Coefficient correlations in the public sine/cosine generator could tighten the generic Rotate interval; that is a separate prospective refinement and receives no extra width or removal credit in this note.
+
+RoPE precision also changes its scale. If a fixture changes bits 14 to 9 while preserving its intended physical output scale, the old RoPE shifts 22/23 become 17/18, subject to the quantizer's public scale policy; leaving them unchanged is a different `D`. Multiple classes are allowed by current lowering. Pair/head alignment may be a fidelity policy, but neither rotation nor the schema proves “one class only.” Affine multipliers can widen these keys again and are excluded from the displayed pot examples.
+
+## Per-table break-even and exact sharing
+
+Let `S_old,S_new` be the complete sets of distinct table definitions, keyed by kind and all parameters, not by site. Charge padded tree rows. Define `Added=S_new-S_old`, `Removed=S_old-S_new`; a table is removed only when no site still uses it. The correct incremental time test is
+
+```text
+sum_Added T_j*p_row(j) - sum_Removed T_j*p_row(j)
+  + certificate_amortization + extra_pass/reset/communication/opening_cost
+  < N_split*s_saved.
+```
+
+Here `p_row(j)` includes the table-side commitment, fraction-tree work and counter effects actually measured for that size/layout; `s_saved` is the incremental saved split commitment+lookup cost, with whichever glue/opening terms the comparison consistently includes. In a uniform-price simplification with positive `DeltaM`, `p_row < N_split*s_saved/DeltaM`. The current planning model uses `1.15*(c_c+c_l)` for its table term; it already charges `M` once per proof, so do not add amortized rows to per-token C/K a second time. Its omitted or bounded P4/P5/streaming work and unpriced certificate/scheduling costs remain limitations.
+
+With zero removal credit, the normalized maximum table prices `p_row/s_saved` for this 405B batch are 8.3671875,4.18359375,2.091796875,1.0458984375,0.52294921875 for total table bits 32,33,34,35,36 respectively (E0 exact ratios). These are total `b+class_bits`, not magnitude bits. They are conditional break-even ratios, not benchmark prices. Separate Q/K shifts/caps, per-layer/head variants or affine sites can create multiple new definitions; then sum all added rows and assign only the lookups each actually removes. The canonical union and actual use count, not the largest single table, decides the trade.
+
+The current saved baseline has the old `2^24` high table used only by all 252 Q/K sites, but its `Range{21}` is also used by the first norm. A complete uniform replacement could remove that high definition if no other candidate site needs it, while Range21 remains. This makes an eligible conditional credit of `2^24`, not `2^32`; no complete candidate manifest has been derived here, so the default ratio above books zero removal credit. If those exact assumptions hold, a 2^34 replacement has ratio 2.0938416422 instead of 2.091796875. The old blanket `2^32` credit and the assumed loss of a shared Range table are invalid for today's baseline.
+
+A future `p_row` calibration must pre-register first. EXP-0006's fraction proxy can help separate table-sized arithmetic from lookups, but it does not measure a full table-side LogUp proof or a GPU/HBM price. Test relevant size/layout/cache regimes, include reset/count/encode/tree and any fixed scheduling cost, retain raw samples/CVs and avoid extrapolating CPU p_row to H100. No such calibration is run in this merge unit.
+
+## Eight-byte counters, peak memory and public layout
+
+The shared RoPE instance has `N_split=35,936,796,672` real lookups; all keys/classes may concentrate in one admissible row. Padding its lookup forest gives `2^36=68,719,476,736` total counted leaves, hence that generic public upper bound on an individual multiplicity (E0). This is not an attainability claim for table row 0 under the refined model: padding goes there, while a zero activation can concentrate its real lookups at another table row. The real population alone already exceeds u32. A u32 counter is insufficient even before padding; use exact u64 counts or an explicitly proved/checked equivalent. The public bound must remain below P and be derived from actual batch/shape/padding/table-use totals. Counter overflow cannot be excused as a performance artifact.
+
+At 8 bytes per padded row, a 2^34 table needs 128 GiB across the node, 16 GiB per GPU if perfectly sharded over 8 GPUs. In a uniform-u64 design, current baseline M counters use 57.3208008 GiB across the node; retaining them with the new table means 185.3208008 GiB total, 23.1651001 GiB per GPU, or 24,873,336,832 bytes. This already exceeds the decimal 24 GB working-set budget before other scratch, communication, witness and tree state. Even the conditional 2^24 high-table credit leaves 24,856,559,616 bytes per GPU (E0). This is not relying on u64 for every small/unused table: allowing implicit-zero counters for the publicly unused Rope table and u32 for the first norm’s 2^20-row table reduces the baseline counter bytes to 61,476,438,016 across the node. The remaining active table populations all permit concentration beyond u32 in the displayed 16K batch. Adding the 2^34 table still costs 24,864,423,936 bytes per GPU, or 24,847,646,720 with the conditional 2^24 high-table credit (E0 from the current report’s table-use counts). These remain above 24 GB before other scratch; alternative compression/scheduling would require its own exact bounds and public memory plan. The old 36 GiB/GPU co-residency estimate assumed ten full 2^32 tables and is superseded by current balanced/shared counts; its conclusion that the original P1 schedule is not yet feasible remains.
+
+For total table bits 32/33/34/35/36, eight-byte counter arrays alone need 32/64/128/256/512 GiB across the node, or 4/8/16/32/64 GiB per GPU under ideal eight-way sharding. These figures exclude padded lookup/table-tree states, masks, column-hash state and network buffers. A table-by-table P1 schedule can reduce counter residency toward the maximum individual table rather than the sum, but requires a concrete pass/regeneration/caching/communication plan. It does not create free HBM or preserve the old pass count automatically. The counter reset and worst-case memory-access/timing envelope are part of that plan; a sparse/adaptive allocation would disclose secret-dependent information.
+
+[RFC-0047](../../docs/rfcs/RFC-0047-advice-order.md) fixes the canonical padded-axis layout, claim-coordinate permutation, row limit and `n=prompt_len+output_len`. A future sequential-counter implementation must emit the same canonical tensor/row/segment order and bind new auxiliary descriptors; it cannot change the committed layout to match whichever table is counted first. Layout at max_context must fit 2^32 advice rows, column-answer limits and segment rules. Table width above 32 is also a distinct tier-A change: current TableSpec/Range/Requant generators, table row indices, limits, codec, prover and independent verifier all need consistent definitions and conformance vectors. A per-use limit must key by authenticated use/definition, not an unauthenticated string “rope” or a global change to every Requant table.
+
+## Current security and feasibility gate
+
+| Property | Current assessment |
+|---|---|
+| Integer norm implication | Conditional E0 argument above, including the whole-sum bound; not valid for arbitrary-field weights without independent domain binding |
+| Arbitrary-root uniqueness and value semantics | Must be re-established for the complete modified range/table/packing protocol; RFC-0048 does not turn a slack relation into a domain proof |
+| SP-7/public range derivation | Public authenticated policy and independent verifier derivation required; current schema has no such certificate/cap map |
+| Zero knowledge and disclosure | `unknown`: fixed-cap policy, auxiliary hiding, simulator, epoch budgets and timing envelope still need a specification decision/proof |
+| Soundness/Fiat–Shamir | `unknown` for a complete certificate/widened-table protocol: commit-before-challenge, full row coverage, packed-box injectivity, padded N/T and fresh RFC-0014 aggregation/grinding bounds required |
+| Fidelity/serving | `unknown`: constrained real weights, changed RoPE constants/scales/classes and bit-exact serving must pass the current fidelity gates; local error or synthetic rows cannot settle it |
+| Memory/cost | Original co-resident 2^34-counter schedule fails the stated 24 GB scratch budget; sequential scheduling and measured p_row are unresolved |
+| Verifier independence | Specification-first independent implementation required; no prover code is imported into the verifier by this note |
+
+This is a shelved conditional route, not a rejected algebraic norm bound and not a validated full security claim. No net Δμ is newly assigned. The earlier current-formula rescore assumed away these certificate/policy/scheduling costs and the current width/class changes; it remains a historical sensitivity scenario, not a promotion input. The numerical fidelity gates remain those in RFC-0005 and the real-weight work tracked by #93/#170/#183, as IDEA-0031's current shelving decision records.
+
+## Reopening conditions
+
+Reopen only with an explicit cap/domain/disclosure policy and proposed certificate/commitment layout; exact public range/class/shift derivation and full shared-table manifest; measured or conservatively bounded memory/pass/reset cost; a fresh soundness/ZK accounting; and real-weight fidelity plus bit-exact serving evidence. The E0 certificate argument is available to a later pre-registered test, but this unit launches none. IDEA-0028 has no separate queue item after absorption, and IDEA-0031 keeps its distinct E2 gate.
+
+## Historical proposal and reviews
+
+The text below is the prior2026-10-17 proposal plus its conditional2026-10-19 rescore. Its narrower-class assumption, old splits/table credits, four-square term bound, blanket ZK approval and norm-removal premise are superseded above. These dated reviews are retained as evidence of what was considered, not as approval of this revision.
 
 ## Mechanism
 

@@ -5,10 +5,13 @@
 For each set and slack `η`: the agreement threshold `A`, the machine-checked list bound
 `L = ⌊n (A − D) / (A² − n D)⌋` ([ArkLib26] `closePolynomialSet_finite_and_ncard_le_pairwiseJohnson`),
 the recipe's candidate degree `μ` (`johnsonMu`, the looser bound the first version of the report
-used), `log2` of the claim-binding term in both coefficient shapes (`G · L / q'` with one independent
-coefficient per claim, the shape RFC-0021 pins; `G · L · (s + 1) / q'` with powers of one challenge
-and `s` claims per group, the other shape issue #237 admits), of `(ρ₋)^τ` (group consistency), of
-`1/q'` (a zero first coefficient, v0.3 without blinding rows) and of `E₀/(q' − 1)` (the
+used), `log2` of a historical independent-per-claim comparison (`G · L / q'`) and a conservative
+powers-of-one-challenge envelope (`G · L · (s + 1) / q'`). Current RFC-0021 pins powers gamma^(t+1)
+for s claims, degree at most s, so its exact claim-binding bound uses s rather than this legacy
+s+1 envelope. Retain the envelope for historical-table reproduction; it is not the current exact
+formula. Also tabulate `(ρ₋)^τ` (group consistency),
+the legacy `1/q'` comparison (a zero first coefficient under the old all-random generator;
+the current fixed-row generator has no such event) and `E₀/(q' − 1)` (the
 mutual-correlated-agreement error, from EXP-0003's tool). `G` and `s` are bounds here (RFC-0011
 'Sizes' gives `G + 1 ≤ 17`; `s = 2^8` is generous); the soundness calculators take both from the
 claim list. Rows: the `η` of EXP-0003's best admissible `τ`, the `η = 0.002` the first Draft RFC-0021

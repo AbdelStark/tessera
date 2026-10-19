@@ -1,0 +1,50 @@
+{
+  "no_op_passed": true,
+  "mutations_caught": 6,
+  "mutations_total": 6,
+  "records": [
+    {
+      "name": "no-op",
+      "accepted": true,
+      "expected_accept": true,
+      "error": null
+    },
+    {
+      "name": "extremum",
+      "accepted": false,
+      "expected_accept": false,
+      "error": ""
+    },
+    {
+      "name": "width",
+      "accepted": false,
+      "expected_accept": false,
+      "error": ""
+    },
+    {
+      "name": "split multiplicity",
+      "accepted": false,
+      "expected_accept": false,
+      "error": "('commits_per_element', {'commits_per_element': 1, 'lookups_per_element': 2, 'middle': None, 'split': 19, 'tables': [{'digest': [253, 85, 120, 13, 56, 44, 243, 42, 43, 4, 167, 137, 241, 247, 88, 52, 207, 84, 210, 252, 91, 86, 134, 135, 243, 190, 85, 91, 139, 187, 19, 66], 'id': 0, 'kind': {'bits': 19, 'tag': 'Range'}, 'log2_rows': 19, 'rows': 524288}, {'digest': [112, 173, 112, 135, 20, 39, 129, 202, 9, 171, 236, 168, 165, 147, 97, 52, 214, 198, 25, 210, 58, 172, 226, 97, 244, 91, 210, 210, 6, 237, 215, 242], 'id': 1, 'kind': {'b': 19, 'hi': 127, 'lo': -128, 'shifts': [8], 'tag': 'Requant'}, 'log2_rows': 19, 'rows': 524288}], 'tag': 'RequantSplit'}, {'tag': 'RequantSplit', 'split': 19, 'middle': None, 'commits_per_element': 2, 'lookups_per_element': 2, 'kinds': [{'tag': 'Range', 'bits': 19}, {'tag': 'Requant', 'b': 19, 'shifts': [8], 'lo': -128, 'hi': 127}]})"
+    },
+    {
+      "name": "unique table rows",
+      "accepted": false,
+      "expected_accept": false,
+      "error": ""
+    },
+    {
+      "name": "verdict",
+      "accepted": false,
+      "expected_accept": false,
+      "error": ""
+    },
+    {
+      "name": "requant coverage",
+      "accepted": false,
+      "expected_accept": false,
+      "error": ""
+    }
+  ],
+  "scope": "saved-record integrity only; not protocol/compiler fault injection"
+}

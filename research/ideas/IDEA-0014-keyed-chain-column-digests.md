@@ -2,11 +2,23 @@
 
 | | |
 |---|---|
-| Status | `triaged` (2026-10-16) |
+| Status | `triaged` (reviewed 2026-10-19; discussion only, not promoted) |
 | Origin | [SUR-0006](../surveys/SUR-0006-hash.md#findings) finding [BLAKE3ref20] and synthesis 3, candidate idea "Chain value as the BLAKE3 key (free-start chaining)"; supersedes [EXP-0002](../experiments/EXP-0002-commit-cost-calibration/README.md)'s extra finding `B = 28` (ledger queue item 18); RISK-8 |
 | Lever | `c_c` (the hash share: BLAKE3 compressions per committed element 0.3125 → 0.25, the rate-1/2 floor of [E0-hash]); the block buffer, `B` and the 32-byte chain state are unchanged |
 | Spec surfaces | [RFC-0004 'Hash function and domains'](../../docs/rfcs/RFC-0004-hashing-and-transcript.md#hash-function-and-domains) (the `column-step` row leaves the `derive_key` table and becomes a keyed-mode rule), ['Column digests'](../../docs/rfcs/RFC-0004-hashing-and-transcript.md#column-digests) (the step formula), 'Testing Strategy' (official `keyed_hash` vectors next to the `derive_key` ones); [RFC-0011 'Column digests and root'](../../docs/rfcs/RFC-0011-advice-commitment.md#column-digests-and-root) (`B = 32` stays, the digest rule it cites changes); [RFC-0018](../../docs/rfcs/RFC-0018-gpu-prover-runtime.md) kernel row "BLAKE3 column-chain" (byte-identical to the new CPU reference); [RFC-0019](../../docs/rfcs/RFC-0019-verifier.md) `tv-hash` exposes keyed mode. The chain layout is part of the commitment ([RFC-0004 Drawbacks](../../docs/rfcs/RFC-0004-hashing-and-transcript.md#drawbacks)): the commitment descriptor, `commitment_id` and every leaf change, so this is a tier-A change ([02 §1](../../docs/spec/02-public-api.md#1-stability-tiers)) needing a superseding RFC and a protocol version, cheap before the `tessera-protocol/1` freeze at v0.3 and best bundled with any other descriptor change ([IDEA-0002](IDEA-0002-coefficient-form-rows.md)) |
-| Priority | 0.21 (−1.4% × 0.6 / 4 at 16K under the `counted` profile: a tier-A superseding RFC by the rubric; 0.84 at the marginal cost `s` if bundled into the descriptor RFC of [IDEA-0002](IDEA-0002-coefficient-form-rows.md)) |
+| Priority | Historical 2026-10-16 score; not a current adoption estimate: 0.21 (−1.4% × 0.6 / 4 at 16K under the `counted` profile: a tier-A superseding RFC by the rubric; 0.84 at the marginal cost `s` if bundled into the descriptor RFC of [IDEA-0002](IDEA-0002-coefficient-form-rows.md)) |
+
+## Current-spec review, 2026-10-19
+
+[RFC-proposal discussion #393](https://github.com/AbdelStark/tessera/issues/393) considers this optional clause alongside IDEA-0002. It recommends retaining the current derive-key chain. Status remains `triaged`, with **unknown binding and ZK gates**; publication is not validation, promotion or acceptance of keyed hashing. The historical conditional pass and “one-sentence” bundle recommendation below are superseded by this review.
+
+The missing binding argument must cover adversarially reachable previous-digest keys, same-key and cross-key collisions, chosen symbol blocks, descriptor grinding, columns/segments/epochs and partial final steps. The first key is publicly derived; subsequent keys depend on preceding symbols, so the old claim that all keys are derivable from public descriptor data is incorrect. Secret-random-key PRF/MAC security, 256-bit output, mode flags and an analogy to intra-chunk compression do not supply the required construction argument. Flags separate invocation modes, not disjoint output sets. This is a review gap, not a demonstrated attack.
+
+The malicious-verifier simulator/hash assumptions must also be reviewed; unchanged encoding masks do not prove unchanged joint hiding. A later accepted keyed format must bind the chain mode through both layout structs, RFC-0031 descriptors and RFC-0040's hashed public payload. Protocol strings and envelope versions alone do not bind a new weight format: the current weight descriptor has no protocol/statement field and `R_W` hashes payload bytes. Exact protocol/schema versions and migration need a superseding RFC; existing roots cannot be reinterpreted.
+
+E0 compression count remains five to four 64-byte blocks at `B=32` (288-byte derive input versus 256-byte keyed message), a 20% full-step count reduction. It is not a measured 20% speedup, does not give the same saving for every partial block, and advice/weight rates need separate accounting. There is no dedicated same-harness E1 keyed-chain run. Historical μ/priority/confidence figures below are retained only for provenance under an obsolete cost scenario; P1, P5 and P4 are now separate and H100 gain remains unmeasured.
+
+EXP-0007 supplies no keyed-hash evidence. Its coefficient arm keeps natural semantic columns via DIF `bitrev(j)` gathers; it does not validate the old IDEA-0002 bit-reversed semantic mapping or any new descriptor/hash format. Preserve RFC-0047's layout order, claim permutation and allocation/sequence bounds. Next: settle the construction's security assumptions and proof before selecting it for an RFC or preregistering performance work.
 
 ## Mechanism
 
@@ -43,6 +55,8 @@ leaf_j   = d_j[ceil(m / B)]                                                     
 
 ## Expected gain
 
+Historical 2026-10-16 projections, retained for provenance. They are not current gain estimates; see the 2026-10-19 review and [discussion #393](https://github.com/AbdelStark/tessera/issues/393).
+
 The idea moves `commit_ps` by the hash share times −20%. Under the `counted` profile (`c_c = 94` ps, EXP-0002) the bracket −3.8% to −5.1% is `commit_ps` 90.4 to 89.2; the centre 89.5 (−4.8%) is the scenario:
 
 ```sh
@@ -78,15 +92,17 @@ Evidence levels of the inputs: compression counts E0 (primary, [BLAKE3ref20], EX
 
 ## Security gate
 
+Current assessment, 2026-10-19; official BLAKE3 spec/API mechanics were checked for discussion #393, not a construction proof.
+
 | Property | Effect | Pass |
 |---|---|---|
-| Soundness bits (G-4, RFC-0014) | Binding of a column leaf changes from collision resistance of `derive_key(column-step, chain ‖ symbols)` to collision resistance of BLAKE3's keyed mode as a function of the pair `(key, message)`, where the key is always a prior hash output (never attacker-chosen directly): a leaf collision needs two pairs with equal output, either under one key (a plain 256-bit-output collision) or across keys (the free-start form of the compression function with the `KEYED_HASH` flag set), which is exactly the assumption BLAKE3's own intra-chunk chaining makes ([BLAKE3ref20]). Both are generic at 2^128, the level [RFC-0014](../../docs/rfcs/RFC-0014-interaction-and-soundness.md) already books for "hash collisions, BLAKE3, 256-bit output: 128 bits". Domain separation from every other digest is by flag (`KEYED_HASH` against `DERIVE_KEY_MATERIAL`) and from other columns and commitments by `column-init`'s `derive_key` over `commitment_id ‖ u64(j)`. No transcript change: INV-FS-1..4 untouched, no challenge moves. The superseding RFC must state the assumption in these words and the `soundness-review` skill must read it. | pass (conditional on the restatement being accepted in review) |
-| Uniqueness upstream of the logits (SP-3, RFC-0009 Lemma 0) | Commitment layer only; no relation, table, range or witness changes. | pass |
-| Zero knowledge (G-5, RFC-0013) | The leaf of a column of hidden symbols is a hash of the same symbols as today under a key that is itself public-derivable from `commitment_id`; mask rows and blinding are unchanged, and the digest leaks the same (negligible) information as today. The verifier's hashing is on opened columns only, as before. | pass |
-| Verifier independence (SP-6) | `tv-hash` implements BLAKE3 from the specification; keyed mode is part of that specification with official vectors, and its hasher already takes the `KEYED_HASH` flag (`verifier/crates/tv-hash/src/blake3.rs`). A public `keyed_hash` written from the RFC, no prover code read. `allowlist.toml` unchanged. | pass |
-| Post-quantum (hash-based commitments) | Still a hash-based commitment over a 256-bit state; Grover's bound on second preimages and the BHT collision bound are unchanged. | pass |
+| Soundness bits (G-4, RFC-0014) | No reviewed reduction/assumption yet covers adaptive reachable chaining keys, cross-key chosen-block collisions and descriptor grinding with this finalized-keyed-hash iteration. Primitive output size, mode flags and raw intra-chunk analogies do not establish the old 128-bit claim. Keep the existing derive-key chain pending review. | unknown (blocks promotion) |
+| Uniqueness upstream of the logits (SP-3, RFC-0009 Lemma 0) | No gadget, relation, lookup table or range change requested. This is not a new proof about gadgets. | pass (unchanged surface only) |
+| Zero knowledge (G-5, RFC-0013) | Later chain keys depend on secret/masked symbols, not merely the public descriptor. Joint simulator and hash-oracle assumptions for this new construction remain unreviewed; unchanged masks alone are insufficient. | unknown (blocks promotion) |
+| Verifier independence (SP-6) | Keyed BLAKE3 mechanics and official vectors are available; a future verifier must implement the accepted construction from its specification with independent vectors. | conditional; implementation gate open |
+| Post-quantum (hash-based commitments) | Remains structurally hash-based, but the new construction's binding security has not been established merely by retaining a 256-bit state. | unknown construction bound |
 
-Robustness (SP-8, not a gate row): the verifier's recomputation gets strictly simpler (fixed 256-byte messages for full blocks, no `chain ‖ symbols` buffer). Redaction (INV-ARCH-6): no new secret flow; the chain values were and remain commitment-class data.
+Robustness and secret handling must be reviewed in any implementation: canonical symbols/partial steps, existing resource limits and rejection order, cleared secret buffers, and no secret logging. No code or production change is supplied here.
 
 ## Prior rejection check
 
@@ -114,6 +130,8 @@ On the same core and harness as EXP-0002's chain kernel, `keyed_hash` over 256 b
 
 ## Refutations
 
+Historical 2026-10-16 triage. Its security conclusions are superseded by the current Security gate and 2026-10-19 review; a previous “survives” is not a present full-security pass.
+
 Sweep triage of 2026-10-16: four refuter agents who did not write the idea, one per lens; each argument is condensed from that refuter's verdict, with the cost-model reruns the scoring agent made to check disputed cells noted as such.
 
 | Lens | Verdict | Argument |
@@ -125,6 +143,8 @@ Sweep triage of 2026-10-16: four refuter agents who did not write the idea, one 
 
 ## Score
 
+Historical 2026-10-16 scores and confidence values below are retained, not recomputed or endorsed under the current partial baseline. Unknown security gates block promotion regardless of projected gain.
+
 | Gain | Confidence | Cost | Priority |
 |---|---|---|---|
 | −1.4% μ(16K), −1.6% at 1K (E0 cost model at `commit_ps=89.5` under `counted`; bracket −1.1% to −1.5%; −1.0% under `corrected`); compressions per element 0.3125 → 0.25 is E0 primary ([BLAKE3ref20], EXP-0002); the hash share 19–26% of `c_c` is E0 fitted to E1 (EXP-0002, Apple M4 Max) | 0.6: the mechanism and the compression count are exact and primary and the CPU anchor is E1, but the realized share depends on whether the hash binds the fused GPU kernel (E2) and IDEA-0003 found the gather, not the compression count, binding `ColumnChains` | `l` by the rubric: a tier-A superseding RFC on RFC-0004 'Column digests' and RFC-0011 'Column digests and root' plus a protocol version; the E1 experiment itself is `s`, and the marginal cost is `s` when bundled into IDEA-0002's descriptor RFC | 1.4 × 0.6 / 4 = 0.21 (0.84 at the bundled marginal cost `s`) |
@@ -132,3 +152,5 @@ Sweep triage of 2026-10-16: four refuter agents who did not write the idea, one 
 ## Decision and links
 
 Triage 2026-10-16: `triaged` at priority 0.21. The gain is inside the cost model's noise and no experiment here can lift it above it (the hash's share of the fused GPU kernel is E2), so it earns no experiment of its own; its place is a clause in the superseding RFC that changes the commitment descriptor anyway (IDEA-0002's coefficient form), where it costs one sentence, the free-start restatement of RFC-0004's binding assumption that the soundness lens requires, and buys one compression per full block. Its E1 step (keyed against `derive_key` through `ColumnChains` and a tile layout) rides on EXP-0002's harness when that RFC is drafted. The queued `B = 28` item (ledger 18) is superseded by this note. Experiments: none. RFC or issue: none of its own (a clause for the superseding RFC of IDEA-0002 on RFC-0004 'Column digests' and RFC-0011 'Column digests and root'). Ledger line updated on: pending consolidation (2026-10-16).
+
+Review 2026-10-19: optional discussion in [#393](https://github.com/AbdelStark/tessera/issues/393), with the clause deferred pending security proof/review. Status remains `triaged`, not promoted; no new E1/E2 experiment or current gain re-score.

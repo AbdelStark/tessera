@@ -1,0 +1,103 @@
+{
+  "id": "EXP-0018",
+  "path": "research/experiments/EXP-0018-shared-point-marginal-forest/README.md",
+  "status": "done: inconclusive",
+  "verdict": "inconclusive",
+  "proxy_case_verdict": "inconclusive",
+  "idea_status": "triaged",
+  "priority_before": 0.87,
+  "priority_after": 0.87,
+  "confidence_before": 0.3,
+  "confidence_after": 0.3,
+  "key_results": [
+    {
+      "evidence": "E1 CPU primary",
+      "result": "Production paired marginal ratios median 100.51%/100.11%/98.51%; every final pointwise ratio >=90%, but s10h12 retains marginal CV4.75% after one rerun. Overall inconclusive."
+    },
+    {
+      "evidence": "E1 CPU secondary proxy",
+      "result": "Generic full-eq proxy medians89.68%/89.99%/89.20%; every empirical min/max band crosses90%. Separately inconclusive."
+    },
+    {
+      "evidence": "E0 correctness",
+      "result": "30 large-shape workload records: deterministic proof/evaluation/claim/state replay and independent tv-core acceptance; all owed leaf/evaluation checks pass."
+    },
+    {
+      "evidence": "E0 point trace",
+      "result": "s8h14 joins at8, s10h12 at10: fresh forest and fraction entering points differ, then all next/leaf points agree. s0h22 shares empty root point."
+    },
+    {
+      "evidence": "E0 counts",
+      "result": "Current production split-eq builds are per instance; B=S+F for those counts. Generic proxy shares initial eq build, saves zero eq fold outputs."
+    },
+    {
+      "evidence": "E1 raw audit",
+      "result": "480 raw samples,16 full-series attempts,6 registered reruns, all durations>=66.38ms. Independent ddof1 CV/subtraction/covariance/journal audit passes."
+    }
+  ],
+  "case_verdicts": {
+    "production": "inconclusive",
+    "literal_generic_proxy": "inconclusive"
+  },
+  "judged_shapes": [
+    "s8h14",
+    "s10h12",
+    "s0h22"
+  ],
+  "context_shapes": [
+    "s6h14",
+    "s7h14"
+  ],
+  "noise_policy": "3 warmups,10 ordered paired blocks,>=20ms/sample; each base CV and marginal CV<=3%; one complete paired-series rerun; residual flag forces inconclusive. Ratio min/max sensitivity band is not a confidence interval.",
+  "raw_samples_audited": 480,
+  "attempts": 16,
+  "full_series_reruns": 6,
+  "baseline_commit": "46d39e45e83561b2139ace790e48cf27cf6e4753",
+  "origin_main_ref_at_capture": "2a35a0c1cd023e4794bb6fa8b4dd17d7df293b23",
+  "preregistration_commit": "099f6ff",
+  "preregistration_sha256": "d48d27356b84efc4a7420e4543debde367bde0b3c9d965681a369d57dcf9599a",
+  "raw_output": "results/run.txt",
+  "raw_json": "results/run.json",
+  "raw_sample_journal": "results/run.json.samples.ndjson",
+  "analysis": "results/analysis.json",
+  "point_traces_and_digests": "results/check-large.json",
+  "operation_counts": "results/count.json",
+  "validation": {
+    "committed_preregistration": "passed",
+    "cargo_fmt": "passed",
+    "cargo_clippy_warnings_denied": "passed",
+    "small_controls": "passed",
+    "all_large_workloads": "passed",
+    "independent_acceptance": "passed",
+    "all_owed_claims": "passed",
+    "negative_controls": "root211 and changed final proof rejected exactly; altered owed leaf mismatch caught",
+    "statistical_raw_audit": "passed; noise flag retained in verdict",
+    "cargo_xtask_lint": "passed",
+    "knowledge_base": "only expected parent-owned EXP18 ledger planned vs report done:inconclusive mismatch",
+    "warmup_and_repetition_audit": "passed:9 warmups/comparison,arm/warmup order,fixed reps,registered block order,20ms floor,chronological journal"
+  },
+  "problems": [
+    "Judged production s10h12 marginal CV4.75% after rerun, even with base-arm CVs<=1.45%.",
+    "Every judged proxy empirical band straddles .90."
+  ],
+  "gpu_evidence": false,
+  "changes_leaf_unit_cost": false,
+  "current_counted_leaf_ps_unchanged": 41.8,
+  "idea_row_summary": "IDEA-0010 triaged, priority0.87 and confidence0.3 unchanged. Hypothesis(a) inconclusive; no half-score kill; mechanism2 cadence65536 remains separate.",
+  "ledger_row": "| [EXP-0018](experiments/EXP-0018-shared-point-marginal-forest/README.md) | Is the current production forest marginal cost below90% inside a fraction batch? | IDEA-0010 hypothesis(a) | done: inconclusive | Production medians98.5\u2013100.5%, one residual marginal CV4.75%; full-eq proxy bands cross90% | E1 CPU paired raw480 samples; E0 point/count audit and independent tv-core acceptance |",
+  "new_bibliography_keys": [],
+  "follow_ups": [
+    "New preregistration for a stable production marginal subtraction/noise study, if warranted.",
+    "Separate mechanism2 integer accumulator with specified65536-term cadence.",
+    "H100 actual joint split-eq, masking/opening and streamed-memory gate before repricing c_pi."
+  ],
+  "threats": [
+    "CPU is not H100.",
+    "Resident synthetic inputs/unit numerators; no full LogUp root balance or ZK masks.",
+    "Alpha/key/value input generation outside all arms.",
+    "Generic proxy is denominator product, not complete fraction relation.",
+    "Scheduler/frequency/cache drift and subtraction amplification.",
+    "Historical triage score retained, not a new quantified gain estimate."
+  ],
+  "warmup_method": "3 warmups per arm once per comparison,90 records total. Registered full ten-block rerun immediately follows without fresh warmups; same reps/order. Limitation: rerun is not an independently rewarmed attempt."
+}

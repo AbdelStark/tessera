@@ -1,0 +1,1 @@
+E0: production builds additive; proxy saves one eq build and zero folding outputs; no GPU pricing

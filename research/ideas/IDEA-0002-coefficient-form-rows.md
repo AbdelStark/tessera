@@ -2,11 +2,25 @@
 
 | | |
 |---|---|
-| Status | `triaged` (2026-10-16) |
+| Status | `triaged` (reviewed 2026-10-19; discussion only, not promoted) |
 | Origin | new: this round's commitment lens, from the cost line of [RFC-0011 'Encoding'](../../docs/rfcs/RFC-0011-advice-commitment.md#encoding) ("an inverse NTT of size `k` and a coset NTT of size `2k`" per row) and the four steps of `crates/tessera-pcs/src/encoding.rs`; motivated by RISK-1 and RISK-8 ([00 §9](../../docs/spec/00-overview.md#9-risks)) and by [SUR-0001](../surveys/SUR-0001-proximity.md) Question 3, where the rate couples `τ` to `c_c`, so `c_c` has to fall without touching the rate |
 | Lever | `c_c` (the encoder's share of the committed-element cost: one of the three NTT kernels per row disappears); `verify` (the `G + 1` inverse NTTs of size `2^22` over `Fp2` that `enc(u_g)` needs today disappear) |
 | Spec surfaces | [RFC-0011 'Encoding'](../../docs/rfcs/RFC-0011-advice-commitment.md#encoding), ['Opening protocol'](../../docs/rfcs/RFC-0011-advice-commitment.md#opening-protocol) step 8.3, the verifier-work row of ['Sizes'](../../docs/rfcs/RFC-0011-advice-commitment.md#sizes-at-the-default-parameters-16k-tokens-16k-context-405b) and the first bullet of 'Testing Strategy' ("the mask vanishes on `H`"); [RFC-0012 'Layout'](../../docs/rfcs/RFC-0012-weight-commitment.md#layout), the mask bullet; [RFC-0013 'Hiding openings'](../../docs/rfcs/RFC-0013-zero-knowledge.md#hiding-openings), the 'Columns' bullet (restated lemma); the commitment descriptor behind `commitment_id` ([RFC-0004 'Column digests'](../../docs/rfcs/RFC-0004-hashing-and-transcript.md#column-digests)). The codeword and the verifier's column check are protocol semantics (tier A, [02 §1](../../docs/spec/02-public-api.md#1-stability-tiers)): a superseding RFC and a new protocol version are required |
-| Priority | 1.0 (−5.9% × 0.7 / 4 under the `counted` profile, re-scored 2026-10-16; 0.93 with the fifth pass priced against honest baselines, 1.26 with the pruned column pass on both sides; 0.63 at triage under `corrected`); the experiment's E1 split is in EXP-0007, adoption is a tier-A RFC |
+| Priority | Historical 2026-10-16 score; not a current adoption estimate: 1.0 (−5.9% × 0.7 / 4 under the `counted` profile, re-scored 2026-10-16; 0.93 with the fifth pass priced against honest baselines, 1.26 with the pruned column pass on both sides; 0.63 at triage under `corrected`); the experiment's E1 split is in EXP-0007, adoption is a tier-A RFC |
+
+## Current-spec review, 2026-10-19
+
+[RFC-proposal discussion #393](https://github.com/AbdelStark/tessera/issues/393) records the design and missing acceptance gates. Status remains `triaged`: EXP-0007 validated output pruning (IDEA-0016), not this complete protocol or its security. No numbered RFC or production change has been adopted.
+
+The discussion recommends coefficient rows with **natural semantic columns** and the existing derive-key chain. EXP-0007 gathers column `j` from DIF leaf `bitrev(j)`; it does not validate the historical mechanism's proposed bit-reversed semantic column mapping. The old mechanism and triage below are historical proposals where they differ from this review.
+
+A protocol string alone cannot bind this format for weights: RFC-0031's weight descriptor has no protocol/statement field, and RFC-0040's `R_W` hashes the public payload, not its envelope version. The discussion proposes a fixed format discriminator in both layout structs, so claim list, descriptors, `commitment_id` and hashed weight-public payload bind basis/order/chain mode. This needs an accepted superseding tier-A RFC, explicit protocol/schema versions under 09 §3, and new roots/artifacts; no existing root may be reinterpreted. Protocol 2 already has ZK semantics and is not silently reassigned.
+
+Preserve [RFC-0047](../../docs/rfcs/RFC-0047-advice-order.md): stable padded-axis order, permutation of relation claim coordinates into layout order, `ν`, maximum allocated rows checked before allocation, GQA and sequence bounds. The basis change does not rename logical tensor indices.
+
+The mask matrix `diag(x_j^k)·Vandermonde` has full row rank at at most `P` distinct nonzero points (E0), but this proves only marginal column hiding. The joint distribution with `Fp2` combined rows, blinding claims and persistent weight masks still needs the complete malicious-verifier simulator and independent review. `docs/zk/simulator.md`, required by RFC-0013, is absent in this checkout. This security gate is **unknown**. A deliberately non-ZK-only scope may defer it only while barring the format in ZK mode. IDEA-0014's keyed chain is excluded pending its separate unknown gate.
+
+Historical μ/priority/confidence figures below are not modern adoption evidence. P1 `commit_ps`, P5 `column_answer_ps` and P4 `row_combination_ps` must be priced separately; five regenerations, unpriced P4 and incomplete #329 remain visible. EXP-0007 is historical E1 CPU kernel evidence; there is no E2 gain or full-protocol ZK result here. Next: resolve #393's proof, version/binding and independent-vector gates, then preregister any required experiment.
 
 ## Mechanism
 
@@ -30,6 +44,8 @@
 - Framework (E0, primary): the tensor-code commitment of [GLSTW23] needs only a linear code `Enc`; its evaluation check is an inner product on the message and its consistency test compares `Enc` of the combined message with the opened columns. Nothing in that analysis, nor in RFC-0011's Ligero-style bound ([AHIV17]), names the message basis. The verifier work (E0, own count): per combined row `2^21·22 + 2^22·23 = 1.43×10^8` butterflies over `Fp2` today against `0.97×10^8` after, −32% of the verifier's NTT work; second order next to hashing 0.72 GB of columns. Note: RFC-0011's verifier-work row lists only "`G + 1` coset NTTs of size `2^23`" and omits the inverse NTT of size `2^22` that `enc(u_g)` requires (barycentric evaluation at `τ_A` points would cost `τ_A·(G + 1)·k ≈ 10^10` `Fp2` operations, far more); this idea removes exactly the unlisted step, so the superseding RFC should correct that row either way.
 
 ## Expected gain
+
+Historical 2026-10-16 projections, retained for provenance. They are not current gain estimates; see the 2026-10-19 review and [discussion #393](https://github.com/AbdelStark/tessera/issues/393).
 
 Scenario: `c_c` −20% (the encoder at 63% of `c_c`, as measured on CPU, times the encoder's −32%), from 30 to 24 ps per committed element.
 
@@ -66,15 +82,17 @@ Inputs: `c_c = 30 ps` is the RFC-0020 assumption (E0, RISK-1); the 63:37 split a
 
 ## Security gate
 
+Current assessment, 2026-10-19; discussion #393 does not close these gates.
+
 | Property | Effect | Pass |
 |---|---|---|
-| Soundness bits (G-4, RFC-0014) | The committed code is the same `RS[n, k + P]` on `7·L`; the row-combination test and the column check are unchanged up to a public, invertible change of basis on the message (coefficients for values on `H`), applied identically by both sides. RFC-0011's unique-decoding extractor decodes each row to the same `g` and reads the message off its low coefficients instead of its values on `H`; RFC-0014's `ρ'`, per-query bits and budget are untouched. The relabelling of columns in option (b) is a fixed public permutation of the query space, which changes nothing about uniform draws. | pass |
-| Uniqueness upstream of the logits (SP-3, RFC-0009 Lemma 0) | Commitment layer only; no gadget, table or range changes. | pass |
-| Zero knowledge (G-5, RFC-0013) | RFC-0013 'Hiding openings' argues that any `≤ P` codeword positions outside `H` are uniform because `Z_H(x_j) ≠ 0` there. Restated: the mask's contribution at `τ ≤ P` distinct positions is the `τ × P` matrix `[x_j^{k+i}] = diag(x_j^k)·Vandermonde(x_j; P)`, of full row rank because the `x_j ∈ 7·L` are distinct and non-zero; so the opened symbols stay uniform and independent of the message, and the disjointness of `7·L` from `H` is no longer even needed. Blinding rows `Q_g`, the combined masks `M_g` and simulator step 5 ("each queried column adds one linear constraint per row on independent mask coefficients") are unchanged. Secret-class data (rows, masks) flow exactly as today. | pass |
-| Verifier independence (SP-6) | The verifier's check gets simpler (coefficient evaluation by `coset_ntt`, which `tv-field` already has; `x_j^k` for `Z_H(x_j)`) and is written from the superseding RFC, not from prover code. | pass |
-| Post-quantum (hash-based commitments) | Unchanged: BLAKE3 column chains and Merkle trees, no new assumption. | pass |
+| Soundness bits (G-4, RFC-0014) | E0: coefficient/message injectivity and unchanged RS dimension support the existing distance inputs. The accepted version, exact column equation/order, descriptor/payload binding and independent verifier/conformance tests remain to be specified and reviewed. No complete protocol validation is claimed. | unknown (acceptance gates open) |
+| Uniqueness upstream of the logits (SP-3, RFC-0009 Lemma 0) | No gadget, table or true-integer range change is requested. This is not new evidence about gadget soundness. | pass (unchanged surface only) |
+| Zero knowledge (G-5, RFC-0013) | Full row rank of `[x_j^{k+i}]` proves marginal hiding only. Joint simulation with combined rows, `Fp2` blinders, claims-before-batching order and persistent epoch budgets is unreviewed; the complete required simulator is absent. | unknown (blocks ZK adoption) |
+| Verifier independence (SP-6) | A future verifier must be written from the accepted RFC with independent oracle vectors, not copied from the prover. No implementation is supplied here. | conditional; implementation gate open |
+| Post-quantum (hash-based commitments) | The recommended coefficient-only format retains the current derive-key chain and Merkle primitive. No new post-quantum assurance is established here. | unchanged assumption |
 
-Fiat–Shamir ([RFC-0004](../../docs/rfcs/RFC-0004-hashing-and-transcript.md), INV-FS-1..4): no new message, no new challenge; `commitment_id` changes with the descriptor, which is what binds the new encoding.
+Fiat–Shamir (INV-FS-1..4): retain the existing schedule, including blinded claims before batching and combined rows before queries. A new layout discriminator and version must be explicitly bound; the old descriptor does not gain those fields automatically.
 
 ## Prior rejection check
 
@@ -96,6 +114,8 @@ Evidence level reachable here: E1 (Apple M4 Max, one core). Effort: `s`. What st
 
 ## Refutations
 
+Historical 2026-10-16 triage. Its security conclusions are superseded by the current Security gate and 2026-10-19 review; a previous “survives” is not a present full-security pass.
+
 Sweep triage of 2026-10-16: four refuter agents who did not write the idea, one per lens; each argument is condensed from that refuter's verdict.
 
 | Lens | Verdict | Argument |
@@ -107,6 +127,8 @@ Sweep triage of 2026-10-16: four refuter agents who did not write the idea, one 
 
 ## Score
 
+Historical 2026-10-16 scores and confidence values below are retained, not recomputed or endorsed under the current partial baseline. Unknown security gates block promotion regardless of projected gain.
+
 | Gain | Confidence | Cost | Priority |
 |---|---|---|---|
 | −4.2% μ(16K), −4.1% at 1K (E0 cost model; inputs: E1 encoder:hash split on one M4 Max core, E0 transfer by butterfly count); `verify` also loses G + 1 inverse NTTs of size 2^22 over Fp2 (E0) | 0.6: the mechanism survives all four lenses and the restated hiding lemma is a standard full-rank argument, but the encoder share is measured on a CPU and its share of the fused GPU kernel (the kill criterion) is unknown until E2 | `l` for adoption: a tier-A superseding RFC to RFC-0011/0012/0013 and the commitment descriptor, with the verifier's opening check and the conformance vectors moving; the experiment itself is `s`, E1 here, no hardware | 4.2 × 0.6 / 4 = 0.63 |
@@ -115,3 +137,5 @@ Sweep triage of 2026-10-16: four refuter agents who did not write the idea, one 
 ## Decision and links
 
 Triage 2026-10-16: `triaged`, priority 0.63, the second-ranked design idea of the batch after IDEA-0011. Next step: the E1 same-harness bench (encoder with and without the size-k inverse NTT, column hash unchanged) as a pre-registered experiment; the kill criterion (GPU encoder share below about 10% of the fused kernel) waits for RFC-0020 v0.1. Experiments: none yet. RFC or issue: none yet (a superseding RFC to RFC-0011/0012/0013 if validated). Ledger line updated on: pending (the consolidation agent writes it). Re-scored 2026-10-16 (queue item 9) under the `counted` profile with the fifth regeneration pass of [EXP-0007](../experiments/EXP-0007-pruned-column-answer-pass/README.md) priced: priority 0.63 → 1.0 (bracket 0.93–1.26), confidence 0.6 → 0.7 on EXP-0007's same-harness split; the remaining unit of work is the tier-A descriptor RFC, into which IDEA-0014's keyed-chain clause folds (queue item 12).
+
+Review 2026-10-19: discussion [#393](https://github.com/AbdelStark/tessera/issues/393) supersedes the historical plan to fold in keyed chaining without a separate security gate. Status remains `triaged`; no promotion or current gain re-score.
