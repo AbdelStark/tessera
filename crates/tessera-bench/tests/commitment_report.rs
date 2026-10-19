@@ -21,13 +21,14 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 use tessera_bench::{Counts, MemoryModel, ModelReport, Scenario, UnitCosts};
-use tessera_codec::Rational;
+use tessera_codec::{Ascii, Rational, envelope, schema};
 use tessera_compiler::{
-    CompileError, Gadget, Lowering, PublicModel, Range, Ranges, Selection, analyze, lower, report,
-    select,
+    CompileError, Gadget, Lowering, ModelAdviceLayout, PublicModel, Range, Ranges, Selection,
+    analyze, claim_list, lower, report, select,
 };
 use tessera_ir::{
-    ArchFamily, ArchSpec, GadgetPolicy, Op, Profile, PublicQuantSpec, QuantPoint, RopeSpec, Site,
+    AdviceLayoutParams, ArchFamily, ArchSpec, CommitmentLayout, GadgetPolicy, Op, ParamSetId,
+    Profile, PublicQuantSpec, QuantPoint, RopeSpec, Site, WeightLayoutParams,
 };
 
 const ROPE: RopeSpec = RopeSpec {
@@ -279,6 +280,45 @@ fn the_committed_405b_reports_are_the_compilers() {
                 match select(&lowering.graph, &ranges, &lowering.tables, &policy) {
                     Ok(selection) => {
                         assert_eq!(b_max, 32, "{case}: the root requires Range(32)");
+                        if profile == Profile::Servable && classes == 2 {
+                            let layout = CommitmentLayout {
+                                advice: AdviceLayoutParams {
+                                    log2_k: 22,
+                                    log2_inv_rate: 1,
+                                    mask_coeffs: 200,
+                                    row_block: 32,
+                                    segments: 8,
+                                },
+                                weights: WeightLayoutParams {
+                                    log2_k: 20,
+                                    log2_inv_rate: 2,
+                                    mask_coeffs: 65_536,
+                                    blinding_rows: 4096,
+                                },
+                            };
+                            let claims = claim_list(
+                                model,
+                                &selection,
+                                &policy,
+                                layout,
+                                ParamSetId(Ascii::new("ni-100/1").unwrap()),
+                            )
+                            .unwrap();
+                            let full = lower(model, 16384).unwrap();
+                            let actual =
+                                ModelAdviceLayout::new(&full, &selection, &claims).unwrap();
+                            let bytes = envelope::seal(&schema::CLAIM_LIST, &claims);
+                            let (independent, validated) =
+                                tv_core::validation::load(&bytes, &tv_codec::DecodeLimits::MESSAGE)
+                                    .unwrap();
+                            assert_eq!(independent.arch.n_layers, 126);
+                            let native = validated.advice_layout(16384).unwrap();
+                            assert_eq!(actual.layout().allocated_rows(), native.rows());
+                            assert_eq!(actual.layout().variables(), native.nu());
+                            assert_eq!(actual.layout().allocated_rows(), 2_328_576);
+                            assert_eq!(actual.layout().variables(), 44);
+                            assert_eq!(actual.layout().rows(), 953_580);
+                        }
                         let report = report_json(model, &lowering, &selection, &policy);
                         let file =
                             format!("commitment-report-405b-{name}-c{classes}-b{b_max}.json");
