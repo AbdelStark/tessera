@@ -13,18 +13,20 @@
 //!   (RFC-0040, RFC-0049);
 //! - **the opened matrices**: those the pool has claims on, each with its codeword's length.
 //!
-//! The advice's point waits for the canonical advice layout (#106): the file states none.
+//! The advice's row-index point comes from the complete canonical layout (RFC-0050).
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use tessera_codec::{DecodeLimits, envelope, schema};
+use tessera_codec::{Ascii, DecodeLimits, envelope, schema};
 use tessera_compiler::schedule::{LayerMap, NodeRef};
-use tessera_compiler::{Gadget, PublicModel, analyze, derive_schedule, lower, select};
+use tessera_compiler::{
+    Gadget, ModelAdviceLayout, PublicModel, analyze, claim_list, derive_schedule, lower, select,
+};
 use tessera_hash::Mode;
-use tessera_ir::{CommitmentClass, GadgetPolicy, IntegerModel};
+use tessera_ir::{CommitmentClass, GadgetPolicy, IntegerModel, ParamSetId};
 use tessera_pcs::WeightLayout;
 use tessera_protocol::{
     LeafTree, MatrixCodeword, MatrixPoint, ParamSet, Protocol, ScheduleSizes, StageSizes,
@@ -62,7 +64,7 @@ fn conformance(name: &str) -> (IntegerModel, u32) {
     (model, u32::try_from(tokens.len()).expect("small"))
 }
 
-/// The sizes the prover's derivations give a model at `test-small/1`, the advice's point aside.
+/// The sizes the prover's derivations give a model at `test-small/1`.
 fn derived(name: &str) -> ScheduleSizes {
     let (model, n) = conformance(name);
     let lowering = lower(PublicModel::of(&model), n).expect("the model lowers");
@@ -121,6 +123,15 @@ fn derived(name: &str) -> ScheduleSizes {
 
     // The weights: the committed rows of each matrix, and the matrices the pool has claims on.
     let params = ParamSet::TEST_SMALL;
+    let claims = claim_list(
+        PublicModel::of(&model),
+        &selection,
+        &GadgetPolicy::default(),
+        params.layout,
+        ParamSetId(Ascii::new(params.id).expect("a parameter id")),
+    )
+    .expect("the complete layout fits at max_context");
+    let advice = ModelAdviceLayout::new(&lowering, &selection, &claims).expect("the advice layout");
     let weights = WeightLayout::new(
         params.layout.weights,
         model.weight_shapes().expect("the shapes"),
@@ -172,7 +183,7 @@ fn derived(name: &str) -> ScheduleSizes {
                 zero_vars: stage.zero_vars,
             })
             .collect(),
-        advice_vars: 0,
+        advice_vars: advice.layout().row_vars(),
         proximity,
         opened,
     }
@@ -192,7 +203,14 @@ fn stated(file: &Value, name: &str) -> Value {
         .collect();
     assert_eq!(cases.len(), 2, "{name} in both modes");
     assert_eq!(cases[0]["sizes"], cases[1]["sizes"], "{name}");
-    assert!(cases[0]["sizes"]["advice_vars"].is_null(), "{name}");
+    assert!(cases[0]["sizes"]["advice_vars"].is_u64(), "{name}");
+    for case in &cases {
+        assert_eq!(
+            case["replayed"].as_u64(),
+            Some(case["steps"].as_array().expect("steps").len() as u64),
+            "{name}: the complete schedule is replayed"
+        );
+    }
     cases[0]["sizes"].clone()
 }
 
@@ -232,7 +250,7 @@ fn written(sizes: &ScheduleSizes) -> Value {
         "trees": trees,
         "layer_vars": sizes.layer_vars,
         "stages": stages,
-        "advice_vars": null,
+        "advice_vars": sizes.advice_vars,
         "proximity": proximity,
         "opened": opened,
     })

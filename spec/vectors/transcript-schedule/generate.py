@@ -15,8 +15,8 @@ from RFC-0040 with ../weights/generate.py's reader and layouts. It shares no cod
 or verifier/, which check its output.
 
 The conformance models' leaf trees and reduction stages are the prover's derivations, stated
-below (DERIVED), and their advice proximity point has no derivation yet (#106): those cases run
-the transcript up to `pcs/advice/xi` and list the labels after it. See README.md.
+below (DERIVED). Their advice row-index point is derived by the independent lowering and advice
+oracles; every model case now replays the complete schedule. See README.md.
 
 Usage: python3 spec/vectors/transcript-schedule/generate.py
 (rewrites schedule.json)
@@ -44,6 +44,8 @@ def _oracle(name):
 transcript = _oracle("transcript")  # RFC-0004's transcript and TCE(SessionContext)
 hashing = transcript.oracle  # BLAKE3 and H, from ../hash/generate.py
 weights = _oracle("weights")  # RFC-0040's matrices and the models' reader
+lowering = _oracle("lowering")  # RFC-0044's public graph
+advice = _oracle("advice")  # RFC-0050's complete allocation
 
 H, P, require = hashing.H, hashing.P, hashing.require
 u64, Transcript = transcript.u64, transcript.Transcript
@@ -328,19 +330,19 @@ LIVE_64 = {**RICH, "opened": [{"matrix": "Q", "codeword": 1 << 22}, {"matrix": "
 # transcript_sizes.rs derives them again and compares.
 DERIVED = {
     "tiny-2-servable": {
-        "instances": [(9, 23), (9, 22), (11, 19), (9, 19), (9, 18), (9, 23), (10, 20), (10, 20), (10, 23),
-                      (11, 23), (11, 25), (11, 25), (12, 23), (11, 16), (9, 25), (9, 19), (11, 16), (9, 25)],
+        "instances": [(11, 25), (9, 23), (9, 22), (11, 19), (9, 19), (9, 18), (9, 23), (10, 20), (10, 20),
+                      (10, 23), (11, 23), (11, 25), (12, 23), (11, 16), (9, 25), (9, 19), (11, 16), (9, 25)],
         "stages": [(12, 9), (9, 0)],
     },
     "tiny-2-minimal": {
-        "instances": [(9, 23), (9, 22), (11, 19), (9, 18), (9, 19), (9, 21), (10, 28), (9, 27), (11, 23),
-                      (11, 25), (11, 25), (9, 12), (10, 24), (9, 7), (9, 8), (10, 28), (9, 18), (9, 27),
+        "instances": [(9, 7), (10, 24), (11, 25), (9, 23), (9, 22), (11, 19), (9, 18), (9, 19), (9, 21),
+                      (10, 28), (9, 27), (11, 23), (11, 25), (9, 12), (9, 8), (10, 28), (9, 18), (9, 27),
                       (9, 5), (9, 14), (9, 15)],
         "stages": [(10, 9), (12, 0), (7, 0)],
     },
     "tiny-2-affine": {
-        "instances": [(9, 23), (9, 22), (11, 26), (11, 26), (8, 23), (10, 17), (10, 20), (10, 20), (9, 21),
-                      (11, 25), (11, 25), (12, 19), (11, 18), (12, 16), (9, 25), (10, 23), (8, 23), (9, 22),
+        "instances": [(11, 25), (11, 26), (9, 23), (9, 22), (11, 26), (8, 23), (10, 17), (10, 20), (10, 20),
+                      (9, 21), (11, 25), (12, 19), (11, 18), (12, 16), (9, 25), (10, 23), (8, 23), (9, 22),
                       (11, 18), (9, 25)],
         "stages": [(12, 9), (10, 0), (7, 0)],
     },
@@ -385,11 +387,18 @@ def conformance_sizes(name, index):
     derived = DERIVED[name]
     trees = [tree for h_a, h_t in derived["instances"] for tree in (fraction(h_a), fraction(h_t))]
     committed = matrices(arch, channels)
+    public = {"arch": arch, "profile": value["profile"],
+              "quant": {"public": value["quant"]["public"],
+                        "silu_in_exponents": value["quant"]["silu_in_exponents"]}}
+    entry = next(m for m in index["models"] if m["name"] == name)
+    n = len(entry["sequences"][0]["tokens"])
+    graph, _ = lowering.case_of(name, entry["file"], lowering.Public(public), n, None)
+    layout = advice.model_layout(graph, 10, 512, 1)  # test-small/1 and default gadget policy
     return {
         "trees": trees,
         "layer_vars": (arch["n_layers"] - 1).bit_length(),
         "stages": [stage(r, z) for r, z in derived["stages"]],
-        "advice_vars": None,
+        "advice_vars": layout["nu"] - 10,
         "proximity": [{"matrix": ty, "vars": (m - 1).bit_length()} for ty, m, _ in committed],
         "opened": [{"matrix": ty, "codeword": k << WEIGHT_LOG2_INV_RATE} for ty, _, k in committed],
     }
@@ -402,8 +411,8 @@ PROVENANCE = {
     "layer_vars": "derived here: ceil(log2 n_layers) (RFC-0037 'Layers and kinds')",
     "stages": "derived by the prover: tessera-compiler's stage schedule (RFC-0037, #113); the gadgets' zero-checks "
     "(RFC-0035, OneHot) join with their gadgets",
-    "advice_vars": "not derived: the canonical advice layout (#106) fixes the advice row index's bits; the transcript "
-    "runs up to pcs/advice/xi",
+    "advice_vars": "derived here through the independent public lowering and advice oracles: nu - log2 k, "
+    "at test-small/1, Q=512, one segment (RFC-0011/0047/0050)",
     "proximity": "derived here: each matrix with committed rows at test-small/1 (RFC-0040), ceil(log2 m_T) "
     "coordinates (RFC-0049)",
     "opened": "derived here: every matrix with committed rows, n_T = 4 k_T (RFC-0040, RFC-0012)",
