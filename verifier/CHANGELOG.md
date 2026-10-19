@@ -128,9 +128,10 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - Expose independently derived gadget patterns, table references and generated table
   definitions through `tv-core::selection` for constraint-system digest conformance
-  (RFC-0007, #120). Normal validation runs the same checks without diagnostic capture.
+  (RFC-0007, #120). Normal validation retains the same checked choices for advice layout derivation.
   Consume independent CI framing vectors in `tv-testkit`; no dependency is added.
 - Derive RFC-0050's complete Rsqrt and Softmax auxiliary range requests, retaining repeated families and the one-bit minimum root range (#106).
+- Derive the complete public advice layout, source locations, zero rows, segments and weighted claim images independently from RFC-0011/0034/0046/0047/0050. Reject layouts exceeding `2^32` rows or unable to fit one key per row at `max_context`, after the canonical table checks (#106).
 
 ### Changed
 

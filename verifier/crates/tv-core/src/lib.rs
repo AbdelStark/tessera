@@ -534,6 +534,7 @@ compile_error!(
     "the `test-params` feature accepts parameter sets that certify nothing; it must not be enabled in a release build (RFC-0001 'Cargo features')"
 );
 
+pub mod advice;
 pub mod claims;
 mod fiat_shamir;
 mod interpolation;

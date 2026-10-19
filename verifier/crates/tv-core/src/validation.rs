@@ -18,16 +18,13 @@
 //! | 5.1 | `1 ≤ max_log2_rows ≤ 32` | `GadgetPolicy` |
 //! | 5.2 | independently derived integer ranges, gadget domains, field bounds and feasible tables | `Gadget { gadget }`, first in node order |
 //! | 5.3 | the complete derived table sequence equals the claim list, id for id | `Table { table }`, first differing id |
-//! | 6 | the commitment layout is the parameter set's ([`ParamSet::layout`]), and `query_block` a power of two (RFC-0041 'Production order') | `Layout` |
+//! | 6 | the commitment parameters equal [`ParamSet::layout`]; `query_block` is a power of two; at `max_context`, one key fits a row and the complete advice allocation fits `2^32` rows (RFC-0046/0047) | `Layout` |
 //! | 7 | the scoring and anchor templates name supported variants | `Template`, once they join the claim list (RFC-0026): today there is none to check |
 //!
 //! Every failure but the parameter set's is `Reject(StatementMismatch { field })`, and the
 //! parameter set's is `Reject(Params { name })`. Within one check the rules give one field, so
 //! their order does not matter. What validation does not do yet:
 //!
-//! - **Step 6's advice layout** (#106): that the derived advice layout fits within the protocol's
-//!   maximum of `2^32` rows at `max_context` (RFC-0047) needs the complete model-to-tile
-//!   derivation, including the remaining gadgets' committed columns.
 //! - **`ConstraintSystemDigest`** (RFC-0007), which #120 defines.
 //!
 //! ## Step 2.1: the architecture
@@ -288,14 +285,14 @@ impl std::error::Error for ClaimsError {}
 
 /// A validated claim list's derived data: the parameter set it names, its tables regenerated in
 /// `TableId` order, the graph its lowering derives for `max_context` tokens, and the integer
-/// ranges used to check each gadget and derive the canonical table sequence. Step 6's complete
-/// advice layout (#106) remains outstanding: see the module documentation.
+/// ranges and gadget choices used to derive the canonical table sequence and advice layout.
 #[derive(Debug)]
 pub struct Validated {
     params: ParamSet,
     tables: Vec<Table>,
     graph: Graph,
-    ranges: Vec<crate::ranges::Interval>,
+    selection: crate::selection::Selection,
+    advice: crate::advice::Config,
 }
 
 impl Validated {
@@ -311,12 +308,21 @@ impl Validated {
 
     /// Integer ranges independently derived from public data, indexed by tensor id (SP-7).
     pub fn ranges(&self) -> &[crate::ranges::Interval] {
-        &self.ranges
+        &self.selection.ranges
     }
 
     /// The derived graph, for a sequence of `max_context` tokens.
     pub fn graph(&self) -> &Graph {
         &self.graph
+    }
+
+    /// The canonical advice layout for a request of `n` prompt plus output tokens.
+    ///
+    /// # Errors
+    /// `StatementMismatch(Layout)` for an out-of-range length, or `Memory` if
+    /// the compact per-node layout metadata cannot be reserved.
+    pub fn advice_layout(&self, n: u32) -> Result<crate::advice::Layout<'_>, ClaimsError> {
+        crate::advice::Layout::derive(&self.graph, &self.selection, self.advice, n)
     }
 }
 
@@ -360,22 +366,27 @@ pub fn validate(claims: &ClaimList) -> Result<Validated, ClaimsError> {
     if !(1..=32).contains(&claims.gadget_policy.max_log2_rows) {
         return Err(mismatch(StatementField::GadgetPolicy));
     }
-    let ranges = crate::range_checks::check(&graph, claims.gadget_policy, &claims.tables)?;
+    let selection = crate::range_checks::check(&graph, claims.gadget_policy, &claims.tables)?;
     // Step 6: the commitment layout and the query block.
     if claims.layout != params.layout() || !claims.gadget_policy.query_block.is_power_of_two() {
         return Err(mismatch(StatementField::Layout));
     }
-    // TODO(#106): step 6's last rule, that the advice layout derived from `graph` fits within the
-    // RFC-0047 maximum of 2^32 rows at max_context, needs the complete model-to-tile derivation
-    // for RFC-0011, including the remaining gadgets' committed columns.
-    //
+    let advice = crate::advice::Config::new(
+        &claims.arch,
+        claims.gadget_policy,
+        claims.layout.advice.log2_k,
+        claims.layout.advice.segments,
+    );
+    // RFC-0047: count the complete allocation at the longest admitted sequence.
+    crate::advice::Layout::derive(&graph, &selection, advice, claims.arch.max_context)?;
     // Step 7: `scoring` and `anchor` are not in the claim list (RFC-0026), so no template is
     // named and none can fail. Their check joins with them.
     Ok(Validated {
         params,
         tables,
         graph,
-        ranges,
+        selection,
+        advice,
     })
 }
 

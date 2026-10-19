@@ -560,10 +560,10 @@ pub(crate) fn check(
     graph: &Graph,
     policy: GadgetPolicy,
     claimed: &[TableSpec],
-) -> Result<Vec<Interval>, ClaimsError> {
-    let (ranges, tables) = walk(graph, policy, false)?;
+) -> Result<Selection, ClaimsError> {
+    let (ranges, tables) = walk(graph, policy, true)?;
     tables.compare(claimed)?;
-    Ok(ranges)
+    finish_catalog(graph, ranges, tables)
 }
 
 fn walk(
@@ -843,6 +843,14 @@ fn pattern(op: &Op, requests: &[(TableId, Key, u8)]) -> Result<Pattern, ClaimsEr
 
 pub(crate) fn catalog(graph: &Graph, policy: GadgetPolicy) -> Result<Selection, ClaimsError> {
     let (ranges, state) = walk(graph, policy, true)?;
+    finish_catalog(graph, ranges, state)
+}
+
+fn finish_catalog(
+    graph: &Graph,
+    ranges: Vec<Interval>,
+    state: Tables<'_>,
+) -> Result<Selection, ClaimsError> {
     let count = state
         .base
         .len()
@@ -1446,7 +1454,7 @@ mod tests {
     }
 
     #[test]
-    fn captured_softmax_retains_all_three_references_to_one_table() {
+    fn captured_softmax_retains_all_five_references_to_one_table() {
         let mut tables = Tables {
             base: &[],
             added: Vec::new(),
@@ -1461,6 +1469,7 @@ mod tests {
         };
         softmax_ranges(16, policy, GadgetId(0), &mut tables).unwrap();
         assert_eq!(tables.added.len(), 1);
-        assert_eq!(tables.trace[0], vec![(TableId(0), Key::Range(17), 17); 3]);
+        // Reciprocal plus two limbs of each RFC-0050 slack, all the same family.
+        assert_eq!(tables.trace[0], vec![(TableId(0), Key::Range(17), 17); 5]);
     }
 }
