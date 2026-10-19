@@ -755,6 +755,8 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Coefficients.** `ξ*_T` indexes the committed rows by position, `⌈log2 m_T⌉` coordinates, as the column answers carry them.
   - **The calculator.** In protocol/1, `ϑ_T = ⌈log2 m_T⌉` and the weights' rate is unmasked. A matrix with no committed rows has no proximity row.
 
+- Clarify RFC-0010 and RFC-0037's stage conventions for independent verification ([#114](https://github.com/AbdelStark/tessera/issues/114)): identity-order final evaluations (`MatMulWeight`: weights before activations), committed split groups include their coefficients, stage degree is the largest instance degree, and layer-weight extensions include the padded cube. Add compiler-generated schedule fixtures and a prover-side harness checked by the independent verifier.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

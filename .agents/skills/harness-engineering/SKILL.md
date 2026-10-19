@@ -55,6 +55,8 @@ Done when `cargo xtask gen-vectors --check`, `cargo test --workspace --locked`, 
 
 Passing tests only prove that the tests accept the current code; mutation testing proves that the tests **reject broken code**.
 
+Give the mutation scratch copy its own `CARGO_TARGET_DIR`, separate from normal validation: shared build artifacts can make an unmodified checkout run a mutant binary.
+
 Use `.agents/skills/harness-engineering/scripts/mutate.py` (or targeted manual mutations) whenever you touch a verifier check, transcript label, range bound, or algebraic reduction:
 
 ```sh

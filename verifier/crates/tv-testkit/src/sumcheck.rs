@@ -267,18 +267,34 @@ pub fn lagrange(values: &[Fe], r: Fe) -> Fe {
 
 // ----- Batched sumchecks (RFC-0010 'Batching within a stage', 'Sumcheck messages') --------------
 
-/// One instance: the product of its tables, all of `2^n` entries for its `n` variables, or a
-/// LogUp fraction tree's level relation over four of them.
+/// How an instance combines its sent tables' values, before its public factors multiply them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Form {
+    /// The product of the tables.
+    #[default]
+    Product,
+    /// The square of the one table, as `SumSquares` reads its input (RFC-0010 'Relations').
+    Square,
+    /// `T_0 − c·T_1`, as an equality zero-check of `Y = c·X` reads `Ỹ` and `X̃` (RFC-0037 'The
+    /// committed first checkpoint').
+    Difference(Fe),
+}
+
+/// One instance: the product of its tables, all of `2^n` entries for its `n` variables, another
+/// [`Form`] of them, or a LogUp fraction tree's level relation over four of them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Product {
     /// The tables whose values at the instance's point the proof sends, in order.
     pub tables: Vec<Vec<Fe>>,
-    /// A factor the verifier computes itself, such as `eq(r, x)`: multiplied in, never sent.
-    pub public: Option<Vec<Fe>>,
-    /// `None` for the product of the tables. `Some(λ)` for a fraction tree's level (RFC-0010
+    /// Factors the verifier computes itself, such as `eq(r, x)`, each a multilinear table:
+    /// multiplied in, never sent.
+    pub public: Vec<Vec<Fe>>,
+    /// `None` for the tables' [`Form`]. `Some(λ)` for a fraction tree's level (RFC-0010
     /// 'Tree levels'): the tables are `N(0 ‖ x)`, `N(1 ‖ x)`, `D(0 ‖ x)` and `D(1 ‖ x)`, and
-    /// the relation is `N_0·D_1 + N_1·D_0 + λ·D_0·D_1`, times the public factor.
+    /// the relation is `N_0·D_1 + N_1·D_0 + λ·D_0·D_1`, times the public factors.
     pub lambda: Option<Fe>,
+    /// How the tables combine when `lambda` is `None`.
+    pub form: Form,
 }
 
 impl Product {
@@ -286,8 +302,9 @@ impl Product {
     pub fn new(tables: Vec<Vec<Fe>>) -> Self {
         Self {
             tables,
-            public: None,
+            public: Vec::new(),
             lambda: None,
+            form: Form::Product,
         }
     }
 
@@ -307,17 +324,28 @@ impl Product {
 
     /// The relation's degree in each variable.
     fn degree(&self) -> usize {
-        let public = usize::from(self.public.is_some());
-        match self.lambda {
-            None => self.tables.len() + public,
-            Some(_) => 2 + public,
+        let public = self.public.len();
+        match (self.lambda, self.form) {
+            (None, Form::Product) => self.tables.len() + public,
+            (None, Form::Square) => 2 + public,
+            (None, Form::Difference(_)) => 1 + public,
+            (Some(_), _) => 2 + public,
         }
     }
 
     /// The relation's value from its factors' values, in the order of [`Product::factors`].
     fn combine(&self, values: &[Fe]) -> Fe {
         match self.lambda {
-            None => values.iter().fold(Fe::ONE, |p, &v| p * v),
+            None => {
+                let sent = self.tables.len();
+                let public = values[sent..].iter().fold(Fe::ONE, |p, &v| p * v);
+                let own = match self.form {
+                    Form::Product => values[..sent].iter().fold(Fe::ONE, |p, &v| p * v),
+                    Form::Square => values[0] * values[0],
+                    Form::Difference(c) => values[0] - c * values[1],
+                };
+                own * public
+            }
             Some(lambda) => {
                 let [n0, n1, d0, d1] = values[..4] else {
                     panic!("a fraction tree's level has four tables")
@@ -367,7 +395,7 @@ pub struct Proof {
     pub evals: Vec<Fe>,
     /// The true values of the sent tables at each instance's point, instance by instance.
     pub true_evals: Vec<Fe>,
-    /// Each instance's public factor at its point, or 1.
+    /// Each instance's public factors' product at its point, 1 for none.
     pub publics: Vec<Fe>,
 }
 
@@ -410,7 +438,8 @@ pub fn prove_after_gamma(
             "degree at least the relation's"
         );
         assert!(
-            instance.lambda.is_none() || lie.is_none_or(|lie| !lie.forge),
+            (instance.lambda.is_none() && instance.form == Form::Product)
+                || lie.is_none_or(|lie| !lie.forge),
             "forging solves for a product's evaluation"
         );
     }
@@ -487,11 +516,11 @@ pub fn prove_after_gamma(
     let mut publics = Vec::new();
     for (instance, factors) in instances.iter().zip(&tables) {
         true_evals.extend(factors[..instance.tables.len()].iter().map(|f| f[0]));
-        publics.push(if instance.public.is_some() {
-            factors[instance.tables.len()][0]
-        } else {
-            Fe::ONE
-        });
+        publics.push(
+            factors[instance.tables.len()..]
+                .iter()
+                .fold(Fe::ONE, |p, f| p * f[0]),
+        );
     }
     let mut evals = true_evals.clone();
     if lie.is_some_and(|lie| lie.forge) {
@@ -615,8 +644,9 @@ pub fn prove_trees(transcript: &mut Transcript, trees: &[ProductTree]) -> Vec<Le
                         below.iter().step_by(2).copied().collect(),
                         below.iter().skip(1).step_by(2).copied().collect(),
                     ],
-                    public: Some(eq_table(&claim.point)),
+                    public: vec![eq_table(&claim.point)],
                     lambda: None,
+                    form: Form::Product,
                 }
             })
             .collect();

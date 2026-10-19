@@ -12,7 +12,9 @@
 //! level from its claims alone. It gives the verifier's tests what conformance vectors cannot
 //! hold: proofs of seeded batches of any shape, and of cheating provers.
 
-use crate::sumcheck::{Fe, Product, Proof, Transcript, eq_table, mle, prove_after_gamma, tce};
+use crate::sumcheck::{
+    Fe, Form, Product, Proof, Transcript, eq_table, mle, prove_after_gamma, tce,
+};
 
 /// `⌈log2 n⌉` for `n ≥ 1`: the height of a tree over `n` leaves padded to a power of two.
 pub fn ceil_log2(n: usize) -> usize {
@@ -385,7 +387,7 @@ pub fn prove_leaf_stage(
             .iter()
             .map(|claim| {
                 let own = claim.point.len();
-                let public = Some(eq_table(&claim.point));
+                let public = vec![eq_table(&claim.point)];
                 match trees[claim.tree] {
                     StageTree::Forest(f) => {
                         let below = &forests[f].levels[own - forests[f].rows_log + 1];
@@ -394,6 +396,7 @@ pub fn prove_leaf_stage(
                             tables: vec![evens(below), odds(below)],
                             public,
                             lambda: None,
+                            form: Form::Product,
                         }
                     }
                     other => {
@@ -405,6 +408,7 @@ pub fn prove_leaf_stage(
                             tables: vec![evens(&n), odds(&n), evens(&d), odds(&d)],
                             public,
                             lambda,
+                            form: Form::Product,
                         }
                     }
                 }

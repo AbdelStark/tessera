@@ -9,8 +9,9 @@
 //! - the files of every set with an independent Python oracle, `spec/vectors/<set>/generate.py`,
 //!   by running the oracle;
 //! - the golden claim lists, `spec/vectors/claims/`, which the compiler emits from the models the
-//!   models' oracle writes, so after it, and the golden execution plans that carry them,
-//!   `spec/vectors/codec/execution-plan.json`.
+//!   models' oracle writes, so after it, the golden execution plans that carry them,
+//!   `spec/vectors/codec/execution-plan.json`, and the stage schedules the compiler derives,
+//!   `spec/vectors/schedule/`.
 //!
 //! `--check` compares instead of writing: the codec vectors with what would be written, and the
 //! oracles' files with what the oracles write when run on a copy of `spec/vectors/`, so a check
@@ -232,8 +233,8 @@ pub(crate) fn run(repo: &Path, check: bool) -> io::Result<bool> {
 }
 
 /// The vector files the compiler derives from the conformance models in the tree at `repo`, by
-/// path from the repository root, with their contents: the claim lists, then the execution plans
-/// that carry them.
+/// path from the repository root, with their contents: the claim lists, the execution plans
+/// that carry them, and the stage schedules.
 pub(crate) fn from_models(repo: &Path) -> io::Result<Vec<(&'static str, String)>> {
     Ok(vec![
         (
@@ -243,6 +244,10 @@ pub(crate) fn from_models(repo: &Path) -> io::Result<Vec<(&'static str, String)>
         (
             crate::plan_vectors::PATH,
             crate::plan_vectors::render(repo).map_err(io::Error::other)?,
+        ),
+        (
+            crate::schedule_vectors::PATH,
+            crate::schedule_vectors::render(repo).map_err(io::Error::other)?,
         ),
     ])
 }
@@ -445,12 +450,12 @@ mod tests {
         assert!(super::run(root, true).unwrap());
     }
 
-    /// The claim lists and the execution plans the compiler derives from the conformance models.
+    /// The claim lists, execution plans and schedules derived from the conformance models.
     #[test]
-    fn claim_and_plan_vectors_are_current() {
+    fn compiler_vectors_are_current() {
         let root = repo::root();
-        let rendered = super::from_models(&root).expect("the claim lists and the plans");
-        assert_eq!(rendered.len(), 2);
+        let rendered = super::from_models(&root).expect("the compiler-derived vectors");
+        assert_eq!(rendered.len(), 3);
         for (path, contents) in rendered {
             let committed = fs::read_to_string(root.join(path))
                 .unwrap_or_else(|e| panic!("{path}: {e}; run `cargo xtask gen-vectors`"));

@@ -492,6 +492,38 @@ impl Graph {
     }
 }
 
+/// Edits for unit tests that break a rule the lowering keeps, such as the schedule's template.
+#[cfg(test)]
+impl Graph {
+    /// Replaces node `node`'s operation.
+    pub(crate) fn set_op(&mut self, node: NodeId, op: Op) {
+        self.nodes[node.0 as usize].op = op;
+    }
+
+    /// Replaces node `node`'s input `index` with `tensor`.
+    pub(crate) fn set_input(&mut self, node: NodeId, index: usize, tensor: TensorId) {
+        let node = &mut self.nodes[node.0 as usize];
+        let mut inputs = node.inputs.as_slice().to_vec();
+        inputs[index] = tensor;
+        node.inputs = Ids::of(&inputs).unwrap();
+    }
+
+    /// Replaces tensor `tensor`'s shape.
+    pub(crate) fn set_shape(&mut self, tensor: TensorId, dims: &[u32]) {
+        self.tensors[tensor.0 as usize].shape = Shape::of(dims).unwrap();
+    }
+
+    /// Replaces tensor `tensor`'s kind.
+    pub(crate) fn set_kind(&mut self, tensor: TensorId, kind: Kind) {
+        self.tensors[tensor.0 as usize].kind = kind;
+    }
+
+    /// Replaces constant `index`.
+    pub(crate) fn set_constant(&mut self, index: u32, value: i64) {
+        self.constants[index as usize] = value;
+    }
+}
+
 /// Why a public part could not be lowered. A public part that [`check_public`] accepted always
 /// lowers, given the memory and a length in range.
 ///

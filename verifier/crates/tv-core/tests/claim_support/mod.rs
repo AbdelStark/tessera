@@ -221,6 +221,73 @@ pub fn make_affine(claims: &mut ClaimList, point: QuantPoint, r: i8) {
     claims.quant.affine_sites.insert(at, (point, r));
 }
 
+/// The claim list of `layers` layers whose layer `ℓ` rescales as layer `ℓ mod L` of `claims`
+/// does: every per-layer entry repeated, each list kept sorted. Its layers stay one template
+/// (RFC-0038), so the lowering accepts it; its tables are not the lowering's, and only its
+/// public part is meant to be read.
+pub fn with_layers(claims: &ClaimList, layers: u32) -> ClaimList {
+    let mut out = claims.clone();
+    let source = claims.arch.n_layers;
+    out.arch.n_layers = layers;
+    let remap = |point: QuantPoint, to: u32| match point {
+        QuantPoint::Layer { site, .. } => QuantPoint::Layer { layer: to, site },
+        other => other,
+    };
+    let repeat = |entries: &[(QuantPoint, i8)]| -> Vec<(QuantPoint, i8)> {
+        let mut out: Vec<(QuantPoint, i8)> = entries
+            .iter()
+            .filter(|(p, _)| !matches!(p, QuantPoint::Layer { .. }))
+            .copied()
+            .collect();
+        for to in 0..layers {
+            for &(p, v) in entries {
+                if let QuantPoint::Layer { layer, .. } = p
+                    && layer == to % source
+                {
+                    out.push((remap(p, to), v));
+                }
+            }
+        }
+        out.sort_by_key(|(p, _)| *p);
+        out
+    };
+    out.quant.act_exponents = repeat(&claims.quant.act_exponents);
+    out.quant.affine_sites = repeat(&claims.quant.affine_sites);
+    let mut sets = Vec::new();
+    for to in 0..layers {
+        for (p, shifts) in &claims.quant.shift_class_sets {
+            if let QuantPoint::Layer { layer, .. } = *p
+                && layer == to % source
+            {
+                sets.push((remap(*p, to), shifts.clone()));
+            }
+        }
+    }
+    sets.extend(
+        claims
+            .quant
+            .shift_class_sets
+            .iter()
+            .filter(|(p, _)| !matches!(p, QuantPoint::Layer { .. }))
+            .cloned(),
+    );
+    sets.sort_by_key(|(p, _)| *p);
+    out.quant.shift_class_sets = sets;
+    out.quant.score_scales = per_layer(&claims.quant.score_scales, layers, source);
+    out.silu_in_exponents = per_layer(&claims.silu_in_exponents, layers, source);
+    out
+}
+
+/// Layer `ℓ`'s entry for each of `layers` layers, layer `ℓ mod source`'s of `entries`.
+fn per_layer<T: Copy>(entries: &[(u32, T)], layers: u32, source: u32) -> Vec<(u32, T)> {
+    (0..layers)
+        .map(|to| {
+            let (_, v) = entries.iter().find(|(l, _)| *l == to % source).unwrap();
+            (to, *v)
+        })
+        .collect()
+}
+
 /// An envelope of schema `0x0201`, version 1, around `payload`, its digest BLAKE3
 /// `derive_key("tessera/v1/envelope")` over the header and payload, from the test kit's
 /// reference BLAKE3 (RFC-0003 'Envelope').
