@@ -3,8 +3,8 @@
 //! The streaming advice commitment, the persistent weight commitment, openings and the hiding
 //! budget (RFC-0011, RFC-0012).
 //!
-//! The encoding of RFC-0011 'Encoding' and a non-streaming reference of its commitment and
-//! opening are here so far, and the weight commitment as `tessera-protocol/1` commits it
+//! The encoding of RFC-0011 'Encoding', the canonical advice layout and a non-streaming
+//! reference of its commitment and opening are here so far, and the weight commitment as `tessera-protocol/1` commits it
 //! (RFC-0040): its layout, its roots, `R_W` and its two artifacts, and opens it by the folding
 //! pass (RFC-0012, RFC-0049).
 //!
@@ -193,6 +193,88 @@
 //! # Ok::<(), tessera_pcs::PcsError>(())
 //! ```
 //!
+//! # The canonical advice layout
+//!
+//! [`AdviceLayout::new`] places every committed tensor of a proof unit in the advice matrix
+//! (RFC-0011 'Canonical advice layout', RFC-0034, RFC-0041, RFC-0046, RFC-0047), from public data
+//! alone (INV-PCS-1): the claim list's [`LayoutParams`], the request's length
+//! `n = prompt_len + output_len`, and its tiles in production order, each with the shapes of the
+//! values it commits ([`TileShape`]). The crate precedes the compiler and the gadgets (01 §3), so
+//! the tiles come as plain data.
+//!
+//! - **Order.** A dense tensor's variables take RFC-0047's layout order: its padded axes, those
+//!   whose length is not a power of two, in axis order, then its other axes in axis order
+//!   ([`layout_order`]). [`DenseShape::new`] derives it, and a dense shape has no other. An
+//!   attention tile's exponentials take RFC-0034's `(i_hi, h, q, i_lo)` ([`TensorShape::Scores`],
+//!   [`Attention`]).
+//! - **Allocation.** Each tensor of `n_X` variables takes the next offset aligned to
+//!   `2^{max(n_X, log2 k)}` ([`Placement`]), within at most `2^32` rows (RFC-0047 'The maximum
+//!   layout').
+//! - **The map.** `Ã` has `ν = log2 k + ⌈log2 R⌉` variables, `R` the rows allocated (RFC-0047). A
+//!   claim `X̃(r)` is `Ã(r' ‖ base_X)`, `r'` the claim's coordinates in the layout order
+//!   ([`Placement::point`]); [`Placement::locate`] gives an element's row and column.
+//! - **Zero rows.** Rows of padding, alignment gaps and a score tile's masked blocks hold nothing
+//!   and are skipped ([`AdviceLayout::is_zero_row`]). [`AdviceLayout::rows`] counts the others:
+//!   the advice descriptor's `rows` (RFC-0031).
+//! - **Segments.** [`segment_layers`] gives each segment its layers, and [`Segment`] its rows,
+//!   from its first tile's first row.
+//!
+//! [`LayoutParams::check`] refuses, as `Layout` (RFC-0007 step 6, RFC-0039), a claim list from
+//! which no layout derives, such as one whose rows cannot hold one key against a tile's queries
+//! and heads: `g·min(Q, N_max) > k`. [`AdviceLayout::new`] refuses a layout of more than `2^32`
+//! rows as `Layout` too.
+//!
+//! ```
+//! use tessera_field::{Field, Goldilocks};
+//! use tessera_pcs::{AdviceLayout, Axis, DenseShape, LayoutParams, Padding, TensorShape, TileShape};
+//!
+//! // RFC-0047's order: a padded axis, here of 3 positions, is the most significant.
+//! assert_eq!(DenseShape::new(vec![Axis::new(8), Axis::new(3)], Padding::Zero).order(), [1, 0]);
+//!
+//! // Rows of k = 16 values; one layer of query heads in pairs, blocks of 4 queries.
+//! let params = LayoutParams {
+//!     log2_k: 4,
+//!     segments: 1,
+//!     layers: 1,
+//!     group: 2,
+//!     query_block: 4,
+//!     max_context: 16,
+//! };
+//! // Ten positions pad to N = 16: four blocks, and score rows of 2^w = 2 keys.
+//! let attention = params.attention(10)?;
+//! assert_eq!((attention.queries, attention.blocks, attention.key_bits), (4, 4, 1));
+//! let tokens = DenseShape::new(vec![Axis::new(10)], Padding::Zero);
+//! let mut tiles = vec![TileShape { layer: None, values: vec![TensorShape::Dense(tokens)] }];
+//! for block in 0..attention.blocks {
+//!     // The block's exponentials, then its reciprocals.
+//!     let reciprocals = attention.row_shape(block, Padding::Zero);
+//!     tiles.push(TileShape {
+//!         layer: Some(0),
+//!         values: vec![TensorShape::Scores { block }, TensorShape::Dense(reciprocals)],
+//!     });
+//! }
+//! let layout = AdviceLayout::new(params, 10, &tiles)?;
+//!
+//! // The tokens fill row 0. Block 0's exponentials take rows 8 to 15, aligned: their keys 0 to
+//! // 15, two per row, against queries 0 to 3. Past key 3 every position is masked, so rows 10 to
+//! // 15 are zero rows.
+//! let scores = layout.tensor(1, 0).expect("block 0's exponentials");
+//! assert_eq!((scores.first_row(), scores.row_count()), (8, 8));
+//! assert_eq!(scores.nonzero().len(), 1);
+//! assert_eq!(scores.nonzero()[0], 8..10);
+//! assert!(layout.is_zero_row(10));
+//! // The element (h, q, i) = (1, 3, 2) lies in row 8 + i_hi = 9, column i_lo + 2·q + 8·h = 14.
+//! assert_eq!(scores.locate(&[1, 3, 2])?, (9, 14));
+//! // A claim on the tile's n_X = 7 variables is a claim on Ã's ν = 4 + 7.
+//! let point = scores.point(&[Goldilocks::ONE; 7])?;
+//! assert_eq!((point.len(), layout.variables()), (11, 11));
+//! // Block 3 holds queries 12 to 15, all padding: nothing of it is committed. Of 65 rows, 15
+//! // are.
+//! assert!(layout.tensor(4, 0).expect("block 3's exponentials").nonzero().is_empty());
+//! assert_eq!((layout.allocated_rows(), layout.rows()), (65, 15));
+//! # Ok::<(), tessera_pcs::PcsError>(())
+//! ```
+//!
 //! # Secrets
 //!
 //! Rows, mask coefficients and codewords are secret-class, and combined rows and opened
@@ -221,6 +303,7 @@ mod commitment;
 mod descriptor;
 mod encoding;
 mod error;
+mod layout;
 mod ntt;
 mod opening;
 mod weights;
@@ -229,6 +312,10 @@ pub use commitment::{ColumnAnswer, CommitmentParams, ReferenceCommitment, RowLay
 pub use descriptor::{AdviceLayoutParams, CommitmentDescriptor, WeightLayoutParams, WeightMatrix};
 pub use encoding::{COSET_SHIFT, MaskSource, RowEncoder};
 pub use error::PcsError;
+pub use layout::{
+    AdviceLayout, Attention, Axis, DenseShape, LayoutParams, Padding, Placement, Segment,
+    TensorShape, TilePlacement, TileShape, layout_order, segment_layers,
+};
 pub use ntt::NttPlan;
 pub use opening::{ClaimGroup, CombinedRow, RowClaim};
 pub use weights::{

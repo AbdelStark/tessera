@@ -436,6 +436,9 @@ fn check_public(model: PublicModel<'_>) -> Result<(), CompileError> {
     if arch.n_kv_heads == 0 || !arch.n_heads.is_multiple_of(arch.n_kv_heads) {
         return refuse("n_kv_heads divides n_heads");
     }
+    if !(arch.n_heads / arch.n_kv_heads).is_power_of_two() {
+        return refuse("n_heads / n_kv_heads is a power of two (RFC-0007 step 2, RFC-0047)");
+    }
     if arch.d_head < 2 || !arch.d_head.is_multiple_of(2) || arch.d_head > u32::from(u16::MAX) {
         return refuse("d_head is even, from 2 to 2^16 − 2");
     }
