@@ -1,0 +1,16 @@
+{
+  "kind": "E0 public planning arithmetic, not executed experiment counts",
+  "original_shapes": 72,
+  "original_fixtures": 1152,
+  "two_level_fixtures": 4608,
+  "honest_batched_reductions": 18432,
+  "largest_U_table_entries": 16,
+  "largest_V_table_entries": 32,
+  "largest_equation_list": 26,
+  "planned_operations": 1625579776,
+  "planned_judgments": 85934656,
+  "operation_cap": 3000000000,
+  "judgment_cap": 100000000,
+  "watchdog_seconds": 900,
+  "process_memory_bytes": 268435456
+}

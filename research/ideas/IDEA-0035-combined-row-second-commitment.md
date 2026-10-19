@@ -111,4 +111,4 @@ The independent reviewer confirmed all four verdicts on2026-10-19; [the review r
 
 ## Decision and links
 
-`triaged`, zero active priority and unknown gates; not promoted. Experiments: none. RFC/issue: none created. Independent four-lens review completed; ledger consolidated on2026-10-19. Next action: pre-register a bounded E0 two-level relation/extractor, transcript and current-count preflight, treating the proposed basis as an explicit experimental assumption. Adoption still needs the superseding RFC.
+`triaged`, zero active priority and unknown gates; not promoted. Experiments: [EXP-0022](../experiments/EXP-0022-two-level-opening-coupling/README.md), planned bounded ideal-PCS coupling/terminal audit. RFC/issue: none created. Independent four-lens review completed; ledger consolidated on2026-10-19. Next action: execute the committed bounded E0 coupling/terminal audit under explicit ideal binding and coefficient-basis assumptions; complete extraction, transcript/budget, current counts/payloads and joint hiding remain separate unresolved work. Adoption still needs the superseding RFC.

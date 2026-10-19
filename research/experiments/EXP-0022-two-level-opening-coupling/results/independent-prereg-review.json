@@ -1,0 +1,59 @@
+{
+  "kind": "independent pre-code preregistration review; no implementation/execution/freeze",
+  "utc": "2026-10-19T11:13:16.106581+00:00",
+  "readme_sha256": "4048c999538f853f2f30647ed60b8d3e4a583c1771a4af0d16cd75fa5315d7f7",
+  "source_pins_draft_sha256": "6135cb238cadbf3e1a83c51b4509855c09d1702f400ec76e1cc5caf8ea3db745",
+  "source_pins_verified": 12,
+  "coupling_clarification_sha256": "8eda85c30faff8b40521afd5b355f17ade9f5f1db8b30c7708338d3c10a3c1e5",
+  "scope": "conditional finite original-equation coupling under ideal binding services and coefficient-basis encoding; no extractor/G4/jointZK/currentcost approval",
+  "findings": [
+    {
+      "id": "R22-1",
+      "status": "resolved by separately reviewed addendum, must integrate before freeze",
+      "detail": "Candidate must bind arbitrary well-shaped V, never compare completeV/U against honestA-derivedU; only reference reads fullU residuals. Candidate checks canonical source-derivedtargets, batchsumcheck and idealterminalopening. Otherwise cancellation-root classification would be vacuous."
+    },
+    {
+      "id": "R22-2",
+      "status": "resolved by addendum, must integrate before freeze",
+      "detail": "Balanced attacks mutate fixed sourceclaims/combinedmaskrecords then use unchanged targetderivation; fullcandidate with actualcommittedU must accept roots and reject nonroots after source/order/membership checks pass. Diagnostic D alone insufficient."
+    },
+    {
+      "id": "R22-3",
+      "status": "sent parent/author; narrow assumption clarification requested before freeze",
+      "detail": "Ideal original/level2 column registry should explicitly fix rowmaskcoefficients plus base rows/rowmaps/encodedsymbols under the same respective root beforequeries. ExactterminalMLE bindingV alone does not define binding of encodedmaskedsymbols. Candidate should not gain direct full-source combinedM oracle; masks remain alleged and batching-checked."
+    },
+    {
+      "id": "R22-4",
+      "status": "minor fixture qualification sent author",
+      "detail": "Original combined-mask source mutants use P1=1; level2 maskmutants use P2=1; zero-length masks cannot provide a nonzero fault. Such fixtures already exist within frozen Cartesianshape domain."
+    }
+  ],
+  "static_conclusions": [
+    "Coefficient monomial and eq(p,i) factorizations are multilinear in coefficientbits; group eq is disjoint, so U_MLE*W_MLE degree<=2",
+    "Lane base tensors have extension-valued offcube MLEs; two claims at same group/coefficientpoint reconstructU, not real/imag components; explicit fixture2+u,6+u ->9+7u is algebraically consistent",
+    "Level2 flattening properly makes lane a columnbit for k1=1/k2=4 and rowbit for k1=4/k2=2; exactgrouping by actual lowcoordinates required",
+    "Proximity has column equations but no fabricated evaluation at eitherlevel",
+    "D polynomial uniquecontiguousordinals ensures nonzero residualvector gives nonzero polynomial; alpha0/1 degenerate roots correctly classified, not soundnessbits",
+    "Originalmembershipcolumns retained; no level2C_U substitution removes original equations",
+    "No domain/resource arithmetic mismatch found; idealbindingservice remains stronger than any finite ordinarylevel2querytest"
+  ],
+  "independent_counts": {
+    "shapes": 72,
+    "original_fixtures": 1152,
+    "two_level_fixtures": 4608,
+    "honest_batched_reductions": 18432,
+    "planned_metered_ops": 1625579776,
+    "planned_judgments": 85934656,
+    "max_U_W_elements": 16,
+    "max_V_elements": 32,
+    "max_sumcheck_variables": 4,
+    "max_original_equations": 26,
+    "max_allocated_level2_rows": 16
+  },
+  "decision": "No independent algebraic objection to bounded unit after integrating reviewed coupling clarification and explicit immutable column-mask registry assumption beforefreeze. No implementation authorized by this review.",
+  "limits": [
+    "Draft only; sourcebytes may change afterthisreview",
+    "No runnable harness/oracle/attackclassification executed",
+    "Finitecoupling under idealPCS cannot establish concretePCS extractor, jointZK, transcriptsecurity or costgains"
+  ]
+}

@@ -1,0 +1,5 @@
+SHA256 6676608fac008fc20b9bb7594dbe6463acb54f5bdc0fe2f9a1cb4a20fb22fd24
+UTC 2026-10-19T11:15:19.577316+00:00
+Snapshot results/README.preregistered.txt
+Stage reviewed preregistration only; commit gate pending; no code/run
+Prior draft4048 and reviewed07aaf9/addendum review provenance retained

@@ -1,0 +1,21 @@
+{
+  "checked_utc": "2026-10-19T11:15:19.577316+00:00",
+  "checkout": "984c9c13879f7de16cc8764f8b5471c7586cb6ab",
+  "stage": "reviewed pre-registration only; no implementation or execution",
+  "preregistration_sha256": "6676608fac008fc20b9bb7594dbe6463acb54f5bdc0fe2f9a1cb4a20fb22fd24",
+  "sources_sha256": {
+    "research/ideas/IDEA-0035-combined-row-second-commitment.md": "8a20c65590e5c43a2b908ad6cc6698cc010caf645ef9680c6e036ae1c3981863",
+    "research/ideas/IDEA-0002-coefficient-form-rows.md": "974ac0cc1b93d5a4a06dc4dfeaf8fe057c125c580e05aa5b7c8cc1dbea7d93b3",
+    "research/ideas/results/seed-review-2026-10-19.json": "c6cbcb85432cf9dfcea101e116cd2c1f54e07aef0b6a55fee3e88d71615bb9c0",
+    "docs/rfcs/RFC-0002-field-arithmetic.md": "4a2d4b4c545bf86200b2013609c7f50a824b23ddfda78d95c4f81bd7010380cc",
+    "docs/rfcs/RFC-0010-proof-schedule.md": "28e6667d9bc9a7679112b4ac5b4f8600d0a92ab61632106790e01362490842b9",
+    "docs/rfcs/RFC-0011-advice-commitment.md": "9a451773112556f1fcf8989f6aa11ccef36ab2d3f4fe7a9bc3a04f98b13b54ab",
+    "docs/rfcs/RFC-0013-zero-knowledge.md": "8ba8fc57f0f47686825d2c03e27eebb557d963b83d45209c68958c82160a05c0",
+    "docs/rfcs/RFC-0014-interaction-and-soundness.md": "7d6c30870096bdc94630c16ae39a739190c8628b0d9c0c873db72ac58b78011d",
+    "docs/rfcs/RFC-0031-commitment-id.md": "d4178721ac9c5b7a61710696181fb48a3fa9167ae1338cff0f138840e8e472c8",
+    "docs/rfcs/RFC-0036-protocol-messages.md": "a26ea88852eb53d69f3fe5a3cd3f49b68485259286b628199792ad00f2bc4ac3",
+    "docs/rfcs/RFC-0037-stage-schedule.md": "4f9d5d0d4f56292cb39ae509e581ae7760b7818e61912c312acfd8da8ded1460",
+    "docs/rfcs/RFC-0047-advice-order.md": "b92c6101879e27ac3835fbcc1f2b1f5aff745072ab202eaf99c54a9de1c937f0"
+  },
+  "independent_review_scope": "semantic draft07aaf9; only operational metadata normalization recorded separately"
+}
