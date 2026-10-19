@@ -1,0 +1,6 @@
+PASS original README prefix byte-identical to7265027
+PASS committed amendment frozen SHA256 and text preserved
+PASS measured code SHA256 still matches environment
+PASS48 arm rows, ten samples each, >=20ms per sample, first attempts retained
+PASS all13 old digests unchanged;16 total configuration/check digests
+PASS independent raw-sample recomputation of all48 medians and sample CVs, with retained first attempts consistent with rerun flags

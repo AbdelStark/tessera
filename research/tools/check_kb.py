@@ -17,6 +17,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -49,6 +50,23 @@ def status_token(line: str, states: set[str]) -> str | None:
             if token.startswith(state):
                 return state
     return None
+
+
+def check_frozen(results: Path, problems: list[str]) -> None:
+    """Check frozen plans where present; older experiments retain their historical provenance."""
+    for frozen, marker in (("README.preregistered.txt", "preregistration.txt"),
+                           ("README.amendment-preregistered.txt", "preregistration-amendment.txt"),
+                           ("README.amendment-fraction.txt", "preregistration-amendment.txt")):
+        snapshot = results / frozen
+        if not snapshot.exists():
+            continue
+        registration = results / marker
+        if not registration.exists():
+            fail(problems, f"{results.parent.name}: missing {marker} for frozen plan")
+            continue
+        digest = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+        if digest not in re.findall(r"\b[0-9a-f]{64}\b", registration.read_text()):
+            fail(problems, f"{results.parent.name}: frozen pre-registration digest mismatch ({frozen})")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -144,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for path in sorted((RESEARCH / "experiments").glob("EXP-*/README.md")):
         text = path.read_text(encoding="utf-8")
+        check_frozen(path.parent / "results", problems)
         line = next((l for l in text.splitlines() if l.startswith("| Status |")), None)
         ident = path.parent.name[:8]
         if line is None:

@@ -71,7 +71,7 @@ Run of 2026-10-17 ([results/count.txt](results/count.txt), [results/count.json](
 | Tensor | Elements | Profiles | Stated cell | Derived interval | `b` | Class | `s` | Class agrees under `b = k` and `b = k + 1` |
 |---|---|---|---|---|---|---|---|---|
 | attn norm `y = rq(res · ρ)` | 16,384 | both | `< 2^37` | `[−2^19 · ρ_max(e), (2^19 − 1) · ρ_max(e)]`; at `e = 2^11`: `±9.72×10^10` | 38 (43 at `e = 1`) | split | 6 (11) | yes |
-| RoPE `q` | 16,384 | both | `< 2^44` | `±4,363,686,772,736` (`|C|, |S| ≤ 2^13`); `±8,726,840,868,864` (`< 2^14`) | 43 (44) | split | 11 (12) | yes |
+| RoPE `q` | 16,384 | both | `< 2^44` | `±4,363,686,772,736` (`\|C\|, \|S\| ≤ 2^13`); `±8,726,840,868,864` (`< 2^14`) | 43 (44) | split | 11 (12) | yes |
 | RoPE `k` | 1,024 | both | `< 2^44` | as `q` | 43 (44) | split | 11 (12) | yes |
 | `v = rq(acc)` | 1,024 | both | `< 2^29` | `±266,338,304` (`127 · 16,384 · 128`) | 29 | single | | yes |
 | **`o8 = rq(o, r_o, −128, 127)`** | **16,384** | **`servable`** | **`< 2^39`** | **`[−2^39, 127 · 2^32]` from `R_q s_q ≤ 2^{2σ}`, `v ∈ [−128, 127]`** | **40** | **split** | **8** | **yes** |

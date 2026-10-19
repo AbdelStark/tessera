@@ -1,0 +1,67 @@
+{
+  "id": "EXP-0012",
+  "path": "research/experiments/EXP-0012-integer-leaf-round-window/README.md",
+  "status": "done: refuted",
+  "verdict": "refuted",
+  "idea_status": "refuted",
+  "priority_before": 3.1,
+  "priority_after": 0,
+  "confidence_before": 0.6,
+  "confidence_after": 0.9,
+  "key_results": [
+    {
+      "evidence": "E1",
+      "result": "Best v3 whole-forest saving 6.9\u20139.3%; every v3/4/5 below15% on each judged shape; primary refuted."
+    },
+    {
+      "evidence": "E1",
+      "result": "Full leaf-level v3 saves15.73%; current production byte/state/claim equivalence and independent tv-core acceptance throughout."
+    },
+    {
+      "evidence": "E1",
+      "result": "Fraction case inconclusive: v4 2.50\u20132.54x split, v2 1.54\u20131.55x; last v5 CV5.42% after rerun."
+    },
+    {
+      "evidence": "E0",
+      "result": "Implemented v4 integer subtotal198.5 assumed int32 ops/pair before separately counted binding/group operations; exact signed bounds hold."
+    },
+    {
+      "evidence": "E0 over E1 ratio",
+      "result": "Illustrative current counted scenario leaf_ps41.8\u219238.46, \u03bc16K102.4\u2192101.8 (-0.7%), no GPU measurement."
+    }
+  ],
+  "threats": [
+    "CPU is not H100",
+    "unlocked scheduling/frequency",
+    "synthetic resident inputs",
+    "microkernel cache effects and flagged CVs",
+    "no GEMM regeneration or actual streamed-pass measurement",
+    "v1 cadence32 does not test IDEA0010 cadence65536",
+    "fraction proxy is prove_batch, not full current prove_trees",
+    "synthetic Vec code has no production SecretBuf guarantees"
+  ],
+  "follow_ups": [
+    "E2 H100 limb-accumulator implementation to price i128 emulation, register/HBM behavior and widths",
+    "Measure streamed grid plus once-binding input/GEMM passes and tile alignment before claiming IDEA0017 pass savings",
+    "If modest CPU v3 gain merits work, register a separate lower-target/current-production implementation experiment rather than promote this failed20% hypothesis"
+  ],
+  "ledger_row": "| [EXP-0012](experiments/EXP-0012-integer-leaf-round-window/README.md) | Can integer leaf windows save \u226520% of whole-forest time beyond split-eq? | IDEA-0022; IDEA-0017 fraction case; IDEA-0010 v1 | done: refuted | Best v3 saves 6.9\u20139.3%, below15% on every judged shape; fraction proxy inconclusive (v4 2.50\u20132.54\u00d7 split) | E1 CPU, bit-identical production/tv-core acceptance; E0 exact bounds/counts; README reproduction |",
+  "idea_row_summary": "IDEA-0022 refuted, priority3.1\u21920, confidence0.6\u21920.9, experiment EXP-0012; IDEA-0017 and IDEA-0010 statuses unchanged, hosted-case triage appended.",
+  "new_bibliography_keys": [],
+  "problems": [
+    "Observational i128 microkernels v1/v3/v4 remain CV>3% after one rerun; fraction2^24/v5 likewise. Primary judged arms all CV<=2.31%."
+  ],
+  "fraction_case_verdict": "inconclusive",
+  "baseline_commit": "2d61eed410565563f4146220bbdda76267db05b9",
+  "raw_output": "results/run.txt",
+  "raw_json": "results/run.json",
+  "validation": {
+    "correctness": "passed",
+    "cargo_fmt": "passed",
+    "cargo_clippy_warnings_denied": "passed",
+    "mutation_control": "passed",
+    "mutants_caught": 3,
+    "mutants_total": 3,
+    "preregistration_audit": "passed"
+  }
+}

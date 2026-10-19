@@ -8,8 +8,9 @@ change it makes to `μ`, before anyone writes a kernel. It is not the normative 
 
 The formula is the source's (source §5) plus the corpus's corrections:
 
-    μ(S) = [1.15 (C_lin c_c + K_lin c_ℓ) + 1.15 A S (c_c + c_ℓ + c_π) + W/T] / native(S)
-           + n_regen + streaming(S)
+    μ(S) = [glue (C c_c + K c_ℓ + A S (c_c + c_ℓ + c_π) + A min(S,b) c_c)
+            + W/T + (C + A (S + min(S,b))) (c_a + c_r) + glue M (c_c + c_ℓ)/T]
+           / native(S) + n_regen + streaming(S)
 
     native(S) = (F_lin + F_att S) / R          (ideal teacher-forced INT8 forward pass, per token)
     streaming(S) = c(S) · p_s · A · S / native(S),  c(S) = max(0, ⌈log2(N_level · bytes / free)⌉)
@@ -75,7 +76,7 @@ class Params:
     lookups_per_token: float = SOURCE_COMMITS_PER_TOKEN
     scores_per_token_per_ctx: float = 8064.0  # A = heads × layers / 2
     # Native work (source §5): 2 ops per parameter (405.85e9) per token; 512 ops per score.
-    native_ops_lin: float = 2 * 405.85e9
+    native_ops_lin: float = 2 * 405_853_388_800
     native_ops_att_per_ctx: float = 512 * 8064
     native_rate: float = 0.60 * H100_DENSE_INT8_TOPS
     # Weight pass: 0.24 GPU-s per 16K-token batch (source §5).
@@ -87,36 +88,49 @@ class Params:
     stream_pass_ps_per_score: float = 0.0
     free_bytes: float = 0.2e12
     bytes_per_leaf: float = 32.0
-    stream_tokens: float = 16384.0  # tokens in the proof unit whose leaves are counted
+    column_answer_ps: float = 0.0  # RFC-0018 P5, no glue
+    row_combination_ps: float = 0.0  # RFC-0018 P4, no glue
+    table_rows: float = 0.0  # per proof, RFC-0008
+    score_block: float = 0.0  # diagonal masked halves, RFC-0034
 
 
 PROFILES = {
     # The source's model, which the RFC-0020 golden test reproduces.
     "source": Params(),
-    # The corpus's corrections: the `servable` count of EXP-0011 (326,656 per layer per token, in place of RISK-2's
-    # 220,160 until 2026-10-17), RISK-9 four regenerations, RISK-10 streaming.
+    # Counts and regeneration come from the compiler report below; RISK-10 is still partial.
     "corrected": Params(
-        commits_per_token=float(SERVABLE_COMMITS_PER_LAYER_TOKEN * LAYERS_405B),
-        lookups_per_token=float(SERVABLE_COMMITS_PER_LAYER_TOKEN * LAYERS_405B),
-        regen_full_equivalents=4.0,
         stream_pass_ps_per_score=7.0,
     ),
     # The corrected profile with the unit costs at the centre of the operation-count intervals the
     # research loop derived (E0 counts fitted to E1 on an Apple M4 Max; the H100 int32 peak and the
     # 60% utilization of [VYTA25] are the translation): c_c 94 ps, the high count at the pipeline's
     # peak, inside EXP-0002's [58, 157]; c_ℓ 101 ps, the textbook fraction tree at peak, inside
-    # SUR-0002's 76–169; c_π 73 ps, the centre of EXP-0006's [45, 117]. Planning values until the
-    # RFC-0020 v0.1 gate measures them (E2); the `corrected` profile stays the RFC-0020 reference.
+    # SUR-0002's 76–169; c_π 41.8 ps after #258, translated by EXP-0008 from the old 73 ps centre. Planning values until the
+    # RFC-0020 v0.1 gate measures them (E2); the `corrected` profile retains the assumed unit targets.
     "counted": Params(
-        commits_per_token=float(SERVABLE_COMMITS_PER_LAYER_TOKEN * LAYERS_405B),
-        lookups_per_token=float(SERVABLE_COMMITS_PER_LAYER_TOKEN * LAYERS_405B),
         commit_ps=94.0,
         lookup_ps=101.0,
-        leaf_ps=73.0,
-        regen_full_equivalents=4.0,
+        leaf_ps=41.8,
         stream_pass_ps_per_score=7.0,
     ),
 }
+
+# Compiler reports supersede the historical rescale-only count (RFC-0020).
+REPORT_PATH = Path(__file__).resolve().parents[2] / "docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json"
+with REPORT_PATH.open(encoding="utf-8") as _file:
+    _report = json.load(_file)
+for _name in ("corrected", "counted"):
+    PROFILES[_name] = replace(
+        PROFILES[_name],
+        commits_per_token=_report["counts"]["commits_per_token"],
+        lookups_per_token=_report["counts"]["lookups_per_token"],
+        native_ops_lin=_report["counts"]["native_ops_lin"],
+        table_rows=_report["counts"]["table_rows"],
+        score_block=_report["counts"]["score_block"],
+        regen_full_equivalents=_report["projection_inputs"]["regen_full_equivalents"],
+        # Full re-encode bound, not a measured P5 cost. P4 remains an explicit unknown.
+        column_answer_ps=PROFILES[_name].commit_ps,
+    )
 
 # Source §5 chart-data table, the fallback when the pinned vector is absent: (context, linear, attention,
 # weight pass, total to one decimal). The vector carries the two-decimal totals of the chart itself.
@@ -142,6 +156,9 @@ class Breakdown:
     weights: float
     regen: float
     streaming: float
+    column_answers: float
+    row_combination: float
+    tables: float
     total: float
     streamed_passes: int
     native_s_per_token: float
@@ -149,30 +166,51 @@ class Breakdown:
     def row(self) -> str:
         return (
             f"{self.context // 1024:>4}K {self.linear:>8.2f} {self.attention:>10.2f} "
-            f"{self.weights:>8.3f} {self.regen:>6.1f} {self.streaming:>10.2f} {self.total:>8.1f}"
+            f"{self.weights:>8.3f} {self.regen:>6.1f} {self.streaming:>10.2f} "
+            f"{self.column_answers:>8.2f} {self.row_combination:>8.2f} {self.tables:>7.3f} {self.total:>8.1f}"
         )
 
 
 def streamed_passes(p: Params, context: int) -> int:
     """`c(S)`: streamed rounds until the folded leaf level fits in memory (RFC-0018)."""
-    if p.stream_pass_ps_per_score <= 0:
-        return 0
-    leaves = p.scores_per_token_per_ctx * context * p.stream_tokens
-    ratio = leaves * p.bytes_per_leaf / p.free_bytes
-    return max(0, math.ceil(math.log2(ratio))) if ratio > 1 else 0
+    leaves = p.scores_per_token_per_ctx * context * p.batch_tokens
+    level = leaves * p.bytes_per_leaf
+    if not math.isfinite(level):
+        raise ValueError("leaf-level size must be finite")
+    passes = 0
+    while level > p.free_bytes:
+        level /= 2
+        passes += 1
+    return passes
 
 
 def mu(p: Params, context: int) -> Breakdown:
     """The proof multiplier at `context`, per 08 §1."""
+    for field in fields(p):
+        value = getattr(p, field.name)
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"{field.name} must be finite and non-negative")
+    if context < 0 or p.native_rate <= 0 or p.batch_tokens <= 0 or p.free_bytes <= 0 or p.glue < 1:
+        raise ValueError("context must be non-negative; rate, batch and memory positive; glue at least one")
     native = (p.native_ops_lin + p.native_ops_att_per_ctx * context) / p.native_rate
+    if native <= 0 or not math.isfinite(native):
+        raise ValueError("native time must be finite and positive")
     ps = 1e-12
     linear = p.glue * (p.commits_per_token * p.commit_ps + p.lookups_per_token * p.lookup_ps) * ps
     scores = p.scores_per_token_per_ctx * context
-    attention = p.glue * scores * (p.commit_ps + p.lookup_ps + p.leaf_ps) * ps
+    diagonal = p.scores_per_token_per_ctx * min(context, p.score_block)
+    attention = p.glue * (scores * (p.commit_ps + p.lookup_ps + p.leaf_ps) + diagonal * p.commit_ps) * ps
     weights = p.weight_pass_gpu_s / p.batch_tokens
     passes = streamed_passes(p, context)
     streaming = passes * p.stream_pass_ps_per_score * ps * scores
-    terms = (linear / native, attention / native, weights / native, p.regen_full_equivalents, streaming / native)
+    committed = p.commits_per_token + scores + diagonal
+    column_answers = committed * p.column_answer_ps * ps / native
+    row_combination = committed * p.row_combination_ps * ps / native
+    tables = p.glue * p.table_rows * (p.commit_ps + p.lookup_ps) * ps / p.batch_tokens / native
+    terms = (linear / native, attention / native, weights / native, p.regen_full_equivalents,
+             streaming / native, column_answers, row_combination, tables)
+    if not all(math.isfinite(value) for value in terms) or not math.isfinite(sum(terms)):
+        raise ValueError("model output must be finite")
     return Breakdown(context, *terms, sum(terms), passes, native)
 
 
@@ -180,7 +218,7 @@ def table(p: Params, contexts=DEFAULT_CONTEXTS) -> list[Breakdown]:
     return [mu(p, c) for c in contexts]
 
 
-HEADER = "   S   linear  attention  weights  regen  streaming    total"
+HEADER = "   S   linear  attention  weights  regen  streaming  answers  combine  tables    total"
 
 
 def print_table(title: str, rows: list[Breakdown], baseline: list[Breakdown] | None = None) -> None:
@@ -245,24 +283,29 @@ LEVERS = {
     "glue factor → 1.0": ("glue", None),
     "regen → 0": ("regen_full_equivalents", None),
     "streaming → 0": ("stream_pass_ps_per_score", None),
+    "column_answer_ps (P5)": ("column_answer_ps", 0.5),
+    "row_combination_ps (P4)": ("row_combination_ps", 0.5),
+    "table rows (M)": ("table_rows", 0.5),
 }
 
 
 def sensitivity(p: Params, contexts=DEFAULT_CONTEXTS) -> None:
     base = table(p, contexts)
     print("share of μ by unit cost (percent of total)")
-    print("   S   c_c    c_ℓ    c_π   weights  regen  stream")
+    print("   S   c_c    c_ℓ    c_π   weights  regen  stream  answers  combine  tables")
     for r in base:
         s = p.scores_per_token_per_ctx * r.context
         n = r.native_s_per_token
         ps = 1e-12
-        cc = p.glue * (p.commits_per_token + s) * p.commit_ps * ps / n
+        diagonal = p.scores_per_token_per_ctx * min(r.context, p.score_block)
+        cc = p.glue * (p.commits_per_token + s + diagonal) * p.commit_ps * ps / n
         cl = p.glue * (p.lookups_per_token + s) * p.lookup_ps * ps / n
         cp = p.glue * s * p.leaf_ps * ps / n
         pct = lambda x: 100 * x / r.total  # noqa: E731
         print(
             f"{r.context // 1024:>4}K {pct(cc):5.1f}% {pct(cl):5.1f}% {pct(cp):5.1f}%  "
-            f"{pct(r.weights):5.1f}%  {pct(r.regen):5.1f}% {pct(r.streaming):5.1f}%"
+            f"{pct(r.weights):5.1f}%  {pct(r.regen):5.1f}% {pct(r.streaming):5.1f}% "
+            f"{pct(r.column_answers):6.1f}% {pct(r.row_combination):6.1f}% {pct(r.tables):6.1f}%"
         )
     print()
     print("gain in μ from one lever (2× better, or removed where marked), percent of total")

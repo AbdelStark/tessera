@@ -69,6 +69,7 @@ const LEVEL_DEGREE: usize = 3;
 const WARMUPS: usize = 3;
 const ITERATIONS: usize = 10;
 const CV_LIMIT: f64 = 0.03;
+const MIN_ITERATION: Duration = Duration::from_millis(20);
 
 /// SplitMix64: reproducible inputs.
 struct SplitMix64(u64);
@@ -150,7 +151,7 @@ fn tv_proof(proof: &SumcheckProof<Fp2>) -> tv::SumcheckProof {
 // ---------------------------------------------------------------------------------------------
 
 /// Seconds per iteration over the measured iterations.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct Stats {
     median: f64,
     min: f64,
@@ -158,13 +159,28 @@ struct Stats {
     cv: f64,
     /// The case was rerun because its first coefficient of variation exceeded 3%.
     repeated: bool,
+    samples: Vec<(f64, usize)>,
+    first_samples: Vec<(f64, usize)>,
+}
+
+fn sample_iteration(iteration: &mut impl FnMut() -> Duration) -> (f64, usize) {
+    let mut elapsed = Duration::ZERO;
+    let mut repetitions = 0;
+    while elapsed < MIN_ITERATION {
+        elapsed += iteration();
+        repetitions += 1;
+    }
+    (elapsed.as_secs_f64(), repetitions)
 }
 
 fn sample(iteration: &mut impl FnMut() -> Duration) -> Stats {
     for _ in 0..WARMUPS {
-        black_box(iteration());
+        black_box(sample_iteration(iteration));
     }
-    let mut s: Vec<f64> = (0..ITERATIONS).map(|_| iteration().as_secs_f64()).collect();
+    let samples: Vec<(f64, usize)> = (0..ITERATIONS)
+        .map(|_| sample_iteration(iteration))
+        .collect();
+    let mut s: Vec<f64> = samples.iter().map(|(t, n)| t / *n as f64).collect();
     s.sort_by(f64::total_cmp);
     let n = s.len();
     let median = (s[n / 2 - 1] + s[n / 2]) / 2.0;
@@ -176,6 +192,8 @@ fn sample(iteration: &mut impl FnMut() -> Duration) -> Stats {
         max: s[n - 1],
         cv: var.sqrt() / mean,
         repeated: false,
+        samples,
+        first_samples: Vec::new(),
     }
 }
 
@@ -188,6 +206,7 @@ fn measure(mut iteration: impl FnMut() -> Duration) -> Stats {
     }
     let mut second = sample(&mut iteration);
     second.repeated = true;
+    second.first_samples = first.samples;
     second
 }
 
@@ -234,7 +253,7 @@ fn report(
         arm,
         real,
         padded,
-        stats,
+        stats: stats.clone(),
     };
     println!(
         "  {arm:<16} {:>9.3} ms  {:>8.3} ns/real  {:>8.3} ns/padded  min {:>9.3}  max {:>9.3} ms  CV {:>5.2}%{flag}",
@@ -244,6 +263,10 @@ fn report(
         stats.min * 1e3,
         stats.max * 1e3,
         stats.cv * 100.0
+    );
+    println!(
+        "    samples (total seconds, complete proofs): {:?}; first attempt: {:?}",
+        stats.samples, stats.first_samples
     );
     rows.push(row);
 }
@@ -684,14 +707,16 @@ struct Arm {
     /// The `eq` table is read from the level's shared position table scaled per tree, instead of
     /// being materialized over each tree's real prefix.
     shared_eq: bool,
+    amortized: bool,
 }
 
-const ARMS: [(&str, Arm); 4] = [
+const ARMS: [(&str, Arm); 5] = [
     (
         "dense",
         Arm {
             analytic: false,
             shared_eq: false,
+            amortized: false,
         },
     ),
     (
@@ -699,6 +724,7 @@ const ARMS: [(&str, Arm); 4] = [
         Arm {
             analytic: true,
             shared_eq: false,
+            amortized: false,
         },
     ),
     (
@@ -706,6 +732,7 @@ const ARMS: [(&str, Arm); 4] = [
         Arm {
             analytic: false,
             shared_eq: true,
+            amortized: false,
         },
     ),
     (
@@ -713,6 +740,15 @@ const ARMS: [(&str, Arm); 4] = [
         Arm {
             analytic: true,
             shared_eq: true,
+            amortized: false,
+        },
+    ),
+    (
+        "analytic-amortized",
+        Arm {
+            analytic: true,
+            shared_eq: false,
+            amortized: true,
         },
     ),
 ];
@@ -878,6 +914,7 @@ enum Source<'a> {
 /// constant `KAPPA` (even, odd) or `scale × shared[x]` (`eq`).
 #[derive(Clone, Copy)]
 struct Group {
+    tree: usize,
     e_start: usize,
     e_len: usize,
     o_start: usize,
@@ -888,6 +925,141 @@ struct Group {
     /// in phase 1, `C_m` in phase 2.
     scale: Fp2,
     vars: usize,
+}
+
+/// Public lengths determine the traversal; the original tree index remains attached to a group.
+fn equal_runs(groups: &[Group]) -> Vec<(usize, usize)> {
+    let mut runs = Vec::new();
+    let mut start = 0;
+    while start < groups.len() {
+        let g = groups[start];
+        let mut end = start + 1;
+        while end < groups.len()
+            && (groups[end].e_len, groups[end].o_len, groups[end].q_len)
+                == (g.e_len, g.o_len, g.q_len)
+        {
+            end += 1;
+        }
+        runs.push((start, end));
+        start = end;
+    }
+    runs
+}
+
+/// Four independent tail folds expose lanes to LLVM without architecture-specific unsafe code.
+fn odd_tails(values: [Fp2; 4], padding: [Fp2; 4], r: Fp2) -> [Fp2; 4] {
+    std::array::from_fn(|lane| values[lane] + r * (padding[lane] - values[lane]))
+}
+
+/// Fold one of the three prefixes, with a run's odd boundary handled in four-tree batches.
+fn fold_run_table(
+    base: Option<&[Fp]>,
+    bound: &[Fp2],
+    groups: &[Group],
+    runs: &[(usize, usize)],
+    column: usize,
+    shared: &[Fp2],
+    r: Fp2,
+) -> (Vec<Fp2>, Vec<(usize, usize)>) {
+    let location = |g: &Group| match column {
+        0 => (g.e_start, g.e_len),
+        1 => (g.o_start, g.o_len),
+        _ => (g.q_start, g.q_len),
+    };
+    let mut offsets = Vec::with_capacity(groups.len());
+    let mut total = 0;
+    for g in groups {
+        let len = location(g).1.div_ceil(2);
+        offsets.push((total, len));
+        total += len;
+    }
+    let mut result = vec![Fp2::ZERO; total];
+    for &(start, end) in runs {
+        let len = location(&groups[start]).1;
+        for (gi, g) in groups.iter().enumerate().take(end).skip(start) {
+            let old = location(g).0;
+            let target = offsets[gi].0;
+            if let Some(base) = base {
+                for (slot, pair) in result[target..target + len / 2]
+                    .iter_mut()
+                    .zip(base[old..old + len - len % 2].chunks_exact(2))
+                {
+                    *slot = r.mul_by_base(pair[1] - pair[0]).add_base(pair[0]);
+                }
+            } else {
+                for (slot, pair) in result[target..target + len / 2]
+                    .iter_mut()
+                    .zip(bound[old..old + len - len % 2].chunks_exact(2))
+                {
+                    *slot = pair[0] + r * (pair[1] - pair[0]);
+                }
+            }
+        }
+        if len % 2 == 1 {
+            for first in (start..end).step_by(4) {
+                let lanes = (end - first).min(4);
+                let mut values = [Fp2::ZERO; 4];
+                let mut padding = [Fp2::from(KAPPA); 4];
+                for lane in 0..lanes {
+                    let g = groups[first + lane];
+                    let old = location(&g).0 + len - 1;
+                    values[lane] = base.map_or_else(|| bound[old], |b| Fp2::from(b[old]));
+                    if column == 2 {
+                        padding[lane] = g.scale * shared[len];
+                    }
+                }
+                let folded = odd_tails(values, padding, r);
+                for lane in 0..lanes {
+                    result[offsets[first + lane].0 + len / 2] = folded[lane];
+                }
+            }
+        }
+    }
+    (result, offsets)
+}
+
+fn fold_bound_run_table(
+    table: &mut [Fp2],
+    groups: &[Group],
+    runs: &[(usize, usize)],
+    column: usize,
+    shared: &[Fp2],
+    r: Fp2,
+) {
+    let location = |g: &Group| match column {
+        0 => (g.e_start, g.e_len),
+        1 => (g.o_start, g.o_len),
+        _ => (g.q_start, g.q_len),
+    };
+    for &(start, end) in runs {
+        let len = location(&groups[start]).1;
+        for g in &groups[start..end] {
+            let offset = location(g).0;
+            for x in 0..len / 2 {
+                let a = table[offset + 2 * x];
+                let b = table[offset + 2 * x + 1];
+                table[offset + x] = a + r * (b - a);
+            }
+        }
+        if len % 2 == 1 {
+            for first in (start..end).step_by(4) {
+                let lanes = (end - first).min(4);
+                let mut values = [Fp2::ZERO; 4];
+                let mut padding = [Fp2::from(KAPPA); 4];
+                for lane in 0..lanes {
+                    let g = groups[first + lane];
+                    values[lane] = table[location(&g).0 + len - 1];
+                    if column == 2 {
+                        padding[lane] = g.scale * shared[len];
+                    }
+                }
+                let folded = odd_tails(values, padding, r);
+                for lane in 0..lanes {
+                    table[location(&groups[first + lane]).0 + len / 2] = folded[lane];
+                }
+            }
+        }
+    }
 }
 
 /// One forest's instance at one level of the batch, while the rounds run.
@@ -926,6 +1098,57 @@ struct Inst<'a> {
 }
 
 impl<'a> Inst<'a> {
+    fn bind_amortized(&mut self, r: Fp2) {
+        let runs = equal_runs(&self.groups);
+        if self.bound {
+            fold_bound_run_table(&mut self.be, &self.groups, &runs, 0, &self.eq_low, r);
+            fold_bound_run_table(&mut self.bo, &self.groups, &runs, 1, &self.eq_low, r);
+            fold_bound_run_table(&mut self.eqb, &self.groups, &runs, 2, &self.eq_low, r);
+            for g in &mut self.groups {
+                g.e_len = g.e_len.div_ceil(2);
+                g.o_len = g.o_len.div_ceil(2);
+                g.q_len = g.q_len.div_ceil(2);
+            }
+            return;
+        }
+        let (be, e_offsets) = fold_run_table(
+            if self.bound {
+                None
+            } else {
+                Some(self.base_even())
+            },
+            &self.be,
+            &self.groups,
+            &runs,
+            0,
+            &self.eq_low,
+            r,
+        );
+        let (bo, o_offsets) = fold_run_table(
+            if self.bound {
+                None
+            } else {
+                Some(self.base_odd())
+            },
+            &self.bo,
+            &self.groups,
+            &runs,
+            1,
+            &self.eq_low,
+            r,
+        );
+        let (eqb, q_offsets) =
+            fold_run_table(None, &self.eqb, &self.groups, &runs, 2, &self.eq_low, r);
+        self.be = be;
+        self.bo = bo;
+        self.eqb = eqb;
+        self.bound = true;
+        for (i, g) in self.groups.iter_mut().enumerate() {
+            (g.e_start, g.e_len) = e_offsets[i];
+            (g.o_start, g.o_len) = o_offsets[i];
+            (g.q_start, g.q_len) = q_offsets[i];
+        }
+    }
     /// The instance of a forest at tree-level `t = m + 1`, on the level's tables, with the claim's
     /// point `rho`.
     fn new(
@@ -958,6 +1181,7 @@ impl<'a> Inst<'a> {
                     len
                 };
                 groups.push(Group {
+                    tree: y,
                     e_start: level.e_off[y],
                     e_len: level.e_len(y),
                     o_start: level.o_off[y],
@@ -996,6 +1220,7 @@ impl<'a> Inst<'a> {
                 real_trees
             };
             groups.push(Group {
+                tree: 0,
                 e_start: 0,
                 e_len: real_trees,
                 o_start: 0,
@@ -1007,6 +1232,9 @@ impl<'a> Inst<'a> {
             });
             (Source::Owned { even, odd }, true)
         };
+        if arm.amortized && !phase2 {
+            groups.sort_by_key(|g| (g.e_len, g.o_len, g.q_len));
+        }
         Self {
             arm,
             m,
@@ -1113,6 +1341,7 @@ impl<'a> Inst<'a> {
         gi: usize,
         rho_j: Fp2,
         rest_from: usize,
+        run_shape: Option<(usize, usize)>,
     ) -> [Fp2; 4] {
         let g = self.groups[gi];
         let pairs = 1usize << (g.vars - 1);
@@ -1121,8 +1350,12 @@ impl<'a> Inst<'a> {
         } else {
             g.q_len / 2
         };
-        let p_full = (g.e_len / 2).min(g.o_len / 2).min(q_pairs);
-        let p_pad = g.e_len.div_ceil(2).max(g.o_len.div_ceil(2));
+        let (p_full, p_pad) = run_shape.unwrap_or_else(|| {
+            (
+                (g.e_len / 2).min(g.o_len / 2).min(q_pairs),
+                g.e_len.div_ceil(2).max(g.o_len.div_ceil(2)),
+            )
+        });
         let (shared, shared_scale) = if self.phase2 {
             (&self.eq_high[..], self.eq_high_scale)
         } else {
@@ -1188,7 +1421,7 @@ impl<'a> Inst<'a> {
             }
         }
         // The fully padded tail, in closed form.
-        if p_pad < pairs {
+        if p_pad < pairs && run_shape.is_none() {
             let t = match self.memo[p_pad] {
                 Some(t) => t,
                 None => {
@@ -1220,14 +1453,43 @@ impl<'a> Inst<'a> {
         let j = self.own;
         let rho_j = self.rho[j];
         let vars = self.groups[0].vars;
-        self.memo.clear();
-        self.memo.resize(1 << (vars - 1), None);
-        self.memo.push(None);
+        if !self.arm.amortized || self.phase2 {
+            self.memo.clear();
+            self.memo.resize(1 << (vars - 1), None);
+            self.memo.push(None);
+        }
         let mut sums = [Fp2::ZERO; 4];
-        for gi in 0..self.groups.len() {
-            let s = self.group_sums::<N, SKIP_ONE>(gi, rho_j, j + 1);
-            for n in 0..N {
-                sums[n] += s[n];
+        if self.arm.amortized && !self.phase2 {
+            for (start, end) in equal_runs(&self.groups) {
+                let g = self.groups[start];
+                let full = (g.e_len / 2).min(g.o_len / 2).min(g.q_len / 2);
+                let padded = g.e_len.div_ceil(2).max(g.o_len.div_ceil(2));
+                for gi in start..end {
+                    let s = self.group_sums::<N, SKIP_ONE>(gi, rho_j, j + 1, Some((full, padded)));
+                    for n in 0..N {
+                        sums[n] += s[n];
+                    }
+                }
+                if padded < 1 << (g.vars - 1) {
+                    let scale_sum = self.groups[start..end]
+                        .iter()
+                        .fold(Fp2::ZERO, |sum, tree| sum + tree.scale);
+                    let coefficient = Fp2::from(KAPPA * KAPPA)
+                        * self.eq_low_scale
+                        * tail(&self.rho[j + 1..j + g.vars], padded)
+                        * scale_sum;
+                    let ql = line::<Fp2, N, SKIP_ONE>(Fp2::ONE - rho_j, rho_j);
+                    for n in 0..N {
+                        sums[n] += coefficient * ql[n];
+                    }
+                }
+            }
+        } else {
+            for gi in 0..self.groups.len() {
+                let s = self.group_sums::<N, SKIP_ONE>(gi, rho_j, j + 1, None);
+                for n in 0..N {
+                    sums[n] += s[n];
+                }
             }
         }
         if !self.phase2 && self.real_trees < 1 << self.s {
@@ -1292,7 +1554,9 @@ impl<'a> Inst<'a> {
         if j < self.pad {
             return;
         }
-        if !self.bound {
+        if self.arm.amortized && !self.phase2 {
+            self.bind_amortized(r);
+        } else if !self.bound {
             let mut be = Vec::with_capacity(self.groups.iter().map(|g| g.e_len.div_ceil(2)).sum());
             let mut bo = Vec::with_capacity(self.groups.iter().map(|g| g.o_len.div_ceil(2)).sum());
             for gi in 0..self.groups.len() {
@@ -1351,7 +1615,7 @@ impl<'a> Inst<'a> {
             }
         }
         // The materialized eq prefixes, with the shared table (not yet folded) past their end.
-        if !self.arm.shared_eq {
+        if !self.arm.shared_eq && (!self.arm.amortized || self.phase2) {
             for gi in 0..self.groups.len() {
                 let g = self.groups[gi];
                 let half = g.q_len / 2;
@@ -1404,6 +1668,9 @@ impl<'a> Inst<'a> {
     /// the tree coordinates with the padded trees as its constant tail.
     fn enter_tree_rounds(&mut self) {
         let n = self.real_trees;
+        if self.arm.amortized {
+            self.groups.sort_unstable_by_key(|g| g.tree);
+        }
         let mut be = Vec::with_capacity(n);
         let mut bo = Vec::with_capacity(n);
         let mut eqb = Vec::with_capacity(if self.arm.shared_eq { 0 } else { n });
@@ -1418,6 +1685,7 @@ impl<'a> Inst<'a> {
         self.bo = bo;
         self.eqb = eqb;
         self.groups = vec![Group {
+            tree: 0,
             e_start: 0,
             e_len: n,
             o_start: 0,
@@ -1656,9 +1924,10 @@ fn check_hand_case() {
     );
     let wrong = vec![vec![six, TvFp2::from(tv_fp(fp(386)))]];
     let rejected = verify_forests(&[(1, 2)], &wrong, &proofs);
-    assert!(
-        rejected.is_err(),
-        "the verifier accepts the proof against the root 386"
+    assert_eq!(
+        rejected.as_ref().err().map(String::as_str),
+        Some("level 0: FinalMismatch { round: 1 }"),
+        "the wrong root must fail at the independent sumcheck final check"
     );
     for (name, arm) in ARMS {
         let mine = prove_harness(&config, arm);
@@ -1668,7 +1937,7 @@ fn check_hand_case() {
     let zero_roots = true_roots(&zero_padded, 2);
     assert_eq!(zero_roots, vec![TvFp2::ZERO, TvFp2::ZERO]);
     println!(
-        "  check: hand case [2, 3 | 1, 1] [5, 7, 11 | 1]: roots (6, 385) accepted, (6, 386) rejected ({}); all four harness arms equal the production; a padding of 0 gives roots (0, 0)",
+        "  check: hand case [2, 3 | 1, 1] [5, 7, 11 | 1]: roots (6, 385) accepted, (6, 386) rejected ({}); all harness arms equal the production; a padding of 0 gives roots (0, 0)",
         rejected.err().unwrap_or_default()
     );
 }
@@ -1691,17 +1960,42 @@ fn check_small_shapes(rng: &mut SplitMix64) {
             assert_same(&config.name, name, &mine, &out);
         }
         println!(
-            "  check: {}: all four harness arms equal the production",
+            "  check: {}: all harness arms equal the production",
             config.name
         );
     }
+}
+
+fn check_amortized_shapes(rng: &mut SplitMix64) {
+    for lengths in [
+        vec![13, 1, 13, 7, 2, 7, 16],
+        vec![3; 7],
+        vec![1, 2, 3, 4, 5, 6, 7, 8],
+    ] {
+        let shape = Shape {
+            height: 4,
+            trees_log: 3,
+            real_trees: lengths.len(),
+            real_leaves: lengths,
+        };
+        let config = Config {
+            name: "unsorted/repeated-length boundary case".to_owned(),
+            judged: false,
+            forests: vec![make_forest(rng, shape)],
+        };
+        let reference = check_production(&config);
+        for (name, arm) in ARMS {
+            assert_same(&config.name, name, &prove_harness(&config, arm), &reference);
+        }
+    }
+    println!("  check: unsorted/repeated-length groups preserve original tree-coordinate order");
 }
 
 // ---------------------------------------------------------------------------------------------
 // Timing
 // ---------------------------------------------------------------------------------------------
 
-fn time_config(rows: &mut Vec<Row>, config: &Config) -> Output {
+fn time_config(rows: &mut Vec<Row>, config: &Config, amendment: bool) -> Output {
     let real = config.real();
     let padded = config.padded();
     println!(
@@ -1723,7 +2017,7 @@ fn time_config(rows: &mut Vec<Row>, config: &Config) -> Output {
         assert_same(&config.name, name, &mine, &reference);
     }
     println!(
-        "  check: all four harness arms equal the production (proofs, leaf claims, transcript state)"
+        "  check: all harness arms equal the production (proofs, leaf claims, transcript state)"
     );
     let stats = measure(|| {
         let start = Instant::now();
@@ -1731,7 +2025,7 @@ fn time_config(rows: &mut Vec<Row>, config: &Config) -> Output {
         start.elapsed()
     });
     report(rows, &config.name, "production", real, padded, stats);
-    for (name, arm) in ARMS {
+    for (name, arm) in ARMS.into_iter().take(if amendment { 5 } else { 4 }) {
         let stats = measure(|| {
             let start = Instant::now();
             black_box(prove_harness(black_box(config), arm));
@@ -1753,7 +2047,7 @@ fn find<'r>(rows: &'r [Row], config: &str, arm: &str) -> &'r Row {
 type Ratios = (String, f64, f64, f64, f64, f64, f64, f64);
 
 /// The pre-registered quantities and the rule's outcome, from the rows.
-fn judge(rows: &[Row], configs: &[Config]) -> Vec<Ratios> {
+fn judge(rows: &[Row], configs: &[Config], amendment: bool) -> Vec<Ratios> {
     println!("\n== ratios (medians) ==");
     let u = find(rows, "U23", "dense").ns_per_real();
     println!("  u = dense ns per leaf on U23 = {u:.3}");
@@ -1766,7 +2060,15 @@ fn judge(rows: &[Row], configs: &[Config]) -> Vec<Ratios> {
         let f = config.factor();
         let prod = find(rows, name, "production");
         let dense = find(rows, name, "dense");
-        let analytic = find(rows, name, "analytic");
+        let analytic = find(
+            rows,
+            name,
+            if amendment {
+                "analytic-amortized"
+            } else {
+                "analytic"
+            },
+        );
         let dense_sh = find(rows, name, "dense-shared");
         let analytic_sh = find(rows, name, "analytic-shared");
         let r_same = dense.stats.median / analytic.stats.median;
@@ -1836,13 +2138,24 @@ fn judge(rows: &[Row], configs: &[Config]) -> Vec<Ratios> {
 // JSON record
 // ---------------------------------------------------------------------------------------------
 
+fn sample_json(samples: &[(f64, usize)]) -> String {
+    format!(
+        "[{}]",
+        samples
+            .iter()
+            .map(|(seconds, repetitions)| format!("[{seconds}, {repetitions}]"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
 fn write_json(path: &str, rows: &[Row], ratios: &[Ratios], digests: &[(String, String)]) {
     let mut out = String::from(
-        "{\n  \"experiment\": \"EXP-0009\",\n  \"protocol\": {\"warmups\": 3, \"iterations\": 10, \"cv_limit\": 0.03},\n  \"cases\": [\n",
+        "{\n  \"experiment\": \"EXP-0009\",\n  \"protocol\": {\"warmups\": 3, \"iterations\": 10, \"cv_limit\": 0.03, \"minimum_sample_ms\": 20},\n  \"cases\": [\n",
     );
     for (i, row) in rows.iter().enumerate() {
         out.push_str(&format!(
-            "    {{\"config\": \"{}\", \"arm\": \"{}\", \"real_leaves\": {}, \"padded_leaves\": {}, \"median_ms\": {}, \"min_ms\": {}, \"max_ms\": {}, \"cv\": {}, \"ns_per_real_leaf\": {}, \"ns_per_padded_leaf\": {}, \"repeated\": {}}}{}\n",
+            "    {{\"config\": \"{}\", \"arm\": \"{}\", \"real_leaves\": {}, \"padded_leaves\": {}, \"median_ms\": {}, \"min_ms\": {}, \"max_ms\": {}, \"cv\": {}, \"ns_per_real_leaf\": {}, \"ns_per_padded_leaf\": {}, \"repeated\": {}, \"samples_total_seconds_and_repetitions\": {}, \"first_attempt_total_seconds_and_repetitions\": {}}}{}\n",
             row.config,
             row.arm,
             row.real,
@@ -1854,6 +2167,8 @@ fn write_json(path: &str, rows: &[Row], ratios: &[Ratios], digests: &[(String, S
             row.ns_per_real(),
             row.ns_per_padded(),
             row.stats.repeated,
+            sample_json(&row.stats.samples),
+            sample_json(&row.stats.first_samples),
             if i + 1 < rows.len() { "," } else { "" }
         ));
     }
@@ -1879,8 +2194,9 @@ fn write_json(path: &str, rows: &[Row], ratios: &[Ratios], digests: &[(String, S
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let command = args.get(1).map_or("all", String::as_str);
-    if command != "all" {
-        eprintln!("usage: padblocks all [results/run.json]");
+    let amendment = command == "amendment";
+    if !["all", "amendment", "check"].contains(&command) {
+        eprintln!("usage: padblocks all|amendment|check [results/run.json]");
         std::process::exit(2);
     }
     println!(
@@ -1891,6 +2207,10 @@ fn main() {
     check_tail(&mut check_rng);
     check_hand_case();
     check_small_shapes(&mut check_rng);
+    check_amortized_shapes(&mut check_rng);
+    if command == "check" {
+        return;
+    }
 
     let mut rng = SplitMix64(LEAF_SEED);
     let configs = vec![
@@ -1906,11 +2226,25 @@ fn main() {
     let mut rows = Vec::new();
     let mut digests = Vec::new();
     for config in &configs {
-        let reference = time_config(&mut rows, config);
+        let reference = time_config(&mut rows, config, amendment);
         digests.push((config.name.clone(), hex(&reference.state)));
     }
-    let ratios = judge(&rows, &configs);
+    let ratios = judge(&rows, &configs, amendment);
     if let Some(path) = args.get(2) {
         write_json(path, &rows, &ratios, &digests);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn amendment_preserves_transcripts_and_tree_order() {
+        let mut rng = SplitMix64(CHECK_SEED);
+        check_tail(&mut rng);
+        check_hand_case();
+        check_small_shapes(&mut rng);
+        check_amortized_shapes(&mut rng);
     }
 }

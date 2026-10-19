@@ -1,6 +1,6 @@
 # Baseline: Tessera as a cost structure
 
-Status: projections (E0) derived from the specification on 2026-10-16. The RFC-0020 gate replaces every unit cost with a measurement; until then this page is the thing to beat and the yardstick every idea is scored against. Terms are named as the cost model names them, so that an idea can say which one it moves.
+Status: projections (E0), reconciled with main on 2026-10-19. The RFC-0020 gate replaces every unit cost with a measurement; until then this page is the thing to beat and the yardstick every idea is scored against. Terms are named as the cost model names them, so that an idea can say which one it moves.
 
 ## 1. What an improvement must preserve
 
@@ -17,101 +17,84 @@ The statement (00 §3): a committed integer model `D` produced the recorded toke
 
 ## 2. The cost model
 
-The proof multiplier `μ` is proving GPU time over the GPU time of an ideal teacher-forced INT8 forward pass ([08 §1](../docs/spec/08-performance-budget.md#1-cost-model)):
+Reconciled on 2026-10-19 with main at `6d9de83` (compiler report unchanged from c2c8a69). All figures below are E0 projections. The normative implementation is `tessera-bench::mu` (RFC-0020); `tessera bench model --source-defaults --json` exposes the original design inputs, while `--plan` is still pending (#87). The research tool now uses the same formula and the compiler’s committed counts, checked by [check_cost_model.py](tools/check_cost_model.py) against the normative Rust implementation on 72 scenarios, including nonzero P4/P5, table costs, short score blocks and exact memory boundaries.
 
 ```text
-μ(S) = [1.15 (C_lin c_c + K_lin c_ℓ) + 1.15 A S (c_c + c_ℓ + c_π) + W/T] / native(S) + n_regen + stream(S)
+S′ = S + min(S, b)
 native(S) = (F_lin + F_att S) / R
-stream(S) = c(S) · p_s · A · S / native(S),   c(S) = ⌈log2(N_level(S) · 32 B / free HBM)⌉
+μ(S) = [glue (C c_c + K c_ℓ + A S (c_c + c_ℓ + c_π) + A min(S,b) c_c)
+        + W/T + (C + A S′) (c_a + c_r) + glue M (c_c + c_ℓ)/T] / native(S)
+       + n_regen + c(S) p_s A S / native(S)
+c(S) = max(0, ceil(log2(A S T bytes_per_leaf / free_HBM)))
 ```
 
-| Term | Meaning | Source value | Corrected value | Fixed by |
-|---|---|---|---|---|
-| `c_c` | ps per committed 64-bit element: rate-1/2 RS encode, BLAKE3 chained column hashing | 30 | 30 (assumed) | RFC-0020 gate (RISK-1, RISK-8) |
-| `c_ℓ` | ps per LogUp-GKR lookup: combined fraction tree in `Fp2` | 40 | 40 (assumed) | RFC-0020 gate |
-| `c_π` | ps per product-tree leaf (softmax max certificate) | 12 | 12 (assumed) | RFC-0020 gate |
-| glue | sumcheck rounds, `eq` tables | 1.15 | 1.15 | RFC-0020 gate |
-| `C_lin`, `K_lin` | committed elements and lookups per token, linear layers | 1.729×10^7 (137,216 per layer per token × 126 layers, the stated count the pinned vector records; the chart's linear column fits 1.760×10^7) | 4.116×10^7 (326,656 per layer per token: the default `servable` profile with every split, [EXP-0011](experiments/EXP-0011-servable-count/README.md); RISK-2's 220,160 is the `minimal` profile's count) | v0.2 commitment report |
-| `A` | scores per token per unit context, heads × layers / 2 | 8,064 | 8,064 | model architecture |
-| `F_lin`, `F_att` | native INT8 ops per token: 2 per parameter; 512 per score | 8.12×10^11, 4.13×10^6 | same | — |
-| `R` | native rate, 60% of 1,979 TOPS (H100 SXM dense INT8) | 1.19×10^15 op/s | same | RFC-0020 gate |
-| `W/T` | weight fold pass per token, 0.24 GPU-s per 16K-token batch | 1.5×10^-5 s | same | RFC-0020 gate |
-| `n_regen` | witness regenerations in full-forward equivalents (P1 witness, P3 stages, P4 opening) | 0 | 4 (RISK-9) | v0.3 count, v0.5 measurement |
-| `stream` | streamed leaf-level rounds, `p_s` = 7 ps per score per pass, 0.2 TB free HBM | 0 | on (RISK-10) | RFC-0018, v0.5 |
+| Input | Current planning value | Evidence and scope |
+|---|---|---|
+| C / K | 45,566,660 / 45,440,678 per token | Compiler report, `servable`, two classes, B_max=32; includes checkpoints, one-hot and row scalars |
+| M | 7,693,467,648 table rows per proof | Same report; excludes unallocated gadget range tables (#118/#122) |
+| A / b | 8,064 / 512 | RFC-0034; diagonal masked halves are committed, never looked up or multiplied |
+| F_lin / F_att | 811,698,487,296 / 4,128,768 ops | Report’s exact parameter count; source-defaults instead uses 811,706,777,600 linear ops |
+| R / T / W | 1.1874e15 ops/s / 16,384 tokens / 0.24 GPU-s | Assumptions of RFC-0020 |
+| n_regen | 5 | RFC-0018 P1–P5; #248 |
+| p_s / free_HBM / bytes_per_leaf | 7 ps / 0.2 TB / 32 B | Attention leaf level only: 5/7/9/12 passes at 1K/4K/16K/128K (#250) |
+| c_a (P5) | c_c: 30 / 94 ps | Full-re-encode planning bound, not a measurement; no glue on this term |
+| c_r (P4) | 0, explicitly unpriced | Unknown H100 cost; use `--set row_combination_ps=...` (#252) |
+| c_c / c_ℓ / c_π, corrected | 30 / 40 / 12 ps | Assumed targets |
+| c_c / c_ℓ / c_π, counted | 94 / 101 / 41.8 ps | Counts fitted to E1; c_π repriced after #258’s split-eq kernel landed, using EXP-0008’s ratio; no H100 measurement |
+| glue | 1.15 | Sumcheck overhead assumption; zero-knowledge overhead is not this entire 15% |
 
-The executable form is [tools/cost_model.py](tools/cost_model.py). Its golden check reproduces the source's §5 chart within ±0.05 per term (the RFC-0020 criterion), reading the pinned vector `spec/vectors/cost-model/cost-model.json` (PR #240: every input with its provenance, the two-decimal chart series, the §8 table; `tessera bench model --source-defaults` is the normative evaluation) when the file is present and the embedded chart-data table otherwise. The inputs are the vector's: the stated count `137,216 × 126 = 1.729×10^7` commitments and lookups per token, `F_lin = 2 × 405,853,388,800` and `F_att = 512 × 8,064` reconstructed; the model then stays within 0.036 of the chart's linear column and 0.041 of its totals. The least-squares fit of that column, `1.760×10^7`, is recorded in the vector and in the tool for reference only (an earlier version of this page carried a `1.757×10^7` fit tuned to the tolerance).
+Counts come from [the current compiler report](../docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json), refreshed by `cargo test -p tessera-bench --test commitment_report`. They supersede the 326,656 rescale-only count of EXP-0011, which described one class before RFC-0022’s classed residual update. The current per-layer rescale count is 359,424 at two classes, plus 808 row scalars; total commitments and lookups differ. One class still has 326,656 rescale elements, so that historical finding remains correct within its stated setting. [The report guide](../docs/perf/v0.2/README.md) gives all class counts and table bounds.
 
-A third profile, `counted`, carries the unit costs at the centre of the operation-count intervals the loop derived on 2026-10-16, each an E0 count fitted to an E1 measurement on an Apple M4 Max and translated to the H100's integer pipeline at the 60% utilization of [VYTA25]: `c_c` 94 ps ([EXP-0002](experiments/EXP-0002-commit-cost-calibration/README.md), interval [58, 157]), `c_ℓ` 101 ps ([SUR-0002](surveys/SUR-0002-lookups.md), 76–169), `c_π` 73 ps ([EXP-0006](experiments/EXP-0006-product-leaf-cost/README.md), [45, 117]). It is a planning profile, not the RFC-0020 reference, and it says what the assumptions hide:
-
-| Profile | `μ` 1K | 4K | 16K | 128K | SC-2 (`μ(1K) ≤ 12`, `μ(16K) ≤ 45`) |
-|---|---|---|---|---|---|
-| `source` (08 §3) | 3.2 | 6.5 | 18.8 | 88.7 | holds |
-| `corrected` (`servable` count of EXP-0011, RISK-9, RISK-10) | 10.4 | 15.6 | 36.6 | 172.3 | holds, by 1.15× and 1.23× |
-| `counted` (unit costs 3–6× the assumptions) | 21.6 | 34.2 | 82.7 | 376.0 | fails both, by 1.80× and 1.84× |
-
-Since 2026-10-17 the `corrected` and `counted` profiles count the default `servable` profile with every split, 326,656 commitments and lookups per layer per token ([EXP-0011](experiments/EXP-0011-servable-count/README.md), E0 from RFC-0005's range cells under RFC-0006's rule; RISK-2's 220,160 is the `minimal` profile's figure). Idea scores recorded before that date were computed against the RISK-2 count (`μ(16K)` 35.1 corrected, 78.6 counted) and say so in their notes; a re-score moves a percentage by the ratio of the two baselines, about 4–5% of itself at 16K and 18–25% at 1K.
-
-`python3 -I research/tools/cost_model.py --profile counted --sensitivity` prints the shares at those prices; the RFC-0020 v0.1 gate measures them (E2) and decides between the profiles. Under `counted` the three unit costs are 81% of `μ(16K)` against 56% under `corrected`, and since 2026-10-16 the unit-cost ideas are scored against these shares (E0):
-
-| Context | `c_c` | `c_ℓ` | `c_π` | regen | streaming | `c_c` halved | `c_ℓ` halved | `c_π` halved | `A` halved | streaming → 0 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 1K | 33.1% | 35.5% | 5.8% | 23.1% | 2.4% | −16.5% | −17.8% | −2.9% | −12.1% | −2.4% |
-| 4K | 31.6% | 34.0% | 13.3% | 13.3% | 7.7% | −15.8% | −17.0% | −6.6% | −28.7% | −7.7% |
-| 16K | 29.7% | 31.9% | 19.0% | 5.1% | 14.3% | −14.9% | −16.0% | −9.5% | −42.8% | −14.3% |
-| 128K | 27.6% | 29.6% | 20.9% | 1.1% | 20.9% | −13.8% | −14.8% | −10.4% | −49.6% | −20.9% |
-
-The `c_π` share of 31% and the −15.7% for halving it that [EXP-0006](experiments/EXP-0006-product-leaf-cost/README.md) reports are at 73 ps with `c_c` and `c_ℓ` at their assumed values; when all three rise together, `c_π` is 19.0% at 16K and halving it is worth −9.5%.
+**Scope limitation:** P4 at zero, the rest of the leaf-stage streaming (#329), and the unallocated range tables are omissions. These totals are scenarios, not full proving-time bounds. P5 at c_c bounds re-encoding alone; it does not bound the omitted work. Weight column answers use the epoch’s stored codewords (about 15.2 TB, #251); evaluating them without that store must instead be charged to W. CPU ratios do not establish GPU costs.
 
 ### Baseline tables (E0)
 
-`python3 research/tools/cost_model.py`:
+Reproduce with `python3 -I research/tools/cost_model.py --profile counted` (or `corrected`). Historical raw results under experiments are immutable snapshots; rerun their pinned commit to recover their old model totals.
 
-| Context | Profile | Linear | Attention | Weights | Regen | Streaming | μ |
-|---|---|---|---|---|---|---|---|
-| 1K | source | 2.03 | 1.13 | 0.021 | 0 | 0 | 3.2 |
-| 4K | source | 1.99 | 4.46 | 0.021 | 0 | 0 | 6.5 |
-| 16K | source | 1.88 | 16.82 | 0.020 | 0 | 0 | 18.7 |
-| 128K | source | 1.22 | 87.48 | 0.013 | 0 | 0 | 88.7 |
-| 1K | corrected | 4.82 | 1.13 | 0.021 | 4.0 | 0.42 | 10.4 |
-| 4K | corrected | 4.75 | 4.46 | 0.021 | 4.0 | 2.32 | 15.6 |
-| 16K | corrected | 4.47 | 16.82 | 0.020 | 4.0 | 11.24 | 36.6 |
-| 128K | corrected | 2.91 | 87.48 | 0.013 | 4.0 | 77.93 | 172.3 |
+| Profile | μ(1K) | μ(4K) | μ(16K) | μ(128K) | SC-2 |
+|---|---|---|---|---|---|
+| `source` | 3.2 | 6.5 | 18.7 | 88.7 | original design only |
+| `corrected` | 14.7 | 20.9 | 45.6 | 202.9 | misses 1K and 16K ceilings |
+| `counted` | 32.3 | 46.8 | 102.4 | 436.3 | misses 1K and 16K ceilings |
 
-The v1.0 ceilings are `μ(1K) ≤ 12` and `μ(16K) ≤ 45` (SC-2). The corrected 16K figure already spends most of the ceiling; the corrected 128K figure says the design has no long-context story until RISK-10 and the per-score cost move.
+| Context | Profile | Linear | Attention | Weights | Regen | Streaming | P5 | P4 | Tables | μ |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1K | corrected | 5.330 | 1.340 | 0.021 | 5.000 | 0.421 | 2.530 | 0.000 | 0.055 | 14.697 |
+| 4K | corrected | 5.248 | 4.668 | 0.021 | 5.000 | 2.319 | 3.556 | 0.000 | 0.054 | 20.866 |
+| 16K | corrected | 4.945 | 17.016 | 0.020 | 5.000 | 11.240 | 7.365 | 0.000 | 0.051 | 45.637 |
+| 128K | corrected | 3.214 | 87.606 | 0.013 | 5.000 | 77.926 | 29.139 | 0.000 | 0.033 | 202.932 |
+| 1K | counted | 14.849 | 3.922 | 0.021 | 5.000 | 0.421 | 7.928 | 0.000 | 0.153 | 32.294 |
+| 4K | counted | 14.622 | 13.529 | 0.021 | 5.000 | 2.319 | 11.143 | 0.000 | 0.151 | 46.786 |
+| 16K | counted | 13.778 | 49.186 | 0.020 | 5.000 | 11.240 | 23.078 | 0.000 | 0.142 | 102.444 |
+| 128K | counted | 8.956 | 253.020 | 0.013 | 5.000 | 77.926 | 91.303 | 0.000 | 0.092 | 436.310 |
 
-### Where the time goes (sensitivity, corrected profile)
+### Reconciliation and sensitivity (E0)
 
-`python3 research/tools/cost_model.py --sensitivity`:
+The old minimal comparison (about 8.8 versus 9.4 at 1K) mixed a rounded rescale count and omitted work; it was not a discrepancy between two evaluations of identical inputs. The current differential check matches every term to Rust within 2e-13 relative tolerance. Source golden totals still pass ±0.05 without a fitted count. With P5, streaming and P4 disabled, the current report reproduces its 11.747 / 27.032 at 1K / 16K; adding the missing work yields the table above.
 
-| Context | `c_c` | `c_ℓ` | `c_π` | weights | regen | streaming |
-|---|---|---|---|---|---|---|
-| 1K | 20.6% | 27.5% | 1.9% | 0.2% | 45.1% | 4.7% |
-| 4K | 21.5% | 28.7% | 4.6% | 0.1% | 28.5% | 16.5% |
-| 16K | 21.2% | 28.3% | 7.0% | 0.1% | 11.4% | 32.0% |
-| 128K | 19.2% | 25.6% | 7.5% | 0.0% | 2.3% | 45.5% |
-
-Gain in `μ` from one lever, 2× better (or removed where marked):
-
-| Lever | 1K | 4K | 16K | 128K |
+| Lever, counted profile | Δμ(1K) | Δμ(4K) | Δμ(16K) | Δμ(128K) |
 |---|---|---|---|---|
-| `c_c` halved | −10.3% | −10.8% | −10.6% | −9.6% |
-| `c_ℓ` halved | −13.7% | −14.4% | −14.2% | −12.8% |
-| `c_π` halved | −0.9% | −2.3% | −3.5% | −3.7% |
-| `C_lin` halved | −8.0% | −5.0% | −1.9% | −0.2% |
-| `K_lin` halved | −10.6% | −6.6% | −2.5% | −0.3% |
-| `A` halved (fewer scores proven) | −9.2% | −25.3% | −41.7% | −50.1% |
-| glue → 1.0 | −6.5% | −7.2% | −7.4% | −6.8% |
-| regen → 0 | −45.1% | −28.5% | −11.4% | −2.3% |
-| streaming → 0 | −4.7% | −16.5% | −32.0% | −45.5% |
+| commit_ps (c_c) | -14.2% | -13.8% | -13.0% | -12.0% |
+| lookup_ps (c_ℓ) | -14.2% | -14.0% | -13.6% | -12.9% |
+| leaf_ps (c_π) | -0.9% | -2.4% | -4.2% | -5.1% |
+| commits_per_token (C_lin) | -20.7% | -14.1% | -6.1% | -0.9% |
+| lookups_per_token (K_lin) | -11.9% | -8.1% | -3.5% | -0.5% |
+| scores per token (A) | -9.5% | -22.6% | -38.5% | -48.7% |
+| glue factor → 1.0 | -7.6% | -7.9% | -8.0% | -7.8% |
+| regen → 0 | -15.5% | -10.7% | -4.9% | -1.1% |
+| streaming → 0 | -1.3% | -5.0% | -11.0% | -17.9% |
+| column_answer_ps (P5) | -12.3% | -11.9% | -11.3% | -10.5% |
+| row_combination_ps (P4) | +0.0% | +0.0% | +0.0% | +0.0% |
+| table rows (M) | -0.2% | -0.2% | -0.1% | -0.0% |
 
-Reading: the regeneration passes (RISK-9) are the largest single lever at short context; the number of scores proven (`A`) and the streamed passes (RISK-10) dominate from 4K up; `c_ℓ` is the largest unit cost at every context; `c_π` and the linear-layer counts are second-order. An idea is worth an experiment when it moves a lever that is large at the context it targets.
+P5 and P4 are independent costs: reducing commit_ps alone does not silently reduce either. The count levers reduce P4/P5 arithmetic as well as commitments and lookups. The validated pruned P5 result belongs in column_answer_ps, rather than being folded into commit_ps with a second glue charge. The model cannot certify SC-2 before E2 measurements and #329’s accounting.
 
 ## 3. Primitive baseline (E0, assumed)
 
 | Primitive | Current design | Assumed cost | Notes |
 |---|---|---|---|
 | Committed element | row of width 2^22, RS rate 1/2 over Goldilocks by coset NTT, vanishing-mask coefficients, chained BLAKE3 column digests with row block `B = 32` | 30 ps | about 530 GB/s of hashing per H100 inside the budget (RISK-8) |
-| Lookup | LogUp-GKR, one combined fraction tree per table, leaves `(1, α − a)` and `(−m, α − t)`, `Fp2` challenges, degree-3 sumcheck per level, batched across instances | 40 ps | `(N + T)/|Fp2|` error, about 2^-90 at frontier volume (RISK-5) |
+| Lookup | LogUp-GKR, one combined fraction tree per table, leaves `(1, α − a)` and `(−m, α − t)`, `Fp2` challenges, degree-3 sumcheck per level, batched across instances | 40 ps | `(N + T)/\|Fp2\|` error, about 2^-90 at frontier volume (RISK-5) |
 | Product-tree leaf | max certificate `Π (c_q − x_qi) = 0` per row, GKR over `Fp2` | 12 ps | one leaf per score |
 | Sumcheck round | degree ≤ 7, `p(0) + p(1)` check, about 10^4 rounds per 405B 16K proof | 15% of commit + lookup | |
 | Weight fold | limb-decomposed INT8 GEMM on tensor cores, one pass per proof unit | 0.24 GPU-s per 405B unit | opening and sumcheck fold are the same pass |
@@ -145,11 +128,11 @@ Values as of 2026-10-16, from [landscape.md](landscape.md). Tessera's are projec
 
 | Metric | Tessera (projected, E0) | Best known | Holder | Gap |
 |---|---|---|---|---|
-| `μ` at 1K, dense 405B | 10.4 (corrected, `servable` count), 3.2 (source), 21.6 (counted) | none at this scale; about 10^5 for a 400B MoE at 1K tokens | VerInf | 4 orders of magnitude in Tessera's favor, on paper |
-| `μ` at 16K, dense | 35 (corrected), 19 (source) | about 100–300× against ideal prefill for a 31B model (source's estimate from throughput) | Attestable | Tessera leads on paper, unmeasured |
-| Throughput, one H100, ~30B dense | not stated (8×H100 design point) | 53–77 tokens/s proved | Attestable | the only measured frontier-adjacent number |
+| `μ` at 1K, dense 405B | 14.7 corrected / 32.3 counted (two-class compiler counts; §2 scope) | none at this scale; about 10^5 for a 400B MoE at 1K tokens | VerInf | 4 orders of magnitude in Tessera's favor, on paper |
+| `μ` at 16K, dense | 45.6 corrected / 102.4 counted (§2 scope) | about 100–300× against ideal prefill for a 31B model (source's estimate from throughput) | Attestable | Tessera leads on paper, unmeasured |
+| Throughput, one H100, ~30B dense | not stated (8×H100 design point) | 53–77 tokens/s proved | Attestable | vendor claim; not independently reproduced here |
 | Proof size, 16K tokens | about 2 GB | 4.35–7.92 MiB | Attestable | about 300× against Tessera; recursion is NG-3 |
-| Verification time | ≤ 300 s target | 157–648 ms | Attestable | about 500× against Tessera |
+| Verification time | About 13 s on one core (E0, SUR-0012); ≤ 300 s on 32 cores is the release budget | 157–648 ms on unnamed reference CPU (claim) | Attestable | Different hardware and evidence; no measured ratio established |
 | Soundness | 100 bits NI, 64 bits live | 100 bits | Attestable | parity |
 | Zero knowledge | statistical, malicious verifier | stated | several | parity claimed, unverified for others |
 | Post-quantum | hash-based | hash-based | Attestable | parity |
@@ -166,8 +149,8 @@ What the loop can settle on this machine is E0 and E1; levels 1 and 2 of the def
 |---|---|---|---|
 | Proof size, 16K tokens | about 2.0 GB | about 1.88 GB under the Draft [RFC-0021](../docs/rfcs/RFC-0021-johnson-regime-proximity.md) (`τ_A` 155 → 130); still about 250× Attestable's | E0, primary statements |
 | Verification work | hash 0.72 GB, 17 × 155 inner products | hash 0.60 GB, 17 × 130 inner products (−16%) under RFC-0021; the 300 s target unchanged | E0 |
-| `μ` at 16K | 36.6 (corrected profile, `servable` count, assumed unit costs) | 82.7 under the `counted` profile (`c_c` 94, `c_ℓ` 101, `c_π` 73 ps from EXP-0002, SUR-0002 and EXP-0006); 42 to 67 if only `c_c` moves; the SC-2 ceiling (45) holds only for kernels near the integer pipeline's peak | E0 counts fitted to E1 |
-| Soundness accounting | `n/|Fp2|` field term on a tensor generator | the row's field term corrected (`20 · n/|Fp2|`, 2^-100.7, still within target) and, under RFC-0021, a Johnson-regime row with a machine-checked bound | E0, primary |
+| `μ` at 16K | Historical 36.6 / 82.7 corrected / counted | Current 45.6 / 102.4 with two-class compiler counts, P5, streaming and the landed split-eq repricing; P4 and #329 remain unpriced | E0, §2 |
+| Soundness accounting | `n/\|Fp2\|` field term on a tensor generator | the row's field term corrected (`20 · n/\|Fp2\|`, 2^-100.7, still within target) and, under RFC-0021, a Johnson-regime row with a machine-checked bound | E0, primary |
 | Largest open levers | — | tile-folded streaming (−28% / −42% of `μ` at 16K / 128K, E0, conditional), certified block skipping (−42% to −74% at 16K if half to three quarters of blocks skip; hard sparsity unmeasured), `n_regen` 4 → 2 (−22% at 1K) | E0, from SUR-0003 and SUR-0004 |
 
 The honest reading: the design's lead on `μ` is a projection whose unit-cost inputs the day's counts moved up by 2–4×, while its structural deficits (proof size, verification time) moved down by 6% and 16% on paper. The scoreboard is re-evaluated at every consolidation; the ledger's queue is ordered by what would move it most.

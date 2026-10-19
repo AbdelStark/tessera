@@ -6,7 +6,7 @@
 | Origin | RISK-2 ([00 §9](../../docs/spec/00-overview.md#9-risks): "RMSNorm products near 2^36"); the relational-fact mechanism of [RFC-0006 'Range analysis'](../../docs/rfcs/RFC-0006-compiler-ir.md#range-analysis), which v1 uses once (the `SoftmaxRow` fact); [SUR-0002](../surveys/SUR-0002-lookups.md) Question 3 synthesis (the split gadget is the remaining count lever) and its "wider `B_max`" seed / OQ-0006-1, which this idea dominates for the norm case; new |
 | Lever | `C_lin`, `K_lin`: the two norm rescales are 2 × 16,384 = 32,768 of the +82,944 commitments and lookups per layer per token that RISK-2 adds (E0, primary: 220,160 − 137,216, 00 §9 and SUR-0002 Q3). Also the norm `Requant` table's rows (2^37-key split table → one 2^25-row table) and its multiplicity memory |
 | Spec surfaces | RFC-0006 'Range analysis' (a second relational fact) and the range cell of RFC-0005 'Integer semantics' (attn norm: "key `< 2^37`" tightens); RFC-0009 `RsqrtRow` (the fact and its proof obligation, one sentence; no new committed value). No change to `D`, to the claim-list schema or to any TCE format. Table definitions are tier A ([02 §1](../../docs/spec/02-public-api.md#1-stability-tiers)) and the norm's `Requant` table changes `(b, s)`, so promotion goes through an RFC amendment; before 1.0 no protocol version is frozen |
-| Priority | 1.1 (−7.1% at 1K × 0.6 / 4 under the `counted` profile, re-scored 2026-10-16; −7.5% with the fifth pass priced; 0.83 at triage under `corrected`; 2.1 if the RFC amendment is weighted `m`) |
+| Priority | 0.9 (2026-10-19 conditional re-score: 5.92% reduction at 1K × 0.6 / 4, current counted profile; historical scores retained below) |
 
 ## Mechanism
 
@@ -72,7 +72,7 @@ Not in the cost model (E0, primary: 08 §4 and SUR-0002 Q3): the norm's `2^32`-r
 
 | Property | Effect | Pass |
 |---|---|---|
-| Soundness bits (G-4, RFC-0014) | Unchanged. The fact is implied by `ρ² u ≤ N`, which `RsqrtRow` already proves exactly over the integers (Lemma 4); a `ρ'` that fails the bracket is rejected today, and one that passes equals `ρ` (Lemma 7), so every accepted witness satisfies the fact with probability 1. The `Requant1` key `z_i = res_i · ρ` is a true integer by the existing range (`|z_i| < 2^36 < (P−1)/2`, Lemma 0), so its field value equals its integer value whatever table width the compiler picks; a `2^24`–`2^25`-row table can only reject a key the honest prover never produces. No challenge, label or absorption changes (INV-FS-1..4 untouched). | pass |
+| Soundness bits (G-4, RFC-0014) | Unchanged. The fact is implied by `ρ² u ≤ N`, which `RsqrtRow` already proves exactly over the integers (Lemma 4); a `ρ'` that fails the bracket is rejected today, and one that passes equals `ρ` (Lemma 7), so every accepted witness satisfies the fact with probability 1. The `Requant1` key `z_i = res_i · ρ` is a true integer by the existing range (`\|z_i\| < 2^36 < (P−1)/2`, Lemma 0), so its field value equals its integer value whatever table width the compiler picks; a `2^24`–`2^25`-row table can only reject a key the honest prover never produces. No challenge, label or absorption changes (INV-FS-1..4 untouched). | pass |
 | Uniqueness upstream of the logits (SP-3, RFC-0009 Lemma 0) | `Requant1` Lemma 1 ("the table is a function of its key") replaces `RequantSplit` Lemma 2 for the norm output; both give exactly one `y`. One fewer committed value (`z_lo`) per norm element, so one fewer value for INV-IR-3 to cover. | pass |
 | Zero knowledge (G-5, RFC-0013) | One fewer committed limb per norm element; no new committed value, no new opening. The table width `b` and the fact are derived from the public `d`, `κ`; the compiler reads no weight or activation (RFC-0006 range analysis uses only public bounds). | pass |
 | Verifier independence (SP-6) | The verifier re-derives the fact from the RFC text and the claim list's `d`, `κ` (INV-IR-5, SP-7): the inequality `(ρ res_i)² ≤ ρ² u ≤ d 2^{2κ}` needs only that `u`'s terms are squares plus a non-negative `e`, all public. No prover code or data is trusted. | pass |
@@ -126,3 +126,15 @@ Sweep triage of 2026-10-16: four refuter agents who did not write the idea, one 
 ## Decision and links
 
 Triage 2026-10-16: `triaged` at priority 0.83, the highest-ranked design idea of the batch. Next step: promote the integer script into a pre-registered E0 experiment with the kill criterion (does the compiler's range for ρ already put the norm key at or below 2^32 when e ≥ 2^22?), then an RFC amendment adding the second relational fact; observations (a)–(c) go out as issues against RFC-0005/0006/0009 regardless. Experiments: none yet. RFC or issue: none yet (observations (a)–(c) above are candidate issues against RFC-0005/RFC-0006/RFC-0009). Ledger line updated on: pending consolidation. Re-scored 2026-10-16 (queue item 9) under the `counted` profile: priority 0.83 → 1.1 (−7.1% at 1K; −7.5% with [EXP-0007](../experiments/EXP-0007-pruned-column-answer-pass/README.md)'s fifth pass priced), confidence unchanged; still ahead of IDEA-0002 (1.0) among the design ideas, both behind the prover-only experiments of queue items 6–8.
+
+
+## Re-score 2026-10-19 (E0, conditional)
+
+The historical tables above use their pinned model. This calculation uses the current formula, with P5 kept separate from commit_ps; [baseline §2](../baseline.md#2-the-cost-model) states its omissions. Count-only reductions are 32768 per layer per token, times 126. Certificate overhead and fidelity remain unresolved; this re-score does not validate the mechanism.
+
+| Baseline | Δμ(1K) | Δμ(4K) | Δμ(16K) | Δμ(128K) |
+|---|---|---|---|---|
+| historical 326656-current-formula | -6.32% | -4.20% | -1.76% | -0.27% |
+| current-c2 | -5.92% | -4.02% | -1.73% | -0.26% |
+
+Exact inputs and outputs: [main-sync-2026-10-19.json](../experiments/EXP-0011-servable-count/results/main-sync-2026-10-19.json).

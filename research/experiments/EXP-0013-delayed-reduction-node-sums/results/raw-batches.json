@@ -1,0 +1,1764 @@
+[
+  {
+    "name": "forest 2^8x2^14: production context",
+    "batches": [
+      {
+        "seconds": 0.078647375,
+        "executions": 1
+      },
+      {
+        "seconds": 0.076696959,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077504458,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077388125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.078360167,
+        "executions": 1
+      },
+      {
+        "seconds": 0.079749084,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077960917,
+        "executions": 1
+      },
+      {
+        "seconds": 0.078100166,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077656458,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077759792,
+        "executions": 1
+      },
+      {
+        "seconds": 0.078325084,
+        "executions": 1
+      },
+      {
+        "seconds": 0.078694584,
+        "executions": 1
+      },
+      {
+        "seconds": 0.078183417,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "forest 2^8x2^14: split",
+    "batches": [
+      {
+        "seconds": 0.075007542,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075947959,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075688084,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075700667,
+        "executions": 1
+      },
+      {
+        "seconds": 0.079846125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075621208,
+        "executions": 1
+      },
+      {
+        "seconds": 0.0756615,
+        "executions": 1
+      },
+      {
+        "seconds": 0.07557925,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075377916,
+        "executions": 1
+      },
+      {
+        "seconds": 0.074755667,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075378458,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075250166,
+        "executions": 1
+      },
+      {
+        "seconds": 0.076385875,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "forest 2^8x2^14: deferred",
+    "batches": [
+      {
+        "seconds": 0.056077125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.0565305,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056584375,
+        "executions": 1
+      },
+      {
+        "seconds": 0.057208541,
+        "executions": 1
+      },
+      {
+        "seconds": 0.058761375,
+        "executions": 1
+      },
+      {
+        "seconds": 0.061563667,
+        "executions": 1
+      },
+      {
+        "seconds": 0.057065542,
+        "executions": 1
+      },
+      {
+        "seconds": 0.05618625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056043375,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056820125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.0561325,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056789667,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056069333,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "forest 2^10x2^12: production context",
+    "batches": [
+      {
+        "seconds": 0.083892875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.081036,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077034542,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077013042,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077479291,
+        "executions": 1
+      },
+      {
+        "seconds": 0.07748225,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077508375,
+        "executions": 1
+      },
+      {
+        "seconds": 0.076685417,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077035416,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077734333,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077247125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.07666775,
+        "executions": 1
+      },
+      {
+        "seconds": 0.076821292,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "forest 2^10x2^12: split",
+    "batches": [
+      {
+        "seconds": 0.078202583,
+        "executions": 1
+      },
+      {
+        "seconds": 0.074976333,
+        "executions": 1
+      },
+      {
+        "seconds": 0.074644042,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075558834,
+        "executions": 1
+      },
+      {
+        "seconds": 0.07553425,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075154708,
+        "executions": 1
+      },
+      {
+        "seconds": 0.07536925,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075158792,
+        "executions": 1
+      },
+      {
+        "seconds": 0.07511325,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075605625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075003583,
+        "executions": 1
+      },
+      {
+        "seconds": 0.076024959,
+        "executions": 1
+      },
+      {
+        "seconds": 0.076176875,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "forest 2^10x2^12: deferred",
+    "batches": [
+      {
+        "seconds": 0.056041708,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056357875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.055959958,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056150875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056275542,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056273417,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056214416,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056376792,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056526,
+        "executions": 1
+      },
+      {
+        "seconds": 0.055979,
+        "executions": 1
+      },
+      {
+        "seconds": 0.055976791,
+        "executions": 1
+      },
+      {
+        "seconds": 0.05618775,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056305916,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "forest 2^0x2^22: production context",
+    "batches": [
+      {
+        "seconds": 0.077686125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077504875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077952583,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077709042,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077317958,
+        "executions": 1
+      },
+      {
+        "seconds": 0.078626208,
+        "executions": 1
+      },
+      {
+        "seconds": 0.078028084,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077515417,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077290833,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077378958,
+        "executions": 1
+      },
+      {
+        "seconds": 0.0770425,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077805209,
+        "executions": 1
+      },
+      {
+        "seconds": 0.076991125,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "forest 2^0x2^22: split",
+    "batches": [
+      {
+        "seconds": 0.074364125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.07513075,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075819709,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075190042,
+        "executions": 1
+      },
+      {
+        "seconds": 0.07597425,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077813542,
+        "executions": 1
+      },
+      {
+        "seconds": 0.077432666,
+        "executions": 1
+      },
+      {
+        "seconds": 0.076611792,
+        "executions": 1
+      },
+      {
+        "seconds": 0.076398625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.076345167,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075261833,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075903583,
+        "executions": 1
+      },
+      {
+        "seconds": 0.075377167,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "forest 2^0x2^22: deferred",
+    "batches": [
+      {
+        "seconds": 0.0564325,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056030958,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056478875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056333417,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056051667,
+        "executions": 1
+      },
+      {
+        "seconds": 0.055911542,
+        "executions": 1
+      },
+      {
+        "seconds": 0.055701917,
+        "executions": 1
+      },
+      {
+        "seconds": 0.055759792,
+        "executions": 1
+      },
+      {
+        "seconds": 0.055551,
+        "executions": 1
+      },
+      {
+        "seconds": 0.055961708,
+        "executions": 1
+      },
+      {
+        "seconds": 0.056123292,
+        "executions": 1
+      },
+      {
+        "seconds": 0.055893333,
+        "executions": 1
+      },
+      {
+        "seconds": 0.055985125,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "forest 2^6x2^14: production context",
+    "batches": [
+      {
+        "seconds": 0.058497208,
+        "executions": 3
+      },
+      {
+        "seconds": 0.058927166,
+        "executions": 3
+      },
+      {
+        "seconds": 0.058831,
+        "executions": 3
+      },
+      {
+        "seconds": 0.058847833,
+        "executions": 3
+      },
+      {
+        "seconds": 0.058497791,
+        "executions": 3
+      },
+      {
+        "seconds": 0.058807709,
+        "executions": 3
+      },
+      {
+        "seconds": 0.058587875,
+        "executions": 3
+      },
+      {
+        "seconds": 0.059203625,
+        "executions": 3
+      },
+      {
+        "seconds": 0.058729417,
+        "executions": 3
+      },
+      {
+        "seconds": 0.058597,
+        "executions": 3
+      },
+      {
+        "seconds": 0.058677375,
+        "executions": 3
+      },
+      {
+        "seconds": 0.059072167,
+        "executions": 3
+      },
+      {
+        "seconds": 0.058584875,
+        "executions": 3
+      }
+    ]
+  },
+  {
+    "name": "forest 2^6x2^14: split",
+    "batches": [
+      {
+        "seconds": 0.0570265,
+        "executions": 3
+      },
+      {
+        "seconds": 0.057019291,
+        "executions": 3
+      },
+      {
+        "seconds": 0.057348875,
+        "executions": 3
+      },
+      {
+        "seconds": 0.0586905,
+        "executions": 3
+      },
+      {
+        "seconds": 0.057187625,
+        "executions": 3
+      },
+      {
+        "seconds": 0.05699775,
+        "executions": 3
+      },
+      {
+        "seconds": 0.056923125,
+        "executions": 3
+      },
+      {
+        "seconds": 0.0569455,
+        "executions": 3
+      },
+      {
+        "seconds": 0.056960791,
+        "executions": 3
+      },
+      {
+        "seconds": 0.057345625,
+        "executions": 3
+      },
+      {
+        "seconds": 0.0575455,
+        "executions": 3
+      },
+      {
+        "seconds": 0.057288458,
+        "executions": 3
+      },
+      {
+        "seconds": 0.059598375,
+        "executions": 3
+      }
+    ]
+  },
+  {
+    "name": "forest 2^6x2^14: deferred",
+    "batches": [
+      {
+        "seconds": 0.043572334,
+        "executions": 3
+      },
+      {
+        "seconds": 0.043760333,
+        "executions": 3
+      },
+      {
+        "seconds": 0.043741458,
+        "executions": 3
+      },
+      {
+        "seconds": 0.043239459,
+        "executions": 3
+      },
+      {
+        "seconds": 0.043242541,
+        "executions": 3
+      },
+      {
+        "seconds": 0.043437,
+        "executions": 3
+      },
+      {
+        "seconds": 0.043506666,
+        "executions": 3
+      },
+      {
+        "seconds": 0.043625125,
+        "executions": 3
+      },
+      {
+        "seconds": 0.04329075,
+        "executions": 3
+      },
+      {
+        "seconds": 0.0434345,
+        "executions": 3
+      },
+      {
+        "seconds": 0.04355975,
+        "executions": 3
+      },
+      {
+        "seconds": 0.043718,
+        "executions": 3
+      },
+      {
+        "seconds": 0.043519458,
+        "executions": 3
+      }
+    ]
+  },
+  {
+    "name": "forest 2^7x2^14: production context",
+    "batches": [
+      {
+        "seconds": 0.03924775,
+        "executions": 1
+      },
+      {
+        "seconds": 0.039342917,
+        "executions": 1
+      },
+      {
+        "seconds": 0.039210083,
+        "executions": 1
+      },
+      {
+        "seconds": 0.039264,
+        "executions": 1
+      },
+      {
+        "seconds": 0.040085667,
+        "executions": 1
+      },
+      {
+        "seconds": 0.039107334,
+        "executions": 1
+      },
+      {
+        "seconds": 0.039173417,
+        "executions": 1
+      },
+      {
+        "seconds": 0.038972,
+        "executions": 1
+      },
+      {
+        "seconds": 0.039417459,
+        "executions": 1
+      },
+      {
+        "seconds": 0.039269209,
+        "executions": 1
+      },
+      {
+        "seconds": 0.039408625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.0393375,
+        "executions": 1
+      },
+      {
+        "seconds": 0.03913375,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "forest 2^7x2^14: split",
+    "batches": [
+      {
+        "seconds": 0.076171,
+        "executions": 2
+      },
+      {
+        "seconds": 0.075812334,
+        "executions": 2
+      },
+      {
+        "seconds": 0.076127292,
+        "executions": 2
+      },
+      {
+        "seconds": 0.076025917,
+        "executions": 2
+      },
+      {
+        "seconds": 0.076220583,
+        "executions": 2
+      },
+      {
+        "seconds": 0.076730166,
+        "executions": 2
+      },
+      {
+        "seconds": 0.075597292,
+        "executions": 2
+      },
+      {
+        "seconds": 0.076199208,
+        "executions": 2
+      },
+      {
+        "seconds": 0.075851209,
+        "executions": 2
+      },
+      {
+        "seconds": 0.075522208,
+        "executions": 2
+      },
+      {
+        "seconds": 0.07584725,
+        "executions": 2
+      },
+      {
+        "seconds": 0.075122584,
+        "executions": 2
+      },
+      {
+        "seconds": 0.075001875,
+        "executions": 2
+      }
+    ]
+  },
+  {
+    "name": "forest 2^7x2^14: deferred",
+    "batches": [
+      {
+        "seconds": 0.056796083,
+        "executions": 2
+      },
+      {
+        "seconds": 0.057341792,
+        "executions": 2
+      },
+      {
+        "seconds": 0.056049833,
+        "executions": 2
+      },
+      {
+        "seconds": 0.05630425,
+        "executions": 2
+      },
+      {
+        "seconds": 0.0559745,
+        "executions": 2
+      },
+      {
+        "seconds": 0.056023375,
+        "executions": 2
+      },
+      {
+        "seconds": 0.056259541,
+        "executions": 2
+      },
+      {
+        "seconds": 0.056815083,
+        "executions": 2
+      },
+      {
+        "seconds": 0.057162542,
+        "executions": 2
+      },
+      {
+        "seconds": 0.056839208,
+        "executions": 2
+      },
+      {
+        "seconds": 0.057083125,
+        "executions": 2
+      },
+      {
+        "seconds": 0.056964333,
+        "executions": 2
+      },
+      {
+        "seconds": 0.056631666,
+        "executions": 2
+      }
+    ]
+  },
+  {
+    "name": "product level 2^21: production context",
+    "batches": [
+      {
+        "seconds": 0.059118792,
+        "executions": 1
+      },
+      {
+        "seconds": 0.058735959,
+        "executions": 1
+      },
+      {
+        "seconds": 0.057665542,
+        "executions": 1
+      },
+      {
+        "seconds": 0.057553458,
+        "executions": 1
+      },
+      {
+        "seconds": 0.057382041,
+        "executions": 1
+      },
+      {
+        "seconds": 0.057849166,
+        "executions": 1
+      },
+      {
+        "seconds": 0.057161667,
+        "executions": 1
+      },
+      {
+        "seconds": 0.05731625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.058899291,
+        "executions": 1
+      },
+      {
+        "seconds": 0.058321125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.058025875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.057715833,
+        "executions": 1
+      },
+      {
+        "seconds": 0.05894775,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "product level 2^21: split",
+    "batches": [
+      {
+        "seconds": 0.070792833,
+        "executions": 2
+      },
+      {
+        "seconds": 0.07118625,
+        "executions": 2
+      },
+      {
+        "seconds": 0.071683375,
+        "executions": 2
+      },
+      {
+        "seconds": 0.070699709,
+        "executions": 2
+      },
+      {
+        "seconds": 0.071021625,
+        "executions": 2
+      },
+      {
+        "seconds": 0.070990125,
+        "executions": 2
+      },
+      {
+        "seconds": 0.072434791,
+        "executions": 2
+      },
+      {
+        "seconds": 0.071327209,
+        "executions": 2
+      },
+      {
+        "seconds": 0.071972667,
+        "executions": 2
+      },
+      {
+        "seconds": 0.071713958,
+        "executions": 2
+      },
+      {
+        "seconds": 0.071614625,
+        "executions": 2
+      },
+      {
+        "seconds": 0.071517167,
+        "executions": 2
+      },
+      {
+        "seconds": 0.07131625,
+        "executions": 2
+      }
+    ]
+  },
+  {
+    "name": "product level 2^21: deferred",
+    "batches": [
+      {
+        "seconds": 0.052050666,
+        "executions": 2
+      },
+      {
+        "seconds": 0.052138542,
+        "executions": 2
+      },
+      {
+        "seconds": 0.051847167,
+        "executions": 2
+      },
+      {
+        "seconds": 0.052176583,
+        "executions": 2
+      },
+      {
+        "seconds": 0.052207959,
+        "executions": 2
+      },
+      {
+        "seconds": 0.052241917,
+        "executions": 2
+      },
+      {
+        "seconds": 0.052443042,
+        "executions": 2
+      },
+      {
+        "seconds": 0.052158042,
+        "executions": 2
+      },
+      {
+        "seconds": 0.052484542,
+        "executions": 2
+      },
+      {
+        "seconds": 0.051924666,
+        "executions": 2
+      },
+      {
+        "seconds": 0.052226375,
+        "executions": 2
+      },
+      {
+        "seconds": 0.052544584,
+        "executions": 2
+      },
+      {
+        "seconds": 0.05217375,
+        "executions": 2
+      }
+    ]
+  },
+  {
+    "name": "fraction leaf 2^21 point0: production context",
+    "batches": [
+      {
+        "seconds": 0.172529917,
+        "executions": 1
+      },
+      {
+        "seconds": 0.172682834,
+        "executions": 1
+      },
+      {
+        "seconds": 0.173667958,
+        "executions": 1
+      },
+      {
+        "seconds": 0.173331875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.175057459,
+        "executions": 1
+      },
+      {
+        "seconds": 0.176092541,
+        "executions": 1
+      },
+      {
+        "seconds": 0.174782459,
+        "executions": 1
+      },
+      {
+        "seconds": 0.171292625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.173294708,
+        "executions": 1
+      },
+      {
+        "seconds": 0.173931083,
+        "executions": 1
+      },
+      {
+        "seconds": 0.173075042,
+        "executions": 1
+      },
+      {
+        "seconds": 0.174161958,
+        "executions": 1
+      },
+      {
+        "seconds": 0.17511375,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "fraction leaf 2^21 point0: split",
+    "batches": [
+      {
+        "seconds": 0.082070541,
+        "executions": 1
+      },
+      {
+        "seconds": 0.082604709,
+        "executions": 1
+      },
+      {
+        "seconds": 0.081911708,
+        "executions": 1
+      },
+      {
+        "seconds": 0.082751583,
+        "executions": 1
+      },
+      {
+        "seconds": 0.082489125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.082116166,
+        "executions": 1
+      },
+      {
+        "seconds": 0.081702458,
+        "executions": 1
+      },
+      {
+        "seconds": 0.08164675,
+        "executions": 1
+      },
+      {
+        "seconds": 0.0812125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.080790125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.081040209,
+        "executions": 1
+      },
+      {
+        "seconds": 0.08059075,
+        "executions": 1
+      },
+      {
+        "seconds": 0.08147225,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "fraction leaf 2^21 point0: scale-first",
+    "batches": [
+      {
+        "seconds": 0.053663959,
+        "executions": 1
+      },
+      {
+        "seconds": 0.0538575,
+        "executions": 1
+      },
+      {
+        "seconds": 0.053406542,
+        "executions": 1
+      },
+      {
+        "seconds": 0.053607,
+        "executions": 1
+      },
+      {
+        "seconds": 0.053418625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.05337625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.053541417,
+        "executions": 1
+      },
+      {
+        "seconds": 0.053586291,
+        "executions": 1
+      },
+      {
+        "seconds": 0.053800916,
+        "executions": 1
+      },
+      {
+        "seconds": 0.052958417,
+        "executions": 1
+      },
+      {
+        "seconds": 0.054105584,
+        "executions": 1
+      },
+      {
+        "seconds": 0.054579708,
+        "executions": 1
+      },
+      {
+        "seconds": 0.05350425,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "fraction leaf 2^21 point0: relation-first",
+    "batches": [
+      {
+        "seconds": 0.072553791,
+        "executions": 1
+      },
+      {
+        "seconds": 0.072395375,
+        "executions": 1
+      },
+      {
+        "seconds": 0.072362375,
+        "executions": 1
+      },
+      {
+        "seconds": 0.072315167,
+        "executions": 1
+      },
+      {
+        "seconds": 0.072874541,
+        "executions": 1
+      },
+      {
+        "seconds": 0.0731425,
+        "executions": 1
+      },
+      {
+        "seconds": 0.071876417,
+        "executions": 1
+      },
+      {
+        "seconds": 0.072258833,
+        "executions": 1
+      },
+      {
+        "seconds": 0.074417125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.0734415,
+        "executions": 1
+      },
+      {
+        "seconds": 0.0719125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.071978625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.072140125,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "fraction generic 2^21 point0: production context",
+    "batches": [
+      {
+        "seconds": 0.240207708,
+        "executions": 1
+      },
+      {
+        "seconds": 0.244613042,
+        "executions": 1
+      },
+      {
+        "seconds": 0.241821542,
+        "executions": 1
+      },
+      {
+        "seconds": 0.239199875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.239136167,
+        "executions": 1
+      },
+      {
+        "seconds": 0.240206958,
+        "executions": 1
+      },
+      {
+        "seconds": 0.239809875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.241337917,
+        "executions": 1
+      },
+      {
+        "seconds": 0.242030041,
+        "executions": 1
+      },
+      {
+        "seconds": 0.2420575,
+        "executions": 1
+      },
+      {
+        "seconds": 0.242228125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.241412917,
+        "executions": 1
+      },
+      {
+        "seconds": 0.241751291,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "fraction generic 2^21 point0: split",
+    "batches": [
+      {
+        "seconds": 0.155179125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.15687175,
+        "executions": 1
+      },
+      {
+        "seconds": 0.155680583,
+        "executions": 1
+      },
+      {
+        "seconds": 0.158688458,
+        "executions": 1
+      },
+      {
+        "seconds": 0.158638625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.154319916,
+        "executions": 1
+      },
+      {
+        "seconds": 0.158949583,
+        "executions": 1
+      },
+      {
+        "seconds": 0.155931625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.155088125,
+        "executions": 1
+      },
+      {
+        "seconds": 0.154224542,
+        "executions": 1
+      },
+      {
+        "seconds": 0.154713791,
+        "executions": 1
+      },
+      {
+        "seconds": 0.157499916,
+        "executions": 1
+      },
+      {
+        "seconds": 0.158124,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "fraction generic 2^21 point0: scale-first",
+    "batches": [
+      {
+        "seconds": 0.1123335,
+        "executions": 1
+      },
+      {
+        "seconds": 0.112553416,
+        "executions": 1
+      },
+      {
+        "seconds": 0.111774875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.113137417,
+        "executions": 1
+      },
+      {
+        "seconds": 0.110443084,
+        "executions": 1
+      },
+      {
+        "seconds": 0.1117105,
+        "executions": 1
+      },
+      {
+        "seconds": 0.122790875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.110624834,
+        "executions": 1
+      },
+      {
+        "seconds": 0.1096015,
+        "executions": 1
+      },
+      {
+        "seconds": 0.11128975,
+        "executions": 1
+      },
+      {
+        "seconds": 0.110457291,
+        "executions": 1
+      },
+      {
+        "seconds": 0.111248625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.110979709,
+        "executions": 1
+      },
+      {
+        "seconds": 0.112234583,
+        "executions": 1
+      },
+      {
+        "seconds": 0.110664458,
+        "executions": 1
+      },
+      {
+        "seconds": 0.110287042,
+        "executions": 1
+      },
+      {
+        "seconds": 0.110683625,
+        "executions": 1
+      },
+      {
+        "seconds": 0.109726541,
+        "executions": 1
+      },
+      {
+        "seconds": 0.110249292,
+        "executions": 1
+      },
+      {
+        "seconds": 0.110881291,
+        "executions": 1
+      },
+      {
+        "seconds": 0.110565708,
+        "executions": 1
+      },
+      {
+        "seconds": 0.111353041,
+        "executions": 1
+      },
+      {
+        "seconds": 0.1109335,
+        "executions": 1
+      },
+      {
+        "seconds": 0.111072333,
+        "executions": 1
+      },
+      {
+        "seconds": 0.11339575,
+        "executions": 1
+      },
+      {
+        "seconds": 0.111274333,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "fraction generic 2^21 point0: relation-first",
+    "batches": [
+      {
+        "seconds": 0.1361455,
+        "executions": 1
+      },
+      {
+        "seconds": 0.13645875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.1365465,
+        "executions": 1
+      },
+      {
+        "seconds": 0.137152583,
+        "executions": 1
+      },
+      {
+        "seconds": 0.137458792,
+        "executions": 1
+      },
+      {
+        "seconds": 0.13688875,
+        "executions": 1
+      },
+      {
+        "seconds": 0.136496417,
+        "executions": 1
+      },
+      {
+        "seconds": 0.136255208,
+        "executions": 1
+      },
+      {
+        "seconds": 0.135013708,
+        "executions": 1
+      },
+      {
+        "seconds": 0.135276833,
+        "executions": 1
+      },
+      {
+        "seconds": 0.13529,
+        "executions": 1
+      },
+      {
+        "seconds": 0.137141958,
+        "executions": 1
+      },
+      {
+        "seconds": 0.137715334,
+        "executions": 1
+      }
+    ]
+  },
+  {
+    "name": "dot ext reduced",
+    "batches": [
+      {
+        "seconds": 0.040795875,
+        "executions": 632
+      },
+      {
+        "seconds": 0.040779333,
+        "executions": 632
+      },
+      {
+        "seconds": 0.039642666,
+        "executions": 632
+      },
+      {
+        "seconds": 0.040258291,
+        "executions": 632
+      },
+      {
+        "seconds": 0.039965709,
+        "executions": 632
+      },
+      {
+        "seconds": 0.04018825,
+        "executions": 632
+      },
+      {
+        "seconds": 0.039765875,
+        "executions": 632
+      },
+      {
+        "seconds": 0.040039875,
+        "executions": 632
+      },
+      {
+        "seconds": 0.039885625,
+        "executions": 632
+      },
+      {
+        "seconds": 0.040440042,
+        "executions": 632
+      },
+      {
+        "seconds": 0.040231708,
+        "executions": 632
+      },
+      {
+        "seconds": 0.039909542,
+        "executions": 632
+      },
+      {
+        "seconds": 0.040128583,
+        "executions": 632
+      }
+    ]
+  },
+  {
+    "name": "dot ext deferred",
+    "batches": [
+      {
+        "seconds": 0.039530667,
+        "executions": 2540
+      },
+      {
+        "seconds": 0.039053667,
+        "executions": 2540
+      },
+      {
+        "seconds": 0.039805417,
+        "executions": 2540
+      },
+      {
+        "seconds": 0.039594,
+        "executions": 2540
+      },
+      {
+        "seconds": 0.039575666,
+        "executions": 2540
+      },
+      {
+        "seconds": 0.039408833,
+        "executions": 2540
+      },
+      {
+        "seconds": 0.039845834,
+        "executions": 2540
+      },
+      {
+        "seconds": 0.041699958,
+        "executions": 2540
+      },
+      {
+        "seconds": 0.042365917,
+        "executions": 2540
+      },
+      {
+        "seconds": 0.0422475,
+        "executions": 2540
+      },
+      {
+        "seconds": 0.04033875,
+        "executions": 2540
+      },
+      {
+        "seconds": 0.0397635,
+        "executions": 2540
+      },
+      {
+        "seconds": 0.03956375,
+        "executions": 2540
+      }
+    ]
+  },
+  {
+    "name": "dot base reduced",
+    "batches": [
+      {
+        "seconds": 0.041717959,
+        "executions": 702
+      },
+      {
+        "seconds": 0.041171125,
+        "executions": 702
+      },
+      {
+        "seconds": 0.041646,
+        "executions": 702
+      },
+      {
+        "seconds": 0.043633208,
+        "executions": 702
+      },
+      {
+        "seconds": 0.0413475,
+        "executions": 702
+      },
+      {
+        "seconds": 0.040966542,
+        "executions": 702
+      },
+      {
+        "seconds": 0.041051291,
+        "executions": 702
+      },
+      {
+        "seconds": 0.041059959,
+        "executions": 702
+      },
+      {
+        "seconds": 0.041438,
+        "executions": 702
+      },
+      {
+        "seconds": 0.041093792,
+        "executions": 702
+      },
+      {
+        "seconds": 0.041173417,
+        "executions": 702
+      },
+      {
+        "seconds": 0.04199375,
+        "executions": 702
+      },
+      {
+        "seconds": 0.040941458,
+        "executions": 702
+      }
+    ]
+  },
+  {
+    "name": "dot base deferred",
+    "batches": [
+      {
+        "seconds": 0.031087333,
+        "executions": 3556
+      },
+      {
+        "seconds": 0.031817375,
+        "executions": 3556
+      },
+      {
+        "seconds": 0.031474375,
+        "executions": 3556
+      },
+      {
+        "seconds": 0.031671417,
+        "executions": 3556
+      },
+      {
+        "seconds": 0.030891667,
+        "executions": 3556
+      },
+      {
+        "seconds": 0.031418417,
+        "executions": 3556
+      },
+      {
+        "seconds": 0.030859125,
+        "executions": 3556
+      },
+      {
+        "seconds": 0.03135225,
+        "executions": 3556
+      },
+      {
+        "seconds": 0.030954625,
+        "executions": 3556
+      },
+      {
+        "seconds": 0.031238625,
+        "executions": 3556
+      },
+      {
+        "seconds": 0.031035833,
+        "executions": 3556
+      },
+      {
+        "seconds": 0.031167584,
+        "executions": 3556
+      },
+      {
+        "seconds": 0.031361167,
+        "executions": 3556
+      }
+    ]
+  }
+]

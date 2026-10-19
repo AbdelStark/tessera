@@ -51,7 +51,11 @@ Sources carry one of `primary` (paper, code, our own measurement), `secondary` (
 6. **No secrets.** No model weights, prompts or private data; experiments run on synthetic inputs from seeded generators.
 7. **Projections are labeled.** Tessera's own numbers are projections until the RFC-0020 measurements replace them (08 §1).
 
+Historical experiments EXP-0001 through EXP-0011 were imported at commit `2410757`, whose production parent is `1505d63`. Their original outputs and environment lines describe that checkout; use it to reproduce the historical tables. New dated amendments and experiments explicitly compare current production. The current research model follows the compiler reports and may produce different planning totals.
+
 ## Running the loop
+
+The slash commands and saved workflow are entry points for the original harness. Other agents can invoke the same skill and ledger directly using their native tools. The workflow's orchestration can be checked without API calls with `node research/tools/check_workflow.mjs`; `python3 -I research/tools/check_loop.py` checks the optional Claude CLI runner's exit status and overlap lock. Neither check spends API budget or installs a schedule. A planned experiment pauses before code until its frozen pre-registration is committed; preparation can run in parallel, CPU measurements run serially.
 
 - `/autoresearch` does one unit of work, chosen from the ledger's queue; `/autoresearch survey <topic>`, `/autoresearch ideate`, `/autoresearch experiment IDEA-NNNN` and `/autoresearch promote IDEA-NNNN` choose it by hand.
 - `/autoresearch-sweep` runs the parallel workflow in [.claude/workflows/autoresearch-sweep.js](../.claude/workflows/autoresearch-sweep.js): surveys over several agenda topics at once, ideation from several lenses, adversarial triage, optional experiments, consolidation.

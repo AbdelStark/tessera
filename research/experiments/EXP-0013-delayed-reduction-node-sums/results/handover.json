@@ -1,0 +1,68 @@
+{
+  "id": "EXP-0013",
+  "path": "research/experiments/EXP-0013-delayed-reduction-node-sums/README.md",
+  "status": "done: validated",
+  "verdict": "validated",
+  "idea_status": {
+    "IDEA-0026": "validated",
+    "IDEA-0030": "validated"
+  },
+  "priority_before": {
+    "IDEA-0026": 2.3,
+    "IDEA-0030": 0.4
+  },
+  "priority_after": {
+    "IDEA-0026": 2.6,
+    "IDEA-0030": 0.9
+  },
+  "confidence_before": 0.6,
+  "confidence_after": 0.8,
+  "key_results": [
+    {
+      "evidence": "E1",
+      "result": "Scale-first fraction savings 34.3254% leaf / 29.2302% generic; relation-first 11.3690% / 12.7768%"
+    },
+    {
+      "evidence": "E1",
+      "result": "Deferred forest savings 24.8615%, 25.4571%, 26.5535% across three 2^22-leaf shapes; proofs and transcripts equal production, tv-core accepts"
+    },
+    {
+      "evidence": "E1",
+      "result": "All retained CV <= 3%; 403 raw batches >= 30.859125 ms; first forest candidate CV 2.999517753%; generic scale arm rerun from 3.4106% to 0.8721%"
+    },
+    {
+      "evidence": "E0",
+      "result": "five-op accumulate count gives lookup89.13157864ps,leaf36.27852809ps; current partial counted mu16K102.4439173 to98.0299610 jointly(-4.30866%); lookup-only-3.20286%,forest-only-1.10580%"
+    }
+  ],
+  "threats": [
+    "CPU evidence and analytic int32/HBM projection only; no H100 measurements",
+    "first forest candidate CV very close to limit; no affinity enforced; fixed arm order",
+    "unmasked synthetic proxy, not full E3 proof; production port must preserve SecretBuf, branchlessness and masking",
+    "partial model retains unpriced P4 and issue329 streaming work"
+  ],
+  "follow_ups": [
+    "Promote production-port issue with bound/equivalence/secret-buffer acceptance criteria",
+    "H100 PTX/SASS and RFC-0020 run settle accumulate carry instruction cost, register spills and post-split compute-vs-memory bottleneck",
+    "Production F65537 calibration, binary branchlessness and full masked-proof equivalence before E3 claim"
+  ],
+  "ledger_row": "| [EXP-0013](experiments/EXP-0013-delayed-reduction-node-sums/README.md) | delayed reduction versus split-eq arithmetic | IDEA-0026, IDEA-0030 | done: validated | scale-first fraction saves 34.33%/29.23%; deferred forests 24.86\u201326.55%; own second case passes; identical production messages and independent acceptance | E1 M4 Max, E0 counts; cargo run --release --locked --manifest-path research/experiments/EXP-0013-delayed-reduction-node-sums/Cargo.toml -- all; python3 -I research/experiments/EXP-0013-delayed-reduction-node-sums/count.py; analyze.py |",
+  "idea_row_summary": {
+    "IDEA-0026": "validated; priority2.6, confidence.8; scale-first34.33/29.23% E1; count-route mu16K-3.20% E0 partial",
+    "IDEA-0030": "validated; priority.9, confidence.8; forests24.86\u201326.55%,relation-first11.37/12.78% E1; independent count-route mu16K-1.11% E0 partial"
+  },
+  "new_bibliography_keys": [],
+  "problems": [],
+  "validation": [
+    "cargo test --release --locked: accumulator_boundaries passes",
+    "cargo run --release --locked -- check: all finite/small/degenerate/big oracle checks pass",
+    "cargo clippy --all-targets --locked -- -D warnings passes",
+    "cargo fmt --check passes",
+    "analyze.py validates both written rules and raw batch bounds",
+    "preregistration SHA/prefix preservation and relative links checked"
+  ],
+  "parent_actions": [
+    "Update ledger, baseline/landscape/bibliography as appropriate; run global KB/lint gates after consolidation",
+    "Commit exact owned paths with DCO; preregistration already committed8228a19"
+  ]
+}

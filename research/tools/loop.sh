@@ -28,13 +28,21 @@ cd "$ROOT"
 
 LOG_DIR=${LOOP_LOG_DIR:-"$HOME/.cache/tessera-autoresearch"}
 mkdir -p "$LOG_DIR"
+LOCK="$ROOT/.autoresearch.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  echo "autoresearch loop: worktree already locked: $LOCK" >&2
+  exit 75
+fi
+trap 'rmdir "$LOCK"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 STAMP=$(date +%Y%m%dT%H%M%S)
-LOG="$LOG_DIR/run-$STAMP.log"
+LOG=$(mktemp "$LOG_DIR/run-$STAMP.log.XXXXXX")
 BUDGET=${LOOP_BUDGET_USD:-25}
 MODE=${LOOP_MODE:-unit}
 
 if [ "$MODE" = "sweep" ]; then
-  TASK='Run the saved workflow autoresearch-sweep (.claude/workflows/autoresearch-sweep.js) with its defaults, then make sure research/tools/check_kb.py and cargo xtask lint pass.'
+  TASK='Run the saved workflow autoresearch-sweep (.agents/workflows/autoresearch-sweep.js) with its defaults, then make sure research/tools/check_kb.py and cargo xtask lint pass.'
 else
   TASK='Run one unit of the Tessera autoresearch loop: invoke the autoresearch skill with no arguments (read research/LEDGER.md, take the first feasible queue item, do that unit of work, consolidate), then run python3 -I research/tools/check_kb.py and cargo xtask lint until both pass.'
 fi
@@ -48,14 +56,30 @@ set -- Read Glob Grep Edit Write WebFetch WebSearch Skill Agent Workflow \
   "Bash(python3 *)" "Bash(cargo *)" "Bash(ls *)" "Bash(cat *)" "Bash(sed *)" "Bash(grep *)" \
   "Bash(awk *)" "Bash(find *)" "Bash(wc *)" "Bash(date *)" "Bash(mkdir *)" "Bash(/bin/cp *)" \
   "Bash(/bin/mv *)" "Bash(gh api *)" "Bash(gh issue view *)" "Bash(gh issue list *)" \
-  "Bash(git status *)" "Bash(git diff *)" "Bash(git log *)" "Bash(git fetch *)"
+  "Bash(git status *)" "Bash(git diff *)" "Bash(git log *)" "Bash(git show *)" "Bash(git fetch *)"
 
 echo "autoresearch loop: $MODE, $(date -u +%FT%TZ), log $LOG"
-claude -p "$PROMPT" \
+if claude -p "$PROMPT" \
   --permission-mode acceptEdits \
   --allowedTools "$@" \
   --max-budget-usd "$BUDGET" \
   --output-format text \
-  2>&1 | tee "$LOG"
+  > "$LOG" 2>&1; then
+  STATUS=0
+else
+  STATUS=$?
+fi
+if [ "$STATUS" -eq 0 ]; then
+  if python3 -I research/tools/check_kb.py >> "$LOG" 2>&1 && cargo xtask lint >> "$LOG" 2>&1; then
+    STATUS=0
+  else
+    STATUS=$?
+  fi
+fi
+cat "$LOG"
+if [ "$STATUS" -ne 0 ]; then
+  echo "autoresearch loop: failed ($STATUS), see $LOG" >&2
+  exit "$STATUS"
+fi
 
 echo "autoresearch loop: done, $(date -u +%FT%TZ); review with: git -C $ROOT status --short"

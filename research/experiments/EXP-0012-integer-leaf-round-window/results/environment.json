@@ -1,0 +1,12 @@
+{
+  "commit": "2d61eed410565563f4146220bbdda76267db05b9",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+  "hardware": "Apple M4 Max",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+  "memory": "51539607552",
+  "utc": "2026-10-19T07:45:52.046183+00:00",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "single_thread": true,
+  "harness_sha256": "13bceab8a6372fc4ee53ab16bf821ce5aaa7a4839a55fea517d69a9cc5c5ea8c"
+}

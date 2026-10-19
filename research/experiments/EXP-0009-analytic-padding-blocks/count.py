@@ -31,6 +31,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fractions import Fraction
+from collections import Counter
+import sys
 
 
 @dataclass(frozen=True)
@@ -126,6 +128,9 @@ def harness_configs() -> list[tuple[str, int, int]]:
 
 
 def main() -> int:
+    if "--amendment" in sys.argv:
+        amendment_counts()
+        return 0
     print("EXP-0009 counts: power-of-two padding factors, padded / real (E0, exact)")
     for m in MODELS:
         print()
@@ -171,6 +176,79 @@ def main() -> int:
         f = Fraction(padded, real)
         print("    %-36s %12d %12d %10.5f %12.4f" % (name, padded, real, float(f), 1 + (float(f) - 1) / 2))
     return 0
+
+
+def amendment_counts() -> None:
+    """Exact public-shape work counts; no throughput assumption or conversion to time."""
+    def grouped(t: int, pairs: int = 1) -> list[tuple[int, list[int]]]:
+        return [
+            (h, list(range(1 if h == 1 else (1 << (h - 1)) + 1, (1 << h) + 1)) * pairs)
+            for h in range(1, t.bit_length())
+        ]
+
+    configs = {
+        "S1": [(12, list(range(1, 4097)))],
+        "S2": grouped(4096),
+        "S3": [(14, [1 << 14] * 640)],
+        "S4": grouped(2048, 5),
+        "U23": [(14, [1 << 14] * 512)],
+        "U24": [(14, [1 << 14] * 1024)],
+        "S1-1K": [(10, list(range(1, 1025)))],
+        "S2-1K": grouped(1024),
+    }
+    print("EXP-0009 amendment E0 counts: exact tree-position-round work, synthetic shapes")
+    print("Full pair arithmetic is unchanged; tail multiplications include N node scales and 3 coefficient products.")
+    print("Four-lane folds include masked spare lanes; this count does not assert machine SIMD or speed.")
+    for name, forests in configs.items():
+        tallest = max(h for h, _ in forests)
+        counts: Counter[str] = Counter()
+        for h, leaves in forests:
+            s = (next_pow2(len(leaves))).bit_length() - 1
+            for t in range(2, h + 1):
+                m = t - 1
+                level = tallest - h + t - 1
+                active_vars = [
+                    level - (tallest - other_h) + (next_pow2(len(other_leaves))).bit_length() - 1
+                    for other_h, other_leaves in forests if tallest - other_h <= level
+                ]
+                front_padded = m + s < max(active_vars)
+                real_nodes = [(r + (1 << (h - t)) - 1) >> (h - t) for r in leaves]
+                prefixes = [(r + 1 >> 1, r >> 1, r >> 1) for r in real_nodes]
+                for j in range(m):
+                    runs = Counter(prefixes)
+                    counts["tree_position_rounds"] += len(leaves)
+                    counts["equal_length_runs"] += len(runs)
+                    nodes = 4 if j == 0 and front_padded else 3
+                    pairs = 1 << (m - j - 1)
+                    old_tail_thresholds = set()
+                    for (e, o, q), multiplicity in runs.items():
+                        full = min(e // 2, o // 2, q // 2)
+                        padded = max((e + 1) // 2, (o + 1) // 2)
+                        counts["full_pair_node_products"] += full * nodes * multiplicity
+                        counts["boundary_pair_node_products"] += (padded - full) * nodes * multiplicity
+                        if padded < pairs:
+                            old_tail_thresholds.add(padded)
+                            counts["tail_evaluations_amended"] += 1
+                            counts["tail_recursion_fp2_products_amended"] += m - j - 1 + padded.bit_count()
+                            counts["tail_scale_additions_amended"] += multiplicity
+                            counts["tail_terms_original"] += multiplicity
+                            counts["tail_terms_amended"] += 1
+                            counts["tail_fp2_products_original"] += (3 + nodes) * multiplicity
+                            counts["tail_fp2_products_amended"] += 3 + nodes
+                        for length in (e, o, q):
+                            counts["full_prefix_folds"] += length // 2 * multiplicity
+                            if length % 2:
+                                counts["odd_tail_folds"] += multiplicity
+                                counts["odd_tail_four_lane_batches"] += (multiplicity + 3) // 4
+                                counts["odd_tail_spare_lanes"] += 4 * ((multiplicity + 3) // 4) - multiplicity
+                    counts["tail_evaluations_original"] += len(old_tail_thresholds)
+                    counts["tail_recursion_fp2_products_original"] += sum(
+                        m - j - 1 + threshold.bit_count() for threshold in old_tail_thresholds
+                    )
+                    prefixes = [tuple((length + 1) // 2 for length in row) for row in prefixes]
+        assert counts["tail_terms_amended"] <= counts["tail_terms_original"]
+        assert counts["odd_tail_folds"] + counts["odd_tail_spare_lanes"] == 4 * counts["odd_tail_four_lane_batches"]
+        print(name, dict(sorted(counts.items())))
 
 
 if __name__ == "__main__":

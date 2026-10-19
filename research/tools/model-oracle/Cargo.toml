@@ -1,0 +1,11 @@
+[package]
+name = "research-model-oracle"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+
+[workspace]
+
+[dependencies]
+tessera-bench = { path = "../../../crates/tessera-bench" }

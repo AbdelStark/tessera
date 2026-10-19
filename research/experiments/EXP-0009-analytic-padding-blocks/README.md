@@ -199,3 +199,61 @@ python3 -I count.py --amendment > results/amendment-count.txt
 ```
 
 The `all` command preserves the original arms. The new `amendment` command includes all original arms plus `analytic-amortized`, applies the unchanged criterion to the new arm, and writes separate raw files. H100 follow-up: run the same causal-row shapes under RFC-0020 with block-skipping and grouped odd boundary columns, to establish whether tile alignment and partially idle warps preserve the CPU saving. No production crate, verifier, transcript label or acceptance condition changes.
+
+### Amendment results (2026-10-19)
+
+Status: `done: inconclusive`. The implementation improves the old analytic arm but still misses the unchanged 5% per-real-leaf clause on S1, S2 and S4. S1 also fails the CV gate after its prescribed rerun. This amendment leaves the original experiment and IDEA-0019 inconclusive; it does not replace their historical measurements.
+
+The preregistration was committed as `45d9c4e308bccf4349a31c8b936438e5a3baf32e` before any amended harness code. The frozen amendment is [results/README.amendment-preregistered.txt](results/README.amendment-preregistered.txt), SHA-256 `d5d7b9933a1c657fc29dea060a7794a55e00cb8ea9fc89fb8c755194c09e267e`; UTC and commit are in [results/preregistration-amendment.txt](results/preregistration-amendment.txt). [results/amendment-environment.txt](results/amendment-environment.txt) records Apple M4 Max, 16 cores, 48 GiB, macOS 26.6.2, rustc/cargo 1.95.0, start time, git HEAD, and hashes of the measured binary, code and lockfile.
+
+All five harness arms equal current production exactly on all eight timed configurations, the original hand case and five small shapes, and three additional unsorted/repeated-length shapes. The independent verifier accepts the production proofs from independently computed roots and checks the padded-leaf multilinear extensions; equality of every proof element, leaf claim and transcript state transfers these checks to the candidate. All thirteen original configuration/check digests are unchanged from the historical run; the three added digests test restored tree order. The wrong-root hand case asserts the exact independent rejection `level 0: FinalMismatch { round: 1 }`.
+
+Raw E1 data: [results/amendment-run.txt](results/amendment-run.txt), [results/amendment-run.json](results/amendment-run.json). All 48 arm/configuration rows retain ten measured sample durations and repetition counts, including all first-attempt samples for rerun arms. Every measured sample lasts at least 20 ms. Arms rerun once: S1 production and dense, S3 analytic and analytic-amortized. Only S1 dense remains above 3% CV. No samples were removed and no extra run was selected to improve the verdict.
+
+To reproduce while keeping the judged raw files, run `cargo run --release --locked -- amendment results/amendment-reproduction.json > results/amendment-reproduction.txt` from this experiment directory. The JSON's historical field name `analytic_ns_per_real_leaf` refers to the selected amended candidate when this command is `amendment`.
+
+The table is E1, primary, medians in milliseconds per complete proof. `u = dense(U23) = 35.263 ns/leaf`. A star marks the noisy S1 baseline: its ratio is descriptive and cannot pass the statistical gate.
+
+| Case | dense ms; CV | old analytic ms | amended ms; ns/real; CV | R_same; R_same/f | a(c)/u | production/amended |
+|---|---|---|---|---|---|---|
+| S1* | 658.405; 31.90% | 336.896 | 316.914; 37.770; 0.74% | 2.0775; 1.0390 | 1.0711 | 0.9932 |
+| S2 | 410.784; 0.79% | 336.107 | 313.797; 37.398; 0.74% | 1.3091; 0.9820 | 1.0606 | 0.6652 |
+| S3 | 598.161; 0.83% | 369.812 | 351.524; 33.524; 1.32% | 1.7016; 1.0635 | 0.9507 | 0.8996 |
+| S4 | 844.526; 1.20% | 428.636 | 413.159; 39.383; 1.81% | 2.0441; 0.9586 | 1.1168 | 1.0075 |
+| U23 | 295.806; 1.39% | 292.158 | 280.281; 33.412; 2.52% | 1.0554; 1.0554 | 0.9475 | 0.5592 |
+| U24 | 591.717; 1.04% | 601.468 | 564.449; 33.644; 1.13% | 1.0483; 1.0483 | 0.9541 | 0.5521 |
+| S1-1K | 38.132; 0.91% | 22.264 | 21.242; 40.476; 1.06% | 1.7951; 0.8984 | 1.1478 | 0.9287 |
+| S2-1K | 25.924; 2.35% | 20.867 | 20.045; 38.196; 0.58% | 1.2933; 0.9709 | 1.0832 | 0.6698 |
+
+The judged point estimates of `R_same/f` are inside the unchanged interval on all four shapes. The second clause fails at 1.0711, 1.0606 and 1.1168 on S1, S2 and S4; only S3 passes at 0.9507. The S1 dense rerun has CV 31.90% (one 1.392 s sample among roughly 0.62–0.84 s samples), independently forcing `inconclusive`. Background applications were active despite serialized research timing; the experiment does not claim an idle machine. The per-leaf failure on S2 and S4 uses stable arms and does not depend on that noisy S1 ratio.
+
+**What amortizes (E0, primary).** [results/amendment-count.txt](results/amendment-count.txt) from `python3 -I count.py --amendment` counts only public shapes. S1 has 270,336 tree-position-rounds but 16,332 distinct equal-prefix runs; it reduces padded-tail terms from 188,412 to 16,068. S2 has 229,374 tree-position-rounds and 16,200 runs, reducing tail terms from 122,820 to 15,188. Full-pair and boundary value arithmetic remain; only their public counts and the padded-tail scalar are shared. Four-lane odd-tail batches include spare lanes, reported explicitly by the counter. These are operation counts, not GPU or time estimates.
+
+The counter also records a tradeoff: the original arm memoizes `TAIL` by its threshold, whereas the amendment evaluates it once per distinct three-prefix run. S1 therefore evaluates the recursion 16,068 times against 4,017 originally (E0), despite reducing scaled tail terms. S1's four-lane odd folds use 42,984 spare lanes alongside 405,504 useful folds (E0). Both costs remain in the measured candidate.
+
+**What remains (E1).** Against the old analytic arm in this same run, amended proof times decrease by 5.9%, 6.6%, 4.9% and 3.6% on S1–S4. Sorting and run construction still cost time, the full-pair loops remain per tree, and gathering/scattering four odd tails does not remove the differing boundary values. The unpadded amended arm also gets faster (U23: 280.281 against dense 295.806 ms), so the saving is partly loop organization rather than skipped padding. The report does not claim that all per-tree overhead was removed. Four-lane arrays expose independent folds to the compiler; machine SIMD lowering has not been established.
+
+**Migration finding: compare to current production.** Main now contains #258, the split-eq/Gruen product-level kernel measured by EXP-0008. Current production in this run costs roughly 18.7 ns per padded leaf, rather than the historical production arm's roughly 32.3 ns. The amended candidate retains the original per-tree eq materialization so the original criterion remains meaningful, but it does not incorporate #258. Production/amended is 0.993, 0.665, 0.900 and 1.007 on S1–S4. Thus these measurements establish no useful gain over current production; the S4 difference is below the observed variation. No production change or promotion is justified by this amendment. A combined ragged/split-eq candidate needs a new preregistered comparison against the current production anchor.
+
+**The mechanism is already normative.** Accepted [RFC-0034 ‘Constant leaves’](../../../docs/rfcs/RFC-0034-causal-blocks.md#constant-leaves) already requires product and lookup provers to evaluate constant masked subtrees in closed form, with messages byte-identical to the dense provers. Its cost section already prices only the valid lookup/tree leaves; `score_block` changes committed-score overhead, not the tree leaf order or its transcript. The current materialized-slice production anchor does not yet exercise that constant-subtree path. The remaining action is implementation and combined-kernel evidence under the accepted specification, rather than proposing the same mechanism again.
+
+No current cost-model gain is asserted: the historical 73 ps dense-kernel scenarios above predate the accepted split-eq default and the current score-block/P4/P5 model. Applying the amended dense ratio to the current 41.8 ps split-eq parameter would assume an unmeasured composition. The historical 3.7 priority and 0.7 confidence stay explicitly historical; this result adds no scored current gain.
+
+Threats to validity: CPU timing cannot predict H100 tile occupancy; four-lane batching is not a measured SIMD guarantee; E0 counts omit memory traffic, allocation and sorting costs; baseline/candidate work on different packed buffer sizes, with U23/U24 giving only a size control; shapes and seeds remain the originally registered synthetic causal rows and scaled 70B forest, not a full proof integrated with the current causal-block layout; serial arm timing can see frequency drift and unrelated background scheduling. The noisy S1 baseline is retained rather than treated as a hardware result.
+
+The unchanged `tessera-protocol/1`, `test-small/1` session exercises the original unmasked kernel comparison. It is not evidence for RFC-0032's `tessera-protocol/2` zero-knowledge masks, which RFC-0034 requires to remain separate from the constant-leaf path.
+
+Next: pre-register composition with the current split-eq kernel, sharing boundary columns across runs under the current causal-block layout, before changing production. H100 RFC-0020 follow-up must measure padded-tile skipping, run grouping and partly idle boundary warps together; it settles whether padding savings survive GPU tile boundaries. Fraction-tree padding and end-to-end proofs remain unmeasured here.
+
+### Amendment adversarial review and verification
+
+The change reads public shape metadata to choose runs and uses the existing field/transcript operations. It changes no verifier, decoder, commitment, gadget, challenge schedule or zero-knowledge mask. Inputs are synthetic; no production secret-handling claim follows from this harness.
+
+| Surface | Review result and evidence |
+|---|---|
+| Tree-coordinate binding | Pass: `equal_runs` changes traversal only; `enter_tree_rounds` restores original tree indices. The unsorted/repeated-length cases in `amendment_preserves_transcripts_and_tree_order` fail when restoration is omitted. |
+| Constant-tail arithmetic and odd folds | Pass for the tested shapes: complete proof/claim/transcript equality and independent padded-leaf MLE checks. Mutations removing the shared tail scale or changing the odd-tail constant both fail that test. |
+| Transcript and independent verification | Pass: `assert_same` compares each round and final evaluation, all leaf claims and the final state; `check_production` uses verifier-owned arithmetic and transcript. The wrong-root case asserts the exact final-check rejection. |
+| Protocol/security scope | No acceptance rule, degree, public range, mask or encoding changes. The relevant guarantee here is exact equality to the independently checked production proof, rather than a new soundness or zero-knowledge proof. |
+
+The isolated scratch mutation run has a passing no-op control and catches all three behavior-changing mutations: omitted tree-order restoration, wrong odd-tail constant, and dropped shared-tail scale. Raw test output is [results/amendment-mutations.txt](results/amendment-mutations.txt). The measured file was never edited for fault injection. `cargo test --locked`, `cargo clippy --all-targets --locked -- -D warnings`, and `cargo fmt --all --check` pass. [results/amendment-audit.txt](results/amendment-audit.txt) records preservation of the original report, frozen preregistration and measured code, historical digest equality, and independent recomputation of every raw-sample median and CV.

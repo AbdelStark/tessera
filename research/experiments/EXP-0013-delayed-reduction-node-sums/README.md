@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `planned` |
+| Status | `done: validated` |
 | Idea | [IDEA-0026](../../ideas/IDEA-0026-delayed-reduction-fraction-node-sums.md) (primary: scale-first delayed reduction in the fraction-tree node sums); [IDEA-0030](../../ideas/IDEA-0030-deferred-reduction-level-kernel.md), folded in by the triage of 2026-10-17 as the product-forest arm and the relation-first ordering variant |
 | Evidence level | E1 for the time ratios (CPU wall clock here, one Apple M4 Max performance core); E0 for the operation counts, the reduction counts and the cost-model translation; the int32 cost of a 128-bit accumulate on Hopper (IDEA-0030 kill criterion 2) and whether the post-Gruen kernels are compute-bound there (IDEA-0026 kill criterion 3) stay E2 |
 | Hardware | Apple M4 Max (12 performance cores, 128 KiB L1D and 16 MiB L2 per performance cluster), macOS 26.6.2 |
@@ -94,20 +94,113 @@ Environment: Apple M4 Max, 16 cores (12 performance, 4 efficiency), 48 GiB; macO
 
 ## Results
 
-To be filled after the run; the raw output lands in `results/`.
+Measured on 2026-10-19: **validated** for both IDEA-0026 and IDEA-0030 (E1, primary). The complete raw record is [run.json](results/run.json), [run.txt](results/run.txt) and [raw-batches.json](results/raw-batches.json). [summary.json](results/summary.json) is the mechanically recomputed verdict. All retained coefficients are at most 3%; the scale-first generic fraction arm reran once after its first CV was 3.4106%, and the retained CV is 0.8721%. The deferred RFC-0020 forest arm has CV **2.999517753%**, just below the pre-registered 3% cutoff; it is retained under the written rule. Every one of the 403 raw batches, warm-ups and discarded runs included, lasts at least 30.859125 ms. Reported per-execution times can be below 20 ms because the timed batch repeats executions.
 
-| Case | Baseline `split` | Candidate | Ratio |
-|---|---|---|---|
-| | | | |
+Every candidate and split proof equals production, including final evaluations, claims and transcript states. Independent `tv-core` acceptance passes on all judged inputs. The large fraction digests (BLAKE3 of canonical message bytes) are `d230aeb17a2ec70d915a3b5d907c3c70f9e3f972c95398fccd122e7e9bb0a780` (leaf) and `e47ecc93d46cd2c8ab8c90cdac75d99088e4680b1d2a1d2384433eadc588e0b4` (generic), shared by split, both candidates and production. Small equivalence checks cover all n from 1 through 12, mixed front-padded product batches, a two-forest batch, zero/one equality coordinates, and scripted zero-factor challenges. The hand root 210 accepts and root 211 rejects. `accumulator_boundaries` passes for maximal operands at the pinned maximal block, random scalar/extension/base products and all three carry words against independent modular Horner reduction. [correctness.txt](results/correctness.txt) records correctness-only execution.
+
+All table times below are E1 ns per leaf, entry or dot product, as labeled. Min/max and all ten retained samples are in the raw JSON; the table keeps the median and CV.
+
+| Case | Median | CV |
+|---|---:|---:|
+| forest 2^8x2^14: production context | 18.630 ns/leaf | 0.8414% |
+| forest 2^8x2^14: split | 18.024 ns/leaf | 1.8789% |
+| forest 2^8x2^14: deferred | 13.543 ns/leaf | 2.9995% |
+| forest 2^10x2^12: production context | 18.392 ns/leaf | 0.4894% |
+| forest 2^10x2^12: split | 17.989 ns/leaf | 0.5206% |
+| forest 2^10x2^12: deferred | 13.410 ns/leaf | 0.2989% |
+| forest 2^0x2^22: production context | 18.465 ns/leaf | 0.6366% |
+| forest 2^0x2^22: split | 18.158 ns/leaf | 1.1618% |
+| forest 2^0x2^22: deferred | 13.336 ns/leaf | 0.3977% |
+| forest 2^6x2^14: production context | 18.661 ns/leaf | 0.3879% |
+| forest 2^6x2^14: split | 18.195 ns/leaf | 1.5487% |
+| forest 2^6x2^14: deferred | 13.819 ns/leaf | 0.3720% |
+| forest 2^7x2^14: production context | 18.724 ns/leaf | 0.7733% |
+| forest 2^7x2^14: split | 18.084 ns/leaf | 0.6910% |
+| forest 2^7x2^14: deferred | 13.524 ns/leaf | 0.7709% |
+| product level 2^21: production context | 27.553 ns/entry | 1.0916% |
+| product level 2^21: split | 17.028 ns/entry | 0.7126% |
+| product level 2^21: deferred | 12.450 ns/entry | 0.3530% |
+| fraction leaf 2^21 point0: production context | 82.992 ns/entry | 0.7783% |
+| fraction leaf 2^21 point0: split | 38.891 ns/entry | 0.8712% |
+| fraction leaf 2^21 point0: scale-first | 25.541 ns/entry | 0.8197% |
+| fraction leaf 2^21 point0: relation-first | 34.469 ns/entry | 1.1388% |
+| fraction generic 2^21 point0: production context | 115.097 ns/entry | 0.5032% |
+| fraction generic 2^21 point0: split | 74.728 ns/entry | 1.2465% |
+| fraction generic 2^21 point0: scale-first | 52.885 ns/entry | 0.8721% |
+| fraction generic 2^21 point0: relation-first | 65.180 ns/entry | 0.7165% |
+| dot ext reduced | 3.871 ns/product | 0.5117% |
+| dot ext deferred | 0.956 ns/product | 2.9347% |
+| dot base reduced | 3.576 ns/product | 1.9813% |
+| dot base deferred | 0.536 ns/product | 0.8411% |
+
+Verdict pairs (E1):
+
+| Pair | Saving σ | Required |
+|---|---:|---:|
+| forest 2^8x2^14 | 24.8615% | ≥5% (IDEA-0030) |
+| forest 2^10x2^12 | 25.4571% | ≥5% (IDEA-0030) |
+| forest 2^0x2^22 | 26.5535% | ≥5% (IDEA-0030) |
+| product level 2^21: deferred | 26.8894% | observation |
+| fraction leaf 2^21 point0: scale-first | 34.3254% | ≥15% (leaf), ≥8% (generic) |
+| fraction leaf 2^21 point0: relation-first | 11.3690% | ≥3% (IDEA-0030) |
+| fraction generic 2^21 point0: scale-first | 29.2302% | ≥15% (leaf), ≥8% (generic) |
+| fraction generic 2^21 point0: relation-first | 12.7768% | ≥3% (IDEA-0030) |
+
+The E0 count is [count.py](count.py), reusing EXP-0008's committed denominator rules and asserting exact equality to its fraction and forest totals. [count.json](results/count.json) separates full reduced multiplications, wide products, 192-bit additions, block reductions and extension assembly. This avoids treating an unreduced schoolbook product as a cheaper Karatsuba product. Counts include folds, rebuilt split equality tables, per-round gamma-scaling tables and block-end work; transcript hashing, allocation/page-zeroing and spill traffic remain unpriced, as in EXP-0008.
+
+| E0 case | Split int32 ops/unit | Candidate, 4 / 5 / 8 ops per accumulate |
+|---|---:|---:|
+| leaf scale-first, per entry | 768.598 | 601.197 / 617.197 / 665.197 |
+| leaf relation-first, per entry | 768.598 | 685.037 / 693.037 / 717.037 |
+| generic scale-first, per entry | 1324.598 | 1157.197 / 1173.197 / 1221.197 |
+| generic relation-first, per entry | 1324.598 | 1241.037 / 1249.037 / 1273.037 |
+| 2^8×2^14 forest, per leaf | 419.069 | 357.713 / 363.713 / 381.712 |
+
+For the RFC-0020 forest shape, full per-product `reduce128` operations fall from 15.03775 to 10.03807 per leaf; the candidate adds 5.99961 wide products and 192-bit additions, 0.01304 block accumulator reductions and 0.00338 extension assemblies per leaf. The direct code count predicts 13.21% fewer lane operations at five operations per accumulate, larger than IDEA-0030's historical 5–7% estimate, which did not price the schoolbook replacement's complete removal of the terminal Karatsuba additions/subtractions. The E0 H100 forest interval is 21.39–52.88 ps against split's 25.05–64.03 ps, using EXP-0008's peak/utilization/HBM assumptions and no spill charge; it is not a GPU measurement. The lower bound uses four-operation accumulation and the upper eight with the as-written field costs.
+
+Hopper has no native 192-bit integer add: a 64×64 product is assembled from 32-bit partial products, then added with a carry chain across the accumulator's 32-bit limbs. Four/five/eight operations per accumulator addition are sensitivity assumptions, not measured instruction counts. At the pinned bound the high word has fewer than 32 significant bits, but actual instruction selection, dependency chains and register spills still need PTX/SASS inspection and E2 timing.
+
+Using EXP-0006's existing E1 units, the known reduced-operation component is 17.022 ns/leaf for split and 11.913 ns/leaf for deferred. The latter excludes the new wide/add/reduction units, for which that experiment gives no independent unit cost; it is a partial prediction. The E1 dot observations, 3.871→0.956 ns/product over Fp2 and 3.576→0.536 ns/product for extension-by-base, establish an isolated CPU sign rather than an H100 unit cost.
+
+Cost-model projections (E0) below use the reconciled current `counted` profile: the committed `servable-c2-b32` report, P5 full-reencode planning charge, five regeneration equivalents and `leaf_ps=41.8` after the production split kernel. P4 combination and issue #329's remaining streaming work are unpriced, so these are partial projections, not complete prover bounds. Parameters and all outputs are saved under `results/cost_model_*.{json,txt}` and [projection-parameters.json](results/projection-parameters.json).
+
+- Lane-count route, five-op accumulation: `lookup_ps=89.13157864262408`, `leaf_ps=36.278528089960616`. Accumulation sensitivity gives lookup 87.877–92.894 ps at four/eight ops.
+- CPU-ratio route: `lookup_ps=76.76781842995113`, `leaf_ps=31.40790291521472`. These deliberately apply the CPU ratios to planning inputs and **are not GPU predictions**.
+
+| E0 scenario | μ(1K) | μ(4K) | μ(16K) | μ(128K) |
+|---|---:|---:|---:|---:|
+| reference | 32.294 | 46.786 | 102.444 | 436.310 |
+| lookup_count | 31.218 | 45.242 | 99.163 | 423.099 |
+| leaf_count | 32.218 | 46.485 | 101.311 | 430.420 |
+| both_count | 31.142 | 44.941 | 98.030 | 417.208 |
+| both_cpu_ratio | 29.954 | 43.067 | 93.613 | 398.249 |
+
+Concrete reproduction, from the repository root (the original pre-registration's placeholders above are preserved in its frozen copy):
+
+```sh
+cargo test --release --locked --manifest-path research/experiments/EXP-0013-delayed-reduction-node-sums/Cargo.toml
+cargo run --release --locked --manifest-path research/experiments/EXP-0013-delayed-reduction-node-sums/Cargo.toml -- check
+cargo run --release --locked --manifest-path research/experiments/EXP-0013-delayed-reduction-node-sums/Cargo.toml -- all research/experiments/EXP-0013-delayed-reduction-node-sums/results/run.json > research/experiments/EXP-0013-delayed-reduction-node-sums/results/run.txt
+python3 -I research/experiments/EXP-0013-delayed-reduction-node-sums/count.py
+python3 -I research/experiments/EXP-0013-delayed-reduction-node-sums/analyze.py
+cargo fmt --manifest-path research/experiments/EXP-0013-delayed-reduction-node-sums/Cargo.toml --check
+cargo clippy --all-targets --locked --manifest-path research/experiments/EXP-0013-delayed-reduction-node-sums/Cargo.toml -- -D warnings
+```
+
+The frozen README's SHA256 is `77b3f20ca34128314f715f0770543a602f362a3f9996d6e5b022e26605ad4c27`, committed before code in `8228a19`. The recorded environment is [environment.json](results/environment.json): Apple M4 Max, 48 GiB, macOS 26.6.2 / Darwin 25.6.0, rustc 1.95.0, cargo 1.95.0; production base `726502746cb5a6f29adcdbc7d95b8d2d98735272`. One process, one thread; sibling builds/tests paused during the timing slot. CPU affinity was not enforced.
 
 ## Analysis
 
-To be written after the run, against the success criterion and nothing else, with the threats to validity.
+Scale-first exceeds both written thresholds; relation-first exceeds 3% on both fraction levels and deferred exceeds 5% on all three forests. Every necessary arm meets the exact CV rule, so both cases validate. The dominant CPU improvement survives full proof-message comparison and independent checks, rather than being inferred from a microkernel. The scale-first ordering is materially better than relation-first on both fraction levels, consistent with deferring twice as many products. The kernel's cadence, branches selecting arms and work shapes depend on public dimensions and compile-time arms. Accumulator carries are arithmetic; no condition is selected by a product value in Rust.
+
+The adversarial review is scoped to arithmetic-preserving research code. `Acc192::add/reduce` and `accumulator_boundaries` enforce the bound and canonical result; the independent modular Horner check exercises the high-word sign. `verify_level_arm`, `check_forests` and `check_degenerate` establish all round/final-message and transcript identities under RFC-0004/0010/0014, including degenerate recovery. `verify_views` recomputes public-factor relations in tv-field, and `verify_forests` also discharges the leaf claims against independently evaluated MLEs. There is no new accepting verifier, decoder, commitment, mask, gadget, challenge, witness or normative protocol surface. Inputs are public synthetic data, so local Vec buffers do not hold user secrets; a production port must retain SecretBuf ownership/clearing (OBS-6) and pass binary branchlessness checks (INV-ARCH-2). Research success does not certify binary constant-time behavior.
+
+Threats to validity: M4 CPU results do not establish Hopper performance; a high-word carry chain or register spills can erase the E0 benefit. The int32 translation and utilization are assumptions, not instruction or hardware measurements. The single thread has no affinity guarantee, and the first forest candidate CV is extremely close to the threshold. Arm order is fixed, so thermal drift/cache residency could bias ratios; seeded full-field data and one zero per synthetic tree do not cover model-specific distributions. Production now contains its own split-eq optimization; its context arm is not EXP-0008's textbook baseline and is not the denominator. This is an unmasked level/forest proxy (E1), not an end-to-end zero-knowledge proof (E3). The arithmetic comparisons prove equality for the tested cases and support the exact modular derivation; they do not replace a production soundness/side-channel review.
 
 ## Verdict
 
-Pending the run.
+`validated` (IDEA-0026) and `validated` (the IDEA-0030 second case), under the original numerical criteria. IDEA-0026's current score uses the E0 count-route lookup-only μ(16K) reduction of 3.20286%, confidence 0.8 and cost 1: priority **2.6** (was 2.3 at confidence 0.6). IDEA-0030's independent forest content gives 1.10580%, confidence 0.8, cost 1: priority **0.9** (was 0.4). Fraction ordering gains are alternatives and are not added to each other. The joint count-route reduction is 4.30866% at 16K (102.444→98.030, E0 partial projection), with all current-model omissions retained.
 
 ## Follow-ups
 
-Pending the run.
+Promote the arithmetic-preserving implementation as a draft issue/RFC artifact against the current production split kernels, retaining secret buffers and adding the accumulator bounds and equivalence gates; no production code changed here. On H100, inspect PTX/SASS for carry instructions and spills, measure both fraction orderings and forest shapes under RFC-0020, and determine whether post-split kernels are compute- or memory-bound. Those E2 results settle the four/five/eight-operation accumulation assumption and true c_ℓ/c_π. A production port then needs F65537 calibration, binary branchlessness/clearing checks and full end-to-end masked-proof equivalence before any E3 or deployment claim.
