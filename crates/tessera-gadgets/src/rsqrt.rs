@@ -12,8 +12,6 @@ use tessera_field::{Goldilocks, PrimeField};
 use tessera_poly::PolyField;
 use tessera_tables::{GeneratedTable, Table, TableKind, TableSpec};
 
-const LIMBS: usize = 15;
-
 /// Which exact inequality a comparison proves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Bracket {
@@ -81,7 +79,7 @@ pub struct RsqrtConstraints<F> {
 
 /// Public parameters for the exact integer bracket, with regenerated range tables.
 ///
-/// This scalar reference uses 15 byte-radix limbs per comparison. At a 32-bit root it
+/// RFC-0050 uses `ceil((2w+55)/8)` byte-radix limbs per comparison. At a 32-bit root it
 /// commits 187 columns and performs 189 range lookups per row; it does not claim the
 /// RFC's approximate cost estimate. Model tile/table integration belongs to the driver.
 /// The caller supplies tables; [`Self::tables`] reports precisely those used.
@@ -128,9 +126,10 @@ impl RsqrtRow {
         })?;
         let input = NonNeg::new(55, 16, tables)?;
         let digits = NonNeg::new(bits, 8, tables)?;
-        let lower = product_bounds(bits, false);
-        let upper = product_bounds(bits, true);
-        let constants = vec![255; LIMBS];
+        let limbs = (2 * usize::from(bits) + 55).div_ceil(8);
+        let lower = product_bounds(bits, false, limbs);
+        let upper = product_bounds(bits, true, limbs);
+        let constants = vec![255; limbs];
         let comparisons = [
             BigIntCompare::new(8, &lower, &constants, tables)?,
             BigIntCompare::new(8, &constants, &upper, tables)?,
@@ -201,7 +200,21 @@ impl RsqrtRow {
             }));
         }
         for (idx, b) in [Bracket::Lower, Bracket::Upper].into_iter().enumerate() {
-            let c = self.comparisons[idx].constraints::<F>()?;
+            let mut c = self.comparisons[idx].constraints::<F>()?;
+            // RFC-0050 groups arrays, rather than interleaving digits and carries.
+            c.committed
+                .sort_unstable_by_key(|&column| compare_order(column));
+            if c.lookups.iter().any(|lookup| {
+                lookup.key.constant != F::ZERO
+                    || !matches!(lookup.key.terms.as_slice(), [(one, column)]
+                    if *one == F::ONE && !matches!(column, CompareColumn::Input(..)))
+            }) {
+                return Err(GadgetError::Shape {
+                    rule: "root comparison range keys are committed columns (RFC-0050)",
+                });
+            }
+            c.lookups
+                .sort_unstable_by_key(|lookup| compare_order(lookup.key.terms[0].1));
             out.committed.extend(
                 c.committed
                     .into_iter()
@@ -350,19 +363,20 @@ impl RsqrtRow {
         };
         let mut comparisons = Vec::new();
         for (idx, b) in [Bracket::Lower, Bracket::Upper].into_iter().enumerate() {
-            let polynomials: Vec<_> = (0..LIMBS)
+            let limbs = self.comparisons[idx].limbs();
+            let polynomials: Vec<_> = (0..limbs)
                 .map(|j| RsqrtRelation {
                     terms: self.product::<Goldilocks>(b, j),
                 })
                 .collect();
-            let mut product: Vec<_> = (0..LIMBS)
+            let mut product: Vec<_> = (0..limbs)
                 .map(|_| SecretBuf::with_capacity(u.len()))
                 .collect();
-            let mut constant: Vec<_> = (0..LIMBS)
+            let mut constant: Vec<_> = (0..limbs)
                 .map(|_| SecretBuf::with_capacity(u.len()))
                 .collect();
             for (row, &active) in real.iter().enumerate() {
-                for j in 0..LIMBS {
+                for j in 0..limbs {
                     product[j].push(
                         polynomials[j]
                             .evaluate(|t| value(row, t))
@@ -401,6 +415,25 @@ pub struct RsqrtWitness {
     comparisons: Vec<CompareWitness>,
 }
 impl RsqrtWitness {
+    /// Transfer columns in RFC-0050 allocation order without copying their values.
+    /// The holder applies the secret borrowing rules of [`Self::tensor`].
+    pub fn into_tensors(self) -> Vec<(RsqrtColumn, SecretBuf<i64>)> {
+        let mut tensors = self.tensors;
+        for (bracket, comparison) in [Bracket::Lower, Bracket::Upper]
+            .into_iter()
+            .zip(self.comparisons)
+        {
+            tensors.extend(
+                comparison
+                    .into_tensors()
+                    .into_iter()
+                    .map(|(column, values)| (RsqrtColumn::Compare(bracket, column), values)),
+            );
+        }
+        tensors.sort_unstable_by_key(|(column, _)| column_order(*column));
+        tensors
+    }
+
     /// Borrow a committed column. Values remain secret-class (05 §3).
     pub fn tensor(&self, c: RsqrtColumn) -> Option<&[i64]> {
         match c {
@@ -432,9 +465,31 @@ impl fmt::Debug for RsqrtWitness {
     }
 }
 
-fn product_bounds(bits: u8, upper: bool) -> Vec<u64> {
+fn compare_order(column: CompareColumn) -> (u8, usize) {
+    match column {
+        CompareColumn::Digit(side, index) => (2 * u8::from(side == Side::Right), index),
+        CompareColumn::Carry(side, index) => (1 + 2 * u8::from(side == Side::Right), index),
+        CompareColumn::Difference(index) => (4, index),
+        CompareColumn::Borrow(index) => (5, index),
+        CompareColumn::Input(side, index) => (32 + u8::from(side == Side::Right), index),
+    }
+}
+
+fn column_order(column: RsqrtColumn) -> (u8, usize) {
+    match column {
+        RsqrtColumn::Root => (0, 0),
+        RsqrtColumn::InputLimb(index) => (1, usize::from(index)),
+        RsqrtColumn::RootLimb(index) => (2, usize::from(index)),
+        RsqrtColumn::Compare(bracket, column) => {
+            let (kind, index) = compare_order(column);
+            (3 + 6 * u8::from(bracket == Bracket::Upper) + kind, index)
+        }
+    }
+}
+
+fn product_bounds(bits: u8, upper: bool, limbs: usize) -> Vec<u64> {
     let count = usize::from(bits).div_ceil(8);
-    let mut bounds = vec![0; LIMBS];
+    let mut bounds = vec![0; limbs];
     for a in 0..count {
         for b in 0..count {
             for k in 0..4 {

@@ -6,11 +6,13 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 
 | Kind | Next identifier |
 |---|---|
-| Survey | SUR-0015 |
-| Idea | IDEA-0037 |
-| Experiment | EXP-0024 |
+| Survey | SUR-0016 |
+| Idea | IDEA-0038 |
+| Experiment | EXP-0025 |
 
 ## Queue
+
+Current authorized continuation (2026-10-20): #407/RFC-0050 and the complete #106 layout are merged (PR408/409). #112 remains open for complete auxiliary witnesses/multiplicities and measured memory accounting. SUR-0015 identifies the dense Range(32) allocation barrier and the public-storage/secret-clearing obligations. Next bounded correctness unit: integrate complete canonical root/Softmax witness columns and publicly bounded logical multiplicity access for #112. EXP-0024 validates the finite counter comparison on both toolchains; full source correctness, clearing and measured working-tile memory remain open. No performance gain is credited. This prerequisite takes precedence over the historical performance queue below.
 
 Current authorized backlog prerequisite (2026-10-19): #407 pins public gadget columns before the remaining #106 layout. SUR-0014 is current and IDEA-0036 is promoted to RFC-0050; EXP-0023 and its committed polynomial-retention amendment pass. RFC-0050 records the self-reviewed contract decision for #407, retaining the original bracket polynomial and explicitly migrating columns/limb counts. Next bounded unit after its merge: independently implement the complete model layout and maximum-size check for #106. This correctness gate precedes the performance queue below; it carries zero gain credit.
 
@@ -76,6 +78,7 @@ Upstream on 2026-10-19 (`gh issue list`): every issue the loop fed upstream is c
 
 | ID | Topic | Status | Date | Ideas seeded |
 |---|---|---|---|---|
+| [SUR-0015](surveys/SUR-0015-witness-multiplicity-storage.md) | `passes`: bounded complete witness multiplicities for #112 | `current (2026-10-20)` | 2026-10-20 | bounded dense/sorted/windowed counters |
 | [SUR-0014](surveys/SUR-0014-gadget-column-contract.md) | `compiler`: exact gadget column/lookup contract for #106/#407 | `current (2026-10-19)` | 2026-10-19 | IDEA-0036 |
 | [SUR-0001](surveys/SUR-0001-proximity.md) | `proximity`: proximity gaps, `τ` and proof size | `current (2026-10-16)` | 2026-10-16 | 7 |
 | [SUR-0002](surveys/SUR-0002-lookups.md) | `lookups`: per-lookup cost and lookup count | `current (2026-10-16)` | 2026-10-16 | 6 |
@@ -111,6 +114,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | ID | Title | Lever | Priority | Status | Experiment | Decision |
 |---|---|---|---|---|---|---|
+| [IDEA-0037](ideas/IDEA-0037-bounded-multiplicity-columns.md) | Publicly bounded exact multiplicity representations | CPU memory / `regen` feasibility | 0 correctness prerequisite | `validated` | [EXP-0024](experiments/EXP-0024-bounded-multiplicities/README.md) | Registered finite comparison passes on pinned/MSRV: 64 KiB sorted wide storage, exact rows and public metadata, 14 physical faults caught. No full-source memory or protocol/performance credit. |
 | [IDEA-0036](ideas/IDEA-0036-canonical-gadget-columns.md) | Canonical public gadget-column contract | exact counts, size, verify | 0 performance credit; format prerequisite | `promoted` | EXP-0023 | Current lowering only; integer boxes, final carries and public metadata must pass before an RFC for #407 |
 | [IDEA-0001](ideas/IDEA-0001-list-decoding-proximity.md) | List-decoding proximity analysis to cut `τ_A` | `τ`, size, verify | 0 | `refuted` | EXP-0001 | RFC-0014 Alternatives Considered 3 confirmed with numbers under [BCIKS20]. The reopening condition fired on 2026-10-16: SUR-0001 found conjecture-free Johnson-regime bounds with error linear in `n/q` ([BCHKS25], [DKT26]), `τ_A` 155 → 130 at live-64 (E0); the successor [IDEA-0012](ideas/IDEA-0012-johnson-regime-tau-linear-error.md) was `validated` by EXP-0003 the same day (`τ_A` 155 → 129–130 at 77–80 one-shot bits, E0, primary), conditional on uniform `Fp2` proximity coefficients and the list-decoding extractor |
 | [IDEA-0002](ideas/IDEA-0002-coefficient-form-rows.md) | Coefficient-form rows: drop the interpolation NTT from the advice and weight encoders | `c_c`, verify | 1.0 (`counted` profile, re-scored 2026-10-16 with and without EXP-0007's fifth pass priced, bracket 0.93–1.26; 0.63 under `corrected` at triage) | `triaged` | — (queue item 12) | all four lenses survive; −4.2% `μ(16K)` (E0, E1 split on M4 Max) × 0.6 / 4 (tier-A superseding RFC to RFC-0011/0012/0013; verifier opening check and vectors move); the saving grows if `c_c` is worse than assumed; next step is the E1 same-harness encoder bench Discussion#393: current security gate unknown; historical gain not current adoption evidence. |
@@ -153,6 +157,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | ID | Title | Idea | Status | Verdict | Evidence |
 |---|---|---|---|---|---|
+| [EXP-0024](experiments/EXP-0024-bounded-multiplicities/README.md) | Bounded exact multiplicity representations | IDEA-0037 | `done: validated` | validated | E0: 225 cases / 83,897,106 row comparisons. E1: wide sorted 65,536 bytes, 10 identical samples / zero retained allocations; pinned/MSRV identical; 14 physical faults caught. Counter-only scope. |
 | [EXP-0023](experiments/EXP-0023-gadget-column-contract/README.md) | Public column/range schema and exact Rsqrt products | IDEA-0036 | `done: validated` | Original and committed polynomial-retention amendment pass; no performance/model credit | E0 4,352 honest rows, 8,704 root and 13,680 auxiliary alternatives per formulation; 19 seeded faults plus u+P control; unchanged canonical-data digest |
 | [EXP-0001](experiments/EXP-0001-list-decoding-tau/README.md) | Does a provable list-decoding bound reduce `τ_A` below 155? | IDEA-0001 | `done: refuted` | the [BCIKS20] Johnson-regime error term caps at 57.2 bits (advice) and 57.9 bits (weights) for every `η`; best `τ_A` with it is 149 (−4%) | E0, primary (theorem read from ECCC TR20-083) |
 | [EXP-0002](experiments/EXP-0002-commit-cost-calibration/README.md) | Does an operation-and-byte count, calibrated on the CPU encoder and column chains, exclude the 30 ps assumption for `c_c`? | IDEA-0004 | `done: inconclusive` | pre-registered before any code (SHA-256 in `results/preregistration.txt`); Rust harness on production `tessera-field`/`tessera-pcs`/`tessera-hash` kernels under RFC-0020's protocol on one Apple M4 Max performance core; all correctness checks passed (field vectors, `encode_row` against intt→mask→coset_ntt on 2^23 symbols, hash chain case, 64 sampled leaves against an independent RFC-0004 derivation). Fit passed: predicted/measured 0.997 (intt 2^22, 11.53 ns/element), 0.826 (coset_ntt 2^23, 28.07), 0.975 (encode_row, 32.09), 0.834 (`B = 32` chain, 19.22); encode+hash 51.3 ns per committed element on one core (62.5:37.5). Counted H100 interval 969 (radix-16, lazy) to 1,574 (radix-2) int32 ops per committed element, hash 19–26%, HBM 48–216 B/element never binding: `c_c` in [57.9, 156.8] ps, `ρ_c` in [1.93, 5.23]. The 30 ps assumption is excluded at every point; the SC-2 ceilings (`μ(16K) ≤ 45` needs `c_c ≤ 70` ps, `μ(1K) ≤ 12` needs ≤ 82 ps) fail at 60% utilization at both ends (`μ(16K)` 52–67) and hold only for a near-peak kernel; the floor 57.9 ps lies in the (30, 60] "proceed" band, so the pre-registered criterion returns inconclusive. Extras: `B = 28` is 8.7% cheaper than `B = 32` with a 12.5% smaller block buffer; thread scaling 1.97× / 3.86× / 7.41× (encode) and 1.97× / 3.90× / 7.57× (chains) at 2 / 4 / 8 threads, 12-thread rows flagged (CV 10% and 23%); ARM64 15 instructions + ret per Goldilocks mul, 24 + mov + ret per butterfly | E1, primary for the fit (M4 Max); E0, primary for the counts; int32 peak 1.67×10^13 op/s `secondary`, 60% utilization from [VYTA25]; `cargo run --release --locked` reproduces |
@@ -258,3 +263,9 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-10-19 | EXP-0023 source-mutation check | Eighteen actual source edits fail targeted full-harness assertions; original and restored controls pass with byte-identical source. Overlaps functional faults; not eighteen additional distinct attacks or production coverage. Receipt includes exact edits and source hash. |
 
 | 2026-10-19 | RFC-0050 contract decision | Complete adversarial self-review retains integer boxes, original polynomial and virtual-input binding/degree obligations. Set Accepted in the same sole PR after opening the Draft; update all superseded-section cross-references. No independent second reviewer and no human hold per explicit user instruction. Acceptance takes effect on merge; production integration remains #106 and dependent issues. |
+
+| 2026-10-20 | `autoresearch survey passes` | SUR-0015: complete Range(32) counters require 32 GiB if dense (E0); public-mode fixed-capacity sorted weighted updates and row-window recounting require an experiment. No timing, proof-size or soundness credit. Next: bounded ideation/pre-registration for #112. |
+
+| 2026-10-20 | `autoresearch ideate passes` / experiment registration | IDEA-0037 triaged, zero performance credit; EXP-0024 planned with frozen exact/public-allocation/CPU-memory criteria before code. Ten scoped alternatives and all four refutation lenses recorded. Next: verify the committed plan, then implement the standalone experiment. |
+
+| 2026-10-20 | `autoresearch experiment IDEA-0037` | EXP-0024 done: validated for frozen bounded counter criteria. Both toolchains identical; wide sorted64KiB vs analytic32GiB dense, no timing/RSS/GPU claim. Fourteen physical faults caught with controls/restoration. Next: full #112 canonical witness integration, public update bounds and measured complete working set. |

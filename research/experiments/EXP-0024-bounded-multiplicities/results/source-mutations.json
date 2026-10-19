@@ -1,0 +1,92 @@
+{
+  "source_sha256": "3de9c99b447d1c18eb750aa945fa1bdf299ac5642b0e932a723d8e2099c4936b",
+  "control": "passed",
+  "restored": "passed",
+  "mutants": [
+    {
+      "name": "actual-domain-accepts-table-padding",
+      "result": "assertion-killed",
+      "original": "u64::from(update.row) >= self.actual",
+      "replacement": "u64::from(update.row) >= self.padded"
+    },
+    {
+      "name": "counter-capacity-guard",
+      "result": "assertion-killed",
+      "original": "if self.calls == self.limit {",
+      "replacement": "if false {"
+    },
+    {
+      "name": "counter-modulus-guard",
+      "result": "assertion-killed",
+      "original": "if total >= P {\n            return Err(Error::Field);\n        }\n        match &mut self.storage",
+      "replacement": "if false {\n            return Err(Error::Field);\n        }\n        match &mut self.storage"
+    },
+    {
+      "name": "sorted-ignores-weights",
+      "result": "assertion-killed",
+      "original": ".map(|update| update.amount)",
+      "replacement": ".map(|_| 1)"
+    },
+    {
+      "name": "sorted-drops-duplicates",
+      "result": "assertion-killed",
+      "original": ".take_while(|update| u64::from(update.row) == row)",
+      "replacement": ".take(1)"
+    },
+    {
+      "name": "sort-not-performed",
+      "result": "assertion-killed",
+      "original": "values.sort_unstable_by_key(|update| update.row);",
+      "replacement": "values.reverse();"
+    },
+    {
+      "name": "logical-end-off-by-one",
+      "result": "assertion-killed",
+      "original": "if row >= self.padded {",
+      "replacement": "if row > self.padded {"
+    },
+    {
+      "name": "column-tail-missing",
+      "result": "assertion-killed",
+      "original": "amount: tail,",
+      "replacement": "amount: 0,"
+    },
+    {
+      "name": "column-tail-wrong-row",
+      "result": "assertion-killed",
+      "original": "row: 0,\n            amount: tail,",
+      "replacement": "row: (actual - 1) as u32,\n            amount: tail,"
+    },
+    {
+      "name": "secret-dependent-mode",
+      "result": "assertion-killed",
+      "original": "let mode = dense_mode(actual, limit);",
+      "replacement": "let mode = dense_mode(actual, limit) && updates.first().is_some_and(|u| u64::from(u.row) < actual / 2);"
+    },
+    {
+      "name": "sorted-overallocates-public-capacity",
+      "result": "assertion-killed",
+      "original": "SecretBuf::try_with_capacity(limit)",
+      "replacement": "SecretBuf::try_with_capacity(limit + 1)"
+    },
+    {
+      "name": "window-only-validates-visible-keys",
+      "result": "assertion-killed",
+      "original": "if u64::from(update.row) >= actual {",
+      "replacement": "if u64::from(update.row) >= actual && u64::from(update.row) < start + width as u64 {"
+    },
+    {
+      "name": "window-modulus-guard",
+      "result": "assertion-killed",
+      "original": "total = total.checked_add(update.amount).ok_or(Error::Overflow)?;\n        if total >= P {",
+      "replacement": "total = total.checked_add(update.amount).ok_or(Error::Overflow)?;\n        if false {"
+    },
+    {
+      "name": "counter-allocation-retained",
+      "result": "assertion-killed",
+      "original": "std::hint::black_box(counter.get(actual - 1));",
+      "replacement": "std::hint::black_box(counter.get(actual - 1));\n        std::mem::forget(counter);"
+    }
+  ],
+  "scope": "Physical standalone experiment-source faults only; not production, full witness, proof soundness or ZK coverage."
+}

@@ -154,11 +154,6 @@ impl<'a> Structure<'a> {
         self.heads as usize
     }
 
-    /// The number of KV heads.
-    pub(crate) fn kv_heads(&self) -> u32 {
-        self.kv_heads
-    }
-
     /// The query heads of KV head `kv_head`: those `h` with `⌊h / (n_heads / n_kv_heads)⌋ =
     /// kv_head` (RFC-0041 'Tiles'), or `None` past the KV heads.
     pub(crate) fn query_heads(&self, kv_head: u32) -> Option<Range<usize>> {

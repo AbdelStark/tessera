@@ -6,17 +6,13 @@
 //! - **What a tile is.** [`Target`] checks a [`SequenceTile`] against the lowering from public
 //!   data alone, as `ExecutionPlan::expand` derives it: its node, its KV head and query block, and
 //!   the shares RFC-0041 gives it. Anything else is refused (`ERR-USAGE`).
-//! - **Gadgets.** A requantization's committed values and lookups are `tessera-gadgets`' own: its
-//!   honest witness, and its constraints' affine forms evaluated element by element. A `TableMap`
-//!   or `Bitwise` looks its key up as the engine does, and a `SoftmaxRow` makes the max
-//!   certificate's lookup at every position, `c_q − x_qi` at a valid one and the table's last key
-//!   `K_0` at a masked one (RFC-0030). SoftmaxRow, RsqrtRow and Argmax extra committed values
-//!   and auxiliary lookups are not regenerated here yet; these are component tiles, not complete
-//!   gadget witnesses. A table touched by a missing auxiliary lookup is explicitly refused, even
-//!   when supported requantizations also read that table, so no partial histogram is returned.
+//! - **Gadgets.** Requantization and root witnesses come from `tessera-gadgets`; root columns
+//!   follow RFC-0050's grouped array order and public limb count. Softmax adds its maximum,
+//!   slack limbs and every virtual-top lookup, with masked Exp key `K_0` (RFC-0030).
 //! - **Multiplicities.** A table tile recounts every contributing node's lookups, including
-//!   per-dimension padding and the combined column's row-0 tail (RFC-0008, RFC-0045). It holds
-//!   one u64 per table-tree row, with zero counts on its padding rows.
+//!   per-dimension padding and the combined column's row-0 tail (RFC-0008, RFC-0045). Public
+//!   sizes choose dense counts or fixed-capacity weighted updates; implicit zero positions remain
+//!   in the full canonical column. A bounded chunk reader never skips commitment positions.
 //! - **Lookups.** A key is the row it names, key `j` at row `j` of every table (RFC-0008). A value
 //!   is always one of the tile's committed tensors, `y`, `g` or `e`, which the lookup lends.
 //!
@@ -29,14 +25,19 @@ use core::fmt;
 use core::ops::Range;
 
 use tessera_codec::SecretBuf;
-use tessera_compiler::{Gadget, Selection, SequenceTile, Share, Tile};
+use tessera_compiler::{AuxColumn, Gadget, Selection, SequenceTile, Share, Tile};
 use tessera_field::{Field, Goldilocks, PrimeField};
 use tessera_gadgets::{Affine, Committed, Constraints, Requant, Term};
-use tessera_ir::{CommitmentClass, Node, NodeKind, Op, TableId, TensorId};
-use tessera_tables::{GeneratedTable, Table, TableKind};
+use tessera_ir::{CommitmentClass, Node, NodeKind, Op, OpClass, TableId, TensorId};
+use tessera_tables::{Table, TableKind};
+
+mod auxiliary;
+
+use auxiliary::{Prepared, requant_role};
 
 use crate::WitnessError;
-use crate::engine::{Operand, row_max};
+use crate::engine::Operand;
+use crate::multiplicity::{Multiplicities, MultiplicityColumn};
 use crate::replay::Rows;
 use crate::structure::{Core, Structure};
 
@@ -66,9 +67,9 @@ fn usage<T>(rule: &'static str) -> Result<T, WitnessError> {
 /// The debug form shows the shapes, never a value.
 pub struct TileWitness {
     shares: Vec<SecretBuf<i64>>,
-    gadget: Vec<(Committed, SecretBuf<i64>)>,
+    gadget: Vec<(AuxColumn, SecretBuf<i64>)>,
     lookups: Vec<Lookup>,
-    multiplicities: Option<SecretBuf<u64>>,
+    multiplicities: Option<MultiplicityColumn>,
 }
 
 /// A lookup's columns: its keys, and the committed tensor of the tile that holds its values.
@@ -109,8 +110,15 @@ impl TileWitness {
     /// The table tile's multiplicities, in table-row order, including zero-valued table-tree
     /// padding. Counts include per-dimension lookup padding and the lookup column's row-0 tail
     /// (RFC-0045); `None` for a tile other than a table. Secret-class, lent under this tile's rules.
-    pub fn multiplicities(&self) -> Option<&[u64]> {
-        self.multiplicities.as_deref()
+    pub fn multiplicities(&self) -> Option<&MultiplicityColumn> {
+        self.multiplicities.as_ref()
+    }
+
+    pub(crate) fn table(column: MultiplicityColumn) -> Self {
+        Self {
+            multiplicities: Some(column),
+            ..Self::empty()
+        }
     }
 
     /// The elements of each of the tile's shares, in the tile's order: for each share, the
@@ -120,11 +128,11 @@ impl TileWitness {
         &self.shares
     }
 
-    /// The gadget's committed values beyond its node's outputs, in the order RFC-0009 lists them,
-    /// one per element of the gadget's input: `z_lo` for `RequantSplit`; `z_lo` when `s ≥ 1`,
-    /// `h0` and `g` for `RequantWide`; none for the other gadgets a tile holds. The values are lent
-    /// under the rules of [`TileWitness`].
-    pub fn gadget(&self) -> &[(Committed, SecretBuf<i64>)] {
+    /// The gadget's real auxiliary columns beyond graph outputs, named and ordered by RFC-0050's
+    /// [`AuxColumn`]. Requantization/root columns use the node's element domain; Softmax maximum
+    /// and slack limbs use its query-row domain. Virtual top limbs occur only as lookup keys.
+    /// Values are lent under the rules of [`TileWitness`].
+    pub fn gadget(&self) -> &[(AuxColumn, SecretBuf<i64>)] {
         &self.gadget
     }
 
@@ -149,7 +157,10 @@ impl TileWitness {
         let keys: usize = self.lookups.iter().map(|l| l.keys.capacity()).sum();
         wide * size_of::<i64>()
             + keys * size_of::<u32>()
-            + self.multiplicities.as_ref().map_or(0, SecretBuf::capacity) * size_of::<u64>()
+            + self
+                .multiplicities
+                .as_ref()
+                .map_or(0, MultiplicityColumn::bytes)
     }
 }
 
@@ -157,14 +168,14 @@ impl TileWitness {
 impl fmt::Debug for TileWitness {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let shares: Vec<usize> = self.shares.iter().map(|s| s.len()).collect();
-        let gadget: Vec<(Committed, usize)> =
+        let gadget: Vec<(AuxColumn, usize)> =
             self.gadget.iter().map(|(c, g)| (*c, g.len())).collect();
         f.debug_struct("TileWitness")
             .field("shares", &shares)
             .field("gadget", &gadget)
             .field(
                 "multiplicities",
-                &self.multiplicities.as_ref().map(|m| m.len()),
+                &self.multiplicities.as_ref().map(MultiplicityColumn::rows),
             )
             .field("lookups", &self.lookups().collect::<Vec<_>>())
             .finish()
@@ -286,6 +297,17 @@ impl Structure<'_> {
             Tile::Node { node } => {
                 let node = node_of(node)?;
                 no_block()?;
+                if self.core_of(node.id.0).is_some()
+                    || (node.op.class() != OpClass::Gadget
+                        && !node.outputs.iter().any(|&tensor| {
+                            graph
+                                .tensors
+                                .get(tensor.0 as usize)
+                                .is_some_and(|t| committed(t.kind))
+                        }))
+                {
+                    return usage("a node tile commits a value and is not a layer's SoftmaxRow");
+                }
                 let shares = node.outputs.iter().filter_map(|&t| self.whole(t)).collect();
                 (Target::Node(node.id.0), shares)
             }
@@ -364,6 +386,8 @@ struct RequantGadget {
 /// selection and the tables it names, and the tables some gadget reads.
 pub(crate) struct Gadgets {
     requant: Vec<Option<RequantGadget>>,
+    requests: Vec<Vec<TableId>>,
+    auxiliary: Vec<Option<Prepared>>,
     pub(crate) read: Vec<TableId>,
     incomplete: Vec<TableId>,
 }
@@ -378,6 +402,7 @@ impl Gadgets {
     pub(crate) fn new(
         structure: &Structure<'_>,
         selection: &Selection,
+        max_context: u32,
     ) -> Result<Self, WitnessError> {
         let graph = structure.graph();
         let mut requant = Vec::with_capacity(graph.nodes.len());
@@ -411,23 +436,25 @@ impl Gadgets {
         }
         read.sort_unstable();
         read.dedup();
+        let mut auxiliary = Vec::with_capacity(graph.nodes.len());
         let mut incomplete = Vec::new();
-        for &(node, gadget) in &selection.gadgets {
-            let requests = selection.reads(node).ok_or(WitnessError::Internal {
-                rule: "every selected gadget has its ordered lookup requests",
-            })?;
-            match gadget {
-                Gadget::SoftmaxRow { .. } => incomplete.extend_from_slice(
-                    requests.get(1..).ok_or(WitnessError::Internal {
-                        rule: "a Softmax gadget starts with its Exp lookup",
-                    })?,
-                ),
-                Gadget::RsqrtRow | Gadget::Argmax { .. } => incomplete.extend_from_slice(requests),
-                _ => {}
+        for node in &graph.nodes {
+            auxiliary.push(Prepared::new(node, selection, max_context)?);
+            if matches!(
+                selection.of(node.id),
+                Some((_, Gadget::Argmax { .. } | Gadget::InverseCdf))
+            ) {
+                incomplete.extend_from_slice(selection.reads(node.id).unwrap_or(&[]));
             }
         }
         Ok(Self {
             requant,
+            auxiliary,
+            requests: graph
+                .nodes
+                .iter()
+                .map(|node| selection.reads(node.id).unwrap_or(&[]).to_vec())
+                .collect(),
             read,
             incomplete,
         })
@@ -545,20 +572,24 @@ impl Gadgets {
                     values: Some(Column::Share(output(0)?)),
                 });
             }
-            Op::SoftmaxRow { exp_table, .. } => {
-                let scores = input(0)?;
-                let n = channels(0);
-                let e = output(0)?;
-                let lookup = exp_lookup(
-                    structure,
-                    *exp_table,
+            Op::RsqrtRow { .. } => {
+                self.prepared(node.id.0)?.root_tile(
                     node.outputs[0],
-                    scores,
-                    n,
-                    |row| row % n,
-                    e,
+                    input(0)?,
+                    output(0)?,
+                    &mut tile,
                 )?;
-                tile.lookups.push(lookup);
+            }
+            Op::SoftmaxRow { .. } => {
+                self.prepared(node.id.0)?.softmax_tile(
+                    node.outputs[0],
+                    input(0)?,
+                    channels(0),
+                    |row| row % channels(0) + 1,
+                    output(0)?,
+                    output(1)?,
+                    &mut tile,
+                )?;
             }
             _ => {}
         }
@@ -588,7 +619,7 @@ impl Gadgets {
                     .zip(tile.shares[y].iter())
                     .fold(true, |all, (a, b)| all & (a == b));
             } else {
-                tile.gadget.push((held, values));
+                tile.gadget.push((requant_role(held)?, values));
             }
         }
         if !same {
@@ -614,7 +645,7 @@ impl Gadgets {
                     Term::Committed(c) => Some(
                         tile.gadget
                             .iter()
-                            .find(|(g, _)| *g == c)
+                            .find(|(g, _)| requant_role(c).is_ok_and(|role| *g == role))
                             .map(|(_, values)| &values[..])
                             .ok_or(WitnessError::Internal {
                                 rule: "a lookup reads its gadget's committed values",
@@ -656,7 +687,7 @@ impl Gadgets {
     /// query head after another.
     pub(crate) fn attention_tile(
         &self,
-        structure: &Structure<'_>,
+        _structure: &Structure<'_>,
         core: &Core,
         rows: Rows,
         queries: Range<usize>,
@@ -669,17 +700,15 @@ impl Gadgets {
             multiplicities: None,
         };
         let held = queries.len().max(1);
-        let lookup = exp_lookup(
-            structure,
-            core.table,
+        self.prepared(core.softmax)?.softmax_tile(
             core.e,
             &scores,
             core.n,
-            |row| queries.start + row % held,
+            |row| queries.start + row % held + 1,
             0,
+            1,
+            &mut tile,
         )?;
-        drop(scores);
-        tile.lookups.push(lookup);
         Ok(tile)
     }
 }
@@ -734,12 +763,12 @@ fn keys(
 
 /// The key form `form` at each of `len` elements of `tensor`, `at` giving a term's value at an
 /// element: the row it names, below `rows`.
-fn keys_of(
+fn keys_of<T: Copy>(
     tensor: TensorId,
-    form: &Affine<Goldilocks>,
+    form: &Affine<Goldilocks, T>,
     len: usize,
     rows: u64,
-    at: &impl Fn(Term, usize) -> Goldilocks,
+    at: &impl Fn(T, usize) -> Goldilocks,
 ) -> Result<SecretBuf<u32>, WitnessError> {
     let mut keys =
         SecretBuf::try_with_capacity(len).map_err(|_| WitnessError::Memory { tensor })?;
@@ -763,133 +792,21 @@ fn keys_of(
 fn value_column(
     form: &Affine<Goldilocks>,
     y: usize,
-    gadget: &[(Committed, SecretBuf<i64>)],
+    gadget: &[(AuxColumn, SecretBuf<i64>)],
 ) -> Result<Column, WitnessError> {
     let column = match (form.constant == Goldilocks::ZERO, form.terms.as_slice()) {
         (true, &[(one, Term::Committed(Committed::Y))]) if one == Goldilocks::ONE => {
             Some(Column::Share(y))
         }
-        (true, &[(one, Term::Committed(c))]) if one == Goldilocks::ONE => {
-            gadget.iter().position(|(g, _)| *g == c).map(Column::Gadget)
-        }
+        (true, &[(one, Term::Committed(c))]) if one == Goldilocks::ONE => gadget
+            .iter()
+            .position(|(g, _)| requant_role(c).is_ok_and(|role| *g == role))
+            .map(Column::Gadget),
         _ => None,
     };
     column.ok_or(WitnessError::Internal {
         rule: "a lookup's value is one committed tensor of its tile",
     })
-}
-
-/// The max certificate's lookups (RFC-0009 'SoftmaxRow' relation 1, RFC-0030) at every position of
-/// `scores`, rows of `n` keys, row `x` that of query `query(x)`: the key `c_q − x_qi` at a valid
-/// position `i ≤ q`, and the table's last key `K_0` at a masked one; the value is the tile's share
-/// `e`, the exponential, zero at a masked position.
-fn exp_lookup(
-    structure: &Structure<'_>,
-    table: TableId,
-    tensor: TensorId,
-    scores: &[i64],
-    n: usize,
-    query: impl Fn(usize) -> usize,
-    e: usize,
-) -> Result<Lookup, WitnessError> {
-    let t: &GeneratedTable = structure.engine.lookup(table)?;
-    let TableKind::Exp { key_bits, .. } = t.spec().kind else {
-        return Err(WitnessError::Internal {
-            rule: "the max certificate reads an Exp table",
-        });
-    };
-    let masked = (1u64 << key_bits) - 1;
-    let rows = t.row_count();
-    let n = n.max(1);
-    let mut keys =
-        SecretBuf::try_with_capacity(scores.len()).map_err(|_| WitnessError::Memory { tensor })?;
-    let mut fits = true;
-    for (x, row) in scores.chunks(n).enumerate() {
-        let q = query(x);
-        let valid = q < row.len();
-        let top = if valid { row_max(row, q) } else { 0 };
-        for (i, &s) in row.iter().enumerate() {
-            let key = match valid && i <= q {
-                true => u64::try_from(top - s).ok(),
-                false => Some(masked),
-            };
-            let named = key
-                .filter(|&k| k < rows)
-                .and_then(|k| u32::try_from(k).ok());
-            fits &= named.is_some() & valid;
-            keys.push(named.unwrap_or(0));
-        }
-    }
-    match fits {
-        true => Ok(Lookup {
-            table,
-            keys,
-            values: Some(Column::Share(e)),
-        }),
-        false => Err(WitnessError::Internal { rule: NAMES_A_ROW }),
-    }
-}
-
-/// One table's canonical multiplicities (RFC-0008, RFC-0045), held only for this tile.
-pub(crate) struct Multiplicities {
-    pub(crate) table: TableId,
-    rows: u64,
-    total: u64,
-    counts: SecretBuf<u64>,
-}
-
-impl Multiplicities {
-    pub(crate) fn new(table: TableId, rows: u64) -> Result<Self, WitnessError> {
-        if rows == 0 {
-            return Err(WitnessError::Internal {
-                rule: "a multiplicity table has a row",
-            });
-        }
-        let memory = WitnessError::MemoryTable { table };
-        let size = rows.checked_next_power_of_two().ok_or(memory)?;
-        let size = usize::try_from(size).map_err(|_| memory)?;
-        let mut counts = SecretBuf::try_with_capacity(size).map_err(|_| memory)?;
-        counts.extend(core::iter::repeat_n(0, size));
-        Ok(Self {
-            table,
-            rows,
-            total: 0,
-            counts,
-        })
-    }
-
-    pub(crate) fn add(&mut self, row: u64, count: u64) -> Result<(), WitnessError> {
-        // Each counter is bounded by this public total, strictly below the field modulus.
-        let total = self
-            .total
-            .checked_add(count)
-            .filter(|&n| n < Goldilocks::MODULUS)
-            .ok_or(WitnessError::Internal {
-                rule: "lookup multiplicities sum to less than P (RFC-0008)",
-            })?;
-        if row >= self.rows {
-            return Err(WitnessError::Internal { rule: NAMES_A_ROW });
-        }
-        self.counts[row as usize] += count;
-        self.total = total;
-        Ok(())
-    }
-
-    pub(crate) fn finish(mut self) -> Result<TileWitness, WitnessError> {
-        let padded = self
-            .total
-            .checked_next_power_of_two()
-            .filter(|_| self.total > 0)
-            .ok_or(WitnessError::Internal {
-                rule: "a lookup column has at least one entry and fits u64",
-            })?;
-        // RFC-0045: padding of the combined lookup column repeats row 0, not (0, 0).
-        self.add(0, padded - self.total)?;
-        Ok(TileWitness {
-            multiplicities: Some(self.counts),
-            ..TileWitness::empty()
-        })
-    }
 }
 
 impl Gadgets {
@@ -901,7 +818,7 @@ impl Gadgets {
     ) -> Result<u64, WitnessError> {
         if self.incomplete.contains(&table) {
             return usage(
-                "auxiliary RsqrtRow, SoftmaxRow and Argmax multiplicities are not implemented",
+                "future greedy and sampling multiplicities are outside the current model layout",
             );
         }
         match self
@@ -909,6 +826,7 @@ impl Gadgets {
             .iter()
             .flatten()
             .flat_map(|g| &g.rows)
+            .chain(self.auxiliary.iter().flatten().flat_map(Prepared::rows))
             .find(|(id, _)| *id == table)
         {
             Some(&(_, rows)) => Ok(rows),
@@ -918,15 +836,58 @@ impl Gadgets {
 
     /// Whether a node contributes any lookup to this table.
     pub(crate) fn reads_node(&self, node: &Node, table: TableId) -> bool {
-        match node.op {
-            Op::Requant { .. } => self.requant[node.id.0 as usize]
-                .as_ref()
-                .is_some_and(|g| g.constraints.lookups.iter().any(|l| l.table == table)),
-            Op::TableMap { table: t }
-            | Op::Bitwise { table: t }
-            | Op::SoftmaxRow { exp_table: t, .. } => t == table,
-            _ => false,
+        self.requests[node.id.0 as usize].contains(&table)
+    }
+
+    /// Public upper bound on insertions, including weighted padding and the row-0 tail.
+    pub(crate) fn update_bound(
+        &self,
+        structure: &Structure<'_>,
+        table: TableId,
+    ) -> Result<u64, WitnessError> {
+        let error = WitnessError::MemoryTable { table };
+        let graph = structure.graph();
+        let mut total = 1u64;
+        for node in &graph.nodes {
+            let frequency = self.requests[node.id.0 as usize]
+                .iter()
+                .filter(|&&id| id == table)
+                .count() as u64;
+            if frequency == 0 {
+                continue;
+            }
+            let tensor = match node.op {
+                Op::SoftmaxRow { exp_table, .. } if exp_table != table => node.outputs[1],
+                _ => node.inputs[0],
+            };
+            let shape = &graph.tensors[tensor.0 as usize].shape;
+            let real = shape
+                .iter()
+                .try_fold(1u64, |n, &d| n.checked_mul(u64::from(d)))
+                .ok_or(error)?;
+            let padded = shape
+                .iter()
+                .try_fold(1u64, |n, &d| {
+                    n.checked_mul(u64::from(d).next_power_of_two())
+                })
+                .ok_or(error)?;
+            let padding_calls = if real == padded {
+                0
+            } else if matches!(node.op, Op::Requant { .. } | Op::TableMap { .. })
+                && node.inputs.len() > 1
+            {
+                u64::from(*shape.last().ok_or(error)?)
+                    .checked_add(1)
+                    .ok_or(error)?
+            } else {
+                1
+            };
+            total = frequency
+                .checked_mul(real.checked_add(padding_calls).ok_or(error)?)
+                .and_then(|n| total.checked_add(n))
+                .ok_or(error)?;
         }
+        Ok(total)
     }
 
     /// Per-dimension padding is a lookup of the node's zero inputs, with real channel classes
@@ -939,7 +900,11 @@ impl Gadgets {
         read_classes: impl FnOnce(TensorId) -> Result<SecretBuf<i64>, WitnessError>,
     ) -> Result<(), WitnessError> {
         let input = node.inputs[0];
-        let shape = &structure.graph().tensors[input.0 as usize].shape;
+        let domain = match node.op {
+            Op::SoftmaxRow { exp_table, .. } if exp_table != counts.table => node.outputs[1],
+            _ => input,
+        };
+        let shape = &structure.graph().tensors[domain.0 as usize].shape;
         let product = |padded: bool| {
             shape.iter().try_fold(1u64, |size, &d| {
                 size.checked_mul(if padded {
@@ -957,6 +922,14 @@ impl Gadgets {
             return Ok(());
         }
         if let Op::SoftmaxRow { exp_table, .. } = node.op {
+            if counts.table != exp_table {
+                for &table in &self.requests[node.id.0 as usize] {
+                    if table == counts.table {
+                        counts.add(0, padded - real)?;
+                    }
+                }
+                return Ok(());
+            }
             let table = structure.engine.lookup(exp_table)?;
             let TableKind::Exp { key_bits, .. } = table.spec().kind else {
                 return Err(WitnessError::Internal {
@@ -964,6 +937,14 @@ impl Gadgets {
                 });
             };
             return counts.add((1u64 << key_bits) - 1, padded - real);
+        }
+        if matches!(node.op, Op::RsqrtRow { .. }) {
+            for &table in &self.requests[node.id.0 as usize] {
+                if table == counts.table {
+                    counts.add(0, padded - real)?;
+                }
+            }
+            return Ok(());
         }
         let classes = if matches!(node.op, Op::Requant { .. } | Op::TableMap { .. }) {
             node.inputs.get(1).copied().map(read_classes).transpose()?
@@ -1049,48 +1030,5 @@ impl Gadgets {
                 .ok_or(WitnessError::Internal { rule: NAMES_A_ROW })?;
             counts.add(key, copies)
         }
-    }
-}
-
-#[cfg(test)]
-mod multiplicity_tests {
-    use super::*;
-
-    #[test]
-    fn padding_and_field_bounds_are_checked() {
-        assert!(matches!(
-            Multiplicities::new(TableId(1), 0),
-            Err(WitnessError::Internal {
-                rule: "a multiplicity table has a row"
-            })
-        ));
-        let empty = Multiplicities::new(TableId(1), 3).unwrap();
-        assert!(matches!(
-            empty.finish(),
-            Err(WitnessError::Internal {
-                rule: "a lookup column has at least one entry and fits u64"
-            })
-        ));
-        let mut counts = Multiplicities::new(TableId(1), 3).unwrap();
-        counts.add(1, 2).unwrap();
-        counts.add(2, 1).unwrap();
-        assert_eq!(
-            counts.add(3, 1),
-            Err(WitnessError::Internal { rule: NAMES_A_ROW })
-        );
-        let tile = counts.finish().unwrap();
-        assert_eq!(tile.multiplicities(), Some(&[1, 2, 1, 0][..]));
-        let mut large = Multiplicities::new(TableId(1), 1).unwrap();
-        large.add(0, Goldilocks::MODULUS - 1).unwrap();
-        assert_eq!(
-            large.add(0, 1),
-            Err(WitnessError::Internal {
-                rule: "lookup multiplicities sum to less than P (RFC-0008)",
-            })
-        );
-        assert_eq!(
-            WitnessError::MemoryTable { table: TableId(1) }.code(),
-            tessera_codec::error::ErrorCode::ResMemory
-        );
     }
 }

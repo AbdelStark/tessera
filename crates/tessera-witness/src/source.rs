@@ -16,13 +16,14 @@
 use core::fmt;
 
 use tessera_codec::{Secret, SecretBuf};
-use tessera_compiler::{QueryBlock, Selection, SequenceTile, Tile};
+use tessera_compiler::{Selection, SequenceTile, Tile};
 use tessera_ir::{IntegerModel, TableId};
 
 use crate::engine::{Input, Operand, elements};
+use crate::multiplicity::Multiplicities;
 use crate::replay::{Replay, Rows};
-use crate::structure::Structure;
-use crate::tile::{Gadgets, Multiplicities, Target};
+use crate::structure::{Core, Structure};
+use crate::tile::{Gadgets, Target};
 use crate::{Checkpoints, Engine, TileWitness, Witness, WitnessError};
 
 /// A source of a sequence's witness, by tile (RFC-0018 'Pass structure', RFC-0010 'Stages'): the
@@ -35,11 +36,9 @@ pub trait WitnessSource {
     ///
     /// # Errors
     ///
-    /// Component tiles do not yet include all SoftmaxRow/RsqrtRow/Argmax gadget data.
-    ///
-    /// [`WitnessError::Usage`] for an auxiliary SoftmaxRow/Argmax table whose full counts are not
-    /// implemented, or a tile that is not one of the sequence's, with the shares
-    /// RFC-0041 gives it; otherwise the source's own.
+    /// [`WitnessError::Usage`] for a tile that is not one of the sequence's, with the shares
+    /// RFC-0041 gives it; otherwise the source's own. Future greedy/sampling certificates are
+    /// outside the accepted current-model layout (RFC-0050 'Non-goals').
     fn tile(&self, tile: &SequenceTile) -> Result<TileWitness, WitnessError>;
 }
 
@@ -91,7 +90,7 @@ impl<'a> Regenerator<'a> {
                 rule: "the checkpoints are the lowering's, for its sequence",
             });
         }
-        let gadgets = Gadgets::new(&replay.structure, selection)?;
+        let gadgets = Gadgets::new(&replay.structure, selection, model.arch.max_context)?;
         Ok(Self {
             replay,
             gadgets,
@@ -113,16 +112,25 @@ impl WitnessSource for Regenerator<'_> {
         let structure = &self.replay.structure;
         match structure.target(tile, &self.gadgets.read)? {
             Target::Tokens => Ok(TileWitness::tokens(self.replay.tokens()?)),
-            Target::Table(table) => {
-                multiplicities(self, structure, &self.gadgets, table, |tensor| {
-                    match self.replay.leaf(self.store, tensor)? {
-                        Input::Values(values) => Ok(values),
-                        Input::Weight(_) => Err(WitnessError::Internal {
-                            rule: "channel classes are integer vectors",
-                        }),
-                    }
-                })
-            }
+            Target::Table(table) => multiplicities(
+                self,
+                structure,
+                &self.gadgets,
+                table,
+                |core, counts| {
+                    let live = self.replay.compute(self.store, &[core.q, core.k])?;
+                    attention_counts(structure, &self.gadgets, core, counts, |head, query| {
+                        self.replay
+                            .attention_rows(core, &live, head..head + 1, query..query + 1)
+                    })
+                },
+                |tensor| match self.replay.leaf(self.store, tensor)? {
+                    Input::Values(values) => Ok(values),
+                    Input::Weight(_) => Err(WitnessError::Internal {
+                        rule: "channel classes are integer vectors",
+                    }),
+                },
+            ),
             Target::Node(id) => {
                 let node = &structure.graph().nodes[id as usize];
                 let live = self.replay.compute(self.store, &node.inputs)?;
@@ -202,7 +210,7 @@ impl<'a> Resident<'a> {
                 rule: "the witness is the first pass of the engine's lowering",
             });
         }
-        let gadgets = Gadgets::new(&structure, selection)?;
+        let gadgets = Gadgets::new(&structure, selection, model.arch.max_context)?;
         Ok(Self {
             structure,
             gadgets,
@@ -248,11 +256,29 @@ impl WitnessSource for Resident<'_> {
                     self.values(tokens)?,
                 )?))
             }
-            Target::Table(table) => {
-                multiplicities(self, structure, &self.gadgets, table, |tensor| {
-                    Self::copied(tensor, self.values(tensor)?)
-                })
-            }
+            Target::Table(table) => multiplicities(
+                self,
+                structure,
+                &self.gadgets,
+                table,
+                |core, counts| {
+                    attention_counts(structure, &self.gadgets, core, counts, |head, query| {
+                        let row = head * core.n + query;
+                        Ok(Rows {
+                            scores: Self::copied(
+                                core.scores,
+                                &self.values(core.scores)?[row * core.n..(row + 1) * core.n],
+                            )?,
+                            e: Self::copied(
+                                core.e,
+                                &self.values(core.e)?[row * core.n..(row + 1) * core.n],
+                            )?,
+                            r: Self::copied(core.r, &self.values(core.r)?[row..row + 1])?,
+                        })
+                    })
+                },
+                |tensor| Self::copied(tensor, self.values(tensor)?),
+            ),
             Target::Node(id) => {
                 let node = &structure.graph().nodes[id as usize];
                 let inputs = node
@@ -314,10 +340,11 @@ fn multiplicities(
     structure: &Structure<'_>,
     gadgets: &Gadgets,
     table: TableId,
+    visit_attention: impl Fn(&Core, &mut Multiplicities) -> Result<(), WitnessError>,
     read_classes: impl Fn(tessera_ir::TensorId) -> Result<SecretBuf<i64>, WitnessError>,
 ) -> Result<TileWitness, WitnessError> {
     let rows = gadgets.rows(structure, table)?;
-    let mut counts = Multiplicities::new(table, rows)?;
+    let mut counts = Multiplicities::new(table, rows, gadgets.update_bound(structure, table)?)?;
     let visit = |tile: SequenceTile, counts: &mut Multiplicities| {
         let witness = source.tile(&tile)?;
         for lookup in witness.lookups().filter(|lookup| lookup.table() == table) {
@@ -332,39 +359,7 @@ fn multiplicities(
             continue;
         }
         if let Some(core) = structure.core_of(node.id.0) {
-            let n = structure.cores[core].n as u32;
-            for kv_head in 0..structure.kv_heads() {
-                let heads = structure
-                    .query_heads(kv_head)
-                    .ok_or(WitnessError::Internal {
-                        rule: "a KV head has query heads",
-                    })?;
-                for query in 0..n {
-                    let mut shares: Vec<_> = node
-                        .outputs
-                        .iter()
-                        .filter_map(|&t| structure.whole(t))
-                        .collect();
-                    for share in &mut shares {
-                        share.ranges[0] = heads.start as u32..heads.end as u32;
-                        share.ranges[1] = query..query + 1;
-                    }
-                    visit(
-                        SequenceTile {
-                            tile: Tile::Attention {
-                                node: node.id.0,
-                                kv_head,
-                            },
-                            block: Some(QueryBlock {
-                                index: query,
-                                queries: query..query + 1,
-                            }),
-                            shares,
-                        },
-                        &mut counts,
-                    )?;
-                }
-            }
+            visit_attention(&structure.cores[core], &mut counts)?;
         } else {
             visit(
                 SequenceTile {
@@ -381,5 +376,28 @@ fn multiplicities(
         }
         gadgets.padding(structure, node, &mut counts, &read_classes)?;
     }
-    counts.finish()
+    counts.finish().map(TileWitness::table)
+}
+
+/// A single table pass retains Q/K once, then one scalar certificate row at a time.
+fn attention_counts(
+    structure: &Structure<'_>,
+    gadgets: &Gadgets,
+    core: &Core,
+    counts: &mut Multiplicities,
+    mut read: impl FnMut(usize, usize) -> Result<Rows, WitnessError>,
+) -> Result<(), WitnessError> {
+    let table = counts.table;
+    for head in 0..core.heads {
+        for query in 0..core.n {
+            let tile =
+                gadgets.attention_tile(structure, core, read(head, query)?, query..query + 1)?;
+            for lookup in tile.lookups().filter(|l| l.table() == table) {
+                for &key in lookup.keys() {
+                    counts.add(u64::from(key), 1)?;
+                }
+            }
+        }
+    }
+    Ok(())
 }

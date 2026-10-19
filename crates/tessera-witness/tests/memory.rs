@@ -2,8 +2,8 @@
 
 //! What the checkpoints and the regenerated tiles hold (RFC-0018 'Witness engine', 01 §6
 //! INV-ARCH-3), as a counting allocator sees it. `allocation-counter` counts the current thread's
-//! allocations only, so every engine here runs on one thread; the tables, which are public, are
-//! built before any measurement.
+//! allocations only, so every engine here runs on one thread. Borrowed engine tables are built
+//! before measurement; source-owned public data is measured separately.
 //!
 //! - **The store** keeps `(L + 1)·n·d_model` INT32 values and nothing else, and computing it holds
 //!   less than the first full pass, which keeps every tensor.
@@ -86,6 +86,9 @@ struct Measured {
     store_retained: i64,
     store_peak: u64,
     first_pass: u64,
+    source_retained: u64,
+    source_peak: u64,
+    visit_metadata: usize,
 }
 
 fn measured(model: &IntegerModel, lowering: &Lowering, tokens: &[u32], q: u32) -> Measured {
@@ -100,15 +103,25 @@ fn measured(model: &IntegerModel, lowering: &Lowering, tokens: &[u32], q: u32) -
         store = Some(Checkpoints::new(&engine, model, &secret).expect("the checkpoints"));
     });
     let store = store.expect("built");
-    let source =
-        Regenerator::new(&engine, &selection, model, &secret, &store).expect("a regenerator");
+    let mut source = None;
+    let baseline = measure(|| {
+        source = Some(
+            Regenerator::new(&engine, &selection, model, &secret, &store).expect("a regenerator"),
+        );
+    });
+    let source = source.expect("source constructed");
     let plan = plan_of(model, q);
     let mut tiles = BTreeMap::new();
+    let mut visit_metadata = 0;
     for tile in plan.expand(lowering).expect("the plan expands") {
-        if common::unsupported_table(&selection, &tile) {
-            common::assert_unsupported(source.tile(&tile));
-            continue;
-        }
+        visit_metadata = visit_metadata.max(
+            tile.shares.capacity() * size_of::<tessera_compiler::Share>()
+                + tile
+                    .shares
+                    .iter()
+                    .map(|s| s.ranges.capacity() * size_of::<core::ops::Range<u32>>())
+                    .sum::<usize>(),
+        );
         let mut bytes = 0;
         let info: AllocationInfo = measure(|| {
             let regenerated = source.tile(&tile).expect("a tile");
@@ -134,6 +147,9 @@ fn measured(model: &IntegerModel, lowering: &Lowering, tokens: &[u32], q: u32) -
         store_retained: built.bytes_current,
         store_peak: built.bytes_max,
         first_pass: first.bytes_max,
+        source_retained: u64::try_from(baseline.bytes_current).expect("public source baseline"),
+        source_peak: baseline.bytes_max,
+        visit_metadata,
     }
 }
 
@@ -194,6 +210,37 @@ fn regeneration_holds_the_checkpoints_and_one_tile() {
                 .max_by_key(|(_, f)| f.peak)
                 .expect("tiles");
             let largest_tile = full.tiles.values().map(|f| f.bytes).max().expect("tiles");
+            // A counting tile holds its one column plus at most one ordinary regeneration's
+            // working set. This includes replay scratch, not only returned buffer sizes.
+            let replay_peak = full
+                .tiles
+                .iter()
+                .filter(|(k, _)| k.kind != "table")
+                .map(|(_, f)| f.peak)
+                .max()
+                .expect("ordinary tiles");
+            for (k, figures) in full.tiles.iter().filter(|(k, _)| k.kind == "table") {
+                assert!(
+                    figures.peak <= figures.bytes as u64 + replay_peak + full.visit_metadata as u64,
+                    "{} Q={q} {k:?}: peak={} column={} replay={replay_peak} plus public visit metadata",
+                    c.name,
+                    figures.peak,
+                    figures.bytes
+                );
+            }
+            // Count the source's public tables/constraints too; never hide them in C or T.
+            let whole_peak =
+                retained as u64 + (full.source_retained + largest.peak).max(full.source_peak);
+            let whole_peak = whole_peak.max(full.store_peak);
+            assert!(
+                whole_peak * 2 < full.first_pass,
+                "{}: full accounted residency is below half the resident witness",
+                c.name
+            );
+            eprintln!(
+                "{} Q={q}: checkpoint allocations={retained}, public source retained={}, public construction peak={}, C+source+working peak={whole_peak}",
+                c.name, full.source_retained, full.source_peak
+            );
             let ratio = largest.peak as f64 / largest_tile as f64;
             let share = (full.store as f64 + largest.peak as f64) / full.first_pass as f64;
             eprintln!(

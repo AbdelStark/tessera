@@ -322,6 +322,12 @@ pub struct CompareWitness {
 }
 
 impl CompareWitness {
+    /// Transfer the clearing columns without copying their values.
+    /// The holder applies the secret borrowing rules of [`Self::tensor`].
+    pub fn into_tensors(self) -> Vec<(CompareColumn, SecretBuf<i64>)> {
+        self.tensors
+    }
+
     /// Borrow a committed column, or `None` for an input or an absent limb.
     ///
     /// Entries remain secret-class; callers must not log them, copy them into uncleared storage,

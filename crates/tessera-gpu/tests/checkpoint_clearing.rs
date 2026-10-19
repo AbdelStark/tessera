@@ -20,7 +20,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
-use tessera_codec::{DecodeLimits, Secret, envelope, schema};
+use tessera_codec::{DecodeLimits, Secret, SecretBuf, envelope, schema};
 use tessera_compiler::{PublicModel, SequenceTile, Tile, analyze, lower, select, tiles};
 use tessera_ir::{GadgetPolicy, IntegerModel};
 use tessera_witness::{Checkpoints, Engine, Regenerator, WitnessSource};
@@ -36,13 +36,15 @@ mod recorder {
     pub static WATCHED: AtomicPtr<u8> = AtomicPtr::new(ptr::null_mut());
     /// The nonzero bytes the watched block held when it was freed; `usize::MAX` until then.
     pub static NONZERO: AtomicUsize = AtomicUsize::new(usize::MAX);
+    pub static WATCHED_SIZE: AtomicUsize = AtomicUsize::new(0);
 
     pub struct Recorder;
 
     // SAFETY: both methods forward to `System` with their own arguments, so its guarantees carry
     // over. `dealloc` first reads the block it frees: the block is live until the forwarded call,
     // `layout.size()` bytes long, and the test watches only blocks whose every byte is initialized:
-    // a residual's buffer, allocated at its length and filled, and a copy of it.
+    // a residual/copy, or the table tile's sole fully initialized dense/sorted allocation.
+    // Sorted storage initializes its entire public capacity as two-u64 entries without padding.
     unsafe impl GlobalAlloc for Recorder {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
             // SAFETY: the caller's contract, forwarded unchanged.
@@ -56,7 +58,9 @@ mod recorder {
                 Ordering::SeqCst,
                 Ordering::SeqCst,
             );
-            if watched.is_ok() {
+            let watched_size =
+                WATCHED_SIZE.compare_exchange(layout.size(), 0, Ordering::SeqCst, Ordering::SeqCst);
+            if watched.is_ok() || watched_size.is_ok() {
                 // SAFETY: as stated on the impl: live, `layout.size()` bytes, initialized.
                 let bytes = unsafe { std::slice::from_raw_parts(block, layout.size()) };
                 NONZERO.store(bytes.iter().filter(|&&b| b != 0).count(), Ordering::SeqCst);
@@ -75,6 +79,16 @@ fn nonzero_bytes_when_freed<T>(block: *const T, free: impl FnOnce()) -> usize {
     recorder::NONZERO.store(usize::MAX, Ordering::SeqCst);
     recorder::WATCHED.store(block.cast::<u8>().cast_mut(), Ordering::SeqCst);
     free();
+    recorder::NONZERO.load(Ordering::SeqCst)
+}
+
+/// A table tile has one allocation; watch its public size without exposing private storage.
+fn nonzero_bytes_when_size_freed(size: usize, free: impl FnOnce()) -> usize {
+    assert!(size > 0);
+    recorder::NONZERO.store(usize::MAX, Ordering::SeqCst);
+    recorder::WATCHED_SIZE.store(size, Ordering::SeqCst);
+    free();
+    recorder::WATCHED_SIZE.store(0, Ordering::SeqCst);
     recorder::NONZERO.load(Ordering::SeqCst)
 }
 
@@ -122,30 +136,45 @@ fn checkpoints_and_multiplicities_free_zeros_only() {
         &GadgetPolicy::default(),
     )
     .expect("gadgets");
-    let table = tiles(PublicModel::of(&model), &lowering, &selection)
-        .expect("tiles")
-        .into_iter()
-        .find(|t| matches!(t, Tile::Table { .. }))
-        .expect("a table");
+    let selected = tiles(PublicModel::of(&model), &lowering, &selection).expect("tiles");
     let store = Checkpoints::new(&engine, &model, &secret).expect("checkpoints");
     let source = Regenerator::new(&engine, &selection, &model, &secret, &store).expect("source");
-    let tile = source
-        .tile(&SequenceTile {
-            tile: table,
-            block: None,
-            shares: Vec::new(),
-        })
-        .expect("multiplicities");
-    let counts = tile.multiplicities().expect("a table tile");
-    let copy = counts.to_vec();
-    let written: usize = copy
-        .iter()
-        .map(|v| v.to_le_bytes().iter().filter(|&&b| b != 0).count())
-        .sum();
-    assert!(written > 0);
-    assert_eq!(
-        nonzero_bytes_when_freed(copy.as_ptr(), || drop(copy)),
-        written
-    );
-    assert_eq!(nonzero_bytes_when_freed(counts.as_ptr(), || drop(tile)), 0);
+    for bits in [1, 30] {
+        let table = selection
+            .tables
+            .iter()
+            .find(|table| table.log2_rows == bits)
+            .expect("a canonical one-bit or wide table")
+            .id;
+        let table = Tile::Table { table: table.0 };
+        assert!(selected.contains(&table));
+        let tile = source
+            .tile(&SequenceTile {
+                tile: table,
+                block: None,
+                shares: Vec::new(),
+            })
+            .expect("multiplicities");
+        assert!(tile.shares().is_empty() && tile.gadget().is_empty() && tile.lookups().len() == 0);
+        let counts = tile.multiplicities().expect("a table tile");
+        let mut probe = SecretBuf::filled(0, 2);
+        counts.read_rows(0, &mut probe).expect("canonical prefix");
+        let copy = probe.to_vec();
+        let written: usize = copy
+            .iter()
+            .map(|v| v.to_le_bytes().iter().filter(|&&b| b != 0).count())
+            .sum();
+        assert!(written > 0);
+        assert_eq!(
+            nonzero_bytes_when_freed(copy.as_ptr(), || drop(copy)),
+            written
+        );
+        let bytes = tile.bytes();
+        if bits == 1 {
+            assert_eq!(bytes, 16);
+        } else {
+            assert!((bytes as u64) < counts.rows() * 8);
+        }
+        assert_eq!(nonzero_bytes_when_size_freed(bytes, || drop(tile)), 0);
+    }
 }

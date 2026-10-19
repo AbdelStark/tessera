@@ -1,0 +1,11 @@
+{
+  "cpu": "Apple M4 Max",
+  "os": "26.6.2",
+  "arch": "arm64",
+  "pinned_rust": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "msrv_rust": "rustc 1.88.0 (6b00bc388 2025-06-23)",
+  "completed_utc": "2026-10-19T22:25:46Z",
+  "source_sha256": "3de9c99b447d1c18eb750aa945fa1bdf299ac5642b0e932a723d8e2099c4936b",
+  "pre_registration_commit": "31be2dc48fea299c678304a4a3c5a8e207fb115d",
+  "scope": "Single-thread allocator-request sizes/counts only; fixture/input storage excluded in every arm; no timing or RSS measurement."
+}

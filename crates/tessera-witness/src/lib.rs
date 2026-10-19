@@ -25,12 +25,18 @@
 //! zeroizing buffers, and debug forms reveal shapes only. A table tile's counts include the
 //! per-axis padding and row-0 column tail of RFC-0045, with zero counts on padded table rows.
 //!
-//! Memory includes the checkpoints, the returned tile and the replay's working tensors; no
-//! regenerated value is retained between calls. The allocator test reports these quantities
-//! separately. SoftmaxRow, RsqrtRow and Argmax auxiliary witness integration remains outstanding; this
-//! interface supplies component tiles, not a complete proof witness. A table tile whose counts
-//! would omit a SoftmaxRow or Argmax auxiliary lookup returns a public usage error, including when
-//! a supported requantization shares that table. Such tables are excluded from memory figures.
+//! Complete current-model `RsqrtRow` and `SoftmaxRow` columns follow RFC-0050, including virtual
+//! top-limb lookup requests. [`TileWitness::gadget`] names real columns by
+//! [`AuxColumn`](tessera_compiler::AuxColumn); graph outputs are lent from the shares.
+//! [`MultiplicityColumn`] supplies every canonical row through bounded clearing chunks, even for
+//! a logical `2^32`-row table. Public table/update bounds choose its storage, never secret sparsity.
+//!
+//! Memory includes the checkpoints, public source metadata and one requested tile's entire working
+//! set: replay inputs, outputs and gadget scratch, plus its counter for a table tile. No regenerated
+//! value is retained between calls. The allocator test measures all these components separately;
+//! [`TileWitness::bytes`] alone is not the regeneration peak. This is the CPU witness source, not
+//! the proof driver or GPU regeneration, and future greedy/sampling certificates remain outside
+//! RFC-0050's current-model layout.
 //!
 //! # Features
 //!
@@ -48,6 +54,7 @@ compile_error!(
 mod checkpoint;
 mod engine;
 mod error;
+mod multiplicity;
 mod replay;
 mod source;
 mod structure;
@@ -56,5 +63,6 @@ mod tile;
 pub use checkpoint::Checkpoints;
 pub use engine::{Engine, Witness};
 pub use error::WitnessError;
+pub use multiplicity::MultiplicityColumn;
 pub use source::{Regenerator, Resident, WitnessSource};
 pub use tile::{TileLookup, TileWitness};
