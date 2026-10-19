@@ -28,8 +28,8 @@ use serde_json::Value;
 use tessera_codec::error::ErrorCode;
 use tessera_codec::{Ascii, DecodeLimits, decode, encode, envelope, schema};
 use tessera_compiler::{
-    CompileError, ExecutionPlan, Lowering, PublicModel, QueryBlock, Tile, analyze, check_plan,
-    claim_list, lower, plan, report, select, tiles,
+    CompileError, ExecutionPlan, Gadget, Lowering, PublicModel, QueryBlock, Tile, analyze,
+    check_plan, claim_list, lower, plan, report, select, tiles,
 };
 use tessera_ir::{
     AdviceLayoutParams, ClaimList, CommitmentClass, CommitmentLayout, GadgetPolicy, Graph,
@@ -1115,4 +1115,44 @@ fn the_golden_plans_decode_to_their_cases() {
             );
         }
     }
+}
+
+#[test]
+fn argmax_adds_its_range_multiplicities_to_the_plan() {
+    let (_, _, model) = models().into_iter().next().unwrap();
+    let public = PublicModel::of(&model);
+    let mut lowering = lower(public, 3).unwrap();
+    let indicator = lowering
+        .graph
+        .nodes
+        .iter()
+        .find_map(|node| matches!(node.op, Op::OneHot { .. }).then(|| node.outputs[0]))
+        .unwrap();
+    let id = NodeId(lowering.graph.nodes.len() as u32);
+    lowering.graph.nodes.push(Node {
+        id,
+        op: Op::Argmax,
+        inputs: vec![lowering.logits, indicator],
+        outputs: vec![],
+    });
+    lowering.graph.validate().unwrap();
+    let ranges = analyze(&lowering.graph, &lowering.tables).unwrap();
+    let selection = select(
+        &lowering.graph,
+        &ranges,
+        &lowering.tables,
+        &GadgetPolicy::default(),
+    )
+    .unwrap();
+    let (_, Gadget::Argmax { table }) = selection.of(id).unwrap() else {
+        panic!("Argmax");
+    };
+    let plan = tiles(public, &lowering, &selection).unwrap();
+    assert_eq!(
+        plan.iter()
+            .filter(|t| **t == Tile::Table { table: table.0 })
+            .count(),
+        1
+    );
+    assert!(plan.contains(&Tile::Node { node: id.0 }));
 }

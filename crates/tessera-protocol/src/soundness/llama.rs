@@ -73,7 +73,8 @@ impl StatementSizes {
     ///   `2^42` leaves. Each batches at most 37 instances, the 18 table entries' two trees and the
     ///   `SoftmaxRow` forest.
     /// - **Zero-checks:** 8 of at most 42 variables, the score tensor's: RFC-0035's four padding
-    ///   zero-checks, `OneHot`'s booleanity and the first checkpoint's equality, with room.
+    ///   zero-checks, `OneHot`'s booleanity and vocabulary checks, and the first checkpoint's
+    ///   equality: seven instances, with one spare.
     /// - **Forests:** the `SoftmaxRow` forest, `2^7 · 2^7 · 2^14 = 2^28` trees: `s = 28`.
     /// - **LogUp:** the report's 18 table entries, `N` its lookups per token times 16,384 and `T`
     ///   its rows, except `Exp`'s `N`, the `2^42` positions of the padded score tensor (RFC-0030

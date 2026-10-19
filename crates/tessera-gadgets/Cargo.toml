@@ -9,6 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+tessera-sumcheck = { path = "../tessera-sumcheck" }
 tessera-codec = { path = "../tessera-codec" }
 tessera-compiler = { path = "../tessera-compiler" }
 tessera-field = { path = "../tessera-field" }

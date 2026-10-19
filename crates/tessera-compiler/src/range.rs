@@ -324,7 +324,18 @@ impl Analysis<'_> {
                 })?;
                 Ok(vec![Range::new(0, (1 << bits) - 1)])
             }
-            Op::Argmax | Op::InverseCdf { .. } => {
+            Op::Argmax => {
+                self.within(
+                    node,
+                    0,
+                    -(1 << 28) + 1,
+                    (1 << 28) - 1,
+                    "Argmax logits have |ℓ| < 2^28 (RFC-0009 Lemma 9)",
+                )?;
+                self.within(node, 1, 0, 1, "a one-hot entry is 0 or 1")?;
+                Ok(Vec::new())
+            }
+            Op::InverseCdf { .. } => {
                 self.integer(node, 0)?;
                 self.within(node, 1, 0, 1, "a one-hot entry is 0 or 1")?;
                 Ok(Vec::new())

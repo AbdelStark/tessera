@@ -151,6 +151,8 @@ With one class at `B_max = 32`, keys of up to 32 bits take `Requant1`. Keys of 3
 
 `B_max = 32` is the largest table whose prover-side cost is amortized over a 16K-token batch ([08 §4](../spec/08-performance-budget.md#4-memory-budgets)). The verifier's cost to evaluate a table does not depend on `b`. Every v1 table is a piecewise function whose non-constant core has at most 2^24 entries; for a clamped requantization the core is the output range, 256 values for INT8. Its multilinear extension is evaluated in time proportional to the core ([RFC-0008](RFC-0008-logup-and-tables.md#structured-evaluation)).
 
+An `Argmax` reads `Range { 29 }` for its comparison keys (RFC-0009 Lemma 9), subject to `B_max` like every unsplit lookup. Its selection names the table so the execution plan includes its multiplicities.
+
 Tables with identical definitions are shared across layers and channels: a requantization table is identified by its kind and `(b, r_c, lo, hi)`. New tables are numbered after the lowering's, in order of first use.
 
 ### Llama lowering

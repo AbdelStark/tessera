@@ -416,7 +416,9 @@ fn rows(
 /// The tables `gadget`'s lookups read. RsqrtRow's remaining ranges join with #126.
 fn reads(gadget: Gadget) -> Vec<TableId> {
     match gadget {
-        Gadget::Requant1 { table } | Gadget::Lookup { table } => vec![table],
+        Gadget::Requant1 { table } | Gadget::Argmax { table } | Gadget::Lookup { table } => {
+            vec![table]
+        }
         Gadget::SoftmaxRow {
             exp,
             reciprocal,
@@ -436,6 +438,6 @@ fn reads(gadget: Gadget) -> Vec<TableId> {
             high,
             ..
         } => low.into_iter().chain([mid, top, sign, high]).collect(),
-        Gadget::RsqrtRow | Gadget::OneHot | Gadget::Argmax | Gadget::InverseCdf => Vec::new(),
+        Gadget::RsqrtRow | Gadget::OneHot | Gadget::InverseCdf => Vec::new(),
     }
 }

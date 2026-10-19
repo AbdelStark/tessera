@@ -5,7 +5,7 @@
 //!
 //! A gadget pins a committed value to the unique result of a non-arithmetic operation, by lookups
 //! whose keys and values are affine in its input, its hidden class column, its committed tensors
-//! and constants (RFC-0009). This version holds the requantization and range gadgets:
+//! and constants (RFC-0009). This version holds the requantization, range and choice gadgets:
 //!
 //! - [`Requant`]: `Requant1` and `RequantSplit` (RFC-0009 Lemmas 1 and 2, the split point of
 //!   RFC-0028) and `RequantWide` (RFC-0024 Lemma 11), built from the compiler's
@@ -19,8 +19,11 @@
 //!   [`SoftmaxConstraints`] keep the nonlinear pointwise reductions explicit. Each row takes
 //!   a public valid-prefix length, derived by the driver from the causal selector. Rows of one
 //!   position check their single product leaf directly; taller rows use the product forest.
+//! - [`OneHot`] and [`Argmax`]: the token indicator and lowest-index greedy certificate
+//!   (RFC-0009 Lemmas 8–9), with sumcheck relations and a public suffix kernel. Argmax
+//!   borrows the next token's existing indicator (teacher forcing).
 //!
-//! Each gives:
+//! The scalar gadgets (`Requant` and `NonNeg`) give:
 //!
 //! - **its constraints**, [`Constraints`]: the committed tensors, the virtual values and the
 //!   lookups, each lookup's key and value an [`Affine`] form over [`Term`]s. The forms hold
@@ -98,6 +101,7 @@
 
 #![forbid(unsafe_code)]
 
+mod choice;
 mod compare;
 mod constraints;
 mod error;
@@ -107,6 +111,10 @@ mod requant;
 mod softmax;
 mod witness;
 
+pub use choice::{
+    Argmax, ArgmaxEvaluation, ArgmaxRelations, ArgmaxWitness, OneHot, OneHotRelations,
+    OneHotWitness, suffix_kernel,
+};
 pub use compare::{BigIntCompare, CompareColumn, CompareConstraints, CompareWitness, Side};
 pub use constraints::{Affine, Committed, Constraints, Lookup, Term, Virtual};
 pub use error::{Column, GadgetError};
