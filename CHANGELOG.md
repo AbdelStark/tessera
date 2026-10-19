@@ -750,6 +750,11 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Length.** A request is a sequence of `n = prompt_len + output_len` positions. RFC-0019 step 4 refuses a request longer than `max_context` (`Batch`), which RFC-0009 Lemma 6 and the layout's maximum assume.
   - RFC-0034's masked-row conditions read `Q'`.
 
+- RFC-0049, accepted, squeezes each weight matrix's proximity point right after the seed in `tessera-protocol/1` ([#108](https://github.com/AbdelStark/tessera/issues/108)):
+  - **One pass.** The folds run inside the `MatMulWeight` stage, and RFC-0014 row 7 squeezed `pcs/weights/{T}/xi` after every stage. The proximity row then needed a second read of every weight: about 0.24 GPU-seconds per 405B unit. Drawn after the seed, `ξ*_T` lets the fold pass compute both rows, as INV-WC-4 requires. `R_W` predates the session, so the proximity argument is unchanged.
+  - **Coefficients.** `ξ*_T` indexes the committed rows by position, `⌈log2 m_T⌉` coordinates, as the column answers carry them.
+  - **The calculator.** In protocol/1, `ϑ_T = ⌈log2 m_T⌉` and the weights' rate is unmasked. A matrix with no committed rows has no proximity row.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
