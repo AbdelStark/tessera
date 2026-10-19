@@ -13,8 +13,8 @@ const TOKENS: u64 = 1 << 14;
 
 /// Each LogUp instance of the compiler's 405B report, `commitment-report-405b-servable-c2-b32`
 /// (`docs/perf/v0.2/`, two shift classes, `B_max = 32`), in table order: its lookups per token,
-/// times the batch's tokens, and its table's rows.
-const TABLES: [(u64, u64); 15] = [
+/// and its table's rows. Exp and SoftmaxRow's row ranges count padded dimensions below.
+const TABLES: [(u64, u64); 18] = [
     (0, 1 << 23),         // Rope
     (0, 1 << 22),         // Exp: looked up by the scores, below
     (6_709_248, 1 << 30), // Silu
@@ -22,6 +22,9 @@ const TABLES: [(u64, u64); 15] = [
     (16_384, 1 << 20),    // Requant
     (2_193_408, 1 << 24), // Requant: RoPE's q and k
     (6_838_272, 1 << 30), // Requant
+    (16_128, 1 << 17),    // SoftmaxRow reciprocal, one per logical row
+    (64_512, 1 << 16),    // Two low limbs for each of its two slacks
+    (32_256, 1 << 2),     // One top limb for each slack
     (2_064_384, 1 << 20), // Range
     (2_064_384, 1 << 20), // Requant
     (2_064_384, 1 << 30), // Requant
@@ -67,14 +70,15 @@ impl StatementSizes {
     ///   most 64 instances; the compiler's schedule batches 18 and 4 before the gadgets' own
     ///   relations join it (#118).
     /// - **Tree levels:** 42, the height of the tallest tree, the `Exp` instance's lookup tree of
-    ///   `2^42` leaves. Each batches at most 31 instances, the 15 instances' two trees and the
+    ///   `2^42` leaves. Each batches at most 37 instances, the 18 table entries' two trees and the
     ///   `SoftmaxRow` forest.
     /// - **Zero-checks:** 8 of at most 42 variables, the score tensor's: RFC-0035's four padding
     ///   zero-checks, `OneHot`'s booleanity and the first checkpoint's equality, with room.
     /// - **Forests:** the `SoftmaxRow` forest, `2^7 · 2^7 · 2^14 = 2^28` trees: `s = 28`.
-    /// - **LogUp:** the report's 15 instances, `N` its lookups per token times 16,384 and `T`
+    /// - **LogUp:** the report's 18 table entries, `N` its lookups per token times 16,384 and `T`
     ///   its rows, except `Exp`'s `N`, the `2^42` positions of the padded score tensor (RFC-0030
-    ///   'Cost'). RFC-0014's "`N + T ≤ 2^38` per instance" holds for the other 14, not for it.
+    ///   'Cost'). SoftmaxRow's three row-range tables count all `2^28` padded rows,
+    ///   with respectively one, four and two lookups per row. RFC-0014's "`N + T ≤ 2^38` per instance" holds for the other 17, not for it.
     /// - **Claim groups:** 16, RFC-0011's target for `G`, of at most 64 claims each; the
     ///   compiler's pool holds 38 claims before the gadgets' join.
     /// - **Advice rows:** `2^21`, the 21-bit row index RFC-0014 counts for the 405B advice,
@@ -86,10 +90,13 @@ impl StatementSizes {
             .iter()
             .enumerate()
             .map(|(i, &(per_token, rows))| LookupSizes {
-                lookups: if i == EXP {
-                    EXP_LOOKUPS
-                } else {
-                    per_token * TOKENS
+                lookups: match i {
+                    EXP => EXP_LOOKUPS,
+                    // RFC-0035: include the padded layers' rows in these new instances too.
+                    7 => 1 << 28,
+                    8 => 4 << 28,
+                    9 => 2 << 28,
+                    _ => per_token * TOKENS,
                 },
                 rows,
             })

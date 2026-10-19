@@ -413,15 +413,20 @@ fn rows(
     Some(share)
 }
 
-/// The tables `gadget`'s lookups read. The range checks of `SoftmaxRow` and `RsqrtRow` read tables
-/// the selection does not allocate yet (#118, #122).
+/// The tables `gadget`'s lookups read. RsqrtRow's remaining ranges join with #126.
 fn reads(gadget: Gadget) -> Vec<TableId> {
     match gadget {
-        Gadget::Requant1 { table }
-        | Gadget::Lookup { table }
-        | Gadget::SoftmaxRow { exp: table } => {
-            vec![table]
-        }
+        Gadget::Requant1 { table } | Gadget::Lookup { table } => vec![table],
+        Gadget::SoftmaxRow {
+            exp,
+            reciprocal,
+            limb,
+            top,
+        } => [exp, reciprocal]
+            .into_iter()
+            .chain(limb)
+            .chain([top])
+            .collect(),
         Gadget::RequantSplit { low, high, .. } => vec![low, high],
         Gadget::RequantWide {
             low,

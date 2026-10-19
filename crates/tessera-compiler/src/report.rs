@@ -255,7 +255,7 @@ impl CommitmentReport {
             })).collect::<Vec<_>>(),
             "multiplicities": {
                 "total": self.multiplicities(),
-                "excludes": "the range tables of SoftmaxRow's and RsqrtRow's checks, which the selection does not allocate yet (#118, #122)",
+                "excludes": "the range tables of RsqrtRow's checks, which the selection does not allocate yet (#126)",
             },
             "estimates": [{
                 "gadget": "RsqrtRow",
@@ -360,7 +360,12 @@ pub fn report(
                 tally.lookups = elements;
                 used.push((table, elements));
             }
-            Gadget::SoftmaxRow { exp } => {
+            Gadget::SoftmaxRow {
+                exp,
+                reciprocal,
+                limb,
+                top,
+            } => {
                 let Op::SoftmaxRow { sigma, .. } = node_ref.op else {
                     return Err(CompileError::Usage {
                         rule: "a SoftmaxRow gadget sits on a SoftmaxRow node",
@@ -380,6 +385,11 @@ pub fn report(
                 tally.row_scalars = rows * (2 + 2 * (limbs - 1));
                 // R_q's range check and every limb's.
                 tally.lookups = rows * (1 + 2 * limbs);
+                used.push((reciprocal, rows));
+                if let Some(limb) = limb {
+                    used.push((limb, 2 * (limbs - 1) * rows));
+                }
+                used.push((top, 2 * rows));
                 if let Some(t) = tables.iter_mut().find(|t| t.id == exp) {
                     t.score_lookups += valid;
                 }

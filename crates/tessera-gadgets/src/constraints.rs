@@ -69,7 +69,7 @@ pub struct Affine<F, T = Term> {
     pub terms: Vec<(F, T)>,
 }
 
-impl<F: PrimeField, T: Copy + PartialEq> Affine<F, T> {
+impl<F: PrimeField, T: Copy> Affine<F, T> {
     /// The form at one point, each term's value there given by `value`: an element's entry, or
     /// the term's multilinear extension at a point of its hypercube, over the prime field or an
     /// extension of it.
@@ -80,10 +80,12 @@ impl<F: PrimeField, T: Copy + PartialEq> Affine<F, T> {
                 sum + value(term).mul_by_base(coefficient)
             })
     }
+}
 
+impl<F, T: PartialEq> Affine<F, T> {
     /// Whether a term reads `term`.
     pub(crate) fn reads(&self, term: T) -> bool {
-        self.terms.iter().any(|&(_, t)| t == term)
+        self.terms.iter().any(|(_, t)| *t == term)
     }
 }
 

@@ -292,12 +292,18 @@ fn the_405b_lookups_are_the_compilers_reports() {
     let tables = list(&report["tables"]);
     let statement = StatementSizes::llama_405b_16k();
     assert_eq!(statement.lookups.len(), tables.len());
-    for (instance, table) in statement.lookups.iter().zip(tables) {
+    for (index, (instance, table)) in statement.lookups.iter().zip(tables).enumerate() {
         let per_token: u64 = int(&table["lookups_per_token"]);
         let expected = match text(&table["kind"]) {
             "Exp" => {
                 assert_eq!(per_token, 0, "Exp is looked up by the scores alone");
                 1 << 42
+            }
+            "Range" if (7..=9).contains(&index) => {
+                let per_row = [1u64, 4, 2][index - 7];
+                assert_eq!(per_token, 126 * 128 * per_row);
+                // These row lookup instances include every padded layer/head row, as Exp does.
+                per_row * (1 << 28)
             }
             _ => {
                 assert_eq!(int::<u64>(&table["score_lookups"]), 0);

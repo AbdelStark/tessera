@@ -85,14 +85,11 @@ fn residual_classes(n: i8) -> impl FnOnce(&mut PublicQuantSpec) {
     }
 }
 
-/// Every lookup is a table's, or a row gadget's: `SoftmaxRow`'s 7 per row, `RsqrtRow`'s 30.
-fn assert_every_lookup_is_a_tables_or_a_row_gadgets(r: &CommitmentReport, heads: u64) {
+/// Every lookup is in a selected table except RsqrtRow's remaining estimated checks.
+fn assert_every_lookup_is_in_a_table_or_norm(r: &CommitmentReport) {
     let tables: u64 = r.tables.iter().map(|t| t.lookups_per_token).sum();
     let layers = u64::from(r.shape[0]);
-    assert_eq!(
-        tables + layers * (heads * 7 + 2 * 30) + 30,
-        r.per_token.lookups
-    );
+    assert_eq!(tables + layers * 2 * 30 + 30, r.per_token.lookups);
 }
 
 #[test]
@@ -163,7 +160,7 @@ fn committed_elements_are_counted_by_class() {
         m.per_layer.lookups,
         36_864 + splits + 4 * 4096 + 32 * 7 + 2 * 30
     );
-    assert_every_lookup_is_a_tables_or_a_row_gadgets(&m, 32);
+    assert_every_lookup_is_in_a_table_or_norm(&m);
 }
 
 #[test]
@@ -215,7 +212,7 @@ fn the_tokens_totals_are_the_layers_and_the_ends_of_the_model() {
     assert_eq!(token.split_limbs - 2 * layer.split_limbs, 4096);
     assert_eq!(token.row_scalars - 2 * layer.row_scalars, 20);
     assert_eq!(token.lookups - 2 * layer.lookups, 2 * 4096 + 30);
-    assert_every_lookup_is_a_tables_or_a_row_gadgets(&r, 32);
+    assert_every_lookup_is_in_a_table_or_norm(&r);
     assert_eq!(
         r.multiplicities(),
         r.tables.iter().map(|t| t.rows).sum::<u64>()
@@ -452,4 +449,32 @@ fn each_sumcheck_relation_adds_a_stage_and_each_claim_map_none() {
         2,
         "Mul after a committed requantization"
     );
+}
+
+#[test]
+fn softmax_ranges_count_each_reciprocal_and_bracket_lookup() {
+    let with = report_of(Profile::Servable, 2, B8, 3);
+    let without = report_with(
+        Profile::Servable,
+        2,
+        B8,
+        3,
+        |_| {},
+        |s| {
+            s.gadgets
+                .retain(|(_, g)| !matches!(g, Gadget::SoftmaxRow { .. }))
+        },
+    );
+    let mut changed: Vec<_> = with
+        .tables
+        .iter()
+        .zip(&without.tables)
+        .filter_map(|(a, b)| {
+            assert_eq!(a.id, b.id);
+            let count = a.lookups_per_token - b.lookups_per_token;
+            (count > 0).then_some((a.rows, count))
+        })
+        .collect();
+    changed.sort_unstable();
+    assert_eq!(changed, [(4, 128), (1 << 16, 256), (1 << 17, 64)]);
 }

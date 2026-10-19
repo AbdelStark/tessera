@@ -420,7 +420,15 @@ fn a_lookups_table_holds_at_most_2_b_max_rows() {
     assert_eq!(
         selection.gadgets,
         [
-            (NodeId(0), Gadget::SoftmaxRow { exp: TableId(0) }),
+            (
+                NodeId(0),
+                Gadget::SoftmaxRow {
+                    exp: TableId(0),
+                    reciprocal: TableId(1),
+                    limb: Some(TableId(2)),
+                    top: TableId(3)
+                }
+            ),
             (NodeId(1), Gadget::Lookup { table: TableId(0) }),
         ]
     );
@@ -775,4 +783,111 @@ fn minimal_refuses_affine_o_and_down_projections() {
             .expect_err("refused");
         assert_eq!(error.code(), ErrorCode::CompileRange, "{site:?}: {error}");
     }
+}
+
+#[test]
+fn softmax_registers_every_auxiliary_range_in_first_use_order() {
+    let exp = GeneratedTable::new(
+        TableId(0),
+        TableKind::Exp {
+            key_bits: 6,
+            sigma: 4,
+            scale: Rational::new(1, 1).unwrap(),
+        },
+    )
+    .unwrap();
+    let mut g = GraphBuilder::new();
+    for _ in 0..2 {
+        let scores = g.input(decl(&[4, 4], ADVICE, -8, 8)).unwrap();
+        g.node(
+            Op::SoftmaxRow {
+                exp_table: TableId(0),
+                sigma: 4,
+            },
+            &[scores],
+            vec![lookup(&[4, 4], 0), out(&[4], ADVICE)],
+        )
+        .unwrap();
+    }
+    let graph = g.finish();
+    let mut p = policy(6);
+    p.limb_bits = 4;
+    let s = selected(&graph, &[exp.spec().clone()], &p).unwrap();
+    assert_eq!(
+        s.tables.iter().map(|t| t.kind.clone()).collect::<Vec<_>>(),
+        [
+            exp.spec().kind.clone(),
+            TableKind::Range { bits: 5 },
+            TableKind::Range { bits: 4 },
+            TableKind::Range { bits: 2 },
+        ]
+    );
+    assert_eq!(
+        s.tables.iter().map(|t| t.id.0).collect::<Vec<_>>(),
+        [0, 1, 2, 3]
+    );
+    assert_eq!(
+        s.gadgets[0].1,
+        Gadget::SoftmaxRow {
+            exp: TableId(0),
+            reciprocal: TableId(1),
+            limb: Some(TableId(2)),
+            top: TableId(3)
+        }
+    );
+    for (limb_bits, widths) in [
+        (5, vec![5, 2]),
+        (11, vec![5, 11]),
+        (22, vec![5, 22]),
+        (32, vec![5, 22]),
+    ] {
+        let mut public = policy(32);
+        public.limb_bits = limb_bits;
+        let selected = selected(&graph, &[exp.spec().clone()], &public).unwrap();
+        assert_eq!(
+            selected
+                .tables
+                .iter()
+                .skip(1)
+                .map(|t| t.kind.clone())
+                .collect::<Vec<_>>(),
+            widths
+                .into_iter()
+                .map(|bits| TableKind::Range { bits })
+                .collect::<Vec<_>>()
+        );
+    }
+    for limb_bits in [0, 7] {
+        p.limb_bits = limb_bits;
+        assert_eq!(
+            selected(&graph, &[exp.spec().clone()], &p),
+            Err(refused("SoftmaxRow's limb width lies in [1, B_max]"))
+        );
+    }
+    // Exp's key fits B_max, but R's range has one more bit than the policy permits.
+    let mut g = GraphBuilder::new();
+    let scores = g.input(decl(&[4, 4], ADVICE, -8, 8)).unwrap();
+    g.node(
+        Op::SoftmaxRow {
+            exp_table: TableId(0),
+            sigma: 6,
+        },
+        &[scores],
+        vec![lookup(&[4, 4], 0), out(&[4], ADVICE)],
+    )
+    .unwrap();
+    let exp = GeneratedTable::new(
+        TableId(0),
+        TableKind::Exp {
+            key_bits: 6,
+            sigma: 6,
+            scale: Rational::new(1, 1).unwrap(),
+        },
+    )
+    .unwrap();
+    p.limb_bits = 4;
+    assert_eq!(
+        selected(&g.finish(), &[exp.spec().clone()], &p),
+        Err(refused("a lookup's table has at most 2^{B_max} rows"))
+    );
 }

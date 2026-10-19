@@ -85,6 +85,12 @@ pub enum Gadget {
     SoftmaxRow {
         /// The `Exp` table.
         exp: TableId,
+        /// `Range { σ+1 }`, the reciprocal's range.
+        reciprocal: TableId,
+        /// `Range { L }` for the two slacks' committed limbs, absent for one-limb slacks.
+        limb: Option<TableId>,
+        /// The virtual top limbs' range; may share the reciprocal or low-limb table.
+        top: TableId,
     },
     /// The multi-limb root bracket.
     RsqrtRow,
@@ -101,7 +107,7 @@ pub enum Gadget {
 pub struct Selection {
     /// The gadget-backed nodes in order, each with its gadget: gadget `k` is `GadgetId(k)`.
     pub gadgets: Vec<(NodeId, Gadget)>,
-    /// The tables, by id: those the graph names, then the requantizations'.
+    /// The tables, by id: those the graph names, then gadget auxiliary tables in first-use order.
     pub tables: Vec<TableSpec>,
 }
 
@@ -139,6 +145,7 @@ pub fn select(
         graph,
         ranges,
         max,
+        limb_bits: policy.limb_bits,
         tables: tables.to_vec(),
     };
     let mut gadgets = Vec::new();
@@ -157,6 +164,7 @@ struct Selector<'a> {
     graph: &'a Graph,
     ranges: &'a Ranges,
     max: u32,
+    limb_bits: u8,
     tables: Vec<TableSpec>,
 }
 
@@ -170,15 +178,60 @@ impl Selector<'_> {
             Op::TableMap { table } | Op::Bitwise { table } => Gadget::Lookup {
                 table: self.sized(node, *table)?,
             },
-            Op::SoftmaxRow { exp_table, .. } => Gadget::SoftmaxRow {
-                exp: self.sized(node, *exp_table)?,
-            },
+            Op::SoftmaxRow { exp_table, sigma } => {
+                let exp = self.sized(node, *exp_table)?;
+                let (reciprocal, limb, top) = self.softmax_ranges(node, *sigma)?;
+                Gadget::SoftmaxRow {
+                    exp,
+                    reciprocal,
+                    limb,
+                    top,
+                }
+            }
             Op::RsqrtRow { .. } => Gadget::RsqrtRow,
             Op::OneHot { .. } => Gadget::OneHot,
             Op::Argmax => Gadget::Argmax,
             Op::InverseCdf { .. } => Gadget::InverseCdf,
             _ => return Ok(None),
         }))
+    }
+
+    /// RFC-0009 relation 3: R's range, then A and B's shared NonNeg ranges in first-use order.
+    fn softmax_ranges(
+        &mut self,
+        node: &Node,
+        sigma: u8,
+    ) -> Result<(TableId, Option<TableId>, TableId), CompileError> {
+        let l = u32::from(self.limb_bits);
+        if l == 0 || l > self.max {
+            return Err(CompileError::Range {
+                node: node.id,
+                input: 0,
+                rule: "SoftmaxRow's limb width lies in [1, B_max]",
+            });
+        }
+        let k = u32::from(sigma) + 18;
+        let n = k.div_ceil(l);
+        let reciprocal = self.range_table(node, u32::from(sigma) + 1)?;
+        let limb = if n > 1 {
+            Some(self.range_table(node, l)?)
+        } else {
+            None
+        };
+        let top = self.range_table(node, k - (n - 1) * l)?;
+        Ok((reciprocal, limb, top))
+    }
+
+    fn range_table(&mut self, node: &Node, bits: u32) -> Result<TableId, CompileError> {
+        if bits > self.max {
+            return Err(CompileError::Range {
+                node: node.id,
+                input: 0,
+                rule: "a lookup's table has at most 2^{B_max} rows",
+            });
+        }
+        let table = self.table(node, TableKind::Range { bits: narrow(bits) })?;
+        self.sized(node, table)
     }
 
     /// `Requant1`, `RequantSplit` or `RequantWide` for the key of `node`, by its width, its
