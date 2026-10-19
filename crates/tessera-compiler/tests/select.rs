@@ -891,3 +891,31 @@ fn softmax_registers_every_auxiliary_range_in_first_use_order() {
         Err(refused("a lookup's table has at most 2^{B_max} rows"))
     );
 }
+
+#[test]
+fn argmax_registers_its_range_and_requires_true_bounded_logits() {
+    let graph = |lo, hi| {
+        let mut b = GraphBuilder::new();
+        let logits = b.input(decl(&[4], ADVICE, lo, hi)).unwrap();
+        let h = b.input(decl(&[4], ADVICE, 0, 1)).unwrap();
+        b.node(Op::Argmax, &[logits, h], vec![]).unwrap();
+        b.finish()
+    };
+    let good = graph(-(1 << 28) + 1, (1 << 28) - 1);
+    let s = selected(&good, &[], &policy(29)).unwrap();
+    assert_eq!(
+        s.tables.iter().map(|t| t.kind.clone()).collect::<Vec<_>>(),
+        [TableKind::Range { bits: 29 }]
+    );
+    assert_eq!(
+        selected(&good, &[], &policy(28)),
+        Err(refused("a lookup's table has at most 2^{B_max} rows"))
+    );
+    for (lo, hi) in [(-(1 << 28), 0), (0, 1 << 28)] {
+        let error = analyze(&graph(lo, hi), &[]).unwrap_err();
+        assert_eq!(
+            error,
+            refused("Argmax logits have |ℓ| < 2^28 (RFC-0009 Lemma 9)")
+        );
+    }
+}

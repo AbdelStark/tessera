@@ -249,7 +249,7 @@ A FixedBits comparison would be sound but not exact: it fails a row up to `2^{âˆ
 | `rounds` | 10,000 of degree 7 | this table's "about 10^4 rounds" of "degree `d â‰¤ 7`" |
 | `stages` | 2, of at most 64 instances | `servable`'s two reduction stages (RFC-0010 'Stages'); the compiler's schedule batches 18 and 4 before the gadgets' relations join it |
 | `tree_levels` | 42, of at most 37 instances | the height of the tallest tree, the `Exp` lookup tree; two trees for each of the 18 table entries, and the `SoftmaxRow` forest |
-| `zero_checks` | 8, of 42 variables | RFC-0035's four padding zero-checks, `OneHot`'s booleanity and the first checkpoint's equality, at most the score tensor's 42 variables |
+| `zero_checks` | 8, of 42 variables | RFC-0035's four padding zero-checks, `OneHot`'s booleanity and vocabulary checks, and the first checkpoint's equality: seven instances, with one spare, at most the score tensor's 42 variables |
 | `forests` | `s = 28` | the `SoftmaxRow` forest, `2^7` layers by `2^7` heads by `2^{14}` rows |
 | `lookups` | the report's 18 table entries | `N` the lookups per token times 16,384, `T` the rows; `Exp`'s `N` is `2^{42}`, every position of the padded score tensor; the reciprocal and the two bracket-limb tables count one, four and two lookups per padded head/query row, `2^{28}` rows ([RFC-0030](RFC-0030-masked-exponentials.md#cost)) |
 | `claim_groups` | 16, of at most 64 claims | RFC-0011's target for `G`; the compiler's pool holds 38 claims before the gadgets' join |

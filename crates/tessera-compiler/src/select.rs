@@ -97,7 +97,10 @@ pub enum Gadget {
     /// The one-hot vectors' zero-check and sums.
     OneHot,
     /// The greedy-decoding certificate (RFC-0017).
-    Argmax,
+    Argmax {
+        /// `Range { 29 }` for the lowest-index comparison keys (RFC-0009 Lemma 9).
+        table: TableId,
+    },
     /// The sampling certificate (RFC-0017).
     InverseCdf,
 }
@@ -190,7 +193,12 @@ impl Selector<'_> {
             }
             Op::RsqrtRow { .. } => Gadget::RsqrtRow,
             Op::OneHot { .. } => Gadget::OneHot,
-            Op::Argmax => Gadget::Argmax,
+            Op::Argmax => {
+                let table = self.table(node, TableKind::Range { bits: 29 })?;
+                Gadget::Argmax {
+                    table: self.sized(node, table)?,
+                }
+            }
             Op::InverseCdf { .. } => Gadget::InverseCdf,
             _ => return Ok(None),
         }))

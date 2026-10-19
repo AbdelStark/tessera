@@ -109,7 +109,7 @@ fn only_requantization_gadgets_are_taken() {
         },
         Gadget::RsqrtRow,
         Gadget::OneHot,
-        Gadget::Argmax,
+        Gadget::Argmax { table: TableId(0) },
         Gadget::InverseCdf,
     ] {
         assert_eq!(

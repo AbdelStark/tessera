@@ -399,7 +399,7 @@ pub fn report(
                 tally.lookups = elements * RSQRT_ROW.1;
             }
             Gadget::OneHot => tally.one_hot = elements,
-            Gadget::Argmax | Gadget::InverseCdf => {
+            Gadget::Argmax { .. } | Gadget::InverseCdf => {
                 return Err(CompileError::Usage {
                     rule: "the report counts the forward pass, without scoring certificates",
                 });

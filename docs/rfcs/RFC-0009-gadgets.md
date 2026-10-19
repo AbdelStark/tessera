@@ -152,11 +152,13 @@ For a token `t ∈ [0, vocab)` (committed in the token stream, RFC-0015):
 
 ### Argmax (greedy decoding)
 
-Logits `ℓ_v` (virtual true integers, `< 2^28`), output token `y` with one-hot `h`:
+Logits `ℓ_v` (virtual true integers, `|ℓ_v| < 2^28`), output token `y` with one-hot `h`:
 
 - Committed: maximum `m`.
 - Virtual: `lt_v = Σ_{w > v} h_w` (1 if `v < y`), keys `g_v = m − ℓ_v − lt_v`.
 - Relations: `[v < vocab]·g_v ∈ [0, 2^{29})` for every `v` of the padded vocabulary axis, the public selector masking the padded positions to the key 0; `Σ_v h_v ℓ_v = m`. `OneHot`'s vocabulary zero-check keeps `y` below `vocab`, so the checks over `[0, vocab)` cover every position the one-hot can mark.
+- Vocabulary padding does not join the honest maximum: a zero padded logit must not raise an all-negative real maximum. The selected-logit sum can include padding because OneHot pins its indicator entries to zero.
+- Suffix reduction: a claim on `lt` at `ρ` is `Σ_v h_v·Σ_{i<v} eq(ρ,i)`. At a sumcheck's final point `r` the public factor is `Σ_{i<v} eq(ρ,i)eq(r,v)`, evaluable in `O(log vocab)` by the highest differing bit. This binds the suffix to the same next-token one-hot.
 - Cost per output token: `vocab` lookups, 1 commitment.
 - Lemma 9. Holds iff `y = min{v : ℓ_v = max ℓ}`. Proof: `g_v ≥ 0` gives `ℓ_v ≤ m` for `v ≥ y` and `ℓ_v ≤ m − 1` for `v < y`; the inner product gives `ℓ_y = m`.
 
