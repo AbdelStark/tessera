@@ -22,6 +22,7 @@ One issue, one branch, one pull request, merged before the next issue starts. [C
 
    Done when the merge state is `CLEAN`.
 10. **Comment** on the issue: what was implemented, the pull-request link, and the validation results. Then merge with `gh pr merge <PR> --merge --match-head-commit <sha> --delete-branch`, `<sha>` being the head whose checks you saw pass, confirm the issue closed, and return to `main` with `git checkout main && git pull --ff-only`.
+11. **Distill.** When the issue uncovered a soundness subtlety, spec ambiguity, or recurring pitfall, apply [`continuous-learning`](../continuous-learning/SKILL.md) to codify it into a gate, test, RFC, or skill. Done when the lesson is captured at the highest applicable level of the escalation hierarchy.
 
 ## When an issue cannot be completed here
 
