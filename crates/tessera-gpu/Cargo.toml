@@ -24,5 +24,13 @@ cudarc = { version = "0.19", optional = true, default-features = false, features
     "dynamic-loading",
 ] }
 
+[dev-dependencies]
+# The witness engine's checkpoint store, whose clearing a recording allocator checks: unsafe code,
+# which RFC-0001 permits in this crate (tests/checkpoint_clearing.rs).
+tessera-codec = { path = "../tessera-codec" }
+tessera-compiler = { path = "../tessera-compiler" }
+tessera-ir = { path = "../tessera-ir" }
+tessera-witness = { path = "../tessera-witness" }
+
 [lints]
 workspace = true

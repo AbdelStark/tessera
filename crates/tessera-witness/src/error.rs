@@ -6,6 +6,7 @@
 use core::fmt;
 
 use tessera_codec::error::ErrorCode;
+use tessera_gadgets::GadgetError;
 use tessera_ir::{TableId, TensorId};
 use tessera_tables::TableError;
 
@@ -48,6 +49,15 @@ pub enum WitnessError {
         /// The tensor.
         tensor: TensorId,
     },
+    /// A table's multiplicity buffer cannot be allocated (`ERR-RES-MEMORY`).
+    MemoryTable {
+        /// The table.
+        table: TableId,
+    },
+    /// A gadget of the selection refuses its tables or the values a tile gives it, which the
+    /// selection and range analysis rule out (`ERR-INTERNAL`). Like every variant, it carries
+    /// rules, identifiers and lengths, never a value.
+    Gadget(GadgetError),
 }
 
 impl WitnessError {
@@ -56,8 +66,10 @@ impl WitnessError {
         match self {
             Self::Usage { .. } => ErrorCode::Usage,
             Self::Model { .. } => ErrorCode::QuantArch,
-            Self::Table { .. } | Self::Range { .. } | Self::Internal { .. } => ErrorCode::Internal,
-            Self::Memory { .. } => ErrorCode::ResMemory,
+            Self::Table { .. } | Self::Range { .. } | Self::Internal { .. } | Self::Gadget(_) => {
+                ErrorCode::Internal
+            }
+            Self::Memory { .. } | Self::MemoryTable { .. } => ErrorCode::ResMemory,
         }
     }
 }
@@ -73,8 +85,25 @@ impl fmt::Display for WitnessError {
             }
             Self::Range { tensor } => write!(f, "tensor {} leaves its analyzed range", tensor.0),
             Self::Memory { tensor } => write!(f, "tensor {} cannot be allocated", tensor.0),
+            Self::MemoryTable { table } => {
+                write!(f, "multiplicities of table {} cannot be allocated", table.0)
+            }
+            Self::Gadget(error) => write!(f, "a gadget refuses its witness: {error}"),
         }
     }
 }
 
-impl std::error::Error for WitnessError {}
+impl std::error::Error for WitnessError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Gadget(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<GadgetError> for WitnessError {
+    fn from(error: GadgetError) -> Self {
+        Self::Gadget(error)
+    }
+}
