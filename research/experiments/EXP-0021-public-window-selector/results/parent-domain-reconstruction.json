@@ -1,0 +1,28 @@
+{
+  "kind": "independent parent combinatorial reconstruction; no candidate module imported",
+  "source": "public frozen domains and explicit scalar judgment inventory",
+  "raw_summary_sha256": "348ef8f2362172c9ddd243c0e4c305c23704c443df4944eea6ad9d286a84570a",
+  "logical_counts": {
+    "row/contexts": 248850,
+    "row/e_probes": 34739430,
+    "row/c_probes": 1758510,
+    "row/R_probes": 1990800,
+    "row/nonbase_R_probes": 497700,
+    "judgments/pointwise": 41711641
+  },
+  "physical_counts": {
+    "row/contexts": 933,
+    "row/e_probes": 130385,
+    "row/c_probes": 6681,
+    "row/R_probes": 7464,
+    "row/nonbase_R_probes": 1866,
+    "judgments/pointwise": 156570
+  },
+  "unique_inputs_by_N": {
+    "1": 6,
+    "2": 36,
+    "4": 891
+  },
+  "row_core_judgment_formula": "C*(5*N+1)+N+17; final context-count judgment +1",
+  "all_match": true
+}

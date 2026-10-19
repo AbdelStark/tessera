@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Status | `planned` (preregistration only; no implementation or execution) |
+| Status | `done: validated` (bounded E0 selector/transport/local-relation unit only) |
 | Idea | [IDEA-0034](../../ideas/IDEA-0034-public-window-attention-shapes.md), independently reviewed with unknown gates and zero credited gain |
 | Evidence level | E0: exact integer/rational and Goldilocks/Fp2 arithmetic, finite exhaustive domains plus stated algebraic derivations |
-| Hardware | None for the mathematical claim; a bounded Python interpreter run will record its host, not CPU timing |
-| Pre-registered on | 2026-10-19; frozen text, UTC and SHA256 under results/ before code; parent review/commit required |
+| Hardware | None for the mathematical claim; the bounded Python interpreter run records its host, not CPU timing |
+| Pre-registered on | 2026-10-19; committed as `e3a2a51` before code; frozen SHA256 `90b7307ed2a2162bbd7a56a426c959068c83500c8111a6432e72981f641252bc` |
 
 ## Hypothesis
 
@@ -164,27 +164,62 @@ After parent review, commit and verification of the frozen text, the intended co
 python3 -I research/experiments/EXP-0021-public-window-selector/audit.py
 ```
 
-No audit.py exists in this preregistration. Its future CLI writes `results/run.json`, `results/counterexamples.json`, `results/controls.json`, `results/summary.json` and a text derivation/reproduction record. Every run preserves the first output before any correction/rerun. Environment records checkout, source hashes, Python/OS/CPU and UTC; only exact E0 conclusions are judged. Freeze results/README.preregistered.txt and its SHA256/UTC metadata before code and verify those bytes with `git show HEAD:<path>`; uncommitted or mismatching text stops implementation under research rule3.
+The frozen preregistration preceded audit.py. The implemented CLI preserves unique attempt directories; `results/run.json`, `results/counterexamples.json`, `results/controls.json`, `results/summary.json` and `results/corrections.md` identify the final run and retained history. Every run preserves the first output before any correction/rerun; full-run source snapshots are retained with each attempt. Environment records checkout, source hashes, Python/OS/CPU and UTC; only exact E0 conclusions are judged. Freeze results/README.preregistered.txt and its SHA256/UTC metadata before code and verify those bytes with `git show HEAD:<path>`; uncommitted or mismatching text stops implementation under research rule3.
 
 ## Results
 
+**Validated for the registered bounded E0 unit.** All figures below are exact finite/domain bookkeeping or metered algebraic counts, primary repository evidence; none is wall-time performance. The [final summary](results/summary.json) and [run pointer](results/run.json) name the immutable final author attempt `20261019T105827.081336Z-45083`. Raw events, controls, counterexamples, environment and source snapshot remain in that directory. Python 3.14.6 ran on macOS 26.6.2 arm64; this is host provenance, not a hardware comparison.
+
 | Case | Baseline | Candidate | Ratio |
 |---|---|---|---|
-| Selector | direct Boolean/direct MLE oracle, not yet run | three-borrow DP, not yet implemented | not applicable (E0 equality) |
-| Key/max/score/PV transport | complete-table sum and direct integer outputs, not yet run | registered reductions/terminal inventory, not yet implemented | not applicable |
-| Selected/max/padded audit | direct local witness oracle, not yet run | pointwise relation checker, not yet implemented | not applicable |
-| Attack controls | fixed expected rejection/admission distinctions above | not yet run | not applicable |
+| Positional Boolean selector | Direct integer predicate | 12,588 exact comparisons across rational/Fp2 representations; all match | not applicable |
+| Small off-cube selector | Direct Boolean-table MLE | 7,878 rational and7,878 Goldilocks/Fp2 points; all match | not applicable |
+| d3 off-cube catalogs | Same direct MLE oracle | 1,440 exact points; all match | not applicable |
+| Layer/head composition | Full padded-table oracle | 9,408 Boolean and432 off-cube points; all match | not applicable |
+| Local max/e/R/padding | Direct finite witness oracle | 248,850 logical row contexts,933 distinct row_core inputs; all match | not applicable |
+| Normative sigma16 fixtures | Pinned table oracle plus direct integer reciprocal | 16 table inputs,832 row probes and5 Goldilocks guard checks; all match | not applicable |
+| Key/leaf/QK/PV transport | Complete synthetic tables and separate coefficient-expanded round oracle | 2,048 runs,8,192 reductions,38,912 rounds; all identities/degrees/terminal obligations match | not applicable |
+| Named adversarial controls | Registered passing controls and named rejection/admission expectations | 69 controls, all sensitive as specified | not applicable |
 
-Raw outputs are pending; no result is implied by the preregistration derivation.
+The known incorrect factor-MLE algorithm yields9/16 at the frozen W1/two-position half-point, versus the joint selector's1/2. It is a rejected shortcut. The DP observed at most7 occupied states and48 attempted transitions; every evaluated call stayed under the proved structural allowances8 and32*d. Those maxima are bookkeeping, not throughput or a claim about every production-sized instance.
+
+### Logical coverage, physical checks and resource accounting
+
+The row domain contains450+5,400+243,000=248,850 contexts. Its pure checker cache key is `(scores, selected, real)`: tuple length gives N; table/sigma/field and c/R candidate rules are fixed for this toy arm; original q/n/W/layer/head coordinates affect the checker only through selected positions and the real-row flag. No cache is reused across normative sigma16 or transport arms. The run executed933 unique row_core inputs and247,917 cache hits. A cached replay is coverage of an equivalent pure-checker input, **not** another physical test.
+
+| Counter | Logical probes | Physically executed probes |
+|---|---:|---:|
+| Toy c candidates | 1,758,510 | 6,681 |
+| Toy per-coordinate e candidates | 34,739,430 | 130,385 |
+| Toy integer R candidates | 1,990,800 | 7,464 |
+| Toy non-base R refusal probes | 497,700 | 1,866 |
+
+Total42,431,606 logical audit judgments comprise876,535 physically executed judgments and41,555,071 memoized logical judgments. Physical judgments by arm are setup1, arithmetic107, selector39,625, pointwise156,570, normative837, transport678,402 and controls993. Per-coordinate functional e checks justify factorizing the e-candidate product; this is not exhaustive enumeration of all malicious field-valued witnesses.
+
+The final arithmetic meter reports317,682,340 algebraic operations under the frozen definitions. It is not a physical instruction count, bit-complexity measure or benchmark. Arithmetic by arm was not recorded and is not inferred from the judgment counts. The [accounting-only diff](results/accounting-fix.patch) added exactly3,090 operations to the independently reproduced mathematical run:18 expected-half integer product/remainder operations and3,072 family2 parity remainders. The pre-run prediction and actual delta agree, with no judgment/domain/control change. The final source checks all caps immediately before `validated`; resource use remained below100M judgments,3B metered operations,256MiB and the15-minute watchdog. The whole-process RSS check is stronger than the retained-fixture limit; its exact recorded maximum is in the final summary. No elapsed-time gain is reported.
+
+The [attempt history](results/attempt-history.json) and [correction record](results/corrections.md) preserve every preflight/full attempt. The first preflight used an insensitive W1 symmetric q/i fixture; its original raw `refuted` label is retained but does not constitute a selector counterexample. The corrected control uses registered W2 and invokes the actual coordinate/reduction checker. Parent independently reproduced the pre-accounting mathematical result and independently reconstructed all 248,850 row contexts, 933 distinct inputs and the logical/physical row-probe counts in [the domain reconstruction](results/parent-domain-reconstruction.json). [Independent accounting review](results/independent-accounting-review.json) verifies the final three-hunk diff, exact +3,090 operation delta, unchanged judgments/controls and cap check immediately before validation. No failed run was discarded or silently reclassified in its raw file. The first three preflights retain outputs and source hashes but no per-attempt source snapshots; the fourth preflight and every full run retain their source. Independently rerun the domain recount with `python3 -I research/experiments/EXP-0021-public-window-selector/recount.py`.
 
 ## Analysis
 
-Pending. The DP derivation is a finite-state identity argument that must survive independent oracle checks. Finite alphabets/domains and idealized pointwise range/lookups do not establish full protocol soundness, quantified error bounds, masking/ZK or a production-independent verifier. This unit excludes physical layout/count optimization, GQA routing, arbitrary architecture bounds, serialization/Fiat–Shamir, full sumcheck acceptance, full-field malicious-witness exhaustion, normative Exp-generator validation, real-weight fidelity and H100/end-to-end performance. It does not justify changing the old dense D or its native denominator silently.
+The borrow-DP induction and direct truth-table oracles agree in all frozen domains, including W>N, n0, d0, full-width n-1/W-1, non-power-of-two real lengths and padded layer/head coordinates. Key and max leaves reduce through the sum of eq*P*(c-x); both c and x claims survive to the expected coordinates. The dense QK and full-domain PV reductions retain shared layer/head equality factors and consume Q/K/e/V obligations. There is no replacement of a sum of products by a target-point product. Altered targets, omitted claims, axis/descriptor changes, excluded exponentials, false maxima and free padded values trigger their registered audit checks.
+
+### Dated range-lift clarification, 2026-10-19
+
+An early source sentence overstated the maximum lemma: score spread<P alone is insufficient. The [independent control](results/independent-spread-control.json) gives `S=(P-3)/2`, scores `(-S,S)` and claimed c=-S. Modular keys0/3, toy e4/0, root0, R4 and slacks0/3 pass, even though c is not the true maximum. This control is outside the frozen score alphabets and current RFC-0009 score bound; it refutes the overbroad sentence, not this registered finite result or production SoftmaxRow.
+
+The scoped derivation requires true integer score span Sspan with **Sspan+K0<P** (or a stronger quantitative Lemma0 bound). A zero selected factor anchors c to a selected score; then delta-k is a multiple of P strictly between -P and P, hence delta=k>=0. The harness checks the quantitative bounds2+3 for the toy rows,4+15 for transport,2+15 for normative fixtures, and2^22+(2^32-1) for the current RFC score/key envelope. No frozen text or domain was edited. The separate outside-domain example is retained as a derivation control, not counted as exhaustion or full-protocol evidence.
+
+### Limits of this result
+
+This audit uses exact pointwise lookups/range predicates and direct complete-table terminal evaluation. It does not produce or accept a serialized production proof, implement the versioned window descriptor in ClaimList, prove a LogUp/range/commitment implementation, establish full-field witness exhaustion or calculate G-4 error. Its terminal inventory checker idealizes the later opening obligation. The rational/Fp2 samples are finite and deterministic, not soundness calibration or evidence about uniform Fiat–Shamir challenges.
+
+Only all-local windows fixed within each descriptor are covered. GQA routing, global/local layer templates, physical advice layout/counts, masked tree/sumcheck simulation, #145/#394 joint views, full independent verifier/driver integration, real-model fidelity and native/H100 proving costs remain outside the unit. D_window is a changed model: the explicit dense/window PV fixture differs as expected. No native-denominator, quality, ZK or performance approval follows.
 
 ## Verdict
 
-Pending; status remains `planned`. A successful E0 unit leaves IDEA-0034 `triaged`, priority0 and no credited gain; a counterexample may reject the specified selector/reduction route only as scoped. No promotion or full security-gate closure follows automatically.
+`validated` for the exact registered finite selector, transport and local row-relation audit. [IDEA-0034](../../ideas/IDEA-0034-public-window-attention-shapes.md) remains `triaged`, priority0, zero credited gain and unknown full soundness/ZK/fidelity gates. This experiment does not validate or promote the entire proposed model/protocol change.
 
 ## Follow-ups
 
-Only after independent review of this unit: decide whether a versioned statement/ClaimList policy and physical layout/count derivation merit a separate RFC/experiment. Complete #145/#394 joint masking and independent verifier/driver integration remain outside this audit. Fidelity and serving changes need their own evidence; GPU timing alone would settle none of the algebraic or policy gates here.
+The final accounting diff and preserved evidence have independent review; the parent independently reproduced the mathematical run and domain counts. A separate bounded unit would derive physical windowed layout/counts and policy/ClaimList binding, with the changed model/native denominator explicit. Any protocol proposal still needs full claim/extractor/error and joint masking arguments, independent implementation and serialized tamper coverage. Real-weight fidelity/serving and H100/end-to-end performance require separate evidence; no experiment is silently extended here.

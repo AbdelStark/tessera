@@ -1,0 +1,16 @@
+{
+  "attempt": "20261019T105231.308126Z-89502",
+  "preflight_only": true,
+  "utc": "2026-10-19T10:52:31.311956+00:00",
+  "python": "3.14.6 (main, Jun 10 2026, 10:03:53) [Clang 21.0.0 (clang-2100.0.123.102)]",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "cpu": "arm",
+  "pid": 89502,
+  "scope": "E0 finite relation audit; no benchmark or full protocol/ZK/fidelity approval",
+  "frozen_sha256": "90b7307ed2a2162bbd7a56a426c959068c83500c8111a6432e72981f641252bc",
+  "first_commit": "e3a2a51",
+  "source_drift": [],
+  "head": "e3a2a511577d07841726534a602ec600fd39a010",
+  "script_sha256": "8df274e18ba3fcdc067385f97dc2753dd52c5088f272dd05819792c6b98cb056"
+}

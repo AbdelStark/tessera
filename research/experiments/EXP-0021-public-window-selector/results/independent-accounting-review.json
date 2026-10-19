@@ -1,0 +1,55 @@
+{
+  "kind": "Independent final narrow accounting review; no full audit/recount execution",
+  "utc": "2026-10-19T11:07:21.389074+00:00",
+  "reviewer": "exp9_amend",
+  "source_before_sha256": "26896283adb08d4657e5b329fa27e0a7a3ed65f9a36cadaa0897fdba104e1387",
+  "source_after_sha256": "a132f6e924104ec6fba731926f686d0fd3cf1fdc88bf8cf7e111c28065432ce4",
+  "source_diff_hunks": 3,
+  "diff_scope": [
+    "Count one parity remainder per real family2 Q/K/V value",
+    "Replace half-reference repeated public constant expression with HALF.a and instrument its integer product plus remainder",
+    "Call final M.check immediately before validated"
+  ],
+  "independent_delta": {
+    "family2_remainders_formula": "3 tensors * 2 channels * sum(L in {1,3}) * sum(H in {1,3}) * sum(n in {0,1,3,4}) * 4 W values",
+    "family2_remainders": 3072,
+    "half_product_remainders_formula": "9 fixtures * (1 integer product + 1 remainder)",
+    "half_product_remainders": 18,
+    "total": 3090,
+    "actual_saved_delta": 3090,
+    "before": 317679250,
+    "after": 317682340
+  },
+  "unchanged_saved_fields": [
+    "all counts",
+    "judged comparisons42431606",
+    "physical judgments876535",
+    "controls69",
+    "all completed arms",
+    "validated verdict",
+    "exit0"
+  ],
+  "final_resource_check": "Present immediately before validated; checks arithmetic/judgment cap, watchdog and whole-process RSS; adds no metered arithmetic or judgments",
+  "historical_source_disclosure": "First3 preflights preserve outputs+hashes only; no snapshots. Fourth preflight and all full runs have retained source snapshots. Explicit in corrections/history/report.",
+  "hashes": {
+    "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105430.201558Z-94094/audit.source.py": "26896283adb08d4657e5b329fa27e0a7a3ed65f9a36cadaa0897fdba104e1387",
+    "research/experiments/EXP-0021-public-window-selector/audit.py": "a132f6e924104ec6fba731926f686d0fd3cf1fdc88bf8cf7e111c28065432ce4",
+    "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105430.201558Z-94094/summary.json": "71a5296e714a60c77afb2865062cbf2cf11fb7bc74231e076324e1edbf15b409",
+    "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105547.660568Z-97234/audit.source.py": "26896283adb08d4657e5b329fa27e0a7a3ed65f9a36cadaa0897fdba104e1387",
+    "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105547.660568Z-97234/summary.json": "ee3c44343735791885d418acfc6741ecde9760b1b67d8fce9dc7085df3f6d94a",
+    "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105827.081336Z-45083/audit.source.py": "a132f6e924104ec6fba731926f686d0fd3cf1fdc88bf8cf7e111c28065432ce4",
+    "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105827.081336Z-45083/summary.json": "348ef8f2362172c9ddd243c0e4c305c23704c443df4944eea6ad9d286a84570a",
+    "research/experiments/EXP-0021-public-window-selector/results/accounting-fix.patch": "001a40fbc85880840c35df0a6b10b93ae40ca2ffb88d83d77079801825a6662e",
+    "research/experiments/EXP-0021-public-window-selector/results/accounting-fix-prediction.json": "3bb0ca28b4d6136353cc489387adeb30ecf085774ec43ee9b386d790ce6652ce",
+    "research/experiments/EXP-0021-public-window-selector/results/attempt-history.json": "f9b71d77be0c237a41e6262146e02174331822b99fcde1a99d0c1a1405376359",
+    "research/experiments/EXP-0021-public-window-selector/results/corrections.md": "3a8e88b4ca89054459e88db1f9e9f75179e35830eea1861ddb30c0780d9b9e31",
+    "research/experiments/EXP-0021-public-window-selector/recount.py": "e7a4e2008e05e9e2bbd499c9f9f21aa6435083745c9e17b3a1a8dcef776fe0e5",
+    "research/experiments/EXP-0021-public-window-selector/results/parent-domain-reconstruction.json": "7278052b5a97f038658d7ba03dc5afe6419d0114010060dbffceeeb0f8e3a301"
+  },
+  "verdict": "accounting-only delta and final resource check independently verified; no semantic finite-domain or relation change found",
+  "limitations": [
+    "Review uses saved author/parent results and source snapshots; no full audit rerun by this reviewer",
+    "Counts are instrumented algebraic units, not CPU instructions/performance",
+    "Bounded finite E0 only; no full protocol/ZK/fidelity approval"
+  ]
+}
