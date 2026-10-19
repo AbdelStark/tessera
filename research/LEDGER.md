@@ -8,7 +8,7 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 |---|---|
 | Survey | SUR-0014 |
 | Idea | IDEA-0034 |
-| Experiment | EXP-0018 |
+| Experiment | EXP-0019 |
 
 ## Queue
 
@@ -166,6 +166,8 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | [EXP-0017](experiments/EXP-0017-rmsnorm-relational-bound/README.md) | Does the RMSNorm joint bound remove split commitments under current kappa30? | IDEA-0011 | `planned` | Frozen E0 count-saving test; current width and full deduplicated table counts, no historical kappa16 substitution | E0; report reproduction commands |
 
+| [EXP-0018](experiments/EXP-0018-shared-point-marginal-forest/README.md) | Is the marginal forest below90% standalone inside the actual mixed tree batch? | IDEA-0010 hypothesis(a) | `planned` | Paired subtraction with whole-comparison CV/rerun rule, plus separate literal shared-point proxy; current production kernels unchanged | E1 planned; report commands |
+
 ## Iteration log
 
 | Date | Run | What changed |
@@ -198,3 +200,4 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-10-19 | E0 clarification items19/21 | Current RFC0018 and issue#329 already state that each proof unit holds every table tree and every nonresident tree level streams. Removed duplicate owner-question actions. IDEA0027 current table-only U8 diagnostic credit0.99534mu/0.962%, priority0.1; no net or feasible-plan claim. IDEA0009 every-level reading settled, current gain/ZK still open under RFC0032 and #329; historical scores are not current estimates. |
 | 2026-10-19 | EXP-0016 consolidated | Literal untagged argmax-read mechanism refuted by exact global multiset counterexamples: four wrong maxima per cross-layer/head/both batch, shared per-position multiplicities across dimensions, every reciprocal bracket passes. Local348823 prefixes and1458 dot-prefix checks unique, but merged scalar domain has10800 alternative reads with brackets; Goldilocks lifts included (E0). IDEA0020 rejected, priority0. Four scratch faults caught with a no-op control; final E0 raw provenance disclosed. |
 | 2026-10-19 | NG-7 route handed off | Filed issue#392: separate Lean-model blueprint with explicit assumptions/unproved obligations, code correspondence and tamper/refinement evidence; no complete proof or extraction trust claim. Existing #186 specification, #145 simulator and #135 tamper corpus remain separate prerequisites. |
+| 2026-10-19 | EXP-0018 pre-registration | Froze current mixed-tree marginal-cost comparison and separate literal shared-point prove_batch proxy before code. Each sample is paired S/F/B; difference noise and every base arm require CV<=3%, one whole-comparison rerun, otherwise inconclusive. No false byte-equivalence claim across different statements; hypothesis(a) only. |
