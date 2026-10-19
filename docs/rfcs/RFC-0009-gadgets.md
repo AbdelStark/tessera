@@ -135,6 +135,7 @@ For a residual row with virtual `u = ψ·(Σ_i res_i^2 + e)` (true integer, `u <
 
 - Committed: `ρ`; the limbs of `NonNeg(u, 55)`: three 16-bit limbs and a top limb in `Range{7}`, a box of `2^{55} < P`. The box, not the bound `u < 2^55` alone, makes the recomposition exact: four full 16-bit limbs would also represent `u + P` for every `u ≤ 2^{32} − 2`, and admit a second root; `BigIntCompare` witnesses for `ρ^2 u ≤ ψ·N` and `ψ·(N + 1) ≤ (ρ + 1)^2 u`. On a padded row `u = 0`, both comparisons are `0 ≤ 0`, and a padding zero-check pins `ρ` to 0.
 - Lookups: `ρ ∈ [0, 2^w)`, with `w` the bit length of `⌊√(N / e)⌋`, the largest root of any row, at most 32 ([RFC-0022](RFC-0022-saturating-residual.md#complete-norms)); limb and carry range checks.
+- Products enter `BigIntCompare` as bounded limb-product sums, not whole products reduced modulo the field. Any auxiliary root decomposition is tied to `ρ` in a box below `P` (the limb-box rule above); `(ρ + 1)` retains its carry when it reaches `2^w`. Both comparisons include enough high zero limbs for the full product and check their final normalization carries (Lemma 4).
 - Cost: about 20 commitments and 30 lookups per row (one row per token per norm).
 - Lemma 7. The constraints hold iff `ρ = max{ρ : ρ^2 u ≤ N}`. Proof: Lemma 4 makes both inequalities exact over the integers; they bracket `ρ` uniquely.
 - Completeness. `u ≥ e` gives the honest `ρ = ⌊√(N / u)⌋ ≤ ⌊√(N / e)⌋ < 2^w`, so every row's root passes the range check. The `BigIntCompare` witnesses' products stay below `2^{2w+55}`.

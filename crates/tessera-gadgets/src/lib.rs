@@ -19,6 +19,8 @@
 //!   [`SoftmaxConstraints`] keep the nonlinear pointwise reductions explicit. Each row takes
 //!   a public valid-prefix length, derived by the driver from the causal selector. Rows of one
 //!   position check their single product leaf directly; taller rows use the product forest.
+//! - [`RsqrtRow`]: the exact multi-limb root bracket (RFC-0009 Lemma 7), with zeroizing
+//!   witnesses, bounded product coefficients and a padded-root zero-check.
 //! - [`OneHot`] and [`Argmax`]: the token indicator and lowest-index greedy certificate
 //!   (RFC-0009 Lemmas 8–9), with sumcheck relations and a public suffix kernel. Argmax
 //!   borrows the next token's existing indicator (teacher forcing).
@@ -92,7 +94,7 @@
 //!
 //! A gadget's input, its classes, its committed tensors and every column computed from them are
 //! secret-class (05 §3). The input and the classes are lent to [`Requant::witness`],
-//! [`NonNeg::witness`], [`BigIntCompare::witness`] and [`Lookups::new`] for the call. What they compute lives in
+//! [`NonNeg::witness`], [`BigIntCompare::witness`], [`RsqrtRow::witness`] and [`Lookups::new`] for the call. What they compute lives in
 //! `SecretBuf`s, which clear their memory (OBS-6), and the debug forms show shapes only. Control
 //! flow depends on public data only (INV-ARCH-2): an input outside the gadget's domain, the one
 //! outcome that depends on the values, is reported after every element is computed. Errors carry
@@ -108,6 +110,7 @@ mod error;
 mod lookups;
 mod non_neg;
 mod requant;
+mod rsqrt;
 mod softmax;
 mod witness;
 
@@ -121,6 +124,9 @@ pub use error::{Column, GadgetError};
 pub use lookups::{Group, Lookups, TableColumns};
 pub use non_neg::NonNeg;
 pub use requant::Requant;
+pub use rsqrt::{
+    Bracket, RsqrtColumn, RsqrtConstraints, RsqrtRelation, RsqrtRow, RsqrtTerm, RsqrtWitness,
+};
 pub use softmax::{
     Slack, SoftmaxColumn, SoftmaxConstraints, SoftmaxEvaluation, SoftmaxLookup, SoftmaxRelation,
     SoftmaxRow, SoftmaxTerm, SoftmaxValue, SoftmaxWitness,
