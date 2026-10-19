@@ -116,3 +116,15 @@ release-budget calibration and full witness-source memory remain later gates.
 ## Decision and links
 
 EXP-0024 validates the registered finite exact/public-allocation/counter-memory criteria on Rust 1.95 and 1.88, including 14 physical fault detections and zero retained allocations. This is not complete model witness integration, a full memory bound or timing ZK. No production/GPU gain credited. Ledger updated 2026-10-20.
+
+### Production integration boundary
+
+The #112 CPU implementation uses the experiment's public fixed-capacity weighted
+representation but does **not** sort secret keys: standard comparison sorting and
+binary/run searches have secret-dependent control flow, forbidden by INV-ARCH-2.
+Each requested public chunk is cleared and receives a fixed-length scatter over
+all `M` entries, using `select_unpredictable` for the index and count. Keyed
+counting addresses retain RFC-0018's release-schedule obligation. This exchanges
+query work for public loop bounds; EXP-0024's sorting measurements are not a
+production timing or allocation claim. Production chunk/count/clearing tests
+validate that implementation separately.

@@ -923,6 +923,18 @@ mod tests {
     #[test]
     fn root_families_match_every_width_of_the_independent_oracle() {
         let vectors = tv_testkit::read_vectors("advice/layout.json");
+        let scalar =
+            std::fs::read_to_string(tv_testkit::vectors_dir().join("rsqrt/canonical.txt")).unwrap();
+        let scalar: Vec<Vec<u64>> = scalar
+            .lines()
+            .filter(|line| !line.starts_with('#'))
+            .map(|line| {
+                line.split_whitespace()
+                    .map(|part| part.parse().unwrap())
+                    .collect()
+            })
+            .collect();
+        assert_eq!(scalar.len(), 32);
         let roots = vectors
             .get("roots")
             .and_then(tv_testkit::Json::as_array)
@@ -961,6 +973,23 @@ mod tests {
                 })
                 .collect();
             assert_eq!(found, expected, "width {width}: all repeated requests");
+            let schema = scalar
+                .iter()
+                .find(|case| case[0] == u64::from(width))
+                .unwrap();
+            assert_eq!(
+                schema[4],
+                4 + u64::from((width - 1) / 8) + 12 * (2 * u64::from(width) + 55).div_ceil(8),
+                "RFC-0050 real columns"
+            );
+            assert_eq!(schema[5], found.len() as u64);
+            assert_eq!(
+                &schema[6..],
+                found
+                    .iter()
+                    .map(|&bits| u64::from(bits))
+                    .collect::<Vec<_>>()
+            );
             assert_eq!(
                 tables.added.len(),
                 expected.iter().collect::<HashSet<_>>().len()

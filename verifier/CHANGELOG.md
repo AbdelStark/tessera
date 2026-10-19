@@ -133,6 +133,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 - Derive RFC-0050's complete Rsqrt and Softmax auxiliary range requests, retaining repeated families and the one-bit minimum root range (#106).
 - Derive the complete public advice layout, source locations, zero rows, segments and weighted claim images independently from RFC-0011/0034/0046/0047/0050. Reject layouts exceeding `2^32` rows or unable to fit one key per row at `max_context`, after the canonical table checks (#106).
 
+- Check every scalar root canonical-schema vector against the independent RFC-0050 range-family derivation, alongside the complete model advice oracle (#112). Verifier acceptance code is unchanged.
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

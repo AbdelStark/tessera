@@ -5,17 +5,51 @@
 mod common;
 
 use common::{conformance, lowered, plan_of};
-use tessera_codec::Secret;
+use tessera_codec::{Secret, SecretBuf};
 use tessera_compiler::Tile;
 use tessera_witness::{Checkpoints, Engine, Regenerator, Resident, WitnessSource};
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use tessera_compiler::{Lowering, Selection};
 use tessera_field::{Goldilocks, PrimeField};
 use tessera_gadgets::{Requant, Term};
 use tessera_ir::{Op, TableId};
 use tessera_tables::{GeneratedTable, Table, TableKind};
-use tessera_witness::Witness;
+use tessera_witness::{MultiplicityColumn, Witness};
+
+struct Histogram {
+    rows: u64,
+    counts: BTreeMap<u64, u64>,
+}
+
+fn check_column(column: &MultiplicityColumn, want: &Histogram) {
+    assert_eq!(column.rows(), want.rows);
+    let width = want.rows.min(1_024);
+    let mut starts: BTreeSet<u64> = want.counts.keys().map(|key| key / width * width).collect();
+    starts.extend([0, want.rows - width]);
+    let mut seed = 0x0112_0050_0000_0001u64;
+    for _ in 0..64 {
+        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        starts.insert(seed % (want.rows / width) * width);
+    }
+    let mut chunk = SecretBuf::filled(0, width as usize);
+    for start in starts {
+        column
+            .read_rows(start, &mut chunk)
+            .expect("canonical chunk");
+        assert!(
+            chunk.iter().enumerate().all(|(offset, count)| {
+                *count
+                    == want
+                        .counts
+                        .get(&(start + offset as u64))
+                        .copied()
+                        .unwrap_or(0)
+            }),
+            "every contributed row and tested zero/padding chunk matches the independent histogram"
+        );
+    }
+}
 
 /// Materialize a per-dimension padded tensor, using coordinates rather than the production
 /// counter's aggregate padding formula.
@@ -52,7 +86,7 @@ fn histogram(
     lowering: &Lowering,
     selection: &Selection,
     witness: &Witness,
-) -> BTreeMap<TableId, Vec<u64>> {
+) -> BTreeMap<TableId, Histogram> {
     let mut columns: BTreeMap<TableId, Vec<u64>> = BTreeMap::new();
     let tensor = |t: tessera_ir::TensorId| &witness.tensor(t).expect("tensor")[..];
     let shape = |t: tessera_ir::TensorId| lowering.graph.tensors[t.0 as usize].shape.as_slice();
@@ -119,36 +153,42 @@ fn histogram(
                     .collect();
                 add(table, keys);
             }
-            Op::SoftmaxRow { exp_table, .. } => {
-                let spec = selection
-                    .tables
-                    .iter()
-                    .find(|s| s.id == exp_table)
-                    .expect("Exp");
-                let TableKind::Exp { key_bits, .. } = spec.kind else {
-                    panic!("Exp");
-                };
+            Op::RsqrtRow { .. } => {
+                let real: Vec<_> = padded(&vec![1; tensor(input).len()], shape(input))
+                    .into_iter()
+                    .map(|r| r == 1)
+                    .collect();
+                let (_, lookups) = common::certificates::root(selection, node, &z, &real);
+                for (table, keys, _) in lookups {
+                    add(table, keys.into_iter().map(u64::from).collect());
+                }
+            }
+            Op::SoftmaxRow { .. } => {
                 let [heads, n, _] = *shape(input) else {
                     panic!("scores");
                 };
-                let scores = tensor(input);
-                let mut keys = Vec::new();
+                let width = n.next_power_of_two() as usize;
+                let e = padded(tensor(node.outputs[0]), shape(node.outputs[0]));
                 for h in 0..heads.next_power_of_two() {
                     for q in 0..n.next_power_of_two() {
-                        for i in 0..n.next_power_of_two() {
-                            let key = if h < heads && q < n && i <= q {
-                                let row = ((h * n + q) * n) as usize;
-                                let max =
-                                    *scores[row..=row + q as usize].iter().max().expect("row");
-                                u64::try_from(max - scores[row + i as usize]).expect("key")
-                            } else {
-                                (1u64 << key_bits) - 1
-                            };
-                            keys.push(key);
+                        let offset = (h * n.next_power_of_two() + q) as usize * width;
+                        let valid = if h < heads && q < n {
+                            q as usize + 1
+                        } else {
+                            0
+                        };
+                        let (_, lookups) = common::certificates::softmax(
+                            selection,
+                            node,
+                            &z[offset..offset + width],
+                            valid,
+                            &e[offset..offset + width],
+                        );
+                        for (table, keys, _) in lookups {
+                            add(table, keys.into_iter().map(u64::from).collect());
                         }
                     }
                 }
-                add(exp_table, keys);
             }
             _ => {}
         }
@@ -158,12 +198,15 @@ fn histogram(
         .map(|(id, mut keys)| {
             keys.resize(keys.len().next_power_of_two(), 0); // RFC-0045 column tail.
             let spec = selection.tables.iter().find(|s| s.id == id).expect("table");
-            let rows = GeneratedTable::from_spec(spec).expect("table").row_count() as usize;
-            let mut counts = vec![0; rows.next_power_of_two()];
+            let rows = GeneratedTable::from_spec(spec)
+                .expect("table")
+                .row_count()
+                .next_power_of_two();
+            let mut counts = BTreeMap::<u64, u64>::new();
             for key in keys {
-                counts[key as usize] += 1;
+                *counts.entry(key).or_default() += 1;
             }
-            (id, counts)
+            (id, Histogram { rows, counts })
         })
         .collect()
 }
@@ -186,73 +229,32 @@ fn every_multiplicity_matches_the_padded_first_pass_column() {
             let mut tables = 0;
             for tile in plan_of(&c.model, 1).expand(&lowering).expect("tiles") {
                 if let Tile::Table { table } = tile.tile {
-                    if common::unsupported_table(&selection, &tile) {
-                        common::assert_unsupported(resident.tile(&tile));
-                        common::assert_unsupported(source.tile(&tile));
-                        continue;
-                    }
                     let want = &expected[&TableId(table)];
-                    assert!(want.iter().sum::<u64>().is_power_of_two());
+                    assert!(want.counts.values().sum::<u64>().is_power_of_two());
                     for reader in [
                         &resident as &dyn WitnessSource,
                         &source as &dyn WitnessSource,
                     ] {
                         let values = reader.tile(&tile).expect("multiplicities");
-                        assert!(
-                            values.multiplicities() == Some(want.as_slice()),
-                            "{} n={n}, table {table}",
-                            c.name
-                        );
-                        assert_eq!(values.bytes(), want.len() * size_of::<u64>());
+                        check_column(values.multiplicities().expect("a count column"), want);
+                        assert!((values.bytes() as u64) <= want.rows * size_of::<u64>() as u64);
                     }
                     checked += 1;
                     tables += 1;
                 }
             }
-            let supported = expected
-                .keys()
-                .filter(|id| {
-                    !common::unsupported_table(
-                        &selection,
-                        &tessera_compiler::SequenceTile {
-                            tile: Tile::Table { table: id.0 },
-                            block: None,
-                            shares: Vec::new(),
-                        },
-                    )
-                })
-                .count();
-            assert_eq!(tables, supported, "every supported lookup table has a tile");
+            assert_eq!(
+                tables,
+                expected.len(),
+                "every selected lookup table has a tile"
+            );
         }
     }
     assert!(checked > 20);
 }
 
 #[test]
-fn newly_selected_auxiliary_tables_are_explicitly_refused() {
-    let c = conformance().remove(0);
-    let (lowering, selection) = lowered(&c.model, 3);
-    let engine = Engine::new(&lowering).expect("tables");
-    let tokens = Secret::new(vec![1, 2, 3]);
-    let witness = engine.run(&c.model, &tokens).expect("first pass");
-    let store = Checkpoints::new(&engine, &c.model, &tokens).expect("store");
-    let resident = Resident::new(&engine, &selection, &c.model, &witness).expect("resident");
-    let source = Regenerator::new(&engine, &selection, &c.model, &tokens, &store).expect("source");
-    let mut refused = std::collections::BTreeSet::new();
-    for tile in plan_of(&c.model, 1).expand(&lowering).expect("tiles") {
-        if common::unsupported_table(&selection, &tile) {
-            common::assert_unsupported(resident.tile(&tile));
-            common::assert_unsupported(source.tile(&tile));
-            if let Tile::Table { table } = tile.tile {
-                refused.insert(table);
-            }
-        }
-    }
-    assert!(refused.len() >= 2, "reciprocal and bracket ranges");
-}
-
-#[test]
-fn a_root_auxiliary_table_shared_with_requantization_is_refused() {
+fn a_shared_table_includes_root_and_requantization_contributions() {
     let c = conformance().remove(0);
     let (lowering, selection) = lowered(&c.model, 3);
     // The actual RFC-0050 carry family is also a split-key family in this public fixture.
@@ -290,6 +292,9 @@ fn a_root_auxiliary_table_shared_with_requantization_is_refused() {
         block: None,
         shares: Vec::new(),
     };
-    common::assert_unsupported(resident.tile(&tile));
-    common::assert_unsupported(source.tile(&tile));
+    let expected = histogram(&lowering, &selection, &witness);
+    for reader in [&resident as &dyn WitnessSource, &source] {
+        let values = reader.tile(&tile).expect("complete shared-table counts");
+        check_column(values.multiplicities().expect("column"), &expected[&shared]);
+    }
 }

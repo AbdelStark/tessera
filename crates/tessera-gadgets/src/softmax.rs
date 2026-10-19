@@ -535,6 +535,12 @@ pub struct SoftmaxWitness {
 }
 
 impl SoftmaxWitness {
+    /// Transfer the clearing columns without copying their values.
+    /// The holder applies the secret borrowing rules of [`Self::tensor`].
+    pub fn into_tensors(self) -> Vec<(SoftmaxColumn, SecretBuf<i64>)> {
+        self.tensors
+    }
+
     /// An arbitrary assignment, for proof generation or adversarial testing. `evaluate` checks
     /// the public shape. The holder applies the secret access rules of [`crate::Witness::tensor`].
     pub fn from_tensors(tensors: Vec<(SoftmaxColumn, SecretBuf<i64>)>) -> Self {

@@ -23,6 +23,61 @@ fn specs() -> Vec<TableSpec> {
 fn gadget(d: u32, k: u8, e: u64) -> RsqrtRow {
     RsqrtRow::new(d, k, e, &specs()).unwrap()
 }
+
+#[test]
+fn every_root_width_uses_the_independent_canonical_column_and_request_schema() {
+    for line in include_str!("../../../spec/vectors/rsqrt/canonical.txt")
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+    {
+        let expected: Vec<u64> = line
+            .split_whitespace()
+            .map(|part| part.parse().unwrap())
+            .collect();
+        let root = gadget(expected[1] as u32, expected[2] as u8, expected[3]);
+        assert_eq!(u64::from(root.root_bits()), expected[0]);
+        let constraints = root.constraints::<F>().unwrap();
+        assert_eq!(
+            constraints.committed.len() as u64,
+            expected[4],
+            "width={}",
+            expected[0]
+        );
+        assert_eq!(constraints.lookups.len() as u64, expected[5]);
+        let requests: Vec<_> = constraints
+            .lookups
+            .iter()
+            .map(|lookup| u64::from(lookup.table.0))
+            .collect();
+        assert_eq!(
+            requests,
+            expected[6..],
+            "width={}: canonical request order",
+            expected[0]
+        );
+        let witness = root
+            .witness(&[1, (1 << 55) - 1, 0], &[true, true, false])
+            .unwrap();
+        for column in &constraints.committed {
+            assert_eq!(witness.tensor(*column).unwrap()[2], 0, "padded column");
+        }
+        let limbs = (2 * expected[0] + 55).div_ceil(8) as usize;
+        assert!(
+            witness
+                .tensor(Col::Compare(B::Lower, C::Carry(Side::Left, limbs)))
+                .is_none()
+        );
+        let columns: Vec<_> = witness
+            .into_tensors()
+            .into_iter()
+            .map(|(column, _)| column)
+            .collect();
+        assert_eq!(
+            columns, constraints.committed,
+            "canonical owned-column order"
+        );
+    }
+}
 fn get(values: &[(Col, F)], c: Col) -> F {
     values.iter().find(|(k, _)| *k == c).unwrap().1
 }
@@ -71,6 +126,7 @@ fn assignment(g: &RsqrtRow, n: u128, u: u128, r: u64, active: bool) -> Vec<(Col,
         ));
     }
     let nr = usize::from(g.root_bits()).div_ceil(8);
+    let limbs = (2 * usize::from(g.root_bits()) + 55).div_ceil(8);
     for j in 0..nr - 1 {
         v.push((
             Col::RootLimb(j as u8),
@@ -78,7 +134,7 @@ fn assignment(g: &RsqrtRow, n: u128, u: u128, r: u64, active: bool) -> Vec<(Col,
         ));
     }
     for b in [B::Lower, B::Upper] {
-        let mut p = [0u128; 15];
+        let mut p = vec![0u128; limbs];
         for i in 0..nr {
             for j in 0..nr {
                 for k in 0..4 {
@@ -90,7 +146,7 @@ fn assignment(g: &RsqrtRow, n: u128, u: u128, r: u64, active: bool) -> Vec<(Col,
                 }
             }
         }
-        let mut constant = [0u128; 15];
+        let mut constant = vec![0u128; limbs];
         for (j, x) in constant.iter_mut().enumerate() {
             *x = if active {
                 ((n + u128::from(b == B::Upper)) >> (8 * j)) & 255
@@ -105,7 +161,7 @@ fn assignment(g: &RsqrtRow, n: u128, u: u128, r: u64, active: bool) -> Vec<(Col,
         } else {
             (constant, p)
         };
-        let mut ds = [[0i128; 15]; 2];
+        let mut ds = [vec![0i128; limbs], vec![0i128; limbs]];
         for (index, (side, input)) in [(Side::Left, x), (Side::Right, y)].into_iter().enumerate() {
             let mut carry = 0;
             for (j, a) in input.into_iter().enumerate() {
@@ -147,6 +203,7 @@ fn honest_witnesses_and_all_neighbouring_roots() {
         (u32::MAX, 16, 1),
     ] {
         let g = gadget(d, k, e);
+        let limbs = (2 * usize::from(g.root_bits()) + 55).div_ceil(8);
         let n = u128::from(d) << (2 * k);
         let mut us = vec![e as i64, (1i64 << 55) - 1];
         us.extend((0..30).map(|_| (rng.below((1u64 << 55) - e) + e) as i64));
@@ -171,7 +228,15 @@ fn honest_witnesses_and_all_neighbouring_roots() {
                     assert!(look.contains(&0));
                 } else {
                     assert!(look.is_empty());
-                    assert_eq!(eq, if alt < r { vec![95] } else { vec![47] });
+                    // Each comparison has 3m+3 equalities; its final borrow rejects.
+                    assert_eq!(
+                        eq,
+                        if alt < r {
+                            vec![6 * limbs + 5]
+                        } else {
+                            vec![3 * limbs + 2]
+                        }
+                    );
                 }
             }
         }

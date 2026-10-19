@@ -33,9 +33,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 
 use common::{QUERY_BLOCKS, Rng, conformance, indices, lowered, plan_of};
-use tessera_codec::Secret;
 use tessera_codec::error::ErrorCode;
-use tessera_compiler::{Gadget, Lowering, QueryBlock, Selection, SequenceTile, Tile};
+use tessera_codec::{Secret, SecretBuf};
+use tessera_compiler::{AuxColumn, Gadget, Lowering, QueryBlock, Selection, SequenceTile, Tile};
 use tessera_field::{Goldilocks, PrimeField};
 use tessera_gadgets::{Committed, Requant, Term};
 use tessera_ir::{IntegerModel, Op, TableId, TensorId};
@@ -50,7 +50,7 @@ use tessera_witness::{
 /// the node's outputs, and each lookup's table, keys and values.
 struct Expected {
     shares: Vec<Vec<i64>>,
-    gadget: Vec<(Committed, Vec<i64>)>,
+    gadget: Vec<(AuxColumn, Vec<i64>)>,
     lookups: Vec<(TableId, Vec<u32>, Option<Vec<i64>>)>,
 }
 
@@ -159,7 +159,17 @@ impl<'a> FirstPass<'a> {
                     .committed
                     .iter()
                     .filter(|&&c| c != Committed::Y)
-                    .map(|&c| (c, witness.tensor(c).expect("a tensor").to_vec()))
+                    .map(|&c| {
+                        (
+                            match c {
+                                Committed::ZLo => AuxColumn::Low,
+                                Committed::H0 => AuxColumn::Middle,
+                                Committed::G => AuxColumn::Saturation,
+                                _ => panic!("requant auxiliary"),
+                            },
+                            witness.tensor(c).expect("a tensor").to_vec(),
+                        )
+                    })
                     .collect();
                 let term = |t: Term, i: usize| -> Goldilocks {
                     match t {
@@ -190,6 +200,14 @@ impl<'a> FirstPass<'a> {
                     expected.lookups.push((lookup.table, keys, values));
                 }
             }
+            Op::RsqrtRow { .. } => {
+                (expected.gadget, expected.lookups) = common::certificates::root(
+                    self.selection,
+                    node,
+                    self.values(node.inputs[0]),
+                    &vec![true; self.values(node.inputs[0]).len()],
+                );
+            }
             Op::TableMap { table } => {
                 let t = self.table(*table);
                 let x = self.values(node.inputs[0]);
@@ -215,39 +233,47 @@ impl<'a> FirstPass<'a> {
     /// queries, every key with them.
     fn attention(&self, node: u32, kv_head: u32, block: &QueryBlock, expected: &mut Expected) {
         let node = &self.lowering.graph.nodes[node as usize];
-        let Op::SoftmaxRow { exp_table, .. } = node.op else {
+        let Op::SoftmaxRow { .. } = node.op else {
             panic!("an attention tile's node is a SoftmaxRow");
         };
-        let TableKind::Exp { key_bits, .. } = self.table(exp_table).spec().kind else {
-            panic!("the max certificate reads an Exp table");
-        };
-        let masked = (1u32 << key_bits) - 1;
         let scores = self.values(node.inputs[0]);
         let e = self.values(node.outputs[0]);
         let n = self.shape(node.inputs[0])[1] as usize;
         let arch = &self.model.arch;
         let group = arch.n_heads / arch.n_kv_heads;
         let held = block.queries.start.min(n as u32)..block.queries.end.min(n as u32);
-        let (mut keys, mut values) = (Vec::new(), Vec::new());
+        // Empty blocks still have the canonical public slots.
+        let (schema, requests) = common::certificates::softmax(self.selection, node, &[], 0, &[]);
+        expected.gadget = schema.into_iter().map(|(c, _)| (c, Vec::new())).collect();
+        expected.lookups = requests
+            .into_iter()
+            .map(|(t, _, v)| (t, Vec::new(), v.map(|_| Vec::new())))
+            .collect();
         for h in kv_head * group..(kv_head + 1) * group {
             for q in held.clone() {
                 let row = (h as usize * n + q as usize) * n;
-                let top = scores[row..=row + q as usize]
-                    .iter()
-                    .copied()
-                    .max()
-                    .expect("a valid key");
-                for i in 0..n {
-                    keys.push(if i <= q as usize {
-                        u32::try_from(top - scores[row + i]).expect("a spread")
-                    } else {
-                        masked
-                    });
-                    values.push(e[row + i]);
+                let (columns, lookups) = common::certificates::softmax(
+                    self.selection,
+                    node,
+                    &scores[row..row + n],
+                    q as usize + 1,
+                    &e[row..row + n],
+                );
+                for ((c, values), (want, out)) in columns.into_iter().zip(&mut expected.gadget) {
+                    assert_eq!(c, *want);
+                    out.extend(values);
+                }
+                for ((t, keys, values), (want, out, held)) in
+                    lookups.into_iter().zip(&mut expected.lookups)
+                {
+                    assert_eq!(t, *want);
+                    out.extend(keys);
+                    if let (Some(values), Some(held)) = (values, held) {
+                        held.extend(values);
+                    }
                 }
             }
         }
-        expected.lookups.push((exp_table, keys, Some(values)));
     }
 
     /// What kind of tile `tile` is, for the coverage the test asserts.
@@ -290,8 +316,8 @@ fn check(label: &str, tile: &TileWitness, expected: &Expected) {
     for (k, (got, want)) in tile.shares().iter().zip(&expected.shares).enumerate() {
         equal(&format!("{label}, share {k}"), got, want);
     }
-    let names = |g: &[(Committed, Vec<i64>)]| g.iter().map(|(c, _)| *c).collect::<Vec<_>>();
-    let got: Vec<Committed> = tile.gadget().iter().map(|(c, _)| *c).collect();
+    let names = |g: &[(AuxColumn, Vec<i64>)]| g.iter().map(|(c, _)| *c).collect::<Vec<_>>();
+    let got: Vec<AuxColumn> = tile.gadget().iter().map(|(c, _)| *c).collect();
     assert_eq!(got, names(&expected.gadget), "{label}: the gadget's values");
     for ((c, got), (_, want)) in tile.gadget().iter().zip(&expected.gadget) {
         equal(&format!("{label}, {c:?}"), got, want);
@@ -421,11 +447,6 @@ fn every_tile_regenerates_bit_for_bit_from_the_checkpoints() {
                         "{}, n = {n}, Q = {q}, {:?} {:?}",
                         c.name, tile.tile, tile.block
                     );
-                    if common::unsupported_table(&selection, &tile) {
-                        common::assert_unsupported(resident.tile(&tile));
-                        common::assert_unsupported(regenerator.tile(&tile));
-                        continue;
-                    }
                     let expected = first.tile(&tile);
                     let from_first = resident.tile(&tile).expect("the resident source's tile");
                     check(&format!("{label}, resident"), &from_first, &expected);
@@ -487,20 +508,31 @@ fn the_thread_count_changes_no_checkpoint_and_no_tile() {
         Regenerator::new(&three, &selection, &c.model, &secret, &store_three).expect("a source");
     let plan = plan_of(&c.model, 4);
     for tile in plan.expand(&lowering).expect("the plan expands") {
-        if common::unsupported_table(&selection, &tile) {
-            common::assert_unsupported(a.tile(&tile));
-            common::assert_unsupported(b.tile(&tile));
-            continue;
-        }
         let (x, y) = (
             a.tile(&tile).expect("a tile"),
             b.tile(&tile).expect("a tile"),
         );
         let label = format!("{:?} {:?}", tile.tile, tile.block);
-        assert!(
-            x.multiplicities() == y.multiplicities(),
-            "{label}: multiplicities"
-        );
+        match (x.multiplicities(), y.multiplicities()) {
+            (None, None) => {}
+            (Some(a), Some(b)) => {
+                assert_eq!(a.rows(), b.rows());
+                let width = a.rows().min(1_024);
+                let starts: Vec<_> = if a.rows() <= 65_536 {
+                    (0..a.rows()).step_by(width as usize).collect()
+                } else {
+                    (0..64).map(|i| i * (a.rows() - width) / 63).collect()
+                };
+                let mut left = SecretBuf::filled(0, width as usize);
+                let mut right = SecretBuf::filled(0, width as usize);
+                for start in starts {
+                    a.read_rows(start, &mut left).expect("counts");
+                    b.read_rows(start, &mut right).expect("counts");
+                    assert!(left[..] == right[..], "{label}: canonical count chunks");
+                }
+            }
+            _ => panic!("{label}: both tiles have the same multiplicity domain"),
+        }
         assert_eq!(x.shares().len(), y.shares().len());
         for (s, t) in x.shares().iter().zip(y.shares()) {
             equal(&label, s, t);
@@ -626,6 +658,37 @@ fn sources_refuse_what_is_not_their_sequences() {
     let nodes = u32::try_from(lowering.graph.nodes.len()).expect("small");
     let kv_heads = c.model.arch.n_kv_heads;
     let cases: Vec<(SequenceTile, &str)> = vec![
+        (
+            altered(attention, |t| {
+                t.tile = Tile::Node { node: softmax };
+                t.block = None;
+                for share in &mut t.shares {
+                    share.ranges = lowering.graph.tensors[share.tensor.0 as usize]
+                        .shape
+                        .iter()
+                        .map(|&d| 0..d)
+                        .collect();
+                }
+            }),
+            "a node tile commits a value and is not a layer's SoftmaxRow",
+        ),
+        (
+            SequenceTile {
+                tile: Tile::Node {
+                    node: lowering
+                        .graph
+                        .nodes
+                        .iter()
+                        .find(|n| n.op.name() == "Add")
+                        .expect("virtual Add")
+                        .id
+                        .0,
+                },
+                block: None,
+                shares: Vec::new(),
+            },
+            "a node tile commits a value and is not a layer's SoftmaxRow",
+        ),
         (
             altered(node, |t| t.tile = Tile::Node { node: nodes }),
             "a tile names a node of the lowering's graph",

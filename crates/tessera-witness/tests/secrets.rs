@@ -100,11 +100,6 @@ fn debug_forms(
     ];
     let plan = plan_of(model, 1);
     for tile in plan.expand(lowering).expect("the plan expands") {
-        if common::unsupported_table(selection, &tile) {
-            common::assert_unsupported(regenerator.tile(&tile));
-            common::assert_unsupported(resident.tile(&tile));
-            continue;
-        }
         let label = format!("{:?} {:?}", tile.tile, tile.block);
         for (source, regenerated) in [
             ("regenerated", regenerator.tile(&tile).expect("a tile")),
