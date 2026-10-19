@@ -1,85 +1,63 @@
 # v0.2 commitment reports: Llama-3.1-405B
 
-These are the compiler's commitment reports ([RFC-0006](../../rfcs/RFC-0006-compiler-ir.md#outputs) 'Outputs') for Llama-3.1-405B's shape in both profiles. They settle the count of [RISK-2](../../spec/00-overview.md#9-risks) and answer OQ-0006-1, the table bound `B_max`. Each file is a `tessera.commitment-report/1` report ([schema](../../../spec/schemas/commitment-report-v1.schema.json)), named `commitment-report-405b-{profile}-c{classes}-b{B_max}.json`.
+These are the compiler's current commitment reports ([RFC-0006](../../rfcs/RFC-0006-compiler-ir.md#outputs)) for Llama-3.1-405B's shape in both profiles. Each file is a `tessera.commitment-report/1` report ([schema](../../../spec/schemas/commitment-report-v1.schema.json)), named `commitment-report-405b-{profile}-c{classes}-b32.json`. The counts include [RFC-0050](../../rfcs/RFC-0050-gadget-advice-columns.md)'s complete root columns and lookup requests. The `μ` values are cost-model projections using the source's unit costs.
 
 ## How they are made
 
-`crates/tessera-bench/tests/commitment_report.rs` builds each model's public part and lowers it for 16 positions. It then selects the gadgets and writes the report with the cost model's projections. The test fails when a committed file differs from what the compiler gives now.
+`crates/tessera-bench/tests/commitment_report.rs` builds each model's public part, lowers it for 16 positions, selects its gadgets and projects their counts. The test requires all six `B_max = 32` configurations to compile and all six `B_max = 30` configurations to fail at the first root. It also checks every committed report against the current compiler.
 
 ```sh
-cargo test -p tessera-bench --test commitment_report                          # check the files
-TESSERA_WRITE_EXAMPLES=1 cargo test -p tessera-bench --test commitment_report # rewrite them
+cargo test -p tessera-bench --test commitment_report --locked
+TESSERA_WRITE_EXAMPLES=1 cargo test -p tessera-bench --test commitment_report --locked
 ```
 
-What the reports assume:
+The reports assume:
 
-- **The model.** The shape of Llama-3.1-405B: 126 layers, `d_model` 16,384, 128 heads and 8 KV heads of 128, `d_ff` 53,248, a vocabulary of 128,256. The residual's scale is `2^{−7}`, and the shifts are those of the compiler's lowering tests.
-- **Classes.** Every site after a weight takes one, two or four shift classes: RoPE's `q` and `k`, `V`, the residual sites, SiLU and, in `servable`, `Up`.
-  - One is RISK-2's variant with one exponent per tensor.
-  - Four is the most the quantizer allows ([RFC-0005](../../rfcs/RFC-0005-integer-model.md#scale-policy)). Three classes commit what four do, since the class index takes two bits either way.
-  - A site's shifts change its gadget only where a split would reach a class's rounding bit. Here, that is at the residual sites.
-- **Projections.** `μ` at 1K, 4K, 16K and 128K uses the source's unit costs, memory and scenario, with five regenerations, as 08 §3 does. It includes the table side: each row's multiplicity and fraction-tree leaf, shared by the 16K-token batch ([#304](https://github.com/AbdelStark/tessera/issues/304), below). It also includes the masked halves of the score tensors' diagonal blocks, which the layout commits: 405B's score block is 512 ([RFC-0034](../../rfcs/RFC-0034-causal-blocks.md)). Splits take [RFC-0028](../../rfcs/RFC-0028-balanced-split.md)'s balanced point.
+- **Model.** 126 layers, `d_model = 16384`, 128 heads and 8 KV heads of width 128, `d_ff = 53248`, and vocabulary 128,256. The residual scale is `2^−7`; shifts are those of the compiler's lowering tests.
+- **Classes.** Every site after a weight takes one, two or four shift classes. A site's shifts change its gadget where a split would reach a rounding bit. Three classes also use two class-index bits, but their actual table row counts differ from four classes.
+- **Projection inputs.** Source unit costs, memory and scenario; five regenerations; contexts 1K, 4K, 16K and 128K. The table side is shared by a 16K-token batch ([#304](https://github.com/AbdelStark/tessera/issues/304)). Masked halves of score diagonal blocks are included, with block size 512 ([RFC-0034](../../rfcs/RFC-0034-causal-blocks.md)). Requant splits use [RFC-0028](../../rfcs/RFC-0028-balanced-split.md)'s balanced point.
 
 ## Counts
 
-Per layer per token, then per token. Committed elements are lookup outputs, split limbs and row scalars; per token they also include the embedding's one-hot vector, the first checkpoint ([RFC-0037](../../rfcs/RFC-0037-stage-schedule.md#the-committed-first-checkpoint)) and the final norm. Table rows are per proof.
+All rows use `B_max = 32`. Committed elements include lookup outputs, split limbs and row scalars; per-token totals also include the one-hot vector, the first checkpoint and the final norm. Table rows count each used lookup family once, at its actual size before padding; RoPE has no multiplicity tensor.
 
-| Profile | Classes | `B_max` | Committed, per layer | Lookups, per layer | Committed, per token | Lookups, per token | `μ(1K)` | `μ(16K)` | Table rows |
-|---|---|---|---|---|---|---|---|---|---|
-| `servable` | 1 | 32 | 327,464 | 327,612 | 41,437,892 | 41,311,910 | 11.24 | 26.57 | 5.0 · 10^9 |
-| `servable` | 2 | 32 | 360,232 | 360,380 | 45,566,660 | 45,440,678 | 11.75 | 27.03 | 7.7 · 10^9 |
-| `servable` | 4 | 32 | 376,616 | 376,764 | 47,631,044 | 47,505,062 | 11.99 | 27.26 | 7.7 · 10^9 |
-| `servable` | 1 | 30 | 343,848 | 343,996 | 43,502,276 | 43,376,294 | 11.47 | 26.78 | 3.1 · 10^9 |
-| `servable` | 2 | 30 | 376,616 | 376,764 | 47,631,044 | 47,505,062 | 11.96 | 27.23 | 3.9 · 10^9 |
-| `minimal` | 1 | 32 | 253,736 | 270,268 | 32,148,164 | 34,086,566 | 10.31 | 25.69 | 6.6 · 10^9 |
-| `minimal` | 2 | 32 | 286,504 | 303,036 | 36,276,932 | 38,215,334 | 10.79 | 26.14 | 6.7 · 10^9 |
-| `minimal` | 4 | 32 | 286,504 | 303,036 | 36,276,932 | 38,215,334 | 10.82 | 26.17 | 11.2 · 10^9 |
-| `minimal` | 1 | 30 | 286,504 | 319,420 | 36,276,932 | 40,279,718 | 10.90 | 26.25 | 2.6 · 10^9 |
+| Profile | Classes | Committed, per layer/token | Lookups, per layer/token | Committed, per token | Lookups, per token | `μ(1K)` | `μ(16K)` | Table rows |
+|---|---|---|---|---|---|---|---|---|
+| `servable` | 1 | 327,798 | 327,930 | 41,480,143 | 41,352,137 | 11.28 | 26.60 | 9.5 · 10^9 |
+| `servable` | 2 | 360,566 | 360,698 | 45,608,911 | 45,480,905 | 11.78 | 27.07 | 12.2 · 10^9 |
+| `servable` | 4 | 376,950 | 377,082 | 47,673,295 | 47,545,289 | 12.03 | 27.29 | 12.2 · 10^9 |
+| `minimal` | 1 | 254,070 | 270,586 | 32,190,415 | 34,126,793 | 10.34 | 25.73 | 11.1 · 10^9 |
+| `minimal` | 2 | 286,838 | 303,354 | 36,319,183 | 38,255,561 | 10.83 | 26.18 | 11.1 · 10^9 |
+| `minimal` | 4 | 286,838 | 303,354 | 36,319,183 | 38,255,561 | 10.83 | 26.18 | 11.4 · 10^9 |
 
-`B_max = 30` refuses three configurations, each for one table:
-
-- **`servable` with four classes**: SiLU's table of `4 · 2^{29}` rows, since a table lookup has no split.
-- **`minimal` with two or four classes**: the classed O-projection update. Its 61-bit key would split past 30 bits, and `RequantWide`'s reduced table would need `t + 2 + ⌈log2 n⌉ = 31` bits.
-
-Every configuration requantizes RISK-2's elements per layer per token: 260,096 in `servable` and the source's 137,216 in `minimal`. Each has RFC-0010's stage count, 3 and 4.
+Every configuration requantizes [RISK-2](../../spec/00-overview.md#9-risks)'s elements per layer/token: 260,096 in `servable` and 137,216 in `minimal`. Stage counts remain 3 and 4. The row scalars are now exact: two roots at 187 columns each, plus 768 softmax row values, for 1,142 per layer/token. Each root has 189 lookup requests; repeated table families still count as separate reads.
 
 ## RISK-2
 
-At the default `B_max = 32`, the rescales commit RISK-2's figures: the committed counts above less 808 row scalars per layer, the norms' roots and the softmax rows' scalars.
+At `B_max = 32`, subtracting the 1,142 row scalars leaves the same rescale commitments:
 
-- **`servable`**: 326,656 with one class and RISK-2's 359,424 with two. With four, 375,808: the down projection's update key is 31 bits plus two class bits, so it splits.
-- **`minimal`**: 252,928 commitments and 269,312 lookups with one class, and RISK-2's upper bound with more: 285,696 and 302,080.
+- **`servable`:** 326,656 with one class, 359,424 with two, and 375,808 with four. With four classes the down-projection update's 31-bit key and two class bits require a split.
+- **`minimal`:** 252,928 commitments and 269,312 lookups with one class; 285,696 and 302,080 with two or four.
 
-The quantizer's real class counts at O and down decide which line applies. With two classes, `μ(1K)` is 11.75 in `servable` and 10.79 in `minimal`, the table side and the score tensors' diagonal blocks included. 08 §3's 11.7 and 10.8 count the rescales alone.
+The complete reports additionally count the root bracket representation and every auxiliary table. Earlier versions of these snapshots used estimated root counts and omitted required families; their `B_max = 30` files have been removed.
 
 ## OQ-0006-1: the table bound
 
-[RFC-0006](../../rfcs/RFC-0006-compiler-ir.md#open-questions) asks whether `B_max = 32` is the right default, against 30 or 34. Larger tables cost prover memory and table time per proof. Smaller ones force more splits.
+[RFC-0006](../../rfcs/RFC-0006-compiler-ir.md#open-questions) asks whether the default should be 30, 32 or 34.
 
-**The table side.** Each proof commits one multiplicity per table row and builds the table's fraction tree over every row ([RFC-0008](../../rfcs/RFC-0008-logup-and-tables.md)).
+**30 is infeasible for this quantization.** Its norm precision is `κ = 30`, with integer epsilon 2,685. The first norm root needs `Range(32)` under RFC-0050, exceeding a 30-bit table policy before the projection or SiLU choices are reached. This applies to both profiles and all class configurations above. The former 30-versus-32 cost comparison omitted that lookup.
 
-- The cost model prices it as one committed element and one tree leaf per row, `(1 + glue) · M · (c_c + c_ℓ)`, shared by the 16K-token batch ([#304](https://github.com/AbdelStark/tessera/issues/304)). The projections above include it. It adds this much to `μ(1K)`.
-- Its multiplicity counters take 4 bytes per row (08 §4).
+**32 supports every configuration.** Each proof commits multiplicities and builds fraction-tree leaves for the used tables. The cost model prices the table term as `(1 + glue) · M · (c_c + c_ℓ)`, shared by the batch. Under 08 §4's four-byte-counter assumption:
 
-| Configuration | Table term at 30 | at 32 | Counters at 30 | at 32 |
-|---|---|---|---|---|
-| `servable`, 1 class | 0.02 | 0.04 | 12 GiB | 19 GiB |
-| `servable`, 2 classes | 0.03 | 0.06 | 15 GiB | 29 GiB |
-| `servable`, 4 classes | refused | 0.06 | — | 29 GiB |
-| `minimal`, 1 class | 0.02 | 0.05 | 10 GiB | 25 GiB |
-| `minimal`, 2 classes | refused | 0.05 | — | 25 GiB |
-| `minimal`, 4 classes | refused | 0.08 | — | 42 GiB |
+| Profile, classes | Table contribution to `μ(1K)` | Counter footprint |
+|---|---|---|
+| `servable`, 1 | 0.07 | 35 GiB |
+| `servable`, 2 | 0.09 | 45 GiB |
+| `servable`, 4 | 0.09 | 45 GiB |
+| `minimal`, 1 | 0.08 | 41 GiB |
+| `minimal`, 2 | 0.08 | 41 GiB |
+| `minimal`, 4 | 0.08 | 42 GiB |
 
-**Against 30.** At 30, one site per layer changes gadget.
+**34 requires a superseding RFC.** RFC-0008 limits tables to `2^32` rows. A hypothetical 34-bit policy would change one requantization in these configurations: `servable`'s down-projection update with four classes would use `Requant1`, saving 16,384 commitments and lookups per layer/token. Its new table would have `2^33` rows, or 32 GiB of four-byte counters for that table alone. The test checks the changed-element count; it emits no report for this unsupported policy.
 
-- In `servable`, the down projection's residual key of 31 bits splits: 16,384 more commitments and lookups per layer per token. `μ(1K)` rises by 0.22 or 0.23: the split costs 0.24, and the smaller tables save 0.01 to 0.03.
-- In `minimal`, the O projection's 61-bit residual key takes `RequantWide` instead of `RequantSplit`, since its low part would exceed 30 bits. That costs 32,768 more commitments and 49,152 more lookups per layer per token. `μ(1K)` rises by 0.59: the wider gadget costs 0.62, and the smaller tables save 0.03.
-- Where 30 compiles, it costs more than it saves. It also refuses three of the six configurations.
-
-**Against 34.** RFC-0008 bounds every table at `2^{32}` rows, so 34 needs a superseding RFC.
-
-- Under RFC-0006's selection rule it would change one gadget in these configurations: with four classes, `servable`'s down-projection update. Its 33-bit key would take `Requant1`, saving 16,384 commitments and lookups per layer per token, 0.24 of `μ(1K)`.
-- In return, a table of `2^{33}` rows replaces the balanced split's two small ones: about 0.06 more table term and 32 GiB more counters.
-- Nothing else changes: no other key is 33 or 34 bits, and no `RequantWide` key would split. The test checks this.
-
-**Recommendation: keep `B_max = 32`.** It is the only bound of the three that compiles every configuration within RFC-0008. Moving to 34 gains about 0.18 of `μ(1K)`, and only with three or four classes at the down projection. Revisit it if two conditions hold together: the quantizer's measured class counts at the down projection are three or four, and the v0.5 unit costs price the table side low enough. The split point weighed more than the bound. With the least split, high tables of exactly `2^{32}` rows held most of 76 to 104 GiB of counters. [RFC-0028](../../rfcs/RFC-0028-balanced-split.md)'s balanced split point ([#303](https://github.com/AbdelStark/tessera/issues/303)) cut them to 19 to 42 GiB at no cost per element.
+**Keep `B_max = 32`.** With this quantization it is the feasible choice among the three within RFC-0008. The reports retain the existing unit-cost and memory assumptions; complete prover timing and runtime memory measurements remain separate validation work.

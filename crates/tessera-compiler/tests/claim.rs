@@ -74,6 +74,7 @@ fn of_public(public: PublicModel<'_>, positions: u32) -> ClaimList {
         select(&lowering.graph, &ranges, &lowering.tables, &policy).expect("every gadget fits");
     let params = ParamSetId(Ascii::new("test-small/1").expect("ASCII"));
     claim_list(public, &selection, &policy, TEST_SMALL, params)
+        .expect("the maximum advice layout fits")
 }
 
 #[test]

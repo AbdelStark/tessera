@@ -12,11 +12,12 @@ publish.workspace = true
 serde_json = "1"
 tessera-codec = { path = "../tessera-codec" }
 tessera-ir = { path = "../tessera-ir" }
+tessera-pcs = { path = "../tessera-pcs" }
+tessera-field = { path = "../tessera-field" }
 tessera-tables = { path = "../tessera-tables" }
 
 [dev-dependencies]
 proptest = "1"
-tessera-field = { path = "../tessera-field" }
 
 [lints]
 workspace = true

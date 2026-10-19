@@ -51,7 +51,8 @@
 //! (RFC-0046 'Rows too short for a key'); no segment; or a row too wide for a codeword.
 //! [`AdviceLayout::new`] refuses, as `Layout` too, a layout of more than `2^32` rows (RFC-0047 'The
 //! maximum layout'). RFC-0007 step 6 applies that bound at `n = max_context`, where the layout is
-//! largest; the caller that derives the tiles checks it there. A `g = n_heads / n_kv_heads` that is
+//! largest; [`AdviceLayoutCounter`] checks repeated tile patterns there before the caller
+//! expands them into individual placements. A `g = n_heads / n_kv_heads` that is
 //! no power of two is an architecture rule of RFC-0007 step 2 (RFC-0047 'Heads'), which validation
 //! applies before any layout: the layout refuses it again as [`PcsError::LayoutData`], data it
 //! never receives, like any other of another form ([`PcsError::Tile`]).
@@ -112,6 +113,91 @@ fn refuse<T>(rule: &'static str) -> Result<T, PcsError> {
 
 fn data<T>(rule: &'static str) -> Result<T, PcsError> {
     Err(PcsError::LayoutData { rule })
+}
+
+fn place_rows(cursor: u64, vars: u32, log2_k: u32) -> Result<(u64, u64), PcsError> {
+    let span = 1u64
+        .checked_shl(vars.saturating_sub(log2_k))
+        .filter(|&span| span <= MAX_ROWS)
+        .ok_or(PcsError::Layout { rule: ROWS })?;
+    // Both operands are at most 2^32.
+    let first = cursor.next_multiple_of(span);
+    let end = first + span;
+    if end > MAX_ROWS {
+        return refuse(ROWS);
+    }
+    Ok((first, end))
+}
+
+/// Count a model's full allocation before expanding repeated attention tiles.
+/// No row map or placement is materialized; skipped rows still count toward the cap.
+#[derive(Clone, Debug)]
+pub struct AdviceLayoutCounter {
+    attention: Attention,
+    log2_k: u32,
+    allocated: u64,
+}
+
+impl AdviceLayoutCounter {
+    /// A counter for the same public parameters and length as [`AdviceLayout::new`].
+    ///
+    /// # Errors
+    /// Those of [`LayoutParams::attention`].
+    pub fn new(params: LayoutParams, positions: u32) -> Result<Self, PcsError> {
+        Ok(Self {
+            attention: params.attention(positions)?,
+            log2_k: params.log2_k,
+            allocated: 0,
+        })
+    }
+
+    /// Append `repetitions` occurrences of one tile's value shapes.
+    /// After one complete pattern the cursor's residue modulo its largest
+    /// alignment is fixed. A second occurrence therefore determines the stride
+    /// of every remaining occurrence, even for heterogeneous column spans.
+    ///
+    /// # Errors
+    /// `LayoutData` for no value, no repetition or invalid tensor metadata;
+    /// `Layout` if the complete allocation exceeds `2^32` rows. Failure leaves
+    /// the counter unchanged.
+    pub fn append(&mut self, values: &[TensorShape], repetitions: u64) -> Result<(), PcsError> {
+        if values.is_empty() {
+            return data(EMPTY_TILE);
+        }
+        if repetitions == 0 {
+            return data("a repeated tile occurs at least once");
+        }
+        for value in values {
+            if let Err(rule) = check_value(value, &self.attention) {
+                return data(rule);
+            }
+        }
+        let advance = |mut cursor| {
+            for value in values {
+                cursor = place_rows(cursor, geometry(value, &self.attention).1, self.log2_k)?.1;
+            }
+            Ok::<_, PcsError>(cursor)
+        };
+        let first = advance(self.allocated)?;
+        let end = if repetitions == 1 {
+            first
+        } else {
+            let step = advance(first)? - first;
+            repetitions
+                .checked_sub(1)
+                .and_then(|n| n.checked_mul(step))
+                .and_then(|n| first.checked_add(n))
+                .filter(|&n| n <= MAX_ROWS)
+                .ok_or(PcsError::Layout { rule: ROWS })?
+        };
+        self.allocated = end;
+        Ok(())
+    }
+
+    /// Full allocated rows, including padding, causal zero rows and alignment gaps.
+    pub fn allocated_rows(&self) -> u64 {
+        self.allocated
+    }
 }
 
 /// The claim list's data that the advice layout reads besides the tiles (INV-PCS-1). Every field
@@ -709,16 +795,8 @@ impl AdviceLayout {
             for value in &tile.values {
                 let (geometry, vars) = geometry(value, &attention);
                 let row_bits = vars.saturating_sub(log2_k);
-                let span = 1u64
-                    .checked_shl(row_bits)
-                    .filter(|&span| span <= MAX_ROWS)
-                    .ok_or(PcsError::Layout { rule: ROWS })?;
-                // The cursor and the span are at most 2^32: neither sum overflows.
-                let first_row = cursor.next_multiple_of(span);
-                cursor = first_row + span;
-                if cursor > MAX_ROWS {
-                    return refuse(ROWS);
-                }
+                let (first_row, end) = place_rows(cursor, vars, log2_k)?;
+                cursor = end;
                 let nonzero = nonzero_rows(value, &attention, row_bits)
                     .into_iter()
                     .map(|run| run.start + first_row..run.end + first_row)

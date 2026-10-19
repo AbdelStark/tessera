@@ -303,15 +303,7 @@ pub fn report(
         tables.push(TableUse {
             id: spec.id,
             kind: kind_name(&spec.kind),
-            rows: match &spec.kind {
-                TableKind::Requant { b, r_by_class, .. }
-                | TableKind::Silu { b, r_by_class, .. } => (1u64 << b) * r_by_class.len() as u64,
-                _ => 1u64
-                    .checked_shl(u32::from(spec.log2_rows))
-                    .ok_or(CompileError::Usage {
-                        rule: "a table has fewer than 2^64 rows",
-                    })?,
-            },
+            rows: crate::advice::table_rows(spec)?,
             lookups_per_token: 0,
             score_lookups: 0,
         });

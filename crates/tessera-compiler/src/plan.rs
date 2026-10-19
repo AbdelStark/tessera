@@ -91,7 +91,7 @@ pub enum Tile {
     /// The multiplicities of a table some lookup reads, one per row, shared by every lookup into
     /// it (RFC-0008). Tag 3.
     Table {
-        /// The table's [`TableId`].
+        /// The table's [`tessera_ir::TableId`].
         table: u32,
     },
 }
@@ -317,7 +317,7 @@ pub fn plan(model: PublicModel<'_>, claims: &ClaimList) -> Result<ExecutionPlan,
         policy,
         claims.layout,
         claims.params.clone(),
-    ) != *claims
+    )? != *claims
     {
         return Err(CompileError::Usage {
             rule: NOT_THE_MODELS,

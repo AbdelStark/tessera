@@ -817,6 +817,7 @@ All notable changes to the prover release train are recorded here: the crates un
 - Add independent public model advice-layout vectors for RFC-0011/0047/0050, including complete auxiliary lookup requests and zero rows (#106).
 - Preserve complete ordered auxiliary lookup requests in compiler selections and derive plan/witness table sets and exact root report counts from them (RFC-0050, #106).
 - Keep inner padded axes' rows in the advice commitment, as RFC-0047 requires, even when their entries are all zero (#106).
+- Bind every model advice source and gadget auxiliary to its PCS placement through `tessera-compiler::ModelAdviceLayout`, including weighted images of whole attention claims. Count repeated tiles before expansion; `claim_list` now returns a `Result` and refuses layouts that exceed the row or key capacity at `max_context` (RFC-0011/0046/0047/0050, #106).
 
 ### Changed
 

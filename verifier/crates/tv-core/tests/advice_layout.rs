@@ -480,7 +480,7 @@ fn every_root_width_allocates_each_real_role_and_no_virtual_top() {
 fn max_context_size_is_checked_after_tables_even_when_one_token_fits() {
     let mut claims = claim_support::twin("tiny-2-minimal");
     claims.arch.max_context = 1 << 17;
-    claims.arch.d_ff = u32::MAX;
+    claims.arch.d_ff = 1 << 31;
     claims.arch.n_heads = 1;
     claims.arch.n_kv_heads = 1;
     claims.arch.d_head = 2;

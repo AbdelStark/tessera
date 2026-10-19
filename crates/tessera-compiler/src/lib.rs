@@ -23,9 +23,14 @@
 //!   list and the tiles of [`tiles`], which partition a sequence's committed values in production
 //!   order. [`ExecutionPlan::expand`] gives the tiles of one sequence with the elements each holds,
 //!   and [`check_plan`] refuses a plan that is not `D`'s (RFC-0041).
+//! - [`ModelAdviceLayout`] binds every committed graph tensor and RFC-0050 auxiliary to the canonical PCS
+//!   allocation, zero rows and segments. It maps whole attention claims to weighted share
+//!   openings. [`claim_list`] checks the complete allocation at `max_context` before emission
+//!   and returns an error when it cannot fit (RFC-0046/0047).
 
 #![forbid(unsafe_code)]
 
+mod advice;
 mod claim;
 mod error;
 mod lower;
@@ -35,6 +40,7 @@ mod report;
 pub mod schedule;
 mod select;
 
+pub use advice::{AdviceClaimImage, AdviceSource, AuxColumn, CompareColumn, ModelAdviceLayout};
 pub use claim::claim_list;
 pub use error::CompileError;
 pub use lower::{Lowering, PublicModel, check_profile, lower, validate};

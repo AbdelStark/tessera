@@ -9,7 +9,7 @@
 //! - **The reports.** `cargo xtask lint` validates each against its JSON Schema. This test keeps
 //!   them current, up to the last bits of numbers that platforms round differently, and
 //!   `TESSERA_WRITE_EXAMPLES=1` makes it rewrite them.
-//! - **`B_max = 30`** refuses three configurations, each for the one table it would need.
+//! - **`B_max = 30`** refuses all six configurations: RFC-0050's root needs Range(32).
 //! - **`B_max = 34`** lies outside RFC-0008, whose tables hold at most `2^{32}` rows. Under
 //!   RFC-0006's selection rule it would change one gadget: with four classes, `servable`'s down
 //!   projection update, whose 33-bit key would fit one table.
@@ -278,6 +278,7 @@ fn the_committed_405b_reports_are_the_compilers() {
                 let case = format!("{name}, {classes} classes, B_max = {b_max}");
                 match select(&lowering.graph, &ranges, &lowering.tables, &policy) {
                     Ok(selection) => {
+                        assert_eq!(b_max, 32, "{case}: the root requires Range(32)");
                         let report = report_json(model, &lowering, &selection, &policy);
                         let file =
                             format!("commitment-report-405b-{name}-c{classes}-b{b_max}.json");
@@ -303,21 +304,20 @@ fn the_committed_405b_reports_are_the_compilers() {
                             assert_eq!(changed, expected, "{case}");
                         }
                     }
-                    // A table of 2^31 rows: SiLU's, of 2^29 keys per gate class. And minimal's
-                    // classed O-projection update: its 61-bit key leaves a reduced table of 2^31
-                    // rows.
-                    Err(CompileError::Range { rule, .. }) => {
-                        let expected = match (profile, classes, b_max) {
-                            (Profile::Servable, 4, 30) => {
-                                "a lookup's table has at most 2^{B_max} rows"
-                            }
-                            (Profile::Minimal, 2 | 4, 30) => {
-                                "a wide key's reduced table fits 2^{B_max} rows: t + 2 + \
-                                 ⌈log2 n⌉ ≤ B_max"
-                            }
-                            _ => panic!("{case}: refused: {rule}"),
-                        };
-                        assert_eq!(rule, expected, "{case}");
+                    Err(CompileError::Range { node, rule, .. }) => {
+                        assert_eq!(b_max, 30, "{case}: refused: {rule}");
+                        let root = lowering
+                            .graph
+                            .nodes
+                            .iter()
+                            .find(|n| matches!(n.op, Op::RsqrtRow { .. }))
+                            .expect("the first norm")
+                            .id;
+                        assert_eq!(node, root, "{case}: first refusal is the root's Range(32)");
+                        assert_eq!(
+                            rule, "a lookup's table has at most 2^{B_max} rows",
+                            "{case}"
+                        );
                     }
                     Err(error) => panic!("{case}: {error}"),
                 }

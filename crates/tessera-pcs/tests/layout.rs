@@ -38,8 +38,9 @@ use common::{Fp, SplitMix64};
 use tessera_codec::Secret;
 use tessera_field::{Field, GoldilocksExt2, QuadraticExtension};
 use tessera_pcs::{
-    AdviceLayout, Axis, ClaimGroup, CommitmentParams, DenseShape, LayoutParams, Padding, PcsError,
-    ReferenceCommitment, RowClaim, TensorShape, TileShape, layout_order, segment_layers,
+    AdviceLayout, AdviceLayoutCounter, Axis, ClaimGroup, CommitmentParams, DenseShape,
+    LayoutParams, Padding, PcsError, ReferenceCommitment, RowClaim, TensorShape, TileShape,
+    layout_order, segment_layers,
 };
 use tv_core::opening as tv;
 
@@ -871,6 +872,86 @@ fn inner_padded_axes_remain_committed_under_rfc_0047() {
     for row in 0..16 {
         assert_eq!(layout.is_zero_row(row), row >= 12);
     }
+}
+
+#[test]
+fn repeated_tile_counter_matches_full_allocation_with_heterogeneous_alignments() {
+    let mut rng = SplitMix64::new(0x0106_0047);
+    for _ in 0..100 {
+        let model = model(&mut rng, 1 << 12);
+        let mut counter = AdviceLayoutCounter::new(model.params, model.positions).unwrap();
+        let mut expanded = Vec::new();
+        for tile in &model.tiles {
+            let repeats = 1 + rng.below(7);
+            counter.append(&tile.values, repeats as u64).unwrap();
+            expanded.extend(std::iter::repeat_n(tile.clone(), repeats));
+        }
+        let allocated = AdviceLayout::new(model.params, model.positions, &expanded).unwrap();
+        assert_eq!(counter.allocated_rows(), allocated.allocated_rows());
+    }
+    let params = LayoutParams {
+        log2_k: 10,
+        segments: 1,
+        layers: 1,
+        group: 1,
+        query_block: 1,
+        max_context: 1,
+    };
+    let shape = |vars| {
+        TensorShape::Dense(DenseShape::new(
+            vec![Axis::new(1u64 << vars)],
+            Padding::Zero,
+        ))
+    };
+    let mut counter = AdviceLayoutCounter::new(params, 1).unwrap();
+    counter
+        .append(&[shape(10), shape(13), shape(11)], 3)
+        .unwrap();
+    assert_eq!(counter.allocated_rows(), 50);
+}
+
+#[test]
+fn repeated_tile_counter_checks_the_raw_row_limit_before_expansion_and_preserves_state() {
+    let params = LayoutParams {
+        log2_k: 10,
+        segments: 1,
+        layers: 1,
+        group: 1,
+        query_block: 1,
+        max_context: 1,
+    };
+    let one = TensorShape::Dense(DenseShape::new(vec![Axis::new(1)], Padding::Zero));
+    let rejection = PcsError::Layout {
+        rule: "a layout allocates at most 2^32 rows (RFC-0047 'The maximum layout')",
+    };
+    let mut counter = AdviceLayoutCounter::new(params, 1).unwrap();
+    counter.append(std::slice::from_ref(&one), 1 << 32).unwrap();
+    assert_eq!(counter.allocated_rows(), 1 << 32);
+    assert_eq!(
+        counter.append(std::slice::from_ref(&one), 1),
+        Err(rejection)
+    );
+    assert_eq!(counter.allocated_rows(), 1 << 32);
+    for repeats in [(1 << 32) + 1, u64::MAX] {
+        let mut counter = AdviceLayoutCounter::new(params, 1).unwrap();
+        assert_eq!(
+            counter.append(std::slice::from_ref(&one), repeats),
+            Err(rejection)
+        );
+        assert_eq!(counter.allocated_rows(), 0);
+    }
+    assert_eq!(
+        counter.append(&[], 1),
+        Err(PcsError::LayoutData {
+            rule: "a tile holds at least one committed value (RFC-0041 'Tiles')"
+        })
+    );
+    assert_eq!(
+        counter.append(&[one], 0),
+        Err(PcsError::LayoutData {
+            rule: "a repeated tile occurs at least once"
+        })
+    );
 }
 
 // ----- The order and the maximum (RFC-0047) ----------------------------------------------------

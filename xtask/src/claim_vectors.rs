@@ -78,7 +78,7 @@ pub(crate) fn claims(name: &str, model: &IntegerModel) -> Result<ClaimList, Stri
     let selection = select(&lowering.graph, &ranges, &lowering.tables, &policy)
         .map_err(|e| format!("{name}: {e}"))?;
     let params = ParamSetId(Ascii::new(PARAMS).map_err(|_| "an ASCII parameter set")?);
-    Ok(claim_list(public, &selection, &policy, LAYOUT, params))
+    claim_list(public, &selection, &policy, LAYOUT, params).map_err(|e| e.to_string())
 }
 
 /// The claim lists of the conformance models in the tree at `repo`, as the file's text.

@@ -313,8 +313,8 @@ pub use descriptor::{AdviceLayoutParams, CommitmentDescriptor, WeightLayoutParam
 pub use encoding::{COSET_SHIFT, MaskSource, RowEncoder};
 pub use error::PcsError;
 pub use layout::{
-    AdviceLayout, Attention, Axis, DenseShape, LayoutParams, Padding, Placement, Segment,
-    TensorShape, TilePlacement, TileShape, layout_order, segment_layers,
+    AdviceLayout, AdviceLayoutCounter, Attention, Axis, DenseShape, LayoutParams, Padding,
+    Placement, Segment, TensorShape, TilePlacement, TileShape, layout_order, segment_layers,
 };
 pub use ntt::NttPlan;
 pub use opening::{ClaimGroup, CombinedRow, RowClaim};

@@ -135,7 +135,8 @@ pub fn plan_of(model: &IntegerModel, query_block: u32) -> ExecutionPlan {
     let selection =
         select(&lowering.graph, &ranges, &lowering.tables, &policy).expect("every gadget fits");
     let params = ParamSetId(Ascii::new("test-small/1").expect("ASCII"));
-    let claims = claim_list(public, &selection, &policy, TEST_SMALL, params);
+    let claims = claim_list(public, &selection, &policy, TEST_SMALL, params)
+        .expect("the maximum advice layout fits");
     plan(public, &claims).expect("a plan")
 }
 
