@@ -191,6 +191,9 @@ REPORT_TABLES = [
     ("Requant", 16_384, 1_048_576),
     ("Requant", 2_193_408, 16_777_216),
     ("Requant", 6_838_272, 1_073_741_824),
+    ("Range", 16_128, 131_072),  # one reciprocal per logical head/query row
+    ("Range", 64_512, 65_536),  # four low limbs per row, two for each slack
+    ("Range", 32_256, 4),  # the two virtual top limbs
     ("Range", 2_064_384, 1_048_576),
     ("Requant", 2_064_384, 1_048_576),
     ("Requant", 2_064_384, 1_073_741_824),
@@ -207,10 +210,15 @@ def lookups_405b():
     16,384, T = its rows. The Exp instance looks up every position of the padded score tensor,
     2^7 layers × 2^7 heads × 2^14 queries × 2^14 keys = 2^42 (RFC-0030 'Cost')."""
     instances = []
-    for kind, per_token, rows in REPORT_TABLES:
+    for index, (kind, per_token, rows) in enumerate(REPORT_TABLES):
         if kind == "Exp":
             require(per_token == 0, "Exp is looked up by scores only")
             lookups = pow2_at_least(LAYERS) * pow2_at_least(HEADS) * TOKENS * TOKENS
+        elif index in (7, 8, 9):
+            # RFC-0035's stacked row boxes include padded layers and heads.
+            per_row = {7: 1, 8: 4, 9: 2}[index]
+            require(per_token == LAYERS * HEADS * per_row, "Softmax row lookup count")
+            lookups = pow2_at_least(LAYERS) * pow2_at_least(HEADS) * TOKENS * per_row
         else:
             lookups = per_token * TOKENS
         instances.append({"lookups": lookups, "rows": rows})

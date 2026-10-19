@@ -17,6 +17,7 @@ tessera-poly = { path = "../tessera-poly" }
 tessera-tables = { path = "../tessera-tables" }
 
 [dev-dependencies]
+tessera-sumcheck = { path = "../tessera-sumcheck" }
 tessera-hash = { path = "../tessera-hash" }
 tessera-ir = { path = "../tessera-ir" }
 # The verifier's independent LogUp checks, tables, field, codec and transcript: every LogUp proof

@@ -612,6 +612,7 @@ dependencies = [
  "tessera-ir",
  "tessera-logup",
  "tessera-poly",
+ "tessera-sumcheck",
  "tessera-tables",
  "tv-codec",
  "tv-core",

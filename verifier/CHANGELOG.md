@@ -119,6 +119,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - Validate RFC-0007 steps 5.2/5.3 with independent checked integer intervals, OneHot/Softmax relational bounds, gadget-domain checks and canonical requantization table selection ([#117](https://github.com/AbdelStark/tessera/issues/117)). Reject wrong narrow/split tables, noncanonical table ids and infeasible lookup widths with exact Gadget/Table identifiers. Preserve memory/internal errors separately from statement rejection.
 
+- Derive SoftmaxRow's reciprocal and bracket Range tables in canonical first-use order and reject altered or missing auxiliary definitions (RFC-0006/0009; #122).
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

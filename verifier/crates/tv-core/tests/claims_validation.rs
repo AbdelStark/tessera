@@ -1212,3 +1212,33 @@ fn canonical_tables_pin_ids_and_requantization_functions_not_only_sizes() {
         StatementField::Table { table: original_id }
     );
 }
+
+#[test]
+fn softmax_auxiliary_ranges_are_canonical_even_with_valid_table_digests() {
+    let claims = twin(SERVABLE);
+    validated(&claims);
+    for bits in [17, 16, 2] {
+        let mut forged = claims.clone();
+        let index = forged
+            .tables
+            .iter()
+            .position(|t| t.kind == TableKind::Range { bits })
+            .expect("SoftmaxRow's range");
+        let tid = forged.tables[index].id;
+        // The first-use position and id stay canonical, but the lookup box changes by one bit.
+        forged.tables[index] = tv_tables::Table::generate(tid, TableKind::Range { bits: bits + 1 })
+            .unwrap()
+            .spec()
+            .clone();
+        assert_eq!(mismatch(&forged), StatementField::Table { table: tid });
+    }
+    let mut missing = claims.clone();
+    let first = missing
+        .tables
+        .iter()
+        .position(|t| t.kind == TableKind::Range { bits: 17 })
+        .unwrap();
+    let tid = missing.tables[first].id;
+    missing.tables.remove(first);
+    assert_eq!(mismatch(&missing), StatementField::Table { table: tid });
+}

@@ -96,6 +96,7 @@ impl<B: PrimeField> TableColumns<B> {
 pub struct Group<B: Copy> {
     table: TableId,
     lookups: Vec<usize>,
+    lengths: Vec<usize>,
     keys: SecretBuf<B>,
     values: Option<SecretBuf<B>>,
 }
@@ -109,6 +110,11 @@ impl<B: Copy> Group<B> {
     /// The lookups, as indices into the constraints' `lookups`, in the order of the columns.
     pub fn lookups(&self) -> &[usize] {
         &self.lookups
+    }
+
+    /// Each lookup's unpadded column length, in [`lookups`](Self::lookups) order.
+    pub fn lengths(&self) -> &[usize] {
+        &self.lengths
     }
 
     /// The key column: each lookup's keys, one lookup after another.
@@ -240,10 +246,51 @@ impl<B: PrimeField + PolyField<Base = B>> Lookups<B> {
             }
             groups.push(Group {
                 table,
+                lengths: vec![len; indices.len()],
                 lookups: indices,
                 keys,
                 values,
             });
+        }
+        Ok(Self { groups })
+    }
+
+    /// Group already evaluated columns, including row and position lookups of different lengths.
+    /// Columns and every intermediate buffer remain clearing allocations (OBS-6).
+    pub(crate) fn from_columns(
+        columns: Vec<(TableId, SecretBuf<B>, Option<SecretBuf<B>>)>,
+    ) -> Result<Self, GadgetError> {
+        let mut groups: Vec<Group<B>> = Vec::new();
+        for (index, (table, keys, values)) in columns.into_iter().enumerate() {
+            if values.as_ref().is_some_and(|v| v.len() != keys.len()) {
+                return Err(GadgetError::Shape {
+                    rule: "a lookup's key and value columns have equal lengths",
+                });
+            }
+            let position = groups.iter().position(|g| g.table == table);
+            match position {
+                None => groups.push(Group {
+                    table,
+                    lookups: vec![index],
+                    lengths: vec![keys.len()],
+                    keys,
+                    values,
+                }),
+                Some(i) => {
+                    let group = &mut groups[i];
+                    if group.values.is_some() != values.is_some() {
+                        return Err(GadgetError::Shape {
+                            rule: "the lookups into one table all have values, or none has",
+                        });
+                    }
+                    group.lookups.push(index);
+                    group.lengths.push(keys.len());
+                    group.keys.extend(keys.iter().copied());
+                    if let (Some(dst), Some(src)) = (&mut group.values, values) {
+                        dst.extend(src.iter().copied());
+                    }
+                }
+            }
         }
         Ok(Self { groups })
     }
@@ -356,4 +403,66 @@ fn columns<B>(tables: &[TableColumns<B>], table: TableId) -> Result<&TableColumn
             table,
             rule: "the caller holds the columns of every table the lookups read",
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tessera_field::Goldilocks as B;
+
+    #[test]
+    fn evaluated_columns_preserve_tuple_alignment_and_reject_mixed_schemas() {
+        let buf = |xs: &[u64]| {
+            xs.iter()
+                .copied()
+                .map(B::from_u64_reduced)
+                .collect::<SecretBuf<_>>()
+        };
+        let groups = Lookups::from_columns(vec![
+            (TableId(2), buf(&[1]), Some(buf(&[10]))),
+            (TableId(3), buf(&[9]), None),
+            (TableId(2), buf(&[2, 3]), Some(buf(&[20, 30]))),
+        ])
+        .unwrap();
+        assert_eq!(groups.groups()[0].table(), TableId(2));
+        assert_eq!(groups.groups()[0].lookups(), [0, 2]);
+        assert_eq!(groups.groups()[0].lengths(), [1, 2]);
+        assert_eq!(groups.groups()[0].keys(), &buf(&[1, 2, 3])[..]);
+        assert_eq!(
+            groups.groups()[0].values().unwrap(),
+            &buf(&[10, 20, 30])[..]
+        );
+        assert_eq!(groups.groups()[1].keys(), [B::from_u64_reduced(9)]);
+        assert!(
+            Lookups::<B>::from_columns(vec![])
+                .unwrap()
+                .groups()
+                .is_empty()
+        );
+        let error =
+            Lookups::from_columns(vec![(TableId(2), buf(&[1]), Some(buf(&[])))]).unwrap_err();
+        assert_eq!(
+            error,
+            GadgetError::Shape {
+                rule: "a lookup's key and value columns have equal lengths"
+            }
+        );
+        for columns in [
+            vec![
+                (TableId(2), buf(&[1]), Some(buf(&[1]))),
+                (TableId(2), buf(&[2]), None),
+            ],
+            vec![
+                (TableId(2), buf(&[1]), None),
+                (TableId(2), buf(&[2]), Some(buf(&[2]))),
+            ],
+        ] {
+            assert_eq!(
+                Lookups::from_columns(columns).unwrap_err(),
+                GadgetError::Shape {
+                    rule: "the lookups into one table all have values, or none has"
+                }
+            );
+        }
+    }
 }

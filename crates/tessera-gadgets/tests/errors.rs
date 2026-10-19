@@ -101,7 +101,12 @@ fn only_requantization_gadgets_are_taken() {
     let refused = shape("a requantization gadget: Requant1, RequantSplit or RequantWide");
     for gadget in [
         Gadget::Lookup { table: TableId(0) },
-        Gadget::SoftmaxRow { exp: TableId(0) },
+        Gadget::SoftmaxRow {
+            exp: TableId(0),
+            reciprocal: TableId(0),
+            limb: None,
+            top: TableId(0),
+        },
         Gadget::RsqrtRow,
         Gadget::OneHot,
         Gadget::Argmax,

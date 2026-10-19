@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! RFC-0007 steps 5.2/5.3, derived from RFC-0006/0009 without prover selection code.
+//! RFC-0007 steps 5.2/5.3, derived from the public rules of RFC-0006/0009.
 
 use std::collections::HashSet;
 
@@ -350,6 +350,29 @@ fn select_requant(
     )
 }
 
+/// RFC-0009 relation 3, after RFC-0006's public table policy has been checked.
+fn softmax_ranges(
+    sigma: u8,
+    policy: GadgetPolicy,
+    id: GadgetId,
+    tables: &mut Tables<'_>,
+) -> Result<(), ClaimsError> {
+    if policy.limb_bits == 0 || policy.limb_bits > policy.max_log2_rows {
+        return Err(gadget(id));
+    }
+    let reciprocal = sigma.checked_add(1).ok_or_else(|| gadget(id))?;
+    tables.intern(Key::Range(reciprocal), policy.max_log2_rows, id)?;
+    // Walk the public bit budget from low limbs to the top, without a division or an index.
+    let mut remaining = sigma.checked_add(18).ok_or_else(|| gadget(id))?;
+    while remaining > policy.limb_bits {
+        tables.intern(Key::Range(policy.limb_bits), policy.max_log2_rows, id)?;
+        remaining = remaining
+            .checked_sub(policy.limb_bits)
+            .ok_or(ClaimsError::Internal)?;
+    }
+    tables.intern(Key::Range(remaining), policy.max_log2_rows, id)
+}
+
 fn classes_fit(ranges: &[Interval], node: &Node, count: usize) -> Result<bool, ClaimsError> {
     match node.inputs().get(1) {
         Some(_) => Ok(within(
@@ -476,6 +499,7 @@ fn check_gadget(
             {
                 return Err(gadget(id));
             }
+            softmax_ranges(sigma, policy, id, tables)?;
         }
         Op::RsqrtRow { eps_int, .. } => {
             let (lo, hi) = input.bounds().ok_or_else(|| gadget(id))?;
@@ -531,6 +555,63 @@ mod tests {
         )
         .unwrap();
         tables.added
+    }
+
+    #[test]
+    fn softmax_ranges_follow_each_lookup_and_intern_equal_definitions_once() {
+        for (sigma, limb, expected) in [
+            (4, 4, vec![5, 4, 2]),
+            (16, 16, vec![17, 16, 2]),
+            (16, 17, vec![17]),
+            (0, 32, vec![1, 18]),
+            (31, 32, vec![32, 17]),
+        ] {
+            let mut tables = Tables {
+                base: &[],
+                added: Vec::new(),
+                seen: HashSet::new(),
+            };
+            let mut policy = GadgetPolicy {
+                max_log2_rows: 32,
+                query_block: 512,
+                limb_bits: 16,
+            };
+            policy.limb_bits = limb;
+            softmax_ranges(sigma, policy, GadgetId(7), &mut tables).unwrap();
+            assert_eq!(
+                tables.added,
+                expected
+                    .into_iter()
+                    .map(|bits| (Key::Range(bits), bits))
+                    .collect::<Vec<_>>()
+            );
+            let original = tables.added.clone();
+            softmax_ranges(sigma, policy, GadgetId(8), &mut tables).unwrap();
+            assert_eq!(tables.added, original);
+        }
+        let mut tables = Tables {
+            base: &[],
+            added: Vec::new(),
+            seen: HashSet::new(),
+        };
+        let mut policy = GadgetPolicy {
+            max_log2_rows: 32,
+            query_block: 512,
+            limb_bits: 16,
+        };
+        for limb in [0, 33] {
+            policy.limb_bits = limb;
+            assert_eq!(
+                softmax_ranges(16, policy, GadgetId(7), &mut tables),
+                Err(gadget(GadgetId(7)))
+            );
+        }
+        policy.limb_bits = 16;
+        policy.max_log2_rows = 16;
+        assert_eq!(
+            softmax_ranges(16, policy, GadgetId(7), &mut tables),
+            Err(gadget(GadgetId(7)))
+        );
     }
 
     #[test]

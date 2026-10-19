@@ -14,6 +14,11 @@
 //! - [`BigIntCompare`]: carry normalization and exact comparison of limb vectors that may exceed
 //!   the field as whole integers (RFC-0009 Lemma 4), with [`CompareConstraints`] for its zero-checks
 //!   and range lookups, and a zeroizing [`CompareWitness`].
+//! - [`SoftmaxRow`]: the causal maximum and reciprocal bracket, including masked exponentials
+//!   and padded rows (RFC-0009 Lemmas 5–6, RFC-0030, RFC-0035). Its
+//!   [`SoftmaxConstraints`] keep the nonlinear pointwise reductions explicit. Each row takes
+//!   a public valid-prefix length, derived by the driver from the causal selector. Rows of one
+//!   position check their single product leaf directly; taller rows use the product forest.
 //!
 //! Each gives:
 //!
@@ -99,6 +104,7 @@ mod error;
 mod lookups;
 mod non_neg;
 mod requant;
+mod softmax;
 mod witness;
 
 pub use compare::{BigIntCompare, CompareColumn, CompareConstraints, CompareWitness, Side};
@@ -107,4 +113,8 @@ pub use error::{Column, GadgetError};
 pub use lookups::{Group, Lookups, TableColumns};
 pub use non_neg::NonNeg;
 pub use requant::Requant;
+pub use softmax::{
+    Slack, SoftmaxColumn, SoftmaxConstraints, SoftmaxEvaluation, SoftmaxLookup, SoftmaxRelation,
+    SoftmaxRow, SoftmaxTerm, SoftmaxValue, SoftmaxWitness,
+};
 pub use witness::Witness;
