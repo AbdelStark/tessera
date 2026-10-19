@@ -1,0 +1,7 @@
+{
+  "Cargo.toml": "9035129e62ec10397e35f6436ddbbfc6a1ce5c44903e9fd22ea920325c779214",
+  "Cargo.lock": "c5236915ab2fa0763cd76d0d49fc2ff7aa26af3f2dff1c6d889d11fcdad6261a",
+  "src/main.rs": "0b6360cb0087585968f176b733ed28f814e31cd21bccdcf585b353ab475d9e87",
+  "src/reverse.rs": "bfdad63c561af22609ded2ded9658d49853c397e73ad42656f501b55f1ac7f06",
+  "src/small.rs": "8d12219c06e3ab4049ed5e2f6efe45194fd06c7900e044243cdf38cadc98f44f"
+}

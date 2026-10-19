@@ -1,0 +1,19 @@
+[package]
+name = "radixcal"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+
+[workspace]
+
+[dependencies]
+tessera-field = { path = "../../../crates/tessera-field" }
+tessera-pcs = { path = "../../../crates/tessera-pcs" }
+tessera-hash = { path = "../../../crates/tessera-hash" }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+debug = false

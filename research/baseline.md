@@ -89,6 +89,20 @@ The old minimal comparison (about 8.8 versus 9.4 at 1K) mixed a rounded rescale 
 
 P5 and P4 are independent costs: reducing commit_ps alone does not silently reduce either. The count levers reduce P4/P5 arithmetic as well as commitments and lookups. The validated pruned P5 result belongs in column_answer_ps, rather than being folded into commit_ps with a second glue charge. The model cannot certify SC-2 before E2 measurements and #329’s accounting.
 
+### Survey-requested scenarios, refreshed 2026-10-19 (E0)
+
+[survey_scenarios.py](tools/survey_scenarios.py) reproduces the [full inputs and outputs](tools/results/survey-scenarios-2026-10-19.json). These replace the historical SUR-0005 scenario totals, using current compiler counts and P5 accounting. The external GPU anchors motivate stress inputs, not measured Tessera H100 costs. Each cell lists μ at 1K / 4K / 16K / 128K.
+
+| c_c | P5 held at94ps | Full-re-encode P5 explicitly set to c_c |
+|---|---|---|
+| 150ps | 37.8 / 54.5 / 118.3 / 498.9 | 42.5 / 61.1 / 132.0 / 553.3 |
+| 240ps | 46.6 / 66.8 / 143.8 / 599.5 | 58.9 / 84.1 / 179.6 / 741.3 |
+| 360ps | 58.3 / 83.3 / 177.7 / 733.6 | 80.7 / 114.8 / 243.0 / 991.9 |
+
+Zero knowledge needs a separate additive line. Current [RFC-0013's Cost](../docs/rfcs/RFC-0013-zero-knowledge.md#cost) estimates **1.6×10^10 base-field mask elements**, twice SUR-0008's historical input. At16K tokens and context, charging those elements at `1.15×94ps` for commitment plus `94ps` for P5 gives **3.2336 GPU-s**, or **Δμ=0.26650**, about **0.260%** of the current partial counted baseline. This is an E0 subset estimate, not measured time, a complete ZK total, or a universal factor. The script checks the incremental model calculation against the direct dimensional formula. The 1.15 sumcheck glue stays unchanged; adding this subset to it does not turn the entire15% into ZK overhead.
+
+Mask counts must come from the eventual stage schedule (#113/#149/#154); the compiler report currently excludes them. Extra masked-sumcheck work, current reserved opening rows and the weight masking budget still need separate accounting. Consequently the old `zk≈1.001` recommendation is historical and cannot be copied into the current model as a measured or complete cost. The normative formula and default partial projections above remain unchanged.
+
 ## 3. Primitive baseline (E0, assumed)
 
 | Primitive | Current design | Assumed cost | Notes |

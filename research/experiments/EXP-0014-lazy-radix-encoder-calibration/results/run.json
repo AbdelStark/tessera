@@ -1,0 +1,7602 @@
+{
+  "cases": [
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.024728,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.024452833,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.024063291,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.025941667,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.024988958,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.025618708,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02483775,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.024000917,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023518292,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023773584,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023413208,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023712958,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023281416,
+              "warmup": false
+            }
+          ],
+          "cv": 0.03960819724189543,
+          "max_seconds": 0.0129708335,
+          "median_seconds": 0.01194362525,
+          "min_seconds": 0.011640708,
+          "samples_seconds_per_execution": [
+            0.0129708335,
+            0.012494479,
+            0.012809354,
+            0.012418875,
+            0.0120004585,
+            0.011759146,
+            0.011886792,
+            0.011706604,
+            0.011856479,
+            0.011640708
+          ]
+        },
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.02309375,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023416,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023462041,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023043667,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023408209,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023569375,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02315125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023609,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02341275,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023781459,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.022975875,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.023444333,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02309825,
+              "warmup": false
+            }
+          ],
+          "cv": 0.011547350895080601,
+          "max_seconds": 0.0118907295,
+          "median_seconds": 0.011705239749999999,
+          "min_seconds": 0.0114879375,
+          "samples_seconds_per_execution": [
+            0.0115218335,
+            0.0117041045,
+            0.0117846875,
+            0.011575625,
+            0.0118045,
+            0.011706375,
+            0.0118907295,
+            0.0114879375,
+            0.0117221665,
+            0.011549125
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "ntt 2^20 production",
+      "retained_attempt": 1
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.029360583,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029757792,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028988625,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029152417,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029344916,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029520792,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029807708,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02938825,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029096458,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028977667,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028978875,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028887083,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02953,
+              "warmup": false
+            }
+          ],
+          "cv": 0.010186344143256395,
+          "max_seconds": 0.014903854,
+          "median_seconds": 0.01462433325,
+          "min_seconds": 0.0144435415,
+          "samples_seconds_per_execution": [
+            0.0145762085,
+            0.014672458,
+            0.014760396,
+            0.014903854,
+            0.014694125,
+            0.014548229,
+            0.0144888335,
+            0.0144894375,
+            0.0144435415,
+            0.014765
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "ntt 2^20 canonical4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.028561417,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0279495,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028691875,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028108333,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0294715,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028291625,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028629208,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028066667,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02787925,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028376834,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029061167,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02807275,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028526292,
+              "warmup": false
+            }
+          ],
+          "cv": 0.017446678075197005,
+          "max_seconds": 0.01473575,
+          "median_seconds": 0.014167114750000001,
+          "min_seconds": 0.013939625,
+          "samples_seconds_per_execution": [
+            0.0140541665,
+            0.01473575,
+            0.0141458125,
+            0.014314604,
+            0.0140333335,
+            0.013939625,
+            0.014188417,
+            0.0145305835,
+            0.014036375,
+            0.014263146
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "ntt 2^20 canonical8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.035772833,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.036324833,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.035345208,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.03611525,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0357125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.035097958,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.036493375,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.036667042,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.035992,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.036197,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.03634425,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.036681875,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.035488458,
+              "warmup": false
+            }
+          ],
+          "cv": 0.014371395590769368,
+          "max_seconds": 0.0183409375,
+          "median_seconds": 0.0180780625,
+          "min_seconds": 0.017548979,
+          "samples_seconds_per_execution": [
+            0.018057625,
+            0.01785625,
+            0.017548979,
+            0.0182466875,
+            0.018333521,
+            0.017996,
+            0.0180985,
+            0.018172125,
+            0.0183409375,
+            0.017744229
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "ntt 2^20 canonical16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.0270985,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027280625,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.026904834,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.026751625,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.026940959,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027149667,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027267917,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0271435,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027233834,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027201375,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028421917,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027322625,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027699167,
+              "warmup": false
+            }
+          ],
+          "cv": 0.0168603666468485,
+          "max_seconds": 0.0142109585,
+          "median_seconds": 0.01360880225,
+          "min_seconds": 0.0133758125,
+          "samples_seconds_per_execution": [
+            0.0133758125,
+            0.0134704795,
+            0.0135748335,
+            0.0136339585,
+            0.01357175,
+            0.013616917,
+            0.0136006875,
+            0.0142109585,
+            0.0136613125,
+            0.0138495835
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "ntt 2^20 lazy4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.0273135,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.026918125,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027304125,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029520292,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.03118975,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027488042,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027681292,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027750041,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02748125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027139542,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027238875,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02749725,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027068791,
+              "warmup": false
+            }
+          ],
+          "cv": 0.04704144349879469,
+          "max_seconds": 0.015594875,
+          "median_seconds": 0.013746323000000001,
+          "min_seconds": 0.0135343955,
+          "samples_seconds_per_execution": [
+            0.014760146,
+            0.015594875,
+            0.013744021,
+            0.013840646,
+            0.0138750205,
+            0.013740625,
+            0.013569771,
+            0.0136194375,
+            0.013748625,
+            0.0135343955
+          ]
+        },
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.027068125,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027011791,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027163875,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027841791,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027187958,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.026753417,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027439667,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027560542,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027709584,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027241292,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.026641584,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027587167,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027311333,
+              "warmup": false
+            }
+          ],
+          "cv": 0.014287614747076814,
+          "max_seconds": 0.0139208955,
+          "median_seconds": 0.01368775,
+          "min_seconds": 0.013320792,
+          "samples_seconds_per_execution": [
+            0.0139208955,
+            0.013593979,
+            0.0133767085,
+            0.0137198335,
+            0.013780271,
+            0.013854792,
+            0.013620646,
+            0.013320792,
+            0.0137935835,
+            0.0136556665
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "ntt 2^20 lazy8",
+      "retained_attempt": 1
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.032293208,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031421084,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.032095875,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031757625,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.032393834,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031218958,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.03204675,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.032194708,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031999125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031216125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.032483084,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031848292,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031815958,
+              "warmup": false
+            }
+          ],
+          "cv": 0.013478347653913524,
+          "max_seconds": 0.016241542,
+          "median_seconds": 0.01596185425,
+          "min_seconds": 0.0156080625,
+          "samples_seconds_per_execution": [
+            0.0158788125,
+            0.016196917,
+            0.015609479,
+            0.016023375,
+            0.016097354,
+            0.0159995625,
+            0.0156080625,
+            0.016241542,
+            0.015924146,
+            0.015907979
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "ntt 2^20 lazy16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.022374625,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.022616667,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02248775,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.022659584,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.022269917,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.022430584,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.022656,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.022320625,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02201525,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02239575,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.022749584,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.022059667,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.022811417,
+              "warmup": false
+            }
+          ],
+          "cv": 0.012419704975827674,
+          "max_seconds": 0.0114057085,
+          "median_seconds": 0.011206583499999999,
+          "min_seconds": 0.011007625,
+          "samples_seconds_per_execution": [
+            0.011329792,
+            0.0111349585,
+            0.011215292,
+            0.011328,
+            0.0111603125,
+            0.011007625,
+            0.011197875,
+            0.011374792,
+            0.0110298335,
+            0.0114057085
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "intt 2^20 production",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.030696292,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030600667,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030724833,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030761417,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030915125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030075709,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030361708,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030311292,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031109958,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030704625,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0314735,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030524875,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030379459,
+              "warmup": false
+            }
+          ],
+          "cv": 0.013710398194954183,
+          "max_seconds": 0.01573675,
+          "median_seconds": 0.015307375,
+          "min_seconds": 0.0150378545,
+          "samples_seconds_per_execution": [
+            0.0153807085,
+            0.0154575625,
+            0.0150378545,
+            0.015180854,
+            0.015155646,
+            0.015554979,
+            0.0153523125,
+            0.01573675,
+            0.0152624375,
+            0.0151897295
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "intt 2^20 canonical4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.0284085,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028725583,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028766917,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028547708,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028101375,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027910292,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02752625,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0278885,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02771425,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027806208,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02749675,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027688125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027394958,
+              "warmup": false
+            }
+          ],
+          "cv": 0.012107683342472296,
+          "max_seconds": 0.014273854,
+          "median_seconds": 0.013880114499999999,
+          "min_seconds": 0.013697479,
+          "samples_seconds_per_execution": [
+            0.014273854,
+            0.0140506875,
+            0.013955146,
+            0.013763125,
+            0.01394425,
+            0.013857125,
+            0.013903104,
+            0.013748375,
+            0.0138440625,
+            0.013697479
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "intt 2^20 canonical8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.034540583,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.034695,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.034865083,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.035178166,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.035532917,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.034869792,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.035177167,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.035199375,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0357995,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.03511425,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.035182042,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.035538125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.035293,
+              "warmup": false
+            }
+          ],
+          "cv": 0.007513659656131223,
+          "max_seconds": 0.01789975,
+          "median_seconds": 0.01759535425,
+          "min_seconds": 0.017434896,
+          "samples_seconds_per_execution": [
+            0.017589083,
+            0.0177664585,
+            0.017434896,
+            0.0175885835,
+            0.0175996875,
+            0.01789975,
+            0.017557125,
+            0.017591021,
+            0.0177690625,
+            0.0176465
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "intt 2^20 canonical16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.030201,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030715458,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029481833,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029226667,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029444417,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030915834,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030230208,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030377208,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030434583,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030413917,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029938,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.03042925,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030605,
+              "warmup": false
+            }
+          ],
+          "cv": 0.017272102013227958,
+          "max_seconds": 0.015457917,
+          "median_seconds": 0.01519778125,
+          "min_seconds": 0.0146133335,
+          "samples_seconds_per_execution": [
+            0.0146133335,
+            0.0147222085,
+            0.015457917,
+            0.015115104,
+            0.015188604,
+            0.0152172915,
+            0.0152069585,
+            0.014969,
+            0.015214625,
+            0.0153025
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "intt 2^20 lazy4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.028763791,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028324625,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027440833,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027745,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028656042,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028931042,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028412916,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028362667,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028246125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028245709,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028157709,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028513958,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028602417,
+              "warmup": false
+            }
+          ],
+          "cv": 0.011364583436629121,
+          "max_seconds": 0.014465521,
+          "median_seconds": 0.014193895750000001,
+          "min_seconds": 0.0138725,
+          "samples_seconds_per_execution": [
+            0.0138725,
+            0.014328021,
+            0.014465521,
+            0.014206458,
+            0.0141813335,
+            0.0141230625,
+            0.0141228545,
+            0.0140788545,
+            0.014256979,
+            0.0143012085
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "intt 2^20 lazy8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.03096675,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030664792,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031152458,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030886791,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.03040775,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030701125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030965083,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030962875,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0306375,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0321805,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031914916,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030762375,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031316167,
+              "warmup": false
+            }
+          ],
+          "cv": 0.01833057984129493,
+          "max_seconds": 0.01609025,
+          "median_seconds": 0.0154624165,
+          "min_seconds": 0.015203875,
+          "samples_seconds_per_execution": [
+            0.0154433955,
+            0.015203875,
+            0.0153505625,
+            0.0154825415,
+            0.0154814375,
+            0.01531875,
+            0.01609025,
+            0.015957458,
+            0.0153811875,
+            0.0156580835
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "intt 2^20 lazy16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.028569084,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027491708,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028119,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027197,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027335167,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.026971417,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.026742042,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027053833,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027774959,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027558041,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027214375,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027166916,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0262795,
+              "warmup": false
+            }
+          ],
+          "cv": 0.015341631634212724,
+          "max_seconds": 0.0138874795,
+          "median_seconds": 0.013590979,
+          "min_seconds": 0.01313975,
+          "samples_seconds_per_execution": [
+            0.0135985,
+            0.0136675835,
+            0.0134857085,
+            0.013371021,
+            0.0135269165,
+            0.0138874795,
+            0.0137790205,
+            0.0136071875,
+            0.013583458,
+            0.01313975
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "coset 2^20 production",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.029333875,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029430458,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029440042,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0314155,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030831792,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.032332458,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.03150175,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031005292,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031776292,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031408792,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.031145209,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0315045,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.032051084,
+              "warmup": false
+            }
+          ],
+          "cv": 0.01460881047337284,
+          "max_seconds": 0.016166229,
+          "median_seconds": 0.015729312500000002,
+          "min_seconds": 0.015415896,
+          "samples_seconds_per_execution": [
+            0.01570775,
+            0.015415896,
+            0.016166229,
+            0.015750875,
+            0.015502646,
+            0.015888146,
+            0.015704396,
+            0.0155726045,
+            0.01575225,
+            0.016025542
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "coset 2^20 canonical4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.030124792,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030346292,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.03081075,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.03076675,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030569208,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030724375,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030416625,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0307915,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.03037275,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030481458,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029811125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030224333,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030270958,
+              "warmup": false
+            }
+          ],
+          "cv": 0.00982500159972504,
+          "max_seconds": 0.01539575,
+          "median_seconds": 0.01522452075,
+          "min_seconds": 0.0149055625,
+          "samples_seconds_per_execution": [
+            0.015383375,
+            0.015284604,
+            0.0153621875,
+            0.0152083125,
+            0.01539575,
+            0.015186375,
+            0.015240729,
+            0.0149055625,
+            0.0151121665,
+            0.015135479
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "coset 2^20 canonical8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.037092416,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.037827083,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.038224917,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.020099916,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.038449792,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.038314,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.038149542,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.038036334,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.037686875,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.037492708,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.037058208,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.037792375,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.038079,
+              "warmup": false
+            }
+          ],
+          "cv": 0.0219397046993366,
+          "max_seconds": 0.020099916,
+          "median_seconds": 0.0190288335,
+          "min_seconds": 0.018529104,
+          "samples_seconds_per_execution": [
+            0.020099916,
+            0.019224896,
+            0.019157,
+            0.019074771,
+            0.019018167,
+            0.0188434375,
+            0.018746354,
+            0.018529104,
+            0.0188961875,
+            0.0190395
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "coset 2^20 canonical16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.028409584,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.0286805,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028861208,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028254167,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02928125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030181167,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028915625,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028813667,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030176458,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.03016225,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028657041,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028659042,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.028763416,
+              "warmup": false
+            }
+          ],
+          "cv": 0.024890114425595303,
+          "max_seconds": 0.0150905835,
+          "median_seconds": 0.014432323,
+          "min_seconds": 0.0141270835,
+          "samples_seconds_per_execution": [
+            0.0141270835,
+            0.014640625,
+            0.0150905835,
+            0.0144578125,
+            0.0144068335,
+            0.015088229,
+            0.015081125,
+            0.0143285205,
+            0.014329521,
+            0.014381708
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "coset 2^20 lazy4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.029459292,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029452667,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.027772167,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029211375,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029369125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029040084,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030112083,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029403041,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029457667,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.030437167,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029844375,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.029753625,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.02944225,
+              "warmup": false
+            }
+          ],
+          "cv": 0.014451684788070983,
+          "max_seconds": 0.0152185835,
+          "median_seconds": 0.014724979249999999,
+          "min_seconds": 0.014520042,
+          "samples_seconds_per_execution": [
+            0.0146056875,
+            0.0146845625,
+            0.014520042,
+            0.0150560415,
+            0.0147015205,
+            0.0147288335,
+            0.0152185835,
+            0.0149221875,
+            0.0148768125,
+            0.014721125
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "coset 2^20 lazy8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.033698542,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.034471,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.038337375,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.033709541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.020082583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.020105542,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.034444667,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.032918834,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.033737291,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.033495167,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.035039833,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.034443417,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.034721875,
+              "warmup": false
+            }
+          ],
+          "cv": 0.07530314689468533,
+          "max_seconds": 0.020105542,
+          "median_seconds": 0.017222020999999997,
+          "min_seconds": 0.016459417,
+          "samples_seconds_per_execution": [
+            0.0168547705,
+            0.020082583,
+            0.020105542,
+            0.0172223335,
+            0.016459417,
+            0.0168686455,
+            0.0167475835,
+            0.0175199165,
+            0.0172217085,
+            0.0173609375
+          ]
+        },
+        {
+          "batches": [
+            {
+              "executions": 2,
+              "seconds": 0.034365875,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.034190167,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.034397084,
+              "warmup": true
+            },
+            {
+              "executions": 2,
+              "seconds": 0.033977625,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.033553125,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.033744166,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.032784875,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.033283583,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.032683459,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.033111708,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.033167709,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.033173417,
+              "warmup": false
+            },
+            {
+              "executions": 2,
+              "seconds": 0.033073417,
+              "warmup": false
+            }
+          ],
+          "cv": 0.012138830685522576,
+          "max_seconds": 0.0169888125,
+          "median_seconds": 0.0165852815,
+          "min_seconds": 0.0163417295,
+          "samples_seconds_per_execution": [
+            0.0169888125,
+            0.0167765625,
+            0.016872083,
+            0.0163924375,
+            0.0166417915,
+            0.0163417295,
+            0.016555854,
+            0.0165838545,
+            0.0165867085,
+            0.0165367085
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "coset 2^20 lazy16",
+      "retained_attempt": 1
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.052518333,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.053188334,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.052339625,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.052400834,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.052400916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.052582375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.053307625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.053495125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.053183167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.053079209,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.052885375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.052599041,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.052177417,
+              "warmup": false
+            }
+          ],
+          "cv": 0.008387025299304546,
+          "max_seconds": 0.053495125,
+          "median_seconds": 0.052742208,
+          "min_seconds": 0.052177417,
+          "samples_seconds_per_execution": [
+            0.052400834,
+            0.052400916,
+            0.052582375,
+            0.053307625,
+            0.053495125,
+            0.053183167,
+            0.053079209,
+            0.052885375,
+            0.052599041,
+            0.052177417
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "ntt 2^22 production",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.066181709,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065504,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066172458,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066304166,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066269208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066140625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066140625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067196041,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066966334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066336708,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066468833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067542875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066623833,
+              "warmup": false
+            }
+          ],
+          "cv": 0.007226336118063646,
+          "max_seconds": 0.067542875,
+          "median_seconds": 0.0664027705,
+          "min_seconds": 0.066140625,
+          "samples_seconds_per_execution": [
+            0.066304166,
+            0.066269208,
+            0.066140625,
+            0.066140625,
+            0.067196041,
+            0.066966334,
+            0.066336708,
+            0.066468833,
+            0.067542875,
+            0.066623833
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "ntt 2^22 canonical4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.066339541,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066567917,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.0672035,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069018667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069891666,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068011666,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06802125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068575666,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068979375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.063810292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.063976666,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068896,
+              "warmup": false
+            }
+          ],
+          "cv": 0.031036681715778155,
+          "max_seconds": 0.069891666,
+          "median_seconds": 0.068371333,
+          "min_seconds": 0.063810292,
+          "samples_seconds_per_execution": [
+            0.069018667,
+            0.069891666,
+            0.068011666,
+            0.06802125,
+            0.068575666,
+            0.068167,
+            0.068979375,
+            0.063810292,
+            0.063976666,
+            0.068896
+          ]
+        },
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.069188709,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068070833,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069538,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069111209,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06865025,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067155416,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066249875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067007875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067024417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066203083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066576792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066491,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066217958,
+              "warmup": false
+            }
+          ],
+          "cv": 0.015242306893633447,
+          "max_seconds": 0.069111209,
+          "median_seconds": 0.0667923335,
+          "min_seconds": 0.066203083,
+          "samples_seconds_per_execution": [
+            0.069111209,
+            0.06865025,
+            0.067155416,
+            0.066249875,
+            0.067007875,
+            0.067024417,
+            0.066203083,
+            0.066576792,
+            0.066491,
+            0.066217958
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "ntt 2^22 canonical8",
+      "retained_attempt": 1
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.077504709,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.080882125,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.078649875,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.077577958,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.078646459,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.078180792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.078156583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.078892584,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.07854425,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.078140791,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.079291292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.077517125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.078121125,
+              "warmup": false
+            }
+          ],
+          "cv": 0.007045403659024095,
+          "max_seconds": 0.079291292,
+          "median_seconds": 0.0781686875,
+          "min_seconds": 0.077517125,
+          "samples_seconds_per_execution": [
+            0.077577958,
+            0.078646459,
+            0.078180792,
+            0.078156583,
+            0.078892584,
+            0.07854425,
+            0.078140791,
+            0.079291292,
+            0.077517125,
+            0.078121125
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "ntt 2^22 canonical16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.060602417,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.061572375,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.061457916,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.061790542,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.061305042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.061254875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.061268166,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06151725,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.061803041,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.061437666,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.061155792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.061286834,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.060271708,
+              "warmup": false
+            }
+          ],
+          "cv": 0.0069635896418874365,
+          "max_seconds": 0.061803041,
+          "median_seconds": 0.061295937999999994,
+          "min_seconds": 0.060271708,
+          "samples_seconds_per_execution": [
+            0.061790542,
+            0.061305042,
+            0.061254875,
+            0.061268166,
+            0.06151725,
+            0.061803041,
+            0.061437666,
+            0.061155792,
+            0.061286834,
+            0.060271708
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "ntt 2^22 lazy4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.063354292,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.062893542,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06486325,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.063957167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.063787458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.063778541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.064602792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.064226083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065016375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065275875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066118541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.064104333,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.062626,
+              "warmup": false
+            }
+          ],
+          "cv": 0.014957872897721958,
+          "max_seconds": 0.066118541,
+          "median_seconds": 0.064165208,
+          "min_seconds": 0.062626,
+          "samples_seconds_per_execution": [
+            0.063957167,
+            0.063787458,
+            0.063778541,
+            0.064602792,
+            0.064226083,
+            0.065016375,
+            0.065275875,
+            0.066118541,
+            0.064104333,
+            0.062626
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "ntt 2^22 lazy8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.069220291,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.070730916,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.070300417,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.070874667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.070108167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068977667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06940525,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.07070225,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.071704833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.071016875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.07196875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069591916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.070593792,
+              "warmup": false
+            }
+          ],
+          "cv": 0.0138343371868586,
+          "max_seconds": 0.07196875,
+          "median_seconds": 0.070648021,
+          "min_seconds": 0.068977667,
+          "samples_seconds_per_execution": [
+            0.070874667,
+            0.070108167,
+            0.068977667,
+            0.06940525,
+            0.07070225,
+            0.071704833,
+            0.071016875,
+            0.07196875,
+            0.069591916,
+            0.070593792
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "ntt 2^22 lazy16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.050704208,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.050481625,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.051444417,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.049395416,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.051464334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.050103125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.051838333,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.050444333,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.051287917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.050796667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.052297209,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.049877917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.051699791,
+              "warmup": false
+            }
+          ],
+          "cv": 0.018629319187070944,
+          "max_seconds": 0.052297209,
+          "median_seconds": 0.051042292,
+          "min_seconds": 0.049395416,
+          "samples_seconds_per_execution": [
+            0.049395416,
+            0.051464334,
+            0.050103125,
+            0.051838333,
+            0.050444333,
+            0.051287917,
+            0.050796667,
+            0.052297209,
+            0.049877917,
+            0.051699791
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "intt 2^22 production",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.071269334,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069821458,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069344041,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068740625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.0694565,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068493292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067720916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067890416,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068817458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069519292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067975792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06743425,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068249083,
+              "warmup": false
+            }
+          ],
+          "cv": 0.010350966939820279,
+          "max_seconds": 0.069519292,
+          "median_seconds": 0.0683711875,
+          "min_seconds": 0.06743425,
+          "samples_seconds_per_execution": [
+            0.068740625,
+            0.0694565,
+            0.068493292,
+            0.067720916,
+            0.067890416,
+            0.068817458,
+            0.069519292,
+            0.067975792,
+            0.06743425,
+            0.068249083
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "intt 2^22 canonical4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.065323708,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065299708,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065229167,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.064520292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.0611875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06352775,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065832083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065256459,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065235916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065823791,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065743458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066463875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066445333,
+              "warmup": false
+            }
+          ],
+          "cv": 0.02470450130403698,
+          "max_seconds": 0.066463875,
+          "median_seconds": 0.06549995850000001,
+          "min_seconds": 0.0611875,
+          "samples_seconds_per_execution": [
+            0.064520292,
+            0.0611875,
+            0.06352775,
+            0.065832083,
+            0.065256459,
+            0.065235916,
+            0.065823791,
+            0.065743458,
+            0.066463875,
+            0.066445333
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "intt 2^22 canonical8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.078573792,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.077898292,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.078060292,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.078951625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.078315583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.078575541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.079094667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.077594416,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.076934334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.07845925,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.076828584,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.077172708,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.078676083,
+              "warmup": false
+            }
+          ],
+          "cv": 0.010906304759786935,
+          "max_seconds": 0.079094667,
+          "median_seconds": 0.0783874165,
+          "min_seconds": 0.076828584,
+          "samples_seconds_per_execution": [
+            0.078951625,
+            0.078315583,
+            0.078575541,
+            0.079094667,
+            0.077594416,
+            0.076934334,
+            0.07845925,
+            0.076828584,
+            0.077172708,
+            0.078676083
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "intt 2^22 canonical16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.0655295,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065699167,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065328667,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065497208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066585833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065599917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06631175,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067092583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067321959,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068348833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065016917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06385425,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067687667,
+              "warmup": false
+            }
+          ],
+          "cv": 0.020493105983304904,
+          "max_seconds": 0.068348833,
+          "median_seconds": 0.06644879149999999,
+          "min_seconds": 0.06385425,
+          "samples_seconds_per_execution": [
+            0.065497208,
+            0.066585833,
+            0.065599917,
+            0.06631175,
+            0.067092583,
+            0.067321959,
+            0.068348833,
+            0.065016917,
+            0.06385425,
+            0.067687667
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "intt 2^22 lazy4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.065321041,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065295583,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068659542,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06882875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068473042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067055875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066590583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068336166,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066850875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065792042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066643709,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.064507459,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065754166,
+              "warmup": false
+            }
+          ],
+          "cv": 0.020371037637939356,
+          "max_seconds": 0.06882875,
+          "median_seconds": 0.066747292,
+          "min_seconds": 0.064507459,
+          "samples_seconds_per_execution": [
+            0.06882875,
+            0.068473042,
+            0.067055875,
+            0.066590583,
+            0.068336166,
+            0.066850875,
+            0.065792042,
+            0.066643709,
+            0.064507459,
+            0.065754166
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "intt 2^22 lazy8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.06992175,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068842625,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068180708,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06862575,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068023708,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069724375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068971167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06971025,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.070343458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.070741208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.0680665,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069394084,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068099916,
+              "warmup": false
+            }
+          ],
+          "cv": 0.014056108362629834,
+          "max_seconds": 0.070741208,
+          "median_seconds": 0.0691826255,
+          "min_seconds": 0.068023708,
+          "samples_seconds_per_execution": [
+            0.06862575,
+            0.068023708,
+            0.069724375,
+            0.068971167,
+            0.06971025,
+            0.070343458,
+            0.070741208,
+            0.0680665,
+            0.069394084,
+            0.068099916
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "intt 2^22 lazy16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.06033,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.061438792,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.061447292,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.063365125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.060439666,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.05969825,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.060046916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.0618075,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.062155,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06125125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.059479375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.05943825,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.060538958,
+              "warmup": false
+            }
+          ],
+          "cv": 0.021371801907330613,
+          "max_seconds": 0.063365125,
+          "median_seconds": 0.060489312,
+          "min_seconds": 0.05943825,
+          "samples_seconds_per_execution": [
+            0.063365125,
+            0.060439666,
+            0.05969825,
+            0.060046916,
+            0.0618075,
+            0.062155,
+            0.06125125,
+            0.059479375,
+            0.05943825,
+            0.060538958
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "coset 2^22 production",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.072151958,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069506,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068536334,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065648833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067493,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068911,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06884025,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068934125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069259875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.075773125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.070878166,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.070818042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069320875,
+              "warmup": false
+            }
+          ],
+          "cv": 0.03800932501331408,
+          "max_seconds": 0.075773125,
+          "median_seconds": 0.06909699999999999,
+          "min_seconds": 0.065648833,
+          "samples_seconds_per_execution": [
+            0.065648833,
+            0.067493,
+            0.068911,
+            0.06884025,
+            0.068934125,
+            0.069259875,
+            0.075773125,
+            0.070878166,
+            0.070818042,
+            0.069320875
+          ]
+        },
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.069232041,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069115834,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068672542,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069008542,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068458334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069403292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068954709,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069404792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.0692165,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068810959,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069577959,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06924475,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069240583,
+              "warmup": false
+            }
+          ],
+          "cv": 0.004778352778606039,
+          "max_seconds": 0.069577959,
+          "median_seconds": 0.06922854149999999,
+          "min_seconds": 0.068458334,
+          "samples_seconds_per_execution": [
+            0.069008542,
+            0.068458334,
+            0.069403292,
+            0.068954709,
+            0.069404792,
+            0.0692165,
+            0.068810959,
+            0.069577959,
+            0.06924475,
+            0.069240583
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "coset 2^22 canonical4",
+      "retained_attempt": 1
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.0691545,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06879,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06912175,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068873042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069089334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068859708,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068573625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.070263084,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.071307875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.070434167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067655416,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.069533791,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.071432875,
+              "warmup": false
+            }
+          ],
+          "cv": 0.01765374757681843,
+          "max_seconds": 0.071432875,
+          "median_seconds": 0.0693115625,
+          "min_seconds": 0.067655416,
+          "samples_seconds_per_execution": [
+            0.068873042,
+            0.069089334,
+            0.068859708,
+            0.068573625,
+            0.070263084,
+            0.071307875,
+            0.070434167,
+            0.067655416,
+            0.069533791,
+            0.071432875
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "coset 2^22 canonical8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.081522125,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.081797791,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.080364209,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.084104667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.08096475,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.084690125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.081713167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.088764125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.081906333,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.084037583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.082809541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.0826715,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.081372708,
+              "warmup": false
+            }
+          ],
+          "cv": 0.027503648073259324,
+          "max_seconds": 0.088764125,
+          "median_seconds": 0.0827405205,
+          "min_seconds": 0.08096475,
+          "samples_seconds_per_execution": [
+            0.084104667,
+            0.08096475,
+            0.084690125,
+            0.081713167,
+            0.088764125,
+            0.081906333,
+            0.084037583,
+            0.082809541,
+            0.0826715,
+            0.081372708
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "coset 2^22 canonical16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.063918709,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.064269625,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.063564875,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.064645083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.064843875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.064759709,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065780084,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065804042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066193375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.064178334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066365083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.065467542,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.063679625,
+              "warmup": false
+            }
+          ],
+          "cv": 0.013621895073170227,
+          "max_seconds": 0.066365083,
+          "median_seconds": 0.06515570849999999,
+          "min_seconds": 0.063679625,
+          "samples_seconds_per_execution": [
+            0.064645083,
+            0.064843875,
+            0.064759709,
+            0.065780084,
+            0.065804042,
+            0.066193375,
+            0.064178334,
+            0.066365083,
+            0.065467542,
+            0.063679625
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "coset 2^22 lazy4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.067423084,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067498041,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067010375,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067856667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067231833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.068920125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067438917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067187209,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.06746375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067268584,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066579833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.066615875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.067425584,
+              "warmup": false
+            }
+          ],
+          "cv": 0.009771825779875405,
+          "max_seconds": 0.068920125,
+          "median_seconds": 0.067347084,
+          "min_seconds": 0.066579833,
+          "samples_seconds_per_execution": [
+            0.067856667,
+            0.067231833,
+            0.068920125,
+            0.067438917,
+            0.067187209,
+            0.06746375,
+            0.067268584,
+            0.066579833,
+            0.066615875,
+            0.067425584
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "coset 2^22 lazy8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.072335125,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.072759917,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.073317083,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.073690833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.072966084,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.071853292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.072676458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.073481125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.07371625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.074434458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.072918583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.072296917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.072157833,
+              "warmup": false
+            }
+          ],
+          "cv": 0.011094669690815835,
+          "max_seconds": 0.074434458,
+          "median_seconds": 0.0729423335,
+          "min_seconds": 0.071853292,
+          "samples_seconds_per_execution": [
+            0.073690833,
+            0.072966084,
+            0.071853292,
+            0.072676458,
+            0.073481125,
+            0.07371625,
+            0.074434458,
+            0.072918583,
+            0.072296917,
+            0.072157833
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "coset 2^22 lazy16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.10975225,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.110373917,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.108648917,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.109651625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.11289925,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.112252667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.110682458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.111368292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.109773875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.108707417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.110012542,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.110109292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.112107625,
+              "warmup": false
+            }
+          ],
+          "cv": 0.012185220397068675,
+          "max_seconds": 0.11289925,
+          "median_seconds": 0.110395875,
+          "min_seconds": 0.108707417,
+          "samples_seconds_per_execution": [
+            0.109651625,
+            0.11289925,
+            0.112252667,
+            0.110682458,
+            0.111368292,
+            0.109773875,
+            0.108707417,
+            0.110012542,
+            0.110109292,
+            0.112107625
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "ntt 2^23 production",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.146069958,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.140799667,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.141998209,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.145634417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.143625625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.144009375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.145208625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.144590375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.14498725,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.14358525,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.143043917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.142947042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.144148209,
+              "warmup": false
+            }
+          ],
+          "cv": 0.006329642796133848,
+          "max_seconds": 0.145634417,
+          "median_seconds": 0.144078792,
+          "min_seconds": 0.142947042,
+          "samples_seconds_per_execution": [
+            0.145634417,
+            0.143625625,
+            0.144009375,
+            0.145208625,
+            0.144590375,
+            0.14498725,
+            0.14358525,
+            0.143043917,
+            0.142947042,
+            0.144148209
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "ntt 2^23 canonical4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.136596416,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.139529792,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.135943375,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.136059166,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.136314667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.139129583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.135698208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.134778084,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.138504459,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.137695,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.138221,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.13712175,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.137070459,
+              "warmup": false
+            }
+          ],
+          "cv": 0.009951616659750723,
+          "max_seconds": 0.139129583,
+          "median_seconds": 0.13709610449999998,
+          "min_seconds": 0.134778084,
+          "samples_seconds_per_execution": [
+            0.136059166,
+            0.136314667,
+            0.139129583,
+            0.135698208,
+            0.134778084,
+            0.138504459,
+            0.137695,
+            0.138221,
+            0.13712175,
+            0.137070459
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "ntt 2^23 canonical8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.17673725,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.176268375,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.183104,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.196571417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.179624125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.180389167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.180080167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.184142125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.178860125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.176202375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.174769583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.17530325,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.173990791,
+              "warmup": false
+            }
+          ],
+          "cv": 0.0367276702889824,
+          "max_seconds": 0.196571417,
+          "median_seconds": 0.179242125,
+          "min_seconds": 0.173990791,
+          "samples_seconds_per_execution": [
+            0.196571417,
+            0.179624125,
+            0.180389167,
+            0.180080167,
+            0.184142125,
+            0.178860125,
+            0.176202375,
+            0.174769583,
+            0.17530325,
+            0.173990791
+          ]
+        },
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.17400775,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.173501459,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.173831208,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.17351825,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.173717792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.174860084,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.174342791,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.174436125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.174027208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.174402083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.175144541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.174761459,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.173771333,
+              "warmup": false
+            }
+          ],
+          "cv": 0.0030686275077011593,
+          "max_seconds": 0.175144541,
+          "median_seconds": 0.174372437,
+          "min_seconds": 0.17351825,
+          "samples_seconds_per_execution": [
+            0.17351825,
+            0.173717792,
+            0.174860084,
+            0.174342791,
+            0.174436125,
+            0.174027208,
+            0.174402083,
+            0.175144541,
+            0.174761459,
+            0.173771333
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "ntt 2^23 canonical16",
+      "retained_attempt": 1
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.132932334,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.131427334,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.13192775,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.132857417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.131863959,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.131635375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.132082042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.132516666,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.132307,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.13187475,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.131438792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.132727167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.1324505,
+              "warmup": false
+            }
+          ],
+          "cv": 0.0035748573945234645,
+          "max_seconds": 0.132857417,
+          "median_seconds": 0.132194521,
+          "min_seconds": 0.131438792,
+          "samples_seconds_per_execution": [
+            0.132857417,
+            0.131863959,
+            0.131635375,
+            0.132082042,
+            0.132516666,
+            0.132307,
+            0.13187475,
+            0.131438792,
+            0.132727167,
+            0.1324505
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "ntt 2^23 lazy4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.128997667,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.129991875,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.128859666,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.130538916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.130161333,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.131926708,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.130605958,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.131296833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.130590125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.130125458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.130983334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.130865834,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.129130542,
+              "warmup": false
+            }
+          ],
+          "cv": 0.005728433496498285,
+          "max_seconds": 0.131926708,
+          "median_seconds": 0.13059804149999998,
+          "min_seconds": 0.129130542,
+          "samples_seconds_per_execution": [
+            0.130538916,
+            0.130161333,
+            0.131926708,
+            0.130605958,
+            0.131296833,
+            0.130590125,
+            0.130125458,
+            0.130983334,
+            0.130865834,
+            0.129130542
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "ntt 2^23 lazy8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.152081875,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.153907125,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.151711291,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.151769917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.155090292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.152403042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.150578875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.152014917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.1499825,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.151613917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.150555458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.152249334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.149763958,
+              "warmup": false
+            }
+          ],
+          "cv": 0.010211927911095051,
+          "max_seconds": 0.155090292,
+          "median_seconds": 0.151691917,
+          "min_seconds": 0.149763958,
+          "samples_seconds_per_execution": [
+            0.151769917,
+            0.155090292,
+            0.152403042,
+            0.150578875,
+            0.152014917,
+            0.1499825,
+            0.151613917,
+            0.150555458,
+            0.152249334,
+            0.149763958
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "ntt 2^23 lazy16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.105931958,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.106676334,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.106991833,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.106575458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.106284,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.106904292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.106611042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.106937834,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.106449958,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.105273791,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.10624925,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.106448667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.106632834,
+              "warmup": false
+            }
+          ],
+          "cv": 0.004394536074750886,
+          "max_seconds": 0.106937834,
+          "median_seconds": 0.106512708,
+          "min_seconds": 0.105273791,
+          "samples_seconds_per_execution": [
+            0.106575458,
+            0.106284,
+            0.106904292,
+            0.106611042,
+            0.106937834,
+            0.106449958,
+            0.105273791,
+            0.10624925,
+            0.106448667,
+            0.106632834
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "intt 2^23 production",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.1458485,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.145105833,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.144363542,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.14590625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.145299458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.146378541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.145615833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.146645083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.145620291,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.145759125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.150922917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.14558525,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.146620875,
+              "warmup": false
+            }
+          ],
+          "cv": 0.01122249063495169,
+          "max_seconds": 0.150922917,
+          "median_seconds": 0.1458326875,
+          "min_seconds": 0.145299458,
+          "samples_seconds_per_execution": [
+            0.14590625,
+            0.145299458,
+            0.146378541,
+            0.145615833,
+            0.146645083,
+            0.145620291,
+            0.145759125,
+            0.150922917,
+            0.14558525,
+            0.146620875
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "intt 2^23 canonical4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.131311375,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.130591834,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.131435292,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.131750917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.132382583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.132462458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.132383292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.133373542,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.1330665,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.133468625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.13235175,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.131941541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.132279,
+              "warmup": false
+            }
+          ],
+          "cv": 0.00433670581818808,
+          "max_seconds": 0.133468625,
+          "median_seconds": 0.13238293750000002,
+          "min_seconds": 0.131750917,
+          "samples_seconds_per_execution": [
+            0.131750917,
+            0.132382583,
+            0.132462458,
+            0.132383292,
+            0.133373542,
+            0.1330665,
+            0.133468625,
+            0.13235175,
+            0.131941541,
+            0.132279
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "intt 2^23 canonical8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.166839959,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.167372042,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.167938541,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.168689666,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.167549917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.168664333,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.166963042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.167991875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.167307375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.167983,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.167114875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.166397458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.167101917,
+              "warmup": false
+            }
+          ],
+          "cv": 0.004464830958962055,
+          "max_seconds": 0.168689666,
+          "median_seconds": 0.16742864600000001,
+          "min_seconds": 0.166397458,
+          "samples_seconds_per_execution": [
+            0.168689666,
+            0.167549917,
+            0.168664333,
+            0.166963042,
+            0.167991875,
+            0.167307375,
+            0.167983,
+            0.167114875,
+            0.166397458,
+            0.167101917
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "intt 2^23 canonical16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.144361833,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.144538125,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.144019292,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.143825292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.143433125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.144751208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.144558916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.142951834,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.144205959,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.14628325,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.143568041,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.145589625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.145588958,
+              "warmup": false
+            }
+          ],
+          "cv": 0.00749714078275639,
+          "max_seconds": 0.14628325,
+          "median_seconds": 0.14438243750000002,
+          "min_seconds": 0.142951834,
+          "samples_seconds_per_execution": [
+            0.143825292,
+            0.143433125,
+            0.144751208,
+            0.144558916,
+            0.142951834,
+            0.144205959,
+            0.14628325,
+            0.143568041,
+            0.145589625,
+            0.145588958
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "intt 2^23 lazy4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.133322542,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.134199584,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.133150166,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.136644167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.134446167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.133974916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.133192667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.133086834,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.132167416,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.132675917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.131426625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.131807125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.131752125,
+              "warmup": false
+            }
+          ],
+          "cv": 0.011873166501775646,
+          "max_seconds": 0.136644167,
+          "median_seconds": 0.1328813755,
+          "min_seconds": 0.131426625,
+          "samples_seconds_per_execution": [
+            0.136644167,
+            0.134446167,
+            0.133974916,
+            0.133192667,
+            0.133086834,
+            0.132167416,
+            0.132675917,
+            0.131426625,
+            0.131807125,
+            0.131752125
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "intt 2^23 lazy8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.15227525,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.160777792,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.153299833,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.152438916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.151608459,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.152906334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.152590875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.153530875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.152815292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.153204333,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.152965625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.151934583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.151029959,
+              "warmup": false
+            }
+          ],
+          "cv": 0.0050450733709256675,
+          "max_seconds": 0.153530875,
+          "median_seconds": 0.1527030835,
+          "min_seconds": 0.151029959,
+          "samples_seconds_per_execution": [
+            0.152438916,
+            0.151608459,
+            0.152906334,
+            0.152590875,
+            0.153530875,
+            0.152815292,
+            0.153204333,
+            0.152965625,
+            0.151934583,
+            0.151029959
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "intt 2^23 lazy16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.123143834,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.123529334,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.123655584,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.122802417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.123289625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.12471425,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.1226365,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.123142834,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.1236335,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.122716209,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.122313,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.124014541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.123142084,
+              "warmup": false
+            }
+          ],
+          "cv": 0.005825579594371159,
+          "max_seconds": 0.12471425,
+          "median_seconds": 0.12314245900000001,
+          "min_seconds": 0.122313,
+          "samples_seconds_per_execution": [
+            0.122802417,
+            0.123289625,
+            0.12471425,
+            0.1226365,
+            0.123142834,
+            0.1236335,
+            0.122716209,
+            0.122313,
+            0.124014541,
+            0.123142084
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "coset 2^23 production",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.148771084,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.149050833,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.147999167,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.148744875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.149765708,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.148067334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.150175875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.148458667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.150873208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.148832791,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.148489083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.149766541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.151498625,
+              "warmup": false
+            }
+          ],
+          "cv": 0.007609390138887996,
+          "max_seconds": 0.151498625,
+          "median_seconds": 0.1492992495,
+          "min_seconds": 0.148067334,
+          "samples_seconds_per_execution": [
+            0.148744875,
+            0.149765708,
+            0.148067334,
+            0.150175875,
+            0.148458667,
+            0.150873208,
+            0.148832791,
+            0.148489083,
+            0.149766541,
+            0.151498625
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "coset 2^23 canonical4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.1440505,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.1427005,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.142576416,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.142556458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.141841083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.141000125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.144221375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.141399916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.140583084,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.142160834,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.141706459,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.142527084,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.143020709,
+              "warmup": false
+            }
+          ],
+          "cv": 0.0074049376190001666,
+          "max_seconds": 0.144221375,
+          "median_seconds": 0.1420009585,
+          "min_seconds": 0.140583084,
+          "samples_seconds_per_execution": [
+            0.142556458,
+            0.141841083,
+            0.141000125,
+            0.144221375,
+            0.141399916,
+            0.140583084,
+            0.142160834,
+            0.141706459,
+            0.142527084,
+            0.143020709
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "coset 2^23 canonical8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.18343975,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.181489292,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.187014667,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.191580417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.185590208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.181131292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.180096416,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.18043125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.181266084,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.178882791,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.182136125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.178758917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.182031708,
+              "warmup": false
+            }
+          ],
+          "cv": 0.021014778644570572,
+          "max_seconds": 0.191580417,
+          "median_seconds": 0.181198688,
+          "min_seconds": 0.178758917,
+          "samples_seconds_per_execution": [
+            0.191580417,
+            0.185590208,
+            0.181131292,
+            0.180096416,
+            0.18043125,
+            0.181266084,
+            0.178882791,
+            0.182136125,
+            0.178758917,
+            0.182031708
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "coset 2^23 canonical16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.138403083,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.138061667,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.137414917,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.138492917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.137515458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.137264125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.137723292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.137044458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.137227667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.137396584,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.137933834,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.136319417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.137350958,
+              "warmup": false
+            }
+          ],
+          "cv": 0.004155186455198793,
+          "max_seconds": 0.138492917,
+          "median_seconds": 0.13737377099999998,
+          "min_seconds": 0.136319417,
+          "samples_seconds_per_execution": [
+            0.138492917,
+            0.137515458,
+            0.137264125,
+            0.137723292,
+            0.137044458,
+            0.137227667,
+            0.137396584,
+            0.137933834,
+            0.136319417,
+            0.137350958
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "coset 2^23 lazy4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.133492292,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.133562666,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.135586625,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.136320917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.134951542,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.135732209,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.135182167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.135154375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.134871334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.134503667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.134671166,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.134158375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.133706,
+              "warmup": false
+            }
+          ],
+          "cv": 0.005545241557545902,
+          "max_seconds": 0.136320917,
+          "median_seconds": 0.134911438,
+          "min_seconds": 0.133706,
+          "samples_seconds_per_execution": [
+            0.136320917,
+            0.134951542,
+            0.135732209,
+            0.135182167,
+            0.135154375,
+            0.134871334,
+            0.134503667,
+            0.134671166,
+            0.134158375,
+            0.133706
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "coset 2^23 lazy8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.157128208,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.15637,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.159409,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.161360417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.157126916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.158130792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.158143125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.156923042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.1581325,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.158356833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.157351,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.157798583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.158323,
+              "warmup": false
+            }
+          ],
+          "cv": 0.007798378609094234,
+          "max_seconds": 0.161360417,
+          "median_seconds": 0.15813164600000001,
+          "min_seconds": 0.156923042,
+          "samples_seconds_per_execution": [
+            0.161360417,
+            0.157126916,
+            0.158130792,
+            0.158143125,
+            0.156923042,
+            0.1581325,
+            0.158356833,
+            0.157351,
+            0.157798583,
+            0.158323
+          ]
+        }
+      ],
+      "elements": 8388608,
+      "name": "coset 2^23 lazy16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.033733625,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.033222667,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.034000167,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.033191,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.033637208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.033384208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.0333965,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.033477083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.033492375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.034403583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.034222792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.034007834,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.033747292,
+              "warmup": false
+            }
+          ],
+          "cv": 0.011758362245329605,
+          "max_seconds": 0.034403583,
+          "median_seconds": 0.033564791499999996,
+          "min_seconds": 0.033191,
+          "samples_seconds_per_execution": [
+            0.033191,
+            0.033637208,
+            0.033384208,
+            0.0333965,
+            0.033477083,
+            0.033492375,
+            0.034403583,
+            0.034222792,
+            0.034007834,
+            0.033747292
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "encode 2^20 production",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.04748725,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.049090375,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.046316208,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.045452292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.04501425,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.043907041,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.0437305,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.04549575,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.045556959,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.045213792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.045076,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.045994042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.045195833,
+              "warmup": false
+            }
+          ],
+          "cv": 0.0158722270470749,
+          "max_seconds": 0.045994042,
+          "median_seconds": 0.0452048125,
+          "min_seconds": 0.0437305,
+          "samples_seconds_per_execution": [
+            0.045452292,
+            0.04501425,
+            0.043907041,
+            0.0437305,
+            0.04549575,
+            0.045556959,
+            0.045213792,
+            0.045076,
+            0.045994042,
+            0.045195833
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "encode 2^20 canonical4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.042480667,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042161291,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042348583,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042324292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.0420965,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042166125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042235541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042305334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042141916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042259625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042059334,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.041939625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042995709,
+              "warmup": false
+            }
+          ],
+          "cv": 0.006785875326575433,
+          "max_seconds": 0.042995709,
+          "median_seconds": 0.042200833,
+          "min_seconds": 0.041939625,
+          "samples_seconds_per_execution": [
+            0.042324292,
+            0.0420965,
+            0.042166125,
+            0.042235541,
+            0.042305334,
+            0.042141916,
+            0.042259625,
+            0.042059334,
+            0.041939625,
+            0.042995709
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "encode 2^20 canonical8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.054645917,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.055393333,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.055518208,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.055505458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.05627,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.055063083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.055577708,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.055734834,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.056060416,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.055236458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.0552145,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.054797125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.055159583,
+              "warmup": false
+            }
+          ],
+          "cv": 0.00829627872384592,
+          "max_seconds": 0.05627,
+          "median_seconds": 0.055370958,
+          "min_seconds": 0.054797125,
+          "samples_seconds_per_execution": [
+            0.055505458,
+            0.05627,
+            0.055063083,
+            0.055577708,
+            0.055734834,
+            0.056060416,
+            0.055236458,
+            0.0552145,
+            0.054797125,
+            0.055159583
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "encode 2^20 canonical16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.043707625,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042595417,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042433708,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042887375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042534667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.043287792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042570333,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042995917,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.043509625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.042541417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.043050959,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.04298125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.04287725,
+              "warmup": false
+            }
+          ],
+          "cv": 0.007474588234397793,
+          "max_seconds": 0.043509625,
+          "median_seconds": 0.0429343125,
+          "min_seconds": 0.042534667,
+          "samples_seconds_per_execution": [
+            0.042887375,
+            0.042534667,
+            0.043287792,
+            0.042570333,
+            0.042995917,
+            0.043509625,
+            0.042541417,
+            0.043050959,
+            0.04298125,
+            0.04287725
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "encode 2^20 lazy4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.041208542,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.041319583,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.040091166,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.039428208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.039627959,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.041200459,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.040995458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.0411525,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.041115667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.041179167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.041798833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.041029625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.041007209,
+              "warmup": false
+            }
+          ],
+          "cv": 0.01803621342207055,
+          "max_seconds": 0.041798833,
+          "median_seconds": 0.041072646000000004,
+          "min_seconds": 0.039428208,
+          "samples_seconds_per_execution": [
+            0.039428208,
+            0.039627959,
+            0.041200459,
+            0.040995458,
+            0.0411525,
+            0.041115667,
+            0.041179167,
+            0.041798833,
+            0.041029625,
+            0.041007209
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "encode 2^20 lazy8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.0484355,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.048478125,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.048097916,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.048925666,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.047755167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.047996583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.047834083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.047565166,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.04791225,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.047756459,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.048071166,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.047941375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.047817667,
+              "warmup": false
+            }
+          ],
+          "cv": 0.007690279184948098,
+          "max_seconds": 0.048925666,
+          "median_seconds": 0.0478731665,
+          "min_seconds": 0.047565166,
+          "samples_seconds_per_execution": [
+            0.048925666,
+            0.047755167,
+            0.047996583,
+            0.047834083,
+            0.047565166,
+            0.04791225,
+            0.047756459,
+            0.048071166,
+            0.047941375,
+            0.047817667
+          ]
+        }
+      ],
+      "elements": 1048576,
+      "name": "encode 2^20 lazy16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.146683291,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.148361208,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.14575225,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.145866541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.146581958,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.145977791,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.1465275,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.146934208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.147698333,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.14648025,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.145990792,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.14743325,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.147573042,
+              "warmup": false
+            }
+          ],
+          "cv": 0.004635426806650657,
+          "max_seconds": 0.147698333,
+          "median_seconds": 0.146554729,
+          "min_seconds": 0.145866541,
+          "samples_seconds_per_execution": [
+            0.145866541,
+            0.146581958,
+            0.145977791,
+            0.1465275,
+            0.146934208,
+            0.147698333,
+            0.14648025,
+            0.145990792,
+            0.14743325,
+            0.147573042
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "encode 2^22 production",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.197823375,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.20152625,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.199370583,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.198746708,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.198512417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.199333375,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.199262,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.198626417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.199200583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.198383083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.197693625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.198480166,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.199029916,
+              "warmup": false
+            }
+          ],
+          "cv": 0.002529163567174607,
+          "max_seconds": 0.199333375,
+          "median_seconds": 0.1986865625,
+          "min_seconds": 0.197693625,
+          "samples_seconds_per_execution": [
+            0.198746708,
+            0.198512417,
+            0.199333375,
+            0.199262,
+            0.198626417,
+            0.199200583,
+            0.198383083,
+            0.197693625,
+            0.198480166,
+            0.199029916
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "encode 2^22 canonical4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.188824542,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.189849375,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.192379875,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.189645459,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.190786875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.190469916,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.188746833,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.189843084,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.189028542,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.194508458,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.189676167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.189097541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.188268125,
+              "warmup": false
+            }
+          ],
+          "cv": 0.009241265365423723,
+          "max_seconds": 0.194508458,
+          "median_seconds": 0.18966081299999998,
+          "min_seconds": 0.188268125,
+          "samples_seconds_per_execution": [
+            0.189645459,
+            0.190786875,
+            0.190469916,
+            0.188746833,
+            0.189843084,
+            0.189028542,
+            0.194508458,
+            0.189676167,
+            0.189097541,
+            0.188268125
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "encode 2^22 canonical8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.232853708,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.232589333,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.232729334,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.23449425,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.233365417,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.233796,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.233245542,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.233472625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.235361875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.235571,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.232840709,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.234912583,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.235034084,
+              "warmup": false
+            }
+          ],
+          "cv": 0.004189767000347094,
+          "max_seconds": 0.235571,
+          "median_seconds": 0.234145125,
+          "min_seconds": 0.232840709,
+          "samples_seconds_per_execution": [
+            0.23449425,
+            0.233365417,
+            0.233796,
+            0.233245542,
+            0.233472625,
+            0.235361875,
+            0.235571,
+            0.232840709,
+            0.234912583,
+            0.235034084
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "encode 2^22 canonical16",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.186079584,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.186220542,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.186701125,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.18896725,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.186592959,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.187029083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.187359416,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.187004125,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.186131542,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.186753875,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.187317625,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.187012292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.188515666,
+              "warmup": false
+            }
+          ],
+          "cv": 0.004593091011700329,
+          "max_seconds": 0.18896725,
+          "median_seconds": 0.1870206875,
+          "min_seconds": 0.186131542,
+          "samples_seconds_per_execution": [
+            0.18896725,
+            0.186592959,
+            0.187029083,
+            0.187359416,
+            0.187004125,
+            0.186131542,
+            0.186753875,
+            0.187317625,
+            0.187012292,
+            0.188515666
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "encode 2^22 lazy4",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.180877375,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.183222375,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.184383625,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.181920292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.182947584,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.181798083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.182619667,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.181288042,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.182817584,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.177187208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.1824825,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.181739666,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.181940042,
+              "warmup": false
+            }
+          ],
+          "cv": 0.009157257980325092,
+          "max_seconds": 0.182947584,
+          "median_seconds": 0.181930167,
+          "min_seconds": 0.177187208,
+          "samples_seconds_per_execution": [
+            0.181920292,
+            0.182947584,
+            0.181798083,
+            0.182619667,
+            0.181288042,
+            0.182817584,
+            0.177187208,
+            0.1824825,
+            0.181739666,
+            0.181940042
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "encode 2^22 lazy8",
+      "retained_attempt": 0
+    },
+    {
+      "attempts": [
+        {
+          "batches": [
+            {
+              "executions": 1,
+              "seconds": 0.210319041,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.214572625,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.211600125,
+              "warmup": true
+            },
+            {
+              "executions": 1,
+              "seconds": 0.21103325,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.210751083,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.214184167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.214155541,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.213055167,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.218618791,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.212909208,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.222566292,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.221805333,
+              "warmup": false
+            },
+            {
+              "executions": 1,
+              "seconds": 0.211684625,
+              "warmup": false
+            }
+          ],
+          "cv": 0.020261494168096326,
+          "max_seconds": 0.222566292,
+          "median_seconds": 0.213605354,
+          "min_seconds": 0.210751083,
+          "samples_seconds_per_execution": [
+            0.21103325,
+            0.210751083,
+            0.214184167,
+            0.214155541,
+            0.213055167,
+            0.218618791,
+            0.212909208,
+            0.222566292,
+            0.221805333,
+            0.211684625
+          ]
+        }
+      ],
+      "elements": 4194304,
+      "name": "encode 2^22 lazy16",
+      "retained_attempt": 0
+    }
+  ],
+  "experiment": "EXP-0014",
+  "min_batch_ms": 20,
+  "samples": 10,
+  "warmups": 3
+}

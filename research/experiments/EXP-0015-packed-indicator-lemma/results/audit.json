@@ -1,0 +1,67 @@
+{
+  "preregistration_commit": "774b7c7a7ea6f4617783a4c4184a27a5fded22da",
+  "frozen_sha256": "b905bfbeedb2e16def42c76361f4d94d0ffa0426f05eb3a7ce7334d412ed3250",
+  "hypothesis_criteria_method_unchanged": true,
+  "finite_counts_and_digest_reproduced": true,
+  "harness_matches_raw_hash": true,
+  "mutations": {
+    "control_passes": true,
+    "mutants_caught": 4,
+    "cases": [
+      {
+        "name": "control",
+        "exit": 0
+      },
+      {
+        "name": "allow_zero_count",
+        "exit": 1
+      },
+      {
+        "name": "drop_output_range",
+        "exit": 1
+      },
+      {
+        "name": "masked_lookup_at_zero_key",
+        "exit": 1
+      },
+      {
+        "name": "widen_top_limb",
+        "exit": 1
+      }
+    ]
+  },
+  "normative_files_sha256": {
+    "docs/rfcs/RFC-0005-integer-model.md": "a6484a6086bbb875f6502badb7fdb92e9e3c0c0166f9767b594b5f87e520a60f",
+    "docs/rfcs/RFC-0008-logup-and-tables.md": "aa48ac06fb7704522564260d448eda47f0cdcf0cb9df838fb8341075a35b9b06",
+    "docs/rfcs/RFC-0009-gadgets.md": "11f3ce90c58bb067f1b82d92e366da23a446bf8e1d5f8d1873b5622c6226796c",
+    "docs/rfcs/RFC-0030-masked-exponentials.md": "95e7e904af741fd925b1a345077177cbad284f4a99add77c53a75202f5233db8",
+    "docs/rfcs/RFC-0035-padded-rows.md": "1b26ea9d9e20eb6b5db0141f91ce465348c7fdcdc0b5de86b8bdb377c6f65100"
+  },
+  "current_spec_review": {
+    "upstream_commit": "709c37c622caf0351df5ccb9acebcaa6cc09ab6f",
+    "change_commit": "0710097",
+    "issue": 388,
+    "reciprocal_bound": "(2*max_context-1)*2^(2*sigma)<P",
+    "sigma": 16,
+    "max_context": 131072,
+    "left_side": 1125895611875328,
+    "P": 18446744069414584321,
+    "passes": true,
+    "rfc0009_sha256": "f3268cfe13b95ef32e32673049882f343e11b4c9b3cf76bc91eb4e2e88fd032b",
+    "registered_domains_changed": false,
+    "scope": "No reciprocal exhaustion or generalization to other exp_sigma; full-protocol proof must retain validation precondition and rederive packing windows"
+  },
+  "empty_output_nonneg_digits": {
+    "digit_widths": [
+      16,
+      16,
+      6
+    ],
+    "digits": [
+      0,
+      0,
+      32
+    ],
+    "committed_low_digits_zero": true
+  }
+}

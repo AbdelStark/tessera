@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Status | `triaged` (2026-10-16) |
+| Status | `refuted` (2026-10-19, [EXP-0014](../experiments/EXP-0014-lazy-radix-encoder-calibration/README.md), E1 pinned CPU hypothesis; GPU performance unmeasured) |
 | Origin | [EXP-0002](../experiments/EXP-0002-commit-cost-calibration/README.md)'s counted interval `c_c ∈ [57.9, 156.8]` ps, whose whole width is the kernel's radix and reduction strategy (969 int32 ops per committed element at radix-16 with lazy reduction against 1,574 at radix-2, E0); [SUR-0005](../surveys/SUR-0005-commitments.md) synthesis 1 ([Uulong26]: 10.6–17.3 ps per radix-2 butterfly on an RX 7900 XTX at a memory-bound plateau, E1 on another GPU; [VYTA25]: NTT "limited by data movement", `FF_add` at 40% of the INT32 pipe, E1); RISK-1 and RISK-8 ([00 §9](../../docs/spec/00-overview.md#9-risks)); new as a design idea: [IDEA-0004](IDEA-0004-calibrate-commit-cost.md) counted the lazy high-radix kernel as the floor of its interval, nothing implements it |
 | Lever | `c_c` (the encoder's share, 74–81% of the committed element by operation count: 721 of 969 at the low end, 1,274 of 1,574 at the high end, E0 from EXP-0002): int32 operations per butterfly-equivalent through radix and deferred reduction, and HBM passes per transform through radix |
 | Spec surfaces | None normative. A prover kernel under [RFC-0018 'Kernels'](../../docs/rfcs/RFC-0018-gpu-prover-runtime.md#kernels) (row "Coset NTT and RS encode with vanishing mask", whose note already demands canonical output). [RFC-0002 'Representation and reduction'](../../docs/rfcs/RFC-0002-field-arithmetic.md#representation-and-reduction) already permits GPU kernels to keep values in `[0, 2^64)` between operations and requires canonicalization before a buffer is hashed, encoded or copied, so lazy reduction is inside the specification. [RFC-0011 'Encoding'](../../docs/rfcs/RFC-0011-advice-commitment.md#encoding) (the code, the coset `7·L`, natural order) is unchanged. Not tier A ([02 §1](../../docs/spec/02-public-api.md#1-stability-tiers)); no RFC |
-| Priority | 1.5 (−5.1% × 0.3 / 1: the middle of the honest range 0 to −10.1% at 16K under `counted`, since the centre 94 ps is EXP-0002's radix-2 count at the int32 peak and its lazy radix-16 count at 60% utilization is 96.5 ps; 0 to 3.0 across the range) |
+| Priority | 0 for the tested CPU implementation; prior projected score retained below as history |
 
 ## Mechanism
 
@@ -124,8 +124,18 @@ Sweep triage of 2026-10-16: four refuter agents who did not write the idea, one 
 
 | Gain | Confidence | Cost | Priority |
 |---|---|---|---|
+| No realized CPU gain: the fixed lazy16 encoder slows 45.75%; natural transforms slow 33.95% / 37.41%; static instruction ratio 1.002710. Conditional E0 c_c scenario only, no GPU Δμ | 0.9 in the scoped CPU refutation: production equality and independent vectors pass, all required CVs clean | `s` experiment completed; no production port recommended | 0 |
+
+## Historical projected score
+
+| Gain | Confidence | Cost | Priority |
+|---|---|---|---|
 | −5.1% μ(16K), taken as the middle of the honest range 0 to −10.1% (E0 cost model under `counted`: `commit_ps` 94 → 78 and → 62; 0 at the centre's own utilization reading, since EXP-0002 prices the lazy radix-16 count at 96.5 ps at 60%; −5.6% / −11.3% at 1K); nothing under `corrected` | 0.3: the mechanism is standard and sound ([Uulong26], [VYTA25], E1 on other GPUs), but the headline mis-reads the counted centre (94.1 ps is the radix-2 count at the int32 peak, EXP-0002 README lines 94 and 105) and the CPU ratio reaches the GPU only through the fitted-count translation, so the number is extrapolated | `s`: days in a scratch workspace over `tessera-field` and `tessera-pcs`, prover-only, no RFC, E1 here | 5.1 × 0.3 / 1 = 1.5 (0 to 3.0 across the honest range) |
 
 ## Decision and links
 
-Triage 2026-10-16: `triaged` at priority 1.5. The experiment is worth running as a calibration: it replaces an unmeasured radix-2-to-lazy-high-radix ratio by an M4 one with the method EXP-0002 validated and fixes the double-carry rule, but its headline must be restated before it runs: against the `counted` centre the gain is the utilization question, 0 if the GPU realizes the lazy count at 60% and about −10% near the int32 peak, and no CPU run answers it. Report the realized fraction of the counted −43% and the implied `c_c` interval, not a Δμ. Queued after IDEA-0016, IDEA-0021, IDEA-0019 and IDEA-0022, whose gains do not depend on a utilization input. Experiments: none yet (the E1 calibration above, pre-registered as EXP-NNNN when run). RFC or issue: none; the kernel is a prover implementation choice under RFC-0018 'Kernels'. Ledger line updated on: pending consolidation (2026-10-16).
+Calibration 2026-10-19: [EXP-0014](../experiments/EXP-0014-lazy-radix-encoder-calibration/README.md) implements canonical and lazy radix4/8/16 without production changes. Its frozen primary radix16 hypothesis is `refuted`: production encoder 34.941 ns/element versus 50.927; ntt at 2^22/2^23 12.575/13.160 versus 16.844/18.083; all necessary CVs below 3% (E1). The sixteen-point anchors are 738/740 instructions, with 8/12 stack accesses and no branches/calls. This corrects two old assumptions: lazy subtraction as well as addition needs a second correction on arbitrary u64 inputs, and production omega8/omega16 are negative powers, whose output ordering must be preserved. The actual counted arithmetic gap is partly realized in field-operation counts but not in CPU throughput. The conditional E0 H100 interval is a scenario, not GPU evidence or a replacement planning cost. Status refuted, priority 0, confidence 0.9 in this pinned CPU result. Other root permutations, vectorization and GPU mappings remain untested.
+
+Historical triage follows.
+
+Triage 2026-10-16: `triaged` at priority 1.5. The experiment is worth running as a calibration: it replaces an unmeasured radix-2-to-lazy-high-radix ratio by an M4 one with the method EXP-0002 validated and fixes the double-carry rule, but its headline must be restated before it runs: against the `counted` centre the gain is the utilization question, 0 if the GPU realizes the lazy count at 60% and about −10% near the int32 peak, and no CPU run answers it. Report the realized fraction of the counted −43% and the implied `c_c` interval, not a Δμ. Queued after IDEA-0016, IDEA-0021, IDEA-0019 and IDEA-0022, whose gains do not depend on a utilization input. Historical experiment queue (superseded by EXP-0014): none yet (the E1 calibration above, pre-registered as EXP-NNNN when run). RFC or issue: none; the kernel is a prover implementation choice under RFC-0018 'Kernels'. Ledger line updated on: pending consolidation (2026-10-16).
