@@ -529,6 +529,40 @@
       ]
     }
   ],
+  "table_sharing_diagnostic_16K": [
+    {
+      "units": 1,
+      "M_per_unit": 7693467648.0,
+      "per_unit_tables_partial_mu": 102.44391726444374,
+      "shared_table_partial_mu": 102.44391726444374,
+      "table_only_credit_mu": 0.0,
+      "table_only_credit_fraction": 0.0
+    },
+    {
+      "units": 2,
+      "M_per_unit": 7693467648.0,
+      "per_unit_tables_partial_mu": 102.58610848248739,
+      "shared_table_partial_mu": 102.44391726444374,
+      "table_only_credit_mu": 0.14219121804364931,
+      "table_only_credit_fraction": 0.0013860669845754308
+    },
+    {
+      "units": 4,
+      "M_per_unit": 7693467648.0,
+      "per_unit_tables_partial_mu": 102.87049091857467,
+      "shared_table_partial_mu": 102.44391726444374,
+      "table_only_credit_mu": 0.42657365413093373,
+      "table_only_credit_fraction": 0.004146705729912192
+    },
+    {
+      "units": 8,
+      "M_per_unit": 7693467648.0,
+      "per_unit_tables_partial_mu": 103.43925579074927,
+      "shared_table_partial_mu": 102.44391726444374,
+      "table_only_credit_mu": 0.995338526305531,
+      "table_only_credit_fraction": 0.009622444773955399
+    }
+  ],
   "zk_mask_subset_16K": {
     "estimated_base_field_elements": 16000000000,
     "count_is_estimate_not_compiler_output": true,
@@ -541,6 +575,7 @@
     "No H100 measurement or total-time bound",
     "P4, remaining streaming and unallocated range tables remain unpriced",
     "ZK subset is separate from 1.15 sumcheck glue; no universal 1.001 factor",
+    "Table-sharing diagnostic holds all other terms fixed, not a feasible unit plan or net gain",
     "Mask count depends on stage schedule and must be replaced by compiler output"
   ]
 }

@@ -1,0 +1,4742 @@
+{
+  "experiment": "EXP-0016",
+  "evidence": "E0",
+  "date_utc": "2026-10-19T08:21:23.076921+00:00",
+  "environment": {
+    "python": "3.14.6 (main, Jun 10 2026, 10:03:53) [Clang 21.0.0 (clang-2100.0.123.102)]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "commit": "d4bca74b501d389c3b1a11f89484b1e00ebd8929"
+  },
+  "preregistration_sha256": "db377547e753540f255b8b5f8184722b4422f390d9058de02974614d633bba2a",
+  "field_factors": {
+    "field": 65537,
+    "boolean_candidates": 65537,
+    "boolean_roots": [
+      0,
+      1
+    ],
+    "boolean_chunk_assignments": 16,
+    "sum_one_assignments": 4,
+    "lt_candidates": 1048592,
+    "c_candidates": 1114129,
+    "Kread_candidates": 1114129,
+    "output_candidates": 327685,
+    "exp2_rows": [
+      {
+        "key": 0,
+        "ceil": 16,
+        "floor": 16
+      },
+      {
+        "key": 1,
+        "ceil": 6,
+        "floor": 16
+      },
+      {
+        "key": 2,
+        "ceil": 6,
+        "floor": 6
+      },
+      {
+        "key": 3,
+        "ceil": 2,
+        "floor": 6
+      },
+      {
+        "key": 4,
+        "ceil": 2,
+        "floor": 2
+      },
+      {
+        "key": 5,
+        "ceil": 1,
+        "floor": 2
+      },
+      {
+        "key": 6,
+        "ceil": 1,
+        "floor": 1
+      },
+      {
+        "key": 7,
+        "ceil": 0,
+        "floor": 1
+      },
+      {
+        "key": 8,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 9,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 10,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 11,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 12,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 13,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 14,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 15,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 16,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 17,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 18,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 19,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 20,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 21,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 22,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 23,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 24,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 25,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 26,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 27,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 28,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 29,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 30,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 31,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 32,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 33,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 34,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 35,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 36,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 37,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 38,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 39,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 40,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 41,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 42,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 43,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 44,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 45,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 46,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 47,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 48,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 49,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 50,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 51,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 52,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 53,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 54,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 55,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 56,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 57,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 58,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 59,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 60,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 61,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 62,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 63,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 64,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 65,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 66,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 67,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 68,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 69,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 70,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 71,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 72,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 73,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 74,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 75,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 76,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 77,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 78,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 79,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 80,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 81,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 82,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 83,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 84,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 85,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 86,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 87,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 88,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 89,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 90,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 91,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 92,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 93,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 94,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 95,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 96,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 97,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 98,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 99,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 100,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 101,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 102,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 103,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 104,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 105,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 106,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 107,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 108,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 109,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 110,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 111,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 112,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 113,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 114,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 115,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 116,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 117,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 118,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 119,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 120,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 121,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 122,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 123,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 124,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 125,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 126,
+        "ceil": 0,
+        "floor": 0
+      },
+      {
+        "key": 127,
+        "ceil": 0,
+        "floor": 0
+      }
+    ],
+    "top_row_requires_extension": true
+  },
+  "local": {
+    "row_domains": [
+      {
+        "length": 3,
+        "rows": 4913,
+        "prefixes": 14739,
+        "candidate_j": 58956,
+        "unique_witnesses": 14739
+      },
+      {
+        "length": 4,
+        "rows": 83521,
+        "prefixes": 334084,
+        "candidate_j": 1336336,
+        "unique_witnesses": 334084
+      }
+    ],
+    "d2_dot_prefixes": 1458,
+    "field_checks_use_read_forced_c": true
+  },
+  "controls": {
+    "tie_without_parity": {
+      "j": 2,
+      "c_integer": 0,
+      "c_field": 0,
+      "chunks": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "lt": [
+        1,
+        1,
+        0,
+        0
+      ],
+      "keys": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "e": [
+        16,
+        16,
+        16,
+        16
+      ]
+    },
+    "future_without_causality": {
+      "j": 1,
+      "c_integer": 1,
+      "c_field": 1,
+      "chunks": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "lt": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "keys": [
+        1,
+        127,
+        127,
+        127
+      ],
+      "e": [
+        6,
+        0,
+        0,
+        0
+      ]
+    },
+    "ceil_variant": {
+      "j": 1,
+      "c_integer": 1,
+      "c_field": 1,
+      "chunks": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "lt": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "keys": [
+        1,
+        0,
+        127,
+        127
+      ],
+      "e": [
+        6,
+        16,
+        0,
+        0
+      ]
+    },
+    "literal_shift_variant": {
+      "j": 1,
+      "c_integer": 1,
+      "c_field": 1,
+      "chunks": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "lt": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "keys": [
+        1,
+        0,
+        127,
+        127
+      ],
+      "e": [
+        16,
+        16,
+        0,
+        0
+      ]
+    },
+    "odd_key_semantics_differ": true
+  },
+  "scalar_merged": {
+    "complete_configs": 157464,
+    "wrong_max_sublemma_certificates": 38448,
+    "alternative_read_certificates": 49248,
+    "alternative_reads_with_reciprocal_brackets": 10800,
+    "fully_tagged_false_certificates": 0,
+    "first_alternative": {
+      "table": [
+        -1,
+        -1,
+        -1,
+        0
+      ],
+      "queries": [
+        -1,
+        -1,
+        0,
+        -1
+      ],
+      "permutation": [
+        0,
+        1,
+        3,
+        2
+      ],
+      "reads": [
+        -1,
+        -1,
+        0,
+        -1
+      ],
+      "certificates": [
+        {
+          "j": 0,
+          "c_integer": 1,
+          "c_field": 1,
+          "chunks": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "lt": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "keys": [
+            0,
+            127,
+            127,
+            127
+          ],
+          "e": [
+            16,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "j": 0,
+          "c_integer": 1,
+          "c_field": 1,
+          "chunks": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "lt": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "keys": [
+            0,
+            127,
+            127,
+            127
+          ],
+          "e": [
+            16,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "j": 0,
+          "c_integer": 0,
+          "c_field": 0,
+          "chunks": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "lt": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "keys": [
+            0,
+            127,
+            127,
+            127
+          ],
+          "e": [
+            16,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "j": 0,
+          "c_integer": 1,
+          "c_field": 1,
+          "chunks": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "lt": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "keys": [
+            2,
+            127,
+            127,
+            127
+          ],
+          "e": [
+            6,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "m": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "global_counter": [
+        {
+          "tuple": [
+            0,
+            -1
+          ],
+          "count": 3
+        },
+        {
+          "tuple": [
+            0,
+            0
+          ],
+          "count": 1
+        }
+      ]
+    }
+  },
+  "merged_attacks": [
+    {
+      "kind": "layer",
+      "wrong_rows": 4,
+      "every_bracket_passes": true,
+      "accepted_namespace_variants": [
+        "untagged",
+        "omit-layer"
+      ]
+    },
+    {
+      "kind": "head",
+      "wrong_rows": 4,
+      "every_bracket_passes": true,
+      "accepted_namespace_variants": [
+        "untagged",
+        "omit-head"
+      ]
+    },
+    {
+      "kind": "both",
+      "wrong_rows": 4,
+      "every_bracket_passes": true,
+      "accepted_namespace_variants": [
+        "untagged",
+        "omit-layer"
+      ]
+    },
+    {
+      "kind": "dimension",
+      "wrong_rows": 4,
+      "every_bracket_passes": true,
+      "accepted_namespace_variants": [
+        "omit-dimension"
+      ]
+    }
+  ],
+  "padding": {
+    "literal_zero_padded_chunks_complete": false,
+    "literal_failure": "sum-one chunks conflict with all-zero public padding",
+    "naive_read_gated_Kread_count_per_coordinate": 65537,
+    "repaired_Kread_count_per_coordinate": 1,
+    "repaired_chunks": [
+      [
+        0,
+        0,
+        0,
+        0
+      ]
+    ],
+    "selector_rows": [
+      {
+        "layer": 0,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 0,
+        "psi": 1,
+        "C": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 16,
+          "R": 16,
+          "a": 0,
+          "b": 15,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            15,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 1,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 32,
+          "R": 8,
+          "a": 0,
+          "b": 31,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 2,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          1,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          0,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          16,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 48,
+          "R": 5,
+          "a": 16,
+          "b": 31,
+          "a_limbs16": [
+            16,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 0,
+        "psi": 1,
+        "C": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 16,
+          "R": 16,
+          "a": 0,
+          "b": 15,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            15,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 1,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 32,
+          "R": 8,
+          "a": 0,
+          "b": 31,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 2,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          1,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          0,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          16,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 48,
+          "R": 5,
+          "a": 16,
+          "b": 31,
+          "a_limbs16": [
+            16,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 0,
+        "psi": 1,
+        "C": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 16,
+          "R": 16,
+          "a": 0,
+          "b": 15,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            15,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 1,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 32,
+          "R": 8,
+          "a": 0,
+          "b": 31,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 2,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          1,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          0,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          16,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 48,
+          "R": 5,
+          "a": 16,
+          "b": 31,
+          "a_limbs16": [
+            16,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 0,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 1,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 2,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 0,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 0,
+        "psi": 1,
+        "C": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 16,
+          "R": 16,
+          "a": 0,
+          "b": 15,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            15,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 1,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 32,
+          "R": 8,
+          "a": 0,
+          "b": 31,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 2,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          1,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          0,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          16,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 48,
+          "R": 5,
+          "a": 16,
+          "b": 31,
+          "a_limbs16": [
+            16,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 0,
+        "psi": 1,
+        "C": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 16,
+          "R": 16,
+          "a": 0,
+          "b": 15,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            15,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 1,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 32,
+          "R": 8,
+          "a": 0,
+          "b": 31,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 2,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          1,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          0,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          16,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 48,
+          "R": 5,
+          "a": 16,
+          "b": 31,
+          "a_limbs16": [
+            16,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 0,
+        "psi": 1,
+        "C": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 16,
+          "R": 16,
+          "a": 0,
+          "b": 15,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            15,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 1,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 32,
+          "R": 8,
+          "a": 0,
+          "b": 31,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 2,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          1,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          0,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          16,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 48,
+          "R": 5,
+          "a": 16,
+          "b": 31,
+          "a_limbs16": [
+            16,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 0,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 1,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 2,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 1,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 0,
+        "psi": 1,
+        "C": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 16,
+          "R": 16,
+          "a": 0,
+          "b": 15,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            15,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 1,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 32,
+          "R": 8,
+          "a": 0,
+          "b": 31,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 2,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          1,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          0,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          16,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 48,
+          "R": 5,
+          "a": 16,
+          "b": 31,
+          "a_limbs16": [
+            16,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 0,
+        "psi": 1,
+        "C": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 16,
+          "R": 16,
+          "a": 0,
+          "b": 15,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            15,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 1,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 32,
+          "R": 8,
+          "a": 0,
+          "b": 31,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 2,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          1,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          0,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          16,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 48,
+          "R": 5,
+          "a": 16,
+          "b": 31,
+          "a_limbs16": [
+            16,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 0,
+        "psi": 1,
+        "C": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 16,
+          "R": 16,
+          "a": 0,
+          "b": 15,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            15,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 1,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 32,
+          "R": 8,
+          "a": 0,
+          "b": 31,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 2,
+        "psi": 1,
+        "C": [
+          1,
+          1,
+          1,
+          0
+        ],
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "keys": [
+          0,
+          0,
+          0,
+          127
+        ],
+        "e": [
+          16,
+          16,
+          16,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 48,
+          "R": 5,
+          "a": 16,
+          "b": 31,
+          "a_limbs16": [
+            16,
+            0
+          ],
+          "b_limbs16": [
+            31,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 0,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 1,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 2,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 2,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 0,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 1,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 2,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 0,
+        "query_head": 0,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 0,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 1,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 2,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 1,
+        "query_head": 1,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 0,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 1,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 2,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 2,
+        "query_head": 2,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 0,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 1,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 2,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      },
+      {
+        "layer": 3,
+        "kv_head": 3,
+        "query_head": 3,
+        "q": 3,
+        "psi": 0,
+        "C": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "chunks": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "keys": [
+          127,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "Kread": [
+          0,
+          0
+        ],
+        "reciprocal": {
+          "sum": 0,
+          "R": 0,
+          "a": 0,
+          "b": 0,
+          "a_limbs16": [
+            0,
+            0
+          ],
+          "b_limbs16": [
+            0,
+            0
+          ],
+          "passes": true
+        }
+      }
+    ],
+    "padded_types": [
+      "q>=n",
+      "layer>=n_layers",
+      "query_head>=n_heads",
+      "KV-head table padding"
+    ],
+    "length3_padded_to4_masked_e": 0,
+    "repaired_c": 0,
+    "repaired_R": 0,
+    "literal_real_row_all_zero_witness": {
+      "j": 0,
+      "c_integer": 0,
+      "c_field": 0,
+      "chunks": [
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "lt": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "keys": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "e": [
+        16,
+        16,
+        16,
+        16
+      ]
+    }
+  },
+  "goldilocks": {
+    "P": 18446744069414584321,
+    "bounds": [
+      {
+        "d": 128,
+        "score_min": -2080768,
+        "score_max": 2097152,
+        "spread": 4177920,
+        "doubled_key_abs_bound": 8355841,
+        "below_centered_Goldilocks_half": true
+      },
+      {
+        "d": 65534,
+        "score_min": -1065320704,
+        "score_max": 1073709056,
+        "spread": 2139029760,
+        "doubled_key_abs_bound": 4278059521,
+        "below_centered_Goldilocks_half": true
+      }
+    ],
+    "onehot_requirement": "chunk_length<P; sum-one then means exactly one Boolean one",
+    "compressed_P_ones_padding_alias": {
+      "ones": 18446744069414584321,
+      "sum_modP": 0
+    },
+    "compressed_P_plus_1_ones_sum_one_alias": {
+      "ones": 18446744069414584322,
+      "sum_modP": 1
+    },
+    "405B": {
+      "shape": [
+        126,
+        8,
+        131072,
+        128
+      ],
+      "namespace_size": 16911433728,
+      "injective": true
+    },
+    "syntactic_large_shape": {
+      "shape": [
+        65535,
+        65535,
+        131072,
+        65534
+      ],
+      "namespace_size": 36891236390554828800,
+      "d_model": 4294770690,
+      "full_statement_and_resource_acceptance_not_checked": true,
+      "aliases": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          32769,
+          32770,
+          65542,
+          13
+        ]
+      ],
+      "packed_residues": [
+        0,
+        0
+      ]
+    },
+    "general_theorem_requirements": [
+      "injective layer/KV/position/dimension namespace or separate instance identities",
+      "table values tied to the mandated committed post-Requant tensor",
+      "true Boolean chunk count smaller than field characteristic",
+      "complete functional ceil-based Exp2 with public zero-tail masked key",
+      "C and psi gating plus unique padded Kread/chunks/c/R",
+      "commit all values and m before random compression",
+      "separate ordinary statistical LogUp/zerocheck bounds",
+      "opening, masking and transcript integration remain unimplemented"
+    ]
+  },
+  "Goldilocks_direct_lifts": [
+    {
+      "kind": "layer",
+      "wrong_rows": 4,
+      "every_bracket_passes": true,
+      "untagged_full_tuple_identity": true,
+      "fully_tagged_rejects": true
+    },
+    {
+      "kind": "head",
+      "wrong_rows": 4,
+      "every_bracket_passes": true,
+      "untagged_full_tuple_identity": true,
+      "fully_tagged_rejects": true
+    },
+    {
+      "kind": "both",
+      "wrong_rows": 4,
+      "every_bracket_passes": true,
+      "untagged_full_tuple_identity": true,
+      "fully_tagged_rejects": true
+    }
+  ],
+  "current_spec_delta": {
+    "reviewed_main": "709c37c",
+    "change": "#388 adds SoftmaxRow reciprocal uniqueness precondition (2*max_context-1)*2^(2*sigma)<P",
+    "sigma": 4,
+    "tested_context_bounds": {
+      "2": 768,
+      "4": 1792
+    },
+    "precondition_holds_in_F65537_and_Goldilocks": true,
+    "routing_counterexample_unchanged": true
+  },
+  "verdict": "refuted",
+  "reason": "Literal merged read identity admits fully balanced wrong/second witnesses; reciprocal brackets included. Scoped local variant has unique witnesses only in the enumerated domains."
+}

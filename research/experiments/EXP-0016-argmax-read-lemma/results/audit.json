@@ -1,0 +1,10 @@
+{
+  "preregistration_commit": "dab7dc1",
+  "preregistration_sha256": "db377547e753540f255b8b5f8184722b4422f390d9058de02974614d633bba2a",
+  "hypothesis_criterion_method_reproduction_unchanged": true,
+  "lemma_sha256": "f632e3887c34914dbf712f2af2e606b7e4571cffcd3f3928b409e74355cdb379",
+  "mutation_runner_sha256": "5a780417979960b383ced8b51cb06e67dfc059e5d56dd6822df99e7ce0d790a8",
+  "oracle_sha256": "893b23777fcbc2b934041e9efd4cc6a196adf4c172d9fff1b464af545d5c6e36",
+  "mutation_control_passed": true,
+  "mutants_caught": 4
+}

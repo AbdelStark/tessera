@@ -40,9 +40,20 @@ def main():
         for a, b in zip(fixed["rows"], coupled["rows"], strict=True):
             expected = a["column_answers"] * (coupled["commit_ps"]/base.column_answer_ps - 1)
             assert math.isclose(b["total"]-a["total"], expected, rel_tol=1e-12)
+    table_sharing = []
+    for units in (1, 2, 4, 8):
+        repeated = model.mu(replace(base, table_rows=base.table_rows*units), 16384)
+        credit = repeated.total-original.total
+        assert math.isclose(credit, (units-1)*original.tables, rel_tol=1e-12, abs_tol=1e-13)
+        table_sharing.append({"units": units, "M_per_unit": base.table_rows,
+                              "per_unit_tables_partial_mu": repeated.total,
+                              "shared_table_partial_mu": original.total,
+                              "table_only_credit_mu": credit,
+                              "table_only_credit_fraction": credit/repeated.total})
     print(json.dumps({"evidence": "E0 conditional planning scenarios",
                       "normative_context": "main709c37c; compiler report from c2c8a69",
                       "baseline_parameters": asdict(base), "commitment_scenarios": scenarios,
+                      "table_sharing_diagnostic_16K": table_sharing,
                       "zk_mask_subset_16K": {"estimated_base_field_elements": mask_elements,
                           "count_is_estimate_not_compiler_output": True,
                           "commitment_plus_P5_seconds": seconds, "delta_mu": delta,
@@ -51,6 +62,7 @@ def main():
                       "limitations": ["No H100 measurement or total-time bound",
                           "P4, remaining streaming and unallocated range tables remain unpriced",
                           "ZK subset is separate from 1.15 sumcheck glue; no universal 1.001 factor",
+                          "Table-sharing diagnostic holds all other terms fixed, not a feasible unit plan or net gain",
                           "Mask count depends on stage schedule and must be replaced by compiler output"]}, indent=2))
 
 

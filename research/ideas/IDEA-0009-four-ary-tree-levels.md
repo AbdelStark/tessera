@@ -124,6 +124,10 @@ All E0 (the cost model; the `c_π` reduction over EXP-0006's E1 split; `p_s` 6 a
 
 ## Security gate
 
+Current clarification (2026-10-19, main709c37c): [RFC-0018 Leaf levels](../../docs/rfcs/RFC-0018-gpu-prover-runtime.md#pass-structure) explicitly says levels above the leaves stream too; its attention-only executable term is incomplete, tracked by [#329](https://github.com/AbdelStark/tessera/issues/329). This settles the historical owner question in favour of the literal every-nonresident-level rule, without validating this note's old totals or simple pass-price substitution. The whole stage also includes linear lookups/table trees and GEMM regeneration. No current four-ary Δμ follows until that accounting and the revised design are specified. The existing issue covers the clarification; no duplicate is filed.
+
+The table below is historical: OQ-0013-2 is resolved by RFC-0032 for binary trees. A four-child level needs a fresh masking argument that spares both child-selector coordinates, with the required forest padding, mask budget, degree bounds and transcript schedule. Binary masking cannot be inherited unchanged. Consequently this idea remains triaged, with historical scores retained only as scenarios; its current ZK gate and net performance are open. A new pre-registration must compare against the current split-eq implementation rather than EXP-0006's obsolete kernel.
+
 | Property | Effect | Pass |
 |---|---|---|
 | Soundness bits (G-4, RFC-0014) | Each round errs `d/\|Fp2\|` with `d = 5` instead of 3, over half as many rounds: per pair of binary levels `2 · 3n → 5n`, lower in total. Each level's two line challenges add `2/\|Fp2\|` (the restriction of a multilinear in two variables: a wrong `u_i^b` passes with probability at most `2/\|Fp2\|`) against today's `1/\|Fp2\|` per level over twice as many levels. Root claims (`s/\|Fp2\|` per forest) and the `γ` batching (`m/\|Fp2\|`) are unchanged. The soundness calculator (RFC-0014 'Soundness calculator') takes the new degree and round count; the total stays below the 2^-110 of RFC-0010 'Soundness of the schedule' (E0, from the per-round bound). | pass |

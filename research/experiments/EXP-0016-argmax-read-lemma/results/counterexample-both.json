@@ -1,0 +1,2015 @@
+{
+  "attack": "both",
+  "dimensions": {
+    "layers": 2,
+    "kv_heads": 2,
+    "query_heads_per_kv": 2,
+    "positions": 2,
+    "d": 2
+  },
+  "K": [
+    {
+      "layer": 0,
+      "kv_head": 0,
+      "i": 0,
+      "value": [
+        0,
+        0
+      ]
+    },
+    {
+      "layer": 0,
+      "kv_head": 0,
+      "i": 1,
+      "value": [
+        0,
+        -1
+      ]
+    },
+    {
+      "layer": 0,
+      "kv_head": 1,
+      "i": 0,
+      "value": [
+        0,
+        0
+      ]
+    },
+    {
+      "layer": 0,
+      "kv_head": 1,
+      "i": 1,
+      "value": [
+        0,
+        -1
+      ]
+    },
+    {
+      "layer": 1,
+      "kv_head": 0,
+      "i": 0,
+      "value": [
+        1,
+        0
+      ]
+    },
+    {
+      "layer": 1,
+      "kv_head": 0,
+      "i": 1,
+      "value": [
+        1,
+        -1
+      ]
+    },
+    {
+      "layer": 1,
+      "kv_head": 1,
+      "i": 0,
+      "value": [
+        1,
+        0
+      ]
+    },
+    {
+      "layer": 1,
+      "kv_head": 1,
+      "i": 1,
+      "value": [
+        1,
+        -1
+      ]
+    }
+  ],
+  "m": [
+    {
+      "layer": 0,
+      "kv_head": 0,
+      "i": 0,
+      "count": 4
+    },
+    {
+      "layer": 0,
+      "kv_head": 0,
+      "i": 1,
+      "count": 0
+    },
+    {
+      "layer": 0,
+      "kv_head": 1,
+      "i": 0,
+      "count": 4
+    },
+    {
+      "layer": 0,
+      "kv_head": 1,
+      "i": 1,
+      "count": 0
+    },
+    {
+      "layer": 1,
+      "kv_head": 0,
+      "i": 0,
+      "count": 4
+    },
+    {
+      "layer": 1,
+      "kv_head": 0,
+      "i": 1,
+      "count": 0
+    },
+    {
+      "layer": 1,
+      "kv_head": 1,
+      "i": 0,
+      "count": 4
+    },
+    {
+      "layer": 1,
+      "kv_head": 1,
+      "i": 1,
+      "count": 0
+    }
+  ],
+  "rows": [
+    {
+      "layer": 0,
+      "query_head": 0,
+      "kv_head": 0,
+      "q": 0,
+      "query": [
+        1,
+        0
+      ],
+      "scores": [
+        0,
+        0
+      ],
+      "j": 0,
+      "source_layer": 0,
+      "source_kv_head": 0,
+      "Kread": [
+        0,
+        0
+      ],
+      "honest_c": 0,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 0,
+        "c_field": 0,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 16,
+        "R": 16,
+        "a": 0,
+        "b": 15,
+        "a_limbs16": [
+          0,
+          0
+        ],
+        "b_limbs16": [
+          15,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 0,
+      "current_product_certificate_accepts": true,
+      "wrong": false
+    },
+    {
+      "layer": 0,
+      "query_head": 0,
+      "kv_head": 0,
+      "q": 1,
+      "query": [
+        1,
+        0
+      ],
+      "scores": [
+        0,
+        0
+      ],
+      "j": 0,
+      "source_layer": 1,
+      "source_kv_head": 1,
+      "Kread": [
+        1,
+        0
+      ],
+      "honest_c": 0,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 1,
+        "c_field": 1,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          2,
+          2,
+          127,
+          127
+        ],
+        "e": [
+          6,
+          6,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 12,
+        "R": 21,
+        "a": 4,
+        "b": 7,
+        "a_limbs16": [
+          4,
+          0
+        ],
+        "b_limbs16": [
+          7,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 1,
+      "current_product_certificate_accepts": false,
+      "wrong": true
+    },
+    {
+      "layer": 0,
+      "query_head": 1,
+      "kv_head": 0,
+      "q": 0,
+      "query": [
+        0,
+        1
+      ],
+      "scores": [
+        0,
+        -1
+      ],
+      "j": 0,
+      "source_layer": 0,
+      "source_kv_head": 0,
+      "Kread": [
+        0,
+        0
+      ],
+      "honest_c": 0,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 0,
+        "c_field": 0,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 16,
+        "R": 16,
+        "a": 0,
+        "b": 15,
+        "a_limbs16": [
+          0,
+          0
+        ],
+        "b_limbs16": [
+          15,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 0,
+      "current_product_certificate_accepts": true,
+      "wrong": false
+    },
+    {
+      "layer": 0,
+      "query_head": 1,
+      "kv_head": 0,
+      "q": 1,
+      "query": [
+        0,
+        1
+      ],
+      "scores": [
+        0,
+        -1
+      ],
+      "j": 0,
+      "source_layer": 0,
+      "source_kv_head": 0,
+      "Kread": [
+        0,
+        0
+      ],
+      "honest_c": 0,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 0,
+        "c_field": 0,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          0,
+          2,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          6,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 22,
+        "R": 11,
+        "a": 14,
+        "b": 7,
+        "a_limbs16": [
+          14,
+          0
+        ],
+        "b_limbs16": [
+          7,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 0,
+      "current_product_certificate_accepts": true,
+      "wrong": false
+    },
+    {
+      "layer": 0,
+      "query_head": 2,
+      "kv_head": 1,
+      "q": 0,
+      "query": [
+        1,
+        0
+      ],
+      "scores": [
+        0,
+        0
+      ],
+      "j": 0,
+      "source_layer": 0,
+      "source_kv_head": 1,
+      "Kread": [
+        0,
+        0
+      ],
+      "honest_c": 0,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 0,
+        "c_field": 0,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 16,
+        "R": 16,
+        "a": 0,
+        "b": 15,
+        "a_limbs16": [
+          0,
+          0
+        ],
+        "b_limbs16": [
+          15,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 0,
+      "current_product_certificate_accepts": true,
+      "wrong": false
+    },
+    {
+      "layer": 0,
+      "query_head": 2,
+      "kv_head": 1,
+      "q": 1,
+      "query": [
+        1,
+        0
+      ],
+      "scores": [
+        0,
+        0
+      ],
+      "j": 0,
+      "source_layer": 1,
+      "source_kv_head": 0,
+      "Kread": [
+        1,
+        0
+      ],
+      "honest_c": 0,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 1,
+        "c_field": 1,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          2,
+          2,
+          127,
+          127
+        ],
+        "e": [
+          6,
+          6,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 12,
+        "R": 21,
+        "a": 4,
+        "b": 7,
+        "a_limbs16": [
+          4,
+          0
+        ],
+        "b_limbs16": [
+          7,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 1,
+      "current_product_certificate_accepts": false,
+      "wrong": true
+    },
+    {
+      "layer": 0,
+      "query_head": 3,
+      "kv_head": 1,
+      "q": 0,
+      "query": [
+        0,
+        1
+      ],
+      "scores": [
+        0,
+        -1
+      ],
+      "j": 0,
+      "source_layer": 0,
+      "source_kv_head": 1,
+      "Kread": [
+        0,
+        0
+      ],
+      "honest_c": 0,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 0,
+        "c_field": 0,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 16,
+        "R": 16,
+        "a": 0,
+        "b": 15,
+        "a_limbs16": [
+          0,
+          0
+        ],
+        "b_limbs16": [
+          15,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 0,
+      "current_product_certificate_accepts": true,
+      "wrong": false
+    },
+    {
+      "layer": 0,
+      "query_head": 3,
+      "kv_head": 1,
+      "q": 1,
+      "query": [
+        0,
+        1
+      ],
+      "scores": [
+        0,
+        -1
+      ],
+      "j": 0,
+      "source_layer": 0,
+      "source_kv_head": 1,
+      "Kread": [
+        0,
+        0
+      ],
+      "honest_c": 0,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 0,
+        "c_field": 0,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          0,
+          2,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          6,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 22,
+        "R": 11,
+        "a": 14,
+        "b": 7,
+        "a_limbs16": [
+          14,
+          0
+        ],
+        "b_limbs16": [
+          7,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 0,
+      "current_product_certificate_accepts": true,
+      "wrong": false
+    },
+    {
+      "layer": 1,
+      "query_head": 0,
+      "kv_head": 0,
+      "q": 0,
+      "query": [
+        -1,
+        0
+      ],
+      "scores": [
+        -1,
+        -1
+      ],
+      "j": 0,
+      "source_layer": 1,
+      "source_kv_head": 0,
+      "Kread": [
+        1,
+        0
+      ],
+      "honest_c": -1,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": -1,
+        "c_field": 65536,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 16,
+        "R": 16,
+        "a": 0,
+        "b": 15,
+        "a_limbs16": [
+          0,
+          0
+        ],
+        "b_limbs16": [
+          15,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 0,
+      "current_product_certificate_accepts": true,
+      "wrong": false
+    },
+    {
+      "layer": 1,
+      "query_head": 0,
+      "kv_head": 0,
+      "q": 1,
+      "query": [
+        -1,
+        0
+      ],
+      "scores": [
+        -1,
+        -1
+      ],
+      "j": 0,
+      "source_layer": 0,
+      "source_kv_head": 1,
+      "Kread": [
+        0,
+        0
+      ],
+      "honest_c": -1,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 0,
+        "c_field": 0,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          2,
+          2,
+          127,
+          127
+        ],
+        "e": [
+          6,
+          6,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 12,
+        "R": 21,
+        "a": 4,
+        "b": 7,
+        "a_limbs16": [
+          4,
+          0
+        ],
+        "b_limbs16": [
+          7,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 1,
+      "current_product_certificate_accepts": false,
+      "wrong": true
+    },
+    {
+      "layer": 1,
+      "query_head": 1,
+      "kv_head": 0,
+      "q": 0,
+      "query": [
+        0,
+        1
+      ],
+      "scores": [
+        0,
+        -1
+      ],
+      "j": 0,
+      "source_layer": 1,
+      "source_kv_head": 0,
+      "Kread": [
+        1,
+        0
+      ],
+      "honest_c": 0,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 0,
+        "c_field": 0,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 16,
+        "R": 16,
+        "a": 0,
+        "b": 15,
+        "a_limbs16": [
+          0,
+          0
+        ],
+        "b_limbs16": [
+          15,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 0,
+      "current_product_certificate_accepts": true,
+      "wrong": false
+    },
+    {
+      "layer": 1,
+      "query_head": 1,
+      "kv_head": 0,
+      "q": 1,
+      "query": [
+        0,
+        1
+      ],
+      "scores": [
+        0,
+        -1
+      ],
+      "j": 0,
+      "source_layer": 1,
+      "source_kv_head": 0,
+      "Kread": [
+        1,
+        0
+      ],
+      "honest_c": 0,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 0,
+        "c_field": 0,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          0,
+          2,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          6,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 22,
+        "R": 11,
+        "a": 14,
+        "b": 7,
+        "a_limbs16": [
+          14,
+          0
+        ],
+        "b_limbs16": [
+          7,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 0,
+      "current_product_certificate_accepts": true,
+      "wrong": false
+    },
+    {
+      "layer": 1,
+      "query_head": 2,
+      "kv_head": 1,
+      "q": 0,
+      "query": [
+        -1,
+        0
+      ],
+      "scores": [
+        -1,
+        -1
+      ],
+      "j": 0,
+      "source_layer": 1,
+      "source_kv_head": 1,
+      "Kread": [
+        1,
+        0
+      ],
+      "honest_c": -1,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": -1,
+        "c_field": 65536,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 16,
+        "R": 16,
+        "a": 0,
+        "b": 15,
+        "a_limbs16": [
+          0,
+          0
+        ],
+        "b_limbs16": [
+          15,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 0,
+      "current_product_certificate_accepts": true,
+      "wrong": false
+    },
+    {
+      "layer": 1,
+      "query_head": 2,
+      "kv_head": 1,
+      "q": 1,
+      "query": [
+        -1,
+        0
+      ],
+      "scores": [
+        -1,
+        -1
+      ],
+      "j": 0,
+      "source_layer": 0,
+      "source_kv_head": 0,
+      "Kread": [
+        0,
+        0
+      ],
+      "honest_c": -1,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 0,
+        "c_field": 0,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          2,
+          2,
+          127,
+          127
+        ],
+        "e": [
+          6,
+          6,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 12,
+        "R": 21,
+        "a": 4,
+        "b": 7,
+        "a_limbs16": [
+          4,
+          0
+        ],
+        "b_limbs16": [
+          7,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 1,
+      "current_product_certificate_accepts": false,
+      "wrong": true
+    },
+    {
+      "layer": 1,
+      "query_head": 3,
+      "kv_head": 1,
+      "q": 0,
+      "query": [
+        0,
+        1
+      ],
+      "scores": [
+        0,
+        -1
+      ],
+      "j": 0,
+      "source_layer": 1,
+      "source_kv_head": 1,
+      "Kread": [
+        1,
+        0
+      ],
+      "honest_c": 0,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 0,
+        "c_field": 0,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          0,
+          127,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          0,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 16,
+        "R": 16,
+        "a": 0,
+        "b": 15,
+        "a_limbs16": [
+          0,
+          0
+        ],
+        "b_limbs16": [
+          15,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 0,
+      "current_product_certificate_accepts": true,
+      "wrong": false
+    },
+    {
+      "layer": 1,
+      "query_head": 3,
+      "kv_head": 1,
+      "q": 1,
+      "query": [
+        0,
+        1
+      ],
+      "scores": [
+        0,
+        -1
+      ],
+      "j": 0,
+      "source_layer": 1,
+      "source_kv_head": 1,
+      "Kread": [
+        1,
+        0
+      ],
+      "honest_c": 0,
+      "honest_j": 0,
+      "certificate": {
+        "j": 0,
+        "c_integer": 0,
+        "c_field": 0,
+        "chunks": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "lt": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "keys": [
+          0,
+          2,
+          127,
+          127
+        ],
+        "e": [
+          16,
+          6,
+          0,
+          0
+        ]
+      },
+      "reciprocal": {
+        "sum": 22,
+        "R": 11,
+        "a": 14,
+        "b": 7,
+        "a_limbs16": [
+          14,
+          0
+        ],
+        "b_limbs16": [
+          7,
+          0
+        ],
+        "passes": true
+      },
+      "current_product_root": 0,
+      "current_product_certificate_accepts": true,
+      "wrong": false
+    }
+  ],
+  "wrong_rows": [
+    [
+      0,
+      0,
+      1
+    ],
+    [
+      0,
+      2,
+      1
+    ],
+    [
+      1,
+      0,
+      1
+    ],
+    [
+      1,
+      2,
+      1
+    ]
+  ],
+  "variants": {
+    "untagged": {
+      "full_tuple_identity": true,
+      "lookup_tuples_absent_from_entire_table": [],
+      "lookup_multiset": [
+        {
+          "tuple": [
+            0,
+            0
+          ],
+          "count": 8
+        },
+        {
+          "tuple": [
+            0,
+            1
+          ],
+          "count": 8
+        },
+        {
+          "tuple": [
+            1,
+            0
+          ],
+          "count": 16
+        }
+      ],
+      "weighted_table_multiset": [
+        {
+          "tuple": [
+            0,
+            0
+          ],
+          "count": 8
+        },
+        {
+          "tuple": [
+            0,
+            1
+          ],
+          "count": 8
+        },
+        {
+          "tuple": [
+            1,
+            0
+          ],
+          "count": 16
+        }
+      ],
+      "F65537_fractions": [
+        {
+          "alpha": 1009,
+          "beta": 17,
+          "lookup_sum": 16479,
+          "table_sum": 16479,
+          "residual": 0
+        },
+        {
+          "alpha": 10007,
+          "beta": 31,
+          "lookup_sum": 31360,
+          "table_sum": 31360,
+          "residual": 0
+        }
+      ],
+      "Goldilocks_fractions": [
+        {
+          "alpha": 1009,
+          "beta": 17,
+          "lookup_sum": 11244746800676321281,
+          "table_sum": 11244746800676321281,
+          "residual": 0
+        },
+        {
+          "alpha": 10007,
+          "beta": 31,
+          "lookup_sum": 6345527221435828546,
+          "table_sum": 6345527221435828546,
+          "residual": 0
+        }
+      ]
+    },
+    "omit-layer": {
+      "full_tuple_identity": true,
+      "lookup_tuples_absent_from_entire_table": [],
+      "lookup_multiset": [
+        {
+          "tuple": [
+            0,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            0,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            1,
+            0
+          ],
+          "count": 8
+        },
+        {
+          "tuple": [
+            4,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            4,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            5,
+            0
+          ],
+          "count": 8
+        }
+      ],
+      "weighted_table_multiset": [
+        {
+          "tuple": [
+            0,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            0,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            1,
+            0
+          ],
+          "count": 8
+        },
+        {
+          "tuple": [
+            4,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            4,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            5,
+            0
+          ],
+          "count": 8
+        }
+      ],
+      "F65537_fractions": [
+        {
+          "alpha": 1009,
+          "beta": 17,
+          "lookup_sum": 58809,
+          "table_sum": 58809,
+          "residual": 0
+        },
+        {
+          "alpha": 10007,
+          "beta": 31,
+          "lookup_sum": 59742,
+          "table_sum": 59742,
+          "residual": 0
+        }
+      ],
+      "Goldilocks_fractions": [
+        {
+          "alpha": 1009,
+          "beta": 17,
+          "lookup_sum": 7326088441233175718,
+          "table_sum": 7326088441233175718,
+          "residual": 0
+        },
+        {
+          "alpha": 10007,
+          "beta": 31,
+          "lookup_sum": 3771322977831459089,
+          "table_sum": 3771322977831459089,
+          "residual": 0
+        }
+      ]
+    },
+    "omit-head": {
+      "full_tuple_identity": false,
+      "lookup_tuples_absent_from_entire_table": [
+        [
+          0,
+          1
+        ],
+        [
+          8,
+          0
+        ]
+      ],
+      "lookup_multiset": [
+        {
+          "tuple": [
+            0,
+            0
+          ],
+          "count": 6
+        },
+        {
+          "tuple": [
+            0,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "tuple": [
+            1,
+            0
+          ],
+          "count": 8
+        },
+        {
+          "tuple": [
+            8,
+            0
+          ],
+          "count": 2
+        },
+        {
+          "tuple": [
+            8,
+            1
+          ],
+          "count": 6
+        },
+        {
+          "tuple": [
+            9,
+            0
+          ],
+          "count": 8
+        }
+      ],
+      "weighted_table_multiset": [
+        {
+          "tuple": [
+            0,
+            0
+          ],
+          "count": 8
+        },
+        {
+          "tuple": [
+            1,
+            0
+          ],
+          "count": 8
+        },
+        {
+          "tuple": [
+            8,
+            1
+          ],
+          "count": 8
+        },
+        {
+          "tuple": [
+            9,
+            0
+          ],
+          "count": 8
+        }
+      ],
+      "F65537_fractions": [
+        {
+          "alpha": 1009,
+          "beta": 17,
+          "lookup_sum": 8916,
+          "table_sum": 37408,
+          "residual": 37045
+        },
+        {
+          "alpha": 10007,
+          "beta": 31,
+          "lookup_sum": 3965,
+          "table_sum": 27401,
+          "residual": 42101
+        }
+      ],
+      "Goldilocks_fractions": [
+        {
+          "alpha": 1009,
+          "beta": 17,
+          "lookup_sum": 17330027125500255138,
+          "table_sum": 4216942538244027528,
+          "residual": 13113084587256227610
+        },
+        {
+          "alpha": 10007,
+          "beta": 31,
+          "lookup_sum": 788473702046758739,
+          "table_sum": 9379336072094513702,
+          "residual": 9855881699366829358
+        }
+      ]
+    },
+    "omit-dimension": {
+      "full_tuple_identity": false,
+      "lookup_tuples_absent_from_entire_table": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "lookup_multiset": [
+        {
+          "tuple": [
+            0,
+            0
+          ],
+          "count": 7
+        },
+        {
+          "tuple": [
+            0,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "tuple": [
+            2,
+            0
+          ],
+          "count": 7
+        },
+        {
+          "tuple": [
+            2,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "tuple": [
+            4,
+            0
+          ],
+          "count": 5
+        },
+        {
+          "tuple": [
+            4,
+            1
+          ],
+          "count": 3
+        },
+        {
+          "tuple": [
+            6,
+            0
+          ],
+          "count": 5
+        },
+        {
+          "tuple": [
+            6,
+            1
+          ],
+          "count": 3
+        }
+      ],
+      "weighted_table_multiset": [
+        {
+          "tuple": [
+            0,
+            0
+          ],
+          "count": 8
+        },
+        {
+          "tuple": [
+            2,
+            0
+          ],
+          "count": 8
+        },
+        {
+          "tuple": [
+            4,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            4,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            6,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            6,
+            1
+          ],
+          "count": 4
+        }
+      ],
+      "F65537_fractions": [
+        {
+          "alpha": 1009,
+          "beta": 17,
+          "lookup_sum": 9270,
+          "table_sum": 4648,
+          "residual": 4622
+        },
+        {
+          "alpha": 10007,
+          "beta": 31,
+          "lookup_sum": 19540,
+          "table_sum": 52774,
+          "residual": 32303
+        }
+      ],
+      "Goldilocks_fractions": [
+        {
+          "alpha": 1009,
+          "beta": 17,
+          "lookup_sum": 5595609100338904004,
+          "table_sum": 18235558426901559948,
+          "residual": 5806794742851928377
+        },
+        {
+          "alpha": 10007,
+          "beta": 31,
+          "lookup_sum": 10755294314606072188,
+          "table_sum": 3577081941146426410,
+          "residual": 7178212373459645778
+        }
+      ]
+    },
+    "full": {
+      "full_tuple_identity": false,
+      "lookup_tuples_absent_from_entire_table": [
+        [
+          0,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          8,
+          0
+        ],
+        [
+          12,
+          0
+        ]
+      ],
+      "lookup_multiset": [
+        {
+          "tuple": [
+            0,
+            0
+          ],
+          "count": 3
+        },
+        {
+          "tuple": [
+            0,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "tuple": [
+            1,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            4,
+            0
+          ],
+          "count": 3
+        },
+        {
+          "tuple": [
+            4,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "tuple": [
+            5,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            8,
+            0
+          ],
+          "count": 1
+        },
+        {
+          "tuple": [
+            8,
+            1
+          ],
+          "count": 3
+        },
+        {
+          "tuple": [
+            9,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            12,
+            0
+          ],
+          "count": 1
+        },
+        {
+          "tuple": [
+            12,
+            1
+          ],
+          "count": 3
+        },
+        {
+          "tuple": [
+            13,
+            0
+          ],
+          "count": 4
+        }
+      ],
+      "weighted_table_multiset": [
+        {
+          "tuple": [
+            0,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            1,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            4,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            5,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            8,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            9,
+            0
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            12,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "tuple": [
+            13,
+            0
+          ],
+          "count": 4
+        }
+      ],
+      "F65537_fractions": [
+        {
+          "alpha": 1009,
+          "beta": 17,
+          "lookup_sum": 50454,
+          "table_sum": 42500,
+          "residual": 7954
+        },
+        {
+          "alpha": 10007,
+          "beta": 31,
+          "lookup_sum": 41252,
+          "table_sum": 57255,
+          "residual": 49534
+        }
+      ],
+      "Goldilocks_fractions": [
+        {
+          "alpha": 1009,
+          "beta": 17,
+          "lookup_sum": 2206546800559673928,
+          "table_sum": 10053696519664493083,
+          "residual": 10599594350309765166
+        },
+        {
+          "alpha": 10007,
+          "beta": 31,
+          "lookup_sum": 12186771579503399786,
+          "table_sum": 17814506628757356876,
+          "residual": 12819009020160627231
+        }
+      ]
+    }
+  },
+  "every_reciprocal_bracket_passes": true,
+  "scope": "relation counterexample, not a forged production proof"
+}

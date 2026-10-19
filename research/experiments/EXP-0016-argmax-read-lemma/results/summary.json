@@ -1,0 +1,58 @@
+{
+  "id": "EXP-0016",
+  "path": "research/experiments/EXP-0016-argmax-read-lemma/README.md",
+  "status": "done: refuted",
+  "verdict": "refuted",
+  "idea_status": "rejected",
+  "priority_before": 1.21,
+  "priority_after": 0,
+  "confidence_before": 0.3,
+  "confidence_after": 1.0,
+  "key_results": [
+    {
+      "evidence": "E0",
+      "result": "Scoped local variant unique on348823 causal prefixes and1458 d2 dot-prefix cases; complete scalar merged domain157464 assignments includes10800 alternative-read certificates with valid brackets."
+    },
+    {
+      "evidence": "E0",
+      "result": "Complete cross-layer/head/both batches each have4 wrong rows with shared m and exact global tuple/rational identity; all brackets pass. Full namespace rejects by absent lookup support."
+    },
+    {
+      "evidence": "E0",
+      "result": "Goldilocks d4/context4 lifts have valid public-width/scale and current #388 sigma bound; existing product root rejects every wrong row."
+    },
+    {
+      "evidence": "E0",
+      "result": "Exp2 ceil and shift semantics differ on odd keys; top odd key needs zero-tail extension. Padding and Goldilocks namespace obligations explicit."
+    }
+  ],
+  "threats": [
+    "finite relation model is not a full theorem or production proof",
+    "pointwise relations idealize statistical LogUp/zerocheck failures",
+    "syntactic large architecture alias does not establish full statement/resource acceptance",
+    "earlier unversioned E0 development outputs were overwritten; retained final/control artifacts are identified honestly"
+  ],
+  "follow_ups": [
+    "A repaired candidate must specify layer/KV namespace injectivity or independent instances, functional total ceil-based Exp2, psi/public-padding pins and committed-table opening/masking schedule before promotion",
+    "H100 cost/streaming/opening-group decisions remain downstream of a sound repaired theorem"
+  ],
+  "ledger_row": "| [EXP-0016](experiments/EXP-0016-argmax-read-lemma/README.md) | Does Argmax-read preserve uniqueness across merged layers/KV heads? | IDEA-0020 | done: refuted | Scoped local cases unique, but complete balanced cross-layer/head reads admit wrong maxima with every reciprocal bracket passing; tagged repair finite only | E0 exact F65537/Goldilocks relations and exhaustive finite domains; lemma.py;4/4 mutations |",
+  "idea_row_summary": "IDEA-0020 rejected (literal untagged merged mechanism), priority1.21\u21920, confidence0.3\u21921.0 in exact refutation; experiment EXP-0016; no cost promotion.",
+  "new_bibliography_keys": [],
+  "problems": [
+    "No GPU, performance or end-to-end proof evidence; no universal repaired uniqueness theorem",
+    "#388 changes compiler/verifier validation as well as docs; tested parameters satisfy it and no relation-harness semantic change is required"
+  ],
+  "commands": [
+    "python3 -I research/experiments/EXP-0016-argmax-read-lemma/lemma.py",
+    "python3 -I research/experiments/EXP-0016-argmax-read-lemma/mutate.py"
+  ],
+  "validation": {
+    "full_exact_run": "passed",
+    "mutation_control": "passed",
+    "mutants_caught": 4,
+    "mutants_total": 4,
+    "frozen_preregistration": "passed",
+    "wrong_lookup_support_repair_check": "passed"
+  }
+}

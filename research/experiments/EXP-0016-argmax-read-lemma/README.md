@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `planned` |
+| Status | `done: refuted` (literal merged-instance proposal); local scoped finite case passes |
 | Idea | [IDEA-0020](../../ideas/IDEA-0020-argmax-read-max-certificate.md) |
 | Evidence level | E0 exact finite arithmetic, exhaustive witnesses and symbolic bounds; no performance evidence |
 | Hardware | CPU execution of exact Python integer/F65537 checks; no benchmark |
@@ -43,16 +43,80 @@ The run saves results/run.json and explicit counterexamples under results/. Befo
 
 ## Results
 
-Pending.
+**E0, exact arithmetic. The literal merged-instance proposal is refuted.** This is a candidate-relation counterexample, not a vulnerability in Tessera's existing product-tree certificate and not a forged production proof.
+
+Reproduce with the command above. [results/run.json](results/run.json) and [results/run-final-namespace-support.txt](results/run-final-namespace-support.txt) contain the final exact run; the environment is recorded in the JSON. All inputs are exhaustive synthetic domains or explicit integer fixtures, without randomness or performance claims.
+
+| Finite check (E0) | Cases | Result |
+|---|---|---|
+| Length3 rows in [-8,8] | 4,913 rows; 14,739 causal prefixes; 58,956 candidate indices | Exactly one scoped witness per prefix |
+| Length4 rows in [-8,8] | 83,521 rows; 334,084 causal prefixes; 1,336,336 candidate indices | Exactly one scoped witness per prefix |
+| d2 actual dot products, coordinates in {-1,0,1} | 1,458 query-prefix cases | Exactly the direct oracle's first maximum |
+| Full F65537 factors | 65,537 Booleanity candidates; 16×65,537 lt candidates; 17×65,537 each c and scalar Kread candidates; 5×65,537 output candidates | Only the required roots/outputs survive |
+| Two-layer/two-head scalar merged assignments | 157,464 complete table/query/permutation configurations | 38,448 wrong-maximum sublemma certificates; 49,248 alternative-read certificates |
+| Scalar alternatives including reciprocal brackets | 10,800 | Alternative Kread remains possible; no need to omit the bracket |
+| Fully tagged scalar repair | Same finite configurations | No wrong certificate |
+| Padding selector grid | 64 layer/head/query rows, of which 27 real | All repaired rows complete; padded fields uniquely zero |
+
+The factor checks cover complete field-valued scalar domains without enumerating their Cartesian product: Booleanity first restricts each chunk entry to 0/1; sum-one leaves four chunk assignments; the read and dot equations then fix Kread and c, and each defining lt/output equation has one field root. The independent oracle uses direct integer max/first-index selection. This does not assume a malicious maximum is an integer in advance. It idealizes pointwise constraints, rather than sampling a zerocheck challenge.
+
+### Complete balanced routing counterexample
+
+The layer attack has two layers, two KV heads, two query heads per KV group, two positions and two dimensions. The required GQA mapping is always `kv_head=query_head//2`.
+
+- `K[layer,kv,i]=(layer,-i)`.
+- The first query head of each group uses `Q=(1,0)` in layer0 and `Q=(-1,0)` in layer1. The second uses `Q=(0,1)` and is honest; these benign rows have nonconstant scores `(0,-1)`.
+- Every reader selects j=0 with the valid chunk witnesses. Every q=0 reader remains honest. Only q=1 of the first query head reads position0 from the other layer's same KV head. The causal bound is satisfied.
+- The shared table multiplicity is `m[layer,kv,0]=4`, `m[layer,kv,1]=0`, used identically for both dimension columns. Three readers per instance stay local and the fourth is exchanged with the other layer; every source still has four readers.
+- In layer0 the attacked row has true scores `(0,0)` but c=1. In layer1 its scores are `(-1,-1)` but c=0. In either row lt=0, both valid doubled lookup keys are2 and both exponentials are6, rather than the honest16. Thus s=12, R=21, a=4, b=7. Every range and reciprocal bracket passes; all future/padded exponentials are0. The removed product-tree certificate would have root1, and rejects.
+
+This is four wrong rows in a complete16-row batch. [results/counterexample-layer.json](results/counterexample-layer.json) includes every query, key row, read, chunk, c/lt/key/e/R/slack/limb witness, shared multiplicity and exact multiset. The complete untagged key/value lookup multiset equals the complete weighted table multiset, not merely a union-membership predicate. Therefore their LogUp rational functions are identical for **every** compression challenge and every non-pole denominator challenge. The saved F65537/Goldilocks fraction evaluations at two challenge pairs are independent arithmetic diagnostics, not the reason the identity holds. No challenge grinding is needed.
+
+[results/counterexample-head.json](results/counterexample-head.json) exchanges KV heads instead, [results/counterexample-both.json](results/counterexample-both.json) exchanges both axes, and [results/counterexample-dimension.json](results/counterexample-dimension.json) is the extra omitted-dimension negative control. Every batch has four wrong rows and all reciprocal brackets pass. Each missing relevant axis admits its corresponding attack. The original proposal already includes the dimension index; the dimension control does not accuse it of omitting that index.
+
+The fully scoped address rejects each example. Its wrong read tuple is absent from the **entire** routed table support, so changing arbitrary field-valued m cannot repair it. This is stronger than testing just the chosen multiplicities. Keeping separate instance identities also prevents exchanging one instance's table for another's, subject to ordinary randomized batching soundness.
+
+### Direct Goldilocks lift and current validation
+
+The additional direct lifts are analytic zero-extensions of the finite counterexample, not a new exhaustive domain: [layer](results/counterexample-Goldilocks-layer.json), [head](results/counterexample-Goldilocks-head.json), [both](results/counterexample-Goldilocks-both.json). They use d_head4, four positions, two layers, four query heads, two KV heads and the same nonzero coordinates. Extra query/key coordinates are0; only q=1 of the first head cheats. Chunk sizes2×2 now match the four-position axis. All query rows, including honest q=2/3 rows, and all dimension reads are included. Shared position0 multiplicities are8. All reciprocal brackets pass over the integers, and all wrong rows have nonzero current product roots.
+
+The scale1 is compatible with integer-model score scaling at d_head4 and e_q+e_k=1: `2/sqrt(4)=1`. The public INT8 spread is130,560, so the base key width is17 and the doubled table has18 bits; its last key262,143 maps to0. All real keys are tiny and no field alias is used. This is a constraint-level lift with compatible public parameters, not a constructed complete model/claim list or an end-to-end proof.
+
+Upstream709c37c/#388 changed compiler lowering, tv-core validation, tests and specification: it enforces `(2*max_context-1)*2^(2*exp_sigma)<P`, by a bit bound in the compiler and independently checked exact u128 arithmetic in the verifier. At sigma4 and contexts2/4, the left sides are768/1,792, below both fields. No relation-harness semantic change is needed. The attack has s=12<2^sigma because the replacement maximum is false; the new rule does not separately enforce the row-sum lower bound, which is derived from a sound maximum certificate. The routing verdict is unchanged.
+
+### Exp2, padding and no-wrap obligations
+
+The note's two Exp2 descriptions disagree. At key1, ceil-based Exp2 gives Exp[1]=6 while `key>>1` gives Exp[0]=16. The honest row `(0,1,0)`, q=1, j=1 therefore gets the wrong first exponential under the shift-based description. The top odd key127 also requests Exp[64], outside the base table. The checked ceil variant explicitly completes that row with the zero tail; an RFC must define it, and cannot reuse the aligned low-bit-elimination claim unchanged.
+
+On zero public padded witness rows, the literal chunks' sum-one rule is incomplete. A naive migration that changes the sum to psi and gates reads still leaves65,537 choices per padded scalar Kread if nothing else pins it. The explicitly repaired candidate adds a zero pin (or would need equally explicit structural public-zero padding). It has exactly one such value. This is a hypothetical candidate migration, not a claim that current normative padding permits free values. The program evaluates C/psi for real and padded query, layer and KV/query-head rows, including length3 padded to4.
+
+Goldilocks bounds use the full INT8 endpoints, including attained score +2^21 at d128. The 405B packed namespace `126*8*2^17*128=16,911,433,728` is belowP. A syntactic extreme shape `(65535,65535,131072,65534)` has36,891,236,390,554,828,800 rows: addresses `(0,0,0,0)` and `(32769,32770,65542,13)` both map to0 moduloP. Full statement/resource acceptance of that extreme model was not tested; it establishes the need for an explicit packing bound or distinct tuple coordinates. A one-hot chunk also needs length<P: P Boolean ones sum to0, and P+1 ones sum to1. Current small chunks are below that bound. F65537 exhaustion discharges none of these general Goldilocks obligations by itself.
 
 ## Analysis
 
-Finite arithmetic and global multiset identities establish finite counterexamples or finite checks; they do not certify Fiat-Shamir soundness, zero knowledge, verifier integration, all possible dimensions, or performance. No stochastic false-accept measurement replaces a structural routing attack. The Exp generator is reused as the normative function; correctness of its implementation is not what this experiment measures.
+The structural failure is selecting from the union of committed tensors while claiming to have read one mandated tensor. LogUp itself faithfully proves that union multiset; it cannot infer a missing layer/KV-head identity. The attack uses ordinary positive multiplicities and valid INT8 inputs, includes every row and dimension, and passes the unchanged reciprocal brackets. This refutes the literal merged certificate, independently of any projected cost.
+
+The scoped local arithmetic survives every finite case, which explains why single-row checks alone would miss the defect. A general repaired theorem still needs globally injective namespaces or independent instances, table commitments tied to the correct post-Requant tensor, functional total ceil-based Exp2, unique padding, small chunk counts, no-wrap bounds, and complete challenge/opening/masking integration. RFC-0048 does not supply a hidden range assumption: the Q/K used here are bounded post-Requant outputs; arbitrary malformed weight commitments do not justify weakening those obligations.
+
+Finite enumeration is E0 evidence, not a full theorem, a statistical LogUp/zerocheck soundness calibration, a verifier implementation or a complete production proof. H1's historical cost scenario is not repriced in this security-first unit; no H100 or performance claim is made. Existing production retains the product certificate and rejects every wrong row in these fixtures.
+
+Artifact provenance: development E0 runs reused the unversioned output files before preservation was requested. The available final post-#388 run was copied to run-final-before-mutations.{json,txt}; the final extended-support output and unmodified mutation control are retained separately. Earlier timestamps are not reconstructed or represented as original raw evidence. Counts are deterministic exact results, not timing samples.
 
 ## Verdict
 
-Pending the fixed checks.
+`refuted`. IDEA-0020 becomes `rejected` for the literal untagged merged-instance mechanism under research rule1 (SP-3 fails), priority1.21→0. Confidence0.3→1.0 is confidence in this explicit structural counterexample, not in any repaired scheme. The tagged local variant has finite evidence only and remains an unproven proposal.
 
 ## Follow-ups
 
 If refuted, record the exact missing clauses and reject promotion of the literal mechanism; any repaired proposal needs a new scoped theorem and superseding RFC. H100 costs, opening groups, full protocol/zero-knowledge integration and current cost repricing remain separate work. No scheduler or unattended job is installed.
+
+## Validation and review
+
+The full exact run and a no-op mutation control pass. [results/mutations.json](results/mutations.json) records four caught relation faults: dropping routing tags, dropping parity, dropping the padded-read zero pin, and replacing ceil by floor. Raw assertion outputs are retained; no production file is mutated.
+
+```sh
+python3 -I research/experiments/EXP-0016-argmax-read-lemma/lemma.py
+python3 -I research/experiments/EXP-0016-argmax-read-lemma/mutate.py
+```
+
+Adversarial review checked: full-input finite factors rather than an assumed max range; exact score/namespace bounds; whole-batch tuple equality and shared dimension multiplicities; GQA routing; ties and future indices; functional lookup values; every reciprocal/range bracket; public masking and candidate padding; and the source of residual statistical soundness. The independent integer max oracle, source-table support check and current product root are distinct rejection oracles. No verifier independence surface or secret-handling production code changes.
