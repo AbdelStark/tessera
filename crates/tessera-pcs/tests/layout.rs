@@ -10,8 +10,8 @@
 //!   `Ã(r ‖ base_X)` at the layout's point. Every element lies in its tensor's rows and no two
 //!   share an entry. Through the reference commitment, which holds the non-zero rows only, the
 //!   independent verifier `tv_core::opening` accepts every such claim.
-//! - **Zero rows.** A row is skipped exactly when no tensor holds a real entry in it: padding,
-//!   alignment gaps, and a score tile's rows of masked positions. The descriptor's `rows` counts
+//! - **Zero rows.** Only the outermost length padding is skipped; inner padded axes' rows
+//!   remain committed (RFC-0047). Alignment gaps and a score tile's masked rows are skipped. The descriptor's `rows` counts
 //!   the others. At 405B shapes, the padding of the 53,248-wide MLP tensors costs no row, and
 //!   the score tiles commit RFC-0034's closed form.
 //! - **Segments.** They partition the rows, each boundary at a tile's first row, and hold the
@@ -119,6 +119,8 @@ enum Entry {
     Real,
     /// Padding that holds 0, or a masked score, 0 by RFC-0030.
     Zero,
+    /// Inner-axis length padding stays committed even when its value is zero (RFC-0047).
+    RetainedZero,
     /// Padding that holds a public constant (RFC-0035).
     Constant,
 }
@@ -154,28 +156,43 @@ fn elements(shape: &TensorShape, geometry: &Geometry) -> Vec<Element> {
                 coords[axis] = rest & ((1u64 << b) - 1);
                 rest >>= b;
             }
-            let kind = match shape {
-                TensorShape::Dense(dense) => {
-                    let real = dense.axes().iter().zip(&coords).all(|(a, &x)| x < a.real);
-                    match (real, dense.padding()) {
-                        (true, _) => Entry::Real,
-                        (false, Padding::Zero) => Entry::Zero,
-                        (false, Padding::Constants) => Entry::Constant,
+            let kind =
+                match shape {
+                    TensorShape::Dense(dense) => {
+                        let real = dense.axes().iter().zip(&coords).all(|(a, &x)| x < a.real);
+                        match (real, dense.padding()) {
+                            (true, _) => Entry::Real,
+                            (false, Padding::Zero) => {
+                                let outermost = dense.axes().iter().position(|a| a.is_padded());
+                                let retained = dense.axes().iter().enumerate().zip(&coords).all(
+                                    |((i, a), &x)| {
+                                        a.real > 0
+                                            && (x < a.real
+                                                || (a.is_padded() && Some(i) != outermost))
+                                    },
+                                );
+                                if retained {
+                                    Entry::RetainedZero
+                                } else {
+                                    Entry::Zero
+                                }
+                            }
+                            (false, Padding::Constants) => Entry::Constant,
+                        }
                     }
-                }
-                TensorShape::Scores { block } => {
-                    let (q, i) = (
-                        u64::from(*block) * u64::from(geometry.queries) + coords[1],
-                        coords[2],
-                    );
-                    let n = u64::from(geometry.n);
-                    // Valid: a real query attends to a real key at or before it (RFC-0030).
-                    match q < n && i < n && i <= q {
-                        true => Entry::Real,
-                        false => Entry::Zero,
+                    TensorShape::Scores { block } => {
+                        let (q, i) = (
+                            u64::from(*block) * u64::from(geometry.queries) + coords[1],
+                            coords[2],
+                        );
+                        let n = u64::from(geometry.n);
+                        // Valid: a real query attends to a real key at or before it (RFC-0030).
+                        match q < n && i < n && i <= q {
+                            true => Entry::Real,
+                            false => Entry::Zero,
+                        }
                     }
-                }
-            };
+                };
             Element {
                 coords,
                 index,
@@ -334,7 +351,7 @@ fn model(rng: &mut SplitMix64, max_entries: u64) -> Model {
 }
 
 /// `Ã` written from random tensors where the layout places them: each tensor's row-major table, the
-/// matrix of `2^ν` entries, and for each row whether a real entry or a padding constant lies in it.
+/// matrix of `2^ν` entries, and whether each row holds real entries, constants or retained padding.
 struct Written {
     tables: Vec<Vec<Fp>>,
     matrix: Vec<Fp>,
@@ -362,7 +379,7 @@ fn write(rng: &mut SplitMix64, model: &Model, layout: &AdviceLayout) -> Written 
         for element in &all {
             let value = match element.kind {
                 Entry::Real => rng.nonzero(),
-                Entry::Zero => Fp::ZERO,
+                Entry::Zero | Entry::RetainedZero => Fp::ZERO,
                 Entry::Constant => rng.fp(),
             };
             table[element.index] = value;
@@ -493,10 +510,10 @@ fn a_claim_on_a_tensor_is_the_claim_on_a_tilde_at_its_point() {
     seen.check();
 }
 
-/// RFC-0011 rule 4 and RFC-0034 'Zero rows': a row is skipped exactly when no tensor holds a real
-/// entry or a padding constant in it, and the descriptor's `rows` counts the others (RFC-0031).
+/// RFC-0011/0034/0047: rows hold real entries, constants or retained inner-axis padding.
+/// The descriptor's `rows` counts all of them (RFC-0031).
 #[test]
-fn zero_rows_are_exactly_the_rows_without_a_real_entry() {
+fn zero_rows_skip_only_the_padding_rfc_0047_permits() {
     let mut rng = SplitMix64::new(0x0106_0002);
     let mut seen = Seen::default();
     for _ in 0..60 {
@@ -825,6 +842,35 @@ fn padding_of_405bs_mlp_tensors_costs_no_row() {
     }
     // The tokens' row and 208 per MLP tensor: padding costs nothing.
     assert_eq!(layout.rows(), 1 + 378 * 208);
+}
+
+#[test]
+fn inner_padded_axes_remain_committed_under_rfc_0047() {
+    let layout = AdviceLayout::new(
+        LayoutParams {
+            log2_k: 1,
+            segments: 1,
+            layers: 1,
+            group: 1,
+            query_block: 1,
+            max_context: 3,
+        },
+        3,
+        &[TileShape {
+            layer: Some(0),
+            values: vec![TensorShape::Dense(DenseShape::new(
+                vec![Axis::new(3), Axis::new(5)],
+                Padding::Zero,
+            ))],
+        }],
+    )
+    .unwrap();
+    assert_eq!(layout.allocated_rows(), 16);
+    assert_eq!(layout.rows(), 12);
+    assert_eq!(spans(layout.tensors()[0].nonzero()), [(0, 12)]);
+    for row in 0..16 {
+        assert_eq!(layout.is_zero_row(row), row >= 12);
+    }
 }
 
 // ----- The order and the maximum (RFC-0047) ----------------------------------------------------

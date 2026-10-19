@@ -31,8 +31,8 @@
 //!    and `base_X` is the index of the tensor's first entry over `2^{n_X}`
 //!    ([`Placement::point`]). The low `log2 k` coordinates are the column sub-point, the others the
 //!    row point.
-//! 4. **Zero rows.** A row is skipped when no tensor holds a real entry in it: rows of padding,
-//!    alignment gaps, rows past the allocation, and a score tile's rows whose keys all follow its
+//! 4. **Zero rows.** Skipped rows are those of outermost length padding, alignment gaps,
+//!    rows past the allocation, and a score tile's rows whose keys all follow its
 //!    queries (RFC-0034 'Zero rows'). A tensor whose padding holds public constants that may be
 //!    non-zero ([`Padding::Constants`], RFC-0035) commits its padding's rows. [`AdviceLayout::rows`]
 //!    counts the others, the advice descriptor's `rows` (RFC-0031).
@@ -929,14 +929,15 @@ fn nonzero_rows(value: &TensorShape, attention: &Attention, row_bits: u32) -> Ve
     }
 }
 
-/// A dense tensor's rows that hold a real entry: all of them when its padding holds constants;
-/// otherwise those whose fixed coordinates are all real (RFC-0011 rule 4).
+/// A dense tensor's committed rows: all when its padding holds constants. RFC-0047 retains
+/// inner padded axes' rows, even when every entry in such a row is zero.
 ///
 /// A row fixes the tensor's `row_bits` most significant variables: whole axes, the most
 /// significant first, and the high bits of the axis they end in. The free axes below have a real
 /// position each, their position 0, unless one has none. So a row holds a real entry exactly when
 /// each whole axis it fixes is below its length, and the axis it splits has a real position in
-/// the part it fixes: its high bits `h` with `h·2^{low} < len`.
+/// the part it fixes: its high bits `h` with `h·2^{low} < len`. Inner length padding counts
+/// as held for this purpose (RFC-0047); a share's explicit real-position cutoff still applies.
 fn dense_rows(dense: &DenseShape, row_bits: u32) -> Vec<Range<u64>> {
     if dense.padding() == Padding::Constants {
         return one_run(0..1 << row_bits);
@@ -948,14 +949,25 @@ fn dense_rows(dense: &DenseShape, row_bits: u32) -> Vec<Range<u64>> {
     // bits.
     let mut parts = Vec::new();
     let mut remaining = row_bits;
-    for &axis in dense.order() {
+    let outermost_padded = dense
+        .order()
+        .iter()
+        .copied()
+        .find(|&axis| dense.axes()[axis].is_padded());
+    for &index in dense.order() {
         if remaining == 0 {
             break;
         }
-        let axis = dense.axes()[axis];
+        let axis = dense.axes()[index];
         let bits = axis.bits();
         let fixed = bits.min(remaining);
-        parts.push((axis.real.div_ceil(1 << (bits - fixed)), fixed));
+        let real = if axis.is_padded() && Some(index) != outermost_padded {
+            // RFC-0047: only the outermost length padding gives skipped rows.
+            1 << bits
+        } else {
+            axis.real
+        };
+        parts.push((real.div_ceil(1 << (bits - fixed)), fixed));
         remaining -= fixed;
     }
     // From the least significant part up: the runs within `width` rows, repeated for each real
