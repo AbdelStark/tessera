@@ -1,0 +1,22 @@
+  check: production proof accepted by the tv-core driver from the true roots (independent products); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 943b2e03cfc76b95633b0614eb4d7e397483fa48f9de4e512bd9854e9d69d4d1
+
+STDERR:
+   Compiling ragged-split-eq v0.0.0 (/private/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp19-mutations-qvy8zww2)
+warning: variant `None` is never constructed
+   --> src/kernel.rs:149:5
+    |
+148 | enum Fault {
+    |      ----- variant in this enum
+149 |     None,
+    |     ^^^^
+    |
+    = note: `Fault` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ragged-split-eq` (bin "ragged-split-eq") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 4.42s
+     Running `/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp19-mutations-qvy8zww2/target/release/ragged-split-eq small`
+
+thread 'main' (90042421) panicked at src/main.rs:516:13:
+hand/ragged-split-eq: level 1: round 0 differs
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

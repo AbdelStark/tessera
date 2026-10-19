@@ -1,0 +1,17 @@
+[
+  {
+    "fault": "overlap",
+    "rejected": true,
+    "reason": "overlapping or reordered timing samples"
+  },
+  {
+    "fault": "denominator",
+    "rejected": true,
+    "reason": ""
+  },
+  {
+    "fault": "secondary_extra_attempt",
+    "rejected": true,
+    "reason": "secondary cohorts have no registered rerun"
+  }
+]

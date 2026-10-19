@@ -91,6 +91,8 @@ One row per source. "Term" is the cost-model or scoreboard term the technique mo
 
 The [Gailly26] ePrint metadata/abstract is readable, but its PDF remains inaccessible through the web reader and direct `curl` returns HTTP403. Searches for an author-hosted copy and the official repository's recursive file tree found no accessible primary PDF. The repository at `9d1a53e2ef49ffa2c902b8689cd3c58057a4e662` (default branch `master`) still exposes the README benchmark context recorded under [Lagrange26b]; those author-reported results were not reproduced here. No abstract or secondary summary is treated as a reading of the softmax PIOP. The full-paper trigger, paper-specific hardware/methodology and Gemma-size questions remain open. This is a bounded retrieval refresh, not a new complete survey or a changed scoreboard result.
 
+OpenLLM [YRX+26] and zkAgent [Wang26a] also remain abstract-only after the2026-10-19 bounded retrieval pass: one official PDF request each returned an HTTP403 challenge; checked author/venue/repository discovery routes identified no separate primary full text. Their full hardware/model/quantization/max questions remain open. Current zkAgent abstract still carries its benchmark claims; no method or benchmark was reproduced, and no scoreboard or seed changes.
+
 ## Primary-code refresh, 2026-10-19
 
 Scope: this closes the code-inspection part of the DeepProve retrieval task, not the full-paper task or all four standing survey questions. The official repository's complete recursive Git tree and selected raw sources were fetched read-only at `master` commit `9d1a53e2ef49ffa2c902b8689cd3c58057a4e662`. Downloaded files were checked against that tree's Git blob hashes. No third-party code, model, test or benchmark was executed. The PDF block described above remains; no source comment is credited as a protocol proof.
@@ -113,4 +115,4 @@ Pinned source trail (all primary, checked 2026-10-19):
 
 ## References
 
-Keys resolved in [bibliography.md](../bibliography.md): [Jiang24], [Liu24], [Tang24], [Dehghankar26], [YuanJ25], [Zhu25], [Nawrot25], [Gao25], [Lu25], [YuanJy25], [DeepSeek25], [vLLM25], [Gemma25], [Meta25], [HF26], [SLZ24], [Hao24], [Qu25], [Wang25], [Kim21], [Jo26], [Gailly26], [Wang26a], [Wang26b], [Riasi25], [Gong26], [Chen26], [Liang26], [Jolt26], [Lagrange26b], [Lagrange26d].
+Keys resolved in [bibliography.md](../bibliography.md): [Jiang24], [Liu24], [Tang24], [Dehghankar26], [YuanJ25], [Zhu25], [Nawrot25], [Gao25], [Lu25], [YuanJy25], [DeepSeek25], [vLLM25], [Gemma25], [Meta25], [HF26], [SLZ24], [Hao24], [Qu25], [Wang25], [Kim21], [Jo26], [Gailly26], [Wang26a], [Wang26b], [Riasi25], [Gong26], [Chen26], [Liang26], [Jolt26], [Lagrange26b], [Lagrange26d], [YRX+26].

@@ -1,0 +1,2 @@
+    Checking ragged-split-eq v0.0.0 (/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0019-ragged-split-eq)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.50s

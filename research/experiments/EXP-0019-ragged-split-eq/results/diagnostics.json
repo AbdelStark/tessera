@@ -1,0 +1,42 @@
+[
+  {
+    "config": "S1",
+    "fallback_rounds": 0,
+    "transcript_state": "2ecb6b74f8c600a8de1b5e511a00ae73fae1b23de5a9faae17aec94c87dc1034"
+  },
+  {
+    "config": "S2",
+    "fallback_rounds": 0,
+    "transcript_state": "f6df08bffa43a02252c81c90268f686f92a1810a1f54b8a1a1cfd5360db7bf15"
+  },
+  {
+    "config": "S3",
+    "fallback_rounds": 0,
+    "transcript_state": "8638f272e3508cf8d4421a0837bfc3427727bea9223b9cb5d1e59b74286362d7"
+  },
+  {
+    "config": "S4",
+    "fallback_rounds": 0,
+    "transcript_state": "fcd00997b54508577ab3d52fb38837a92c91c2578ad4646b8d7c2d1875f94235"
+  },
+  {
+    "config": "U23",
+    "fallback_rounds": 0,
+    "transcript_state": "0887d3604fd384886e9ab1ae70e728e57260c39affc50290fe3be1b915871730"
+  },
+  {
+    "config": "U24",
+    "fallback_rounds": 0,
+    "transcript_state": "3b2d6d3ab9b302ae83334778e58c83772abd035d33aa0bae80802caf05504de3"
+  },
+  {
+    "config": "S1-1K",
+    "fallback_rounds": 0,
+    "transcript_state": "58038a40e9e020fdbb157febcce2a8deec774b3fc7263f5cf339eb59c8643f6c"
+  },
+  {
+    "config": "S2-1K",
+    "fallback_rounds": 0,
+    "transcript_state": "84ad9f44ec9bf441f5a1ad5763db745b02c50ad675ad57b5a822a4a725b9de59"
+  }
+]

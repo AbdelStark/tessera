@@ -1,0 +1,6 @@
+None exit 0
+Tail exit 101
+Odd exit 101
+Order exit 101
+Packed exit 101
+Fallback exit 101
