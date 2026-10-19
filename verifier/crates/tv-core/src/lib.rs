@@ -33,6 +33,10 @@
 //! | [`sumcheck::eq`] | `eq(a, b)`, the public factor of RFC-0010 'Multilinear extensions' |
 //! | [`opening::check_evaluations`] | the advice opening's combined rows: their shape, and each group's claims against its combined row (RFC-0011 step 6) |
 //! | [`opening::Evaluated::check_columns`] | the answer to the column queries: its shape, the leaves and the multiproof, and every combined row against every queried column (RFC-0011 step 8) |
+//! | [`weights::derive()`] | compact independent layouts and descriptor hashes for all ten weight matrices (RFC-0040) |
+//! | [`weights::check_public`] | bind the public matrix roots, layout and epoch to trusted `R_W` (RFC-0040) |
+//! | [`weights::check_evaluations`] | weight combined-row shapes and the schedule-derived evaluation claim (RFC-0012, RFC-0049) |
+//! | [`weights::Evaluated::check_columns`] | direct weight-column authentication and both combined rows' consistency, with structural and committed-position indices kept distinct |
 //! | [`claims::ClaimList`] | the claim list's schema, decoded from its sealed envelope and encoded back for `claim_list_digest` (RFC-0007, RFC-0026, RFC-0042) |
 //! | [`params::ParamSet`] | the parameter sets the verifier accepts and the layout each prescribes (RFC-0014, RFC-0026) |
 //! | [`validation::validate`] | claim-list validation, RFC-0007 'Verifier validation' in RFC-0039's order: steps 1 to 4, 5.1, 6 and 7, and RFC-0019 step 2 before them |
@@ -47,7 +51,8 @@
 //! regeneration of the tables and the structured evaluation of `t̃` (#100), and the verifier's
 //! driver and verdicts (#128) build on these; so do the advice layout (#116), the transcript
 //! steps that squeeze the opening's challenges and queries, the hiding of RFC-0013 (blinding
-//! rows, `u'_g`, `q_g`) and the weight commitment (RFC-0012), which take the claim pool.
+//! rows, `u'_g`, `q_g`), which take the claim pool. [`weights`] adds the protocol1 weight
+//! opening components; the full driver still joins them to the schedule.
 //! Claim-list validation's steps 5.2 and 5.3 (#117), the advice layout's fit of step 6 (#106)
 //! and `ConstraintSystemDigest` (#120) build on the lowering.
 //!
@@ -544,3 +549,4 @@ pub mod stages;
 pub mod sumcheck;
 pub mod tree;
 pub mod validation;
+pub mod weights;

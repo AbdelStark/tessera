@@ -671,7 +671,7 @@ fn check_layout(layout: Layout<'_>) -> Result<usize, OpeningError> {
 /// level `t` differ in bit `t`, and merge into `a + r_t·(b − a)`, the value of level `t + 1`.
 /// Value `x` closes as many levels as `x` has trailing ones, so `pending[t]` holds the open value
 /// of level `t`.
-fn multilinear(values: &[Fp2], point: &[Fp2]) -> Option<Fp2> {
+pub(crate) fn multilinear(values: &[Fp2], point: &[Fp2]) -> Option<Fp2> {
     let vars = u32::try_from(point.len()).ok()?;
     let size = 1usize.checked_shl(vars)?;
     if values.len() != size || point.len() >= FOLD_LEVELS {
@@ -786,7 +786,7 @@ fn combine(coefficients: &[Fp2], column: &[Fp]) -> Fp2 {
 /// `x_j = 7·ω_n^j`, written into `codeword`: the inverse NTT on `H` gives `f = enc(u)`'s
 /// coefficients, `g = f + (X^k − 1)·M` subtracts `M` from the low coefficients and adds it from
 /// `X^k` up, and the coset NTT evaluates `g` on `7·L`.
-fn encode(
+pub(crate) fn encode(
     row: &CombinedRow,
     k: usize,
     n: usize,
