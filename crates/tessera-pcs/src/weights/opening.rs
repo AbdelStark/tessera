@@ -121,8 +121,8 @@ pub struct WeightCombinedRows {
 
 /// One pass over a weight matrix's committed rows (RFC-0012 'Opening by the folding pass',
 /// RFC-0049): the per-layer folds `F_ℓ` and the proximity row, from which the sumcheck input and
-/// both combined rows follow without another read of the weights. The [module
-/// documentation](self) states each.
+/// both combined rows follow without another read of the weights. The [crate
+/// documentation](crate#the-weight-opening) states each.
 ///
 /// The folds and the proximity row are secret-class until sent (05 §3): they live in
 /// `SecretBuf`s, cleared when the fold drops; there is no `Clone`, and the `Debug` form shows the
