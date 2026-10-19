@@ -12,7 +12,7 @@
   {
     "lens": "max certificate",
     "disposition": "no new note; seed32 retained",
-    "why": "Exact-zero skipping still needs a correct maximum/nonempty selected row plus bounds on every skipped tile. Existing IDEA0020 refuted and IDEA0029 rejected; relabelling their incomplete certificate would repeat failure."
+    "why": "Exact-zero skipping still needs a correct maximum/nonempty selected row plus bounds on every skipped tile. IDEA0020 is rejected after its scoped refutation. IDEA0029 remains triaged: EXP15 validated its registered finite-domain lemma, while the complete protocol/masking/count gate remains open. Neither supplies a complete replacement certificate."
   },
   {
     "lens": "counts",
@@ -26,7 +26,7 @@
   },
   {
     "lens": "passes",
-    "disposition": "no new note; seed34 duplicate ofIDEA0017, seeds35/36 retained",
+    "disposition": "no new note; seed34 duplicate of IDEA0017, seeds35/36 retained",
     "why": "Existing round-window notes own unchanged-message grids; Hobbit has new protocol/mask obligations; extra stage caching needs a concrete current lifetime/recompute schedule."
   },
   {
