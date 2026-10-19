@@ -140,3 +140,9 @@ The primitive-level scoreboard compares against these. A survey fills the "Best 
 | Mechanism | E0 primary result | Limits |
 |---|---|---|
 | Public-window selector and complete-table transport | [EXP-0021](experiments/EXP-0021-public-window-selector/README.md):12,588 positional Boolean,7,878 rational and7,878 Fp2 off-cube,1,440 d3 catalog,9,408 full Boolean and432 full off-cube comparisons pass.248,850 logical row contexts map to933 distinct inputs;2,048 transport runs/8,192 reductions/38,912 rounds and69 controls pass.876,535 physical judgments plus41,555,071 memoized replays total42,431,606 logical judgments.317,682,340 metered algebraic operations are accounting, not timings. | Validated only in registered finite scope. Corrected score-span+K0<P range condition, independent parent mathematical rerun and domain reconstruction are recorded. Logical cache replays are not new physical tests; no size, fidelity, G-4, full protocol/ZK, verifier integration or performance approval. IDEA34 remains triaged, zero credited gain. |
+
+## Integer-coefficient fraction leaves, 2026-10-19
+
+| Unit | E1 primary CPU result | Disposition |
+|---|---|---|
+| [EXP-0020](experiments/EXP-0020-integer-coefficient-fraction-leaves/README.md), fixedv2 synthetic complete LogUp plus common output normalization | M4 Max;15cohorts,600measured/180warmup arm samples and3 registered reruns. Registered minima G2=-36.5411%,H2=-36.3651%; E-l22whole retains C-arm/C-P/C-D CV3.923730%/3.164403%/3.780707%, so overall inconclusive. Exact outputs/independent closure pass; parent independently reproduces E0 gates, counts, mutations and raw timing audit. | No established incremental gain over D in any case; clean C/D losses11.9149–36.5411% are scoped observations. Two Range cases save3.2889%/6.9069% against P but lose14.6421%/11.9149% against D. No global refutation, GPU/LM gain or model repricing; paid-prefix+bottom is a separate diagnostic. |

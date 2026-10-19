@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Status | `running` (E0/pre-timing checks complete; E1 pending) |
+| Status | `done: inconclusive` |
 | Idea | [IDEA-0005](../../ideas/IDEA-0005-base-field-leaf-small-value.md), distinct integer-coefficient mechanism after its current-production preflight |
-| Evidence level | Planned E0 exact algebra/counts and E1 CPU ratios; no E2/E3 claim |
-| Hardware | Apple M4 Max, one process/thread; record actual OS/toolchain/environment at execution |
+| Evidence level | E0 exact algebra/counts and E1 CPU measurements; no E2/E3 claim |
+| Hardware | Apple M4 Max, macOS 26.6.2 arm64, rustc 1.95.0; one process/thread, AC power; affinity/frequency uncontrolled |
 | Pre-registered on | 2026-10-19; reviewed frozen text, SHA-256 and UTC under `results/`, before implementation |
 
 ## Hypothesis
@@ -129,7 +129,28 @@ The Rust package is its own workspace, publish=false, Apache-2.0 OR MIT, forbids
 
 ## Results
 
-E0 gates completed before any timing. [Pre-timing handoff](results/handoff-pretime.json) identifies the final sources/binary, exact commands and gate logs; [artifact hashes](results/artifacts-pretime.json) cover the retained raw records. The [parent independently reproduced](results/parent-pretime-verification.json) small and six-case full-size checks, all18 exact count records, the seven compiled source mutants/no-op and the synthetic timing-auditor corpus. E1 remains pending the exclusive CPU slot.
+**Inconclusive under the frozen noise rule.** Exact algebra, complete output identity and independent public verifier closure pass. The minimum registered savings are `G2=-0.3654107633272927` and `H2=-0.3636505967672554`. The E-l22-t22 whole-proof cohort still fails required noise gates after its one allowed rerun, so the numeric threshold misses cannot be called a formal refutation.
+
+One invocation completed all six cases and both boundaries in 252.97 seconds. It saved 15 cohorts (12 initial plus three required full-cohort reruns), 180 warmup arm samples and 600 measured arm samples. Every measured sample used one repetition and lasted at least 45,104,625 ns, exceeding the 20ms floor. The authoritative second cohort replaces the first only for E-l22-t22 whole, Q-l20-t20 diagnostic and Q-l22-t20 whole. No third cohort, favorable-arm mixing or depth selection occurred.
+
+[Raw samples](results/run.json), [streamed output](results/timing-run.txt), [independent audit](results/audit.json), [per-arm median/minimum/maximum/CV](results/arm-statistics.csv), and the parent's separately written [sample reconstruction](results/parent-timing-audit.json) with its [analysis code](results/parent-timing-audit.py) preserve the judgment. The latter was written after measurement and is not a measured implementation. Altering an actual saved ratio or verdict is independently rejected ([controls](results/saved-record-mutations.json)).
+
+Medians below are milliseconds per complete invocation. Each savings column gives the lower of the registered paired-ratio and aggregate-ratio savings, rather than selecting a favorable statistic. Negative savings mean slower. Diagnostic C/D is context only and has no ratio-CV gate.
+
+| Case | Whole P | Whole D | Whole C | Whole C/P saving | Whole C/D saving | Diagnostic C/P saving | Final noise |
+|---|---|---|---|---|---|---|---|
+| E-l20-t22 | 384.816 | 325.443 | 443.517 | -15.5625% | -36.5411% | -36.3651% | pass |
+| E-l22-t22 | 601.177 | 505.056 | 674.936 | -13.4234% | -34.7088% | -31.7266% | fail |
+| R-l20-t21 | 221.164 | 186.295 | 214.527 | 3.2889% | -14.6421% | 11.2947% | pass |
+| R-l22-t21 | 425.736 | 354.100 | 395.990 | 6.9069% | -11.9149% | 18.7775% | pass |
+| Q-l20-t20 | 151.174 | 127.854 | 170.877 | -13.2638% | -33.7588% | -33.7683% | pass |
+| Q-l22-t20 | 363.371 | 303.770 | 395.326 | -8.9454% | -30.3654% | -26.3504% | pass |
+
+Only E-l22-t22 whole remains unclean: its final C arm CV is 3.923730%, C/P ratio CV 3.164403%, and C/D ratio CV 3.780707%, above 3%. Its P/P2 sham passes. The other eleven authoritative case/boundary cohorts pass all their arm, required-ratio, duration and sham gates. Original failed cohorts remain in the raw data.
+
+The measured source manifest/binary are unchanged from the hashes below. Execution began at HEAD `73928a13be982ac8652e4fc0cb535e861b76b493`; [execution environment](results/environment-timing.json) records power/thermal/process snapshots. Zoom, WindowServer and camera activity remained running; no user app was killed. macOS affinity/frequency were uncontrolled, and pmset reported no recorded thermal/performance warning and no recorded CPU power status. These observations do not establish the cause of any outlier. Whole-process maximum resident size was 1,149,763,584 bytes (peak footprint 1,130,366,104); the separate full-size preflight resource run is described below.
+
+E0 gates completed before any timing. [Pre-timing handoff](results/handoff-pretime.json) identifies the final sources/binary, exact commands and gate logs; [artifact hashes](results/artifacts-pretime.json) cover the retained raw records. The [parent independently reproduced](results/parent-pretime-verification.json) small and six-case full-size checks, all18 exact count records, the seven compiled source mutants/no-op and the synthetic timing-auditor corpus. The registered E1 invocation is complete; its global verdict remains inconclusive under the noise rule.
 
 All six full-size cases produced identical complete P/D/C records and passed public independent root/level/leaf checks plus direct key/value/multiplicity MLE closure. The small suite passed 33 cases, v1/v2/v3 controls, 30 paid-prefix diagnostics, ragged lookup/table padding, mixed heights/multiple instances, whole-instance public-bound dispatch and general-field fallback. The independent arithmetic audit checked 101 constant-coefficient sum groups (88,594 weighted terms), 36 ternary-grid vectors (468 cells), 18 public-domain bounds and 1,000 F65537 identities. Four scripted challenge modes each passed three separately constructed tv-field direct tree/round/final/line/leaf checks: 12 proofs, 30 cubic message evaluations each. Scripted zero denominators are algebra controls, never an assertion of public verifier acceptance.
 
@@ -158,11 +179,13 @@ This is the smallest current-domain complete LogUp comparison that exercises ext
 
 ## Verdict
 
-E1 pending under the fixed v2 three-way criterion. IDEA-0005 remains triaged while this comparison is measured; E0 correctness/count evidence alone assigns no performance verdict, current numerical priority or GPU credit.
+`inconclusive`. The fixed v2 candidate missed the numeric performance thresholds, but one authoritative whole-proof cohort failed the required noise gate after its single registered rerun. The experiment cannot be relabelled `refuted` by dropping that cohort or taking a third attempt. All correctness checks pass; there is no arithmetic/resource blockage.
+
+The descriptive result is narrower: C was slower than D for all six whole proofs, slower than P on Exp/Requant, and faster than P on Range. Its coefficient/weight/carry work is therefore paid rather than assumed cheap. This is evidence about this exact unmasked resident v2 algorithm and environment, not all integer-leaf schedules, masked RFC-0032 proofs, GPU performance or model fidelity. No current cost-model parameter, removal credit, regeneration saving, Δμ or numerical priority is updated.
 
 ## Follow-ups
 
-A validated E1 result could justify reviewing a production kernel/ownership design, then separately testing masks and an H100 implementation. A refuted/inconclusive result records the coefficient/weight/carry/memory costs and leaves other small-value schedules untested. Remaining streamed passes and regeneration stay owned by #329; no saving is added or double-counted here. The old standalone Stwo calibration is optional context, not a condition for this bounded test.
+This registered invocation is complete; it will not be retimed to remove noise. A new CPU comparison would require its own reviewed registration and explicit environment/noise policy. Other coefficient schedules remain untested. Any production proposal must independently justify integer domains for key/value/multiplicity inputs and handle arbitrary-field masks/corrections; the seeded generator's envelope is not a verifier range certificate. Masked protocol integration and H100 measurements remain separate work. Remaining streamed passes and regeneration stay owned by #329; no saving is added or double-counted here. The old standalone Stwo calibration is optional context, not a condition for this bounded test.
 
 ## Amendment 2026-10-19: paid public prefix replay for the diagnostic
 

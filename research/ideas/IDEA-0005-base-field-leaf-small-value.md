@@ -2,13 +2,23 @@
 
 | | |
 |---|---|
-| Status | `triaged` (current feasibility checked 2026-10-19; distinct integer-coefficient remainder untested) |
+| Status | `inconclusive` (EXP-0020 fixed-v2 unmasked CPU comparison; one final noise gate failed) |
 | Origin | [SUR-0002](../surveys/SUR-0002-lookups.md#candidate-ideas) seeds "Small-value first layer" and "Calibrate the op count on a CPU (E1) against Stwo's `prove_batch`"; [SUR-0003](../surveys/SUR-0003-passes.md#candidate-ideas) seed "Small-value first rounds" ([DDBDT26]); RISK-1 ([00 §9](../../docs/spec/00-overview.md#9-risks), unit costs unmeasured); source §9 bet 1a ([Source26]) |
 | Lever | `c_ℓ`: its compute floor, and above all its uncertainty, the `[40, 130]` ps interval SUR-0002 leaves open |
 | Spec surfaces | None that change. RFC-0008 'Fraction tree' and 'Batching' fix the relation, the tree and the challenges, all unchanged; the idea is a prover evaluation order inside the v1 kernel, which RFC-0008 NG-6 scopes out of the RFC and RFC-0020 v0.1 measures. No tier-A surface ([02 §1](../../docs/spec/02-public-api.md#1-stability-tiers)); no superseding RFC |
-| Priority | Historical 0.32 / conditional 0.55 below is noncurrent; no current Δμ or numerical re-score from this E0 preflight. The bounded resident integer-coefficient remainder is locally feasible and remains eligible for a separately pre-registered experiment. |
+| Priority | Historical 0.32 / conditional 0.55 below is noncurrent; no current Δμ or numerical re-score from this E0 preflight. EXP-0020 assigns no current numerical score: exact correctness/counts pass, but its registered E1 result is inconclusive; no GPU or Δμ credit. |
 
-## Current disposition (2026-10-19, E0 primary source audit)
+## EXP-0020 result (2026-10-19)
+
+[EXP-0020](../experiments/EXP-0020-integer-coefficient-fraction-leaves/README.md) implemented the distinct bounded-resident challenge-monomial integer-coefficient fraction kernel with a fixed v2 window, signed192 buckets, whole-instance public-envelope fallback and complete P/P2/D/C LogUp comparisons. P is current production; D is the current-relation delayed-product comparator. All six full-size cases produce identical complete messages/claims/transcript states and pass independent public root/level/leaf checks plus direct MLE closure. Integer/grid/scripted controls, compiled fault injection and actual saved-record corruption checks pass. This supplies the missing scoped mechanism test; historical product/fraction proxies remain preserved below.
+
+**Registered verdict: `inconclusive`.** G2 is -36.541076% and H2 is -36.365060%, but E-l22-t22 whole still fails the 3% noise gate after its single permitted rerun (C arm 3.923730%, C/P ratio 3.164403%, C/D ratio 3.780707%). All other authoritative cohorts are noise-clean. All 15 cohorts and their 600 measured arm samples remain saved; no third attempt or favorable subset was taken.
+
+Descriptively C loses to D in all six whole-proof cases. It loses to production on Exp/Requant and gains on Range; integer coefficient and canonical-weight partial products cannot be priced as a free/cheap MAC. The formal noise failure prevents promoting those observations into a refutation under this registration. E/Q's integer key/value/multiplicity storage also uses the same principal leaf bytes as production; Range saves eight bytes per lookup/table leaf.
+
+The result concerns synthetic unmasked resident LogUp at the fixed selected domains and depth. It establishes no masked RFC-0032 protocol optimization, new range certificate, side-channel/ZK theorem, GPU gain, model fidelity or current cost-model rescore. Other schedules and depths remain unmeasured hypotheses, requiring a new registration before a new test. The completed invocation is not retimed. Historical 0.32/0.55 priorities and standalone calibration claims below remain noncurrent, and no further regeneration/streaming credit is added.
+
+## Feasibility before EXP-0020 (2026-10-19, E0 primary source audit; preserved)
 
 **Keep `triaged`: partly absorbed, with a distinct untested remainder.** The generic-versus-specialized numerator calibration is superseded by implemented kernels and later counts. Neither the resident integer-product window in [EXP-0012](../experiments/EXP-0012-integer-leaf-round-window/README.md) nor its hosted fraction proxy nor [EXP-0013](../experiments/EXP-0013-delayed-reduction-node-sums/README.md) implements this note's challenge-monomial integer-coefficient fraction kernel. Those results do not validate or refute that remainder. This is a bounded feasibility clarification, not an experiment, registration or new measured result. The historical argument, security reviews, scores and proposed experiment below are retained as history; their universal domain claims and old baseline are not current acceptance criteria.
 
