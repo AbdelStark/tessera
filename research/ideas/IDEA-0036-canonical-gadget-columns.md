@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `triaged` |
+| Status | `experimenting` |
 | Origin | [SUR-0014](../surveys/SUR-0014-gadget-column-contract.md), #407 / remaining #106 |
 | Lever | Exact `C_lin`, `K_lin`, size and verify; correctness prerequisite |
 | Spec surfaces | RFC-0009, RFC-0006/0007, RFC-0041 and RFC-0011; tier-A derived offsets/table descriptors require a superseding RFC |

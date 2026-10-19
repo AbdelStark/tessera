@@ -1,0 +1,4 @@
+UTC: 2026-10-19T18:46:02.416067+00:00
+SHA-256: 1aa852822c46e25c5e240157ff7aadeb3c983125110ee640205c814dc70b9d59
+Frozen amendment: README.amendment-preregistered.txt
+No amendment implementation at registration.
