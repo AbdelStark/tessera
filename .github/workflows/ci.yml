@@ -96,6 +96,11 @@ jobs:
       - name: Verifier workspace
         working-directory: verifier
         run: cargo test --workspace --locked
+      # The golden claim lists of spec/vectors/claims/ name test-small/1, which only the test-only
+      # feature accepts (RFC-0001 'Cargo features'); the run above checks that they are refused.
+      - name: Verifier claim lists under test-small
+        working-directory: verifier
+        run: cargo test -p tv-core --features test-params --locked
 
   dependencies:
     name: dependencies

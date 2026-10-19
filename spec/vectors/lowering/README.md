@@ -77,4 +77,4 @@ Operations carry RFC-0006's names and parameters:
 ## Who checks them
 
 - `crates/tessera-compiler` (`tests/lowering_vectors.rs`) decodes each artifact, makes a variant's edits, lowers it at each length and compares the graph with the case, field by field. On a difference it reports the first item that differs: the case, the input, node or entry, and the field.
-- The verifier's lowering ([#107](https://github.com/AbdelStark/tessera/issues/107)) will be held to the same vectors.
+- `verifier/crates/tv-core` (`tests/lowering_vectors.rs`, [#107](https://github.com/AbdelStark/tessera/issues/107)) decodes each golden claim list of `../claims/`, makes a variant's edits to its fields, lowers it from them alone at each length and compares the graph with the case, field by field: the inputs, nodes, constants, shift-class sets, weights, tables, checkpoints, routes and tensor count. It reports every item that differs, with the case, the item and the field. It does not read `at` and `forms`, which describe the graph for people.

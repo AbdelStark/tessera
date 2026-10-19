@@ -106,7 +106,7 @@ Before reading any proof message, the verifier runs these checks in order. The f
 
 1. `params` names an allowed parameter set (`test-small` only with the `test-params` feature), else `Reject(Params)`: [RFC-0019](RFC-0019-verifier.md#check-order) runs this check first, as its step 2. `protocol_version` is supported (`ProtocolVersion`).
 2. Architecture and quantization, in this order:
-   1. Architecture consistency (`Architecture`): `n_layers ≥ 1`; `n_kv_heads ≥ 1` divides `n_heads`; `d_head` is even, from 2 to `2^{16} − 2`; `d_model = n_heads · d_head`; `d_ff ≥ 1`; `vocab` and `max_context` within protocol limits (v1: `1 ≤ vocab ≤ 2^18`, `1 ≤ max_context ≤ 2^17`).
+   1. Architecture consistency (`Architecture`): `n_layers ≥ 1`; `n_kv_heads ≥ 1` divides `n_heads ≥ 1`; `d_head` is even, from 2 to `2^{16} − 2`; `d_model = n_heads · d_head`; `d_ff ≥ 1`; `vocab` and `max_context` within protocol limits (v1: `1 ≤ vocab ≤ 2^18`, `1 ≤ max_context ≤ 2^17`).
    2. The public quantization data (`Quantization`):
       - `quant.rope` is `arch.rope`;
       - `act_exponents` holds the embedding, each INT8 site of the profile and the final norm, once each and sorted;
@@ -114,9 +114,10 @@ Before reading any proof message, the verifier runs these checks in order. The f
       - an affine site follows the Q, K, V, O, up or down projection, with a shift from 1 to 63 ([RFC-0025](RFC-0025-affine-sites.md#lowering));
       - a `pot` site has one to four classes, each from 1 to 63, and one class if it follows no weight;
       - `score_scales` holds one positive scale per layer, sorted;
+      - for each layer's `SoftmaxRow`, the narrowest `key_bits` from the spread's width, `bitlen(128 · 255 · d_head)`, up whose table `Exp { key_bits, sigma: exp_sigma, scale }`, `scale` the layer's score scale, maps its last key `2^{key_bits} − 1` to 0 exists, and RFC-0008 allows that table: `1 ≤ key_bits ≤ 32`, `σ ≤ 32`, `scale > 0`, its zero tail starting by key `2^{24}` ([RFC-0008](RFC-0008-logup-and-tables.md#table-specifications) 'Table specifications', [RFC-0030](RFC-0030-masked-exponentials.md#range-analysis-and-validation) 'Range analysis and validation');
       - `silu_in_exponents` holds one exponent per layer, sorted ([RFC-0042](RFC-0042-silu-exponents.md));
       - `residual_bits` lies from 2 to 31;
-      - the embedding's shift `s_e` into the residual keeps `127 · 2^{s_e} < 2^{residual_bits − 1}`;
+      - the embedding's shift `s_e` into the residual is non-negative, `s_e ≥ 0` ([RFC-0005](RFC-0005-integer-model.md#scale-policy)), and keeps `127 · 2^{s_e} < 2^{residual_bits − 1}`;
       - `rms_eps_int ≥ 1` and `rsqrt_kappa ≤ 31`.
    3. Every layer's sites are rescaled alike ([RFC-0038](RFC-0038-uniform-layers.md)): each site is affine in every layer or in none, and a `pot` site has one class in every layer or several in every layer (`Rescaling { site }`, the first site in 03 §2's declaration order that breaks it).
 3. Profile constraints hold for the derived graph (S1–S3 of [RFC-0005](RFC-0005-integer-model.md#profiles)) when the profile claims them (`Profile`).

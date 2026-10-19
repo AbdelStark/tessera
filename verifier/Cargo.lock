@@ -18,8 +18,10 @@ dependencies = [
 name = "tv-core"
 version = "0.1.0"
 dependencies = [
+ "tv-codec",
  "tv-field",
  "tv-hash",
+ "tv-tables",
  "tv-testkit",
 ]
 

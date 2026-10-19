@@ -179,7 +179,7 @@ Layer `ℓ`, from the residual `res`. `p(site)` is `QuantPoint::Layer { layer: �
   - if an earlier table has that definition, the layer takes it, and the search ends;
   - otherwise, if that table maps its last key `2^{key_bits} − 1` to 0, it is a new table, and the search ends ([RFC-0030](RFC-0030-masked-exponentials.md#range-analysis-and-validation)).
 
-  RFC-0008's zero tail bounds the search.
+  The search ends at the first width whose table maps its last key to 0. [RFC-0007](RFC-0007-claim-list.md#verifier-validation) step 2 guarantees that width exists, and that [RFC-0008](RFC-0008-logup-and-tables.md#table-specifications) allows its table.
 - **`Silu`.** The definition is `Silu { b: bitlen(127 · 128 · d) + 1, r_by_class: shifts of p(Silu), in_exp: the layer's silu_in_exponent, out_exp: the exponent of p(Silu) }`. An earlier table of the same definition is reused ([RFC-0042](RFC-0042-silu-exponents.md)).
 
 `bitlen(x)` is the number of bits of `x`, so `bitlen(1) = 1`.
