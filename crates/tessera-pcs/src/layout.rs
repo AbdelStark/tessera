@@ -31,8 +31,8 @@
 //!    and `base_X` is the index of the tensor's first entry over `2^{n_X}`
 //!    ([`Placement::point`]). The low `log2 k` coordinates are the column sub-point, the others the
 //!    row point.
-//! 4. **Zero rows.** A row is skipped when no tensor holds a real entry in it: rows of padding,
-//!    alignment gaps, rows past the allocation, and a score tile's rows whose keys all follow its
+//! 4. **Zero rows.** Skipped rows are those of outermost length padding, alignment gaps,
+//!    rows past the allocation, and a score tile's rows whose keys all follow its
 //!    queries (RFC-0034 'Zero rows'). A tensor whose padding holds public constants that may be
 //!    non-zero ([`Padding::Constants`], RFC-0035) commits its padding's rows. [`AdviceLayout::rows`]
 //!    counts the others, the advice descriptor's `rows` (RFC-0031).
@@ -51,7 +51,8 @@
 //! (RFC-0046 'Rows too short for a key'); no segment; or a row too wide for a codeword.
 //! [`AdviceLayout::new`] refuses, as `Layout` too, a layout of more than `2^32` rows (RFC-0047 'The
 //! maximum layout'). RFC-0007 step 6 applies that bound at `n = max_context`, where the layout is
-//! largest; the caller that derives the tiles checks it there. A `g = n_heads / n_kv_heads` that is
+//! largest; [`AdviceLayoutCounter`] checks repeated tile patterns there before the caller
+//! expands them into individual placements. A `g = n_heads / n_kv_heads` that is
 //! no power of two is an architecture rule of RFC-0007 step 2 (RFC-0047 'Heads'), which validation
 //! applies before any layout: the layout refuses it again as [`PcsError::LayoutData`], data it
 //! never receives, like any other of another form ([`PcsError::Tile`]).
@@ -112,6 +113,91 @@ fn refuse<T>(rule: &'static str) -> Result<T, PcsError> {
 
 fn data<T>(rule: &'static str) -> Result<T, PcsError> {
     Err(PcsError::LayoutData { rule })
+}
+
+fn place_rows(cursor: u64, vars: u32, log2_k: u32) -> Result<(u64, u64), PcsError> {
+    let span = 1u64
+        .checked_shl(vars.saturating_sub(log2_k))
+        .filter(|&span| span <= MAX_ROWS)
+        .ok_or(PcsError::Layout { rule: ROWS })?;
+    // Both operands are at most 2^32.
+    let first = cursor.next_multiple_of(span);
+    let end = first + span;
+    if end > MAX_ROWS {
+        return refuse(ROWS);
+    }
+    Ok((first, end))
+}
+
+/// Count a model's full allocation before expanding repeated attention tiles.
+/// No row map or placement is materialized; skipped rows still count toward the cap.
+#[derive(Clone, Debug)]
+pub struct AdviceLayoutCounter {
+    attention: Attention,
+    log2_k: u32,
+    allocated: u64,
+}
+
+impl AdviceLayoutCounter {
+    /// A counter for the same public parameters and length as [`AdviceLayout::new`].
+    ///
+    /// # Errors
+    /// Those of [`LayoutParams::attention`].
+    pub fn new(params: LayoutParams, positions: u32) -> Result<Self, PcsError> {
+        Ok(Self {
+            attention: params.attention(positions)?,
+            log2_k: params.log2_k,
+            allocated: 0,
+        })
+    }
+
+    /// Append `repetitions` occurrences of one tile's value shapes.
+    /// After one complete pattern the cursor's residue modulo its largest
+    /// alignment is fixed. A second occurrence therefore determines the stride
+    /// of every remaining occurrence, even for heterogeneous column spans.
+    ///
+    /// # Errors
+    /// `LayoutData` for no value, no repetition or invalid tensor metadata;
+    /// `Layout` if the complete allocation exceeds `2^32` rows. Failure leaves
+    /// the counter unchanged.
+    pub fn append(&mut self, values: &[TensorShape], repetitions: u64) -> Result<(), PcsError> {
+        if values.is_empty() {
+            return data(EMPTY_TILE);
+        }
+        if repetitions == 0 {
+            return data("a repeated tile occurs at least once");
+        }
+        for value in values {
+            if let Err(rule) = check_value(value, &self.attention) {
+                return data(rule);
+            }
+        }
+        let advance = |mut cursor| {
+            for value in values {
+                cursor = place_rows(cursor, geometry(value, &self.attention).1, self.log2_k)?.1;
+            }
+            Ok::<_, PcsError>(cursor)
+        };
+        let first = advance(self.allocated)?;
+        let end = if repetitions == 1 {
+            first
+        } else {
+            let step = advance(first)? - first;
+            repetitions
+                .checked_sub(1)
+                .and_then(|n| n.checked_mul(step))
+                .and_then(|n| first.checked_add(n))
+                .filter(|&n| n <= MAX_ROWS)
+                .ok_or(PcsError::Layout { rule: ROWS })?
+        };
+        self.allocated = end;
+        Ok(())
+    }
+
+    /// Full allocated rows, including padding, causal zero rows and alignment gaps.
+    pub fn allocated_rows(&self) -> u64 {
+        self.allocated
+    }
 }
 
 /// The claim list's data that the advice layout reads besides the tiles (INV-PCS-1). Every field
@@ -709,16 +795,8 @@ impl AdviceLayout {
             for value in &tile.values {
                 let (geometry, vars) = geometry(value, &attention);
                 let row_bits = vars.saturating_sub(log2_k);
-                let span = 1u64
-                    .checked_shl(row_bits)
-                    .filter(|&span| span <= MAX_ROWS)
-                    .ok_or(PcsError::Layout { rule: ROWS })?;
-                // The cursor and the span are at most 2^32: neither sum overflows.
-                let first_row = cursor.next_multiple_of(span);
-                cursor = first_row + span;
-                if cursor > MAX_ROWS {
-                    return refuse(ROWS);
-                }
+                let (first_row, end) = place_rows(cursor, vars, log2_k)?;
+                cursor = end;
                 let nonzero = nonzero_rows(value, &attention, row_bits)
                     .into_iter()
                     .map(|run| run.start + first_row..run.end + first_row)
@@ -929,14 +1007,15 @@ fn nonzero_rows(value: &TensorShape, attention: &Attention, row_bits: u32) -> Ve
     }
 }
 
-/// A dense tensor's rows that hold a real entry: all of them when its padding holds constants;
-/// otherwise those whose fixed coordinates are all real (RFC-0011 rule 4).
+/// A dense tensor's committed rows: all when its padding holds constants. RFC-0047 retains
+/// inner padded axes' rows, even when every entry in such a row is zero.
 ///
 /// A row fixes the tensor's `row_bits` most significant variables: whole axes, the most
 /// significant first, and the high bits of the axis they end in. The free axes below have a real
 /// position each, their position 0, unless one has none. So a row holds a real entry exactly when
 /// each whole axis it fixes is below its length, and the axis it splits has a real position in
-/// the part it fixes: its high bits `h` with `h·2^{low} < len`.
+/// the part it fixes: its high bits `h` with `h·2^{low} < len`. Inner length padding counts
+/// as held for this purpose (RFC-0047); a share's explicit real-position cutoff still applies.
 fn dense_rows(dense: &DenseShape, row_bits: u32) -> Vec<Range<u64>> {
     if dense.padding() == Padding::Constants {
         return one_run(0..1 << row_bits);
@@ -948,14 +1027,25 @@ fn dense_rows(dense: &DenseShape, row_bits: u32) -> Vec<Range<u64>> {
     // bits.
     let mut parts = Vec::new();
     let mut remaining = row_bits;
-    for &axis in dense.order() {
+    let outermost_padded = dense
+        .order()
+        .iter()
+        .copied()
+        .find(|&axis| dense.axes()[axis].is_padded());
+    for &index in dense.order() {
         if remaining == 0 {
             break;
         }
-        let axis = dense.axes()[axis];
+        let axis = dense.axes()[index];
         let bits = axis.bits();
         let fixed = bits.min(remaining);
-        parts.push((axis.real.div_ceil(1 << (bits - fixed)), fixed));
+        let real = if axis.is_padded() && Some(index) != outermost_padded {
+            // RFC-0047: only the outermost length padding gives skipped rows.
+            1 << bits
+        } else {
+            axis.real
+        };
+        parts.push((real.div_ceil(1 << (bits - fixed)), fixed));
         remaining -= fixed;
     }
     // From the least significant part up: the runs within `width` rows, repeated for each real

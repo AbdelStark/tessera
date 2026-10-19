@@ -814,6 +814,12 @@ All notable changes to the prover release train are recorded here: the crates un
 - Constraint-system digest conformance between the compiler and independent verifier, covering tiny models, variants and 8B/405B shapes. The `constraint-digest` example reports the first differing public constraint, and the named CI job checks it (RFC-0007, #120).
 
 - Specify canonical gadget advice columns and complete auxiliary range-table ordering, with an explicit scalar-reference migration and the original root-bracket polynomial retained (RFC-0050, #407).
+- Add independent public model advice-layout vectors for RFC-0011/0047/0050, including complete auxiliary lookup requests and zero rows (#106).
+- Preserve complete ordered auxiliary lookup requests in compiler selections and derive plan/witness table sets and exact root report counts from them (RFC-0050, #106).
+- Keep inner padded axes' rows in the advice commitment, as RFC-0047 requires, even when their entries are all zero (#106).
+- Bind every model advice source and gadget auxiliary to its PCS placement through `tessera-compiler::ModelAdviceLayout`, including weighted images of whole attention claims. Count repeated tiles before expansion; `claim_list` now returns a `Result` and refuses layouts that exceed the row or key capacity at `max_context` (RFC-0011/0046/0047/0050, #106).
+- Recalibrate the 405B soundness example with the complete 26-entry catalog, shared Softmax Range counts and the independently checked 22-bit advice row index. Parameter-set values and bound algorithms are unchanged; both sets retain their per-row targets (#106).
+- Replay complete conformance-model transcript schedules with the independently derived advice row-index point and the complete catalog's table order (RFC-0050, #106).
 
 ### Changed
 

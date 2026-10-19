@@ -252,26 +252,33 @@ fn newly_selected_auxiliary_tables_are_explicitly_refused() {
 }
 
 #[test]
-fn an_auxiliary_table_shared_with_requantization_is_refused() {
+fn a_root_auxiliary_table_shared_with_requantization_is_refused() {
     let c = conformance().remove(0);
-    let (lowering, mut selection) = lowered(&c.model, 3);
-    // Synthetic identifier alias: it must never expose only the supported contributor's counts.
+    let (lowering, selection) = lowered(&c.model, 3);
+    // The actual RFC-0050 carry family is also a split-key family in this public fixture.
     let shared = selection
-        .gadgets
+        .tables
         .iter()
-        .find_map(|(_, g)| match *g {
-            tessera_compiler::Gadget::Requant1 { table } => Some(table),
-            tessera_compiler::Gadget::RequantSplit { low, .. } => Some(low),
-            tessera_compiler::Gadget::RequantWide { mid, .. } => Some(mid),
-            _ => None,
-        })
-        .expect("a supported requantization table");
-    // The model-only lowering has no decoding node yet. Inject its public selection metadata
-    // without replacing any supported node, to exercise the future shared-table case directly.
-    selection.gadgets.push((
-        tessera_ir::NodeId(u32::MAX),
-        tessera_compiler::Gadget::Argmax { table: shared },
-    ));
+        .find(|t| matches!(t.kind, TableKind::Range { bits: 25 }))
+        .expect("the shared carry/split family")
+        .id;
+    assert!(selection.gadgets.iter().any(|(node, g)| matches!(
+        g,
+        tessera_compiler::Gadget::RsqrtRow
+    )
+        && selection.reads(*node).unwrap().contains(&shared)));
+    assert!(selection.gadgets.iter().any(|(node, g)| matches!(
+        g,
+        tessera_compiler::Gadget::Requant1 { .. }
+            | tessera_compiler::Gadget::RequantSplit { .. }
+            | tessera_compiler::Gadget::RequantWide { .. }
+    )
+        && selection.reads(*node).unwrap().contains(&shared)));
+    assert!(!selection.gadgets.iter().any(|(node, g)| matches!(
+        g,
+        tessera_compiler::Gadget::SoftmaxRow { .. }
+    )
+        && selection.reads(*node).unwrap().contains(&shared)));
     let engine = Engine::new(&lowering).expect("tables");
     let tokens = Secret::new(vec![1, 2, 3]);
     let witness = engine.run(&c.model, &tokens).expect("first pass");

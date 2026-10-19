@@ -68,7 +68,7 @@ def analyze(case):
                 result = scale(bounded(square_lo, max(x * x for x in a)), shapes[inputs[0]][param['axis']])
         elif op == 'RsqrtRow':
             root = math.isqrt((param['dim'] << (2 * param['kappa'])) // param['eps_int'])
-            result = [0, (1 << root.bit_length()) - 1]
+            result = [0, (1 << max(1, root.bit_length())) - 1]
         elif op == 'Requant':
             result = [param['lo'], param['hi']]
         elif op in ('Reshape', 'Transpose', 'Expand'):

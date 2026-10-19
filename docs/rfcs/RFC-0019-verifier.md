@@ -111,8 +111,8 @@ The ledger is updated only after `Accept` and is written atomically. `tessera-ve
 
 | Work | Size | Estimate (32 cores) |
 |---|---|---|
-| Decode and hash columns | about 0.72 GB advice + 0.3 GB weights | about 1 s |
-| Column consistency | `(G + 1) · τ` inner products over about 5.8×10^5 rows | about 2 s |
+| Decode and hash columns | about 1.18 GB advice + 0.3 GB weights (complete RFC-0050 layout) | recalibrate at the complete row count |
+| Column consistency | `(G + 1) · τ` inner products over 953,580 rows | recalibrate at the complete row count |
 | Re-encode combined rows | `G + 1 ≤ 17` coset NTTs of size 2^23 over `Fp2`, plus weights | about 5 s |
 | Tables | ≤ 20 dense cores of ≤ 2^24 values | about 2 s |
 | Lowering and range re-derivation | 405B claim list | about 5 s |

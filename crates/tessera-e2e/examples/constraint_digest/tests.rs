@@ -434,7 +434,7 @@ fn diagnostic_hashes_reject_floating_point() {
 }
 
 #[test]
-fn softmax_selection_expands_reused_limb_families_instead_of_deduplicating_roles() {
+fn softmax_selection_keeps_both_slacks_and_repeated_families() {
     let model = fixtures::models()
         .into_iter()
         .find(|m| m.name == "tiny-2-servable")
@@ -459,10 +459,13 @@ fn softmax_selection_expands_reused_limb_families_instead_of_deduplicating_roles
             .find(|c| c["pattern"] == json!(["SoftmaxRow"]))
             .unwrap();
         let refs = choice["tables"].as_array().unwrap();
-        assert_eq!(refs.len(), 2 + 34usize.div_ceil(usize::from(bits)));
+        let limbs = 34usize.div_ceil(usize::from(bits));
+        assert_eq!(refs.len(), 2 + 2 * limbs);
+        assert_eq!(&refs[2..2 + limbs], &refs[2 + limbs..]);
         if bits == 17 {
             assert_eq!(refs[1], refs[2]);
             assert_eq!(refs[2], refs[3]);
+            assert!(refs[1..].windows(2).all(|pair| pair[0] == pair[1]));
         }
     }
 }

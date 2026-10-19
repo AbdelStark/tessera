@@ -85,11 +85,10 @@ fn residual_classes(n: i8) -> impl FnOnce(&mut PublicQuantSpec) {
     }
 }
 
-/// Every lookup is in a selected table except RsqrtRow's remaining estimated checks.
-fn assert_every_lookup_is_in_a_table_or_norm(r: &CommitmentReport) {
+/// Every non-score lookup has a selected table, including every root auxiliary.
+fn assert_every_lookup_is_in_a_table(r: &CommitmentReport) {
     let tables: u64 = r.tables.iter().map(|t| t.lookups_per_token).sum();
-    let layers = u64::from(r.shape[0]);
-    assert_eq!(tables + layers * 2 * 30 + 30, r.per_token.lookups);
+    assert_eq!(tables, r.per_token.lookups);
 }
 
 #[test]
@@ -114,13 +113,13 @@ fn minimal_405b_requantizes_the_sources_137216_elements_per_layer_per_token() {
 #[test]
 fn the_405b_counts_are_risk_2s() {
     // The rescales' committed elements and lookups per layer per token, without the row gadgets'
-    // 128 · 7 + 2 · 30 lookups.
+    // 128 · 7 + 2 · 189 lookups.
     let rescales = |profile, classes| {
         let r = report_with(profile, 2, B405, 2, residual_classes(classes), |_| {});
         let layer = r.per_layer;
         (
             layer.lookup_outputs + layer.split_limbs,
-            layer.lookups - (128 * 7 + 2 * 30),
+            layer.lookups - (128 * 7 + 2 * 189),
         )
     };
     // servable, one class: 260,096 outputs and 66,560 limbs. Two: each residual site's update
@@ -147,20 +146,20 @@ fn committed_elements_are_counted_by_class() {
     assert_eq!(layer.lookup_outputs, 69_632);
     assert_eq!(layer.split_limbs, 4096 + 4096 + 1024 + 4096 + 4096);
     // Per row: SoftmaxRow's c_q, R_q and two NonNeg(·, 34) of two committed limbs each, for 32
-    // heads; RsqrtRow's 20 for each of two norms.
-    assert_eq!(layer.row_scalars, 32 * 6 + 2 * 20);
+    // heads; RsqrtRow's 187 for each of two norms.
+    assert_eq!(layer.row_scalars, 32 * 6 + 2 * 187);
     assert_eq!(layer.one_hot, 0);
-    // A lookup per output, one more per split element, and the row gadgets' 7 and 30.
-    assert_eq!(layer.lookups, 69_632 + 17_408 + 32 * 7 + 2 * 30);
+    // A lookup per output, one more per split element, and the row gadgets' 7 and 189.
+    assert_eq!(layer.lookups, 69_632 + 17_408 + 32 * 7 + 2 * 189);
     // minimal 8B: the down projection's residual takes RequantWide, three parts per element.
     let m = report_of(Profile::Minimal, 2, B8, 5);
     let splits = 4096 + 4096 + 1024 + 4096 + 4096;
     assert_eq!(m.per_layer.split_limbs, splits + 3 * 4096);
     assert_eq!(
         m.per_layer.lookups,
-        36_864 + splits + 4 * 4096 + 32 * 7 + 2 * 30
+        36_864 + splits + 4 * 4096 + 32 * 7 + 2 * 189
     );
-    assert_every_lookup_is_in_a_table_or_norm(&m);
+    assert_every_lookup_is_in_a_table(&m);
 }
 
 #[test]
@@ -210,12 +209,16 @@ fn the_tokens_totals_are_the_layers_and_the_ends_of_the_model() {
     assert_eq!(token.one_hot, 128_256);
     assert_eq!(token.lookup_outputs - 2 * layer.lookup_outputs, 4096);
     assert_eq!(token.split_limbs - 2 * layer.split_limbs, 4096);
-    assert_eq!(token.row_scalars - 2 * layer.row_scalars, 20);
-    assert_eq!(token.lookups - 2 * layer.lookups, 2 * 4096 + 30);
-    assert_every_lookup_is_in_a_table_or_norm(&r);
+    assert_eq!(token.row_scalars - 2 * layer.row_scalars, 187);
+    assert_eq!(token.lookups - 2 * layer.lookups, 2 * 4096 + 189);
+    assert_every_lookup_is_in_a_table(&r);
     assert_eq!(
         r.multiplicities(),
-        r.tables.iter().map(|t| t.rows).sum::<u64>()
+        r.tables
+            .iter()
+            .filter(|t| t.lookups_per_token > 0 || t.score_lookups > 0)
+            .map(|t| t.rows)
+            .sum::<u64>()
     );
     // Five positions: 15 scores per head and layer, rows of 8 leaves.
     assert_eq!(r.scores, 2 * 32 * 15);

@@ -20,6 +20,8 @@ tessera-ir = { path = "../tessera-ir" }
 tessera-logup = { path = "../tessera-logup" }
 tessera-pcs = { path = "../tessera-pcs" }
 tessera-sumcheck = { path = "../tessera-sumcheck" }
+tv-codec = { path = "../../verifier/crates/tv-codec" }
+tv-core = { path = "../../verifier/crates/tv-core" }
 
 [[bench]]
 name = "primitives"

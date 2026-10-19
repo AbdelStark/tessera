@@ -180,28 +180,36 @@ def weight_matrices_405b(log2_kw):
 
 
 # The tables of the compiler's 405B report, docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json
-# (servable, two shift classes, B_max = 32), in id order: (kind, lookups per token, rows). The
+# (servable, two shift classes, B_max = 32), including RFC-0050, in id order: (kind, lookups per token, rows). The
 # oracle runs on spec/vectors/ alone, so it states them; crates/tessera-protocol/tests/soundness.rs
 # checks the calculator's default against the report itself.
 REPORT_TABLES = [
-    ("Rope", 0, 8_388_608),
-    ("Exp", 0, 4_194_304),
-    ("Silu", 6_709_248, 1_073_741_824),
-    ("Range", 2_209_792, 2_097_152),
-    ("Requant", 16_384, 1_048_576),
-    ("Requant", 2_193_408, 16_777_216),
-    ("Requant", 6_838_272, 1_073_741_824),
-    ("Range", 16_128, 131_072),  # one reciprocal per logical head/query row
-    ("Range", 64_512, 65_536),  # four low limbs per row, two for each slack
-    ("Range", 32_256, 4),  # the two virtual top limbs
-    ("Range", 2_064_384, 1_048_576),
-    ("Requant", 2_064_384, 1_048_576),
-    ("Requant", 2_064_384, 1_073_741_824),
-    ("Requant", 4_128_768, 8_388_608),
-    ("Range", 4_128_768, 67_108_864),
-    ("Requant", 4_128_768, 67_108_864),
-    ("Requant", 6_709_248, 65_536),
-    ("Requant", 2_064_384, 4_294_967_296),
+    ('Rope', 0, 8_388_608),
+    ('Exp', 0, 4_194_304),
+    ('Silu', 6_709_248, 1_073_741_824),
+    ('Range', 253, 4_294_967_296),
+    ('Range', 65_271, 65_536),
+    ('Range', 759, 128),
+    ('Range', 23_782, 256),
+    ('Range', 506, 16_777_216),
+    ('Range', 1_012, 33_554_432),
+    ('Range', 4_130_286, 67_108_864),
+    ('Range', 2_530, 134_217_728),
+    ('Range', 16_634, 131_072),
+    ('Range', 506, 32_768),
+    ('Range', 15_686, 2),
+    ('Range', 2_209_792, 2_097_152),
+    ('Requant', 16_384, 1_048_576),
+    ('Requant', 2_193_408, 16_777_216),
+    ('Requant', 6_838_272, 1_073_741_824),
+    ('Range', 32_256, 4),
+    ('Range', 2_064_384, 1_048_576),
+    ('Requant', 2_064_384, 1_048_576),
+    ('Requant', 2_064_384, 1_073_741_824),
+    ('Requant', 4_128_768, 8_388_608),
+    ('Requant', 4_128_768, 67_108_864),
+    ('Requant', 6_709_248, 65_536),
+    ('Requant', 2_064_384, 4_294_967_296),
 ]
 
 
@@ -210,17 +218,17 @@ def lookups_405b():
     16,384, T = its rows. The Exp instance looks up every position of the padded score tensor,
     2^7 layers × 2^7 heads × 2^14 queries × 2^14 keys = 2^42 (RFC-0030 'Cost')."""
     instances = []
-    for index, (kind, per_token, rows) in enumerate(REPORT_TABLES):
+    for kind, per_token, rows in REPORT_TABLES:
         if kind == "Exp":
             require(per_token == 0, "Exp is looked up by scores only")
             lookups = pow2_at_least(LAYERS) * pow2_at_least(HEADS) * TOKENS * TOKENS
-        elif index in (7, 8, 9):
-            # RFC-0035's stacked row boxes include padded layers and heads.
-            per_row = {7: 1, 8: 4, 9: 2}[index]
-            require(per_token == LAYERS * HEADS * per_row, "Softmax row lookup count")
-            lookups = pow2_at_least(LAYERS) * pow2_at_least(HEADS) * TOKENS * per_row
         else:
             lookups = per_token * TOKENS
+            # Shared Range families also serve roots/requants. Add only the
+            # Softmax part's two padded layers, without padding those other reads.
+            per_row = {2**17: 1, 2**16: 4, 2**2: 2}.get(rows, 0) if kind == "Range" else 0
+            require(per_token >= LAYERS * HEADS * per_row, "Softmax share of a Range family")
+            lookups += (pow2_at_least(LAYERS) - LAYERS) * HEADS * TOKENS * per_row
         instances.append({"lookups": lookups, "rows": rows})
     return instances
 
@@ -240,7 +248,10 @@ def statement_405b():
         "forests": forests,
         "lookups": lookups,
         "claim_groups": [64] * 16,
-        "advice_rows": 2**21,
+        # RFC-0011/0047/0050, servable c2/Q512: both independent layouts
+        # derive 2,328,576 allocated rows, including gaps. The calculator
+        # input is the padded row-index domain, hence 2^22 rows (theta=22).
+        "advice_rows": pow2_at_least(2_328_576),
         "matrices": weight_matrices_405b(20),
     }
 

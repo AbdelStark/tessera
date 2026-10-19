@@ -7,6 +7,8 @@
 
 #![allow(dead_code)] // each test binary uses part of it
 
+pub mod public_vectors;
+
 use tessera_codec::Rational;
 use tessera_compiler::{Range, Ranges, analyze};
 use tessera_ir::{

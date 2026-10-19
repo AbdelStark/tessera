@@ -11,7 +11,7 @@
 
 #![allow(dead_code)]
 
-use tv_codec::{DIGEST_CONTEXT, DecodeLimits, HEADER_LEN, MAGIC};
+use tv_codec::{DIGEST_CONTEXT, DecodeLimits, HEADER_LEN, MAGIC, Rational};
 use tv_core::claims::{
     AdviceLayoutParams, ClaimList, CommitmentLayout, ParamSetId, QuantPoint, Site,
     WeightLayoutParams,
@@ -315,4 +315,76 @@ pub fn seal_as(schema_id: u16, version: u16, payload: &[u8]) -> Vec<u8> {
 pub fn payload(envelope: &[u8]) -> &[u8] {
     let header = usize::try_from(HEADER_LEN).expect("20");
     &envelope[header..envelope.len() - 32]
+}
+
+/// An integer vector field checked against its destination type.
+pub fn number<T: TryFrom<i128>>(value: &Json) -> T
+where
+    T::Error: std::fmt::Debug,
+{
+    T::try_from(integer(value)).expect("in range")
+}
+
+fn site_named(name: &str) -> Site {
+    match name {
+        "AttnNorm" => Site::AttnNorm,
+        "RopeQ" => Site::RopeQ,
+        "RopeK" => Site::RopeK,
+        "V" => Site::V,
+        "AttnOut" => Site::AttnOut,
+        "AttnResidual" => Site::AttnResidual,
+        "MlpNorm" => Site::MlpNorm,
+        "Silu" => Site::Silu,
+        "Up" => Site::Up,
+        "Product" => Site::Product,
+        "MlpResidual" => Site::MlpResidual,
+        other => panic!("unknown site {other}"),
+    }
+}
+
+/// The golden claim list associated with an oracle model artifact.
+pub fn claims_of(file: &str) -> ClaimList {
+    let golden = goldens()
+        .into_iter()
+        .find(|g| g.model == file)
+        .unwrap_or_else(|| panic!("no golden claim list for {file}"));
+    ClaimList::open(&golden.envelope, &DecodeLimits::MESSAGE).expect("a golden claim list")
+}
+
+/// Makes a variant's edits to the claim list's public part, each in every layer it names.
+pub fn apply_variant(variant: &Json, claims: &mut ClaimList) {
+    if let Some(heads) = variant.get("n_kv_heads") {
+        claims.arch.n_kv_heads = number(heads);
+    }
+    if let Some(rescales) = variant.get("rescale") {
+        for edit in items(rescales) {
+            let [layer, site, mode, value] = items(edit) else {
+                panic!("a rescale is [layer, site, mode, value]");
+            };
+            let point = at(number(layer), site_named(string(site)));
+            match string(mode) {
+                "pot" => {
+                    let shifts: Vec<i8> = items(value).iter().map(number).collect();
+                    make_pot(claims, point, &shifts);
+                }
+                "affine" => make_affine(claims, point, number(value)),
+                other => panic!("unknown mode {other}"),
+            }
+        }
+    }
+    if let Some(scales) = variant.get("score_scales") {
+        for edit in items(scales) {
+            let [layer, num, den] = items(edit) else {
+                panic!("a score scale is [layer, num, den]");
+            };
+            let layer: u32 = number(layer);
+            let entry = claims
+                .quant
+                .score_scales
+                .iter_mut()
+                .find(|(l, _)| *l == layer)
+                .expect("the layer's scale");
+            entry.1 = Rational::new(number(num), number(den)).expect("in lowest terms");
+        }
+    }
 }

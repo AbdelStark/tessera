@@ -529,6 +529,8 @@ dependencies = [
  "tessera-logup",
  "tessera-pcs",
  "tessera-sumcheck",
+ "tv-codec",
+ "tv-core",
 ]
 
 [[package]]
@@ -574,6 +576,7 @@ dependencies = [
  "tessera-codec",
  "tessera-field",
  "tessera-ir",
+ "tessera-pcs",
  "tessera-tables",
 ]
 

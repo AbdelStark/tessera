@@ -39,7 +39,8 @@
 //! | [`weights::Evaluated::check_columns`] | direct weight-column authentication and both combined rows' consistency, with structural and committed-position indices kept distinct |
 //! | [`claims::ClaimList`] | the claim list's schema, decoded from its sealed envelope and encoded back for `claim_list_digest` (RFC-0007, RFC-0026, RFC-0042) |
 //! | [`params::ParamSet`] | the parameter sets the verifier accepts and the layout each prescribes (RFC-0014, RFC-0026) |
-//! | [`validation::validate`] | claim-list validation, RFC-0007 'Verifier validation' in RFC-0039's order: steps 1 to 4, 5.1, 6 and 7, and RFC-0019 step 2 before them |
+//! | [`validation::validate`] | claim-list validation, RFC-0007 'Verifier validation' in RFC-0039's order: steps 1 to 7, and RFC-0019 step 2 before them |
+//! | [`advice::Layout`] | complete public advice geometry, source locations, zero rows, segments and weighted whole-claim opening images (RFC-0050) |
 //! | [`validation::check_public`] | steps 2.1 to 2.3, which give the public part the lowering reads |
 //! | [`lowering::lower`] | the Llama lowering of a claim list's public part, node by node (RFC-0044) |
 //! | [`schedule::derive()`] | the stage schedule of a lowered graph: the leaf stage's claims, each reduction stage's instances with their relations, variables and degrees, and where every claim goes (RFC-0010, RFC-0037) |
@@ -49,12 +50,12 @@
 //! The gadgets' final checks and their relations in the stages (#124), the masked sumcheck of
 //! RFC-0013 (#159), the leaf stage's integration of the trees with the stages (#130), the
 //! regeneration of the tables and the structured evaluation of `t̃` (#100), and the verifier's
-//! driver and verdicts (#128) build on these; so do the advice layout (#116), the transcript
+//! driver and verdicts (#128) build on these; so do the advice opening (#116), the transcript
 //! steps that squeeze the opening's challenges and queries, the hiding of RFC-0013 (blinding
 //! rows, `u'_g`, `q_g`), which take the claim pool. [`weights`] adds the protocol1 weight
 //! opening components; the full driver still joins them to the schedule.
-//! Claim-list validation's steps 5.2 and 5.3 (#117), the advice layout's fit of step 6 (#106)
-//! and `ConstraintSystemDigest` (#120) build on the lowering.
+//! `ConstraintSystemDigest` (#120) builds on the lowering. Validation already derives the
+//! complete lookup catalog and checks the advice layout at `max_context`.
 //!
 //! # Claim lists
 //!
@@ -534,6 +535,7 @@ compile_error!(
     "the `test-params` feature accepts parameter sets that certify nothing; it must not be enabled in a release build (RFC-0001 'Cargo features')"
 );
 
+pub mod advice;
 pub mod claims;
 mod fiat_shamir;
 mod interpolation;

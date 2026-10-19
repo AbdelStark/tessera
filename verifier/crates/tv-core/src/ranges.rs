@@ -116,7 +116,7 @@ pub fn analyze(graph: &Graph) -> Result<Vec<Interval>, RangeError> {
                     .and_then(|n| n.checked_div(u128::from(eps_int)))
                     .ok_or(RangeError::Internal)?;
                 let root = ratio.isqrt();
-                let width = u128::BITS.saturating_sub(root.leading_zeros());
+                let width = u128::BITS.saturating_sub(root.leading_zeros()).max(1);
                 let last = 1u128
                     .checked_shl(width)
                     .and_then(|v| v.checked_sub(1))

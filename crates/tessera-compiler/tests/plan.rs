@@ -121,6 +121,7 @@ fn claims(model: &IntegerModel, query_block: u32) -> ClaimList {
         select(&lowering.graph, &ranges, &lowering.tables, &policy).expect("every gadget fits");
     let params = ParamSetId(Ascii::new("test-small/1").expect("ASCII"));
     claim_list(public, &selection, &policy, TEST_SMALL, params)
+        .expect("the maximum advice layout fits")
 }
 
 /// The lengths a model's tiles are expanded at: powers of two and their neighbours, and the whole
@@ -838,8 +839,11 @@ fn a_query_block_that_is_not_a_power_of_two_is_refused() {
     let (_, _, model) = &models[0];
     let public = PublicModel::of(model);
     let refusal = CompileError::Usage { rule: QUERY_BLOCK };
+    let valid = claims(model, 1);
     for q in [0, 3, 6, 100, 511, 513, (1 << 31) + 1, u32::MAX] {
-        assert_eq!(plan(public, &claims(model, q)), Err(refusal), "Q = {q}");
+        let mut invalid = valid.clone();
+        invalid.gadget_policy.query_block = q;
+        assert_eq!(plan(public, &invalid), Err(refusal), "Q = {q}");
     }
     for q in [1, 2, 64, 1 << 31] {
         assert!(plan(public, &claims(model, q)).is_ok(), "Q = {q}");

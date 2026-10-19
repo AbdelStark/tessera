@@ -97,14 +97,17 @@ Soundness: if the committed rows are `δ`-far from the code for `δ < (1 − ρ)
 
 ### Sizes at the default parameters (16K tokens, 16K context, 405B)
 
+Canonical `servable`, two shift classes, Q=512, including RFC-0050's complete columns. These are layout counts and byte sizes; timings require separate measurements.
+
 | Quantity | Value |
 |---|---|
-| Committed elements | about 2.4×10^12 |
-| Non-zero rows | about 5.8×10^5 |
-| Opened columns (`τ_A = 155`) | 155 × 5.8×10^5 × 8 bytes ≈ 0.72 GB |
+| Committed row entries, padding included | 953,580 × 2^22 ≈ 4.0×10^12 |
+| Non-zero rows | 953,580 |
+| Allocated rows, gaps included | 2,328,576 (`ϑ = 22`) |
+| Opened columns (`τ_A = 155`) | 155 × 953,580 × 8 bytes ≈ 1.18 GB |
 | Combined rows (`G + 1 ≤ 17`) | ≤ 17 × 2^22 × 16 bytes ≈ 1.14 GB |
 | Merkle multiproof | < 0.2 MB |
-| Verifier work | hash 0.72 GB of columns; `(G + 1) · τ_A` inner products of length 5.8×10^5; `G + 1` coset NTTs of size 2^23 over `Fp2` |
+| Verifier work | hash 1.18 GB of columns; `(G + 1) · τ_A` inner products of length 953,580; `G + 1` coset NTTs of size 2^23 over `Fp2` |
 
 ### Invariants
 

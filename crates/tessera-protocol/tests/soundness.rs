@@ -292,22 +292,29 @@ fn the_405b_lookups_are_the_compilers_reports() {
     let tables = list(&report["tables"]);
     let statement = StatementSizes::llama_405b_16k();
     assert_eq!(statement.lookups.len(), tables.len());
-    for (index, (instance, table)) in statement.lookups.iter().zip(tables).enumerate() {
+    for (instance, table) in statement.lookups.iter().zip(tables) {
         let per_token: u64 = int(&table["lookups_per_token"]);
         let expected = match text(&table["kind"]) {
             "Exp" => {
                 assert_eq!(per_token, 0, "Exp is looked up by the scores alone");
                 1 << 42
             }
-            "Range" if (7..=9).contains(&index) => {
-                let per_row = [1u64, 4, 2][index - 7];
-                assert_eq!(per_token, 126 * 128 * per_row);
-                // These row lookup instances include every padded layer/head row, as Exp does.
-                per_row * (1 << 28)
-            }
             _ => {
                 assert_eq!(int::<u64>(&table["score_lookups"]), 0);
-                per_token * (1 << 14)
+                let per_row = if text(&table["kind"]) == "Range" {
+                    match int::<u64>(&table["rows"]) {
+                        131_072 => 1,
+                        65_536 => 4,
+                        4 => 2,
+                        _ => 0,
+                    }
+                } else {
+                    0
+                };
+                assert!(per_token >= 126 * 128 * per_row);
+                // A Range family can serve both root/requant and Softmax keys.
+                // Only its Softmax contribution extends to the padded layers.
+                per_token * (1 << 14) + per_row * (128 - 126) * 128 * (1 << 14)
             }
         };
         assert_eq!(instance.lookups, expected, "{table}");

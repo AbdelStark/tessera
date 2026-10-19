@@ -111,7 +111,7 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 `b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients.
 
 The field term is the tensor generator's. The proximity coefficients are `eq(ξ*, row)` for a random point `ξ*` with one coordinate per bit of the row index ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 3), not independent uniform values. Folding those `ϑ` coordinates one at a time costs one line proximity gap each. The false-witness probability is therefore `ϑ·n/|Fp2|`, with `n` the codeword length (Diamond and Posen, 'Proximity Testing with Logarithmic Randomness' (2024); Diamond and Gruen, 'Proximity Gaps in Interleaved Codes' (2025), Theorems 2 and 3).
-- **`ϑ` for advice** is `ν − log2 k`, every bit of the row index: about 20 at 405B, 16K tokens and 16K context, whose 5.8×10^5 non-zero rows span a row index of 20 or 21 bits. The term is then `21 · 2^23/2^128 ≈ 2^{−100.6}`.
+- **`ϑ` for advice** is `ν − log2 k`, every bit of the allocated row index. The complete canonical 405B `servable`, two-class, Q=512 layout at 16K tokens allocates 2,328,576 rows, including gaps, of which 953,580 are committed (RFC-0047/0050). Thus `ϑ = 22`, and the term is `22 · 2^23/2^128 ≈ 2^{−100.5}`. Both layout implementations check these counts in `crates/tessera-bench/tests/commitment_report.rs`.
 - **`ϑ_T` for weight matrix `T`** is `⌈log2⌉` of its data and blinding rows: at most 18 at 405B. In `tessera-protocol/1`, which commits no blinding rows and no mask for the weights, it is `⌈log2 m_T⌉` and the rate is `k_T / n_T`; a matrix with no committed rows has no proximity row ([RFC-0049](RFC-0049-weight-proximity.md#the-calculator)). The term is at most `18 · 2^22/2^128 ≈ 2^{−101.8}`.
 - **Both targets hold.** `live-64` and `ni-100` keep about 100 bits each, with no grinding: `ξ*` is squeezed after the stages' final evaluations, which a prover can vary without redoing a proof of work ('Grinding'), so the term meets its target alone.
 
@@ -248,12 +248,12 @@ A FixedBits comparison would be sound but not exact: it fails a row up to `2^{�
 |---|---|---|
 | `rounds` | 10,000 of degree 7 | this table's "about 10^4 rounds" of "degree `d ≤ 7`" |
 | `stages` | 2, of at most 64 instances | `servable`'s two reduction stages (RFC-0010 'Stages'); the compiler's schedule batches 18 and 4 before the gadgets' relations join it |
-| `tree_levels` | 42, of at most 37 instances | the height of the tallest tree, the `Exp` lookup tree; two trees for each of the 18 table entries, and the `SoftmaxRow` forest |
+| `tree_levels` | 42, of at most 53 instances | the height of the tallest tree, the `Exp` lookup tree; two trees for each of the complete 26 table entries, and the `SoftmaxRow` forest (including RoPE as a conservative unused entry) |
 | `zero_checks` | 8, of 42 variables | RFC-0035's four padding zero-checks, `OneHot`'s booleanity and vocabulary checks, and the first checkpoint's equality: seven instances, with one spare, at most the score tensor's 42 variables |
 | `forests` | `s = 28` | the `SoftmaxRow` forest, `2^7` layers by `2^7` heads by `2^{14}` rows |
-| `lookups` | the report's 18 table entries | `N` the lookups per token times 16,384, `T` the rows; `Exp`'s `N` is `2^{42}`, every position of the padded score tensor; the reciprocal and the two bracket-limb tables count one, four and two lookups per padded head/query row, `2^{28}` rows ([RFC-0030](RFC-0030-masked-exponentials.md#cost)) |
+| `lookups` | the report's complete 26 table entries | `N` the lookups per token times 16,384, `T` the rows; `Exp`'s `N` is `2^{42}`. Shared Range families add the two padded layers' Softmax contributions (one reciprocal, four low limbs, two top limbs per head/query row); their root/requant contributions retain the report's real-row counts. RoPE is a conservative zero-lookup entry ([RFC-0030](RFC-0030-masked-exponentials.md#cost), RFC-0050) |
 | `claim_groups` | 16, of at most 64 claims | RFC-0011's target for `G`; the compiler's pool holds 38 claims before the gadgets' join |
-| `advice_rows` | `2^{21}` | the 21-bit row index of 'Soundness budget' |
+| `advice_rows` | `2^{22}` | the padded row-index domain of the 2,328,576-row complete allocation, including gaps (RFC-0047/0050) |
 | `matrices` | the ten of RFC-0040 at `k_W = 2^{20}` | each `k_T = 2^{20}`; `m_T` from 'The matrices', `ChannelParams`' 882 from [RFC-0012](RFC-0012-weight-commitment.md#column-answers); `ν_T` the padded dimensions' bits |
 
 `--lookups N` and `--table-rows T` replace the instances with one of `N` lookups and `T` rows, a flag left out taking `Exp`'s. The CLI's other sizes are fixed until the compiler's schedule gives them.
@@ -263,11 +263,11 @@ A FixedBits comparison would be sound but not exact: it fails a row up to `2^{�
 | Row | `live-64` | `ni-100` | This RFC |
 |---|---|---|---|
 | Sumcheck and tree rounds | 121.99 | 121.99 | ≥ 125: the batching challenges `m/q` count too |
-| All rounds, union bound | 111.86 | 111.86 | ≥ 112: `7·10^4/q` alone gives 111.90 |
+| All rounds, union bound | 111.84 | 111.84 | ≥ 112: `7·10^4/q` alone gives 111.90 |
 | LogUp identity | 85.99 | 105.99 | about 90, and 110: the `Exp` instance holds `2^{42}`, not `2^{38}` |
 | Advice queries | 64.32 | 80.09 + 20 | 64.3, and 80.1, which is 80.098 rounded to nearest |
 | Weight queries | 65.76 | 82.72 + 20 | 64.0 and 80.5 at the masked rate; protocol/1's weights are unmasked ([RFC-0049](RFC-0049-weight-proximity.md#the-calculator)) |
-| Field terms | 100.60, weights 101.91 | the same | about 100; 100.6 and 101.8 |
+| Field terms | 100.53, weights 101.91 | the same | about 100; the complete advice allocation gives 22 row-index bits |
 
 Every row meets its target at both sets. `live-64`'s minimum is the advice queries, 64.32 bits for 64; `ni-100`'s the advice queries, 100.09 bits for 100.
 

@@ -859,16 +859,18 @@ fn a_table_whose_regenerated_digest_differs_is_refused() {
         mismatch(&claims),
         StatementField::Table { table: TableId(1) }
     );
-    // Table 6 is a `Requant` table: another clamp.
+    // Change a Requant clamp under its original digest; auxiliary families precede it.
     let mut claims = twin(SERVABLE);
-    let TableKind::Requant { lo, .. } = &mut claims.tables[6].kind else {
-        panic!("table 6 is a Requant table");
-    };
-    *lo = -127;
-    assert_eq!(
-        mismatch(&claims),
-        StatementField::Table { table: TableId(6) }
-    );
+    let (id, lo) = claims
+        .tables
+        .iter_mut()
+        .find_map(|t| match &mut t.kind {
+            TableKind::Requant { lo, .. } => Some((t.id, lo)),
+            _ => None,
+        })
+        .expect("a Requant table");
+    *lo += 1;
+    assert_eq!(mismatch(&claims), StatementField::Table { table: id });
 }
 
 #[test]
