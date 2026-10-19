@@ -743,6 +743,12 @@ All notable changes to the prover release train are recorded here: the crates un
 - RFC-0009 closes two uniqueness gaps the #369 analysis found, before `RsqrtRow` (#126), `OneHot` and `Argmax` (#123) are implemented ([#377](https://github.com/AbdelStark/tessera/issues/377), [#378](https://github.com/AbdelStark/tessera/issues/378)):
   - **The limb box.** Every decomposition of a field element into range-checked limbs has its box below `P`. `RsqrtRow`'s `u` takes `NonNeg(u, 55)`: three 16-bit limbs and a 7-bit top limb. Four full 16-bit limbs would also represent `u + P`, and at 8B admit a second root `ρ`. RFC-0035's padded rows cite the rule.
   - **Token ids.** `OneHot` gains the zero-check `Σ_x eq(r, x)·(1 − LT(x_v, vocab))·h(x) = 0`, which pins `t ∈ [0, vocab)` at no commitment or lookup. Lemma 8 now proves that. `Argmax` masks its keys at `v ≥ vocab`, so its checks cover every position the one-hot can mark.
+- RFC-0047, accepted, fixes the inputs of the advice layout that no document fixed ([#106](https://github.com/AbdelStark/tessera/issues/106)):
+  - **Order.** A committed tensor's layout order puts its padded axes first, then the others, each in axis order. A claim's point is permuted into it. At 405B a `[16384, 53248]` MLP tensor commits 208 rows rather than 256.
+  - **Size.** `ν = log2 k + ⌈log2 R⌉`. A layout allocates at most `2^{32}` rows at `max_context` (RFC-0007 step 6, `Layout`), so every column answer decodes under the default vector limit.
+  - **Heads.** `n_heads / n_kv_heads` is a power of two (RFC-0007 step 2, `Architecture`), as RFC-0034's and RFC-0037's head layouts assume.
+  - **Length.** A request is a sequence of `n = prompt_len + output_len` positions. RFC-0019 step 4 refuses a request longer than `max_context` (`Batch`), which RFC-0009 Lemma 6 and the layout's maximum assume.
+  - RFC-0034's masked-row conditions read `Q'`.
 
 ### Changed
 

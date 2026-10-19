@@ -156,7 +156,7 @@ pub struct PublicStatement {
     pub predictor: PredictorSpec,              // RFC-0017
 }
 pub struct BatchDescriptor { pub requests: Vec<RequestRef> }
-pub struct RequestRef { pub request_id: u64, pub session_id: [u8; 16], pub prompt_len: u32, pub output_len: u32 }
+pub struct RequestRef { pub request_id: u64, pub session_id: [u8; 16], pub prompt_len: u32, pub output_len: u32 }  // n = prompt_len + output_len positions (RFC-0047)
 ```
 
 Protocol messages (`Round1`, `SeedCommit`, `ProverSeedShare`, `SeedReveal`, `Round2Response`, `ColumnQueries`, `Round3Response`, `NiProof`) are defined in [RFC-0036](../rfcs/RFC-0036-protocol-messages.md), in the session order of [RFC-0014](../rfcs/RFC-0014-interaction-and-soundness.md#session-order-live-mode). Transcript-anchor types (`DigestLogEntry`, `SessionOpen`, `LogManifest`) are defined in [RFC-0015](../rfcs/RFC-0015-transcript-anchor.md#log-format). `AuditSample` is defined in [RFC-0016](../rfcs/RFC-0016-audit-sampling.md#sample-derivation).

@@ -106,7 +106,7 @@ Before reading any proof message, the verifier runs these checks in order. The f
 
 1. `params` names an allowed parameter set (`test-small` only with the `test-params` feature), else `Reject(Params)`: [RFC-0019](RFC-0019-verifier.md#check-order) runs this check first, as its step 2. `protocol_version` is supported (`ProtocolVersion`).
 2. Architecture and quantization, in this order:
-   1. Architecture consistency (`Architecture`): `n_layers ≥ 1`; `n_kv_heads ≥ 1` divides `n_heads ≥ 1`; `d_head` is even, from 2 to `2^{16} − 2`; `d_model = n_heads · d_head`; `d_ff ≥ 1`; `vocab` and `max_context` within protocol limits (v1: `1 ≤ vocab ≤ 2^18`, `1 ≤ max_context ≤ 2^17`).
+   1. Architecture consistency (`Architecture`): `n_layers ≥ 1`; `n_kv_heads ≥ 1` divides `n_heads ≥ 1`, and `n_heads / n_kv_heads` is a power of two ([RFC-0047](RFC-0047-advice-order.md#heads)); `d_head` is even, from 2 to `2^{16} − 2`; `d_model = n_heads · d_head`; `d_ff ≥ 1`; `vocab` and `max_context` within protocol limits (v1: `1 ≤ vocab ≤ 2^18`, `1 ≤ max_context ≤ 2^17`).
    2. The public quantization data (`Quantization`):
       - `quant.rope` is `arch.rope`;
       - `act_exponents` holds the embedding, each INT8 site of the profile and the final norm, once each and sorted;
@@ -131,7 +131,7 @@ Before reading any proof message, the verifier runs these checks in order. The f
       - its gadget's preconditions hold, those of a split gadget among them;
       - a `SoftmaxRow`'s `Exp` table maps its last key to 0 ([RFC-0030](RFC-0030-masked-exponentials.md#range-analysis-and-validation)).
    3. The tables the lowering derives are the claim list's, id for id (`Table { table }`, the first id that differs). A lookup names a lookup table, never a `Rope` table ([RFC-0008](RFC-0008-logup-and-tables.md#table-kinds)): no lowering derives one for a lookup.
-6. Layout: commitment parameters are those the parameter set prescribes, and the advice layout derives and fits within the protocol's maximum matrix size (`Layout`). Its attention tiles take `log2 query_block` ([RFC-0034](RFC-0034-causal-blocks.md#causal-layout)), so `query_block` is a power of two, and a row holds one key against a tile's queries and heads: `g·min(query_block, N_max) ≤ k` ([RFC-0046](RFC-0046-advice-segments.md#rows-too-short-for-a-key)).
+6. Layout: commitment parameters are those the parameter set prescribes, and the advice layout derives and fits within the protocol's maximum, `2^{32}` rows at `n = max_context` ([RFC-0047](RFC-0047-advice-order.md#the-maximum-layout)) (`Layout`). Its attention tiles take `log2 query_block` ([RFC-0034](RFC-0034-causal-blocks.md#causal-layout)), so `query_block` is a power of two, and a row holds one key against a tile's queries and heads: `g·min(query_block, N_max) ≤ k` ([RFC-0046](RFC-0046-advice-segments.md#rows-too-short-for-a-key)).
 7. Scoring and anchor templates name supported variants, once they join the claim list ([RFC-0026](RFC-0026-claim-list-layout.md)) (`Template`).
 
 The derived constraint system has a canonical digest (`ConstraintSystemDigest`, computed by both the compiler and the verifier with independent code). It is not part of the protocol; CI compares the two digests on every conformance model to detect lowering divergence early.
