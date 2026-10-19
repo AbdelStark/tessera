@@ -14,25 +14,34 @@ const TOKENS: u64 = 1 << 14;
 /// Each LogUp instance of the compiler's 405B report, `commitment-report-405b-servable-c2-b32`
 /// (`docs/perf/v0.2/`, two shift classes, `B_max = 32`), in table order: its lookups per token,
 /// and its table's rows. Exp and SoftmaxRow's row ranges count padded dimensions below.
-const TABLES: [(u64, u64); 18] = [
-    (0, 1 << 23),         // Rope
-    (0, 1 << 22),         // Exp: looked up by the scores, below
-    (6_709_248, 1 << 30), // Silu
-    (2_209_792, 1 << 21), // Range
-    (16_384, 1 << 20),    // Requant
-    (2_193_408, 1 << 24), // Requant: RoPE's q and k
-    (6_838_272, 1 << 30), // Requant
-    (16_128, 1 << 17),    // SoftmaxRow reciprocal, one per logical row
-    (64_512, 1 << 16),    // Two low limbs for each of its two slacks
-    (32_256, 1 << 2),     // One top limb for each slack
-    (2_064_384, 1 << 20), // Range
-    (2_064_384, 1 << 20), // Requant
-    (2_064_384, 1 << 30), // Requant
-    (4_128_768, 1 << 23), // Requant
-    (4_128_768, 1 << 26), // Range
-    (4_128_768, 1 << 26), // Requant
-    (6_709_248, 1 << 16), // Requant
-    (2_064_384, 1 << 32), // Requant
+// Last component: Softmax reads per padded head/query row in this family.
+const TABLES: [(u64, u64, u64); 26] = [
+    (0, 8_388_608, 0),             // Rope
+    (0, 4_194_304, 0),             // Exp
+    (6_709_248, 1_073_741_824, 0), // Silu
+    (253, 4_294_967_296, 0),       // Range
+    (65_271, 65_536, 4),           // Range
+    (759, 128, 0),                 // Range
+    (23_782, 256, 0),              // Range
+    (506, 16_777_216, 0),          // Range
+    (1_012, 33_554_432, 0),        // Range
+    (4_130_286, 67_108_864, 0),    // Range
+    (2_530, 134_217_728, 0),       // Range
+    (16_634, 131_072, 1),          // Range
+    (506, 32_768, 0),              // Range
+    (15_686, 2, 0),                // Range
+    (2_209_792, 2_097_152, 0),     // Range
+    (16_384, 1_048_576, 0),        // Requant
+    (2_193_408, 16_777_216, 0),    // Requant
+    (6_838_272, 1_073_741_824, 0), // Requant
+    (32_256, 4, 2),                // Range
+    (2_064_384, 1_048_576, 0),     // Range
+    (2_064_384, 1_048_576, 0),     // Requant
+    (2_064_384, 1_073_741_824, 0), // Requant
+    (4_128_768, 8_388_608, 0),     // Requant
+    (4_128_768, 67_108_864, 0),    // Requant
+    (6_709_248, 65_536, 0),        // Requant
+    (2_064_384, 4_294_967_296, 0), // Requant
 ];
 
 /// The `Exp` table, which every position of the padded score tensor looks up (RFC-0030 'Cost'):
@@ -70,34 +79,33 @@ impl StatementSizes {
     ///   most 64 instances; the compiler's schedule batches 18 and 4 before the gadgets' own
     ///   relations join it (#118).
     /// - **Tree levels:** 42, the height of the tallest tree, the `Exp` instance's lookup tree of
-    ///   `2^42` leaves. Each batches at most 37 instances, the 18 table entries' two trees and the
+    ///   `2^42` leaves. Each batches at most 53 instances, the 26 table entries' two trees and the
     ///   `SoftmaxRow` forest.
     /// - **Zero-checks:** 8 of at most 42 variables, the score tensor's: RFC-0035's four padding
     ///   zero-checks, `OneHot`'s booleanity and vocabulary checks, and the first checkpoint's
     ///   equality: seven instances, with one spare.
     /// - **Forests:** the `SoftmaxRow` forest, `2^7 · 2^7 · 2^14 = 2^28` trees: `s = 28`.
-    /// - **LogUp:** the report's 18 table entries, `N` its lookups per token times 16,384 and `T`
+    /// - **LogUp:** the report's complete 26 table entries (RoPE is a conservative zero-lookup entry), `N` its lookups per token times 16,384 and `T`
     ///   its rows, except `Exp`'s `N`, the `2^42` positions of the padded score tensor (RFC-0030
-    ///   'Cost'). SoftmaxRow's three row-range tables count all `2^28` padded rows,
-    ///   with respectively one, four and two lookups per row. RFC-0014's "`N + T ≤ 2^38` per instance" holds for the other 17, not for it.
+    ///   'Cost'). Softmax's reciprocal and slack families add the padded layers'
+    ///   reads to their real-row counts; root reads sharing a family stay unchanged.
     /// - **Claim groups:** 16, RFC-0011's target for `G`, of at most 64 claims each; the
     ///   compiler's pool holds 38 claims before the gadgets' join.
-    /// - **Advice rows:** `2^21`, the 21-bit row index RFC-0014 counts for the 405B advice,
-    ///   whose `5.8·10^5` non-zero rows span 20 or 21 bits (RFC-0011).
+    /// - **Advice rows:** the 2^22 row-index domain, from 2,328,576 allocated rows.
+    ///   Both public layouts derive that allocation with RFC-0050's complete columns.
     /// - **Matrices:** the ten of RFC-0040 at `k_W = 2^20`, the width of `live-64/1` and
     ///   `ni-100/1`; under another width they would differ.
     pub fn llama_405b_16k() -> Self {
         let lookups = TABLES
             .iter()
             .enumerate()
-            .map(|(i, &(per_token, rows))| LookupSizes {
-                lookups: match i {
-                    EXP => EXP_LOOKUPS,
-                    // RFC-0035: include the padded layers' rows in these new instances too.
-                    7 => 1 << 28,
-                    8 => 4 << 28,
-                    9 => 2 << 28,
-                    _ => per_token * TOKENS,
+            .map(|(i, &(per_token, rows, softmax))| LookupSizes {
+                lookups: if i == EXP {
+                    EXP_LOOKUPS
+                } else {
+                    // Two padded layers add only Softmax reads, even when
+                    // root/requant lookups share the same Range family.
+                    per_token * TOKENS + softmax * (128 - 126) * 128 * TOKENS
                 },
                 rows,
             })
@@ -114,7 +122,7 @@ impl StatementSizes {
             forests: vec![28],
             lookups,
             claim_groups: vec![64; 16],
-            advice_rows: 1 << 21,
+            advice_rows: 1 << 22,
             matrices: MATRICES
                 .iter()
                 .map(|&(matrix, rows, variables)| MatrixSizes {

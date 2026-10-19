@@ -419,7 +419,8 @@ impl<'a> ModelAdviceLayout<'a> {
     /// # Errors
     /// `Model` when layout controls or allocated rows violate RFC-0011/0047;
     /// `Usage` for inconsistent metadata. The full row count is checked before
-    /// expanding repeated attention tiles.
+    /// expanding repeated attention tiles. `Schedule` reports a lowering whose
+    /// layers do not form the canonical template.
     pub fn new(
         lowering: &'a Lowering,
         selection: &Selection,
@@ -523,6 +524,8 @@ impl<'a> ModelAdviceLayout<'a> {
     /// Map a natural tensor point to every weighted advice opening it owes.
     /// Attention shares fix the high coordinates of aligned head/query boxes;
     /// their equality weights sum local openings into the whole tensor claim.
+    /// Multiply each image weight by the original claim's batching coefficient;
+    /// the weighted sum still owes that one original claimed value.
     ///
     /// # Errors
     /// `Usage` for an absent source or wrong natural point arity.

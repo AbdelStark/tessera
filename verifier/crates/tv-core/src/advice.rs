@@ -695,6 +695,8 @@ impl<'a> Layout<'a> {
     /// one image. An attention claim sums every actual KV/query share, weighted
     /// by equality on the fixed high head/query coordinates (RFC-0034/0047).
     /// Padded KV shares are zero and have no opening.
+    /// Each image keeps the original claim's batching coefficient, multiplied
+    /// by its equality weight; their sum owes the one original claimed value.
     ///
     /// # Errors
     /// An unknown/uncommitted source or wrong point arity. Allocation failures

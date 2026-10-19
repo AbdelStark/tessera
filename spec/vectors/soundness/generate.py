@@ -249,8 +249,9 @@ def statement_405b():
         "lookups": lookups,
         "claim_groups": [64] * 16,
         # RFC-0011/0047/0050, servable c2/Q512: both independent layouts
-        # derive 2,328,576 allocated rows, including gaps, hence theta=22.
-        "advice_rows": 2_328_576,
+        # derive 2,328,576 allocated rows, including gaps. The calculator
+        # input is the padded row-index domain, hence 2^22 rows (theta=22).
+        "advice_rows": pow2_at_least(2_328_576),
         "matrices": weight_matrices_405b(20),
     }
 
