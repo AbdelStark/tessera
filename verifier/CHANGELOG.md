@@ -117,6 +117,8 @@ All notable changes to the verifier release train are recorded here: the crates 
   - A prover-side harness verifies CPU stage proofs with `tv-core`; altered leaf values, split values, round messages and final evaluations produce the expected stage/round rejection. Verifier-only tests also cover stacks with three layers, public selectors and padded rows, malformed proof shapes and seeded mutations. A focused reduction-split regression checks committed groups at 1 and −1; removing its equality guard was observed to pass the former suite and fail the regression.
   - Gadget leaf checks, their extra relations and padding zero-check integration remain with the gadget and driver issues; zero-knowledge terms belong to protocol/2. This stage component does not establish acceptance of an entire model proof.
 
+- Validate RFC-0007 steps 5.2/5.3 with independent checked integer intervals, OneHot/Softmax relational bounds, gadget-domain checks and canonical requantization table selection ([#117](https://github.com/AbdelStark/tessera/issues/117)). Reject wrong narrow/split tables, noncanonical table ids and infeasible lookup widths with exact Gadget/Table identifiers. Preserve memory/internal errors separately from statement rejection.
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

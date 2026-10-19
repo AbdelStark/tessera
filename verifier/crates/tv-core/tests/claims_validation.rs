@@ -1059,3 +1059,156 @@ fn statement_fields_carry_rfc_0039s_tags() {
         assert_eq!(usize::from(field.tag()), index, "{field:?}");
     }
 }
+
+#[test]
+fn a_narrow_requant_table_cannot_certify_a_wide_derived_key() {
+    let mut claims = twin(SERVABLE);
+    let spec = claims
+        .tables
+        .iter_mut()
+        .find(|s| matches!(s.kind, TableKind::Requant { b, .. } if b > 1))
+        .unwrap();
+    let id = spec.id;
+    let mut kind = spec.kind.clone();
+    if let TableKind::Requant { b, .. } = &mut kind {
+        *b = 1;
+    }
+    *spec = tv_tables::Table::generate(id, kind).unwrap().spec().clone();
+    assert_eq!(mismatch(&claims), StatementField::Table { table: id });
+}
+
+#[test]
+fn an_oversized_split_remainder_cannot_replace_the_derived_split() {
+    let mut claims = twin(SERVABLE);
+    let spec = claims
+        .tables
+        .iter_mut()
+        .find(|s| matches!(s.kind, TableKind::Range { bits } if bits < 32))
+        .unwrap();
+    let id = spec.id;
+    *spec = tv_tables::Table::generate(id, TableKind::Range { bits: 32 })
+        .unwrap()
+        .spec()
+        .clone();
+    assert_eq!(mismatch(&claims), StatementField::Table { table: id });
+}
+
+#[test]
+fn canonical_table_ids_reject_missing_extra_duplicate_and_reordered_entries() {
+    let base = twin(SERVABLE);
+    let mut missing = base.clone();
+    let removed = missing.tables.remove(2);
+    assert_eq!(
+        mismatch(&missing),
+        StatementField::Table { table: removed.id }
+    );
+    let mut extra = base.clone();
+    let orphan = TableId(10_000);
+    extra.tables.push(
+        tv_tables::Table::generate(orphan, TableKind::Range { bits: 1 })
+            .unwrap()
+            .spec()
+            .clone(),
+    );
+    assert_eq!(mismatch(&extra), StatementField::Table { table: orphan });
+    let mut duplicate = base.clone();
+    duplicate.tables.push(base.tables[0].clone());
+    assert_eq!(
+        mismatch(&duplicate),
+        StatementField::Table { table: TableId(0) }
+    );
+    let mut reordered = base;
+    reordered.tables.swap(1, 2);
+    assert_eq!(
+        mismatch(&reordered),
+        StatementField::Table { table: TableId(1) }
+    );
+}
+
+#[test]
+fn the_softmax_reciprocal_range_must_fit_the_table_policy() {
+    let mut claims = twin(SERVABLE);
+    claims.arch.max_context = 1;
+    claims.quant.rsqrt_kappa = 2;
+    claims.quant.exp_sigma = 31;
+    claims.gadget_policy.max_log2_rows = 20;
+    // Exp needs 19 key bits and fits. R needs Range(32), which does not; softmax is gadget 6.
+    check_public(&claims).expect("valid public parameters");
+    assert_eq!(
+        mismatch(&claims),
+        StatementField::Gadget {
+            gadget: tv_core::validation::GadgetId(6)
+        }
+    );
+}
+
+#[test]
+fn norm_integer_boxes_and_limb_policy_fail_at_the_first_norm() {
+    for edit in 0..4 {
+        let mut claims = twin(SERVABLE);
+        match edit {
+            0 => claims.quant.rms_eps_int = 1 << 55,
+            1 => {
+                claims.quant.rms_eps_int = 1;
+                claims.quant.rsqrt_kappa = 31;
+            }
+            2 => claims.gadget_policy.limb_bits = 0,
+            _ => claims.gadget_policy.limb_bits = 33,
+        }
+        check_public(&claims).expect("public parameters pass before range checks");
+        assert_eq!(
+            mismatch(&claims),
+            StatementField::Gadget {
+                gadget: tv_core::validation::GadgetId(1)
+            }
+        );
+    }
+}
+
+#[test]
+fn a_validly_regenerated_rope_table_must_match_the_public_model() {
+    let mut claims = twin(SERVABLE);
+    let spec = claims.tables.first_mut().unwrap();
+    let mut kind = spec.kind.clone();
+    let TableKind::Rope { theta, .. } = &mut kind else {
+        panic!("table zero is RoPE")
+    };
+    *theta += 1;
+    let id = spec.id;
+    *spec = tv_tables::Table::generate(id, kind).unwrap().spec().clone();
+    assert_eq!(mismatch(&claims), StatementField::Table { table: id });
+}
+
+#[test]
+fn canonical_tables_pin_ids_and_requantization_functions_not_only_sizes() {
+    let mut claims = twin(SERVABLE);
+    let spec = claims.tables.last_mut().unwrap();
+    let original_id = spec.id;
+    *spec = tv_tables::Table::generate(TableId(10_000), spec.kind.clone())
+        .unwrap()
+        .spec()
+        .clone();
+    assert_eq!(
+        mismatch(&claims),
+        StatementField::Table { table: original_id }
+    );
+    let mut claims = twin(SERVABLE);
+    let spec = claims
+        .tables
+        .iter_mut()
+        .find(|s| matches!(&s.kind, TableKind::Requant { r_by_class, .. } if r_by_class[0] < 63))
+        .unwrap();
+    let original_id = spec.id;
+    let mut kind = spec.kind.clone();
+    if let TableKind::Requant { r_by_class, .. } = &mut kind {
+        r_by_class[0] += 1;
+    }
+    *spec = tv_tables::Table::generate(original_id, kind)
+        .unwrap()
+        .spec()
+        .clone();
+    assert_eq!(
+        mismatch(&claims),
+        StatementField::Table { table: original_id }
+    );
+}
