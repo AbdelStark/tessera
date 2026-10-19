@@ -47,6 +47,13 @@ impl Witness {
             .find(|(held, _)| *held == tensor)
             .map(|(_, values)| &values[..])
     }
+
+    /// The tensors, by value, in the gadget's order, each still in the `SecretBuf` that clears its
+    /// memory (OBS-6): for a holder that keeps them past the witness, such as a regenerated tile.
+    /// Their holder keeps the rules of [`tensor`](Self::tensor).
+    pub fn into_tensors(self) -> Vec<(Committed, SecretBuf<i64>)> {
+        self.tensors
+    }
 }
 
 /// Shows the tensors' names and lengths, never an entry (05 §3).

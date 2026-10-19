@@ -782,6 +782,9 @@ All notable changes to the prover release train are recorded here: the crates un
     - `Q' = N` and one row for a sequence shorter than `Q`; each refusal at its rule; each public input that places a tensor moves it when it changes, and `S` moves none.
   - **Heads.** Both validators reject a non-power-of-two query-head group `n_heads / n_kv_heads` (RFC-0047). The independent verifier returns `StatementMismatch { field: Architecture }`; the generic layout refuses such input as `LayoutData`.
   - **Not yet.** Deriving every tile from `ExecutionPlan::expand`, including the additional SoftmaxRow/RsqrtRow committed columns and range tables, depends on #122 and #126. The full claim-list layout and maximum-at-`max_context` validation remain outstanding; #106 stays open.
+- Add CPU layer-boundary checkpoints and the witness tile regeneration interface (RFC-0018; [#112](https://github.com/AbdelStark/tessera/issues/112)). Residuals and regenerated tensors use zeroizing buffers, with allocator and redaction tests. Table tiles recount lookup multiplicities including per-axis zero-input padding, broadcast channel classes, masked Exp positions and the combined column's row-0 tail (RFC-0045); independent full-column tests cover every conformance model. Full SoftmaxRow/RsqrtRow gadget data and the complete memory acceptance criterion remain outstanding; this is not a complete proof-witness implementation.
+
+- Refuse incomplete SoftmaxRow/Argmax auxiliary multiplicity tiles, including ranges shared with supported requantizations; component regeneration remains partial (#112).
 
 ### Changed
 

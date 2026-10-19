@@ -626,6 +626,10 @@ name = "tessera-gpu"
 version = "0.1.0"
 dependencies = [
  "cudarc",
+ "tessera-codec",
+ "tessera-compiler",
+ "tessera-ir",
+ "tessera-witness",
 ]
 
 [[package]]
@@ -764,9 +768,12 @@ dependencies = [
 name = "tessera-witness"
 version = "0.1.0"
 dependencies = [
+ "allocation-counter",
  "serde_json",
  "tessera-codec",
  "tessera-compiler",
+ "tessera-field",
+ "tessera-gadgets",
  "tessera-ir",
  "tessera-tables",
 ]

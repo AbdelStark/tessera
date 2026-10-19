@@ -17,6 +17,12 @@
 //!
 //! The matrix products split their output rows among threads. Each value is one thread's exact
 //! sum in a fixed order, so the witness does not depend on the thread count.
+//!
+//! The regeneration of `crate::regenerate` runs the same nodes through [`Engine::node`], reading
+//! its graph inputs one at a time through [`Engine::graph_input`]: the weights stay the model's
+//! INT8 matrices, which an [`Operand::Weight`] lends, and the tokens leave their [`Secret`] here
+//! alone. A layer's attention runs row by row there, through the kernels [`act_row`] and
+//! [`softmax_row`] the whole-tensor operations use, so both compute every value alike.
 
 use core::num::NonZeroUsize;
 use std::thread;
@@ -34,6 +40,24 @@ use crate::WitnessError;
 enum Loaded {
     Lookup(GeneratedTable),
     Rope(RopeTable),
+}
+
+/// An input of a node as the node reads it: values held as `i64`, or a weight matrix the model
+/// lends, INT8 and row-major, which only a weight matmul reads.
+#[derive(Clone, Copy)]
+pub(crate) enum Operand<'v> {
+    /// The tensor's values, flat and row-major.
+    Values(&'v [i64]),
+    /// A weight's entries, the model's own.
+    Weight(&'v [i8]),
+}
+
+/// A graph input of a lowering: a weight the model lends, or values read into a buffer.
+pub(crate) enum Input<'m> {
+    /// A weight matrix, the model's entries.
+    Weight(&'m [i8]),
+    /// The tokens, the positions, or a channel-class or multiplier vector.
+    Values(SecretBuf<i64>),
 }
 
 /// A graph ready to run: its tables regenerated from their specifications.
@@ -107,6 +131,13 @@ impl<'a> Engine<'a> {
         self
     }
 
+    /// The lowering, or the refusal of a model's run on an engine without one.
+    pub(crate) fn require_lowering(&self) -> Result<&'a Lowering, WitnessError> {
+        self.lowering.ok_or(WitnessError::Usage {
+            rule: "a model runs on the engine of its lowering",
+        })
+    }
+
     /// `D` on `tokens`: every tensor of the lowering, from the model's weights and channel
     /// classes. The lowering's graph is for `tokens.len()` positions.
     ///
@@ -123,12 +154,23 @@ impl<'a> Engine<'a> {
         model: &IntegerModel,
         tokens: &Secret<Vec<u32>>,
     ) -> Result<Witness, WitnessError> {
-        let lowering = self.lowering.ok_or(WitnessError::Usage {
-            rule: "a model runs on the engine of its lowering",
-        })?;
+        let lowering = self.require_lowering()?;
         let mut values: Vec<Option<SecretBuf<i64>>> =
             (0..self.graph.tensors.len()).map(|_| None).collect();
-        self.inputs(lowering, model, tokens, &mut values)?;
+        for tensor in graph_inputs(lowering) {
+            let buffer = match self.graph_input(lowering, model, tokens, tensor)? {
+                Input::Values(buffer) => buffer,
+                // The witness holds every tensor, the weights as `i64` among them.
+                Input::Weight(entries) => {
+                    let mut buffer = zeros(tensor, entries.len())?;
+                    for (slot, &x) in buffer.iter_mut().zip(entries) {
+                        *slot = i64::from(x);
+                    }
+                    buffer
+                }
+            };
+            values[tensor.0 as usize] = Some(buffer);
+        }
         let mut witness = self.execute(values)?;
         witness.logits = Some((lowering.logits, model.arch.vocab));
         Ok(witness)
@@ -201,7 +243,22 @@ impl<'a> Engine<'a> {
     fn execute(&self, mut values: Vec<Option<SecretBuf<i64>>>) -> Result<Witness, WitnessError> {
         let graph = self.graph;
         for node in &graph.nodes {
-            let outputs = self.node(node, &values)?;
+            let outputs = {
+                let operands = node
+                    .inputs
+                    .iter()
+                    .map(|t| {
+                        values
+                            .get(t.0 as usize)
+                            .and_then(Option::as_deref)
+                            .map(Operand::Values)
+                    })
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(WitnessError::Internal {
+                        rule: "a node's inputs are computed before it",
+                    })?;
+                self.node(node, &operands)?
+            };
             for (&id, buffer) in node.outputs.iter().zip(outputs) {
                 check(id, &buffer, graph.tensors[id.0 as usize].range)?;
                 values[id.0 as usize] = Some(buffer);
@@ -221,16 +278,16 @@ impl<'a> Engine<'a> {
         })
     }
 
-    /// The tokens, the positions, every weight and every channel-class vector.
-    fn inputs(
+    /// The prompt's tokens, read out of their [`Secret`] into the token tensor's buffer after
+    /// checking that there are as many as the lowering's positions, each inside the vocabulary.
+    /// The one place the crate reads them (`secret-access.toml`).
+    pub(crate) fn tokens(
         &self,
         lowering: &Lowering,
         model: &IntegerModel,
         tokens: &Secret<Vec<u32>>,
-        values: &mut [Option<SecretBuf<i64>>],
-    ) -> Result<(), WitnessError> {
-        let graph = &lowering.graph;
-        let n = elements(&graph.tensors[lowering.positions.0 as usize].shape);
+    ) -> Result<SecretBuf<i64>, WitnessError> {
+        let n = elements(&lowering.graph.tensors[lowering.positions.0 as usize].shape);
         // The prompt is secret-class: read here, into the token tensor's buffer.
         #[allow(clippy::disallowed_methods)]
         let ids = tokens.expose_secret();
@@ -244,17 +301,47 @@ impl<'a> Engine<'a> {
                 rule: "every token lies inside the vocabulary",
             });
         }
-        let mut token_values = zeros(lowering.tokens, n)?;
-        for (slot, &t) in token_values.iter_mut().zip(ids) {
+        let mut values = zeros(lowering.tokens, n)?;
+        for (slot, &t) in values.iter_mut().zip(ids) {
             *slot = i64::from(t);
         }
-        values[lowering.tokens.0 as usize] = Some(token_values);
-        let mut positions = zeros(lowering.positions, n)?;
-        for (p, slot) in positions.iter_mut().enumerate() {
-            *slot = p as i64;
+        Ok(values)
+    }
+
+    /// The value of `tensor`, a graph input of `lowering`, for `model` on `tokens`: the tokens,
+    /// the positions `0` to `n − 1`, a weight the model lends as it holds it, or one of its
+    /// channel-class or multiplier vectors (RFC-0025) as `i64`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Engine::run`] for the tokens and the model; [`WitnessError::Internal`] for a tensor
+    /// that is none of these.
+    pub(crate) fn graph_input<'m>(
+        &self,
+        lowering: &Lowering,
+        model: &'m IntegerModel,
+        tokens: &Secret<Vec<u32>>,
+        tensor: TensorId,
+    ) -> Result<Input<'m>, WitnessError> {
+        let graph = &lowering.graph;
+        let len = graph
+            .tensors
+            .get(tensor.0 as usize)
+            .map(|spec| elements(&spec.shape))
+            .ok_or(WitnessError::Internal {
+                rule: "a graph input is a tensor of the graph",
+            })?;
+        if tensor == lowering.tokens {
+            return self.tokens(lowering, model, tokens).map(Input::Values);
         }
-        values[lowering.positions.0 as usize] = Some(positions);
-        for &(weight, tensor) in &graph.weights {
+        if tensor == lowering.positions {
+            let mut positions = zeros(tensor, len)?;
+            for (p, slot) in positions.iter_mut().enumerate() {
+                *slot = p as i64;
+            }
+            return Ok(Input::Values(positions));
+        }
+        if let Some(&(weight, _)) = graph.weights.iter().find(|&&(_, t)| t == tensor) {
             let w = model
                 .weights
                 .iter()
@@ -262,19 +349,14 @@ impl<'a> Engine<'a> {
                 .ok_or(WitnessError::Model {
                     rule: "the model holds every weight the lowering reads",
                 })?;
-            let len = elements(&graph.tensors[tensor.0 as usize].shape);
             if w.data.len() != len {
                 return Err(WitnessError::Model {
                     rule: "each weight has the lowering's shape",
                 });
             }
-            let mut buffer = zeros(tensor, len)?;
-            for (slot, &x) in buffer.iter_mut().zip(&w.data) {
-                *slot = i64::from(x);
-            }
-            values[tensor.0 as usize] = Some(buffer);
+            return Ok(Input::Weight(&w.data));
         }
-        for &(weight, tensor) in &lowering.classes {
+        if let Some(&(weight, _)) = lowering.classes.iter().find(|&&(_, t)| t == tensor) {
             let params = model
                 .quant
                 .channels
@@ -283,7 +365,6 @@ impl<'a> Engine<'a> {
                 .ok_or(WitnessError::Model {
                     rule: "the model holds the channel classes of every classed site",
                 })?;
-            let len = elements(&graph.tensors[tensor.0 as usize].shape);
             if params.class.len() != len {
                 return Err(WitnessError::Model {
                     rule: "a channel-class vector holds one class per output channel",
@@ -293,10 +374,10 @@ impl<'a> Engine<'a> {
             for (slot, &c) in buffer.iter_mut().zip(&params.class) {
                 *slot = i64::from(c);
             }
-            values[tensor.0 as usize] = Some(buffer);
+            return Ok(Input::Values(buffer));
         }
         // RFC-0025: an affine site's multipliers, one per output channel of the weight before it.
-        for &(weight, tensor) in &lowering.multipliers {
+        if let Some(&(weight, _)) = lowering.multipliers.iter().find(|&&(_, t)| t == tensor) {
             let params = model
                 .quant
                 .channels
@@ -305,7 +386,6 @@ impl<'a> Engine<'a> {
                 .ok_or(WitnessError::Model {
                     rule: "the model holds the multipliers of every affine site",
                 })?;
-            let len = elements(&graph.tensors[tensor.0 as usize].shape);
             if params.multiplier.len() != len {
                 return Err(WitnessError::Model {
                     rule: "a multiplier vector holds one multiplier per output channel",
@@ -315,9 +395,11 @@ impl<'a> Engine<'a> {
             for (slot, &m) in buffer.iter_mut().zip(&params.multiplier) {
                 *slot = i64::from(m);
             }
-            values[tensor.0 as usize] = Some(buffer);
+            return Ok(Input::Values(buffer));
         }
-        Ok(())
+        Err(WitnessError::Internal {
+            rule: "a graph input is the tokens, the positions, a weight or a channel vector",
+        })
     }
 
     fn table(&self, id: TableId) -> Result<&Loaded, WitnessError> {
@@ -329,7 +411,8 @@ impl<'a> Engine<'a> {
             })
     }
 
-    fn lookup(&self, id: TableId) -> Result<&GeneratedTable, WitnessError> {
+    /// The lookup table `id`, regenerated from its specification.
+    pub(crate) fn lookup(&self, id: TableId) -> Result<&GeneratedTable, WitnessError> {
         match self.table(id)? {
             Loaded::Lookup(t) => Ok(t),
             Loaded::Rope(_) => Err(WitnessError::Internal {
@@ -338,37 +421,57 @@ impl<'a> Engine<'a> {
         }
     }
 
-    /// The outputs of `node`, from the values of its inputs.
-    fn node(
+    /// `W x` over the last axis of `x` for a weight `w` of `rows × cols`, held as any integers.
+    fn matmul<W: Copy + Into<i64> + Sync>(
+        &self,
+        x: &[i64],
+        w: &[W],
+        (rows, cols): (usize, usize),
+        out: TensorId,
+    ) -> Result<SecretBuf<i64>, WitnessError> {
+        let n = x.len() / cols;
+        let mut y = zeros(out, n * rows)?;
+        self.parallel(&mut y, n, rows, |r, row| {
+            let xr = &x[r * cols..(r + 1) * cols];
+            for (o, slot) in row.iter_mut().enumerate() {
+                *slot = dot(&w[o * cols..(o + 1) * cols], xr);
+            }
+        });
+        Ok(y)
+    }
+
+    /// The outputs of `node`, from its inputs `inputs`, in its inputs' order.
+    pub(crate) fn node(
         &self,
         node: &Node,
-        values: &[Option<SecretBuf<i64>>],
+        inputs: &[Operand<'_>],
     ) -> Result<Vec<SecretBuf<i64>>, WitnessError> {
         let graph = self.graph;
+        let missing = WitnessError::Internal {
+            rule: "a node's inputs are computed before it",
+        };
         let input = |k: usize| -> Result<&[i64], WitnessError> {
-            node.inputs
-                .get(k)
-                .and_then(|t| values[t.0 as usize].as_deref())
-                .ok_or(WitnessError::Internal {
-                    rule: "a node's inputs are computed before it",
-                })
+            match inputs.get(k) {
+                Some(Operand::Values(values)) => Ok(*values),
+                Some(Operand::Weight(_)) => Err(WitnessError::Internal {
+                    rule: "only a weight matmul reads a weight's entries",
+                }),
+                None => Err(missing),
+            }
         };
         let shape = |k: usize| graph.tensors[node.inputs[k].0 as usize].shape.as_slice();
         let out = |k: usize| node.outputs[k];
         let len = |k: usize| elements(&graph.tensors[node.outputs[k].0 as usize].shape);
         let output = match &node.op {
             Op::MatMulWeight { .. } => {
-                let (x, w) = (input(0)?, input(1)?);
+                let x = input(0)?;
                 let ws = shape(1);
-                let (rows, cols) = (ws[0] as usize, ws[1] as usize);
-                let n = x.len() / cols;
-                let mut y = zeros(out(0), n * rows)?;
-                self.parallel(&mut y, n, rows, |r, row| {
-                    let xr = &x[r * cols..(r + 1) * cols];
-                    for (o, slot) in row.iter_mut().enumerate() {
-                        *slot = dot(&w[o * cols..(o + 1) * cols], xr);
-                    }
-                });
+                let dims = (ws[0] as usize, ws[1] as usize);
+                let y = match inputs.get(1) {
+                    Some(Operand::Values(w)) => self.matmul(x, w, dims, out(0))?,
+                    Some(Operand::Weight(w)) => self.matmul(x, w, dims, out(0))?,
+                    None => return Err(missing),
+                };
                 vec![y]
             }
             Op::Add | Op::Sub => {
@@ -552,13 +655,7 @@ impl<'a> Engine<'a> {
                     let (g, i) = (r / m, r % m);
                     let ar = &a[(g * m + i) * k..(g * m + i + 1) * k];
                     let bg = &b[g * k * n..(g + 1) * k * n];
-                    for (j, slot) in row.iter_mut().enumerate() {
-                        *slot = if transpose {
-                            dot(ar, &bg[j * k..(j + 1) * k])
-                        } else {
-                            ar.iter().enumerate().map(|(t, &v)| v * bg[t * n + j]).sum()
-                        };
-                    }
+                    act_row(ar, bg, (k, n), transpose, row);
                 });
                 vec![y]
             }
@@ -649,25 +746,10 @@ impl<'a> Engine<'a> {
                 let rows = s.len() / n;
                 let mut e = zeros(out(0), s.len())?;
                 let mut reciprocal = zeros(out(1), rows)?;
-                for r in 0..rows {
+                for (r, slot) in reciprocal.iter_mut().enumerate() {
                     // Row q of its sequence sees keys 0 to q (RFC-0006 'Operation set').
-                    let q = r % n;
-                    let scores = &s[r * n..r * n + q + 1];
-                    let top = scores.iter().copied().max().unwrap_or(0);
-                    let mut total = 0i64;
-                    for (i, &x) in scores.iter().enumerate() {
-                        let v = t.lookup(top - x, 0).ok_or(WitnessError::Internal {
-                            rule: "the exponential table holds every spread",
-                        })?;
-                        e[r * n + i] = v;
-                        total += v;
-                    }
-                    if total <= 0 {
-                        return Err(WitnessError::Internal {
-                            rule: "a row's maximum keeps its exponential",
-                        });
-                    }
-                    reciprocal[r] = (1i64 << (2 * u32::from(*sigma))) / total;
+                    let row = r * n..(r + 1) * n;
+                    *slot = softmax_row(t, *sigma, &s[row.clone()], r % n, &mut e[row])?;
                 }
                 vec![e, reciprocal]
             }
@@ -767,6 +849,11 @@ impl Witness {
         self.tensors.get(tensor.0 as usize)
     }
 
+    /// The number of tensors it holds: all of its graph's.
+    pub(crate) fn len(&self) -> usize {
+        self.tensors.len()
+    }
+
     /// A model's logits, one row of `vocab` values per position: the secret-class artifact
     /// `0x0602` (RFC-0003 'Auxiliary schemas'). `None` for a run of a graph without a model.
     pub fn logits(&self) -> Option<LogitsFile> {
@@ -786,7 +873,18 @@ impl Witness {
     }
 }
 
-fn elements(shape: &[u32]) -> usize {
+/// The graph inputs of `lowering` in the order a run reads them, which fixes the order of its
+/// refusals: the tokens, the positions, the weights in declaration order, then the channel-class
+/// and multiplier vectors.
+pub(crate) fn graph_inputs(lowering: &Lowering) -> impl Iterator<Item = TensorId> + '_ {
+    [lowering.tokens, lowering.positions]
+        .into_iter()
+        .chain(lowering.graph.weights.iter().map(|&(_, t)| t))
+        .chain(lowering.classes.iter().map(|&(_, t)| t))
+        .chain(lowering.multipliers.iter().map(|&(_, t)| t))
+}
+
+pub(crate) fn elements(shape: &[u32]) -> usize {
     shape.iter().map(|&d| d as usize).product()
 }
 
@@ -802,8 +900,66 @@ fn split(shape: &[u32], axis: usize) -> (usize, usize, usize) {
     (outer, shape[axis] as usize, inner)
 }
 
-fn dot(a: &[i64], b: &[i64]) -> i64 {
-    a.iter().zip(b).map(|(&p, &q)| p * q).sum()
+/// `Σ a_i · b_i` in order, `a` held as any integers: range analysis bounds every partial sum.
+fn dot<W: Copy + Into<i64>>(a: &[W], b: &[i64]) -> i64 {
+    a.iter().zip(b).map(|(&p, &q)| p.into() * q).sum()
+}
+
+/// One output row of `MatMulAct`: row `ar` of a batch's left operand, of `k` values, by the
+/// batch's right operand `bg`, into the `n` values of `row`. With `transpose`, `bg` is `[n, k]`
+/// and enters transposed, as `K` does in `QK^T`; otherwise it is `[k, n]`, as `V` in `PV`.
+pub(crate) fn act_row(
+    ar: &[i64],
+    bg: &[i64],
+    (k, n): (usize, usize),
+    transpose: bool,
+    row: &mut [i64],
+) {
+    for (j, slot) in row.iter_mut().enumerate() {
+        *slot = if transpose {
+            dot(ar, &bg[j * k..(j + 1) * k])
+        } else {
+            ar.iter().enumerate().map(|(t, &v)| v * bg[t * n + j]).sum()
+        };
+    }
+}
+
+/// The maximum of query `q`'s valid scores, `scores[0..=q]`: the max certificate's `c_q`
+/// (RFC-0009 'SoftmaxRow'). `q` is below the row's length.
+pub(crate) fn row_max(scores: &[i64], q: usize) -> i64 {
+    scores[..=q].iter().copied().max().unwrap_or(0)
+}
+
+/// One row of a causal `SoftmaxRow`, the scores `scores` of query `q` against every key: the
+/// exponentials `Exp[c_q − x_qi]` of the keys `i ≤ q` into `e`, whose other entries stay as given,
+/// zero, and the reciprocal `⌊2^{2σ} / Σ_i e_qi⌋` (RFC-0005, RFC-0009).
+///
+/// # Errors
+///
+/// [`WitnessError::Internal`] for a spread outside the table, or a row whose maximum does not keep
+/// its exponential.
+pub(crate) fn softmax_row(
+    table: &GeneratedTable,
+    sigma: u8,
+    scores: &[i64],
+    q: usize,
+    e: &mut [i64],
+) -> Result<i64, WitnessError> {
+    let top = row_max(scores, q);
+    let mut total = 0i64;
+    for (slot, &x) in e.iter_mut().zip(&scores[..=q]) {
+        let v = table.lookup(top - x, 0).ok_or(WitnessError::Internal {
+            rule: "the exponential table holds every spread",
+        })?;
+        *slot = v;
+        total += v;
+    }
+    if total <= 0 {
+        return Err(WitnessError::Internal {
+            rule: "a row's maximum keeps its exponential",
+        });
+    }
+    Ok((1i64 << (2 * u32::from(sigma))) / total)
 }
 
 /// RFC-0005's `rq(x, r, lo, hi) = clamp(⌊(x + 2^{r−1}) / 2^r⌋, lo, hi)`, through 128 bits.
@@ -827,7 +983,7 @@ fn class(classes: Option<&[i64]>, channel: usize, count: usize) -> Result<usize,
 }
 
 /// A buffer of `len` zeros for `tensor`.
-fn zeros(tensor: TensorId, len: usize) -> Result<SecretBuf<i64>, WitnessError> {
+pub(crate) fn zeros(tensor: TensorId, len: usize) -> Result<SecretBuf<i64>, WitnessError> {
     let mut buffer =
         SecretBuf::try_with_capacity(len).map_err(|_| WitnessError::Memory { tensor })?;
     buffer.resize(len, 0);
@@ -835,7 +991,7 @@ fn zeros(tensor: TensorId, len: usize) -> Result<SecretBuf<i64>, WitnessError> {
 }
 
 /// INV-DM-2: every value lies in its tensor's analyzed range. Debug builds check it.
-fn check(tensor: TensorId, values: &[i64], range: IntRange) -> Result<(), WitnessError> {
+pub(crate) fn check(tensor: TensorId, values: &[i64], range: IntRange) -> Result<(), WitnessError> {
     if cfg!(debug_assertions)
         && values
             .iter()
