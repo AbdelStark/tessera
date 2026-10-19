@@ -1,0 +1,27 @@
+    Blocking waiting for file lock on artifact directory
+    Finished `release` profile [optimized] target(s) in 11.60s
+     Running `research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction prepare`
+preflight E-l20-t22
+preflight E-l22-t22
+preflight R-l20-t21
+preflight R-l22-t21
+preflight Q-l20-t20
+preflight Q-l22-t20
+       37.49 real        23.99 user         1.26 sys
+          1529036800  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              855408  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  43  voluntary context switches
+                6362  involuntary context switches
+        563139777293  instructions retired
+         98426546804  cycles elapsed
+          1528464824  peak memory footprint

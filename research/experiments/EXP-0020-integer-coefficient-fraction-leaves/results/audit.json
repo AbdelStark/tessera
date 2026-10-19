@@ -1,0 +1,13 @@
+{
+  "source_pins": 23,
+  "bound_records": 18,
+  "arithmetic": {
+    "groups": 101,
+    "weighted_terms": 88594
+  },
+  "grids": {
+    "vectors": 36,
+    "grid_cells": 468,
+    "F65537_identities": 1000
+  }
+}

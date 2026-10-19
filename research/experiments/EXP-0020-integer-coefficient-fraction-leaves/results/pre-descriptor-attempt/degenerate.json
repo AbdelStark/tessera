@@ -1,0 +1,24 @@
+{
+  "cases": [
+    {
+      "digest": "50fad017cae1bcc5bb7caf79e369886807e7d2992fa398562858214f867130f9",
+      "mode": 0,
+      "scope": "scripted kernel equivalence only; no private verifier transcript or ZK claim"
+    },
+    {
+      "digest": "bfd023485b958a24e328e5293163496e1cabaf9827ed53eee7921d24228f8218",
+      "mode": 1,
+      "scope": "scripted kernel equivalence only; no private verifier transcript or ZK claim"
+    },
+    {
+      "digest": "b73a44f99a80ce64d98a9b5ec204502096d23559549df01d01e9b746060adb1a",
+      "mode": 2,
+      "scope": "scripted kernel equivalence only; no private verifier transcript or ZK claim"
+    },
+    {
+      "digest": "1275909f34f0a7d2a12e64690e2be402be9771d9fb1925448bc10d1c0c7c8745",
+      "mode": 3,
+      "scope": "scripted kernel equivalence only; no private verifier transcript or ZK claim"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+   Compiling integer-fraction v0.0.0 (/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves)
+error: expected identifier, found reserved keyword `gen`
+   --> src/driver.rs:848:49
+    |
+848 |  let mut rng=Rng(0x7E55_E7A0_0005_0021);let mut gen=||Fp2::new(Fp::from_u64_reduced(rng.next()),Fp::from_u64_reduced(rng.next()));l...
+    |                                                 ^^^ expected identifier, found reserved keyword
+    |
+help: escape `gen` to use it as an identifier
+    |
+848 |  let mut rng=Rng(0x7E55_E7A0_0005_0021);let mut r#gen=||Fp2::new(Fp::from_u64_reduced(rng.next()),Fp::from_u64_reduced(rng.next()));let arrays:[Vec<Fp2>;4]=core::array::from_fn(|_|(0..16).map(|_|gen()).collect());let point:Vec<_>=(0..4).map(|_|gen()).collect();let [ne,no,de,dd]=&arrays;let numerator:Vec<_>=(0..16).map(|i|ne[i]*dd[i]+no[i]*de[i]).collect();let denominator:Vec<_>=(0..16).map(|i|de[i]*dd[i]).collect();let n=tx(mle_ext(&numerator,&xs(&point)));let d=tx(mle_ext(&denominator,&xs(&point)));let mut expected=None;
+    |                                                 ++
+
+error: expected expression, found reserved keyword `gen`
+   --> src/driver.rs:848:194
+    |
+848 | ...p2>;4]=core::array::from_fn(|_|(0..16).map(|_|gen()).collect());let point:Vec<_>=(0..4).map(|_|gen()).collect();let [ne,no,de,dd...
+    |                                               ---^^^ expected expression
+    |                                               |
+    |                                               while parsing the body of this closure
+    |
+help: you might have meant to open the body of the closure
+    |
+848 |  let mut rng=Rng(0x7E55_E7A0_0005_0021);let mut gen=||Fp2::new(Fp::from_u64_reduced(rng.next()),Fp::from_u64_reduced(rng.next()));let arrays:[Vec<Fp2>;4]=core::array::from_fn(|_|(0..16).map(|_| {gen()}).collect());let point:Vec<_>=(0..4).map(|_|gen()).collect();let [ne,no,de,dd]=&arrays;let numerator:Vec<_>=(0..16).map(|i|ne[i]*dd[i]+no[i]*de[i]).collect();let denominator:Vec<_>=(0..16).map(|i|de[i]*dd[i]).collect();let n=tx(mle_ext(&numerator,&xs(&point)));let d=tx(mle_ext(&denominator,&xs(&point)));let mut expected=None;
+    |                                                                                                                                                                                                   +     +
+
+error: expected expression, found reserved keyword `gen`
+   --> src/driver.rs:848:243
+    |
+848 | ...()).collect());let point:Vec<_>=(0..4).map(|_|gen()).collect();let [ne,no,de,dd]=&arrays;let numerator:Vec<_>=(0..16).map(|i|ne[...
+    |                                               ---^^^ expected expression
+    |                                               |
+    |                                               while parsing the body of this closure
+    |
+help: you might have meant to open the body of the closure
+    |
+848 |  let mut rng=Rng(0x7E55_E7A0_0005_0021);let mut gen=||Fp2::new(Fp::from_u64_reduced(rng.next()),Fp::from_u64_reduced(rng.next()));let arrays:[Vec<Fp2>;4]=core::array::from_fn(|_|(0..16).map(|_|gen()).collect());let point:Vec<_>=(0..4).map(|_| {gen()}).collect();let [ne,no,de,dd]=&arrays;let numerator:Vec<_>=(0..16).map(|i|ne[i]*dd[i]+no[i]*de[i]).collect();let denominator:Vec<_>=(0..16).map(|i|de[i]*dd[i]).collect();let n=tx(mle_ext(&numerator,&xs(&point)));let d=tx(mle_ext(&denominator,&xs(&point)));let mut expected=None;
+    |                                                                                                                                                                                                                                                    +     +
+
+error: could not compile `integer-fraction` (bin "integer-fraction") due to 3 previous errors

@@ -1,0 +1,43 @@
+{
+  "fixture_only": true,
+  "noop": "pass",
+  "retained_noisy_first_then_fresh_authoritative_rerun": "pass",
+  "controls": [
+    {
+      "mutation": "altered-saved-ratio",
+      "outcome": "killed"
+    },
+    {
+      "mutation": "altered-verdict",
+      "outcome": "killed"
+    },
+    {
+      "mutation": "altered-G2",
+      "outcome": "killed"
+    },
+    {
+      "mutation": "missing-required-rerun",
+      "outcome": "killed"
+    },
+    {
+      "mutation": "third-attempt",
+      "outcome": "killed"
+    },
+    {
+      "mutation": "overlapping-cohorts",
+      "outcome": "killed"
+    },
+    {
+      "mutation": "missing-shape",
+      "outcome": "killed"
+    },
+    {
+      "mutation": "wrong-order",
+      "outcome": "killed"
+    },
+    {
+      "mutation": "short-sample",
+      "outcome": "killed"
+    }
+  ]
+}

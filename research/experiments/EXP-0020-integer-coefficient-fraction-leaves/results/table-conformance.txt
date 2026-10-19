@@ -1,0 +1,27 @@
+   Compiling unicode-ident v1.0.27
+   Compiling serde_core v1.0.229
+   Compiling tv-field v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-field)
+   Compiling proc-macro2 v1.0.107
+   Compiling tv-codec v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-codec)
+   Compiling tv-hash v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-hash)
+   Compiling quote v1.0.47
+   Compiling syn v3.0.9
+   Compiling tv-tables v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-tables)
+   Compiling serde_json v1.0.154
+   Compiling tessera-codec-derive v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-codec-derive)
+   Compiling tessera-codec v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-codec)
+   Compiling tessera-field v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-field)
+   Compiling tessera-poly v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-poly)
+   Compiling tessera-hash v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-hash)
+   Compiling tessera-tables v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-tables)
+    Finished `test` profile [optimized + debuginfo] target(s) in 4.82s
+     Running tests/vectors.rs (target/debug/deps/vectors-92012cdd10f9ca7b)
+
+running 4 tests
+test lookups_agree_with_the_rows_for_every_key ... ok
+test parameters_just_outside_each_rule_are_refused ... ok
+test every_vector_regenerates_with_its_digest_rows_and_lookups ... ok
+test a_specification_wrong_in_one_field_is_refused ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+

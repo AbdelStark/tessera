@@ -1,0 +1,12 @@
+{
+  "independent_public_verifier": true,
+  "rejections": [
+    "LookupDenominator { instance: 0 }",
+    "TableDenominator { instance: 0 }",
+    "Unbalanced { instance: 0 }",
+    "FinalMismatch { round: 1 }",
+    "FinalMismatch { round: 1 }",
+    "LeafNumerator { instance: 0 }",
+    "TableEvaluation { instance: 0 }"
+  ]
+}

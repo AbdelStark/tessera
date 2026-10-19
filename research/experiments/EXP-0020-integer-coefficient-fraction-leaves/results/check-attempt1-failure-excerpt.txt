@@ -1,0 +1,10 @@
+Provenance: partial captured tool-response excerpt from the failed check invocation before the unit-numerator tag fix. The original check.txt was overwritten by the subsequent passing run; this is an honest excerpt, not a recovered full raw log.
+checking E-l1-t1 a1 v2
+checking E-l1-t1 a2 v1
+checking E-l1-t1 a2 v2
+checking E-l1-t1 a2 v3
+checking E-l2-t2 a1 v2
+checking E-l2-t2 a2 v1
+
+thread 'main' (92307421) panicked at src/driver.rs:57:252:
+called `Result::unwrap()` on an `Err` value: FinalMismatch { round: 1 }

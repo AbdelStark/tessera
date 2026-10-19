@@ -1,0 +1,6 @@
+ragged lookup3: first lookup=row1, table padding=row0; P=78143581da7ee1a0d87c17348bae19e9e4f7030a90f064c17b0041a9c0d34cee, C=78143581da7ee1a0d87c17348bae19e9e4f7030a90f064c17b0041a9c0d34cee
+ragged padding independent acceptance pass
+
+thread 'main' (92883391) panicked at src/driver.rs:436:76:
+called `Result::unwrap()` on an `Err` value: FinalMismatch { round: 4 }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

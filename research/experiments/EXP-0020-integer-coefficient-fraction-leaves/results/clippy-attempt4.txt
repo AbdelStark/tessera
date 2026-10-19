@@ -1,0 +1,38 @@
+    Checking integer-fraction v0.0.0 (/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves)
+error: the loop variable `i` is used to index `trees`
+  --> src/script_oracle.rs:87:14
+   |
+87 |     for i in 0..2 {
+   |              ^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#needless_range_loop
+   = note: `-D clippy::needless-range-loop` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::needless_range_loop)]`
+help: consider using an iterator and enumerate()
+   |
+87 -     for i in 0..2 {
+87 +     for (i, <item>) in trees.iter().enumerate().take(2) {
+   |
+
+error: manual implementation of an assign operation
+   --> src/script_oracle.rs:115:17
+    |
+115 | /                 out = out
+116 | |                     + weight * eq(&incoming[t], ownpoint) * (n0 * d1 + n1 * d0 + lambda * d0 * d1);
+    | |__________________________________________________________________________________________________^ help: replace it with: `out += weight * eq(&incoming[t], ownpoint) * (n0 * d1 + n1 * d0 + lambda * d0 * d1)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#assign_op_pattern
+    = note: `-D clippy::assign-op-pattern` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::assign_op_pattern)]`
+
+error: manual implementation of an assign operation
+   --> src/script_oracle.rs:117:17
+    |
+117 |                 weight = weight * gamma;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^ help: replace it with: `weight *= gamma`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#assign_op_pattern
+
+error: could not compile `integer-fraction` (bin "integer-fraction") due to 3 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `integer-fraction` (bin "integer-fraction" test) due to 3 previous errors

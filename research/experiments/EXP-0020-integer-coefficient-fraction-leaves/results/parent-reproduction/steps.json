@@ -1,0 +1,50 @@
+[
+  {
+    "name": "rust-small",
+    "command": [
+      "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction",
+      "check"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "python-small",
+    "command": [
+      "python3",
+      "-I",
+      "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves/check.py",
+      "--check",
+      "--results",
+      "/tmp/tessera-exp20-parent-final-20261019T112731"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "rust-six-large",
+    "command": [
+      "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction",
+      "prepare"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "python-count",
+    "command": [
+      "python3",
+      "-I",
+      "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves/count.py",
+      "--results",
+      "/tmp/tessera-exp20-parent-final-20261019T112731"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "synthetic-auditor",
+    "command": [
+      "python3",
+      "-I",
+      "/tmp/tessera-exp20-parent-final-20261019T112731/synthetic-auditor/auditor_selftest.py"
+    ],
+    "exit": 0
+  }
+]

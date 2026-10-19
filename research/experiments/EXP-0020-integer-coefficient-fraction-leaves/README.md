@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `planned` |
+| Status | `running` (E0/pre-timing checks complete; E1 pending) |
 | Idea | [IDEA-0005](../../ideas/IDEA-0005-base-field-leaf-small-value.md), distinct integer-coefficient mechanism after its current-production preflight |
 | Evidence level | Planned E0 exact algebra/counts and E1 CPU ratios; no E2/E3 claim |
 | Hardware | Apple M4 Max, one process/thread; record actual OS/toolchain/environment at execution |
@@ -129,11 +129,28 @@ The Rust package is its own workspace, publish=false, Apache-2.0 OR MIT, forbids
 
 ## Results
 
-Not run. Preparation creates only this report, source pins, exact preparation bounds and the reviewed frozen text/hash/UTC; no Cargo package, executable script or kernel exists yet.
+E0 gates completed before any timing. [Pre-timing handoff](results/handoff-pretime.json) identifies the final sources/binary, exact commands and gate logs; [artifact hashes](results/artifacts-pretime.json) cover the retained raw records. The [parent independently reproduced](results/parent-pretime-verification.json) small and six-case full-size checks, all18 exact count records, the seven compiled source mutants/no-op and the synthetic timing-auditor corpus. E1 remains pending the exclusive CPU slot.
 
-| Case | P | D | C (v2) | Verdict gates |
+All six full-size cases produced identical complete P/D/C records and passed public independent root/level/leaf checks plus direct key/value/multiplicity MLE closure. The small suite passed 33 cases, v1/v2/v3 controls, 30 paid-prefix diagnostics, ragged lookup/table padding, mixed heights/multiple instances, whole-instance public-bound dispatch and general-field fallback. The independent arithmetic audit checked 101 constant-coefficient sum groups (88,594 weighted terms), 36 ternary-grid vectors (468 cells), 18 public-domain bounds and 1,000 F65537 identities. Four scripted challenge modes each passed three separately constructed tv-field direct tree/round/final/line/leaf checks: 12 proofs, 30 cubic message evaluations each. Scripted zero denominators are algebra controls, never an assertion of public verifier acceptance.
+
+The final mutation run compiled every mutant: five registered arithmetic/window/cadence faults plus the Unit-tag and lookup-padding regressions failed at runtime; the intact no-op and integer oracle passed. The independent saved-record auditor passes its synthetic no-op and retained noisy-first/fresh-rerun fixture and rejects nine corruptions, including ratio/verdict changes. These synthetic records are labelled and do not enter timing or the verdict. [Debugging disclosure](results/debugging-disclosure.md) retains failed attempts and states that one initial complete failure log was overwritten; its preserved excerpt is partial.
+
+[Exact count census](results/count.json) combines the same generic loops' semantic field-operator trace with independently derived coefficient/bucket/fold/clearing counts. The following are whole-proof counts, not GPU costs or an Fp2-equivalent fit. Direct base numerator extrapolation/binding and C's additional root multiplicity negations are listed separately; field inversion/pow, hashing, public scalar control and allocator instructions remain opaque. Logical pass counts describe source-level principal accesses, not cache traffic or machine instructions.
+
+| Case | P full Fp2 mul | D full Fp2 mul | C full Fp2 mul | C signed-weight wide products |
 |---|---|---|---|---|
-| E/R/Q at lookup heights20/22 | pending | pending | pending | exact, whole, bottom, noise |
+| E-l20-t22 | 74,539,699 | 53,574,453 | 43,918,305 | 174,587,904 |
+| E-l22-t22 | 115,465,457 | 81,919,353 | 68,340,773 | 245,366,784 |
+| R-l20-t21 | 44,112,230 | 31,534,565 | 26,048,332 | 47,185,920 |
+| R-l22-t21 | 85,034,957 | 59,876,434 | 50,460,857 | 75,497,472 |
+| Q-l20-t20 | 28,898,341 | 20,513,953 | 17,132,621 | 61,341,696 |
+| Q-l22-t20 | 69,824,179 | 48,858,933 | 41,555,169 | 132,120,576 |
+
+D also pays unsigned192 products/additions/reductions; C pays those continuation costs in addition to its signed coefficient work. E/Q store the same principal leaf bytes as P (integer key+value, plus table multiplicity); Range saves eight bytes per lookup and table leaf. No memory-saving claim follows merely from the word “integer.” All four once-bind buffer capacities, including unused unit numerator buffers, are charged and cleared. The largest conservative per-arm scratch ceiling is 1,946,157,056 bytes, below 4 GiB; the final full-size preflight's whole-process peak footprint was 1,603,044,840 bytes. That measured footprint includes common input/oracle/setup memory and is not an isolated per-arm peak.
+
+Narrow release clippy/fmt, repository lint/KB, and four independent table golden-vector tests passed. The final pre-timing source manifest SHA256 is `f2ceccbab4fd51602a63120a3005d66bf134f579bb623f84322cff3e45bee114`; original release binary SHA256 is `e7bfa38c5494b4571fcf2fc2cada04ac2fba40f8638090f4b6ca83ddf3d71504`. [Build/environment provenance](results/environment-pretime.json) records CPU, OS, toolchain, profile and source hashes. All three committed frozen snapshots and all 23 production source pins passed exact byte/hash verification.
+
+The timed whole boundary pays native proof construction, identical owned Record normalization and native/Record drops in every arm. The diagnostic pays public prefix replay, complete bottom construction/proof/folds, its moved-proof Level construction and drop. These are deliberately different registered boundaries; neither isolates native API latency or bottom arithmetic alone.
 
 ## Analysis
 
@@ -141,7 +158,7 @@ This is the smallest current-domain complete LogUp comparison that exercises ext
 
 ## Verdict
 
-Pending under the registered three-way criterion. IDEA-0005 remains triaged until the parent starts implementation; no current numerical priority or performance credit is assigned by this plan.
+E1 pending under the fixed v2 three-way criterion. IDEA-0005 remains triaged while this comparison is measured; E0 correctness/count evidence alone assigns no performance verdict, current numerical priority or GPU credit.
 
 ## Follow-ups
 
