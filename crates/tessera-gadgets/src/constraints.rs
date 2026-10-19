@@ -62,18 +62,18 @@ pub enum Term {
 
 /// `constant + Σ_i coefficient_i · term_i`, with public coefficients in the prime field.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Affine<F> {
+pub struct Affine<F, T = Term> {
     /// The constant.
     pub constant: F,
     /// The terms, each with its coefficient.
-    pub terms: Vec<(F, Term)>,
+    pub terms: Vec<(F, T)>,
 }
 
-impl<F: PrimeField> Affine<F> {
+impl<F: PrimeField, T: Copy + PartialEq> Affine<F, T> {
     /// The form at one point, each term's value there given by `value`: an element's entry, or
     /// the term's multilinear extension at a point of its hypercube, over the prime field or an
     /// extension of it.
-    pub fn evaluate<E: PolyField<Base = F>>(&self, mut value: impl FnMut(Term) -> E) -> E {
+    pub fn evaluate<E: PolyField<Base = F>>(&self, mut value: impl FnMut(T) -> E) -> E {
         self.terms
             .iter()
             .fold(E::from(self.constant), |sum, &(coefficient, term)| {
@@ -82,7 +82,7 @@ impl<F: PrimeField> Affine<F> {
     }
 
     /// Whether a term reads `term`.
-    pub(crate) fn reads(&self, term: Term) -> bool {
+    pub(crate) fn reads(&self, term: T) -> bool {
         self.terms.iter().any(|&(_, t)| t == term)
     }
 }
@@ -90,13 +90,13 @@ impl<F: PrimeField> Affine<F> {
 /// One lookup of a gadget: `(key, value) ∈ table`, its columns affine forms. A table without
 /// values, `Range`, takes the key alone.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Lookup<F> {
+pub struct Lookup<F, T = Term> {
     /// The table.
     pub table: TableId,
     /// The key column.
-    pub key: Affine<F>,
+    pub key: Affine<F, T>,
     /// The value column, `None` for a table without values.
-    pub value: Option<Affine<F>>,
+    pub value: Option<Affine<F, T>>,
 }
 
 /// A gadget's constraints (RFC-0009): what it commits, its virtual values and its lookups, in

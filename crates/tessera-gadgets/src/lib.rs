@@ -10,7 +10,10 @@
 //! - [`Requant`]: `Requant1` and `RequantSplit` (RFC-0009 Lemmas 1 and 2, the split point of
 //!   RFC-0028) and `RequantWide` (RFC-0024 Lemma 11), built from the compiler's
 //!   [`Gadget`](tessera_compiler::Gadget) and the tables it names;
-//! - [`NonNeg`]: `v ∈ [0, 2^k)` by limbs (RFC-0009 Lemma 3).
+//! - [`NonNeg`]: `v ∈ [0, 2^k)` by limbs (RFC-0009 Lemma 3);
+//! - [`BigIntCompare`]: carry normalization and exact comparison of limb vectors that may exceed
+//!   the field as whole integers (RFC-0009 Lemma 4), with [`CompareConstraints`] for its zero-checks
+//!   and range lookups, and a zeroizing [`CompareWitness`].
 //!
 //! Each gives:
 //!
@@ -81,7 +84,7 @@
 //!
 //! A gadget's input, its classes, its committed tensors and every column computed from them are
 //! secret-class (05 §3). The input and the classes are lent to [`Requant::witness`],
-//! [`NonNeg::witness`] and [`Lookups::new`] for the call. What they compute lives in
+//! [`NonNeg::witness`], [`BigIntCompare::witness`] and [`Lookups::new`] for the call. What they compute lives in
 //! `SecretBuf`s, which clear their memory (OBS-6), and the debug forms show shapes only. Control
 //! flow depends on public data only (INV-ARCH-2): an input outside the gadget's domain, the one
 //! outcome that depends on the values, is reported after every element is computed. Errors carry
@@ -90,6 +93,7 @@
 
 #![forbid(unsafe_code)]
 
+mod compare;
 mod constraints;
 mod error;
 mod lookups;
@@ -97,6 +101,7 @@ mod non_neg;
 mod requant;
 mod witness;
 
+pub use compare::{BigIntCompare, CompareColumn, CompareConstraints, CompareWitness, Side};
 pub use constraints::{Affine, Committed, Constraints, Lookup, Term, Virtual};
 pub use error::{Column, GadgetError};
 pub use lookups::{Group, Lookups, TableColumns};

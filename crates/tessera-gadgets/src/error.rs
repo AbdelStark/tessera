@@ -83,7 +83,8 @@ pub enum GadgetError {
         expected: usize,
     },
     /// An input outside the gadget's domain: a key outside its signed width, a class outside
-    /// its classes, or a `NonNeg` value outside `[0, 2^k)`. Range analysis rules it out
+    /// its classes, a `NonNeg` value outside `[0, 2^k)`, or comparison inputs outside their limb box or
+    /// with `X > Y`. Range analysis rules out invalid gadget inputs
     /// (INV-IR-2, INV-DM-2).
     Input {
         /// The domain.
