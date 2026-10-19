@@ -151,3 +151,5 @@ The primitive-level scoreboard compares against these. A survey fills the "Best 
 ## Public gadget-column contract (2026-10-19)
 
 [SUR-0014](surveys/SUR-0014-gadget-column-contract.md) records a local E0 specification gap, not a new proof-system result. At root width 32, one committed low 16-bit digit with a virtual high digit versus two committed 16-bit digits can express the same exact root decomposition using the same range-table families; the latter adds one scalar auxiliary tensor/row (E0, own analytic example). Canonical roles and complete auxiliary lookup families must be pinned before #106 derives model offsets independently. No performance gain, GPU measurement or full-model proof is credited.
+
+EXP-0023 is planned, not run. Its registered E0 predictions are `4+r+12*m` committed root values and `6+r+12*m` range requests, where `r=ceil(w/8)-1`, `m=ceil((2*w+55)/8)`: 187 and 189 at root width 32, respectively. The registered honest matrix has 4,352 synthetic rows across widths 1 through 32. These are hypotheses, with no production/model credit before the arithmetic/schema checks.

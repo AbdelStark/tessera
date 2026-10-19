@@ -1,0 +1,4 @@
+UTC: 2026-10-19T18:33:15.145718+00:00
+SHA-256: 9d4feb8ab6c17daf22a6a6f78816c603002ee8cdbbf74b82bc744cccef5c2362
+Frozen report: README.preregistered.txt
+No experiment code exists at registration.
