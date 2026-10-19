@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `running` |
+| Status | `done: validated` |
 | Idea | [IDEA-0036](../../ideas/IDEA-0036-canonical-gadget-columns.md) |
 | Evidence level | E0, exact arithmetic and finite synthetic checks; no timing claim |
 | Hardware | None required for analytic claims; CPU environment recorded with results |
@@ -155,8 +155,16 @@ No syntax error or observationally equivalent fault is counted.
 After this independent baseline passed, source inspection found a fixed fifteen-
 limb scalar reference and interleaved column order. This candidate uses public
 width-derived limb counts and grouped arrays, so migration must be explicit.
-The dated amendment in `results/README.amendment-preregistered.txt` tests retention
+The dated amendment in `results/README.amendment-preregistered.txt` validates retention
 of the original `rho+1` constraint polynomial without changing the original plan.
+
+The amendment passes the same 4,352 honest rows, 8,704 altered roots and 13,680
+altered auxiliaries, plus four zero-maximum-root rows, four malformed public
+parameter cases and 80 factorization points. Every valid-row column is identical;
+the canonical matrix digest remains unchanged. It adds 790,537 assertions; the
+combined run has 1,352,832 assertions (E0). The extra frozen-amendment integrity
+check makes the repeated original stage 562,295 assertions rather than the
+archived original 562,294. Raw final output is `results/outcomes.json`.
 
 ## Analysis
 
@@ -167,7 +175,7 @@ No H100, end-to-end inference or performance evidence is sought in this unit.
 
 ## Verdict
 
-The original bounded criterion passed. The dated polynomial-retention amendment is registered but not run; overall status remains `running`. No adoption, performance gain or full-model credit.
+`validated` for the bounded original criterion and the pre-registered polynomial-retention amendment. Retain the original `rho+1` relation; canonical data agree only on the required Boolean/input-binding domain. No performance gain, preset fit, cryptographic security proof or full-model credit is inferred.
 
 ## Follow-ups
 
@@ -237,3 +245,42 @@ separately; this is E0 exact arithmetic, not a retimed or enlarged performance s
 The same root command runs both units after verifying the original and amendment
 frozen bytes against git. No amendment code exists at registration. Record its
 SHA-256 and UTC timestamp in preregistration-amendment.txt.
+
+## Arithmetic argument and migration decision
+
+For a true input in the 55-bit box and a root in the public w-bit box, their
+range-checked decompositions have boxes below Goldilocks; recomposition modulo
+that field is therefore exact. Each product coefficient is a sum of root-byte,
+root-byte and input-limb products. The complete lookup boxes on both sides of
+all normalization equations fit 35 bits in the declared width sweep (E0), below
+2^40 and the centered field range. Small-congruence induction makes normalization
+exact as integers. Range-checked normalized digits and borrows, with both final
+normalization carries and final borrow zero, compare the full products. The two
+brackets then fix `floor(sqrt(N/u))` on a real row. The padded-root check and the
+upstream input-selector obligation are still necessary. This is a local arithmetic
+argument, not an adaptive protocol proof.
+
+The candidate's normalized product width is public: `ceil((2*w+55)/8)`, never a
+function of the actual root or input. The scalar reference at 5f201fe instead uses
+fifteen limbs for all widths and interleaves digit/carry and difference/borrow
+columns. The new RFC must specify the width-derived bound and grouped role order,
+with an explicit per-role adapter/refactor before either model layout uses it.
+The difference is not silently treated as an implementation conformance pass.
+
+At Boolean positions, the input-selector equation gives `u*(1-psi)=0`.
+Thus the difference between increment formulations factors as
+`u*(1-psi)*(2*rho+psi+1)=0`. This does not identify their off-domain polynomials.
+The final-evaluation formula remains the original `(rho+1)^2*u`; only its public
+column schema is fixed. Each pointwise product still has degree at most three,
+or four with the sumcheck equality factor. The existing RFC-0014 calculator must
+consume the actual round, lookup, table and advice-row counts and reject any preset
+that misses its target. This unit does not assert that a particular full model's
+preset fits. Protocol/2 masking and secret-buffer obligations remain unchanged.
+
+## Additional engineering boundary registration (2026-10-19)
+
+The original sweep has N below the field. Before the RFC decision, the separately
+frozen `results/README.constants-preregistered.txt` adds twenty scalar row cases
+with constants above Goldilocks and five intentional whole-constant-reduction
+attacks. This extension is registered, not run; it does not replace any original
+case or criterion. The earlier bounded result remains scoped to its inputs.

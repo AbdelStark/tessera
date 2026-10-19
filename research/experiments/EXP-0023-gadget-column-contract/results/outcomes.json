@@ -4,7 +4,7 @@
   "seed": "0x4071060023",
   "frozen_sha256": "9d4feb8ab6c17daf22a6a6f78816c603002ee8cdbbf74b82bc744cccef5c2362",
   "counts": {
-    "assertions": 562294,
+    "assertions": 562295,
     "maximum_equation_bits": 35,
     "policy_cases": 1024,
     "root_alternatives": 8704,
@@ -13,6 +13,20 @@
     "nonneg_cases": 1984,
     "softmax_cases": 1024
   },
+  "amendment": {
+    "verdict": "validated",
+    "frozen_sha256": "1aa852822c46e25c5e240157ff7aadeb3c983125110ee640205c814dc70b9d59",
+    "honest_rows": 4352,
+    "root_alternatives": 8704,
+    "auxiliary_alternatives": 13680,
+    "zero_maximum_root_rows": 4,
+    "malformed_parameter_cases": 4,
+    "factorization_points": 80,
+    "canonical_matrix_sha256": "bd728c2db4134fb112103fb801f8ee572f723def60fcc63b0c0403fb85fb833b",
+    "assertions_added": 790537,
+    "conclusion": "retain rho+1 final-evaluation polynomial; equal data only on required domain"
+  },
+  "total_assertions": 1352832,
   "matrix_sha256": "bd728c2db4134fb112103fb801f8ee572f723def60fcc63b0c0403fb85fb833b",
   "widths": [
     {
@@ -715,7 +729,7 @@
     "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
     "machine": "arm64",
     "cpu": "Apple M4 Max",
-    "utc": "2026-10-19T18:41:25.234894+00:00"
+    "utc": "2026-10-19T18:46:58.021232+00:00"
   },
   "limits": [
     "No full-model proof",

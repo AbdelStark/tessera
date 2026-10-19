@@ -19,6 +19,7 @@ P = 2**64 - 2**32 + 1
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 FROZEN = "9d4feb8ab6c17daf22a6a6f78816c603002ee8cdbbf74b82bc744cccef5c2362"
+AMENDMENT = "1aa852822c46e25c5e240157ff7aadeb3c983125110ee640205c814dc70b9d59"
 SEED = 0x4071060023
 COUNTS: Counter[str] = Counter()
 
@@ -156,7 +157,7 @@ class Witness:
     values: dict[str, int]
 
 
-def witness(s: dict, u: int, root: int, psi: int, integer_u: int | None = None) -> Witness:
+def witness(s: dict, u: int, root: int, psi: int, integer_u: int | None = None, *, one: bool = False) -> Witness:
     """Digits come from independent whole integers; carries reconcile raw coefficients."""
     value_u = u if integer_u is None else integer_u
     r, m, n = s["r"], s["m"], int(s["N"])
@@ -164,11 +165,12 @@ def witness(s: dict, u: int, root: int, psi: int, integer_u: int | None = None) 
     values.update({f"root/{i}": (root >> (8 * i)) & 255 for i in range(r)})
     ud = [values[f"u/{i}"] for i in range(3)] + [value_u >> 48]
     rd = [values[f"root/{i}"] for i in range(r)] + [root >> (8 * r)]
+    increment = 1 if one else psi
     raw = {"lower/left": product(rd, ud, m), "lower/right": byte_digits(psi * n, m),
            "upper/left": byte_digits(psi * (n + 1), m),
-           "upper/right": product(rd, ud, m, psi)}
+           "upper/right": product(rd, ud, m, increment)}
     exact = {"lower/left": root * root * value_u, "lower/right": psi * n,
-             "upper/left": psi * (n + 1), "upper/right": (root + psi)**2 * value_u}
+             "upper/left": psi * (n + 1), "upper/right": (root + increment)**2 * value_u}
     for name, coefficients in raw.items():
         check(sum(a << (8 * i) for i, a in enumerate(coefficients)) == exact[name],
               ("product vs whole integer", name, s["w"], u, root))
@@ -190,7 +192,7 @@ def witness(s: dict, u: int, root: int, psi: int, integer_u: int | None = None) 
     return Witness(u % P, root, psi, {name: values[name] for name, _ in s["columns"]})
 
 
-def validate(s: dict, a: Witness, fault: str = "") -> str | None:
+def validate(s: dict, a: Witness, fault: str = "", *, one: bool = False) -> str | None:
     """Small field identities, range boxes and final carries: no bigint bracket shortcut."""
     w, r, m, n = s["w"], s["r"], s["m"], int(s["N"])
     v = a.values
@@ -218,12 +220,13 @@ def validate(s: dict, a: Witness, fault: str = "") -> str | None:
             return "Range/" + name
     ud = [v[f"u/{i}"] for i in range(3)] + [ut]
     rd = [v[f"root/{i}"] for i in range(r)] + [rt]
+    increment = 1 if one else a.psi
     raw = {"lower/left": product(rd, ud, m), "lower/right": byte_digits(a.psi * n, m),
            "upper/left": byte_digits(a.psi * (n + 1), m),
-           "upper/right": product(rd, ud, m, a.psi)}
+           "upper/right": product(rd, ud, m, increment)}
     if fault == "IncrementClip":
         q = rd.copy()
-        q[0] = (q[0] + a.psi) & 255
+        q[0] = (q[0] + increment) & 255
         raw["upper/right"] = product(q, ud, m)
     for name, coefficients in raw.items():
         final = "FinalCarry/" + name
@@ -337,6 +340,10 @@ def run() -> dict:
     committed = subprocess.check_output(["git", "show", "HEAD:" + rel], cwd=ROOT)
     check(frozen.read_bytes() == committed and hashlib.sha256(committed).hexdigest() == FROZEN,
           "committed pre-registration")
+    amendment = HERE / "results/README.amendment-preregistered.txt"
+    amendment_commit = subprocess.check_output(["git", "show", "HEAD:" + str(amendment.relative_to(ROOT))], cwd=ROOT)
+    check(amendment.read_bytes() == amendment_commit
+          and hashlib.sha256(amendment_commit).hexdigest() == AMENDMENT, "committed amendment")
     state = SEED
     per_width, representatives = [], []
     matrix_hash = hashlib.sha256()
@@ -401,8 +408,11 @@ def run() -> dict:
             COUNTS["auxiliary_alternatives"] += 1
     other_gadgets()
     faults = fault_controls()
+    original_counts = dict(COUNTS)
+    amended = polynomial_retention(matrix_hash.hexdigest())
     return {"verdict": "validated", "evidence": "E0, bounded exact arithmetic/schema result only",
-            "seed": hex(SEED), "frozen_sha256": FROZEN, "counts": dict(COUNTS),
+            "seed": hex(SEED), "frozen_sha256": FROZEN, "counts": original_counts,
+            "amendment": amended, "total_assertions": COUNTS["assertions"],
             "matrix_sha256": matrix_hash.hexdigest(), "widths": per_width, "faults": faults,
             "environment": {"python": sys.version, "platform": platform.platform(),
                             "machine": platform.machine(),
@@ -480,8 +490,88 @@ def fault_controls() -> list[dict]:
     return results
 
 
+def polynomial_retention(original_hash: str) -> dict:
+    before = COUNTS["assertions"]
+    state, rows, alternatives, auxiliaries = SEED, 0, 0, 0
+    encoded = hashlib.sha256()
+    for width in range(1, 33):
+        n = 1 << (2 * width - 2) if width <= 31 else 4 << 60
+        s = schema(width, n)
+        inputs = [1, 2, 3, 255, 256, 257, 2**55 - 1]
+        for _ in range(128):
+            state, value = splitmix(state)
+            inputs.append(value % (2**55 - 1) + 1)
+        for psi, u in [(1, u) for u in inputs] + [(0, 0)]:
+            root = isqrt(n // u) if psi else 0
+            selector = witness(s, u, root, psi)
+            original = witness(s, u, root, psi, one=True)
+            check(selector == original, ("valid-row column equality", width, psi, u))
+            check(validate(s, original, one=True) is None, "original polynomial honest")
+            check(validate(s, selector) is None, "selector polynomial honest")
+            encoded.update(json.dumps([width, psi, str(u), str(root), list(original.values.items())], separators=(",", ":")).encode())
+            for delta in (-1, 1):
+                wrong = root + delta
+                if not 0 <= wrong < 1 << width:
+                    changed, expected = replace(original, root=wrong), "RootRange"
+                else:
+                    changed = witness(s, u, wrong, psi, one=True)
+                    expected = "RootPadding" if not psi else ("Lower" if delta > 0 else "Upper")
+                check(validate(s, changed, one=True) == expected, ("original polynomial root alternative", width, delta))
+                alternatives += 1
+            if (psi and u in (1, 2**55 - 1)) or not psi:
+                for name, _ in s["columns"]:
+                    values = original.values.copy()
+                    values[name] += 1
+                    expected = perturbation_error(s, original, name, values[name])
+                    check(validate(s, replace(original, values=values), one=True) == expected,
+                          ("original polynomial auxiliary", width, name, expected))
+                    auxiliaries += 1
+            rows += 1
+        check(schema(width, n) == s, "polynomial choice cannot change public schema")
+    check(rows == 4352 and alternatives == 8704 and auxiliaries == 13680, "amendment full original matrix")
+    check(encoded.hexdigest() == original_hash, "whole canonical-data equality hash")
+    # Degenerate maximum root is represented with a one-bit lookup, as the scalar API does.
+    s = schema(1, 1)
+    check(max(1, isqrt(1 // 2).bit_length()) == 1, "zero maximum root width")
+    for psi, u in [(1, 2), (1, 3), (1, 2**55 - 1), (0, 0)]:
+        a, b = witness(s, u, 0, psi), witness(s, u, 0, psi, one=True)
+        check(a == b and validate(s, a) is None and validate(s, b, one=True) is None,
+              "zero-maximum-root boundary")
+    malformed = 0
+    for width in (0, 33):
+        try:
+            schema(width, 1)
+        except ValueError:
+            malformed += 1
+    for policy in (0, 33):
+        try:
+            enforce_policy(s, policy)
+        except ValueError:
+            malformed += 1
+    check(malformed == 4, "malformed public widths/policies rejected")
+    points = 0
+    for psi in (0, 1, 2, 17, P - 1):
+        for u in (0, 1, 2, 2**55 - 1):
+            for root in (0, 1, 255, 2**32 - 1):
+                difference = u * ((root + 1)**2 - (root + psi)**2) % P
+                factored = u * (1 - psi) * (2 * root + psi + 1) % P
+                check(difference == factored, "polynomial factorization")
+                if psi in (0, 1) and u * (1 - psi) == 0:
+                    check(difference == 0, "required Boolean-domain equality")
+                points += 1
+    check(1 * ((0 + 1)**2 - (0 + 0)**2) % P != 0, "not an off-domain polynomial identity")
+    return {"verdict": "validated", "frozen_sha256": AMENDMENT,
+            "honest_rows": rows, "root_alternatives": alternatives,
+            "auxiliary_alternatives": auxiliaries, "zero_maximum_root_rows": 4,
+            "malformed_parameter_cases": malformed, "factorization_points": points,
+            "canonical_matrix_sha256": encoded.hexdigest(),
+            "assertions_added": COUNTS["assertions"] - before,
+            "conclusion": "retain rho+1 final-evaluation polynomial; equal data only on required domain"}
+
+
 if __name__ == "__main__":
     result = run()
     (HERE / "results/outcomes.json").write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
     print(json.dumps({"verdict": result["verdict"], "counts": result["counts"],
-                      "faults": len(result["faults"]), "matrix_sha256": result["matrix_sha256"]}))
+                      "distinct_faults": 19, "additional_attack_controls": 1,
+                      "matrix_sha256": result["matrix_sha256"], "amendment": result["amendment"]}))

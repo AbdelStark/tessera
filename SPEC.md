@@ -91,7 +91,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0049](docs/rfcs/RFC-0049-weight-proximity.md) | The weights' proximity point before the stages: `pcs/weights/{T}/xi` right after the seed in protocol/1, so one weight pass yields folds and combined rows; coefficients over committed rows; the calculator's protocol/1 counts (amends RFC-0012, RFC-0014) | v0.3 |
 | [RFC-0048](docs/rfcs/RFC-0048-weight-trust.md) | What the weights root vouches for: uniqueness holds for any committed values, while fidelity and totality rest on `R_W`'s publisher (amends 00, 06, RFC-0006, RFC-0009, RFC-0040) | v0.3 |
 
-All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
+All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it. The proposed [RFC-0050](docs/rfcs/RFC-0050-gadget-advice-columns.md) is Draft and does not yet amend the accepted column/layout contract.
 
 ## Release plan
 

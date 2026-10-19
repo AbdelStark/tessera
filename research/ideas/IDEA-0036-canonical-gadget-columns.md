@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `experimenting` |
+| Status | `promoted` |
 | Origin | [SUR-0014](../surveys/SUR-0014-gadget-column-contract.md), #407 / remaining #106 |
 | Lever | Exact `C_lin`, `K_lin`, size and verify; correctness prerequisite |
 | Spec surfaces | RFC-0009, RFC-0006/0007, RFC-0041 and RFC-0011; tier-A derived offsets/table descriptors require a superseding RFC |
@@ -19,10 +19,11 @@ For Rsqrt, retain three committed low 16-bit input limbs and a virtual 7-bit top
 limb (`NonNeg(u,55)`). Decompose the root into 8-bit digits with a virtual narrowed
 top digit. Form product sums in byte radix, with the 16-bit input limbs at even
 byte positions. Each term has two root-byte factors and one input-limb factor;
-their public component boxes bound every sum. For the upper product, replace the
-low root-byte factor by `r_0 + psi`. This represents `rho + 1` on a real row and 0
-on a padded row, retaining the carry at the maximal root box. It is an auxiliary
-representation of the existing bracket, not a new definition of the integer model.
+their public component boxes bound every sum. The original experiment used the
+Boolean-domain equivalent low factor `r_0 + psi`. Its committed amendment validates
+identical data under `r_0 + 1`; the promoted RFC retains the original polynomial
+and its full increment carry. With padded input limbs zero, the product and all
+auxiliaries are zero in either formulation. No integer model change is proposed.
 
 Use two fully specified byte-radix BigIntCompare witnesses. Each has left digits,
 left carries, right digits, right carries, difference digits, then borrows, all in
@@ -30,8 +31,8 @@ increasing limb order. Keep final normalization carries and final borrows as
 committed values constrained to zero. Public constant sides follow the same
 normalizer schema; do not optimize their columns away in this proposal.
 
-This is a candidate, not an accepted protocol layout. EXP-0023 must check its
-bounds, uniqueness obligations, padding behavior and metadata before promotion.
+This is a proposal, not an accepted protocol layout. EXP-0023 validates the bounded
+arithmetic/metadata checks; the draft RFC makes its scope and migration explicit.
 
 ## Why it could work
 
@@ -64,8 +65,8 @@ feed actual counts into the soundness calculator and compiler reports.
 
 | Property | Effect | Pass |
 |---|---|---|
-| Soundness bits (G-4) | No new proposed challenge; exact lookup/column counts still need protocol accounting | unknown until arithmetic/schema checks; production accounting remains an implementation gate |
-| Uniqueness (SP-3) | Preserve sub-P input/root boxes, full products, both final carries and borrows | unknown until EXP-0023; reject if any alternative passes |
+| Soundness bits (G-4) | No new proposed challenge; exact lookup/column counts still need protocol accounting | pass for the unchanged relation calculus and required exact-count checking; no preset-fit claim |
+| Uniqueness (SP-3) | Preserve sub-P input/root boxes, full products, both final carries and borrows | pass at E0 under the stated integer/input-binding conditions; EXP-0023 and its amendment pass |
 | Zero knowledge (G-5) | Only public parameters choose layout; no secret-dependent omission | pass for metadata proposal; existing masking obligations remain |
 | Verifier independence (SP-6) | Specify first, independent integer oracle, then separate implementations | pass as a required workflow; no shared production module |
 | Post-quantum | No primitive or commitment change | pass, unchanged assumption |
@@ -114,5 +115,17 @@ out of scope. No extra optimization ideas are created to fill a quota.
 
 ## Decision and links
 
-Triaged for the bounded E0 check. Experiment: EXP-0023. Issue: #407. No accepted
-RFC or production change yet. Ledger updated 2026-10-19.
+Validated for the bounded E0 schema/arithmetic result, including the pre-registered
+polynomial-retention amendment. Retain the original rho+1 constraint polynomial;
+make grouped columns and width-derived comparison length an explicit migration.
+Experiment: EXP-0023. Issue: #407. [RFC-0050](../../docs/rfcs/RFC-0050-gadget-advice-columns.md) is Draft;
+no accepted RFC or production change yet.
+Ledger updated 2026-10-19.
+
+
+EXP-0023 reports 4,352 honest rows, 8,704 altered roots, 13,680 altered auxiliaries,
+19 distinct faults plus a u+P attack control, and a matching canonical-data digest
+under the original polynomial (E0). Five fault controls change first-error behavior
+rather than accept a bad witness; no stronger claim is made. Model soundness counts,
+parameter acceptance, native verifier code and protocol/2 simulation remain their
+respective implementation gates, not evidence credited to this experiment.
