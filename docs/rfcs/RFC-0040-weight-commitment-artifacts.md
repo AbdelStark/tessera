@@ -157,7 +157,7 @@ v0.3, for #102:
   - Golden vectors cover both schemas (03 §7). The prover's decoder reads both, and the verifier's reads `0x0301`, since it never reads the secret state. An unsorted or repeated `opened_columns` is rejected.
   - The state file is written with mode 0600, and an interrupted write leaves the previous file whole.
 - **Verifier.**
-  - A `.twr` that does not hash to the trusted root is `ERR-USAGE`.
+  - A `.twr` that does not hash to the trusted root is `ERR-USAGE`. The trusted root vouches for `D`'s domains ([RFC-0048](RFC-0048-weight-trust.md#the-assumption)).
   - A claim list whose weight layout differs is `Reject(StatementMismatch)` (#109, #128).
 
 ## Open Questions

@@ -36,7 +36,7 @@ Notation: `L = 16` (limb width, `GadgetPolicy.limb_bits`); `B_max = 32`; "range 
 
 Inputs: virtual key `z` (true integer, `b ≤ B_max` signed bits), hidden channel class `c` (committed with the weights, RFC-0012). Output: committed `y`.
 
-The requantization gadgets take `c` to be an integer in `[0, n)` for the site's `n` classes, its domain in [RFC-0006](RFC-0006-compiler-ir.md#range-analysis) 'Range analysis'. Lemmas 1, 2 and 11 rely on it. The lookups alone do not establish it: a class outside `[0, n)`, or a field element that is no integer, can reach the row of another key or class and pass with its output.
+The requantization gadgets take `c` to be an integer in `[0, n)` for the site's `n` classes, its domain in [RFC-0006](RFC-0006-compiler-ir.md#range-analysis) 'Range analysis'. Lemmas 1, 2 and 11 rely on it for their value half only: for any field `z` and `c` at most one witness passes, and for `c ∈ [0, n)` its `y` is `rq(z, r_c)` ([RFC-0048](RFC-0048-weight-trust.md#the-lemmas-two-halves)). `R_W`'s publisher vouches for the domain. The lookups alone do not establish it: a class outside `[0, n)`, or a field element that is no integer, can reach the row of another key or class and pass with its output.
 
 - Lookup: `(pack(c, z), y) ∈ Requant { b, r_by_class, lo, hi }` with `pack(c, z) = (z + 2^{b−1}) + 2^b · c` ([RFC-0008](RFC-0008-logup-and-tables.md#table-specifications)). The class term is present only when the table has several classes.
 - Cost: 1 commitment, 1 lookup.
