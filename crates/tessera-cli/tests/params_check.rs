@@ -159,8 +159,10 @@ fn the_table_lists_every_row_and_the_minimum() {
         "{}",
         table[5]
     );
+    // The 405B statement is tessera-protocol/1's, whose weights carry no mask (RFC-0049): the
+    // advice queries are the tightest row.
     assert!(
-        text.contains("minimum: proximity queries, Embed: 64.03 bits, target 64"),
+        text.contains("minimum: proximity queries, advice: 64.32 bits, target 64"),
         "{text}"
     );
     assert!(text.contains("every row meets its target"), "{text}");

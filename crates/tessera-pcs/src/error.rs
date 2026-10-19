@@ -142,9 +142,11 @@ pub enum PcsError {
         /// The coordinates given.
         found: usize,
     },
-    /// The proximity point `ξ*` does not have `row_vars` coordinates.
+    /// The proximity point `ξ*` does not have the coordinates its commitment takes: the advice's
+    /// `row_vars`, every bit of the row index (RFC-0011 step 3), and a weight matrix's
+    /// `⌈log2 m_T⌉`, the bits of a committed row's position (RFC-0049).
     XiPoint {
-        /// The layout's `row_vars`.
+        /// The coordinates it takes.
         expected: usize,
         /// The coordinates given.
         found: usize,
@@ -224,6 +226,48 @@ pub enum PcsError {
     ColumnOrder {
         /// The column's position in the list.
         position: usize,
+    },
+    /// A fold of a matrix with no committed row: it has no claim, no combined rows and no
+    /// proximity point (RFC-0049), as `ChannelParams` when no weight has channel parameters.
+    NoRows {
+        /// The matrix.
+        matrix: WeightMatrix,
+    },
+    /// A fold point that does not have the coordinates the matrix's fold takes: `log2 out_pad`
+    /// for a weight type, `r_o`, and the row index's bits for `ChannelParams` (RFC-0012
+    /// 'Opening by the folding pass').
+    FoldPoint {
+        /// The matrix.
+        matrix: WeightMatrix,
+        /// The coordinates it takes.
+        expected: usize,
+        /// The coordinates given.
+        found: usize,
+    },
+    /// A layer point `ρ_ℓ` that does not have the matrix's `log2 L_pad` coordinates.
+    LayerPoint {
+        /// The matrix.
+        matrix: WeightMatrix,
+        /// The coordinates it takes.
+        expected: usize,
+        /// The coordinates given.
+        found: usize,
+    },
+    /// The rows of one matrix given to the fold of another.
+    OtherMatrix {
+        /// The matrix the fold opens.
+        expected: WeightMatrix,
+        /// The matrix whose rows were given.
+        found: WeightMatrix,
+    },
+    /// A committed row asked for past the matrix's `m_T`.
+    RowIndex {
+        /// The matrix.
+        matrix: WeightMatrix,
+        /// The position asked for.
+        index: usize,
+        /// `m_T`, its committed rows.
+        rows: u64,
     },
 }
 
@@ -376,6 +420,38 @@ impl fmt::Display for PcsError {
             Self::ColumnOrder { position } => {
                 write!(f, "opened column {position} is not above the one before it")
             }
+            Self::NoRows { matrix } => write!(
+                f,
+                "the {matrix:?} matrix has no committed row: it has no combined rows and no proximity point"
+            ),
+            Self::FoldPoint {
+                matrix,
+                expected,
+                found,
+            } => write!(
+                f,
+                "the fold of the {matrix:?} matrix takes a point of {expected} coordinates, not {found}"
+            ),
+            Self::LayerPoint {
+                matrix,
+                expected,
+                found,
+            } => write!(
+                f,
+                "the {matrix:?} matrix's layer point has {expected} coordinates, not {found}"
+            ),
+            Self::OtherMatrix { expected, found } => write!(
+                f,
+                "the fold of the {expected:?} matrix cannot read the rows of the {found:?} matrix"
+            ),
+            Self::RowIndex {
+                matrix,
+                index,
+                rows,
+            } => write!(
+                f,
+                "the {matrix:?} matrix has {rows} committed rows, so no row {index}"
+            ),
         }
     }
 }

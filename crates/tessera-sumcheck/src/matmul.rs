@@ -214,13 +214,7 @@ impl<'a, F: PolyField> Product<'a, F> {
             col_vars,
         } = shape;
         check_point(point, col_vars + row_vars + stack_vars)?;
-        let (r_cols, rest) = point.split_at(col_vars);
-        let (r_rows, rho) = rest.split_at(row_vars);
-        let left = if row_vars == 0 {
-            Factor::AsIs(left)
-        } else {
-            Factor::Contracted(contract_middle(left, &eq_weights(r_rows), 1 << inner_vars))
-        };
+        let r_cols = &point[..col_vars];
         let right = if col_vars == 0 {
             Factor::AsIs(right)
         } else {
@@ -230,12 +224,57 @@ impl<'a, F: PolyField> Product<'a, F> {
                 RightLayout::Transposed => contract_middle(right, &weights, 1 << inner_vars),
             })
         };
+        Ok(Self::assemble(left, right, layout, shape, point))
+    }
+
+    /// The tables for an input claim at `point`, with the right operand given contracted already:
+    /// `right` holds `B̃(b, j, r_c)`, `2^{n_j + n_b}` values. `point` is checked before anything
+    /// is computed; the table's length is the caller's to check.
+    fn with_right(
+        left: &'a [F::Base],
+        right: SecretBuf<F>,
+        layout: RightLayout,
+        shape: MatMulActShape,
+        point: &[F],
+    ) -> Result<Self, SumcheckError> {
+        check_point(point, shape.col_vars + shape.row_vars + shape.stack_vars)?;
+        Ok(Self::assemble(
+            left,
+            Factor::Contracted(right),
+            layout,
+            shape,
+            point,
+        ))
+    }
+
+    /// The rest of the tables, from a checked point and the right operand's factor: `A`
+    /// contracted with `eq(r_a, ·)` and `eq(ρ, ·)`.
+    fn assemble(
+        left: &'a [F::Base],
+        right: Factor<'a, F>,
+        layout: RightLayout,
+        shape: MatMulActShape,
+        point: &[F],
+    ) -> Self {
+        let MatMulActShape {
+            stack_vars,
+            row_vars,
+            inner_vars,
+            col_vars,
+        } = shape;
+        let (r_cols, rest) = point.split_at(col_vars);
+        let (r_rows, rho) = rest.split_at(row_vars);
+        let left = if row_vars == 0 {
+            Factor::AsIs(left)
+        } else {
+            Factor::Contracted(contract_middle(left, &eq_weights(r_rows), 1 << inner_vars))
+        };
         let eq = if stack_vars > 0 {
             eq_high(rho, inner_vars)
         } else {
             Vec::new()
         };
-        Ok(Self {
+        Self {
             shape,
             layout,
             eq,
@@ -243,7 +282,7 @@ impl<'a, F: PolyField> Product<'a, F> {
             right,
             r_rows: r_rows.to_vec(),
             r_cols: r_cols.to_vec(),
-        })
+        }
     }
 
     /// The instance: `eq(ρ, ·)` as a public factor when there are stacking variables, then
@@ -300,7 +339,8 @@ impl<'a, F: PolyField> Product<'a, F> {
 ///
 /// 1. [`tables`](Self::tables) builds the instance's tables from the input claim's point, never
 ///    its value; [`MatMulWeightTables::instance`] lends them to [`prove_batch`] as one instance
-///    among the stage's.
+///    among the stage's. [`MatMulWeightTables::folded`] builds the same tables from `W̃(ℓ, r_o,
+///    i)` as the weight commitment's fold pass gives it, without reading `W` again.
 /// 2. [`prove_batch`] runs the stage's sumcheck, of a degree at least [`degree`](Self::degree).
 /// 3. [`MatMulWeightTables::claims`] maps the instance's point and evaluations, from the
 ///    [`ProvenBatch`](crate::ProvenBatch), to the claims on `W` and `X`.
@@ -430,6 +470,44 @@ pub struct MatMulWeightTables<'a, F: PolyField> {
     shape: MatMulWeightShape,
     /// `X` as `A`, `W` as `B` stored transposed.
     product: Product<'a, F>,
+}
+
+impl<'a, F: PolyField> MatMulWeightTables<'a, F> {
+    /// The instance's tables for an input claim on `Ỹ` at `point = r_o ‖ r_t ‖ ρ`, with the
+    /// weights given contracted already: `w` holds `W̃(ℓ, r_o, i) = Σ_o eq(r_o, o)·W[ℓ, o, i]`,
+    /// `2^{n_ℓ + n_i}` values at `ℓ·2^{n_i} + i`, the layer index high, as the weight
+    /// commitment's fold pass gives it (RFC-0012 'Opening by the folding pass' step 2). The
+    /// instance reads no weight, so that a proof reads them once, in the fold (INV-WC-4).
+    ///
+    /// Everything else is [`MatMulWeight::tables`]'s: `X` contracted at `r_t`, `eq(ρ, ·)` when
+    /// stacked, the evaluations `[w, x]` and the claims of [`claims`](Self::claims). A `w` that is
+    /// the contraction of `W` at `r_o` proves the stage `MatMulWeight::tables` proves, message
+    /// for message. `w` is secret-class, and its [`SecretBuf`] is cleared when the tables drop.
+    ///
+    /// # Errors
+    ///
+    /// In this order, before anything is computed: [`SumcheckError::OperandTooLarge`] or
+    /// [`SumcheckError::OperandLength`] for `w` (operand [`Operand::W`]) unless it holds
+    /// `2^{n_ℓ + n_i}` values, then for `X` unless it holds `2^{n_ℓ + n_t + n_i}`; then
+    /// [`SumcheckError::PointLength`] when the point does not have `n_o + n_t + n_ℓ`
+    /// coordinates.
+    pub fn folded(
+        w: SecretBuf<F>,
+        x: &'a [F::Base],
+        shape: MatMulWeightShape,
+        point: &[F],
+    ) -> Result<Self, SumcheckError> {
+        let MatMulWeightShape {
+            layer_vars,
+            token_vars,
+            in_vars,
+            ..
+        } = shape;
+        check_operand(Operand::W, w.len(), &[layer_vars, in_vars])?;
+        check_operand(Operand::X, x.len(), &[layer_vars, token_vars, in_vars])?;
+        let product = Product::with_right(x, w, RightLayout::Transposed, shape.product(), point)?;
+        Ok(Self { shape, product })
+    }
 }
 
 impl<F: PolyField> MatMulWeightTables<'_, F> {

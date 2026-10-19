@@ -25,6 +25,12 @@
 //! Every other entry, padding, is 0, and a weight is its true integer in the centered
 //! representation (RFC-0002): `w ≥ 0` is `w`, `w < 0` is `P − |w|`.
 //!
+//! # Rows
+//!
+//! One function lays out one committed row, and both readers of the weights use it: the
+//! commitment, which writes every row ([`WeightLayout::write_rows`]), and the fold pass, which
+//! reads one row at a time ([`WeightLayout::rows`], [`WeightRows`]).
+//!
 //! # Secrets
 //!
 //! The layout is public: it follows from the shapes and from which weights have a
@@ -38,7 +44,7 @@ use core::fmt;
 
 use tessera_field::{Field, Goldilocks, PrimeField};
 
-use crate::{PcsError, WeightLayoutParams, WeightMatrix};
+use crate::{MatrixRows, PcsError, WeightLayoutParams, WeightMatrix};
 
 type Fp = Goldilocks;
 
@@ -425,65 +431,98 @@ impl WeightLayout {
         })
     }
 
-    /// Writes the committed rows of `matrix` over `out`, which holds `m_T·k_T` values.
+    /// Writes the committed rows of `matrix` over `out`, which holds `m_T·k_T` values, row by
+    /// row with [`fill_row`](Self::fill_row): the commitment and the fold pass place every entry
+    /// with one code.
     pub(crate) fn fill(&self, matrix: WeightMatrix, checked: &Checked<'_>, out: &mut [Fp]) {
+        let k = self.matrices[matrix.index()].message_len();
+        for ((index, row), values) in self
+            .committed_rows(matrix)
+            .enumerate()
+            .zip(out.chunks_exact_mut(k))
+        {
+            self.fill_row(matrix, checked, row, index, values);
+        }
+    }
+
+    /// Writes committed row `index` of `matrix`, the `index`-th in increasing order and row
+    /// `row` of the matrix, over `out`, which holds `k_T` values: every entry, padding as 0.
+    pub(crate) fn fill_row(
+        &self,
+        matrix: WeightMatrix,
+        checked: &Checked<'_>,
+        row: u64,
+        index: usize,
+        out: &mut [Fp],
+    ) {
         out.fill(Fp::ZERO);
         let layout = &self.matrices[matrix.index()];
         let k = layout.message_len();
         match layout.kind {
             MatrixKind::Weight {
-                shape,
-                layers,
-                a,
-                h: _,
+                shape, layers, a, ..
             } => {
-                let inputs = shape.inputs as usize;
+                // Each layer commits ⌈out / 2^a⌉ rows, m_T / layers; row o_hi of a layer holds
+                // outputs o_hi·2^a to o_hi·2^a + 2^a − 1, those below `out`, each an input row
+                // at column (o mod 2^a)·in_pad. `in ≥ 1` and k_T ≤ 2^31: the slices fit.
+                let per_layer = (layout.rows / u64::from(layers)) as usize;
+                let (layer, o_hi) = (index / per_layer, index % per_layer);
+                let (inputs, outputs) = (shape.inputs as usize, shape.out as usize);
                 let in_pad = k >> a;
-                let first = self.first_tensor(matrix);
-                let mut rows = out.chunks_exact_mut(k);
-                for layer in 0..layers as usize {
-                    // Row o_hi of the layer holds outputs o_hi·2^a to o_hi·2^a + 2^a − 1, the
-                    // last row those below `out`: ⌈out / 2^a⌉ rows. `in ≥ 1`, and k_T ≤ 2^31,
-                    // so 2^a·in is a chunk size that fits. The layer's outputs come first in the
-                    // zip, so that the rows it takes are exactly the layer's.
-                    let data = checked.tensors[first + layer];
-                    for (outputs, row) in data.chunks(inputs << a).zip(rows.by_ref()) {
-                        for (o_lo, weights) in outputs.chunks_exact(inputs).enumerate() {
-                            let start = o_lo * in_pad;
-                            for (entry, &w) in row[start..start + inputs].iter_mut().zip(weights) {
-                                *entry = Fp::from_i64(i64::from(w));
-                            }
-                        }
+                let data = checked.tensors[self.first_tensor(matrix) + layer];
+                let first = o_hi << a;
+                let last = ((o_hi + 1) << a).min(outputs);
+                for (o_lo, weights) in data[first * inputs..last * inputs]
+                    .chunks_exact(inputs)
+                    .enumerate()
+                {
+                    for (entry, &w) in out[o_lo * in_pad..][..inputs].iter_mut().zip(weights) {
+                        *entry = Fp::from_i64(i64::from(w));
                     }
                 }
             }
             MatrixKind::ChannelParams { channel_width } => {
+                // The row holds the flattened indices [r·k, (r + 1)·k): each weight's live
+                // positions [base, base + out) that fall in it.
                 let log2_c = channel_width.trailing_zeros();
                 let log2_l_pad = log2_pad(self.shapes.layers);
-                // The committed rows, in order: the index of a row among them, from its number.
-                let ranges: Vec<(u64, u64)> =
-                    self.channel_row_ranges(log2_c, layout.log2_k).collect();
-                let mut before = Vec::with_capacity(ranges.len());
-                let mut count = 0u64;
-                for &(first, last) in &ranges {
-                    before.push(count);
-                    count += last - first + 1;
-                }
-                let index_of = |row: u64| -> usize {
-                    let at = ranges.partition_point(|&(_, last)| last < row);
-                    (before[at] + (row - ranges[at].0)) as usize
-                };
+                let start = u128::from(row) << layout.log2_k;
+                let end = start + k as u128;
                 for (&(matrix, layer), values) in self.channels.iter().zip(&checked.channels) {
                     let base = channel_base(matrix, layer, log2_l_pad, log2_c);
-                    for c in 0..values.len() {
-                        let f = base + c as u128;
-                        let row = (f >> layout.log2_k) as u64;
-                        let column = (f & ((1 << layout.log2_k) - 1)) as usize;
-                        out[index_of(row) * k + column] = values.get(c);
+                    let (low, high) = (base.max(start), (base + values.len() as u128).min(end));
+                    for f in low..high {
+                        out[(f - start) as usize] = values.get((f - base) as usize);
                     }
                 }
             }
         }
+    }
+
+    /// A reader of the committed rows of `matrix`, laid out from `weights` one row at a time
+    /// ([`WeightRows`]), for the fold pass ([`WeightFold`](crate::WeightFold)).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`ModelWeights`]' checks, as [`write_rows`](Self::write_rows) has them
+    /// ([`PcsError::WeightPlace`], [`PcsError::WeightLength`], [`PcsError::WeightTwice`],
+    /// [`PcsError::WeightMissing`]): every weight of `D` is checked, whichever matrix is read.
+    pub fn rows<'w>(
+        &self,
+        matrix: WeightMatrix,
+        weights: &ModelWeights<'w>,
+    ) -> Result<WeightRows<'_, 'w>, PcsError> {
+        let checked = self.check(weights)?;
+        let rows = match self.matrices[matrix.index()].kind {
+            MatrixKind::Weight { .. } => Vec::new(),
+            MatrixKind::ChannelParams { .. } => self.committed_rows(matrix).collect(),
+        };
+        Ok(WeightRows {
+            layout: self,
+            matrix,
+            checked,
+            rows,
+        })
     }
 
     /// The merged ranges `(first, last)` of the rows that hold a live position of the
@@ -698,4 +737,70 @@ impl fmt::Debug for ChannelValues<'_> {
 pub(crate) struct Checked<'a> {
     tensors: Vec<&'a [i8]>,
     channels: Vec<ChannelValues<'a>>,
+}
+
+/// The committed rows of one matrix of `D`, laid out from its weights one row at a time, as the
+/// fold pass reads them ([`WeightLayout::rows`]): row `j`, the `j`-th committed row in
+/// increasing order, holds the entries RFC-0040 'The matrices' places in it and 0 at every
+/// padding position, as the commitment's rows do.
+///
+/// It borrows the weights, secret-class values (05 §3), and keeps no copy: each row is written
+/// into the buffer of the call. Its `Debug` form shows the matrix and the rows' count.
+pub struct WeightRows<'l, 'w> {
+    layout: &'l WeightLayout,
+    matrix: WeightMatrix,
+    checked: Checked<'w>,
+    /// The channel parameters' committed rows, whose numbers follow no formula; empty for a
+    /// weight type, whose row `j` is `(⌊j / ⌈out / 2^a⌉⌋, j mod ⌈out / 2^a⌉)`.
+    rows: Vec<u64>,
+}
+
+/// Shows the matrix and its committed rows' count.
+impl fmt::Debug for WeightRows<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WeightRows")
+            .field("matrix", &self.matrix)
+            .field("rows", &self.layout.matrix(self.matrix).rows)
+            .finish_non_exhaustive()
+    }
+}
+
+impl MatrixRows for WeightRows<'_, '_> {
+    fn matrix(&self) -> WeightMatrix {
+        self.matrix
+    }
+
+    /// Writes committed row `index` over `out`, which holds `k_T` values.
+    ///
+    /// # Errors
+    ///
+    /// In this order: [`PcsError::RowIndex`] for an index of `m_T` or more, and
+    /// [`PcsError::RowLength`] unless `out` holds `k_T` values. Nothing is written on error.
+    fn read_row(&mut self, index: usize, out: &mut [Fp]) -> Result<(), PcsError> {
+        let layout = &self.layout.matrices[self.matrix.index()];
+        if index as u64 >= layout.rows {
+            return Err(PcsError::RowIndex {
+                matrix: self.matrix,
+                index,
+                rows: layout.rows,
+            });
+        }
+        if out.len() != layout.message_len() {
+            return Err(PcsError::RowLength {
+                expected: layout.message_len(),
+                found: out.len(),
+            });
+        }
+        let row = match layout.kind {
+            MatrixKind::Weight { layers, h, .. } => {
+                let per_layer = layout.rows / u64::from(layers);
+                let index = index as u64;
+                ((index / per_layer) << h) + index % per_layer
+            }
+            MatrixKind::ChannelParams { .. } => self.rows[index],
+        };
+        self.layout
+            .fill_row(self.matrix, &self.checked, row, index, out);
+        Ok(())
+    }
 }

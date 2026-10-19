@@ -14,6 +14,9 @@
 //!   `test-small` is held to none; `N + T = 2^50` fails `ni-100`'s LogUp row; the per-query bits
 //!   are `−log2((1 + ρ')/2)` within the precision; RFC-0014's printed figures are checked against
 //!   the exact bounds.
+//! - **RFC-0049.** `tessera-protocol/1` counts a weight matrix by its committed rows with no mask,
+//!   and gives a matrix with no committed row no proximity rows; `tessera-protocol/2` counts its
+//!   blinding rows and mask coefficients.
 //! - **Adversarial.** For every row, a size or parameter that makes exactly that row miss its
 //!   target, which is then the minimum; and decisions at the boundary that rounded bits would get
 //!   wrong.
@@ -384,15 +387,31 @@ fn live_64_and_ni_100_meet_their_targets_at_the_405b_statement() {
             set.id
         );
     }
-    // live-64's tightest row is a weight matrix's queries, 64.03 bits for a 64-bit target;
-    // ni-100's the advice queries, 80.09 + 20 bits for 100.
+    // Under tessera-protocol/1 the weights carry no mask, 65.76 bits for τ_W = 97 (RFC-0049), so
+    // both sets' tightest row is the advice queries: 64.32 bits for live-64's 64, 80.09 + 20 for
+    // ni-100's 100.
     let live = report(&ParamSet::LIVE_64, &statement);
-    assert_eq!(
-        minimum(&live),
-        RowKind::Queries(Commitment::Weights(WeightMatrix::Embed))
-    );
+    assert_eq!(minimum(&live), RowKind::Queries(Commitment::Advice));
     let ni = report(&ParamSet::NI_100, &statement);
     assert_eq!(minimum(&ni), RowKind::Queries(Commitment::Advice));
+    // Under tessera-protocol/2, whose weights carry P_W mask coefficients, both sets still meet
+    // their targets, and live-64's tightest row is a weight matrix's queries, 64.03 bits.
+    let masked = StatementSizes {
+        protocol: 2,
+        ..statement.clone()
+    };
+    for set in [&ParamSet::LIVE_64, &ParamSet::NI_100] {
+        assert_eq!(
+            report(set, &masked).meets_targets(),
+            Some(true),
+            "{}",
+            set.id
+        );
+    }
+    assert_eq!(
+        minimum(&report(&ParamSet::LIVE_64, &masked)),
+        RowKind::Queries(Commitment::Weights(WeightMatrix::Embed))
+    );
     // test-small certifies nothing: it has no targets, so no row passes or fails.
     let small = report(&ParamSet::TEST_SMALL, &statement);
     assert_eq!(small.meets_targets(), None);
@@ -459,7 +478,10 @@ fn the_per_query_bits_are_minus_log2_of_one_plus_rho_over_two() {
 /// RFC-0014 'Parameter sets' prints `64.3` bits for `τ_A = 155`, `80.1` for 193, `64.0` for
 /// `τ_W = 97` and `80.5` for 122. The exact values are 64.328, 80.098, 64.035 and 80.538: three
 /// figures are lower bounds, and `80.1` is 80.098 rounded to nearest, 0.002 above the true
-/// value. No figure is off by more than its rounding, half its last digit.
+/// value. No figure is off by more than its rounding, half its last digit. The weights' figures
+/// count their `P_W` mask coefficients, which `tessera-protocol/2` applies: they are checked on
+/// the 405B statement under it (`405b-protocol-2/…`), where `tessera-protocol/1` has none
+/// (RFC-0049).
 ///
 /// The verdicts are exact. With `t = ⌊256·λ·10^30⌋`, the oracle's, and a figure of `f` tenths,
 /// `λ ≥ f/10` exactly when `t ≥ 256·f·10^29`, an integer; the calculator's FixedBits is checked
@@ -471,13 +493,13 @@ fn rfc_0014s_figures_are_lower_bounds_but_80_1_which_is_rounded() {
         ("405b/live-64/1", Commitment::Advice, 643, true),
         ("405b/ni-100/1", Commitment::Advice, 801, false),
         (
-            "405b/live-64/1",
+            "405b-protocol-2/live-64/1",
             Commitment::Weights(WeightMatrix::Down),
             640,
             true,
         ),
         (
-            "405b/ni-100/1",
+            "405b-protocol-2/ni-100/1",
             Commitment::Weights(WeightMatrix::Down),
             805,
             true,
@@ -489,7 +511,11 @@ fn rfc_0014s_figures_are_lower_bounds_but_80_1_which_is_rounded() {
             .find(|c| text(&c["name"]) == name)
             .expect("the case");
         let set = params(&case["report"]["params"]);
-        let r = report(&set, &StatementSizes::llama_405b_16k());
+        let statement = StatementSizes {
+            protocol: int(&case["report"]["statement"]["protocol"]),
+            ..StatementSizes::llama_405b_16k()
+        };
+        let r = report(&set, &statement);
         let at = r
             .rows
             .iter()
@@ -587,7 +613,17 @@ fn each_row_misses_its_target_alone() {
                 fewer_queries,
                 base.clone(),
             ),
-            (down_queries, set, down(Some(1 << 19), None)),
+            // Under tessera-protocol/1 the weights carry no mask, and their rate is 1/4 at every
+            // width: a narrower Down misses its queries' target only with its P_W mask
+            // coefficients, under tessera-protocol/2 (RFC-0049).
+            (
+                down_queries,
+                set,
+                StatementSizes {
+                    protocol: 2,
+                    ..down(Some(1 << 19), None)
+                },
+            ),
             (
                 RowKind::Field(Commitment::Advice),
                 set,
@@ -719,7 +755,10 @@ fn sizes_it_cannot_bound_are_refused() {
         wide.matrices[0].width = width;
         refuse(&set, &wide);
     }
-    let mut empty = base.clone();
+    let mut empty = StatementSizes {
+        protocol: 2,
+        ..base.clone()
+    };
     empty.matrices[0].rows = 0;
     let no_blinding = ParamSet {
         layout: CommitmentLayout {
@@ -732,6 +771,12 @@ fn sizes_it_cannot_bound_are_refused() {
         ..set
     };
     refuse(&no_blinding, &empty);
+    // Under tessera-protocol/1 the same matrix is bounded: it has no proximity rows (RFC-0049).
+    let unopened = StatementSizes {
+        protocol: 1,
+        ..empty.clone()
+    };
+    assert!(SoundnessReport::new(&no_blinding, &unopened).is_ok());
     // The edges themselves are bounded: 2^16 queries and a codeword of 2^32 symbols.
     let mut widest = base.clone();
     widest.matrices[0].width = 1 << 30;
@@ -741,6 +786,101 @@ fn sizes_it_cannot_bound_are_refused() {
         ..set
     };
     assert!(SoundnessReport::new(&most, &widest).is_ok());
+}
+
+/// RFC-0049 'The calculator': `tessera-protocol/1` commits no blinding row and no mask for the
+/// weights, so a matrix's field term counts `ϑ_T = ⌈log2 m_T⌉` and its queries the unmasked rate
+/// `k_T/n_T`, `P = 0`; a matrix with no committed row has neither row. `tessera-protocol/2` keeps
+/// RFC-0014's counts, `⌈log2(m_T + B_W)⌉` and `P_W`. Every set, both protocols, every 405B
+/// matrix, and the empty `ChannelParams` of a model whose weights have no channel parameters.
+#[test]
+fn protocol_1_counts_a_matrix_by_its_committed_rows_with_no_mask() {
+    let base = StatementSizes::llama_405b_16k();
+    assert_eq!(
+        base.protocol, 1,
+        "the 405B statement is tessera-protocol/1's"
+    );
+    for set in [ParamSet::LIVE_64, ParamSet::NI_100, ParamSet::TEST_SMALL] {
+        let weights = set.layout.weights;
+        for protocol in [1, 2] {
+            let statement = StatementSizes {
+                protocol,
+                ..base.clone()
+            };
+            let r = report(&set, &statement);
+            for m in &statement.matrices {
+                let what = format!("{}, protocol {protocol}: {:?}", set.id, m.matrix);
+                let (rows, mask) = match protocol {
+                    1 => (m.rows, 0),
+                    _ => (
+                        m.rows + u64::from(weights.blinding_rows),
+                        u64::from(weights.mask_coeffs),
+                    ),
+                };
+                // ⌈log2 rows⌉, from its definition.
+                let theta = (0..64).find(|&t| rows <= 1 << t).expect("rows ≤ 2^63");
+                let n = m.width << weights.log2_inv_rate;
+                let commitment = Commitment::Weights(m.matrix);
+                let field = row(&r, RowKind::Field(commitment));
+                assert_eq!(field.theta, Some(theta), "{what}");
+                assert_eq!(
+                    field.bound,
+                    ErrorBound::Field {
+                        numerator: u128::from(theta) * u128::from(n)
+                    },
+                    "{what}"
+                );
+                assert_eq!(
+                    row(&r, RowKind::Queries(commitment)).bound,
+                    ErrorBound::Queries {
+                        codeword: n,
+                        message: m.width,
+                        mask,
+                        queries: set.weight_queries,
+                    },
+                    "{what}"
+                );
+            }
+        }
+    }
+    // No ChannelParams: its matrix commits no row. Under tessera-protocol/1 it has no queries row
+    // and no field term, and is not refused; under tessera-protocol/2 its B_W blinding rows count.
+    let mut empty = base.clone();
+    let channels = empty
+        .matrices
+        .iter_mut()
+        .find(|m| m.matrix == WeightMatrix::ChannelParams)
+        .expect("ChannelParams");
+    channels.rows = 0;
+    let channels = Commitment::Weights(WeightMatrix::ChannelParams);
+    for set in [ParamSet::LIVE_64, ParamSet::NI_100] {
+        let r = report(&set, &empty);
+        assert!(
+            r.rows.iter().all(|row| !matches!(
+                row.kind,
+                RowKind::Queries(c) | RowKind::Field(c) if c == channels
+            )),
+            "{}",
+            set.id
+        );
+        assert_eq!(
+            r.rows.len(),
+            report(&set, &base).rows.len() - 2,
+            "{}",
+            set.id
+        );
+        assert_eq!(r.meets_targets(), Some(true), "{}", set.id);
+        let masked = StatementSizes {
+            protocol: 2,
+            ..empty.clone()
+        };
+        assert_eq!(
+            row(&report(&set, &masked), RowKind::Field(channels)).theta,
+            Some(12),
+            "{}: ⌈log2 B_W⌉",
+            set.id
+        );
+    }
 }
 
 fn id(text: &str) -> ParamSetId {

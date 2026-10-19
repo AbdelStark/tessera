@@ -5,7 +5,8 @@
 //!
 //! The encoding of RFC-0011 'Encoding' and a non-streaming reference of its commitment and
 //! opening are here so far, and the weight commitment as `tessera-protocol/1` commits it
-//! (RFC-0040): its layout, its roots, `R_W` and its two artifacts.
+//! (RFC-0040): its layout, its roots, `R_W` and its two artifacts, and opens it by the folding
+//! pass (RFC-0012, RFC-0049).
 //!
 //! # Encoding
 //!
@@ -140,6 +141,58 @@
 //! `tessera-ir` gives the shapes from the architecture and lends the model's weights
 //! (`IntegerModel::weight_shapes`, `IntegerModel::model_weights`).
 //!
+//! # The weight opening
+//!
+//! RFC-0012 opens a matrix by the folding pass, as RFC-0049 completes it for
+//! `tessera-protocol/1`: one claim per matrix, no mask, no blinding row.
+//!
+//! - [`WeightFold::new`] is the one read of a matrix's committed rows a proof makes. It takes the
+//!   claim's coordinates known when the pass starts, `r_o` for a weight type, and `ξ*_T`,
+//!   squeezed right after the seed, and reads each row once through a [`MatrixRows`]: from `D`'s
+//!   weights, [`WeightLayout::rows`] ([`WeightRows`]). It keeps the per-layer folds `F_ℓ` and the
+//!   proximity row `u_ξ,T = Σ_j eq(ξ*_T, j)·W_T[row_j]`, over the committed rows by position.
+//! - [`WeightFold::sumcheck_input`] is the matmul sumcheck's `W̃(ℓ, r_o, i)`, and
+//!   [`WeightFold::combined_rows`] the evaluation row `u_T = θ_T·Σ_ℓ eq(ρ_ℓ, ℓ)·F_ℓ` and the
+//!   proximity row ([`WeightCombinedRows`]), from the folds alone (INV-WC-4).
+//! - The column answers are the matrix's commitment's ([`ReferenceCommitment::answer`]), from
+//!   the codewords it holds.
+//!
+//! ```
+//! use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField};
+//! use tessera_pcs::{
+//!     ModelWeights, WeightFold, WeightLayout, WeightLayoutParams, WeightMatrix, WeightShape,
+//!     WeightShapes, WeightTensorRef,
+//! };
+//!
+//! let fp2 = |x: u64| GoldilocksExt2::from(Goldilocks::from_u64_reduced(x));
+//! // One layer of 2 × 2 weights at k_W = 2: each row holds one output's two inputs.
+//! let shapes = WeightShapes {
+//!     layers: 1,
+//!     shapes: [WeightShape { out: 2, inputs: 2 }; 9],
+//!     channels: Vec::new(),
+//! };
+//! let params = WeightLayoutParams { log2_k: 1, log2_inv_rate: 2, mask_coeffs: 64, blinding_rows: 32 };
+//! let layout = WeightLayout::new(params, shapes)?;
+//! let w: [i8; 4] = [1, 2, 3, 4];
+//! let weights = ModelWeights {
+//!     tensors: WeightMatrix::WEIGHTS
+//!         .iter()
+//!         .map(|&matrix| WeightTensorRef { matrix, layer: 0, data: &w })
+//!         .collect(),
+//!     channels: Vec::new(),
+//! };
+//! // Q's rows are W[0] = (1, 2) and W[1] = (3, 4). The fold point r_o = (2), and ξ* = (3).
+//! let mut rows = layout.rows(WeightMatrix::Q, &weights)?;
+//! let fold = WeightFold::new(&layout, WeightMatrix::Q, &mut rows, &[fp2(2)], &[fp2(3)])?;
+//! // W̃(r_o, i) = (1 − 2)·W[0][i] + 2·W[1][i].
+//! assert_eq!(&fold.sumcheck_input()[..], &[fp2(5), fp2(6)]);
+//! // One layer, no layer point: u_T = θ·F_0 at θ = 10, and u_ξ = (1 − 3)·W[0] + 3·W[1].
+//! let combined = fold.combined_rows(&[], fp2(10))?;
+//! assert_eq!(combined.evaluation.u, [fp2(50), fp2(60)]);
+//! assert_eq!(combined.proximity.u, [fp2(7), fp2(8)]);
+//! # Ok::<(), tessera_pcs::PcsError>(())
+//! ```
+//!
 //! # Secrets
 //!
 //! Rows, mask coefficients and codewords are secret-class, and combined rows and opened
@@ -179,7 +232,8 @@ pub use error::PcsError;
 pub use ntt::NttPlan;
 pub use opening::{ClaimGroup, CombinedRow, RowClaim};
 pub use weights::{
-    ChannelParamsRef, ChannelValues, MatrixKind, MatrixLayout, ModelWeights, OpenedColumns,
-    TypeBudget, WeightCommitment, WeightCommitmentPublic, WeightCommitmentState, WeightLayout,
-    WeightShape, WeightShapes, WeightTensorRef,
+    ChannelParamsRef, ChannelValues, MatrixKind, MatrixLayout, MatrixRows, ModelWeights,
+    OpenedColumns, TypeBudget, WeightCombinedRows, WeightCommitment, WeightCommitmentPublic,
+    WeightCommitmentState, WeightFold, WeightLayout, WeightRows, WeightShape, WeightShapes,
+    WeightTensorRef,
 };

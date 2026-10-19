@@ -22,6 +22,11 @@
 //! | [`Hash`](RowKind::Hash) | `2^{-128}`, BLAKE3's 256-bit output | — | `bits` |
 //!
 //! Here `q = |Fp2| = p^2`, and the targets are the parameter set's ([`Targets`]).
+//!
+//! A weight matrix's `P` and `ϑ` depend on the protocol (RFC-0049 'The calculator'):
+//! `tessera-protocol/1` commits no blinding row and no mask for the weights, so `P = 0` and
+//! `ϑ_T = ⌈log2 m_T⌉`, and a matrix with no committed row has neither row; `tessera-protocol/2`
+//! counts `P_W` and `ϑ_T = ⌈log2(m_T + B_W)⌉`.
 
 mod exact;
 mod llama;
@@ -61,8 +66,10 @@ pub struct MatrixSizes {
     pub matrix: WeightMatrix,
     /// `k_T`, its message width: its codeword holds `n_T = k_T·2^{log2_inv_rate}` symbols.
     pub width: u64,
-    /// `m_T`, its committed data rows. With the parameter set's `B_W` blinding rows they give
-    /// `ϑ_T = ⌈log2(m_T + B_W)⌉`.
+    /// `m_T`, its committed data rows. In `tessera-protocol/1`, which commits no blinding row and
+    /// no mask for the weights, they give `ϑ_T = ⌈log2 m_T⌉`, and a matrix with none has no
+    /// proximity rows (RFC-0049 'The calculator'); in `tessera-protocol/2`, with the parameter
+    /// set's `B_W` blinding rows, `ϑ_T = ⌈log2(m_T + B_W)⌉`.
     pub rows: u64,
     /// `ν_T`, the variables of its multilinear polynomial, which the linking proof opens.
     pub variables: u32,
@@ -160,7 +167,7 @@ pub enum ErrorBound {
         codeword: u64,
         /// `k`, the message's.
         message: u64,
-        /// `P`, each row's mask coefficients.
+        /// `P`, each row's mask coefficients: 0 for a weight matrix in `tessera-protocol/1`.
         mask: u64,
         /// `τ`, the queries.
         queries: u32,
@@ -223,8 +230,9 @@ impl SoundnessReport {
     ///
     /// [`ProtocolError::Sizes`] for sizes or parameters it cannot bound: a protocol other than
     /// 1 or 2; `τ_A` or `τ_W` outside `1..=2^16`; a codeword of more than `2^32` symbols or none;
-    /// no advice row, or a matrix with no data or blinding row; matrices out of
-    /// [`WeightMatrix`] order.
+    /// no advice row, or in `tessera-protocol/2` a matrix with no data or blinding row; matrices
+    /// out of [`WeightMatrix`] order. In `tessera-protocol/1` a matrix with no committed row is
+    /// bounded: it has no queries row and no field term (RFC-0049).
     pub fn new(params: &ParamSet, sizes: &StatementSizes) -> Result<Self, ProtocolError> {
         let geometry = validate(params, sizes)?;
         let builder = Builder {
@@ -463,6 +471,7 @@ fn validate(params: &ParamSet, sizes: &StatementSizes) -> Result<Vec<Geometry>, 
             + u128::from(advice.mask_coeffs),
     }];
     let weights = params.layout.weights;
+    let masked = sizes.protocol == 2;
     for m in &sizes.matrices {
         let codeword = m
             .width
@@ -471,20 +480,30 @@ fn validate(params: &ParamSet, sizes: &StatementSizes) -> Result<Vec<Geometry>, 
         let Some(codeword) = codeword.filter(|&n| (1..=MAX_CODEWORD).contains(&n)) else {
             return refuse("every matrix's codeword holds 1 to 2^32 symbols");
         };
-        let rows = u128::from(m.rows) + u128::from(weights.blinding_rows);
+        // RFC-0049 'The calculator': tessera-protocol/1 commits no blinding row and no mask for
+        // the weights, so a matrix counts its data rows alone, at the unmasked rate, and one
+        // with no committed row has no proximity row. tessera-protocol/2 counts B_W and P_W.
+        let (rows, mask) = match masked {
+            true => (
+                u128::from(m.rows) + u128::from(weights.blinding_rows),
+                u64::from(weights.mask_coeffs),
+            ),
+            false => (u128::from(m.rows), 0),
+        };
         if rows == 0 {
-            return refuse("every matrix holds a data or blinding row");
+            if masked {
+                return refuse("every matrix holds a data or blinding row");
+            }
+            continue;
         }
         geometry.push(Geometry {
             commitment: Commitment::Weights(m.matrix),
             codeword,
             message: m.width,
-            mask: u64::from(weights.mask_coeffs),
+            mask,
             queries: params.weight_queries,
             theta: ceil_log2(rows),
-            codeword_plus: u128::from(codeword)
-                + u128::from(m.width)
-                + u128::from(weights.mask_coeffs),
+            codeword_plus: u128::from(codeword) + u128::from(m.width) + u128::from(mask),
         });
     }
     Ok(geometry)
