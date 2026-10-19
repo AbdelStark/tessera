@@ -81,6 +81,24 @@ One row per source. "Term" is the cost-model or scoreboard term the technique mo
 - A GPU measurement of masked against unmasked sumcheck in any sumcheck-based prover (none exists today).
 - A revision of [HK24] or a RISC Zero, Plonky3 or Stwo release note stating how base-field randomizers are made provably zero-knowledge.
 
+## Current-spec disposition, 2026-10-19
+
+This is a bounded repository/issue refresh, not a new external-literature survey or a completed simulator proof. It supersedes the historical action list where main has since adopted the design. The original source readings and counts remain dated evidence.
+
+| Historical question | Current disposition and existing owner |
+|---|---|
+| Independent advice/weight blinding-claim binding | Accepted RFC-0011/0012/0013 fix claims before gamma/theta; #237/#244 repaired the specification. Implementation and negative controls remain #149/#159. |
+| Base-field masks in extension-field views | Accepted RFC-0013 uses Fp2 masks as two Fp components; #239/#245 repaired the specification. Current weight budget is4096 rows, six rows per matrix/proof. Marginal mask uniformity does not prove joint hiding. |
+| Pair-bit/tree/root leakage, OQ-0013-2 | Accepted RFC-0032 supplies masked levels, pair-bit-aware extensions, neutral padding and identity sumcheck. The old denominator leaf is retired. #224 remains open for #145 simulator follow-through. |
+| Full simulator and packed masks | #145 must cover every stage/tree/opening item, malicious live queries, epoch/link/abort/rollback views and OQ-0013-1. No `docs/zk/simulator.md` existed at inspection. Historical packing admissibility is not adoption approval. |
+| One-use versus full proximity/epoch views | #394 with #145/#147/#162 must reconcile INV-ZK-2/INV-PCS-8 through the full conditioned view and derive slot/budget rules. No recovery attack is established here, and excluding other blinders is not an assumed repair. |
+| Structural distinguishers and false-opening controls | #162/#149/#159 own absent/subfield/vanishing/reused-mask controls and independent-claim tests. Stale issue descriptions naming one-row masks or a masking denominator do not override current RFCs. Tests establish sensitivity, not a2^-100 simulator bound. |
+| Public input binding and omitted instances | Component tests already exist, including `crates/tessera-logup/tests/batches.rs`'s `dropping_one_instance_from_the_batch_is_rejected` and independent verifier mutation/count/order controls. Full typed-statement-before-LogUp and serialized schedule mutations still belong to #125/#128/#135. Generic transcript byte sensitivity is not that top-level proof. |
+| Layout and unmasked weight schedule | RFC-0047 fixes allocated-row order/permutation; RFC-0049 places protocol/1 weight xi after seed and omits empty matrices. RFC-0014/0036 are synchronized here; persistent roots/zero-claim checks remain, advice xi stays late and protocol/2 is unchanged. Implementation/vectors remain #106/#116/#108/#125. |
+| Complete tamper corpus and formal correspondence | `spec/vectors/tamper/`, `docs/verifier/spec.md` and a complete e2e driver were absent at inspection. #135/#186/#392 track corpus/spec/blueprint work; component tests or a proposed Lean model are not a verified protocol. |
+
+Live issue inspection on2026-10-19 found #145/#147/#162/#224/#394 and the corpus/protocol owners open; #237/#239 are closed. Existing tickets suffice; no duplicate batch of issues is created. This was a read-only code/test inventory plus adversarial text review. It ran no new tests and upgrades no earlier CI result. The current mask-cost scenario is a partial additive estimate in `research/tools/survey_scenarios.py`; the historical zk≈1.001 factor in this survey is not a current full-protocol cost.
+
 ## References
 
 Keys resolved in [bibliography.md](../bibliography.md): [CFS17], [XZZPS19], [Xie24], [GOS24], [a16z26zk], [JoltBF26], [KS25], [VegaDocs26], [JoltAtlas26], [DallAva26], [CFW26], [ocdbytes26a], [ocdbytes26b], [HK24], [RZ24], [RV24], [dHS25], [Longfellow26], [WTSTW18], [BCS16], [Gol02], [GO94], [JM26], [CDGH24], [SGO+26], [PP25], [E0-this].

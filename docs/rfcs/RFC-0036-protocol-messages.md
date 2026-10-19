@@ -112,6 +112,7 @@ pub struct FixedBits(pub u64);                                                  
   - Each row's `u` holds `k` values. Its `mask` holds the `P_A` coefficients of the combined mask polynomial, constant first.
 - **`weight_combined`.**
   - It holds one entry for every weight matrix the proof opens, `matrix` strictly increasing. An entry is the matrix's evaluation combined row and its proximity combined row ([RFC-0012](RFC-0012-weight-commitment.md#opening-by-the-folding-pass) 'Opening by the folding pass').
+  - In `tessera-protocol/1`, a matrix with no committed rows is public zero and is not opened: it has no entry in `weight_combined`, `ColumnQueries.weights` or `Round3Response.weight_columns` ([RFC-0049](RFC-0049-weight-proximity.md#the-schedule)). Its root remains in `WeightCommitmentPublic` ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-matrices)). Claims on that public-zero matrix are checked as zero, not discarded ([RFC-0037](RFC-0037-stage-schedule.md#claims-and-atoms)). This omission does not apply to a masked matrix with reserved blinding rows.
   - Each `u` holds `k_T` values. Each `mask` holds the combined mask's coefficients, none in `tessera-protocol/1`, whose weight encoding has no mask (RFC-0012 'Migration / Rollout').
 - **`scoring`.**
   - It holds one claimed `Û_r` per request, in `statement.batch` order ([RFC-0017](RFC-0017-scoring.md#in-circuit-scoring-mixture) step 5), in units of `2^{−8}` bits. It is 0 in exact mode.
@@ -119,7 +120,7 @@ pub struct FixedBits(pub u64);                                                  
 
 **Shapes.** The schedule and the statement fix every length the decoder cannot check alone:
 - the stages, one per reduction stage, `stages[i].stage = i + 1`;
-- the matrices of `weight_combined`, those that have claims;
+- the matrices of `weight_combined`, those that have claims and are opened under the rule above;
 - the scoring claims, one per request;
 - each stage's split values, one per value its split claims send ([RFC-0037](RFC-0037-stage-schedule.md#splits)).
 
@@ -170,10 +171,11 @@ Every value is absorbed as its TCE payload, under the label of [RFC-0014](RFC-00
 |---|---|---|
 | 2 | `round1` | `TCE(Round1)` |
 | 3 | `seed` | Live: the 32 bytes of `seed`. Non-interactive: the grind of `seed-pow` absorbs `seed_nonce` (RFC-0004 `grind`), then the seed is squeezed under `seed`. |
+| 3 | `pcs/weights/{T}/xi` | In `tessera-protocol/1`, after `seed`, squeeze each nonempty weight matrix's proximity point in matrix-id order; nothing is absorbed. Empty unmasked matrices make no call ([RFC-0049](RFC-0049-weight-proximity.md#the-schedule)). |
 | 4, 5 | `logup/roots`, `tree/{ℓ}/…`, `logup/values` | As RFC-0008 and RFC-0010 state: `TCE(Vec<Fp2>)` of `logup.roots`, each level's messages, then `TCE(Vec<Fp2>)` of `logup.values` |
 | 6 | `stage/{k}/…` | Each stage's messages, as RFC-0010 states. `tessera-protocol/1` has no masked sum, so `zk-sum` and `zk-rho` are not used. |
 | 4 to 6 | `stage/{k}/split` | `TCE(Vec<Fp2>)` of the stage's `splits`: stage 0's, `trees.splits`, after `logup/values`, and stage `k`'s after `stage/{k}/evals` ([RFC-0037](RFC-0037-stage-schedule.md#splits)) |
-| 7 | `pcs/advice/gamma`, `pcs/advice/xi`, then `pcs/weights/{T}/gamma`, `pcs/weights/{T}/xi` per opened matrix in id order | Nothing is absorbed: `tessera-protocol/1` has no blinding claim, so these challenges are squeezed directly. |
+| 7 | `pcs/advice/gamma`, `pcs/advice/xi`, then `pcs/weights/{T}/gamma` per opened matrix in id order | Nothing is absorbed: `tessera-protocol/1` has no blinding claim, so these challenges are squeezed directly. Its weight proximity points were squeezed at row 3 (RFC-0049); this table does not move `tessera-protocol/2` challenges. |
 | 8 | `pcs/advice/combined` | `TCE(Vec<CombinedRow>)` of `advice_combined` |
 | 8 | `pcs/weights/{T}/combined` | `TCE(WeightCombinedRows)` of the matrix's entry, matrix by matrix in id order |
 | 9 | `scoring` | `TCE(ScoringClaims)` |

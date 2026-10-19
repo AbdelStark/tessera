@@ -1,12 +1,96 @@
-# IDEA-0017: Window-batched streamed rounds for the linear-layer fraction-tree leaf levels, with their key-regeneration passes priced
+# IDEA-0017: Windowed lookup leaf passes — current accounting and feasibility
 
 | | |
 |---|---|
-| Status | `triaged` (2026-10-16) |
-| Origin | [SUR-0007](../surveys/SUR-0007-sumcheck.md#candidate-ideas) seed "Round-batched streamed windows" and its findings [DDBDT26] §5–6 (Lemma 6, Lemma 7) and [BCFFMMZ25], re-aimed from the attention `stream` term to the lookup trees; [RFC-0018 'Pass structure'](../../docs/rfcs/RFC-0018-gpu-prover-runtime.md#pass-structure) row P2 ("lookup keys and values … for the affected tiles; attention and affected linear tiles, once per streamed round") and 'Leaf levels' (`c = ⌈log2(N_level · 32 B / M)⌉`); RISK-9, RISK-10 ([00 §9](../../docs/spec/00-overview.md#9-risks)); OQ-0018-1; [SUR-0003](../surveys/SUR-0003-passes.md#synthesis) synthesis 2 (floor of `n_regen` about 2 plus attention-only passes, which assumes the linear-layer levels never stream) and its seed "Multi-round streamed passes" (ledger queue item 23) |
-| Lever | `regen`: the P2 passes over "affected linear tiles", which regenerate GEMM-shaped lookup keys once per streamed round and are absent from the cost model (its `stream` term counts attention scores only, its `n_regen = 4` counts P1, P3, P4); `c_ℓ`: the leaf level's share, 38% of the fraction proxy in [EXP-0006](../experiments/EXP-0006-product-leaf-cost/README.md) (E1); the proof-unit count of RFC-0018 'Proof units', hence `size` (every unit adds up to 17 combined rows, [RFC-0011](../../docs/rfcs/RFC-0011-advice-commitment.md#sizes-at-the-default-parameters-16k-tokens-16k-context-405b)) |
-| Spec surfaces | None normative. RFC-0008 'Relation', 'Fraction tree', 'Batching' (the relation, the tree, the shared `α, β`), RFC-0010 'Sumcheck messages' and 'Tree levels' (messages, degree, pair bit lowest) and RFC-0014's label schedule `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}` are unchanged, so no tier-A surface ([02 §1](../../docs/spec/02-public-api.md#1-stability-tiers)) moves and no superseding RFC is needed. Tier-C text that would change: RFC-0018 'Pass structure' ("once per streamed round" becomes "once per window of `v` streamed rounds"; the run manifest records passes per level), RFC-0018 'Leaf levels' (the working-set rule gains the base-field leaf layout), RFC-0020's executable cost model (a `lookup_stream` line beside `regen`). The leaf stage's tile-to-index map (OQ-0010-1 territory) must deliver aligned blocks of `2^v` consecutive pairs |
-| Priority | 0.41 (−2.7% × 0.3 / 2 at 16K: `regen` 6 → 5 under `corrected`, since 08 §1 already books 'streamed tree leaf levels' inside `n_regen = 4`; 0.78 at the note's `regen` 7 reference; about 3 under the every-level reading of RFC-0018) |
+| Status | `shelved` (2026-10-19: operational pass/memory schedule and full-leaf completeness remain unresolved under #329; hosted fraction proxy inconclusive) |
+| Origin | SUR-0007/SUR-0003 streamed-round windows; current RFC-0018/0020/0032/0045 and the completed fraction amendment of EXP-0012 |
+| Lever | Potential incremental regeneration beyond the current priced baseline, if a concrete schedule demonstrates it; no new count or cost-model option is introduced |
+| Spec surfaces | A byte-identical prover algorithm may leave protocol messages unchanged, but full tree/leaf/mask and pass accounting must be demonstrated before that claim; no production change here |
+| Priority | 0 active while shelved; historical conditional 0.41 retained below, with no current validated Δμ |
+
+## Current decision and evidence boundary
+
+This bounded unit is a feasibility/accounting clarification, not an experiment. The current normative model already prices regeneration and attention leaf streaming; it does not price the whole leaf stage. The missing work is exactly [#329](https://github.com/AbdelStark/tessera/issues/329), checked open on 2026-10-19, last updated 2026-10-17. Its large whole-stage figures are first-order issue analysis, not a newly validated operational schedule or current model output.
+
+The completed [EXP-0012 fraction case](../experiments/EXP-0012-integer-leaf-round-window/README.md#amendment-2026-10-19-hosted-fraction-window-case) is `inconclusive`: resident v4 costs 2.50–2.54 times split, missing the registered<=1.5 criterion, while v2 costs 1.54–1.55 times split and does not satisfy the registered factor-v kill criterion. The 2^24/v5 arm also retains CV 5.42%. This does not refute every streamed window, but establishes no reduction in regeneration, full LogUp time or GPU cost. The parent integer-product-forest criterion is independently refuted and cannot stand in for this fraction case.
+
+The archived proposal below contains obsolete n_regen=4 counts, a single aggregate Requant instance, universal six-byte leaves, a u64 grid and an assumed one-input-read window. They are superseded by this note. No `lookup_stream` option, μ rescore, new experiment/harness or protocol-security endorsement is added. Reopening requires the operational schedule and completeness conditions below, then a new preregistration for any test.
+
+## What the current model already prices
+
+[RFC-0018 pass structure](../../docs/rfcs/RFC-0018-gpu-prover-runtime.md#pass-structure) names P1 witness/commit, P2 leaf work, P3 stages, P4 opening and P5 column answers. It explicitly uses `n_regen=5` forward-equivalent estimates for P1–P5, with P2 streaming, P4 combination, P5 evaluation and the weight fold in separate terms. P3 may fuse into P2/P4 when its point is already known; P2's first streamed round may fuse with bottom-up construction. This is a coarse planning decomposition, not a manifest that assigns every instruction to a distinct full forward.
+
+[RFC-0020 executable model](../../docs/rfcs/RFC-0020-cost-model.md#executable-cost-model), the [normative Rust model](../../crates/tessera-bench/src/model.rs) and [research mirror](../tools/cost_model.py) currently use:
+
+```text
+attention_leaves = 8064 * context * 16384
+c(S) = max(0, ceil(log2(attention_leaves*32 / 200000000000)))
+streaming = c(S) * streaming_pass_ps * 8064 * context / native_time
+```
+
+At contexts 1K/4K/16K/128K, this yields 5/7/9/12 streamed rounds (E0 exact model arithmetic), with streaming_pass_ps=7 in the current corrected/counted research scenarios. The six-to-eight ps estimate already includes score regeneration plus folding for those attention passes. Charging the same work again as extra regen would double count it. The linear lookup term already pays an in-memory fraction proof, including bottom-up build; the table term pays one table-side tree and multiplicity commitment per row, once per proof. A window's replacement arithmetic cannot be added again as entirely new streaming work without subtracting the replaced work consistently.
+
+Additional levels, linear-layer key regeneration, joint batching/memory constraints and their scheduling overhead remain outside the attention-only streaming line, as RFC-0018/0020 now explicitly state and #329 tracks. Their existence is not proof of a specific number of extra full forwards. A proposed correction must distinguish the base P2 regeneration already represented in five, incremental passes after fusion, rereads of cached leaves, GEMMs regenerated from checkpoints, and table-side generation that needs no model GEMM. Blindly changing regen=5 to5+c or reusing the old 7→5 scenario does not establish any of those distinctions. P4/P5's own costs and their present unpriced/bounded terms are unrelated savings unless the new schedule actually removes them; a pre-query window cannot remove P5.
+
+## Exact conditional capacity table at current counts
+
+Use the [current 405B servable c2/B32 report](../../docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json), not historical RISK-2 totals. For one lookup table definition with real population `n_j = lookups_per_token_j*T`, its lookup tree has `N_j=2^ceil(log2 n_j)` leaves. Distinct Requant definitions have distinct trees; shared definitions combine all of their actual users. The report omits the row gadgets' range-table allocations (#118/#122), so it is not a complete leaf-stage manifest.
+
+Define the capacity arithmetic `c_b(N)=max(0,ceil(log2(b*N/M)))`, with `M=200000000000` bytes. The table below is exact E0 arithmetic for a SINGLE instance given all of M, excluding other trees, masks, eq/grid/output buffers and implementation temporaries. Entries under c16/c32 are triples for token populations T=1024/4096/16384. They are capacity-derived round counts, NOT a proved whole-stage regeneration schedule.
+
+| Current table IDs / use class | Lookups per token | log2 padded N at 1K/4K/16K tokens | c16 | c32 |
+|---|---|---|---|---|
+| 4, first norm high table | 16,384 | 24/26/28 | 0/0/0 | 0/0/0 |
+| 7/8/9/14, each distinct definition | 2,064,384 | 31/33/35 | 0/0/2 | 0/1/3 |
+| 5, RoPE Q/K shared high table | 2,193,408 | 32/34/36 | 0/1/3 | 0/2/4 |
+| 3, shared Range21 | 2,209,792 | 32/34/36 | 0/1/3 | 0/2/4 |
+| 10/11/12, each distinct definition | 4,128,768 | 32/34/36 | 0/1/3 | 0/2/4 |
+| 2/13, each distinct definition | 6,709,248 | 33/35/37 | 0/2/4 | 1/3/5 |
+| 6, shared projection high table | 6,838,272 | 33/35/37 | 0/2/4 | 1/3/5 |
+
+These stable IDs refer only to the linked pinned report. For example, Q/K at 16K tokens has 35,936,796,672 real lookups, hence 2^36 padded leaves; its c32 is 4, not the old aggregate-Requant 5. Silu has 109,924,319,232 real lookups, padded to 2^37; its c32 is 5 and c16 is 4. No single “Requant instance” contains all the old 83,968 sites. Different instances sharing the batched challenge do not thereby share their leaf buffers, key-producing GEMMs or cached folded state.
+
+At 32 bytes uniformly, a tree with c32=c has conditional oversize-level sum `c+(c-1)+...+1=c(c+1)/2`. For the 16K groups with c32=3/4/5, those sums are 6/10/15. If ONLY the bottom level uses 16 bytes and every level above uses 32, the sums instead are `c16+c32*(c32-1)/2`, namely 5/9/14. It is incorrect to replace every internal level by the bottom leaf's storage width. These sums are round opportunities under the specified per-level memory model, not distinct full-model passes: shared regeneration, retention, recomputation and per-level construction must still be scheduled. Summing all per-table triangles and pricing each as a full forward double counts shared layer work; giving every simultaneously live table all of M understates peak memory.
+
+Each current table-side instance has at most 2^32 rows, so its unmasked 32-byte array alone fits M; all current M=7,693,467,648 table rows at 32 bytes total 246,190,964,736 bytes, which does not. That aggregate includes the structurally unused Rope table counted by the report; excluding it still does not fit. A table tree regenerates public row tuples and reads multiplicities, not the model's full GEMMs. Its residency, batching and mask state remain part of #329, not another automatic forward-equivalent. Shrinking token units does not shrink every table definition and adds commitments/openings; the old unit-count/proof-size estimates are not current planner results.
+
+### Fp/Fp2 and compact-leaf qualifications
+
+- A small product leaf can initially be one Fp value, 8 bytes. Once challenges bind it, the folded values generally live in Fp2, 16 bytes. For an initially oversized 8-byte leaf array, fitting the folded state after j>=1 rounds requires `16*N/2^j<=M`, rather than naively halving the original 8-byte footprint forever. The integer-product path of EXP-0012 is only an initial small-leaf window.
+- An unmasked lookup fraction leaf is `(1,d)`, `d=alpha-key-beta*value in Fp2`: its implicit numerator needs no array, while denominators need16 bytes/leaf. It is not four small Fp tables. A table-side leaf has base-field numerator `-m` (8 bytes if stored canonically) and an Fp2 denominator (16), hence 24 initial bytes; folded nonconstant numerators generally becomeFp2, giving 32 bytes/remaining leaf. Internal fraction nodes have both components in Fp2. The generic RFC-0018 rule uses 32 bytes; smaller specialized representations need their own transition and peak-buffer plan.
+- The old compact `u32 key + u16 value =6B` is neither universal nor implemented by this note. A current Exp table with sigma=16 has value 2^16 at key 0, which needs 17 unsigned bits; generic base-field values/multiplicities are wider still. Range tables have no value column, INT8 outputs can use signed byte encodings, and alignment/metadata/padding add costs. Small compressed raw leaves becoming full-field folded arrays can increase bytes per surviving entry. No six-byte table is supplied as an operational schedule or used to price a pass reduction.
+For the displayed 16K groups with N=2^35/2^36/2^37, the raw eight-byte capacity arithmetic alone gives 1/2/3, while the ordinary once-bound Fp2 state requires 2/3/4 rounds to fit when the initial array is oversized. Lookup denominators already use the latter 16-byte model. This is why a raw Fp leaf or compact key/value count cannot be substituted for a persistent folded-state schedule. Unmasked product nodes remain in Fp before binding, but above the small-leaf level their canonical values are full-width field elements, not the 22-bit integers of EXP-0012.
+
+- Current protocol/2 adds neutral padding trees and masked extensions; public constants may be computed in closed form, while mask state is additional. Logical padding coordinates and their sumcheck rounds remain even when no constant array is allocated. Neither doubling every tree's memory blindly nor deleting its contributions is correct.
+
+## Grid bounds and leaf completeness
+
+For a width v ternary grid on `{0,1,2}^v`, binary multilinear extrapolation can amplify an input bound K to `K*3^v`, with signed values. A product of two such inputs has magnitude at most `K^2*9^v`. If a canonical eq-weight component w is multiplied before reduction, a sufficient batch-cadence B check is
+
+```text
+B*(P-1)*K^2*9^v < 2^127       for signed i128,
+B*(P-1)*K^2*9^v < 2^128       for unsigned magnitude storage.
+```
+
+The sign still needs exact handling, and every other summed term needs its own bound. “Use u128” alone does not prove arbitrary accumulation safe. EXP-0012's KEY_MAX=2^22-1 product experiment checks its exact signed bound at B=32 for v1/v3/v4 and B=8 for v5; that is not a bound for 32-bit lookup keys. With K=2^32-1, the simple weighted K^2 term already exceeds 2^127 at v0/B1; for v>=1 it exceeds 2^128 as well. There is no positive signed-i128 cadence for this unreduced formulation under that worst-case bound. One unsigned single product may fit at v0, but adding products or extrapolation terms needs reduction or wider limbs.
+
+At an unmasked lookup leaf, write `d=alpha-k-beta*e`. In `d_L*d_R`, the integer coefficient bounds are 1 for alpha², `2*K*3^v` for alpha, `2*E*3^v` for alpha*beta, `K^2*9^v` for the constant, `2*K*E*9^v` for beta, and `E^2*9^v` for beta². These six signed coefficient streams must be handled before combining with full-field alpha/beta/eq/lambda factors. The actual current value bound E and all sum lengths must be public. Table-side cross terms add multiplicities: a numerator bound M0 produces terms as large as `2*M0*K*9^v` or `2*M0*E*9^v` before the full-field eq weight; a historical 48-bit multiplicity allowance cannot inherit the small-product grid bound. Limb decomposition, an earlier modular reduction or a full Fp2 grid can make an algorithm feasible, but no such general integer kernel or cost is established here. EXP-0012's fraction arm deliberately uses a full Fp2 grid instead.
+
+The old triage's exceptional `(0,delta)` leaf, with full-field delta, cannot be cast to the small-integer path. Any legacy/custom representation containing it must retain its block on a general Fp2 path or prove a separate symbolic expansion including delta; replacing it with a small denominator or dropping it changes the polynomial. This is a completeness requirement even when its numerator is zero: it still multiplies denominators and scales other fractions. The archived mechanism has not implemented that fallback.
+
+For CURRENT protocol/2, RFC-0013 explicitly retires the old masking pair; [RFC-0032](../../docs/rfcs/RFC-0032-zero-knowledge-tree-levels.md#forests-of-two-trees-at-least) uses a separate public neutral padding tree with leaves `(0,1)`. Its [leaf formulas](../../docs/rfcs/RFC-0032-zero-knowledge-tree-levels.md#leaf-checks) use lookup numerator 1-pt, masked key/value/multiplicity extensions, public padding coordinates and neutral denominators. Their off-cube values and high-degree mask corrections are not all small integers, even when Boolean real leaves are. A full implementation must include them, the minimum-height/padding rules, table-side numerators, non-power-of-two inputs, front padding, final leaf checks and degenerate challenges while preserving messages/masks. EXP-0012's three-instance unit-numerator `prove_batch` proxy supplies none of those full `prove_trees`/LogUp/ZK coverage claims. Historical “same simulator” or “all four tables base-field” statements below are not current approval.
+
+## Missing operational schedule and reopening conditions
+
+A 3^v grid can compute v sequential messages without sending any future challenge early; this alone does not reduce regeneration to ceil(c/v). The completed proxy reads original input once to form the grid and AGAIN after all v challenges to bind it. If leaves are not retained, that second read is another regeneration. If retained, their storage/promotion and lifetime must fit. If the once-bound state remains too large, the next window needs an explicit materialization/host-stream/recompute plan. Rebuilding internal nodes from original leaves after prior challenges costs construction and binding work, not just another cheap ternary grid. Any build/first-round/P3 fusion must trace when root claims, level points, gamma/lambda and masks are actually known.
+
+At v4 the proxy therefore offers only a counterfactual 4/2 original-input read ratio, not a measured 4x or 2x regeneration speedup; its resident per-round baseline reads shrinking folded arrays, not four full regenerated witnesses. The v4 wall-time penalty and missing table/mask paths also remain. #329 may choose different groups/challenges/units, which can change openings, proof size and the protocol rather than merely its prover arithmetic. That decision is outside this note.
+
+Reopen with: a complete table/forest/leaf-layout manifest under RFC-0045, including row-gadget tables and protocol mode; per-level working sets and peak lifetimes; a per-tile/window scan list distinguishing regeneration from rereads and construction; legal challenge/claim/mask timing and final binding; explicit GEMM dependency sharing/fusion; and an incremental cost comparison against the CURRENT five-regeneration plus priced attention-streaming baseline. Only then pre-register a full-fraction/current-protocol test and any E2 pass timing. Until then, no speculative cost-model option or added μ saving is justified.
+
+## Historical proposal and reviews
+
+The original2026-10-16 proposal, scores and later hosted-case summary follow as provenance. The current clarification above supersedes its n_regen4/aggregate-instance/six-byte/u64/pass-factor claims. Historical external benchmarks and `pass` security rows are not new evidence or review of a complete current streaming implementation.
 
 ## Mechanism
 

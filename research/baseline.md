@@ -146,12 +146,12 @@ Values as of 2026-10-16, from [landscape.md](landscape.md). Tessera's are projec
 | `μ` at 16K, dense | 45.6 corrected / 102.4 counted (§2 scope) | about 100–300× against ideal prefill for a 31B model (source's estimate from throughput) | Attestable | Tessera leads on paper, unmeasured |
 | Throughput, one H100, ~30B dense | not stated (8×H100 design point) | 53–77 tokens/s proved | Attestable | vendor claim; not independently reproduced here |
 | Proof size, 16K tokens | about 2 GB | 4.35–7.92 MiB | Attestable | about 300× against Tessera; recursion is NG-3 |
-| Verification time | About 13 s on one core (E0, SUR-0012); ≤ 300 s on 32 cores is the release budget | 157–648 ms on unnamed reference CPU (claim) | Attestable | Different hardware and evidence; no measured ratio established |
+| Verification time | Historical projection about 13 s on one core (E0, SUR-0012; not recomputed for the current layout); ≤ 300 s on 32 cores is the release budget | 157–648 ms on unnamed reference CPU (claim) | Attestable | Different hardware and evidence; no measured ratio established |
 | Soundness | 100 bits NI, 64 bits live | 100 bits | Attestable | parity |
 | Zero knowledge | statistical, malicious verifier | stated | several | parity claimed, unverified for others |
 | Post-quantum | hash-based | hash-based | Attestable | parity |
 | Statement | uniqueness upstream, anchor, `Û` | `y = F(W, x, r)` with floating-point nonlinearities | Attestable | Tessera's is stronger |
-| Verifier | independent code, specification-first | formal verification claimed | Attestable | the bar to clear (NG-7) |
+| Verifier | independent code, specification-first | formal verification not established by the primary pages checked 2026-10-17 ([SUR-0012](surveys/SUR-0012-verifier.md)) | Attestable | No assurance comparison established; NG-7 remains Tessera's own v1 non-goal |
 
 Where Tessera trails (proof size, verification time), the gap is structural (Ligero-family openings, no recursion) and is a research target; where it leads, the lead is a projection until v0.1 measures the unit costs and v0.5 measures a proof.
 

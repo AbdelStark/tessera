@@ -1,0 +1,5 @@
+2026-10-19T09:06:51Z
+50e68fdbe53ba38b1ae1a3909bb160351c3503d7eb6fbc3efc6c44b06c3321aa  README.md
+50e68fdbe53ba38b1ae1a3909bb160351c3503d7eb6fbc3efc6c44b06c3321aa  results/README.preregistered.txt
+7108c834336c537f19403fcbca56dde9caf7d79c04c1b30ba12899a7164e89bc  results/source-pins.json
+Commit gate: pending parent review and commit; no experiment code, builds or timing.
