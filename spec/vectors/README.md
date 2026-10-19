@@ -25,6 +25,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | [`sumcheck/`](sumcheck/README.md) | Honest sumcheck proofs, RFC-0010 | its oracle |
 | `tables/` | RFC-0008's table kinds: specifications, digests, rows and lookups at the edges of their keys | its oracle |
 | `transcript/` | Fiat–Shamir transcript sessions, RFC-0004 | its oracle |
+| [`transcript-schedule/`](transcript-schedule/README.md) | The transcript schedule of `tessera-protocol/1`, RFC-0014: every label of a proof unit in both modes, with the challenges, seeds, indices and nonces drawn at each, for synthetic sizes and the conformance models | its oracle |
 | [`weights/`](weights/README.md) | The weight commitment of the conformance models at `test-small/1`, RFC-0040: each matrix's layout, `commitment_id` and root, `R_W` and the `.twr` artifacts; rows encoded at rate 1/4 | its oracle, after the models' |
 
 An oracle is the set's `generate.py`: an independent implementation in standard-library Python, written from the specification, sharing no code with `crates/`, `verifier/` or `python/`. Oracles may import one another, as `models/` takes its tables from `tables/` and its BLAKE3 from `hash/`.
