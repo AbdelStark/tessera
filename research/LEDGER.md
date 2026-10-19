@@ -252,3 +252,5 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-10-19 | promote IDEA-0036 / Draft RFC-0050 | Specify public role domains/order, exact mixed-radix products and comparison width, full range requests and interning. Keep rho+1 final evaluation; make migration and G-4 exact-count checks mandatory. No unknown mechanism gate, preset-fit claim or production adoption inferred. |
 
 | 2026-10-19 | RFC-0050 draft / registered large-constant boundary | Original and polynomial-retention gates pass. Before the RFC decision, freeze five public scalar profiles/twenty rows with N above Goldilocks and a whole-constant reduction control. Original inputs/criteria remain unchanged; extension not yet run. |
+
+| 2026-10-19 | EXP-0023 constant boundary judged | All20 extra row cases retain whole N/N+1;5 deliberately reduced-constant attacks reject under the correct validator and accept only under the injected fault.3,400 extra assertions, final1,356,233. No original criteria changed; no production-vulnerability, full-model or performance claim. |

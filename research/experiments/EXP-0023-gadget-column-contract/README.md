@@ -282,5 +282,14 @@ preset fits. Protocol/2 masking and secret-buffer obligations remain unchanged.
 The original sweep has N below the field. Before the RFC decision, the separately
 frozen `results/README.constants-preregistered.txt` adds twenty scalar row cases
 with constants above Goldilocks and five intentional whole-constant-reduction
-attacks. This extension is registered, not run; it does not replace any original
-case or criterion. The earlier bounded result remains scoped to its inputs.
+attacks. This extension passed all twenty additional row cases and five intentional
+whole-constant-reduction attacks, adding 3,400 assertions (E0). Both polynomial
+formulations retain identical columns; whole normalized constants equal N and
+N+1, not their field residues. The normal validator rejects every wrong-root
+control at its first differing constant normalization equation, while the
+intentionally faulted validator accepts it. This is an experimental fault only,
+not a production vulnerability claim. No original case or criterion is replaced.
+
+The final combined run has 1,356,233 assertions; the repeated original stage
+has 562,296 because it also verifies the committed constant-boundary plan.
+All raw profiles, exact errors and roots are in `results/outcomes.json`.

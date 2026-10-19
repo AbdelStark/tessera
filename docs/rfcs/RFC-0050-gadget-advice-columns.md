@@ -199,7 +199,7 @@ Rsqrt requests, in order:
 5. upper comparison requests in array order.
 
 Keep repeated requests. The existing base tables retain the independently lowered
-order. Walk gadgets in node order; reuse an equal table kind already present, or
+order. Walk gadgets in node order; reuse the lowest id of an equal table kind already present, or
 append its descriptor on its first request. Equality for interning concerns the
 table definition, not its id-dependent digest. Assign canonical ids in that
 sequence and regenerate the digests. A required range wider than the public table
@@ -328,7 +328,10 @@ policies, complete 119-bit products, padded rows and virtual top boxes. Nineteen
 distinct faults and an additional `u+P` attack control are caught; five controls
 change first rejection behavior rather than accept a bad witness. The amendment
 repeats the matrix under the original polynomial and verifies identical columns,
-including zero-maximum-root and malformed-parameter boundaries.
+including zero-maximum-root and malformed-parameter boundaries. A separately
+pre-registered extension checks twenty additional scalar rows with constants
+above Goldilocks and five intentional constant-reduction faults; no production
+vulnerability is inferred.
 
 Production tests must additionally compare independent model layouts and complete
 table sequences, exercise every source-to-role binding, reject a dropped/moved

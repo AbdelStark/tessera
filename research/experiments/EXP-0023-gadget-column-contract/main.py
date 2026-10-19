@@ -20,6 +20,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 FROZEN = "9d4feb8ab6c17daf22a6a6f78816c603002ee8cdbbf74b82bc744cccef5c2362"
 AMENDMENT = "1aa852822c46e25c5e240157ff7aadeb3c983125110ee640205c814dc70b9d59"
+CONSTANTS = "f30bda990098f0b62b9c72b6acd1076497a813647e523d1470cf3798f06c79e2"
 SEED = 0x4071060023
 COUNTS: Counter[str] = Counter()
 
@@ -195,6 +196,8 @@ def witness(s: dict, u: int, root: int, psi: int, integer_u: int | None = None, 
 def validate(s: dict, a: Witness, fault: str = "", *, one: bool = False) -> str | None:
     """Small field identities, range boxes and final carries: no bigint bracket shortcut."""
     w, r, m, n = s["w"], s["r"], s["m"], int(s["N"])
+    if fault == "WholeConstantMod":
+        n %= P
     v = a.values
     if list(v) != [name for name, _ in s["columns"]]:
         return "Shape"
@@ -344,6 +347,10 @@ def run() -> dict:
     amendment_commit = subprocess.check_output(["git", "show", "HEAD:" + str(amendment.relative_to(ROOT))], cwd=ROOT)
     check(amendment.read_bytes() == amendment_commit
           and hashlib.sha256(amendment_commit).hexdigest() == AMENDMENT, "committed amendment")
+    constants = HERE / "results/README.constants-preregistered.txt"
+    constants_commit = subprocess.check_output(["git", "show", "HEAD:" + str(constants.relative_to(ROOT))], cwd=ROOT)
+    check(constants.read_bytes() == constants_commit
+          and hashlib.sha256(constants_commit).hexdigest() == CONSTANTS, "committed constant boundary")
     state = SEED
     per_width, representatives = [], []
     matrix_hash = hashlib.sha256()
@@ -410,9 +417,11 @@ def run() -> dict:
     faults = fault_controls()
     original_counts = dict(COUNTS)
     amended = polynomial_retention(matrix_hash.hexdigest())
+    large_constants = constant_boundaries()
     return {"verdict": "validated", "evidence": "E0, bounded exact arithmetic/schema result only",
             "seed": hex(SEED), "frozen_sha256": FROZEN, "counts": original_counts,
             "amendment": amended, "total_assertions": COUNTS["assertions"],
+            "large_constants": large_constants,
             "matrix_sha256": matrix_hash.hexdigest(), "widths": per_width, "faults": faults,
             "environment": {"python": sys.version, "platform": platform.platform(),
                             "machine": platform.machine(),
@@ -420,7 +429,7 @@ def run() -> dict:
                                     if platform.system() == "Darwin" else platform.processor()),
                             "utc": datetime.now(timezone.utc).isoformat()},
             "limits": ["No full-model proof", "No G-4 or Fiat-Shamir proof", "No ZK simulation proof",
-                       "No GPU/performance gain", "No production implementation comparison yet"]}
+                       "No GPU/performance gain", "No executable differential run against production helpers"]}
 
 
 def fault_controls() -> list[dict]:
@@ -569,9 +578,53 @@ def polynomial_retention(original_hash: str) -> dict:
             "conclusion": "retain rho+1 final-evaluation polynomial; equal data only on required domain"}
 
 
+def constant_boundaries() -> dict:
+    before, rows = COUNTS["assertions"], 0
+    profiles = []
+    for label, d, kappa, e in [("8b-norm-metadata", 4096, 30, 672),
+                               ("405b-norm-metadata", 16384, 30, 2685),
+                               ("constant-2^64", 4, 31, 2),
+                               ("large-primitive-constant", 2**32 - 2, 31, 2**54),
+                               ("small-root-large-constant", 4, 31, 2**55 - 3)]:
+        n = d << (2 * kappa)
+        width = max(1, isqrt(n // e).bit_length())
+        s = schema(width, n)
+        verify_descriptor(s)
+        check(n > P, "constant exceeds field")
+        for psi, u in [(1, e), (1, e + 1), (1, 2**55 - 1), (0, 0)]:
+            check(not psi or e <= u < 2**55, "primitive input domain")
+            root = isqrt(n // u) if psi else 0
+            a, b = witness(s, u, root, psi), witness(s, u, root, psi, one=True)
+            check(a == b and validate(s, a) is None and validate(s, b, one=True) is None,
+                  ("large-constant row", label, psi, u))
+            left_constant = sum(b.values[f"lower/right/digit/{j}"] << (8 * j) for j in range(s["m"]))
+            right_constant = sum(b.values[f"upper/left/digit/{j}"] << (8 * j) for j in range(s["m"]))
+            check(left_constant == psi * n and right_constant == psi * (n + 1), "whole constants retained")
+            rows += 1
+        wrong_n = n % P
+        wrong_root = isqrt(wrong_n // e)
+        bad_schema = schema(width, wrong_n)
+        check(bad_schema["columns"] == s["columns"], "same public role boxes for constant attack")
+        bad = witness(bad_schema, e, wrong_root, 1, one=True)
+        first = next(j for j in range(s["m"]) if (n >> (8 * j) & 255) != (wrong_n >> (8 * j) & 255))
+        expected = f"Norm/lower/right/{first}"
+        check(wrong_root != isqrt(n // e), "attack changes the root")
+        check(validate(s, bad, one=True) == expected, ("whole-constant rejection", label, expected))
+        check(validate(s, bad, "WholeConstantMod", one=True) is None, "experimental constant-reduction fault accepts")
+        profiles.append({"profile": label, "d": d, "kappa": kappa, "e": str(e), "N": str(n),
+                         "width": width, "expected": expected, "faulted_outcome": "Accept",
+                         "true_root": str(isqrt(n // e)), "wrong_root": str(wrong_root)})
+    check(rows == 20, "registered large-constant cases")
+    return {"verdict": "validated", "frozen_sha256": CONSTANTS, "rows": rows,
+            "constant_reduction_attacks": len(profiles), "profiles": profiles,
+            "assertions_added": COUNTS["assertions"] - before,
+            "scope": "synthetic primitive cases and intentional fault only; no full-model vulnerability claim"}
+
+
 if __name__ == "__main__":
     result = run()
     (HERE / "results/outcomes.json").write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
     print(json.dumps({"verdict": result["verdict"], "counts": result["counts"],
-                      "distinct_faults": 19, "additional_attack_controls": 1,
-                      "matrix_sha256": result["matrix_sha256"], "amendment": result["amendment"]}))
+                      "original_distinct_faults": 19, "original_attack_controls": 1,
+                      "matrix_sha256": result["matrix_sha256"], "amendment": result["amendment"],
+                      "large_constants": result["large_constants"]}))

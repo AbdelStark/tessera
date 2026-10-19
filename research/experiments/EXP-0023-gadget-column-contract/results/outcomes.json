@@ -4,7 +4,7 @@
   "seed": "0x4071060023",
   "frozen_sha256": "9d4feb8ab6c17daf22a6a6f78816c603002ee8cdbbf74b82bc744cccef5c2362",
   "counts": {
-    "assertions": 562295,
+    "assertions": 562296,
     "maximum_equation_bits": 35,
     "policy_cases": 1024,
     "root_alternatives": 8704,
@@ -26,7 +26,77 @@
     "assertions_added": 790537,
     "conclusion": "retain rho+1 final-evaluation polynomial; equal data only on required domain"
   },
-  "total_assertions": 1352832,
+  "total_assertions": 1356233,
+  "large_constants": {
+    "verdict": "validated",
+    "frozen_sha256": "f30bda990098f0b62b9c72b6acd1076497a813647e523d1470cf3798f06c79e2",
+    "rows": 20,
+    "constant_reduction_attacks": 5,
+    "profiles": [
+      {
+        "profile": "8b-norm-metadata",
+        "d": 4096,
+        "kappa": 30,
+        "e": "672",
+        "N": "4722366482869645213696",
+        "width": 32,
+        "expected": "Norm/lower/right/1",
+        "faulted_outcome": "Accept",
+        "true_root": "2650911367",
+        "wrong_root": "40449"
+      },
+      {
+        "profile": "405b-norm-metadata",
+        "d": 16384,
+        "kappa": 30,
+        "e": "2685",
+        "N": "18889465931478580854784",
+        "width": 32,
+        "expected": "Norm/lower/right/1",
+        "faulted_outcome": "Accept",
+        "true_root": "2652391909",
+        "wrong_root": "40472"
+      },
+      {
+        "profile": "constant-2^64",
+        "d": 4,
+        "kappa": 31,
+        "e": "2",
+        "N": "18446744073709551616",
+        "width": 32,
+        "expected": "Norm/lower/right/0",
+        "faulted_outcome": "Accept",
+        "true_root": "3037000499",
+        "wrong_root": "46340"
+      },
+      {
+        "profile": "large-primitive-constant",
+        "d": 4294967294,
+        "kappa": 31,
+        "e": "18014398509481984",
+        "N": "19807040619342712361531211776",
+        "width": 20,
+        "expected": "Norm/lower/right/0",
+        "faulted_outcome": "Accept",
+        "true_root": "1048575",
+        "wrong_root": "27"
+      },
+      {
+        "profile": "small-root-large-constant",
+        "d": 4,
+        "kappa": 31,
+        "e": "36028797018963965",
+        "N": "18446744073709551616",
+        "width": 5,
+        "expected": "Norm/lower/right/0",
+        "faulted_outcome": "Accept",
+        "true_root": "22",
+        "wrong_root": "0"
+      }
+    ],
+    "assertions_added": 3400,
+    "scope": "synthetic primitive cases and intentional fault only; no full-model vulnerability claim"
+  },
   "matrix_sha256": "bd728c2db4134fb112103fb801f8ee572f723def60fcc63b0c0403fb85fb833b",
   "widths": [
     {
@@ -729,7 +799,7 @@
     "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
     "machine": "arm64",
     "cpu": "Apple M4 Max",
-    "utc": "2026-10-19T18:46:58.021232+00:00"
+    "utc": "2026-10-19T18:58:17.088362+00:00"
   },
   "limits": [
     "No full-model proof",
