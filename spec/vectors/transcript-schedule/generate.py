@@ -14,9 +14,9 @@ before anything is written. It derives the conformance models' layer point and w
 from RFC-0040 with ../weights/generate.py's reader and layouts. It shares no code with crates/
 or verifier/, which check its output.
 
-The conformance models' leaf trees and reduction stages are the prover's derivations, stated
-below (DERIVED). Their advice row-index point is derived by the independent lowering and advice
-oracles; every model case now replays the complete schedule. See README.md.
+Every conformance-model dimension is derived independently from the public lowering and
+canonical gadget catalog below, including all lookup families, Softmax forests, OneHot and
+gadget relations. No sizes are copied from Rust output. See README.md.
 
 Usage: python3 spec/vectors/transcript-schedule/generate.py
 (rewrites schedule.json)
@@ -322,37 +322,107 @@ LIVE_64 = {**RICH, "opened": [{"matrix": "Q", "codeword": 1 << 22}, {"matrix": "
 
 # ----- The conformance models (07 §5) -------------------------------------------------------------
 
-# What no oracle derives yet, from the prover's derivations at each model's first sequence of
-# ../models/models.json: each LogUp instance's lookup tree and table tree heights (h_a, h_t), in
-# ascending TableId, from tessera-prover's leaf layout of the requantization sites (RFC-0045, #367),
-# the only gadgets laid out so far; and each reduction stage's rounds and zero-check coordinates
-# from tessera-compiler's stage schedule (RFC-0037, #113). crates/tessera-prover/tests/
-# transcript_sizes.rs derives them again and compares.
-DERIVED = {
-    "tiny-2-servable": {
-        "instances": [(11, 25), (9, 23), (9, 22), (11, 19), (9, 19), (9, 18), (9, 23), (10, 20), (10, 20),
-                      (10, 23), (11, 23), (11, 25), (12, 23), (11, 16), (9, 25), (9, 19), (11, 16), (9, 25)],
-        "stages": [(12, 9), (9, 0)],
-    },
-    "tiny-2-minimal": {
-        "instances": [(9, 7), (10, 24), (11, 25), (9, 23), (9, 22), (11, 19), (9, 18), (9, 19), (9, 21),
-                      (10, 28), (9, 27), (11, 23), (11, 25), (9, 12), (9, 8), (10, 28), (9, 18), (9, 27),
-                      (9, 5), (9, 14), (9, 15)],
-        "stages": [(10, 9), (12, 0), (7, 0)],
-    },
-    "tiny-2-affine": {
-        "instances": [(11, 25), (11, 26), (9, 23), (9, 22), (11, 26), (8, 23), (10, 17), (10, 20), (10, 20),
-                      (9, 21), (11, 25), (12, 19), (11, 18), (12, 16), (9, 25), (10, 23), (8, 23), (9, 22),
-                      (11, 18), (9, 25)],
-        "stages": [(12, 9), (10, 0), (7, 0)],
-    },
-    "tiny-4-servable": {
-        "instances": [(15, 23), (11, 22), (15, 20), (13, 20), (11, 24), (13, 20), (12, 24), (14, 23), (14, 25),
-                      (14, 16), (12, 25), (13, 19), (12, 25), (11, 20), (9, 24), (11, 24), (12, 25), (12, 16),
-                      (11, 24)],
-        "stages": [(14, 11), (10, 0)],
-    },
-}
+def model_geometry(case):
+    """Walk the public expression graph, rather than a Rust-produced schedule.
+
+    A nonlinear definition costs one stage; linear substitutions cost none. Gadget
+    zero-checks run in stage 1. Root comparisons read u, hence its SumSquares
+    dependency in stage 2; the top-input lookup also reads it directly in stage 1.
+    Softmax's masked key/leaf relation precedes the score's MatMulAct (RFC-0030).
+    """
+    nodes = {node[0]: node for node in case["nodes"]}
+    tensors = {item[0]: (item[2], item[3]) for item in case["inputs"]}
+    producers = {}
+    for node in nodes.values():
+        for tid, shape, kind in node[4]:
+            tensors[tid] = (shape, kind)
+            producers[tid] = node
+    bounds = [producers[t][0] for t in case["checkpoints"]]
+    layer_bits = (len(bounds) - 2).bit_length()
+
+    def stacked(node):
+        return layer_bits if bounds[0] < node[0] <= bounds[-1] else 0
+
+    def variables(shape):
+        return sum((d - 1).bit_length() for d in shape)
+
+    def domain(tensor):
+        return variables(tensors[tensor][0])
+
+    stages, seen = {}, set()
+
+    def record(index, count, zero=False):
+        entry = stages.setdefault(index, [0, 0])
+        entry[0] = max(entry[0], count)
+        if zero:
+            entry[1] = max(entry[1], count)
+
+    def follow(tensor, index):
+        if (tensor, index) in seen or tensors[tensor][1] != "v":
+            return
+        seen.add((tensor, index))
+        node = producers[tensor]
+        _, op, params, inputs, _, _ = node
+        if op == "MatMulWeight":
+            own = (tensors[inputs[0]][0][-1] - 1).bit_length()
+        elif op == "MatMulAct":
+            shape = tensors[inputs[0]][0]
+            own = variables(shape[:-2]) + (shape[-1] - 1).bit_length()
+        elif op in ("SumSquares", "Rotate"):
+            own = domain(inputs[0])
+        elif op == "Mul" or (op == "ConstMul" and len(case["constants"][params["c"]]) != 1):
+            own = domain(tensor)
+        else:
+            require(op in ("Add", "Sub", "Reshape", "Transpose", "Expand", "Sum", "ConstMul"),
+                    "a supported linear substitution")
+            for operand in inputs:
+                follow(operand, index)
+            return
+        record(index, own + stacked(node))
+        for operand in inputs:
+            follow(operand, index + 1)
+
+    gadgets = {"Requant", "TableMap", "Bitwise", "RsqrtRow", "SoftmaxRow", "OneHot"}
+    for node in nodes.values():
+        _, op, _, inputs, outputs, _ = node
+        if op in gadgets:
+            for tensor in inputs:
+                follow(tensor, 2 if op == "SoftmaxRow" else 1)
+            if op == "OneHot":
+                record(1, domain(outputs[0][0]) + stacked(node), True)
+            if op == "RsqrtRow":
+                record(1, domain(outputs[0][0]) + stacked(node), True)
+                follow(inputs[0], 2)
+            if op == "SoftmaxRow":
+                record(1, domain(inputs[0]) + stacked(node))
+                record(1, domain(outputs[1][0]) + stacked(node), True)
+        elif op not in ("MatMulWeight", "MatMulAct"):
+            for tensor, _, kind in outputs:
+                if kind == "A":
+                    record(1, domain(tensor) + stacked(node), True)
+                    for operand in inputs:
+                        follow(operand, 2)
+    follow(case["nodes"][-1][4][0][0], 1)
+
+    # RFC-0045: real layers' per-axis-padded blocks, then the combined column's tail.
+    tables, choices = advice.catalog(case)
+    counts = {}
+    for choice in choices:
+        node = nodes[choice["node"]]
+        for table in choice["tables"]:
+            tensor = (node[4][1][0] if node[1] == "SoftmaxRow"
+                      and table != node[2]["exp_table"] else node[3][0])
+            counts[table] = counts.get(table, 0) + (1 << domain(tensor))
+    trees = [tree for tid, count in sorted(counts.items())
+             for tree in (fraction((count - 1).bit_length()), fraction(tables[tid][2]))]
+    # One forest per template Softmax site, including padded layer/head/query axes.
+    for node in nodes.values():
+        if node[1] == "SoftmaxRow" and bounds[0] < node[0] <= bounds[1]:
+            heads, queries, keys = tensors[node[3][0]][0]
+            trees.append(forest(layer_bits + variables([heads, queries]), (keys - 1).bit_length()))
+    return {"trees": trees, "stages": [stage(*stages[k]) for k in range(1, max(stages) + 1)],
+            "lookup_entries": [[tid, count] for tid, count in sorted(counts.items())]}
+
 
 
 def matrices(arch, channels):
@@ -374,7 +444,7 @@ def matrices(arch, channels):
 
 
 def conformance_sizes(name, index):
-    """A model's sizes: its derived trees and stages; λ = ⌈log2 L⌉; the proximity point of each
+    """A model's sizes and lookup counts, all from public data; λ = ⌈log2 L⌉; the proximity point of each
     matrix with committed rows, ⌈log2 m_T⌉ coordinates (RFC-0049); the opened matrices, every one
     with committed rows, each read by a claim of the schedule: the nine weight types by their
     MatMulWeight instances, ChannelParams by the sites that read its classes or multipliers."""
@@ -384,8 +454,6 @@ def conformance_sizes(name, index):
     for ch in value["quant"]["channels"]:
         ty = next(iter(ch["ty"]))
         channels[weights.WEIGHT_TYPES.index(ty), ch["layer"]] = ch["class"] or ch["multiplier"]
-    derived = DERIVED[name]
-    trees = [tree for h_a, h_t in derived["instances"] for tree in (fraction(h_a), fraction(h_t))]
     committed = matrices(arch, channels)
     public = {"arch": arch, "profile": value["profile"],
               "quant": {"public": value["quant"]["public"],
@@ -394,23 +462,24 @@ def conformance_sizes(name, index):
     n = len(entry["sequences"][0]["tokens"])
     graph, _ = lowering.case_of(name, entry["file"], lowering.Public(public), n, None)
     layout = advice.model_layout(graph, 10, 512, 1)  # test-small/1 and default gadget policy
+    geometry = model_geometry(graph)
     return {
-        "trees": trees,
+        "trees": geometry["trees"],
         "layer_vars": (arch["n_layers"] - 1).bit_length(),
-        "stages": [stage(r, z) for r, z in derived["stages"]],
+        "stages": geometry["stages"],
         "advice_vars": layout["nu"] - 10,
         "proximity": [{"matrix": ty, "vars": (m - 1).bit_length()} for ty, m, _ in committed],
         "opened": [{"matrix": ty, "codeword": k << WEIGHT_LOG2_INV_RATE} for ty, _, k in committed],
-    }
+    }, geometry["lookup_entries"]
 
 
 PROVENANCE = {
-    "trees": "derived by the prover: tessera-prover's leaf layout of the requantization sites (RFC-0045, #367), "
-    "a lookup tree and a table tree per instance in ascending TableId; the other gadgets' instances and the "
-    "product forests join with complete gadget/leaf integration (#126, #130)",
+    "trees": "derived here: all RFC-0050 lookup requests, each real layer's per-axis-padded domain, "
+    "one lookup/table tree pair per ascending TableId (RFC-0045), then Softmax forests stacked over "
+    "padded layers/heads/queries (RFC-0010/0030)",
     "layer_vars": "derived here: ceil(log2 n_layers) (RFC-0037 'Layers and kinds')",
-    "stages": "derived by the prover: tessera-compiler's stage schedule (RFC-0037, #113); the gadgets' zero-checks "
-    "(RFC-0035, OneHot) join with their gadgets",
+    "stages": "derived here by walking the public graph: nonlinear relations cost one stage; linear "
+    "maps cost none; include OneHot/root/Softmax obligations and their dependencies (RFC-0009/0010/0030/0035/0037)",
     "advice_vars": "derived here through the independent public lowering and advice oracles: nu - log2 k, "
     "at test-small/1, Q=512, one segment (RFC-0011/0047/0050)",
     "proximity": "derived here: each matrix with committed rows at test-small/1 (RFC-0040), ceil(log2 m_T) "
@@ -465,9 +534,11 @@ def main():
     require([m["name"] for m in index["models"]] == weights.MODEL_NAMES, "every conformance model, in order")
     models = []
     for name in weights.MODEL_NAMES:
-        sizes = conformance_sizes(name, index)
+        sizes, entries = conformance_sizes(name, index)
         for mode in ("Live", "NonInteractive"):
-            models.append(case(f"{name}, {mode}", sizes, "test-small/1", mode, rng, provenance=PROVENANCE))
+            model = case(f"{name}, {mode}", sizes, "test-small/1", mode, rng, provenance=PROVENANCE)
+            model["lookup_entries"] = entries
+            models.append(model)
     document = {
         "description": "Transcript schedules of tessera-protocol/1 (RFC-0014 'Transcript schedule' and "
         "'Grinding', as RFC-0049 places pcs/weights/{T}/xi), written by generate.py, an oracle independent of "
