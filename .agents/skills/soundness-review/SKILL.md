@@ -24,11 +24,12 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 - Each round polynomial has at most the relation's degree; the verifier checks `p(0) + p(1) = claim` every round and recomputes the final evaluation from its own public factors.
 - Batching challenges are drawn after the claims they combine are fixed; smaller instances are scaled by `2^(n_max − n_i)`.
 - A check that passes on the way to a later one returns what that check still owes in a `#[must_use]` type: a sumcheck's last claim, a GKR level's next claims, the leaf claims. A caller that drops them accepts what nothing checked.
-- LogUp: the verifier rejects a zero root denominator on either side and checks that the roots' fractions sum to zero. Multiplicities stay below `P`, and the error bound counts `N + T` over `|Fp2|`.
+- LogUp: the verifier rejects a zero root denominator on either side and checks that the roots' fractions sum to zero (`tree/{ℓ}/root/{c}` at the stacked forest root point, #58). Multiplicities stay below `P`, and the error bound counts `N + T` over `|Fp2|`. Within-column numerator/denominator combination uses `tree/{ℓ}/lambda` while cross-column folding uses `tree/{ℓ}/gamma` (#62).
 - Padding a prover can set must be harmless by construction. Each entry that pads a table to a power of two is either public and checked, or a copy of an admissible entry: RFC-0008 pads both LogUp trees with row 0. A padding row with new values, such as key and value 0, is a new table row, and a committed multiplicity on it admits a lookup that is not in the table.
 - Every new round or challenge is counted by the soundness calculator (RFC-0014).
 
 ## Commitments (RFC-0011, RFC-0012)
+- Blinding claims (`q_g` for advice, `q_T` for weights) are absorbed into the transcript before squeezing the batching challenge (`pcs/advice/gamma` or `pcs/weights/{T}/xi`, #237).
 - Column queries are drawn after every combined row is fixed; `τ` comes from the parameter set.
 - The verifier re-encodes combined rows and checks consistency on every queried column; Merkle multiproofs are canonical (extra, missing or reordered siblings rejected).
 

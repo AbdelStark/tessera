@@ -23,6 +23,7 @@ Tessera proves that a committed integer language model `D` produced a recorded t
 | `python/` | `tessera-quant`, the quantization front-end (RFC-0005): uv project, own lockfile, same version as the crates |
 | `spec/vectors/` | Conformance vectors: data shared by both workspaces, produced by independent oracles |
 | `docs/` | Specification, RFCs, roadmap, release checklist |
+| `.agents/` | Canonical agent skills (`.agents/skills/`) and multi-agent workflows (`.agents/workflows/`); `.claude/` and `.codex/` hold relative symlinks to `.agents/` |
 
 ## Commands
 
@@ -33,7 +34,7 @@ cargo test --workspace --locked                          # prover workspace
 (cd verifier/fuzz && cargo fuzz run decode)              # fuzz targets, own nightly pin: verifier/fuzz/README.md
 cargo clippy --workspace --all-targets --locked -- -D warnings   # also inside verifier/
 cargo fmt --all --check                                  # also inside verifier/
-cargo xtask lint                 # unsafe code, SPDX headers, licenses, Markdown links, policy files, report schemas, one version for crates and Python, conflict markers
+cargo xtask lint                 # unsafe code, SPDX headers, licenses, Markdown links, policy files, report schemas, one version for crates and Python, conflict markers, agent context
 cargo xtask check-isolation      # verifier independence (RFC-0001)
 cargo xtask check-test-features  # test-only features fail release builds
 cargo xtask check-branchless     # the field's operations compile branch-free in x86_64 loops (INV-ARCH-2)
@@ -60,6 +61,23 @@ Each is a security property or a merge-blocking gate; breaking one is a bug even
 
 One issue, one branch, one pull request; the `issue-workflow` skill has the loop, [CONTRIBUTING.md](CONTRIBUTING.md) the rules it follows: DCO sign-off on every commit, a changelog entry per release train, the review rules and the RFC process.
 
+### Agent skills and workflows
+
+`.agents/` is the single source of truth for skills and workflows (mirrored via relative symlinks into `.claude/` and `.codex/`, checked by `cargo xtask lint`). Load the matching skill before starting work:
+
+| Skill / workflow | When to load |
+|---|---|
+| [`issue-workflow`](.agents/skills/issue-workflow/SKILL.md) | Implementing any roadmap issue end to end (spec -> tests -> implementation -> soundness review -> gates -> PR -> distill) |
+| [`soundness-review`](.agents/skills/soundness-review/SKILL.md) | Diff-level adversarial review of any change touching verification, transcript labels, range bounds, or secrets |
+| [`soundness-audit`](.agents/skills/soundness-audit/SKILL.md) | Deep 5-surface mathematical and implementation audit across RFCs, `crates/`, and `verifier/` |
+| [`redteam-scheme`](.agents/skills/redteam-scheme/SKILL.md) | Offensive exploit development: forging witnesses, mutating transcripts, grinding challenges, or crafting parser bombs |
+| [`verifier-independence`](.agents/skills/verifier-independence/SKILL.md) | Writing or reviewing code and dependencies under `verifier/` (`RFC-0001`, `SP-6`, `DEP-1..3`) |
+| [`performance-optimization`](.agents/skills/performance-optimization/SKILL.md) | Optimizing field arithmetic, Poseidon2, sumcheck, LogUp/GKR, Ligero PCS, SIMD, or CUDA kernels (`08-performance-budget.md`) |
+| [`harness-engineering`](.agents/skills/harness-engineering/SKILL.md) | Building or updating `xtask` gates, `spec/vectors/` oracles, fuzz targets, or running `scripts/mutate.py` fault injection |
+| [`continuous-learning`](.agents/skills/continuous-learning/SKILL.md) | Distilling bugs, review corrections, and spec ambiguities into permanent gates, tests, RFCs, or skills |
+| [`autoresearch`](.agents/skills/autoresearch/SKILL.md) | Running structured cryptographic research iterations on open protocol frontiers |
+| `autoresearch-sweep.js`, `soundness-audit-sweep.js`, `redteam-campaign.js` | Multi-agent workflows in `.agents/workflows/` for parallel research sweeps, 5-surface audits, and red-team campaigns |
+
 ## Tests that count
 
 Tests exist to catch soundness and conformance bugs. In order of value:
@@ -75,6 +93,7 @@ A test that restates the implementation (a getter, a constructor, plumbing) adds
 ## Pitfalls
 
 - The verifier is a separate workspace: run its cargo commands inside `verifier/`; run `cargo xtask` from the repository root.
+- Edit skills and workflows only under `.agents/`; `.claude/` and `.codex/` are symlink mirrors enforced by `cargo xtask lint`.
 - `gh pr edit` fails on this repository (Projects classic deprecation): set PR bodies with `gh api -X PATCH repos/AbdelStark/tessera/pulls/N -F body=@file`, labels with `gh api -X POST repos/AbdelStark/tessera/issues/N/labels -f "labels[]=name"`.
 - `rm`, `cp` and `mv` are interactive (`-i`) on the maintainer's machine; scripts move scratch files instead of deleting them, and overwrite with `/bin/cp -f` and `/bin/mv -f`.
 - Vendored stand-ins under `xtask/fixtures/*/vendor/` model crates.io packages for offline gate self-tests; they are not the real crates.

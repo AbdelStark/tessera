@@ -42,8 +42,9 @@ pub(crate) fn files(repo: &Path) -> io::Result<Vec<PathBuf>> {
         .split(|&b| b == 0)
         .filter(|name| !name.is_empty())
         .map(|name| PathBuf::from(String::from_utf8_lossy(name).into_owned()))
-        // The index can list files deleted from the working tree.
-        .filter(|rel| repo.join(rel).is_file())
+        // The index can list files deleted from the working tree; symlinks are skipped so
+        // each regular file is checked once at its canonical path.
+        .filter(|rel| fs::symlink_metadata(repo.join(rel)).is_ok_and(|meta| meta.is_file()))
         .collect();
     files.sort();
     files.dedup();

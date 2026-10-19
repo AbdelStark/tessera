@@ -10,6 +10,7 @@
 // A command-line tool reports on stdout and stderr.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+mod agent_context;
 mod branchless;
 mod claim_vectors;
 mod conflicts;
