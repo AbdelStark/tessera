@@ -221,3 +221,22 @@ jobs:
         run: |
           cargo build --workspace --locked
           (cd verifier && cargo build --workspace --locked)
+
+  constraint-digest:
+    name: constraint-digest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: . -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Independent constraint-system digest conformance (RFC-0007)
+        run: |
+          cargo test -p tessera-e2e --example constraint-digest --locked
+          cargo run -p tessera-e2e --example constraint-digest --locked -- --model tiny-2-servable --n 1

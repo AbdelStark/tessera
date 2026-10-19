@@ -544,6 +544,7 @@ pub mod params;
 mod range_checks;
 pub mod ranges;
 pub mod schedule;
+pub mod selection;
 pub mod selectors;
 pub mod stages;
 pub mod sumcheck;
