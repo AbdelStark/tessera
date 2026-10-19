@@ -343,6 +343,43 @@ fn every_error_says_what_was_wrong_in_numbers() {
             },
             "the K matrix has 32 committed rows, so no row 32",
         ),
+        (
+            PcsError::Layout {
+                rule: "g·min(Q, N_max) ≤ k",
+            },
+            "no advice layout: g·min(Q, N_max) ≤ k",
+        ),
+        (
+            PcsError::LayoutData {
+                rule: "every layer has a tile",
+            },
+            "breaks a rule: every layer has a tile",
+        ),
+        (
+            PcsError::Tile {
+                tile: 7,
+                rule: "a tile holds a value",
+            },
+            "tile 7 breaks a rule: a tile holds a value",
+        ),
+        (
+            PcsError::ClaimPoint {
+                expected: 5,
+                found: 4,
+            },
+            "a tensor of 5 variables has 5 coordinates, not 4",
+        ),
+        (
+            PcsError::ElementAxes {
+                expected: 2,
+                found: 3,
+            },
+            "a tensor of 2 axes has 2 coordinates, not 3",
+        ),
+        (
+            PcsError::ElementRange { axis: 1 },
+            "coordinate on axis 1 lies past the axis's padded length",
+        ),
     ];
     for (error, shown) in cases {
         let text = error.to_string();

@@ -59,11 +59,11 @@ const SHAPES: [Shape; 4] = [
         vocab: 17,
         context: 16,
     },
-    // One KV head for all, an odd head count.
+    // One KV head per query head, with an odd total head count (RFC-0047 permits g = 1).
     Shape {
         layers: 1,
         heads: 3,
-        kv_heads: 1,
+        kv_heads: 3,
         d_head: 2,
         d_ff: 12,
         vocab: 9,
@@ -1076,6 +1076,19 @@ fn small_rows_meet_the_epsilon_term() {
             );
         }
     }
+}
+
+#[test]
+fn a_non_power_of_two_query_head_group_is_refused() {
+    let mut shape = SHAPES[1];
+    shape.kv_heads = 1;
+    let model = tiny(31, Profile::Servable, shape);
+    assert_eq!(
+        validate(&model),
+        Err(CompileError::Model {
+            rule: "n_heads / n_kv_heads is a power of two (RFC-0007 step 2, RFC-0047)",
+        })
+    );
 }
 
 #[test]

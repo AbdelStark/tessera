@@ -195,7 +195,7 @@ fn a_protocol_version_the_verifier_does_not_implement_is_refused() {
 #[test]
 fn each_architecture_rule_is_checked() {
     type Edit = fn(&mut ClaimList);
-    let cases: [(&str, Edit); 14] = [
+    let cases: [(&str, Edit); 15] = [
         ("no layer", |c| c.arch.n_layers = 0),
         // `n_kv_heads ≥ 1` divides `n_heads ≥ 1` (RFC-0007 step 2.1, as amended): 2 divides 0, and
         // `d_model = 0 · 16` holds, so only `n_heads ≥ 1` breaks.
@@ -206,6 +206,11 @@ fn each_architecture_rule_is_checked() {
         ("no KV head", |c| c.arch.n_kv_heads = 0),
         ("KV heads that do not divide the heads", |c| {
             c.arch.n_kv_heads = 3
+        }),
+        ("three query heads per KV head (RFC-0047)", |c| {
+            c.arch.n_heads = 24;
+            c.arch.n_kv_heads = 8;
+            c.arch.d_model = 24 * c.arch.d_head;
         }),
         ("heads whose dimensions are not d_model", |c| {
             c.arch.n_heads = 8
@@ -242,6 +247,13 @@ fn each_architecture_rule_is_checked() {
 
 #[test]
 fn the_architecture_admits_its_boundaries() {
+    // The group, rather than either head count, must be a power of two (RFC-0047).
+    let mut grouped = twin(SERVABLE);
+    grouped.arch.n_heads = 24;
+    grouped.arch.n_kv_heads = 3;
+    grouped.arch.d_model = 24 * grouped.arch.d_head;
+    passes(&grouped, Architecture);
+
     // In `minimal`, which has no accumulator bound (S2), so that only the rule is tested.
     let mut claims = twin(MINIMAL);
     claims.arch.d_head = (1 << 16) - 2;

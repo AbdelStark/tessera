@@ -121,6 +121,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - Derive SoftmaxRow's reciprocal and bracket Range tables in canonical first-use order and reject altered or missing auxiliary definitions (RFC-0006/0009; #122).
 
+- Reject an architecture whose query-head group `n_heads / n_kv_heads` is not a power of two, as `StatementMismatch { field: Architecture }` (RFC-0047, part of [#106](https://github.com/AbdelStark/tessera/issues/106)).
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

@@ -269,6 +269,45 @@ pub enum PcsError {
         /// `m_T`, its committed rows.
         rows: u64,
     },
+    /// No advice layout derives from the claim list: RFC-0007 step 6 refuses it, which the
+    /// verifier reports as `Reject(StatementMismatch { field: Layout })` (RFC-0039).
+    Layout {
+        /// The rule the claim list breaks.
+        rule: &'static str,
+    },
+    /// The data a layout is derived from breaks a rule of its form: a model without a layer, a
+    /// sequence of no position or past the context, a layer without a tile. The caller derives
+    /// it from the claim list and the batch, so this is the caller's error.
+    LayoutData {
+        /// The rule the data breaks.
+        rule: &'static str,
+    },
+    /// A tile given to the layout breaks a rule of its form.
+    Tile {
+        /// The tile, counted from 0 in production order.
+        tile: usize,
+        /// The rule it breaks.
+        rule: &'static str,
+    },
+    /// A claim's point does not have one coordinate per variable of its tensor's domain.
+    ClaimPoint {
+        /// The tensor's variables `n_X`.
+        expected: usize,
+        /// The coordinates given.
+        found: usize,
+    },
+    /// An element's coordinates are not one per axis of its tensor.
+    ElementAxes {
+        /// The tensor's axes.
+        expected: usize,
+        /// The coordinates given.
+        found: usize,
+    },
+    /// An element's coordinate lies past its axis's padded length.
+    ElementRange {
+        /// The axis, counted from 0, outermost first.
+        axis: usize,
+    },
 }
 
 impl fmt::Display for PcsError {
@@ -451,6 +490,23 @@ impl fmt::Display for PcsError {
             } => write!(
                 f,
                 "the {matrix:?} matrix has {rows} committed rows, so no row {index}"
+            ),
+            Self::Layout { rule } => {
+                write!(f, "the claim list has no advice layout: {rule}")
+            }
+            Self::LayoutData { rule } => write!(f, "the layout's data breaks a rule: {rule}"),
+            Self::Tile { tile, rule } => write!(f, "tile {tile} breaks a rule: {rule}"),
+            Self::ClaimPoint { expected, found } => write!(
+                f,
+                "a claim on a tensor of {expected} variables has {expected} coordinates, not {found}"
+            ),
+            Self::ElementAxes { expected, found } => write!(
+                f,
+                "an element of a tensor of {expected} axes has {expected} coordinates, not {found}"
+            ),
+            Self::ElementRange { axis } => write!(
+                f,
+                "an element's coordinate on axis {axis} lies past the axis's padded length"
             ),
         }
     }

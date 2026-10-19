@@ -32,7 +32,8 @@
 //!
 //! ## Step 2.1: the architecture
 //!
-//! `n_layers ≥ 1`; `n_kv_heads ≥ 1` divides `n_heads ≥ 1`; `d_head` even, from 2 to `2^16 − 2`;
+//! `n_layers ≥ 1`; `n_kv_heads ≥ 1` divides `n_heads ≥ 1`, with `n_heads / n_kv_heads` a power
+//! of two (RFC-0047); `d_head` even, from 2 to `2^16 − 2`;
 //! `d_model = n_heads · d_head`; `d_ff ≥ 1`; `1 ≤ vocab ≤ 2^18`; `1 ≤ max_context ≤ 2^17`. The
 //! family is Llama 3 by decoding: `ArchFamily` has no other variant.
 //!
@@ -487,7 +488,12 @@ fn architecture_holds(arch: &ArchSpec) -> bool {
     // `n_kv_heads ≥ 1` divides `n_heads ≥ 1`.
     let heads_divide = arch.n_heads >= 1
         && arch.n_kv_heads >= 1
-        && arch.n_heads.checked_rem(arch.n_kv_heads) == Some(0);
+        && arch.n_heads.checked_rem(arch.n_kv_heads) == Some(0)
+        // RFC-0047: a query-head group has an integral log2, even for odd head counts.
+        && arch
+            .n_heads
+            .checked_div(arch.n_kv_heads)
+            .is_some_and(|group| group.count_ones() == 1);
     let head_width = arch.d_head.is_multiple_of(2) && (2..=(1 << 16) - 2).contains(&arch.d_head);
     let width = u64::from(arch.n_heads).checked_mul(u64::from(arch.d_head))
         == Some(u64::from(arch.d_model));
