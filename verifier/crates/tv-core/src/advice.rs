@@ -10,7 +10,7 @@ use crate::claims::{ArchSpec, GadgetPolicy};
 use crate::lowering::{Graph, Kind, NodeId, Op, Role, TensorId};
 use crate::selection::{Choice, Pattern, Selection};
 use crate::validation::{ClaimsError, StatementField};
-use tv_field::Fp;
+use tv_field::Fp2;
 use tv_tables::{TableId, TableKind};
 
 /// RFC-0047's maximum allocated row count, including skipped rows and gaps.
@@ -702,7 +702,7 @@ impl<'a> Layout<'a> {
     pub fn claim<'l, 'p>(
         &'l self,
         source: Source,
-        point: &'p [Fp],
+        point: &'p [Fp2],
     ) -> Result<ClaimImages<'l, 'a, 'p>, PointError> {
         let key = match source {
             Source::Multiplicity(id) => TileKey::Table(id),
@@ -981,9 +981,9 @@ pub struct ClaimImage {
     /// The same tensor/auxiliary identity as the original claim.
     pub source: Source,
     /// Multiplier on this opening; one for ordinary tensors.
-    pub weight: Fp,
+    pub weight: Fp2,
     /// The point in the full advice multilinear extension, LSB-first.
-    pub point: Vec<Fp>,
+    pub point: Vec<Fp2>,
 }
 
 /// Lazy images: even a maximum-size attention domain is never allocated at once.
@@ -993,7 +993,7 @@ pub struct ClaimImages<'l, 'g, 'p> {
     group: &'l Group,
     column: u32,
     source: Source,
-    point: &'p [Fp],
+    point: &'p [Fp2],
     next: u64,
 }
 
@@ -1005,9 +1005,9 @@ impl ClaimImages<'_, '_, '_> {
             repeat,
         };
         let location = tile.location(self.column).ok_or(PointError::Source)?;
-        let mut natural = [Fp::ZERO; 128];
+        let mut natural = [Fp2::ZERO; 128];
         let mut count = 0usize;
-        let mut weight = Fp::ONE;
+        let mut weight = Fp2::ONE;
         if self.group.query.is_some() {
             let sequence = log(u64::from(self.layout.n));
             let queries = log(self.layout.query_block);
@@ -1057,7 +1057,7 @@ impl ClaimImages<'_, '_, '_> {
                         .ok_or(PointError::Arity)?;
                     let coordinate = *self.point.get(index).ok_or(PointError::Arity)?;
                     weight *= if fixed.checked_shr(bit).ok_or(PointError::Arity)? & 1 == 0 {
-                        Fp::ONE - coordinate
+                        Fp2::ONE - coordinate
                     } else {
                         coordinate
                     };
@@ -1088,7 +1088,7 @@ impl ClaimImages<'_, '_, '_> {
                 .and_then(|shift| location.base.checked_shr(shift))
                 .unwrap_or(0)
                 & 1;
-            point.push(if fixed == 0 { Fp::ZERO } else { Fp::ONE });
+            point.push(if fixed == 0 { Fp2::ZERO } else { Fp2::ONE });
         }
         Ok(ClaimImage {
             tile: tile.key(),

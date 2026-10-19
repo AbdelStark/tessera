@@ -7,22 +7,24 @@ use tv_core::advice::{
     Auxiliary, Comparison, ComparisonRole, Config, Domain, Layout, Source, TileKey,
 };
 use tv_core::{lowering, selection, validation};
-use tv_field::Fp;
+use tv_field::{Fp, Fp2};
 use tv_testkit::{Json, read_vectors};
 
-fn basis(index: u64, point: &[Fp]) -> Fp {
-    point.iter().enumerate().fold(Fp::ONE, |value, (bit, &r)| {
+fn basis(index: u64, point: &[Fp2]) -> Fp2 {
+    point.iter().enumerate().fold(Fp2::ONE, |value, (bit, &r)| {
         value
             * if index >> bit & 1 == 0 {
-                Fp::ONE - r
+                Fp2::ONE - r
             } else {
                 r
             }
     })
 }
 
-fn non_boolean(arity: usize) -> Vec<Fp> {
-    (0..arity).map(|i| Fp::reduce(17 + 13 * i as u64)).collect()
+fn non_boolean(arity: usize) -> Vec<Fp2> {
+    (0..arity)
+        .map(|i| Fp2::new(Fp::reduce(17 + 13 * i as u64), Fp::reduce(5 + 7 * i as u64)))
+        .collect()
 }
 
 fn repeat_layer_points<T: Clone>(
@@ -191,7 +193,7 @@ fn all_model_locations_padding_gaps_and_segments_match_the_independent_oracle() 
                     assert_eq!(image.len(), 1);
                     assert_eq!(image[0].source, found.source);
                     assert_eq!(image[0].tile, tile.key());
-                    assert_eq!(image[0].weight, Fp::ONE);
+                    assert_eq!(image[0].weight, Fp2::ONE);
                     for natural in [0u64, 1, 0x5555_5555_5555_5555, u64::MAX] {
                         let local = permutation
                             .iter()
@@ -254,6 +256,42 @@ fn whole_attention_claims_reconstruct_at_non_boolean_points_including_padded_kv(
                 ..Config::new(&claims.arch, claims.gadget_policy, log_k, 3)
             };
             let layout = Layout::derive(&graph, &selection, config, 5).unwrap();
+            // Enumerate actual causal cells into their RFC-0034 rows. This
+            // catches partial-block zero suffixes even when geometry vectors'
+            // larger row widths would put the whole score in one row.
+            for share in layout
+                .tiles()
+                .filter(|t| matches!(t.key(), TileKey::Attention(..)))
+            {
+                let TileKey::Attention(_, _, qb) = share.key() else {
+                    unreachable!()
+                };
+                let score = share.location(0).unwrap();
+                let q = u64::from(query_block.min(8));
+                let w = 3u32.min(u32::from(log_k) - 1 - q.ilog2());
+                let mut used = vec![false; score.domain.rows() as usize];
+                for h in 0..2u64 {
+                    for local_query in 0..q {
+                        let query = u64::from(qb) * q + local_query;
+                        for key in 0..5u64 {
+                            if query < 5 && key <= query {
+                                let local = (key & ((1 << w) - 1))
+                                    | (local_query << w)
+                                    | (h << (w + q.ilog2()))
+                                    | ((key >> w) << (w + q.ilog2() + 1));
+                                used[(local >> log_k) as usize] = true;
+                            }
+                        }
+                    }
+                }
+                for (row, used) in used.into_iter().enumerate() {
+                    assert_eq!(
+                        layout.is_zero_row(score.base + row as u64),
+                        Some(!used),
+                        "Q={q} k={log_k} qb={qb} score row={row}"
+                    );
+                }
+            }
             let tiles = layout
                 .tiles()
                 .filter(|t| matches!(t.key(), TileKey::Attention(_, 0, 0)))
@@ -270,11 +308,12 @@ fn whole_attention_claims_reconstruct_at_non_boolean_points_including_padded_kv(
                     let q = u64::from(query_block.min(8));
                     let w = 3u32.min(u32::from(log_k) - 1 - q.ilog2());
                     let mut sparse = Vec::new();
-                    let mut expected = Fp::ZERO;
+                    let mut expected = Fp2::ZERO;
                     for h in 0..u64::from(2 * kv_heads) {
                         for query in 0..5u64 {
                             for key in 0..if score { query + 1 } else { 1 } {
-                                let value = Fp::reduce(1 + 103 * h + 17 * query + key);
+                                let value =
+                                    Fp2::new(Fp::reduce(1 + 103 * h + 17 * query + key), Fp::ZERO);
                                 let natural = if score {
                                     (h * 8 + query) * 8 + key
                                 } else {
@@ -309,9 +348,9 @@ fn whole_attention_claims_reconstruct_at_non_boolean_points_including_padded_kv(
                         .collect::<Result<Vec<_>, _>>()
                         .unwrap();
                     assert_eq!(images.len(), kv_heads as usize * (8 / q) as usize);
-                    let reconstructed = images.iter().fold(Fp::ZERO, |sum, image| {
+                    let reconstructed = images.iter().fold(Fp2::ZERO, |sum, image| {
                         assert_eq!(image.source, source);
-                        let opening = sparse.iter().fold(Fp::ZERO, |value, &(address, entry)| {
+                        let opening = sparse.iter().fold(Fp2::ZERO, |value, &(address, entry)| {
                             value + entry * basis(address, &image.point)
                         });
                         sum + image.weight * opening
