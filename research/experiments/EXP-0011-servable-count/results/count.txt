@@ -1,0 +1,210 @@
+EXP-0011: commitments and lookups per layer per token (E0, exact integers)
+shapes: d=16,384 d_ff=53,248 q_heads=128 kv_heads=8 d_head=128 layers=126; rule: B_max=32, ceiling 62
+
+Derivation of every key width from public data (RFC-0006 range analysis), against RFC-0005's stated cell
+tensor                                               elements   stated derived b   class   s  agree  interval
+attn norm y = rq(res·ρ)                                16,384   < 2^37        38   split   6  True   [-97,183,596,544, 97,183,411,181]
+                                                                              43   split      reading: e=1  [-4,398,046,511,104, 4,398,038,122,496]
+RoPE q = rq(a·C − b·S)                                 16,384   < 2^44        43   split  11  True   [-4,363,686,772,736, 4,363,686,772,736]
+                                                                              44   split      reading: |C|,|S| < 2^14  [-8,726,840,868,864, 8,726,840,868,864]
+RoPE k = rq(a·C − b·S)                                  1,024   < 2^44        43   split  11  True   [-4,363,686,772,736, 4,363,686,772,736]
+                                                                              44   split      reading: |C|,|S| < 2^14  [-8,726,840,868,864, 8,726,840,868,864]
+v = rq(acc)                                             1,024   < 2^29        29  single      True   [-266,338,304, 266,338,304]
+o8 = rq(o, r_o, −128, 127)                             16,384   < 2^39        40   split   8  True   [-549,755,813,888, 545,460,846,592]
+                                                                              57   split      reading: product bound, R_q ≤ 2^σ  [-72,057,594,037,927,936, 71,494,644,084,506,624]
+                                                                              73   error      reading: product bound, R_q ≤ 2^{2σ}  [-4,722,366,482,869,645,213,696, 4,685,472,994,722,226,110,464]
+residual rq(acc_O) [servable: acc = W_O o8]            16,384   < 2^29        29  single      True   [-266,338,304, 266,338,304]
+residual rq(acc_O) [minimal: acc = W_O o]              16,384   < 2^60        61   split  29  True   [-1,143,914,305,352,105,984, 1,143,914,305,352,105,984]
+MLP norm y = rq(res·ρ)                                 16,384   < 2^37        38   split   6  True   [-97,183,596,544, 97,183,411,181]
+                                                                              43   split      reading: e=1  [-4,398,046,511,104, 4,398,038,122,496]
+SiLU a = T_silu[g]                                     53,248   < 2^29        29  single      True   [-266,338,304, 266,338,304]
+u8 = rq(u)                                             53,248   < 2^29        29  single      True   [-266,338,304, 266,338,304]
+h = rq(a·u8)                                           53,248   < 2^15        16  single      True   [-16,256, 16,384]
+residual rq(acc_down) [servable: acc = W_down h]       16,384   < 2^30        31  single      True   [-865,599,488, 865,599,488]
+residual rq(acc_down) [minimal: acc = W_down (a·u)]    16,384   < 2^58        59   split  27  True   [-230,542,299,577,188,352, 230,542,299,577,188,352]
+
+Norm key `res · ρ` as a function of the QuantSpec constant e (ρ_max = ⌊√(d·2^(2κ)/e)⌋, |res| ≤ 2^19); class flips to single at e = 4,192,257 = 2^21.999; admissible e ≤ 1,048,576 = 2^20
+  e =          1: ρ_max =  8,388,608  b = 43  split   σ_res = 2^  -1.3  residual span ±212,216.9 real units
+  e =      1,024: ρ_max =    262,144  b = 38  split   σ_res = 2^  -6.3  residual span ±6,631.8 real units
+  e =      2,048: ρ_max =    185,363  b = 38  split   σ_res = 2^  -6.8  residual span ±4,689.4 real units
+  e =      4,096: ρ_max =    131,072  b = 37  split   σ_res = 2^  -7.3  residual span ±3,315.9 real units
+  e =     65,536: ρ_max =     32,768  b = 35  split   σ_res = 2^  -9.3  residual span ±829.0 real units
+  e =  1,048,576: ρ_max =      8,192  b = 33  split   σ_res = 2^ -11.3  residual span ±207.2 real units
+  e =  4,192,256: ρ_max =      4,097  b = 33  split   σ_res = 2^ -12.3  residual span ±103.6 real units
+  e =  4,192,257: ρ_max =      4,096  b = 32  single  σ_res = 2^ -12.3  residual span ±103.6 real units
+  e =  4,194,304: ρ_max =      4,096  b = 32  single  σ_res = 2^ -12.3  residual span ±103.6 real units
+
+source (minimal list, every rescale one lookup): elements 137,216, commitments 137,216, lookups 137,216, per token ×126: 17,289,216
+    attn norm y = rq(res·ρ)                                16,384  b=38  single (forced)    16,384
+    RoPE q = rq(a·C − b·S)                                 16,384  b=45  single (forced)    16,384
+    RoPE k = rq(a·C − b·S)                                  1,024  b=45  single (forced)     1,024
+    v = rq(acc)                                             1,024  b=30  single (forced)     1,024
+    residual rq(acc_O) [minimal: acc = W_O o]              16,384  b=61  single (forced)    16,384
+    MLP norm y = rq(res·ρ)                                 16,384  b=38  single (forced)    16,384
+    SiLU a = T_silu[g]                                     53,248  b=30  single (forced)    53,248
+    residual rq(acc_down) [minimal: acc = W_down (a·u)]    16,384  b=59  single (forced)    16,384
+
+minimal (rule, derived widths): elements 137,216, commitments 220,160, lookups 220,160, per token ×126: 27,740,160
+    attn norm y = rq(res·ρ)                                16,384  b=38  split              32,768
+    RoPE q = rq(a·C − b·S)                                 16,384  b=43  split              32,768
+    RoPE k = rq(a·C − b·S)                                  1,024  b=43  split               2,048
+    v = rq(acc)                                             1,024  b=29  single              1,024
+    residual rq(acc_O) [minimal: acc = W_O o]              16,384  b=61  split              32,768
+    MLP norm y = rq(res·ρ)                                 16,384  b=38  split              32,768
+    SiLU a = T_silu[g]                                     53,248  b=29  single             53,248
+    residual rq(acc_down) [minimal: acc = W_down (a·u)]    16,384  b=59  split              32,768
+    split groups: attn norm y = rq(res·ρ) (+16,384), RoPE q = rq(a·C − b·S) (+16,384), RoPE k = rq(a·C − b·S) (+1,024), residual rq(acc_O) [minimal: acc = W_O o] (+16,384), MLP norm y = rq(res·ρ) (+16,384), residual rq(acc_down) [minimal: acc = W_down (a·u)] (+16,384); added 82,944
+
+minimal (rule, stated cells): elements 137,216, commitments 220,160, lookups 220,160, per token ×126: 27,740,160
+    attn norm y = rq(res·ρ)                                16,384  b=38  split              32,768
+    RoPE q = rq(a·C − b·S)                                 16,384  b=45  split              32,768
+    RoPE k = rq(a·C − b·S)                                  1,024  b=45  split               2,048
+    v = rq(acc)                                             1,024  b=30  single              1,024
+    residual rq(acc_O) [minimal: acc = W_O o]              16,384  b=61  split              32,768
+    MLP norm y = rq(res·ρ)                                 16,384  b=38  split              32,768
+    SiLU a = T_silu[g]                                     53,248  b=30  single             53,248
+    residual rq(acc_down) [minimal: acc = W_down (a·u)]    16,384  b=59  split              32,768
+    split groups: attn norm y = rq(res·ρ) (+16,384), RoPE q = rq(a·C − b·S) (+16,384), RoPE k = rq(a·C − b·S) (+1,024), residual rq(acc_O) [minimal: acc = W_O o] (+16,384), MLP norm y = rq(res·ρ) (+16,384), residual rq(acc_down) [minimal: acc = W_down (a·u)] (+16,384); added 82,944
+
+servable (rule, derived widths): elements 260,096, commitments 326,656, lookups 326,656, per token ×126: 41,158,656
+    attn norm y = rq(res·ρ)                                16,384  b=38  split              32,768
+    RoPE q = rq(a·C − b·S)                                 16,384  b=43  split              32,768
+    RoPE k = rq(a·C − b·S)                                  1,024  b=43  split               2,048
+    v = rq(acc)                                             1,024  b=29  single              1,024
+    o8 = rq(o, r_o, −128, 127)                             16,384  b=40  split              32,768
+    residual rq(acc_O) [servable: acc = W_O o8]            16,384  b=29  single             16,384
+    MLP norm y = rq(res·ρ)                                 16,384  b=38  split              32,768
+    SiLU a = T_silu[g]                                     53,248  b=29  single             53,248
+    u8 = rq(u)                                             53,248  b=29  single             53,248
+    h = rq(a·u8)                                           53,248  b=16  single             53,248
+    residual rq(acc_down) [servable: acc = W_down h]       16,384  b=31  single             16,384
+    split groups: attn norm y = rq(res·ρ) (+16,384), RoPE q = rq(a·C − b·S) (+16,384), RoPE k = rq(a·C − b·S) (+1,024), o8 = rq(o, r_o, −128, 127) (+16,384), MLP norm y = rq(res·ρ) (+16,384); added 66,560
+
+servable (rule, stated cells): elements 260,096, commitments 326,656, lookups 326,656, per token ×126: 41,158,656
+    attn norm y = rq(res·ρ)                                16,384  b=38  split              32,768
+    RoPE q = rq(a·C − b·S)                                 16,384  b=45  split              32,768
+    RoPE k = rq(a·C − b·S)                                  1,024  b=45  split               2,048
+    v = rq(acc)                                             1,024  b=30  single              1,024
+    o8 = rq(o, r_o, −128, 127)                             16,384  b=40  split              32,768
+    residual rq(acc_O) [servable: acc = W_O o8]            16,384  b=30  single             16,384
+    MLP norm y = rq(res·ρ)                                 16,384  b=38  split              32,768
+    SiLU a = T_silu[g]                                     53,248  b=30  single             53,248
+    u8 = rq(u)                                             53,248  b=30  single             53,248
+    h = rq(a·u8)                                           53,248  b=16  single             53,248
+    residual rq(acc_down) [servable: acc = W_down h]       16,384  b=31  single             16,384
+    split groups: attn norm y = rq(res·ρ) (+16,384), RoPE q = rq(a·C − b·S) (+16,384), RoPE k = rq(a·C − b·S) (+1,024), o8 = rq(o, r_o, −128, 127) (+16,384), MLP norm y = rq(res·ρ) (+16,384); added 66,560
+
+servable after IDEA-0011: elements 260,096, commitments 293,888, lookups 293,888, per token ×126: 37,029,888
+    attn norm y = rq(res·ρ)                                16,384  b=25  single             16,384
+    RoPE q = rq(a·C − b·S)                                 16,384  b=43  split              32,768
+    RoPE k = rq(a·C − b·S)                                  1,024  b=43  split               2,048
+    v = rq(acc)                                             1,024  b=29  single              1,024
+    o8 = rq(o, r_o, −128, 127)                             16,384  b=40  split              32,768
+    residual rq(acc_O) [servable: acc = W_O o8]            16,384  b=29  single             16,384
+    MLP norm y = rq(res·ρ)                                 16,384  b=25  single             16,384
+    SiLU a = T_silu[g]                                     53,248  b=29  single             53,248
+    u8 = rq(u)                                             53,248  b=29  single             53,248
+    h = rq(a·u8)                                           53,248  b=16  single             53,248
+    residual rq(acc_down) [servable: acc = W_down h]       16,384  b=31  single             16,384
+    split groups: RoPE q = rq(a·C − b·S) (+16,384), RoPE k = rq(a·C − b·S) (+1,024), o8 = rq(o, r_o, −128, 127) (+16,384); added 33,792
+
+servable after IDEA-0011 + RoPE route: elements 260,096, commitments 276,480, lookups 276,480, per token ×126: 34,836,480
+    attn norm y = rq(res·ρ)                                16,384  b=25  single             16,384
+    RoPE q = rq(a·C − b·S)                                 16,384  b=32  single             16,384
+    RoPE k = rq(a·C − b·S)                                  1,024  b=32  single              1,024
+    v = rq(acc)                                             1,024  b=29  single              1,024
+    o8 = rq(o, r_o, −128, 127)                             16,384  b=40  split              32,768
+    residual rq(acc_O) [servable: acc = W_O o8]            16,384  b=29  single             16,384
+    MLP norm y = rq(res·ρ)                                 16,384  b=25  single             16,384
+    SiLU a = T_silu[g]                                     53,248  b=29  single             53,248
+    u8 = rq(u)                                             53,248  b=29  single             53,248
+    h = rq(a·u8)                                           53,248  b=16  single             53,248
+    residual rq(acc_down) [servable: acc = W_down h]       16,384  b=31  single             16,384
+    split groups: o8 = rq(o, r_o, −128, 127) (+16,384); added 16,384
+
+servable after IDEA-0011 + RoPE route + fused rescale: elements 206,848, commitments 223,232, lookups 223,232, per token ×126: 28,127,232
+    attn norm y = rq(res·ρ)                                16,384  b=25  single             16,384
+    RoPE q = rq(a·C − b·S)                                 16,384  b=32  single             16,384
+    RoPE k = rq(a·C − b·S)                                  1,024  b=32  single              1,024
+    v = rq(acc)                                             1,024  b=29  single              1,024
+    o8 = rq(o, r_o, −128, 127)                             16,384  b=40  split              32,768
+    residual rq(acc_O) [servable: acc = W_O o8]            16,384  b=29  single             16,384
+    MLP norm y = rq(res·ρ)                                 16,384  b=25  single             16,384
+    SiLU a = T_silu[g]                                     53,248  b=29  single             53,248
+    h = rq(a·u8)                                           53,248  b=16  single             53,248
+    residual rq(acc_down) [servable: acc = W_down h]       16,384  b=31  single             16,384
+    split groups: o8 = rq(o, r_o, −128, 127) (+16,384); added 16,384
+
+minimal after IDEA-0011: elements 137,216, commitments 187,392, lookups 187,392, per token ×126: 23,611,392
+    attn norm y = rq(res·ρ)                                16,384  b=25  single             16,384
+    RoPE q = rq(a·C − b·S)                                 16,384  b=43  split              32,768
+    RoPE k = rq(a·C − b·S)                                  1,024  b=43  split               2,048
+    v = rq(acc)                                             1,024  b=29  single              1,024
+    residual rq(acc_O) [minimal: acc = W_O o]              16,384  b=61  split              32,768
+    MLP norm y = rq(res·ρ)                                 16,384  b=25  single             16,384
+    SiLU a = T_silu[g]                                     53,248  b=29  single             53,248
+    residual rq(acc_down) [minimal: acc = W_down (a·u)]    16,384  b=59  split              32,768
+    split groups: RoPE q = rq(a·C − b·S) (+16,384), RoPE k = rq(a·C − b·S) (+1,024), residual rq(acc_O) [minimal: acc = W_O o] (+16,384), residual rq(acc_down) [minimal: acc = W_down (a·u)] (+16,384); added 50,176
+
+minimal after IDEA-0011 + RoPE route: elements 137,216, commitments 169,984, lookups 169,984, per token ×126: 21,417,984
+    attn norm y = rq(res·ρ)                                16,384  b=25  single             16,384
+    RoPE q = rq(a·C − b·S)                                 16,384  b=32  single             16,384
+    RoPE k = rq(a·C − b·S)                                  1,024  b=32  single              1,024
+    v = rq(acc)                                             1,024  b=29  single              1,024
+    residual rq(acc_O) [minimal: acc = W_O o]              16,384  b=61  split              32,768
+    MLP norm y = rq(res·ρ)                                 16,384  b=25  single             16,384
+    SiLU a = T_silu[g]                                     53,248  b=29  single             53,248
+    residual rq(acc_down) [minimal: acc = W_down (a·u)]    16,384  b=59  split              32,768
+    split groups: residual rq(acc_O) [minimal: acc = W_O o] (+16,384), residual rq(acc_down) [minimal: acc = W_down (a·u)] (+16,384); added 32,768
+
+ratios: servable/source 2.381×, servable/minimal 1.484×
+
+Attained extremes and seeded draws (SplitMix64 seed 0x5eed0033, toy shapes (4, 8, 16), 2000 draws per shape): violations 0
+  attained: matmul d=4: True
+  attained: matmul d=8: True
+  attained: matmul d=16: True
+  attained: rope d=4: True
+  attained: rope d=8: True
+  attained: rope d=16: True
+  attained: o = −2^39 (one position, v = −128): True
+  attained: h key = 2^14: True
+  o extreme: {'o': -549755813888, 'R_q': 65536, 's_q': 65536, 'R_q*s_q': 4294967296}
+
+Cost model at commits_per_token = lookups_per_token = 41,158,656 (exact)
+  profile 'corrected': 1K 8.8 → 10.4 (+17.8%, linear 4.82); 4K 14.0 → 15.6 (+11.1%, linear 4.75); 16K 35.1 → 36.6 (+4.2%, linear 4.47); 128K 171.4 → 172.3 (+0.6%, linear 2.91)
+  profile 'counted': 1K 17.2 → 21.6 (+25.5%, linear 13.43); 4K 29.8 → 34.2 (+14.4%, linear 13.23); 16K 78.6 → 82.7 (+5.2%, linear 12.46); 128K 373.3 → 376.0 (+0.7%, linear 8.10)
+Cost model at commits_per_token = lookups_per_token = 41,160,000 (rounded 4.116e7)
+  profile 'corrected': 1K 8.8 → 10.4 (+17.8%, linear 4.82); 4K 14.0 → 15.6 (+11.1%, linear 4.75); 16K 35.1 → 36.6 (+4.2%, linear 4.47); 128K 171.4 → 172.3 (+0.6%, linear 2.91)
+  profile 'counted': 1K 17.2 → 21.6 (+25.5%, linear 13.43); 4K 29.8 → 34.2 (+14.5%, linear 13.23); 16K 78.6 → 82.7 (+5.2%, linear 12.46); 128K 373.3 → 376.0 (+0.7%, linear 8.10)
+
+μ against the pre-registered cells (tolerance ±0.05):
+  corrected 1K   stated  10.4  exact  10.397 (dev -0.003)  rounded  10.397 (dev -0.003)
+  corrected 16K  stated  36.6  exact  36.557 (dev -0.043)  rounded  36.557 (dev -0.043)
+  counted 1K     stated  21.6  exact  21.577 (dev -0.023)  rounded  21.578 (dev -0.022)
+  counted 16K    stated  82.7  exact  82.707 (dev +0.007)  rounded  82.707 (dev +0.007)
+
+golden check against embedded chart-data table (the pinned vector is absent on this branch) (±0.05 per term, ±0.1 on the total)
+ok      1K model  2.03   1.13  0.021   3.18   reference  2.06   1.13  0.021   3.20   worst dev 0.035
+ok      2K model  2.01   2.25  0.021   4.29   reference  2.05   2.25  0.021   4.30   worst dev 0.035
+ok      4K model  1.99   4.46  0.021   6.48   reference  2.03   4.46  0.021   6.50   worst dev 0.036
+ok      8K model  1.95   8.75  0.021  10.72   reference  1.99   8.75  0.021  10.80   worst dev 0.035
+ok     16K model  1.88  16.82  0.020  18.72   reference  1.91  16.82  0.020  18.80   worst dev 0.031
+ok     32K model  1.75  31.24  0.018  33.01   reference  1.78  31.24  0.018  33.00   worst dev 0.035
+ok     64K model  1.53  54.68  0.016  56.22   reference  1.56  54.68  0.016  56.30   worst dev 0.033
+ok    128K model  1.22  87.48  0.013  88.72   reference  1.24  87.48  0.013  88.70   worst dev 0.018
+
+Pre-registered checks:
+  ok   (a) source reproduces 137,216
+  ok   (a) minimal under the rule reproduces 220,160
+  ok   (b) servable elements 260,096
+  ok   (b) servable commitments 326,656 = lookups
+  ok   (b) four split groups adding 66,560
+  ok   (c) every class agrees under both readings
+  ok   (c) o8 derives to b = 40 with an attained extreme
+  ok   (c) norm key is a split for every admissible e (e ≤ 2^20; flip point reported)
+  ok   (c) no random draw exceeded a bound
+  ok   (d) fixed points 293,888 / 276,480 / 223,232
+  ok   (e) μ cells within ±0.05 and equal at the rounded count
+  ok   (e) --check passes on the source profile
+
+all checks pass

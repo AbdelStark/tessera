@@ -1,0 +1,47 @@
+assembly: target/release/deps/calib-ec76834bbaa57149.s
+
+mul_anchor: 16 instructions
+    mul	x8, x1, x0
+    umulh	x9, x1, x0
+    subs	x8, x8, x9, lsr #32
+    mov	x10, #-4294967295
+    lsl	x11, x9, #32
+    sub	x9, x11, w9, uxtw
+    csel	x11, x10, xzr, lo
+    add	x8, x11, x8
+    adds	x8, x8, x9
+    mov	w9, #-1
+    csel	x11, x9, xzr, hs
+    add	x8, x11, x8
+    add	x9, x8, x9
+    cmp	x8, x10
+    csel	x0, x8, x9, lo
+    ret
+
+ct_butterfly_anchor: 26 instructions
+    mul	x8, x2, x1
+    umulh	x9, x2, x1
+    subs	x8, x8, x9, lsr #32
+    mov	x10, #-4294967295
+    csel	x11, x10, xzr, lo
+    lsl	x12, x9, #32
+    sub	x9, x12, w9, uxtw
+    add	x8, x11, x8
+    adds	x8, x8, x9
+    mov	w9, #-1
+    csel	x11, x9, xzr, hs
+    add	x8, x11, x8
+    add	x11, x8, x9
+    cmp	x8, x10
+    csel	x11, x8, x11, lo
+    adds	x8, x11, x0
+    csel	x12, x9, xzr, hs
+    add	x8, x12, x8
+    add	x9, x8, x9
+    cmp	x8, x10
+    csel	x8, x8, x9, lo
+    subs	x9, x0, x11
+    csel	x10, x10, xzr, lo
+    add	x1, x9, x10
+    mov	x0, x8
+    ret

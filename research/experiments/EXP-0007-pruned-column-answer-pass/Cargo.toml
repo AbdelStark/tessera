@@ -1,0 +1,24 @@
+[package]
+name = "prune"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+description = "EXP-0007: output-pruned DIF coset NTT for the column-answer pass against a full transform (research/, a dependency of nothing)"
+
+[[bin]]
+name = "prune"
+path = "src/main.rs"
+
+# Its own workspace: the root workspace and its lockfile stay untouched (research/README.md rule 2).
+[workspace]
+
+[dependencies]
+tessera-field = { path = "../../../crates/tessera-field" }
+tessera-hash = { path = "../../../crates/tessera-hash" }
+tessera-pcs = { path = "../../../crates/tessera-pcs" }
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+debug = false

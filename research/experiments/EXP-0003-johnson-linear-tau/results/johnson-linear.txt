@@ -1,0 +1,59 @@
+unique decoding (RFC-0014 'Soundness budget'): δ = (1 − ρ')/2
+set                        n        ρ′       δ  bits/q     τ   bits  RFC τ  field
+live-64 advice       8388608  0.500019  0.2500  0.4150   155   64.3    155    105
+live-64 weights      4194304  0.265625  0.3672  0.6601    97   64.0     97    106
+ni-100 advice        8388608  0.500024  0.2500  0.4150   193   80.1    193    105
+ni-100 weights       4194304  0.265625  0.3672  0.6601   122   80.5    122    106
+
+linear-error Johnson regime for live-64 advice (needed 64 one-shot bits; unique decoding gives τ = 155, 0.719 GB opened)
+      η       γ  bits/q     τ      Δτ     GB  [BCHKS25] a bits  [ArkLib] E₀ bits  closed  admissible
+ 0.0500  γ at or below the unique-decoding radius: Corollary 1.4 / unique decoding applies
+ 0.0200  0.2729  0.4597   140   -9.7%  0.650              83.0              90.3    90.0  BCHKS25, ArkLib
+ 0.0100  0.2829  0.4797   134  -13.5%  0.622              78.1              87.3    87.0  BCHKS25, ArkLib
+ 0.0050  0.2879  0.4898   131  -15.5%  0.608              73.3              84.4    84.1  BCHKS25, ArkLib
+ 0.0030  0.2899  0.4939   130  -16.1%  0.603              69.6              82.2    81.9  BCHKS25, ArkLib
+ 0.0020  0.2909  0.4959   130  -16.1%  0.603              66.7              80.4    80.2  BCHKS25, ArkLib
+ 0.0010  0.2919  0.4979   129  -16.8%  0.599              61.7              77.4    77.2  ArkLib
+ 0.0005  0.2924  0.4990   129  -16.8%  0.599              56.7              74.4    74.2  ArkLib
+best admissible under BCHKS25: τ = 130 (-16.1% vs unique decoding), field term 69.6 bits, 0.603 GB opened (-16.1%)
+best admissible under ArkLib: τ = 129 (-16.8% vs unique decoding), field term 77.4 bits, 0.599 GB opened (-16.8%)
+
+linear-error Johnson regime for live-64 weights (needed 64 one-shot bits; unique decoding gives τ = 97, 0.003 GB opened)
+      η       γ  bits/q     τ      Δτ     GB  [BCHKS25] a bits  [ArkLib] E₀ bits  closed  admissible
+ 0.0500  0.4346  0.8227    78  -19.6%  0.003              90.2              95.3    94.6  BCHKS25, ArkLib
+ 0.0200  0.4646  0.9013    72  -25.8%  0.002              84.9              91.9    91.4  BCHKS25, ArkLib
+ 0.0100  0.4746  0.9285    69  -28.9%  0.002              80.1              89.0    88.5  BCHKS25, ArkLib
+ 0.0050  0.4796  0.9423    68  -29.9%  0.002              75.1              86.0    85.5  BCHKS25, ArkLib
+ 0.0030  0.4816  0.9479    68  -29.9%  0.002              71.5              83.8    83.4  BCHKS25, ArkLib
+ 0.0020  0.4826  0.9507    68  -29.9%  0.002              68.6              82.0    81.6  BCHKS25, ArkLib
+ 0.0010  0.4836  0.9535    68  -29.9%  0.002              63.6              79.0    78.6  ArkLib
+ 0.0005  0.4841  0.9549    68  -29.9%  0.002              58.7              76.0    75.6  ArkLib
+best admissible under BCHKS25: τ = 68 (-29.9% vs unique decoding), field term 75.1 bits, 0.002 GB opened (-29.9%)
+best admissible under ArkLib: τ = 68 (-29.9% vs unique decoding), field term 86.0 bits, 0.002 GB opened (-29.9%)
+
+linear-error Johnson regime for ni-100 advice (needed 80 one-shot bits; unique decoding gives τ = 193, 0.896 GB opened)
+      η       γ  bits/q     τ      Δτ     GB  [BCHKS25] a bits  [ArkLib] E₀ bits  closed  admissible
+ 0.0500  γ at or below the unique-decoding radius: Corollary 1.4 / unique decoding applies
+ 0.0200  0.2729  0.4597   175   -9.3%  0.812              83.0              90.3    90.0  BCHKS25, ArkLib
+ 0.0100  0.2829  0.4797   167  -13.5%  0.775              78.1              87.3    87.0  ArkLib
+ 0.0050  0.2879  0.4898   164  -15.0%  0.761              73.3              84.4    84.1  ArkLib
+ 0.0030  0.2899  0.4939   162  -16.1%  0.752              69.6              82.2    81.9  ArkLib
+ 0.0020  0.2909  0.4959   162  -16.1%  0.752              66.7              80.4    80.2  ArkLib
+ 0.0010  0.2919  0.4979   161  -16.6%  0.747              61.7              77.4    77.2  none
+ 0.0005  0.2924  0.4989   161  -16.6%  0.747              56.7              74.4    74.2  none
+best admissible under BCHKS25: τ = 175 (-9.3% vs unique decoding), field term 83.0 bits, 0.812 GB opened (-9.3%)
+best admissible under ArkLib: τ = 162 (-16.1% vs unique decoding), field term 82.2 bits, 0.752 GB opened (-16.1%)
+
+linear-error Johnson regime for ni-100 weights (needed 80 one-shot bits; unique decoding gives τ = 122, 0.004 GB opened)
+      η       γ  bits/q     τ      Δτ     GB  [BCHKS25] a bits  [ArkLib] E₀ bits  closed  admissible
+ 0.0500  0.4346  0.8227    98  -19.7%  0.003              90.2              95.3    94.6  BCHKS25, ArkLib
+ 0.0200  0.4646  0.9013    89  -27.0%  0.003              84.9              91.9    91.4  BCHKS25, ArkLib
+ 0.0100  0.4746  0.9285    87  -28.7%  0.003              80.1              89.0    88.5  BCHKS25, ArkLib
+ 0.0050  0.4796  0.9423    85  -30.3%  0.003              75.1              86.0    85.5  ArkLib
+ 0.0030  0.4816  0.9479    85  -30.3%  0.003              71.5              83.8    83.4  ArkLib
+ 0.0020  0.4826  0.9507    85  -30.3%  0.003              68.6              82.0    81.6  ArkLib
+ 0.0010  0.4836  0.9535    84  -31.1%  0.003              63.6              79.0    78.6  none
+ 0.0005  0.4841  0.9549    84  -31.1%  0.003              58.7              76.0    75.6  none
+best admissible under BCHKS25: τ = 87 (-28.7% vs unique decoding), field term 80.1 bits, 0.003 GB opened (-28.7%)
+best admissible under ArkLib: τ = 85 (-30.3% vs unique decoding), field term 86.0 bits, 0.003 GB opened (-30.3%)
+

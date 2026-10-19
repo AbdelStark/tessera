@@ -1,0 +1,107 @@
+   Compiling prune v0.0.0 (/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0007-pruned-column-answer-pass)
+    Finished `release` profile [optimized] target(s) in 1.08s
+     Running `target/release/prune`
+EXP-0007 harness: k = 2^22, P = 200, τ ∈ [130, 163]; protocol 3 warm-ups, 10 iterations, CV limit 3%
+
+== correctness checks ==
+check hand case: k = 8, P = 2 (row 1..=8, masks 11, 12): pruned, fixed-depth and full kernels equal encode_row and coset_ntt at all 16 positions and at {0}, {3, 11}, {1, 5, 9, 13}, {2, 10}
+setup: twiddles, 7^i table, NttPlan 2^23, NttPlan 2^22, RowEncoder in 0.04 s
+check kernel:    full_coef equals coset_ntt(g, 7) on all 2^23 leaves (96468992 butterflies = 23.0 per committed element); reference digests coef f70a308384ee150f eval a107f80c203fb57c
+
+context: build_coef alone 3.245 ms/row (0.774 ns/element; min 3.179, max 3.311, CV 1.14%)
+
+== τ = 130, uniform queries: first [41625, 228912, 377188, 549380], 109 distinct groups at depth 8 ==
+full_coef        uniform   τ=130     99.791 ms/row    23.792 ns/element  min    99.256  max    99.899  CV  0.20%   bf/el 23.000  ma/el  0.000  digest db6831f4ae99c59c
+pruned_coef      uniform   τ=130     30.102 ms/row     7.177 ns/element  min    29.964  max    30.272  CV  0.30%   bf/el  6.880  ma/el  1.614  digest db6831f4ae99c59c
+fixed8_coef      uniform   τ=130     32.686 ms/row     7.793 ns/element  min    32.372  max    32.864  CV  0.37%   bf/el  8.000  ma/el  1.016  digest db6831f4ae99c59c
+coset_ntt_coef   uniform   τ=130    120.755 ms/row    28.790 ns/element  min   120.482  max   121.347  CV  0.21%   bf/el  0.000  ma/el  0.000  digest db6831f4ae99c59c
+encode_row_eval  uniform   τ=130    139.564 ms/row    33.275 ns/element  min   139.358  max   139.766  CV  0.07%   bf/el  0.000  ma/el  0.000  digest de7720b4e434281a
+pruned_eval      uniform   τ=130     80.102 ms/row    19.098 ns/element  min    79.464  max    80.361  CV  0.34%   bf/el  6.880  ma/el  1.614  digest de7720b4e434281a
+
+== τ = 130, clustered queries: first [163, 419, 675, 931], 1 distinct groups at depth 8 ==
+full_coef        clustered τ=130     99.743 ms/row    23.781 ns/element  min    99.666  max    99.795  CV  0.05%   bf/el 23.000  ma/el  0.000  digest 1b9347dae9c309cf
+pruned_coef      clustered τ=130      8.717 ms/row     2.078 ns/element  min     8.667  max     8.782  CV  0.42%   bf/el  2.020  ma/el  0.008  digest 1b9347dae9c309cf
+fixed8_coef      clustered τ=130     32.585 ms/row     7.769 ns/element  min    32.523  max    33.077  CV  0.50%   bf/el  8.000  ma/el  1.016  digest 1b9347dae9c309cf
+coset_ntt_coef   clustered τ=130    120.517 ms/row    28.734 ns/element  min   120.201  max   120.827  CV  0.18%   bf/el  0.000  ma/el  0.000  digest 1b9347dae9c309cf
+encode_row_eval  clustered τ=130    139.585 ms/row    33.280 ns/element  min   139.101  max   140.073  CV  0.20%   bf/el  0.000  ma/el  0.000  digest 4e4e7c51e648879d
+pruned_eval      clustered τ=130     57.993 ms/row    13.827 ns/element  min    57.718  max    58.491  CV  0.38%   bf/el  2.020  ma/el  0.008  digest 4e4e7c51e648879d
+
+== τ = 130, paired queries: first [156390, 180427, 409373, 462132], 56 distinct groups at depth 8 ==
+full_coef        paired    τ=130     99.745 ms/row    23.781 ns/element  min    99.254  max    99.770  CV  0.17%   bf/el 23.000  ma/el  0.000  digest 06351090a058c5c5
+pruned_coef      paired    τ=130     26.356 ms/row     6.284 ns/element  min    26.276  max    26.499  CV  0.24%   bf/el  7.203  ma/el  0.000  digest 06351090a058c5c5
+fixed8_coef      paired    τ=130     32.594 ms/row     7.771 ns/element  min    32.284  max    32.806  CV  0.47%   bf/el  8.000  ma/el  1.016  digest 06351090a058c5c5
+coset_ntt_coef   paired    τ=130    121.226 ms/row    28.902 ns/element  min   120.064  max   123.061  CV  0.80%   bf/el  0.000  ma/el  0.000  digest 06351090a058c5c5
+encode_row_eval  paired    τ=130    139.272 ms/row    33.205 ns/element  min   134.438  max   142.593  CV  1.44%   bf/el  0.000  ma/el  0.000  digest 55d8348866d0b473
+pruned_eval      paired    τ=130     75.962 ms/row    18.111 ns/element  min    75.581  max    76.446  CV  0.29%   bf/el  7.203  ma/el  0.000  digest 55d8348866d0b473
+
+== τ = 163, uniform queries: first [41625, 228912, 334243, 377188], 129 distinct groups at depth 8 ==
+full_coef        uniform   τ=163     99.779 ms/row    23.789 ns/element  min    99.566  max   100.538  CV  0.27%   bf/el 23.000  ma/el  0.000  digest 737cb1368b13fe34
+pruned_coef      uniform   τ=163     31.291 ms/row     7.460 ns/element  min    30.934  max    31.341  CV  0.51%   bf/el  7.328  ma/el  1.434  digest 737cb1368b13fe34
+fixed8_coef      uniform   τ=163     33.395 ms/row     7.962 ns/element  min    33.289  max    33.764  CV  0.41%   bf/el  8.000  ma/el  1.273  digest 737cb1368b13fe34
+coset_ntt_coef   uniform   τ=163    120.623 ms/row    28.759 ns/element  min   120.002  max   120.998  CV  0.23%   bf/el  0.000  ma/el  0.000  digest 737cb1368b13fe34
+encode_row_eval  uniform   τ=163    139.704 ms/row    33.308 ns/element  min   139.416  max   140.840  CV  0.29%   bf/el  0.000  ma/el  0.000  digest b5d53ce72328d4cb
+pruned_eval      uniform   τ=163     80.886 ms/row    19.285 ns/element  min    80.733  max    81.337  CV  0.28%   bf/el  7.328  ma/el  1.434  digest b5d53ce72328d4cb
+
+== τ = 163, clustered queries: first [111, 367, 623, 879], 1 distinct groups at depth 8 ==
+full_coef        clustered τ=163     99.745 ms/row    23.781 ns/element  min    99.583  max    99.814  CV  0.08%   bf/el 23.000  ma/el  0.000  digest a2a10d3fd0d69f69
+pruned_coef      clustered τ=163      8.717 ms/row     2.078 ns/element  min     8.574  max     8.895  CV  1.05%   bf/el  2.021  ma/el  0.008  digest a2a10d3fd0d69f69
+fixed8_coef      clustered τ=163     33.285 ms/row     7.936 ns/element  min    32.988  max    33.403  CV  0.38%   bf/el  8.000  ma/el  1.273  digest a2a10d3fd0d69f69
+coset_ntt_coef   clustered τ=163    121.011 ms/row    28.851 ns/element  min   120.752  max   121.460  CV  0.18%   bf/el  0.000  ma/el  0.000  digest a2a10d3fd0d69f69
+encode_row_eval  clustered τ=163    139.702 ms/row    33.308 ns/element  min   139.142  max   141.587  CV  0.59%   bf/el  0.000  ma/el  0.000  digest e62b453dffc3a12e
+pruned_eval      clustered τ=163     58.247 ms/row    13.887 ns/element  min    57.926  max    61.294  CV  1.80%   bf/el  2.021  ma/el  0.008  digest e62b453dffc3a12e
+
+== τ = 163, paired queries: first [26964, 109145, 156390, 180427], 66 distinct groups at depth 8 ==
+full_coef        paired    τ=163     99.800 ms/row    23.794 ns/element  min    99.698  max   100.159  CV  0.15%   bf/el 23.000  ma/el  0.000  digest 19f89271f4ab1994
+pruned_coef      paired    τ=163     28.097 ms/row     6.699 ns/element  min    27.762  max    28.213  CV  0.54%   bf/el  7.604  ma/el  0.002  digest 19f89271f4ab1994
+fixed8_coef      paired    τ=163     33.324 ms/row     7.945 ns/element  min    32.952  max    33.425  CV  0.56%   bf/el  8.000  ma/el  1.273  digest 19f89271f4ab1994
+coset_ntt_coef   paired    τ=163    120.639 ms/row    28.763 ns/element  min   120.424  max   120.877  CV  0.11%   bf/el  0.000  ma/el  0.000  digest 19f89271f4ab1994
+encode_row_eval  paired    τ=163    139.613 ms/row    33.286 ns/element  min   139.568  max   139.918  CV  0.09%   bf/el  0.000  ma/el  0.000  digest c68815721541f40c
+pruned_eval      paired    τ=163     77.984 ms/row    18.593 ns/element  min    77.335  max    78.644  CV  0.47%   bf/el  7.604  ma/el  0.002  digest c68815721541f40c
+
+== ratios (medians) ==
+set       τ         R_coef     R_eval     R_fixed8      R_today  R_eval_coef
+uniform   130        3.315      1.742        3.053        4.012        4.636
+clustered 130       11.443      2.407        3.061       13.826       16.013
+paired    130        3.785      1.833        3.060        4.600        5.284
+uniform   163        3.189      1.727        2.988        3.855        4.465
+clustered 163       11.442      2.398        2.997       13.882       16.026
+paired    163        3.552      1.790        2.995        4.294        4.969
+R_coef = full_coef / pruned_coef; R_eval = encode_row_eval / pruned_eval; R_fixed8 = full_coef / fixed8_coef; R_today = coset_ntt_coef / pruned_coef; R_eval_coef = encode_row_eval / pruned_coef
+
+record (per arm: median ms, butterflies and multiply-adds per committed element, column-merge digest of the τ symbols)
+  full_coef        uniform   τ=130     99.791 ms  bf/el 23.000  ma/el  0.000  db6831f4ae99c59c91aee742f1077a964e23a0583a98f9216fbbfa85794f709d
+  pruned_coef      uniform   τ=130     30.102 ms  bf/el  6.880  ma/el  1.614  db6831f4ae99c59c91aee742f1077a964e23a0583a98f9216fbbfa85794f709d
+  fixed8_coef      uniform   τ=130     32.686 ms  bf/el  8.000  ma/el  1.016  db6831f4ae99c59c91aee742f1077a964e23a0583a98f9216fbbfa85794f709d
+  coset_ntt_coef   uniform   τ=130    120.755 ms  bf/el  0.000  ma/el  0.000  db6831f4ae99c59c91aee742f1077a964e23a0583a98f9216fbbfa85794f709d
+  encode_row_eval  uniform   τ=130    139.564 ms  bf/el  0.000  ma/el  0.000  de7720b4e434281a18198e281f22db6a6abd8fb13257773b94fafe91f9390408
+  pruned_eval      uniform   τ=130     80.102 ms  bf/el  6.880  ma/el  1.614  de7720b4e434281a18198e281f22db6a6abd8fb13257773b94fafe91f9390408
+  full_coef        clustered τ=130     99.743 ms  bf/el 23.000  ma/el  0.000  1b9347dae9c309cfbbb4dfe221c0c3b32fcb81b2922bf3e89765ad3212199128
+  pruned_coef      clustered τ=130      8.717 ms  bf/el  2.020  ma/el  0.008  1b9347dae9c309cfbbb4dfe221c0c3b32fcb81b2922bf3e89765ad3212199128
+  fixed8_coef      clustered τ=130     32.585 ms  bf/el  8.000  ma/el  1.016  1b9347dae9c309cfbbb4dfe221c0c3b32fcb81b2922bf3e89765ad3212199128
+  coset_ntt_coef   clustered τ=130    120.517 ms  bf/el  0.000  ma/el  0.000  1b9347dae9c309cfbbb4dfe221c0c3b32fcb81b2922bf3e89765ad3212199128
+  encode_row_eval  clustered τ=130    139.585 ms  bf/el  0.000  ma/el  0.000  4e4e7c51e648879d86fe1c44ec25e91e5963e039844e52e02c3c87dd1989d749
+  pruned_eval      clustered τ=130     57.993 ms  bf/el  2.020  ma/el  0.008  4e4e7c51e648879d86fe1c44ec25e91e5963e039844e52e02c3c87dd1989d749
+  full_coef        paired    τ=130     99.745 ms  bf/el 23.000  ma/el  0.000  06351090a058c5c52a444cafb80427edbef89adeffdecc03f56d30768968f004
+  pruned_coef      paired    τ=130     26.356 ms  bf/el  7.203  ma/el  0.000  06351090a058c5c52a444cafb80427edbef89adeffdecc03f56d30768968f004
+  fixed8_coef      paired    τ=130     32.594 ms  bf/el  8.000  ma/el  1.016  06351090a058c5c52a444cafb80427edbef89adeffdecc03f56d30768968f004
+  coset_ntt_coef   paired    τ=130    121.226 ms  bf/el  0.000  ma/el  0.000  06351090a058c5c52a444cafb80427edbef89adeffdecc03f56d30768968f004
+  encode_row_eval  paired    τ=130    139.272 ms  bf/el  0.000  ma/el  0.000  55d8348866d0b4737599405a6fc6e08013139beece66ee518a62d1a9796837ef
+  pruned_eval      paired    τ=130     75.962 ms  bf/el  7.203  ma/el  0.000  55d8348866d0b4737599405a6fc6e08013139beece66ee518a62d1a9796837ef
+  full_coef        uniform   τ=163     99.779 ms  bf/el 23.000  ma/el  0.000  737cb1368b13fe3433384c14192ecbfb704ffb2a98c34fa8c675d55e169b92e9
+  pruned_coef      uniform   τ=163     31.291 ms  bf/el  7.328  ma/el  1.434  737cb1368b13fe3433384c14192ecbfb704ffb2a98c34fa8c675d55e169b92e9
+  fixed8_coef      uniform   τ=163     33.395 ms  bf/el  8.000  ma/el  1.273  737cb1368b13fe3433384c14192ecbfb704ffb2a98c34fa8c675d55e169b92e9
+  coset_ntt_coef   uniform   τ=163    120.623 ms  bf/el  0.000  ma/el  0.000  737cb1368b13fe3433384c14192ecbfb704ffb2a98c34fa8c675d55e169b92e9
+  encode_row_eval  uniform   τ=163    139.704 ms  bf/el  0.000  ma/el  0.000  b5d53ce72328d4cb75a396e46c3913e3de2ad4dc29defa8fe133bbbbf0f67dad
+  pruned_eval      uniform   τ=163     80.886 ms  bf/el  7.328  ma/el  1.434  b5d53ce72328d4cb75a396e46c3913e3de2ad4dc29defa8fe133bbbbf0f67dad
+  full_coef        clustered τ=163     99.745 ms  bf/el 23.000  ma/el  0.000  a2a10d3fd0d69f69318d24d73715672258aa3daef6f9f5f0c3349a513cd4687e
+  pruned_coef      clustered τ=163      8.717 ms  bf/el  2.021  ma/el  0.008  a2a10d3fd0d69f69318d24d73715672258aa3daef6f9f5f0c3349a513cd4687e
+  fixed8_coef      clustered τ=163     33.285 ms  bf/el  8.000  ma/el  1.273  a2a10d3fd0d69f69318d24d73715672258aa3daef6f9f5f0c3349a513cd4687e
+  coset_ntt_coef   clustered τ=163    121.011 ms  bf/el  0.000  ma/el  0.000  a2a10d3fd0d69f69318d24d73715672258aa3daef6f9f5f0c3349a513cd4687e
+  encode_row_eval  clustered τ=163    139.702 ms  bf/el  0.000  ma/el  0.000  e62b453dffc3a12ea78f6aee33d6626acbe100bf07ebb10244f0f917feb33000
+  pruned_eval      clustered τ=163     58.247 ms  bf/el  2.021  ma/el  0.008  e62b453dffc3a12ea78f6aee33d6626acbe100bf07ebb10244f0f917feb33000
+  full_coef        paired    τ=163     99.800 ms  bf/el 23.000  ma/el  0.000  19f89271f4ab19942537f8b292435e2ea46803f8af309d2f45321b6d90708efd
+  pruned_coef      paired    τ=163     28.097 ms  bf/el  7.604  ma/el  0.002  19f89271f4ab19942537f8b292435e2ea46803f8af309d2f45321b6d90708efd
+  fixed8_coef      paired    τ=163     33.324 ms  bf/el  8.000  ma/el  1.273  19f89271f4ab19942537f8b292435e2ea46803f8af309d2f45321b6d90708efd
+  coset_ntt_coef   paired    τ=163    120.639 ms  bf/el  0.000  ma/el  0.000  19f89271f4ab19942537f8b292435e2ea46803f8af309d2f45321b6d90708efd
+  encode_row_eval  paired    τ=163    139.613 ms  bf/el  0.000  ma/el  0.000  c68815721541f40cd29f84d3686c79d709ffa66ead76f89263541b0b24140524
+  pruned_eval      paired    τ=163     77.984 ms  bf/el  7.604  ma/el  0.002  c68815721541f40cd29f84d3686c79d709ffa66ead76f89263541b0b24140524

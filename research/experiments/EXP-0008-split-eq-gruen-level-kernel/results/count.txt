@@ -1,0 +1,42 @@
+EXP-0008 counts: product-tree leaf stage, 2^8 trees of 2^14 leaves (N = 2^22); baseline (EXP-0006's rules) against the split-eq Gruen candidate (src/main.rs)
+Columns: operations per leaf of the whole tree; 'eq' = Fp-multiplication equivalents (Fp2 mul 3, mul_by_base 2); 'ns' = predicted from EXP-0006's E1 unit costs (fp_mul 0.598, fp_add 0.342, fp_sub 0.500, fp2_mul 3.347, fp2_mulb 0.878, fp2_add 0.442, fp2_sub 0.267)
+
+Baseline, by component:
+  eq tables                                      Fp mul  0.000 add  0.000 sub  0.000 | Fp2 mul  1.000 mul_by_base  0.000 add  0.000 sub  1.000 |  3.00 eq |   3.61 ns
+  round 1                                        Fp mul  1.500 add  2.000 sub  1.000 | Fp2 mul  0.000 mul_by_base  1.500 add  2.500 sub  0.500 |  4.50 eq |   4.64 ns
+  fold after round 1                             Fp mul  0.000 add  1.000 sub  1.000 | Fp2 mul  0.500 mul_by_base  1.000 add  0.500 sub  0.500 |  3.50 eq |   3.75 ns
+  rounds >= 2                                    Fp mul  0.000 add  0.000 sub  0.000 | Fp2 mul  3.000 mul_by_base  0.000 add  4.500 sub  1.500 |  9.00 eq |  12.43 ns
+  folds after rounds >= 2                        Fp mul  0.000 add  0.000 sub  0.000 | Fp2 mul  1.500 mul_by_base  0.000 add  1.500 sub  1.500 |  4.50 eq |   6.08 ns
+  level build                                    Fp mul  1.000 add  0.000 sub  0.000 | Fp2 mul  0.000 mul_by_base  0.000 add  0.000 sub  0.000 |  1.00 eq |   0.60 ns
+  baseline total per leaf                        Fp mul  2.500 add  3.000 sub  2.000 | Fp2 mul  6.000 mul_by_base  2.500 add  8.999 sub  5.000 | 25.50 eq |  31.11 ns
+
+Candidate, by component:
+  eq tables (sqrt-size, rebuilt per round)       Fp mul  0.000 add  0.000 sub  0.000 | Fp2 mul  0.006 mul_by_base  0.000 add  0.000 sub  0.006 |  0.02 eq |   0.02 ns
+  round 1 (two nodes, Fp products)               Fp mul  1.000 add  1.000 sub  1.000 | Fp2 mul  0.000 mul_by_base  1.000 add  1.000 sub  0.000 |  3.00 eq |   2.76 ns
+  fold after round 1 (2 bind_base)               Fp mul  0.000 add  1.000 sub  1.000 | Fp2 mul  0.000 mul_by_base  1.000 add  0.000 sub  0.000 |  2.00 eq |   1.72 ns
+  rounds >= 2 (two nodes, Fp2)                   Fp mul  0.000 add  0.000 sub  0.000 | Fp2 mul  2.000 mul_by_base  0.000 add  2.000 sub  1.000 |  6.00 eq |   7.84 ns
+  folds after rounds >= 2 (2 bind_in_place)      Fp mul  0.000 add  0.000 sub  0.000 | Fp2 mul  1.000 mul_by_base  0.000 add  1.000 sub  1.000 |  3.00 eq |   4.06 ns
+  per-group eq_hi scaling                        Fp mul  0.000 add  0.000 sub  0.000 | Fp2 mul  0.005 mul_by_base  0.000 add  0.005 sub  0.000 |  0.01 eq |   0.02 ns
+  per-round recovery and claim update            Fp mul  0.005 add  0.000 sub  0.000 | Fp2 mul  0.001 mul_by_base  0.000 add  0.000 sub  0.000 |  0.01 eq |   0.01 ns
+  root claim                                     Fp mul  0.000 add  0.000 sub  0.000 | Fp2 mul  0.000 mul_by_base  0.000 add  0.000 sub  0.000 |  0.00 eq |   0.00 ns
+  level build                                    Fp mul  1.000 add  0.000 sub  0.000 | Fp2 mul  0.000 mul_by_base  0.000 add  0.000 sub  0.000 |  1.00 eq |   0.60 ns
+  candidate total per leaf                       Fp mul  2.005 add  2.000 sub  2.000 | Fp2 mul  3.011 mul_by_base  2.000 add  4.005 sub  2.006 | 15.04 eq |  17.02 ns
+
+Fp-multiplication equivalents per leaf: baseline 25.50, candidate 15.04 (-41.0%); IDEA-0021's Mechanism table predicted 25.5 -> about 15.5
+Goldilocks operations per leaf: baseline 25.50 mul + 6.00 mul7 + 39.00 add + 24.00 sub; candidate 15.04 mul + 3.01 mul7 + 19.04 add + 12.03 sub
+Predicted time per leaf from EXP-0006's unit costs (E0 over E1 units): baseline 31.11 ns (EXP-0006 measured 31.70 on this shape), candidate 17.02 ns; predicted ratio 1.828, predicted speed-up sigma 45.3%
+
+H100 projection, baseline: int32 ops per leaf 759 (lazy) / 1173 (as written); HBM bytes 40 (fused) / 168 (unfused); compute 45.4 ps at peak / 116.9 at 60%; memory 14.9 / 62.7 ps at 80%; interval I = [45.4, 116.9] ps, central 73, rho_pi = [3.78, 9.74]
+H100 projection, candidate: int32 ops per leaf 419 (lazy) / 643 (as written); HBM bytes 40 (fused) / 104 (unfused); compute 25.1 ps at peak / 64.0 at 60%; memory 14.9 / 38.8 ps at 80%; interval I = [25.1, 64.0] ps, central 40, rho_pi = [2.09, 5.34]
+Count ratio of the intervals: lo 0.552, hi 0.548; the counted central 73 ps scaled by the Fp-equivalent ratio: 43.1 ps, by the int32 (lazy) ratio: 40.3 ps
+
+Fraction proxy (IDEA-0018 case), per entry of 2^21-entry Fp2 tables:
+  leaf baseline                                  Fp mul  0.000 add  0.000 sub  0.000 | Fp2 mul 19.000 mul_by_base  0.000 add 30.000 sub 14.000 | 57.00 eq |  80.59 ns
+  leaf candidate                                 Fp mul  0.001 add  0.000 sub  0.000 | Fp2 mul  8.006 mul_by_base  0.000 add 10.003 sub  4.003 | 24.02 eq |  32.29 ns
+  generic baseline                               Fp mul  0.000 add  0.000 sub  0.000 | Fp2 mul 27.000 mul_by_base  0.000 add 36.000 sub 18.000 | 81.00 eq | 111.09 ns
+  generic candidate                              Fp mul  0.001 add  0.000 sub  0.000 | Fp2 mul 14.006 mul_by_base  0.000 add 14.003 sub  8.003 | 42.02 eq |  55.21 ns
+  leaf level: Fp2-multiplication equivalents per pair-round (IDEA-0018's unit) baseline 38.00, candidate 16.01 (-57.9%); predicted ns per entry 80.59 -> 32.29 (ratio 2.496, sigma 59.9%)
+  generic level: Fp2-multiplication equivalents per pair-round (IDEA-0018's unit) baseline 54.00, candidate 28.01 (-48.1%); predicted ns per entry 111.09 -> 55.21 (ratio 2.012, sigma 50.3%)
+  (IDEA-0018's Mechanism table: generic 27 -> 14, leaf 19 -> 8 Fp2 multiplications per pair-round, counted per pair; the figures above are per entry over all rounds, so they are those per-pair figures halved up to the folds' geometric tail)
+
+Not counted: the gamma weights of the baseline (3 Fp2 multiplications per instance per round), the transcript's hashes per round, the de-interleaving copy of the leaves, the scratch rows (in L1), allocation and page zeroing.

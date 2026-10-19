@@ -1,0 +1,39 @@
+EXP-0002 counts per committed element (k = 2^22, n = 2^23, P = 200, B = 32)
+
+NTT structure (ntt.rs, encoding.rs):
+  inverse NTT of size k:   11.000 butterflies, 1.000 of them unit
+  coset NTT of size n:     23.000 butterflies, 2.000 of them unit
+  spread:                  1.000 multiplications; mask: 0.0002 ops
+  total butterflies:       34.000 (68 point-levels)
+
+Hash structure (columns.rs): column-step input 288 bytes -> 5 compressions per 32 symbols = 0.15625 per symbol, 0.31250 per element; 11.1% of the compressed bytes are padding
+
+int32 translation of goldilocks.rs (low, high):
+  mul        18   26   a·b as 128 bits: 4 wide products + 5–6 carried adds (9–10); reduce128 (lines 55–70): t0 = lo − hi_hi (2), borrow fix (2), t1 = hi_lo·EPSILON (1 wide product), t2 = t0 + t1 (2), carry fix (2), canonicalize (4; skipped in the lazy low end): 9–16
+  add         4    8   lines 35–40: overflowing_add (2), EPSILON on carry (2), canonicalize (4; skipped lazily)
+  sub         4    5   lines 43–48: overflowing_sub (2), EPSILON on borrow (2), one more if the mask is materialized
+  mul_pow2    8   12   multiplication by ω_16^j = 2^(12j) (8 has order 64 in Fp): a 128-bit shift (2–3) and a shortened reduce128 (6–9); only the radix-16 low end uses it
+  compression ops: 792 (counted) to 960 (RFC-0004's 15 per byte)
+
+ops per element               low (r16)    high (r2)
+mults                              16.9         32.0
+cheap_mults                        18.1          0.0
+adds                               34.0         34.0
+subs                               34.0         34.0
+ntt_ops                           721.4       1274.0
+hash_ops                          247.5        300.0
+total                             968.9       1574.0
+HBM bytes                            48          216
+
+H100 projection, ps per committed element (int32 peak 1.67e+13 op/s, HBM 3.35e+12 B/s):
+  compute at peak:            57.9  (low)     94.1  (high)
+  compute at 60%:             96.5  (low)    156.8  (high)
+  memory at peak:             14.3  (fused)   64.5  (four-pass)
+  memory at 80%:              17.9  (fused)   80.6  (four-pass)
+
+interval I = [lo, hi] = [57.9, 156.8] ps; rho_c = [1.93, 5.23] against 30 ps
+RFC-0020 bands the interval touches: proceed (rho <= 2); re-plan (2 < rho <= 4); stop and redesign (rho > 4)
+SC-2 (cost_model.py, corrected profile): mu(16K) <= 45 needs c_c <= 70 ps -> holds at lo, fails at hi; mu(1K) <= 12 needs c_c <= 82 ps -> holds at lo, fails at hi
+
+Share of the high count: NTT 81%, hash 19%; of the low count: NTT 74%, hash 26%
+Counts the Rust fit uses: intt 11 butterflies + 1 scaled bit-reversal point; coset_ntt 23 + 2 points; encode_row 34 + 1 spread multiplication; chain (call + 5 compressions) / 16

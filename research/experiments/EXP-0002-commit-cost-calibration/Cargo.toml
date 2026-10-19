@@ -1,0 +1,26 @@
+[package]
+name = "calib"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+description = "EXP-0002: calibration harness for the committed-element cost c_c (research/, a dependency of nothing)"
+
+[[bin]]
+name = "calib"
+path = "src/main.rs"
+
+# Its own workspace: the root workspace and its lockfile stay untouched (research/README.md rule 2).
+[workspace]
+
+[dependencies]
+tessera-field = { path = "../../../crates/tessera-field" }
+tessera-hash = { path = "../../../crates/tessera-hash" }
+tessera-pcs = { path = "../../../crates/tessera-pcs" }
+
+[profile.release]
+opt-level = 3
+# One codegen unit, so that `cargo rustc --release -- --emit asm` writes one assembly file for
+# asm_count.py to read, and so that the anchors' code does not depend on unit partitioning.
+codegen-units = 1
+debug = false

@@ -1,0 +1,21 @@
+[package]
+name = "multleak"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+description = "EXP-0010: timing probe of secret-indexed multiplicity counting and table reads against the key distribution (research/, a dependency of nothing)"
+
+[[bin]]
+name = "multleak"
+path = "src/main.rs"
+
+# Its own workspace: the root workspace and its lockfile stay untouched (research/README.md rule 2).
+[workspace]
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+debug = false

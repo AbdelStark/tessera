@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 OR MIT -->
+<!--
+  launchd agent that runs one unit of the Tessera autoresearch loop every six hours.
+
+  Install (the maintainer's decision; it spends API budget unattended):
+      sed "s#WORKTREE#/absolute/path/to/the/research/worktree#" research/tools/launchd/com.tessera.autoresearch.plist \
+        > ~/Library/LaunchAgents/com.tessera.autoresearch.plist
+      launchctl load ~/Library/LaunchAgents/com.tessera.autoresearch.plist
+  Remove:
+      launchctl unload ~/Library/LaunchAgents/com.tessera.autoresearch.plist
+  Logs: ~/.cache/tessera-autoresearch/ (one file per run) and the two paths below.
+  Budget per run: LOOP_BUDGET_USD (25 by default); set LOOP_MODE=sweep for the parallel sweep.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tessera.autoresearch</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>WORKTREE/research/tools/loop.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>WORKTREE</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LOOP_BUDGET_USD</key>
+    <string>25</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartInterval</key>
+  <integer>21600</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/tmp/tessera-autoresearch.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/tessera-autoresearch.err.log</string>
+</dict>
+</plist>
