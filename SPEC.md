@@ -88,6 +88,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0045](docs/rfcs/RFC-0045-leaf-layout.md) | The leaf layout: each LogUp instance's blocks, its lookup tree's leaf order, one point per block size, and the leaf stage's split values (amends RFC-0008, RFC-0037) | v0.3 |
 | [RFC-0046](docs/rfcs/RFC-0046-advice-segments.md) | Advice segments and short query blocks: the layers and rows each segment holds, an attention tile's `Q' = min(Q, N)` queries, and the refusal of rows too short for a key (amends RFC-0007, RFC-0011, RFC-0034) | v0.3 |
 | [RFC-0047](docs/rfcs/RFC-0047-advice-order.md) | The advice layout's order, size and sequence length: padded axes first, `ν`, at most `2^{32}` rows, heads grouped by a power of two, `n = prompt_len + output_len` (amends RFC-0007, RFC-0011, RFC-0034, 03) | v0.3 |
+| [RFC-0049](docs/rfcs/RFC-0049-weight-proximity.md) | The weights' proximity point before the stages: `pcs/weights/{T}/xi` right after the seed in protocol/1, so one weight pass yields folds and combined rows; coefficients over committed rows; the calculator's protocol/1 counts (amends RFC-0012, RFC-0014) | v0.3 |
 | [RFC-0048](docs/rfcs/RFC-0048-weight-trust.md) | What the weights root vouches for: uniqueness holds for any committed values, while fidelity and totality rest on `R_W`'s publisher (amends 00, 06, RFC-0006, RFC-0009, RFC-0040) | v0.3 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.

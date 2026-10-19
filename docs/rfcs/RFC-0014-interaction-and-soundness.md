@@ -81,11 +81,11 @@ Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{c}`, `{T}` are decimal
 |---|---|---|
 | 1 | init | `SessionContext` (protocol, mode, params, statement digest, session id) |
 | 2 | absorb | `round1` |
-| 3 | live: absorb `seed`; NI: grind `seed-pow`, then squeeze | `seed` |
+| 3 | live: absorb `seed`; NI: grind `seed-pow`, then squeeze. In `tessera-protocol/1`, then squeeze each weight matrix's proximity point ([RFC-0049](RFC-0049-weight-proximity.md#the-schedule)) | `seed`, `pcs/weights/{T}/xi` |
 | 4 | squeeze `Fp2` × 2, then absorb the fraction trees' roots ([RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree)); in `tessera-protocol/2`, the masked LogUp identity sumcheck in place of the roots ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#the-logup-identity-sumcheck)) | `logup/alpha`, `logup/beta`, `logup/roots`; `tessera-protocol/2`: `logup/identity/zk-sum`, `logup/identity/zk-rho`, `logup/identity/gamma`, `logup/identity/round/{j}`, `logup/identity/r/{j}`, `logup/identity/evals` |
 | 5 | per tree level `ℓ`: squeeze the root point of the forests that join at `ℓ` ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)), squeeze `γ_ℓ`, and `λ_ℓ` at a level with fraction trees, absorb round messages, squeeze challenges, absorb evaluations, squeeze the line challenge; after the last level, absorb the lookup trees' value evaluations | `tree/{ℓ}/root/{c}`, `tree/{ℓ}/gamma`, `tree/{ℓ}/lambda`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line`, `logup/values`; `tessera-protocol/2` adds `tree/{ℓ}/zk-sum` and `tree/{ℓ}/zk-rho`, absorbed and squeezed before `tree/{ℓ}/gamma` ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#masked-tree-levels)) |
 | 6 | per stage `k`: absorb masked sum, squeeze `ρ_k`, in stage 1 squeeze the layer point ([RFC-0037](RFC-0037-stage-schedule.md#the-layer-point)), squeeze the zero-check point if the stage holds a `ZeroCheck` ([RFC-0010](RFC-0010-proof-schedule.md#batching-within-a-stage)), squeeze `γ_k`, rounds, final evaluations, absorb the split values ([RFC-0037](RFC-0037-stage-schedule.md#splits)); the leaf stage's split values, stage 0's, follow `logup/values` | `stage/{k}/zk-sum`, `stage/{k}/zk-rho`, `stage/1/layer/{c}`, `stage/{k}/zero/{c}`, `stage/{k}/gamma`, `stage/{k}/round/{j}`, `stage/{k}/r/{j}`, `stage/{k}/evals`, `stage/{k}/split` |
-| 7 | absorb the advice groups' blinding claims, then each weight matrix's; squeeze the opening challenges | `pcs/advice/blinding`, `pcs/weights/{T}/blinding`, `pcs/advice/gamma`, `pcs/advice/xi`, `pcs/weights/{T}/gamma`, `pcs/weights/{T}/xi` |
+| 7 | absorb the advice groups' blinding claims, then each weight matrix's; squeeze the opening challenges | `pcs/advice/blinding`, `pcs/weights/{T}/blinding`, `pcs/advice/gamma`, `pcs/advice/xi`, `pcs/weights/{T}/gamma`; `pcs/weights/{T}/xi` in `tessera-protocol/2` only |
 | 8 | absorb combined rows | `pcs/advice/combined`, `pcs/weights/{T}/combined` |
 | 9 | absorb scoring claims | `scoring` |
 | 10 | live: absorb `ColumnQueries`; NI: grind `query-pow`, then squeeze indices | `queries`, `pcs/advice/queries`, `pcs/weights/{T}/queries` |
@@ -112,7 +112,7 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 
 The field term is the tensor generator's. The proximity coefficients are `eq(ξ*, row)` for a random point `ξ*` with one coordinate per bit of the row index ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 3), not independent uniform values. Folding those `ϑ` coordinates one at a time costs one line proximity gap each. The false-witness probability is therefore `ϑ·n/|Fp2|`, with `n` the codeword length (Diamond and Posen, 'Proximity Testing with Logarithmic Randomness' (2024); Diamond and Gruen, 'Proximity Gaps in Interleaved Codes' (2025), Theorems 2 and 3).
 - **`ϑ` for advice** is `ν − log2 k`, every bit of the row index: about 20 at 405B, 16K tokens and 16K context, whose 5.8×10^5 non-zero rows span a row index of 20 or 21 bits. The term is then `21 · 2^23/2^128 ≈ 2^{−100.6}`.
-- **`ϑ_T` for weight matrix `T`** is `⌈log2⌉` of its data and blinding rows: at most 18 at 405B. The term is at most `18 · 2^22/2^128 ≈ 2^{−101.8}`.
+- **`ϑ_T` for weight matrix `T`** is `⌈log2⌉` of its data and blinding rows: at most 18 at 405B. In `tessera-protocol/1`, which commits no blinding rows and no mask for the weights, it is `⌈log2 m_T⌉` and the rate is `k_T / n_T`; a matrix with no committed rows has no proximity row ([RFC-0049](RFC-0049-weight-proximity.md#the-calculator)). The term is at most `18 · 2^22/2^128 ≈ 2^{−101.8}`.
 - **Both targets hold.** `live-64` and `ni-100` keep about 100 bits each, with no grinding: `ξ*` is squeezed after the stages' final evaluations, which a prover can vary without redoing a proof of work ('Grinding'), so the term meets its target alone.
 
 The bound holds in the unique-decoding regime only, `δ < (1 − ρ')/2`, where this table works. The bound takes the queries to be independent. Both modes draw column indices uniformly with replacement, and a repeated index is checked once at no cost in soundness ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 7). In `tessera-protocol/1` the verifier also rejects a zero LogUp root denominator, of a lookup tree or a table tree, and any zero denominator.
@@ -194,7 +194,7 @@ A calculator refuses, with `ERR-USAGE`: a `protocol` other than 1 or 2; `τ_A` o
 | LogUp identity | `v·max(N + T)/q`, `v = 1`, and 2 in `tessera-protocol/2` | `g_seed` | `one_shot` |
 | Opening evaluation checks | `max(max T_g, 1 when a matrix is opened)/q` | — | `bits` |
 | Proximity queries, per commitment | `((n + k + P)/(2n))^τ`, `((1 + ρ')/2)^τ`: the advice's `n_A`, `k_A = 2^{log2 k}`, `P_A`, `τ_A`; each matrix's `n_T`, `k_T`, `P_W`, `τ_W` | `g_query` | `one_shot` |
-| Proximity field term, per commitment | `ϑ·n/q`, `ϑ_A = ⌈log2 advice_rows⌉`, `ϑ_T = ⌈log2(m_T + B_W)⌉` | — | `bits` |
+| Proximity field term, per commitment | `ϑ·n/q`, `ϑ_A = ⌈log2 advice_rows⌉`, `ϑ_T = ⌈log2(m_T + B_W)⌉`, `⌈log2 m_T⌉` in protocol/1 | — | `bits` |
 | Weight linking | `max ν_T/q` | — | `bits` |
 | Hash collisions | `2^{−128}` | — | `bits` |
 
