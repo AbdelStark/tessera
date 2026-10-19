@@ -1,0 +1,4 @@
+UTC: 2026-10-19T18:56:56.603889+00:00
+SHA-256: f30bda990098f0b62b9c72b6acd1076497a813647e523d1470cf3798f06c79e2
+Frozen plan: README.constants-preregistered.txt
+No extension implementation at registration.

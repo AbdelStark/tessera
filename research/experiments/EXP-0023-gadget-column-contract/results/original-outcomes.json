@@ -1,0 +1,727 @@
+{
+  "verdict": "validated",
+  "evidence": "E0, bounded exact arithmetic/schema result only",
+  "seed": "0x4071060023",
+  "frozen_sha256": "9d4feb8ab6c17daf22a6a6f78816c603002ee8cdbbf74b82bc744cccef5c2362",
+  "counts": {
+    "assertions": 562294,
+    "maximum_equation_bits": 35,
+    "policy_cases": 1024,
+    "root_alternatives": 8704,
+    "honest_rows": 4352,
+    "auxiliary_alternatives": 13680,
+    "nonneg_cases": 1984,
+    "softmax_cases": 1024
+  },
+  "matrix_sha256": "bd728c2db4134fb112103fb801f8ee572f723def60fcc63b0c0403fb85fb833b",
+  "widths": [
+    {
+      "width": 1,
+      "N": "1",
+      "committed": 100,
+      "requests": 102,
+      "families": [
+        1,
+        16,
+        7,
+        8,
+        10,
+        2
+      ]
+    },
+    {
+      "width": 2,
+      "N": "4",
+      "committed": 100,
+      "requests": 102,
+      "families": [
+        2,
+        16,
+        7,
+        8,
+        12,
+        4,
+        3,
+        1
+      ]
+    },
+    {
+      "width": 3,
+      "N": "16",
+      "committed": 100,
+      "requests": 102,
+      "families": [
+        3,
+        16,
+        7,
+        8,
+        14,
+        6,
+        5,
+        1
+      ]
+    },
+    {
+      "width": 4,
+      "N": "64",
+      "committed": 100,
+      "requests": 102,
+      "families": [
+        4,
+        16,
+        7,
+        8,
+        1
+      ]
+    },
+    {
+      "width": 5,
+      "N": "256",
+      "committed": 112,
+      "requests": 114,
+      "families": [
+        5,
+        16,
+        7,
+        8,
+        18,
+        10,
+        9,
+        1
+      ]
+    },
+    {
+      "width": 6,
+      "N": "1024",
+      "committed": 112,
+      "requests": 114,
+      "families": [
+        6,
+        16,
+        7,
+        8,
+        20,
+        12,
+        11,
+        3,
+        1
+      ]
+    },
+    {
+      "width": 7,
+      "N": "4096",
+      "committed": 112,
+      "requests": 114,
+      "families": [
+        7,
+        16,
+        8,
+        22,
+        14,
+        13,
+        5,
+        1
+      ]
+    },
+    {
+      "width": 8,
+      "N": "16384",
+      "committed": 112,
+      "requests": 114,
+      "families": [
+        8,
+        16,
+        7,
+        24,
+        15,
+        1
+      ]
+    },
+    {
+      "width": 9,
+      "N": "65536",
+      "committed": 125,
+      "requests": 127,
+      "families": [
+        9,
+        16,
+        7,
+        8,
+        1,
+        24,
+        18,
+        25
+      ]
+    },
+    {
+      "width": 10,
+      "N": "262144",
+      "committed": 125,
+      "requests": 127,
+      "families": [
+        10,
+        16,
+        7,
+        8,
+        2,
+        24,
+        19,
+        3,
+        1,
+        25
+      ]
+    },
+    {
+      "width": 11,
+      "N": "1048576",
+      "committed": 125,
+      "requests": 127,
+      "families": [
+        11,
+        16,
+        7,
+        8,
+        3,
+        24,
+        20,
+        5,
+        1,
+        25
+      ]
+    },
+    {
+      "width": 12,
+      "N": "4194304",
+      "committed": 125,
+      "requests": 127,
+      "families": [
+        12,
+        16,
+        7,
+        8,
+        4,
+        24,
+        21,
+        17,
+        13,
+        1,
+        25
+      ]
+    },
+    {
+      "width": 13,
+      "N": "16777216",
+      "committed": 137,
+      "requests": 139,
+      "families": [
+        13,
+        16,
+        7,
+        8,
+        5,
+        24,
+        22,
+        25,
+        19,
+        14,
+        9,
+        1
+      ]
+    },
+    {
+      "width": 14,
+      "N": "67108864",
+      "committed": 137,
+      "requests": 139,
+      "families": [
+        14,
+        16,
+        7,
+        8,
+        6,
+        24,
+        23,
+        25,
+        21,
+        15,
+        11,
+        3,
+        1
+      ]
+    },
+    {
+      "width": 15,
+      "N": "268435456",
+      "committed": 137,
+      "requests": 139,
+      "families": [
+        15,
+        16,
+        7,
+        8,
+        24,
+        25,
+        23,
+        13,
+        5,
+        1
+      ]
+    },
+    {
+      "width": 16,
+      "N": "1073741824",
+      "committed": 137,
+      "requests": 139,
+      "families": [
+        16,
+        7,
+        8,
+        24,
+        25,
+        17,
+        15,
+        1
+      ]
+    },
+    {
+      "width": 17,
+      "N": "4294967296",
+      "committed": 150,
+      "requests": 152,
+      "families": [
+        17,
+        16,
+        7,
+        8,
+        1,
+        24,
+        25,
+        18,
+        9,
+        26
+      ]
+    },
+    {
+      "width": 18,
+      "N": "17179869184",
+      "committed": 150,
+      "requests": 152,
+      "families": [
+        18,
+        16,
+        7,
+        8,
+        2,
+        24,
+        25,
+        26,
+        19,
+        10,
+        3,
+        1
+      ]
+    },
+    {
+      "width": 19,
+      "N": "68719476736",
+      "committed": 150,
+      "requests": 152,
+      "families": [
+        19,
+        16,
+        7,
+        8,
+        3,
+        24,
+        25,
+        26,
+        20,
+        11,
+        5,
+        1
+      ]
+    },
+    {
+      "width": 20,
+      "N": "274877906944",
+      "committed": 150,
+      "requests": 152,
+      "families": [
+        20,
+        16,
+        7,
+        8,
+        4,
+        24,
+        25,
+        26,
+        21,
+        17,
+        13,
+        1
+      ]
+    },
+    {
+      "width": 21,
+      "N": "1099511627776",
+      "committed": 162,
+      "requests": 164,
+      "families": [
+        21,
+        16,
+        7,
+        8,
+        5,
+        24,
+        25,
+        26,
+        23,
+        19,
+        14,
+        9,
+        1
+      ]
+    },
+    {
+      "width": 22,
+      "N": "4398046511104",
+      "committed": 162,
+      "requests": 164,
+      "families": [
+        22,
+        16,
+        7,
+        8,
+        6,
+        24,
+        25,
+        26,
+        21,
+        15,
+        11,
+        3,
+        1
+      ]
+    },
+    {
+      "width": 23,
+      "N": "17592186044416",
+      "committed": 162,
+      "requests": 164,
+      "families": [
+        23,
+        16,
+        7,
+        8,
+        24,
+        25,
+        26,
+        13,
+        5,
+        1
+      ]
+    },
+    {
+      "width": 24,
+      "N": "70368744177664",
+      "committed": 162,
+      "requests": 164,
+      "families": [
+        24,
+        16,
+        7,
+        8,
+        25,
+        26,
+        27,
+        17,
+        15,
+        1
+      ]
+    },
+    {
+      "width": 25,
+      "N": "281474976710656",
+      "committed": 175,
+      "requests": 177,
+      "families": [
+        25,
+        16,
+        7,
+        8,
+        1,
+        24,
+        26,
+        27,
+        18,
+        9
+      ]
+    },
+    {
+      "width": 26,
+      "N": "1125899906842624",
+      "committed": 175,
+      "requests": 177,
+      "families": [
+        26,
+        16,
+        7,
+        8,
+        2,
+        24,
+        25,
+        27,
+        20,
+        10,
+        3,
+        1
+      ]
+    },
+    {
+      "width": 27,
+      "N": "4503599627370496",
+      "committed": 175,
+      "requests": 177,
+      "families": [
+        27,
+        16,
+        7,
+        8,
+        3,
+        24,
+        25,
+        26,
+        21,
+        11,
+        5,
+        1
+      ]
+    },
+    {
+      "width": 28,
+      "N": "18014398509481984",
+      "committed": 175,
+      "requests": 177,
+      "families": [
+        28,
+        16,
+        7,
+        8,
+        4,
+        24,
+        25,
+        26,
+        27,
+        22,
+        17,
+        13,
+        1
+      ]
+    },
+    {
+      "width": 29,
+      "N": "72057594037927936",
+      "committed": 187,
+      "requests": 189,
+      "families": [
+        29,
+        16,
+        7,
+        8,
+        5,
+        24,
+        25,
+        26,
+        27,
+        23,
+        19,
+        14,
+        9,
+        1
+      ]
+    },
+    {
+      "width": 30,
+      "N": "288230376151711744",
+      "committed": 187,
+      "requests": 189,
+      "families": [
+        30,
+        16,
+        7,
+        8,
+        6,
+        24,
+        25,
+        26,
+        27,
+        21,
+        15,
+        11,
+        3,
+        1
+      ]
+    },
+    {
+      "width": 31,
+      "N": "1152921504606846976",
+      "committed": 187,
+      "requests": 189,
+      "families": [
+        31,
+        16,
+        7,
+        8,
+        24,
+        25,
+        26,
+        27,
+        23,
+        13,
+        5,
+        1
+      ]
+    },
+    {
+      "width": 32,
+      "N": "4611686018427387904",
+      "committed": 187,
+      "requests": 189,
+      "families": [
+        32,
+        16,
+        7,
+        8,
+        24,
+        25,
+        26,
+        27,
+        17,
+        15,
+        1
+      ]
+    }
+  ],
+  "faults": [
+    {
+      "fault": "UTop",
+      "normal": "UTop",
+      "mutated": null,
+      "effect": "changed rejection/acceptance outcome"
+    },
+    {
+      "fault": "RTop",
+      "normal": "RTop",
+      "mutated": null,
+      "effect": "changed rejection/acceptance outcome"
+    },
+    {
+      "fault": "RootRange",
+      "normal": "RootRange",
+      "mutated": "RTop",
+      "effect": "changed rejection/acceptance outcome"
+    },
+    {
+      "fault": "RootPadding",
+      "normal": "RootPadding",
+      "mutated": null,
+      "effect": "changed rejection/acceptance outcome"
+    },
+    {
+      "fault": "InputPadding",
+      "normal": "InputPadding",
+      "mutated": null,
+      "effect": "changed rejection/acceptance outcome"
+    },
+    {
+      "fault": "Lower",
+      "normal": "Lower",
+      "mutated": null,
+      "effect": "changed rejection/acceptance outcome"
+    },
+    {
+      "fault": "Upper",
+      "normal": "Upper",
+      "mutated": null,
+      "effect": "changed rejection/acceptance outcome"
+    },
+    {
+      "fault": "FinalCarry/lower/left",
+      "normal": "FinalCarry/lower/left",
+      "mutated": "Norm/lower/left/10",
+      "effect": "changed rejection/acceptance outcome"
+    },
+    {
+      "fault": "FinalCarry/lower/right",
+      "normal": "FinalCarry/lower/right",
+      "mutated": "Norm/lower/right/10",
+      "effect": "changed rejection/acceptance outcome"
+    },
+    {
+      "fault": "FinalCarry/upper/left",
+      "normal": "FinalCarry/upper/left",
+      "mutated": "Norm/upper/left/10",
+      "effect": "changed rejection/acceptance outcome"
+    },
+    {
+      "fault": "FinalCarry/upper/right",
+      "normal": "FinalCarry/upper/right",
+      "mutated": "Norm/upper/right/10",
+      "effect": "changed rejection/acceptance outcome"
+    },
+    {
+      "fault": "IncrementClip",
+      "normal": null,
+      "mutated": "Norm/upper/right/0",
+      "effect": "changed rejection/acceptance outcome"
+    },
+    {
+      "fault": "u+P",
+      "normal": "UTop",
+      "mutated": null,
+      "effect": "isolated input-box attack; no full-model claim"
+    },
+    {
+      "fault": "drop_role",
+      "effect": "actual descriptor gate rejects at independent schema"
+    },
+    {
+      "fault": "reorder_roles",
+      "effect": "actual descriptor gate rejects at independent schema"
+    },
+    {
+      "fault": "duplicate_output",
+      "effect": "actual descriptor gate rejects at independent schema"
+    },
+    {
+      "fault": "drop_u_top_request",
+      "effect": "actual descriptor gate rejects at independent schema"
+    },
+    {
+      "fault": "drop_root_top_request",
+      "effect": "actual descriptor gate rejects at independent schema"
+    },
+    {
+      "fault": "reorder_requests",
+      "effect": "actual descriptor gate rejects at independent schema"
+    },
+    {
+      "fault": "crop_high_limbs",
+      "effect": "actual descriptor gate rejects at independent schema"
+    }
+  ],
+  "environment": {
+    "python": "3.14.6 (main, Jun 10 2026, 10:03:53) [Clang 21.0.0 (clang-2100.0.123.102)]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "cpu": "Apple M4 Max",
+    "utc": "2026-10-19T18:41:25.234894+00:00"
+  },
+  "limits": [
+    "No full-model proof",
+    "No G-4 or Fiat-Shamir proof",
+    "No ZK simulation proof",
+    "No GPU/performance gain",
+    "No production implementation comparison yet"
+  ]
+}
