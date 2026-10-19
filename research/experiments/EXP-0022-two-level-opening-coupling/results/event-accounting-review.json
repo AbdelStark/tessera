@@ -1,0 +1,33 @@
+{
+  "review": "EXP22 local event receipts, source plumbing and semantic comparison accounting",
+  "time_utc": "2026-10-19T11:55:06.869647+00:00",
+  "mode": "static patch application to scratch plus ast.parse only; no import, fixture, preflight, audit, benchmark or repository source mutation",
+  "artifacts": {
+    "/tmp/tessera-exp22-before-event-accounting-57a676f7a29d.py": "57a676f7a29d54d1a207660b17fcf59aa547a93f0edb35d05b02b691edce25d5",
+    "/tmp/tessera-exp22-event-accounting-patch-v2.py": "8540541eb0c9e223c00090d25589cdb19b31a4b01dd671a607bdeff6e3c66bba",
+    "/tmp/tessera-exp22-event-accounting-v2.patch": "5fab6e2b503a24e5502bff48602a61f81bd9e2a0c7ad7726e553fecd40a1df70",
+    "/tmp/tessera-exp22-event-patch-v2-preview.py": "16ee60eefae67959f51e0ee4a2f7b2c9bbad37454f400e6bd9edddca45501f6e"
+  },
+  "changes": [
+    "deep-copied actual payload receipts for source v/q/M/columns, equations, rounds, terminal requests, both level2 messages and opening",
+    "make_record accepts supplied source for source-consistent adversarial corpus",
+    "explicit corpus-only candidate_fixture rebinds malformed prechallenge content while preserving trusted anchors/order/omissions",
+    "thirteen raw-candidate changed-payload/unchanged-receipt refusal controls",
+    "scalar plus shape/length metering for nested points, claims, equation parameters and receipt values",
+    "independent metered integer 2*HALF=1, field equality and Fraction embedding controls"
+  ],
+  "concurrent_root_changes_preserved": [
+    "wrong_weight_axis sumcheck implementation and candidate dispatch",
+    "make_level2 split metadata and check_level2 strict split guard",
+    "remaining_parameter_controls; altered split rebound by corpus-only adapter",
+    "registry geometry, immutable Fp2, trusted original-root/descriptor and source column arity controls",
+    "runner tail and independent reference_level2"
+  ],
+  "limitations": [
+    "unexecuted source; root must apply/review and run preflight under frozen caps",
+    "receipts are local content/order associations; no cryptographic Fiat-Shamir, freshness, extraction or joint ZK approval",
+    "comparison counters are semantic judgments; registry all(...) packed schema predicates remain distinct from per-field point/claim checks",
+    "additional real payload checks may increase counters and legitimately hit frozen resource limits; no limit changes proposed"
+  ],
+  "verdict": "patch statically applies cleanly and syntax parses; runtime gate remains pending root"
+}

@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Status | `planned` — preregistration only; no implementation or execution |
+| Status | `done: validated` — bounded conditional E0 result |
 | Idea | [IDEA-0035](../../ideas/IDEA-0035-combined-row-second-commitment.md), triaged; experimental dependency [IDEA-0002](../../ideas/IDEA-0002-coefficient-form-rows.md) |
-| Evidence level | E0: proposed exact finite algebra and obligation audit, primary repository sources |
-| Hardware | None for the mathematical claim; future bounded Python host provenance only |
-| Pre-registered on | 2026-10-19; frozen text must be committed before implementation |
+| Evidence level | E0: exact finite algebra and obligation audit, primary repository sources |
+| Hardware | arm64 macOS host; Python 3.14.6; no timing or performance claim |
+| Pre-registered on | 2026-10-19; frozen at commit `f344d76`, SHA-256 `6676608f…2fd24` before implementation |
 
 ## Hypothesis
 
@@ -219,21 +219,25 @@ Every future run creates an immutable unique attempt directory with inputs/catal
 
 | Arm | Direct reference | Candidate | Judgment |
 |---|---|---|---|
-| Original evaluation/column coupling | not run | not run | unevaluated |
-| Factored W / sumcheck / residual polynomial | not run | not run | unevaluated |
-| Lane/level2/ideal terminal opening | not run | not run | unevaluated |
-| Attacks / transcript / outstanding obligations | not run | not run | unevaluated |
+| Original evaluation/column coupling | 72 shapes, 1,152 original fixtures and every canonical evaluation/queried-column equation | 4,608 two-level fixtures, including both k2/P2 geometries per original fixture | pass in the frozen finite domain |
+| Factored W / sumcheck / residual polynomial | direct truth-table MLEs, coefficient-polynomial rounds and D(alpha) at alpha in {0,1,2,u} | 18,432 honest batched reductions; every honest reduction accepted | pass; all balanced roots/nonroots classified exactly |
+| Lane/level2/ideal terminal opening | independent partition, row-weight, mask, encoded-column and MLE paths | 4,608 fixture-level independent reference completions; 23,120 direct level2 reference invocations in all arms | pass under the explicit ideal-opening assumption |
+| Attacks / transcript / outstanding obligations | 164 recorded controls, 12 saved sensitive mutants and 20 saved balanced residual cases | exact named refusals, message receipts, both live/NI order tags and must-consume terminal opening | pass in the registered local model |
 
-Raw results: none. [Source pins](results/source-pins.json) are preregistration preparation provenance, not an execution record.
+The final attempt is [20261019T125605.662653Z-51396](results/attempts/20261019T125605.662653Z-51396/summary.json). Its source SHA-256 is `8a340a70…6e198`; the 30,306-event stream SHA-256 is `7a19de9d…68b3`. The [independent saved-record recount](results/independent-recount-final.json) passes 119,408 checks with no evidence gaps. All earlier attempts remain under [results/attempts](results/attempts/), including the failing preflight described below. [Source pins](results/source-pins.json) retain preregistration provenance.
 
 ## Analysis
 
-Pending review/commit/implementation. Main threats are the deliberately ideal binding oracle, unaccepted basis, finite deterministic domains, distinct references accidentally sharing logic, and a partial-order model mistaken for a cryptographic FS schedule. Fixed-challenge cancellations must be reported, not hidden by favorable challenge selection. Ordinary level2 algebra under an ideal final check does not prove that concrete column queries implement that ideal check. Full extraction/G-4, all adaptive/joint-ZK views, current joined group/layout counts and real serialized cost remain unknown.
+All six registered conditions hold in the frozen domain. The final run records 26,249,084 physical judgments, no memoized judgments, 211,154,672 metered algebraic operations and peak RSS 37,830,656 bytes, below the fixed 100,000,000-judgment, 3,000,000,000-operation, 256 MiB and 15-minute caps. The independent reader reconstructs the Cartesian domain, every honest four-alpha outcome, control result and saved mutant; it also independently recomputes the 20 saved residual polynomials, direct sumcheck rounds, lane MLEs and explicit level2 equations. It reports 26 registered cancellation-root acceptances and 54 nonroot refusals across those saved cases, including the gamma-zero degeneracies, with no unexplained event kind.
+
+One preflight at source `8b3eb41a…1704` stopped inconclusively before the domain traversal because the new ideal-opening omission fixture chose `X(X-x)` for lane 1; its coefficient MLE is zero at that registered lane point. The failed attempt is preserved. Replacing it with `X^2(X-x)` keeps the same registered shape, family, catalog, sampled-column root, criterion and caps while making the intended off-cube direction nonzero. The final preflight then passed all 164 controls before the full run. Earlier source/accounting preflights are also retained rather than rewritten.
+
+The result establishes conditional finite consistency only. The registry is deliberately an ideal binding/opening service, the coefficient basis is unaccepted, the catalogs are finite and deterministic, and the event checker is a local content/partial-order model rather than a cryptographic Fiat-Shamir implementation. Ordinary level2 algebra under an ideal final check does not prove that concrete column queries implement that ideal check. Full extraction and G-4 accounting, retry/grinding and selective-abort analysis, all adaptive/joint-ZK views, current joined group/layout counts, exact serialized payload and real prover/verifier performance remain unknown.
 
 ## Verdict
 
-Not judged; planned only. IDEA-0035 remains triaged, priority0, zero credited gain. Neither a full security approval nor a size/performance decision is possible from this unit alone.
+`validated` for the preregistered finite algebra/obligation domain under the ideal-PCS and experimental coefficient-basis assumptions. IDEA-0035 remains `triaged`, priority 0, with zero credited gain: this result neither proves the complete protocol sound nor evaluates its size kill criterion. It is not production approval, a concrete PCS proof, an extractor, a G-4 budget, a joint-ZK result or a performance result.
 
 ## Follow-ups
 
-Parent reviews this bounded proof/domain choice before freezing. A successful finite result would justify independent review of the complete two-level extractor and budget, both-mode transcript/NI retry terms and joint simulator, followed by exact current G/T_g/R/M/nu/payload derivation. A concrete PCS implementation needs its own independent acceptance/tamper corpus. H100 and end-to-end measurements would later settle prover/size/verifier tradeoffs; this preregistration creates no such evidence.
+The next research gate is an independent complete two-level extractor and joint soundness budget, including both-mode transcript/NI retry terms, grinding/selective-abort accounting and a joint simulator. Only after that should a unit derive current G/T_g/R/M/nu and exact serialized payloads and apply IDEA-0035's size kill criterion. A concrete PCS implementation needs independent verifier code, conformance vectors and its own acceptance/tamper corpus. H100 and end-to-end measurements come later, after the algebra, security budget and byte comparison survive.

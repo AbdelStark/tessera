@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "research/experiments/EXP-0022-two-level-opening-coupling/audit.py",
+    "--preflight"
+  ],
+  "pid": 17836,
+  "scope": "synthetic exact E0 only; not a performance measurement",
+  "source_path": "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0022-two-level-opening-coupling/audit.py",
+  "source_sha256": "8b3eb41a8d21eba9c9062012e26238aec9f8043f42705e3ea72a3a8b033c1704",
+  "started_utc": "2026-10-19T11:57:08.662115+00:00"
+}

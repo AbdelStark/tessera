@@ -1,0 +1,32 @@
+{
+  "evidence_level": "E0",
+  "experiment": "EXP-0022",
+  "final_attempt": "attempts/20261019T125605.662653Z-51396",
+  "final_attempt_artifacts": {
+    "audit.source.py": "8a340a70cddf67838c54ad80f582407da2036a1c26328e5bc1ffc1766936e198",
+    "controls.json": "9ec0782937be5e3e9542b4aa0b390bd000353f844ca04195df18f7db040efdce",
+    "events.jsonl": "7a19de9dc128b2a468cd34b4f7efee462e1156f981bbc37ea75b3dfed3746833",
+    "summary.json": "75ddadf7e010689299e5b57aa5398b134e7c8de1b44b9528ba2edb31d7a404fa"
+  },
+  "frozen_preregistration_sha256": "6676608fac008fc20b9bb7594dbe6463acb54f5bdc0fe2f9a1cb4a20fb22fd24",
+  "independent_recount": {
+    "checks": 119408,
+    "evidence_gaps": [],
+    "file": "independent-recount-final.json",
+    "sha256": "296755e0efa48ea1aa0390135e572718e5d88140d6a8a6d46cda484ca3ba8f27",
+    "status": "checked-records-pass"
+  },
+  "limits_not_established": [
+    "full extractor",
+    "G-4 budget",
+    "joint zero knowledge",
+    "concrete PCS security",
+    "arbitrary dishonest-transcript exhaustion",
+    "Fiat-Shamir security",
+    "current group, layout and payload counts",
+    "performance"
+  ],
+  "registration_commit": "f344d76",
+  "scope": "conditional finite algebra and obligations under an ideal PCS and experimental coefficient basis",
+  "verdict": "validated"
+}

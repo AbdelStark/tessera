@@ -1,0 +1,196 @@
+{
+  "artifact_sha256": {
+    "README.preregistered.txt": "6676608fac008fc20b9bb7594dbe6463acb54f5bdc0fe2f9a1cb4a20fb22fd24",
+    "audit.source.py": "8a340a70cddf67838c54ad80f582407da2036a1c26328e5bc1ffc1766936e198",
+    "controls.json": "9ec0782937be5e3e9542b4aa0b390bd000353f844ca04195df18f7db040efdce",
+    "events.jsonl": "7a19de9dc128b2a468cd34b4f7efee462e1156f981bbc37ea75b3dfed3746833",
+    "source-pins.json": "d532fad7dff2260f065f14ff2aaefb6352ddcdbc3c0996eaf8c94c8ee69c3231",
+    "summary.json": "75ddadf7e010689299e5b57aa5398b134e7c8de1b44b9528ba2edb31d7a404fa"
+  },
+  "attempt": "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0022-two-level-opening-coupling/results/attempts/20261019T125605.662653Z-51396",
+  "balanced_cases": [
+    {
+      "equations": 26,
+      "label": "wrong-t0-coefficient-one",
+      "nonroots": 4,
+      "nonzero_residual": true,
+      "roots": 0
+    },
+    {
+      "equations": 5,
+      "label": "evaluation-pair/cat0/delta[1, 0]",
+      "nonroots": 0,
+      "nonzero_residual": false,
+      "roots": 4
+    },
+    {
+      "equations": 5,
+      "label": "evaluation-pair/cat0/delta[0, 1]",
+      "nonroots": 0,
+      "nonzero_residual": false,
+      "roots": 4
+    },
+    {
+      "equations": 5,
+      "label": "evaluation-pair/cat1/delta[1, 0]",
+      "nonroots": 3,
+      "nonzero_residual": true,
+      "roots": 1
+    },
+    {
+      "equations": 5,
+      "label": "evaluation-pair/cat1/delta[0, 1]",
+      "nonroots": 3,
+      "nonzero_residual": true,
+      "roots": 1
+    },
+    {
+      "equations": 26,
+      "label": "evaluation-pair/cat3/delta[1, 0]",
+      "nonroots": 3,
+      "nonzero_residual": true,
+      "roots": 1
+    },
+    {
+      "equations": 26,
+      "label": "evaluation-pair/cat3/delta[0, 1]",
+      "nonroots": 3,
+      "nonzero_residual": true,
+      "roots": 1
+    },
+    {
+      "equations": 26,
+      "label": "column-pair/0/1/delta[1, 0]",
+      "nonroots": 2,
+      "nonzero_residual": true,
+      "roots": 2
+    },
+    {
+      "equations": 26,
+      "label": "column-pair/0/1/delta[0, 1]",
+      "nonroots": 2,
+      "nonzero_residual": true,
+      "roots": 2
+    },
+    {
+      "equations": 26,
+      "label": "column-pair/1/2/delta[1, 0]",
+      "nonroots": 2,
+      "nonzero_residual": true,
+      "roots": 2
+    },
+    {
+      "equations": 26,
+      "label": "column-pair/1/2/delta[0, 1]",
+      "nonroots": 2,
+      "nonzero_residual": true,
+      "roots": 2
+    },
+    {
+      "equations": 5,
+      "label": "evaluation-proximity/delta[1, 0]",
+      "nonroots": 3,
+      "nonzero_residual": true,
+      "roots": 1
+    },
+    {
+      "equations": 5,
+      "label": "evaluation-proximity/delta[0, 1]",
+      "nonroots": 3,
+      "nonzero_residual": true,
+      "roots": 1
+    },
+    {
+      "equations": 26,
+      "label": "swapped-committed-groups",
+      "nonroots": 4,
+      "nonzero_residual": true,
+      "roots": 0
+    },
+    {
+      "equations": 26,
+      "label": "missing-blinding-component/0/0",
+      "nonroots": 4,
+      "nonzero_residual": true,
+      "roots": 0
+    },
+    {
+      "equations": 26,
+      "label": "missing-blinding-component/0/1",
+      "nonroots": 4,
+      "nonzero_residual": true,
+      "roots": 0
+    },
+    {
+      "equations": 26,
+      "label": "missing-blinding-component/1/0",
+      "nonroots": 3,
+      "nonzero_residual": true,
+      "roots": 1
+    },
+    {
+      "equations": 26,
+      "label": "missing-blinding-component/1/1",
+      "nonroots": 3,
+      "nonzero_residual": true,
+      "roots": 1
+    },
+    {
+      "equations": 26,
+      "label": "missing-blinding-component/2/0",
+      "nonroots": 3,
+      "nonzero_residual": true,
+      "roots": 1
+    },
+    {
+      "equations": 26,
+      "label": "missing-blinding-component/2/1",
+      "nonroots": 3,
+      "nonzero_residual": true,
+      "roots": 1
+    }
+  ],
+  "checks": 119408,
+  "control_mutants_with_saved_result": 12,
+  "controls_recounted": 164,
+  "event_counts": {
+    "balanced_cases": 20,
+    "balanced_nonroot_rejections": 54,
+    "balanced_root_acceptances": 26,
+    "events/attempt-start": 1,
+    "events/attempt-terminal": 1,
+    "events/balanced-control": 20,
+    "events/control": 164,
+    "events/diagnostic-corpus-complete": 1,
+    "events/naive-unweighted-mutant": 12,
+    "events/original-fixture": 1152,
+    "events/original-fixture-complete": 1152,
+    "events/original-gamma-degeneracy": 2,
+    "events/provenance": 1,
+    "events/reduction": 18512,
+    "events/shape-complete": 72,
+    "events/two-level-fixture-complete": 4608,
+    "events/two-level-fixture-start": 4608,
+    "fixture_declared_acceptances": 18432,
+    "fixture_declared_reductions": 18432,
+    "raw_honest_reduction_results": 18432,
+    "recorded_sensitive_mutants": 12,
+    "reference_completion_records": 4608,
+    "unweighted_mutant_records": 12
+  },
+  "evidence_gaps": [],
+  "failures": [],
+  "mode_expected_by_recounter": "full",
+  "original_fixtures_recounted": 1152,
+  "scope_limits": [
+    "No git is used: committed-freeze membership relies on parent's prior commit verification; the saved freeze bytes are independently hashed here.",
+    "Operation/judgment totals, RSS and watchdog are meter reports with arithmetic consistency checks, not independently reconstructed primitive instructions or measured wall-time evidence. No operation-level trace exists.",
+    "Recorded control outcomes are recounted, not regenerated by invoking their closures. Inputs and source review are needed to assess whether every intended check has a sensitive case.",
+    "Honest level2 completion records establish event coverage. Full honest private tensors/row masks are not saved per fixture, so this script does not regenerate their algebra; balanced records permit direct committed-U/round/lane/level2 algebra replay.",
+    "Ideal registry membership/root immutability and exact opening services are assumptions; saved records cannot prove cryptographic binding or replace a joint soundness/ZK argument.",
+    "Balanced root/nonroot replay covers constructed honest-to-committed-U transcripts and finite catalogs, not arbitrary dishonest transcripts or all cryptographic bad events."
+  ],
+  "status": "checked-records-pass",
+  "two_level_cases_recounted": 4608,
+  "unknown_event_kinds": {}
+}

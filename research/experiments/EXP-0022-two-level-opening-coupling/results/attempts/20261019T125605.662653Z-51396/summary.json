@@ -1,0 +1,230 @@
+{
+  "arguments": {
+    "all": true,
+    "preflight": false
+  },
+  "arithmetic_complete": true,
+  "attempt": "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0022-two-level-opening-coupling/results/attempts/20261019T125605.662653Z-51396",
+  "controls_recorded": 164,
+  "corpus": {
+    "balanced_attacks": true,
+    "balanced_source_or_committed_tensor_cases": 19,
+    "corpus_complete": true,
+    "named_controls": 163,
+    "negative_controls": true,
+    "root_exceptions": "actual full candidate runs, honest-to-committed-V records; no dishonest-transcript exhaustion",
+    "session_replay": true
+  },
+  "counts": {
+    "domain/honest_batched_reductions": 18432,
+    "domain/independent_level2_references": 4608,
+    "domain/original_fixtures": 1152,
+    "domain/original_shapes": 72,
+    "domain/two_level_fixtures": 4608,
+    "fixture_prng_words": 6095,
+    "independent_level2_references": 23120,
+    "judgments/arithmetic": 1332,
+    "judgments/balanced-controls": 187702,
+    "judgments/controls": 474885,
+    "judgments/controls/ideal-omission": 4129,
+    "judgments/controls/receipts": 42918,
+    "judgments/domain/coverage": 6,
+    "judgments/domain/honest-coupling": 24144896,
+    "judgments/domain/independent-level2-reference": 568704,
+    "judgments/domain/original-generation": 2880,
+    "judgments/domain/two-level-generation": 821632,
+    "nonroot_rejections/column-pair/0/1/delta[0, 1]": 2,
+    "nonroot_rejections/column-pair/0/1/delta[1, 0]": 2,
+    "nonroot_rejections/column-pair/1/2/delta[0, 1]": 2,
+    "nonroot_rejections/column-pair/1/2/delta[1, 0]": 2,
+    "nonroot_rejections/evaluation-pair/cat1/delta[0, 1]": 3,
+    "nonroot_rejections/evaluation-pair/cat1/delta[1, 0]": 3,
+    "nonroot_rejections/evaluation-pair/cat3/delta[0, 1]": 3,
+    "nonroot_rejections/evaluation-pair/cat3/delta[1, 0]": 3,
+    "nonroot_rejections/evaluation-proximity/delta[0, 1]": 3,
+    "nonroot_rejections/evaluation-proximity/delta[1, 0]": 3,
+    "nonroot_rejections/missing-blinding-component/0/0": 4,
+    "nonroot_rejections/missing-blinding-component/0/1": 4,
+    "nonroot_rejections/missing-blinding-component/1/0": 3,
+    "nonroot_rejections/missing-blinding-component/1/1": 3,
+    "nonroot_rejections/missing-blinding-component/2/0": 3,
+    "nonroot_rejections/missing-blinding-component/2/1": 3,
+    "nonroot_rejections/swapped-committed-groups": 4,
+    "nonroot_rejections/wrong-t0-coefficient-one": 4,
+    "reductions/column-pair/0/1/delta[0, 1]": 4,
+    "reductions/column-pair/0/1/delta[1, 0]": 4,
+    "reductions/column-pair/1/2/delta[0, 1]": 4,
+    "reductions/column-pair/1/2/delta[1, 0]": 4,
+    "reductions/evaluation-pair/cat0/delta[0, 1]": 4,
+    "reductions/evaluation-pair/cat0/delta[1, 0]": 4,
+    "reductions/evaluation-pair/cat1/delta[0, 1]": 4,
+    "reductions/evaluation-pair/cat1/delta[1, 0]": 4,
+    "reductions/evaluation-pair/cat3/delta[0, 1]": 4,
+    "reductions/evaluation-pair/cat3/delta[1, 0]": 4,
+    "reductions/evaluation-proximity/delta[0, 1]": 4,
+    "reductions/evaluation-proximity/delta[1, 0]": 4,
+    "reductions/honest": 18432,
+    "reductions/missing-blinding-component/0/0": 4,
+    "reductions/missing-blinding-component/0/1": 4,
+    "reductions/missing-blinding-component/1/0": 4,
+    "reductions/missing-blinding-component/1/1": 4,
+    "reductions/missing-blinding-component/2/0": 4,
+    "reductions/missing-blinding-component/2/1": 4,
+    "reductions/swapped-committed-groups": 4,
+    "reductions/wrong-t0-coefficient-one": 4,
+    "registry_commits": 9271,
+    "root_acceptances/column-pair/0/1/delta[0, 1]": 2,
+    "root_acceptances/column-pair/0/1/delta[1, 0]": 2,
+    "root_acceptances/column-pair/1/2/delta[0, 1]": 2,
+    "root_acceptances/column-pair/1/2/delta[1, 0]": 2,
+    "root_acceptances/evaluation-pair/cat0/delta[0, 1]": 4,
+    "root_acceptances/evaluation-pair/cat0/delta[1, 0]": 4,
+    "root_acceptances/evaluation-pair/cat1/delta[0, 1]": 1,
+    "root_acceptances/evaluation-pair/cat1/delta[1, 0]": 1,
+    "root_acceptances/evaluation-pair/cat3/delta[0, 1]": 1,
+    "root_acceptances/evaluation-pair/cat3/delta[1, 0]": 1,
+    "root_acceptances/evaluation-proximity/delta[0, 1]": 1,
+    "root_acceptances/evaluation-proximity/delta[1, 0]": 1,
+    "root_acceptances/honest": 18432,
+    "root_acceptances/missing-blinding-component/1/0": 1,
+    "root_acceptances/missing-blinding-component/1/1": 1,
+    "root_acceptances/missing-blinding-component/2/0": 1,
+    "root_acceptances/missing-blinding-component/2/1": 1
+  },
+  "coverage": {
+    "honest_batched_reductions": 18432,
+    "independent_level2_references": 4608,
+    "original_fixtures": 1152,
+    "original_shapes": 72,
+    "two_level_fixtures": 4608
+  },
+  "error": null,
+  "evidence_level": "E0",
+  "expected_full_coverage": {
+    "honest_batched_reductions": 18432,
+    "original_fixtures": 1152,
+    "original_shapes": 72,
+    "two_level_fixtures": 4608
+  },
+  "frozen_sha256": "6676608fac008fc20b9bb7594dbe6463acb54f5bdc0fe2f9a1cb4a20fb22fd24",
+  "full_domain_complete": true,
+  "input_reuse": "one immutable original input per family/catalog, crossed with four geometries; no runner oracle-judgment caching",
+  "judgments": 26249084,
+  "limits": {
+    "judgments": 100000000,
+    "metered_ops": 3000000000,
+    "process_rss_bytes": 268435456,
+    "seconds_watchdog": 900
+  },
+  "maxima": {
+    "U_table_size": 16,
+    "V_table_size": 32,
+    "allocated_R2": 16,
+    "level2_evaluation_groups": 2,
+    "rss_bytes": 37830656
+  },
+  "memoized_logical_judgments": 0,
+  "metered_algebraic_operations": 211154672,
+  "mode": "all",
+  "not_established": [
+    "full extractor",
+    "G-4 budget",
+    "joint ZK",
+    "concrete PCS security",
+    "arbitrary dishonest-transcript exhaustion",
+    "FS security",
+    "current group/layout/payload counts",
+    "performance"
+  ],
+  "performance_claim": false,
+  "phase": "final-resource-check",
+  "physical_judgments": 26249084,
+  "provenance": {
+    "allowed_drift": "IDEA35 note-only report/decision-link drift; parent review required",
+    "blocking_violations": [],
+    "freeze_sha256": "6676608fac008fc20b9bb7594dbe6463acb54f5bdc0fe2f9a1cb4a20fb22fd24",
+    "freeze_verified": true,
+    "head": "302ef6cbe263dc1d6f1d462144e59ad01095911d",
+    "pins": [
+      {
+        "actual_sha256": "4a2d4b4c545bf86200b2013609c7f50a824b23ddfda78d95c4f81bd7010380cc",
+        "expected_sha256": "4a2d4b4c545bf86200b2013609c7f50a824b23ddfda78d95c4f81bd7010380cc",
+        "path": "docs/rfcs/RFC-0002-field-arithmetic.md",
+        "status": "match"
+      },
+      {
+        "actual_sha256": "28e6667d9bc9a7679112b4ac5b4f8600d0a92ab61632106790e01362490842b9",
+        "expected_sha256": "28e6667d9bc9a7679112b4ac5b4f8600d0a92ab61632106790e01362490842b9",
+        "path": "docs/rfcs/RFC-0010-proof-schedule.md",
+        "status": "match"
+      },
+      {
+        "actual_sha256": "9a451773112556f1fcf8989f6aa11ccef36ab2d3f4fe7a9bc3a04f98b13b54ab",
+        "expected_sha256": "9a451773112556f1fcf8989f6aa11ccef36ab2d3f4fe7a9bc3a04f98b13b54ab",
+        "path": "docs/rfcs/RFC-0011-advice-commitment.md",
+        "status": "match"
+      },
+      {
+        "actual_sha256": "8ba8fc57f0f47686825d2c03e27eebb557d963b83d45209c68958c82160a05c0",
+        "expected_sha256": "8ba8fc57f0f47686825d2c03e27eebb557d963b83d45209c68958c82160a05c0",
+        "path": "docs/rfcs/RFC-0013-zero-knowledge.md",
+        "status": "match"
+      },
+      {
+        "actual_sha256": "7d6c30870096bdc94630c16ae39a739190c8628b0d9c0c873db72ac58b78011d",
+        "expected_sha256": "7d6c30870096bdc94630c16ae39a739190c8628b0d9c0c873db72ac58b78011d",
+        "path": "docs/rfcs/RFC-0014-interaction-and-soundness.md",
+        "status": "match"
+      },
+      {
+        "actual_sha256": "d4178721ac9c5b7a61710696181fb48a3fa9167ae1338cff0f138840e8e472c8",
+        "expected_sha256": "d4178721ac9c5b7a61710696181fb48a3fa9167ae1338cff0f138840e8e472c8",
+        "path": "docs/rfcs/RFC-0031-commitment-id.md",
+        "status": "match"
+      },
+      {
+        "actual_sha256": "a26ea88852eb53d69f3fe5a3cd3f49b68485259286b628199792ad00f2bc4ac3",
+        "expected_sha256": "a26ea88852eb53d69f3fe5a3cd3f49b68485259286b628199792ad00f2bc4ac3",
+        "path": "docs/rfcs/RFC-0036-protocol-messages.md",
+        "status": "match"
+      },
+      {
+        "actual_sha256": "4f9d5d0d4f56292cb39ae509e581ae7760b7818e61912c312acfd8da8ded1460",
+        "expected_sha256": "4f9d5d0d4f56292cb39ae509e581ae7760b7818e61912c312acfd8da8ded1460",
+        "path": "docs/rfcs/RFC-0037-stage-schedule.md",
+        "status": "match"
+      },
+      {
+        "actual_sha256": "b92c6101879e27ac3835fbcc1f2b1f5aff745072ab202eaf99c54a9de1c937f0",
+        "expected_sha256": "b92c6101879e27ac3835fbcc1f2b1f5aff745072ab202eaf99c54a9de1c937f0",
+        "path": "docs/rfcs/RFC-0047-advice-order.md",
+        "status": "match"
+      },
+      {
+        "actual_sha256": "974ac0cc1b93d5a4a06dc4dfeaf8fe057c125c580e05aa5b7c8cc1dbea7d93b3",
+        "expected_sha256": "974ac0cc1b93d5a4a06dc4dfeaf8fe057c125c580e05aa5b7c8cc1dbea7d93b3",
+        "path": "research/ideas/IDEA-0002-coefficient-form-rows.md",
+        "status": "match"
+      },
+      {
+        "actual_sha256": "53c5a51b1eddf7abe5f2b00f9502473d9c8a924c28aa0cc8ea7b7db34a4e2a3c",
+        "expected_sha256": "8a20c65590e5c43a2b908ad6cc6698cc010caf645ef9680c6e036ae1c3981863",
+        "path": "research/ideas/IDEA-0035-combined-row-second-commitment.md",
+        "status": "idea35-note-only-drift"
+      },
+      {
+        "actual_sha256": "c6cbcb85432cf9dfcea101e116cd2c1f54e07aef0b6a55fee3e88d71615bb9c0",
+        "expected_sha256": "c6cbcb85432cf9dfcea101e116cd2c1f54e07aef0b6a55fee3e88d71615bb9c0",
+        "path": "research/ideas/results/seed-review-2026-10-19.json",
+        "status": "match"
+      }
+    ],
+    "registration_commit": "f344d76",
+    "source_sha256": "8a340a70cddf67838c54ad80f582407da2036a1c26328e5bc1ffc1766936e198"
+  },
+  "reason": "all frozen finite arms completed",
+  "registration_commit": "f344d76",
+  "scope": "conditional finite algebra and obligation checks under ideal PCS/experimental coefficient basis",
+  "source_sha256": "8a340a70cddf67838c54ad80f582407da2036a1c26328e5bc1ffc1766936e198",
+  "status": "validated"
+}

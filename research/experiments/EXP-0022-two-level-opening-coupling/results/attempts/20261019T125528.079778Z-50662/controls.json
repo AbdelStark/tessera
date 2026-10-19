@@ -1,0 +1,1150 @@
+[
+  {
+    "actual": "lane/components",
+    "expected": "lane/components",
+    "mutant": null,
+    "name": "lane-not-real-imag",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/format",
+    "expected": "descriptor/format",
+    "mutant": null,
+    "name": "descriptor/format/unknown",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/basis",
+    "expected": "descriptor/basis",
+    "mutant": null,
+    "name": "descriptor/basis/evaluation-natural/old",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/lanes",
+    "expected": "descriptor/lanes",
+    "mutant": null,
+    "name": "descriptor/lanes/(0,)",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/lanes",
+    "expected": "descriptor/lanes",
+    "mutant": null,
+    "name": "descriptor/lanes/(1, 0)",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/mode",
+    "expected": "descriptor/mode",
+    "mutant": null,
+    "name": "descriptor/mode/hiding-approved",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/k1",
+    "expected": "descriptor/k1",
+    "mutant": null,
+    "name": "descriptor/k1/8",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/D",
+    "expected": "descriptor/D",
+    "mutant": null,
+    "name": "descriptor/D/0",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/G",
+    "expected": "descriptor/G",
+    "mutant": null,
+    "name": "descriptor/G/3",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/P1",
+    "expected": "descriptor/P1",
+    "mutant": null,
+    "name": "descriptor/P1/2",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/k2",
+    "expected": "descriptor/k2",
+    "mutant": null,
+    "name": "descriptor/k2/1",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/P2",
+    "expected": "descriptor/P2",
+    "mutant": null,
+    "name": "descriptor/P2/2",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/k1",
+    "expected": "descriptor/k1",
+    "mutant": null,
+    "name": "descriptor/bool/k1",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/D",
+    "expected": "descriptor/D",
+    "mutant": null,
+    "name": "descriptor/bool/D",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/G",
+    "expected": "descriptor/G",
+    "mutant": null,
+    "name": "descriptor/bool/G",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/P1",
+    "expected": "descriptor/P1",
+    "mutant": null,
+    "name": "descriptor/bool/P1",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/k2",
+    "expected": "descriptor/k2",
+    "mutant": null,
+    "name": "descriptor/bool/k2",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/P2",
+    "expected": "descriptor/P2",
+    "mutant": null,
+    "name": "descriptor/bool/P2",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/fields",
+    "expected": "descriptor/fields",
+    "mutant": null,
+    "name": "descriptor/missing",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/fields",
+    "expected": "descriptor/fields",
+    "mutant": null,
+    "name": "descriptor/extra",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/fields",
+    "expected": "descriptor/fields",
+    "mutant": null,
+    "name": "descriptor/m",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/fields",
+    "expected": "descriptor/fields",
+    "mutant": null,
+    "name": "descriptor/groups",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/0",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/1",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/2",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/3",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/4",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/5",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/6",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/7",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/8",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/9",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/10",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/11",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/12",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/13",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/14",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/15",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/16",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/17",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/18",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/19",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/20",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/21",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/22",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/23",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/24",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/drop/25",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": null,
+    "name": "inventory/duplicate",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/metadata",
+    "expected": "equation-inventory/metadata",
+    "mutant": null,
+    "name": "inventory/reorder",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/metadata",
+    "expected": "equation-inventory/metadata",
+    "mutant": null,
+    "name": "inventory/proximity-evaluation",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/metadata",
+    "expected": "equation-inventory/metadata",
+    "mutant": null,
+    "name": "inventory/change/ordinal",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/metadata",
+    "expected": "equation-inventory/metadata",
+    "mutant": null,
+    "name": "inventory/change/group",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/metadata",
+    "expected": "equation-inventory/metadata",
+    "mutant": null,
+    "name": "inventory/change/kind",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/target-from-source",
+    "expected": "equation-inventory/target-from-source",
+    "mutant": null,
+    "name": "inventory/change/target",
+    "positive": "accept"
+  },
+  {
+    "actual": "source/original-root",
+    "expected": "source/original-root",
+    "mutant": null,
+    "name": "original/root",
+    "positive": "accept"
+  },
+  {
+    "actual": "source/original-descriptor",
+    "expected": "source/original-descriptor",
+    "mutant": null,
+    "name": "original/descriptor",
+    "positive": "accept"
+  },
+  {
+    "actual": "membership/column-order",
+    "expected": "membership/column-order",
+    "mutant": null,
+    "name": "original/omit-column",
+    "positive": "accept"
+  },
+  {
+    "actual": "membership/column-order",
+    "expected": "membership/column-order",
+    "mutant": null,
+    "name": "original/repeat-column",
+    "positive": "accept"
+  },
+  {
+    "actual": "membership/column-order",
+    "expected": "membership/column-order",
+    "mutant": null,
+    "name": "original/unsort-column",
+    "positive": "accept"
+  },
+  {
+    "actual": "source/row-map",
+    "expected": "source/row-map",
+    "mutant": null,
+    "name": "original/row-map",
+    "positive": "accept"
+  },
+  {
+    "actual": "membership/symbol",
+    "expected": "membership/symbol",
+    "mutant": null,
+    "name": "original/symbol",
+    "positive": "accept"
+  },
+  {
+    "actual": "source/mask-count",
+    "expected": "source/mask-count",
+    "mutant": null,
+    "name": "original/missing-mask",
+    "positive": "accept"
+  },
+  {
+    "actual": "source/mask-width",
+    "expected": "source/mask-width",
+    "mutant": null,
+    "name": "original/mask-width",
+    "positive": "accept"
+  },
+  {
+    "actual": "batch/initial",
+    "expected": "batch/initial",
+    "mutant": null,
+    "name": "original/alter/combined-mask",
+    "positive": "accept"
+  },
+  {
+    "actual": "batch/initial",
+    "expected": "batch/initial",
+    "mutant": null,
+    "name": "original/alter/blinding-row-mask",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/target-from-source",
+    "expected": "equation-inventory/target-from-source",
+    "mutant": null,
+    "name": "original/old-vanishing-factor",
+    "positive": "accept"
+  },
+  {
+    "actual": "batch/degree",
+    "expected": "batch/degree",
+    "mutant": null,
+    "name": "batch/degree",
+    "positive": "accept"
+  },
+  {
+    "actual": "batch/initial",
+    "expected": "batch/initial",
+    "mutant": null,
+    "name": "batch/identity",
+    "positive": "accept"
+  },
+  {
+    "actual": "batch/challenge-point",
+    "expected": "batch/challenge-point",
+    "mutant": null,
+    "name": "batch/challenge-length",
+    "positive": "accept"
+  },
+  {
+    "actual": "batch/round-count",
+    "expected": "batch/round-count",
+    "mutant": null,
+    "name": "batch/round-count",
+    "positive": "accept"
+  },
+  {
+    "actual": "batch/terminal-point",
+    "expected": "batch/terminal-point",
+    "mutant": null,
+    "name": "batch/terminal-point",
+    "positive": "accept"
+  },
+  {
+    "actual": "batch/final",
+    "expected": "batch/final",
+    "mutant": null,
+    "name": "batch/terminal-value",
+    "positive": "accept"
+  },
+  {
+    "actual": "batch/final",
+    "expected": "batch/final",
+    "mutant": null,
+    "name": "batch/wrong-monomial-exponent",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/lane-count",
+    "expected": "terminal/lane-count",
+    "mutant": "accept",
+    "name": "terminal/drop-lane0",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/lane-count",
+    "expected": "terminal/lane-count",
+    "mutant": "accept",
+    "name": "terminal/drop-lane1",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/lane-count",
+    "expected": "terminal/lane-count",
+    "mutant": "accept",
+    "name": "terminal/drop-both",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/missing-opening",
+    "expected": "terminal/missing-opening",
+    "mutant": "accept",
+    "name": "terminal/missing-opening",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/unconsumed",
+    "expected": "terminal/unconsumed",
+    "mutant": null,
+    "name": "terminal/unconsumed",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/lane-order",
+    "expected": "terminal/lane-order",
+    "mutant": null,
+    "name": "terminal/lane-order",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/reconstruction",
+    "expected": "terminal/reconstruction",
+    "mutant": null,
+    "name": "terminal/value",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/root",
+    "expected": "terminal/root",
+    "mutant": null,
+    "name": "terminal/root",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/descriptor",
+    "expected": "terminal/descriptor",
+    "mutant": null,
+    "name": "terminal/descriptor",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/lane-point",
+    "expected": "terminal/lane-point",
+    "mutant": null,
+    "name": "terminal/point-axis/0",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/lane-point",
+    "expected": "terminal/lane-point",
+    "mutant": null,
+    "name": "terminal/point-axis/1",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/lane-point",
+    "expected": "terminal/lane-point",
+    "mutant": null,
+    "name": "terminal/point-axis/2",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/lane-point",
+    "expected": "terminal/lane-point",
+    "mutant": null,
+    "name": "terminal/point-axis/3",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/lane-point",
+    "expected": "terminal/lane-point",
+    "mutant": null,
+    "name": "terminal/point-axis/4",
+    "positive": "accept"
+  },
+  {
+    "actual": "opening/value",
+    "expected": "opening/value",
+    "mutant": null,
+    "name": "ideal/false-terminal-value",
+    "positive": "accept"
+  },
+  {
+    "actual": "level2/combined-count",
+    "expected": "level2/combined-count",
+    "mutant": null,
+    "name": "level2/missing-proximity",
+    "positive": "accept"
+  },
+  {
+    "actual": "level2/mask-count",
+    "expected": "level2/mask-count",
+    "mutant": null,
+    "name": "level2/missing-mask",
+    "positive": "accept"
+  },
+  {
+    "actual": "level2/combined-count",
+    "expected": "level2/combined-count",
+    "mutant": null,
+    "name": "level2/missing-group",
+    "positive": "accept"
+  },
+  {
+    "actual": "membership/column-order",
+    "expected": "membership/column-order",
+    "mutant": null,
+    "name": "level2/missing-column",
+    "positive": "accept"
+  },
+  {
+    "actual": "level2/root",
+    "expected": "level2/root",
+    "mutant": null,
+    "name": "level2/root",
+    "positive": "accept"
+  },
+  {
+    "actual": "level2/descriptor",
+    "expected": "level2/descriptor",
+    "mutant": null,
+    "name": "level2/descriptor",
+    "positive": "accept"
+  },
+  {
+    "actual": "level2/row-map",
+    "expected": "level2/row-map",
+    "mutant": null,
+    "name": "level2/row-map",
+    "positive": "accept"
+  },
+  {
+    "actual": "level2/column",
+    "expected": "level2/column",
+    "mutant": null,
+    "name": "level2/alter-mask/0",
+    "positive": "accept"
+  },
+  {
+    "actual": "level2/column",
+    "expected": "level2/column",
+    "mutant": null,
+    "name": "level2/alter-mask/1",
+    "positive": "accept"
+  },
+  {
+    "actual": "level2/column",
+    "expected": "level2/column",
+    "mutant": null,
+    "name": "level2/old-vanishing-factor",
+    "positive": "accept"
+  },
+  {
+    "actual": "terminal/lane-point",
+    "expected": "terminal/lane-point",
+    "mutant": null,
+    "name": "terminal/public-zero-high-bit",
+    "positive": "accept"
+  },
+  {
+    "actual": "registry/public-zero",
+    "expected": "registry/public-zero",
+    "mutant": null,
+    "name": "registry/padded-group",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/live/C_U/queries1",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/live/C_U/e22/batch/alpha",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/live/M/e22/batch/alpha",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/live/columns1/e22/batch/alpha",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/live/equations/e22/batch/alpha",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/live/combined2/queries2",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/live/blinding/e22/l1/gamma",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/count",
+    "expected": "transcript/count",
+    "mutant": null,
+    "name": "order/live/drop",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/count",
+    "expected": "transcript/count",
+    "mutant": null,
+    "name": "order/live/duplicate",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "order/live/replay",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/live/reuse-alpha",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/live/reuse-xi",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/ni/C_U/queries1",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/ni/C_U/e22/batch/alpha",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/ni/M/e22/batch/alpha",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/ni/columns1/e22/batch/alpha",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/ni/equations/e22/batch/alpha",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/ni/combined2/queries2",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/ni/blinding/e22/l1/gamma",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/count",
+    "expected": "transcript/count",
+    "mutant": null,
+    "name": "order/ni/drop",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/count",
+    "expected": "transcript/count",
+    "mutant": null,
+    "name": "order/ni/duplicate",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "order/ni/replay",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/ni/reuse-alpha",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": null,
+    "name": "order/ni/reuse-xi",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/order-label",
+    "expected": "transcript/order-label",
+    "mutant": "accept",
+    "name": "blinding/late-q-compensation",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "session/same-descriptor-replay",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "session/C_U-payload",
+    "positive": "accept"
+  },
+  {
+    "actual": "descriptor/lanes",
+    "expected": "descriptor/lanes",
+    "mutant": null,
+    "name": "descriptor/bool-lanes",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": "accept",
+    "name": "omission/false-source/evaluation/0",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": "accept",
+    "name": "omission/false-source/evaluation/1",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": "accept",
+    "name": "omission/false-source/column/0",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": "accept",
+    "name": "omission/false-source/column/1",
+    "positive": "accept"
+  },
+  {
+    "actual": "equation-inventory/length",
+    "expected": "equation-inventory/length",
+    "mutant": "accept",
+    "name": "omission/false-source/column/2",
+    "positive": "accept"
+  },
+  {
+    "actual": "source/q-count",
+    "expected": "source/q-count",
+    "mutant": null,
+    "name": "blinding/missing-q",
+    "positive": "accept"
+  },
+  {
+    "actual": "source/blinding-ownership",
+    "expected": "source/blinding-ownership",
+    "mutant": null,
+    "name": "blinding/pair-reuse",
+    "positive": "accept"
+  },
+  {
+    "actual": "source/blinding-ownership",
+    "expected": "source/blinding-ownership",
+    "mutant": null,
+    "name": "blinding/wrong-pair",
+    "positive": "accept"
+  },
+  {
+    "actual": "source/plain-q",
+    "expected": "source/plain-q",
+    "mutant": "accept",
+    "name": "source/no-plain-blinder",
+    "positive": "accept"
+  },
+  {
+    "actual": "source/column-point",
+    "expected": "source/column-point",
+    "mutant": null,
+    "name": "source/derived-column-point",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "receipt/source-values",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "receipt/source-q",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "receipt/source-M",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "receipt/source-columns",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "receipt/record-equations",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "receipt/record-round",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "receipt/record-terminal",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "receipt/record-terminal-scalar",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "receipt/record-combined2",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "receipt/record-masks2",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "receipt/record-columns2",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/identity-mode",
+    "expected": "transcript/identity-mode",
+    "mutant": null,
+    "name": "receipt/record-consume",
+    "positive": "accept"
+  },
+  {
+    "actual": "transcript/mode",
+    "expected": "transcript/mode",
+    "mutant": null,
+    "name": "receipt/unknown-challenge-mode",
+    "positive": "accept"
+  },
+  {
+    "actual": "source/original-root",
+    "expected": "source/original-root",
+    "mutant": null,
+    "name": "binding/original-root-to-C_U",
+    "positive": "accept"
+  },
+  {
+    "actual": "source/column-symbol-count",
+    "expected": "source/column-symbol-count",
+    "mutant": null,
+    "name": "binding/no-column-zip-truncation",
+    "positive": "accept"
+  },
+  {
+    "actual": "membership/root",
+    "expected": "membership/root",
+    "mutant": null,
+    "name": "membership/unknown-original-root",
+    "positive": "accept"
+  },
+  {
+    "actual": "registry/nonbase-mask",
+    "expected": "registry/nonbase-mask",
+    "mutant": null,
+    "name": "registry/base-mask",
+    "positive": "accept"
+  },
+  {
+    "actual": "registry/mask-width",
+    "expected": "registry/mask-width",
+    "mutant": null,
+    "name": "registry/mask-width",
+    "positive": "accept"
+  },
+  {
+    "actual": "registry/physical-index",
+    "expected": "registry/physical-index",
+    "mutant": null,
+    "name": "registry/physical-index/(True,)",
+    "positive": "accept"
+  },
+  {
+    "actual": "registry/physical-index",
+    "expected": "registry/physical-index",
+    "mutant": null,
+    "name": "registry/physical-index/(9,)",
+    "positive": "accept"
+  },
+  {
+    "actual": "registry/row-count",
+    "expected": "registry/row-count",
+    "mutant": null,
+    "name": "registry/row-geometry",
+    "positive": "accept"
+  },
+  {
+    "actual": "batch/final",
+    "expected": "batch/final",
+    "mutant": null,
+    "name": "weight/wrong-group-point",
+    "positive": "accept"
+  },
+  {
+    "actual": "batch/final",
+    "expected": "batch/final",
+    "mutant": null,
+    "name": "weight/wrong-coefficient-point",
+    "positive": "accept"
+  },
+  {
+    "actual": "level2/split",
+    "expected": "level2/split",
+    "mutant": null,
+    "name": "level2/row-column-split",
+    "positive": "accept"
+  },
+  {
+    "actual": "opening/value",
+    "expected": "opening/value",
+    "mutant": "accept",
+    "name": "ideal/final-opening-required",
+    "positive": "accept"
+  }
+]
