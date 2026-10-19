@@ -61,8 +61,8 @@ const NOT_ATTENTION: &str = "an attention tile names a KV head of a SoftmaxRow o
 /// - `RequantSplit` adds the low parts `z_lo`;
 /// - `RequantWide` adds `z_lo` when it has a low part, then the middle parts `h0` and the
 ///   saturations `g`;
-/// - `RsqrtRow` adds the limbs of each row's `u`, then the `BigIntCompare` witnesses of its two
-///   comparisons, which the gadgets fix (#118);
+/// - `RsqrtRow` adds each row's input low limbs, root low bytes, then the lower and upper
+///   comparison arrays in RFC-0050's order; virtual top limbs have no advice tensor;
 /// - `SoftmaxRow` adds, for each row an attention tile holds, the maximum `c_q`, then the limbs of
 ///   the row's two `NonNeg` instances;
 /// - `Argmax` and `InverseCdf` have no output: their tiles hold their certificates' values alone
