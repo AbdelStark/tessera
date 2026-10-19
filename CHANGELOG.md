@@ -814,6 +814,7 @@ All notable changes to the prover release train are recorded here: the crates un
 - Constraint-system digest conformance between the compiler and independent verifier, covering tiny models, variants and 8B/405B shapes. The `constraint-digest` example reports the first differing public constraint, and the named CI job checks it (RFC-0007, #120).
 
 - Specify canonical gadget advice columns and complete auxiliary range-table ordering, with an explicit scalar-reference migration and the original root-bracket polynomial retained (RFC-0050, #407).
+- Add independent public model advice-layout vectors for RFC-0011/0047/0050, including complete auxiliary lookup requests and zero rows (#106).
 
 ### Changed
 
