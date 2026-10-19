@@ -395,6 +395,69 @@ fn mlp_padding_skips_48_rows_but_inner_padded_axes_remain_committed() {
 }
 
 #[test]
+fn every_root_width_allocates_each_real_role_and_no_virtual_top() {
+    let vectors = read_vectors("advice/layout.json");
+    for schema in list(&vectors, "roots") {
+        let width: u8 = number(member(schema, "width"));
+        let mut claims = claims_of("tiny-2-servable.d");
+        claims.arch.n_heads = 1;
+        claims.arch.n_kv_heads = 1;
+        claims.arch.d_head = 2;
+        claims.arch.d_model = 2;
+        claims.quant.rsqrt_kappa = width - 1;
+        claims.quant.rms_eps_int = 1;
+        let public = validation::check_public(&claims).unwrap();
+        let graph = lowering::lower(&public, 1).unwrap();
+        let selected = selection::derive(&graph, claims.gadget_policy).unwrap();
+        let layout = Layout::derive(
+            &graph,
+            &selected,
+            Config::new(&claims.arch, claims.gadget_policy, 10, 1),
+            1,
+        )
+        .unwrap();
+        let mut roots = 0;
+        for tile in layout.tiles() {
+            let TileKey::Node(node) = tile.key() else {
+                continue;
+            };
+            if !matches!(
+                graph.node(node).unwrap().op(),
+                lowering::Op::RsqrtRow { .. }
+            ) {
+                continue;
+            }
+            let output = graph.node(node).unwrap().outputs()[0];
+            assert_eq!(
+                selected.ranges[output.0 as usize].bounds().unwrap().1,
+                (1i128 << width) - 1
+            );
+            assert_eq!(tile.location(0).unwrap().source, Source::Tensor(output));
+            assert_eq!(tile.columns() as usize, list(schema, "roles").len() + 1);
+            for (i, expected) in list(schema, "roles").iter().enumerate() {
+                let location = tile.location(i as u32 + 1).unwrap();
+                let Source::Auxiliary(found, role) = location.source else {
+                    panic!("auxiliary role")
+                };
+                let (name, index) = auxiliary(role);
+                assert_eq!(found, node);
+                assert_eq!(
+                    name,
+                    items(expected)[0].as_str().unwrap(),
+                    "width={width} role={i}"
+                );
+                assert_eq!(index, number(&items(expected)[1]));
+                assert_eq!(location.domain.shape(), [1]);
+                assert_eq!(location.domain.rows(), 1);
+                assert_eq!(location.zero_at, 1);
+            }
+            roots += 1;
+        }
+        assert_eq!(roots, 2 * claims.arch.n_layers + 1);
+    }
+}
+
+#[test]
 fn max_context_size_is_checked_after_tables_even_when_one_token_fits() {
     let mut claims = claim_support::twin("tiny-2-minimal");
     claims.arch.max_context = 1 << 17;
