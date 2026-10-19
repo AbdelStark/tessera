@@ -536,6 +536,8 @@ pub mod logup;
 pub mod lowering;
 pub mod opening;
 pub mod params;
+mod range_checks;
+pub mod ranges;
 pub mod schedule;
 pub mod selectors;
 pub mod stages;

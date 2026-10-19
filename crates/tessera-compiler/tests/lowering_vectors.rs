@@ -508,6 +508,7 @@ fn first_difference(case: &Value, lowering: &Lowering) -> Option<String> {
 fn the_lowering_is_the_oracles_node_for_node() {
     let models = models();
     let document = read_json(&vectors().join("lowering/lowering.json"));
+    let range_document = read_json(&vectors().join("ranges/ranges.json"));
     let cases = document["cases"].as_array().expect("cases");
     // Every conformance model at every length the RFC names is a case.
     for (file, model) in &models {
@@ -542,6 +543,37 @@ fn the_lowering_is_the_oracles_node_for_node() {
                 continue;
             }
         };
+        // The same pre-implementation Python intervals are checked by the independent verifier.
+        // Both sides matching every tensor establishes equality without sharing range code (SP-6).
+        let expected_ranges = range_document["cases"]
+            .as_array()
+            .expect("range cases")
+            .iter()
+            .find(|c| c["model"] == case["model"] && c["n"] == case["n"])
+            .expect("range case for each lowering");
+        let expected: Vec<Option<(i128, i128)>> = expected_ranges["ranges"]
+            .as_array()
+            .expect("ranges")
+            .iter()
+            .map(|r| {
+                if r.is_null() {
+                    None
+                } else {
+                    Some((i128::from(int(&r[0])), i128::from(int(&r[1]))))
+                }
+            })
+            .collect();
+        let analyzed =
+            tessera_compiler::analyze(&lowering.graph, &lowering.tables).expect("compiler ranges");
+        let found: Vec<_> = analyzed
+            .all()
+            .iter()
+            .map(|r| r.bounded().map(|r| (r.lo, r.hi)))
+            .collect();
+        assert_eq!(
+            found, expected,
+            "{name}, n={n}: public ranges differ from the independent oracle"
+        );
         match first_difference(case, &lowering) {
             Some(difference) => failures.push(format!("{name}, n = {n}: {difference}")),
             None => {

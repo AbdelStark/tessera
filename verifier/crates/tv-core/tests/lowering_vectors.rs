@@ -25,6 +25,7 @@ use tv_core::lowering::{
     Broadcast, Graph, IntType, Kind, LowerError, LoweredTable, Op, Role, Route, TensorId,
     WeightRef, lower,
 };
+use tv_core::ranges::analyze;
 use tv_core::validation::{ClaimsError, StatementField, check_public};
 use tv_tables::{TableId, TableKind};
 use tv_testkit::{Json, read_vectors};
@@ -530,6 +531,38 @@ fn every_case_of_the_lowering_vectors_is_reproduced() {
         let public = check_public(&claims).unwrap_or_else(|e| panic!("{name}: {e:?}"));
         let graph = lower(&public, n).unwrap_or_else(|e| panic!("{name}: {e:?}"));
         compare(case, &name, &graph, &mut diffs);
+        // This oracle predates the verifier range implementation and uses only RFC-0006,
+        // independent lowering metadata and Python integers.
+        let range_file = read_vectors("ranges/ranges.json");
+        let expected = list(&range_file, "cases")
+            .iter()
+            .find(|c| {
+                text(c, "model") == text(case, "model") && member(c, "n") == member(case, "n")
+            })
+            .expect("a range vector for each lowering case");
+        let wanted: Vec<Option<(i128, i128)>> = list(expected, "ranges")
+            .iter()
+            .map(|range| match range {
+                Json::Null => None,
+                _ => {
+                    let [lo, hi] = items(range) else {
+                        panic!("an inclusive interval")
+                    };
+                    Some((integer(lo), integer(hi)))
+                }
+            })
+            .collect();
+        let found: Vec<_> = analyze(&graph)
+            .expect("range analysis")
+            .iter()
+            .map(|r| r.bounds())
+            .collect();
+        diffs.check(
+            &name,
+            "every tensor's independently derived range",
+            wanted,
+            found,
+        );
     }
     assert!(
         diffs.count == 0,

@@ -16,6 +16,8 @@
 //! | 3 | S1 to S3 of RFC-0005 on the derived graph, below | `Profile` |
 //! | 4 | each table regenerated from its definition ([`Table::from_spec`]), in `TableId` order | `Table { table }`, the first in `TableId` order |
 //! | 5.1 | `1 ≤ max_log2_rows ≤ 32` | `GadgetPolicy` |
+//! | 5.2 | independently derived integer ranges, gadget domains, field bounds and feasible tables | `Gadget { gadget }`, first in node order |
+//! | 5.3 | the complete derived table sequence equals the claim list, id for id | `Table { table }`, first differing id |
 //! | 6 | the commitment layout is the parameter set's ([`ParamSet::layout`]), and `query_block` a power of two (RFC-0041 'Production order') | `Layout` |
 //! | 7 | the scoring and anchor templates name supported variants | `Template`, once they join the claim list (RFC-0026): today there is none to check |
 //!
@@ -23,12 +25,9 @@
 //! parameter set's is `Reject(Params { name })`. Within one check the rules give one field, so
 //! their order does not matter. What validation does not do yet:
 //!
-//! - **Steps 5.2 and 5.3** (#117): range re-derivation at each gadget-backed node, and the derived
-//!   tables against the claim list's, id for id. A claim list whose tables differ from the ones
-//!   its lowering and gadget selection derive therefore passes [`validate`] until #117 lands.
 //! - **Step 6's advice layout** (#106): that the derived advice layout fits within the protocol's
-//!   maximum matrix size needs the canonical advice layout of RFC-0011, and a statement of that
-//!   maximum, which no document gives yet: RFC-0007 names it and nothing defines it.
+//!   maximum of `2^32` rows at `max_context` (RFC-0047) needs the complete model-to-tile
+//!   derivation, including the remaining gadgets' committed columns.
 //! - **`ConstraintSystemDigest`** (RFC-0007), which #120 defines.
 //!
 //! ## Step 2.1: the architecture
@@ -287,14 +286,15 @@ impl fmt::Display for ClaimsError {
 impl std::error::Error for ClaimsError {}
 
 /// A validated claim list's derived data: the parameter set it names, its tables regenerated in
-/// `TableId` order, and the graph its lowering derives for `max_context` tokens. Steps 5.2 and
-/// 5.3 (#117) and step 6's advice layout (#106) are not checked yet: see the module
-/// documentation.
+/// `TableId` order, the graph its lowering derives for `max_context` tokens, and the integer
+/// ranges used to check each gadget and derive the canonical table sequence. Step 6's complete
+/// advice layout (#106) remains outstanding: see the module documentation.
 #[derive(Debug)]
 pub struct Validated {
     params: ParamSet,
     tables: Vec<Table>,
     graph: Graph,
+    ranges: Vec<crate::ranges::Interval>,
 }
 
 impl Validated {
@@ -306,6 +306,11 @@ impl Validated {
     /// The claim list's tables, each regenerated from its definition, in `TableId` order.
     pub fn tables(&self) -> &[Table] {
         &self.tables
+    }
+
+    /// Integer ranges independently derived from public data, indexed by tensor id (SP-7).
+    pub fn ranges(&self) -> &[crate::ranges::Interval] {
+        &self.ranges
     }
 
     /// The derived graph, for a sequence of `max_context` tokens.
@@ -354,17 +359,14 @@ pub fn validate(claims: &ClaimList) -> Result<Validated, ClaimsError> {
     if !(1..=32).contains(&claims.gadget_policy.max_log2_rows) {
         return Err(mismatch(StatementField::GadgetPolicy));
     }
-    // TODO(#117): steps 5.2 and 5.3, range re-derivation at each gadget-backed node in node order
-    // (`Gadget { gadget }`), then the derived tables against `claims.tables`, id for id
-    // (`Table { table }`), with gadget selection's tables after `graph.tables()`.
-    //
+    let ranges = crate::range_checks::check(&graph, claims.gadget_policy, &claims.tables)?;
     // Step 6: the commitment layout and the query block.
     if claims.layout != params.layout() || !claims.gadget_policy.query_block.is_power_of_two() {
         return Err(mismatch(StatementField::Layout));
     }
     // TODO(#106): step 6's last rule, that the advice layout derived from `graph` fits within the
-    // protocol's maximum matrix size, needs RFC-0011's canonical advice layout and a definition
-    // of that maximum, which RFC-0007 names and no document states.
+    // RFC-0047 maximum of 2^32 rows at max_context, needs the complete model-to-tile derivation
+    // for RFC-0011, including the remaining gadgets' committed columns.
     //
     // Step 7: `scoring` and `anchor` are not in the claim list (RFC-0026), so no template is
     // named and none can fail. Their check joins with them.
@@ -372,6 +374,7 @@ pub fn validate(claims: &ClaimList) -> Result<Validated, ClaimsError> {
         params,
         tables,
         graph,
+        ranges,
     })
 }
 
