@@ -108,6 +108,9 @@ All notable changes to the verifier release train are recorded here: the crates 
 - `tv-tables` gains two checks that generate nothing, for claim-list validation's `Exp` rule ([#107](https://github.com/AbdelStark/tessera/issues/107)):
   - `exp_maps_to_zero`, whether an `Exp` table maps one key to 0, exact for every `σ` of a `u8`. It agrees key for key with the generated tables of `spec/vectors/tables/` and of 200 seeded parameter sets, and with RFC-0008's formula evaluated directly for `σ` from 33 to 63.
   - `TableKind::check_parameters`, RFC-0008's 'Parameters allowed' alone: `⌈log2 T⌉`, or the first rule broken, in `Table::generate`'s order and with its errors. It agrees with `Table::generate` on every kind of the vectors, on kinds that break a rule of each kind that has rules, and on seeded `Exp` kinds on both sides of the zero tail's bound at key 2^24.
+- `tv-core`'s claim-list validation checks RFC-0009 Lemma 6's precondition at step 2.2, written from the amended RFC-0007 ([#376](https://github.com/AbdelStark/tessera/issues/376)):
+  - **The rule.** `(2·max_context − 1)·2^{2σ} < P`, computed exactly in 128-bit integers. Past it, a `SoftmaxRow` row of `max_context` positions at its maximal score admits a second reciprocal, and the claim list is `Reject(StatementMismatch { field: Quantization })`. That allows `exp_sigma ≤ 23` at `max_context = 2^{17}`, and `σ = 32`, which RFC-0008's tables allow, at no context.
+  - **Tests.** The largest `σ` passes step 2 and the next is `Quantization` at eight contexts from 1 to `2^{17}`, among them `2^{15}`, where `σ = 24` passes, and `2^{15} + 1`, where it does not. Step 2 decides as the defining form does at every power of two and its neighbours, for `σ` from 0 to 33. The test that `σ = 32` passed step 2 now expects `Quantization`.
 
 ### Changed
 

@@ -115,6 +115,7 @@ Before reading any proof message, the verifier runs these checks in order. The f
       - a `pot` site has one to four classes, each from 1 to 63, and one class if it follows no weight;
       - `score_scales` holds one positive scale per layer, sorted;
       - for each layer's `SoftmaxRow`, the narrowest `key_bits` from the spread's width, `bitlen(128 · 255 · d_head)`, up whose table `Exp { key_bits, sigma: exp_sigma, scale }`, `scale` the layer's score scale, maps its last key `2^{key_bits} − 1` to 0 exists, and RFC-0008 allows that table: `1 ≤ key_bits ≤ 32`, `σ ≤ 32`, `scale > 0`, its zero tail starting by key `2^{24}` ([RFC-0008](RFC-0008-logup-and-tables.md#table-specifications) 'Table specifications', [RFC-0030](RFC-0030-masked-exponentials.md#range-analysis-and-validation) 'Range analysis and validation');
+      - `SoftmaxRow`'s reciprocal is unique: `(2·max_context − 1)·2^{2·exp_sigma} < P`, that is `2·exp_sigma + ⌈log2 max_context⌉ ≤ 63`, so `exp_sigma ≤ 23` at `max_context = 2^{17}` ([RFC-0009](RFC-0009-gadgets.md#softmaxrow) Lemma 6);
       - `silu_in_exponents` holds one exponent per layer, sorted ([RFC-0042](RFC-0042-silu-exponents.md));
       - `residual_bits` lies from 2 to 31;
       - the embedding's shift `s_e` into the residual is non-negative, `s_e ≥ 0` ([RFC-0005](RFC-0005-integer-model.md#scale-policy)), and keeps `127 · 2^{s_e} < 2^{residual_bits − 1}`;
@@ -162,7 +163,7 @@ The schema lands in v0.2 with the compiler. The verifier's validation lands in v
 
 - Golden claim lists for the conformance models, decoded by both workspaces.
 - Constraint-system digests from the compiler and the verifier agree on every conformance model and on 8B and 405B shapes.
-- Negative claim lists, each rejected at the expected validation step with its field ([RFC-0039](RFC-0039-statement-fields.md)): inconsistent head counts; a tampered table digest; a table definition whose regenerated digest differs; a `GadgetPolicy` with `max_log2_rows = 40`; a claim list that marks a wide key as `Requant1`; an unsupported parameter set; `test-small` without the feature.
+- Negative claim lists, each rejected at the expected validation step with its field ([RFC-0039](RFC-0039-statement-fields.md)): inconsistent head counts; an `exp_sigma` of 24 at `max_context = 2^{17}`, beside 23, which passes; a tampered table digest; a table definition whose regenerated digest differs; a `GadgetPolicy` with `max_log2_rows = 40`; a claim list that marks a wide key as `Requant1`; an unsupported parameter set; `test-small` without the feature.
 - INV-CL-1: a test perturbs weights (keeping per-tensor statistics fixed) and asserts the claim list bytes are unchanged.
 
 ## Open Questions

@@ -187,6 +187,7 @@ It reads only the public part of `D`: the architecture, the profile, `PublicQuan
   - a shift outside `[1, 63]`, or a score scale that is not positive;
   - an embedding shift that would push INT8 rows out of the residual;
   - `e = 0`, or `κ > 31`;
+  - an `exp_sigma` past RFC-0009 Lemma 6's bound, `(2·max_context − 1)·2^{2σ} ≥ P`, under which a `SoftmaxRow` row admits a second reciprocal;
   - a table RFC-0008 refuses.
 
   The prover also checks the hidden part before lowering:

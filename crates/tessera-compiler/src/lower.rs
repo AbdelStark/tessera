@@ -544,6 +544,15 @@ fn check_public(model: PublicModel<'_>) -> Result<(), CompileError> {
     if quant.rsqrt_kappa > 31 {
         return refuse("κ ≤ 31, so that N = d · 2^{2κ} stays below 2^94");
     }
+    // RFC-0009 Lemma 6: a row sum is at most max_context · 2^σ, and its reciprocal is unique only
+    // while (2 · max_context − 1) · 2^{2σ} < P, which for a context below 2^32 reads
+    // 2σ + ⌈log2 max_context⌉ ≤ 63: σ ≤ 23 at 2^17. The context is at least 1 here.
+    let context_bits = u32::BITS - (arch.max_context - 1).leading_zeros();
+    if 2 * u32::from(quant.exp_sigma) + context_bits > 63 {
+        return refuse(
+            "(2 · max_context − 1) · 2^{2σ} < P, so that each SoftmaxRow reciprocal is unique",
+        );
+    }
     Ok(())
 }
 

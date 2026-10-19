@@ -19,7 +19,9 @@ use claim_support::{
 use tv_codec::{DecodeLimits, Rational};
 use tv_core::claims::{ClaimList, Profile, QuantPoint, Site};
 use tv_core::params::ParamSet;
-use tv_core::validation::{ClaimsError, PROTOCOL_VERSION, StatementField, load, validate};
+use tv_core::validation::{
+    ClaimsError, PROTOCOL_VERSION, StatementField, check_public, load, validate,
+};
 use tv_tables::{TableId, TableKind};
 
 use StatementField::{
@@ -81,7 +83,6 @@ fn passes(claims: &ClaimList, check: StatementField) {
 #[test]
 fn every_golden_claim_list_validates() {
     use tv_core::lowering::lower;
-    use tv_core::validation::check_public;
     for golden in goldens() {
         let (claims, validated) = load(&golden.envelope, &DecodeLimits::MESSAGE)
             .unwrap_or_else(|e| panic!("{}: {e:?}", golden.name));
@@ -637,19 +638,77 @@ fn a_wide_head_keeps_its_spreads_width_when_rfc_0008_allows_it() {
     passes(&claims, Quantization);
 }
 
+/// RFC-0009 Lemma 6's precondition in the form RFC-0007 step 2.2 states first,
+/// `(2·max_context − 1)·2^{2σ} < P`, in 128-bit integers.
+fn reciprocal_unique(sigma: u8, max_context: u32) -> bool {
+    const P: u128 = 0xFFFF_FFFF_0000_0001;
+    let rows = 2 * u128::from(max_context) - 1;
+    1u128
+        .checked_shl(2 * u32::from(sigma))
+        .and_then(|power| rows.checked_mul(power))
+        .is_some_and(|product| product < P)
+}
+
 #[test]
-fn exp_sigma_lies_within_rfc_0008s_bound() {
-    // RFC-0008 'Table specifications' allows `Exp` tables of `σ ≤ 32`.
-    for sigma in [33, 64, u8::MAX] {
+fn exp_sigma_keeps_every_softmax_reciprocal_unique() {
+    // RFC-0007 step 2.2, RFC-0009 Lemma 6 (#376): `(2·max_context − 1)·2^{2σ} < P`. Past it, a
+    // row of `max_context` positions at its maximal score admits a second reciprocal. At each
+    // context the largest σ passes step 2 and the next is `Quantization`.
+    let at = |context: u32, sigma: u8| {
         let mut claims = twin(SERVABLE);
+        claims.arch.max_context = context;
         claims.quant.exp_sigma = sigma;
-        assert_eq!(mismatch(&claims), Quantization, "σ = {sigma}");
+        claims
+    };
+    for (context, largest) in [
+        (1, 31),
+        (2, 31),
+        (3, 30),
+        (16, 29),
+        (64, 28),
+        (1 << 15, 24),
+        ((1 << 15) + 1, 23),
+        (1 << 17, 23),
+    ] {
+        assert!(reciprocal_unique(largest, context) && !reciprocal_unique(largest + 1, context));
+        passes(&at(context, largest), Quantization);
+        let past = largest + 1;
+        assert_eq!(
+            mismatch(&at(context, past)),
+            Quantization,
+            "max_context = {context}, σ = {past}"
+        );
     }
-    for sigma in [0, 32] {
-        let mut claims = twin(SERVABLE);
-        claims.quant.exp_sigma = sigma;
-        passes(&claims, Quantization);
+    // Every context that is a power of two or next to one, at every σ RFC-0008 allows and the
+    // next: step 2 decides as the defining form does.
+    let refused = Err(ClaimsError::StatementMismatch {
+        field: Quantization,
+    });
+    for log in 0..=17 {
+        for context in [(1u32 << log) - 1, 1 << log, (1 << log) + 1] {
+            if !(1..=1 << 17).contains(&context) {
+                continue;
+            }
+            for sigma in 0..=33 {
+                let claims = at(context, sigma);
+                let verdict = check_public(&claims).map(|_| ());
+                let expected = match reciprocal_unique(sigma, context) {
+                    true => Ok(()),
+                    false => refused.clone(),
+                };
+                assert_eq!(verdict, expected, "max_context = {context}, σ = {sigma}");
+            }
+        }
     }
+    // RFC-0008 'Table specifications' allows `Exp` tables of `σ ≤ 32`, which the rule above
+    // makes `σ ≤ 31` at every context: past both, refused at the smallest context.
+    for sigma in [32, 33, 64, u8::MAX] {
+        assert_eq!(mismatch(&at(1, sigma)), Quantization, "σ = {sigma}");
+    }
+    // The golden lists' σ = 16 at their context of 64 is far inside the bound.
+    let claims = twin(SERVABLE);
+    assert_eq!((claims.quant.exp_sigma, claims.arch.max_context), (16, 64));
+    assert!(reciprocal_unique(16, 64));
 }
 
 #[test]
