@@ -264,7 +264,7 @@ impl<'a> Layout<'a> {
     ) -> Result<Self, ClaimsError> {
         if n == 0
             || n > graph.length()
-            || config.log_k >= 64
+            || config.log_k > 31 // RFC-0011: a 2k-symbol codeword needs 2k <= 2^32.
             || config.segments == 0
             || !config.query_block.is_power_of_two()
             || config.kv_heads == 0

@@ -395,6 +395,25 @@ fn mlp_padding_skips_48_rows_but_inner_padded_axes_remain_committed() {
 }
 
 #[test]
+fn row_width_allows_the_encoding_subgroup_boundary_and_rejects_wider_rows() {
+    let claims = claims_of("tiny-2-servable.d");
+    let public = validation::check_public(&claims).unwrap();
+    let graph = lowering::lower(&public, 1).unwrap();
+    let selected = selection::derive(&graph, claims.gadget_policy).unwrap();
+    let mut config = Config::new(&claims.arch, claims.gadget_policy, 31, 1);
+    assert!(Layout::derive(&graph, &selected, config, 1).is_ok());
+    for bits in [32, 63, u8::MAX] {
+        config.log_k = bits;
+        assert_eq!(
+            Layout::derive(&graph, &selected, config, 1).unwrap_err(),
+            validation::ClaimsError::StatementMismatch {
+                field: validation::StatementField::Layout
+            }
+        );
+    }
+}
+
+#[test]
 fn every_root_width_allocates_each_real_role_and_no_virtual_top() {
     let vectors = read_vectors("advice/layout.json");
     for schema in list(&vectors, "roots") {
