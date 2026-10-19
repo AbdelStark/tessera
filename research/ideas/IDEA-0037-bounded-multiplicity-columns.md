@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `triaged` |
+| Status | `validated` |
 | Origin | [SUR-0015](../surveys/SUR-0015-witness-multiplicity-storage.md), remaining #112 |
 | Lever | CPU working memory and feasibility of `regen`; correctness prerequisite |
 | Spec surfaces | Internal witness storage/API (tier C, 02 §1); RFC-0041/0045/0050 logical columns remain unchanged |
@@ -115,4 +115,4 @@ release-budget calibration and full witness-source memory remain later gates.
 
 ## Decision and links
 
-Triaged for EXP-0024; no production or GPU gain credited. Ledger updated 2026-10-20.
+EXP-0024 validates the registered finite exact/public-allocation/counter-memory criteria on Rust 1.95 and 1.88, including 14 physical fault detections and zero retained allocations. This is not complete model witness integration, a full memory bound or timing ZK. No production/GPU gain credited. Ledger updated 2026-10-20.

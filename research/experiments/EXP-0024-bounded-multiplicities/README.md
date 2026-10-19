@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `planned` |
+| Status | `done: validated` |
 | Idea | [IDEA-0037](../../ideas/IDEA-0037-bounded-multiplicity-columns.md) |
 | Evidence level | E0 exact arithmetic/equivalence; E1 CPU allocation measurements only |
 | Hardware | Local Apple CPU, identified by the run; no GPU |
@@ -76,7 +76,18 @@ experiment code yet at pre-registration.
 
 ## Results
 
-Pending. No measurement or verdict exists.
+All finite semantic checks passed under Rust 1.95.0 and MSRV 1.88.0, with identical JSON results on Apple M4 Max / macOS 26.6.2 / arm64. There are 225 synthetic cases and 83,897,106 exact row comparisons (E0). The window arm performed 26,790,330 update visits across the registered fixture matrix (E0), not a production pass count.
+
+| Case | Measured peak bytes | Allocations | Retained after drop | Evidence |
+|---|---|---|---|---|
+| Dense, 65,536 rows / 4,096 updates | 524,288 | 1 | 0 bytes / 0 allocations | E1 |
+| Sorted, same input | 65,536 | 1 | 0 bytes / 0 allocations | E1 |
+| Sorted, `2^32` rows / 4,096 updates | 65,536 | 1 | 0 bytes / 0 allocations | E1 |
+| Window, 65,536 rows / width 1,024 | 8,192 | 1 | 0 bytes / 0 allocations | E1 |
+
+Every report has three warm-ups and ten identical measured samples: minimum, median and maximum equal the stated values; allocation CV is zero (E1). Insertion and sorting made zero additional heap allocations. The wide dense baseline is **analytic** 34,359,738,368 bytes / 32 GiB (E0); it was not allocated.
+
+Raw data: [pinned](results/pinned.json), [MSRV](results/msrv.json), [environment](results/environment.json), [source faults](results/source-mutations.json). All 14 physical experiment-source faults were assertion-killed, with passing control and restored runs. These are test-sensitivity checks, not production/full-proof coverage.
 
 ## Analysis
 
@@ -87,10 +98,9 @@ derived and enforced in production. Windowed recounting may multiply replay cost
 
 ## Verdict
 
-Pending; status remains `planned` until the frozen plan is committed and run.
+`validated` for the frozen bounded counter criteria only. Wide sorted storage is 65,536 bytes, below the registered 128 KiB cap, with identical canonical queries and public metadata. No timing, RSS, GPU or full-source memory claim follows. IDEA-0037 retains zero performance credit; complete #112 integration is next.
 
 ## Follow-ups
 
-If validated, integrate complete canonical root/Softmax columns and bounded
-multiplicities, then measure the full witness-source working set independently.
+Integrate complete canonical root/Softmax columns and bounded multiplicities. Derive/enforce the public update bound before allocation, expose only canonical logical row access through clearing buffers, and retain the prohibition on skipping secret-zero commitment rows. Then measure the full witness-source working set independently, including replay inputs, outputs, temporaries, counter state and public metadata. No table may silently omit requests, padding or the final row-0 tail.
 An H100 run would settle GPU storage/recount costs, not these exact CPU semantics.
