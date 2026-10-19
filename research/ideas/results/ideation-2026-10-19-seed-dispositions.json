@@ -1,0 +1,118 @@
+[
+  {
+    "row": 30,
+    "title": "relative-angle RoPE after moving requantization before rotation",
+    "disposition": "literal unchanged-D route refuted in parent/reviewer oracle preflight; changed-D variant deferred",
+    "reason": "Integer rotate-then-round does not commute with pre-rounding, even at equal positions where the real relative rotation is identity. Existing IDEA0032 is a distinct current RoPE range/certificate route, not permission to move rounding. Parent/reviewer reports C=8852,S=13787 at frequency0/position1, accumulator pair(2,0), rq15 output(1,1) and original score2, versus pre-rq1(1,0) and relative-angle0 score1. Saved primary artifact: research/ideas/results/seed-preflight-2026-10-19.json, exact small oracle control executed by independent reviewer; this author did not execute it. Not a finite-domain exhaustion or full-protocol theorem. A changed-D variant needs its own explicit fidelity/range and rounding specification.",
+    "evidence": [
+      "RFC0005 Integer semantics/RoPE",
+      "IDEA0032 current scope",
+      "research/ideas/results/seed-preflight-2026-10-19.json (independent E0 exact controls,2026-10-19)"
+    ]
+  },
+  {
+    "row": 31,
+    "title": "public-budget top-B block attention with strict ranking/routing",
+    "disposition": "deferred by max_ideas=2; distinct seed retained",
+    "reason": "Public budget alone does not make the private selected blocks public or ZK. Exact ranking/tie rule, selected-set nonemptiness, full layer/KV-head/dimension routing, public-policy binding, output fidelity and selector/layout costs are missing. EXP0016 warns that balanced merged-instance unions can pass local checks. Static seed33 removes ranking/routing complexity for the first bounded note, not this distinct dynamic seed.",
+    "evidence": [
+      "SUR0004 Candidate ideas",
+      "RFC0005 fidelity",
+      "RFC0030 masked exponentials",
+      "EXP0016 merged-instance attack"
+    ]
+  },
+  {
+    "row": 32,
+    "title": "exact-zero tile skipping via GQA/frequency-split integer ball bounds",
+    "disposition": "deferred by max_ideas=2; not refuted",
+    "reason": "It can preserve D only if every skipped Exp value is proved exactly zero under the actual table/rounding and every bound operand is a true integer with a no-wrap bound. The certificate must bind each layer/KV-head/block and frequency group; GQA sharing cannot erase query-specific bounds. Public kept-tile budgets still need oblivious/padded routing and a joint simulator. Hard-zero fraction at current sigma and complete certificate/lookup/mask overhead are unmeasured. No old 42-74% estimate credited.",
+    "evidence": [
+      "SUR0004 exact-zero evidence gap",
+      "RFC0009 Lemma0/SoftmaxRow",
+      "RFC0030/0035/0032",
+      "EXP0016"
+    ]
+  },
+  {
+    "row": 33,
+    "title": "public static attention shapes",
+    "disposition": "selected as IDEA0034",
+    "reason": "Distinct public-shape mechanism eliminates secret ranking/compaction, has an exact mathematical statement and a cheap selector/layout falsification path. It changes D, requires policy binding and uniform-template handling, and earns zero cost/fidelity credit until those are derived.",
+    "evidence": [
+      "IDEA0034-public-window-attention-shapes.md",
+      "RFC0005/0030/0034/0038/0047"
+    ]
+  },
+  {
+    "row": 34,
+    "title": "round-batched streamed windows with unchanged messages",
+    "disposition": "no new ID: overlaps existing IDEA0017; deferred through that note",
+    "reason": "IDEA0017 already owns multi-round grid bookkeeping and its current-spec/overflow preflight; IDEA0022/EXP0012 test the resident integer/product window subset. Those measurements do not test complete streamed lookup leaves or a new 65536-cadence implementation. Width/cadence bounds and field-valued masks prevent inheriting integer-only gains. A new title is not a new mechanism.",
+    "evidence": [
+      "IDEA0017 current Grid bounds and leaf completeness",
+      "IDEA0022/EXP0012",
+      "RFC0018 Alternatives3"
+    ]
+  },
+  {
+    "row": 35,
+    "title": "zero-knowledge Hobbit tile fold",
+    "disposition": "deferred by max_ideas=2; not a duplicate of selected level2",
+    "reason": "Tile folding changes streamed leaf relations, adds cross terms and requires a conditional one-time-pad/simulator argument. Current RFC0032 already resolves pair-bit/tree masking design; it does not prove a new Hobbit fold or its full joint view. No complete binding/extractor/mask construction is in this bounded unit. Old streaming percentages are stale and conditional; unknown security gives no gain credit.",
+    "evidence": [
+      "SUR0003 tile folding",
+      "SUR0008 current disposition",
+      "RFC0013/0032",
+      "RFC0018 Alternatives2"
+    ]
+  },
+  {
+    "row": 36,
+    "title": "stage-input checkpoints to replace GEMM-shaped regeneration",
+    "disposition": "deferred by max_ideas=2; requires measured/derived marginal schedule",
+    "reason": "RFC0018 already caches layer boundaries and fuses passes whose points are known. A distinct extra cache must identify which additional GEMM-shaped inputs survive across actual stages, public lifetime/recompute plan, capacity, clearing and marginal P3 reduction. New independent stage derivation enables inspection but does not supply timing or a full GPU pass planner. Not credited as free regen removal or new commitment-independent saving.",
+    "evidence": [
+      "RFC0018 Checkpoints/Pass structure/Fusion",
+      "SUR0003 synthesis2",
+      "tv-core/src/schedule.rs from61b9f47",
+      "EXP0007 P5 finding"
+    ]
+  },
+  {
+    "row": 37,
+    "title": "second Ligero level over combined opening rows",
+    "disposition": "selected as IDEA0035",
+    "reason": "Distinct transmission/compression mechanism, addresses structural proof-size/verifier deficit and works on materialized opening rows. It preserves original column multiproofs and explicitly links original evaluation/column equations through a sumcheck and final level2 opening. Current groups/allocated rows, coefficient-basis dependency, extractor/FS budget and joint ZK remain unknown, so zero gain credited.",
+    "evidence": [
+      "IDEA0035-combined-row-second-commitment.md",
+      "SUR0005 Ligerito findings8-9",
+      "RFC0011/0013/0014/0047",
+      "IDEA0002 current triage"
+    ]
+  },
+  {
+    "row": 38,
+    "title": "wider advice rows over committed combined rows",
+    "disposition": "deferred by max_ideas=2; conditional follow-up to seed37",
+    "reason": "Only opened-column bytes shrink when nonzero row count shrinks; wider rows can enlarge NTT traffic, buffers and change R/nu/mask rate. With no level2 compression, larger combined rows can offset savings. New current layout/group counts and exact error budgets must precede a size/performance claim; old 0.63GB projection not reused.",
+    "evidence": [
+      "SUR0005 findings/Candidate ideas",
+      "RFC0011 Encoding/layout",
+      "RFC0014 rate/dimension budgets",
+      "RFC0047 R/nu"
+    ]
+  },
+  {
+    "row": 39,
+    "title": "rate1/8 persistent weight commitment under Johnson regime",
+    "disposition": "deferred by max_ideas=2; not covered by advice-rate refutation alone",
+    "reason": "EXP0004 advice-cost refutation is not a direct weight refutation because weight commitment is amortized, but original weight column answers, storage/epoch/link budgets and Johnson extraction/version obligations must be rederived. W=0.24 GPU-s is only one model term and cannot price complete epoch or proof bytes. Current full weight/hiding implementation and draft RFC0021 are not approved evidence for a new parameter set.",
+    "evidence": [
+      "RFC0012 layout/epoch/opening",
+      "RFC0021 status/Alternatives4/Migration",
+      "IDEA0013 andEXP0004 advice-specific scope",
+      "baseline current weights term"
+    ]
+  }
+]

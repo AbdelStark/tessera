@@ -1,0 +1,71 @@
+{
+  "kind": "E0 algebraic ideation preflight controls; no experiment ID or benchmark",
+  "checked_utc": "2026-10-19T10:03:34.333931+00:00",
+  "checkout": "58b5ea5b8455cc6964f59383971f6a2ec56c5413",
+  "sources_sha256": {
+    "spec/vectors/tables/generate.py": "893b23777fcbc2b934041e9efd4cc6a196adf4c172d9fff1b464af545d5c6e36",
+    "spec/vectors/hash/generate.py": "b88404051bb62ad81c61730b8c2754226d245842510bd45608e7c13edce8e7bb",
+    "docs/rfcs/RFC-0005-integer-model.md": "992fedabcfc68984c1de13bcc2a1493b3bd88e0433e7f14efea8fc43c4ce4da8",
+    "docs/rfcs/RFC-0008-logup-and-tables.md": "aa48ac06fb7704522564260d448eda47f0cdcf0cb9df838fb8341075a35b9b06",
+    "docs/rfcs/RFC-0030-masked-exponentials.md": "95e7e904af741fd925b1a345077177cbad284f4a99add77c53a75202f5233db8"
+  },
+  "controls": {
+    "seed30_exact_counterexample": {
+      "oracle_sha256": "893b23777fcbc2b934041e9efd4cc6a196adf4c172d9fff1b464af545d5c6e36",
+      "rope_parameters": {
+        "theta": 500000,
+        "factor": 8,
+        "low_freq_factor": 1,
+        "high_freq_factor": 4,
+        "original_max": 8192,
+        "d_head": 128
+      },
+      "bits": 14,
+      "position_q": 1,
+      "position_i": 1,
+      "frequency": 0,
+      "C": 8852,
+      "S": 13787,
+      "C2_plus_S2_minus_scale2": 3817,
+      "original_acc_pair": [
+        2,
+        0
+      ],
+      "original_rq_shift": 15,
+      "original_rotated_rq_pair": [
+        1,
+        1
+      ],
+      "original_score": 2,
+      "pre_rotation_rq_shift": 1,
+      "pre_rotation_pair": [
+        1,
+        0
+      ],
+      "relative_zero_angle_score": 1
+    },
+    "seed33_mle_trap": {
+      "two_positions_window": 1,
+      "at": {
+        "query": "1/2",
+        "key": "1/2"
+      },
+      "mle_causal": "3/4",
+      "mle_lower_bound": "3/4",
+      "product_of_mles": "9/16",
+      "mle_of_boolean_mask": "1/2"
+    }
+  },
+  "reproduction": {
+    "cwd": "repository root",
+    "command": "python3 -I - (feed python_source below on standard input)",
+    "python_source": "from pathlib import Path\nimport importlib.util, hashlib\nfrom fractions import Fraction\noracle = Path(\"spec/vectors/tables/generate.py\").resolve()\nassert hashlib.sha256(oracle.read_bytes()).hexdigest() == \"893b23777fcbc2b934041e9efd4cc6a196adf4c172d9fff1b464af545d5c6e36\"\nspec = importlib.util.spec_from_file_location(\"table_oracle\", oracle)\nm = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(m)  # does not invoke main() or regenerate vectors\np = dict(theta=500000, factor=8, low_freq_factor=1, high_freq_factor=4, original_max=8192, d_head=128)\nc, s = m.rope_pair(m.rope_omegas(p)[0], 1, 14)\nassert (c, s) == (8852, 13787)\nrq = lambda x, shift: max(-128, min(127, (x + (1 << (shift-1))) // (1 << shift)))\nrotated = (rq(2*c, 15), rq(2*s, 15))\npre = (rq(2, 1), 0)\nassert rotated == (1, 1) and pre == (1, 0)\nassert sum(x*x for x in rotated) == 2 != sum(x*x for x in pre) == 1\nassert c*c + s*s - (1 << 28) == 3817\ncausal = [1, 1, 0, 1]  # flat index q + 2*i\nlower = [1, 0, 1, 1]   # i >= q, W=1\nmask = [a*b for a,b in zip(causal, lower)]\nmle_at_half = lambda values: sum(Fraction(v, 4) for v in values)\nassert mle_at_half(causal)*mle_at_half(lower) == Fraction(9,16)\nassert mle_at_half(mask) == Fraction(1,2)\nprint(\"PASS: specified RoPE rewrite changes score 2 to 1; product-of-MLE mask 9/16 differs from correct MLE 1/2\")\n",
+    "exit_code": 0,
+    "stdout": "PASS: specified RoPE rewrite changes score 2 to 1; product-of-MLE mask 9/16 differs from correct MLE 1/2\n"
+  },
+  "scope": [
+    "The seed30 counterexample refutes only the specified claim that moving integer requantization before rotation and using relative-angle constants leaves this D unchanged. It does not judge changed-D/fidelity variants or correction-preserving rewrites.",
+    "The seed33 control refutes multiplying two multilinear extensions to obtain the multilinear extension of their Boolean conjunction; it does not refute correctly derived static attention mask selectors.",
+    "Both are exact small algebraic controls, not finite-domain exhaustion or full-protocol soundness/ZK evidence."
+  ]
+}

@@ -1,0 +1,138 @@
+{
+  "role": "independent refuter, not author",
+  "checked_utc": "2026-10-19T10:07:52.940345+00:00",
+  "checkout": "58b5ea5b8455cc6964f59383971f6a2ec56c5413",
+  "reviewed_notes_sha256": {
+    "research/ideas/IDEA-0034-public-window-attention-shapes.md": "968f18430798103cb1f9c410c9d1670c534c2e4734b6732377ca26066c559790",
+    "research/ideas/IDEA-0035-combined-row-second-commitment.md": "e860d42f494e64842349f526ae13c086d290f53aee861832cb76ded29d64be9e"
+  },
+  "source_sha256": {
+    "research/baseline.md": "c7099977b4baf6687ee820d1a62b004646887ef672ee5cd7174a27c1c27f93b3",
+    "docs/rfcs/RFC-0005-integer-model.md": "992fedabcfc68984c1de13bcc2a1493b3bd88e0433e7f14efea8fc43c4ce4da8",
+    "docs/rfcs/RFC-0007-claim-list.md": "3376116119eff36de72b534cef6bc043c11e45dbef5ba8a68056daa33d4f530e",
+    "docs/rfcs/RFC-0009-gadgets.md": "f3268cfe13b95ef32e32673049882f343e11b4c9b3cf76bc91eb4e2e88fd032b",
+    "docs/rfcs/RFC-0011-advice-commitment.md": "9a451773112556f1fcf8989f6aa11ccef36ab2d3f4fe7a9bc3a04f98b13b54ab",
+    "docs/rfcs/RFC-0012-weight-commitment.md": "1c8b65311faf7a7c1b99d9b1b5ae35a9490c53e8116dd9e83bebcea9351d4a8c",
+    "docs/rfcs/RFC-0013-zero-knowledge.md": "8ba8fc57f0f47686825d2c03e27eebb557d963b83d45209c68958c82160a05c0",
+    "docs/rfcs/RFC-0014-interaction-and-soundness.md": "7d6c30870096bdc94630c16ae39a739190c8628b0d9c0c873db72ac58b78011d",
+    "docs/rfcs/RFC-0018-gpu-prover-runtime.md": "e3749af63980dc2f88ce3986c1a9bf35c711f94e433a44604bf57a4dca2950ae",
+    "docs/rfcs/RFC-0030-masked-exponentials.md": "95e7e904af741fd925b1a345077177cbad284f4a99add77c53a75202f5233db8",
+    "docs/rfcs/RFC-0032-zero-knowledge-tree-levels.md": "4066af68a10b278660f7b0dc8bf64d3303b944b4fe6e26faf60e2ec899eb57a0",
+    "docs/rfcs/RFC-0034-causal-blocks.md": "ef539bfe7bc644f6878091cb6c891c998de63765e5d91ca86309aa9d5002d54a",
+    "docs/rfcs/RFC-0038-uniform-layers.md": "73874cb1277a82a5b944203874e52d7aebd4afb28c85ab9b3cd8da4f7d24e5b6",
+    "docs/rfcs/RFC-0044-lowering-nodes.md": "af28c05b13a9054bc7b262183a28fad58fa272ffe1b9f1794ed98f21f316afc0",
+    "docs/rfcs/RFC-0047-advice-order.md": "b92c6101879e27ac3835fbcc1f2b1f5aff745072ab202eaf99c54a9de1c937f0",
+    "docs/rfcs/RFC-0048-weight-trust.md": "b2b560553050440b08fe09c514c2b02f290032a530685029912890c5a75a8179",
+    "docs/rfcs/RFC-0049-weight-proximity.md": "bf0c7a8c4c6de02d990331f937f82fe2274744543314bb27f34d60e592750043",
+    "verifier/crates/tv-core/src/schedule.rs": "ad014da68031c2067e7bf426ed7dd7065d330af5dca9a86c5956cbcfd5c1bbb8",
+    "research/ideas/IDEA-0002-coefficient-form-rows.md": "974ac0cc1b93d5a4a06dc4dfeaf8fe057c125c580e05aa5b7c8cc1dbea7d93b3",
+    "research/experiments/EXP-0012-integer-leaf-round-window/results/summary.json": "f88d4b6681fe7943e8bcca3a5e3a4e8d17fa41c2040e78427184ad480189660c",
+    "research/experiments/EXP-0012-integer-leaf-round-window/results/README.preregistered.txt": "ba1837eb65e8621bf5ba82465c63e9bac0dd895a46fd42036de73cb4b5ba1c22"
+  },
+  "seed_preflight": {
+    "30": {
+      "disposition": "specified unchanged-D rewrite refuted; changed-D variants unevaluated",
+      "reason": "Pinned integer oracle: C=8852,S=13787 at position1/frequency0. Rotate(acc(2,0)) then rq shift15 gives (1,1), score2; pre-rq shift1 then relative angle0 gives (1,0), score1. Quantized rotations are not exactly orthogonal either (norm excess3817). Only this literal rewrite is ruled out.",
+      "source": "RFC0005 Integer semantics; RFC0008 Rope generator; shared exact-controls artifact"
+    },
+    "31": {
+      "disposition": "unselected; research plausible, security/fidelity unknown",
+      "reason": "Top-B is changed D, not free exact sparsity. Bind B/ranking/ties before FS; deterministic tie index, prove threshold membership and permutation/routing with full (layer,head,query,key,dimension) coordinates. Union membership permits balanced cross-instance swaps (EXP16 lesson). Secret selected indices/access/abort patterns cannot become public through compaction. Full certificate/routing and changed native denominator/fidelity unpriced.",
+      "source": "RFC0005/0007/0009; baseline7 one-hot/max alternatives; EXP0016"
+    },
+    "32": {
+      "disposition": "unselected; exact-D conditional mechanism, public-budget completeness/ZK unresolved",
+      "reason": "All equal scores give Exp[0]=2^sigma at every valid key, so no general B<n nonzero-key bound follows from current D. A secret-overflow abort/fallback reveals a witness-dependent condition unless explicitly handled. Integer ball bounds must conservatively prove exact table-zero thresholds and preserve a kept true maximum; GQA-sharing must bound every query head. Range/limb boxes and nonwrap required. No hard-sparsity measurement or certificate cost established.",
+      "source": "RFC0005 Softmax; RFC0009 Lemma5; RFC0013; RFC0030/0035; SUR0004"
+    },
+    "33": {
+      "disposition": "selected as IDEA0034; triaged/priority0 recommended",
+      "reason": "Distinct changed-D public window descriptor is not in current causal-only schema/lowering. Logical cube retained, excluded e pinned, diagonal/nonempty rows and padded c/R branches retained. Exact mask MLE and score/PV claim transport/counts remain first E0 obligations; no dense-compute or native-denominator gain assumed.",
+      "source": "RFC0005/0007/0009/0030/0034/0035/0038/0044/0047; current schedule template"
+    },
+    "34": {
+      "disposition": "existing IDEA0017/0022 overlap; no new idea without distinct operational schedule",
+      "reason": "IDEA0017 is now shelved under #329. EXP12 primary is refuted under the registered <15% whole-forest saving band for every v in {3,4,5} on every judged shape; the best whole-forest saving was 6.9\u20139.3%. Its separate validation target was >=20%. The fraction proxy is inconclusive, not universal streamed-window refutation. Regeneration/read-once, memory/grid sizes, all levels and masks remain unresolved; prior 9->2 and regen4 numbers cannot be credited.",
+      "source": "EXP0012 frozen preregistration Success criterion and summary; current IDEA0017; RFC0018 Pass structure"
+    },
+    "35": {
+      "disposition": "unselected; joint ZK/adaptive-FS construction unknown",
+      "reason": "RFC0032 already adopted the original tree pair-bit mask repair; that prerequisite is no longer new. A Hobbit tile fold needs a complete new committed tile/cross-term/claim schedule, challenges only after dependent tile data fixed, and joint simulator/rank argument for scalar/partial-sum views. Component-wise masking and a random first instance do not alone prove the persistent joint view. Prior rejection RFC0018 tile-local challenges/ZK must be addressed by exact new mechanism, not old gain.",
+      "source": "RFC0013 INV-ZK-1/2; RFC0032; RFC0018 alternatives; baseline7"
+    },
+    "36": {
+      "disposition": "potential already-specified premise; clarification before research claim",
+      "reason": "Current RFC0018 explicitly says P3 mostly elementwise from checkpoints with <=1 forward total, and fuses P3 into P2/P4 when points known. Merely proposing checkpoints/P3 elementwise repeats that design; needs a specific uncovered GEMM/checkpoint object and memory/pass trace before nonzero gain. EXP7 five-pass finding is now priced by regen5 and separate P4/P5. Cache subset must count HBM bytes/clearing and actual retained lifetime.",
+      "source": "RFC0018 Pass structure/Fusion; current model regen5"
+    },
+    "37": {
+      "disposition": "selected as IDEA0035; triaged/priority0 recommended",
+      "reason": "Not in current opening; materialized-U commitment differs from folding original nonresident witness. Both equation classes, all G+1 rows and Fp components retained, final PCS claim must be consumed. Coefficient-basis dependency unaccepted; extra soundness/query/batching/FS errors and joint ZK remain unknown; old17/1.14GB/verifier gains not current.",
+      "source": "RFC0011 opening/alternatives; RFC0013; RFC0014; RFC0047; IDEA0002/#393"
+    },
+    "38": {
+      "disposition": "unselected; strongly conditional size trade",
+      "reason": "A wider advice row reduces row count but increases explicit combined-vector length until a separate compression mechanism exists. RFC0047 allocation/axis order, RFC0034 diagonal/halo rows, R vs M and maximum-context fit must be recomputed rather than dividing M by width. Parameter/degree/root-order bounds and tensor-generated proximity gap must be rebudgeted. No free size gain from width alone.",
+      "source": "RFC0011; RFC0034; RFC0046/0047; baseline7"
+    },
+    "39": {
+      "disposition": "unselected; pending new theorem/generator/query-budget decisions",
+      "reason": "Current weights are rate1/4, so proposed1/8 doubles codeword/preprocessing/store volume at fixed k before amortization. Effective rate includes masks, not bare k/n. RFC0049 already moves unmasked weight tensor xi early, but does not adopt uniform-free-row Johnson coefficients or settle DraftRFC0021 extraction/joint-budget questions. Joint per-proof union, epoch retries/linking and masked P_W/B_W reservations remain. One-shot query reduction is not a current accepted parameter result.",
+      "source": "RFC0012 layout/column store/budgets; RFC0014; RFC0049; DraftRFC0021 OQ4/OQ7; baseline7"
+    }
+  },
+  "independent_four_lens_reviews": {
+    "IDEA-0034": {
+      "recommendation": "triaged; priority0; no experiment/promotion until separately preregistered E0 scope is chosen",
+      "soundness": {
+        "verdict": "weakened",
+        "argument": "The current draft correctly changes D, binds canonical public policy before FS, retains diagonal/nonempty real rows, all masked K0/constant-one pins, padded c/R=0 and sigma/nonwrap preconditions. It explicitly rejects product-of-MLE and unmasked-score-zero shortcuts. However no exact selector evaluation/claim-transport proof, full tuple/schedule/count budget or joint masked-view argument exists. These are unknown gates, not a claimed exploit or approval."
+      },
+      "prior_art": {
+        "verdict": "survives",
+        "argument": "Static windows are established model architecture, not a novel attention algorithm. Current ClaimList/lowering/Softmax selector are causal-only; RFC0034 covers known causal zero rows, not a new public window descriptor. Keeping logical cube/pins addresses Alternative2 rather than re-proposing arbitrary valid-only compaction. Layer-global flags must preserve/supersede RFC0038/current template. Distinct bounded Tessera integration research; no fresh paper theorem claimed."
+      },
+      "cost_model": {
+        "verdict": "weakened",
+        "argument": "Logical count W*n-W*(W-1)/2 is exact for n>=W but not committed row/GKR work or proof/native ratio. Existing scalar model cannot price dense score transport, boundary rows, masks, layer variants, fidelity or changed native denominator. Author credits0 and treats control baseline only. Independently reproduced current control totals; no candidate gain verified."
+      },
+      "feasibility": {
+        "verdict": "weakened",
+        "argument": "Exact tiny-domain selector/layout/claim-transport audit is CPU-feasible and should test mask MLE9/16 vs1/2 failure, mixed/padded rows and false max/wrong pattern. Tier-A descriptor/compiler/native/scorer/verifier versions and RFC0038 layers are real work. Real-model fidelity and H100 native/prover effects remain unavailable; no benchmark authorized."
+      }
+    },
+    "IDEA-0035": {
+      "recommendation": "triaged; priority0; no theorem/security promotion; E0 transcript/extractor/count preflight before any protocol implementation",
+      "soundness": {
+        "verdict": "weakened",
+        "argument": "Current draft preserves original authenticated columns, both group-evaluation and codeword-column equations, proximity U and both Fp components, then explicitly consumes a final level2 PCS opening after sumcheck. New C_U precedes first-level queries; equation batching follows fixed targets/responses; labels are not silently reused. Still missing full extractor, sumcheck/PCS/hash/batching and joint-error accounting, NI late-retry/grinding analysis, new masking schedule and malicious-verifier joint simulator. Unknown is not approval."
+      },
+      "prior_art": {
+        "verdict": "survives",
+        "argument": "Ligerito provides the general two-level direction; no theorem was newly checked in this review. Applying an additional PCS only to already materialized combined rows removes the nonresident original-witness premise of RFC0011 Alternative2 and adds one aggregate root rather than thousands. It is algebraic PCS composition, not a circuit proving the verifier, but NG3 interpretation and a fresh tier-A RFC remain. IDEA0002 basis is an explicit unaccepted dependency, not implemented adoption."
+      },
+      "cost_model": {
+        "verdict": "weakened",
+        "argument": "Author correctly withdraws old17/1.14GB/48% and13s claims, keeps original columns, doubles physical base components, includes mask polynomials/level2 rows/queries and separates allocatedR from committedM. Actual joined G/T_g, layout masks and tau2 under complete budget are unknown. Root/PCS computation cannot be represented as commit_ps reduction or free P4/P5 removal; no net bytes/time/mu gain established."
+      },
+      "feasibility": {
+        "verdict": "weakened",
+        "argument": "A bounded exact equation/mutation/payload preflight is feasible without H100 after preregistration. Adoption needs coefficient-format/root binding #393, natural semantic column correspondence, new descriptor/schedule/budget and independent level2 verifier with must-use claim consumption. Protocol2 joint masks cannot be inferred from revealing fewer old vectors. No candidate harness, benchmark or security implementation is authorized."
+      }
+    }
+  },
+  "concrete_author_clarifications": "Applied and re-read: IDEA34 excludes e rather than forcing virtual x=QK scores to zero and includes score/PV claim transport; IDEA35 chooses Phi_basis=x^k for coefficient format instead of displayed Z_H.",
+  "exact_controls": "research/ideas/results/seed-preflight-2026-10-19.json",
+  "unchanged_control_totals": [
+    32.294103315008094,
+    46.78550448138834,
+    102.44391726444374,
+    436.31045669582556
+  ],
+  "limits": [
+    "No new performance experiment, no new protocol implementation, no main/ledger/note edits by reviewer",
+    "No fresh external theorem content checked, therefore no mathematical theorem-instantiation approval",
+    "All candidate security/performance/fidelity unknowns remain; zero gain credited",
+    "Existing EXP19 and historical results untouched"
+  ]
+}

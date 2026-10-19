@@ -1,0 +1,52 @@
+[
+  {
+    "lens": "commitment",
+    "disposition": "produced seed37/IDEA0035; row-basis seed already IDEA0002",
+    "why": "Compress existing combined rows with explicit binding rather than propose another unpriced per-element hash/encoder."
+  },
+  {
+    "lens": "lookup",
+    "disposition": "no additional mechanism in this bounded pool",
+    "why": "Seeds31/32 can remove lookup instances only with complete routing/certificates. Table sharing and cost microarchitecture already have IDEA0007/0023/0027; no reduction follows merely from Exp functional structure (Jo26 scope is Shout, not a universal LogUp lower bound)."
+  },
+  {
+    "lens": "max certificate",
+    "disposition": "no new note; seed32 retained",
+    "why": "Exact-zero skipping still needs a correct maximum/nonempty selected row plus bounds on every skipped tile. Existing IDEA0020 refuted and IDEA0029 rejected; relabelling their incomplete certificate would repeat failure."
+  },
+  {
+    "lens": "counts",
+    "disposition": "produced seed33/IDEA0034; seed30 literal route fails",
+    "why": "Public shape changes can reduce committed scores but require exact physical boundary counts and a changed native denominator. No new net count inferred from logical sparsity."
+  },
+  {
+    "lens": "attention",
+    "disposition": "produced IDEA0034; seeds31/32 deferred",
+    "why": "Static policy is a smaller first proof scope than private ranking/compaction. It changes D and needs explicit fidelity, so no exact-D or quality claim is made."
+  },
+  {
+    "lens": "passes",
+    "disposition": "no new note; seed34 duplicate ofIDEA0017, seeds35/36 retained",
+    "why": "Existing round-window notes own unchanged-message grids; Hobbit has new protocol/mask obligations; extra stage caching needs a concrete current lifetime/recompute schedule."
+  },
+  {
+    "lens": "parameters",
+    "disposition": "IDEA0035 includes separate current two-level budget; seeds38/39 retained",
+    "why": "No query count, group count, rate or 100/64-bit result can be inherited without new two-level/epoch error accounting."
+  },
+  {
+    "lens": "zero knowledge",
+    "disposition": "no new mechanism clears this lens",
+    "why": "RFC0032 fixes prior pair-bit design; #145/#394 full conditioned view is still open. Static public policy avoids private skip bits but does not complete masking. Neither Hobbit nor level2 receives automatic subset-view approval."
+  },
+  {
+    "lens": "hardware mapping",
+    "disposition": "no new note",
+    "why": "Seeds34/36 depend on actual grid/cache bytes, compiler target and H100 memory/throughput; CPU arithmetic can disprove bounds but cannot supply E2 gain. No unrelated tensor-core proposal added beyond pool."
+  },
+  {
+    "lens": "wild",
+    "disposition": "IDEA0034 changes bound model; IDEA0035 changes opening decomposition",
+    "why": "Both are explicit paradigm/scope changes with zero gain until their obligations hold. Pairings/non-PQ PCS/approximate arithmetic or verifier recursion are not smuggled in as free substitutes."
+  }
+]
