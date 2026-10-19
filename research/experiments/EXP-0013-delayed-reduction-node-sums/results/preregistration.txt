@@ -1,0 +1,3 @@
+UTC: 2026-10-19T07:31:01.579773+00:00
+SHA256 README.preregistered.txt: 77b3f20ca34128314f715f0770543a602f362a3f9996d6e5b022e26605ad4c27
+Before harness code; commit required before implementation (research rule 3).

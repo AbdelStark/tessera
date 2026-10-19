@@ -6,7 +6,7 @@
 | Idea | [IDEA-0026](../../ideas/IDEA-0026-delayed-reduction-fraction-node-sums.md) (primary: scale-first delayed reduction in the fraction-tree node sums); [IDEA-0030](../../ideas/IDEA-0030-deferred-reduction-level-kernel.md), folded in by the triage of 2026-10-17 as the product-forest arm and the relation-first ordering variant |
 | Evidence level | E1 for the time ratios (CPU wall clock here, one Apple M4 Max performance core); E0 for the operation counts, the reduction counts and the cost-model translation; the int32 cost of a 128-bit accumulate on Hopper (IDEA-0030 kill criterion 2) and whether the post-Gruen kernels are compute-bound there (IDEA-0026 kill criterion 3) stay E2 |
 | Hardware | Apple M4 Max (12 performance cores, 128 KiB L1D and 16 MiB L2 per performance cluster), macOS 26.6.2 |
-| Pre-registered on | 2026-10-17 |
+| Pre-registered on | 2026-10-19 |
 
 ## Hypothesis
 
@@ -14,7 +14,7 @@ In one harness on one M4 Max performance core, the split-`eq`, Gruen-corrected l
 
 ## Success criterion
 
-Written before any code. Every arm runs in one program on the same seeded inputs on the same machine. `σ = 1 − T_cand / T_base` is the speed-up of a pair, `T` the median time per table entry (fraction levels, the level kernel alone) or per leaf of the whole forest (forest arms). The baseline of every ratio is EXP-0008's split-`eq` kernel as it stands in that harness, copied here unchanged; the production engine (`prove_batch`, `prove_forests`) is timed as context and is never the denominator of a ratio, since the candidates differ from EXP-0008's kernel only in where the reductions happen.
+Written before any code. Every arm runs in one program on the same seeded inputs on the same machine. `σ = 1 − T_cand / T_base` is the speed-up of a pair, `T` the median time per table entry (fraction levels, the level kernel alone) or per leaf of the whole forest (forest arms). The baseline of every ratio is EXP-0008's split-`eq` kernel as it stands in that harness, ported here without arithmetic changes to the current public APIs; the production engine (`prove_batch`, `prove_forests`) is timed as context and is never the denominator of a ratio, since the candidates differ from EXP-0008's kernel only in where the reductions happen.
 
 Arms (the kernels are described under Method):
 
@@ -49,7 +49,10 @@ Nothing above this line is edited after pre-registration; amendments go below it
 
 ## Method
 
-- **Harness.** One Rust program, `delayred`, its own Cargo workspace in this directory (empty `[workspace]` table, `license = "Apache-2.0 OR MIT"`, `publish = false`, `#![forbid(unsafe_code)]`), started as a copy of EXP-0008's `spliteq` harness (its measurement protocol, its split-`eq` kernels, its forest prover, its verifier drivers and its correctness checks, unchanged), depending by path on `tessera-sumcheck`, `tessera-poly`, `tessera-field`, `tessera-hash` and `tessera-codec` for the baseline and the field and on `tv-core`, `tv-field` and `tv-hash` for the independent checks (research rule 2: a research crate is a dependency of nothing). The accumulator is written in the harness over the field crate's public surface (`to_canonical_u64`, `from_u64_reduced`, `mul_small`), without `unsafe` and without any change to `tessera-field`.
+Pre-registration clarification (2026-10-19, before code): the exact EXP-0008 kernel arithmetic is retained, while API signatures, typed transcript labels and session headers are adapted to current main. Every raw sample (including first runs rejected for CV) is saved; the repetition count is calibrated with margin and every recorded iteration is checked to last at least 20 ms. Correctness-only execution is available as `delayred check`. No cryptographic protocol or production code changes.
+
+
+- **Harness.** One Rust program, `delayred`, its own Cargo workspace in this directory (empty `[workspace]` table, `license = "Apache-2.0 OR MIT"`, `publish = false`, `#![forbid(unsafe_code)]`), ported from EXP-0008's `spliteq` harness (its measurement protocol, its split-`eq` kernels, its forest prover, its verifier drivers and its correctness checks, with current-API adapters only), depending by path on `tessera-sumcheck`, `tessera-poly`, `tessera-field`, `tessera-hash` and `tessera-codec` for the baseline and the field and on `tv-core`, `tv-field` and `tv-hash` for the independent checks (research rule 2: a research crate is a dependency of nothing). The accumulator is written in the harness over the field crate's public surface (`to_canonical_u64`, `from_u64_reduced`, `mul_small`), without `unsafe` and without any change to `tessera-field`.
 - **The accumulator.** `Acc192 { lo, mid, hi: u64 }`: `add(p: u128)` is a 192-bit addition with carries (`u64::carrying_add`, stable on the pinned toolchain). `reduce()` uses `2^64 ≡ 2^32 − 1` and `2^96 ≡ −1 (mod P)`, so `2^128 ≡ −2^32`: `value = lo + (2^32 − 1)·mid − 2^32·hi`, each word canonicalized by `from_u64_reduced` (one conditional subtraction, valid for any `u64`), `mid` scaled by `mul_small(2^32 − 1)` and `hi` by one full multiplication, once per block per accumulator. `AccExt2 { c0, c1, c7: Acc192 }` accumulates a schoolbook `Fp2` product `(a_0 + a_1 X)(b_0 + b_1 X)`, `X² = 7`, as `c0 += a_0 b_0`, `c1 += a_0 b_1`, `c1 += a_1 b_0`, `c7 += a_1 b_1` (four wide products, four 192-bit adds, no Karatsuba pre-sums, so every operand stays below `2^64`) and an `Fp2`-by-`Fp` product as `c0 += a_0 b`, `c1 += a_1 b`; its `reduce()` is `(c0 + 7·c7, c1)` with one `mul_small(7)`.
 - **The kernels.** Each is EXP-0008's two-level sum `Σ_{x_hi} eq_hi[x_hi] · Σ_{x_lo} eq_lo[x_lo] · R_z(x)` at the nodes `z ∈ {0, 2}` (and `1` under the degenerate-challenge fallback), with the inner sum's terminal products accumulated in one `AccExt2` per node and reduced where the baseline adds `h · acc[z]`, once per `x_hi` block. With `w = eq_lo[x_lo]`, per node and pair:
   - fraction leaf level, relation `e·(o + γ) + γ²·o` (the three instances `[eq, d_e, d_o]`, `[eq, d_e]`, `[eq, d_o]` with weights `1, γ, γ²`): scale-first computes `u = w·e` reduced, then `u·(o + γ)` and `(w γ²)·o` deferred, with `w γ²` read from a per-round table `eq_lo · γ²` (`2^lo` products per round, counted); relation-first computes `R = e·(o + γ) + γ²·o` reduced (two products) and `w·R` deferred.
@@ -87,7 +90,7 @@ python3 -I ../../tools/cost_model.py --profile counted --set leaf_ps=<...> --set
 shasum -a 256 results/README.preregistered.txt           # the pre-registered text and its digest: results/preregistration.txt
 ```
 
-Environment: Apple M4 Max, 16 cores (12 performance, 4 efficiency), 48 GiB; macOS 26.6.2 (Darwin 25.6.0); rustc 1.95.0 (59807616e 2026-04-14), cargo 1.95.0; Python 3.14.6; 2026-10-17. One process, one thread, no other load; macOS schedules performance cores first.
+Environment: Apple M4 Max, 16 cores (12 performance, 4 efficiency), 48 GiB; macOS 26.6.2 (Darwin 25.6.0); rustc 1.95.0 (59807616e 2026-04-14), cargo 1.95.0; Python 3.14.6; 2026-10-19; production checkout 726502746cb5a6f29adcdbc7d95b8d2d98735272. One process, one thread, no other load; macOS scheduling is uncontrolled; no CPU affinity is claimed. Current production may already use split-eq kernels; its arm remains context, and EXP-0008 arithmetic remains the denominator.
 
 ## Results
 
