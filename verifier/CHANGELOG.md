@@ -124,6 +124,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - Reject an architecture whose query-head group `n_heads / n_kv_heads` is not a power of two, as `StatementMismatch { field: Architecture }` (RFC-0047, part of [#106](https://github.com/AbdelStark/tessera/issues/106)).
 
+- Independently derive all ten weight layouts and descriptor hashes, bind `WeightCommitmentPublic` to trusted root/epoch, and check protocol1 weight evaluations, direct column authentication and re-encoding consistency. Keep structural rows distinct from dense proximity positions, require zero claims on empty matrices, and report the smallest failing query across both combined rows (RFC-0012/0040/0049; #109).
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

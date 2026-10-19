@@ -25,7 +25,8 @@ serde_json = "1"
 # The verifier's independent opening checks, field and hashing: every opening the tests produce
 # is checked by `tv_core::opening`, and `tests/verifier.rs` checks the NTT against `tv-field`'s
 # (DEP-2). `tests/weights_opening.rs` checks the weights' openings with a verifier built from
-# `tv-field`, `tv-hash`, `tv-codec`'s `WeightCommitmentPublic` and `tv_core::sumcheck::eq`.
+# `tv-field`, `tv-hash`, `tv-codec`'s `WeightCommitmentPublic` and `tv_core::sumcheck::eq`,
+# and feeds the real fold/column answers to `tv_core::weights` (DEP-2).
 tv-codec = { path = "../../verifier/crates/tv-codec" }
 tv-core = { path = "../../verifier/crates/tv-core" }
 tv-field = { path = "../../verifier/crates/tv-field" }

@@ -807,6 +807,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - Refuse incomplete SoftmaxRow/Argmax auxiliary multiplicity tiles, including ranges shared with supported requantizations; component regeneration remains partial (#112).
 
+- Verify the folding pass with the independent weight checker on 120 openings of the four conformance models, and reproduce seven independent sparse/scalar/empty opening fixtures. Add cross-row rejection-order and maximal-codeword boundary regressions (RFC-0012/0040/0049; #109).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

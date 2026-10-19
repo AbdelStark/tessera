@@ -1689,3 +1689,304 @@ fn the_fold_and_the_readers_refuse_what_they_cannot_open() {
         })
     );
 }
+
+// ----- The independent production weight verifier (DEP-2, issue109) -----------------------------
+
+fn claim_fixtures() -> Vec<(String, tv_core::claims::ClaimList)> {
+    let file: Value = serde_json::from_str(
+        &fs::read_to_string(vectors().join("claims/claim-lists.json")).expect("claim fixtures"),
+    )
+    .expect("JSON");
+    file["cases"]
+        .as_array()
+        .expect("cases")
+        .iter()
+        .map(|case| {
+            let text = case["hex"].as_str().expect("hex");
+            let bytes: Vec<u8> = (0..text.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&text[i..i + 2], 16).expect("hex pair"))
+                .collect();
+            (
+                case["name"].as_str().expect("name").to_owned(),
+                tv_core::claims::ClaimList::open(&bytes, &tv_codec::DecodeLimits::MESSAGE)
+                    .expect("golden claim list"),
+            )
+        })
+        .collect()
+}
+
+/// Every nonempty matrix of all four conformance models is opened by the real issue108
+/// folding pass and authenticated by tv-core, at three seeded points. The earlier in-test
+/// checker remains an additional oracle; the independent implementation shares no source.
+#[test]
+fn folding_pass_openings_verify_with_the_independent_weight_checker() {
+    use tv_core::weights as tv;
+    let claims = claim_fixtures();
+    let mut rng = SplitMix64::new(0x7E55_E7A0_0109_0001);
+    let mut checked = 0;
+    let mut models = 0;
+    let mut matrices = BTreeSet::new();
+    for model in conformance_models()
+        .into_iter()
+        .filter(|m| m.name != "synthetic")
+    {
+        let c = &claims
+            .iter()
+            .find(|(name, _)| *name == model.name)
+            .expect("model claims")
+            .1;
+        let committed = Committed::new(&model);
+        let public = tv_codec::decode(
+            &committed.artifact,
+            &tv_codec::DecodeLimits::MESSAGE,
+            tv_codec::WeightCommitmentPublic::decode,
+        )
+        .expect("public weights");
+        assert_eq!(
+            tv::check_public(c, &public, &committed.commitment.weights_root(), 0),
+            Ok(())
+        );
+        let layouts = tv::derive(c, 0).expect("independent layouts");
+        let weights = model.weights();
+        models += 1;
+        for d in &committed.defined {
+            let layout = &layouts[d.matrix.index()];
+            assert_eq!(layout.committed_rows(), d.m() as u64);
+            assert_eq!(layout.log2_k(), d.log2_k);
+            assert_eq!(layout.row_vars(), d.h + d.layer_vars);
+            for (index, &row) in d.rows.iter().enumerate() {
+                assert_eq!(layout.row_at(index as u64), Some(row));
+            }
+            if d.m() == 0 {
+                continue;
+            }
+            matrices.insert(d.matrix.index());
+            for _ in 0..3 {
+                let challenge = Challenge::random(&mut rng, d);
+                let mut rows = committed.layout.rows(d.matrix, &weights).expect("weights");
+                let proven = prove(
+                    &committed.layout,
+                    &committed.commitment,
+                    d,
+                    &mut rows,
+                    &challenge,
+                );
+                let point = tv_fp2s(&challenge.point);
+                let (column_point, row_point) = point.split_at(d.log2_k as usize);
+                let xi = tv_fp2s(&challenge.xi);
+                let opening = tv::Opening {
+                    layout,
+                    root: public.roots[d.matrix.index()],
+                    xi_point: &xi,
+                    claim: tv::Claim {
+                        column_point,
+                        row_point,
+                        gamma: tv_fp2(challenge.theta),
+                        value: proven.value,
+                    },
+                };
+                let combined = common::openings::tv_combined(&[
+                    proven.rows.evaluation.clone(),
+                    proven.rows.proximity.clone(),
+                ]);
+                let columns: Vec<Vec<TvFp>> = proven
+                    .columns
+                    .iter()
+                    .map(|col| col.iter().copied().map(common::openings::tv_fp).collect())
+                    .collect();
+                assert_eq!(
+                    tv::check_evaluations(opening, &combined)
+                        .expect("evaluation")
+                        .check_columns(&challenge.queries, &columns, &proven.siblings),
+                    Ok(()),
+                    "{} {:?}",
+                    model.name,
+                    d.matrix
+                );
+                assert_eq!(
+                    verify(&committed.verifier(&model, d), &challenge, &proven),
+                    Ok(())
+                );
+                let mut damaged = columns.clone();
+                damaged[0][0] += TvFp::ONE;
+                assert_eq!(
+                    tv::check_evaluations(opening, &combined)
+                        .expect("evaluation")
+                        .check_columns(&challenge.queries, &damaged, &proven.siblings),
+                    Err(tv::Error::MerklePath {
+                        matrix: layout.matrix(),
+                        column: u32::try_from(smallest(&challenge.queries)).expect("column")
+                    })
+                );
+                let mut damaged = combined.clone();
+                damaged[1].u[0] += TvFp2::ONE;
+                assert_eq!(
+                    tv::check_evaluations(opening, &damaged)
+                        .expect("evaluation remains valid")
+                        .check_columns(&challenge.queries, &columns, &proven.siblings),
+                    Err(tv::Error::Proximity {
+                        matrix: layout.matrix(),
+                        column: u32::try_from(smallest(&challenge.queries)).expect("column")
+                    })
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert_eq!(models, 4);
+    assert_eq!(matrices.len(), 10);
+    assert_eq!(
+        checked, 120,
+        "three points on each of ten matrices of four models"
+    );
+}
+
+fn oracle_fp(value: &Value) -> Fp {
+    let text = value
+        .as_str()
+        .expect("hex field word")
+        .strip_prefix("0x")
+        .expect("0x");
+    Fp::from_canonical_u64(u64::from_str_radix(text, 16).expect("hex")).expect("canonical")
+}
+fn oracle_pairs(value: &Value) -> Vec<Fp2> {
+    value
+        .as_array()
+        .expect("pairs")
+        .iter()
+        .map(|x| Fp2::new(oracle_fp(&x[0]), oracle_fp(&x[1])))
+        .collect()
+}
+struct OracleRows {
+    matrix: WeightMatrix,
+    values: Vec<Vec<Fp>>,
+    reads: Vec<usize>,
+}
+impl MatrixRows for OracleRows {
+    fn matrix(&self) -> WeightMatrix {
+        self.matrix
+    }
+    fn read_row(&mut self, index: usize, out: &mut [Fp]) -> Result<(), PcsError> {
+        out.copy_from_slice(&self.values[index]);
+        self.reads[index] += 1;
+        Ok(())
+    }
+}
+
+/// The oracle was written and its independent verifier tests passed before this prover
+/// consumer. Every fixture's public rows produce its stated folds, without a Rust NTT oracle.
+#[test]
+fn folding_pass_matches_every_independent_weight_opening_vector() {
+    let file: Value = serde_json::from_str(
+        &fs::read_to_string(vectors().join("weights-opening/openings.json")).expect("oracle"),
+    )
+    .expect("JSON");
+    let cases = file["cases"].as_array().expect("cases");
+    assert_eq!(cases.len(), 7);
+    for case in cases {
+        let arch = &case["arch"];
+        let field = |key| u32::try_from(number(&arch[key])).expect("u32");
+        let (d, ff, v) = (field("d_model"), field("d_ff"), field("vocab"));
+        let q = field("n_heads") * field("d_head");
+        let kv = field("n_kv_heads") * field("d_head");
+        let shapes = WeightShapes {
+            layers: field("n_layers"),
+            shapes: [
+                (d, v),
+                (q, d),
+                (kv, d),
+                (kv, d),
+                (d, q),
+                (ff, d),
+                (ff, d),
+                (d, ff),
+                (v, d),
+            ]
+            .map(|(out, inputs)| WeightShape { out, inputs }),
+            channels: case["channels"]
+                .as_array()
+                .expect("channels")
+                .iter()
+                .map(|ch| {
+                    (
+                        WeightMatrix::ALL[number(&ch["matrix"]) as usize],
+                        number(&ch["layer"]) as u32,
+                    )
+                })
+                .collect(),
+        };
+        let layout = WeightLayout::new(
+            params(u8::try_from(number(&case["layout"]["log2_k"])).expect("log k")),
+            shapes,
+        )
+        .expect("layout");
+        let matrix = WeightMatrix::ALL[number(&case["matrix"]) as usize];
+        let stated_rows: Vec<u64> = case["committed_rows"]
+            .as_array()
+            .expect("rows")
+            .iter()
+            .map(number)
+            .collect();
+        assert_eq!(
+            layout.committed_rows(matrix).collect::<Vec<_>>(),
+            stated_rows
+        );
+        let mut rows = OracleRows {
+            matrix,
+            values: case["rows"]
+                .as_array()
+                .expect("rows")
+                .iter()
+                .map(|row| row.as_array().expect("row").iter().map(oracle_fp).collect())
+                .collect(),
+            reads: vec![0; stated_rows.len()],
+        };
+        let row_point = oracle_pairs(&case["row_point"]);
+        let column_point = oracle_pairs(&case["column_point"]);
+        let xi = oracle_pairs(&case["xi_point"]);
+        let (fold_point, layer_point) = match layout.matrix(matrix).kind() {
+            tessera_pcs::MatrixKind::Weight { a, h, .. } => {
+                let low = &column_point[column_point.len() - a as usize..];
+                (
+                    [low, &row_point[..h as usize]].concat(),
+                    &row_point[h as usize..],
+                )
+            }
+            tessera_pcs::MatrixKind::ChannelParams { .. } => (row_point.clone(), &[][..]),
+        };
+        if stated_rows.is_empty() {
+            assert_eq!(
+                WeightFold::new(&layout, matrix, &mut rows, &fold_point, &xi)
+                    .expect_err("empty has no fold"),
+                PcsError::NoRows { matrix }
+            );
+            continue;
+        }
+        let fold = WeightFold::new(&layout, matrix, &mut rows, &fold_point, &xi).expect("fold");
+        assert_eq!(rows.reads, vec![1; stated_rows.len()]);
+        let gamma = Fp2::new(oracle_fp(&case["gamma"][0]), oracle_fp(&case["gamma"][1]));
+        let combined = fold
+            .combined_rows(layer_point, gamma)
+            .expect("combined rows");
+        assert_eq!(
+            combined.evaluation.u,
+            oracle_pairs(&case["combined"][0]),
+            "{} evaluation",
+            case["name"]
+        );
+        assert_eq!(
+            combined.proximity.u,
+            oracle_pairs(&case["combined"][1]),
+            "{} proximity",
+            case["name"]
+        );
+        assert!(combined.evaluation.mask.is_empty() && combined.proximity.mask.is_empty());
+        let value = extension(&tv_fp2s(&combined.evaluation.u), &tv_fp2s(&column_point));
+        let claimed = tv_fp2(Fp2::new(
+            oracle_fp(&case["value"][0]),
+            oracle_fp(&case["value"][1]),
+        ));
+        assert_eq!(value, tv_fp2(gamma) * claimed);
+    }
+}
