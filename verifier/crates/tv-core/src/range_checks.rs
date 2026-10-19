@@ -8,8 +8,9 @@ use tv_field::Fp;
 use tv_tables::{TableError, TableId, TableKind, TableSpec};
 
 use crate::claims::GadgetPolicy;
-use crate::lowering::{Graph, LoweredTable, Node, Op};
+use crate::lowering::{Graph, LoweredTable, Node, NodeId, Op};
 use crate::ranges::{Interval, RangeError, analyze};
+use crate::selection::{Choice, Pattern, Selection};
 use crate::validation::{ClaimsError, GadgetId, StatementField};
 
 fn gadget(id: GadgetId) -> ClaimsError {
@@ -124,7 +125,7 @@ impl Key {
         }
     }
 
-    fn log2_rows(self, id: GadgetId) -> Result<u8, ClaimsError> {
+    fn kind(self) -> Result<TableKind, ClaimsError> {
         let kind = match self {
             Self::Range(bits) => TableKind::Range { bits },
             Self::Requant {
@@ -150,8 +151,13 @@ impl Key {
                 }
             }
         };
-        // This checks core bounds and all RFC-0008 parameters without generating a table.
-        kind.check_parameters()
+        Ok(kind)
+    }
+
+    fn log2_rows(self, id: GadgetId) -> Result<u8, ClaimsError> {
+        // Check the full RFC-0008 bounds without regenerating any table values.
+        self.kind()?
+            .check_parameters()
             .map_err(|error| table_error(id, error))
     }
 }
@@ -160,6 +166,8 @@ struct Tables<'a> {
     base: &'a [LoweredTable],
     added: Vec<(Key, u8)>,
     seen: HashSet<Key>,
+    capture: bool,
+    trace: Vec<Vec<(TableId, Key, u8)>>,
 }
 
 impl Tables<'_> {
@@ -169,6 +177,22 @@ impl Tables<'_> {
             return Err(gadget(id));
         }
         if self.seen.contains(&key) || self.base.iter().any(|t| key.matches(&t.kind)) {
+            if self.capture {
+                let index = if let Some(base) = self.base.iter().find(|t| key.matches(&t.kind)) {
+                    base.id
+                } else {
+                    let at = self
+                        .added
+                        .iter()
+                        .position(|(k, _)| *k == key)
+                        .ok_or(ClaimsError::Internal)?;
+                    TableId(
+                        u32::try_from(self.base.len().checked_add(at).ok_or(ClaimsError::Memory)?)
+                            .map_err(|_| ClaimsError::Memory)?,
+                    )
+                };
+                self.record(id, index, key, rows)?;
+            }
             return Ok(());
         }
         let index = self
@@ -181,6 +205,30 @@ impl Tables<'_> {
         self.added.try_reserve(1).map_err(|_| ClaimsError::Memory)?;
         self.seen.insert(key);
         self.added.push((key, rows));
+        if self.capture {
+            self.record(
+                id,
+                TableId(u32::try_from(index).map_err(|_| ClaimsError::Memory)?),
+                key,
+                rows,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn record(
+        &mut self,
+        id: GadgetId,
+        table: TableId,
+        key: Key,
+        rows: u8,
+    ) -> Result<(), ClaimsError> {
+        let entries = self
+            .trace
+            .get_mut(usize::try_from(id.0).map_err(|_| ClaimsError::Memory)?)
+            .ok_or(ClaimsError::Internal)?;
+        entries.try_reserve(1).map_err(|_| ClaimsError::Memory)?;
+        entries.push((table, key, rows));
         Ok(())
     }
 
@@ -393,6 +441,16 @@ pub(crate) fn check(
     policy: GadgetPolicy,
     claimed: &[TableSpec],
 ) -> Result<Vec<Interval>, ClaimsError> {
+    let (ranges, tables) = walk(graph, policy, false)?;
+    tables.compare(claimed)?;
+    Ok(ranges)
+}
+
+fn walk(
+    graph: &Graph,
+    policy: GadgetPolicy,
+    capture: bool,
+) -> Result<(Vec<Interval>, Tables<'_>), ClaimsError> {
     let ranges = analyze(graph).map_err(|e| match e {
         RangeError::Memory => ClaimsError::Memory,
         RangeError::Internal => ClaimsError::Internal,
@@ -401,25 +459,26 @@ pub(crate) fn check(
         base: graph.tables(),
         added: Vec::new(),
         seen: HashSet::new(),
+        capture,
+        trace: Vec::new(),
     };
     let mut next = 0u32;
     for node in graph.nodes() {
-        if !matches!(
-            node.op(),
-            Op::OneHot { .. }
-                | Op::Requant { .. }
-                | Op::TableMap { .. }
-                | Op::SoftmaxRow { .. }
-                | Op::RsqrtRow { .. }
-        ) {
+        if !is_gadget(node.op()) {
             continue;
         }
         let id = GadgetId(next);
         next = next.checked_add(1).ok_or(ClaimsError::Internal)?;
+        if capture {
+            tables
+                .trace
+                .try_reserve(1)
+                .map_err(|_| ClaimsError::Memory)?;
+            tables.trace.push(Vec::new());
+        }
         check_gadget(graph, node, &ranges, policy, id, &mut tables)?;
     }
-    tables.compare(claimed)?;
-    Ok(ranges)
+    Ok((ranges, tables))
 }
 
 fn check_gadget(
@@ -533,6 +592,196 @@ fn check_gadget(
     Ok(())
 }
 
+fn is_gadget(op: &Op) -> bool {
+    matches!(
+        op,
+        Op::OneHot { .. }
+            | Op::Requant { .. }
+            | Op::TableMap { .. }
+            | Op::SoftmaxRow { .. }
+            | Op::RsqrtRow { .. }
+    )
+}
+
+fn copy_shifts(shifts: &[u8]) -> Result<Vec<u8>, ClaimsError> {
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(shifts.len())
+        .map_err(|_| ClaimsError::Memory)?;
+    values.extend_from_slice(shifts);
+    Ok(values)
+}
+
+fn copy_kind(kind: &TableKind) -> Result<TableKind, ClaimsError> {
+    Ok(match kind {
+        TableKind::Range { bits } => TableKind::Range { bits: *bits },
+        TableKind::Requant {
+            b,
+            r_by_class,
+            lo,
+            hi,
+        } => TableKind::Requant {
+            b: *b,
+            r_by_class: copy_shifts(r_by_class)?,
+            lo: *lo,
+            hi: *hi,
+        },
+        TableKind::Pow2 { max_exp } => TableKind::Pow2 { max_exp: *max_exp },
+        TableKind::Bitwise8 { op } => TableKind::Bitwise8 { op: *op },
+        TableKind::AesSbox => TableKind::AesSbox,
+        TableKind::Gf256Mul { c } => TableKind::Gf256Mul { c: *c },
+        TableKind::Exp {
+            key_bits,
+            sigma,
+            scale,
+        } => TableKind::Exp {
+            key_bits: *key_bits,
+            sigma: *sigma,
+            scale: *scale,
+        },
+        TableKind::Exp2Frac {
+            frac_bits,
+            out_bits,
+        } => TableKind::Exp2Frac {
+            frac_bits: *frac_bits,
+            out_bits: *out_bits,
+        },
+        TableKind::Silu {
+            b,
+            r_by_class,
+            in_exp,
+            out_exp,
+        } => TableKind::Silu {
+            b: *b,
+            r_by_class: copy_shifts(r_by_class)?,
+            in_exp: *in_exp,
+            out_exp: *out_exp,
+        },
+        TableKind::Rope {
+            theta,
+            factor,
+            low_freq_factor,
+            high_freq_factor,
+            original_max,
+            bits,
+            max_context,
+            d_head,
+        } => TableKind::Rope {
+            theta: *theta,
+            factor: *factor,
+            low_freq_factor: *low_freq_factor,
+            high_freq_factor: *high_freq_factor,
+            original_max: *original_max,
+            bits: *bits,
+            max_context: *max_context,
+            d_head: *d_head,
+        },
+    })
+}
+
+fn pattern(op: &Op, requests: &[(TableId, Key, u8)]) -> Result<Pattern, ClaimsError> {
+    Ok(match op {
+        Op::OneHot { .. } => Pattern::OneHot,
+        Op::RsqrtRow { .. } => Pattern::RsqrtRow,
+        Op::TableMap { .. } => Pattern::Lookup,
+        Op::SoftmaxRow { .. } => Pattern::SoftmaxRow,
+        Op::Requant { .. } => match requests {
+            [(_, Key::Requant { .. }, _)] => Pattern::Requant1,
+            [(_, Key::Range(split), _), (_, Key::Requant { .. }, _)] => {
+                Pattern::RequantSplit { split: *split }
+            }
+            [
+                (_, Key::Range(middle), _),
+                (_, Key::Range(_), _),
+                (_, Key::Requant { .. }, _),
+                (_, Key::Requant { .. }, _),
+            ] => Pattern::RequantWide {
+                split: 0,
+                middle: *middle,
+            },
+            [
+                (_, Key::Range(split), _),
+                (_, Key::Range(middle), _),
+                (_, Key::Range(_), _),
+                (_, Key::Requant { .. }, _),
+                (_, Key::Requant { .. }, _),
+            ] => Pattern::RequantWide {
+                split: *split,
+                middle: *middle,
+            },
+            _ => return Err(ClaimsError::Internal),
+        },
+        _ => return Err(ClaimsError::Internal),
+    })
+}
+
+pub(crate) fn catalog(graph: &Graph, policy: GadgetPolicy) -> Result<Selection, ClaimsError> {
+    let (ranges, state) = walk(graph, policy, true)?;
+    let count = state
+        .base
+        .len()
+        .checked_add(state.added.len())
+        .ok_or(ClaimsError::Memory)?;
+    let mut tables = Vec::new();
+    tables
+        .try_reserve_exact(count)
+        .map_err(|_| ClaimsError::Memory)?;
+    for t in state.base {
+        tables.push(LoweredTable {
+            id: t.id,
+            kind: copy_kind(&t.kind)?,
+            log2_rows: t.log2_rows,
+        });
+    }
+    for &(key, rows) in &state.added {
+        tables.push(LoweredTable {
+            id: TableId(u32::try_from(tables.len()).map_err(|_| ClaimsError::Memory)?),
+            kind: key.kind()?,
+            log2_rows: rows,
+        });
+    }
+    let mut choices = Vec::new();
+    choices
+        .try_reserve_exact(state.trace.len())
+        .map_err(|_| ClaimsError::Memory)?;
+    let mut request_sets = state.trace.iter();
+    for (index, node) in graph.nodes().iter().enumerate() {
+        if !is_gadget(node.op()) {
+            continue;
+        }
+        let requests = request_sets.next().ok_or(ClaimsError::Internal)?;
+        let prefix = match node.op() {
+            Op::TableMap { table } => Some(*table),
+            Op::SoftmaxRow { exp_table, .. } => Some(*exp_table),
+            _ => None,
+        };
+        let capacity = requests
+            .len()
+            .checked_add(usize::from(prefix.is_some()))
+            .ok_or(ClaimsError::Memory)?;
+        let mut refs = Vec::new();
+        refs.try_reserve_exact(capacity)
+            .map_err(|_| ClaimsError::Memory)?;
+        if let Some(id) = prefix {
+            refs.push(id);
+        }
+        refs.extend(requests.iter().map(|(id, _, _)| *id));
+        choices.push(Choice {
+            node: NodeId(u32::try_from(index).map_err(|_| ClaimsError::Memory)?),
+            pattern: pattern(node.op(), requests)?,
+            tables: refs,
+        });
+    }
+    if request_sets.next().is_some() {
+        return Err(ClaimsError::Internal);
+    }
+    Ok(Selection {
+        ranges,
+        tables,
+        choices,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -543,6 +792,8 @@ mod tests {
             base: &[],
             added: Vec::new(),
             seen: HashSet::new(),
+            capture: false,
+            trace: Vec::new(),
         };
         select_requant(
             Interval::test_bounds(-half, half - 1),
@@ -570,6 +821,8 @@ mod tests {
                 base: &[],
                 added: Vec::new(),
                 seen: HashSet::new(),
+                capture: false,
+                trace: Vec::new(),
             };
             let mut policy = GadgetPolicy {
                 max_log2_rows: 32,
@@ -593,6 +846,8 @@ mod tests {
             base: &[],
             added: Vec::new(),
             seen: HashSet::new(),
+            capture: false,
+            trace: Vec::new(),
         };
         let mut policy = GadgetPolicy {
             max_log2_rows: 32,
@@ -672,6 +927,8 @@ mod tests {
             base: &[],
             added: Vec::new(),
             seen: HashSet::new(),
+            capture: false,
+            trace: Vec::new(),
         };
         assert_eq!(
             select_requant(
@@ -773,6 +1030,8 @@ mod tests {
             base: graph.tables(),
             added: Vec::new(),
             seen: HashSet::new(),
+            capture: false,
+            trace: Vec::new(),
         };
         check_gadget(graph, node, ranges, policy, id, &mut tables)
     }
@@ -918,6 +1177,8 @@ mod tests {
             base: &[],
             added: Vec::new(),
             seen: HashSet::new(),
+            capture: false,
+            trace: Vec::new(),
         };
         assert_eq!(
             tables.intern(Key::Range(32), 31, GadgetId(7)),
@@ -937,5 +1198,78 @@ mod tests {
             .unwrap();
         assert_eq!(classes_fit(&ranges, node, 1), Ok(true));
         assert_eq!(classes_fit(&ranges, node, 2), Ok(false));
+    }
+    #[test]
+    fn captured_choices_retain_widths_and_reused_table_ids() {
+        for (bits, shifts, expected) in [
+            (16, vec![4], Pattern::Requant1),
+            (40, vec![24], Pattern::RequantSplit { split: 20 }),
+            (
+                40,
+                vec![8],
+                Pattern::RequantWide {
+                    split: 7,
+                    middle: 8,
+                },
+            ),
+        ] {
+            let mut tables = Tables {
+                base: &[],
+                added: Vec::new(),
+                seen: HashSet::new(),
+                capture: true,
+                trace: vec![Vec::new()],
+            };
+            let half = 1i128 << (bits - 1);
+            select_requant(
+                Interval::test_bounds(-half, half - 1),
+                &shifts,
+                -128,
+                127,
+                32,
+                GadgetId(0),
+                &mut tables,
+            )
+            .unwrap();
+            let op = Op::Requant {
+                shift: 0,
+                lo: -128,
+                hi: 127,
+            };
+            assert_eq!(pattern(&op, &tables.trace[0]).unwrap(), expected);
+            let count = tables.added.len();
+            tables.trace.push(Vec::new());
+            select_requant(
+                Interval::test_bounds(-half, half - 1),
+                &shifts,
+                -128,
+                127,
+                32,
+                GadgetId(1),
+                &mut tables,
+            )
+            .unwrap();
+            assert_eq!(tables.added.len(), count);
+            assert_eq!(tables.trace[0], tables.trace[1]);
+        }
+    }
+
+    #[test]
+    fn captured_softmax_retains_all_three_references_to_one_table() {
+        let mut tables = Tables {
+            base: &[],
+            added: Vec::new(),
+            seen: HashSet::new(),
+            capture: true,
+            trace: vec![Vec::new()],
+        };
+        let policy = GadgetPolicy {
+            max_log2_rows: 32,
+            query_block: 512,
+            limb_bits: 17,
+        };
+        softmax_ranges(16, policy, GadgetId(0), &mut tables).unwrap();
+        assert_eq!(tables.added.len(), 1);
+        assert_eq!(tables.trace[0], vec![(TableId(0), Key::Range(17), 17); 3]);
     }
 }

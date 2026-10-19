@@ -8,7 +8,14 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+# Run this diagnostic's conformance tests in the default E2E suite as well.
+[[example]]
+name = "constraint-digest"
+path = "examples/constraint_digest/main.rs"
+test = true
+
 [dev-dependencies]
+blake3 = "1"
 serde_json = "1"
 tessera-codec = { path = "../tessera-codec" }
 tessera-compiler = { path = "../tessera-compiler" }
@@ -17,7 +24,15 @@ tessera-hash = { path = "../tessera-hash" }
 tessera-ir = { path = "../tessera-ir" }
 tessera-logup = { path = "../tessera-logup" }
 tessera-sumcheck = { path = "../tessera-sumcheck" }
+tessera-tables = { path = "../tessera-tables" }
 tessera-witness = { path = "../tessera-witness" }
+
+# Diagnostic differential checks consume the verifier only as dev-dependencies (DEP-2).
+tv-codec = { path = "../../verifier/crates/tv-codec" }
+tv-core = { path = "../../verifier/crates/tv-core" }
+tv-field = { path = "../../verifier/crates/tv-field" }
+tv-tables = { path = "../../verifier/crates/tv-tables" }
+tv-testkit = { path = "../../verifier/crates/tv-testkit" }
 
 [lints]
 workspace = true

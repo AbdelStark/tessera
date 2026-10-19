@@ -581,6 +581,7 @@ dependencies = [
 name = "tessera-e2e"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "serde_json",
  "tessera-codec",
  "tessera-compiler",
@@ -589,7 +590,13 @@ dependencies = [
  "tessera-ir",
  "tessera-logup",
  "tessera-sumcheck",
+ "tessera-tables",
  "tessera-witness",
+ "tv-codec",
+ "tv-core",
+ "tv-field",
+ "tv-tables",
+ "tv-testkit",
 ]
 
 [[package]]
@@ -870,6 +877,10 @@ dependencies = [
  "tv-field",
  "tv-hash",
 ]
+
+[[package]]
+name = "tv-testkit"
+version = "0.1.0"
 
 [[package]]
 name = "unarray"

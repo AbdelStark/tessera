@@ -811,6 +811,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - `tessera-gadgets::RsqrtRow`: exact multi-limb reciprocal-square-root brackets with bounded product coefficients, the seven-bit input top limb, padded-root zero-check and zeroizing witnesses. Includes independent integer vectors and million-input agreement checks (RFC-0009 Lemma 7, #126).
 
+- Constraint-system digest conformance between the compiler and independent verifier, covering tiny models, variants and 8B/405B shapes. The `constraint-digest` example reports the first differing public constraint, and the named CI job checks it (RFC-0007, #120).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
