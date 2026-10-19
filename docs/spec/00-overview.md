@@ -34,7 +34,7 @@ Software users: protocol engineers integrating Tessera into an audit regime, ML 
 Per sampled request, Tessera proves three conjuncts (source §2):
 
 1. **Transcript anchor.** The token streams committed inside the proof equal the streams recorded at generation time. Specified in [RFC-0015](../rfcs/RFC-0015-transcript-anchor.md).
-2. **Forward pass.** The committed integer model `D` with committed weights maps those inputs to logits, with no prover freedom anywhere upstream of the logits. Specified in [RFC-0005](../rfcs/RFC-0005-integer-model.md) through [RFC-0012](../rfcs/RFC-0012-weight-commitment.md).
+2. **Forward pass.** The committed integer model `D` with committed weights maps those inputs to logits, with no prover freedom anywhere upstream of the logits. Specified in [RFC-0005](../rfcs/RFC-0005-integer-model.md) through [RFC-0012](../rfcs/RFC-0012-weight-commitment.md). Uniqueness holds for any committed weights. `R_W` is trusted to be the root of a `D` that `tessera commit-weights` accepted, which makes `D` the model its claim list describes ([RFC-0048](../rfcs/RFC-0048-weight-trust.md)).
 3. **Scoring.** The outputs, scored against the logits, give a public bound `Û` on unexplained information. In exact mode `Û = 0` exactly when outputs equal `D`'s deterministic outputs, including seeded sampling. Specified in [RFC-0017](../rfcs/RFC-0017-scoring.md).
 
 Public: `Û`, sequence lengths, the weight-commitment root `R_W`, the claim list (architecture), and the recorder digests. Hidden: weights, activations, prompts, outputs, sampler keys.

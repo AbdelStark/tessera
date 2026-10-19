@@ -55,6 +55,7 @@ Out of scope: an adversary that subverts the recorder itself (the recorder is a 
 | Grinding the LogUp challenge at `(N + T)/\|F\| ≈ 2^-90` | ADV-P | Derived from the live seed (one shot) or behind 20-bit proof-of-work (RISK-5, [00 §9](00-overview.md#9-risks)) |
 | Committing a non-codeword | ADV-P | Proximity test with `τ` columns drawn after all commitments; unique-decoding analysis |
 | Exploiting a wrapped lookup key to admit a false value | ADV-P | Compiler proves each key a true integer; the verifier independently re-derives ranges from the claim list (SP-7) |
+| Committing weights, classes, multipliers or padding outside their domains | ADV-P | Uniqueness holds for any committed values. Fidelity rests on `R_W`'s publisher, and `commit-weights` refuses an out-of-domain `D` ([RFC-0048](../rfcs/RFC-0048-weight-trust.md)) |
 | Substituting tables | ADV-P | The verifier regenerates every table from its definition with its own code and compares digests |
 | Malleable encodings to fork the transcript | ADV-P | Canonical decoding; the transcript absorbs canonical bytes only |
 | Proving a different stream than the one served | ADV-P | Transcript anchor; per-session key commitment in the signed log |

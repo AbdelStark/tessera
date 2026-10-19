@@ -736,6 +736,11 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Vectors.**
     - `spec/vectors/weights/generate.py` is an independent oracle in Python's integers. For each conformance model at `test-small/1`, and a synthetic model with no `ChannelParams`, it gives every matrix's layout, `commitment_id` and root, then `R_W` and the `.twr` artifact. It also encodes rows at rate 1/4. `tessera-pcs` and `tessera-ir` reproduce every value.
     - `spec/vectors/codec/weight-commitment.json` holds golden envelopes of both schemas, and states whose opened columns are unsorted or repeated. `cargo xtask gen-vectors` lays out the states' bytes itself, from RFC-0040's field list; a unit test of `tessera-pcs` checks that `sealed` gives each state's value, pinned through `with_seed`, as exactly those bytes.
+- RFC-0048, accepted, states what the weights root vouches for ([#369](https://github.com/AbdelStark/tessera/issues/369)):
+  - **Uniqueness.** Every gadget's uniqueness argument holds for arbitrary committed weights, classes, multipliers and padding: an injective digit box below `P`, or a table that is a function of its key. A malformed `R_W` cannot let the prover adapt outputs.
+  - **The assumption.** `R_W` is the root of a `D` that `commit-weights` accepted. That gives fidelity (`D` is its claim list's Llama) and totality (every input has a proof). A one-time well-formedness proof would buy no uniqueness.
+  - **Amendments.** RFC-0009's requantization lemmas split into a uniqueness half and a value half. 00 §3, 06 §5, RFC-0006 and RFC-0040 state the assumption.
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
