@@ -1,0 +1,136 @@
+{
+  "control": "passed",
+  "restored": "passed",
+  "faults": [
+    {
+      "fault": "input-top",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('alternative auxiliary', 1, 'u/0', 'UTop', 'Norm/lower/left/0')",
+      "original": "if ut >= 128 and fault != \"UTop\":",
+      "replacement": "if False:"
+    },
+    {
+      "fault": "root-top",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('alternative auxiliary', 9, 'root/0', 'RTop', 'Norm/lower/left/0')",
+      "original": "if rt >= 1 << (w - 8 * r) and fault != \"RTop\":",
+      "replacement": "if False:"
+    },
+    {
+      "fault": "root-range",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('root alternative', 1, 1, 'RootRange', 'RTop')",
+      "original": "if not 0 <= a.root < 1 << w and fault != \"RootRange\":",
+      "replacement": "if False:"
+    },
+    {
+      "fault": "root-padding",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('root alternative', 1, 1, 'RootPadding', None)",
+      "original": "if a.psi == 0 and a.root != 0 and fault != \"RootPadding\":",
+      "replacement": "if False:"
+    },
+    {
+      "fault": "input-padding",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('behavior-changing fault', 'InputPadding', None, None)",
+      "original": "if a.psi == 0 and a.u != 0 and fault != \"InputPadding\":",
+      "replacement": "if False:"
+    },
+    {
+      "fault": "final-carry",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('alternative auxiliary', 1, 'lower/left/carry/7', 'FinalCarry/lower/left', 'Norm/lower/left/7')",
+      "original": "if v[f\"{name}/carry/{m-1}\"] != 0 and fault != final:",
+      "replacement": "if False:"
+    },
+    {
+      "fault": "final-borrow",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('root alternative', 1, -1, 'Upper', None)",
+      "original": "if v[f\"{which}/borrow/{m-1}\"] != 0 and fault != final:",
+      "replacement": "if False:"
+    },
+    {
+      "fault": "wide-input-top",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: u+P exact top rejection",
+      "original": "if ut >= 128 and fault != \"UTop\":",
+      "replacement": "if ut >= 65536 and fault != \"UTop\":"
+    },
+    {
+      "fault": "mixed-radix-index",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('independent schema', 1)",
+      "original": "result[i + j + 2 * k] +=",
+      "replacement": "result[i + j + k] +="
+    },
+    {
+      "fault": "increment-carry",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('independent schema', 8)",
+      "original": "factors[0] += increment",
+      "replacement": "factors[0] = (factors[0] + increment) & 255"
+    },
+    {
+      "fault": "carry-bound",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('independent schema', 1)",
+      "original": "carry = (value + carry) // 256",
+      "replacement": "carry = (value + carry) // 512"
+    },
+    {
+      "fault": "box-threshold",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('whole lookup box', 24, 'lower/left', 4)",
+      "original": "max(a, left, right) < 1 << 40",
+      "replacement": "max(a, left, right) < 1 << 34"
+    },
+    {
+      "fault": "virtual-top-request",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('independent schema', 1)",
+      "original": "requests.append((\"u/top\", 7))",
+      "replacement": "pass"
+    },
+    {
+      "fault": "root-top-width",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('independent schema', 1)",
+      "original": "requests.append((\"root/top\", w - 8 * r))",
+      "replacement": "requests.append((\"root/top\", w - 8 * r + 1))"
+    },
+    {
+      "fault": "table-reference",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('independent schema', 1)",
+      "original": "ids.append(families.index(width))",
+      "replacement": "ids.append(0)"
+    },
+    {
+      "fault": "duplicate-output",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: output allocated once",
+      "original": "\"outputs\": [\"root\"]",
+      "replacement": "\"outputs\": [\"root\", \"root\"]"
+    },
+    {
+      "fault": "whole-constant-reduction",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('large-constant row', '8b-norm-metadata', 1, 672)",
+      "original": "if fault == \"WholeConstantMod\":",
+      "replacement": "if True:"
+    },
+    {
+      "fault": "short-product-width",
+      "outcome": "test-killed",
+      "last_line": "AssertionError: ('independent schema', 1)",
+      "original": "if independent else (2 * w + 62) // 8",
+      "replacement": "if independent else (2 * w + 54) // 8"
+    }
+  ],
+  "evidence": "E0; experiment source only, not production code",
+  "source_sha256": "50dde49a96b2a27dd966e68ce246ac16295c46f6e4fa864e80bd1d6ac390dfea",
+  "command": "python3 -I research/experiments/EXP-0023-gadget-column-contract/main.py",
+  "method": "In a detached worktree at 0d64820, replace each unique original string once, run the full command, require AssertionError and nonzero exit without syntax/name/index/key errors; restore original source after every case. Unmutated and finally restored full runs must pass."
+}

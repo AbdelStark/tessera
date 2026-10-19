@@ -293,3 +293,15 @@ not a production vulnerability claim. No original case or criterion is replaced.
 The final combined run has 1,356,233 assertions; the repeated original stage
 has 562,296 because it also verifies the committed constant-boundary plan.
 All raw profiles, exact errors and roots are in `results/outcomes.json`.
+
+
+## Source mutation check (2026-10-19)
+
+After all registered results passed, a detached worktree exercised eighteen actual
+source edits against the complete experiment command. All eighteen failed targeted
+assertions; neither the original nor restored control failed. Syntax, name, index
+and key errors did not count. The restored source is byte-identical to the source
+in this change. `results/source-mutations.json` records each exact replacement,
+first assertion, source hash and reproduction method (E0). These faults overlap
+the nineteen functional fault cases; their counts must not be added together as
+distinct attacks. This is mutation coverage of the experiment, not production code.

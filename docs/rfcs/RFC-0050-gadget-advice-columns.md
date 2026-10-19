@@ -228,6 +228,12 @@ node/role and public selector. A checked bracket does not discharge the upstream
 input-selector equation or its integer range; those obligations cannot be dropped
 by the gadget verifier or driver. General padded witnesses remain RFC-0035's.
 
+The local gadget treats `u` as a virtual tensor with its own multilinear-extension
+claim. Its definition must be reduced correctly: the extension of a product is
+not in general the product of extensions at the final point. If an implementation
+inlines that definition instead, it must derive and charge the resulting degree
+and all binding obligations, rather than assume the local gadget degree.
+
 ## Security Argument
 
 - **Integer exactness and uniqueness.** Input and root boxes are below Goldilocks.
@@ -242,9 +248,10 @@ by the gadget verifier or driver. General padded witnesses remain RFC-0035's.
   box: for a positive maximum root, `N<e*2^(2*w)`; for a zero maximum, `N<e`.
   The declared `m` is sufficient. At the largest root width the complete product
   may need 119 bits, not one field element.
-- **Soundness accounting.** Pointwise product degree stays at most three (four
-  with a sumcheck equality factor); the original bracket polynomial, transcript
-  patterns and challenges remain. This does not fix a model's security budget by
+- **Soundness accounting.** The local pointwise product in its declared virtual
+  inputs has degree at most three (four with a sumcheck equality factor); complete
+  reductions must also account for the input binding above. The original bracket
+  polynomial, transcript patterns and challenges remain. This does not fix a model's security budget by
   assertion. Both sides must supply actual schema-derived rounds, instances,
   lookups, table rows and advice rows to RFC-0014's calculator and reject a preset
   missing its target. No target, grinding requirement or field term is weakened.

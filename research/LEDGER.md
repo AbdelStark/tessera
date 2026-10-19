@@ -254,3 +254,5 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-10-19 | RFC-0050 draft / registered large-constant boundary | Original and polynomial-retention gates pass. Before the RFC decision, freeze five public scalar profiles/twenty rows with N above Goldilocks and a whole-constant reduction control. Original inputs/criteria remain unchanged; extension not yet run. |
 
 | 2026-10-19 | EXP-0023 constant boundary judged | All20 extra row cases retain whole N/N+1;5 deliberately reduced-constant attacks reject under the correct validator and accept only under the injected fault.3,400 extra assertions, final1,356,233. No original criteria changed; no production-vulnerability, full-model or performance claim. |
+
+| 2026-10-19 | EXP-0023 source-mutation check | Eighteen actual source edits fail targeted full-harness assertions; original and restored controls pass with byte-identical source. Overlaps functional faults; not eighteen additional distinct attacks or production coverage. Receipt includes exact edits and source hash. |
