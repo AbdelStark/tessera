@@ -63,6 +63,9 @@
 //!   validation'). A table widened past 24 bits never qualifies: its last key rounds to 0 before
 //!   its zero tail, which then starts past `2^24`. A wide head's spread can still be wider, such
 //!   as 26 bits for heads of 2,048, when its own table qualifies;
+//! - `SoftmaxRow`'s reciprocal is unique (RFC-0009 Lemma 6): `(2·max_context − 1)·2^{2·exp_sigma}
+//!   < P`, computed exactly in 128 bits. That is `exp_sigma ≤ 23` at `max_context = 2^17`, and
+//!   `exp_sigma ≤ 31` at any context, inside RFC-0008's `σ ≤ 32`;
 //! - `silu_in_exponents` holds `(ℓ, e)` for `ℓ = 0, …, n_layers − 1` in order;
 //! - `2 ≤ residual_bits ≤ 31`;
 //! - the embedding's shift `s_e = e_Embed − residual_exponent` is non-negative (RFC-0005 'Scale
@@ -70,7 +73,8 @@
 //!   `127 · 2^{s_e} < 2^{residual_bits − 1}`;
 //! - `rms_eps_int ≥ 1` and `rsqrt_kappa ≤ 31`.
 //!
-//! RFC-0007 states `n_heads ≥ 1`, `s_e ≥ 0` and the `Exp` rule since #107.
+//! RFC-0007 states `n_heads ≥ 1`, `s_e ≥ 0` and the `Exp` rule since #107, and Lemma 6's bound
+//! since #376.
 //!
 //! ## Step 2.3: every layer rescaled alike
 //!
@@ -112,6 +116,7 @@
 use core::fmt;
 
 use tv_codec::{DecodeError, DecodeLimits, Rational};
+use tv_field::Fp;
 use tv_tables::{Table, TableError, TableId, TableKind, exp_maps_to_zero};
 
 use crate::claims::{
@@ -534,6 +539,10 @@ fn quantization<'a>(claims: &'a ClaimList) -> Result<PublicPart<'a>, ClaimsError
             return Err(refused());
         }
     }
+    // Every `SoftmaxRow` row has one reciprocal (RFC-0009 Lemma 6).
+    if !reciprocal_unique(quant.exp_sigma, arch.max_context) {
+        return Err(refused());
+    }
 
     // `act_exponents`: exactly the INT8 points, in order.
     let mut exponents = quant.act_exponents.iter();
@@ -665,6 +674,27 @@ fn admits_exp_table(from: u8, sigma: u8, scale: Rational) -> Result<bool, Claims
         }
     }
     Ok(false)
+}
+
+/// RFC-0009 Lemma 6's precondition, `(2·max_context − 1)·2^{2σ} < P`, exact in 128-bit integers.
+/// A row sum is at most `max_context·2^σ`. Below the bound, a reciprocal times the row sum plus
+/// its slack stays below `P + 2^{2σ}`, so the bracket admits `⌊2^{2σ}/s_q⌋` alone. Past it, a
+/// row of `max_context` positions at its maximal score admits a second reciprocal, whose product
+/// wraps past `P`. A shift past 127 bits or a product past `2^128` is past `P` too.
+fn reciprocal_unique(sigma: u8, max_context: u32) -> bool {
+    let positions = u128::from(max_context)
+        .checked_mul(2)
+        .and_then(|twice| twice.checked_sub(1));
+    let power = u32::from(sigma)
+        .checked_mul(2)
+        .and_then(|bits| 1u128.checked_shl(bits));
+    match (positions, power) {
+        (Some(positions), Some(power)) => positions
+            .checked_mul(power)
+            .is_some_and(|product| product < u128::from(Fp::MODULUS)),
+        // No context is 0 once step 2.1 has passed.
+        _ => false,
+    }
 }
 
 /// Step 2.3: the first site, in declaration order, that is affine in some layers only, or a

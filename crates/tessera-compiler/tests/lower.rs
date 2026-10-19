@@ -1191,6 +1191,8 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
             "κ ≤ 31, so that N = d · 2^{2κ} stays below 2^94",
             Box::new(|m| m.quant.public.rsqrt_kappa = 32),
         ),
+        // A context of 16 admits σ ≤ 29 (RFC-0009 Lemma 6).
+        (RECIPROCAL, Box::new(|m| m.quant.public.exp_sigma = 30)),
     ];
     for (rule, edit) in &public {
         let mut model = base.clone();
@@ -1329,6 +1331,98 @@ fn a_model_breaking_one_rule_is_refused_naming_it() {
         );
         assert_eq!(error.code(), ErrorCode::Usage);
     }
+}
+
+/// The rule of RFC-0007 step 2.2 that keeps `SoftmaxRow`'s reciprocal unique (RFC-0009 Lemma 6).
+const RECIPROCAL: &str =
+    "(2 · max_context − 1) · 2^{2σ} < P, so that each SoftmaxRow reciprocal is unique";
+
+/// RFC-0009 Lemma 6's precondition in the form RFC-0007 step 2.2 states first,
+/// `(2·max_context − 1)·2^{2σ} < P`, in 128-bit integers.
+fn reciprocal_unique(sigma: u8, max_context: u32) -> bool {
+    const P: u128 = 0xFFFF_FFFF_0000_0001;
+    let rows = 2 * u128::from(max_context) - 1;
+    1u128
+        .checked_shl(2 * u32::from(sigma))
+        .and_then(|power| rows.checked_mul(power))
+        .is_some_and(|product| product < P)
+}
+
+#[test]
+fn exp_sigma_keeps_every_softmax_reciprocal_unique() {
+    // RFC-0009 Lemma 6 (#376). Past (2·max_context − 1)·2^{2σ} < P, a row of max_context
+    // positions at its maximal score admits a second reciprocal, whose product with the row sum
+    // wraps past P (`tessera-gadgets`' softmax_reciprocal test). At each context the largest σ is
+    // accepted, and the next refused naming the rule, by validation and by the lowering alike.
+    let base = tiny(31, Profile::Servable, SHAPES[0]);
+    let at = |context: u32, sigma: u8| {
+        let mut model = base.clone();
+        model.arch.max_context = context;
+        model.quant.public.exp_sigma = sigma;
+        model
+    };
+    let refused = CompileError::Model { rule: RECIPROCAL };
+    for (context, largest) in [
+        (1, 31),
+        (2, 31),
+        (3, 30),
+        (16, 29),
+        (64, 28),
+        (1 << 15, 24),
+        ((1 << 15) + 1, 23),
+        (1 << 17, 23),
+    ] {
+        assert!(reciprocal_unique(largest, context) && !reciprocal_unique(largest + 1, context));
+        let context_and = |sigma| format!("max_context = {context}, σ = {sigma}");
+        assert_eq!(
+            validate(&at(context, largest)),
+            Ok(()),
+            "{}",
+            context_and(largest)
+        );
+        let past = at(context, largest + 1);
+        assert_eq!(
+            validate(&past),
+            Err(refused),
+            "{}",
+            context_and(largest + 1)
+        );
+        assert_eq!(refused.code(), ErrorCode::QuantArch);
+        assert_eq!(lower(PublicModel::of(&past), 1), Err(refused));
+    }
+    // Every context that is a power of two or next to one, at every σ RFC-0008 allows: the
+    // compiler decides as the defining form does.
+    for log in 0..=17 {
+        for context in [(1u32 << log) - 1, 1 << log, (1 << log) + 1] {
+            if !(1..=1 << 17).contains(&context) {
+                continue;
+            }
+            for sigma in 0..=32 {
+                let expected = match reciprocal_unique(sigma, context) {
+                    true => Ok(()),
+                    false => Err(refused),
+                };
+                let verdict = validate(&at(context, sigma));
+                assert_eq!(verdict, expected, "max_context = {context}, σ = {sigma}");
+            }
+        }
+    }
+    // Llama-3.1-8B's shape, whose context is 2^17: σ = 24 compiled before #376 and is refused
+    // now, while σ = 23, the largest that context admits, lowers.
+    let (arch, mut quant, silu) = llama(Profile::Servable, 32, 4096, 32, 8, 14_336);
+    let eight_b = |quant: &PublicQuantSpec| {
+        let model = PublicModel {
+            arch: &arch,
+            profile: Profile::Servable,
+            quant,
+            silu_in_exponents: &silu,
+        };
+        lower(model, 64).map(|_| ())
+    };
+    quant.exp_sigma = 24;
+    assert_eq!(eight_b(&quant), Err(refused));
+    quant.exp_sigma = 23;
+    assert_eq!(eight_b(&quant), Ok(()));
 }
 
 // ----- Real shapes -------------------------------------------------------------------------------

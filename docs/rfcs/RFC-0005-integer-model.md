@@ -88,7 +88,7 @@ All operations are on integers; `rq(x, r, lo, hi) = clamp(floor((x + 2^{r−1}) 
 | RoPE | Each head's pairs `(a, b) = (x_i, x_{i + d_head/2})`, the layout of Hugging Face checkpoints: `(a, b) ↦ (a·C − b·S, a·S + b·C)` with `C, S` 14-bit constants of frequency `i` from the RoPE table ([RFC-0008](RFC-0008-logup-and-tables.md#table-kinds)); then `q = rq(·, r_q, −128, 127)`, same for `k` | key `< 2^44` |
 | V | `v = rq(acc, r_v,c, −128, 127)` | key `< 2^29` |
 | Scores | `x_qi = Σ_j q_j k_ij` over `d_head = 128` for `i ≤ p` (GQA: query head `h` reads KV head `h / (n_heads / n_kv_heads)`, 16 query heads per KV head at 405B) | `−2^21 < x ≤ 2^21`; `2^21` is attained at `q = k = −128` |
-| Softmax | `c_q = max_i x_qi`; `e_qi = T_exp[c_q − x_qi]`, `T_exp[k] = round(2^σ · exp(−k · σ_q σ_k / √d_head))`, `σ = 16`; `s_q = Σ_i e_qi`; `R_q = floor(2^{2σ} / s_q)` | keys `≤ 2^22`; `s_q < 2^{σ+17}` |
+| Softmax | `c_q = max_i x_qi`; `e_qi = T_exp[c_q − x_qi]`, `T_exp[k] = round(2^σ · exp(−k · σ_q σ_k / √d_head))`, `σ = 16`; `s_q = Σ_i e_qi`; `R_q = floor(2^{2σ} / s_q)` | keys `≤ 2^22`; `s_q ≤ max_context · 2^σ ≤ 2^{σ+17}` |
 | Attention out | `o = R_q · Σ_i e_qi v_i` | `o ∈ [−2^39, 127 · 2^32]` using `R_q s_q ≤ 2^{2σ}`; `−2^39` is attained (one position, `v = −128`) |
 | O projection | `servable`: `o8 = rq(o, r_o, −128, 127)`, `acc = W_O o8`. `minimal`: `acc = W_O o` | `< 2^29` or `< 2^60` |
 | Residual | `res ← clamp(res + ⌊(acc + 2^{r−1}) / 2^r⌋, −2^19, 2^19 − 1)`, `r = r_res,c`: the sum saturates ([RFC-0022](RFC-0022-saturating-residual.md#saturating-residual)) | INT20 |
