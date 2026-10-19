@@ -31,7 +31,8 @@ increasing limb order. Keep final normalization carries and final borrows as
 committed values constrained to zero. Public constant sides follow the same
 normalizer schema; do not optimize their columns away in this proposal.
 
-This is a proposal, not an accepted protocol layout. EXP-0023 validates the bounded
+At registration this was a proposal; the later RFC decision is linked below.
+EXP-0023 validates the bounded
 arithmetic/metadata checks; the draft RFC makes its scope and migration explicit.
 
 ## Why it could work
@@ -118,8 +119,8 @@ out of scope. No extra optimization ideas are created to fill a quota.
 Validated for the bounded E0 schema/arithmetic result, including the pre-registered
 polynomial-retention amendment. Retain the original rho+1 constraint polynomial;
 make grouped columns and width-derived comparison length an explicit migration.
-Experiment: EXP-0023. Issue: #407. [RFC-0050](../../docs/rfcs/RFC-0050-gadget-advice-columns.md) is Draft;
-no accepted RFC or production change yet.
+Experiment: EXP-0023. Issue: #407. [RFC-0050](../../docs/rfcs/RFC-0050-gadget-advice-columns.md) records the column-contract decision.
+Production integration remains separate and is not credited here.
 Ledger updated 2026-10-19.
 
 

@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
+- Amended by: [RFC-0050](RFC-0050-gadget-advice-columns.md) ('Production order': canonical gadget auxiliary order)
 - Supersedes, on acceptance:
   - [RFC-0006](RFC-0006-compiler-ir.md#tiling-and-the-execution-plan) 'Tiling and the execution plan': what a tile holds, the production order, and the plan's contents. The plan carries the claim list and one sequence's tiles. It holds neither row ranges, nor stage membership, nor devices.
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout' rule 2: tensors are allocated tile by tile, in this RFC's production order;
@@ -85,7 +86,7 @@ The tiles of a sequence come in this order:
 
 Within a tile, values come in this order:
 - the node's outputs, in output order;
-- then the gadget's committed values, in the order RFC-0009 lists them for the gadget.
+- then the gadget's committed auxiliary values, in the canonical role order of [RFC-0050](RFC-0050-gadget-advice-columns.md), refining RFC-0009. Graph outputs are not duplicated; virtual top limbs have no advice tensor.
 
 An attention tile's exponentials take the variable order `(i_hi, h, q, i_lo)` of [RFC-0034](RFC-0034-causal-blocks.md#causal-layout). This is the order in which RFC-0011 allocates the advice. RFC-0006's "layer, then tile kind, then head, then query block" is this order for one layer.
 

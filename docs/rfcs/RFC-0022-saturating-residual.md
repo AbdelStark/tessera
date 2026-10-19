@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.2
+- Amended by: [RFC-0050](RFC-0050-gadget-advice-columns.md) ('Complete norms': minimum root width one)
 - Supersedes, on acceptance:
   - [RFC-0005](RFC-0005-integer-model.md#integer-semantics) 'Integer semantics': both residual rows, and the range column of the norm row;
   - [RFC-0006](RFC-0006-compiler-ir.md#range-analysis) 'Range analysis': `RsqrtRow`'s output range and domain;
@@ -77,10 +78,10 @@ In `minimal` at 405B the fused key adds `2^{r+19}` to an accumulator near `2^60`
 `RsqrtRow` range-checks `ρ ∈ [0, 2^w)` with
 
 ```text
-w = bitlen(⌊√(d · 2^{2κ} / e)⌋)
+w = max(1, bitlen(⌊√(d · 2^{2κ} / e)⌋))
 ```
 
-the bit length of the largest root any row can have: `u ≥ e` gives `ρ ≤ ⌊√(N / e)⌋ < 2^w`. Every honest root passes, whatever the sum, so the condition `4e > d` falls away. `w` is public: `d`, `κ` and `e` are in the claim list.
+the bit length of the largest root any row can have, clamped to one by RFC-0050 when that root is zero: `u ≥ e` gives `ρ ≤ ⌊√(N / e)⌋ < 2^w`. Every honest root passes, whatever the sum, so the condition `4e > d` falls away. `w` is public: `d`, `κ` and `e` are in the claim list.
 
 `w ≤ 32` holds for any `d < 2^32` at `κ = 16`, so the check stays one lookup. Range analysis refuses a larger `w` with `ERR-COMPILE-RANGE`. At 8B with `σ_res = 2^{−7}`, `e = 672` and `w = 18`, one bit above `κ + 1`. The norm's key `res · ρ` stays below `2^{19+w}`, `2^37` there, as RFC-0005 states. The `BigIntCompare` witnesses of `ρ^2 u ≤ N` and `N + 1 ≤ (ρ + 1)^2 u` reach `2^{2w+55}` rather than `2^89`, a few more limbs where `w` grows.
 

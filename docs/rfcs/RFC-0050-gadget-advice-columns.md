@@ -1,13 +1,13 @@
 # RFC-0050: Canonical Gadget Advice Columns
 
-- Status: Draft
+- Status: Accepted
 - Authors: @AbdelStark
 - Created: 2026-10-19
 - Target milestone: v0.3
-- Supersedes, on acceptance:
+- Supersedes in the listed sections:
   - [RFC-0009](RFC-0009-gadgets.md) 'BigIntCompare' and 'RsqrtRow': the exact auxiliary representation, column order and range requests;
   - [RFC-0022](RFC-0022-saturating-residual.md#complete-norms) 'Complete norms': the minimum root lookup width;
-  - [RFC-0006](RFC-0006-compiler-ir.md#gadget-selection) 'Gadget selection': the complete auxiliary range-table requests;
+  - [RFC-0006](RFC-0006-compiler-ir.md#gadget-selection) 'Gadget selection': the complete auxiliary range-table requests; 'Range analysis': minimum root width;
   - [RFC-0041](RFC-0041-execution-plan.md#production-order) 'Production order': the ordered gadget values following node outputs.
 - Origin: [#407](https://github.com/AbdelStark/tessera/issues/407), prerequisite of the remaining [#106](https://github.com/AbdelStark/tessera/issues/106)
 

@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide'), [RFC-0028](RFC-0028-balanced-split.md) ('RequantSplit': the split point), [RFC-0030](RFC-0030-masked-exponentials.md) ('SoftmaxRow': every position looked up, the leaf claims' reduction, Lemma 5), [RFC-0035](RFC-0035-padded-rows.md) ('RsqrtRow', 'SoftmaxRow', 'OneHot', 'InverseCdf': the row selector `ψ` on padded rows)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide'), [RFC-0028](RFC-0028-balanced-split.md) ('RequantSplit': the split point), [RFC-0030](RFC-0030-masked-exponentials.md) ('SoftmaxRow': every position looked up, the leaf claims' reduction, Lemma 5), [RFC-0035](RFC-0035-padded-rows.md) ('RsqrtRow', 'SoftmaxRow', 'OneHot', 'InverseCdf': the row selector `ψ` on padded rows), [RFC-0050](RFC-0050-gadget-advice-columns.md) ('BigIntCompare' and 'RsqrtRow': canonical auxiliary columns, range requests and exact counts)
 
 ## Summary
 
@@ -91,6 +91,8 @@ Proves a virtual true integer `v ∈ [0, 2^k)` for `k ≤ 62` with `n = ceil(k /
 
 ### BigIntCompare
 
+[RFC-0050](RFC-0050-gadget-advice-columns.md) fixes the six grouped committed arrays, their range requests and the public carry boxes. Its Rsqrt specialization fixes the complete product limb count; constant sides and final zero carries are retained.
+
 Proves `X ≤ Y` for non-negative integers given in base `2^L` limbs that may exceed `P` as whole numbers (used where products such as `ρ^2 · u` reach `2^{2w+55}`, with `w` the bit length of `RsqrtRow`'s largest root: `2^{91}` at `w = 18`).
 
 - Inputs: limb vectors `x_j`, `y_j` (each a committed or virtual true integer in `[0, 2^L)` for limbs, or an exact limb-product sum bounded below 2^40).
@@ -131,12 +133,14 @@ For query row `q` of a sequence of `n` positions, with valid key positions `i �
 
 ### RsqrtRow
 
+[RFC-0050](RFC-0050-gadget-advice-columns.md) fixes the exact decomposition, role order and lookup sequence; those choices are no longer implementation-defined.
+
 For a residual row with virtual `u = ψ·(Σ_i res_i^2 + e)` (true integer, `u < 2^55`), dimension `d`, precision `κ`, constant `N = d · 2^{2κ}`, and row selector `ψ`, 1 on a real row and 0 on a padded one ([RFC-0035](RFC-0035-padded-rows.md)):
 
 - Committed: `ρ`; the limbs of `NonNeg(u, 55)`: three 16-bit limbs and a top limb in `Range{7}`, a box of `2^{55} < P`. The box, not the bound `u < 2^55` alone, makes the recomposition exact: four full 16-bit limbs would also represent `u + P` for every `u ≤ 2^{32} − 2`, and admit a second root; `BigIntCompare` witnesses for `ρ^2 u ≤ ψ·N` and `ψ·(N + 1) ≤ (ρ + 1)^2 u`. On a padded row `u = 0`, both comparisons are `0 ≤ 0`, and a padding zero-check pins `ρ` to 0.
-- Lookups: `ρ ∈ [0, 2^w)`, with `w` the bit length of `⌊√(N / e)⌋`, the largest root of any row, at most 32 ([RFC-0022](RFC-0022-saturating-residual.md#complete-norms)); limb and carry range checks.
-- Products enter `BigIntCompare` as bounded limb-product sums, not whole products reduced modulo the field. Any auxiliary root decomposition is tied to `ρ` in a box below `P` (the limb-box rule above); `(ρ + 1)` retains its carry when it reaches `2^w`. Both comparisons include enough high zero limbs for the full product and check their final normalization carries (Lemma 4).
-- Cost: about 20 commitments and 30 lookups per row (one row per token per norm).
+- Lookups: `ρ ∈ [0, 2^w)`, with `w = max(1, bitlen(⌊√(N / e)⌋))`, at most 32 ([RFC-0022](RFC-0022-saturating-residual.md#complete-norms)); limb and carry range checks.
+- Products enter `BigIntCompare` as bounded limb-product sums, not whole products reduced modulo the field. The canonical byte-root decomposition of RFC-0050 is tied to `ρ` in a box below `P` (the limb-box rule above); `(ρ + 1)` retains its carry when it reaches `2^w`. Both comparisons include enough high zero limbs for the full product and check their final normalization carries (Lemma 4).
+- Cost: `4+r+12m` commitments and `6+r+12m` range lookups per row, with `r=ceil(w/8)-1`, `m=ceil((2w+55)/8)` (RFC-0050). One row per token per norm; at `w=32` these are 187 and 189. Historical approximate counts are superseded.
 - Lemma 7. The constraints hold iff `ρ = max{ρ : ρ^2 u ≤ N}`. Proof: Lemma 4 makes both inequalities exact over the integers; they bracket `ρ` uniquely.
 - Completeness. `u ≥ e` gives the honest `ρ = ⌊√(N / u)⌋ ≤ ⌊√(N / e)⌋ < 2^w`, so every row's root passes the range check. The `BigIntCompare` witnesses' products stay below `2^{2w+55}`.
 
@@ -181,7 +185,7 @@ Vocabulary exponentials `e_v = Exp_T[c − ℓ_v]` from a `SoftmaxRow`-style max
 | `RequantWide` | element | 4 | 5 | 0 |
 | `SoftmaxRow` | score | 1 | 1 | 1 |
 | `SoftmaxRow` | row | about 6 | about 6 | 0 |
-| `RsqrtRow` | row | about 20 | about 30 | 0 |
+| `RsqrtRow` | row | `4+r+12m` (RFC-0050) | `6+r+12m` (RFC-0050) | 0 |
 | `OneHot` | token | `vocab` | 0 | 0 |
 | `Argmax` | output token | 1 | `vocab` | 0 |
 | `InverseCdf` | output token | `vocab` + about 20 | `vocab` + about 30 | `vocab` |
