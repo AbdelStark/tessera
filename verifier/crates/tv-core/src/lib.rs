@@ -12,7 +12,9 @@
 //! commitment, steps 9 and 11: the group evaluations, then the queried columns' leaves,
 //! multiproof and consistency with the combined rows (RFC-0011 'Opening protocol'), and the
 //! claim list: its decoding, its validation, RFC-0019 steps 2 and 3, and its Llama lowering
-//! (RFC-0007, RFC-0039, RFC-0044; 'Claim lists' below). They are
+//! (RFC-0007, RFC-0039, RFC-0044; 'Claim lists' below). From the lowered graph it derives the
+//! stage schedule and checks the reduction stages of step 8 and the leaf stage's splits
+//! (RFC-0010, RFC-0037; [`schedule`] and [`stages`], whose documentation specifies them). They are
 //! written from the specification without reference to the prover's code, so that the two agree
 //! only because both follow the specification (SP-6, RFC-0001). Where the specification admits
 //! several algorithms this crate takes another than the prover's: a round polynomial is evaluated
@@ -36,14 +38,18 @@
 //! | [`validation::validate`] | claim-list validation, RFC-0007 'Verifier validation' in RFC-0039's order: steps 1 to 4, 5.1, 6 and 7, and RFC-0019 step 2 before them |
 //! | [`validation::check_public`] | steps 2.1 to 2.3, which give the public part the lowering reads |
 //! | [`lowering::lower`] | the Llama lowering of a claim list's public part, node by node (RFC-0044) |
+//! | [`schedule::derive()`] | the stage schedule of a lowered graph: the leaf stage's claims, each reduction stage's instances with their relations, variables and degrees, and where every claim goes (RFC-0010, RFC-0037) |
+//! | [`stages::verify`] | the leaf stage's splits, then each reduction stage: its layer and zero-check points, its batched sumcheck with the public factors, its splits; and the claim pool |
+//! | [`selectors`] | the public factors: `LT`, the causal selector `C̃`, the row selector `ψ̃`, layer weights `w̃`, `Rotate`'s kernel, and RFC-0035's padding zero-check |
 //!
-//! The stage schedule (#114), the relations of the stages, the masked sumcheck of RFC-0013, the
-//! regeneration of the tables and the structured evaluation of `t̃` (#100), the stage that
-//! consumes the lookups' key claims, and the verifier's driver and verdicts (#128) build on
-//! these; so do the advice layout (#116), the transcript steps that squeeze the opening's
-//! challenges and queries, the hiding of RFC-0013 (blinding rows, `u'_g`, `q_g`) and the weight
-//! commitment (RFC-0012). Claim-list validation's steps 5.2 and 5.3 (#117), the advice layout's
-//! fit of step 6 (#106) and `ConstraintSystemDigest` (#120) build on the lowering.
+//! The gadgets' final checks and their relations in the stages (#124), the masked sumcheck of
+//! RFC-0013 (#159), the leaf stage's integration of the trees with the stages (#130), the
+//! regeneration of the tables and the structured evaluation of `t̃` (#100), and the verifier's
+//! driver and verdicts (#128) build on these; so do the advice layout (#116), the transcript
+//! steps that squeeze the opening's challenges and queries, the hiding of RFC-0013 (blinding
+//! rows, `u'_g`, `q_g`) and the weight commitment (RFC-0012), which take the claim pool.
+//! Claim-list validation's steps 5.2 and 5.3 (#117), the advice layout's fit of step 6 (#106)
+//! and `ConstraintSystemDigest` (#120) build on the lowering.
 //!
 //! # Claim lists
 //!
@@ -530,6 +536,9 @@ pub mod logup;
 pub mod lowering;
 pub mod opening;
 pub mod params;
+pub mod schedule;
+pub mod selectors;
+pub mod stages;
 pub mod sumcheck;
 pub mod tree;
 pub mod validation;

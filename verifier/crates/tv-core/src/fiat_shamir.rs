@@ -47,6 +47,14 @@ pub(crate) enum Step {
     Evals,
     /// `<prefix>/line`, a tree level's line challenge.
     Line,
+    /// `stage/1/layer/{c}`, coordinate `c` of the layer point `ρ_1` (RFC-0037 'The layer
+    /// point').
+    Layer(usize),
+    /// `stage/{k}/zero/{c}`, coordinate `c` of a stage's zero-check point (RFC-0035 'Zero-check
+    /// points').
+    Zero(usize),
+    /// `stage/{k}/split`, a stage's split values (RFC-0037 'Splits').
+    Split,
 }
 
 /// The label of `step` under `prefix`.
@@ -58,6 +66,9 @@ fn label(prefix: Prefix, step: Step) -> String {
         Step::Challenge(j) => format!("{prefix}/r/{j}"),
         Step::Evals => format!("{prefix}/evals"),
         Step::Line => format!("{prefix}/line"),
+        Step::Layer(c) => format!("{prefix}/layer/{c}"),
+        Step::Zero(c) => format!("{prefix}/zero/{c}"),
+        Step::Split => format!("{prefix}/split"),
     }
 }
 

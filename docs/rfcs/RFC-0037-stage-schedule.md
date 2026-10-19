@@ -144,6 +144,7 @@ Through a linear node, a claim on its output becomes terms on its inputs, as [RF
 The verifier computes a claim's public atoms and moves them to its value. The claim is then ready for the next stage when it is one virtual atom of coefficient 1, or committed atoms of one commitment at one point. Otherwise the stage `k` that produced it splits it:
 
 - **What is sent.** The prover sends one value for each virtual atom, and one for each group of committed atoms of one commitment at one point, in atom order. A group takes the place of its first atom.
+  - **A part's value.** A virtual atom's value is its tensor's evaluation, and the check weights it by the atom's coefficient. A committed group's value is its combination `Σ_t a_t·P̃_t(r)`, coefficients included, and the check counts it with weight 1. That combination is the claim the pool receives.
   - **Where.** The values go under `stage/{k}/split`, after the stage's final evaluations, as one `Vec<Fp2>` covering every claim the stage splits, claim by claim.
   - **The order of claims.** A reduction stage's claims come by instance, then by evaluation. The leaf stage's come by site, then by layer, as 'The layer point' orders them.
   - **The leaf stage** is stage 0, and its values follow `logup/values`: one per tensor, site and layer ([RFC-0045](RFC-0045-leaf-layout.md#the-split)).
@@ -158,7 +159,7 @@ The verifier computes a claim's public atoms and moves them to its value. The cl
 - **Instances.** Stage `k` runs, in order:
   - one instance per virtual atom that stage `k − 1` leaves after its splits, in atom order: the atom's producing relation, stacked as its kind, at the atom's point, with the atom's value as its claim;
   - in stage 1, after them, the zero-checks in node order: RFC-0035's padding zero-checks, `OneHot`'s booleanity, and the equality zero-checks of committed outputs.
-- **Stacked instances.** A stacked instance takes the atom's layer weights `w` as a public factor over the layer variables, in place of `eq(ρ, ·)`. The verifier evaluates `w̃(ρ') = Σ_ℓ eq(ρ', ℓ)·w(ℓ)` in `O(L)`.
+- **Stacked instances.** A stacked instance takes the atom's layer weights `w` as a public factor over the layer variables, in place of `eq(ρ, ·)`. The verifier evaluates `w̃(ρ') = Σ_ℓ eq(ρ', ℓ)·w(ℓ)` in `O(L)`, the sum running over the whole cube of `2^λ` layers: a padded layer's weight, such as `eq(ρ, ℓ)`, need not be 0.
 - **INV-SCH-2.** Each virtual atom is one instance.
 - **Stage count.** The count is one more than the longest chain of sumcheck relations from a gadget's input or a zero-check down to committed tensors. Linear maps cost no stage, so the count does not depend on `L`, `n` or the batch (INV-SCH-4). The compiler's commitment report counts it the same way.
 
