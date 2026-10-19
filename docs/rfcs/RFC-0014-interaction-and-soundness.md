@@ -182,7 +182,7 @@ So that the two agree bit for bit, the rest of this section specifies the calcul
 | `advice_rows` | The rows the advice row index spans, `2^{ν − log2 k}` |
 | `matrices` | Each opened weight matrix, in `WeightMatrix` order: its message width `k_T`, its committed data rows `m_T` and the variables `ν_T` of its polynomial |
 
-A calculator refuses, with `ERR-USAGE`: a `protocol` other than 1 or 2; `τ_A` or `τ_W` outside `1..=2^16`; a codeword of no symbol or of more than `2^32`, the advice's `n_A = 2^{log2 k + log2 inv_rate}` or a matrix's `n_T = k_T·2^{log2 inv_rate}`; `advice_rows = 0`; a matrix with `m_T + B_W = 0`; matrices not in strictly increasing `WeightMatrix` order.
+A calculator refuses, with `ERR-USAGE`: a `protocol` other than 1 or 2; `τ_A` or `τ_W` outside `1..=2^16`; a codeword of no symbol or of more than `2^32`, the advice's `n_A = 2^{log2 k + log2 inv_rate}` or a matrix's `n_T = k_T·2^{log2 inv_rate}`; `advice_rows = 0`; in `tessera-protocol/2`, a matrix with `m_T + B_W = 0` (in protocol/1 a matrix with no committed row has no proximity or queries row, [RFC-0049](RFC-0049-weight-proximity.md#the-calculator)); matrices not in strictly increasing `WeightMatrix` order.
 
 **Rows.** `q = |Fp2| = p^2`, `p = 2^64 − 2^32 + 1`. A numerator is an exact integer that saturates at `2^128 − 1`, and a maximum over no item is 0.
 
@@ -266,10 +266,10 @@ A FixedBits comparison would be sound but not exact: it fails a row up to `2^{�
 | All rounds, union bound | 111.86 | 111.86 | ≥ 112: `7·10^4/q` alone gives 111.90 |
 | LogUp identity | 85.99 | 105.99 | about 90, and 110: the `Exp` instance holds `2^{42}`, not `2^{38}` |
 | Advice queries | 64.32 | 80.09 + 20 | 64.3, and 80.1, which is 80.098 rounded to nearest |
-| Weight queries | 64.03 | 80.53 + 20 | 64.0 and 80.5 |
-| Field terms | 100.60, weights 101.82 | the same | about 100; 100.6 and 101.8 |
+| Weight queries | 65.76 | 82.72 + 20 | 64.0 and 80.5 at the masked rate; protocol/1's weights are unmasked ([RFC-0049](RFC-0049-weight-proximity.md#the-calculator)) |
+| Field terms | 100.60, weights 101.91 | the same | about 100; 100.6 and 101.8 |
 
-Every row meets its target at both sets. `live-64`'s minimum is a weight matrix's queries, 64.03 bits for 64; `ni-100`'s the advice queries, 100.09 bits for 100.
+Every row meets its target at both sets. `live-64`'s minimum is the advice queries, 64.32 bits for 64; `ni-100`'s the advice queries, 100.09 bits for 100.
 
 ## Alternatives Considered
 

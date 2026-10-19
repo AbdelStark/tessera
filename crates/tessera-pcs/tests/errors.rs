@@ -13,7 +13,7 @@ use tessera_codec::Secret;
 use tessera_field::{Field, GoldilocksExt2};
 use tessera_pcs::{
     ClaimGroup, CommitmentParams, NttPlan, PcsError, ReferenceCommitment, RowClaim, RowEncoder,
-    RowLayout,
+    RowLayout, WeightMatrix,
 };
 
 /// Every transform of `plan` on `values`, each on a fresh copy.
@@ -305,6 +305,43 @@ fn every_error_says_what_was_wrong_in_numbers() {
                 columns: 16,
             },
             "query 1 asks for column 16 of a commitment of 16 columns",
+        ),
+        (
+            PcsError::NoRows {
+                matrix: WeightMatrix::ChannelParams,
+            },
+            "the ChannelParams matrix has no committed row",
+        ),
+        (
+            PcsError::FoldPoint {
+                matrix: WeightMatrix::Q,
+                expected: 6,
+                found: 7,
+            },
+            "the Q matrix takes a point of 6 coordinates, not 7",
+        ),
+        (
+            PcsError::LayerPoint {
+                matrix: WeightMatrix::Down,
+                expected: 1,
+                found: 0,
+            },
+            "layer point has 1 coordinates, not 0",
+        ),
+        (
+            PcsError::OtherMatrix {
+                expected: WeightMatrix::Q,
+                found: WeightMatrix::O,
+            },
+            "the fold of the Q matrix cannot read the rows of the O matrix",
+        ),
+        (
+            PcsError::RowIndex {
+                matrix: WeightMatrix::K,
+                index: 32,
+                rows: 32,
+            },
+            "the K matrix has 32 committed rows, so no row 32",
         ),
     ];
     for (error, shown) in cases {

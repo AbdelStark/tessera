@@ -156,13 +156,19 @@ impl RowLayout {
     }
 }
 
-/// Adds `scale·eq(point, row)` to `out[i]` for `row` the `i`-th of `rows`. The rows increase
-/// strictly and lie below `2^point.len()`, as a [`RowLayout`]'s do.
+/// Adds `scale·eq(point, row)` to `out[i]` for `row` the `i`-th of `rows`. The rows lie below
+/// `2^point.len()`, as a [`RowLayout`]'s do, and cost least when consecutive rows share their
+/// high bits, as increasing rows do; any order gives the same values.
 ///
 /// `partial[t] = scale·Π_{t ≤ s < vars} f_s(bit s of row)` for the current row, with
 /// `partial[vars] = scale`. The partial products at and above the highest bit in which a row
-/// differs from the one before stay as they were.
-fn add_scaled_eq(out: &mut [Fp2], rows: impl Iterator<Item = u64>, point: &[Fp2], scale: Fp2) {
+/// differs from the one before stay as they were, since they depend on those bits alone.
+pub(crate) fn add_scaled_eq(
+    out: &mut [Fp2],
+    rows: impl Iterator<Item = u64>,
+    point: &[Fp2],
+    scale: Fp2,
+) {
     let vars = point.len();
     // factors[t] = [f_t(0), f_t(1)] = [1 − r_t, r_t].
     let factors: Vec<[Fp2; 2]> = point.iter().map(|&r| [Fp2::ONE - r, r]).collect();

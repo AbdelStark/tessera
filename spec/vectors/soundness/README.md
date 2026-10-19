@@ -2,7 +2,7 @@
 
 `soundness.json` pins the soundness calculator of [RFC-0014 'Soundness calculator'](../../../docs/rfcs/RFC-0014-interaction-and-soundness.md#soundness-calculator): every row of the soundness table, with its exact error bound, its bits as a FixedBits lower bound, its target and whether it reaches it. Both calculators must reproduce it bit for bit: `tessera-protocol`'s ([`crates/tessera-protocol/tests/soundness.rs`](../../../crates/tessera-protocol/tests/soundness.rs), and `tessera params check --json` in [`crates/tessera-cli/tests/params_check.rs`](../../../crates/tessera-cli/tests/params_check.rs)) and the verifier's (#110).
 
-[`generate.py`](generate.py) writes it. The script is the independent oracle: it shares no code with `crates/`, `verifier/` or `python/`, and is written from RFC-0014, [RFC-0026 'Schema'](../../../docs/rfcs/RFC-0026-claim-list-layout.md#schema), [RFC-0040 'The matrices'](../../../docs/rfcs/RFC-0040-weight-commitment-artifacts.md#the-matrices), [RFC-0030 'Cost'](../../../docs/rfcs/RFC-0030-masked-exponentials.md#cost) and SP-1 ([06 §4](../../../docs/spec/06-security.md#4-security-properties)). It states the 405B lookups of the compiler's report, [`docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json`](../../../docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json), since it runs on `spec/vectors/` alone, and a `tessera-protocol` test checks the calculator's default against the report itself. It derives the 405B weight matrices from the architecture by RFC-0040's rules. Its random inputs come from SplitMix64 with the seed the file states, so `python3 spec/vectors/soundness/generate.py` reproduces the file byte for byte.
+[`generate.py`](generate.py) writes it. The script is the independent oracle: it shares no code with `crates/`, `verifier/` or `python/`, and is written from RFC-0014, RFC-0049 'The calculator' (a weight matrix's count in `tessera-protocol/1`), [RFC-0026 'Schema'](../../../docs/rfcs/RFC-0026-claim-list-layout.md#schema), [RFC-0040 'The matrices'](../../../docs/rfcs/RFC-0040-weight-commitment-artifacts.md#the-matrices), [RFC-0030 'Cost'](../../../docs/rfcs/RFC-0030-masked-exponentials.md#cost) and SP-1 ([06 §4](../../../docs/spec/06-security.md#4-security-properties)). It states the 405B lookups of the compiler's report, [`docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json`](../../../docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json), since it runs on `spec/vectors/` alone, and a `tessera-protocol` test checks the calculator's default against the report itself. It derives the 405B weight matrices from the architecture by RFC-0040's rules. Its random inputs come from SplitMix64 with the seed the file states, so `python3 spec/vectors/soundness/generate.py` reproduces the file byte for byte.
 
 ## How the oracle checks itself
 
@@ -15,7 +15,8 @@ Every bit count is computed twice:
 
 Before it writes anything, the script checks that every FixedBits `r` satisfies `r ≤ 256·λ < r + 1 + 2^-20`, and every per-query count `r'` satisfies `r' ≤ 256·b(ρ') < r' + 1 + 2^-37`. It decides every pass or fail with exact integers, `c·2^T ≤ q` and `A^τ ≥ 2^T·B^τ`, and checks each decision against the true value wherever that lies further than `10^-30` from the target. It also checks the claims below:
 
-- `live-64/1` and `ni-100/1` meet their targets at the 405B statement, and `test-small/1` is held to none;
+- `live-64/1` and `ni-100/1` meet their targets at the 405B statement under both protocols, and `test-small/1` is held to none;
+- under `tessera-protocol/1` every weight matrix counts `ϑ_T = ⌈log2 m_T⌉` and no mask, and under `tessera-protocol/2` its `B_W` blinding rows and `P_W` mask coefficients;
 - each adversarial case fails exactly the row it aims at, which is then the minimum;
 - the edge cases decide as their names say.
 
@@ -27,14 +28,15 @@ Before it writes anything, the script checks that every FixedBits `r` satisfies 
 | `log2` | LOG2's `precision` `W` and its two output fractions | one |
 | `log2_cases` | `a`, `b`, `fraction` and `result`, decimal strings | its edges; `q` against `2^128 − 1`; 24 random 128-bit inputs; and 12 pairs at a boundary, below |
 | `parameter_sets` | a parameter set, as a report's `params` states it | RFC-0014's three sets |
-| `cases` | `name`, `why`, `report` (a `tessera.soundness/1` report) and `true` (per row, `⌊256·λ·10^30⌋` as `bits`, and for a queries row `⌊256·b(ρ')·10^30⌋` as `per_query`) | 82, below |
+| `cases` | `name`, `why`, `report` (a `tessera.soundness/1` report) and `true` (per row, `⌊256·λ·10^30⌋` as `bits`, and for a queries row `⌊256·b(ρ')·10^30⌋` as `per_query`) | 86, below |
 
 The cases:
 
 | Name | What it is |
 |---|---|
-| `405b/{set}` | each set at the 405B 16K-token, 16K-context statement, the CLI's default |
-| `adversarial/{set}/{row}` | a size or parameter that makes exactly `row` miss its target, at `live-64/1` and `ni-100/1`; the rounds row fails with the union, which counts its terms |
+| `405b/{set}` | each set at the 405B 16K-token, 16K-context statement, the CLI's default, under `tessera-protocol/1`: its weights carry no mask and no blinding row (RFC-0049) |
+| `405b-protocol-2/{set}` | the same statement under `tessera-protocol/2`, whose weights count their `P_W` mask coefficients and `B_W` blinding rows: RFC-0014's `64.0` and `80.5` bits for `τ_W` |
+| `adversarial/{set}/{row}` | a size or parameter that makes exactly `row` miss its target, at `live-64/1` and `ni-100/1`; the rounds row fails with the union, which counts its terms. A weight matrix's queries row misses its target by its width only under `tessera-protocol/2`: without a mask the rate is `1/4` at every width |
 | `edge/numerator-pass`, `edge/numerator-fail` | the opening row at `T_g = ⌊q/2^100⌋` and `2^28`: `100 + 4.7·10^-9` bits passes and `100 − 6.7·10^-10` fails |
 | `edge/logup-2^50-live` | `N + T = 2^50` at `live-64/1`: 78 one-shot bits pass its 64-bit target |
 | `edge/protocol-2` | the 405B statement under `tessera-protocol/2` |
@@ -43,6 +45,7 @@ The cases:
 | `edge/line-only`, `edge/mask-only`, `edge/zero-count` | one term of the rounds row alone: a tree level's line challenge, a stage's mask in `tessera-protocol/2`, and rounds of count 0, which count nothing |
 | `edge/hash-128` | targets of 128 bits, which only the hash row reaches |
 | `edge/q-below-2^128` | `N + T = 2^64 − 1` at `live-64/1`: `64 − 6.7·10^-10` bits fail 64, where `2^128 − 1` in place of `q` would pass them |
+| `edge/empty-channel-params` | no weight has channel parameters: under `tessera-protocol/1` `ChannelParams` commits no row, so it has no queries row and no field term, and is not refused (RFC-0049) |
 | `random/{i}` | random sizes under random parameter sets, or RFC-0014's |
 
 ## The report

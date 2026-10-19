@@ -11,16 +11,21 @@
 //!   Merkle root per matrix, and [`WeightCommitmentPublic`], which `R_W` hashes.
 //! - [`WeightCommitmentState`] holds the public part, the masks' seed and the budget, written as
 //!   a secret artifact.
+//! - [`WeightFold`] opens a matrix by the folding pass (RFC-0012, RFC-0049): one read of its
+//!   committed rows ([`MatrixRows`], [`WeightRows`]) gives the sumcheck input and both combined
+//!   rows ([`WeightCombinedRows`]).
 
 mod commit;
 pub(crate) mod layout;
+mod opening;
 mod public;
 mod state;
 
 pub use commit::WeightCommitment;
 pub use layout::{
     ChannelParamsRef, ChannelValues, MatrixKind, MatrixLayout, ModelWeights, WeightLayout,
-    WeightShape, WeightShapes, WeightTensorRef,
+    WeightRows, WeightShape, WeightShapes, WeightTensorRef,
 };
+pub use opening::{MatrixRows, WeightCombinedRows, WeightFold};
 pub use public::WeightCommitmentPublic;
 pub use state::{OpenedColumns, TypeBudget, WeightCommitmentState};

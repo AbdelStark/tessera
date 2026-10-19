@@ -9,11 +9,12 @@ and random statements under random parameter sets. Each report is a `tessera.sou
 (spec/schemas/soundness-v1.schema.json), the one `tessera params check --json` prints.
 
 This script is the independent oracle. It is written from RFC-0014 ('Soundness budget',
-'Grinding', 'Parameter sets', 'Soundness calculator'), RFC-0026 'Schema' (the layouts), RFC-0040
-'The matrices' (the 405B weight matrices), RFC-0030 'Cost' (the Exp instance) and 06 §4 (SP-1)
-alone. It shares no code with crates/, verifier/ or python/, which check its output. It states the
-405B lookups of docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json, the compiler's report,
-which RFC-0014 'Soundness calculator' names as their source.
+'Grinding', 'Parameter sets', 'Soundness calculator'), RFC-0049 'The calculator' (a weight
+matrix's count in tessera-protocol/1), RFC-0026 'Schema' (the layouts), RFC-0040 'The matrices'
+(the 405B weight matrices), RFC-0030 'Cost' (the Exp instance) and 06 §4 (SP-1) alone. It shares
+no code with crates/, verifier/ or python/, which check its output. It states the 405B lookups of
+docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json, the compiler's report, which RFC-0014
+'Soundness calculator' names as their source.
 
 Every bit count is computed twice, and every decision once more:
 - by LOG2 of RFC-0014 'Soundness calculator', with Python's integers: the FixedBits both
@@ -380,7 +381,9 @@ def validate(params, statement):
     for m in statement["matrices"]:
         require(m["width"] >= 1 and m["width"] * 2**wts["log2_inv_rate"] <= MAX_CODEWORD,
                 "matrix codeword in 1..=2^32")
-        require(m["rows"] + wts["blinding_rows"] >= 1, "a matrix holds a row")
+        # tessera-protocol/1 bounds a matrix with no committed row: it has no proximity rows.
+        if statement["protocol"] == 2:
+            require(m["rows"] + wts["blinding_rows"] >= 1, "a matrix holds a row")
 
 
 def report(params, statement, name, why):
@@ -460,9 +463,16 @@ def report(params, statement, name, why):
     commitments = [("advice", 2**adv["log2_k"], adv["log2_inv_rate"], adv["mask_coeffs"],
                     params["advice_queries"], ceil_log2(statement["advice_rows"]))]
     for m in statement["matrices"]:
-        commitments.append((m["matrix"], m["width"], wts["log2_inv_rate"], wts["mask_coeffs"],
-                            params["weight_queries"],
-                            ceil_log2(m["rows"] + wts["blinding_rows"])))
+        # RFC-0049 'The calculator': tessera-protocol/1 commits no blinding row and no mask for
+        # the weights, so a matrix counts ϑ_T = ⌈log2 m_T⌉ at the unmasked rate, and one with no
+        # committed row has no queries row and no field term. tessera-protocol/2 counts B_W and
+        # P_W.
+        count = m["rows"] + (wts["blinding_rows"] if v2 else 0)
+        if count == 0:
+            continue
+        commitments.append((m["matrix"], m["width"], wts["log2_inv_rate"],
+                            wts["mask_coeffs"] if v2 else 0, params["weight_queries"],
+                            ceil_log2(count)))
     for commitment, k, inv_rate, mask, tau, theta in commitments:
         n = k << inv_rate
         g = params["query_pow"]
@@ -556,12 +566,15 @@ def adversarial(base):
              "a claim group of 2^29 claims"),
             ("queries/advice", params_changed(params, " (τ_A − 1)", advice_queries=tau_a - 1), base,
              "one advice query fewer than the set's τ_A"),
-            ("queries/Down", params, matrix_changed(base, "Down", width=2**19),
-             "Down at half the message width: ρ' = 0.281, 97 or 122 queries fall short"),
+            ("queries/Down", params,
+             with_changes(matrix_changed(base, "Down", width=2**19), protocol=2),
+             "Down at half the message width under tessera-protocol/2, whose P_W mask "
+             "coefficients count: ρ' = 0.281, 97 or 122 queries fall short"),
             ("field/advice", params, with_changes(base, advice_rows=2**33),
              "a 33-bit advice row index: ϑ·n/q = 33·2^23/q"),
             ("field/Down", params, matrix_changed(base, "Down", width=2**24),
-             "Down at 2^24 columns: 18·2^26/q, while its queries still pass"),
+             "Down at 2^24 columns: 17·2^26/q, ϑ = ⌈log2 m_T⌉ in tessera-protocol/1, while its "
+             "queries still pass"),
             ("linking", params, matrix_changed(base, "Down", variables=2**29),
              "a matrix of 2^29 variables"),
         ]
@@ -612,6 +625,9 @@ def edges(base):
         ("edge/q-below-2^128", LIVE_64, with_changes(base, lookups=[
             {"lookups": 2**63, "rows": 2**63 - 1}]),
          "N + T = 2^64 − 1: 64 − 6.7·10^-10 one-shot bits, which fail 64 since q < 2^128 − 1"),
+        ("edge/empty-channel-params", LIVE_64, matrix_changed(base, "ChannelParams", rows=0),
+         "no weight has channel parameters: in tessera-protocol/1 ChannelParams commits no row, "
+         "so it has no queries row and no field term, and is not refused (RFC-0049)"),
     ]
     return cases
 
@@ -703,6 +719,11 @@ def main():
     for params in PARAM_SETS:
         cases.append(report(params, base, f"405b/{params['id']}",
                             "the 405B 16K-token, 16K-context statement"))
+    for params in PARAM_SETS:
+        cases.append(report(params, with_changes(base, protocol=2),
+                            f"405b-protocol-2/{params['id']}",
+                            "the 405B statement under tessera-protocol/2: the weights count "
+                            "their P_W mask coefficients and B_W blinding rows"))
     for row, params, statement, why in adversarial(base):
         cases.append(report(params, statement, f"adversarial/{params['id']}/{row}", why))
     for name, params, statement, why in edges(base):
@@ -716,8 +737,27 @@ def main():
     # What the reports must show, checked before anything is written.
     by_name = {c["name"]: c["report"] for c in cases}
     for params in (LIVE_64, NI_100):
-        require(by_name[f"405b/{params['id']}"]["meets_targets"], f"{params['id']} meets its targets at 405B")
+        for prefix in ("405b", "405b-protocol-2"):
+            require(by_name[f"{prefix}/{params['id']}"]["meets_targets"],
+                    f"{params['id']} meets its targets at {prefix}")
     require(by_name["405b/test-small/1"]["meets_targets"] is None, "test-small is not held to targets")
+    # RFC-0049: in tessera-protocol/1 every weight matrix counts its committed rows at the
+    # unmasked rate; in tessera-protocol/2 its blinding rows and mask coefficients.
+    for prefix, v2 in (("405b", False), ("405b-protocol-2", True)):
+        for params in PARAM_SETS:
+            r = by_name[f"{prefix}/{params['id']}"]
+            wts = params["weights"]
+            for m in base["matrices"]:
+                rows = [row for row in r["rows"] if row.get("commitment") == m["matrix"]]
+                require([row["row"] for row in rows] == ["queries", "field"], f"{prefix}: rows")
+                require(rows[0]["mask"] == (wts["mask_coeffs"] if v2 else 0), f"{prefix}: mask")
+                count = m["rows"] + (wts["blinding_rows"] if v2 else 0)
+                require(rows[1]["theta"] == ceil_log2(count), f"{prefix}: ϑ of {m['matrix']}")
+    empty_rows = by_name["edge/empty-channel-params"]["rows"]
+    require(all(row.get("commitment") != "ChannelParams" for row in empty_rows),
+            "an empty ChannelParams has no proximity rows in tessera-protocol/1")
+    require(len(empty_rows) == len(by_name["405b/live-64/1"]["rows"]) - 2, "two rows fewer")
+    require(by_name["edge/empty-channel-params"]["meets_targets"], "and meets live-64's targets")
     for name, r in by_name.items():
         if not name.startswith("adversarial/"):
             continue

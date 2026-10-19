@@ -12,7 +12,12 @@ mod common;
 
 use common::matmul::{ActCase, Member, WeightCase, prove_and_verify_stage};
 use common::{Session, SplitMix64, TestInstance, TestTable, tv_fp2s};
-use tessera_sumcheck::{MatMulActShape, MatMulWeightShape, Prefix, RightLayout};
+use tessera_codec::SecretBuf;
+use tessera_field::Field;
+use tessera_sumcheck::{
+    MatMulActShape, MatMulWeightShape, MatMulWeightTables, Operand, Prefix, RightLayout,
+    SumcheckError, prove_batch,
+};
 
 /// The issue's shapes: `2^6×2^8` by `2^8×2^5` as one `MatMulAct`, with `B` stored either way,
 /// and stacked over 2^2 products; and as a `MatMulWeight`, `X` of `2^6` tokens by `2^8` inputs
@@ -338,4 +343,131 @@ fn seeded_random_stages_verify() {
         let degree = needed + rng.below((8 - needed) as u64) as usize;
         let _ = prove_and_verify_stage(&session, Prefix::Stage(case), degree, &members);
     }
+}
+
+/// `W̃(ℓ, r_o, i) = Σ_o eq(r_o, o)·W[ℓ, o, i]` at `ℓ·2^{n_i} + i`, from the definition: `eq`'s
+/// product formula at each output, summed entry by entry.
+fn contracted(case: &WeightCase) -> SecretBuf<common::Fp2> {
+    let MatMulWeightShape {
+        layer_vars,
+        out_vars,
+        in_vars,
+        ..
+    } = case.shape;
+    let r_o = &case.point[..out_vars];
+    let (outs, ins) = (1usize << out_vars, 1usize << in_vars);
+    let mut table = SecretBuf::filled(common::Fp2::ZERO, ins << layer_vars);
+    for layer in 0..1usize << layer_vars {
+        for o in 0..outs {
+            let eq = r_o.iter().enumerate().fold(common::Fp2::ONE, |e, (t, &r)| {
+                e * if (o >> t) & 1 == 1 {
+                    r
+                } else {
+                    common::Fp2::ONE - r
+                }
+            });
+            for i in 0..ins {
+                table[layer * ins + i] +=
+                    eq * common::Fp2::from(case.w[(layer * outs + o) * ins + i]);
+            }
+        }
+    }
+    table
+}
+
+/// RFC-0012 'Opening by the folding pass': the weight commitment's fold pass gives the matmul its
+/// weight operand contracted already, `W̃(ℓ, r_o, i)`, so that a proof reads the weights once
+/// (INV-WC-4). Built from that table, here from its definition, an instance proves the stage the
+/// reference path proves by contracting `W` itself: the same messages, `γ`, point, claims and
+/// final transcript state, which the independent verifier accepts. Stacked layers with padded
+/// ones, a single layer, one token and one output row are among the shapes.
+#[test]
+fn a_folded_weight_table_proves_the_stage_contracting_w_proves() {
+    let mut rng = SplitMix64::new(0x57_0108);
+    let session = Session::random(&mut rng);
+    for ((layer_vars, token_vars, out_vars, in_vars), live) in [
+        ((0, 0, 4, 5), 1),
+        ((0, 3, 5, 4), 1),
+        ((2, 3, 4, 3), 3),
+        ((1, 2, 0, 3), 2),
+        ((3, 1, 2, 4), 5),
+        ((2, 0, 3, 0), 4),
+    ] {
+        let shape = MatMulWeightShape {
+            layer_vars,
+            token_vars,
+            out_vars,
+            in_vars,
+        };
+        let case = WeightCase::random(&mut rng, shape, live);
+        let degree = case.relation().degree();
+        let prefix = Prefix::Stage(2);
+        let reference =
+            prove_and_verify_stage(&session, prefix, degree, &[Member::Weight(case.clone())]);
+        let tables = MatMulWeightTables::folded(contracted(&case), &case.x, shape, &case.point)
+            .expect("a table of the shape");
+        let mut transcript = session.transcript();
+        let proven =
+            prove_batch(&mut transcript, prefix, degree, &[tables.instance()]).expect("a stage");
+        assert!(
+            proven.proof() == reference.proven.proof(),
+            "{shape:?}: the same messages"
+        );
+        assert_eq!(proven.gamma(), reference.proven.gamma(), "{shape:?}");
+        assert_eq!(proven.point(), reference.proven.point(), "{shape:?}");
+        assert_eq!(transcript.state(), reference.state, "{shape:?}");
+        let claims = tables
+            .claims(
+                proven.instance_point(0).expect("the instance"),
+                proven.instance_evals(0).expect("the instance"),
+            )
+            .expect("its results");
+        let [w, x] = reference.claims[0].clone().expect("claims");
+        assert!(claims.w == w && claims.x == x, "{shape:?}: the same claims");
+    }
+}
+
+/// A folded table or activations of another length than the shape gives, and a point of
+/// another length, are refused before anything is computed, `W` first.
+#[test]
+fn a_folded_weight_table_of_another_shape_is_refused() {
+    let mut rng = SplitMix64::new(0x57_0109);
+    let shape = MatMulWeightShape {
+        layer_vars: 2,
+        token_vars: 1,
+        out_vars: 3,
+        in_vars: 4,
+    };
+    let case = WeightCase::random(&mut rng, shape, 3);
+    let table = || contracted(&case);
+    let refused = |w: SecretBuf<common::Fp2>, x: &[common::Fp], point: &[common::Fp2]| {
+        MatMulWeightTables::folded(w, x, shape, point)
+            .map(|_| ())
+            .expect_err("refused")
+    };
+    let mut short = table();
+    short.truncate(short.len() - 1);
+    assert_eq!(
+        refused(short, &case.x[1..], &case.point),
+        SumcheckError::OperandLength {
+            operand: Operand::W,
+            len: (1 << 6) - 1,
+            expected: 1 << 6,
+        }
+    );
+    assert_eq!(
+        refused(table(), &case.x[1..], &case.point),
+        SumcheckError::OperandLength {
+            operand: Operand::X,
+            len: (1 << 7) - 1,
+            expected: 1 << 7,
+        }
+    );
+    assert_eq!(
+        refused(table(), &case.x, &case.point[1..]),
+        SumcheckError::PointLength {
+            len: 5,
+            expected: 6,
+        }
+    );
 }

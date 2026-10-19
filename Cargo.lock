@@ -674,6 +674,7 @@ dependencies = [
  "tessera-codec",
  "tessera-field",
  "tessera-hash",
+ "tv-codec",
  "tv-core",
  "tv-field",
  "tv-hash",
