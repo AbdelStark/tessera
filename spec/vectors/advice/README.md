@@ -17,7 +17,9 @@ discovers this oracle automatically. The oracle expands every attention tile;
 the verifier can use a different algorithm that counts repetitions without
 allocating per-tile metadata.
 
-`layout.json` version 1 contains 54 cases: every lowering fixture at row widths
+`layout.json` version 1 also records ordered root roles and requests at every
+width from 1 through 32, using the same pre-implementation schema function.
+It contains 54 model cases: every lowering fixture at row widths
 `2^10` and `2^22`, plus each length-five graph with query blocks of one. Query
 blocks 32 and 512 exercise causal rows and short blocks; segment counts 1, 3
 and 8 include empty segments. Each case gives:

@@ -17,7 +17,7 @@ mod claim_support;
 use std::fmt::Write as _;
 
 use claim_support::{
-    at, goldens, integer, items, list, make_affine, make_pot, member, string, text,
+    apply_variant, claims_of, goldens, integer, items, list, member, number, string, text,
 };
 use tv_codec::{DecodeLimits, Rational};
 use tv_core::claims::{ClaimList, Profile, Site, WeightType};
@@ -55,30 +55,6 @@ impl Differences {
                 );
             }
         }
-    }
-}
-
-fn number<T: TryFrom<i128>>(value: &Json) -> T
-where
-    T::Error: std::fmt::Debug,
-{
-    T::try_from(integer(value)).expect("in range")
-}
-
-fn site_named(name: &str) -> Site {
-    match name {
-        "AttnNorm" => Site::AttnNorm,
-        "RopeQ" => Site::RopeQ,
-        "RopeK" => Site::RopeK,
-        "V" => Site::V,
-        "AttnOut" => Site::AttnOut,
-        "AttnResidual" => Site::AttnResidual,
-        "MlpNorm" => Site::MlpNorm,
-        "Silu" => Site::Silu,
-        "Up" => Site::Up,
-        "Product" => Site::Product,
-        "MlpResidual" => Site::MlpResidual,
-        other => panic!("unknown site {other}"),
     }
 }
 
@@ -279,52 +255,6 @@ fn tensor(value: &Json) -> (u32, Vec<u32>, Kind) {
 }
 
 /// The golden claim list of the model artifact `file`.
-fn claims_of(file: &str) -> ClaimList {
-    let golden = goldens()
-        .into_iter()
-        .find(|g| g.model == file)
-        .unwrap_or_else(|| panic!("no golden claim list for {file}"));
-    ClaimList::open(&golden.envelope, &DecodeLimits::MESSAGE).expect("a golden claim list")
-}
-
-/// Makes a variant's edits to the claim list's public part, each in every layer it names.
-fn apply_variant(variant: &Json, claims: &mut ClaimList) {
-    if let Some(heads) = variant.get("n_kv_heads") {
-        claims.arch.n_kv_heads = number(heads);
-    }
-    if let Some(rescales) = variant.get("rescale") {
-        for edit in items(rescales) {
-            let [layer, site, mode, value] = items(edit) else {
-                panic!("a rescale is [layer, site, mode, value]");
-            };
-            let point = at(number(layer), site_named(string(site)));
-            match string(mode) {
-                "pot" => {
-                    let shifts: Vec<i8> = items(value).iter().map(number).collect();
-                    make_pot(claims, point, &shifts);
-                }
-                "affine" => make_affine(claims, point, number(value)),
-                other => panic!("unknown mode {other}"),
-            }
-        }
-    }
-    if let Some(scales) = variant.get("score_scales") {
-        for edit in items(scales) {
-            let [layer, num, den] = items(edit) else {
-                panic!("a score scale is [layer, num, den]");
-            };
-            let layer: u32 = number(layer);
-            let entry = claims
-                .quant
-                .score_scales
-                .iter_mut()
-                .find(|(l, _)| *l == layer)
-                .expect("the layer's scale");
-            entry.1 = Rational::new(number(num), number(den)).expect("in lowest terms");
-        }
-    }
-}
-
 /// Compares `graph` with the vectors' `case`, field by field.
 fn compare(case: &Json, name: &str, graph: &Graph, diffs: &mut Differences) {
     let tensors = graph.tensors();

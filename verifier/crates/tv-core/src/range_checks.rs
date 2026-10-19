@@ -411,14 +411,134 @@ fn softmax_ranges(
     let reciprocal = sigma.checked_add(1).ok_or_else(|| gadget(id))?;
     tables.intern(Key::Range(reciprocal), policy.max_log2_rows, id)?;
     // Walk the public bit budget from low limbs to the top, without a division or an index.
-    let mut remaining = sigma.checked_add(18).ok_or_else(|| gadget(id))?;
-    while remaining > policy.limb_bits {
-        tables.intern(Key::Range(policy.limb_bits), policy.max_log2_rows, id)?;
-        remaining = remaining
-            .checked_sub(policy.limb_bits)
-            .ok_or(ClaimsError::Internal)?;
+    for _ in 0..2 {
+        let mut remaining = sigma.checked_add(18).ok_or_else(|| gadget(id))?;
+        while remaining > policy.limb_bits {
+            tables.intern(Key::Range(policy.limb_bits), policy.max_log2_rows, id)?;
+            remaining = remaining
+                .checked_sub(policy.limb_bits)
+                .ok_or(ClaimsError::Internal)?;
+        }
+        tables.intern(Key::Range(remaining), policy.max_log2_rows, id)?;
     }
-    tables.intern(Key::Range(remaining), policy.max_log2_rows, id)
+    Ok(())
+}
+
+// RFC-0050: derive raw coefficient bounds directly from digit triples; constants
+// are already bytes and have one-bit normalization carry lookups.
+fn root_carry_bits(
+    width: u8,
+    increment: bool,
+    limbs: usize,
+    id: GadgetId,
+) -> Result<[u8; 15], ClaimsError> {
+    let count = usize::from(width).div_ceil(8);
+    let mut root = [0u64; 4];
+    for (i, digit) in root.iter_mut().take(count).enumerate() {
+        let remaining = u32::from(width)
+            .checked_sub(
+                u32::try_from(i.checked_mul(8).ok_or(ClaimsError::Internal)?)
+                    .map_err(|_| ClaimsError::Internal)?,
+            )
+            .ok_or(ClaimsError::Internal)?;
+        *digit = (1u64 << remaining.min(8)).saturating_sub(1);
+        if i == 0 && increment {
+            *digit = digit.checked_add(1).ok_or_else(|| gadget(id))?;
+        }
+    }
+    let mut coefficients = [0u64; 15];
+    let raw = coefficients.get_mut(..limbs).ok_or(ClaimsError::Internal)?;
+    for (i, &a) in root.iter().take(count).enumerate() {
+        for (j, &b) in root.iter().take(count).enumerate() {
+            for (k, u) in [65535u64, 65535, 65535, 127].into_iter().enumerate() {
+                let at = i
+                    .checked_add(j)
+                    .and_then(|x| k.checked_mul(2).and_then(|y| x.checked_add(y)))
+                    .ok_or(ClaimsError::Internal)?;
+                let slot = raw.get_mut(at).ok_or(ClaimsError::Internal)?;
+                *slot = a
+                    .checked_mul(b)
+                    .and_then(|x| x.checked_mul(u))
+                    .and_then(|x| slot.checked_add(x))
+                    .ok_or_else(|| gadget(id))?;
+            }
+        }
+    }
+    let mut widths = [0u8; 15];
+    let mut carry = 0u64;
+    let mut previous_box = 0u64;
+    for (&a, width) in raw.iter().zip(&mut widths) {
+        carry = a.checked_add(carry).ok_or_else(|| gadget(id))? >> 8;
+        let bits = u64::BITS.saturating_sub(carry.leading_zeros()).max(1);
+        let full_box = 1u64
+            .checked_shl(bits)
+            .and_then(|x| x.checked_sub(1))
+            .ok_or_else(|| gadget(id))?;
+        let left = a.checked_add(previous_box).ok_or_else(|| gadget(id))?;
+        let right = full_box
+            .checked_mul(256)
+            .and_then(|x| x.checked_add(255))
+            .ok_or_else(|| gadget(id))?;
+        if left >= 1 << 40 || right >= 1 << 40 {
+            return Err(gadget(id));
+        }
+        *width = u8::try_from(bits).map_err(|_| gadget(id))?;
+        previous_box = full_box;
+    }
+    if carry != 0 {
+        return Err(gadget(id));
+    }
+    Ok(widths)
+}
+
+fn rsqrt_ranges(
+    width: u8,
+    policy: GadgetPolicy,
+    id: GadgetId,
+    tables: &mut Tables<'_>,
+) -> Result<(), ClaimsError> {
+    if !(1..=32).contains(&width) {
+        return Err(gadget(id));
+    }
+    let low = width.saturating_sub(1) / 8;
+    let limbs = usize::from(width)
+        .checked_mul(2)
+        .and_then(|x| x.checked_add(55))
+        .ok_or(ClaimsError::Internal)?
+        .div_ceil(8);
+    let lower = root_carry_bits(width, false, limbs, id)?;
+    let upper = root_carry_bits(width, true, limbs, id)?;
+    let constants = [1u8; 15];
+    tables.intern(Key::Range(width), policy.max_log2_rows, id)?;
+    for _ in 0..3 {
+        tables.intern(Key::Range(16), policy.max_log2_rows, id)?;
+    }
+    tables.intern(Key::Range(7), policy.max_log2_rows, id)?;
+    for _ in 0..low {
+        tables.intern(Key::Range(8), policy.max_log2_rows, id)?;
+    }
+    let top = low
+        .checked_mul(8)
+        .and_then(|x| width.checked_sub(x))
+        .ok_or(ClaimsError::Internal)?;
+    tables.intern(Key::Range(top), policy.max_log2_rows, id)?;
+    for (left, right) in [(&lower, &constants), (&constants, &upper)] {
+        for carry_widths in [left, right] {
+            for _ in 0..limbs {
+                tables.intern(Key::Range(8), policy.max_log2_rows, id)?;
+            }
+            for &bits in carry_widths.iter().take(limbs) {
+                tables.intern(Key::Range(bits), policy.max_log2_rows, id)?;
+            }
+        }
+        for _ in 0..limbs {
+            tables.intern(Key::Range(8), policy.max_log2_rows, id)?;
+        }
+        for _ in 0..limbs {
+            tables.intern(Key::Range(1), policy.max_log2_rows, id)?;
+        }
+    }
+    Ok(())
 }
 
 fn classes_fit(ranges: &[Interval], node: &Node, count: usize) -> Result<bool, ClaimsError> {
@@ -586,6 +706,12 @@ fn check_gadget(
             {
                 return Err(gadget(id));
             }
+            rsqrt_ranges(
+                u8::try_from(width).map_err(|_| gadget(id))?,
+                policy,
+                id,
+                tables,
+            )?;
         }
         _ => return Err(ClaimsError::Internal),
     }
@@ -785,6 +911,71 @@ pub(crate) fn catalog(graph: &Graph, policy: GadgetPolicy) -> Result<Selection, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn root_families_match_every_width_of_the_independent_oracle() {
+        let vectors = tv_testkit::read_vectors("advice/layout.json");
+        let roots = vectors
+            .get("roots")
+            .and_then(tv_testkit::Json::as_array)
+            .unwrap();
+        assert_eq!(roots.len(), 32);
+        let policy = GadgetPolicy {
+            max_log2_rows: 32,
+            query_block: 512,
+            limb_bits: 16,
+        };
+        for root in roots {
+            let width = root
+                .get("width")
+                .and_then(tv_testkit::Json::as_u64)
+                .unwrap() as u8;
+            let mut tables = Tables {
+                base: &[],
+                added: Vec::new(),
+                seen: HashSet::new(),
+                capture: true,
+                trace: vec![Vec::new()],
+            };
+            rsqrt_ranges(width, policy, GadgetId(0), &mut tables).unwrap();
+            let expected: Vec<_> = root
+                .get("requests")
+                .and_then(tv_testkit::Json::as_array)
+                .unwrap()
+                .iter()
+                .map(|x| x.as_u64().unwrap() as u8)
+                .collect();
+            let found: Vec<_> = tables.trace[0]
+                .iter()
+                .map(|(_, key, _)| match key {
+                    Key::Range(bits) => *bits,
+                    _ => panic!("root requests only ranges"),
+                })
+                .collect();
+            assert_eq!(found, expected, "width {width}: all repeated requests");
+            assert_eq!(
+                tables.added.len(),
+                expected.iter().collect::<HashSet<_>>().len()
+            );
+        }
+        for width in [0, 33] {
+            let mut tables = Tables {
+                base: &[],
+                added: Vec::new(),
+                seen: HashSet::new(),
+                capture: false,
+                trace: Vec::new(),
+            };
+            assert!(matches!(
+                rsqrt_ranges(width, policy, GadgetId(2), &mut tables),
+                Err(ClaimsError::StatementMismatch {
+                    field: StatementField::Gadget {
+                        gadget: GadgetId(2)
+                    }
+                })
+            ));
+        }
+    }
 
     fn selected(bits: u32, shifts: &[u8]) -> Vec<(Key, u8)> {
         let half = 1i128 << (bits - 1);

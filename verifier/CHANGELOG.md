@@ -130,6 +130,7 @@ All notable changes to the verifier release train are recorded here: the crates 
   definitions through `tv-core::selection` for constraint-system digest conformance
   (RFC-0007, #120). Normal validation runs the same checks without diagnostic capture.
   Consume independent CI framing vectors in `tv-testkit`; no dependency is added.
+- Derive RFC-0050's complete Rsqrt and Softmax auxiliary range requests, retaining repeated families and the one-bit minimum root range (#106).
 
 ### Changed
 

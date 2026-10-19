@@ -352,7 +352,13 @@ def render(document):
             else:
                 fields.append("   "+compact(key)+":"+compact(value))
         cases.append("  {\n"+",\n".join(fields)+"\n  }")
-    fields = [" "+compact(k)+":"+compact(v) for k, v in document.items() if k != "cases"]
+    fields = []
+    for key, value in document.items():
+        if key == "cases":
+            continue
+        body = ("[\n"+",\n".join("  "+compact(v) for v in value)+"\n ]"
+                if key == "roots" else compact(value))
+        fields.append(" "+compact(key)+":"+body)
     text = "{\n"+",\n".join(fields+[' "cases":[\n'+",\n".join(cases)+"\n ]"])+"\n}\n"
     require(json.loads(text) == document, "rendered vector round trip")
     return text
@@ -364,7 +370,11 @@ def main():
     cases = [model_layout(c, k, q, s) for c in graphs for k, q, s in ((10, 32, 3), (22, 512, 8))]
     cases += [model_layout(c, 10, 1, 1) for c in graphs if c["n"] == 5]
     require(len(cases) == 54, "all independent lowering cases")
-    document = {"version": 1, "description": "Public advice layout and complete gadget columns; RFC-0011/0034/0035/0041/0046/0047/0050, independent expanded Python oracle.", "cases": cases}
+    roots = []
+    for width in range(1, 33):
+        roles, requests = root_schema(1 if width < 32 else 4, min(width-1, 30), 1)
+        roots.append({"width": width, "roles": roles, "requests": requests})
+    document = {"version": 1, "description": "Public advice layout and complete gadget columns; RFC-0011/0034/0035/0041/0046/0047/0050, independent expanded Python oracle.", "roots": roots, "cases": cases}
     (HERE / "layout.json").write_text(render(document))
     print(f"advice oracle: {len(cases)} cases; {sum(len(t['values']) for c in cases for t in c['tiles'])} values")
 
