@@ -73,7 +73,7 @@ No real output reads a padded row:
 
 - **`OneHot`.** `Σ_v h_v = ψ_t`. On a padded row, booleanity and a zero sum leave `h = 0`, and `Σ_v v·h_v = t` gives `t = 0`. Lemma 8 holds on real rows unchanged.
 - **`RsqrtRow`.** `u = ψ·(Σ_i res_i² + e)`, and the comparisons become `ρ²u ≤ ψ·N` and `ψ·(N + 1) ≤ (ρ + 1)²·u`.
-  - On a padded row `u = 0`. Its range-checked limbs recompose to 0 only as zeros, and both comparisons are `0 ≤ 0`, whose `BigIntCompare` witnesses are zero (Lemma 4).
+  - On a padded row `u = 0`. Its range-checked limbs, a box below `P` (RFC-0009 'The limb box'), recompose to 0 only as zeros, and both comparisons are `0 ≤ 0`, whose `BigIntCompare` witnesses are zero (Lemma 4).
   - The root `ρ` is left free, and the padding zero-check pins it.
 - **`SoftmaxRow`.** Relation 3 takes `a_q = ψ_q·2^{2σ} − R_q·s_q` and `b_q = s_q − ψ_q − a_q`.
   - On a padded row `s_q = 0`, so `a_q = b_q = 0` whatever `R_q`.

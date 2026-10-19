@@ -82,6 +82,8 @@ Inputs as `Requant1`, for a key that `RequantSplit` cannot take ([RFC-0024](RFC-
 
 Proves a virtual true integer `v ∈ [0, 2^k)` for `k ≤ 62` with `n = ceil(k / L)` limbs.
 
+**The limb box.** Every decomposition of a field element into range-checked limbs, in any gadget, has its box below `P`: the limbs' widths add up to at most 62 bits, the top limb checked to its own width. Otherwise a value `x` also decomposes as the integer `x + P`, and a comparison on the limbs reads the wrong integer ([#377](https://github.com/AbdelStark/tessera/issues/377)). `NonNeg`'s top limb is checked to `k − (n − 1)·L` bits for this reason. A gadget that decomposes a field element into limbs uses a `NonNeg`, or states its box.
+
 - Committed: limbs `v_0 … v_{n−2}`. Virtual: `v_{n−1} = (v − Σ_{j<n−1} v_j 2^{jL}) · 2^{−(n−1)L}`.
 - Lookups: `v_j ∈ [0, 2^L)` for `j < n − 1`; `v_{n−1} ∈ [0, 2^{k − (n−1)L})`.
 - Cost: `n − 1` commitments, `n` lookups.
@@ -123,7 +125,7 @@ For query row `q` of a sequence of `n` positions, with valid key positions `i �
 
 For a residual row with virtual `u = ψ·(Σ_i res_i^2 + e)` (true integer, `u < 2^55`), dimension `d`, precision `κ`, constant `N = d · 2^{2κ}`, and row selector `ψ`, 1 on a real row and 0 on a padded one ([RFC-0035](RFC-0035-padded-rows.md)):
 
-- Committed: `ρ`; limbs of `u` (with a recomposition relation, exact because `u < 2^55 < P`); `BigIntCompare` witnesses for `ρ^2 u ≤ ψ·N` and `ψ·(N + 1) ≤ (ρ + 1)^2 u`. On a padded row `u = 0`, both comparisons are `0 ≤ 0`, and a padding zero-check pins `ρ` to 0.
+- Committed: `ρ`; the limbs of `NonNeg(u, 55)`: three 16-bit limbs and a top limb in `Range{7}`, a box of `2^{55} < P`. The box, not the bound `u < 2^55` alone, makes the recomposition exact: four full 16-bit limbs would also represent `u + P` for every `u ≤ 2^{32} − 2`, and admit a second root; `BigIntCompare` witnesses for `ρ^2 u ≤ ψ·N` and `ψ·(N + 1) ≤ (ρ + 1)^2 u`. On a padded row `u = 0`, both comparisons are `0 ≤ 0`, and a padding zero-check pins `ρ` to 0.
 - Lookups: `ρ ∈ [0, 2^w)`, with `w` the bit length of `⌊√(N / e)⌋`, the largest root of any row, at most 32 ([RFC-0022](RFC-0022-saturating-residual.md#complete-norms)); limb and carry range checks.
 - Cost: about 20 commitments and 30 lookups per row (one row per token per norm).
 - Lemma 7. The constraints hold iff `ρ = max{ρ : ρ^2 u ≤ N}`. Proof: Lemma 4 makes both inequalities exact over the integers; they bracket `ρ` uniquely.
@@ -134,9 +136,9 @@ For a residual row with virtual `u = ψ·(Σ_i res_i^2 + e)` (true integer, `u <
 For a token `t ∈ [0, vocab)` (committed in the token stream, RFC-0015):
 
 - Committed: `h ∈ {0,1}^{vocab}`.
-- Relations: zero-check `Σ_x eq(r, x) h(x)(1 − h(x)) = 0` (degree 3); `Σ_v h_v = ψ_t`, with `ψ_t` the row selector, 1 on a real token and 0 on a padded one ([RFC-0035](RFC-0035-padded-rows.md)); `Σ_v v · h_v = t`. A padded row's `h` and `t` are therefore 0.
+- Relations: zero-check `Σ_x eq(r, x) h(x)(1 − h(x)) = 0` (degree 3); zero-check `Σ_x eq(r, x)·(1 − LT(x_v, vocab))·h(x) = 0` over the padded vocabulary axis, which pins `h_v = 0` for `v ≥ vocab` with no commitment and no lookup, `LT` public; `Σ_v h_v = ψ_t`, with `ψ_t` the row selector, 1 on a real token and 0 on a padded one ([RFC-0035](RFC-0035-padded-rows.md)); `Σ_v v · h_v = t`. A padded row's `h` and `t` are therefore 0.
 - Cost: `vocab` commitments per token (0.75% of the linear-layer count at 405B).
-- Lemma 8. The relations hold iff `h` is the indicator of `t`, except with probability at most `3 log2(vocab) / |Fp2|` over the zero-check challenge. Proof: booleanity plus sum one leaves exactly one non-zero entry; the weighted sum fixes its index.
+- Lemma 8. The relations hold iff `t ∈ [0, vocab)` and `h` is the indicator of `t`, except with probability at most `3 log2(vocab) / |Fp2|` over the zero-check challenge. Proof: booleanity plus sum one leaves exactly one non-zero entry, the vocabulary zero-check puts it below `vocab`, and the weighted sum fixes its index. Without that zero-check a token in `[vocab, V_pad)` passes and reads a padded column of `Embed` ([#378](https://github.com/AbdelStark/tessera/issues/378)).
 - The one-hot vector of the token at position `p + 1` is reused by `Argmax` and `InverseCdf` at position `p` (teacher forcing).
 - Relational fact emitted: `h` holds exactly one 1, so `W · h` is the column `t` of `W`, and range analysis gives it `W`'s range.
 
@@ -146,7 +148,7 @@ Logits `ℓ_v` (virtual true integers, `< 2^28`), output token `y` with one-hot 
 
 - Committed: maximum `m`.
 - Virtual: `lt_v = Σ_{w > v} h_w` (1 if `v < y`), keys `g_v = m − ℓ_v − lt_v`.
-- Relations: `g_v ∈ [0, 2^{29})` for all `v`; `Σ_v h_v ℓ_v = m`.
+- Relations: `[v < vocab]·g_v ∈ [0, 2^{29})` for every `v` of the padded vocabulary axis, the public selector masking the padded positions to the key 0; `Σ_v h_v ℓ_v = m`. `OneHot`'s vocabulary zero-check keeps `y` below `vocab`, so the checks over `[0, vocab)` cover every position the one-hot can mark.
 - Cost per output token: `vocab` lookups, 1 commitment.
 - Lemma 9. Holds iff `y = min{v : ℓ_v = max ℓ}`. Proof: `g_v ≥ 0` gives `ℓ_v ≤ m` for `v ≥ y` and `ℓ_v ≤ m − 1` for `v < y`; the inner product gives `ℓ_y = m`.
 

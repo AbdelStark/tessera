@@ -740,6 +740,9 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Uniqueness.** Every gadget's uniqueness argument holds for arbitrary committed weights, classes, multipliers and padding: an injective digit box below `P`, or a table that is a function of its key. A malformed `R_W` cannot let the prover adapt outputs.
   - **The assumption.** `R_W` is the root of a `D` that `commit-weights` accepted. That gives fidelity (`D` is its claim list's Llama) and totality (every input has a proof). A one-time well-formedness proof would buy no uniqueness.
   - **Amendments.** RFC-0009's requantization lemmas split into a uniqueness half and a value half. 00 §3, 06 §5, RFC-0006 and RFC-0040 state the assumption.
+- RFC-0009 closes two uniqueness gaps the #369 analysis found, before `RsqrtRow` (#126), `OneHot` and `Argmax` (#123) are implemented ([#377](https://github.com/AbdelStark/tessera/issues/377), [#378](https://github.com/AbdelStark/tessera/issues/378)):
+  - **The limb box.** Every decomposition of a field element into range-checked limbs has its box below `P`. `RsqrtRow`'s `u` takes `NonNeg(u, 55)`: three 16-bit limbs and a 7-bit top limb. Four full 16-bit limbs would also represent `u + P`, and at 8B admit a second root `ρ`. RFC-0035's padded rows cite the rule.
+  - **Token ids.** `OneHot` gains the zero-check `Σ_x eq(r, x)·(1 − LT(x_v, vocab))·h(x) = 0`, which pins `t ∈ [0, vocab)` at no commitment or lookup. Lemma 8 now proves that. `Argmax` masks its keys at `v ≥ vocab`, so its checks cover every position the one-hot can mark.
 
 ### Changed
 
