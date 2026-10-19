@@ -809,6 +809,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - Verify the folding pass with the independent weight checker on 120 openings of the four conformance models, and reproduce seven independent sparse/scalar/empty opening fixtures. Add cross-row rejection-order and maximal-codeword boundary regressions (RFC-0012/0040/0049; #109).
 
+- `tessera-gadgets::RsqrtRow`: exact multi-limb reciprocal-square-root brackets with bounded product coefficients, the seven-bit input top limb, padded-root zero-check and zeroizing witnesses. Includes independent integer vectors and million-input agreement checks (RFC-0009 Lemma 7, #126).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
