@@ -4,7 +4,8 @@
 //! sampling (RFC-0014, RFC-0016).
 //!
 //! This version holds the messages of `tessera-protocol/1` and the two live sessions, as
-//! RFC-0036 defines them, the parameter sets and the soundness calculator, as RFC-0014 does.
+//! RFC-0036 defines them, the parameter sets, the soundness calculator and the transcript
+//! schedule, as RFC-0014 does.
 //!
 //! # Messages
 //!
@@ -80,6 +81,23 @@
 //! and every decision compares integers, never rounded bits. [`StatementSizes::llama_405b_16k`]
 //! is the 405B 16K-token, 16K-context statement, each of its sizes documented with its source.
 //!
+//! # The transcript schedule
+//!
+//! [`LabelPattern`] is the registry of RFC-0014's tier-A label patterns of `tessera-protocol/1`,
+//! and a [`Label`] one of them with its indices: both sides build every label from it.
+//! [`TranscriptSchedule::expand`] lists every label one proof unit absorbs or squeezes under, in
+//! order, from the [`ScheduleSizes`] that public data fixes, in a mode at a parameter set: no label
+//! twice (INV-FS-4), and every prover message absorbed before the challenges that depend on it
+//! (INV-FS-1). [`WEIGHTS_XI`] is the one place that puts each weight matrix's proximity point,
+//! right after the seed as RFC-0049 moves it.
+//!
+//! [`ScheduledTranscript`] holds RFC-0004's transcript to a schedule, each operation the next
+//! step. A live session absorbs the coin-tossed seed and the verifier's queries at their places; a
+//! non-interactive prover grinds for the seed and the queries under `seed-pow` and `query-pow`,
+//! for the parameter set's `g_seed` and `g_query` bits, and a verifier counts each nonce's leading
+//! zero bits exactly, refusing a short one with [`PowRejected`], `Reject(ProofOfWork)`.
+//! `tessera-protocol/2`'s labels slot in at [`Protocol::Two`] (#148).
+//!
 //! # Features
 //!
 //! - `test-params` accepts the `test-small` parameter set, which certifies nothing. Tests only: a
@@ -102,6 +120,7 @@ mod queries;
 mod round1;
 mod round2;
 mod round3;
+mod schedule;
 mod seed;
 mod soundness;
 mod verifier;
@@ -121,6 +140,11 @@ pub use round2::{
 };
 pub use round3::{
     ColumnQueries, MatrixColumns, MatrixQueries, MultiProof, NiProof, Round3Response,
+};
+pub use schedule::{
+    Label, LabelPattern, LeafTree, MatrixPoint, Op, PowRejected, Protocol, ScheduleFault,
+    ScheduleSizes, ScheduledTranscript, StageSizes, Step, TranscriptSchedule, WEIGHTS_XI,
+    WeightsXi,
 };
 pub use seed::{ProverSeedShare, SeedCommit, SeedReveal, coin_commitment, coin_toss};
 pub use soundness::{

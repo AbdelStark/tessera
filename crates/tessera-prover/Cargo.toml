@@ -23,6 +23,10 @@ tessera-witness = { path = "../tessera-witness" }
 [dev-dependencies]
 serde_json = "1"
 tessera-hash = { path = "../tessera-hash" }
+# The weight layout and the transcript schedule, whose conformance vectors' sizes the prover's
+# derivations give (tests/transcript_sizes.rs).
+tessera-pcs = { path = "../tessera-pcs" }
+tessera-protocol = { path = "../tessera-protocol" }
 # The verifier's independent LogUp checks, tables, field, codec and transcript: the leaf stage's
 # LogUp proofs are checked by them before the in-test split check (DEP-2).
 tv-codec = { path = "../../verifier/crates/tv-codec" }
