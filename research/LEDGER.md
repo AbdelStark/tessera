@@ -6,11 +6,13 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 
 | Kind | Next identifier |
 |---|---|
-| Survey | SUR-0015 |
+| Survey | SUR-0016 |
 | Idea | IDEA-0037 |
 | Experiment | EXP-0024 |
 
 ## Queue
+
+Current authorized continuation (2026-10-20): #407/RFC-0050 and the complete #106 layout are merged (PR408/409). #112 remains open for complete auxiliary witnesses/multiplicities and measured memory accounting. SUR-0015 identifies the dense Range(32) allocation barrier and the public-storage/secret-clearing obligations. Next bounded correctness unit: ideate from SUR-0015, comparing dense, fixed-capacity sorted weighted updates and row-window recounting; then pre-register EXP-0024 before experiment code. No performance gain is credited. This prerequisite takes precedence over the historical performance queue below.
 
 Current authorized backlog prerequisite (2026-10-19): #407 pins public gadget columns before the remaining #106 layout. SUR-0014 is current and IDEA-0036 is promoted to RFC-0050; EXP-0023 and its committed polynomial-retention amendment pass. RFC-0050 records the self-reviewed contract decision for #407, retaining the original bracket polynomial and explicitly migrating columns/limb counts. Next bounded unit after its merge: independently implement the complete model layout and maximum-size check for #106. This correctness gate precedes the performance queue below; it carries zero gain credit.
 
@@ -76,6 +78,7 @@ Upstream on 2026-10-19 (`gh issue list`): every issue the loop fed upstream is c
 
 | ID | Topic | Status | Date | Ideas seeded |
 |---|---|---|---|---|
+| [SUR-0015](surveys/SUR-0015-witness-multiplicity-storage.md) | `passes`: bounded complete witness multiplicities for #112 | `current (2026-10-20)` | 2026-10-20 | bounded dense/sorted/windowed counters |
 | [SUR-0014](surveys/SUR-0014-gadget-column-contract.md) | `compiler`: exact gadget column/lookup contract for #106/#407 | `current (2026-10-19)` | 2026-10-19 | IDEA-0036 |
 | [SUR-0001](surveys/SUR-0001-proximity.md) | `proximity`: proximity gaps, `τ` and proof size | `current (2026-10-16)` | 2026-10-16 | 7 |
 | [SUR-0002](surveys/SUR-0002-lookups.md) | `lookups`: per-lookup cost and lookup count | `current (2026-10-16)` | 2026-10-16 | 6 |
@@ -258,3 +261,5 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-10-19 | EXP-0023 source-mutation check | Eighteen actual source edits fail targeted full-harness assertions; original and restored controls pass with byte-identical source. Overlaps functional faults; not eighteen additional distinct attacks or production coverage. Receipt includes exact edits and source hash. |
 
 | 2026-10-19 | RFC-0050 contract decision | Complete adversarial self-review retains integer boxes, original polynomial and virtual-input binding/degree obligations. Set Accepted in the same sole PR after opening the Draft; update all superseded-section cross-references. No independent second reviewer and no human hold per explicit user instruction. Acceptance takes effect on merge; production integration remains #106 and dependent issues. |
+
+| 2026-10-20 | `autoresearch survey passes` | SUR-0015: complete Range(32) counters require 32 GiB if dense (E0); public-mode fixed-capacity sorted weighted updates and row-window recounting require an experiment. No timing, proof-size or soundness credit. Next: bounded ideation/pre-registration for #112. |
