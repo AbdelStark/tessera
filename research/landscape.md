@@ -147,3 +147,7 @@ The primitive-level scoreboard compares against these. A survey fills the "Best 
 | Unit | E1 primary CPU result | Disposition |
 |---|---|---|
 | [EXP-0020](experiments/EXP-0020-integer-coefficient-fraction-leaves/README.md), fixedv2 synthetic complete LogUp plus common output normalization | M4 Max;15cohorts,600measured/180warmup arm samples and3 registered reruns. Registered minima G2=-36.5411%,H2=-36.3651%; E-l22whole retains C-arm/C-P/C-D CV3.923730%/3.164403%/3.780707%, so overall inconclusive. Exact outputs/independent closure pass; parent independently reproduces E0 gates, counts, mutations and raw timing audit. | No established incremental gain over D in any case; clean C/D losses11.9149–36.5411% are scoped observations. Two Range cases save3.2889%/6.9069% against P but lose14.6421%/11.9149% against D. No global refutation, GPU/LM gain or model repricing; paid-prefix+bottom is a separate diagnostic. |
+
+## Public gadget-column contract (2026-10-19)
+
+[SUR-0014](surveys/SUR-0014-gadget-column-contract.md) records a local E0 specification gap, not a new proof-system result. At root width 32, one committed low 16-bit digit with a virtual high digit versus two committed 16-bit digits can express the same exact root decomposition using the same range-table families; the latter adds one scalar auxiliary tensor/row (E0, own analytic example). Canonical roles and complete auxiliary lookup families must be pinned before #106 derives model offsets independently. No performance gain, GPU measurement or full-model proof is credited.
