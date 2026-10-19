@@ -1,0 +1,4 @@
+UTC: 2026-10-19T07:31:39.215684+00:00
+SHA256 amendment text: d5d7b9933a1c657fc29dea060a7794a55e00cb8ea9fc89fb8c755194c09e267e
+Frozen text: results/README.amendment-preregistered.txt
+Git preregistration commit: recorded by parent before implementation
