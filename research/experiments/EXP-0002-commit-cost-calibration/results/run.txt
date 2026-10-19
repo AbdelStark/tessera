@@ -1,0 +1,102 @@
+EXP-0002 calibration harness: mode all; protocol 3 warm-ups, 10 iterations, CV limit 3%
+
+== correctness checks ==
+check field:     3 edge products of spec/vectors/field/goldilocks.json reproduced through mul_anchor
+check encoder:   hand case k = 8, P = 2 (row 1..=8, masks 11, 12): coefficients [11, 12, 0, ...] and the row recovered
+check chains:    hash.json case 3d405d23… (5 rows, 3 columns, B = 2) reproduced by ColumnChains and by the reference derivation
+
+== unit costs, in cache (L1D 128 KiB per performance core) ==
+unit: mul, 2^12 in place by a constant (x7620)           0.719 ns/mul      min     0.704  max     0.744  CV  1.91%  (    0.003 ms)
+unit: mul, dependent chain of 2^16 (x81)                 2.856 ns/mul      min     2.797  max     3.010  CV  2.19%  (    0.187 ms)
+unit: encode_row 2^9, P = 0 (x2437)                     13.574 ns/value    min    13.375  max    13.789  CV  1.01%  (    0.007 ms)
+    7424 butterflies: 0.8866 ns per butterfly after k multiplications at 0.7190 ns
+unit: encode_row 2^10, P = 0 (x1388)                    15.105 ns/value    min    14.733  max    15.281  CV  1.07%  (    0.015 ms)
+    16384 butterflies: 0.8991 ns per butterfly after k multiplications at 0.7190 ns
+unit: encode_row 2^11, P = 0 (x577)                     16.438 ns/value    min    16.101  max    16.706  CV  1.43%  (    0.034 ms)
+    35840 butterflies: 0.8983 ns per butterfly after k multiplications at 0.7190 ns
+unit: encode_row 2^12, P = 0 (x233)                     18.069 ns/value    min    17.609  max    18.422  CV  1.37%  (    0.074 ms)
+    77824 butterflies: 0.9132 ns per butterfly after k multiplications at 0.7190 ns
+    per butterfly: 0.8993 ns (mean of the four); two-regressor fit gives 1.0241 ns per butterfly and -1.3996 ns per spread value
+unit: ntt 2^10 (x2609)                                   5.216 ns/point    min     5.137  max     5.295  CV  1.00%  (    0.005 ms)
+    5120 butterflies: 0.7194 ns per point of bit reversal after them
+unit: ntt 2^11 (x1661)                                   5.760 ns/point    min     5.627  max     5.859  CV  1.32%  (    0.012 ms)
+    11264 butterflies: 0.8142 ns per point of bit reversal after them
+unit: ntt 2^12 (x846)                                    6.364 ns/point    min     6.184  max     6.414  CV  1.17%  (    0.026 ms)
+    24576 butterflies: 0.9685 ns per point of bit reversal after them
+unit: ntt 2^13 (x349)                                    6.887 ns/point    min     6.730  max     6.935  CV  0.90%  (    0.056 ms)
+    53248 butterflies: 1.0417 ns per point of bit reversal after them
+    per point of bit reversal: 0.8860 ns (mean of the four)
+unit: hash(column-step, 64 bytes = 1 compressions) (x16000)    61.000 ns/call     min    60.000  max    64.000  CV  1.89%  (    0.000 ms)  (rerun: first CV > 3%)
+unit: hash(column-step, 128 bytes = 2 compressions) (x18468)   103.500 ns/call     min   102.000  max   105.000  CV  1.04%  (    0.000 ms)
+unit: hash(column-step, 192 bytes = 3 compressions) (x68494)   155.000 ns/call     min   151.000  max   156.000  CV  0.98%  (    0.000 ms)
+unit: hash(column-step, 256 bytes = 4 compressions) (x47962)   204.000 ns/call     min   196.000  max   207.000  CV  1.45%  (    0.000 ms)
+unit: hash(column-step, 320 bytes = 5 compressions) (x30031)   256.000 ns/call     min   245.000  max   269.000  CV  2.62%  (    0.000 ms)
+unit: hash(column-step, 512 bytes = 8 compressions) (x21811)   407.000 ns/call     min   392.000  max   418.000  CV  1.83%  (    0.000 ms)
+unit: hash(column-step, 1024 bytes = 16 compressions) (x16557)   808.500 ns/call     min   796.000  max   827.000  CV  1.20%  (    0.001 ms)
+    fit: 5.712 ns per call + 50.129 ns per compression
+      c =  1: measured   61.000 ns, fit   55.841 ns
+      c =  2: measured  103.500 ns, fit  105.969 ns
+      c =  3: measured  155.000 ns, fit  156.098 ns
+      c =  4: measured  204.000 ns, fit  206.226 ns
+      c =  5: measured  256.000 ns, fit  256.355 ns
+      c =  8: measured  407.000 ns, fit  406.741 ns
+      c = 16: measured  808.500 ns, fit  807.770 ns
+unit: hash(column-step, 288 bytes = 5 compressions) (x36901)   255.000 ns/call     min   244.000  max   264.000  CV  2.26%  (    0.000 ms)
+    288 bytes: measured 255.000 ns, fit 256.355 ns
+stream copy 2^23 elements (64 MiB read + 64 MiB write)     0.114 ns/point    min     0.113  max     0.116  CV  0.74%  (    0.959 ms)
+    139.9 GB/s (read + write), one thread
+
+== kernels, one thread, per committed element (k = 2^22 elements per row) ==
+intt 2^22 (1 point per element)                         11.533 ns/element  min    11.439  max    11.933  CV  1.62%  (   48.374 ms)
+coset_ntt 2^23, shift 7 (2 points per element)          28.068 ns/element  min    27.733  max    28.773  CV  1.14%  (  117.725 ms)
+    coset_ntt 2^23: 14.034 ns per point
+check encoder:   k = 2^22, P = 200: encode_row == intt -> mask -> coset_ntt on all 8388608 symbols; degree < k + P
+encode_row 2^22, P = 200                                32.089 ns/element  min    31.931  max    32.273  CV  0.41%  (  134.591 ms)
+    encode_row: 16.045 ns per codeword symbol
+absorb_block 2^23 columns, B = 32 (2 symbols per element)    19.220 ns/element  min    18.922  max    19.548  CV  1.05%  ( 2579.670 ms)
+    chains: 9.610 ns per symbol, 0.832 GB/s of symbols
+check chains:    64 sampled leaves of the 2^23-column block after 13 absorptions equal the reference derivation; leaf_0 e318f78f64a675980be51c657c4b7ce851baed43a9d3dacbe3a82726203855ed; record digest of all leaves 4308003879a1b5093d2bf8e3c6e8c8dc30f6c2d1a83450319e8cdc21e1ad8f0e
+
+== fit F: predicted = counts × unit costs, per committed element ==
+kernel                        measured ns predicted ns     ratio  within [0.5, 2]
+intt 2^22                          11.533       11.497     0.997  yes
+coset_ntt 2^23                     28.068       23.174     0.826  yes
+encode_row 2^22, P = 200           32.089       31.294     0.975  yes
+absorb_block 2^23, B = 32          19.220       16.022     0.834  yes
+F passes
+
+== B sweep, 2^20 columns, one thread ==
+absorb_block 2^20 columns, B = 8                        26.242 ns/element  min    25.954  max    27.023  CV  1.17%  (  110.067 ms)
+    2 compressions per column-step of 96 bytes: 0.2500 per symbol; 13.121 ns per symbol
+absorb_block 2^20 columns, B = 16                       20.032 ns/element  min    19.854  max    20.480  CV  1.07%  (  168.039 ms)
+    3 compressions per column-step of 160 bytes: 0.1875 per symbol; 10.016 ns per symbol
+absorb_block 2^20 columns, B = 28                       17.456 ns/element  min    17.181  max    17.862  CV  1.26%  (  256.256 ms)
+    4 compressions per column-step of 256 bytes: 0.1429 per symbol; 8.728 ns per symbol
+absorb_block 2^20 columns, B = 32                       19.124 ns/element  min    18.960  max    19.539  CV  1.00%  (  320.844 ms)
+    5 compressions per column-step of 288 bytes: 0.1562 per symbol; 9.562 ns per symbol
+absorb_block 2^20 columns, B = 60                       18.116 ns/element  min    17.884  max    18.626  CV  1.24%  (  569.873 ms)
+    8 compressions per column-step of 512 bytes: 0.1333 per symbol; 9.058 ns per symbol
+absorb_block 2^20 columns, B = 64                       18.997 ns/element  min    18.600  max    19.333  CV  1.51%  (  637.427 ms)
+    9 compressions per column-step of 544 bytes: 0.1406 per symbol; 9.498 ns per symbol
+absorb_block 2^20 columns, B = 124                      17.375 ns/element  min    17.300  max    17.510  CV  0.39%  ( 1129.583 ms)
+    16 compressions per column-step of 1024 bytes: 0.1290 per symbol; 8.688 ns per symbol
+absorb_block 2^20 columns, B = 128                      18.632 ns/element  min    18.501  max    18.974  CV  0.93%  ( 1250.350 ms)
+    17 compressions per column-step of 1056 bytes: 0.1328 per symbol; 9.316 ns per symbol
+
+== thread scaling (aggregate ns per committed element) ==
+check encoder:   k = 2^22, P = 200: encode_row == intt -> mask -> coset_ntt on all 8388608 symbols; degree < k + P
+encode_row 2^22, P = 200, 1 threads                     32.390 ns/element  min    32.112  max    32.513  CV  0.43%  (  135.854 ms)
+encode_row 2^22, P = 200, 2 threads                     16.434 ns/element  min    16.364  max    16.687  CV  0.56%  (  137.862 ms)
+encode_row 2^22, P = 200, 4 threads                      8.392 ns/element  min     8.327  max     8.756  CV  1.65%  (  140.801 ms)
+encode_row 2^22, P = 200, 8 threads                      4.367 ns/element  min     4.296  max     4.558  CV  1.95%  (  146.519 ms)
+encode_row 2^22, P = 200, 12 threads                     3.203 ns/element  min     2.999  max     3.977  CV 10.43%  (  161.197 ms)  FLAG: CV > 3% after a rerun
+check encoder:   every thread's codeword equals the single-thread reference, at every thread count
+absorb_block 2^23 columns, B = 32, 1 threads            19.892 ns/element  min    19.766  max    20.129  CV  0.53%  ( 2669.799 ms)
+absorb_block 2^23 columns, B = 32, 2 threads            10.114 ns/element  min    10.037  max    10.321  CV  0.82%  ( 1357.524 ms)  (rerun: first CV > 3%)
+absorb_block 2^23 columns, B = 32, 4 threads             5.095 ns/element  min     5.043  max     5.389  CV  2.37%  (  683.838 ms)
+absorb_block 2^23 columns, B = 32, 8 threads             2.629 ns/element  min     2.586  max     2.828  CV  2.96%  (  352.814 ms)  (rerun: first CV > 3%)
+absorb_block 2^23 columns, B = 32, 12 threads            1.888 ns/element  min     1.619  max     3.235  CV 23.21%  (  253.433 ms)  FLAG: CV > 3% after a rerun
+check chains:    4 sampled leaves per shard equal the reference derivation, at every thread count
+
+wrote results/run.json
+exit 0

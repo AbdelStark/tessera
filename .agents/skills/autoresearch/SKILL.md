@@ -26,4 +26,6 @@ Modes, given as arguments: `survey <topic>`, `ideate [SUR-NNNN ...]`, `experimen
 
 ## Running continuously
 
+The saved workflow uses the original harness's `agent`, `parallel`, `pipeline` and `phase` helpers. When those are unavailable, execute the same phases with the host's native agent tools; the skill and ledger define completion. Serialize CPU measurements even when preparation is parallel. The headless shell runner requires the Claude CLI; its stub checks do not establish a live scheduled run.
+
 `/loop 24h /autoresearch` repeats one bounded unit of work per day. The `autoresearch-sweep` workflow ([.claude/workflows/autoresearch-sweep.js](../../workflows/autoresearch-sweep.js)) runs surveys, ideation, triage and experiments in parallel for a whole pass over the agenda; `/autoresearch-sweep` with `{"topics": ["lookups", "passes"], "experiments": 1}` narrows it. Outside a session, `research/tools/loop.sh` runs one unit headlessly (`LOOP_MODE=sweep` for the whole pass) so that cron, launchd or a CI timer can keep the loop going; it edits files and never touches git. Stopping between runs loses nothing: the ledger holds the state.

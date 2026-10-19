@@ -1,0 +1,16 @@
+{
+  "kind": "Unexecuted partial implementation handoff; no audit result",
+  "source_sha256": "f691c7bd595488afb1cae96ae173f534213eceaa191eb3d8b03f4efcf7a4ae65",
+  "lines": 1093,
+  "no_audit_execution": true,
+  "frozen_commit": "f344d76",
+  "pending": [
+    "independent direct level2 grouping/rowcoefficients/combinedrows/masks oracle (do not call l2_coefficients/group helper)",
+    "fresh external session identity and actual same-descriptor different-session replay control; bind CU payload/root in finite events",
+    "balanced source-consistent corpus and swapped arbitrary U with full root/nonroot candidate classification",
+    "remaining blinding/omission controls and exact rejection-order corrections",
+    "full-domain loops, unique-attempt source snapshots before EVERY attempt, CLI/provenance/meters/final summary"
+  ],
+  "candidate_view": "currently receives Case but source avoids direct private U/V reads; consider restricted view",
+  "source_readme": "Frozen preregistration unchanged; no result/performance/security claim"
+}

@@ -1,0 +1,83 @@
+EXP-0006 harness: production kernels of tessera-sumcheck / tessera-poly, one thread; RFC-0020 protocol (3 warm-ups, 10 iterations, median/min/max/CV, rerun once above 3%)
+
+== correctness checks ==
+check field:     3 edge products of spec/vectors/field/goldilocks.json reproduced
+check forests:   tree [2, 3, 5, 7]: verifier accepts from the true roots; transcripts agree; 1 leaf claim(s) equal the leaves' MLE
+check hand case: tree [2, 3, 5, 7]: root 210 accepted; against 211 rejected (level 0: FinalMismatch { round: 0 })
+
+== unit costs, in cache (2^12 elements in place by a constant; L1D 128 KiB) ==
+unit: Fp mul (x1861)                                           0.602 ns/op     min     0.579  max     0.610  CV  1.61%  (    0.002 ms)  (rerun: first CV > 3%)
+unit: Fp add (x20877)                                          0.349 ns/op     min     0.347  max     0.353  CV  0.53%  (    0.001 ms)
+unit: Fp sub (x36901)                                          0.514 ns/op     min     0.509  max     0.524  CV  0.83%  (    0.002 ms)
+unit: Fp2 mul (Karatsuba, mul_small(7)) (x1174)                3.331 ns/op     min     3.305  max     3.365  CV  0.66%  (    0.014 ms)
+unit: Fp2 mul_by_base (x4174)                                  0.906 ns/op     min     0.872  max     0.916  CV  1.42%  (    0.004 ms)
+unit: Fp2 add (x6667)                                          0.453 ns/op     min     0.448  max     0.468  CV  1.53%  (    0.002 ms)
+unit: Fp2 sub (x15004)                                         0.268 ns/op     min     0.266  max     0.284  CV  1.92%  (    0.001 ms)
+stream copy 2^22 Fp2 (64 MiB read + 64 MiB write)              0.220 ns/elem   min     0.217  max     0.230  CV  2.04%  (    0.925 ms)
+    145.1 GB/s (read + write), one thread
+
+== prove_forests, one thread, per leaf ==
+check forests:   prove_forests: 2^8 trees of 2^14 leaves (2^22 leaves): verifier accepts from the true roots; transcripts agree; 1 leaf claim(s) equal the leaves' MLE
+prove_forests: 2^8 trees of 2^14 leaves (2^22 leaves)         32.099 ns/leaf   min    31.653  max    33.044  CV  1.51%  (  134.634 ms)
+check forests:   prove_forests: 2^10 trees of 2^12 leaves (2^22 leaves): verifier accepts from the true roots; transcripts agree; 1 leaf claim(s) equal the leaves' MLE
+prove_forests: 2^10 trees of 2^12 leaves (2^22 leaves)        32.064 ns/leaf   min    31.854  max    32.600  CV  0.73%  (  134.487 ms)
+check forests:   prove_forests: 2^0 trees of 2^22 leaves (2^22 leaves): verifier accepts from the true roots; transcripts agree; 1 leaf claim(s) equal the leaves' MLE
+prove_forests: 2^0 trees of 2^22 leaves (2^22 leaves)         31.801 ns/leaf   min    31.628  max    32.252  CV  0.63%  (  133.385 ms)
+check forests:   prove_forests: 2^4 trees of 2^14 leaves (2^18 leaves): verifier accepts from the true roots; transcripts agree; 1 leaf claim(s) equal the leaves' MLE
+prove_forests: 2^4 trees of 2^14 leaves (2^18 leaves)         32.890 ns/leaf   min    31.830  max    33.389  CV  1.98%  (    8.622 ms)
+check forests:   prove_forests: 2^6 trees of 2^14 leaves (2^20 leaves): verifier accepts from the true roots; transcripts agree; 1 leaf claim(s) equal the leaves' MLE
+prove_forests: 2^6 trees of 2^14 leaves (2^20 leaves)         32.031 ns/leaf   min    31.721  max    34.287  CV  2.42%  (   33.587 ms)
+
+== the leaf stage's components, one thread (2^8 trees of 2^14 leaves) ==
+check eq:        14 eq tables (2^8 to 2^21 entries) equal the definition at 17 sampled vertices each
+eq tables of every level                                       3.423 ns/leaf   min     3.317  max     3.498  CV  1.58%  (   14.358 ms)
+check build:     levels of 2^8 trees of 2^14 leaves: every built root equals its tree's product (all zero here)
+level build (harness copy of build_levels)                     0.928 ns/leaf   min     0.874  max     0.968  CV  3.71%  (    3.893 ms)  FLAG: CV > 3% after a rerun
+check engine:    leaf-level instance (eq x even x odd): verify_batch accepts 1 instance(s) of 21 variables from hypercube sums
+engine: eq public (Fp2) x even x odd (Fp), degree 3, 2^21     27.598 ns/entry  min    27.212  max    28.666  CV  1.96%  (   57.878 ms)
+check engine:    three Fp2 tables: verify_batch accepts 1 instance(s) of 21 variables from hypercube sums
+engine: product of 3 Fp2 tables, degree 3, 2^21               38.729 ns/entry  min    37.717  max    39.263  CV  1.64%  (   81.220 ms)
+check engine:    three Fp tables: verify_batch accepts 1 instance(s) of 21 variables from hypercube sums
+engine: product of 3 Fp tables, degree 3, 2^21                48.611 ns/entry  min    24.960  max    70.141  CV 33.19%  (  101.944 ms)  FLAG: CV > 3% after a rerun
+check binding:   binding 2^22 Fp entries round by round equals evaluate_base at the same point
+one bind_lowest pass, Fp into Fp2, 2^22                        0.958 ns/entry  min     0.904  max     2.205  CV 41.82%  (    4.019 ms)  FLAG: CV > 3% after a rerun
+binding every round, 2^22                                      5.746 ns/entry  min     3.244  max    12.099  CV 49.27%  (   24.103 ms)  FLAG: CV > 3% after a rerun
+
+== fraction-tree proxy (RFC-0008 'Fraction tree' level relation on the engine), one thread ==
+check fraction:  2^8-leaf fraction tree: root n/d equals Σ 1/d_i
+fraction proxy: build (leaves d, first layer, upper layers)     9.115 ns/lookup min     9.001  max     9.193  CV  0.63%  (   38.231 ms)  (rerun: first CV > 3%)
+check engine:    fraction proxy: leaf level (numerators 1): verify_batch accepts 3 instance(s) of 21 variables from hypercube sums
+fraction proxy: leaf level [eq,d_e,d_o] + [eq,d_e] + [eq,d_o], 2^21    82.283 ns/entry  min    81.643  max    83.827  CV  0.86%  (  172.561 ms)
+check engine:    fraction proxy: generic level: verify_batch accepts 3 instance(s) of 21 variables from hypercube sums
+fraction proxy: generic level, 3 x [eq, Fp2, Fp2], 2^21      113.733 ns/entry  min   113.363  max   115.069  CV  0.47%  (  238.516 ms)
+    fraction tree per lookup: build 9.115 + (leaf level 82.283 + generic level 113.733) x 2^21 / 2^22 = 107.123 ns
+
+== fit F: predicted = counts x unit costs ==
+units (ns): Fp mul 0.602 add 0.349 sub 0.514 | Fp2 mul 3.331 mul_by_base 0.906 add 0.453 sub 0.268
+prove_forests: 2^8 trees of 2^14 leaves (2^22 leaves)      measured    32.099  predicted    31.242  ratio  0.973  in [0.5, 2]
+prove_forests: 2^10 trees of 2^12 leaves (2^22 leaves)     measured    32.064  predicted    31.236  ratio  0.974  in [0.5, 2]
+prove_forests: 2^0 trees of 2^22 leaves (2^22 leaves)      measured    31.801  predicted    31.244  ratio  0.982  in [0.5, 2]
+prove_forests: 2^4 trees of 2^14 leaves (2^18 leaves)      measured    32.890  predicted    31.240  ratio  0.950  in [0.5, 2]  (context, not in F)
+prove_forests: 2^6 trees of 2^14 leaves (2^20 leaves)      measured    32.031  predicted    31.242  ratio  0.975  in [0.5, 2]  (context, not in F)
+eq tables of every level                                   measured     3.423  predicted     3.599  ratio  1.051  in [0.5, 2]
+level build                                                measured     0.928  predicted     0.602  ratio  0.648  in [0.5, 2]
+engine: leaf-level instance, per entry                     measured    27.598  predicted    27.043  ratio  0.980  in [0.5, 2]
+engine: three Fp2 tables, per entry                        measured    38.729  predicted    37.020  ratio  0.956  in [0.5, 2]
+engine: three Fp tables, per entry                         measured    48.611  predicted    25.308  ratio  0.521  in [0.5, 2]
+bind_lowest pass, per entry                                measured     0.958  predicted     0.884  ratio  0.923  in [0.5, 2]
+binding every round, per entry                             measured     5.746  predicted     2.910  ratio  0.506  in [0.5, 2]
+fraction proxy: build, per lookup                          measured     9.115  predicted     8.557  ratio  0.939  in [0.5, 2]
+fraction proxy: leaf level, per entry                      measured    82.283  predicted    80.623  ratio  0.980  in [0.5, 2]
+fraction proxy: generic level, per entry                   measured   113.733  predicted   111.060  ratio  0.976  in [0.5, 2]
+F passes
+
+== pre-registered observations (not part of the verdict) ==
+(a) kappa from binding every round: 5.746 ns per entry / 2.50 Fp-mul equivalents = 2.299 ns per equivalent
+    prove_forests: 2^8 trees of 2^14 leaves (2^22 leaves)      25.50 equivalents per leaf; 32.099 ns per leaf = 1.259 ns per equivalent; kappa_bind x count = 58.610 ns (+82.6% against measured)  OUTSIDE +-30%
+    prove_forests: 2^10 trees of 2^12 leaves (2^22 leaves)     25.49 equivalents per leaf; 32.064 ns per leaf = 1.258 ns per equivalent; kappa_bind x count = 58.599 ns (+82.8% against measured)  OUTSIDE +-30%
+    prove_forests: 2^0 trees of 2^22 leaves (2^22 leaves)      25.50 equivalents per leaf; 31.801 ns per leaf = 1.247 ns per equivalent; kappa_bind x count = 58.614 ns (+84.3% against measured)  OUTSIDE +-30%
+    prove_forests: 2^4 trees of 2^14 leaves (2^18 leaves)      25.50 equivalents per leaf; 32.890 ns per leaf = 1.290 ns per equivalent; kappa_bind x count = 58.607 ns (+78.2% against measured)  OUTSIDE +-30%
+    prove_forests: 2^6 trees of 2^14 leaves (2^20 leaves)      25.50 equivalents per leaf; 32.031 ns per leaf = 1.256 ns per equivalent; kappa_bind x count = 58.610 ns (+83.0% against measured)  OUTSIDE +-30%
+(b) c_pi / c_l shape proxy: product tree 32.099 ns per leaf / fraction tree 107.123 ns per lookup = 0.300 (IDEA-0008 expected 0.4-0.8)
+
+JSON record written to results/run2.json

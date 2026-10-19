@@ -1,0 +1,104 @@
+{
+  "plan_precomputation_full_multiplications_excluding_root_and_inverse_setup": 51118076,
+  "evidence": "E0 primary arithmetic counts with conditional hardware translations",
+  "historical_radix2": {
+    "mults": 32.00000047683716,
+    "cheap_mults": 0.0,
+    "adds": 34.0,
+    "subs": 34.0,
+    "ntt_ops": 1274.0002031326294,
+    "hash_ops": 300.0,
+    "total": 1574.0002031326294
+  },
+  "historical_radix16_floor": {
+    "mults": 16.9375,
+    "cheap_mults": 18.0625,
+    "adds": 34.0,
+    "subs": 34.0,
+    "ntt_ops": 721.3751907348633,
+    "hash_ops": 247.5,
+    "total": 968.8751907348633
+  },
+  "encoder": {
+    "4": {
+      "exact_counts_per_element": {
+        "full": 23.75014352798462,
+        "add": 34.0,
+        "sub": 34.00004768371582,
+        "cheap": 8.25,
+        "cheap_negative": 2.75,
+        "logical_power_mults_if_not_precomputed": 1.3333330154418945,
+        "traversed_value_bytes": 632.0015258789062,
+        "canonicalize": 2.0
+      },
+      "lazy_ntt_int32_assumed_interval": [
+        926.0028696060181,
+        1054.0034437179565
+      ],
+      "canonical_ntt_int32_assumed": 1180.2539701461792,
+      "gap_fraction_versus_historical_floor": 0.6297169431703741,
+      "conditional_commit_ps_interval": [
+        70.15603894090157,
+        241.79161413392023
+      ],
+      "hash_int32_interval_unchanged": [
+        247.5,
+        300.0
+      ]
+    },
+    "8": {
+      "exact_counts_per_element": {
+        "full": 18.37514352798462,
+        "add": 34.0,
+        "sub": 34.00004768371582,
+        "cheap": 13.625,
+        "cheap_negative": 6.125,
+        "cheap_wide_difference": 2.625,
+        "logical_power_mults_if_not_precomputed": 1.857142448425293,
+        "traversed_value_bytes": 456.00152587890625,
+        "canonicalize": 2.0
+      },
+      "lazy_ntt_int32_assumed_interval": [
+        903.0028696060181,
+        1031.0034437179565
+      ],
+      "canonical_ntt_int32_assumed": 1132.3789701461792,
+      "gap_fraction_versus_historical_floor": 0.6713364853264666,
+      "conditional_commit_ps_interval": [
+        68.78101981020062,
+        176.11997234287546
+      ],
+      "hash_int32_interval_unchanged": [
+        247.5,
+        300.0
+      ]
+    },
+    "16": {
+      "exact_counts_per_element": {
+        "full": 14.56264352798462,
+        "add": 34.0,
+        "sub": 34.00004768371582,
+        "cheap": 17.4375,
+        "cheap_negative": 8.5625,
+        "cheap_wide_difference": 4.0,
+        "logical_power_mults_if_not_precomputed": 2.4666662216186523,
+        "traversed_value_bytes": 360.00152587890625,
+        "canonicalize": 2.0
+      },
+      "lazy_ntt_int32_assumed_interval": [
+        885.0028696060181,
+        1013.0034437179565
+      ],
+      "canonical_ntt_int32_assumed": 1096.6914701461792,
+      "gap_fraction_versus_historical_floor": 0.7039083009268868,
+      "conditional_commit_ps_interval": [
+        67.70491788182596,
+        140.29907682048741
+      ],
+      "hash_int32_interval_unchanged": [
+        247.5,
+        300.0
+      ]
+    }
+  }
+}

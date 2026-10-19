@@ -1,0 +1,14 @@
+{
+  "utc": "2026-10-19T08:07:48.302227+00:00",
+  "cpu": "Apple M4 Max",
+  "memory_bytes": "51539607552",
+  "OS": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+  "git_commit": "14e8c1d8d694a56901e8288e999f779722f50549",
+  "preregistration_commit": "a462521",
+  "production_encoder": "unchanged by subsequent docs-only main merge6d9de83",
+  "threads": 1,
+  "affinity": "not enforced",
+  "timing": "exclusive slot; root and both sibling agents confirmed heavy work paused"
+}

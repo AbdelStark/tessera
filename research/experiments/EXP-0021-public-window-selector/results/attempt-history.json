@@ -1,0 +1,72 @@
+[
+  {
+    "path": "results/attempts/20261019T104946.444402Z-83441",
+    "preflight_only": true,
+    "verdict_in_raw_record": "refuted",
+    "exit_code": 1,
+    "judgments": 740,
+    "metered_arithmetic": 408572,
+    "source_sha256": "7c8adbc4687bf25b1dc4b4bdb2279f95fb7a5a35102c1d8c7d89f132806f4172",
+    "source_snapshot_present": false
+  },
+  {
+    "path": "results/attempts/20261019T105033.112553Z-84761",
+    "preflight_only": true,
+    "verdict_in_raw_record": "inconclusive",
+    "exit_code": 0,
+    "judgments": 746,
+    "metered_arithmetic": 434040,
+    "source_sha256": "92fc3484dd17d7f27e52e530ca8cc103e813acd6798c6d739fba74f5ef454761",
+    "source_snapshot_present": false
+  },
+  {
+    "path": "results/attempts/20261019T105231.308126Z-89502",
+    "preflight_only": true,
+    "verdict_in_raw_record": "inconclusive",
+    "exit_code": 0,
+    "judgments": 2924,
+    "metered_arithmetic": 3391593,
+    "source_sha256": "8df274e18ba3fcdc067385f97dc2753dd52c5088f272dd05819792c6b98cb056",
+    "source_snapshot_present": false
+  },
+  {
+    "path": "results/attempts/20261019T105422.496761Z-93925",
+    "preflight_only": true,
+    "verdict_in_raw_record": "inconclusive",
+    "exit_code": 0,
+    "judgments": 4737,
+    "metered_arithmetic": 3391631,
+    "source_sha256": "26896283adb08d4657e5b329fa27e0a7a3ed65f9a36cadaa0897fdba104e1387",
+    "source_snapshot_present": true
+  },
+  {
+    "path": "results/attempts/20261019T105430.201558Z-94094",
+    "preflight_only": false,
+    "verdict_in_raw_record": "validated",
+    "exit_code": 0,
+    "judgments": 42431606,
+    "metered_arithmetic": 317679250,
+    "source_sha256": "26896283adb08d4657e5b329fa27e0a7a3ed65f9a36cadaa0897fdba104e1387",
+    "source_snapshot_present": true
+  },
+  {
+    "path": "results/attempts/20261019T105547.660568Z-97234",
+    "preflight_only": false,
+    "verdict_in_raw_record": "validated",
+    "exit_code": 0,
+    "judgments": 42431606,
+    "metered_arithmetic": 317679250,
+    "source_sha256": "26896283adb08d4657e5b329fa27e0a7a3ed65f9a36cadaa0897fdba104e1387",
+    "source_snapshot_present": true
+  },
+  {
+    "path": "results/attempts/20261019T105827.081336Z-45083",
+    "preflight_only": false,
+    "verdict_in_raw_record": "validated",
+    "exit_code": 0,
+    "judgments": 42431606,
+    "metered_arithmetic": 317682340,
+    "source_sha256": "a132f6e924104ec6fba731926f686d0fd3cf1fdc88bf8cf7e111c28065432ce4",
+    "source_snapshot_present": true
+  }
+]

@@ -1,0 +1,120 @@
+EXP-0013 delayed reduction; arm 0=split, 1=scale-first, 2=relation-first/deferred; all inputs synthetic
+check field:     3 edge products of spec/vectors/field/goldilocks.json reproduced
+check forests:   tree [2, 3, 5, 7]: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+check hand case: tree [2, 3, 5, 7]: candidate's proof accepted from root 210; against 211 rejected (level 0: FinalMismatch { round: 0 })
+check sweep:     n = 1..=12 alone and 6 two-instance batches with front-padding (one instance on no variable): bit-identical to prove_batch, verifier accepts; no fallback
+check forests:   two forests (2^2 x 2^8 leaves, 2^5 x 2^6 leaves): 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 48e3dce488e34727
+check fallback:  (i) r_3 = 0: fallback once, bit-identical, verifier accepts; (ii) r_5 = 1: no fallback, bit-identical, verifier accepts; (iii) scripted c_2 with l_2(c_2) = 0: fallback in rounds 3..12, every later message zero, bit-identical to prove_batch under the same script
+check forests:   tree [2, 3, 5, 7]: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+check hand case: tree [2, 3, 5, 7]: candidate's proof accepted from root 210; against 211 rejected (level 0: FinalMismatch { round: 0 })
+check sweep:     n = 1..=12 alone and 6 two-instance batches with front-padding (one instance on no variable): bit-identical to prove_batch, verifier accepts; no fallback
+check forests:   two forests (2^2 x 2^8 leaves, 2^5 x 2^6 leaves): 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 48e3dce488e34727
+check fallback:  (i) r_3 = 0: fallback once, bit-identical, verifier accepts; (ii) r_5 = 1: no fallback, bit-identical, verifier accepts; (iii) scripted c_2 with l_2(c_2) = 0: fallback in rounds 3..12, every later message zero, bit-identical to prove_batch under the same script
+check forests:   tree [2, 3, 5, 7]: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+check hand case: tree [2, 3, 5, 7]: candidate's proof accepted from root 210; against 211 rejected (level 0: FinalMismatch { round: 0 })
+check sweep:     n = 1..=12 alone and 6 two-instance batches with front-padding (one instance on no variable): bit-identical to prove_batch, verifier accepts; no fallback
+check forests:   two forests (2^2 x 2^8 leaves, 2^5 x 2^6 leaves): 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 48e3dce488e34727
+check fallback:  (i) r_3 = 0: fallback once, bit-identical, verifier accepts; (ii) r_5 = 1: no fallback, bit-identical, verifier accepts; (iii) scripted c_2 with l_2(c_2) = 0: fallback in rounds 3..12, every later message zero, bit-identical to prove_batch under the same script
+check fraction leaf 2^1 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 171a3a7606a24e0662cfc90001db5c5cbc4d2c2a8bd7f163821172081e98fffe
+check fraction leaf 2^1 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 171a3a7606a24e0662cfc90001db5c5cbc4d2c2a8bd7f163821172081e98fffe
+check fraction leaf 2^1 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 171a3a7606a24e0662cfc90001db5c5cbc4d2c2a8bd7f163821172081e98fffe
+check fraction generic 2^1 point0 arm 0: production proof/transcript identical, tv-core accepts; digest c3958c85aab291133fbfff1fa8192c2fbcbf36d9173189332c70ed547a399258
+check fraction generic 2^1 point0 arm 1: production proof/transcript identical, tv-core accepts; digest c3958c85aab291133fbfff1fa8192c2fbcbf36d9173189332c70ed547a399258
+check fraction generic 2^1 point0 arm 2: production proof/transcript identical, tv-core accepts; digest c3958c85aab291133fbfff1fa8192c2fbcbf36d9173189332c70ed547a399258
+check fraction leaf 2^2 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 7a0453a843ecbdd5b7d4dc1223156d8c417258367ad6f8146258a990527fd869
+check fraction leaf 2^2 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 7a0453a843ecbdd5b7d4dc1223156d8c417258367ad6f8146258a990527fd869
+check fraction leaf 2^2 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 7a0453a843ecbdd5b7d4dc1223156d8c417258367ad6f8146258a990527fd869
+check fraction generic 2^2 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 56497fd349df69118a6b937a5884e6e0c5cab4d608b7977ca34d661df26a0911
+check fraction generic 2^2 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 56497fd349df69118a6b937a5884e6e0c5cab4d608b7977ca34d661df26a0911
+check fraction generic 2^2 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 56497fd349df69118a6b937a5884e6e0c5cab4d608b7977ca34d661df26a0911
+check fraction leaf 2^3 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 1e5623d005bf808f426f86953f278a1e1ff860db6fdf1aae6058ad307f6e02d4
+check fraction leaf 2^3 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 1e5623d005bf808f426f86953f278a1e1ff860db6fdf1aae6058ad307f6e02d4
+check fraction leaf 2^3 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 1e5623d005bf808f426f86953f278a1e1ff860db6fdf1aae6058ad307f6e02d4
+check fraction generic 2^3 point0 arm 0: production proof/transcript identical, tv-core accepts; digest fc4195dddcec253441cd503cf3ca5980a291ad008360f0044ffd52d72bb40119
+check fraction generic 2^3 point0 arm 1: production proof/transcript identical, tv-core accepts; digest fc4195dddcec253441cd503cf3ca5980a291ad008360f0044ffd52d72bb40119
+check fraction generic 2^3 point0 arm 2: production proof/transcript identical, tv-core accepts; digest fc4195dddcec253441cd503cf3ca5980a291ad008360f0044ffd52d72bb40119
+check fraction leaf 2^4 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 908ce39e21d512a8b00f89b1a2bf5c0467b73b51d32967ada57c70bbe372c1ed
+check fraction leaf 2^4 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 908ce39e21d512a8b00f89b1a2bf5c0467b73b51d32967ada57c70bbe372c1ed
+check fraction leaf 2^4 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 908ce39e21d512a8b00f89b1a2bf5c0467b73b51d32967ada57c70bbe372c1ed
+check fraction generic 2^4 point0 arm 0: production proof/transcript identical, tv-core accepts; digest c9451e34b3cdf3c510329d71af96fa34313858388231c52b9bfb97d5b5ba4e25
+check fraction generic 2^4 point0 arm 1: production proof/transcript identical, tv-core accepts; digest c9451e34b3cdf3c510329d71af96fa34313858388231c52b9bfb97d5b5ba4e25
+check fraction generic 2^4 point0 arm 2: production proof/transcript identical, tv-core accepts; digest c9451e34b3cdf3c510329d71af96fa34313858388231c52b9bfb97d5b5ba4e25
+check fraction leaf 2^5 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 627ecfad139d255885b11296ee3adff5ce92e44843ebfd371f9e38f3828cc5a2
+check fraction leaf 2^5 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 627ecfad139d255885b11296ee3adff5ce92e44843ebfd371f9e38f3828cc5a2
+check fraction leaf 2^5 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 627ecfad139d255885b11296ee3adff5ce92e44843ebfd371f9e38f3828cc5a2
+check fraction generic 2^5 point0 arm 0: production proof/transcript identical, tv-core accepts; digest cad25f80b141746ee7d6733529a4a025f1df7981dbe63c70f0195ec5bf8acf4e
+check fraction generic 2^5 point0 arm 1: production proof/transcript identical, tv-core accepts; digest cad25f80b141746ee7d6733529a4a025f1df7981dbe63c70f0195ec5bf8acf4e
+check fraction generic 2^5 point0 arm 2: production proof/transcript identical, tv-core accepts; digest cad25f80b141746ee7d6733529a4a025f1df7981dbe63c70f0195ec5bf8acf4e
+check fraction leaf 2^6 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 66ff33c8f50f8827d4c3dc06231794b846b329490888a0776cf8c933b0d825d0
+check fraction leaf 2^6 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 66ff33c8f50f8827d4c3dc06231794b846b329490888a0776cf8c933b0d825d0
+check fraction leaf 2^6 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 66ff33c8f50f8827d4c3dc06231794b846b329490888a0776cf8c933b0d825d0
+check fraction generic 2^6 point0 arm 0: production proof/transcript identical, tv-core accepts; digest f0c3d91bedac6da6fa4f3d1e569017f70c65818c0d6246d2914ceca82aa24f0a
+check fraction generic 2^6 point0 arm 1: production proof/transcript identical, tv-core accepts; digest f0c3d91bedac6da6fa4f3d1e569017f70c65818c0d6246d2914ceca82aa24f0a
+check fraction generic 2^6 point0 arm 2: production proof/transcript identical, tv-core accepts; digest f0c3d91bedac6da6fa4f3d1e569017f70c65818c0d6246d2914ceca82aa24f0a
+check fraction leaf 2^7 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 22ec136f5e731fbcf8b79de3f74d4d7ce54284bac8d0a477d4444276c306255d
+check fraction leaf 2^7 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 22ec136f5e731fbcf8b79de3f74d4d7ce54284bac8d0a477d4444276c306255d
+check fraction leaf 2^7 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 22ec136f5e731fbcf8b79de3f74d4d7ce54284bac8d0a477d4444276c306255d
+check fraction generic 2^7 point0 arm 0: production proof/transcript identical, tv-core accepts; digest a189c8aa640d5eb0afd2eb1688a1f43c1deb217ecc6c4dac2a0edb1781f3f0c5
+check fraction generic 2^7 point0 arm 1: production proof/transcript identical, tv-core accepts; digest a189c8aa640d5eb0afd2eb1688a1f43c1deb217ecc6c4dac2a0edb1781f3f0c5
+check fraction generic 2^7 point0 arm 2: production proof/transcript identical, tv-core accepts; digest a189c8aa640d5eb0afd2eb1688a1f43c1deb217ecc6c4dac2a0edb1781f3f0c5
+check fraction leaf 2^8 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 06869990b5d0008cc54bbd8dda23fcb8b4ba6863e5f5fa760dcc6c706cf5764c
+check fraction leaf 2^8 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 06869990b5d0008cc54bbd8dda23fcb8b4ba6863e5f5fa760dcc6c706cf5764c
+check fraction leaf 2^8 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 06869990b5d0008cc54bbd8dda23fcb8b4ba6863e5f5fa760dcc6c706cf5764c
+check fraction generic 2^8 point0 arm 0: production proof/transcript identical, tv-core accepts; digest b730dde5b8a9e0cd1fe7db9efd29b883c84877c07daba1250e1f217e3d5853f4
+check fraction generic 2^8 point0 arm 1: production proof/transcript identical, tv-core accepts; digest b730dde5b8a9e0cd1fe7db9efd29b883c84877c07daba1250e1f217e3d5853f4
+check fraction generic 2^8 point0 arm 2: production proof/transcript identical, tv-core accepts; digest b730dde5b8a9e0cd1fe7db9efd29b883c84877c07daba1250e1f217e3d5853f4
+check fraction leaf 2^9 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 4307581c312048e0bbd5cc1f331353a834983eca519c9ce92b955d6f4f70a643
+check fraction leaf 2^9 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 4307581c312048e0bbd5cc1f331353a834983eca519c9ce92b955d6f4f70a643
+check fraction leaf 2^9 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 4307581c312048e0bbd5cc1f331353a834983eca519c9ce92b955d6f4f70a643
+check fraction generic 2^9 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 5c73fb2a796d47e0a1af2c1e2d5afee500fbdf90f8825f9253cb9fba33cd9bfd
+check fraction generic 2^9 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 5c73fb2a796d47e0a1af2c1e2d5afee500fbdf90f8825f9253cb9fba33cd9bfd
+check fraction generic 2^9 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 5c73fb2a796d47e0a1af2c1e2d5afee500fbdf90f8825f9253cb9fba33cd9bfd
+check fraction leaf 2^10 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 9c3433a974e523bfb1ee6b846a189abb79214a5ce08a0fdd4efc3829ff993bcb
+check fraction leaf 2^10 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 9c3433a974e523bfb1ee6b846a189abb79214a5ce08a0fdd4efc3829ff993bcb
+check fraction leaf 2^10 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 9c3433a974e523bfb1ee6b846a189abb79214a5ce08a0fdd4efc3829ff993bcb
+check fraction generic 2^10 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 5a3dcd598445b9f6356dd60c5cbe40bd536d4e95a51a4ca01cbf1a21fb475018
+check fraction generic 2^10 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 5a3dcd598445b9f6356dd60c5cbe40bd536d4e95a51a4ca01cbf1a21fb475018
+check fraction generic 2^10 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 5a3dcd598445b9f6356dd60c5cbe40bd536d4e95a51a4ca01cbf1a21fb475018
+check fraction leaf 2^11 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 8960ef4cbf4dc4b868bcb920acfaa14917ce4699e3f5bfda80e719368548fe6f
+check fraction leaf 2^11 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 8960ef4cbf4dc4b868bcb920acfaa14917ce4699e3f5bfda80e719368548fe6f
+check fraction leaf 2^11 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 8960ef4cbf4dc4b868bcb920acfaa14917ce4699e3f5bfda80e719368548fe6f
+check fraction generic 2^11 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 5dc61e293f4284dbc59507077ba8f65f0b6331260057bf7c1092052f365132bf
+check fraction generic 2^11 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 5dc61e293f4284dbc59507077ba8f65f0b6331260057bf7c1092052f365132bf
+check fraction generic 2^11 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 5dc61e293f4284dbc59507077ba8f65f0b6331260057bf7c1092052f365132bf
+check fraction leaf 2^12 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 1d93a49781be45f23668a7e2f57dbf9b583a27009253f7192151f6bc5a890302
+check fraction leaf 2^12 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 1d93a49781be45f23668a7e2f57dbf9b583a27009253f7192151f6bc5a890302
+check fraction leaf 2^12 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 1d93a49781be45f23668a7e2f57dbf9b583a27009253f7192151f6bc5a890302
+check fraction generic 2^12 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 711ed500bc33c0e6b1563dc231a9615f1a60ea85b9eb0b4a349b5cc5e8ae8007
+check fraction generic 2^12 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 711ed500bc33c0e6b1563dc231a9615f1a60ea85b9eb0b4a349b5cc5e8ae8007
+check fraction generic 2^12 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 711ed500bc33c0e6b1563dc231a9615f1a60ea85b9eb0b4a349b5cc5e8ae8007
+check fraction leaf 2^8 point1 arm 0: production proof/transcript identical, tv-core accepts; digest 126ff0e79af0d3506155a87bfc9950fce1750deae8ecf0bf89c77a34654402b5
+check fraction leaf 2^8 point1 arm 1: production proof/transcript identical, tv-core accepts; digest 126ff0e79af0d3506155a87bfc9950fce1750deae8ecf0bf89c77a34654402b5
+check fraction leaf 2^8 point1 arm 2: production proof/transcript identical, tv-core accepts; digest 126ff0e79af0d3506155a87bfc9950fce1750deae8ecf0bf89c77a34654402b5
+check fraction generic 2^8 point1 arm 0: production proof/transcript identical, tv-core accepts; digest f720165f21ed40d4e910529472955103cc43e896170385ad02dd1bb0b2ccdcaa
+check fraction generic 2^8 point1 arm 1: production proof/transcript identical, tv-core accepts; digest f720165f21ed40d4e910529472955103cc43e896170385ad02dd1bb0b2ccdcaa
+check fraction generic 2^8 point1 arm 2: production proof/transcript identical, tv-core accepts; digest f720165f21ed40d4e910529472955103cc43e896170385ad02dd1bb0b2ccdcaa
+check fraction leaf 2^8 point2 arm 0: production proof/transcript identical, tv-core accepts; digest f2fd7eedc03f21fd0ca57ef593e2b201c0dea930112c8951d309a235485c7420
+check fraction leaf 2^8 point2 arm 1: production proof/transcript identical, tv-core accepts; digest f2fd7eedc03f21fd0ca57ef593e2b201c0dea930112c8951d309a235485c7420
+check fraction leaf 2^8 point2 arm 2: production proof/transcript identical, tv-core accepts; digest f2fd7eedc03f21fd0ca57ef593e2b201c0dea930112c8951d309a235485c7420
+check fraction generic 2^8 point2 arm 0: production proof/transcript identical, tv-core accepts; digest a26ad0e282ce63e30e4e4402cf2aff461866d13c3a4a65865b39d46de30a2bf5
+check fraction generic 2^8 point2 arm 1: production proof/transcript identical, tv-core accepts; digest a26ad0e282ce63e30e4e4402cf2aff461866d13c3a4a65865b39d46de30a2bf5
+check fraction generic 2^8 point2 arm 2: production proof/transcript identical, tv-core accepts; digest a26ad0e282ce63e30e4e4402cf2aff461866d13c3a4a65865b39d46de30a2bf5
+check forests:   forest 2^8x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest e7341ef840051a0b
+check forests:   forest 2^8x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest e7341ef840051a0b
+check forests:   forest 2^10x2^12: 12 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 76e8a935fbf7ce02
+check forests:   forest 2^10x2^12: 12 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 76e8a935fbf7ce02
+check forests:   forest 2^0x2^22: 22 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 13122752eefe1f26
+check forests:   forest 2^0x2^22: 22 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 13122752eefe1f26
+check forests:   forest 2^6x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 28b6c9aafbc51093
+check forests:   forest 2^6x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 28b6c9aafbc51093
+check forests:   forest 2^7x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 4b2719a8fd642ec2
+check forests:   forest 2^7x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 4b2719a8fd642ec2
+check product level 2^21 arm 0: production proof/transcript identical, tv-core accepts; digest 7745989d1976f06793ab4e2eda7542b8b3254286d130a273a062fa5bb2329829
+check product level 2^21 arm 1: production proof/transcript identical, tv-core accepts; digest 7745989d1976f06793ab4e2eda7542b8b3254286d130a273a062fa5bb2329829
+check product level 2^21 arm 2: production proof/transcript identical, tv-core accepts; digest 7745989d1976f06793ab4e2eda7542b8b3254286d130a273a062fa5bb2329829
+check fraction leaf 2^21 point0 arm 0: production proof/transcript identical, tv-core accepts; digest d230aeb17a2ec70d915a3b5d907c3c70f9e3f972c95398fccd122e7e9bb0a780
+check fraction leaf 2^21 point0 arm 1: production proof/transcript identical, tv-core accepts; digest d230aeb17a2ec70d915a3b5d907c3c70f9e3f972c95398fccd122e7e9bb0a780
+check fraction leaf 2^21 point0 arm 2: production proof/transcript identical, tv-core accepts; digest d230aeb17a2ec70d915a3b5d907c3c70f9e3f972c95398fccd122e7e9bb0a780
+check fraction generic 2^21 point0 arm 0: production proof/transcript identical, tv-core accepts; digest e47ecc93d46cd2c8ab8c90cdac75d99088e4680b1d2a1d2384433eadc588e0b4
+check fraction generic 2^21 point0 arm 1: production proof/transcript identical, tv-core accepts; digest e47ecc93d46cd2c8ab8c90cdac75d99088e4680b1d2a1d2384433eadc588e0b4
+check fraction generic 2^21 point0 arm 2: production proof/transcript identical, tv-core accepts; digest e47ecc93d46cd2c8ab8c90cdac75d99088e4680b1d2a1d2384433eadc588e0b4

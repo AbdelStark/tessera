@@ -1,0 +1,13 @@
+{
+  "utc": "2026-10-19T07:38:37.779173+00:00",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "cpu": "Apple M4 Max",
+  "memory_bytes": "51539607552",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+  "python": "3.14.6",
+  "git_commit": "45d9c4e308bccf4349a31c8b936438e5a3baf32e",
+  "production_base": "726502746cb5a6f29adcdbc7d95b8d2d98735272",
+  "preregistration_commit": "8228a19",
+  "scheduling": "one thread, no affinity; exclusive experiment timing slot confirmed by parent and sibling agents"
+}

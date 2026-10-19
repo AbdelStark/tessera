@@ -1,0 +1,3 @@
+radix2_anchor: 738 instructions, 8 stack accesses, 0 branch/call instructions
+lazy_radix16_anchor: 740 instructions, 12 stack accesses, 0 branch/call instructions
+static ratio A=1.002710; no dynamic issue or GPU inference

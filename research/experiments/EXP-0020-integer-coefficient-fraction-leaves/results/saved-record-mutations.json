@@ -1,0 +1,19 @@
+{
+  "baseline": "run.json",
+  "baseline_sha256": "928a3cfe8813c318c3180814cbbd111a29f774f440a943e7a460cd8140950d04",
+  "baseline_verdict": "inconclusive",
+  "controls": [
+    {
+      "mutation": "ratio",
+      "outcome": "rejected",
+      "mutated_file": "results/saved-record-mutants/ratio.json",
+      "sha256": "6fb253649aa46eda05af550e46c891af184350ebaa664a42406483e5b5f84af5"
+    },
+    {
+      "mutation": "verdict",
+      "outcome": "rejected",
+      "mutated_file": "results/saved-record-mutants/verdict.json",
+      "sha256": "9002691e166278f2bd65ff0064ef5335b83ffc672677476cdd0abde8b90759ab"
+    }
+  ]
+}

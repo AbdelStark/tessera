@@ -1,0 +1,12 @@
+correctness: every encoding vector, small transform/row sweep, raw-word boundaries, double corrections and equivalent anchors pass
+check ntt 2^20: all arms identical, digest 497e86b045f79ed429e25038358877ab58b8cfd45d730a0f3408805662bf5dec
+check intt 2^20: all arms identical, digest 8e8a5b0f0030936298761edc8e75d892bf28d3bc126fe10ffcca51ae663bedc7
+check coset 2^20: all arms identical, digest 67ee909382f1ad2aae4fc4ccc33b7aebd78c49371feb601983e164664243f614
+check ntt 2^22: all arms identical, digest 7e549ade63c70142ba4636cb394537088bad57eb2ffdbfcbd7528cde8403c171
+check intt 2^22: all arms identical, digest 38a7c7d4bc20482a946a246f0d6ece97599697a922d90669baac0e8de5d0f4ab
+check coset 2^22: all arms identical, digest 6dabc9978d92f5f6f5d8ad34e0dd410651be9a55c784c2384bcae4178da59496
+check ntt 2^23: all arms identical, digest 2780d51685f3d7e58681e52cdb437bdeed62140db906d6c718b7d808355dfc1c
+check intt 2^23: all arms identical, digest 382c3244a3bf29e6aa2d087bc127cb8589737f452a0b7758eeee1810d91bc3d6
+check coset 2^23: all arms identical, digest 33f7962c35b836604a8e672c0f94aafc3d52c5d1f18181d6ef4388430f5ec49d
+check encode 2^20: all arms identical, digest d46aca480f9f278b4ca52fb39f7398157d6906b0e2d56b8e171a6e858e049516
+check encode 2^22: all arms identical, digest bbc011279609ed6d10f80f82b5571c42f0230d7d583c8cb4e1e2eb52ede7b490

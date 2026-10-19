@@ -1,0 +1,334 @@
+{
+  "scratch": "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp20-mutants-_d4px6eo",
+  "records": [
+    {
+      "mutant": "noop",
+      "source_file": null,
+      "old": null,
+      "new": null,
+      "command": "check",
+      "compiled": true,
+      "runtime_exit": 0,
+      "oracle_exit": 0,
+      "outcome": "control_pass",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "--locked",
+        "--manifest-path",
+        "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp20-mutants-_d4px6eo/crate/Cargo.toml"
+      ],
+      "execution_command": [
+        "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction-mutant",
+        "check"
+      ],
+      "run_log_sha256": "7eda9eb9c07ed0147af37507f39a3fef7e7e0dfff830b2f1ae56feeb50cfae1a",
+      "source_sha256": {
+        "kernel.rs": "5f600bd18fa1806edb0e07294333baa8b6c8b89bb659c070fe389f743cc2b3b2",
+        "instance.rs": "74ebbbd9f133dede572019efe9cff98cac4f7fa920ef9ef1dd7131fec31a61ae",
+        "measure.rs": "81635a55f1056c5918d6f25fee9ed6f6f196686e23eb6c54b99af03eb985135f",
+        "counts.rs": "637137a27e0b6f348f6839d099e3f6c584c34042020b90503f9957c5d6b654b3",
+        "trees.rs": "f2ff0f3a6a943779e4ce95d45708943be46ab411c4382857714ae23ccb6647fb",
+        "prover.rs": "96eb21d8835b12cfd227a39ac21bb85fdb287005ee4cee3a83c97d4c97814ebf",
+        "contract.rs": "58bc2cbc8dc72f6b4249558575c6c87d6a0cf95032dd7bab15e1665691dba351",
+        "logup.rs": "d00e5046e409ddce66d2e66f6004a9317b29aaf0376471808b242aa083e96720",
+        "coeff.rs": "7fbee6dd06fd26cdebca8e471ebc1d69da96208ccc241fa93ccb65384e8f2782",
+        "driver.rs": "df720da73e0753f966cd44dc9d5795ddc39bbdcdc73cbb68b32b9e742aa6af49",
+        "main.rs": "ac62e804e5b2a76b5c53609d7bef83c3ad832dcb7004b1abe669edcef76fe42f",
+        "forest.rs": "d2b6a6c5e01567e2d378c908bddb668b0a6930656e066a1aa0676f4c873781a4",
+        "script_oracle.rs": "b743fbbdbf764efae4f02159610e6060a8f3fffbf8db4070e795763e64237e51",
+        "level.rs": "e6caf346fefa87d49cca7216d47abab3e2ffbbe7c8f869892800f4e5d83cfd9b",
+        "arith.rs": "b0a07970ed916a94a6e2b53d1d1eb0b5fd4533b44d59c216559d97ef69a82ac7"
+      }
+    },
+    {
+      "mutant": "table-sign",
+      "source_file": "coeff.rs",
+      "old": "weights[5] = -a;",
+      "new": "weights[5] = a;",
+      "command": "check",
+      "compiled": true,
+      "runtime_exit": 101,
+      "oracle_exit": null,
+      "outcome": "killed",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "--locked",
+        "--manifest-path",
+        "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp20-mutants-_d4px6eo/crate/Cargo.toml"
+      ],
+      "execution_command": [
+        "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction-mutant",
+        "check"
+      ],
+      "run_log_sha256": "f1e991b1198132112743c97832aad2af858197ca98506037256dd5f469748d4b",
+      "source_sha256": {
+        "kernel.rs": "5f600bd18fa1806edb0e07294333baa8b6c8b89bb659c070fe389f743cc2b3b2",
+        "instance.rs": "74ebbbd9f133dede572019efe9cff98cac4f7fa920ef9ef1dd7131fec31a61ae",
+        "measure.rs": "81635a55f1056c5918d6f25fee9ed6f6f196686e23eb6c54b99af03eb985135f",
+        "counts.rs": "637137a27e0b6f348f6839d099e3f6c584c34042020b90503f9957c5d6b654b3",
+        "trees.rs": "f2ff0f3a6a943779e4ce95d45708943be46ab411c4382857714ae23ccb6647fb",
+        "prover.rs": "96eb21d8835b12cfd227a39ac21bb85fdb287005ee4cee3a83c97d4c97814ebf",
+        "contract.rs": "58bc2cbc8dc72f6b4249558575c6c87d6a0cf95032dd7bab15e1665691dba351",
+        "logup.rs": "d00e5046e409ddce66d2e66f6004a9317b29aaf0376471808b242aa083e96720",
+        "coeff.rs": "af4171e2339465f365da8997945b477080091ad2646c437960b038faf5903d14",
+        "driver.rs": "df720da73e0753f966cd44dc9d5795ddc39bbdcdc73cbb68b32b9e742aa6af49",
+        "main.rs": "ac62e804e5b2a76b5c53609d7bef83c3ad832dcb7004b1abe669edcef76fe42f",
+        "forest.rs": "d2b6a6c5e01567e2d378c908bddb668b0a6930656e066a1aa0676f4c873781a4",
+        "script_oracle.rs": "b743fbbdbf764efae4f02159610e6060a8f3fffbf8db4070e795763e64237e51",
+        "level.rs": "e6caf346fefa87d49cca7216d47abab3e2ffbbe7c8f869892800f4e5d83cfd9b",
+        "arith.rs": "b0a07970ed916a94a6e2b53d1d1eb0b5fd4533b44d59c216559d97ef69a82ac7"
+      }
+    },
+    {
+      "mutant": "mixed-channel",
+      "source_file": "coeff.rs",
+      "old": "c[3] = k0 * v1 + v0 * k1;",
+      "new": "c[3] = k0 * v1;",
+      "command": "check",
+      "compiled": true,
+      "runtime_exit": 101,
+      "oracle_exit": null,
+      "outcome": "killed",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "--locked",
+        "--manifest-path",
+        "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp20-mutants-_d4px6eo/crate/Cargo.toml"
+      ],
+      "execution_command": [
+        "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction-mutant",
+        "check"
+      ],
+      "run_log_sha256": "f5326ecabdf36c26deac7246c293f88164208c3e5774dc8e1eaf767bb61dfaa7",
+      "source_sha256": {
+        "kernel.rs": "5f600bd18fa1806edb0e07294333baa8b6c8b89bb659c070fe389f743cc2b3b2",
+        "instance.rs": "74ebbbd9f133dede572019efe9cff98cac4f7fa920ef9ef1dd7131fec31a61ae",
+        "measure.rs": "81635a55f1056c5918d6f25fee9ed6f6f196686e23eb6c54b99af03eb985135f",
+        "counts.rs": "637137a27e0b6f348f6839d099e3f6c584c34042020b90503f9957c5d6b654b3",
+        "trees.rs": "f2ff0f3a6a943779e4ce95d45708943be46ab411c4382857714ae23ccb6647fb",
+        "prover.rs": "96eb21d8835b12cfd227a39ac21bb85fdb287005ee4cee3a83c97d4c97814ebf",
+        "contract.rs": "58bc2cbc8dc72f6b4249558575c6c87d6a0cf95032dd7bab15e1665691dba351",
+        "logup.rs": "d00e5046e409ddce66d2e66f6004a9317b29aaf0376471808b242aa083e96720",
+        "coeff.rs": "2fc2b04d594a5903dba7223e6ef4ac2e902ce5c6c4bb424fe2f0e901e56e6d97",
+        "driver.rs": "df720da73e0753f966cd44dc9d5795ddc39bbdcdc73cbb68b32b9e742aa6af49",
+        "main.rs": "ac62e804e5b2a76b5c53609d7bef83c3ad832dcb7004b1abe669edcef76fe42f",
+        "forest.rs": "d2b6a6c5e01567e2d378c908bddb668b0a6930656e066a1aa0676f4c873781a4",
+        "script_oracle.rs": "b743fbbdbf764efae4f02159610e6060a8f3fffbf8db4070e795763e64237e51",
+        "level.rs": "e6caf346fefa87d49cca7216d47abab3e2ffbbe7c8f869892800f4e5d83cfd9b",
+        "arith.rs": "b0a07970ed916a94a6e2b53d1d1eb0b5fd4533b44d59c216559d97ef69a82ac7"
+      }
+    },
+    {
+      "mutant": "weighted-carry",
+      "source_file": "arith.rs",
+      "old": "((b >> 64) + (mid >> 64)) as u64",
+      "new": "(b >> 64) as u64",
+      "command": "check",
+      "compiled": true,
+      "runtime_exit": 101,
+      "oracle_exit": null,
+      "outcome": "killed",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "--locked",
+        "--manifest-path",
+        "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp20-mutants-_d4px6eo/crate/Cargo.toml"
+      ],
+      "execution_command": [
+        "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction-mutant",
+        "check"
+      ],
+      "run_log_sha256": "da1ad472c2caad05aa0f80703c4c15fe7c91da708685f3ed1128fd7c924eba35",
+      "source_sha256": {
+        "kernel.rs": "5f600bd18fa1806edb0e07294333baa8b6c8b89bb659c070fe389f743cc2b3b2",
+        "instance.rs": "74ebbbd9f133dede572019efe9cff98cac4f7fa920ef9ef1dd7131fec31a61ae",
+        "measure.rs": "81635a55f1056c5918d6f25fee9ed6f6f196686e23eb6c54b99af03eb985135f",
+        "counts.rs": "637137a27e0b6f348f6839d099e3f6c584c34042020b90503f9957c5d6b654b3",
+        "trees.rs": "f2ff0f3a6a943779e4ce95d45708943be46ab411c4382857714ae23ccb6647fb",
+        "prover.rs": "96eb21d8835b12cfd227a39ac21bb85fdb287005ee4cee3a83c97d4c97814ebf",
+        "contract.rs": "58bc2cbc8dc72f6b4249558575c6c87d6a0cf95032dd7bab15e1665691dba351",
+        "logup.rs": "d00e5046e409ddce66d2e66f6004a9317b29aaf0376471808b242aa083e96720",
+        "coeff.rs": "7fbee6dd06fd26cdebca8e471ebc1d69da96208ccc241fa93ccb65384e8f2782",
+        "driver.rs": "df720da73e0753f966cd44dc9d5795ddc39bbdcdc73cbb68b32b9e742aa6af49",
+        "main.rs": "ac62e804e5b2a76b5c53609d7bef83c3ad832dcb7004b1abe669edcef76fe42f",
+        "forest.rs": "d2b6a6c5e01567e2d378c908bddb668b0a6930656e066a1aa0676f4c873781a4",
+        "script_oracle.rs": "b743fbbdbf764efae4f02159610e6060a8f3fffbf8db4070e795763e64237e51",
+        "level.rs": "e6caf346fefa87d49cca7216d47abab3e2ffbbe7c8f869892800f4e5d83cfd9b",
+        "arith.rs": "03459d4bff0be26c8d859caac369fdaf0b4e43f95bd88920f3aba174056a19f8"
+      }
+    },
+    {
+      "mutant": "signed-correction",
+      "source_file": "arith.rs",
+      "old": "self.unsigned() - Fp::from_u64_reduced(self.0[2] >> 63)",
+      "new": "self.unsigned()",
+      "command": "check",
+      "compiled": true,
+      "runtime_exit": 101,
+      "oracle_exit": null,
+      "outcome": "killed",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "--locked",
+        "--manifest-path",
+        "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp20-mutants-_d4px6eo/crate/Cargo.toml"
+      ],
+      "execution_command": [
+        "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction-mutant",
+        "check"
+      ],
+      "run_log_sha256": "d4a276a917e6a1e328ab321b4ef6f1dbeb25cb2c78db2d2d9d141cf28faaa056",
+      "source_sha256": {
+        "kernel.rs": "5f600bd18fa1806edb0e07294333baa8b6c8b89bb659c070fe389f743cc2b3b2",
+        "instance.rs": "74ebbbd9f133dede572019efe9cff98cac4f7fa920ef9ef1dd7131fec31a61ae",
+        "measure.rs": "81635a55f1056c5918d6f25fee9ed6f6f196686e23eb6c54b99af03eb985135f",
+        "counts.rs": "637137a27e0b6f348f6839d099e3f6c584c34042020b90503f9957c5d6b654b3",
+        "trees.rs": "f2ff0f3a6a943779e4ce95d45708943be46ab411c4382857714ae23ccb6647fb",
+        "prover.rs": "96eb21d8835b12cfd227a39ac21bb85fdb287005ee4cee3a83c97d4c97814ebf",
+        "contract.rs": "58bc2cbc8dc72f6b4249558575c6c87d6a0cf95032dd7bab15e1665691dba351",
+        "logup.rs": "d00e5046e409ddce66d2e66f6004a9317b29aaf0376471808b242aa083e96720",
+        "coeff.rs": "7fbee6dd06fd26cdebca8e471ebc1d69da96208ccc241fa93ccb65384e8f2782",
+        "driver.rs": "df720da73e0753f966cd44dc9d5795ddc39bbdcdc73cbb68b32b9e742aa6af49",
+        "main.rs": "ac62e804e5b2a76b5c53609d7bef83c3ad832dcb7004b1abe669edcef76fe42f",
+        "forest.rs": "d2b6a6c5e01567e2d378c908bddb668b0a6930656e066a1aa0676f4c873781a4",
+        "script_oracle.rs": "b743fbbdbf764efae4f02159610e6060a8f3fffbf8db4070e795763e64237e51",
+        "level.rs": "e6caf346fefa87d49cca7216d47abab3e2ffbbe7c8f869892800f4e5d83cfd9b",
+        "arith.rs": "34e75f66c22c5e1a1225023f01be9d465183b74ad2b39bbff8b82f5bb4437dbb"
+      }
+    },
+    {
+      "mutant": "doubled-cadence",
+      "source_file": "coeff.rs",
+      "old": "pub const RESET: usize = 1024;",
+      "new": "pub const RESET: usize = 2048;",
+      "command": "check",
+      "compiled": true,
+      "runtime_exit": 101,
+      "oracle_exit": null,
+      "outcome": "killed",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "--locked",
+        "--manifest-path",
+        "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp20-mutants-_d4px6eo/crate/Cargo.toml"
+      ],
+      "execution_command": [
+        "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction-mutant",
+        "check"
+      ],
+      "run_log_sha256": "6af516c80378e1e1dc74d9e053bafc193fe0a0035496843add239faff7bf90bc",
+      "source_sha256": {
+        "kernel.rs": "5f600bd18fa1806edb0e07294333baa8b6c8b89bb659c070fe389f743cc2b3b2",
+        "instance.rs": "74ebbbd9f133dede572019efe9cff98cac4f7fa920ef9ef1dd7131fec31a61ae",
+        "measure.rs": "81635a55f1056c5918d6f25fee9ed6f6f196686e23eb6c54b99af03eb985135f",
+        "counts.rs": "637137a27e0b6f348f6839d099e3f6c584c34042020b90503f9957c5d6b654b3",
+        "trees.rs": "f2ff0f3a6a943779e4ce95d45708943be46ab411c4382857714ae23ccb6647fb",
+        "prover.rs": "96eb21d8835b12cfd227a39ac21bb85fdb287005ee4cee3a83c97d4c97814ebf",
+        "contract.rs": "58bc2cbc8dc72f6b4249558575c6c87d6a0cf95032dd7bab15e1665691dba351",
+        "logup.rs": "d00e5046e409ddce66d2e66f6004a9317b29aaf0376471808b242aa083e96720",
+        "coeff.rs": "40573badf2a0b1ff3e96ca4765a7e4975c327fc6e864984f2cb61f0e5ecb3ff3",
+        "driver.rs": "df720da73e0753f966cd44dc9d5795ddc39bbdcdc73cbb68b32b9e742aa6af49",
+        "main.rs": "ac62e804e5b2a76b5c53609d7bef83c3ad832dcb7004b1abe669edcef76fe42f",
+        "forest.rs": "d2b6a6c5e01567e2d378c908bddb668b0a6930656e066a1aa0676f4c873781a4",
+        "script_oracle.rs": "b743fbbdbf764efae4f02159610e6060a8f3fffbf8db4070e795763e64237e51",
+        "level.rs": "e6caf346fefa87d49cca7216d47abab3e2ffbbe7c8f869892800f4e5d83cfd9b",
+        "arith.rs": "b0a07970ed916a94a6e2b53d1d1eb0b5fd4533b44d59c216559d97ef69a82ac7"
+      }
+    },
+    {
+      "mutant": "unit-tag",
+      "source_file": "trees.rs",
+      "old": "UNIT_TAG",
+      "new": "LevelNumerators::Ext { even: &[], odd: &[] }",
+      "command": "unit-tag-check",
+      "compiled": true,
+      "runtime_exit": 101,
+      "oracle_exit": null,
+      "outcome": "killed",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "--locked",
+        "--manifest-path",
+        "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp20-mutants-_d4px6eo/crate/Cargo.toml"
+      ],
+      "execution_command": [
+        "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction-mutant",
+        "unit-tag-check"
+      ],
+      "run_log_sha256": "7ec4f606c59223ac589e54dfdb19378bed8db0c57bb9a25428284818b0aacfbc",
+      "source_sha256": {
+        "kernel.rs": "5f600bd18fa1806edb0e07294333baa8b6c8b89bb659c070fe389f743cc2b3b2",
+        "instance.rs": "74ebbbd9f133dede572019efe9cff98cac4f7fa920ef9ef1dd7131fec31a61ae",
+        "measure.rs": "81635a55f1056c5918d6f25fee9ed6f6f196686e23eb6c54b99af03eb985135f",
+        "counts.rs": "637137a27e0b6f348f6839d099e3f6c584c34042020b90503f9957c5d6b654b3",
+        "trees.rs": "4e60330c652b14a9b998ed1d4697a696264c53e96e1e9f4b18625f80da0ed638",
+        "prover.rs": "96eb21d8835b12cfd227a39ac21bb85fdb287005ee4cee3a83c97d4c97814ebf",
+        "contract.rs": "58bc2cbc8dc72f6b4249558575c6c87d6a0cf95032dd7bab15e1665691dba351",
+        "logup.rs": "d00e5046e409ddce66d2e66f6004a9317b29aaf0376471808b242aa083e96720",
+        "coeff.rs": "7fbee6dd06fd26cdebca8e471ebc1d69da96208ccc241fa93ccb65384e8f2782",
+        "driver.rs": "df720da73e0753f966cd44dc9d5795ddc39bbdcdc73cbb68b32b9e742aa6af49",
+        "main.rs": "ac62e804e5b2a76b5c53609d7bef83c3ad832dcb7004b1abe669edcef76fe42f",
+        "forest.rs": "d2b6a6c5e01567e2d378c908bddb668b0a6930656e066a1aa0676f4c873781a4",
+        "script_oracle.rs": "b743fbbdbf764efae4f02159610e6060a8f3fffbf8db4070e795763e64237e51",
+        "level.rs": "e6caf346fefa87d49cca7216d47abab3e2ffbbe7c8f869892800f4e5d83cfd9b",
+        "arith.rs": "b0a07970ed916a94a6e2b53d1d1eb0b5fd4533b44d59c216559d97ef69a82ac7"
+      }
+    },
+    {
+      "mutant": "lookup-padding",
+      "source_file": "logup.rs",
+      "old": "let pad_key = table.keys[0];",
+      "new": "let pad_key = instance.lookups.keys[0];",
+      "command": "padding-check",
+      "compiled": true,
+      "runtime_exit": 101,
+      "oracle_exit": null,
+      "outcome": "killed",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "--locked",
+        "--manifest-path",
+        "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp20-mutants-_d4px6eo/crate/Cargo.toml"
+      ],
+      "execution_command": [
+        "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction-mutant",
+        "padding-check"
+      ],
+      "run_log_sha256": "59b22b7bcb4f9385c4bb81a019a2492d078d3528ee7bb83bee3275786db9dfa5",
+      "source_sha256": {
+        "kernel.rs": "5f600bd18fa1806edb0e07294333baa8b6c8b89bb659c070fe389f743cc2b3b2",
+        "instance.rs": "74ebbbd9f133dede572019efe9cff98cac4f7fa920ef9ef1dd7131fec31a61ae",
+        "measure.rs": "81635a55f1056c5918d6f25fee9ed6f6f196686e23eb6c54b99af03eb985135f",
+        "counts.rs": "637137a27e0b6f348f6839d099e3f6c584c34042020b90503f9957c5d6b654b3",
+        "trees.rs": "f2ff0f3a6a943779e4ce95d45708943be46ab411c4382857714ae23ccb6647fb",
+        "prover.rs": "96eb21d8835b12cfd227a39ac21bb85fdb287005ee4cee3a83c97d4c97814ebf",
+        "contract.rs": "58bc2cbc8dc72f6b4249558575c6c87d6a0cf95032dd7bab15e1665691dba351",
+        "logup.rs": "8e4c1b8e21dcd3e864d5994818d5627f857ff4e963a1d3b675d4316e2060f586",
+        "coeff.rs": "7fbee6dd06fd26cdebca8e471ebc1d69da96208ccc241fa93ccb65384e8f2782",
+        "driver.rs": "df720da73e0753f966cd44dc9d5795ddc39bbdcdc73cbb68b32b9e742aa6af49",
+        "main.rs": "ac62e804e5b2a76b5c53609d7bef83c3ad832dcb7004b1abe669edcef76fe42f",
+        "forest.rs": "d2b6a6c5e01567e2d378c908bddb668b0a6930656e066a1aa0676f4c873781a4",
+        "script_oracle.rs": "b743fbbdbf764efae4f02159610e6060a8f3fffbf8db4070e795763e64237e51",
+        "level.rs": "e6caf346fefa87d49cca7216d47abab3e2ffbbe7c8f869892800f4e5d83cfd9b",
+        "arith.rs": "b0a07970ed916a94a6e2b53d1d1eb0b5fd4533b44d59c216559d97ef69a82ac7"
+      }
+    }
+  ],
+  "note": "Only compiled runtime/oracle failures count; target reused, original release binary must be rebuilt after this tool."
+}

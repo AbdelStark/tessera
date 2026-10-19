@@ -1,0 +1,13 @@
+{
+  "evidence_level": "E0",
+  "executable": "/opt/homebrew/opt/python@3.14/bin/python3.14",
+  "machine": "arm64",
+  "os": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "performance_claim": false,
+  "pid": 51396,
+  "prng_scope": "synthetic fixture generation only, not uniform challenges",
+  "prng_seed": "0x22003500000001",
+  "processor": "arm",
+  "python": "3.14.6 (main, Jun 10 2026, 10:03:53) [Clang 21.0.0 (clang-2100.0.123.102)]",
+  "utc": "2026-10-19T12:56:05.669406+00:00"
+}

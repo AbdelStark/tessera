@@ -1,0 +1,13 @@
+{
+  "kind": "pre-run predicted accounting-only delta; no domain/criterion change",
+  "utc": "2026-10-19T10:58:05.020249+00:00",
+  "old_source_sha256": "26896283adb08d4657e5b329fa27e0a7a3ed65f9a36cadaa0897fdba104e1387",
+  "new_source_sha256": "a132f6e924104ec6fba731926f686d0fd3cf1fdc88bf8cf7e111c28065432ce4",
+  "old_metered_ops": 317679250,
+  "half_control_integer_product_and_remainder": 18,
+  "family2_parity_remainders": "6*(1+3)*(1+3)*(0+1+3+4)*4=3072",
+  "predicted_ops_delta": 3090,
+  "predicted_final_metered_ops": 317682340,
+  "predicted_judgments_unchanged": 42431606,
+  "final_resource_check": "M.check() immediately before validated; no added arithmetic/judgments"
+}

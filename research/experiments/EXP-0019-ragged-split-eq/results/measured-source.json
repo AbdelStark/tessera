@@ -1,0 +1,30 @@
+{
+  "experiment": "EXP-0019",
+  "preregistration_commit": "6b73a3b03f44bd8acdd1b0ff527f9d625fabf49a",
+  "checkout": "6b73a3b03f44bd8acdd1b0ff527f9d625fabf49a",
+  "start_utc": "2026-10-19T09:20:59.435659+00:00",
+  "files": {
+    "src/bench.rs": "fc757a35b1fbeea2c877ea0d6f8e6bc85cd363ae87f370880b829b45bcc56e82",
+    "src/kernel.rs": "f297e4164d8c8d7d0339ce36d04c26cc434995a63528a3dde59d64c264de26eb",
+    "src/main.rs": "ae2e31becfcae5cf417ed6d56e2bed2fbdc28f4e0eb580e831cabc5d137a4d47",
+    "Cargo.toml": "66d21241612a1dcb0167cb501a01a488cf911eb1abdf2109fa3937c197d0c89b",
+    "Cargo.lock": "f05fe5dd969a82bd7ab93640e055ed5f3c4b01a1c0d751e7d955b0082e5624ad",
+    "count.py": "77f6fb7128646ba9312b39432e3b9e3c8daa4dfab101f0dfca29739de89343ca",
+    "audit.py": "1a2458c7d31b59e659585d535cf66554750a2b2c37dedaefc252a396386dd8a5",
+    "mutate.py": "ca8c5f82625174f428fcb59ed041beefb78e42348ad097435ee1fc03b8e49a88",
+    "target/release/ragged-split-eq": "b5ecf90105236e2eeec1de53a3644a333a265c60457ce1fb1cced7f7773e21f4"
+  },
+  "source_pins_verified": 109,
+  "interference": "Background user apps observed; no idle-host claim. See interference-observations.jsonl.",
+  "archived_source_paths": {
+    "src/bench.rs": "results/measured-source/src/bench.rs.txt",
+    "src/kernel.rs": "results/measured-source/src/kernel.rs.txt",
+    "src/main.rs": "results/measured-source/src/main.rs.txt",
+    "Cargo.toml": "results/measured-source/Cargo.toml.txt",
+    "Cargo.lock": "results/measured-source/Cargo.lock.txt",
+    "count.py": "results/measured-source/count.py.txt",
+    "audit.py": "results/measured-source/audit.py.txt",
+    "mutate.py": "results/measured-source/mutate.py.txt"
+  },
+  "archive_note": "Exact source used for completed timing. The four secondary first attempts all passed; no extra secondary cohort ran. Future driver is corrected after terminal to disallow secondary reruns."
+}

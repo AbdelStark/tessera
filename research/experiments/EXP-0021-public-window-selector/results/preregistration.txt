@@ -1,0 +1,5 @@
+SHA256 90b7307ed2a2162bbd7a56a426c959068c83500c8111a6432e72981f641252bc
+UTC 2026-10-19T10:41:27.104024+00:00
+Snapshot results/README.preregistered.txt
+Stage draft3 for parent review; no implementation; commit gate pending
+Prior draft2 SHA256 debfc2dfc1973740f441693c96a1e476a0fcd3202865ff1b7498586256f49950 in results/README.draft2.txt

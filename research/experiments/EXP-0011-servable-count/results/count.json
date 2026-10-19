@@ -1,0 +1,1151 @@
+{
+  "shapes": {
+    "d": 16384,
+    "d_ff": 53248,
+    "q_heads": 128,
+    "kv_heads": 8,
+    "d_head": 128,
+    "layers": 126
+  },
+  "rule": {
+    "B_max": 32,
+    "ceiling": 62
+  },
+  "derivation": [
+    {
+      "tensor": "attn norm y = rq(res\u00b7\u03c1)",
+      "elements": 16384,
+      "profiles": [
+        "minimal",
+        "servable"
+      ],
+      "stated": "< 2^37",
+      "derived_interval": [
+        -97183596544,
+        97183411181
+      ],
+      "derived_b": 38,
+      "derived_class": "split",
+      "split_point": 6,
+      "stated_b_readings": [
+        37,
+        38
+      ],
+      "classes_agree": true,
+      "alt": {
+        "e=1": {
+          "interval": [
+            -4398046511104,
+            4398038122496
+          ],
+          "b": 43,
+          "class": "split"
+        }
+      },
+      "note": "key depends on QuantSpec `e`; class reported over all admissible `e`"
+    },
+    {
+      "tensor": "RoPE q = rq(a\u00b7C \u2212 b\u00b7S)",
+      "elements": 16384,
+      "profiles": [
+        "minimal",
+        "servable"
+      ],
+      "stated": "< 2^44",
+      "derived_interval": [
+        -4363686772736,
+        4363686772736
+      ],
+      "derived_b": 43,
+      "derived_class": "split",
+      "split_point": 11,
+      "stated_b_readings": [
+        44,
+        45
+      ],
+      "classes_agree": true,
+      "alt": {
+        "|C|,|S| < 2^14": {
+          "interval": [
+            -8726840868864,
+            8726840868864
+          ],
+          "b": 44,
+          "class": "split"
+        }
+      },
+      "note": "|C|,|S| \u2264 2^13 (signed 14-bit)"
+    },
+    {
+      "tensor": "RoPE k = rq(a\u00b7C \u2212 b\u00b7S)",
+      "elements": 1024,
+      "profiles": [
+        "minimal",
+        "servable"
+      ],
+      "stated": "< 2^44",
+      "derived_interval": [
+        -4363686772736,
+        4363686772736
+      ],
+      "derived_b": 43,
+      "derived_class": "split",
+      "split_point": 11,
+      "stated_b_readings": [
+        44,
+        45
+      ],
+      "classes_agree": true,
+      "alt": {
+        "|C|,|S| < 2^14": {
+          "interval": [
+            -8726840868864,
+            8726840868864
+          ],
+          "b": 44,
+          "class": "split"
+        }
+      },
+      "note": "as q"
+    },
+    {
+      "tensor": "v = rq(acc)",
+      "elements": 1024,
+      "profiles": [
+        "minimal",
+        "servable"
+      ],
+      "stated": "< 2^29",
+      "derived_interval": [
+        -266338304,
+        266338304
+      ],
+      "derived_b": 29,
+      "derived_class": "single",
+      "split_point": null,
+      "stated_b_readings": [
+        29,
+        30
+      ],
+      "classes_agree": true,
+      "alt": {},
+      "note": ""
+    },
+    {
+      "tensor": "o8 = rq(o, r_o, \u2212128, 127)",
+      "elements": 16384,
+      "profiles": [
+        "servable"
+      ],
+      "stated": "< 2^39",
+      "derived_interval": [
+        -549755813888,
+        545460846592
+      ],
+      "derived_b": 40,
+      "derived_class": "split",
+      "split_point": 8,
+      "stated_b_readings": [
+        39,
+        40
+      ],
+      "classes_agree": true,
+      "alt": {
+        "product bound, R_q \u2264 2^\u03c3": {
+          "interval": [
+            -72057594037927936,
+            71494644084506624
+          ],
+          "b": 57,
+          "class": "split"
+        },
+        "product bound, R_q \u2264 2^{2\u03c3}": {
+          "interval": [
+            -4722366482869645213696,
+            4685472994722226110464
+          ],
+          "b": 73,
+          "class": "error"
+        }
+      },
+      "note": "`SoftmaxRow` fact `R_q s_q \u2264 2^{2\u03c3}`, `|v| \u2264 128`"
+    },
+    {
+      "tensor": "residual rq(acc_O) [servable: acc = W_O o8]",
+      "elements": 16384,
+      "profiles": [
+        "servable"
+      ],
+      "stated": "< 2^29",
+      "derived_interval": [
+        -266338304,
+        266338304
+      ],
+      "derived_b": 29,
+      "derived_class": "single",
+      "split_point": null,
+      "stated_b_readings": [
+        29,
+        30
+      ],
+      "classes_agree": true,
+      "alt": {},
+      "note": ""
+    },
+    {
+      "tensor": "residual rq(acc_O) [minimal: acc = W_O o]",
+      "elements": 16384,
+      "profiles": [
+        "minimal"
+      ],
+      "stated": "< 2^60",
+      "derived_interval": [
+        -1143914305352105984,
+        1143914305352105984
+      ],
+      "derived_b": 61,
+      "derived_class": "split",
+      "split_point": 29,
+      "stated_b_readings": [
+        60,
+        61
+      ],
+      "classes_agree": true,
+      "alt": {},
+      "note": ""
+    },
+    {
+      "tensor": "MLP norm y = rq(res\u00b7\u03c1)",
+      "elements": 16384,
+      "profiles": [
+        "minimal",
+        "servable"
+      ],
+      "stated": "< 2^37",
+      "derived_interval": [
+        -97183596544,
+        97183411181
+      ],
+      "derived_b": 38,
+      "derived_class": "split",
+      "split_point": 6,
+      "stated_b_readings": [
+        37,
+        38
+      ],
+      "classes_agree": true,
+      "alt": {
+        "e=1": {
+          "interval": [
+            -4398046511104,
+            4398038122496
+          ],
+          "b": 43,
+          "class": "split"
+        }
+      },
+      "note": "as attn norm"
+    },
+    {
+      "tensor": "SiLU a = T_silu[g]",
+      "elements": 53248,
+      "profiles": [
+        "minimal",
+        "servable"
+      ],
+      "stated": "< 2^29",
+      "derived_interval": [
+        -266338304,
+        266338304
+      ],
+      "derived_b": 29,
+      "derived_class": "single",
+      "split_point": null,
+      "stated_b_readings": [
+        29,
+        30
+      ],
+      "classes_agree": true,
+      "alt": {},
+      "note": ""
+    },
+    {
+      "tensor": "u8 = rq(u)",
+      "elements": 53248,
+      "profiles": [
+        "servable"
+      ],
+      "stated": "< 2^29",
+      "derived_interval": [
+        -266338304,
+        266338304
+      ],
+      "derived_b": 29,
+      "derived_class": "single",
+      "split_point": null,
+      "stated_b_readings": [
+        29,
+        30
+      ],
+      "classes_agree": true,
+      "alt": {},
+      "note": ""
+    },
+    {
+      "tensor": "h = rq(a\u00b7u8)",
+      "elements": 53248,
+      "profiles": [
+        "servable"
+      ],
+      "stated": "< 2^15",
+      "derived_interval": [
+        -16256,
+        16384
+      ],
+      "derived_b": 16,
+      "derived_class": "single",
+      "split_point": null,
+      "stated_b_readings": [
+        15,
+        16
+      ],
+      "classes_agree": true,
+      "alt": {},
+      "note": ""
+    },
+    {
+      "tensor": "residual rq(acc_down) [servable: acc = W_down h]",
+      "elements": 16384,
+      "profiles": [
+        "servable"
+      ],
+      "stated": "< 2^30",
+      "derived_interval": [
+        -865599488,
+        865599488
+      ],
+      "derived_b": 31,
+      "derived_class": "single",
+      "split_point": null,
+      "stated_b_readings": [
+        30,
+        31
+      ],
+      "classes_agree": true,
+      "alt": {},
+      "note": ""
+    },
+    {
+      "tensor": "residual rq(acc_down) [minimal: acc = W_down (a\u00b7u)]",
+      "elements": 16384,
+      "profiles": [
+        "minimal"
+      ],
+      "stated": "< 2^58",
+      "derived_interval": [
+        -230542299577188352,
+        230542299577188352
+      ],
+      "derived_b": 59,
+      "derived_class": "split",
+      "split_point": 27,
+      "stated_b_readings": [
+        58,
+        59
+      ],
+      "classes_agree": true,
+      "alt": {},
+      "note": ""
+    }
+  ],
+  "norm_key_scan_over_e": {
+    "1": {
+      "rho_max": 8388608,
+      "b": 43,
+      "class": "split",
+      "log2_sigma_res": -1.3,
+      "residual_span_real": 212216.9
+    },
+    "1024": {
+      "rho_max": 262144,
+      "b": 38,
+      "class": "split",
+      "log2_sigma_res": -6.3,
+      "residual_span_real": 6631.8
+    },
+    "2048": {
+      "rho_max": 185363,
+      "b": 38,
+      "class": "split",
+      "log2_sigma_res": -6.8,
+      "residual_span_real": 4689.4
+    },
+    "4096": {
+      "rho_max": 131072,
+      "b": 37,
+      "class": "split",
+      "log2_sigma_res": -7.3,
+      "residual_span_real": 3315.9
+    },
+    "65536": {
+      "rho_max": 32768,
+      "b": 35,
+      "class": "split",
+      "log2_sigma_res": -9.3,
+      "residual_span_real": 829.0
+    },
+    "1048576": {
+      "rho_max": 8192,
+      "b": 33,
+      "class": "split",
+      "log2_sigma_res": -11.3,
+      "residual_span_real": 207.2
+    },
+    "4192256": {
+      "rho_max": 4097,
+      "b": 33,
+      "class": "split",
+      "log2_sigma_res": -12.3,
+      "residual_span_real": 103.6
+    },
+    "4192257": {
+      "rho_max": 4096,
+      "b": 32,
+      "class": "single",
+      "log2_sigma_res": -12.3,
+      "residual_span_real": 103.6
+    },
+    "4194304": {
+      "rho_max": 4096,
+      "b": 32,
+      "class": "single",
+      "log2_sigma_res": -12.3,
+      "residual_span_real": 103.6
+    }
+  },
+  "norm_flip_e": 4192257,
+  "norm_e_admissible_max": 1048576,
+  "arms": {
+    "source (minimal list, every rescale one lookup)": {
+      "elements": 137216,
+      "commitments": 137216,
+      "lookups": 137216,
+      "splits": [],
+      "rows": [
+        [
+          "attn norm y = rq(res\u00b7\u03c1)",
+          16384,
+          38,
+          "single (forced)",
+          16384
+        ],
+        [
+          "RoPE q = rq(a\u00b7C \u2212 b\u00b7S)",
+          16384,
+          45,
+          "single (forced)",
+          16384
+        ],
+        [
+          "RoPE k = rq(a\u00b7C \u2212 b\u00b7S)",
+          1024,
+          45,
+          "single (forced)",
+          1024
+        ],
+        [
+          "v = rq(acc)",
+          1024,
+          30,
+          "single (forced)",
+          1024
+        ],
+        [
+          "residual rq(acc_O) [minimal: acc = W_O o]",
+          16384,
+          61,
+          "single (forced)",
+          16384
+        ],
+        [
+          "MLP norm y = rq(res\u00b7\u03c1)",
+          16384,
+          38,
+          "single (forced)",
+          16384
+        ],
+        [
+          "SiLU a = T_silu[g]",
+          53248,
+          30,
+          "single (forced)",
+          53248
+        ],
+        [
+          "residual rq(acc_down) [minimal: acc = W_down (a\u00b7u)]",
+          16384,
+          59,
+          "single (forced)",
+          16384
+        ]
+      ]
+    },
+    "minimal (rule, derived widths)": {
+      "elements": 137216,
+      "commitments": 220160,
+      "lookups": 220160,
+      "splits": [
+        [
+          "attn norm y = rq(res\u00b7\u03c1)",
+          16384
+        ],
+        [
+          "RoPE q = rq(a\u00b7C \u2212 b\u00b7S)",
+          16384
+        ],
+        [
+          "RoPE k = rq(a\u00b7C \u2212 b\u00b7S)",
+          1024
+        ],
+        [
+          "residual rq(acc_O) [minimal: acc = W_O o]",
+          16384
+        ],
+        [
+          "MLP norm y = rq(res\u00b7\u03c1)",
+          16384
+        ],
+        [
+          "residual rq(acc_down) [minimal: acc = W_down (a\u00b7u)]",
+          16384
+        ]
+      ],
+      "rows": [
+        [
+          "attn norm y = rq(res\u00b7\u03c1)",
+          16384,
+          38,
+          "split",
+          32768
+        ],
+        [
+          "RoPE q = rq(a\u00b7C \u2212 b\u00b7S)",
+          16384,
+          43,
+          "split",
+          32768
+        ],
+        [
+          "RoPE k = rq(a\u00b7C \u2212 b\u00b7S)",
+          1024,
+          43,
+          "split",
+          2048
+        ],
+        [
+          "v = rq(acc)",
+          1024,
+          29,
+          "single",
+          1024
+        ],
+        [
+          "residual rq(acc_O) [minimal: acc = W_O o]",
+          16384,
+          61,
+          "split",
+          32768
+        ],
+        [
+          "MLP norm y = rq(res\u00b7\u03c1)",
+          16384,
+          38,
+          "split",
+          32768
+        ],
+        [
+          "SiLU a = T_silu[g]",
+          53248,
+          29,
+          "single",
+          53248
+        ],
+        [
+          "residual rq(acc_down) [minimal: acc = W_down (a\u00b7u)]",
+          16384,
+          59,
+          "split",
+          32768
+        ]
+      ]
+    },
+    "minimal (rule, stated cells)": {
+      "elements": 137216,
+      "commitments": 220160,
+      "lookups": 220160,
+      "splits": [
+        [
+          "attn norm y = rq(res\u00b7\u03c1)",
+          16384
+        ],
+        [
+          "RoPE q = rq(a\u00b7C \u2212 b\u00b7S)",
+          16384
+        ],
+        [
+          "RoPE k = rq(a\u00b7C \u2212 b\u00b7S)",
+          1024
+        ],
+        [
+          "residual rq(acc_O) [minimal: acc = W_O o]",
+          16384
+        ],
+        [
+          "MLP norm y = rq(res\u00b7\u03c1)",
+          16384
+        ],
+        [
+          "residual rq(acc_down) [minimal: acc = W_down (a\u00b7u)]",
+          16384
+        ]
+      ],
+      "rows": [
+        [
+          "attn norm y = rq(res\u00b7\u03c1)",
+          16384,
+          38,
+          "split",
+          32768
+        ],
+        [
+          "RoPE q = rq(a\u00b7C \u2212 b\u00b7S)",
+          16384,
+          45,
+          "split",
+          32768
+        ],
+        [
+          "RoPE k = rq(a\u00b7C \u2212 b\u00b7S)",
+          1024,
+          45,
+          "split",
+          2048
+        ],
+        [
+          "v = rq(acc)",
+          1024,
+          30,
+          "single",
+          1024
+        ],
+        [
+          "residual rq(acc_O) [minimal: acc = W_O o]",
+          16384,
+          61,
+          "split",
+          32768
+        ],
+        [
+          "MLP norm y = rq(res\u00b7\u03c1)",
+          16384,
+          38,
+          "split",
+          32768
+        ],
+        [
+          "SiLU a = T_silu[g]",
+          53248,
+          30,
+          "single",
+          53248
+        ],
+        [
+          "residual rq(acc_down) [minimal: acc = W_down (a\u00b7u)]",
+          16384,
+          59,
+          "split",
+          32768
+        ]
+      ]
+    },
+    "servable (rule, derived widths)": {
+      "elements": 260096,
+      "commitments": 326656,
+      "lookups": 326656,
+      "splits": [
+        [
+          "attn norm y = rq(res\u00b7\u03c1)",
+          16384
+        ],
+        [
+          "RoPE q = rq(a\u00b7C \u2212 b\u00b7S)",
+          16384
+        ],
+        [
+          "RoPE k = rq(a\u00b7C \u2212 b\u00b7S)",
+          1024
+        ],
+        [
+          "o8 = rq(o, r_o, \u2212128, 127)",
+          16384
+        ],
+        [
+          "MLP norm y = rq(res\u00b7\u03c1)",
+          16384
+        ]
+      ],
+      "rows": [
+        [
+          "attn norm y = rq(res\u00b7\u03c1)",
+          16384,
+          38,
+          "split",
+          32768
+        ],
+        [
+          "RoPE q = rq(a\u00b7C \u2212 b\u00b7S)",
+          16384,
+          43,
+          "split",
+          32768
+        ],
+        [
+          "RoPE k = rq(a\u00b7C \u2212 b\u00b7S)",
+          1024,
+          43,
+          "split",
+          2048
+        ],
+        [
+          "v = rq(acc)",
+          1024,
+          29,
+          "single",
+          1024
+        ],
+        [
+          "o8 = rq(o, r_o, \u2212128, 127)",
+          16384,
+          40,
+          "split",
+          32768
+        ],
+        [
+          "residual rq(acc_O) [servable: acc = W_O o8]",
+          16384,
+          29,
+          "single",
+          16384
+        ],
+        [
+          "MLP norm y = rq(res\u00b7\u03c1)",
+          16384,
+          38,
+          "split",
+          32768
+        ],
+        [
+          "SiLU a = T_silu[g]",
+          53248,
+          29,
+          "single",
+          53248
+        ],
+        [
+          "u8 = rq(u)",
+          53248,
+          29,
+          "single",
+          53248
+        ],
+        [
+          "h = rq(a\u00b7u8)",
+          53248,
+          16,
+          "single",
+          53248
+        ],
+        [
+          "residual rq(acc_down) [servable: acc = W_down h]",
+          16384,
+          31,
+          "single",
+          16384
+        ]
+      ]
+    },
+    "servable (rule, stated cells)": {
+      "elements": 260096,
+      "commitments": 326656,
+      "lookups": 326656,
+      "splits": [
+        [
+          "attn norm y = rq(res\u00b7\u03c1)",
+          16384
+        ],
+        [
+          "RoPE q = rq(a\u00b7C \u2212 b\u00b7S)",
+          16384
+        ],
+        [
+          "RoPE k = rq(a\u00b7C \u2212 b\u00b7S)",
+          1024
+        ],
+        [
+          "o8 = rq(o, r_o, \u2212128, 127)",
+          16384
+        ],
+        [
+          "MLP norm y = rq(res\u00b7\u03c1)",
+          16384
+        ]
+      ],
+      "rows": [
+        [
+          "attn norm y = rq(res\u00b7\u03c1)",
+          16384,
+          38,
+          "split",
+          32768
+        ],
+        [
+          "RoPE q = rq(a\u00b7C \u2212 b\u00b7S)",
+          16384,
+          45,
+          "split",
+          32768
+        ],
+        [
+          "RoPE k = rq(a\u00b7C \u2212 b\u00b7S)",
+          1024,
+          45,
+          "split",
+          2048
+        ],
+        [
+          "v = rq(acc)",
+          1024,
+          30,
+          "single",
+          1024
+        ],
+        [
+          "o8 = rq(o, r_o, \u2212128, 127)",
+          16384,
+          40,
+          "split",
+          32768
+        ],
+        [
+          "residual rq(acc_O) [servable: acc = W_O o8]",
+          16384,
+          30,
+          "single",
+          16384
+        ],
+        [
+          "MLP norm y = rq(res\u00b7\u03c1)",
+          16384,
+          38,
+          "split",
+          32768
+        ],
+        [
+          "SiLU a = T_silu[g]",
+          53248,
+          30,
+          "single",
+          53248
+        ],
+        [
+          "u8 = rq(u)",
+          53248,
+          30,
+          "single",
+          53248
+        ],
+        [
+          "h = rq(a\u00b7u8)",
+          53248,
+          16,
+          "single",
+          53248
+        ],
+        [
+          "residual rq(acc_down) [servable: acc = W_down h]",
+          16384,
+          31,
+          "single",
+          16384
+        ]
+      ]
+    }
+  },
+  "fixed_points": {
+    "servable after IDEA-0011": {
+      "elements": 260096,
+      "commitments": 293888,
+      "splits": [
+        [
+          "RoPE q = rq(a\u00b7C \u2212 b\u00b7S)",
+          16384
+        ],
+        [
+          "RoPE k = rq(a\u00b7C \u2212 b\u00b7S)",
+          1024
+        ],
+        [
+          "o8 = rq(o, r_o, \u2212128, 127)",
+          16384
+        ]
+      ]
+    },
+    "servable after IDEA-0011 + RoPE route": {
+      "elements": 260096,
+      "commitments": 276480,
+      "splits": [
+        [
+          "o8 = rq(o, r_o, \u2212128, 127)",
+          16384
+        ]
+      ]
+    },
+    "servable after IDEA-0011 + RoPE route + fused rescale": {
+      "elements": 206848,
+      "commitments": 223232,
+      "splits": [
+        [
+          "o8 = rq(o, r_o, \u2212128, 127)",
+          16384
+        ]
+      ]
+    },
+    "minimal after IDEA-0011": {
+      "elements": 137216,
+      "commitments": 187392,
+      "splits": [
+        [
+          "RoPE q = rq(a\u00b7C \u2212 b\u00b7S)",
+          16384
+        ],
+        [
+          "RoPE k = rq(a\u00b7C \u2212 b\u00b7S)",
+          1024
+        ],
+        [
+          "residual rq(acc_O) [minimal: acc = W_O o]",
+          16384
+        ],
+        [
+          "residual rq(acc_down) [minimal: acc = W_down (a\u00b7u)]",
+          16384
+        ]
+      ]
+    },
+    "minimal after IDEA-0011 + RoPE route": {
+      "elements": 137216,
+      "commitments": 169984,
+      "splits": [
+        [
+          "residual rq(acc_O) [minimal: acc = W_O o]",
+          16384
+        ],
+        [
+          "residual rq(acc_down) [minimal: acc = W_down (a\u00b7u)]",
+          16384
+        ]
+      ]
+    }
+  },
+  "per_token": {
+    "servable_exact": 41158656,
+    "rounded_used_by_idea": 41160000.0,
+    "minimal": 27740160,
+    "source": 17289216
+  },
+  "ratios": {
+    "servable/source": 2.3806,
+    "servable/minimal": 1.4837
+  },
+  "extremes": {
+    "seed": "0x5eed0033",
+    "toy_shapes": [
+      4,
+      8,
+      16
+    ],
+    "draws_per_shape": 2000,
+    "violations": 0,
+    "attained": {
+      "matmul d=4": true,
+      "matmul d=8": true,
+      "matmul d=16": true,
+      "rope d=4": true,
+      "rope d=8": true,
+      "rope d=16": true,
+      "o = \u22122^39 (one position, v = \u2212128)": true,
+      "h key = 2^14": true
+    },
+    "o_extreme": {
+      "o": -549755813888,
+      "R_q": 65536,
+      "s_q": 65536,
+      "R_q*s_q": 4294967296
+    },
+    "rq_checks": true
+  },
+  "cost_model_exact": {
+    "corrected": {
+      "1024": {
+        "baseline": 8.825,
+        "scenario": 10.397,
+        "linear": 4.822,
+        "delta_pct": 17.8
+      },
+      "4096": {
+        "baseline": 14.004,
+        "scenario": 15.552,
+        "linear": 4.748,
+        "delta_pct": 11.1
+      },
+      "16384": {
+        "baseline": 35.098,
+        "scenario": 36.557,
+        "linear": 4.474,
+        "delta_pct": 4.2
+      },
+      "131072": {
+        "baseline": 171.38,
+        "scenario": 172.328,
+        "linear": 2.908,
+        "delta_pct": 0.6
+      }
+    },
+    "counted": {
+      "1024": {
+        "baseline": 17.198,
+        "scenario": 21.577,
+        "linear": 13.432,
+        "delta_pct": 25.5
+      },
+      "4096": {
+        "baseline": 29.842,
+        "scenario": 34.154,
+        "linear": 13.226,
+        "delta_pct": 14.4
+      },
+      "16384": {
+        "baseline": 78.644,
+        "scenario": 82.707,
+        "linear": 12.463,
+        "delta_pct": 5.2
+      },
+      "131072": {
+        "baseline": 373.313,
+        "scenario": 375.954,
+        "linear": 8.101,
+        "delta_pct": 0.7
+      }
+    }
+  },
+  "cost_model_rounded": {
+    "corrected": {
+      "1024": {
+        "baseline": 8.825,
+        "scenario": 10.397,
+        "linear": 4.822,
+        "delta_pct": 17.8
+      },
+      "4096": {
+        "baseline": 14.004,
+        "scenario": 15.552,
+        "linear": 4.748,
+        "delta_pct": 11.1
+      },
+      "16384": {
+        "baseline": 35.098,
+        "scenario": 36.557,
+        "linear": 4.474,
+        "delta_pct": 4.2
+      },
+      "131072": {
+        "baseline": 171.38,
+        "scenario": 172.328,
+        "linear": 2.908,
+        "delta_pct": 0.6
+      }
+    },
+    "counted": {
+      "1024": {
+        "baseline": 17.198,
+        "scenario": 21.578,
+        "linear": 13.432,
+        "delta_pct": 25.5
+      },
+      "4096": {
+        "baseline": 29.842,
+        "scenario": 34.155,
+        "linear": 13.227,
+        "delta_pct": 14.5
+      },
+      "16384": {
+        "baseline": 78.644,
+        "scenario": 82.707,
+        "linear": 12.464,
+        "delta_pct": 5.2
+      },
+      "131072": {
+        "baseline": 373.313,
+        "scenario": 375.954,
+        "linear": 8.101,
+        "delta_pct": 0.7
+      }
+    }
+  },
+  "mu_deviation": {
+    "corrected 1K": {
+      "stated": 10.4,
+      "exact": 10.397,
+      "rounded": 10.397,
+      "dev_exact": -0.003,
+      "dev_rounded": -0.003
+    },
+    "corrected 16K": {
+      "stated": 36.6,
+      "exact": 36.557,
+      "rounded": 36.557,
+      "dev_exact": -0.043,
+      "dev_rounded": -0.043
+    },
+    "counted 1K": {
+      "stated": 21.6,
+      "exact": 21.577,
+      "rounded": 21.578,
+      "dev_exact": -0.023,
+      "dev_rounded": -0.022
+    },
+    "counted 16K": {
+      "stated": 82.7,
+      "exact": 82.707,
+      "rounded": 82.707,
+      "dev_exact": 0.007,
+      "dev_rounded": 0.007
+    }
+  },
+  "check_output": "golden check against embedded chart-data table (the pinned vector is absent on this branch) (\u00b10.05 per term, \u00b10.1 on the total)\nok      1K model  2.03   1.13  0.021   3.18   reference  2.06   1.13  0.021   3.20   worst dev 0.035\nok      2K model  2.01   2.25  0.021   4.29   reference  2.05   2.25  0.021   4.30   worst dev 0.035\nok      4K model  1.99   4.46  0.021   6.48   reference  2.03   4.46  0.021   6.50   worst dev 0.036\nok      8K model  1.95   8.75  0.021  10.72   reference  1.99   8.75  0.021  10.80   worst dev 0.035\nok     16K model  1.88  16.82  0.020  18.72   reference  1.91  16.82  0.020  18.80   worst dev 0.031\nok     32K model  1.75  31.24  0.018  33.01   reference  1.78  31.24  0.018  33.00   worst dev 0.035\nok     64K model  1.53  54.68  0.016  56.22   reference  1.56  54.68  0.016  56.30   worst dev 0.033\nok    128K model  1.22  87.48  0.013  88.72   reference  1.24  87.48  0.013  88.70   worst dev 0.018\n",
+  "checks": {
+    "(a) source reproduces 137,216": true,
+    "(a) minimal under the rule reproduces 220,160": true,
+    "(b) servable elements 260,096": true,
+    "(b) servable commitments 326,656 = lookups": true,
+    "(b) four split groups adding 66,560": true,
+    "(c) every class agrees under both readings": true,
+    "(c) o8 derives to b = 40 with an attained extreme": true,
+    "(c) norm key is a split for every admissible e (e \u2264 2^20; flip point reported)": true,
+    "(c) no random draw exceeded a bound": true,
+    "(d) fixed points 293,888 / 276,480 / 223,232": true,
+    "(e) \u03bc cells within \u00b10.05 and equal at the rounded count": true,
+    "(e) --check passes on the source profile": true
+  },
+  "all_pass": true
+}

@@ -1,0 +1,2 @@
+2026-10-16T15:00:06Z pre-registration written (README.md hypothesis, criterion, method, reproduction) before any code
+334b2a1a1b1235ca11102efc0d55323ed0c655a3cc83f59a664d99c00725117d  research/experiments/EXP-0002-commit-cost-calibration/README.md

@@ -1,0 +1,83 @@
+{
+  "kind": "Independent final pre-timing source/control review; no independent builds/tests/timing performed",
+  "utc": "2026-10-19T11:27:08.260934+00:00",
+  "source_manifest_sha256": "f2ceccbab4fd51602a63120a3005d66bf134f579bb623f84322cff3e45bee114",
+  "source_files_verified": 21,
+  "binary_sha256": "e7bfa38c5494b4571fcf2fc2cada04ac2fba40f8638090f4b6ca83ddf3d71504",
+  "baseline_source_pins_verified": 23,
+  "frozen_records": [
+    {
+      "file": "README.preregistered.txt",
+      "commit": "217238e",
+      "sha256": "a4f1a68e4b266c935084cb429626bcbc4a72c1da3b0b4c8f27d3f687d06ac2ff"
+    },
+    {
+      "file": "README.amendment-preregistered.txt",
+      "commit": "f8c2d71",
+      "sha256": "defec9b2d3f55bc6a2e3e35a88abba93ab03a28d20330a33fd0c98d5de4a282c"
+    },
+    {
+      "file": "README.output-boundary-preregistered.txt",
+      "commit": "f77974f",
+      "sha256": "19bb3201c06afd228d63eadb2c7826b8c92b06be97cbb229e79d999d4aa8e0a6"
+    }
+  ],
+  "reviewed_boundaries": {
+    "whole": "complete native LogUp proof plus common owned Record copy/normalization and both native/Record drops, including fresh transcript and descriptor absorption",
+    "diagnostic": "paid public prefix replay plus gamma/lambda and complete bottom preparation/proof, moved-proof owned Level and drops; not isolated/additive bottom arithmetic"
+  },
+  "source_review_conclusions": [
+    "Signed192 correction/carry/cadence and active coefficient signs/channels agree with registered algebra/bounds",
+    "Grid ternary expansion, futureeq weighting, current/prior eq scaling, quadraticcollapse and oncebind indexing consistent",
+    "Productionrow0 lookup/table padding, rawUnitnumerators, instancewide publicfallback and h0/h1 handling correct",
+    "ActualnativeAPI returnedclaims/challenges included incompleteoutput comparison and closed through independentpublictv and directtv-fieldMle checks",
+    "Scriptoracledirect tv-field trees/fullweightedBooleanMLE checks all30actualmessageevaluations plusfinaleval/line/leaf/returnedclaim closure for12scripts; zeroscriptdenoms notAccept",
+    "Signed/Dsemantictrace formulas and publiccapacity/clearing bounds consistent; baseFp gaps derived explicitly, scalarinverse/padding/conversioninternals opaque",
+    "Fresh3warmups/10samples eachattempt,>=20ms samples, registered4armrotation, fixedrepspercohort, onecompletefresh rerun, noextraattempt selection",
+    "Auditorrecomputes requiredarm/pairedCV/sham,minima,verdict,repetitionupdates,prefixcounts,timestamps/nonoverlap andbefore/afterP/P2/D/C records",
+    "Compiledmutationcampaign andsyntheticauditertamper controls have targetedruntime/audit failures; no compilefailure countedaskill"
+  ],
+  "observed_author_artifacts": {
+    "small_cases": 33,
+    "diagnostics": 30,
+    "primary_cases": 6,
+    "count_records": 18,
+    "compiled_mutants": 7,
+    "mutant_noop": "pass",
+    "synthetic_auditor_corruptions": 9,
+    "synthetic_auditor_noop": "pass",
+    "source_manifest_matches_current": true
+  },
+  "remaining_blockers_found": [],
+  "decision": "No remaining independent source-review blocker at these hashes; parent reproduction and explicit CPU-slot grant still required before timing. No performance verdict or timing authorization supplied by this review.",
+  "limitations": [
+    "Semantic algebraic operation and allocatedcapacity/explicitclearing counts are not machineinstructions,allocatortraffic,DRAMvolume or measuredper-armRSS",
+    "Source shape/control flow checked; no independent compiledassembly constant-time proof",
+    "Privateverifier scriptAPI unavailable; normal runs use publictv-core, scripts use independenttv-field relationoracle and directeventmapping",
+    "Synthetic unmasked resident component only; no fullstage/driver/PCS integration, maskedprotocol, jointZK, H100 or workloadgain approval",
+    "Firstfailedcompletecheck log was overwritten; retainedexcerpt honestlypartial, laterfailures/attempts andtoolingfingerprintincident disclosed",
+    "No independent runtime reproduction by thisreviewer; parent owns that check"
+  ],
+  "artifact_hashes": {
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/handoff-pretime.json": "e311b1d00b0414b7fd2b5e307e63789d129fcd0174cae0414dbff78942dd713e",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/source-manifest-pretime.json": "f2ceccbab4fd51602a63120a3005d66bf134f579bb623f84322cff3e45bee114",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/artifacts-pretime.json": "25810f06095b1f9176e029cc5a5e8906e4e2a673422d51d5cb53345783182357",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/check.json": "fd2162d99e97edd90ab1af7fc3e57504ad1b2f982ae03d8b176075017b1206be",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/preflight.json": "a6a6eef740106e1989c6fc7c0815f941bdb0a171da502f01fc879df09c31c3b0",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/count-trace.json": "9bb48493910b99ac2e74a89b33151b7e3cbd40186c5d6d61f3c8afc9bed3ccfe",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/count.json": "e28b07b9914c4de1c22fd26d4075f679cf44f6320e4127daf173b35a7ad2b182",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/audit.json": "79692e8d66c3544b9991ee936ad39186a10db3ba7c5a6e2b912948b157b86720",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/degenerate.json": "fdb4a70d5bf0e5c353ec51bbedd6fca2c36d2d30ee8c0a4b67d4f0c6d91508ff",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/multiple.json": "10b90ff0940bc96e2823a690a7b08dd3ad797782f9440da75ba23bffd285f40d",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/field-fallback.json": "866435ec6dc9605233bf61004f52fa4487b0a963a073cab32df4986221fa9333",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/rejections.json": "afd21ec926dd58c6cf6943537ba645ed85ae7ea2295ea9f4ff29c006e855a5c9",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/mutations.json": "0e345112e10351767bc970c84f86a661d4af2a3f548e2ab0abdffc1f6235a735",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/mutations-attempt3.txt": "d156d0a038ae2e6815ba34b6888462508c7e12a609f3bb6854c64996fb009f73",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/auditor-selftest.json": "29152b5d881d7da5681adf8ba63f6d8718954ff8968670442bfd7e3fe89365ad",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/auditor-fixture.json": "19b852cd9f6c2038802c4ce66c5fcff4d9fe1baee41f0ea8420fcbf71a18e76a",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/check-attempt18.txt": "6f551851643a0c7b4ea8f62faba4503062598796e7d198576ad6043d85d03413",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/preflight-attempt4.txt": "1023c1a191e278d8066a73092d52b8e323b77a1371aa1ecfdb10d528546acc65",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/clippy-attempt6.txt": "2a57ea6db700b316e2c83b1fac60680165dfe461406392bf1e5a29f7e4ac8cda",
+    "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/debugging-disclosure.md": "feb9ebc7a32b9360443715c8d0a63fc00de5c6e05954761052c423ab252364ad"
+  }
+}

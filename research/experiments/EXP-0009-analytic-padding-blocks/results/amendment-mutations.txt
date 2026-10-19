@@ -1,0 +1,119 @@
+Scratch package: /var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp9-mutation-cw1mvxwg
+
+control: exit 0
+   Compiling padblocks v0.0.0 (/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp9-mutation-cw1mvxwg)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.80s
+     Running unittests src/main.rs (research/experiments/EXP-0009-analytic-padding-blocks/target/debug/deps/padblocks-5fd6e600c7ce772a)
+
+running 1 test
+  check: TAIL(rho, P) equals the suffix sum of eq_table(rho) for every P at 6 coordinates
+  check: hand case [2, 3 | 1, 1] [5, 7, 11 | 1]: roots (6, 385) accepted, (6, 386) rejected (level 0: FinalMismatch { round: 1 }); all harness arms equal the production; a padding of 0 gives roots (0, 0)
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 44145993a853eaa934d81906e6e7b2608bd0b5830b6cd796f9cff0b431aff6fe
+  check: small one-height T=16: all harness arms equal the production
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 4 leaf claim(s) equal the padded leaves' MLE; digest e9854d55a49f165ee69b56aa85fd5fc1b968b8cb40ae4de14180ea0d23e27b73
+  check: small grouped T=16: all harness arms equal the production
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 3 leaf claim(s) equal the padded leaves' MLE; digest 68c92040d7bcd0993f41b5d4037789a21db65028ccb816af752286c8e16bf0a0
+  check: small 70B grouped T=8 x5: all harness arms equal the production
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 190be241783c7ae1b57902a23f831b7b029043fb529448f1b5710f800e1e73b3
+  check: small 70B forest 5 of 8 x 2^3: all harness arms equal the production
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest d18261244edbb8dedb9904cafc9ddf44e183c1c51323f54e12d086b3c6d28df5
+  check: single tree 2^4: all harness arms equal the production
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest c3d743cf56acd13bf18a63650fbcf8b95f1379c96d7e8e883bda94059bc9f5fe
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 0131e6b900af5b91500721c34f46898c3f47a012cc873315323c3ed7aa29aca8
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest d367e1e2caf3fe128ba684ef6183a83fa512317b9d65cf64cf866b92f3ebd36a
+  check: unsorted/repeated-length groups preserve original tree-coordinate order
+test tests::amendment_preserves_transcripts_and_tree_order ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+
+omit_tree_order_restoration: exit 101
+   Compiling padblocks v0.0.0 (/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp9-mutation-cw1mvxwg)
+warning: field `tree` is never read
+   --> src/main.rs:917:5
+    |
+916 | struct Group {
+    |        ----- field in this struct
+917 |     tree: usize,
+    |     ^^^^
+    |
+    = note: `Group` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `padblocks` (bin "padblocks" test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.33s
+     Running unittests src/main.rs (research/experiments/EXP-0009-analytic-padding-blocks/target/debug/deps/padblocks-5fd6e600c7ce772a)
+
+running 1 test
+  check: TAIL(rho, P) equals the suffix sum of eq_table(rho) for every P at 6 coordinates
+  check: hand case [2, 3 | 1, 1] [5, 7, 11 | 1]: roots (6, 385) accepted, (6, 386) rejected (level 0: FinalMismatch { round: 1 }); all harness arms equal the production; a padding of 0 gives roots (0, 0)
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 44145993a853eaa934d81906e6e7b2608bd0b5830b6cd796f9cff0b431aff6fe
+  check: small one-height T=16: all harness arms equal the production
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 4 leaf claim(s) equal the padded leaves' MLE; digest e9854d55a49f165ee69b56aa85fd5fc1b968b8cb40ae4de14180ea0d23e27b73
+  check: small grouped T=16: all harness arms equal the production
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 3 leaf claim(s) equal the padded leaves' MLE; digest 68c92040d7bcd0993f41b5d4037789a21db65028ccb816af752286c8e16bf0a0
+
+thread 'tests::amendment_preserves_transcripts_and_tree_order' (86180966) panicked at src/main.rs:680:13:
+small 70B grouped T=8 x5/analytic-amortized: level 1: round 2 differs
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test tests::amendment_preserves_transcripts_and_tree_order ... FAILED
+
+failures:
+
+failures:
+    tests::amendment_preserves_transcripts_and_tree_order
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--bin padblocks`
+
+
+wrong_odd_tail_constant: exit 101
+   Compiling padblocks v0.0.0 (/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp9-mutation-cw1mvxwg)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.31s
+     Running unittests src/main.rs (research/experiments/EXP-0009-analytic-padding-blocks/target/debug/deps/padblocks-5fd6e600c7ce772a)
+
+running 1 test
+  check: TAIL(rho, P) equals the suffix sum of eq_table(rho) for every P at 6 coordinates
+
+thread 'tests::amendment_preserves_transcripts_and_tree_order' (86181731) panicked at src/main.rs:680:13:
+hand/analytic-amortized: level 1: round 1 differs
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test tests::amendment_preserves_transcripts_and_tree_order ... FAILED
+
+failures:
+
+failures:
+    tests::amendment_preserves_transcripts_and_tree_order
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--bin padblocks`
+
+
+drop_shared_tail_scale: exit 101
+   Compiling padblocks v0.0.0 (/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp9-mutation-cw1mvxwg)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.29s
+     Running unittests src/main.rs (research/experiments/EXP-0009-analytic-padding-blocks/target/debug/deps/padblocks-5fd6e600c7ce772a)
+
+running 1 test
+  check: TAIL(rho, P) equals the suffix sum of eq_table(rho) for every P at 6 coordinates
+  check: hand case [2, 3 | 1, 1] [5, 7, 11 | 1]: roots (6, 385) accepted, (6, 386) rejected (level 0: FinalMismatch { round: 1 }); all harness arms equal the production; a padding of 0 gives roots (0, 0)
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 44145993a853eaa934d81906e6e7b2608bd0b5830b6cd796f9cff0b431aff6fe
+
+thread 'tests::amendment_preserves_transcripts_and_tree_order' (86182111) panicked at src/main.rs:680:13:
+small one-height T=16/analytic-amortized: level 2: round 0 differs
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test tests::amendment_preserves_transcripts_and_tree_order ... FAILED
+
+failures:
+
+failures:
+    tests::amendment_preserves_transcripts_and_tree_order
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--bin padblocks`
+
+Control passes; 3/3 behavior-changing mutations caught by proof/transcript equivalence.

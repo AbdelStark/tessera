@@ -1,0 +1,46 @@
+{
+  "environment": {
+    "attempt": "20261019T104946.444402Z-83441",
+    "preflight_only": true,
+    "utc": "2026-10-19T10:49:46.444768+00:00",
+    "python": "3.14.6 (main, Jun 10 2026, 10:03:53) [Clang 21.0.0 (clang-2100.0.123.102)]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "cpu": "arm",
+    "pid": 83441,
+    "scope": "E0 finite relation audit; no benchmark or full protocol/ZK/fidelity approval",
+    "frozen_sha256": "90b7307ed2a2162bbd7a56a426c959068c83500c8111a6432e72981f641252bc",
+    "first_commit": "e3a2a51",
+    "source_drift": [],
+    "head": "e3a2a511577d07841726534a602ec600fd39a010",
+    "script_sha256": "7c8adbc4687bf25b1dc4b4bdb2279f95fb7a5a35102c1d8c7d89f132806f4172"
+  },
+  "verdict": "refuted",
+  "exit_code": 1,
+  "error": "{\"arm\": \"controls\", \"name\": \"registered mutation/attack sensitivity\", \"detail\": \"swap q/i\"}",
+  "completed_arms": [],
+  "counts": {
+    "normative_oracle_requested_entries": 16,
+    "judgments/setup": 1,
+    "judgments/arithmetic": 107,
+    "judgments/preflight": 266,
+    "judgments/controls": 366
+  },
+  "judged_comparisons": 740,
+  "physical_judgments": 740,
+  "primitive_exact_operations": 408572,
+  "maxima": {
+    "dp_states": 7,
+    "dp_transitions": 48,
+    "process_rss_bytes": 33521664
+  },
+  "controls": 65,
+  "finite_scope_only": true,
+  "no_performance_claim": true,
+  "limits": {
+    "comparisons": 100000000,
+    "operations": 3000000000,
+    "watchdog_seconds": 900,
+    "whole_process_memory_bytes": 268435456
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "digest": "c88f3785bd0c5682ad28ba8db799eecabb87fdf8a28822070faa451d1eddefd4",
+  "independent": true,
+  "instances": 2,
+  "lookup_heights": [
+    5,
+    2
+  ],
+  "table_heights": [
+    3,
+    4
+  ]
+}

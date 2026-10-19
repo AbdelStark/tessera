@@ -1,0 +1,17 @@
+{
+  "kind": "secondary independent parent reconstruction; frozen criteria unchanged",
+  "verdict": "inconclusive",
+  "G2": -0.3654107633272927,
+  "H2": -0.3636505967672554,
+  "all_noise_clean": false,
+  "cohorts": 15,
+  "measured_arm_samples": 600,
+  "warmup_arm_samples": 180,
+  "unclean_authoritative_boundaries": [
+    [
+      "E-l22-t22",
+      "whole"
+    ]
+  ],
+  "unchanged_source": "measured source manifest and binary verified separately"
+}

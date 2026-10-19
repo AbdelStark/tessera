@@ -1,0 +1,42 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.15
+   Compiling libc v0.2.191
+   Compiling getrandom v0.3.4
+   Compiling cfg-if v1.0.5
+   Compiling arrayvec v0.7.8
+   Compiling constant_time_eq v0.4.2
+   Compiling zeroize v1.9.1
+   Compiling tv-field v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-field)
+   Compiling serde_core v1.0.229
+   Compiling zmij v1.0.23
+   Compiling serde_json v1.0.154
+   Compiling itoa v1.0.18
+   Compiling memchr v2.8.3
+   Compiling tv-codec v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-codec)
+   Compiling tv-hash v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-hash)
+   Compiling cc v1.9.0
+   Compiling tv-tables v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-tables)
+   Compiling tv-core v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-core)
+   Compiling blake3 v1.8.7
+   Compiling syn v3.0.9
+   Compiling tessera-codec-derive v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-codec-derive)
+   Compiling tessera-codec v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-codec)
+   Compiling tessera-field v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-field)
+   Compiling tessera-poly v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-poly)
+   Compiling tessera-hash v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-hash)
+   Compiling tessera-sumcheck v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-sumcheck)
+   Compiling tessera-tables v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-tables)
+   Compiling tessera-logup v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-logup)
+   Compiling integer-fraction v0.0.0 (/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves)
+    Finished `release` profile [optimized] target(s) in 12.65s
+     Running `research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction padding-check`
+ragged lookup3: first lookup=row1, table padding=row0; P=e21b2d907ae1a54d08e0b4d17b164f733288150c9c4ee4a4bd66346e1b65f1d6, C=6cd01a15c382520081f7dbf5f920186edad64c60e9c6feb2606236576b3962e8
+
+thread 'main' (92293246) panicked at src/driver.rs:69:385:
+assertion `left == right` failed: ragged padding exact output mismatch
+  left: "6cd01a15c382520081f7dbf5f920186edad64c60e9c6feb2606236576b3962e8"
+ right: "e21b2d907ae1a54d08e0b4d17b164f733288150c9c4ee4a4bd66346e1b65f1d6"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

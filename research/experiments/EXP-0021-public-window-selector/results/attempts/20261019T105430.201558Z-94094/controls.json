@@ -1,0 +1,1935 @@
+[
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {}
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "L": 3,
+      "H": 3,
+      "extra": 0
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "other",
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": -1,
+      "n": 3,
+      "W": 2,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 4,
+      "n": 3,
+      "W": 2,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": -1,
+      "W": 2,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 5,
+      "W": 2,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 0,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": -1,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 131073,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "L": 0,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "L": 4,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "L": 3,
+      "H": 0
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "L": 3,
+      "H": 4
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": true,
+      "n": 3,
+      "W": 2,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": true,
+      "W": 2,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": true,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "L": true,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "L": 3,
+      "H": true
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "n": 3,
+      "W": 2,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "W": 2,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "H": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "L": 3
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "L": 3,
+      "H": 3,
+      "global_flag": true
+    }
+  },
+  {
+    "name": "descriptor",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 2,
+      "L": 3,
+      "H": 3,
+      "layer_windows": [
+        1,
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "name": "skip descriptor validation",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "format": "e0-local-window/1",
+      "d": 2,
+      "n": 3,
+      "W": 0,
+      "L": 3,
+      "H": 3
+    }
+  },
+  {
+    "name": "drop final borrow0",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": [
+      0,
+      1,
+      2,
+      2,
+      0
+    ]
+  },
+  {
+    "name": "drop final borrow1",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": [
+      1,
+      0,
+      2,
+      1,
+      1
+    ]
+  },
+  {
+    "name": "drop final borrow2",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": [
+      1,
+      1,
+      1,
+      1,
+      2
+    ]
+  },
+  {
+    "name": "omit layer LT",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "omit head LT",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "excluded-e",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "scores": [
+        0,
+        0
+      ],
+      "selected": [
+        true,
+        false
+      ],
+      "c": 0,
+      "e": [
+        4,
+        1
+      ],
+      "R": 3,
+      "s": 5,
+      "a": 1,
+      "b": 3,
+      "V": [
+        0,
+        1
+      ],
+      "wrong_PV": 1,
+      "oracle_PV": 0
+    }
+  },
+  {
+    "name": "omit-root",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "scores": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "selected": [
+        true,
+        true,
+        true,
+        false
+      ],
+      "c": 1,
+      "e": [
+        1,
+        1,
+        1,
+        0
+      ],
+      "R": 5,
+      "s": 3,
+      "a": 1,
+      "b": 1
+    }
+  },
+  {
+    "name": "masked-leaf-zero",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "scores": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "selected": [
+        true,
+        true,
+        true,
+        false
+      ],
+      "c": 1,
+      "e": [
+        1,
+        1,
+        1,
+        0
+      ],
+      "R": 5,
+      "s": 3,
+      "a": 1,
+      "b": 1
+    }
+  },
+  {
+    "name": "padding-c",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": [
+      [
+        1,
+        0
+      ],
+      0
+    ]
+  },
+  {
+    "name": "padding-R",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": [
+      [
+        0,
+        0
+      ],
+      1
+    ]
+  },
+  {
+    "name": "original-D difference",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "N": 2,
+      "n": 2,
+      "W": 1,
+      "q": 1,
+      "scores": [
+        0,
+        0
+      ],
+      "dense_e": [
+        4,
+        4
+      ],
+      "window_e": [
+        0,
+        4
+      ],
+      "V": [
+        1,
+        0
+      ],
+      "dense_PV": 4,
+      "window_PV": 0
+    }
+  },
+  {
+    "name": "omit terminal Q",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "QK",
+      "claims": [
+        {
+          "tensor": "Q",
+          "point": [
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "value": [
+            5508,
+            18446744069414582053
+          ],
+          "descriptor": [
+            "e0-local-window/1",
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        },
+        {
+          "tensor": "K",
+          "point": [
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "value": [
+            3780,
+            18446744069414582593
+          ],
+          "descriptor": [
+            "e0-local-window/1",
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "alter terminal Q",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "QK",
+      "index": 0,
+      "claim": {
+        "tensor": "Q",
+        "point": [
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "value": [
+          5508,
+          18446744069414582053
+        ],
+        "descriptor": [
+          "e0-local-window/1",
+          2,
+          3,
+          1,
+          3,
+          3
+        ]
+      }
+    }
+  },
+  {
+    "name": "mismatched descriptor Q",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "QK",
+      "index": 0
+    }
+  },
+  {
+    "name": "alter coordinate Q",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "QK",
+      "index": 0
+    }
+  },
+  {
+    "name": "omit terminal K",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "QK",
+      "claims": [
+        {
+          "tensor": "Q",
+          "point": [
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "value": [
+            5508,
+            18446744069414582053
+          ],
+          "descriptor": [
+            "e0-local-window/1",
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        },
+        {
+          "tensor": "K",
+          "point": [
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "value": [
+            3780,
+            18446744069414582593
+          ],
+          "descriptor": [
+            "e0-local-window/1",
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "alter terminal K",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "QK",
+      "index": 1,
+      "claim": {
+        "tensor": "K",
+        "point": [
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "value": [
+          3780,
+          18446744069414582593
+        ],
+        "descriptor": [
+          "e0-local-window/1",
+          2,
+          3,
+          1,
+          3,
+          3
+        ]
+      }
+    }
+  },
+  {
+    "name": "mismatched descriptor K",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "QK",
+      "index": 1
+    }
+  },
+  {
+    "name": "alter coordinate K",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "QK",
+      "index": 1
+    }
+  },
+  {
+    "name": "omit terminal e",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "PV",
+      "claims": [
+        {
+          "tensor": "e",
+          "point": [
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "value": [
+            1523712,
+            18446744069414043649
+          ],
+          "descriptor": [
+            "e0-local-window/1",
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        },
+        {
+          "tensor": "V",
+          "point": [
+            [
+              0,
+              1
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "value": [
+            4,
+            4611686017353646079
+          ],
+          "descriptor": [
+            "e0-local-window/1",
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "alter terminal e",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "PV",
+      "index": 0,
+      "claim": {
+        "tensor": "e",
+        "point": [
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "value": [
+          1523712,
+          18446744069414043649
+        ],
+        "descriptor": [
+          "e0-local-window/1",
+          2,
+          3,
+          1,
+          3,
+          3
+        ]
+      }
+    }
+  },
+  {
+    "name": "mismatched descriptor e",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "PV",
+      "index": 0
+    }
+  },
+  {
+    "name": "alter coordinate e",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "PV",
+      "index": 0
+    }
+  },
+  {
+    "name": "omit terminal V",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "PV",
+      "claims": [
+        {
+          "tensor": "e",
+          "point": [
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "value": [
+            1523712,
+            18446744069414043649
+          ],
+          "descriptor": [
+            "e0-local-window/1",
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        },
+        {
+          "tensor": "V",
+          "point": [
+            [
+              0,
+              1
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "value": [
+            4,
+            4611686017353646079
+          ],
+          "descriptor": [
+            "e0-local-window/1",
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "alter terminal V",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "PV",
+      "index": 1,
+      "claim": {
+        "tensor": "V",
+        "point": [
+          [
+            0,
+            1
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "value": [
+          4,
+          4611686017353646079
+        ],
+        "descriptor": [
+          "e0-local-window/1",
+          2,
+          3,
+          1,
+          3,
+          3
+        ]
+      }
+    }
+  },
+  {
+    "name": "mismatched descriptor V",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "PV",
+      "index": 1
+    }
+  },
+  {
+    "name": "alter coordinate V",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "PV",
+      "index": 1
+    }
+  },
+  {
+    "name": "omit terminal c",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "key",
+      "claims": [
+        {
+          "tensor": "c",
+          "point": [
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ]
+          ],
+          "value": [
+            5188146769522851840,
+            0
+          ],
+          "descriptor": [
+            "e0-local-window/1",
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        },
+        {
+          "tensor": "x",
+          "point": [
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ]
+          ],
+          "value": [
+            3891110077142138880,
+            0
+          ],
+          "descriptor": [
+            "e0-local-window/1",
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "alter terminal c",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "key",
+      "index": 0,
+      "claim": {
+        "tensor": "c",
+        "point": [
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ]
+        ],
+        "value": [
+          5188146769522851840,
+          0
+        ],
+        "descriptor": [
+          "e0-local-window/1",
+          2,
+          3,
+          1,
+          3,
+          3
+        ]
+      }
+    }
+  },
+  {
+    "name": "mismatched descriptor c",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "key",
+      "index": 0
+    }
+  },
+  {
+    "name": "alter coordinate c",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "key",
+      "index": 0
+    }
+  },
+  {
+    "name": "omit terminal x",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "key",
+      "claims": [
+        {
+          "tensor": "c",
+          "point": [
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ]
+          ],
+          "value": [
+            5188146769522851840,
+            0
+          ],
+          "descriptor": [
+            "e0-local-window/1",
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        },
+        {
+          "tensor": "x",
+          "point": [
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ],
+            [
+              9223372034707292161,
+              0
+            ]
+          ],
+          "value": [
+            3891110077142138880,
+            0
+          ],
+          "descriptor": [
+            "e0-local-window/1",
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "alter terminal x",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "key",
+      "index": 1,
+      "claim": {
+        "tensor": "x",
+        "point": [
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ],
+          [
+            9223372034707292161,
+            0
+          ]
+        ],
+        "value": [
+          3891110077142138880,
+          0
+        ],
+        "descriptor": [
+          "e0-local-window/1",
+          2,
+          3,
+          1,
+          3,
+          3
+        ]
+      }
+    }
+  },
+  {
+    "name": "mismatched descriptor x",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "key",
+      "index": 1
+    }
+  },
+  {
+    "name": "alter coordinate x",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "tag": "key",
+      "index": 1
+    }
+  },
+  {
+    "name": "alter kappa target",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "target": [
+        0,
+        0
+      ],
+      "reason": "transport-target"
+    }
+  },
+  {
+    "name": "alter leaf target",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "target": [
+        0,
+        0
+      ],
+      "reason": "transport-target"
+    }
+  },
+  {
+    "name": "swap q/i",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "point": [
+        [
+          992176629418749140,
+          6574386793739740416
+        ],
+        [
+          3517085180538406269,
+          11869036974777622982
+        ],
+        [
+          1045742605532082108,
+          13349863300846917080
+        ],
+        [
+          16527134166977256085,
+          13535577710549536244
+        ],
+        [
+          3997432277635517304,
+          5583387678168221573
+        ],
+        [
+          13283080450333321430,
+          14715884964191225800
+        ],
+        [
+          5407912800145711951,
+          13507352815814483737
+        ],
+        [
+          465498227295671389,
+          9260654814024358091
+        ]
+      ],
+      "swapped": [
+        [
+          1045742605532082108,
+          13349863300846917080
+        ],
+        [
+          16527134166977256085,
+          13535577710549536244
+        ],
+        [
+          992176629418749140,
+          6574386793739740416
+        ],
+        [
+          3517085180538406269,
+          11869036974777622982
+        ],
+        [
+          3997432277635517304,
+          5583387678168221573
+        ],
+        [
+          13283080450333321430,
+          14715884964191225800
+        ],
+        [
+          5407912800145711951,
+          13507352815814483737
+        ],
+        [
+          465498227295671389,
+          9260654814024358091
+        ]
+      ],
+      "reason": "claim-coordinate"
+    }
+  },
+  {
+    "name": "swap head identity",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "point": [
+        [
+          992176629418749140,
+          6574386793739740416
+        ],
+        [
+          3517085180538406269,
+          11869036974777622982
+        ],
+        [
+          1045742605532082108,
+          13349863300846917080
+        ],
+        [
+          16527134166977256085,
+          13535577710549536244
+        ],
+        [
+          3997432277635517304,
+          5583387678168221573
+        ],
+        [
+          13283080450333321430,
+          14715884964191225800
+        ],
+        [
+          5407912800145711951,
+          13507352815814483737
+        ],
+        [
+          465498227295671389,
+          9260654814024358091
+        ]
+      ],
+      "changed": [
+        [
+          992176629418749140,
+          6574386793739740416
+        ],
+        [
+          3517085180538406269,
+          11869036974777622982
+        ],
+        [
+          1045742605532082108,
+          13349863300846917080
+        ],
+        [
+          16527134166977256085,
+          13535577710549536244
+        ],
+        [
+          14449311791779067018,
+          12863356391246362748
+        ],
+        [
+          13283080450333321430,
+          14715884964191225800
+        ],
+        [
+          5407912800145711951,
+          13507352815814483737
+        ],
+        [
+          465498227295671389,
+          9260654814024358091
+        ]
+      ],
+      "reason": "claim-coordinate"
+    }
+  },
+  {
+    "name": "swap layer identity",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "point": [
+        [
+          992176629418749140,
+          6574386793739740416
+        ],
+        [
+          3517085180538406269,
+          11869036974777622982
+        ],
+        [
+          1045742605532082108,
+          13349863300846917080
+        ],
+        [
+          16527134166977256085,
+          13535577710549536244
+        ],
+        [
+          3997432277635517304,
+          5583387678168221573
+        ],
+        [
+          13283080450333321430,
+          14715884964191225800
+        ],
+        [
+          5407912800145711951,
+          13507352815814483737
+        ],
+        [
+          465498227295671389,
+          9260654814024358091
+        ]
+      ],
+      "changed": [
+        [
+          992176629418749140,
+          6574386793739740416
+        ],
+        [
+          3517085180538406269,
+          11869036974777622982
+        ],
+        [
+          1045742605532082108,
+          13349863300846917080
+        ],
+        [
+          16527134166977256085,
+          13535577710549536244
+        ],
+        [
+          3997432277635517304,
+          5583387678168221573
+        ],
+        [
+          13283080450333321430,
+          14715884964191225800
+        ],
+        [
+          13038831269268872371,
+          4939391253600100584
+        ],
+        [
+          465498227295671389,
+          9260654814024358091
+        ]
+      ],
+      "reason": "claim-coordinate"
+    }
+  },
+  {
+    "name": "renumber compacted e domain",
+    "unchanged_control_passed": true,
+    "sensitive": true,
+    "fixture": {
+      "logical_e": [
+        0,
+        0,
+        4,
+        0
+      ],
+      "V": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "full": 12,
+      "wrong_shortened": 4,
+      "reason": "transport-target"
+    }
+  }
+]

@@ -1,0 +1,60 @@
+{
+  "id": "EXP-0014",
+  "path": "research/experiments/EXP-0014-lazy-radix-encoder-calibration/README.md",
+  "status": "done: refuted",
+  "verdict": "refuted",
+  "idea_status": {
+    "IDEA-0015": "refuted"
+  },
+  "priority_before": 1.5,
+  "priority_after": 0,
+  "confidence_before": 0.3,
+  "confidence_after": 0.9,
+  "key_results": [
+    {
+      "evidence": "E1",
+      "result": "Primary lazy radix16 encoder 34.941370 to 50.927485 ns/element, saving -45.751253%; natural ntt 2^22 saving -33.949684%, 2^23 saving -37.407233%"
+    },
+    {
+      "evidence": "E1 compiler observation",
+      "result": "Equivalent unrolled16-point/four-level anchors738 to740 ARM64 instructions; ratio1.002710;8 to12 stack accesses; no branches/calls"
+    },
+    {
+      "evidence": "E1",
+      "result": "All77 arms complete; all retained CV <=3% after6 reruns;1079 raw batches >=20.082583ms. Every timed output matches production; independent Horner-generated encoding vectors and boundary controls pass"
+    },
+    {
+      "evidence": "E0",
+      "result": "Actual-correction lazy radix16 arithmetic885.003 to1013.003 assumed int32 ops/element; conditional c_c scenario67.7049 to140.2991ps with unchanged hash assumptions;70.39% of historical arithmetic gap but negative CPU time realization. No GPU confidence bound or mu claim"
+    }
+  ],
+  "threats": [
+    "CPU refutation is scoped to this safe implementation; no GPU measurements",
+    "Fixed arm order, no enforced affinity, one machine/toolchain",
+    "Larger precomputed power tables and stack traffic; static anchor counts not dynamic issue cost",
+    "Conditional E0 hardware interval omits twiddle/cache/spill/bank/occupancy effects; does not replace current planning input"
+  ],
+  "follow_ups": [
+    "Only a new preregistration can test alternative primitive-root permutation, register schedule or vectorization",
+    "H100 PTX/SASS plus RFC-0020 settle actual carry instructions, utilization, memory traffic and occupancy",
+    "No production promotion recommended by this CPU result"
+  ],
+  "ledger_row": "| [EXP-0014](experiments/EXP-0014-lazy-radix-encoder-calibration/README.md) | lazy radix-16 encoder CPU calibration with radix4/8 controls | IDEA-0015 | done: refuted | primary encoder 45.75% slower; natural ntt22/23 33.95%/37.41% slower; ASM ratio1.00271; all outputs identical | E1 M4 Max; E0 conditional67.7\u2013140.3ps scenario; cargo run --release --locked --manifest-path research/experiments/EXP-0014-lazy-radix-encoder-calibration/Cargo.toml -- all; count.py; asm_count.py; analyze.py |",
+  "idea_row_summary": "IDEA-0015 refuted for fixed CPU hypothesis; priority0 at confidence.9; no GPU speedup or planning-cost replacement",
+  "new_bibliography_keys": [],
+  "problems": [],
+  "commands": [
+    "cargo test --release --locked --manifest-path research/experiments/EXP-0014-lazy-radix-encoder-calibration/Cargo.toml",
+    "cargo run --release --locked --manifest-path research/experiments/EXP-0014-lazy-radix-encoder-calibration/Cargo.toml -- check",
+    "cargo run --release --locked --manifest-path research/experiments/EXP-0014-lazy-radix-encoder-calibration/Cargo.toml -- all > research/experiments/EXP-0014-lazy-radix-encoder-calibration/results/run.txt",
+    "python3 -I research/experiments/EXP-0014-lazy-radix-encoder-calibration/count.py",
+    "python3 -I research/experiments/EXP-0014-lazy-radix-encoder-calibration/asm_count.py",
+    "python3 -I research/experiments/EXP-0014-lazy-radix-encoder-calibration/analyze.py",
+    "cargo fmt --manifest-path research/experiments/EXP-0014-lazy-radix-encoder-calibration/Cargo.toml --check",
+    "cargo clippy --all-targets --locked --manifest-path research/experiments/EXP-0014-lazy-radix-encoder-calibration/Cargo.toml -- -D warnings",
+    "cargo xtask lint"
+  ],
+  "preregistration_commit": "a462521",
+  "preregistration_SHA256": "d0b0f4c9ef85c6e79bf4f95fe295a5a81108b6f0774ea490d148988a536a778c",
+  "scope": "Owned EXP0014 and IDEA0015 only; no production changes, git writes or shared bookkeeping edits"
+}

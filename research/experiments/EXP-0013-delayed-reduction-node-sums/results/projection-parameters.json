@@ -1,0 +1,8 @@
+{
+  "lookup_count_acc4": 87.87732668645722,
+  "lookup_count_acc5": 89.13157864262408,
+  "lookup_count_acc8": 92.89433451112464,
+  "lookup_cpu_ratio": 76.76781842995113,
+  "leaf_cpu_ratio": 31.40790291521472,
+  "leaf_count_acc5": 36.278528089960616
+}

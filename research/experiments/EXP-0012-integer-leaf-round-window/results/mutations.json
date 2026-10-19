@@ -1,0 +1,30 @@
+{
+  "experiment": "EXP-0012",
+  "control_passed": true,
+  "mutants_caught": 3,
+  "mutants_total": 3,
+  "outcomes": [
+    {
+      "name": "control",
+      "exit_code": 0,
+      "expected": "pass"
+    },
+    {
+      "name": "sign-correction",
+      "exit_code": 101,
+      "expected": "correctness assertion failure"
+    },
+    {
+      "name": "integer-grid",
+      "exit_code": 101,
+      "expected": "correctness assertion failure"
+    },
+    {
+      "name": "quadratic-collapse",
+      "exit_code": 101,
+      "expected": "correctness assertion failure"
+    }
+  ],
+  "scratch": "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp12-mutants-kv3bueqz",
+  "runner_note": "Initial runner expected the literal assertion in panic text; Rust custom assert messages omit it. The driver was fixed to accept the expected messages-differ assertion, existing control/sign/grid logs audited, and the final collapse mutant resumed in the same workspace."
+}

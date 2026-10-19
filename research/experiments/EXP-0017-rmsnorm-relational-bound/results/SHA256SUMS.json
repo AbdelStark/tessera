@@ -1,0 +1,17 @@
+{
+  "results/README.preregistered.txt": "b4271d0ac83c136e77b1adb94c4aebc909b6c643f0285036e795c7cfaeada654",
+  "results/audit.json": "6d630a1906555c3effeedfe091f3c8f77138ca7bedd2dbd066388797a6e8466f",
+  "results/check.txt": "d448fed4eca83fae5df4894e3f89bbdc41cc61aa31437408e034794545223fa4",
+  "results/compiler.json": "bcd7cfa1a5398d97e41cc4484ae514cb58e7bd1f90072f0148776a1bbc49cc85",
+  "results/count.json": "eb53e6322377c502c0837cc2e6c93c5a52d150134036d95bd725fbd800e9d272",
+  "results/count.txt": "eb53e6322377c502c0837cc2e6c93c5a52d150134036d95bd725fbd800e9d272",
+  "results/environment.json": "8d39584d32c7382ccc0e28ccdfa2040af505f89892168425f167ae8cbcdef770",
+  "results/handover.json": "1d3e41ed23675504cc8bab2e0258bee27094bfc6b1e0f410ce817fde7e8c3ded",
+  "results/lint.txt": "ce7f10b9fe66744f9d54076c9764220667f6739f1aeb55e3e4023665658daa05",
+  "results/lookup-requests.json": "a0f311bb80bcf0769f98e354a09d850a8916c9607f57aa26e22a93301b4c9a46",
+  "results/lookup-responses.json": "78c23c1453f73ef5e74214f0739579d89dc19a643e6ed824250e0a7b55d99c5b",
+  "results/mutations.json": "9e0656c4bb9fe0fda6d8d966361fcdd76e974e5fb1b06656d7447f97cc4f21c3",
+  "results/mutations.txt": "9e0656c4bb9fe0fda6d8d966361fcdd76e974e5fb1b06656d7447f97cc4f21c3",
+  "results/preregistration.txt": "af78294216c9f13ac74ec0e2deaf30eaf97465679872d0c6b7f95e8941143332",
+  "results/recheck.txt": "d448fed4eca83fae5df4894e3f89bbdc41cc61aa31437408e034794545223fa4"
+}

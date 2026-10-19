@@ -1,0 +1,998 @@
+{
+  "id": "EXP-0017",
+  "path": "research/experiments/EXP-0017-rmsnorm-relational-bound/README.md",
+  "status": "done: refuted",
+  "verdict": "refuted",
+  "idea_status": {
+    "IDEA-0011": "refuted for current commitment/lookup count-saving claim"
+  },
+  "priority_before": 0.9,
+  "priority_after": 0,
+  "confidence_before": 0.6,
+  "confidence_after": 0.95,
+  "preregistration_commit": "d4bca74",
+  "preregistration_SHA256": "b4271d0ac83c136e77b1adb94c4aebc909b6c643f0285036e795c7cfaeada654",
+  "current_405B": {
+    "kappa": 30,
+    "epsilon": 2685,
+    "ordinary_input_width": 52,
+    "ordinary_exact_width": 38,
+    "ordinary_split_before": 26,
+    "ordinary_split_after": 19,
+    "exact_key_interval": [
+      -137438952750,
+      137438952750
+    ],
+    "universal_magnitude_bound": 137438953471,
+    "extremizing_single_coordinate": 524250,
+    "rho": 262163,
+    "first_embedding_interval": [
+      -254,
+      254
+    ],
+    "first_key_width_before": 41,
+    "first_key_width_after": 38,
+    "first_split_before": 21,
+    "first_split_after": 19,
+    "first_key_extremum": 134665295312,
+    "first_rho": 530178328,
+    "norms": 253,
+    "C_before": 45566660,
+    "C_after": 45566660,
+    "K_before": 45440678,
+    "K_after": 45440678,
+    "M_before": 7693467648,
+    "M_after": 7559249920,
+    "M_delta": -134217728,
+    "per_layer_C_before": 360232,
+    "per_layer_C_after": 360232,
+    "per_layer_K_before": 360380,
+    "per_layer_K_after": 360380
+  },
+  "all_cases": [
+    {
+      "d": 4096,
+      "mode": 30,
+      "kappa": 30,
+      "epsilon": 672,
+      "root_width": 32,
+      "universal_magnitude": 68719476735,
+      "first": {
+        "hi": 68364356540,
+        "lo": -68364356540,
+        "negative": {
+          "last_x": 254,
+          "magnitude": 68364356540,
+          "rho": 269151010,
+          "step": 2,
+          "x": 254
+        },
+        "positive": {
+          "last_x": 254,
+          "magnitude": 68364356540,
+          "rho": 269151010,
+          "step": 2,
+          "x": 254
+        },
+        "width": 37
+      },
+      "ordinary": {
+        "hi": 68719476636,
+        "lo": -68719476636,
+        "negative": {
+          "last_x": 524288,
+          "magnitude": 68719476636,
+          "rho": 131077,
+          "step": 1,
+          "x": 524268
+        },
+        "positive": {
+          "last_x": 524287,
+          "magnitude": 68719476636,
+          "rho": 131077,
+          "step": 1,
+          "x": 524268
+        },
+        "width": 37
+      },
+      "baseline_width": 52,
+      "baseline_split": 26,
+      "candidate_split": 19,
+      "norm_count": 65,
+      "C_delta": 0,
+      "K_delta": 0,
+      "first_layer_C_delta": 0,
+      "first_layer_K_delta": 0,
+      "C": 3195412,
+      "K": 3064734,
+      "M_before": 2043740160,
+      "M_after": 1909260288,
+      "M_delta": -134479872,
+      "first_witnesses": [
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": -254
+          },
+          "rho": 269151010,
+          "u": 65188,
+          "lower_slack": 34865742934896,
+          "upper_slack": 225089210051
+        },
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": 254
+          },
+          "rho": 269151010,
+          "u": 65188,
+          "lower_slack": 34865742934896,
+          "upper_slack": 225089210051
+        }
+      ],
+      "ordinary_witnesses": [
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": -524268
+          },
+          "rho": 131077,
+          "u": 274856936496,
+          "lower_slack": 2198142424912,
+          "upper_slack": 72052922044683967
+        },
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": 524268
+          },
+          "rho": 131077,
+          "u": 274856936496,
+          "lower_slack": 2198142424912,
+          "upper_slack": 72052922044683967
+        }
+      ]
+    },
+    {
+      "d": 4096,
+      "mode": 16,
+      "kappa": 16,
+      "epsilon": 672,
+      "root_width": 18,
+      "universal_magnitude": 4194303,
+      "first": {
+        "hi": 4172458,
+        "lo": -4172458,
+        "negative": {
+          "last_x": 254,
+          "magnitude": 4172458,
+          "rho": 16427,
+          "step": 2,
+          "x": 254
+        },
+        "positive": {
+          "last_x": 254,
+          "magnitude": 4172458,
+          "rho": 16427,
+          "step": 2,
+          "x": 254
+        },
+        "width": 23
+      },
+      "ordinary": {
+        "hi": 4194303,
+        "lo": -4194303,
+        "negative": {
+          "last_x": 524288,
+          "magnitude": 4194303,
+          "rho": 89,
+          "step": 1,
+          "x": 47127
+        },
+        "positive": {
+          "last_x": 524287,
+          "magnitude": 4194303,
+          "rho": 89,
+          "step": 1,
+          "x": 47127
+        },
+        "width": 23
+      },
+      "baseline_width": 38,
+      "baseline_split": 12,
+      "candidate_split": null,
+      "norm_count": 65,
+      "C_delta": -262144,
+      "K_delta": -262144,
+      "first_layer_C_delta": -4096,
+      "first_layer_K_delta": -4096,
+      "C": 2929172,
+      "K": 2798494,
+      "M_before": 2109804544,
+      "M_after": 1916862464,
+      "M_delta": -192942080,
+      "first_witnesses": [
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": -254
+          },
+          "rho": 16427,
+          "u": 65188,
+          "lower_slack": 1443549564,
+          "upper_slack": 698202175
+        },
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": 254
+          },
+          "rho": 16427,
+          "u": 65188,
+          "lower_slack": 1443549564,
+          "upper_slack": 698202175
+        }
+      ],
+      "ordinary_witnesses": [
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": -47127
+          },
+          "rho": 89,
+          "u": 2220954801,
+          "lower_slack": 3065695,
+          "upper_slack": 397547843683
+        },
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": 47127
+          },
+          "rho": 89,
+          "u": 2220954801,
+          "lower_slack": 3065695,
+          "upper_slack": 397547843683
+        }
+      ]
+    },
+    {
+      "d": 4096,
+      "mode": 31,
+      "kappa": 31,
+      "epsilon": 4096,
+      "root_width": 32,
+      "universal_magnitude": 137438953471,
+      "first": {
+        "hi": 133273411888,
+        "lo": -133273411888,
+        "negative": {
+          "last_x": 254,
+          "magnitude": 133273411888,
+          "rho": 524698472,
+          "step": 2,
+          "x": 254
+        },
+        "positive": {
+          "last_x": 254,
+          "magnitude": 133273411888,
+          "rho": 524698472,
+          "step": 2,
+          "x": 254
+        },
+        "width": 38
+      },
+      "ordinary": {
+        "hi": 137438952441,
+        "lo": -137438952441,
+        "negative": {
+          "last_x": 524288,
+          "magnitude": 137438952441,
+          "rho": 262507,
+          "step": 1,
+          "x": 523563
+        },
+        "positive": {
+          "last_x": 524287,
+          "magnitude": 137438952441,
+          "rho": 262507,
+          "step": 1,
+          "x": 523563
+        },
+        "width": 38
+      },
+      "baseline_width": 52,
+      "baseline_split": 26,
+      "candidate_split": 19,
+      "norm_count": 65,
+      "C_delta": 0,
+      "K_delta": 0,
+      "first_layer_C_delta": 0,
+      "first_layer_K_delta": 0,
+      "C": 3195412,
+      "K": 3064734,
+      "M_before": 2043740160,
+      "M_after": 1909522432,
+      "M_delta": -134217728,
+      "first_witnesses": [
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": -254
+          },
+          "rho": 524698472,
+          "u": 68612,
+          "lower_slack": 54427705054976,
+          "upper_slack": 17573518135363
+        },
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": 254
+          },
+          "rho": 524698472,
+          "u": 68612,
+          "lower_slack": 54427705054976,
+          "upper_slack": 17573518135363
+        }
+      ],
+      "ordinary_witnesses": [
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": -523563
+          },
+          "rho": 262507,
+          "u": 274118219065,
+          "lower_slack": 1144067995599,
+          "upper_slack": 143915032714415375
+        },
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": 523563
+          },
+          "rho": 262507,
+          "u": 274118219065,
+          "lower_slack": 1144067995599,
+          "upper_slack": 143915032714415375
+        }
+      ]
+    },
+    {
+      "d": 16384,
+      "mode": 30,
+      "kappa": 30,
+      "epsilon": 2685,
+      "root_width": 32,
+      "universal_magnitude": 137438953471,
+      "first": {
+        "hi": 134665295312,
+        "lo": -134665295312,
+        "negative": {
+          "last_x": 254,
+          "magnitude": 134665295312,
+          "rho": 530178328,
+          "step": 2,
+          "x": 254
+        },
+        "positive": {
+          "last_x": 254,
+          "magnitude": 134665295312,
+          "rho": 530178328,
+          "step": 2,
+          "x": 254
+        },
+        "width": 38
+      },
+      "ordinary": {
+        "hi": 137438952750,
+        "lo": -137438952750,
+        "negative": {
+          "last_x": 524288,
+          "magnitude": 137438952750,
+          "rho": 262163,
+          "step": 1,
+          "x": 524250
+        },
+        "positive": {
+          "last_x": 524287,
+          "magnitude": 137438952750,
+          "rho": 262163,
+          "step": 1,
+          "x": 524250
+        },
+        "width": 38
+      },
+      "baseline_width": 52,
+      "baseline_split": 26,
+      "candidate_split": 19,
+      "norm_count": 253,
+      "C_delta": 0,
+      "K_delta": 0,
+      "first_layer_C_delta": 0,
+      "first_layer_K_delta": 0,
+      "C": 45566660,
+      "K": 45440678,
+      "M_before": 7693467648,
+      "M_after": 7559249920,
+      "M_delta": -134217728,
+      "first_witnesses": [
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": -254
+          },
+          "rho": 530178328,
+          "u": 67201,
+          "lower_slack": 45304260734400,
+          "upper_slack": 25952766972656
+        },
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": 254
+          },
+          "rho": 530178328,
+          "u": 67201,
+          "lower_slack": 45304260734400,
+          "upper_slack": 25952766972656
+        }
+      ],
+      "ordinary_witnesses": [
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": -524250
+          },
+          "rho": 262163,
+          "u": 274838065185,
+          "lower_slack": 13923305734519,
+          "upper_slack": 144091094898520975
+        },
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": 524250
+          },
+          "rho": 262163,
+          "u": 274838065185,
+          "lower_slack": 13923305734519,
+          "upper_slack": 144091094898520975
+        }
+      ]
+    },
+    {
+      "d": 16384,
+      "mode": 16,
+      "kappa": 16,
+      "epsilon": 2685,
+      "root_width": 18,
+      "universal_magnitude": 8388607,
+      "first": {
+        "hi": 8219186,
+        "lo": -8219186,
+        "negative": {
+          "last_x": 254,
+          "magnitude": 8219186,
+          "rho": 32359,
+          "step": 2,
+          "x": 254
+        },
+        "positive": {
+          "last_x": 254,
+          "magnitude": 8219186,
+          "rho": 32359,
+          "step": 2,
+          "x": 254
+        },
+        "width": 24
+      },
+      "ordinary": {
+        "hi": 8388607,
+        "lo": -8388607,
+        "negative": {
+          "last_x": 524288,
+          "magnitude": 8388607,
+          "rho": 47,
+          "step": 1,
+          "x": 178481
+        },
+        "positive": {
+          "last_x": 524287,
+          "magnitude": 8388607,
+          "rho": 47,
+          "step": 1,
+          "x": 178481
+        },
+        "width": 24
+      },
+      "baseline_width": 38,
+      "baseline_split": 12,
+      "candidate_split": null,
+      "norm_count": 253,
+      "C_delta": -4128768,
+      "K_delta": -4128768,
+      "first_layer_C_delta": -16384,
+      "first_layer_K_delta": -16384,
+      "C": 41421508,
+      "K": 41295526,
+      "M_before": 7759532032,
+      "M_after": 7574978560,
+      "M_delta": -184553472,
+      "first_witnesses": [
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": -254
+          },
+          "rho": 32359,
+          "u": 67201,
+          "lower_slack": 2249069583,
+          "upper_slack": 2100111935
+        },
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": 254
+          },
+          "rho": 32359,
+          "u": 67201,
+          "lower_slack": 2249069583,
+          "upper_slack": 2100111935
+        }
+      ],
+      "ordinary_witnesses": [
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": -178481
+          },
+          "rho": 47,
+          "u": 31855470046,
+          "lower_slack": 10846050,
+          "upper_slack": 3026258808319
+        },
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": 178481
+          },
+          "rho": 47,
+          "u": 31855470046,
+          "lower_slack": 10846050,
+          "upper_slack": 3026258808319
+        }
+      ]
+    },
+    {
+      "d": 16384,
+      "mode": 31,
+      "kappa": 31,
+      "epsilon": 16384,
+      "root_width": 32,
+      "universal_magnitude": 274877906943,
+      "first": {
+        "hi": 245470490770,
+        "lo": -245470490770,
+        "negative": {
+          "last_x": 254,
+          "magnitude": 245470490770,
+          "rho": 966419255,
+          "step": 2,
+          "x": 254
+        },
+        "positive": {
+          "last_x": 254,
+          "magnitude": 245470490770,
+          "rho": 966419255,
+          "step": 2,
+          "x": 254
+        },
+        "width": 39
+      },
+      "ordinary": {
+        "hi": 274877898699,
+        "lo": -274877898699,
+        "negative": {
+          "last_x": 524288,
+          "magnitude": 274877898699,
+          "rho": 525741,
+          "step": 1,
+          "x": 522839
+        },
+        "positive": {
+          "last_x": 524287,
+          "magnitude": 274877898699,
+          "rho": 525741,
+          "step": 1,
+          "x": 522839
+        },
+        "width": 39
+      },
+      "baseline_width": 52,
+      "baseline_split": 26,
+      "candidate_split": 20,
+      "norm_count": 253,
+      "C_delta": 0,
+      "K_delta": 0,
+      "first_layer_C_delta": 0,
+      "first_layer_K_delta": 0,
+      "C": 45566660,
+      "K": 45440678,
+      "M_before": 7693467648,
+      "M_after": 7558725632,
+      "M_delta": -134742016,
+      "first_witnesses": [
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": -254
+          },
+          "rho": 966419255,
+          "u": 80900,
+          "lower_slack": 52342641896636,
+          "upper_slack": 104023993643263
+        },
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": 254
+          },
+          "rho": 966419255,
+          "u": 80900,
+          "lower_slack": 52342641896636,
+          "upper_slack": 104023993643263
+        }
+      ],
+      "ordinary_witnesses": [
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": -522839
+          },
+          "rho": 525741,
+          "u": 273360636305,
+          "lower_slack": 4140050183431,
+          "upper_slack": 287429921893706883
+        },
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": 522839
+          },
+          "rho": 525741,
+          "u": 273360636305,
+          "lower_slack": 4140050183431,
+          "upper_slack": 287429921893706883
+        }
+      ]
+    }
+  ],
+  "table_difference": {
+    "removed": [
+      {
+        "digest": [
+          162,
+          10,
+          248,
+          177,
+          224,
+          186,
+          35,
+          124,
+          139,
+          218,
+          103,
+          89,
+          21,
+          224,
+          133,
+          91,
+          187,
+          50,
+          228,
+          161,
+          77,
+          140,
+          165,
+          93,
+          191,
+          199,
+          232,
+          126,
+          14,
+          64,
+          39,
+          121
+        ],
+        "id": 4,
+        "kind": {
+          "b": 20,
+          "hi": 127,
+          "lo": -128,
+          "shifts": [
+            6
+          ],
+          "tag": "Requant"
+        },
+        "log2_rows": 20,
+        "rows": 1048576
+      },
+      {
+        "digest": [
+          210,
+          18,
+          15,
+          60,
+          65,
+          121,
+          214,
+          235,
+          19,
+          66,
+          96,
+          124,
+          120,
+          152,
+          65,
+          159,
+          113,
+          199,
+          152,
+          98,
+          204,
+          196,
+          3,
+          158,
+          103,
+          2,
+          49,
+          5,
+          87,
+          194,
+          160,
+          161
+        ],
+        "id": 12,
+        "kind": {
+          "b": 26,
+          "hi": 127,
+          "lo": -128,
+          "shifts": [
+            1
+          ],
+          "tag": "Requant"
+        },
+        "log2_rows": 26,
+        "rows": 67108864
+      },
+      {
+        "digest": [
+          221,
+          70,
+          230,
+          246,
+          97,
+          29,
+          81,
+          45,
+          171,
+          171,
+          146,
+          226,
+          190,
+          249,
+          90,
+          84,
+          218,
+          31,
+          131,
+          1,
+          109,
+          73,
+          83,
+          179,
+          249,
+          114,
+          153,
+          231,
+          250,
+          185,
+          205,
+          222
+        ],
+        "id": 11,
+        "kind": {
+          "bits": 26,
+          "tag": "Range"
+        },
+        "log2_rows": 26,
+        "rows": 67108864
+      }
+    ],
+    "added": [
+      {
+        "digest": [
+          153,
+          131,
+          26,
+          152,
+          211,
+          189,
+          5,
+          230,
+          202,
+          249,
+          223,
+          149,
+          218,
+          141,
+          140,
+          153,
+          240,
+          147,
+          146,
+          245,
+          233,
+          89,
+          44,
+          121,
+          25,
+          194,
+          164,
+          69,
+          247,
+          195,
+          76,
+          156
+        ],
+        "id": 4,
+        "kind": {
+          "b": 19,
+          "hi": 127,
+          "lo": -128,
+          "shifts": [
+            8
+          ],
+          "tag": "Requant"
+        },
+        "log2_rows": 19,
+        "rows": 524288
+      },
+      {
+        "digest": [
+          249,
+          50,
+          255,
+          203,
+          169,
+          233,
+          87,
+          29,
+          242,
+          173,
+          94,
+          8,
+          8,
+          210,
+          234,
+          102,
+          213,
+          132,
+          12,
+          67,
+          227,
+          241,
+          173,
+          195,
+          30,
+          221,
+          172,
+          1,
+          252,
+          187,
+          31,
+          147
+        ],
+        "id": 3,
+        "kind": {
+          "bits": 19,
+          "tag": "Range"
+        },
+        "log2_rows": 19,
+        "rows": 524288
+      }
+    ],
+    "retained_old_first_low_table": "Range21 remains shared"
+  },
+  "coverage": {
+    "candidate_roots": 954440,
+    "rows": 93600,
+    "keys": 361120,
+    "synthetic_rows": {
+      "4": 1000,
+      "16": 1000,
+      "128": 1000,
+      "4096": 100,
+      "16384": 100
+    },
+    "requant_keys": 160877,
+    "production_lookup_groups": 15,
+    "mutations_caught": 6,
+    "mutations_total": 6,
+    "no_op_control": true
+  },
+  "key_results": [
+    {
+      "evidence": "E0",
+      "result": "Algebraic relational bound valid under exact integer bracket, e>=1 and padded-rho pin; current count-saving hypothesis refuted because38bits still split."
+    },
+    {
+      "evidence": "E0",
+      "result": "Current C/K unchanged; M decreases134,217,728 after full-model table sharing. Historical k16 controls become single, but current k30 and k31 controls do not."
+    },
+    {
+      "evidence": "E0 conditional projection",
+      "result": "Counted mu(1K)32.2941033150\u219232.2914298871(-0.0082783780%); mu(16K)102.4439172644\u2192102.4414366428(-0.0024214435%). Table-row-only, current partial planning model; no GPU claim."
+    }
+  ],
+  "threats": [
+    "No production range refinement or independent verifier implementation; no full-protocol soundness/zero-knowledge endorsement.",
+    "Row-domain extrema are attained by synthetic rows, not certified reachable under one fixed pretrained model.",
+    "Approximate RsqrtRow20/30 costs and omitted row-gadget range-table multiplicities retained from baseline.",
+    "E0 logical table rows and conditional planning projections are not GPU time or memory measurements."
+  ],
+  "follow_ups": [
+    "New scoped table-row optimization proposal and specification amendment, with independent verifier re-derivation.",
+    "H100 can measure table generation/multiplicity storage/lookup effects, not change exact C/K counts."
+  ],
+  "commands": [
+    "cargo run --release --locked --manifest-path research/experiments/EXP-0017-rmsnorm-relational-bound/Cargo.toml -- > research/experiments/EXP-0017-rmsnorm-relational-bound/results/compiler.json",
+    "python3 -I research/experiments/EXP-0017-rmsnorm-relational-bound/check.py",
+    "python3 -I research/experiments/EXP-0017-rmsnorm-relational-bound/check.py --audit research/experiments/EXP-0017-rmsnorm-relational-bound/results/audit.json",
+    "python3 -I research/experiments/EXP-0017-rmsnorm-relational-bound/mutate.py",
+    "python3 -I research/experiments/EXP-0017-rmsnorm-relational-bound/count.py",
+    "cargo fmt --manifest-path research/experiments/EXP-0017-rmsnorm-relational-bound/Cargo.toml --check",
+    "cargo clippy --all-targets --locked --manifest-path research/experiments/EXP-0017-rmsnorm-relational-bound/Cargo.toml -- -D warnings",
+    "cargo xtask lint",
+    "python3 -I research/experiments/EXP-0017-rmsnorm-relational-bound/provenance.py"
+  ],
+  "checks": {
+    "fmt": "passed",
+    "clippy": "passed",
+    "repository_lint": "passed",
+    "independent_saved_audit": "passed",
+    "baseline_full_gadget_tally": "passed",
+    "baseline_committed_c2_report": "exact match",
+    "mutations": "6/6 caught; no-op passes"
+  },
+  "ledger_row": "| [EXP-0017](experiments/EXP-0017-rmsnorm-relational-bound/README.md) | current RMSNorm relational bound/count kill | IDEA-0011 | done: refuted | current \u03ba30 width52\u219238 remains split; \u0394C=\u0394K=0; M\u2212134,217,728 | E0 exact integer/compiler counts; check.py; count.py; mutate.py |",
+  "new_bibliography_keys": [],
+  "problems": [],
+  "scope": "Own EXP0017 + IDEA0011 only; no production changes, shared bookkeeping or git writes"
+}

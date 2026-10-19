@@ -1,0 +1,35 @@
+unique decoding (RFC-0014 'Soundness budget'): δ = (1 − ρ')/2
+set                        n        ρ′       δ  bits/q     τ   bits  RFC τ  field
+live-64 advice       8388608  0.500019  0.2500  0.4150   155   64.3    155    105
+live-64 weights      4194304  0.265625  0.3672  0.6601    97   64.0     97    106
+ni-100 advice        8388608  0.500024  0.2500  0.4150   193   80.1    193    105
+ni-100 weights       4194304  0.265625  0.3672  0.6601   122   80.5    122    106
+
+rate sweep for live-64 advice under unique decoding; encode and hash volume scale with n/k = 1/rate
+  rate         n        ρ′  bits/q     τ  opened GB  volume ×
+   1/2   8388608  0.500019  0.4150   155      0.719       2.0
+   1/4  16777216  0.250010  0.6781    95      0.441       4.0
+   1/8  33554432  0.125005  0.8301    78      0.362       8.0
+  1/16  67108864  0.062502  0.9125    71      0.329      16.0
+
+rate sweep for live-64 weights under unique decoding; encode and hash volume scale with n/k = 1/rate
+  rate         n        ρ′  bits/q     τ  opened GB  volume ×
+   1/2   2097152  0.531250  0.3853   167      0.005       2.0
+   1/4   4194304  0.265625  0.6601    97      0.003       4.0
+   1/8   8388608  0.132812  0.8201    79      0.003       8.0
+  1/16  16777216  0.066406  0.9072    71      0.002      16.0
+
+rate sweep for ni-100 advice under unique decoding; encode and hash volume scale with n/k = 1/rate
+  rate         n        ρ′  bits/q     τ  opened GB  volume ×
+   1/2   8388608  0.500024  0.4150   193      0.896       2.0
+   1/4  16777216  0.250012  0.6781   118      0.548       4.0
+   1/8  33554432  0.125006  0.8301    97      0.450       8.0
+  1/16  67108864  0.062503  0.9125    88      0.408      16.0
+
+rate sweep for ni-100 weights under unique decoding; encode and hash volume scale with n/k = 1/rate
+  rate         n        ρ′  bits/q     τ  opened GB  volume ×
+   1/2   2097152  0.531250  0.3853   208      0.007       2.0
+   1/4   4194304  0.265625  0.6601   122      0.004       4.0
+   1/8   8388608  0.132812  0.8201    98      0.003       8.0
+  1/16  16777216  0.066406  0.9072    89      0.003      16.0
+

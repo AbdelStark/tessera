@@ -1,0 +1,17 @@
+{
+  "kind": "narrow final pre-code draft confirmation; no implementation or run",
+  "utc": "2026-10-19T11:13:53.233324+00:00",
+  "readme_sha256": "07aaf9d2c4d33c4556dc63656671dbe57a538aa26bbd2aed4a9bd0c7ed3901af",
+  "previous_draft_sha256": "4048c999538f853f2f30647ed60b8d3e4a583c1771a4af0d16cd75fa5315d7f7",
+  "integrated_addendum_sha256": "8eda85c30faff8b40521afd5b355f17ade9f5f1db8b30c7708338d3c10a3c1e5",
+  "previous_independent_review_sha256": "18290e033926c679e6944c1f209b0b9e1cf916bab4c25ba37992075d90530d3f",
+  "confirmed": [
+    "Reviewed candidate/reference separation and arbitraryV acceptance addendum integrated verbatim",
+    "Both immutable root registries explicitly bind tensor,rowmap,physical masks,encodedcolumns before dependentqueries",
+    "Candidate interfaces forbid complete tensors/source masks/honestcombinedM preacceptanceoracle",
+    "Source-consistent fullcandidate cancellation root/nonroot corpus retained",
+    "Nonzero maskmutants requireP1/P2=1;P0onlyzerocontrol",
+    "Original72/1152/4608/18432domain and numerical criteria unchanged"
+  ],
+  "decision": "No remaining objection to freezing this bounded conditional preregistration on reviewed assumptions. Review does not authorize implementation before parent freeze/commit, and is no cryptographic security/ZK/cost approval."
+}

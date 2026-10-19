@@ -1,0 +1,9 @@
+# EXP-0020 whole-proof output-boundary clarification
+
+Dated2026-10-19, before any CPU timing. This clarification changes no shape, arm, primary hypothesis, threshold, comparison statistic, resource or retry/noise gate. The original preregistration and paid-prefix amendment remain immutable.
+
+The whole-proof measurement includes the common output adapter in driver::prove: P/P2 call the actual public prove_logup API; D/C call their registered research adapter. Every native result is copied by the same record! macro into an identical owned Record containing every proof message, root, challenge, point and returned claim. The native proof is dropped, then the owned Record is black-boxed and dropped inside every timed repetition. All of that allocation/copy/clearing/drop cost is paid in all arms; no cost is subtracted or cached, and no arm has a special output shortcut. Describe this boundary as complete LogUp proof plus common output normalization. It is not an isolated native-API-only latency measurement or additive attribution of adapter cost. Equality and independent verification still run outside the clock before and after measurement.
+
+The paid-prefix+bottom diagnostic instead constructs its common owned Level from the moved sumcheck proof and the derived points/claims, with the same allocation/drop boundary in every arm. It does not serialize JSON or clone a whole Record inside timing. Prefix replay and all its squeezes/preparation/continuation remain paid under the already frozen amendment. Neither diagnostic time nor adapter cost is subtracted from whole time.
+
+Source anchors at clarification: src/driver.rs record! and prove, src/measure.rs Diagnostic::run and once. Final measured source hashes and build/binary hashes must be retained. No CPU timing had run when these bytes were frozen.

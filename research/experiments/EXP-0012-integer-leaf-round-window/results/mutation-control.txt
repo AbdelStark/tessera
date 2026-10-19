@@ -1,0 +1,98 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.14
+   Compiling libc v0.2.191
+   Compiling cfg-if v1.0.5
+   Compiling getrandom v0.3.4
+   Compiling arrayvec v0.7.8
+   Compiling constant_time_eq v0.4.2
+   Compiling zeroize v1.9.1
+   Compiling tv-field v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-field)
+   Compiling tv-codec v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-codec)
+   Compiling tv-hash v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-hash)
+   Compiling cc v1.8.0
+   Compiling tv-tables v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-tables)
+   Compiling tv-core v0.1.0 (/Users/abdel/dev/me/tessera-research/verifier/crates/tv-core)
+   Compiling blake3 v1.8.7
+   Compiling syn v3.0.9
+   Compiling tessera-codec-derive v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-codec-derive)
+   Compiling tessera-codec v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-codec)
+   Compiling tessera-field v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-field)
+   Compiling tessera-poly v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-poly)
+   Compiling tessera-hash v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-hash)
+   Compiling tessera-sumcheck v0.1.0 (/Users/abdel/dev/me/tessera-research/crates/tessera-sumcheck)
+   Compiling integer-window v0.0.0 (/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp12-mutants-kv3bueqz)
+    Finished `release` profile [optimized] target(s) in 28.03s
+     Running `/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp12-mutants-kv3bueqz/target/release/integer-window check`
+overflow v=1 cadence=32 bound=93461298887790795697085718743482080 < 2^127
+overflow v=3 cadence=32 bound=7570365209911054451463943218222048480 < 2^127
+overflow v=4 cadence=32 bound=68133286889199490063175488963998436320 < 2^127
+overflow v=5 cadence=8 bound=153299895500698852642144850168996481720 < 2^127
+check field:     3 edge products of spec/vectors/field/goldilocks.json reproduced
+check forests:   tree [2, 3, 5, 7]: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+check hand case: tree [2, 3, 5, 7]: candidate's proof accepted from root 210; against 211 rejected (level 0: FinalMismatch { round: 0 })
+check sweep:     n = 1..=12 alone and 6 two-instance batches with front-padding (one instance on no variable): bit-identical to prove_batch, verifier accepts; no fallback
+check forests:   two forests (2^2 x 2^8 leaves, 2^5 x 2^6 leaves): 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest c48318c9b735eac4
+check fallback:  (i) r_3 = 0: fallback once, bit-identical, verifier accepts; (ii) r_5 = 1: no fallback, bit-identical, verifier accepts; (iii) scripted c_2 with l_2(c_2) = 0: fallback in rounds 3..12, every later message zero, bit-identical to prove_batch under the same script
+check forests:   two forest windows: 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 3522b4733c4370ba
+check forests:   hand windows: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+check fallback:  (i) r_3 = 0: fallback once, bit-identical, verifier accepts; (ii) r_5 = 1: no fallback, bit-identical, verifier accepts; (iii) scripted c_2 with l_2(c_2) = 0: fallback in rounds 3..12, every later message zero, bit-identical to prove_batch under the same script
+check forests:   two forest windows: 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest d0e7f6c0b334d049
+check forests:   hand windows: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+check fallback:  (i) r_3 = 0: fallback once, bit-identical, verifier accepts; (ii) r_5 = 1: no fallback, bit-identical, verifier accepts; (iii) scripted c_2 with l_2(c_2) = 0: fallback in rounds 3..12, every later message zero, bit-identical to prove_batch under the same script
+check forests:   two forest windows: 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 4c389e72b18a8e60
+check forests:   hand windows: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+check fallback:  (i) r_3 = 0: fallback once, bit-identical, verifier accepts; (ii) r_5 = 1: no fallback, bit-identical, verifier accepts; (iii) scripted c_2 with l_2(c_2) = 0: fallback in rounds 3..12, every later message zero, bit-identical to prove_batch under the same script
+check forests:   two forest windows: 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 4ddfca25d8476440
+check forests:   hand windows: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+all correctness checks passed; exact bounds, signed reduction, windows, padding, degeneracies, tv-core acceptance
+check fraction v2 pairs=1 bit-identical production, independent verifier accepts, digest df435345b96652cfa98f5c272c9456701adeebf66a349aa4f99f8cd587b50703
+check fraction v2 pairs=2 bit-identical production, independent verifier accepts, digest 6f635cbf0ff9e1b7b09b1b18b6199cb9d16c5400872845869dffc3a156a2c1c4
+check fraction v2 pairs=4 bit-identical production, independent verifier accepts, digest 4e3bf93f7dbbcf6dbc5c946e8bb89e3057ba788c532c34a3e13a83e2a0effd94
+check fraction v2 pairs=8 bit-identical production, independent verifier accepts, digest 31f617f9ff21063591e5bd4ad44208a1e708e5bc2042efd8c7c8c312f70c8161
+check fraction v2 pairs=16 bit-identical production, independent verifier accepts, digest 63b0698bec3a81a19657675b783f561572cb23673558ebbf661a0e67f00663f6
+check fraction v2 pairs=32 bit-identical production, independent verifier accepts, digest 6267c4e03232fe98174c7a786b6030f26c41a84ab6c9f7e67cf4f4d742b265f5
+check fraction v2 pairs=64 bit-identical production, independent verifier accepts, digest eedd49530d9e0af07b1f8a8d93e9b498e216fff89992e808ba330061e4e0182f
+check fraction v2 pairs=128 bit-identical production, independent verifier accepts, digest cd5765bb7c4d77c7e0b2cc2515e48e39c40f0add6153cd14403e80e36d359f61
+check fraction v2 pairs=256 bit-identical production, independent verifier accepts, digest 0e49349341e052e475e5684bfae72425e09a2b254806bbce0ac47ab7fe450d83
+check fraction v2 pairs=256 bit-identical production, independent verifier accepts, digest 84df9ad7063f9ddd45d2030322fb477d4f54a4a841344cdc6f529c45217dbc58
+check fraction v2 pairs=256 bit-identical production, independent verifier accepts, digest 971dc816da949a0e04d5e18b1d0ded5cf7621b8e7dade46d24230c631e33cf8e
+check fraction v2: zero/one eq coordinates and scripted prior-eq-zero pass
+check fraction v3 pairs=1 bit-identical production, independent verifier accepts, digest d99b38ee0f6832b8564f7c995bbcbc2acdb926e62fcbbe05ca6083490e7517b4
+check fraction v3 pairs=2 bit-identical production, independent verifier accepts, digest 82f309f425d8e95f6c1d41c6e42cf9816136c2327d059d884f521bcb0d016289
+check fraction v3 pairs=4 bit-identical production, independent verifier accepts, digest fb03471a4ea44feefeeac6964dffe6a44de69251b8e3ad91cd370b845041dbf2
+check fraction v3 pairs=8 bit-identical production, independent verifier accepts, digest f18df08bc7d71c06cc9da17bd629cb5bffb7b2c4b608d65039f63e562896db81
+check fraction v3 pairs=16 bit-identical production, independent verifier accepts, digest 6261d2281fca8c2d3a873f094274fb1357d168b80e6f3808e0e6dcb0def8160c
+check fraction v3 pairs=32 bit-identical production, independent verifier accepts, digest 5a84a5a69377cc85773f7e93b6e06f9ca8ac8a02ebe717d9fffaeaa896f7bd04
+check fraction v3 pairs=64 bit-identical production, independent verifier accepts, digest d17519cab4cc4996c2cd31e7da863e11bee10a46d3ddd7b112d4c64fcaa961c8
+check fraction v3 pairs=128 bit-identical production, independent verifier accepts, digest d89d6f37fd0a2d4503a01f5b99aab442a2473ad23969f5857091587436eb12b0
+check fraction v3 pairs=256 bit-identical production, independent verifier accepts, digest 94ba147250ea2c6ad4872de2b2280c04ced6e1c1d5845c0db3031e90bc300666
+check fraction v3 pairs=256 bit-identical production, independent verifier accepts, digest e087c63e0333aeddf2924e21d4ab2cf77500b43e1efcacc0d52cd35d86199f45
+check fraction v3 pairs=256 bit-identical production, independent verifier accepts, digest dc8a479b33890e8c9c9a7ad23635dda283a619b8db4b1933f20b8ff3132efd91
+check fraction v3: zero/one eq coordinates and scripted prior-eq-zero pass
+check fraction v4 pairs=1 bit-identical production, independent verifier accepts, digest 300844e41dccd0171dd78602a1e4f5d6b693fe3d90ee2d1f1acc37bd853feef6
+check fraction v4 pairs=2 bit-identical production, independent verifier accepts, digest 00856906823ea3715eee5dae3edca3e9203e0ae94976289f815870dd78ded58b
+check fraction v4 pairs=4 bit-identical production, independent verifier accepts, digest 3592b77807b3e06bcbc1983355d1fc2d0a0ced546d2c1934c90b3340a3306a69
+check fraction v4 pairs=8 bit-identical production, independent verifier accepts, digest 1f11d82238261b9b6d19c526c7451f7690848b40be96c96e7a31c1013d8f55f8
+check fraction v4 pairs=16 bit-identical production, independent verifier accepts, digest f03c4bca379e8e86d2714e16cc5b858fafe33398da619a5da89ae711d0b2e021
+check fraction v4 pairs=32 bit-identical production, independent verifier accepts, digest fc5648dd4af91d9a8f7efa47be316f9ee0eca05878fe43b6ff1f16826230eab6
+check fraction v4 pairs=64 bit-identical production, independent verifier accepts, digest fa95e324fc6c42fcbce4fc05f9de126ea454ed29555934b048b332439cc8e3a0
+check fraction v4 pairs=128 bit-identical production, independent verifier accepts, digest 53f4ea12f8d2300ba4d0f16c8c893a1027f71ad76168055074730cbbbeb57096
+check fraction v4 pairs=256 bit-identical production, independent verifier accepts, digest d2769b5b9d785c0db6a9cdd3cd17fd27f884f0aa00e2f2911fd4fa3607d14cc9
+check fraction v4 pairs=256 bit-identical production, independent verifier accepts, digest 85d079a59a352e6af3b47e9d0ab47082ef8251f69a692b2235c7c257d637bffb
+check fraction v4 pairs=256 bit-identical production, independent verifier accepts, digest 7f0d6a0164a316d59f0b11630bc1e11032a8bd3cec02220c83d1d98d1cdbed51
+check fraction v4: zero/one eq coordinates and scripted prior-eq-zero pass
+check fraction v5 pairs=1 bit-identical production, independent verifier accepts, digest ac973d9c1d743ea3edd08356e2b6bf674769554fccd405f28509c8e21623c320
+check fraction v5 pairs=2 bit-identical production, independent verifier accepts, digest 2a8133758342baaa9da5c620c5e316a2f4d862b002fddd569aa141f0e8321b16
+check fraction v5 pairs=4 bit-identical production, independent verifier accepts, digest a176f88778252d97b93b04e9fecca7ddbb4a9b26e265d551b59edc10d02c8ff7
+check fraction v5 pairs=8 bit-identical production, independent verifier accepts, digest 32ae17c78f60d1191d05adbe87b365b7974b0781ed964eecf089587648c2f289
+check fraction v5 pairs=16 bit-identical production, independent verifier accepts, digest 6f376837d03a7ccccec7fbeb0cb5ee6735ead91aeb76abe685236b073abb2284
+check fraction v5 pairs=32 bit-identical production, independent verifier accepts, digest 0119235a069bc4a51b0d5882cb94ac8ee3207f34edd5be462ba945d878141170
+check fraction v5 pairs=64 bit-identical production, independent verifier accepts, digest 778ca3961a7cc61841e79e1551aca4501cedc3cf693912fa8fe9813b45e1d9af
+check fraction v5 pairs=128 bit-identical production, independent verifier accepts, digest b9a426feb195f461c5a2d883002f7f6f7ececfbad85ef3656a6010cdb52a4c4c
+check fraction v5 pairs=256 bit-identical production, independent verifier accepts, digest 4423600a562f6972690d740c69cd0424705632cd03c06c4cb7b9e81c52a383b8
+check fraction v5 pairs=256 bit-identical production, independent verifier accepts, digest 249b53b4d5d48ab305f1c9f2516ae0e2ce72af2e329412db5ccae1584c0cab21
+check fraction v5 pairs=256 bit-identical production, independent verifier accepts, digest 172d5f30f50961339036f6d136f2843bdb0b601502a48a76c0216b040e05501b
+check fraction v5: zero/one eq coordinates and scripted prior-eq-zero pass

@@ -1,0 +1,4 @@
+UTC: 2026-10-19T08:17:08.321345+00:00
+SHA256 README.preregistered.txt: b4271d0ac83c136e77b1adb94c4aebc909b6c643f0285036e795c7cfaeada654
+Scope: preregistration only; no harness code authorized or written.
+Normative revision: 709c37c622caf0351df5ccb9acebcaa6cc09ab6f

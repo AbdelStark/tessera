@@ -1,0 +1,33 @@
+baseline: profile 'counted'
+   S   linear  attention  weights  regen  streaming    total
+   1K     9.05       3.70    0.021    4.0       0.42     17.2
+   4K     8.91      14.59    0.021    4.0       2.32     29.8
+  16K     8.40      54.98    0.020    4.0      11.24     78.6
+ 128K     5.46     285.91    0.013    4.0      77.93    373.3
+
+scenario: leaf_ps=41.8
+   S   linear  attention  weights  regen  streaming    total
+   1K     9.05       3.27    0.021    4.0       0.42     16.8   Δ   -2.5%
+   4K     8.91      12.89    0.021    4.0       2.32     28.1   Δ   -5.7%
+  16K     8.40      48.58    0.020    4.0      11.24     72.2   Δ   -8.1%
+ 128K     5.46     252.63    0.013    4.0      77.93    340.0   Δ   -8.9%
+
+share of μ by unit cost (percent of total)
+   S   c_c    c_ℓ    c_π   weights  regen  stream
+   1K  33.8%  36.3%   3.4%    0.1%   23.9%   2.5%
+   4K  33.4%  35.9%   8.1%    0.1%   14.2%   8.2%
+  16K  32.3%  34.7%  11.9%    0.0%    5.5%  15.6%
+ 128K  30.3%  32.5%  13.1%    0.0%    1.2%  22.9%
+
+gain in μ from one lever (2× better, or removed where marked), percent of total
+lever                             1K      4K     16K    128K
+commit_ps (c_c)               -16.9%  -16.7%  -16.2%  -15.1%
+lookup_ps (c_ℓ)               -18.1%  -18.0%  -17.4%  -16.3%
+leaf_ps (c_π)                  -1.7%   -4.0%   -5.9%   -6.6%
+commits_per_token (C_lin)     -13.0%   -7.6%   -2.8%   -0.4%
+lookups_per_token (K_lin)     -14.0%   -8.2%   -3.0%   -0.4%
+scores per token (A)          -11.3%  -27.6%  -42.3%  -49.6%
+glue factor → 1.0              -9.6%  -10.1%  -10.3%   -9.9%
+regen → 0                     -23.9%  -14.2%   -5.5%   -1.2%
+streaming → 0                  -2.5%   -8.2%  -15.6%  -22.9%
+

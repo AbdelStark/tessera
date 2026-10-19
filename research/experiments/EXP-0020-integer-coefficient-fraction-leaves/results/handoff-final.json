@@ -1,0 +1,164 @@
+{
+  "experiment": "EXP-0020",
+  "idea": "IDEA-0005",
+  "verdict": "inconclusive",
+  "status": "done: inconclusive",
+  "evidence_levels": [
+    "E0",
+    "E1"
+  ],
+  "authoritative_metrics": {
+    "G2": -0.3654107633272927,
+    "H2": -0.3636505967672554,
+    "all_noise_clean": false
+  },
+  "verdict_reason": "One authoritative cohort remains noise-unclean after its single registered full rerun; numeric performance misses cannot be called refuted under the frozen rule.",
+  "timing": {
+    "execution_head": "73928a13be982ac8652e4fc0cb535e861b76b493",
+    "one_invocation": true,
+    "exit": 0,
+    "wall_seconds": 252.97,
+    "cases": 6,
+    "boundaries_per_case": 2,
+    "cohorts": 15,
+    "measured_arm_samples": 600,
+    "warmup_arm_samples": 180,
+    "repetitions_per_sample": [
+      1
+    ],
+    "minimum_measured_duration_ns": 45104625,
+    "reruns": [
+      "E-l22-t22 whole",
+      "Q-l20-t20 prefix-replay+bottom",
+      "Q-l22-t20 whole"
+    ],
+    "unclean_authoritative": [
+      "E-l22-t22 whole"
+    ],
+    "failure_CVs": {
+      "C_arm": 0.03923730213678726,
+      "C_over_P": 0.03164402876800036,
+      "C_over_D": 0.03780706672121938
+    },
+    "background": "Zoom/WindowServer/camera preserved; AC79%; uncontrolled macOS clocks/affinity. No recorded pmset thermal/performance warning; this does not identify outlier cause.",
+    "slot_released": true
+  },
+  "correctness": {
+    "complete_output_equality": "P/P2/D/C before and after all six full cases; alpha/beta, roots/messages/challenges/points/returned claims/forest/cardinalities/state covered",
+    "independent": "Public tv root/level/leaf checks plus separately written direct tv-field key/value/m MLE closures",
+    "small_cases": 33,
+    "paid_prefix_diagnostics": 30,
+    "scripted_controls": "4modes x3arms x30direct cubic evaluations plus full tree/final/line/leaf/returned-claim checks; no zero-denominator acceptance claim",
+    "weighted_scalar_groups": 101,
+    "weighted_scalar_terms": 88594,
+    "grid_vectors": 36,
+    "grid_cells": 468,
+    "F65537_identities": 1000,
+    "source_pins": 23,
+    "frozen_snapshots": 3,
+    "count_records": 18,
+    "mutations": "Passing compiled noop; all7compiled source faults killed incl mandatory5 plus Unit/padding regressions; synthetic9saved-auditor corruptions rejected; actual saved ratio/verdict alterations rejected. Parent independently reproduced."
+  },
+  "bounds": {
+    "v_primary": 2,
+    "control_depths": [
+      1,
+      3
+    ],
+    "A": "3^v",
+    "coordinate": "A*max(K,V,M)<=i64MAX",
+    "coefficient": "Tmax=max(1,2AK,2AV,A^2K^2,2A^2KV,A^2V^2,2AM,2A^2MK,2A^2MV)<2^127",
+    "bucket": "B=1024; B*(P-1)*Tmax<2^191; canonical eq component limbs<=P-1",
+    "signed_reduction": "2^192 modP=1; unsigned reduction minus top-word sign bit",
+    "cadence_mutation": "K2^52,V0,M2^60,v1,Tmax18*2^112: B1024 admitted, B2048 excluded; doubled reset retaining B1024 fails actual positive near-limit arithmetic; negative near-limit and direct sign boundaries included",
+    "fallback": "Public metadata selects D for entire instance before values; arbitrary-field extension level control checked separately; not masked RFC0032 integration"
+  },
+  "source_manifest": "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/source-manifest-pretime.json",
+  "source_manifest_sha256": "f2ceccbab4fd51602a63120a3005d66bf134f579bb623f84322cff3e45bee114",
+  "measured_binary_sha256": "e7bfa38c5494b4571fcf2fc2cada04ac2fba40f8638090f4b6ca83ddf3d71504",
+  "source_and_binary_unchanged_after_timing": true,
+  "commands": {
+    "build": [
+      "cargo",
+      "build",
+      "--release",
+      "--locked",
+      "--manifest-path",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/Cargo.toml"
+    ],
+    "small": [
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction",
+      "check"
+    ],
+    "prepare": [
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction",
+      "prepare"
+    ],
+    "independent_small": [
+      "python3",
+      "-I",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/check.py",
+      "--check"
+    ],
+    "count": [
+      "python3",
+      "-I",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/count.py"
+    ],
+    "auditor_selftest": [
+      "python3",
+      "-I",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/auditor_selftest.py"
+    ],
+    "mutants": [
+      "python3",
+      "-I",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/mutate.py"
+    ],
+    "post_timing_audit": [
+      "python3",
+      "-I",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/check.py",
+      "--audit"
+    ],
+    "timing_registered_invocation_already_completed": [
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction",
+      "all",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/run.json"
+    ]
+  },
+  "report": "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/README.md",
+  "idea_note": "research/ideas/IDEA-0005-base-field-leaf-small-value.md",
+  "primary_artifacts": {
+    "results/run.json": "928a3cfe8813c318c3180814cbbd111a29f774f440a943e7a460cd8140950d04",
+    "results/timing-run.txt": "9e178b39d8bf06026fb30253a87c83e3448b1aecd2c24c6a7c01f8fd51dcdda2",
+    "results/audit.json": "2a1d8ccf4386cc700452f7bfb5579a0de25838adc0608822cff788ad9e2b065d",
+    "results/count.json": "e28b07b9914c4de1c22fd26d4075f679cf44f6320e4127daf173b35a7ad2b182",
+    "results/parent-timing-audit.py": "14bca1780d693afef4c04207bd792c50d01fa074d30f824af02e6f0d9039c800",
+    "results/parent-timing-audit.json": "7fc0259936dfe877fe476ee87f79e8847f09b53135c908289173b85477b4c3d9",
+    "results/environment-timing.json": "763d222134d915155540c355d2d5f7ed9ca76097a908d457215094146614d055"
+  },
+  "artifact_coverage": "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/artifacts-final.json",
+  "gates": {
+    "fmt": "pass",
+    "release_clippy": "clippy-attempt6 pass",
+    "lint": "lint-final pass",
+    "table_conformance": "4passed",
+    "check_and_count": "pass",
+    "saved_sample_audit": "pass; parent secondary reconstruction matches exactly",
+    "KB": "pass after parent-owned ledger/landscape/status consolidation; kb-final.txt"
+  },
+  "limitations": [
+    "One authoritative noise failure: formal inconclusive, no third run/tuning.",
+    "Unmasked synthetic resident fixed-v2 standalone LogUp only; no GPU/E3/ZK/model fidelity claim.",
+    "Public bounded generator envelope is not a general verifier range certificate; masks/generalfield require correction/fallback and integration.",
+    "Semantic operator/principal logical pass census: inverse/pow/hash/allocator/public scalar conversion internals opaque; not machine instruction or GPU fit.",
+    "Initial complete failure log overwritten before preservation request; only explicitly partial excerpt remains. Later full failed padding/Unit logs, reproducible mutants and stale shared-binary failure records retained.",
+    "No current numeric priority, cost-model option, regeneration/removal credit or Delta-mu update."
+  ],
+  "parent_remaining": [
+    "Review/commit/publish under existing authorization; no child git writes."
+  ],
+  "scope": "Only EXP0020 and IDEA0005 edited by this agent; root owns shared state.",
+  "shared_status_sync": "Parent completed IDEA5 inconclusive, EXP20 done:inconclusive and landscape consolidation; no shared ledger hash included."
+}

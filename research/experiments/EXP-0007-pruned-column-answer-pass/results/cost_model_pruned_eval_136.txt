@@ -1,0 +1,14 @@
+baseline: profile 'counted'
+   S   linear  attention  weights  regen  streaming    total
+   1K     9.20       3.70    0.021    4.0       0.42     17.3
+   4K     9.06      14.59    0.021    4.0       2.32     30.0
+  16K     8.54      54.98    0.020    4.0      11.24     78.8
+ 128K     5.55     285.91    0.013    4.0      77.93    373.4
+
+scenario: regen_full_equivalents=5, commit_ps=136
+   S   linear  attention  weights  regen  streaming    total
+   1K    11.18       4.28    0.021    5.0       0.42     20.9   Δ  +20.5%
+   4K    11.01      16.87    0.021    5.0       2.32     35.2   Δ  +17.5%
+  16K    10.38      63.60    0.020    5.0      11.24     90.2   Δ  +14.5%
+ 128K     6.74     330.72    0.013    5.0      77.93    420.4   Δ  +12.6%
+

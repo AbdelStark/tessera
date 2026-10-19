@@ -1,0 +1,89 @@
+{
+  "id": "EXP-0015",
+  "path": "research/experiments/EXP-0015-packed-indicator-lemma/README.md",
+  "status": "done: validated",
+  "verdict": "validated",
+  "verdict_scope": "registered E0 finite-domain lemma and exact Goldilocks interval obligations only; complete protocol security remains open",
+  "idea_status": {
+    "IDEA-0029": "triaged"
+  },
+  "priority_before": 1.4,
+  "priority_after": 1.4,
+  "priority_basis": "historical 2026-10-17 score; current L16 costs and modern baseline are unscored",
+  "confidence_before": 0.6,
+  "confidence_after": 0.6,
+  "key_results": [
+    {
+      "evidence": "E0 primary",
+      "result": "319124 real-row/value,64000 masked/padded,14424 abstract cases; bad/missing/multi0, every field residue and low-limb assignment for toy widths4/6 checked."
+    },
+    {
+      "evidence": "E0 primary",
+      "result": "75 Goldilocks tie/endpoint cases,625 mixed masked/zero-tail vectors, exact key/range/nonwrap inequalities pass; finite digest reproduces exactly."
+    },
+    {
+      "evidence": "E0 primary",
+      "result": "Five negative-control classes detected, including missing-PV-NonNeg half-integer witness that passes reciprocal bracket and changes requant from0 to1."
+    },
+    {
+      "evidence": "E0 primary",
+      "result": "DefaultL16 corrections: sum34 digits16/16/2 and output38 digits16/16/6; new per-row additions387 commitments516 lookups, not historical258/387."
+    },
+    {
+      "evidence": "E0 primary",
+      "result": "Literal n>=1 fails empty padded rows; declared selector-adapted count and max-zero pin pass uniquely; output box/radix/chunk bounds are load-bearing."
+    },
+    {
+      "evidence": "E0 primary current-spec review",
+      "result": "Upstream0710097/#388 reciprocal bound is satisfied at fixedsigma16/context2^17; no generalization to other precisions or reciprocal uniqueness proof is claimed."
+    }
+  ],
+  "threats": [
+    "F65537 and finite Goldilocks cases do not prove full production-domain protocol SP3",
+    "Toy exponential is abstract bounded table and toy valuesINT2",
+    "ActualExp boundary sample is not generator audit",
+    "No lookup/sumcheck/transcript/masking/independent-verifier implementation or proof",
+    "No measured performance or updated cost-model gain",
+    "Packing/range windows and reciprocal precondition require derivation for each admitted exp_sigma; this unit fixes sigma16"
+  ],
+  "follow_ups": [
+    "Full-domain algebraic proof and superseding tierA RFC for packed table/digest, mask selectors, chunking, public range derivation, claim/transcript schedule, soundness calculator and protocol2 masks; preserve #388 reciprocal precision precondition and rederive packing windows for every supported sigma",
+    "Recount defaultL16 and rescore current model before same-harness cost comparison against split-eq production",
+    "H100 comparison measures lookup/range-gadget memory/runtime cost, not uniqueness"
+  ],
+  "ledger_row": "| [EXP-0015](experiments/EXP-0015-packed-indicator-lemma/README.md) | Does the packed-indicator certificate have unique bounded witnesses on registered finite domains, with explicit Goldilocks non-wrap obligations? | IDEA-0029 | done: validated | Scoped E0 unit:397548 input combinations, no bad/missing/multiple witnesses; five weakened controls expose defects; complete protocol gate open; L16 adds387 commits/516 lookups per row | E0; python3 -I check.py; results/run.json, mutations.json and audit.json |",
+  "idea_row_summary": "IDEA-0029 remains triaged; registered E0 lemma unit passes, full soundness/SP3/protocol2 masking proof pending; historical confidence0.6 priority1.4 retained without current gain claim.",
+  "new_bibliography_keys": [],
+  "problems": [],
+  "checks": [
+    "full E0 run and deterministic reproduction pass with same finite digest",
+    "self-test passes",
+    "scratch no-op passes;4/4 planted faults caught",
+    "committed hypothesis/criteria/method text unchanged",
+    "final harness hash matches raw output"
+  ],
+  "finite_domains": {
+    "counts": {
+      "abstract": 14424,
+      "abstract_nonzero_marker_acceptances": 103,
+      "abstract_zero_marker_rejections": 155,
+      "masks": 64000,
+      "masks_score_rows": 1000,
+      "maximum_candidates": 195133,
+      "pv_witness_candidates": 8960,
+      "real": 319124,
+      "real_score_rows": 5219,
+      "row_witness_candidates": 603940
+    },
+    "sha256": "c84a121d73ee905033a012f4428c7d9f04c0d4102d0641b6b4655a12fe4079cb",
+    "pv_cache_distinct_inputs": 140,
+    "bad": 0,
+    "missing": 0,
+    "multi": 0,
+    "limb_boxes": {
+      "4": 16,
+      "6": 64
+    }
+  },
+  "preregistration_commit": "774b7c7a7ea6f4617783a4c4184a27a5fded22da"
+}

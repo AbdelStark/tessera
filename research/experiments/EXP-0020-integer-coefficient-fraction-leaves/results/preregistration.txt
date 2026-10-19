@@ -1,0 +1,9 @@
+EXP-0020 reviewed pre-registration freeze
+UTC: 2026-10-19T10:25:23Z
+SHA256: a4f1a68e4b266c935084cb429626bcbc4a72c1da3b0b4c8f27d3f687d06ac2ff
+Snapshot: README.preregistered.txt
+Registration source: a1c1cd62eeeba68075f76300aeaf15d0833fbb2a
+Freeze verified HEAD: 58b5ea5b8455cc6964f59383971f6a2ec56c5413
+All 23 pinned files match registration source and freeze HEAD.
+Reviewed by parent before freeze; no implementation exists.
+Commit gate: parent must commit the frozen snapshot; compare git show of that committed path byte-for-byte before code.

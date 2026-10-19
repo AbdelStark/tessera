@@ -1,0 +1,2 @@
+   Compiling integer-fraction-mutant v0.0.0 (/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp20-mutants-xie9q5kl/crate)
+    Finished `release` profile [optimized] target(s) in 12.70s

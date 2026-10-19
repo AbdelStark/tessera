@@ -1,0 +1,4 @@
+UTC: 2026-10-19T07:57:33.158841+00:00
+SHA256 README.md and frozen copy: b905bfbeedb2e16def42c76361f4d94d0ffa0426f05eb3a7ce7334d412ed3250
+Frozen text: results/README.preregistered.txt
+Commit required before harness code

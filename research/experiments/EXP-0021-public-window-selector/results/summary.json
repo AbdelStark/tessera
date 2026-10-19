@@ -1,0 +1,55 @@
+{
+  "kind": "final bounded E0 metadata/domain audit; no extra harness run",
+  "author_final_attempt": "results/attempts/20261019T105827.081336Z-45083",
+  "verdict": "validated",
+  "snapshot_sha256": "90b7307ed2a2162bbd7a56a426c959068c83500c8111a6432e72981f641252bc",
+  "source_sha256": "a132f6e924104ec6fba731926f686d0fd3cf1fdc88bf8cf7e111c28065432ce4",
+  "raw_summary_sha256": "348ef8f2362172c9ddd243c0e4c305c23704c443df4944eea6ad9d286a84570a",
+  "logical_judgments": 42431606,
+  "physically_executed_judgments": 876535,
+  "memoized_logical_judgments": 41555071,
+  "metered_arithmetic_operations": 317682340,
+  "physical_judgments_by_arm": {
+    "setup": 1,
+    "arithmetic": 107,
+    "selector": 39625,
+    "pointwise": 156570,
+    "normative_rows": 837,
+    "transport": 678402,
+    "controls": 993
+  },
+  "arithmetic_by_arm": "not recorded; no inference from judgment counts",
+  "row_contexts": 248850,
+  "unique_row_core_inputs": 933,
+  "cache_hits": 247917,
+  "cache_key": "(scores,selected,real); fixed sigma2/table/field. Tuple length encodes N; every other descriptor coordinate affects row_core only through selected/real. Not reused for normative-table or transport arms.",
+  "transport_runs": 2048,
+  "transport_reductions": 8192,
+  "transport_rounds": 38912,
+  "controls": 69,
+  "maxima": {
+    "dp_states": 7,
+    "dp_transitions": 48,
+    "process_rss_bytes": 34652160,
+    "pointwise_cache_entries": 933
+  },
+  "accounting_fix": {
+    "predicted_ops_delta": 3090,
+    "actual_ops_delta": 3090,
+    "judgments_delta": 0,
+    "final_resource_check": "M.check immediately before validated"
+  },
+  "independent_reproduction": {
+    "pre_accounting_fix_parent_attempt": "results/attempts/20261019T105547.660568Z-97234",
+    "result": "same mathematical/domain/control judgments; original317679250 metered count matched",
+    "final_accounting_diff": "completed: results/independent-accounting-review.json; exact three-hunk diff, +3090 predicted/observed operations, unchanged mathematical counts and final M.check verified",
+    "parent_domain_reconstruction": "results/parent-domain-reconstruction.json; all 248850 contexts, 933 unique inputs and logical/physical row probes independently reconstructed"
+  },
+  "limits": {
+    "comparisons": 100000000,
+    "operations": 3000000000,
+    "watchdog_seconds": 900,
+    "whole_process_memory_bytes": 268435456
+  },
+  "no_full_protocol_zk_fidelity_performance_approval": true
+}

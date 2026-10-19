@@ -1,0 +1,5113 @@
+{
+  "fixture_only": true,
+  "warning": "Synthetic schema/mutation control, not measured CPU evidence.",
+  "primary_v": 2,
+  "verdict": "validated",
+  "G2": 0.2857142857142857,
+  "H2": 0.375,
+  "all_noise_clean": true,
+  "cohorts": [
+    {
+      "case": "E-l20-t22",
+      "boundary": "whole",
+      "attempt": 0,
+      "prefix_events": 507,
+      "warmups": [
+        [
+          {
+            "arm": "P",
+            "start_ns": 0,
+            "end_ns": 40000000,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 40000001,
+            "end_ns": 80000001,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 80000002,
+            "end_ns": 115000002,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 115000003,
+            "end_ns": 140000003,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 140000004,
+            "end_ns": 180000004,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 180000005,
+            "end_ns": 215000005,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 215000006,
+            "end_ns": 240000006,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 240000007,
+            "end_ns": 280000007,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 280000008,
+            "end_ns": 315000008,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 315000009,
+            "end_ns": 340000009,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 340000010,
+            "end_ns": 380000010,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 380000011,
+            "end_ns": 420000011,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ]
+      ],
+      "samples": [
+        [
+          {
+            "arm": "C",
+            "start_ns": 420000012,
+            "end_ns": 445000012,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 445000013,
+            "end_ns": 485000013,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 485000014,
+            "end_ns": 525000014,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 525000015,
+            "end_ns": 560000015,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 560000016,
+            "end_ns": 600000016,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 600000017,
+            "end_ns": 640000017,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 640000018,
+            "end_ns": 675000018,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 675000019,
+            "end_ns": 700000019,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 700000020,
+            "end_ns": 740000020,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 740000021,
+            "end_ns": 775000021,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 775000022,
+            "end_ns": 800000022,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 800000023,
+            "end_ns": 840000023,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 840000024,
+            "end_ns": 875000024,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 875000025,
+            "end_ns": 900000025,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 900000026,
+            "end_ns": 940000026,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 940000027,
+            "end_ns": 980000027,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 980000028,
+            "end_ns": 1005000028,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 1005000029,
+            "end_ns": 1045000029,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 1045000030,
+            "end_ns": 1085000030,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 1085000031,
+            "end_ns": 1120000031,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 1120000032,
+            "end_ns": 1160000032,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 1160000033,
+            "end_ns": 1200000033,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 1200000034,
+            "end_ns": 1235000034,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 1235000035,
+            "end_ns": 1260000035,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 1260000036,
+            "end_ns": 1300000036,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 1300000037,
+            "end_ns": 1335000037,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 1335000038,
+            "end_ns": 1360000038,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 1360000039,
+            "end_ns": 1400000039,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 1400000040,
+            "end_ns": 1435000040,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 1435000041,
+            "end_ns": 1460000041,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 1460000042,
+            "end_ns": 1500000042,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 1500000043,
+            "end_ns": 1540000043,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 1540000044,
+            "end_ns": 1565000044,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 1565000045,
+            "end_ns": 1605000045,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 1605000046,
+            "end_ns": 1645000046,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 1645000047,
+            "end_ns": 1680000047,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 1680000048,
+            "end_ns": 1720000048,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 1720000049,
+            "end_ns": 1760000049,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 1760000050,
+            "end_ns": 1795000050,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 1795000051,
+            "end_ns": 1820000051,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ]
+      ]
+    },
+    {
+      "case": "E-l20-t22",
+      "boundary": "prefix-replay+bottom",
+      "attempt": 0,
+      "prefix_events": 507,
+      "warmups": [
+        [
+          {
+            "arm": "P",
+            "start_ns": 1820000052,
+            "end_ns": 1860000052,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 1860000053,
+            "end_ns": 1900000053,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 1900000054,
+            "end_ns": 1935000054,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 1935000055,
+            "end_ns": 1960000055,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 1960000056,
+            "end_ns": 2000000056,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 2000000057,
+            "end_ns": 2035000057,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 2035000058,
+            "end_ns": 2060000058,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 2060000059,
+            "end_ns": 2100000059,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 2100000060,
+            "end_ns": 2135000060,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 2135000061,
+            "end_ns": 2160000061,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 2160000062,
+            "end_ns": 2200000062,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 2200000063,
+            "end_ns": 2240000063,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ]
+      ],
+      "samples": [
+        [
+          {
+            "arm": "C",
+            "start_ns": 2240000064,
+            "end_ns": 2265000064,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 2265000065,
+            "end_ns": 2305000065,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 2305000066,
+            "end_ns": 2345000066,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 2345000067,
+            "end_ns": 2380000067,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 2380000068,
+            "end_ns": 2420000068,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 2420000069,
+            "end_ns": 2460000069,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 2460000070,
+            "end_ns": 2495000070,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 2495000071,
+            "end_ns": 2520000071,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 2520000072,
+            "end_ns": 2560000072,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 2560000073,
+            "end_ns": 2595000073,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 2595000074,
+            "end_ns": 2620000074,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 2620000075,
+            "end_ns": 2660000075,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 2660000076,
+            "end_ns": 2695000076,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 2695000077,
+            "end_ns": 2720000077,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 2720000078,
+            "end_ns": 2760000078,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 2760000079,
+            "end_ns": 2800000079,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 2800000080,
+            "end_ns": 2825000080,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 2825000081,
+            "end_ns": 2865000081,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 2865000082,
+            "end_ns": 2905000082,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 2905000083,
+            "end_ns": 2940000083,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 2940000084,
+            "end_ns": 2980000084,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 2980000085,
+            "end_ns": 3020000085,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 3020000086,
+            "end_ns": 3055000086,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 3055000087,
+            "end_ns": 3080000087,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 3080000088,
+            "end_ns": 3120000088,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 3120000089,
+            "end_ns": 3155000089,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 3155000090,
+            "end_ns": 3180000090,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 3180000091,
+            "end_ns": 3220000091,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 3220000092,
+            "end_ns": 3255000092,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 3255000093,
+            "end_ns": 3280000093,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 3280000094,
+            "end_ns": 3320000094,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 3320000095,
+            "end_ns": 3360000095,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 3360000096,
+            "end_ns": 3385000096,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 3385000097,
+            "end_ns": 3425000097,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 3425000098,
+            "end_ns": 3465000098,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 3465000099,
+            "end_ns": 3500000099,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 3500000100,
+            "end_ns": 3540000100,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 3540000101,
+            "end_ns": 3580000101,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 3580000102,
+            "end_ns": 3615000102,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 3615000103,
+            "end_ns": 3640000103,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ]
+      ]
+    },
+    {
+      "case": "E-l22-t22",
+      "boundary": "whole",
+      "attempt": 0,
+      "prefix_events": 507,
+      "warmups": [
+        [
+          {
+            "arm": "P",
+            "start_ns": 3640000104,
+            "end_ns": 3680000104,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 3680000105,
+            "end_ns": 3720000105,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 3720000106,
+            "end_ns": 3755000106,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 3755000107,
+            "end_ns": 3780000107,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 3780000108,
+            "end_ns": 3820000108,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 3820000109,
+            "end_ns": 3855000109,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 3855000110,
+            "end_ns": 3880000110,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 3880000111,
+            "end_ns": 3920000111,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 3920000112,
+            "end_ns": 3955000112,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 3955000113,
+            "end_ns": 3980000113,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 3980000114,
+            "end_ns": 4020000114,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 4020000115,
+            "end_ns": 4060000115,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ]
+      ],
+      "samples": [
+        [
+          {
+            "arm": "C",
+            "start_ns": 4060000116,
+            "end_ns": 4085000116,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 4085000117,
+            "end_ns": 4125000117,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 4125000118,
+            "end_ns": 4165000118,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 4165000119,
+            "end_ns": 4200000119,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 4200000120,
+            "end_ns": 4240000120,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 4240000121,
+            "end_ns": 4280000121,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 4280000122,
+            "end_ns": 4315000122,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 4315000123,
+            "end_ns": 4340000123,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 4340000124,
+            "end_ns": 4380000124,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 4380000125,
+            "end_ns": 4415000125,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 4415000126,
+            "end_ns": 4440000126,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 4440000127,
+            "end_ns": 4480000127,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 4480000128,
+            "end_ns": 4515000128,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 4515000129,
+            "end_ns": 4540000129,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 4540000130,
+            "end_ns": 4580000130,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 4580000131,
+            "end_ns": 4620000131,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 4620000132,
+            "end_ns": 4645000132,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 4645000133,
+            "end_ns": 4685000133,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 4685000134,
+            "end_ns": 4725000134,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 4725000135,
+            "end_ns": 4760000135,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 4760000136,
+            "end_ns": 4800000136,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 4800000137,
+            "end_ns": 4840000137,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 4840000138,
+            "end_ns": 4875000138,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 4875000139,
+            "end_ns": 4900000139,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 4900000140,
+            "end_ns": 4940000140,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 4940000141,
+            "end_ns": 4975000141,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 4975000142,
+            "end_ns": 5000000142,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 5000000143,
+            "end_ns": 5040000143,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 5040000144,
+            "end_ns": 5075000144,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 5075000145,
+            "end_ns": 5100000145,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 5100000146,
+            "end_ns": 5140000146,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 5140000147,
+            "end_ns": 5180000147,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 5180000148,
+            "end_ns": 5205000148,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 5205000149,
+            "end_ns": 5245000149,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 5245000150,
+            "end_ns": 5285000150,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 5285000151,
+            "end_ns": 5320000151,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 5320000152,
+            "end_ns": 5360000152,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 5360000153,
+            "end_ns": 5400000153,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 5400000154,
+            "end_ns": 5435000154,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 5435000155,
+            "end_ns": 5460000155,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ]
+      ]
+    },
+    {
+      "case": "E-l22-t22",
+      "boundary": "prefix-replay+bottom",
+      "attempt": 0,
+      "prefix_events": 507,
+      "warmups": [
+        [
+          {
+            "arm": "P",
+            "start_ns": 5460000156,
+            "end_ns": 5500000156,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 5500000157,
+            "end_ns": 5540000157,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 5540000158,
+            "end_ns": 5575000158,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 5575000159,
+            "end_ns": 5600000159,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 5600000160,
+            "end_ns": 5640000160,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 5640000161,
+            "end_ns": 5675000161,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 5675000162,
+            "end_ns": 5700000162,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 5700000163,
+            "end_ns": 5740000163,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 5740000164,
+            "end_ns": 5775000164,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 5775000165,
+            "end_ns": 5800000165,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 5800000166,
+            "end_ns": 5840000166,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 5840000167,
+            "end_ns": 5880000167,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ]
+      ],
+      "samples": [
+        [
+          {
+            "arm": "C",
+            "start_ns": 5880000168,
+            "end_ns": 5905000168,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 5905000169,
+            "end_ns": 5945000169,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 5945000170,
+            "end_ns": 5985000170,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 5985000171,
+            "end_ns": 6020000171,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 6020000172,
+            "end_ns": 6060000172,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 6060000173,
+            "end_ns": 6100000173,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 6100000174,
+            "end_ns": 6135000174,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 6135000175,
+            "end_ns": 6160000175,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 6160000176,
+            "end_ns": 6200000176,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 6200000177,
+            "end_ns": 6235000177,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 6235000178,
+            "end_ns": 6260000178,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 6260000179,
+            "end_ns": 6300000179,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 6300000180,
+            "end_ns": 6335000180,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 6335000181,
+            "end_ns": 6360000181,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 6360000182,
+            "end_ns": 6400000182,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 6400000183,
+            "end_ns": 6440000183,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 6440000184,
+            "end_ns": 6465000184,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 6465000185,
+            "end_ns": 6505000185,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 6505000186,
+            "end_ns": 6545000186,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 6545000187,
+            "end_ns": 6580000187,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 6580000188,
+            "end_ns": 6620000188,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 6620000189,
+            "end_ns": 6660000189,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 6660000190,
+            "end_ns": 6695000190,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 6695000191,
+            "end_ns": 6720000191,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 6720000192,
+            "end_ns": 6760000192,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 6760000193,
+            "end_ns": 6795000193,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 6795000194,
+            "end_ns": 6820000194,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 6820000195,
+            "end_ns": 6860000195,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 6860000196,
+            "end_ns": 6895000196,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 6895000197,
+            "end_ns": 6920000197,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 6920000198,
+            "end_ns": 6960000198,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 6960000199,
+            "end_ns": 7000000199,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 7000000200,
+            "end_ns": 7025000200,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 7025000201,
+            "end_ns": 7065000201,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 7065000202,
+            "end_ns": 7105000202,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 7105000203,
+            "end_ns": 7140000203,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 7140000204,
+            "end_ns": 7180000204,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 7180000205,
+            "end_ns": 7220000205,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 7220000206,
+            "end_ns": 7255000206,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 7255000207,
+            "end_ns": 7280000207,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ]
+      ]
+    },
+    {
+      "case": "R-l20-t21",
+      "boundary": "whole",
+      "attempt": 0,
+      "prefix_events": 463,
+      "warmups": [
+        [
+          {
+            "arm": "P",
+            "start_ns": 7280000208,
+            "end_ns": 7320000208,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 7320000209,
+            "end_ns": 7360000209,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 7360000210,
+            "end_ns": 7395000210,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 7395000211,
+            "end_ns": 7420000211,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 7420000212,
+            "end_ns": 7460000212,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 7460000213,
+            "end_ns": 7495000213,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 7495000214,
+            "end_ns": 7520000214,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 7520000215,
+            "end_ns": 7560000215,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 7560000216,
+            "end_ns": 7595000216,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 7595000217,
+            "end_ns": 7620000217,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 7620000218,
+            "end_ns": 7660000218,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 7660000219,
+            "end_ns": 7700000219,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ]
+      ],
+      "samples": [
+        [
+          {
+            "arm": "C",
+            "start_ns": 7700000220,
+            "end_ns": 7725000220,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 7725000221,
+            "end_ns": 7765000221,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 7765000222,
+            "end_ns": 7805000222,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 7805000223,
+            "end_ns": 7840000223,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 7840000224,
+            "end_ns": 7880000224,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 7880000225,
+            "end_ns": 7920000225,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 7920000226,
+            "end_ns": 7955000226,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 7955000227,
+            "end_ns": 7980000227,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 7980000228,
+            "end_ns": 8020000228,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 8020000229,
+            "end_ns": 8055000229,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 8055000230,
+            "end_ns": 8080000230,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 8080000231,
+            "end_ns": 8120000231,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 8120000232,
+            "end_ns": 8155000232,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 8155000233,
+            "end_ns": 8180000233,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 8180000234,
+            "end_ns": 8220000234,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 8220000235,
+            "end_ns": 8260000235,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 8260000236,
+            "end_ns": 8285000236,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 8285000237,
+            "end_ns": 8325000237,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 8325000238,
+            "end_ns": 8365000238,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 8365000239,
+            "end_ns": 8400000239,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 8400000240,
+            "end_ns": 8440000240,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 8440000241,
+            "end_ns": 8480000241,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 8480000242,
+            "end_ns": 8515000242,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 8515000243,
+            "end_ns": 8540000243,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 8540000244,
+            "end_ns": 8580000244,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 8580000245,
+            "end_ns": 8615000245,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 8615000246,
+            "end_ns": 8640000246,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 8640000247,
+            "end_ns": 8680000247,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 8680000248,
+            "end_ns": 8715000248,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 8715000249,
+            "end_ns": 8740000249,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 8740000250,
+            "end_ns": 8780000250,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 8780000251,
+            "end_ns": 8820000251,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 8820000252,
+            "end_ns": 8845000252,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 8845000253,
+            "end_ns": 8885000253,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 8885000254,
+            "end_ns": 8925000254,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 8925000255,
+            "end_ns": 8960000255,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 8960000256,
+            "end_ns": 9000000256,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 9000000257,
+            "end_ns": 9040000257,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 9040000258,
+            "end_ns": 9075000258,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 9075000259,
+            "end_ns": 9100000259,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ]
+      ]
+    },
+    {
+      "case": "R-l20-t21",
+      "boundary": "prefix-replay+bottom",
+      "attempt": 0,
+      "prefix_events": 463,
+      "warmups": [
+        [
+          {
+            "arm": "P",
+            "start_ns": 9100000260,
+            "end_ns": 9140000260,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 9140000261,
+            "end_ns": 9180000261,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 9180000262,
+            "end_ns": 9215000262,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 9215000263,
+            "end_ns": 9240000263,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 9240000264,
+            "end_ns": 9280000264,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 9280000265,
+            "end_ns": 9315000265,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 9315000266,
+            "end_ns": 9340000266,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 9340000267,
+            "end_ns": 9380000267,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 9380000268,
+            "end_ns": 9415000268,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 9415000269,
+            "end_ns": 9440000269,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 9440000270,
+            "end_ns": 9480000270,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 9480000271,
+            "end_ns": 9520000271,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ]
+      ],
+      "samples": [
+        [
+          {
+            "arm": "C",
+            "start_ns": 9520000272,
+            "end_ns": 9545000272,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 9545000273,
+            "end_ns": 9585000273,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 9585000274,
+            "end_ns": 9625000274,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 9625000275,
+            "end_ns": 9660000275,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 9660000276,
+            "end_ns": 9700000276,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 9700000277,
+            "end_ns": 9740000277,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 9740000278,
+            "end_ns": 9775000278,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 9775000279,
+            "end_ns": 9800000279,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 9800000280,
+            "end_ns": 9840000280,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 9840000281,
+            "end_ns": 9875000281,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 9875000282,
+            "end_ns": 9900000282,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 9900000283,
+            "end_ns": 9940000283,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 9940000284,
+            "end_ns": 9975000284,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 9975000285,
+            "end_ns": 10000000285,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 10000000286,
+            "end_ns": 10040000286,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 10040000287,
+            "end_ns": 10080000287,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 10080000288,
+            "end_ns": 10105000288,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 10105000289,
+            "end_ns": 10145000289,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 10145000290,
+            "end_ns": 10185000290,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 10185000291,
+            "end_ns": 10220000291,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 10220000292,
+            "end_ns": 10260000292,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 10260000293,
+            "end_ns": 10300000293,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 10300000294,
+            "end_ns": 10335000294,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 10335000295,
+            "end_ns": 10360000295,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 10360000296,
+            "end_ns": 10400000296,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 10400000297,
+            "end_ns": 10435000297,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 10435000298,
+            "end_ns": 10460000298,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 10460000299,
+            "end_ns": 10500000299,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 10500000300,
+            "end_ns": 10535000300,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 10535000301,
+            "end_ns": 10560000301,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 10560000302,
+            "end_ns": 10600000302,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 10600000303,
+            "end_ns": 10640000303,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 10640000304,
+            "end_ns": 10665000304,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 10665000305,
+            "end_ns": 10705000305,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 10705000306,
+            "end_ns": 10745000306,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 10745000307,
+            "end_ns": 10780000307,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 10780000308,
+            "end_ns": 10820000308,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 10820000309,
+            "end_ns": 10860000309,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 10860000310,
+            "end_ns": 10895000310,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 10895000311,
+            "end_ns": 10920000311,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ]
+      ]
+    },
+    {
+      "case": "R-l22-t21",
+      "boundary": "whole",
+      "attempt": 0,
+      "prefix_events": 507,
+      "warmups": [
+        [
+          {
+            "arm": "P",
+            "start_ns": 10920000312,
+            "end_ns": 10960000312,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 10960000313,
+            "end_ns": 11000000313,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 11000000314,
+            "end_ns": 11035000314,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 11035000315,
+            "end_ns": 11060000315,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 11060000316,
+            "end_ns": 11100000316,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 11100000317,
+            "end_ns": 11135000317,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 11135000318,
+            "end_ns": 11160000318,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 11160000319,
+            "end_ns": 11200000319,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 11200000320,
+            "end_ns": 11235000320,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 11235000321,
+            "end_ns": 11260000321,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 11260000322,
+            "end_ns": 11300000322,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 11300000323,
+            "end_ns": 11340000323,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ]
+      ],
+      "samples": [
+        [
+          {
+            "arm": "C",
+            "start_ns": 11340000324,
+            "end_ns": 11365000324,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 11365000325,
+            "end_ns": 11405000325,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 11405000326,
+            "end_ns": 11445000326,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 11445000327,
+            "end_ns": 11480000327,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 11480000328,
+            "end_ns": 11520000328,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 11520000329,
+            "end_ns": 11560000329,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 11560000330,
+            "end_ns": 11595000330,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 11595000331,
+            "end_ns": 11620000331,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 11620000332,
+            "end_ns": 11660000332,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 11660000333,
+            "end_ns": 11695000333,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 11695000334,
+            "end_ns": 11720000334,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 11720000335,
+            "end_ns": 11760000335,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 11760000336,
+            "end_ns": 11795000336,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 11795000337,
+            "end_ns": 11820000337,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 11820000338,
+            "end_ns": 11860000338,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 11860000339,
+            "end_ns": 11900000339,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 11900000340,
+            "end_ns": 11925000340,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 11925000341,
+            "end_ns": 11965000341,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 11965000342,
+            "end_ns": 12005000342,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 12005000343,
+            "end_ns": 12040000343,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 12040000344,
+            "end_ns": 12080000344,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 12080000345,
+            "end_ns": 12120000345,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 12120000346,
+            "end_ns": 12155000346,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 12155000347,
+            "end_ns": 12180000347,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 12180000348,
+            "end_ns": 12220000348,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 12220000349,
+            "end_ns": 12255000349,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 12255000350,
+            "end_ns": 12280000350,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 12280000351,
+            "end_ns": 12320000351,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 12320000352,
+            "end_ns": 12355000352,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 12355000353,
+            "end_ns": 12380000353,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 12380000354,
+            "end_ns": 12420000354,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 12420000355,
+            "end_ns": 12460000355,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 12460000356,
+            "end_ns": 12485000356,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 12485000357,
+            "end_ns": 12525000357,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 12525000358,
+            "end_ns": 12565000358,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 12565000359,
+            "end_ns": 12600000359,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 12600000360,
+            "end_ns": 12640000360,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 12640000361,
+            "end_ns": 12680000361,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 12680000362,
+            "end_ns": 12715000362,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 12715000363,
+            "end_ns": 12740000363,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ]
+      ]
+    },
+    {
+      "case": "R-l22-t21",
+      "boundary": "prefix-replay+bottom",
+      "attempt": 0,
+      "prefix_events": 507,
+      "warmups": [
+        [
+          {
+            "arm": "P",
+            "start_ns": 12740000364,
+            "end_ns": 12780000364,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 12780000365,
+            "end_ns": 12820000365,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 12820000366,
+            "end_ns": 12855000366,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 12855000367,
+            "end_ns": 12880000367,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 12880000368,
+            "end_ns": 12920000368,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 12920000369,
+            "end_ns": 12955000369,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 12955000370,
+            "end_ns": 12980000370,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 12980000371,
+            "end_ns": 13020000371,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 13020000372,
+            "end_ns": 13055000372,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 13055000373,
+            "end_ns": 13080000373,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 13080000374,
+            "end_ns": 13120000374,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 13120000375,
+            "end_ns": 13160000375,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ]
+      ],
+      "samples": [
+        [
+          {
+            "arm": "C",
+            "start_ns": 13160000376,
+            "end_ns": 13185000376,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 13185000377,
+            "end_ns": 13225000377,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 13225000378,
+            "end_ns": 13265000378,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 13265000379,
+            "end_ns": 13300000379,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 13300000380,
+            "end_ns": 13340000380,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 13340000381,
+            "end_ns": 13380000381,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 13380000382,
+            "end_ns": 13415000382,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 13415000383,
+            "end_ns": 13440000383,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 13440000384,
+            "end_ns": 13480000384,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 13480000385,
+            "end_ns": 13515000385,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 13515000386,
+            "end_ns": 13540000386,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 13540000387,
+            "end_ns": 13580000387,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 13580000388,
+            "end_ns": 13615000388,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 13615000389,
+            "end_ns": 13640000389,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 13640000390,
+            "end_ns": 13680000390,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 13680000391,
+            "end_ns": 13720000391,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 13720000392,
+            "end_ns": 13745000392,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 13745000393,
+            "end_ns": 13785000393,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 13785000394,
+            "end_ns": 13825000394,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 13825000395,
+            "end_ns": 13860000395,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 13860000396,
+            "end_ns": 13900000396,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 13900000397,
+            "end_ns": 13940000397,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 13940000398,
+            "end_ns": 13975000398,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 13975000399,
+            "end_ns": 14000000399,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 14000000400,
+            "end_ns": 14040000400,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 14040000401,
+            "end_ns": 14075000401,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 14075000402,
+            "end_ns": 14100000402,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 14100000403,
+            "end_ns": 14140000403,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 14140000404,
+            "end_ns": 14175000404,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 14175000405,
+            "end_ns": 14200000405,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 14200000406,
+            "end_ns": 14240000406,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 14240000407,
+            "end_ns": 14280000407,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 14280000408,
+            "end_ns": 14305000408,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 14305000409,
+            "end_ns": 14345000409,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 14345000410,
+            "end_ns": 14385000410,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 14385000411,
+            "end_ns": 14420000411,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 14420000412,
+            "end_ns": 14460000412,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 14460000413,
+            "end_ns": 14500000413,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 14500000414,
+            "end_ns": 14535000414,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 14535000415,
+            "end_ns": 14560000415,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ]
+      ]
+    },
+    {
+      "case": "Q-l20-t20",
+      "boundary": "whole",
+      "attempt": 0,
+      "prefix_events": 421,
+      "warmups": [
+        [
+          {
+            "arm": "P",
+            "start_ns": 14560000416,
+            "end_ns": 14600000416,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 14600000417,
+            "end_ns": 14640000417,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 14640000418,
+            "end_ns": 14675000418,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 14675000419,
+            "end_ns": 14700000419,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 14700000420,
+            "end_ns": 14740000420,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 14740000421,
+            "end_ns": 14775000421,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 14775000422,
+            "end_ns": 14800000422,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 14800000423,
+            "end_ns": 14840000423,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 14840000424,
+            "end_ns": 14875000424,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 14875000425,
+            "end_ns": 14900000425,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 14900000426,
+            "end_ns": 14940000426,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 14940000427,
+            "end_ns": 14980000427,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ]
+      ],
+      "samples": [
+        [
+          {
+            "arm": "C",
+            "start_ns": 14980000428,
+            "end_ns": 15005000428,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 15005000429,
+            "end_ns": 15045000429,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 15045000430,
+            "end_ns": 15085000430,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 15085000431,
+            "end_ns": 15120000431,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 15120000432,
+            "end_ns": 15160000432,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 15160000433,
+            "end_ns": 15200000433,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 15200000434,
+            "end_ns": 15235000434,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 15235000435,
+            "end_ns": 15260000435,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 15260000436,
+            "end_ns": 15300000436,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 15300000437,
+            "end_ns": 15335000437,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 15335000438,
+            "end_ns": 15360000438,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 15360000439,
+            "end_ns": 15400000439,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 15400000440,
+            "end_ns": 15435000440,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 15435000441,
+            "end_ns": 15460000441,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 15460000442,
+            "end_ns": 15500000442,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 15500000443,
+            "end_ns": 15540000443,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 15540000444,
+            "end_ns": 15565000444,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 15565000445,
+            "end_ns": 15605000445,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 15605000446,
+            "end_ns": 15645000446,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 15645000447,
+            "end_ns": 15680000447,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 15680000448,
+            "end_ns": 15720000448,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 15720000449,
+            "end_ns": 15760000449,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 15760000450,
+            "end_ns": 15795000450,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 15795000451,
+            "end_ns": 15820000451,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 15820000452,
+            "end_ns": 15860000452,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 15860000453,
+            "end_ns": 15895000453,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 15895000454,
+            "end_ns": 15920000454,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 15920000455,
+            "end_ns": 15960000455,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 15960000456,
+            "end_ns": 15995000456,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 15995000457,
+            "end_ns": 16020000457,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 16020000458,
+            "end_ns": 16060000458,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 16060000459,
+            "end_ns": 16100000459,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 16100000460,
+            "end_ns": 16125000460,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 16125000461,
+            "end_ns": 16165000461,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 16165000462,
+            "end_ns": 16205000462,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 16205000463,
+            "end_ns": 16240000463,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 16240000464,
+            "end_ns": 16280000464,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 16280000465,
+            "end_ns": 16320000465,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 16320000466,
+            "end_ns": 16355000466,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 16355000467,
+            "end_ns": 16380000467,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ]
+      ]
+    },
+    {
+      "case": "Q-l20-t20",
+      "boundary": "prefix-replay+bottom",
+      "attempt": 0,
+      "prefix_events": 421,
+      "warmups": [
+        [
+          {
+            "arm": "P",
+            "start_ns": 16380000468,
+            "end_ns": 16420000468,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 16420000469,
+            "end_ns": 16460000469,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 16460000470,
+            "end_ns": 16495000470,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 16495000471,
+            "end_ns": 16520000471,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 16520000472,
+            "end_ns": 16560000472,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 16560000473,
+            "end_ns": 16595000473,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 16595000474,
+            "end_ns": 16620000474,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 16620000475,
+            "end_ns": 16660000475,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 16660000476,
+            "end_ns": 16695000476,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 16695000477,
+            "end_ns": 16720000477,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 16720000478,
+            "end_ns": 16760000478,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 16760000479,
+            "end_ns": 16800000479,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ]
+      ],
+      "samples": [
+        [
+          {
+            "arm": "C",
+            "start_ns": 16800000480,
+            "end_ns": 16825000480,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 16825000481,
+            "end_ns": 16865000481,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 16865000482,
+            "end_ns": 16905000482,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 16905000483,
+            "end_ns": 16940000483,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 16940000484,
+            "end_ns": 16980000484,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 16980000485,
+            "end_ns": 17020000485,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 17020000486,
+            "end_ns": 17055000486,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 17055000487,
+            "end_ns": 17080000487,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 17080000488,
+            "end_ns": 17120000488,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 17120000489,
+            "end_ns": 17155000489,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 17155000490,
+            "end_ns": 17180000490,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 17180000491,
+            "end_ns": 17220000491,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 17220000492,
+            "end_ns": 17255000492,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 17255000493,
+            "end_ns": 17280000493,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 17280000494,
+            "end_ns": 17320000494,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 17320000495,
+            "end_ns": 17360000495,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 17360000496,
+            "end_ns": 17385000496,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 17385000497,
+            "end_ns": 17425000497,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 17425000498,
+            "end_ns": 17465000498,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 17465000499,
+            "end_ns": 17500000499,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 17500000500,
+            "end_ns": 17540000500,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 17540000501,
+            "end_ns": 17580000501,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 17580000502,
+            "end_ns": 17615000502,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 17615000503,
+            "end_ns": 17640000503,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 17640000504,
+            "end_ns": 17680000504,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 17680000505,
+            "end_ns": 17715000505,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 17715000506,
+            "end_ns": 17740000506,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 17740000507,
+            "end_ns": 17780000507,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 17780000508,
+            "end_ns": 17815000508,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 17815000509,
+            "end_ns": 17840000509,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 17840000510,
+            "end_ns": 17880000510,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 17880000511,
+            "end_ns": 17920000511,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 17920000512,
+            "end_ns": 17945000512,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 17945000513,
+            "end_ns": 17985000513,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 17985000514,
+            "end_ns": 18025000514,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 18025000515,
+            "end_ns": 18060000515,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 18060000516,
+            "end_ns": 18100000516,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 18100000517,
+            "end_ns": 18140000517,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 18140000518,
+            "end_ns": 18175000518,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 18175000519,
+            "end_ns": 18200000519,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ]
+      ]
+    },
+    {
+      "case": "Q-l22-t20",
+      "boundary": "whole",
+      "attempt": 0,
+      "prefix_events": 507,
+      "warmups": [
+        [
+          {
+            "arm": "P",
+            "start_ns": 18200000520,
+            "end_ns": 18240000520,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 18240000521,
+            "end_ns": 18280000521,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 18280000522,
+            "end_ns": 18315000522,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 18315000523,
+            "end_ns": 18340000523,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 18340000524,
+            "end_ns": 18380000524,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 18380000525,
+            "end_ns": 18415000525,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 18415000526,
+            "end_ns": 18440000526,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 18440000527,
+            "end_ns": 18480000527,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 18480000528,
+            "end_ns": 18515000528,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 18515000529,
+            "end_ns": 18540000529,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 18540000530,
+            "end_ns": 18580000530,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 18580000531,
+            "end_ns": 18620000531,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ]
+      ],
+      "samples": [
+        [
+          {
+            "arm": "C",
+            "start_ns": 18620000532,
+            "end_ns": 18645000532,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 18645000533,
+            "end_ns": 18685000533,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 18685000534,
+            "end_ns": 18725000534,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 18725000535,
+            "end_ns": 18760000535,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 18760000536,
+            "end_ns": 18800000536,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 18800000537,
+            "end_ns": 18840000537,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 18840000538,
+            "end_ns": 18875000538,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 18875000539,
+            "end_ns": 18900000539,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 18900000540,
+            "end_ns": 18940000540,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 18940000541,
+            "end_ns": 18975000541,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 18975000542,
+            "end_ns": 19000000542,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 19000000543,
+            "end_ns": 19040000543,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 19040000544,
+            "end_ns": 19075000544,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 19075000545,
+            "end_ns": 19100000545,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 19100000546,
+            "end_ns": 19140000546,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 19140000547,
+            "end_ns": 19180000547,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 19180000548,
+            "end_ns": 19205000548,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 19205000549,
+            "end_ns": 19245000549,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 19245000550,
+            "end_ns": 19285000550,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 19285000551,
+            "end_ns": 19320000551,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 19320000552,
+            "end_ns": 19360000552,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 19360000553,
+            "end_ns": 19400000553,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 19400000554,
+            "end_ns": 19435000554,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 19435000555,
+            "end_ns": 19460000555,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 19460000556,
+            "end_ns": 19500000556,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 19500000557,
+            "end_ns": 19535000557,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 19535000558,
+            "end_ns": 19560000558,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 19560000559,
+            "end_ns": 19600000559,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 19600000560,
+            "end_ns": 19635000560,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 19635000561,
+            "end_ns": 19660000561,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 19660000562,
+            "end_ns": 19700000562,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 19700000563,
+            "end_ns": 19740000563,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 19740000564,
+            "end_ns": 19765000564,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 19765000565,
+            "end_ns": 19805000565,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 19805000566,
+            "end_ns": 19845000566,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 19845000567,
+            "end_ns": 19880000567,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 19880000568,
+            "end_ns": 19920000568,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 19920000569,
+            "end_ns": 19960000569,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 19960000570,
+            "end_ns": 19995000570,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 19995000571,
+            "end_ns": 20020000571,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ]
+      ]
+    },
+    {
+      "case": "Q-l22-t20",
+      "boundary": "prefix-replay+bottom",
+      "attempt": 0,
+      "prefix_events": 507,
+      "warmups": [
+        [
+          {
+            "arm": "P",
+            "start_ns": 20020000572,
+            "end_ns": 20060000572,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 20060000573,
+            "end_ns": 20100000573,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 20100000574,
+            "end_ns": 20135000574,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 20135000575,
+            "end_ns": 20160000575,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 20160000576,
+            "end_ns": 20200000576,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 20200000577,
+            "end_ns": 20235000577,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 20235000578,
+            "end_ns": 20260000578,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 20260000579,
+            "end_ns": 20300000579,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 20300000580,
+            "end_ns": 20335000580,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 20335000581,
+            "end_ns": 20360000581,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 20360000582,
+            "end_ns": 20400000582,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 20400000583,
+            "end_ns": 20440000583,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ]
+      ],
+      "samples": [
+        [
+          {
+            "arm": "C",
+            "start_ns": 20440000584,
+            "end_ns": 20465000584,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 20465000585,
+            "end_ns": 20505000585,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 20505000586,
+            "end_ns": 20545000586,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 20545000587,
+            "end_ns": 20580000587,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 20580000588,
+            "end_ns": 20620000588,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 20620000589,
+            "end_ns": 20660000589,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 20660000590,
+            "end_ns": 20695000590,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 20695000591,
+            "end_ns": 20720000591,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 20720000592,
+            "end_ns": 20760000592,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 20760000593,
+            "end_ns": 20795000593,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 20795000594,
+            "end_ns": 20820000594,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 20820000595,
+            "end_ns": 20860000595,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 20860000596,
+            "end_ns": 20895000596,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 20895000597,
+            "end_ns": 20920000597,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 20920000598,
+            "end_ns": 20960000598,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 20960000599,
+            "end_ns": 21000000599,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 21000000600,
+            "end_ns": 21025000600,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 21025000601,
+            "end_ns": 21065000601,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 21065000602,
+            "end_ns": 21105000602,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 21105000603,
+            "end_ns": 21140000603,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 21140000604,
+            "end_ns": 21180000604,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 21180000605,
+            "end_ns": 21220000605,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 21220000606,
+            "end_ns": 21255000606,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 21255000607,
+            "end_ns": 21280000607,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P2",
+            "start_ns": 21280000608,
+            "end_ns": 21320000608,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 21320000609,
+            "end_ns": 21355000609,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 21355000610,
+            "end_ns": 21380000610,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 21380000611,
+            "end_ns": 21420000611,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "D",
+            "start_ns": 21420000612,
+            "end_ns": 21455000612,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 21455000613,
+            "end_ns": 21480000613,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 21480000614,
+            "end_ns": 21520000614,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 21520000615,
+            "end_ns": 21560000615,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "C",
+            "start_ns": 21560000616,
+            "end_ns": 21585000616,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P",
+            "start_ns": 21585000617,
+            "end_ns": 21625000617,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 21625000618,
+            "end_ns": 21665000618,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 21665000619,
+            "end_ns": 21700000619,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          }
+        ],
+        [
+          {
+            "arm": "P",
+            "start_ns": 21700000620,
+            "end_ns": 21740000620,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "P2",
+            "start_ns": 21740000621,
+            "end_ns": 21780000621,
+            "elapsed_ns": 40000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "D",
+            "start_ns": 21780000622,
+            "end_ns": 21815000622,
+            "elapsed_ns": 35000000,
+            "repetitions": 1
+          },
+          {
+            "arm": "C",
+            "start_ns": 21815000623,
+            "end_ns": 21840000623,
+            "elapsed_ns": 25000000,
+            "repetitions": 1
+          }
+        ]
+      ]
+    }
+  ],
+  "exact": [
+    {
+      "case": "E-l20-t22",
+      "before_after_all_equal": true,
+      "independent": true,
+      "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "before": [
+        {
+          "arm": "P",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "P2",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "D",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "C",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        }
+      ],
+      "after": [
+        {
+          "arm": "P",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "P2",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "D",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "C",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        }
+      ]
+    },
+    {
+      "case": "E-l22-t22",
+      "before_after_all_equal": true,
+      "independent": true,
+      "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "before": [
+        {
+          "arm": "P",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "P2",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "D",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "C",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        }
+      ],
+      "after": [
+        {
+          "arm": "P",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "P2",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "D",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "C",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        }
+      ]
+    },
+    {
+      "case": "R-l20-t21",
+      "before_after_all_equal": true,
+      "independent": true,
+      "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "before": [
+        {
+          "arm": "P",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "P2",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "D",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "C",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        }
+      ],
+      "after": [
+        {
+          "arm": "P",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "P2",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "D",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "C",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        }
+      ]
+    },
+    {
+      "case": "R-l22-t21",
+      "before_after_all_equal": true,
+      "independent": true,
+      "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "before": [
+        {
+          "arm": "P",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "P2",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "D",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "C",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        }
+      ],
+      "after": [
+        {
+          "arm": "P",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "P2",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "D",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "C",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        }
+      ]
+    },
+    {
+      "case": "Q-l20-t20",
+      "before_after_all_equal": true,
+      "independent": true,
+      "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "before": [
+        {
+          "arm": "P",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "P2",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "D",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "C",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        }
+      ],
+      "after": [
+        {
+          "arm": "P",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "P2",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "D",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "C",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        }
+      ]
+    },
+    {
+      "case": "Q-l22-t20",
+      "before_after_all_equal": true,
+      "independent": true,
+      "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "before": [
+        {
+          "arm": "P",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "P2",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "D",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "C",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        }
+      ],
+      "after": [
+        {
+          "arm": "P",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "P2",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "D",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        },
+        {
+          "arm": "C",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "independent": true
+        }
+      ]
+    }
+  ]
+}

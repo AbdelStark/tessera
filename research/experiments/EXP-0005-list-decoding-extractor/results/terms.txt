@@ -1,0 +1,12 @@
+set                     η    τ     A_thr     L     μ  log2 G·L/q′  log2 G·L·(s+1)/q′  log2 (ρ₋)^τ  log2 1/q′  log2 ε_MCA
+live-64 advice      0.001  129   5940143   147   501       -116.8             -108.8       -129.0       -128       -77.4
+live-64 advice      0.002  130   5948532    73   251       -117.8             -109.8       -130.0       -128       -80.4
+live-64 advice      0.003  130   5956920    49   167       -118.4             -110.4       -130.0       -128       -82.2
+live-64 weights     0.005   68   2182666    49   101       -118.4             -110.4       -130.1       -128       -86.0
+ni-100 advice       0.002  162   5948560    73   251       -117.8             -109.8       -162.0       -128       -80.4
+ni-100 advice       0.003  163   5956949    49   167       -118.4             -110.4       -163.0       -128       -82.2
+ni-100 weights      0.005   85   2182666    49   101       -118.4             -110.4       -162.6       -128       -86.0
+
+every extra term is below 2^-100 when each log2 value in the four middle columns is below -100;
+ε_MCA earns the seed's grinding credit only because ξ is squeezed right after the seed (RFC-0021 order 3b);
+the claim-binding term is re-rollable in both modes at one or more hashes per attempt and is budgeted as λ = −log2(term)

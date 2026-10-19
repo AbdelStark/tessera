@@ -1,0 +1,1093 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+"""EXP-0022 conditional finite audit; not a cryptographic proof verifier.
+
+The candidate never receives complete U or the row-mask oracle. Registry
+membership and exact terminal evaluation are explicitly ideal assumptions.
+"""
+from __future__ import annotations
+
+import argparse
+from collections import Counter
+import copy
+from dataclasses import dataclass, fields
+from datetime import datetime, timezone
+from fractions import Fraction
+import hashlib
+import itertools
+import json
+import os
+from pathlib import Path
+import platform
+import resource
+import signal
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[2]
+P = (1 << 64) - (1 << 32) + 1
+COMMIT = "f344d76"
+FROZEN = "6676608fac008fc20b9bb7594dbe6463acb54f5bdc0fe2f9a1cb4a20fb22fd24"
+SEED = 0x0022003500000001
+
+
+class Failure(Exception):
+    pass
+
+
+class Limit(Exception):
+    pass
+
+
+class Reject(Exception):
+    def __init__(self, reason):
+        self.reason = reason
+        super().__init__(reason)
+
+
+class Meter:
+    def __init__(self):
+        self.start = time.monotonic()
+        self.ops = 0
+        self.judgments = 0
+        self.counts = Counter()
+        self.maxima = Counter()
+        self.arm = "setup"
+        self.stream = None
+        self.next_check = 65536
+
+    def op(self, n=1):
+        self.ops += n
+        if self.ops >= self.next_check:
+            self.next_check = self.ops + 65536
+            self.check()
+
+    def check(self):
+        if self.ops > 3_000_000_000 or self.judgments > 100_000_000:
+            raise Limit("operation/judgment cap")
+        if time.monotonic() - self.start > 900:
+            raise Limit("15-minute watchdog")
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        if sys.platform != "darwin":
+            rss *= 1024
+        self.maxima["rss_bytes"] = max(self.maxima["rss_bytes"], rss)
+        if rss > 256 * 1024 * 1024:
+            raise Limit("256 MiB process RSS")
+
+    def observe(self, condition):
+        self.judgments += 1
+        self.counts["judgments/" + self.arm] += 1
+        if self.judgments % 65536 == 0:
+            self.check()
+        return bool(condition)
+
+    def judge(self, condition, name, detail=None):
+        if not self.observe(condition):
+            self.event("failure", {"name": name, "detail": detail})
+            raise Failure(name)
+
+    def event(self, kind, value):
+        if self.stream:
+            self.stream.write(json.dumps({"kind": kind, "data": clean(value)}, sort_keys=True) + "\n")
+            self.stream.flush()
+
+
+M = Meter()
+
+
+class F:
+    __slots__ = ("a", "b")
+
+    def __init__(self, a=0, b=0):
+        if isinstance(a, F):
+            self.a, self.b = a.a, a.b
+        else:
+            self.a, self.b = int(a) % P, int(b) % P
+
+    def __add__(self, v):
+        v = F(v); M.op(2)
+        return F(self.a + v.a, self.b + v.b)
+
+    __radd__ = __add__
+
+    def __sub__(self, v):
+        v = F(v); M.op(2)
+        return F(self.a - v.a, self.b - v.b)
+
+    def __rsub__(self, v):
+        return F(v) - self
+
+    def __neg__(self):
+        M.op(2); return F(-self.a, -self.b)
+
+    def __mul__(self, v):
+        v = F(v); M.op(7)
+        return F(self.a * v.a + 7 * self.b * v.b, self.a * v.b + self.b * v.a)
+
+    __rmul__ = __mul__
+
+    def __pow__(self, n):
+        assert type(n) is int and n >= 0
+        x, y = F(self), F(1)
+        while n:
+            if n & 1:
+                y = y * x
+            n >>= 1
+            if n:
+                x = x * x
+        return y
+
+    def inv(self):
+        if self == 0:
+            raise Reject("zero-inverse")
+        M.op(4)
+        norm = (self.a * self.a - 7 * self.b * self.b) % P
+        inv = basepow(norm, P - 2)
+        M.op(3)
+        return F(self.a * inv, -self.b * inv)
+
+    def __truediv__(self, v):
+        return self * F(v).inv()
+
+    def __eq__(self, v):
+        if isinstance(v, (int, F)):
+            v = F(v)
+            return self.a == v.a and self.b == v.b
+        return False
+
+    def __hash__(self):
+        return hash((self.a, self.b))
+
+    def __repr__(self):
+        return f"F({self.a},{self.b})"
+
+
+ZERO, ONE, U = F(), F(1), F(0, 1)
+HALF = F((P + 1) // 2)
+
+
+def basepow(x, n):
+    y = 1
+    while n:
+        if n & 1:
+            M.op(); y = y * x % P
+        n >>= 1
+        if n:
+            M.op(); x = x * x % P
+    return y
+
+
+def pairadd(x, y):
+    M.op(2)
+    return ((x[0] + y[0]) % P, (x[1] + y[1]) % P)
+
+
+def pairmul(x, y):
+    # Independent pair oracle, not a call through F operators.
+    M.op(7)
+    ac, bd, ad, bc = x[0]*y[0], x[1]*y[1], x[0]*y[1], x[1]*y[0]
+    return ((ac + 7*bd) % P, (ad + bc) % P)
+
+
+def clean(x):
+    if isinstance(x, F):
+        return [x.a, x.b]
+    if isinstance(x, Fraction):
+        return str(x)
+    if hasattr(x, "__dataclass_fields__"):
+        return {v.name: clean(getattr(x, v.name)) for v in fields(x)}
+    if isinstance(x, dict):
+        return {str(k): clean(v) for k, v in x.items()}
+    if isinstance(x, (tuple, list)):
+        return [clean(v) for v in x]
+    return x
+
+
+def digest(x):
+    return hashlib.sha256(json.dumps(clean(x), sort_keys=True).encode()).hexdigest()
+
+
+def require(cond, reason):
+    if not M.observe(cond):
+        raise Reject(reason)
+
+
+def same_vector(a, b, reason):
+    require(len(a) == len(b), reason + "/length")
+    for x, y in zip(a, b):
+        require(x == y, reason)
+
+
+def pow2(n):
+    return 1 << (max(1, n) - 1).bit_length()
+
+
+def bits(n):
+    assert n > 0 and n & (n - 1) == 0
+    return n.bit_length() - 1
+
+
+def eq_boolean(point, index):
+    ans = ONE
+    for b, r in enumerate(point):
+        ans = ans * (r if (index >> b) & 1 else ONE - r)
+    return ans
+
+
+def mle_ref(table, point):
+    require(len(table) == 1 << len(point), "reference-table-shape")
+    ans = ZERO
+    for index, value in enumerate(table):
+        ans = ans + value * eq_boolean(point, index)
+    return ans
+
+
+def mle_fold(table, point):
+    require(len(table) == 1 << len(point), "fold-table-shape")
+    row = list(table)
+    for r in point:
+        row = [a + (b-a)*r for a, b in zip(row[::2], row[1::2])]
+    require(len(row) == 1, "fold-terminal-shape")
+    return row[0]
+
+
+def dot(a, b):
+    require(len(a) == len(b), "dot-shape")
+    value = ZERO
+    for x, y in zip(a, b):
+        value = value + x*y
+    return value
+
+
+def poly_eval(coeffs, x):
+    ans = ZERO
+    for c in reversed(coeffs):
+        ans = ans*x + c
+    return ans
+
+
+def catalog(cat, length, offset=0):
+    if cat == 0:
+        return (ZERO,) * length
+    if cat == 1:
+        return (ONE,) * length
+    if cat == 2:
+        return tuple(F((b+offset) % 2) for b in range(length))
+    choices = (HALF, U, ONE+U, F(2)-U)
+    return tuple(choices[(b+offset) % 4] for b in range(length))
+
+
+def draws(cat, n):
+    return ((0,), (0, 0), (n-1, 0, n-1), tuple(range(n)))[cat]
+
+
+def gamma(cat):
+    return (ZERO, ONE, F(2), ONE+U)[cat]
+
+
+def splitmix(index):
+    # PRNG bit/machine-word operations are separately declared fixture work.
+    M.counts["fixture_prng_words"] += 1
+    x = (SEED + 0x9E3779B97F4A7C15 * (index+1)) & ((1 << 64)-1)
+    x = ((x ^ (x >> 30)) * 0xBF58476D1CE4E5B9) & ((1 << 64)-1)
+    x = ((x ^ (x >> 27)) * 0x94D049BB133111EB) & ((1 << 64)-1)
+    return x ^ (x >> 31)
+
+
+def fixture_value(family, namespace, row, column):
+    if family == 0:
+        return ZERO
+    if family == 1:
+        return ONE
+    # Namespace/index arithmetic selects an input. The value-generating
+    # remainder/subtraction and sign negation are metered algebraic work.
+    index = namespace * 4096 + row * 64 + column
+    if family == 2:
+        M.op()
+        return -ONE if index % 2 else ONE
+    M.op(2)
+    return F(splitmix(index) % 5 - 2)
+
+
+@dataclass(frozen=True)
+class Desc:
+    k1: int
+    D: int
+    G: int
+    mode: str
+    P1: int
+    k2: int
+    P2: int
+    format: str = "e22-two-level/1"
+    basis: str = "coeff-natural/experimental"
+    lanes: tuple = (0, 1)
+
+    @property
+    def m(self):
+        return self.G + 1
+
+    @property
+    def groups(self):
+        return pow2(self.m)
+
+    @property
+    def identity(self):
+        return tuple(getattr(self, f.name) for f in fields(self))
+
+
+def parse_desc(record):
+    expected = {f.name for f in fields(Desc)}
+    require(type(record) is dict and set(record) == expected, "descriptor/fields")
+    for name, domain in (("k1", (1,2,4)), ("D", (1,3)), ("G", (0,1,2)),
+                         ("P1", (0,1)), ("k2", (2,4)), ("P2", (0,1))):
+        require(type(record[name]) is int and record[name] in domain, "descriptor/"+name)
+    require(record["mode"] in ("plain", "blinded-algebra"), "descriptor/mode")
+    require(record["format"] == "e22-two-level/1", "descriptor/format")
+    require(record["basis"] == "coeff-natural/experimental", "descriptor/basis")
+    require(record["lanes"] == (0,1), "descriptor/lanes")
+    return Desc(**record)
+
+
+def encoded(rows, masks, k):
+    n = 2*k
+    omega = basepow(7, (P-1)//n)
+    points = tuple(F(7) * F(omega)**j for j in range(n))
+    columns = []
+    for x in points:
+        columns.append(tuple(poly_eval(row,x) + (x**k)*poly_eval(mask,x)
+                             for row,mask in zip(rows,masks)))
+    return points, tuple(columns)
+
+
+class IdealRegistry:
+    """Immutable ideal association: root -> tensor, masks, row map, columns.
+
+    The candidate has no read-tensor/read-mask/honest-combination method.
+    Registry methods never compare a committed U/V with A-derived U.
+    """
+    def __init__(self):
+        self.__records = {}
+
+    def commit(self, descriptor, tensor, rows, masks, physical, k):
+        tensor = tuple(tensor)
+        rows, masks = tuple(map(tuple,rows)), tuple(map(tuple,masks))
+        require(all(v.b == 0 for v in tensor), "registry/nonbase-coefficient")
+        require(len(rows) == len(masks), "registry/row-mask-length")
+        require(tuple(sorted(set(physical))) == tuple(physical), "registry/physical-order")
+        require(all(len(row) == k for row in rows), "registry/row-width")
+        require(tuple(v for row in rows for v in row) == tensor, "registry/tensor-row-map")
+        present = set(physical)
+        require(all(all(v == 0 for v in rows[r]) and all(v == 0 for v in masks[r])
+                    for r in range(len(rows)) if r not in present), "registry/public-zero")
+        points, columns = encoded(rows,masks,k)
+        root = len(self.__records) + 1
+        self.__records[root] = (descriptor,tensor,rows,masks,tuple(physical),points,columns)
+        M.counts["registry_commits"] += 1
+        return root, points, columns
+
+    def verify_columns(self, root, descriptor, draw, response):
+        require(root in self.__records, "membership/root")
+        registered, _, _, _, physical, points, columns = self.__records[root]
+        require(registered == descriptor, "membership/descriptor")
+        require(len(draw) > 0 and all(type(j) is int and 0 <= j < len(points) for j in draw),
+                "membership/query")
+        indices = tuple(sorted(set(draw)))
+        require(tuple(j for j,_ in response) == indices, "membership/column-order")
+        for j, symbols in response:
+            same_vector(symbols,tuple(columns[j][r] for r in physical),"membership/symbol")
+        return True
+
+    def verify_mle(self, root, descriptor, point, value):
+        require(root in self.__records, "opening/root")
+        registered, tensor, *_ = self.__records[root]
+        require(registered == descriptor, "opening/descriptor")
+        require(len(tensor) == 1 << len(point), "opening/point-length")
+        require(mle_ref(tensor,point) == value, "opening/value")
+        return True
+
+
+@dataclass
+class Original:
+    k: int
+    D: int
+    G: int
+    mode: str
+    P1: int
+    family: int
+    cat: int
+    data_cube: int
+    rows: tuple
+    masks: tuple
+    physical: tuple
+    coefficients: tuple
+    values: tuple
+    q: tuple
+    points: tuple
+    Urows: tuple
+    combined_masks: tuple
+    row_ownership: tuple
+
+
+def original_fixture(k,D,G,mode,P1,family,cat):
+    data_cube = pow2(D)
+    m = G+1
+    count = data_cube + (2*m if mode == "blinded-algebra" else 0)
+    allocated = pow2(count)
+    physical = tuple(range(D)) + (tuple(range(data_cube,count)) if mode == "blinded-algebra" else ())
+    rows = tuple(tuple(fixture_value(family,10,r,i) if r in physical else ZERO for i in range(k))
+                 for r in range(allocated))
+    masks = tuple(tuple(fixture_value(family,20,r,j) if r in physical else ZERO for j in range(P1))
+                  for r in range(allocated))
+    coeffs,values,q,points,Urows,combined,ownership = [],[],[],[],[],[],[]
+    for g in range(m):
+        p = catalog(cat,bits(k),g+1)
+        c = [ZERO]*allocated
+        vals = []
+        if g < G:
+            for t in range(2):
+                rp = catalog(cat,bits(data_cube),2*g+t)
+                value = mle_ref(tuple(v for row in rows[:data_cube] for v in row),p+rp)
+                vals.append(value)
+                power = gamma(cat)**(t+1)
+                for r in range(data_cube):
+                    c[r] = c[r] + power*eq_boolean(rp,r)
+        else:
+            for r in range(data_cube):
+                c[r] = eq_boolean(catalog(cat,bits(data_cube)),r)
+        qg = ZERO
+        if mode == "blinded-algebra":
+            b0,b1 = data_cube+2*g,data_cube+2*g+1
+            c[b0],c[b1] = ONE,U
+            ownership.append((g,b0,b1))
+            if g < G:
+                qg = mle_ref(tuple(a+U*b for a,b in zip(rows[b0],rows[b1])),p)
+        urow = tuple(sum((c[r]*rows[r][i] for r in range(allocated)),ZERO) for i in range(k))
+        mg = tuple(sum((c[r]*masks[r][j] for r in range(allocated)),ZERO) for j in range(P1))
+        coeffs.append(tuple(c)); values.append(tuple(vals)); q.append(qg); points.append(p)
+        Urows.append(urow); combined.append(mg)
+    return Original(k,D,G,mode,P1,family,cat,data_cube,rows,masks,physical,
+                    tuple(coeffs),tuple(values),tuple(q),tuple(points),tuple(Urows),tuple(combined),tuple(ownership))
+
+
+@dataclass(frozen=True)
+class Equation:
+    kind: str
+    group: int
+    index: int
+    ordinal: int
+    parameter: tuple | F
+    target: F
+    identity: tuple
+
+
+def equation_weights(eq,k):
+    if eq.kind == "evaluation":
+        return tuple(eq_boolean(eq.parameter,i) for i in range(k))
+    return tuple(eq.parameter**i for i in range(k))
+
+
+def public_coefficients(desc,cat):
+    # Derived only from descriptor/points/challenges, never A/U or row masks.
+    data = pow2(desc.D)
+    allocated = pow2(data+(2*desc.m if desc.mode == "blinded-algebra" else 0))
+    result=[]
+    for g in range(desc.m):
+        c=[]
+        for r in range(allocated):
+            value=ZERO
+            if r < data:
+                if g < desc.G:
+                    for t in range(2):
+                        value=value+(gamma(cat)**(t+1))*eq_boolean(catalog(cat,bits(data),2*g+t),r)
+                else:
+                    value=eq_boolean(catalog(cat,bits(data)),r)
+            if desc.mode == "blinded-algebra":
+                if r == data+2*g:value=ONE
+                if r == data+2*g+1:value=U
+            c.append(value)
+        result.append(tuple(c))
+    return tuple(result)
+
+
+def derive_equations(source,desc,cat,registry,skip_membership=False,phi_old=False):
+    require(source["identity"] == desc.identity,"source/descriptor")
+    require(len(source["values"]) == desc.G,"source/claim-count")
+    require(len(source["q"]) == desc.G,"source/q-count")
+    require(len(source["M"]) == desc.m,"source/mask-count")
+    for row in source["M"]:
+        require(len(row)==desc.P1,"source/mask-width")
+    coefficients=public_coefficients(desc,cat)
+    same_vector(source["ownership"],tuple((g,pow2(desc.D)+2*g,pow2(desc.D)+2*g+1)
+                for g in range(desc.m)) if desc.mode=="blinded-algebra" else (),"source/blinding-ownership")
+    if not skip_membership:
+        registry.verify_columns(source["root"],source["original_descriptor"],source["draw"],source["columns"])
+    require(source["draw"] == draws(cat,2*desc.k1),"source/query-draw")
+    equations=[]
+    for g in range(desc.G):
+        require(len(source["values"][g])==2,"source/claim-length")
+        target=source["q"][g]
+        for t,v in enumerate(source["values"][g]):
+            target=target+(gamma(cat)**(t+1))*v
+        equations.append(Equation("evaluation",g,-1,len(equations),catalog(cat,bits(desc.k1),g+1),target,desc.identity))
+    physical=source["physical"]
+    expected=tuple(range(desc.D))
+    if desc.mode=="blinded-algebra":
+        expected+=tuple(range(pow2(desc.D),pow2(desc.D)+2*desc.m))
+    require(physical==expected,"source/row-map")
+    for j,symbols in source["columns"]:
+        x=source["column_points"][j]
+        for g in range(desc.m):
+            target=sum((coefficients[g][r]*v for r,v in zip(physical,symbols)),ZERO)
+            phi=x**desc.k1
+            if phi_old:phi=phi-ONE
+            target=target-phi*poly_eval(source["M"][g],x)
+            equations.append(Equation("column",g,j,len(equations),x,target,desc.identity))
+    return tuple(equations)
+
+
+def inventory(received,expected,skip=False):
+    if skip:return
+    require(len(received)==len(expected),"equation-inventory/length")
+    for a,b in zip(received,expected):
+        require((a.kind,a.group,a.index,a.ordinal,a.parameter,a.identity)==
+                (b.kind,b.group,b.index,b.ordinal,b.parameter,b.identity),"equation-inventory/metadata")
+        require(a.target==b.target,"equation-inventory/target-from-source")
+
+
+def weight_table(equations,alpha,desc):
+    table=[ZERO]*(desc.groups*desc.k1)
+    for eq in equations:
+        lam=alpha**eq.ordinal
+        for i,w in enumerate(equation_weights(eq,desc.k1)):
+            at=eq.group*desc.k1+i
+            table[at]=table[at]+lam*w
+    return tuple(table)
+
+
+def weight_factored(equations,alpha,desc,point,wrong_exponent=False):
+    require(len(point)==bits(desc.groups*desc.k1),"weight/point-length")
+    si,sg=point[:bits(desc.k1)],point[bits(desc.k1):]
+    value=ZERO
+    for eq in equations:
+        w=ONE
+        if eq.kind=="evaluation":
+            for p,s in zip(eq.parameter,si):
+                w=w*((ONE-p)*(ONE-s)+p*s)
+        else:
+            for b,s in enumerate(si):
+                exponent=(1<<b)+(1 if wrong_exponent else 0)
+                w=w*(ONE-s+s*(eq.parameter**exponent))
+        value=value+(alpha**eq.ordinal)*eq_boolean(sg,eq.group)*w
+    return value
+
+
+def ref_residuals(actual_u,equations,desc):
+    return tuple(dot(actual_u[e.group],equation_weights(e,desc.k1))-e.target for e in equations)
+
+
+def round_direct(a,b):
+    # Reference affine-coefficient convolution. Does not interpolate samples.
+    coeff=[ZERO,ZERO,ZERO]
+    for a0,a1,b0,b1 in zip(a[::2],a[1::2],b[::2],b[1::2]):
+        da,db=a1-a0,b1-b0
+        coeff[0]=coeff[0]+a0*b0
+        coeff[1]=coeff[1]+a0*db+da*b0
+        coeff[2]=coeff[2]+da*db
+    return tuple(coeff)
+
+
+def make_sumcheck(actual_u,W,point):
+    # Prover: arbitrary committed U is legal input; no A-derived U check.
+    a=list(actual_u);b=list(W);rounds=[]
+    require(len(a)==len(b)==1<<len(point),"prover/table-shape")
+    for r in point:
+        samples=[]
+        for t in (ZERO,ONE,F(2)):
+            samples.append(sum(((a0+(a1-a0)*t)*(b0+(b1-b0)*t)
+                               for a0,a1,b0,b1 in zip(a[::2],a[1::2],b[::2],b[1::2])),ZERO))
+        q0=samples[0]
+        q2=(samples[2]-F(2)*samples[1]+samples[0])*HALF
+        q1=samples[1]-q0-q2
+        q=(q0,q1,q2)
+        reference=round_direct(a,b)
+        same_vector(q,reference,"reference/round-polynomial")
+        rounds.append(q)
+        a=[v+(w-v)*r for v,w in zip(a[::2],a[1::2])]
+        b=[v+(w-v)*r for v,w in zip(b[::2],b[1::2])]
+    require(len(a)==len(b)==1,"prover/final-table-length")
+    return {"rounds":tuple(rounds),"point":tuple(point),"terminal_u":a[0],"terminal_point":tuple(point)}
+
+
+def check_sumcheck(proof,equations,alpha,desc,expected_point,wrong_weight=False):
+    require(len(proof["rounds"])==len(expected_point),"batch/round-count")
+    require(proof["point"]==expected_point,"batch/challenge-point")
+    require(proof["terminal_point"]==expected_point,"batch/terminal-point")
+    claim=sum(((alpha**e.ordinal)*e.target for e in equations),ZERO)
+    for index,(coeff,r) in enumerate(zip(proof["rounds"],expected_point)):
+        require(len(coeff)<=3,"batch/degree")
+        require(len(coeff)==3,"batch/polynomial-shape")
+        require(poly_eval(coeff,ZERO)+poly_eval(coeff,ONE)==claim,
+                "batch/initial" if index==0 else "batch/round-identity")
+        claim=poly_eval(coeff,r)
+    value=weight_factored(equations,alpha,desc,expected_point,wrong_weight)
+    require(claim==proof["terminal_u"]*value,"batch/final")
+    return proof["terminal_u"]
+
+
+@dataclass
+class Case:
+    desc: Desc
+    original: Original
+    registry: IdealRegistry
+    source: dict
+    actual_u: tuple
+    V: tuple
+    level2_rows: tuple
+    level2_masks: tuple
+    level2_physical: tuple
+    root: int
+    level2_points: tuple
+    level2_columns: tuple
+    level2_descriptor: tuple
+    identity: str
+
+
+def build_case(original,desc,actual_u=None):
+    registry=IdealRegistry()
+    orig_desc=("original",desc.k1,desc.D,desc.G,desc.mode,desc.P1,original.family,original.cat)
+    oroot,opoints,ocols=registry.commit(orig_desc,tuple(v for row in original.rows for v in row),
+                                       original.rows,original.masks,original.physical,desc.k1)
+    source={"identity":desc.identity,"root":oroot,"original_descriptor":orig_desc,
+            "draw":draws(original.cat,2*desc.k1),"physical":original.physical,
+            "columns":tuple((j,tuple(ocols[j][r] for r in original.physical))
+                            for j in sorted(set(draws(original.cat,2*desc.k1)))),
+            "column_points":opoints,"values":original.values[:desc.G],
+            "q":original.q[:desc.G],"M":original.combined_masks,"ownership":original.row_ownership}
+    actual_u=tuple(tuple(row) for row in (original.Urows if actual_u is None else actual_u))
+    require(len(actual_u)==desc.m and all(len(row)==desc.k1 for row in actual_u),"commit/U-shape")
+    padded_u=actual_u+tuple((ZERO,)*desc.k1 for _ in range(desc.groups-desc.m))
+    V=tuple(F(v.a if lane==0 else v.b) for row in padded_u for lane in range(2) for v in row)
+    V=V+(ZERO,)*(max(len(V),desc.k2)-len(V))
+    rows=tuple(tuple(V[start:start+desc.k2]) for start in range(0,len(V),desc.k2))
+    # Structural physical rows, independent of sampled values.
+    physical=tuple(r for r in range(len(rows)) if r*desc.k2 < 2*desc.m*desc.k1)
+    masks=tuple(tuple(fixture_value(original.family,30,r,j) if r in physical else ZERO
+                      for j in range(desc.P2)) for r in range(len(rows)))
+    l2desc=("combined-U",desc.identity,orig_desc,original.cat,original.family)
+    root,points,columns=registry.commit(l2desc,V,rows,masks,physical,desc.k2)
+    identity=digest((desc,original.family,original.cat,source,V))
+    M.maxima["U_table_size"]=max(M.maxima["U_table_size"],len(padded_u)*desc.k1)
+    M.maxima["V_table_size"]=max(M.maxima["V_table_size"],len(V))
+    M.maxima["allocated_R2"]=max(M.maxima["allocated_R2"],len(rows))
+    return Case(desc,original,registry,source,actual_u,V,rows,masks,physical,root,points,columns,l2desc,identity)
+
+
+def lane_points(desc,point):
+    require(len(point)==bits(desc.groups*desc.k1),"terminal/dimensions")
+    si,sg=point[:bits(desc.k1)],point[bits(desc.k1):]
+    extra=bits(max(2*desc.groups*desc.k1,desc.k2))-bits(2*desc.groups*desc.k1)
+    return tuple(si+(F(lane),)+sg+(ZERO,)*extra for lane in (0,1))
+
+
+def level2_groups(claims,k):
+    groups=[]
+    for claim in claims:
+        p=claim["point"][:bits(k)]
+        found=next((g for g in groups if g[0]==p),None)
+        if found is None:
+            found=(p,[]);groups.append(found)
+        found[1].append(claim)
+    return tuple((p,tuple(cs)) for p,cs in groups)
+
+
+def l2_coefficients(claims,k,rows,cat):
+    groups=level2_groups(claims,k)
+    coeffs=[]
+    for p,cs in groups:
+        coeff=[]
+        for r in range(rows):
+            coeff.append(sum((((F(2)+U)**(t+1))*eq_boolean(c["point"][bits(k):],r)
+                              for t,c in enumerate(cs)),ZERO))
+        coeffs.append(tuple(coeff))
+    coeffs.append(tuple(eq_boolean(catalog(cat,bits(rows),2),r) for r in range(rows)))
+    return groups,tuple(coeffs)
+
+
+def make_level2(case,claims):
+    d=case.desc;cat=case.original.cat
+    groups,coeffs=l2_coefficients(claims,d.k2,len(case.level2_rows),cat)
+    combined=tuple(tuple(sum((c[r]*case.level2_rows[r][i] for r in range(len(c))),ZERO)
+                         for i in range(d.k2)) for c in coeffs)
+    masks=tuple(tuple(sum((c[r]*case.level2_masks[r][j] for r in range(len(c))),ZERO)
+                      for j in range(d.P2)) for c in coeffs)
+    query=draws(cat,2*d.k2)
+    response=tuple((j,tuple(case.level2_columns[j][r] for r in case.level2_physical)) for j in sorted(set(query)))
+    M.maxima["level2_evaluation_groups"]=max(M.maxima["level2_evaluation_groups"],len(groups))
+    return {"root":case.root,"descriptor":case.level2_descriptor,"claims":tuple(claims),
+            "combined":combined,"masks":masks,"draw":query,"columns":response,
+            "physical":case.level2_physical,"consumed":True}
+
+
+def check_level2(record,claims,case,skip_ideal=False,skip_shape=False,old_phi=False):
+    # Only public descriptor/dimensions plus ideal services. No V/row-mask reads.
+    d=case.desc
+    require(record is not None,"terminal/missing-opening")
+    require(record["root"]==case.root,"level2/root")
+    require(record["descriptor"]==case.level2_descriptor,"level2/descriptor")
+    require(record["claims"]==tuple(claims),"level2/claim-inventory")
+    R=max(2*d.groups*d.k1,d.k2)//d.k2
+    groups,coeffs=l2_coefficients(claims,d.k2,R,case.original.cat)
+    if not skip_shape:
+        require(len(record["combined"])==len(groups)+1,"level2/combined-count")
+        require(len(record["masks"])==len(groups)+1,"level2/mask-count")
+        for row in record["combined"]:require(len(row)==d.k2,"level2/combined-width")
+        for row in record["masks"]:require(len(row)==d.P2,"level2/mask-width")
+    for g,(p,cs) in enumerate(groups):
+        target=sum((((F(2)+U)**(t+1))*c["value"] for t,c in enumerate(cs)),ZERO)
+        require(dot(record["combined"][g],tuple(eq_boolean(p,i) for i in range(d.k2)))==target,
+                "level2/evaluation")
+    require(record["draw"]==draws(case.original.cat,2*d.k2),"level2/query-draw")
+    physical=tuple(r for r in range(R) if r*d.k2 < 2*d.m*d.k1)
+    require(record["physical"]==physical,"level2/row-map")
+    case.registry.verify_columns(case.root,case.level2_descriptor,record["draw"],record["columns"])
+    for j,symbols in record["columns"]:
+        x=case.level2_points[j]
+        for g,c in enumerate(coeffs):
+            target=sum((c[r]*v for r,v in zip(physical,symbols)),ZERO)
+            phi=x**d.k2
+            if old_phi:phi=phi-ONE
+            require(poly_eval(record["combined"][g],x)+phi*poly_eval(record["masks"][g],x)==target,
+                    "level2/column")
+    if not skip_ideal:
+        for claim in claims:
+            case.registry.verify_mle(case.root,case.level2_descriptor,claim["point"],claim["value"])
+    require(record["consumed"] is True,"terminal/unconsumed")
+    return True
+
+
+def events_for(desc,source,round_count,mode):
+    # Finite event-order model, not a cryptographic transcript implementation.
+    events=[("descriptor",desc.identity),("original-root",source["root"]),("claims",None)]
+    if desc.mode=="blinded-algebra":events += [("blinding",None)]
+    events += [("e22/l1/gamma",None),("e22/l1/xi",None),("C_U",None),("M",None),
+               ("queries1",mode),("columns1",None),("equations",None),("e22/batch/alpha",None)]
+    for r in range(round_count):
+        events += [(f"e22/batch/round/{r}",None),(f"e22/batch/challenge/{r}",None)]
+    events += [("terminal-requests",None),("e22/l2/gamma",None),("e22/l2/xi",None),
+               ("combined2",None),("queries2",mode),("columns2",None),("opening2",None),("consume",None)]
+    return tuple(events)
+
+
+def check_events(events,desc,source,round_count,mode):
+    expected=events_for(desc,source,round_count,mode)
+    require(len(events)==len(expected),"transcript/count")
+    for got,want in zip(events,expected):
+        require(got[0]==want[0],"transcript/order-label")
+        require(got[1]==want[1],"transcript/identity-mode")
+
+
+def make_record(case,equations,alpha):
+    desc=case.desc
+    point=catalog(case.original.cat,bits(desc.groups*desc.k1),1)
+    W=weight_table(equations,alpha,desc)
+    u=tuple(v for row in case.actual_u for v in row)+(ZERO,)*((desc.groups-desc.m)*desc.k1)
+    proof=make_sumcheck(u,W,point)
+    claims=tuple({"lane":lane,"root":case.root,"descriptor":case.level2_descriptor,
+                  "point":p,"value":mle_ref(case.V,p)} for lane,p in enumerate(lane_points(desc,point)))
+    return {"equations":equations,"proof":proof,"claims":claims,"opening":make_level2(case,claims),
+            "events":events_for(desc,case.source,len(point),"live"),"mode":"live"}
+
+
+def candidate(case,source,alpha,record,mutant=None):
+    desc=parse_desc({f.name:getattr(case.desc,f.name) for f in fields(Desc)})
+    if mutant!="skip-order":
+        check_events(record["events"],desc,source,bits(desc.groups*desc.k1),record["mode"])
+    expected=derive_equations(source,desc,case.original.cat,case.registry,
+                              skip_membership=mutant=="skip-membership",phi_old=mutant=="old-phi")
+    inventory(record["equations"],expected,skip=mutant=="skip-inventory")
+    value=check_sumcheck(record["proof"],record["equations"],alpha,desc,
+                        catalog(case.original.cat,bits(desc.groups*desc.k1),1),mutant=="wrong-weight")
+    if mutant=="value-only":return True
+    require(len(record["claims"])==2,"terminal/lane-count")
+    expected_points=lane_points(desc,record["proof"]["point"])
+    for lane,claim in enumerate(record["claims"]):
+        require(claim["lane"]==lane,"terminal/lane-order")
+        require(claim["point"]==expected_points[lane],"terminal/lane-point")
+        require(claim["root"]==case.root,"terminal/root")
+        require(claim["descriptor"]==case.level2_descriptor,"terminal/descriptor")
+    require(value==record["claims"][0]["value"]+U*record["claims"][1]["value"],"terminal/reconstruction")
+    check_level2(record["opening"],record["claims"],case,skip_ideal=mutant=="skip-ideal")
+    return True
+
+
+def outcome(fn):
+    try:
+        fn();return "accept"
+    except Reject as error:
+        return error.reason
+
+
+def exercise(case,source=None,label="honest",save=False):
+    source=case.source if source is None else source
+    equations=derive_equations(source,case.desc,case.original.cat,case.registry)
+    residual=ref_residuals(case.actual_u,equations,case.desc)
+    M.judge(len(residual)==len(equations),"reference/residual-length")
+    polynomial=tuple(residual)  # One unique coefficient per canonical ordinal.
+    results=[]
+    for alpha in (ZERO,ONE,F(2),U):
+        record=make_record(case,equations,alpha)
+        W=weight_table(equations,alpha,case.desc)
+        direct=sum(((alpha**e.ordinal)*dot(case.actual_u[e.group],equation_weights(e,case.desc.k1))
+                    for e in equations),ZERO)
+        target=sum(((alpha**e.ordinal)*e.target for e in equations),ZERO)
+        D=poly_eval(polynomial,alpha)
+        M.judge(direct-target==D,"reference/batch-residual")
+        M.judge(dot(tuple(v for row in case.actual_u for v in row)+(ZERO,)*((case.desc.groups-case.desc.m)*case.desc.k1),W)==direct,
+                "reference/full-batch-sum")
+        M.judge(weight_factored(equations,alpha,case.desc,record["proof"]["point"])==mle_ref(W,record["proof"]["point"]),
+                "reference/factored-weight")
+        got=outcome(lambda:candidate(case,source,alpha,record))
+        expected="accept" if D==ZERO else ("batch/initial" if record["proof"]["rounds"] else "batch/final")
+        M.judge(got==expected,"candidate/root-classification",{"label":label,"alpha":alpha,"D":D,"got":got,"expected":expected})
+        M.counts["reductions/"+label]+=1
+        M.counts[("root_acceptances/" if D==ZERO else "nonroot_rejections/")+label]+=1
+        if save:results.append({"alpha":alpha,"residual_at_alpha":D,"expected":expected,"actual":got,
+                                "full_record":record})
+    if save:
+        M.event("balanced-control",{"label":label,"source":source,"committed_U":case.actual_u,
+                                    "equations":equations,"residual_coefficients":residual,"runs":results})
+    return residual
+
+
+CONTROLS=[]
+
+
+def control(name,positive,negative,expected,inputs=None,mutant=None):
+    good=outcome(positive)
+    bad=outcome(negative)
+    M.judge(good=="accept",name+"/positive",good)
+    M.judge(bad==expected,name+"/negative",{"expected":expected,"actual":bad})
+    sensitivity=None
+    if mutant is not None:
+        sensitivity=outcome(mutant)
+        M.judge(sensitivity=="accept",name+"/mutant",sensitivity)
+    row={"name":name,"positive":good,"expected":expected,"actual":bad,"mutant":sensitivity}
+    CONTROLS.append(row)
+    M.event("control",dict(row,inputs=inputs))
+
+
+def arithmetic_controls():
+    M.arm="arithmetic"
+    values=(ZERO,ONE,-ONE,U,ONE+U,F(2,3))
+    for x,y,z in itertools.product(values,repeat=3):
+        pair=pairadd((x.a,x.b),pairmul((y.a,y.b),(z.a,z.b)))
+        value=x+y*z
+        M.judge((value.a,value.b)==pair,"field/pair-oracle")
+        M.judge(x*(y+z)==x*y+x*z,"field/distributivity")
+    for x in values:
+        if x!=ZERO:M.judge(x*x.inv()==ONE,"field/inverse")
+    # Every Fraction expression is one declared rational operation.
+    def add(a,b):M.op();return a+b
+    def sub(a,b):M.op();return a-b
+    def mul(a,b):M.op();return a*b
+    half=Fraction(1,2)
+    c=add(Fraction(2),Fraction(4))
+    u0,u1=mul(c,Fraction(2)),mul(c,Fraction(-1))
+    mask=mul(c,Fraction(3))
+    ev=add(mul(u0,half),mul(u1,half))
+    col=add(sub(Fraction(2),Fraction(3)),mul(Fraction(9),Fraction(3)))
+    corrected=sub(mul(c,col),mul(Fraction(9),mask))
+    expected=(Fraction(6),Fraction(12),Fraction(-6),Fraction(18),Fraction(3),Fraction(26),Fraction(-6))
+    same_vector((c,u0,u1,mask,ev,col,corrected),expected,"fraction/hand")
+    for value in (c,u0,u1,mask,ev,col,corrected):
+        M.op();num=F(value.numerator);den=F(value.denominator)
+        M.judge(num/den==F(int(value)),"fraction/base-embedding")
+    lane0=mle_ref((ONE,F(2),F(3),F(4)),(U,HALF))
+    lane1=mle_ref((F(5),F(6),F(7),F(8)),(U,HALF))
+    same_vector((lane0,lane1,lane0+U*lane1),(F(2)+U,F(6)+U,F(9,7)),"lane/hand")
+    control("lane-not-real-imag",lambda:require(lane0+U*lane1==F(9,7),"lane/reconstruction"),
+            lambda:require(F(9)+U*F(7)==lane0+U*lane1 and (F(9),F(7))==(lane0,lane1),"lane/components"),
+            "lane/components",{"point":(U,HALF),"lanes":(lane0,lane1),"combined":F(9,7)})
+
+
+def fixed_case(k1=4,k2=2,G=2,mode="blinded-algebra",cat=3,P1=1,P2=1,family=3,D=3):
+    orig=original_fixture(k1,D,G,mode,P1,family,cat)
+    return build_case(orig,Desc(k1,D,G,mode,P1,k2,P2))
+
+
+def mutations():
+    M.arm="controls"
+    case=fixed_case();alpha=F(2)
+    equations=derive_equations(case.source,case.desc,case.original.cat,case.registry)
+    base=make_record(case,equations,alpha)
+    positive=lambda:candidate(case,case.source,alpha,base)
+    inputs={"descriptor":case.desc,"source":case.source,"record":base,"committed_U":case.actual_u}
+    # Field-by-field descriptor validation, before any allocation.
+    record={f.name:getattr(case.desc,f.name) for f in fields(Desc)}
+    def good_desc():parse_desc(record)
+    for name,value in (("format","unknown"),("basis","evaluation-natural/old"),("lanes",(0,)),
+                       ("lanes",(1,0)),("mode","hiding-approved"),("k1",8),("D",0),("G",3),
+                       ("P1",2),("k2",1),("P2",2)):
+        bad=dict(record);bad[name]=value
+        control("descriptor/"+name+"/"+str(value),good_desc,lambda b=bad:parse_desc(bad if b is None else b),
+                "descriptor/"+name,{"descriptor":bad})
+    for name in ("k1","D","G","P1","k2","P2"):
+        bad=dict(record);bad[name]=True
+        control("descriptor/bool/"+name,good_desc,lambda b=bad:parse_desc(b),"descriptor/"+name,{"descriptor":bad})
+    for name in ("missing","extra","m","groups"):
+        bad=dict(record)
+        if name=="missing":bad.pop("format")
+        else:bad[name]=7
+        control("descriptor/"+name,good_desc,lambda b=bad:parse_desc(b),"descriptor/fields",{"descriptor":bad})
+    # Every original equation must have its canonical position/source target.
+    for index in range(len(equations)):
+        changed=copy.deepcopy(base);changed["equations"]=equations[:index]+equations[index+1:]
+        control(f"inventory/drop/{index}",positive,lambda r=changed:candidate(case,case.source,alpha,r),
+                "equation-inventory/length",dict(inputs,record=changed))
+        # The actual omitted-list reduction passes if the inventory guard is
+        # disabled: use a consistent proof/opening for that list, not bare inequality.
+        omitted=changed["equations"]
+        mutant=make_record(case,omitted,alpha)
+        M.judge(outcome(lambda:candidate(case,case.source,alpha,mutant,"skip-inventory"))=="accept",
+                "inventory/drop-mutant-sensitive",index)
+    for label,change in (
+            ("duplicate",lambda es:es+(es[0],)),
+            ("reorder",lambda es:(es[1],es[0])+es[2:]),
+            ("proximity-evaluation",lambda es:(Equation("evaluation",case.desc.G,-1,0,(),ZERO,case.desc.identity),)+es[1:])):
+        r=copy.deepcopy(base);r["equations"]=change(equations)
+        reason="equation-inventory/length" if label=="duplicate" else "equation-inventory/metadata"
+        control("inventory/"+label,positive,lambda r=r:candidate(case,case.source,alpha,r),reason,dict(inputs,record=r))
+    for field,value in (("ordinal",99),("group",99),("kind","invented"),("target",equations[0].target+ONE)):
+        r=copy.deepcopy(base);a=equations[0]
+        kwargs={f.name:getattr(a,f.name) for f in fields(Equation)};kwargs[field]=value
+        r["equations"]=(Equation(**kwargs),)+equations[1:]
+        reason="equation-inventory/target-from-source" if field=="target" else "equation-inventory/metadata"
+        control("inventory/change/"+field,positive,lambda r=r:candidate(case,case.source,alpha,r),reason,dict(inputs,record=r))
+    # Original column membership/shape cannot be replaced by the U commitment.
+    for label,mutate,reason in (
+        ("root",lambda s:s.__setitem__("root",999999),"membership/root"),
+        ("descriptor",lambda s:s.__setitem__("original_descriptor",("different",)),"membership/descriptor"),
+        ("omit-column",lambda s:s.__setitem__("columns",s["columns"][1:]),"membership/column-order"),
+        ("repeat-column",lambda s:s.__setitem__("columns",s["columns"]+(s["columns"][0],)),"membership/column-order"),
+        ("unsort-column",lambda s:s.__setitem__("columns",tuple(reversed(s["columns"]))),"membership/column-order"),
+        ("row-map",lambda s:s.__setitem__("physical",tuple(range(len(s["physical"])))),"source/row-map")):
+        source=copy.deepcopy(case.source);mutate(source)
+        control("original/"+label,positive,lambda s=source:candidate(case,s,alpha,base),reason,dict(inputs,source=source))
+    source=copy.deepcopy(case.source);j,symbols=source["columns"][0]
+    source["columns"]=((j,(symbols[0]+ONE,)+symbols[1:]),)+source["columns"][1:]
+    control("original/symbol",positive,lambda:candidate(case,source,alpha,base),"membership/symbol",dict(inputs,source=source))
+    # Omitted combined masks are a shape fault; false same-shaped masks must
+    # reach reduction, not a comparison against an oracle's honest masks.
+    source=copy.deepcopy(case.source);source["M"]=source["M"][:-1]
+    control("original/missing-mask",positive,lambda:candidate(case,source,alpha,base),"source/mask-count",dict(inputs,source=source))
+    source=copy.deepcopy(case.source);source["M"]=((),)+source["M"][1:]
+    control("original/mask-width",positive,lambda:candidate(case,source,alpha,base),"source/mask-width",dict(inputs,source=source))
+    # Nonroot false-M attack, including blinding mask component, has a full
+    # valid-to-committed-V terminal record and unchanged ideal columns.
+    for group,label in ((0,"combined-mask"),(case.desc.G,"blinding-row-mask")):
+        source=copy.deepcopy(case.source);masks=list(source["M"]);masks[group]=(masks[group][0]+ONE,);source["M"]=tuple(masks)
+        es=derive_equations(source,case.desc,case.original.cat,case.registry)
+        r=make_record(case,es,alpha)
+        control("original/alter/"+label,positive,lambda s=source,r=r:candidate(case,s,alpha,r),"batch/initial",dict(inputs,source=source,record=r))
+    old=derive_equations(case.source,case.desc,case.original.cat,case.registry,phi_old=True)
+    r=make_record(case,old,alpha)
+    control("original/old-vanishing-factor",positive,lambda:candidate(case,case.source,alpha,r),
+            "equation-inventory/target-from-source",dict(inputs,record=r))
+    # Round and public final-weight checks.
+    for label,mutate,reason in (
+        ("degree",lambda r:r["proof"].__setitem__("rounds",(r["proof"]["rounds"][0]+(ONE,),)+r["proof"]["rounds"][1:]),"batch/degree"),
+        ("identity",lambda r:r["proof"].__setitem__("rounds",((r["proof"]["rounds"][0][0]+ONE,)+r["proof"]["rounds"][0][1:],)+r["proof"]["rounds"][1:]),"batch/initial"),
+        ("challenge-length",lambda r:r["proof"].__setitem__("point",r["proof"]["point"][:-1]),"batch/challenge-point"),
+        ("round-count",lambda r:r["proof"].__setitem__("rounds",r["proof"]["rounds"][:-1]),"batch/round-count"),
+        ("terminal-point",lambda r:r["proof"].__setitem__("terminal_point",tuple(ZERO for _ in r["proof"]["point"])),"batch/terminal-point"),
+        ("terminal-value",lambda r:r["proof"].__setitem__("terminal_u",r["proof"]["terminal_u"]+ONE),"batch/final")):
+        r=copy.deepcopy(base);mutate(r)
+        control("batch/"+label,positive,lambda r=r:candidate(case,case.source,alpha,r),reason,dict(inputs,record=r))
+    control("batch/wrong-monomial-exponent",positive,lambda:candidate(case,case.source,alpha,base,"wrong-weight"),
+            "batch/final",inputs)
+    # Named terminal obligations, including unfinished transcript acceptance mutant.
+    for label,mutate,reason in (
+        ("drop-lane0",lambda r:r.__setitem__("claims",r["claims"][1:]),"terminal/lane-count"),
+        ("drop-lane1",lambda r:r.__setitem__("claims",r["claims"][:1]),"terminal/lane-count"),
+        ("drop-both",lambda r:r.__setitem__("claims",()),"terminal/lane-count"),
+        ("missing-opening",lambda r:r.__setitem__("opening",None),"terminal/missing-opening"),
+        ("unconsumed",lambda r:r["opening"].__setitem__("consumed",False),"terminal/unconsumed"),
+        ("lane-order",lambda r:r["claims"][0].__setitem__("lane",1),"terminal/lane-order"),
+        ("value",lambda r:r["claims"][0].__setitem__("value",r["claims"][0]["value"]+ONE),"terminal/reconstruction"),
+        ("root",lambda r:r["claims"][0].__setitem__("root",999999),"terminal/root"),
+        ("descriptor",lambda r:r["claims"][0].__setitem__("descriptor",("different",)),"terminal/descriptor")):
+        r=copy.deepcopy(base);mutate(r)
+        control("terminal/"+label,positive,lambda r=r:candidate(case,case.source,alpha,r),reason,dict(inputs,record=r),
+                mutant=(lambda r=r:candidate(case,case.source,alpha,r,"value-only")) if label.startswith("drop-") or label=="missing-opening" else None)
+    for axis in range(len(base["claims"][0]["point"])):
+        r=copy.deepcopy(base);point=list(r["claims"][0]["point"]);point[axis]=point[axis]+ONE;r["claims"][0]["point"]=tuple(point)
+        control("terminal/point-axis/"+str(axis),positive,lambda r=r:candidate(case,case.source,alpha,r),
+                "terminal/lane-point",dict(inputs,record=r))
+    # Direct ideal service mutation: this is not concrete PCS soundness evidence.
+    claim=base["claims"][0]
+    control("ideal/false-terminal-value",lambda:case.registry.verify_mle(case.root,case.level2_descriptor,claim["point"],claim["value"]),
+            lambda:case.registry.verify_mle(case.root,case.level2_descriptor,claim["point"],claim["value"]+ONE),
+            "opening/value",claim)
+    # Level2 explicit ordinary record guards.
+    for label,mutate,reason in (
+        ("missing-proximity",lambda r:r["opening"].__setitem__("combined",r["opening"]["combined"][:-1]),"level2/combined-count"),
+        ("missing-mask",lambda r:r["opening"].__setitem__("masks",r["opening"]["masks"][:-1]),"level2/mask-count"),
+        ("missing-group",lambda r:r["opening"].__setitem__("combined",r["opening"]["combined"][1:]),"level2/combined-count"),
+        ("missing-column",lambda r:r["opening"].__setitem__("columns",r["opening"]["columns"][1:]),"membership/column-order"),
+        ("root",lambda r:r["opening"].__setitem__("root",999999),"level2/root"),
+        ("descriptor",lambda r:r["opening"].__setitem__("descriptor",("different",)),"level2/descriptor"),
+        ("row-map",lambda r:r["opening"].__setitem__("physical",r["opening"]["physical"][:-1]),"level2/row-map")):
+        r=copy.deepcopy(base);mutate(r)
+        control("level2/"+label,positive,lambda r=r:candidate(case,case.source,alpha,r),reason,dict(inputs,record=r))
+    for group in range(len(base["opening"]["masks"])):
+        r=copy.deepcopy(base);mm=list(r["opening"]["masks"]);mm[group]=(mm[group][0]+ONE,);r["opening"]["masks"]=tuple(mm)
+        control("level2/alter-mask/"+str(group),positive,lambda r=r:candidate(case,case.source,alpha,r),"level2/column",dict(inputs,record=r))
+    control("level2/old-vanishing-factor",positive,
+            lambda:check_level2(base["opening"],base["claims"],case,old_phi=True),"level2/column",inputs)
+    # Public zero high bit occurs at k1=1,k2=4,G0, and the lane may be a column bit.
+    small=fixed_case(k1=1,k2=4,G=0,cat=3)
+    es=derive_equations(small.source,small.desc,small.original.cat,small.registry)
+    sr=make_record(small,es,alpha);altered=copy.deepcopy(sr)
+    pt=list(altered["claims"][0]["point"]);pt[-1]=ONE;altered["claims"][0]["point"]=tuple(pt)
+    control("terminal/public-zero-high-bit",lambda:candidate(small,small.source,alpha,sr),
+            lambda:candidate(small,small.source,alpha,altered),"terminal/lane-point",{"record":altered,"source":small.source})
+    # Padded group coefficients must stay zero in the registry tensor.
+    fake=list(case.V);fake[-1]=ONE
+    control("registry/padded-group",positive,
+            lambda:case.registry.commit(case.level2_descriptor,tuple(fake),
+                  tuple(tuple(fake[i:i+case.desc.k2]) for i in range(0,len(fake),case.desc.k2)),
+                  case.level2_masks,case.level2_physical,case.desc.k2),"registry/public-zero",{"fakeV":fake})
+    # All temporal faults exercise the actual state checker in both tagged modes.
+    for mode in ("live","ni"):
+        events=events_for(case.desc,case.source,len(base["proof"]["point"]),mode)
+        good=lambda e=events,m=mode:check_events(e,case.desc,case.source,len(base["proof"]["point"]),m)
+        index={name:i for i,(name,_) in enumerate(events)}
+        for before,after in (("C_U","queries1"),("C_U","e22/batch/alpha"),("M","e22/batch/alpha"),
+                             ("columns1","e22/batch/alpha"),("equations","e22/batch/alpha"),
+                             ("combined2","queries2"),("blinding","e22/l1/gamma")):
+            e=list(events);a,b=index[before],index[after];e[a],e[b]=e[b],e[a]
+            control("order/"+mode+"/"+before+"/"+after,good,
+                    lambda e=tuple(e),m=mode:check_events(e,case.desc,case.source,len(base["proof"]["point"]),m),
+                    "transcript/order-label",{"events":e})
+        for label,mutate,reason in (
+            ("drop",lambda e:e.pop(),"transcript/count"),
+            ("duplicate",lambda e:e.append(e[-1]),"transcript/count"),
+            ("replay",lambda e:e.__setitem__(0,("descriptor",("different-session",))),"transcript/identity-mode"),
+            ("reuse-alpha",lambda e:e.__setitem__(index["e22/l2/gamma"],("e22/batch/alpha",None)),"transcript/order-label"),
+            ("reuse-xi",lambda e:e.__setitem__(index["e22/l2/xi"],("e22/l1/xi",None)),"transcript/order-label")):
+            e=list(events);mutate(e)
+            control("order/"+mode+"/"+label,good,
+                    lambda e=tuple(e),m=mode:check_events(e,case.desc,case.source,len(base["proof"]["point"]),m),reason,{"events":e})
+    # Algebraic late-q compensation, with order failure and a skip-order mutant.
+    bc=fixed_case(cat=1);ss=copy.deepcopy(bc.source)
+    vv=[list(v) for v in ss["values"]];vv[0][0]=vv[0][0]+ONE;ss["values"]=tuple(map(tuple,vv))
+    qq=list(ss["q"]);qq[0]=qq[0]-ONE;ss["q"]=tuple(qq)
+    eqs=derive_equations(ss,bc.desc,bc.original.cat,bc.registry);br=make_record(bc,eqs,alpha)
+    late=list(br["events"]);a=next(i for i,e in enumerate(late) if e[0]=="blinding");b=next(i for i,e in enumerate(late) if e[0]=="e22/l1/gamma");late[a],late[b]=late[b],late[a];br["events"]=tuple(late)
+    clean_record=copy.deepcopy(br);clean_record["events"]=events_for(bc.desc,ss,len(br["proof"]["point"]),"live")
+    control("blinding/late-q-compensation",lambda:candidate(bc,ss,alpha,clean_record),
+            lambda:candidate(bc,ss,alpha,br),"transcript/order-label",{"source":ss,"record":br},
+            mutant=lambda:candidate(bc,ss,alpha,br,"skip-order"))

@@ -1,0 +1,149 @@
+{
+  "id": "EXP-0009",
+  "path": "research/experiments/EXP-0009-analytic-padding-blocks/README.md",
+  "status": "done: inconclusive",
+  "verdict": "inconclusive",
+  "idea_status": {
+    "IDEA-0019": "inconclusive"
+  },
+  "priority_before": 3.7,
+  "priority_after": 3.7,
+  "confidence_before": 0.7,
+  "confidence_after": 0.7,
+  "key_results": [
+    {
+      "evidence": "E1 primary",
+      "result": "All thirteen historical digests unchanged, plus three unsorted/repeated-length checks; every candidate proof/claim/transcript equals independently verified production."
+    },
+    {
+      "evidence": "E1 primary",
+      "result": "Amended arm 3.6\u20136.6% faster than old analytic on S1-S4, but a/u=1.0711/1.0606/0.9507/1.1168 against ceiling1.05; S1dense CV31.90% after rerun."
+    },
+    {
+      "evidence": "E1 primary",
+      "result": "Current #258 split-eq production/amended=0.993/0.665/0.900/1.007, establishing no useful improvement against production."
+    },
+    {
+      "evidence": "E0 primary",
+      "result": "S1 padded-tail terms188412\u219216068; S2 122820\u219215188; full-pair/boundary arithmetic retained; no current \u03bc gain inferred from unmeasured composition."
+    },
+    {
+      "evidence": "E0 primary code/spec read",
+      "result": "RFC-0034 Constant leaves already requires closed-form masked subtrees and unchanged messages; current model already counts only valid leaves. Remaining work is implementing and measuring the combined path, not another protocol proposal."
+    }
+  ],
+  "threats": [
+    "CPU and synthetic fixed shapes are not H100 or full-proof evidence",
+    "S1dense statistical gate failed after allowed rerun; raw outlier retained",
+    "Four-lane batched odd folds do not establish hardware SIMD",
+    "Counts omit cache, sorting, allocation and memory effects",
+    "Historical priority remains a historical projection pending current split-eq composition",
+    "Original protocol1/test-small unmasked harness is not evidence for protocol2 RFC-0032 zero-knowledge masks"
+  ],
+  "follow_ups": [
+    "Pre-register combined ragged/split-eq kernel against current production under accepted RFC-0034 causal-block layout; score_block affects commitment overhead, not tree leaf order",
+    "H100 RFC-0020 timing settles padded-tile skipping and partly idle boundary warp cost",
+    "Fraction-tree padding and complete proofs still need measurement"
+  ],
+  "ledger_row": "| [EXP-0009](experiments/EXP-0009-analytic-padding-blocks/README.md) | Do analytic padding blocks recover the padding factor with bit-identical proofs and at most 5% per-real-leaf overhead? Dated amortized-loop amendment | IDEA-0019 | done: inconclusive | Amendment improves old analytic by 3.6\u20136.6% but a/u=1.071/1.061/0.951/1.117; S1dense CV31.90%; all original digests preserved; no gain over current split-eq production | E1 CPU plus E0 counts; amendment-run.json/.txt and amendment-count.txt in experiment results/ |",
+  "idea_row_summary": "IDEA-0019 remains inconclusive; historical priority3.7 confidence0.7 retained, no current \u03bc gain or promotion; next combined ragged/split-eq experiment against current main.",
+  "new_bibliography_keys": [],
+  "problems": [
+    "No production gain established; current #258 anchor supersedes historical anchor timings",
+    "S1 dense CV31.90% after one allowed rerun",
+    "Hardware SIMD unverified"
+  ],
+  "ratios": [
+    {
+      "config": "S1",
+      "f": 1.9995118379301928,
+      "R_same": 2.077549659265683,
+      "R_prod": 0.9931903875840089,
+      "production_over_dense": 0.47805855477604114,
+      "R_shared": 1.79816558865229,
+      "a_over_u": 1.0710971013014188,
+      "analytic_ns_per_real_leaf": 37.76988896934876
+    },
+    {
+      "config": "S2",
+      "f": 1.3330080508603857,
+      "R_same": 1.3090747241748268,
+      "R_prod": 0.6652361818657103,
+      "production_over_dense": 0.5081728105972262,
+      "R_shared": 1.2328172698541522,
+      "a_over_u": 1.0605626386541889,
+      "analytic_ns_per_real_leaf": 37.3984142598624
+    },
+    {
+      "config": "S3",
+      "f": 1.6,
+      "R_same": 1.7016233758895587,
+      "R_prod": 0.8996194822960443,
+      "production_over_dense": 0.5286830770209358,
+      "R_shared": 1.6019997809922968,
+      "a_over_u": 0.9506880266135638,
+      "analytic_ns_per_real_leaf": 33.52392716407776
+    },
+    {
+      "config": "S4",
+      "f": 2.1322931918008785,
+      "R_same": 2.0440688655172217,
+      "R_prod": 1.0074614598528064,
+      "production_over_dense": 0.49287060570627256,
+      "R_shared": 1.9260328690440325,
+      "a_over_u": 1.1168341233760073,
+      "analytic_ns_per_real_leaf": 39.3827046920754
+    },
+    {
+      "config": "U23",
+      "f": 1,
+      "R_same": 1.055391572905027,
+      "R_prod": 0.5592413621593101,
+      "production_over_dense": 0.5298899257078258,
+      "R_shared": 0.9939654962167727,
+      "a_over_u": 0.9475156194846636,
+      "analytic_ns_per_real_leaf": 33.4120591878891
+    },
+    {
+      "config": "U24",
+      "f": 1,
+      "R_same": 1.0483104215026897,
+      "R_prod": 0.5520613347534638,
+      "production_over_dense": 0.5266200959465013,
+      "R_shared": 0.9957226016080521,
+      "a_over_u": 0.9540862644658815,
+      "analytic_ns_per_real_leaf": 33.643758565187454
+    },
+    {
+      "config": "S1-1K",
+      "f": 1.9980487804878049,
+      "R_same": 1.7951355602828658,
+      "R_prod": 0.9287188365386891,
+      "production_over_dense": 0.5173530384481647,
+      "R_shared": 1.652590038164121,
+      "a_over_u": 1.1478263444720191,
+      "analytic_ns_per_real_leaf": 40.47557736280488
+    },
+    {
+      "config": "S2-1K",
+      "f": 1.3320350609756098,
+      "R_same": 1.2932778801077944,
+      "R_prod": 0.6697922202694648,
+      "production_over_dense": 0.5179027883888634,
+      "R_shared": 1.2050275794148595,
+      "a_over_u": 1.0831832074593615,
+      "analytic_ns_per_real_leaf": 38.196078982469515
+    }
+  ],
+  "preregistration_commit": "45d9c4e308bccf4349a31c8b936438e5a3baf32e",
+  "checks": [
+    "cargo test --locked passed",
+    "cargo clippy --all-targets --locked -- -D warnings passed",
+    "cargo fmt --all --check passed",
+    "scratch no-op control passes; 3/3 planted arithmetic/order faults caught",
+    "all48 medians and CVs independently recomputed from raw samples",
+    "original README prefix and committed preregistration preserved byte for byte",
+    "all13 historical digests unchanged; 16 total configuration/check digests",
+    "original count.py default output remains byte-identical"
+  ]
+}

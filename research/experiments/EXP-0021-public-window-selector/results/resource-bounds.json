@@ -1,0 +1,29 @@
+{
+  "kind": "E0 public preregistration resource arithmetic; no experiment implementation or run",
+  "row_contexts_by_N": {
+    "1": 450,
+    "2": 5400,
+    "4": 243000
+  },
+  "row_contexts": 248850,
+  "comparisons": {
+    "row_allowance": 79632000,
+    "selector_allowance": 100000,
+    "transport_allowance": 2000000,
+    "fixed_controls_allowance": 100000,
+    "total_allowance": 81832000,
+    "cap": 100000000
+  },
+  "primitive_operations": {
+    "transport_reductions": 1313865728,
+    "transport_setup": 204800000,
+    "selector": 500000000,
+    "row_audit": 254822400,
+    "fixed_controls": 50000000,
+    "total_allowance": 2323488128,
+    "cap": 3000000000
+  },
+  "unchanged_watchdog_minutes": 15,
+  "unchanged_retained_fixture_MiB": 256,
+  "sha256": "90b7307ed2a2162bbd7a56a426c959068c83500c8111a6432e72981f641252bc"
+}

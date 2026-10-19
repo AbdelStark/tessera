@@ -1,0 +1,4 @@
+SHA256 19bb3201c06afd228d63eadb2c7826b8c92b06be97cbb229e79d999d4aa8e0a6
+UTC 2026-10-19T11:18:02.479017+00:00
+Snapshot results/README.output-boundary-preregistered.txt
+Before first timing; commit required

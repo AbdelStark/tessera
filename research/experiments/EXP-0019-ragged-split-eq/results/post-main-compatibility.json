@@ -1,0 +1,155 @@
+{
+  "experiment": "EXP-0019",
+  "kind": "post-main compatibility check only; no benchmark/fault campaign",
+  "start_utc": "2026-10-19T09:56:27.462147+00:00",
+  "end_utc": "2026-10-19T09:56:33.568678+00:00",
+  "checkout": "a1c1cd62eeeba68075f76300aeaf15d0833fbb2a",
+  "new_main": "61b9f4788349281250cb9fa6bab58ef31b06d108",
+  "original_results_commit": "5c8e41fb34735ecaa4d910305393361ac64c11ee",
+  "frozen_provenance": {
+    "commit": "6b73a3b03f44bd8acdd1b0ff527f9d625fabf49a",
+    "readme_sha256": "50e68fdbe53ba38b1ae1a3909bb160351c3503d7eb6fbc3efc6c44b06c3321aa",
+    "original_109_pin_manifest_sha256": "7108c834336c537f19403fcbca56dde9caf7d79c04c1b30ba12899a7164e89bc",
+    "original_pin_manifest_unchanged": true,
+    "original_pins": 109,
+    "unchanged_pins": 105,
+    "changed_pins": [
+      {
+        "path": "docs/rfcs/RFC-0010-proof-schedule.md",
+        "baseline_sha256": "da3fd867eac5727242ba28f5c240173e24cae99705bc9c852031cb772dc838bc",
+        "current_sha256": "28e6667d9bc9a7679112b4ac5b4f8600d0a92ab61632106790e01362490842b9"
+      },
+      {
+        "path": "verifier/crates/tv-core/src/fiat_shamir.rs",
+        "baseline_sha256": "d902485e8158387c9072dacb666c994d0cbc9e8508ea455827b121ea103f2571",
+        "current_sha256": "b00953382a882e360f6c104c878e37ef5fb1bebb69ecb6a3107671527102ef54"
+      },
+      {
+        "path": "verifier/crates/tv-core/src/lib.rs",
+        "baseline_sha256": "7d81332a043e7c8c6165faa6e5375aa52d7bb1accd39a2ffa99dbfd297ad0854",
+        "current_sha256": "5c0069a430839980fd1f9dd74ffc04dd33159cb2ea2dde40d5fc54d084b2bb24"
+      },
+      {
+        "path": "verifier/crates/tv-core/src/lowering.rs",
+        "baseline_sha256": "0b331827370468850f0f2e22d328446df9830997000194b47ea581df396e6003",
+        "current_sha256": "6953c9568e201216aa88e5b05b7c03f123bb6344bca84745d05b06fa38877261"
+      }
+    ]
+  },
+  "new_verifier_modules": {
+    "verifier/crates/tv-core/src/schedule.rs": "ad014da68031c2067e7bf426ed7dd7065d330af5dca9a86c5956cbcfd5c1bbb8",
+    "verifier/crates/tv-core/src/selectors.rs": "306ea44da4371d5c367db0f9353c6613fc88cb2f8e435bf7f11c9d39081a795a",
+    "verifier/crates/tv-core/src/stages.rs": "711f258b23af8bb43e7a2e7d3b12216a4b9654b6e68f0612f06d6ef32b2d15be"
+  },
+  "timed_prover_code": {
+    "unchanged_since_original_results_commit": true,
+    "git_diff_paths": [
+      "crates/tessera-sumcheck",
+      "crates/tessera-field",
+      "crates/tessera-hash",
+      "crates/tessera-poly",
+      "crates/tessera-codec",
+      "crates/tessera-codec-derive",
+      "Cargo.toml",
+      "Cargo.lock",
+      "rust-toolchain.toml",
+      "research/experiments/EXP-0019-ragged-split-eq/src",
+      "research/experiments/EXP-0019-ragged-split-eq/Cargo.toml",
+      "research/experiments/EXP-0019-ragged-split-eq/Cargo.lock"
+    ],
+    "changed_paths": [],
+    "exact_measured_crypto_sources": {
+      "src/main.rs": "ae2e31becfcae5cf417ed6d56e2bed2fbdc28f4e0eb580e831cabc5d137a4d47",
+      "src/kernel.rs": "f297e4164d8c8d7d0339ce36d04c26cc434995a63528a3dde59d64c264de26eb"
+    },
+    "measured_archive_hashes_verified": true
+  },
+  "fresh_release_check": {
+    "build_command": "cargo build --release --offline --locked --manifest-path research/experiments/EXP-0019-ragged-split-eq/Cargo.toml",
+    "build_exit_code": 0,
+    "check_command": [
+      "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0019-ragged-split-eq/target/release/ragged-split-eq",
+      "check"
+    ],
+    "check_cwd": "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp19-post-main-4jv32rh9",
+    "exit_code": 0,
+    "new_binary_sha256": "046b5b17481057bdc496a3836f7643c11fb4889124515da6718e428d2c3d9946",
+    "stdout": "results/post-main-check.txt",
+    "stdout_sha256": "8cbff43ad47a690fc1e800e1b7a820021fe055cb3850dc1b182dcc788725439d",
+    "json": "results/post-main-check.json",
+    "json_sha256": "d0514d2737965ec0eb5d803d13580844c9671b40d16be7332fca38936dbecfec",
+    "json_byte_identical_to_original": true,
+    "all_eight_historical_digests": [
+      {
+        "config": "S1",
+        "independent_both": true,
+        "padded_leaves": 16777216,
+        "real_leaves": 8390656,
+        "transcript_state": "2ecb6b74f8c600a8de1b5e511a00ae73fae1b23de5a9faae17aec94c87dc1034"
+      },
+      {
+        "config": "S2",
+        "independent_both": true,
+        "padded_leaves": 11184812,
+        "real_leaves": 8390656,
+        "transcript_state": "f6df08bffa43a02252c81c90268f686f92a1810a1f54b8a1a1cfd5360db7bf15"
+      },
+      {
+        "config": "S3",
+        "independent_both": true,
+        "padded_leaves": 16777216,
+        "real_leaves": 10485760,
+        "transcript_state": "8638f272e3508cf8d4421a0837bfc3427727bea9223b9cb5d1e59b74286362d7"
+      },
+      {
+        "config": "S4",
+        "independent_both": true,
+        "padded_leaves": 22369632,
+        "real_leaves": 10490880,
+        "transcript_state": "fcd00997b54508577ab3d52fb38837a92c91c2578ad4646b8d7c2d1875f94235"
+      },
+      {
+        "config": "U23",
+        "independent_both": true,
+        "padded_leaves": 8388608,
+        "real_leaves": 8388608,
+        "transcript_state": "0887d3604fd384886e9ab1ae70e728e57260c39affc50290fe3be1b915871730"
+      },
+      {
+        "config": "U24",
+        "independent_both": true,
+        "padded_leaves": 16777216,
+        "real_leaves": 16777216,
+        "transcript_state": "3b2d6d3ab9b302ae83334778e58c83772abd035d33aa0bae80802caf05504de3"
+      },
+      {
+        "config": "S1-1K",
+        "independent_both": true,
+        "padded_leaves": 1048576,
+        "real_leaves": 524800,
+        "transcript_state": "58038a40e9e020fdbb157febcce2a8deec774b3fc7263f5cf339eb59c8643f6c"
+      },
+      {
+        "config": "S2-1K",
+        "independent_both": true,
+        "padded_leaves": 699052,
+        "real_leaves": 524800,
+        "transcript_state": "84ad9f44ec9bf441f5a1ad5763db745b02c50ad675ad57b5a822a4a725b9de59"
+      }
+    ],
+    "full_outputs_equal_and_both_arms_independently_accepted": true
+  },
+  "original_artifacts": {
+    "preserved_file_count": 47,
+    "all_hashes_unchanged": true,
+    "measured_source_manifest_sha256": "3d940eaf008acec45b8e701aacdb4d096c0e42cacb32a60ad05d154af2e92d56",
+    "timing_terminal_sha256": "41f3da0704a5123b9a5eaec18e9811bcd103952f180eb971635a9661c4296639",
+    "timing_raw_sha256": "2f2fb5e3c2ab795989f44850a77305948fb60bd04f2cddcf046fc8c0bd2510cc"
+  },
+  "interpretation": [
+    "RFC0010 changes clarify reduction-stage degree/evaluation order, not the product-tree path exercised here.",
+    "New tv-core labels add Layer/Zero/Split; tree.rs, sumcheck.rs and verifier field/hash code remain unchanged. Lowering edits are cfg(test) mutators; lib.rs exposes schedule/selectors/stages.",
+    "This reruns the existing manual forest driver against the newly linked independent verifier. It does not invoke schedule::derive or stages::verify and is not stage/full-driver integration evidence.",
+    "Original inconclusive verdict and original timing evidence remain unchanged. No timings, repeated fault campaign, new benchmark evidence, GPU claim or model repricing."
+  ]
+}

@@ -1,0 +1,61 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/spliteq all results/run.json`
+EXP-0008 harness: split-eq Gruen level kernel (candidate, this program) against the production prove_forests / prove_batch (baseline), one thread; RFC-0020 protocol (3 warm-ups, 10 iterations, median/min/max/CV, rerun once above 3%, iterations of at least 20 ms by repetition)
+
+== correctness checks ==
+check field:     3 edge products of spec/vectors/field/goldilocks.json reproduced
+check forests:   tree [2, 3, 5, 7]: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+check hand case: tree [2, 3, 5, 7]: candidate's proof accepted from root 210; against 211 rejected (level 0: FinalMismatch { round: 0 })
+check sweep:     n = 1..=12 alone and 6 two-instance batches with front-padding (one instance on no variable): bit-identical to prove_batch, verifier accepts; no fallback
+check forests:   two forests (2^2 x 2^8 leaves, 2^5 x 2^6 leaves): 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 48e3dce488e34727
+check fallback:  (i) r_3 = 0: fallback once, bit-identical, verifier accepts; (ii) r_5 = 1: no fallback, bit-identical, verifier accepts; (iii) scripted c_2 with l_2(c_2) = 0: fallback in rounds 3..12, every later message zero, bit-identical to prove_batch under the same script
+
+== forests: prove_forests (baseline) against split_forest (candidate), one thread, per leaf ==
+check forests:   2^8 trees of 2^14 leaves (2^22 leaves): 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest e7341ef840051a0b
+prove_forests: 2^8 trees of 2^14 leaves (2^22 leaves)             32.049 ns/leaf   min    31.928  max    32.264  CV  0.31%  (  134.423 ms x1)
+split_forest:  2^8 trees of 2^14 leaves (2^22 leaves)             18.370 ns/leaf   min    18.269  max    18.529  CV  0.37%  (   77.051 ms x1)
+    ratio T_base / T_cand = 1.745; speed-up sigma = 42.7%  (verdict shape)
+check forests:   2^10 trees of 2^12 leaves (2^22 leaves): 12 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 76e8a935fbf7ce02
+prove_forests: 2^10 trees of 2^12 leaves (2^22 leaves)            32.120 ns/leaf   min    32.043  max    32.188  CV  0.14%  (  134.723 ms x1)
+split_forest:  2^10 trees of 2^12 leaves (2^22 leaves)            18.368 ns/leaf   min    18.154  max    18.455  CV  0.44%  (   77.043 ms x1)
+    ratio T_base / T_cand = 1.749; speed-up sigma = 42.8%  (verdict shape)
+check forests:   2^0 trees of 2^22 leaves (2^22 leaves): 22 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 13122752eefe1f26
+prove_forests: 2^0 trees of 2^22 leaves (2^22 leaves)             32.133 ns/leaf   min    32.055  max    32.580  CV  0.48%  (  134.776 ms x1)
+split_forest:  2^0 trees of 2^22 leaves (2^22 leaves)             18.373 ns/leaf   min    18.266  max    18.448  CV  0.30%  (   77.064 ms x1)
+    ratio T_base / T_cand = 1.749; speed-up sigma = 42.8%  (verdict shape)
+check forests:   2^4 trees of 2^14 leaves (2^18 leaves): 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 50057a07b97075d1
+prove_forests: 2^4 trees of 2^14 leaves (2^18 leaves)             32.404 ns/leaf   min    31.519  max    32.535  CV  0.90%  (    8.494 ms x3)
+split_forest:  2^4 trees of 2^14 leaves (2^18 leaves)             19.182 ns/leaf   min    19.138  max    19.241  CV  0.16%  (    5.028 ms x4)
+    ratio T_base / T_cand = 1.689; speed-up sigma = 40.8%  (context)
+check forests:   2^6 trees of 2^14 leaves (2^20 leaves): 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 3c790475f8dd07b4
+prove_forests: 2^6 trees of 2^14 leaves (2^20 leaves)             32.384 ns/leaf   min    32.335  max    32.675  CV  0.37%  (   33.957 ms x1)
+split_forest:  2^6 trees of 2^14 leaves (2^20 leaves)             18.671 ns/leaf   min    18.543  max    18.737  CV  0.28%  (   19.578 ms x2)
+    ratio T_base / T_cand = 1.734; speed-up sigma = 42.3%  (context)
+
+== the level kernel alone: prove_batch on [eq (Fp2, public), even, odd (Fp)] against the split-eq kernel, 2^21 entries, per entry ==
+check kernel:    leaf-level instance (eq x even x odd, 2^21): bit-identical to prove_batch; verify_batch accepts from the hypercube sum; fallbacks 0; digest 7745989d1976f067
+engine: eq public (Fp2) x even x odd (Fp), degree 3, 2^21         27.721 ns/entry  min    27.557  max    27.920  CV  0.38%  (   58.135 ms x1)
+split-eq kernel: even x odd (Fp) at the eq point, 2^21            17.370 ns/entry  min    17.299  max    17.398  CV  0.18%  (   36.428 ms x1)
+    ratio T_base / T_cand = 1.596; speed-up sigma = 37.3% (observation a)
+context: eq tables of every level (2^8 x 2^14), per leaf           3.345 ns/leaf   min     3.332  max     3.372  CV  0.36%  (   14.031 ms x2)
+
+== fraction-tree proxy (IDEA-0018 case): prove_batch's three instances against the one-relation split-eq kernel, 2^21 entries over Fp2, per entry ==
+check fraction:  leaf level (numerators 1): [eq, d_e, d_o] + [eq, d_e] + [eq, d_o]: bit-identical to prove_batch (3 instances); verify_batch accepts from the hypercube sums; fallbacks 0; digest d230aeb17a2ec70d
+fraction proxy: leaf level, prove_batch (3 instances), 2^21       83.274 ns/entry  min    82.950  max    83.522  CV  0.25%  (  174.639 ms x1)
+fraction proxy: leaf level, split-eq one-relation kernel, 2^21    39.981 ns/entry  min    39.574  max    39.996  CV  0.32%  (   83.846 ms x1)
+    ratio T_base / T_cand = 2.083; speed-up sigma = 52.0% (IDEA-0018 case)
+check fraction:  generic level: [eq, n_e, d_o] + [eq, n_o, d_e] + [eq, d_e, d_o]: bit-identical to prove_batch (3 instances); verify_batch accepts from the hypercube sums; fallbacks 0; digest e47ecc93d46cd2c8
+fraction proxy: generic level, prove_batch (3 instances), 2^21   115.280 ns/entry  min   115.090  max   115.522  CV  0.13%  (  241.760 ms x1)
+fraction proxy: generic level, split-eq one-relation kernel, 2^21    75.364 ns/entry  min    74.744  max    75.726  CV  0.45%  (  158.049 ms x1)
+    ratio T_base / T_cand = 1.530; speed-up sigma = 34.6% (IDEA-0018 case)
+
+== pre-registered rule (README 'Success criterion'), evaluated ==
+  2^8 trees of 2^14 leaves (2^22 leaves)           base   32.049  cand   18.370 ns/leaf  ratio 1.745  sigma  42.7%  CVs 0.31% / 0.37%
+  2^10 trees of 2^12 leaves (2^22 leaves)          base   32.120  cand   18.368 ns/leaf  ratio 1.749  sigma  42.8%  CVs 0.14% / 0.44%
+  2^0 trees of 2^22 leaves (2^22 leaves)           base   32.133  cand   18.373 ns/leaf  ratio 1.749  sigma  42.8%  CVs 0.48% / 0.30%
+  IDEA-0021 (the experiment's verdict): validated (sigma >= 20% on every verdict shape)
+  fraction proxy: leaf level                       base   83.274  cand   39.981 ns/entry ratio 2.083  sigma  52.0%  CVs 0.25% / 0.32%
+  fraction proxy: generic level                    base  115.280  cand   75.364 ns/entry ratio 1.530  sigma  34.6%  CVs 0.13% / 0.45%
+  IDEA-0018 (the second case's status word): validated (sigma >= 30% on both levels)
+
+JSON record written to results/run.json

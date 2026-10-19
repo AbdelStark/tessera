@@ -1,0 +1,100 @@
+correctness: every encoding vector, small transform/row sweep, raw-word boundaries, double corrections and equivalent anchors pass
+check ntt 2^20: all arms identical, digest 497e86b045f79ed429e25038358877ab58b8cfd45d730a0f3408805662bf5dec
+check intt 2^20: all arms identical, digest 8e8a5b0f0030936298761edc8e75d892bf28d3bc126fe10ffcca51ae663bedc7
+check coset 2^20: all arms identical, digest 67ee909382f1ad2aae4fc4ccc33b7aebd78c49371feb601983e164664243f614
+check ntt 2^22: all arms identical, digest 7e549ade63c70142ba4636cb394537088bad57eb2ffdbfcbd7528cde8403c171
+check intt 2^22: all arms identical, digest 38a7c7d4bc20482a946a246f0d6ece97599697a922d90669baac0e8de5d0f4ab
+check coset 2^22: all arms identical, digest 6dabc9978d92f5f6f5d8ad34e0dd410651be9a55c784c2384bcae4178da59496
+check ntt 2^23: all arms identical, digest 2780d51685f3d7e58681e52cdb437bdeed62140db906d6c718b7d808355dfc1c
+check intt 2^23: all arms identical, digest 382c3244a3bf29e6aa2d087bc127cb8589737f452a0b7758eeee1810d91bc3d6
+check coset 2^23: all arms identical, digest 33f7962c35b836604a8e672c0f94aafc3d52c5d1f18181d6ef4388430f5ec49d
+check encode 2^20: all arms identical, digest d46aca480f9f278b4ca52fb39f7398157d6906b0e2d56b8e171a6e858e049516
+check encode 2^22: all arms identical, digest bbc011279609ed6d10f80f82b5571c42f0230d7d583c8cb4e1e2eb52ede7b490
+check ntt 2^20: all arms identical, digest 497e86b045f79ed429e25038358877ab58b8cfd45d730a0f3408805662bf5dec
+ntt 2^20 production: 11.163 ns/element CV 1.1547%
+ntt 2^20 canonical4: 13.947 ns/element CV 1.0186%
+ntt 2^20 canonical8: 13.511 ns/element CV 1.7447%
+ntt 2^20 canonical16: 17.241 ns/element CV 1.4371%
+ntt 2^20 lazy4: 12.978 ns/element CV 1.6860%
+ntt 2^20 lazy8: 13.054 ns/element CV 1.4288%
+ntt 2^20 lazy16: 15.222 ns/element CV 1.3478%
+check intt 2^20: all arms identical, digest 8e8a5b0f0030936298761edc8e75d892bf28d3bc126fe10ffcca51ae663bedc7
+intt 2^20 production: 10.687 ns/element CV 1.2420%
+intt 2^20 canonical4: 14.598 ns/element CV 1.3710%
+intt 2^20 canonical8: 13.237 ns/element CV 1.2108%
+intt 2^20 canonical16: 16.780 ns/element CV 0.7514%
+intt 2^20 lazy4: 14.494 ns/element CV 1.7272%
+intt 2^20 lazy8: 13.536 ns/element CV 1.1365%
+intt 2^20 lazy16: 14.746 ns/element CV 1.8331%
+check coset 2^20: all arms identical, digest 67ee909382f1ad2aae4fc4ccc33b7aebd78c49371feb601983e164664243f614
+coset 2^20 production: 12.961 ns/element CV 1.5342%
+coset 2^20 canonical4: 15.001 ns/element CV 1.4609%
+coset 2^20 canonical8: 14.519 ns/element CV 0.9825%
+coset 2^20 canonical16: 18.147 ns/element CV 2.1940%
+coset 2^20 lazy4: 13.764 ns/element CV 2.4890%
+coset 2^20 lazy8: 14.043 ns/element CV 1.4452%
+coset 2^20 lazy16: 15.817 ns/element CV 1.2139%
+check ntt 2^22: all arms identical, digest 7e549ade63c70142ba4636cb394537088bad57eb2ffdbfcbd7528cde8403c171
+ntt 2^22 production: 12.575 ns/element CV 0.8387%
+ntt 2^22 canonical4: 15.832 ns/element CV 0.7226%
+ntt 2^22 canonical8: 15.925 ns/element CV 1.5242%
+ntt 2^22 canonical16: 18.637 ns/element CV 0.7045%
+ntt 2^22 lazy4: 14.614 ns/element CV 0.6964%
+ntt 2^22 lazy8: 15.298 ns/element CV 1.4958%
+ntt 2^22 lazy16: 16.844 ns/element CV 1.3834%
+check intt 2^22: all arms identical, digest 38a7c7d4bc20482a946a246f0d6ece97599697a922d90669baac0e8de5d0f4ab
+intt 2^22 production: 12.169 ns/element CV 1.8629%
+intt 2^22 canonical4: 16.301 ns/element CV 1.0351%
+intt 2^22 canonical8: 15.616 ns/element CV 2.4705%
+intt 2^22 canonical16: 18.689 ns/element CV 1.0906%
+intt 2^22 lazy4: 15.843 ns/element CV 2.0493%
+intt 2^22 lazy8: 15.914 ns/element CV 2.0371%
+intt 2^22 lazy16: 16.494 ns/element CV 1.4056%
+check coset 2^22: all arms identical, digest 6dabc9978d92f5f6f5d8ad34e0dd410651be9a55c784c2384bcae4178da59496
+coset 2^22 production: 14.422 ns/element CV 2.1372%
+coset 2^22 canonical4: 16.505 ns/element CV 0.4778%
+coset 2^22 canonical8: 16.525 ns/element CV 1.7654%
+coset 2^22 canonical16: 19.727 ns/element CV 2.7504%
+coset 2^22 lazy4: 15.534 ns/element CV 1.3622%
+coset 2^22 lazy8: 16.057 ns/element CV 0.9772%
+coset 2^22 lazy16: 17.391 ns/element CV 1.1095%
+check ntt 2^23: all arms identical, digest 2780d51685f3d7e58681e52cdb437bdeed62140db906d6c718b7d808355dfc1c
+ntt 2^23 production: 13.160 ns/element CV 1.2185%
+ntt 2^23 canonical4: 17.176 ns/element CV 0.6330%
+ntt 2^23 canonical8: 16.343 ns/element CV 0.9952%
+ntt 2^23 canonical16: 20.787 ns/element CV 0.3069%
+ntt 2^23 lazy4: 15.759 ns/element CV 0.3575%
+ntt 2^23 lazy8: 15.568 ns/element CV 0.5728%
+ntt 2^23 lazy16: 18.083 ns/element CV 1.0212%
+check intt 2^23: all arms identical, digest 382c3244a3bf29e6aa2d087bc127cb8589737f452a0b7758eeee1810d91bc3d6
+intt 2^23 production: 12.697 ns/element CV 0.4395%
+intt 2^23 canonical4: 17.385 ns/element CV 1.1222%
+intt 2^23 canonical8: 15.781 ns/element CV 0.4337%
+intt 2^23 canonical16: 19.959 ns/element CV 0.4465%
+intt 2^23 lazy4: 17.212 ns/element CV 0.7497%
+intt 2^23 lazy8: 15.841 ns/element CV 1.1873%
+intt 2^23 lazy16: 18.204 ns/element CV 0.5045%
+check coset 2^23: all arms identical, digest 33f7962c35b836604a8e672c0f94aafc3d52c5d1f18181d6ef4388430f5ec49d
+coset 2^23 production: 14.680 ns/element CV 0.5826%
+coset 2^23 canonical4: 17.798 ns/element CV 0.7609%
+coset 2^23 canonical8: 16.928 ns/element CV 0.7405%
+coset 2^23 canonical16: 21.601 ns/element CV 2.1015%
+coset 2^23 lazy4: 16.376 ns/element CV 0.4155%
+coset 2^23 lazy8: 16.083 ns/element CV 0.5545%
+coset 2^23 lazy16: 18.851 ns/element CV 0.7798%
+check encode 2^20: all arms identical, digest d46aca480f9f278b4ca52fb39f7398157d6906b0e2d56b8e171a6e858e049516
+encode 2^20 production: 32.010 ns/element CV 1.1758%
+encode 2^20 canonical4: 43.111 ns/element CV 1.5872%
+encode 2^20 canonical8: 40.246 ns/element CV 0.6786%
+encode 2^20 canonical16: 52.806 ns/element CV 0.8296%
+encode 2^20 lazy4: 40.945 ns/element CV 0.7475%
+encode 2^20 lazy8: 39.170 ns/element CV 1.8036%
+encode 2^20 lazy16: 45.655 ns/element CV 0.7690%
+check encode 2^22: all arms identical, digest bbc011279609ed6d10f80f82b5571c42f0230d7d583c8cb4e1e2eb52ede7b490
+encode 2^22 production: 34.941 ns/element CV 0.4635%
+encode 2^22 canonical4: 47.371 ns/element CV 0.2529%
+encode 2^22 canonical8: 45.219 ns/element CV 0.9241%
+encode 2^22 canonical16: 55.825 ns/element CV 0.4190%
+encode 2^22 lazy4: 44.589 ns/element CV 0.4593%
+encode 2^22 lazy8: 43.376 ns/element CV 0.9157%
+encode 2^22 lazy16: 50.927 ns/element CV 2.0261%

@@ -1,0 +1,653 @@
+{
+  "verdict": "refuted",
+  "summaries": [
+    {
+      "d": 4096,
+      "mode": 30,
+      "kappa": 30,
+      "epsilon": 672,
+      "root_width": 32,
+      "universal_magnitude": 68719476735,
+      "first": {
+        "hi": 68364356540,
+        "lo": -68364356540,
+        "negative": {
+          "last_x": 254,
+          "magnitude": 68364356540,
+          "rho": 269151010,
+          "step": 2,
+          "x": 254
+        },
+        "positive": {
+          "last_x": 254,
+          "magnitude": 68364356540,
+          "rho": 269151010,
+          "step": 2,
+          "x": 254
+        },
+        "width": 37
+      },
+      "ordinary": {
+        "hi": 68719476636,
+        "lo": -68719476636,
+        "negative": {
+          "last_x": 524288,
+          "magnitude": 68719476636,
+          "rho": 131077,
+          "step": 1,
+          "x": 524268
+        },
+        "positive": {
+          "last_x": 524287,
+          "magnitude": 68719476636,
+          "rho": 131077,
+          "step": 1,
+          "x": 524268
+        },
+        "width": 37
+      },
+      "baseline_width": 52,
+      "baseline_split": 26,
+      "candidate_split": 19,
+      "norm_count": 65,
+      "C_delta": 0,
+      "K_delta": 0,
+      "first_layer_C_delta": 0,
+      "first_layer_K_delta": 0,
+      "C": 3195412,
+      "K": 3064734,
+      "M_before": 2043740160,
+      "M_after": 1909260288,
+      "M_delta": -134479872,
+      "first_witnesses": [
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": -254
+          },
+          "rho": 269151010,
+          "u": 65188,
+          "lower_slack": 34865742934896,
+          "upper_slack": 225089210051
+        },
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": 254
+          },
+          "rho": 269151010,
+          "u": 65188,
+          "lower_slack": 34865742934896,
+          "upper_slack": 225089210051
+        }
+      ],
+      "ordinary_witnesses": [
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": -524268
+          },
+          "rho": 131077,
+          "u": 274856936496,
+          "lower_slack": 2198142424912,
+          "upper_slack": 72052922044683967
+        },
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": 524268
+          },
+          "rho": 131077,
+          "u": 274856936496,
+          "lower_slack": 2198142424912,
+          "upper_slack": 72052922044683967
+        }
+      ]
+    },
+    {
+      "d": 4096,
+      "mode": 16,
+      "kappa": 16,
+      "epsilon": 672,
+      "root_width": 18,
+      "universal_magnitude": 4194303,
+      "first": {
+        "hi": 4172458,
+        "lo": -4172458,
+        "negative": {
+          "last_x": 254,
+          "magnitude": 4172458,
+          "rho": 16427,
+          "step": 2,
+          "x": 254
+        },
+        "positive": {
+          "last_x": 254,
+          "magnitude": 4172458,
+          "rho": 16427,
+          "step": 2,
+          "x": 254
+        },
+        "width": 23
+      },
+      "ordinary": {
+        "hi": 4194303,
+        "lo": -4194303,
+        "negative": {
+          "last_x": 524288,
+          "magnitude": 4194303,
+          "rho": 89,
+          "step": 1,
+          "x": 47127
+        },
+        "positive": {
+          "last_x": 524287,
+          "magnitude": 4194303,
+          "rho": 89,
+          "step": 1,
+          "x": 47127
+        },
+        "width": 23
+      },
+      "baseline_width": 38,
+      "baseline_split": 12,
+      "candidate_split": null,
+      "norm_count": 65,
+      "C_delta": -262144,
+      "K_delta": -262144,
+      "first_layer_C_delta": -4096,
+      "first_layer_K_delta": -4096,
+      "C": 2929172,
+      "K": 2798494,
+      "M_before": 2109804544,
+      "M_after": 1916862464,
+      "M_delta": -192942080,
+      "first_witnesses": [
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": -254
+          },
+          "rho": 16427,
+          "u": 65188,
+          "lower_slack": 1443549564,
+          "upper_slack": 698202175
+        },
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": 254
+          },
+          "rho": 16427,
+          "u": 65188,
+          "lower_slack": 1443549564,
+          "upper_slack": 698202175
+        }
+      ],
+      "ordinary_witnesses": [
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": -47127
+          },
+          "rho": 89,
+          "u": 2220954801,
+          "lower_slack": 3065695,
+          "upper_slack": 397547843683
+        },
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": 47127
+          },
+          "rho": 89,
+          "u": 2220954801,
+          "lower_slack": 3065695,
+          "upper_slack": 397547843683
+        }
+      ]
+    },
+    {
+      "d": 4096,
+      "mode": 31,
+      "kappa": 31,
+      "epsilon": 4096,
+      "root_width": 32,
+      "universal_magnitude": 137438953471,
+      "first": {
+        "hi": 133273411888,
+        "lo": -133273411888,
+        "negative": {
+          "last_x": 254,
+          "magnitude": 133273411888,
+          "rho": 524698472,
+          "step": 2,
+          "x": 254
+        },
+        "positive": {
+          "last_x": 254,
+          "magnitude": 133273411888,
+          "rho": 524698472,
+          "step": 2,
+          "x": 254
+        },
+        "width": 38
+      },
+      "ordinary": {
+        "hi": 137438952441,
+        "lo": -137438952441,
+        "negative": {
+          "last_x": 524288,
+          "magnitude": 137438952441,
+          "rho": 262507,
+          "step": 1,
+          "x": 523563
+        },
+        "positive": {
+          "last_x": 524287,
+          "magnitude": 137438952441,
+          "rho": 262507,
+          "step": 1,
+          "x": 523563
+        },
+        "width": 38
+      },
+      "baseline_width": 52,
+      "baseline_split": 26,
+      "candidate_split": 19,
+      "norm_count": 65,
+      "C_delta": 0,
+      "K_delta": 0,
+      "first_layer_C_delta": 0,
+      "first_layer_K_delta": 0,
+      "C": 3195412,
+      "K": 3064734,
+      "M_before": 2043740160,
+      "M_after": 1909522432,
+      "M_delta": -134217728,
+      "first_witnesses": [
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": -254
+          },
+          "rho": 524698472,
+          "u": 68612,
+          "lower_slack": 54427705054976,
+          "upper_slack": 17573518135363
+        },
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": 254
+          },
+          "rho": 524698472,
+          "u": 68612,
+          "lower_slack": 54427705054976,
+          "upper_slack": 17573518135363
+        }
+      ],
+      "ordinary_witnesses": [
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": -523563
+          },
+          "rho": 262507,
+          "u": 274118219065,
+          "lower_slack": 1144067995599,
+          "upper_slack": 143915032714415375
+        },
+        {
+          "dimension": 4096,
+          "default": 0,
+          "nonzero": {
+            "0": 523563
+          },
+          "rho": 262507,
+          "u": 274118219065,
+          "lower_slack": 1144067995599,
+          "upper_slack": 143915032714415375
+        }
+      ]
+    },
+    {
+      "d": 16384,
+      "mode": 30,
+      "kappa": 30,
+      "epsilon": 2685,
+      "root_width": 32,
+      "universal_magnitude": 137438953471,
+      "first": {
+        "hi": 134665295312,
+        "lo": -134665295312,
+        "negative": {
+          "last_x": 254,
+          "magnitude": 134665295312,
+          "rho": 530178328,
+          "step": 2,
+          "x": 254
+        },
+        "positive": {
+          "last_x": 254,
+          "magnitude": 134665295312,
+          "rho": 530178328,
+          "step": 2,
+          "x": 254
+        },
+        "width": 38
+      },
+      "ordinary": {
+        "hi": 137438952750,
+        "lo": -137438952750,
+        "negative": {
+          "last_x": 524288,
+          "magnitude": 137438952750,
+          "rho": 262163,
+          "step": 1,
+          "x": 524250
+        },
+        "positive": {
+          "last_x": 524287,
+          "magnitude": 137438952750,
+          "rho": 262163,
+          "step": 1,
+          "x": 524250
+        },
+        "width": 38
+      },
+      "baseline_width": 52,
+      "baseline_split": 26,
+      "candidate_split": 19,
+      "norm_count": 253,
+      "C_delta": 0,
+      "K_delta": 0,
+      "first_layer_C_delta": 0,
+      "first_layer_K_delta": 0,
+      "C": 45566660,
+      "K": 45440678,
+      "M_before": 7693467648,
+      "M_after": 7559249920,
+      "M_delta": -134217728,
+      "first_witnesses": [
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": -254
+          },
+          "rho": 530178328,
+          "u": 67201,
+          "lower_slack": 45304260734400,
+          "upper_slack": 25952766972656
+        },
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": 254
+          },
+          "rho": 530178328,
+          "u": 67201,
+          "lower_slack": 45304260734400,
+          "upper_slack": 25952766972656
+        }
+      ],
+      "ordinary_witnesses": [
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": -524250
+          },
+          "rho": 262163,
+          "u": 274838065185,
+          "lower_slack": 13923305734519,
+          "upper_slack": 144091094898520975
+        },
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": 524250
+          },
+          "rho": 262163,
+          "u": 274838065185,
+          "lower_slack": 13923305734519,
+          "upper_slack": 144091094898520975
+        }
+      ]
+    },
+    {
+      "d": 16384,
+      "mode": 16,
+      "kappa": 16,
+      "epsilon": 2685,
+      "root_width": 18,
+      "universal_magnitude": 8388607,
+      "first": {
+        "hi": 8219186,
+        "lo": -8219186,
+        "negative": {
+          "last_x": 254,
+          "magnitude": 8219186,
+          "rho": 32359,
+          "step": 2,
+          "x": 254
+        },
+        "positive": {
+          "last_x": 254,
+          "magnitude": 8219186,
+          "rho": 32359,
+          "step": 2,
+          "x": 254
+        },
+        "width": 24
+      },
+      "ordinary": {
+        "hi": 8388607,
+        "lo": -8388607,
+        "negative": {
+          "last_x": 524288,
+          "magnitude": 8388607,
+          "rho": 47,
+          "step": 1,
+          "x": 178481
+        },
+        "positive": {
+          "last_x": 524287,
+          "magnitude": 8388607,
+          "rho": 47,
+          "step": 1,
+          "x": 178481
+        },
+        "width": 24
+      },
+      "baseline_width": 38,
+      "baseline_split": 12,
+      "candidate_split": null,
+      "norm_count": 253,
+      "C_delta": -4128768,
+      "K_delta": -4128768,
+      "first_layer_C_delta": -16384,
+      "first_layer_K_delta": -16384,
+      "C": 41421508,
+      "K": 41295526,
+      "M_before": 7759532032,
+      "M_after": 7574978560,
+      "M_delta": -184553472,
+      "first_witnesses": [
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": -254
+          },
+          "rho": 32359,
+          "u": 67201,
+          "lower_slack": 2249069583,
+          "upper_slack": 2100111935
+        },
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": 254
+          },
+          "rho": 32359,
+          "u": 67201,
+          "lower_slack": 2249069583,
+          "upper_slack": 2100111935
+        }
+      ],
+      "ordinary_witnesses": [
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": -178481
+          },
+          "rho": 47,
+          "u": 31855470046,
+          "lower_slack": 10846050,
+          "upper_slack": 3026258808319
+        },
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": 178481
+          },
+          "rho": 47,
+          "u": 31855470046,
+          "lower_slack": 10846050,
+          "upper_slack": 3026258808319
+        }
+      ]
+    },
+    {
+      "d": 16384,
+      "mode": 31,
+      "kappa": 31,
+      "epsilon": 16384,
+      "root_width": 32,
+      "universal_magnitude": 274877906943,
+      "first": {
+        "hi": 245470490770,
+        "lo": -245470490770,
+        "negative": {
+          "last_x": 254,
+          "magnitude": 245470490770,
+          "rho": 966419255,
+          "step": 2,
+          "x": 254
+        },
+        "positive": {
+          "last_x": 254,
+          "magnitude": 245470490770,
+          "rho": 966419255,
+          "step": 2,
+          "x": 254
+        },
+        "width": 39
+      },
+      "ordinary": {
+        "hi": 274877898699,
+        "lo": -274877898699,
+        "negative": {
+          "last_x": 524288,
+          "magnitude": 274877898699,
+          "rho": 525741,
+          "step": 1,
+          "x": 522839
+        },
+        "positive": {
+          "last_x": 524287,
+          "magnitude": 274877898699,
+          "rho": 525741,
+          "step": 1,
+          "x": 522839
+        },
+        "width": 39
+      },
+      "baseline_width": 52,
+      "baseline_split": 26,
+      "candidate_split": 20,
+      "norm_count": 253,
+      "C_delta": 0,
+      "K_delta": 0,
+      "first_layer_C_delta": 0,
+      "first_layer_K_delta": 0,
+      "C": 45566660,
+      "K": 45440678,
+      "M_before": 7693467648,
+      "M_after": 7558725632,
+      "M_delta": -134742016,
+      "first_witnesses": [
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": -254
+          },
+          "rho": 966419255,
+          "u": 80900,
+          "lower_slack": 52342641896636,
+          "upper_slack": 104023993643263
+        },
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": 254
+          },
+          "rho": 966419255,
+          "u": 80900,
+          "lower_slack": 52342641896636,
+          "upper_slack": 104023993643263
+        }
+      ],
+      "ordinary_witnesses": [
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": -522839
+          },
+          "rho": 525741,
+          "u": 273360636305,
+          "lower_slack": 4140050183431,
+          "upper_slack": 287429921893706883
+        },
+        {
+          "dimension": 16384,
+          "default": 0,
+          "nonzero": {
+            "0": 522839
+          },
+          "rho": 525741,
+          "u": 273360636305,
+          "lower_slack": 4140050183431,
+          "upper_slack": 287429921893706883
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "candidate_roots": 954440,
+    "rows": 93600,
+    "keys": 361120
+  },
+  "requant_keys": 160877
+}

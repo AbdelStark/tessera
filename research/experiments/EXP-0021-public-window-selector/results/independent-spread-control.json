@@ -1,0 +1,27 @@
+{
+  "scope": "standalone integer tiny control only; outside frozen EXP21 score alphabet and current RFC9 score bounds; not a registered finite-domain refutation",
+  "P": 18446744069414584321,
+  "scores": [
+    -9223372034707292159,
+    9223372034707292159
+  ],
+  "claimed_c": -9223372034707292159,
+  "true_max": 9223372034707292159,
+  "spread": 18446744069414584318,
+  "K0": 3,
+  "keys_mod_P": [
+    0,
+    3
+  ],
+  "toy_e": [
+    4,
+    0
+  ],
+  "R": 4,
+  "sum_e": 4,
+  "a": 0,
+  "b": 3,
+  "checks": "strict centered scores, spread<P, key membership, product0, reciprocal/range constraints all hold; max claim false",
+  "required_general_guard": "score_spread + K0 < P",
+  "oracle": "Python standalone unbounded integer arithmetic; no audit.py import or execution"
+}

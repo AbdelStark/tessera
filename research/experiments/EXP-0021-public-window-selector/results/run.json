@@ -1,0 +1,9 @@
+{
+  "kind": "final author run pointer; immutable unique attempt authoritative",
+  "attempt": "results/attempts/20261019T105827.081336Z-45083",
+  "summary": "results/attempts/20261019T105827.081336Z-45083/summary.json",
+  "controls": "results/attempts/20261019T105827.081336Z-45083/controls.json",
+  "counterexamples": "results/attempts/20261019T105827.081336Z-45083/counterexamples.json",
+  "events": "results/attempts/20261019T105827.081336Z-45083/events.jsonl",
+  "source": "results/attempts/20261019T105827.081336Z-45083/audit.source.py"
+}

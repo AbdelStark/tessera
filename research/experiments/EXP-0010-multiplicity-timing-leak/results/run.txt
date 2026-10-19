@@ -1,0 +1,116 @@
+EXP-0010 harness: N = 2^27 keys per stream, T ∈ {2^20, 2^24, 2^28}, protocol 3 warm-ups, 10 iterations, CV limit 3%
+
+== T = 2^20 (4 MiB of u32 counters) ==
+-- uniform       generated in 0.08 s; counts digest 14d193da86933c0d; gather 03fff57aaab20bff; checks passed
+count32    T=2^20 uniform       n=2^27 median    103.393 ms     0.770 ns/key  min    102.004  max    103.915  CV  0.58%
+count64    T=2^20 uniform       n=2^27 median    108.147 ms     0.806 ns/key  min    107.566  max    109.331  CV  0.49%
+gather     T=2^20 uniform       n=2^27 median     81.145 ms     0.605 ns/key  min     80.472  max     81.483  CV  0.38%  (rerun)
+-- zipf          generated in 0.29 s; counts digest 99abb8727487fc7c; gather 03f2b204481fc141; checks passed
+count32    T=2^20 zipf          n=2^27 median     53.036 ms     0.395 ns/key  min     52.441  max     53.472  CV  0.70%
+count64    T=2^20 zipf          n=2^27 median     54.998 ms     0.410 ns/key  min     54.299  max     55.207  CV  0.50%
+gather     T=2^20 zipf          n=2^27 median     54.596 ms     0.407 ns/key  min     54.228  max     54.892  CV  0.38%
+-- sorted        generated in 1.19 s; counts digest 14d193da86933c0d; gather 03fff57aaab20bff; checks passed
+count32    T=2^20 sorted        n=2^27 median    242.925 ms     1.810 ns/key  min    240.363  max    243.124  CV  0.34%
+count64    T=2^20 sorted        n=2^27 median    242.589 ms     1.807 ns/key  min    240.560  max    243.254  CV  0.34%
+gather     T=2^20 sorted        n=2^27 median     36.514 ms     0.272 ns/key  min     36.133  max     36.791  CV  0.53%
+-- sequential    generated in 0.01 s; counts digest 6948fdf5e9222325; gather 03fff4e395d78b80; checks passed
+count32    T=2^20 sequential    n=2^27 median     37.957 ms     0.283 ns/key  min     37.819  max     39.039  CV  0.98%
+count64    T=2^20 sequential    n=2^27 median     39.825 ms     0.297 ns/key  min     39.689  max     40.888  CV  0.87%
+gather     T=2^20 sequential    n=2^27 median     37.184 ms     0.277 ns/key  min     37.101  max     37.729  CV  0.64%
+-- all_equal     generated in 0.00 s; counts digest fa9aab49f40c2c3d; gather 04ba196e10000000; checks passed
+count32    T=2^20 all_equal     n=2^27 median    146.641 ms     1.093 ns/key  min    145.819  max    146.852  CV  0.20%
+count64    T=2^20 all_equal     n=2^27 median    145.784 ms     1.086 ns/key  min    144.416  max    146.568  CV  0.50%
+gather     T=2^20 all_equal     n=2^27 median     36.566 ms     0.272 ns/key  min     36.172  max     37.419  CV  1.02%
+-- gauss_narrow  generated in 1.04 s; counts digest 0b422a254a3c3cac; gather 03f317bfc7e0d719; checks passed
+count32    T=2^20 gauss_narrow  n=2^27 median     36.535 ms     0.272 ns/key  min     36.521  max     36.603  CV  0.07%
+count64    T=2^20 gauss_narrow  n=2^27 median     36.069 ms     0.269 ns/key  min     36.057  max     36.357  CV  0.29%
+gather     T=2^20 gauss_narrow  n=2^27 median     37.368 ms     0.278 ns/key  min     37.228  max     38.548  CV  1.11%
+-- gauss_wide    generated in 1.04 s; counts digest d8389ee836b44b6f; gather 0400a6a4c8f90375; checks passed
+count32    T=2^20 gauss_wide    n=2^27 median     68.104 ms     0.507 ns/key  min     67.801  max     68.805  CV  0.55%
+count64    T=2^20 gauss_wide    n=2^27 median     85.905 ms     0.640 ns/key  min     85.227  max     86.747  CV  0.59%
+gather     T=2^20 gauss_wide    n=2^27 median     57.164 ms     0.426 ns/key  min     57.020  max     57.303  CV  0.15%
+
+== T = 2^24 (64 MiB of u32 counters) ==
+-- uniform       generated in 0.05 s; counts digest 153a62662481d215; gather 03ffe6848f3eb0b3; checks passed
+count32    T=2^24 uniform       n=2^27 median    252.160 ms     1.879 ns/key  min    250.784  max    258.360  CV  0.91%
+count64    T=2^24 uniform       n=2^27 median    347.029 ms     2.586 ns/key  min    345.030  max    355.991  CV  0.99%
+gather     T=2^24 uniform       n=2^27 median    251.041 ms     1.870 ns/key  min    248.295  max    253.959  CV  0.73%
+-- zipf          generated in 0.26 s; counts digest 12b24d3cafc2279c; gather 0429017225db693a; checks passed
+count32    T=2^24 zipf          n=2^27 median     57.316 ms     0.427 ns/key  min     57.201  max     57.675  CV  0.23%
+count64    T=2^24 zipf          n=2^27 median     58.509 ms     0.436 ns/key  min     58.362  max     58.566  CV  0.10%
+gather     T=2^24 zipf          n=2^27 median     58.334 ms     0.435 ns/key  min     58.068  max     58.677  CV  0.38%
+-- sorted        generated in 1.66 s; counts digest 153a62662481d215; gather 03ffe6848f3eb0b3; checks passed
+count32    T=2^24 sorted        n=2^27 median    217.348 ms     1.619 ns/key  min    215.607  max    217.997  CV  0.32%
+count64    T=2^24 sorted        n=2^27 median    217.210 ms     1.618 ns/key  min    215.916  max    217.905  CV  0.27%
+gather     T=2^24 sorted        n=2^27 median     36.608 ms     0.273 ns/key  min     36.249  max     37.679  CV  1.26%
+-- sequential    generated in 0.01 s; counts digest 51767bfd14222325; gather 03ffe1cb85a8d4f0; checks passed
+count32    T=2^24 sequential    n=2^27 median     37.732 ms     0.281 ns/key  min     37.672  max     38.245  CV  0.55%
+count64    T=2^24 sequential    n=2^27 median     39.945 ms     0.298 ns/key  min     39.758  max     40.132  CV  0.33%
+gather     T=2^24 sequential    n=2^27 median     36.617 ms     0.273 ns/key  min     36.526  max     39.981  CV  2.87%
+-- all_equal     generated in 0.00 s; counts digest 3a75e14b0516f43d; gather 02c21caae8000000; checks passed
+count32    T=2^24 all_equal     n=2^27 median    146.117 ms     1.089 ns/key  min    145.173  max    149.711  CV  1.08%
+count64    T=2^24 all_equal     n=2^27 median    149.337 ms     1.113 ns/key  min    147.451  max    150.161  CV  0.69%
+gather     T=2^24 all_equal     n=2^27 median     36.892 ms     0.275 ns/key  min     36.251  max     37.236  CV  0.77%
+-- gauss_narrow  generated in 1.04 s; counts digest 5abbfb72ce7c9aca; gather 03fc4d4da7f22ca3; checks passed
+count32    T=2^24 gauss_narrow  n=2^27 median     69.798 ms     0.520 ns/key  min     69.518  max     69.945  CV  0.18%
+count64    T=2^24 gauss_narrow  n=2^27 median     85.805 ms     0.639 ns/key  min     85.434  max     86.702  CV  0.48%
+gather     T=2^24 gauss_narrow  n=2^27 median     59.412 ms     0.443 ns/key  min     59.276  max     59.899  CV  0.32%
+-- gauss_wide    generated in 1.04 s; counts digest f9fccad07b273ce3; gather 03ffc0f2f1c87869; checks passed
+count32    T=2^24 gauss_wide    n=2^27 median    103.097 ms     0.768 ns/key  min    102.814  max    105.698  CV  0.99%
+count64    T=2^24 gauss_wide    n=2^27 median    108.781 ms     0.810 ns/key  min    108.337  max    111.445  CV  1.05%
+gather     T=2^24 gauss_wide    n=2^27 median     83.003 ms     0.618 ns/key  min     82.780  max     84.877  CV  0.86%
+
+== T = 2^28 (1024 MiB of u32 counters) ==
+-- uniform       generated in 0.05 s; counts digest 459998928dcb5b31; gather 03ffef2d3bf15df6; checks passed
+count32    T=2^28 uniform       n=2^27 median    466.453 ms     3.475 ns/key  min    463.910  max    472.331  CV  0.65%
+count64    T=2^28 uniform       n=2^27 median    477.510 ms     3.558 ns/key  min    474.714  max    488.729  CV  0.92%
+gather     T=2^28 uniform       n=2^27 median    452.470 ms     3.371 ns/key  min    449.337  max    455.684  CV  0.53%
+sortcount  T=2^28 uniform       n=2^27 median   1926.490 ms    14.353 ns/key  min   1923.595  max   1961.708  CV  0.75%  copy + sort_unstable + run-length
+bitonic    T=2^28 uniform       n=2^22 median    452.841 ms   107.966 ns/key  min    447.815  max    459.916  CV  1.06%  530579456 compare-exchanges, 0.853 ns each
+bitonic    T=2^28 uniform       n=2^24 median   2169.977 ms   129.341 ns/key  min   2150.455  max   2200.174  CV  0.79%  (rerun)  2516582400 compare-exchanges, 0.862 ns each
+-- zipf          generated in 0.34 s; counts digest 48b126fbc8bfd00c; gather 03b927f8ada0d345; checks passed
+count32    T=2^28 zipf          n=2^27 median     60.660 ms     0.452 ns/key  min     59.984  max     63.911  CV  2.03%
+count64    T=2^28 zipf          n=2^27 median     61.377 ms     0.457 ns/key  min     60.833  max     61.981  CV  0.64%
+gather     T=2^28 zipf          n=2^27 median     64.146 ms     0.478 ns/key  min     63.897  max     64.962  CV  0.55%
+sortcount  T=2^28 zipf          n=2^27 median    583.042 ms     4.344 ns/key  min    581.349  max    585.851  CV  0.21%  copy + sort_unstable + run-length
+-- sorted        generated in 1.71 s; counts digest 459998928dcb5b31; gather 03ffef2d3bf15df6; checks passed
+count32    T=2^28 sorted        n=2^27 median     67.364 ms     0.502 ns/key  min     67.232  max     67.515  CV  0.13%
+count64    T=2^28 sorted        n=2^27 median     74.163 ms     0.553 ns/key  min     73.994  max     74.584  CV  0.31%
+gather     T=2^28 sorted        n=2^27 median     37.801 ms     0.282 ns/key  min     37.636  max     37.882  CV  0.21%
+sortcount  T=2^28 sorted        n=2^27 median    254.573 ms     1.897 ns/key  min    253.495  max    255.663  CV  0.28%  copy + sort_unstable + run-length
+-- sequential    generated in 0.01 s; counts digest fba3ceb744222325; gather 0400079a203e0b4a; checks passed
+count32    T=2^28 sequential    n=2^27 median     37.971 ms     0.283 ns/key  min     37.613  max     38.558  CV  0.70%
+count64    T=2^28 sequential    n=2^27 median     40.155 ms     0.299 ns/key  min     39.715  max     40.913  CV  0.84%
+gather     T=2^28 sequential    n=2^27 median     36.966 ms     0.275 ns/key  min     36.900  max     37.050  CV  0.13%
+sortcount  T=2^28 sequential    n=2^27 median    118.905 ms     0.886 ns/key  min    117.917  max    120.697  CV  0.63%  copy + sort_unstable + run-length
+-- all_equal     generated in 0.00 s; counts digest 2ed4920e9a82003d; gather 0311a153b8000000; checks passed
+count32    T=2^28 all_equal     n=2^27 median    148.685 ms     1.108 ns/key  min    147.426  max    149.676  CV  0.53%
+count64    T=2^28 all_equal     n=2^27 median    149.561 ms     1.114 ns/key  min    148.300  max    149.906  CV  0.32%
+gather     T=2^28 all_equal     n=2^27 median     37.056 ms     0.276 ns/key  min     36.423  max     37.569  CV  0.80%
+sortcount  T=2^28 all_equal     n=2^27 median     78.390 ms     0.584 ns/key  min     77.447  max     78.541  CV  0.44%  copy + sort_unstable + run-length
+bitonic    T=2^28 all_equal     n=2^22 median    464.304 ms   110.699 ns/key  min    454.966  max    468.557  CV  0.82%  530579456 compare-exchanges, 0.875 ns each
+bitonic    T=2^28 all_equal     n=2^24 median   2190.030 ms   130.536 ns/key  min   2169.432  max   2209.195  CV  0.50%  2516582400 compare-exchanges, 0.870 ns each
+-- gauss_narrow  generated in 1.04 s; counts digest 7dc9238d9844473d; gather 03ffa3934f5203e5; checks passed
+count32    T=2^28 gauss_narrow  n=2^27 median    104.376 ms     0.778 ns/key  min    102.709  max    106.564  CV  1.35%
+count64    T=2^28 gauss_narrow  n=2^27 median    108.356 ms     0.807 ns/key  min    108.094  max    108.993  CV  0.27%
+gather     T=2^28 gauss_narrow  n=2^27 median     83.233 ms     0.620 ns/key  min     82.497  max     87.908  CV  1.90%
+sortcount  T=2^28 gauss_narrow  n=2^27 median   1244.862 ms     9.275 ns/key  min   1243.359  max   1246.950  CV  0.09%  copy + sort_unstable + run-length
+bitonic    T=2^28 gauss_narrow  n=2^22 median    452.037 ms   107.774 ns/key  min    447.975  max    457.561  CV  0.85%  530579456 compare-exchanges, 0.852 ns each
+-- gauss_wide    generated in 1.04 s; counts digest 410f8e0c1673b27f; gather 03ffe5eee0be91c1; checks passed
+count32    T=2^28 gauss_wide    n=2^27 median    260.440 ms     1.940 ns/key  min    253.106  max    266.657  CV  1.53%  (rerun)
+count64    T=2^28 gauss_wide    n=2^27 median    340.256 ms     2.535 ns/key  min    335.703  max    349.214  CV  1.11%
+gather     T=2^28 gauss_wide    n=2^27 median    253.450 ms     1.888 ns/key  min    249.438  max    266.576  CV  1.88%
+sortcount  T=2^28 gauss_wide    n=2^27 median   1785.684 ms    13.304 ns/key  min   1783.156  max   1789.745  CV  0.14%  copy + sort_unstable + run-length
+
+== derived (medians) ==
+count32  T=2^20 R_slow = 2.350 (sorted), s = 0.850 (slowest sorted 242.9 ms, fastest gauss_narrow 36.5 ms), g = 0.3053, t_typ/t_uniform = 0.506
+count64  T=2^20 R_slow = 2.243 (sorted), s = 0.851 (slowest sorted 242.6 ms, fastest gauss_narrow 36.1 ms), g = 0.4608, t_typ/t_uniform = 0.564
+gather   T=2^20 R_slow = 1.000 (uniform), s = 0.550 (slowest uniform 81.1 ms, fastest sorted 36.5 ms), g = 0.2440, t_typ/t_uniform = 0.582
+count32  T=2^24 R_slow = 1.000 (uniform), s = 0.850 (slowest uniform 252.2 ms, fastest sequential 37.7 ms), g = 0.1321, t_typ/t_uniform = 0.343
+count64  T=2^24 R_slow = 1.000 (uniform), s = 0.885 (slowest uniform 347.0 ms, fastest sequential 39.9 ms), g = 0.0662, t_typ/t_uniform = 0.280
+gather   T=2^24 R_slow = 1.000 (uniform), s = 0.854 (slowest uniform 251.0 ms, fastest sorted 36.6 ms), g = 0.0940, t_typ/t_uniform = 0.284
+count32  T=2^28 R_slow = 1.000 (uniform), s = 0.919 (slowest uniform 466.5 ms, fastest sequential 38.0 ms), g = 0.3346, t_typ/t_uniform = 0.391
+count64  T=2^28 R_slow = 1.000 (uniform), s = 0.916 (slowest uniform 477.5 ms, fastest sequential 40.2 ms), g = 0.4856, t_typ/t_uniform = 0.470
+gather   T=2^28 R_slow = 1.000 (uniform), s = 0.918 (slowest uniform 452.5 ms, fastest sequential 37.0 ms), g = 0.3762, t_typ/t_uniform = 0.372
+
+wrote /Users/abdel/dev/me/tessera-research/research/experiments/EXP-0010-multiplicity-timing-leak/results/run.json; total 344.5 s

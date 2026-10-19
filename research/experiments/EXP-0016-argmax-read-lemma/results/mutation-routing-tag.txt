@@ -1,0 +1,13 @@
+field factor exhaustions complete
+local row and dot-product exhaustions complete
+Traceback (most recent call last):
+  File "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp16-mutants-hbyrz86h/lemma.py", line 404, in <module>
+    main()
+    ~~~~^^
+  File "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp16-mutants-hbyrz86h/lemma.py", line 377, in main
+    result["scalar_merged"] = scalar_merged_exhaustion()
+                              ~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp16-mutants-hbyrz86h/lemma.py", line 213, in scalar_merged_exhaustion
+    assert not wrong_read and not wrong_c
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

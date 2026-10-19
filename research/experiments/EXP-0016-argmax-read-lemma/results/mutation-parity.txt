@@ -1,0 +1,12 @@
+field factor exhaustions complete
+Traceback (most recent call last):
+  File "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp16-mutants-hbyrz86h/lemma.py", line 404, in <module>
+    main()
+    ~~~~^^
+  File "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp16-mutants-hbyrz86h/lemma.py", line 374, in main
+    result["local"] = local_exhaustion()
+                      ~~~~~~~~~~~~~~~~^^
+  File "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp16-mutants-hbyrz86h/lemma.py", line 129, in local_exhaustion
+    assert j == expected_j and read == expected_c
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

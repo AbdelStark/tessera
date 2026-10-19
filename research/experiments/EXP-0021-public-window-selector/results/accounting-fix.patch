@@ -1,0 +1,32 @@
+--- audit.py before accounting fix
++++ audit.py final accounting fix
+@@ -717,7 +717,9 @@
+         if l>=desc.L or h>=desc.H or p>=desc.n:return 0
+         if family==0:return 0
+         if family==1:return 1
+-        if family==2:return -1 if isum((l,h,p,c))%2 else 1
++        if family==2:
++            parity=isum((l,h,p,c));M.operation()  # integer remainder, as for family3
++            return -1 if parity%2 else 1
+         z=isum((l,imul(2,h),imul(3,p),c,offset));M.operation()
+         return isub(z%3,1)
+     Q=[raw(l,h,p,c,0) for l in range(lp) for h in range(hp) for p in range(nsize) for c in range(2)]
+@@ -931,7 +933,9 @@
+         M.operation(9)
+         M.judge(product==F((aa+7*bb)%P,cross),'Fp2 alternate product')
+     for i in range(-4,5):
+-        M.judge(F(i)*HALF==F((i*((P+1)//2))%P),'rational half embedding')
++        expected=imul(i,HALF.a);M.operation()  # expected integer product and remainder
++        expected%=P
++        M.judge(F(i)*HALF==F(expected),'rational half embedding')
+ 
+ 
+ def preflight(table16,controls):
+@@ -1002,6 +1006,7 @@
+                 pointwise_audit(table16);completed.append('pointwise and normative rows')
+                 transport_audit(table16,controls);completed.append('transport')
+                 adversarial(controls,table16);completed.append('adversarial controls')
++                M.check()  # enforce every resource cap immediately before a validated verdict
+                 verdict='validated'
+         except AuditLimit as exc:
+             error=str(exc);code=2;M.event('resource_limit',error)

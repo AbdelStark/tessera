@@ -1,0 +1,39 @@
+[package]
+name = "integer-fraction"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+description = "EXP-0020 bounded integer coefficient fraction leaves (research/, a dependency of nothing)"
+
+[[bin]]
+name = "integer-fraction"
+path = "src/main.rs"
+
+# Its own workspace: the root workspace and its lockfile stay untouched (research/README.md rule 2).
+[workspace]
+
+[dependencies]
+# The baseline kernels: the production sumcheck engine and its field, polynomial and transcript
+# crates, unmodified. The candidate is written in the harness over the same field and polynomial
+# primitives.
+tessera-codec = { path = "../../../crates/tessera-codec" }
+tessera-field = { path = "../../../crates/tessera-field" }
+tessera-hash = { path = "../../../crates/tessera-hash" }
+tessera-poly = { path = "../../../crates/tessera-poly" }
+tessera-sumcheck = { path = "../../../crates/tessera-sumcheck" }
+# The independent checks: every proof the harness times is verified by the verifier's own level
+# and batch checks on a tv-hash transcript, as the sumcheck crate's tests do (DEP-2 is a rule on
+# prover crates; this research crate is a dependency of nothing).
+tv-core = { path = "../../../verifier/crates/tv-core" }
+tv-field = { path = "../../../verifier/crates/tv-field" }
+tv-hash = { path = "../../../verifier/crates/tv-hash" }
+
+tessera-logup = { path = "../../../crates/tessera-logup" }
+tessera-tables = { path = "../../../crates/tessera-tables" }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+debug = false

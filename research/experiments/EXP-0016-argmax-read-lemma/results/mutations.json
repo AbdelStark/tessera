@@ -1,0 +1,35 @@
+{
+  "experiment": "EXP-0016",
+  "control_passed": true,
+  "mutants_caught": 4,
+  "mutants_total": 4,
+  "outcomes": [
+    {
+      "name": "control",
+      "exit_code": 0,
+      "expected": "pass"
+    },
+    {
+      "name": "routing-tag",
+      "exit_code": 1,
+      "expected": "AssertionError"
+    },
+    {
+      "name": "parity",
+      "exit_code": 1,
+      "expected": "AssertionError"
+    },
+    {
+      "name": "padding-zero-pin",
+      "exit_code": 1,
+      "expected": "AssertionError"
+    },
+    {
+      "name": "ceil-to-floor",
+      "exit_code": 1,
+      "expected": "AssertionError"
+    }
+  ],
+  "scratch": "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp16-mutants-hbyrz86h",
+  "original_files_modified": false
+}

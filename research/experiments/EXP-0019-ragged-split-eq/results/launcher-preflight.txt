@@ -1,0 +1,1 @@
+Before timing, the initial metadata launcher used Path('.').parents[2] and raised IndexError: 2 before spawning any child or writing any sample. The launcher was corrected to resolve the experiment directory first. The sole timed child and terminal are recorded in run-terminal.json; no sample was discarded or replaced because of this metadata error.

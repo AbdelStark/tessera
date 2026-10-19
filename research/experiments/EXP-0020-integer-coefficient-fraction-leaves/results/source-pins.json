@@ -1,0 +1,150 @@
+{
+  "phase": "preregistration draft only; no implementation",
+  "prepared_utc": "2026-10-19T10:04:30.291690+00:00",
+  "registration_source_commit": "a1c1cd62eeeba68075f76300aeaf15d0833fbb2a",
+  "observed_head": "58b5ea5b8455cc6964f59383971f6a2ec56c5413",
+  "main_context": "61b9 new stage verifier; parent compatibility checkpoint58b5ea5 has no timed tree change",
+  "files": [
+    {
+      "path": "crates/tessera-logup/src/prover.rs",
+      "sha256": "497c1f71405104e5c8dfd37d65ba7a7d6982534ca629ac1b606f3b5f778caa93",
+      "bytes": 17779,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "crates/tessera-logup/src/instance.rs",
+      "sha256": "dd3c828150669fd360979678b3f4aeec6f785f160b01d0584f2c7780dbee5230",
+      "bytes": 9282,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "crates/tessera-sumcheck/src/level.rs",
+      "sha256": "dd1e95d7c2b63a055b77831602920841b808a5399f92f5783b37e5f5e53d3b97",
+      "bytes": 34517,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "crates/tessera-sumcheck/src/trees.rs",
+      "sha256": "2565b9252f161dc6b4f0627fcaa22a86351785c1652f6ece8a9450d5f065643c",
+      "bytes": 35577,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "crates/tessera-sumcheck/src/forest.rs",
+      "sha256": "57b4c63da0d348e187f208db5ddd9aa59cc3d66f3443447075e517cecfe067c7",
+      "bytes": 17078,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "crates/tessera-sumcheck/src/prover.rs",
+      "sha256": "e85415c450e154ac70231b06242aac51d8cf03d4ab4b89f262793711c7e4ebb5",
+      "bytes": 44520,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "crates/tessera-field/src/goldilocks.rs",
+      "sha256": "2e30186f77d1373173f4a3109f07986e44bc8ad1843a6d289b5787efab6d2a80",
+      "bytes": 12058,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "crates/tessera-field/src/ext2.rs",
+      "sha256": "4783ce4c1a7a1d0a8061f52deff3446ddc7c0b627e1cffd7dab53570f3429c93",
+      "bytes": 6152,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "crates/tessera-tables/src/spec.rs",
+      "sha256": "01f27da3aac2489b8ee15acd346b35fc75cfae58d1c20837ab34b50667c49aa7",
+      "bytes": 5341,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "crates/tessera-tables/src/table.rs",
+      "sha256": "2659c7742ed209fe6766afa4ccca1f4f5e61b63826bdf2b815500255e8b3d872",
+      "bytes": 21390,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "crates/tessera-bench/tests/commitment_report.rs",
+      "sha256": "62e2c82a604e5ff7726f64036dc5335bef8d230e75a6ef3c94de034b17bc301c",
+      "bytes": 13551,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json",
+      "sha256": "829c098d79f5eab062d1f485d02afca07cf6c02b2f69f4ef7a432c2b2f952b6c",
+      "bytes": 6769,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "verifier/crates/tv-core/src/tree.rs",
+      "sha256": "658cac4daaa460c682f76875bdf6f741eb66727cf17221749766047459cd9f18",
+      "bytes": 26580,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "verifier/crates/tv-core/src/logup.rs",
+      "sha256": "7d56fefa9b52feb943b4073de0c5d646b17796906fe75cf3bb23f9b271c65182",
+      "bytes": 39191,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "verifier/crates/tv-core/src/sumcheck.rs",
+      "sha256": "cc488ce551d4b125f3f262dd58ecf0d9d60fa0819c92c4dac9d2f07456feb85d",
+      "bytes": 26699,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "verifier/crates/tv-core/src/stages.rs",
+      "sha256": "711f258b23af8bb43e7a2e7d3b12216a4b9654b6e68f0612f06d6ef32b2d15be",
+      "bytes": 46704,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "research/experiments/EXP-0013-delayed-reduction-node-sums/src/main.rs",
+      "sha256": "094d07277e25d17cbfca99fff6c9349f7951cbaaed101fe855223772866acee0",
+      "bytes": 77953,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "research/experiments/EXP-0013-delayed-reduction-node-sums/count.py",
+      "sha256": "f75710ee018fbeace69eefccc97d3c5bb6ad9f02d0229d94cc983020a9d21b4d",
+      "bytes": 6022,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "research/experiments/EXP-0013-delayed-reduction-node-sums/results/count.json",
+      "sha256": "73ebd269fb0c0f518dbcf2fc0899ad2e330b2cfda92dd6ca14f7a8383aa4f3cf",
+      "bytes": 6897,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "research/experiments/EXP-0017-rmsnorm-relational-bound/results/compiler.json",
+      "sha256": "bcd7cfa1a5398d97e41cc4484ae514cb58e7bd1f90072f0148776a1bbc49cc85",
+      "bytes": 18127336,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "docs/rfcs/RFC-0008-logup-and-tables.md",
+      "sha256": "aa48ac06fb7704522564260d448eda47f0cdcf0cb9df838fb8341075a35b9b06",
+      "bytes": 30153,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "docs/rfcs/RFC-0010-proof-schedule.md",
+      "sha256": "28e6667d9bc9a7679112b4ac5b4f8600d0a92ab61632106790e01362490842b9",
+      "bytes": 27823,
+      "matches_registration_commit": true
+    },
+    {
+      "path": "docs/rfcs/RFC-0032-zero-knowledge-tree-levels.md",
+      "sha256": "4066af68a10b278660f7b0dc8bf64d3303b944b4fe6e26faf60e2ec899eb57a0",
+      "bytes": 18829,
+      "matches_registration_commit": true
+    }
+  ],
+  "freeze_verified_head": "58b5ea5b8455cc6964f59383971f6a2ec56c5413",
+  "freeze_verified_utc": "2026-10-19T10:25:23Z",
+  "all_23_pins_match_freeze_head": true
+}

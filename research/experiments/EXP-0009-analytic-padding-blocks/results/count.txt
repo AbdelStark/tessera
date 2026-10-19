@@ -1,0 +1,75 @@
+EXP-0009 counts: power-of-two padding factors, padded / real (E0, exact)
+
+405B: 126 layers (63/64 x 2^7), 128 heads, layers x heads = 16128 (63/64 x 2^14)
+  lookup instances, per-tensor definitions (leaves = count x layers x T):
+    instance                      per layer | T = 1K                   | T = 4K                   | T = 16K                 
+    norm 1                            16384 |     2113929216  1.0159 |     8455716864  1.0159 |    33822867456  1.0159
+    norm 2                            16384 |     2113929216  1.0159 |     8455716864  1.0159 |    33822867456  1.0159
+    residual rescale 1                16384 |     2113929216  1.0159 |     8455716864  1.0159 |    33822867456  1.0159
+    residual rescale 2                16384 |     2113929216  1.0159 |     8455716864  1.0159 |    33822867456  1.0159
+    RoPE-Q                            16384 |     2113929216  1.0159 |     8455716864  1.0159 |    33822867456  1.0159
+    RoPE-K                             1024 |      132120576  1.0159 |      528482304  1.0159 |     2113929216  1.0159
+    V                                  1024 |      132120576  1.0159 |      528482304  1.0159 |     2113929216  1.0159
+    SiLU                              53248 |     6870269952  1.2503 |    27481079808  1.2503 |   109924319232  1.2503
+    all lookups, weighted                   |    17704157184  1.1068 |    70816628736  1.1068 |   283266514944  1.1068
+  lookup instances, shared definitions (leaves = count x layers x T):
+    instance                      per layer | T = 1K                   | T = 4K                   | T = 16K                 
+    norms (shared)                    32768 |     4227858432  1.0159 |    16911433728  1.0159 |    67645734912  1.0159
+    residual rescales (shared)        32768 |     4227858432  1.0159 |    16911433728  1.0159 |    67645734912  1.0159
+    RoPE Q+K (shared)                 17408 |     2246049792  1.9122 |     8984199168  1.9122 |    35936796672  1.9122
+    V                                  1024 |      132120576  1.0159 |      528482304  1.0159 |     2113929216  1.0159
+    SiLU                              53248 |     6870269952  1.2503 |    27481079808  1.2503 |   109924319232  1.2503
+    all lookups, weighted                   |    17704157184  1.2206 |    70816628736  1.2206 |   283266514944  1.2206
+  Exp instance (one lookup per causal score, layers x heads x T(T+1)/2):
+    T =  1024: real       8463974400  padded       8589934592  factor 1.0149
+    T =  4096: real     135324499968  padded     137438953472  factor 1.0156
+    T = 16384: real    2164795637760  padded    2199023255552  factor 1.0158
+  SoftmaxRow forest (one product-tree leaf per causal score):
+    T =  1024: real       8463974400 | one height: padded      17179869184  factor 2.0298 | grouped by height: padded      11453267968  factor 1.3532
+    T =  4096: real     135324499968 | one height: padded     274877906944  factor 2.0313 | grouped by height: padded     183251959808  factor 1.3542
+    T = 16384: real    2164795637760 | one height: padded    4398046511104  factor 2.0316 | grouped by height: padded    2932031029248  factor 1.3544
+
+70B: 80 layers (5/8 x 2^7), 64 heads, layers x heads = 5120 (5/8 x 2^13)
+  lookup instances, per-tensor definitions (leaves = count x layers x T):
+    instance                      per layer | T = 1K                   | T = 4K                   | T = 16K                 
+    norm 1                             8192 |      671088640  1.6000 |     2684354560  1.6000 |    10737418240  1.6000
+    norm 2                             8192 |      671088640  1.6000 |     2684354560  1.6000 |    10737418240  1.6000
+    residual rescale 1                 8192 |      671088640  1.6000 |     2684354560  1.6000 |    10737418240  1.6000
+    residual rescale 2                 8192 |      671088640  1.6000 |     2684354560  1.6000 |    10737418240  1.6000
+    RoPE-Q                             8192 |      671088640  1.6000 |     2684354560  1.6000 |    10737418240  1.6000
+    RoPE-K                             1024 |       83886080  1.6000 |      335544320  1.6000 |     1342177280  1.6000
+    V                                  1024 |       83886080  1.6000 |      335544320  1.6000 |     1342177280  1.6000
+    SiLU                              28672 |     2348810240  1.8286 |     9395240960  1.8286 |    37580963840  1.8286
+    all lookups, weighted                   |     5872025600  1.6914 |    23488102400  1.6914 |    93952409600  1.6914
+  lookup instances, shared definitions (leaves = count x layers x T):
+    instance                      per layer | T = 1K                   | T = 4K                   | T = 16K                 
+    norms (shared)                    16384 |     1342177280  1.6000 |     5368709120  1.6000 |    21474836480  1.6000
+    residual rescales (shared)        16384 |     1342177280  1.6000 |     5368709120  1.6000 |    21474836480  1.6000
+    RoPE Q+K (shared)                  9216 |      754974720  1.4222 |     3019898880  1.4222 |    12079595520  1.4222
+    V                                  1024 |       83886080  1.6000 |      335544320  1.6000 |     1342177280  1.6000
+    SiLU                              28672 |     2348810240  1.8286 |     9395240960  1.8286 |    37580963840  1.8286
+    all lookups, weighted                   |     5872025600  1.6686 |    23488102400  1.6686 |    93952409600  1.6686
+  Exp instance (one lookup per causal score, layers x heads x T(T+1)/2):
+    T =  1024: real       2686976000  padded       4294967296  factor 1.5984
+    T =  4096: real      42960158720  padded      68719476736  factor 1.5996
+    T = 16384: real     687236710400  padded    1099511627776  factor 1.5999
+  SoftmaxRow forest (one product-tree leaf per causal score):
+    T =  1024: real       2686976000 | one height: padded       8589934592  factor 3.1969 | grouped by height: padded       5726633984  factor 2.1313
+    T =  4096: real      42960158720 | one height: padded     137438953472  factor 3.1992 | grouped by height: padded      91625979904  factor 2.1328
+    T = 16384: real     687236710400 | one height: padded    2199023255552  factor 3.1998 | grouped by height: padded    1466015514624  factor 2.1332
+
+Model-independent row padding (layers x heads = 1): Sum_q 2^ceil(log2(q+1)) / (T(T+1)/2), row 0 at height 1:
+    T =  1024: grouped 1.33204 (699052 / 524800), one height 1.99805 (1048576 / 524800)
+    T =  4096: grouped 1.33301 (11184812 / 8390656), one height 1.99951 (16777216 / 8390656)
+    T = 16384: grouped 1.33325 (178956972 / 134225920), one height 1.99988 (268435456 / 134225920)
+
+Harness configurations (README 'Success criterion'):
+    configuration                              padded         real          f    1+(f-1)/2
+    S1 one height T=4096                     16777216      8390656    1.99951       1.4998
+    S2 grouped T=4096                        11184812      8390656    1.33301       1.1665
+    S3 70B forest 640 of 1024 x 2^14         16777216     10485760    1.60000       1.3000
+    S4 70B grouped T=2048 x5                 22369632     10490880    2.13229       1.5661
+    U23 2^9 x 2^14                            8388608      8388608    1.00000       1.0000
+    U24 2^10 x 2^14                          16777216     16777216    1.00000       1.0000
+    S1-1K                                     1048576       524800    1.99805       1.4990
+    S2-1K                                      699052       524800    1.33204       1.1660

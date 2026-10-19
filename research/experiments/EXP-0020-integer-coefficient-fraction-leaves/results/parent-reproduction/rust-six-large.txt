@@ -1,0 +1,6 @@
+preflight E-l20-t22
+preflight E-l22-t22
+preflight R-l20-t21
+preflight R-l22-t21
+preflight Q-l20-t20
+preflight Q-l22-t20

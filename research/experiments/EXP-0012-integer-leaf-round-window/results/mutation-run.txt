@@ -1,0 +1,56 @@
+Traceback (most recent call last):
+  File "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0012-integer-leaf-round-window/mutate.py", line 59, in <module>
+    main()
+    ~~~~^^
+  File "/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0012-integer-leaf-round-window/mutate.py", line 51, in main
+    assert "assertion" in run.stdout, run.stdout[-3000:]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError:    Compiling integer-window v0.0.0 (/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp12-mutants-kv3bueqz)
+    Finished `release` profile [optimized] target(s) in 44.38s
+     Running `/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp12-mutants-kv3bueqz/target/release/integer-window check`
+overflow v=1 cadence=32 bound=93461298887790795697085718743482080 < 2^127
+overflow v=3 cadence=32 bound=7570365209911054451463943218222048480 < 2^127
+overflow v=4 cadence=32 bound=68133286889199490063175488963998436320 < 2^127
+overflow v=5 cadence=8 bound=153299895500698852642144850168996481720 < 2^127
+check field:     3 edge products of spec/vectors/field/goldilocks.json reproduced
+check forests:   tree [2, 3, 5, 7]: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+check hand case: tree [2, 3, 5, 7]: candidate's proof accepted from root 210; against 211 rejected (level 0: FinalMismatch { round: 0 })
+check sweep:     n = 1..=12 alone and 6 two-instance batches with front-padding (one instance on no variable): bit-identical to prove_batch, verifier accepts; no fallback
+check forests:   two forests (2^2 x 2^8 leaves, 2^5 x 2^6 leaves): 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest c48318c9b735eac4
+
+thread 'main' (86239752) panicked at src/main.rs:1507:5:
+window 1 n 1: the candidate's messages differ from prove_batch's
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+Final audited result after runner diagnostic fix and resumed collapse mutant:
+{
+  "experiment": "EXP-0012",
+  "control_passed": true,
+  "mutants_caught": 3,
+  "mutants_total": 3,
+  "outcomes": [
+    {
+      "name": "control",
+      "exit_code": 0,
+      "expected": "pass"
+    },
+    {
+      "name": "sign-correction",
+      "exit_code": 101,
+      "expected": "correctness assertion failure"
+    },
+    {
+      "name": "integer-grid",
+      "exit_code": 101,
+      "expected": "correctness assertion failure"
+    },
+    {
+      "name": "quadratic-collapse",
+      "exit_code": 101,
+      "expected": "correctness assertion failure"
+    }
+  ],
+  "scratch": "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp12-mutants-kv3bueqz",
+  "runner_note": "Initial runner expected the literal assertion in panic text; Rust custom assert messages omit it. The driver was fixed to accept the expected messages-differ assertion, existing control/sign/grid logs audited, and the final collapse mutant resumed in the same workspace."
+}

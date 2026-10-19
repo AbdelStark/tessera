@@ -1,0 +1,12 @@
+field factor exhaustions complete
+Traceback (most recent call last):
+  File "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp16-mutants-jk36zex6/lemma.py", line 401, in <module>
+    main()
+    ~~~~^^
+  File "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp16-mutants-jk36zex6/lemma.py", line 371, in main
+    result["local"] = local_exhaustion()
+                      ~~~~~~~~~~~~~~~~^^
+  File "/var/folders/7_/2x53c05j5_998t02j0ftc0lr0000gn/T/tessera-exp16-mutants-jk36zex6/lemma.py", line 130, in local_exhaustion
+    assert witness["e"] == [BASE_EXP[expected_c-scores[i]] if i <= q else 0 for i in range(4)]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

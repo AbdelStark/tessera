@@ -1,0 +1,64 @@
+EXP-0006 counts: product-tree leaf stage, 2^8 trees of 2^14 leaves (N = 2^22)
+
+Per-pair rules (kernel.rs, eq.rs, forest.rs), three nodes per round message:
+  round1_mixed   Fp mul  3.000  add  4.000  sub  2.000 | Fp2 mul  0.000  mul_by_base  3.000  add  5.000  sub  1.000
+  zip3_ext       Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul  6.000  mul_by_base  0.000  add  9.000  sub  3.000
+  zip2_ext       Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul  3.000  mul_by_base  0.000  add  7.000  sub  2.000
+  zip3_base      Fp mul  6.000  add  9.000  sub  3.000 | Fp2 mul  0.000  mul_by_base  0.000  add  0.000  sub  0.000
+  bind_base      Fp mul  0.000  add  1.000  sub  1.000 | Fp2 mul  0.000  mul_by_base  1.000  add  0.000  sub  0.000
+  bind_ext       Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul  1.000  mul_by_base  0.000  add  1.000  sub  1.000
+  eq_entry       Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul  1.000  mul_by_base  0.000  add  0.000  sub  1.000
+  level_entry    Fp mul  1.000  add  0.000  sub  0.000 | Fp2 mul  0.000  mul_by_base  0.000  add  0.000  sub  0.000
+
+Per leaf of the whole tree, by component (IDEA-0008's breakdown):
+  eq build                                       Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul  1.000  mul_by_base  0.000  add  0.000  sub  1.000
+  round 1 (eq × even × odd, Fp first round)      Fp mul  1.500  add  2.000  sub  1.000 | Fp2 mul  0.000  mul_by_base  1.500  add  2.500  sub  0.500
+  fold after round 1 (2 bind_base + bind_ext)    Fp mul  0.000  add  1.000  sub  1.000 | Fp2 mul  0.500  mul_by_base  1.000  add  0.500  sub  0.500
+  rounds ≥ 2 (zip3 over Fp2)                     Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul  3.000  mul_by_base  0.000  add  4.500  sub  1.500
+  folds after rounds ≥ 2 (3 bind_in_place)       Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul  1.500  mul_by_base  0.000  add  1.500  sub  1.500
+  level build                                    Fp mul  1.000  add  0.000  sub  0.000 | Fp2 mul  0.000  mul_by_base  0.000  add  0.000  sub  0.000
+  total per leaf                                 Fp mul  2.500  add  3.000  sub  2.000 | Fp2 mul  6.000  mul_by_base  2.500  add  8.999  sub  5.000
+
+Expanded to Goldilocks operations per leaf: 25.498 multiplications, 6.000 mul_small(7), 38.997 additions, 23.998 subtractions (62.996 additions or subtractions)
+Fp-multiplication equivalents per leaf (IDEA-0008's unit): 25.50 with W cheap, 31.50 with W as a multiplication; IDEA-0008 counted 29 (Karatsuba) to 46 at four nodes per round
+The same count at four nodes per round (node_sums, as a padded instance's first own round computes): 30.00 Fp-multiplication equivalents, 69.995 additions or subtractions
+
+int32 translation of goldilocks.rs (low, high):
+  mul    18   26   4 wide products + 5–6 carried adds (9–10); reduce128: 9–16 (canonicalize skipped lazily)
+  add     4    8   overflowing_add (2), EPSILON on carry (2), canonicalize (4; skipped lazily)
+  sub     4    5   overflowing_sub (2), EPSILON on borrow (2), one more if the mask is materialized
+  mul7    8   13   mul_small(7) (goldilocks.rs 132–140): x·7 as 96 bits, 2 wide products + 2 carried adds (4), hi·EPSILON (1), lo + t (2), carry fix (1); canonicalize (4) and a materialized mask (1) at the high end
+
+per leaf                     low (lazy) high (as written)
+int32 ops                         758.9       1172.9
+HBM bytes (fused/unfused)          40.0        168.0
+int32 ops, mul only               459.0            –
+
+H100 projection, ps per leaf (int32 peak 1.67e+13 op/s, HBM 3.35e+12 B/s):
+  compute at peak:            45.4  (low)     70.1  (high)
+  compute at 60%:             75.6  (low)    116.9  (high)
+  memory at peak:             11.9  (fused)   50.1  (unfused)
+  memory at 80%:              14.9  (fused)   62.7  (unfused)
+  multiplications only, 18 int32 each, at peak: 27.4 ps (IDEA-0008's reading, for comparison with SUR-0002's c_ℓ count)
+
+interval I = [lo, hi] = [45.4, 116.9] ps; rho_pi = [3.78, 9.74] against 12 ps; central (geometric mean) 73 ps
+RFC-0020 bands the interval touches: re-plan (2 < rho <= 4); stop and redesign (rho > 4)
+08 §2 trigger c_pi > 24 ps: fires at lo, fires at hi
+SC-2 (cost_model.py, corrected profile): mu(16K) <= 45 needs c_pi <= 60 ps -> holds at lo, fails at hi; mu(1K) <= 12 needs c_pi <= 238 ps -> holds at lo, holds at hi
+
+Counts the Rust fit uses (the harness computes the same rules from the sizes):
+  level instance, per entry (M = 2^21)           Fp mul  1.500  add  3.000  sub  2.000 | Fp2 mul  5.000  mul_by_base  2.500  add  9.000  sub  4.000
+  three Fp2 tables, per entry                    Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul  9.000  mul_by_base  0.000  add 12.000  sub  6.000
+  three Fp tables, per entry                     Fp mul  3.000  add  6.000  sub  3.000 | Fp2 mul  4.500  mul_by_base  1.500  add  6.000  sub  3.000
+  bind_lowest pass, per entry (2^22)             Fp mul  0.000  add  0.500  sub  0.500 | Fp2 mul  0.000  mul_by_base  0.500  add  0.000  sub  0.000
+  binding every round, per entry                 Fp mul  0.000  add  0.500  sub  0.500 | Fp2 mul  0.500  mul_by_base  0.500  add  0.500  sub  0.500
+  eq tables of every level, per leaf             Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul  1.000  mul_by_base  0.000  add  0.000  sub  1.000
+  level build, per leaf                          Fp mul  1.000  add  0.000  sub  0.000 | Fp2 mul  0.000  mul_by_base  0.000  add  0.000  sub  0.000
+  fraction proxy: build, per lookup              Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul  2.000  mul_by_base  1.000  add  1.000  sub  2.000
+  fraction proxy: leaf level, per entry          Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul 19.000  mul_by_base  0.000  add 30.000  sub 14.000
+  fraction proxy: generic level, per entry       Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul 27.000  mul_by_base  0.000  add 36.000  sub 18.000
+  fraction proxy: tree, per lookup               Fp mul  0.000  add  0.000  sub  0.000 | Fp2 mul 25.000  mul_by_base  1.000  add 34.000  sub 18.000
+
+c_pi / c_l by multiplication count: product tree 25.50 against the proxy's 77.00 Fp-multiplication equivalents per lookup -> 0.33; against SUR-0002's 56–74 -> 0.34–0.46 (IDEA-0008 expected 0.4–0.8)
+
+Not counted: the gamma weights (3 Fp2 multiplications per instance per round), the transcript's hashes per round, the de-interleaving copy of the leaves, the scratch rows (in L1), allocation.

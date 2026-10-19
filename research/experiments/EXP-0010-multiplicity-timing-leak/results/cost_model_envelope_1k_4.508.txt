@@ -1,0 +1,8 @@
+baseline: profile 'counted'
+   S   linear  attention  weights  regen  streaming    total
+   1K     9.05       3.70    0.021    4.0       0.42     17.2
+
+scenario: regen_full_equivalents=4.508
+   S   linear  attention  weights  regen  streaming    total
+   1K     9.05       3.70    0.021    4.5       0.42     17.7   Δ   +3.0%
+

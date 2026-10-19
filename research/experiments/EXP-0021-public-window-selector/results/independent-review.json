@@ -1,0 +1,49 @@
+{
+  "utc": "2026-10-19T10:56:42.264099+00:00",
+  "scope": "Independent static review plus tiny standalone out-of-domain integer control; no EXP21 audit execution or code edit",
+  "frozen_commit": "e3a2a51",
+  "frozen_sha256": "90b7307ed2a2162bbd7a56a426c959068c83500c8111a6432e72981f641252bc",
+  "script_sha256": "26896283adb08d4657e5b329fa27e0a7a3ed65f9a36cadaa0897fdba104e1387",
+  "source_pins_verified": 11,
+  "reviewed_attempt": "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105430.201558Z-94094",
+  "result_hashes": {
+    "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105430.201558Z-94094/audit.source.py": "26896283adb08d4657e5b329fa27e0a7a3ed65f9a36cadaa0897fdba104e1387",
+    "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105430.201558Z-94094/controls.json": "47ef9e08ab48d13bdd65d55564d44e3797e229042c31c497d37429c567d293c9",
+    "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105430.201558Z-94094/counterexamples.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105430.201558Z-94094/environment.json": "f3ada81bb4c0505a4cb52a7618492758dd8dc65dedb2d19eb3a9e822273ca962",
+    "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105430.201558Z-94094/events.jsonl": "5d6287350f033b872db1322358e1eac2cc6bbfeb6c11374955a831eb8d42d126",
+    "research/experiments/EXP-0021-public-window-selector/results/attempts/20261019T105430.201558Z-94094/summary.json": "71a5296e714a60c77afb2865062cbf2cf11fb7bc74231e076324e1edbf15b409"
+  },
+  "saved_run_observed": {
+    "verdict": "validated",
+    "exit_code": 0,
+    "judged_comparisons": 42431606,
+    "physical_judgments": 876535,
+    "primitive_exact_operations": 317679250,
+    "maxima": {
+      "dp_states": 7,
+      "dp_transitions": 48,
+      "process_rss_bytes": 34652160,
+      "pointwise_cache_entries": 933
+    },
+    "controls": 69
+  },
+  "physical_pointwise_cores": 933,
+  "logical_pointwise_contexts": 248850,
+  "cached_contexts": 247917,
+  "controls_passed_saved": 69,
+  "findings_fixed_source_inspected": [
+    "actual shared checker functions now evaluate altered target, axis identity and compacted full-domain controls",
+    "integer helpers now cover QK/PV sums, key differences, row reciprocals/slacks, DP borrow arithmetic",
+    "score maximum derivation requires explicit Sspan+K0<P; outside-domain accepted witness is labeled as missing-assumption control, not finite-domain refutation",
+    "sumcheck challenge/degree/final-factor and MLE shape guards present",
+    "logical cached counters distinct from physical core/probe counters; cache semantic sufficiency documented"
+  ],
+  "remaining_narrow_limitations": [
+    "Counter is declared instrumented algebra units, not CPU operations; rational-half reference expected expression contains a plain uninstrumented integer multiplication plus constant arithmetic; fixture parity remainder classification should be stated consistently",
+    "No final M.check immediately before validated; current saved counts/RSS far below caps, but a future cap crossing within final polling interval could escape final check",
+    "No independent rerun by this reviewer; parent independently reproduces full audit",
+    "No full protocol, joint masking/ZK, compiler layout, Fiat-Shamir, verifier integration, fidelity or performance approval"
+  ],
+  "conclusion": "No remaining selector/transport/pointwise mathematical defect found within registered finite scope on static review; saved validated E0 outcome remains conditional on parent reproduction and transparent instrumentation caveats."
+}

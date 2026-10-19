@@ -1,0 +1,9 @@
+{
+  "experiment": "EXP-0013",
+  "verdict": "validated",
+  "IDEA-0026": "validated",
+  "IDEA-0030": "validated",
+  "all_retained_CV_at_most_3_percent": true,
+  "minimum_raw_batch_seconds": 0.030859125,
+  "raw_batches": 403
+}

@@ -1,0 +1,6 @@
+EXP-0020 paid-prefix diagnostic API amendment
+UTC: 2026-10-19T10:36:15Z
+SHA256: defec9b2d3f55bc6a2e3e35a88abba93ab03a28d20330a33fd0c98d5de4a282c
+Snapshot: README.amendment-preregistered.txt
+Original SHA256: a4f1a68e4b266c935084cb429626bcbc4a72c1da3b0b4c8f27d3f687d06ac2ff
+Parent-directed minimal API amendment; no dependent replay/timing code written before commit.

@@ -1,0 +1,70 @@
+field factor exhaustions complete
+local row and dot-product exhaustions complete
+full scalar merged-instance exhaustion complete
+{
+  "verdict": "refuted",
+  "local": {
+    "row_domains": [
+      {
+        "length": 3,
+        "rows": 4913,
+        "prefixes": 14739,
+        "candidate_j": 58956,
+        "unique_witnesses": 14739
+      },
+      {
+        "length": 4,
+        "rows": 83521,
+        "prefixes": 334084,
+        "candidate_j": 1336336,
+        "unique_witnesses": 334084
+      }
+    ],
+    "d2_dot_prefixes": 1458,
+    "field_checks_use_read_forced_c": true
+  },
+  "scalar_merged_counts": {
+    "complete_configs": 157464,
+    "wrong_max_sublemma_certificates": 38448,
+    "alternative_read_certificates": 49248,
+    "alternative_reads_with_reciprocal_brackets": 10800,
+    "fully_tagged_false_certificates": 0
+  },
+  "merged_attacks": [
+    {
+      "kind": "layer",
+      "wrong_rows": 4,
+      "every_bracket_passes": true,
+      "accepted_namespace_variants": [
+        "untagged",
+        "omit-layer"
+      ]
+    },
+    {
+      "kind": "head",
+      "wrong_rows": 4,
+      "every_bracket_passes": true,
+      "accepted_namespace_variants": [
+        "untagged",
+        "omit-head"
+      ]
+    },
+    {
+      "kind": "both",
+      "wrong_rows": 4,
+      "every_bracket_passes": true,
+      "accepted_namespace_variants": [
+        "untagged",
+        "omit-layer"
+      ]
+    },
+    {
+      "kind": "dimension",
+      "wrong_rows": 4,
+      "every_bracket_passes": true,
+      "accepted_namespace_variants": [
+        "omit-dimension"
+      ]
+    }
+  ]
+}

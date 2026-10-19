@@ -1,0 +1,161 @@
+EXP-0009 harness: production prove_forests against the harness's dense and analytic forest provers, one thread; RFC-0020 protocol (3 warm-ups, 10 iterations, median/min/max/CV, rerun once above 3%)
+
+== correctness checks ==
+  check: TAIL(rho, P) equals the suffix sum of eq_table(rho) for every P at 6 coordinates
+  check: hand case [2, 3 | 1, 1] [5, 7, 11 | 1]: roots (6, 385) accepted, (6, 386) rejected (level 0: FinalMismatch { round: 1 }); all harness arms equal the production; a padding of 0 gives roots (0, 0)
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 44145993a853eaa934d81906e6e7b2608bd0b5830b6cd796f9cff0b431aff6fe
+  check: small one-height T=16: all harness arms equal the production
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 4 leaf claim(s) equal the padded leaves' MLE; digest e9854d55a49f165ee69b56aa85fd5fc1b968b8cb40ae4de14180ea0d23e27b73
+  check: small grouped T=16: all harness arms equal the production
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 3 leaf claim(s) equal the padded leaves' MLE; digest 68c92040d7bcd0993f41b5d4037789a21db65028ccb816af752286c8e16bf0a0
+  check: small 70B grouped T=8 x5: all harness arms equal the production
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 190be241783c7ae1b57902a23f831b7b029043fb529448f1b5710f800e1e73b3
+  check: small 70B forest 5 of 8 x 2^3: all harness arms equal the production
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest d18261244edbb8dedb9904cafc9ddf44e183c1c51323f54e12d086b3c6d28df5
+  check: single tree 2^4: all harness arms equal the production
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest c3d743cf56acd13bf18a63650fbcf8b95f1379c96d7e8e883bda94059bc9f5fe
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 0131e6b900af5b91500721c34f46898c3f47a012cc873315323c3ed7aa29aca8
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest d367e1e2caf3fe128ba684ef6183a83fa512317b9d65cf64cf866b92f3ebd36a
+  check: unsorted/repeated-length groups preserve original tree-coordinate order
+
+== S1: 1 forest(s), 16777216 padded leaves, 8390656 real, f = 1.99951 (judged) ==
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 2ecb6b74f8c600a8de1b5e511a00ae73fae1b23de5a9faae17aec94c87dc1034
+  check: all harness arms equal the production (proofs, leaf claims, transcript state)
+  production         314.756 ms    37.513 ns/real    18.761 ns/padded  min   310.878  max   331.389 ms  CV  2.08%  (rerun: first CV > 3%)
+    samples (total seconds, complete proofs): [(0.331389, 1), (0.325123666, 1), (0.319189041, 1), (0.313696709, 1), (0.32363175, 1), (0.314413916, 1), (0.312834958, 1), (0.31509825, 1), (0.314092583, 1), (0.310877833, 1)]; first attempt: [(0.317751208, 1), (0.311343042, 1), (0.385102375, 1), (0.363948667, 1), (0.32823025, 1), (0.323947625, 1), (0.325807167, 1), (0.409062208, 1), (0.344551833, 1), (0.313162708, 1)]
+  dense              658.405 ms    78.469 ns/real    39.244 ns/padded  min   614.105  max  1391.860 ms  CV 31.90%  FLAG: CV > 3% after a rerun
+    samples (total seconds, complete proofs): [(0.681696125, 1), (0.705384875, 1), (1.391860458, 1), (0.843980208, 1), (0.740658041, 1), (0.635113625, 1), (0.621011083, 1), (0.618328708, 1), (0.616309459, 1), (0.614105, 1)]; first attempt: [(0.61654725, 1), (0.617691333, 1), (0.67074025, 1), (0.652781125, 1), (0.641001709, 1), (0.625857333, 1), (0.626189917, 1), (0.627042958, 1), (0.755198167, 1), (1.0798125, 1)]
+  analytic           336.896 ms    40.151 ns/real    20.081 ns/padded  min   326.055  max   347.770 ms  CV  2.14%
+    samples (total seconds, complete proofs): [(0.332215125, 1), (0.331290042, 1), (0.347717875, 1), (0.339826917, 1), (0.330016458, 1), (0.326055125, 1), (0.338240083, 1), (0.335550958, 1), (0.347770208, 1), (0.338291125, 1)]; first attempt: []
+  dense-shared       469.355 ms    55.938 ns/real    27.976 ns/padded  min   464.091  max   483.243 ms  CV  1.38%
+    samples (total seconds, complete proofs): [(0.473083708, 1), (0.483242792, 1), (0.469123791, 1), (0.482274375, 1), (0.467925792, 1), (0.465064917, 1), (0.464091416, 1), (0.46958675, 1), (0.472368917, 1), (0.468866375, 1)]; first attempt: []
+  analytic-shared    261.019 ms    31.108 ns/real    15.558 ns/padded  min   256.835  max   272.688 ms  CV  1.65%
+    samples (total seconds, complete proofs): [(0.262208417, 1), (0.260578208, 1), (0.256835042, 1), (0.258230125, 1), (0.26301725, 1), (0.272688, 1), (0.261459666, 1), (0.259682167, 1), (0.261548167, 1), (0.25959125, 1)]; first attempt: []
+  analytic-amortized   316.914 ms    37.770 ns/real    18.890 ns/padded  min   314.654  max   322.362 ms  CV  0.74%
+    samples (total seconds, complete proofs): [(0.320309, 1), (0.316307125, 1), (0.31746775, 1), (0.316702833, 1), (0.3173765, 1), (0.322362458, 1), (0.314654417, 1), (0.315942666, 1), (0.317125458, 1), (0.315135125, 1)]; first attempt: []
+
+== S2: 12 forest(s), 11184812 padded leaves, 8390656 real, f = 1.33301 (judged) ==
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 12 leaf claim(s) equal the padded leaves' MLE; digest f6df08bffa43a02252c81c90268f686f92a1810a1f54b8a1a1cfd5360db7bf15
+  check: all harness arms equal the production (proofs, leaf claims, transcript state)
+  production         208.749 ms    24.879 ns/real    18.664 ns/padded  min   206.760  max   214.418 ms  CV  1.28%
+    samples (total seconds, complete proofs): [(0.20811725, 1), (0.208167166, 1), (0.206759542, 1), (0.213080875, 1), (0.214417708, 1), (0.209331375, 1), (0.207279584, 1), (0.20764975, 1), (0.212383542, 1), (0.209876958, 1)]; first attempt: []
+  dense              410.784 ms    48.957 ns/real    36.727 ns/padded  min   408.846  max   419.498 ms  CV  0.79%
+    samples (total seconds, complete proofs): [(0.4146845, 1), (0.409240084, 1), (0.412436292, 1), (0.412628917, 1), (0.419498208, 1), (0.410788708, 1), (0.410779334, 1), (0.408846042, 1), (0.409728208, 1), (0.409330125, 1)]; first attempt: []
+  analytic           336.107 ms    40.057 ns/real    30.050 ns/padded  min   331.941  max   343.462 ms  CV  1.17%
+    samples (total seconds, complete proofs): [(0.33240075, 1), (0.340823625, 1), (0.337032667, 1), (0.335078458, 1), (0.343462, 1), (0.335181458, 1), (0.338448, 1), (0.332210041, 1), (0.33194075, 1), (0.339482833, 1)]; first attempt: []
+  dense-shared       317.092 ms    37.791 ns/real    28.350 ns/padded  min   314.904  max   321.890 ms  CV  0.69%
+    samples (total seconds, complete proofs): [(0.316940833, 1), (0.316917416, 1), (0.3178675, 1), (0.319508042, 1), (0.317242459, 1), (0.315773958, 1), (0.32188975, 1), (0.319717084, 1), (0.315399959, 1), (0.314903666, 1)]; first attempt: []
+  analytic-shared    257.209 ms    30.654 ns/real    22.996 ns/padded  min   253.002  max   260.027 ms  CV  0.78%
+    samples (total seconds, complete proofs): [(0.26002725, 1), (0.257343167, 1), (0.253001584, 1), (0.25598775, 1), (0.2570865, 1), (0.257331417, 1), (0.259747667, 1), (0.256282, 1), (0.25606875, 1), (0.257885875, 1)]; first attempt: []
+  analytic-amortized   313.797 ms    37.398 ns/real    28.056 ns/padded  min   310.793  max   317.889 ms  CV  0.74%
+    samples (total seconds, complete proofs): [(0.311504167, 1), (0.31588475, 1), (0.3141875, 1), (0.313406958, 1), (0.310860666, 1), (0.314360542, 1), (0.3107935, 1), (0.31332425, 1), (0.315766875, 1), (0.317889083, 1)]; first attempt: []
+
+== S3: 1 forest(s), 16777216 padded leaves, 10485760 real, f = 1.60000 (judged) ==
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 8638f272e3508cf8d4421a0837bfc3427727bea9223b9cb5d1e59b74286362d7
+  check: all harness arms equal the production (proofs, leaf claims, transcript state)
+  production         316.238 ms    30.159 ns/real    18.849 ns/padded  min   311.054  max   323.735 ms  CV  1.49%
+    samples (total seconds, complete proofs): [(0.317921333, 1), (0.311240833, 1), (0.319653125, 1), (0.312266916, 1), (0.311054083, 1), (0.323735, 1), (0.315831583, 1), (0.312371, 1), (0.316643833, 1), (0.323041542, 1)]; first attempt: []
+  dense              598.161 ms    57.045 ns/real    35.653 ns/padded  min   592.346  max   607.273 ms  CV  0.83%
+    samples (total seconds, complete proofs): [(0.594767459, 1), (0.600038417, 1), (0.593800959, 1), (0.603882917, 1), (0.60014725, 1), (0.600024583, 1), (0.596297833, 1), (0.60727325, 1), (0.5923465, 1), (0.5929635, 1)]; first attempt: []
+  analytic           369.812 ms    35.268 ns/real    22.042 ns/padded  min   368.386  max   375.201 ms  CV  0.53%  (rerun: first CV > 3%)
+    samples (total seconds, complete proofs): [(0.371451084, 1), (0.369337208, 1), (0.370172208, 1), (0.368820292, 1), (0.369451125, 1), (0.375200708, 1), (0.3712475, 1), (0.370426958, 1), (0.368385833, 1), (0.369088333, 1)]; first attempt: [(0.414228375, 1), (0.373651917, 1), (0.370048166, 1), (0.3669025, 1), (0.371866917, 1), (0.37682825, 1), (0.367365792, 1), (0.376189333, 1), (0.369195, 1), (0.372852667, 1)]
+  dense-shared       460.167 ms    43.885 ns/real    27.428 ns/padded  min   450.671  max   494.364 ms  CV  2.59%
+    samples (total seconds, complete proofs): [(0.454930417, 1), (0.460077833, 1), (0.467679125, 1), (0.45906375, 1), (0.465122459, 1), (0.460256958, 1), (0.465221167, 1), (0.450670916, 1), (0.457074542, 1), (0.494364167, 1)]; first attempt: []
+  analytic-shared    287.246 ms    27.394 ns/real    17.121 ns/padded  min   284.008  max   299.729 ms  CV  1.79%
+    samples (total seconds, complete proofs): [(0.292683916, 1), (0.299729209, 1), (0.292332666, 1), (0.288084334, 1), (0.295548875, 1), (0.285553166, 1), (0.286253583, 1), (0.284007583, 1), (0.286406875, 1), (0.28581425, 1)]; first attempt: []
+  analytic-amortized   351.524 ms    33.524 ns/real    20.952 ns/padded  min   349.578  max   364.520 ms  CV  1.32%  (rerun: first CV > 3%)
+    samples (total seconds, complete proofs): [(0.353881959, 1), (0.349578375, 1), (0.364520167, 1), (0.351109959, 1), (0.35193775, 1), (0.350231416, 1), (0.350274, 1), (0.349954458, 1), (0.357808125, 1), (0.353353583, 1)]; first attempt: [(0.375754208, 1), (0.993212292, 1), (0.526039625, 1), (0.44361, 1), (0.353574667, 1), (0.363195333, 1), (0.35516625, 1), (0.34866, 1), (0.349471458, 1), (0.354989, 1)]
+
+== S4: 11 forest(s), 22369632 padded leaves, 10490880 real, f = 2.13229 (judged) ==
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 11 leaf claim(s) equal the padded leaves' MLE; digest fcd00997b54508577ab3d52fb38837a92c91c2578ad4646b8d7c2d1875f94235
+  check: all harness arms equal the production (proofs, leaf claims, transcript state)
+  production         416.242 ms    39.677 ns/real    18.607 ns/padded  min   414.166  max   433.675 ms  CV  1.39%
+    samples (total seconds, complete proofs): [(0.414165875, 1), (0.416418125, 1), (0.416039834, 1), (0.41604975, 1), (0.416495125, 1), (0.414996833, 1), (0.416065875, 1), (0.422297125, 1), (0.433674917, 1), (0.420651625, 1)]; first attempt: []
+  dense              844.526 ms    80.501 ns/real    37.753 ns/padded  min   832.699  max   866.001 ms  CV  1.20%
+    samples (total seconds, complete proofs): [(0.8469695, 1), (0.854813958, 1), (0.847021167, 1), (0.866001292, 1), (0.859346458, 1), (0.842082333, 1), (0.832699458, 1), (0.84197175, 1), (0.841069958, 1), (0.83904775, 1)]; first attempt: []
+  analytic           428.636 ms    40.858 ns/real    19.162 ns/padded  min   419.982  max   440.881 ms  CV  1.30%
+    samples (total seconds, complete proofs): [(0.428122167, 1), (0.428046417, 1), (0.435448417, 1), (0.426713792, 1), (0.41998175, 1), (0.428956875, 1), (0.428315417, 1), (0.440880542, 1), (0.432680375, 1), (0.431627959, 1)]; first attempt: []
+  dense-shared       645.927 ms    61.570 ns/real    28.875 ns/padded  min   637.214  max   657.637 ms  CV  1.08%
+    samples (total seconds, complete proofs): [(0.650777625, 1), (0.657637042, 1), (0.655193125, 1), (0.640351166, 1), (0.647774417, 1), (0.637213875, 1), (0.638466, 1), (0.646910709, 1), (0.644943417, 1), (0.641212291, 1)]; first attempt: []
+  analytic-shared    335.367 ms    31.967 ns/real    14.992 ns/padded  min   326.787  max   343.249 ms  CV  1.43%
+    samples (total seconds, complete proofs): [(0.338192166, 1), (0.335141875, 1), (0.32678675, 1), (0.330240125, 1), (0.343249083, 1), (0.334100291, 1), (0.337967833, 1), (0.332545333, 1), (0.335591292, 1), (0.339941042, 1)]; first attempt: []
+  analytic-amortized   413.159 ms    39.383 ns/real    18.470 ns/padded  min   404.162  max   428.223 ms  CV  1.81%
+    samples (total seconds, complete proofs): [(0.409691125, 1), (0.418474583, 1), (0.412864041, 1), (0.414575167, 1), (0.428222833, 1), (0.425613458, 1), (0.413219833, 1), (0.413098625, 1), (0.4041625, 1), (0.407836416, 1)]; first attempt: []
+
+== U23: 1 forest(s), 8388608 padded leaves, 8388608 real, f = 1.00000 (context) ==
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 0887d3604fd384886e9ab1ae70e728e57260c39affc50290fe3be1b915871730
+  check: all harness arms equal the production (proofs, leaf claims, transcript state)
+  production         156.745 ms    18.685 ns/real    18.685 ns/padded  min   154.987  max   160.775 ms  CV  1.30%
+    samples (total seconds, complete proofs): [(0.157618417, 1), (0.155309084, 1), (0.156768542, 1), (0.155553834, 1), (0.157286625, 1), (0.156720542, 1), (0.154986791, 1), (0.160464, 1), (0.160774625, 1), (0.155742083, 1)]; first attempt: []
+  dense              295.806 ms    35.263 ns/real    35.263 ns/padded  min   289.614  max   305.705 ms  CV  1.39%
+    samples (total seconds, complete proofs): [(0.296445416, 1), (0.295705375, 1), (0.295906333, 1), (0.295247542, 1), (0.295071125, 1), (0.295308959, 1), (0.305704958, 1), (0.299720458, 1), (0.298963333, 1), (0.289614042, 1)]; first attempt: []
+  analytic           292.158 ms    34.828 ns/real    34.828 ns/padded  min   289.179  max   295.463 ms  CV  0.72%
+    samples (total seconds, complete proofs): [(0.289178542, 1), (0.292316583, 1), (0.294074667, 1), (0.293559875, 1), (0.29307275, 1), (0.289856416, 1), (0.291999625, 1), (0.29546275, 1), (0.29030475, 1), (0.289804792, 1)]; first attempt: []
+  dense-shared       225.479 ms    26.879 ns/real    26.879 ns/padded  min   223.909  max   228.245 ms  CV  0.57%
+    samples (total seconds, complete proofs): [(0.225605708, 1), (0.224884416, 1), (0.225353083, 1), (0.228244708, 1), (0.225019917, 1), (0.227392875, 1), (0.226504833, 1), (0.225705875, 1), (0.225028792, 1), (0.2239085, 1)]; first attempt: []
+  analytic-shared    226.848 ms    27.042 ns/real    27.042 ns/padded  min   225.540  max   229.641 ms  CV  0.47%
+    samples (total seconds, complete proofs): [(0.227555833, 1), (0.227557541, 1), (0.226674583, 1), (0.229640875, 1), (0.226682084, 1), (0.22554, 1), (0.226981375, 1), (0.227225208, 1), (0.226355167, 1), (0.22671525, 1)]; first attempt: []
+  analytic-amortized   280.281 ms    33.412 ns/real    33.412 ns/padded  min   276.382  max   298.590 ms  CV  2.52%
+    samples (total seconds, complete proofs): [(0.276381834, 1), (0.279899584, 1), (0.281233417, 1), (0.27762475, 1), (0.280825458, 1), (0.277489417, 1), (0.298589833, 1), (0.291671042, 1), (0.279272208, 1), (0.28066175, 1)]; first attempt: []
+
+== U24: 1 forest(s), 16777216 padded leaves, 16777216 real, f = 1.00000 (context) ==
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 3b2d6d3ab9b302ae83334778e58c83772abd035d33aa0bae80802caf05504de3
+  check: all harness arms equal the production (proofs, leaf claims, transcript state)
+  production         311.610 ms    18.573 ns/real    18.573 ns/padded  min   307.534  max   327.205 ms  CV  2.21%
+    samples (total seconds, complete proofs): [(0.307534125, 1), (0.324800875, 1), (0.3115365, 1), (0.3083575, 1), (0.309303667, 1), (0.3082845, 1), (0.311684, 1), (0.314947375, 1), (0.327205458, 1), (0.313302125, 1)]; first attempt: []
+  dense              591.717 ms    35.269 ns/real    35.269 ns/padded  min   589.180  max   605.715 ms  CV  1.04%
+    samples (total seconds, complete proofs): [(0.595645666, 1), (0.605715375, 1), (0.596394458, 1), (0.605096875, 1), (0.590402959, 1), (0.59038725, 1), (0.589874292, 1), (0.589179917, 1), (0.590863334, 1), (0.592571375, 1)]; first attempt: []
+  analytic           601.468 ms    35.850 ns/real    35.850 ns/padded  min   593.274  max   614.772 ms  CV  1.06%
+    samples (total seconds, complete proofs): [(0.593273625, 1), (0.614771875, 1), (0.595615333, 1), (0.601503875, 1), (0.603906875, 1), (0.5987705, 1), (0.601432292, 1), (0.5963615, 1), (0.602880583, 1), (0.608124666, 1)]; first attempt: []
+  dense-shared       455.816 ms    27.169 ns/real    27.169 ns/padded  min   453.009  max   465.650 ms  CV  0.76%
+    samples (total seconds, complete proofs): [(0.455283042, 1), (0.457094791, 1), (0.453008792, 1), (0.454310333, 1), (0.455882583, 1), (0.45699625, 1), (0.455473166, 1), (0.465649625, 1), (0.455750291, 1), (0.458434542, 1)]; first attempt: []
+  analytic-shared    457.775 ms    27.285 ns/real    27.285 ns/padded  min   454.992  max   462.395 ms  CV  0.48%
+    samples (total seconds, complete proofs): [(0.455675167, 1), (0.462395125, 1), (0.45712825, 1), (0.454992042, 1), (0.458423458, 1), (0.458756, 1), (0.455174166, 1), (0.458420792, 1), (0.458648959, 1), (0.45678225, 1)]; first attempt: []
+  analytic-amortized   564.449 ms    33.644 ns/real    33.644 ns/padded  min   560.232  max   578.878 ms  CV  1.13%
+    samples (total seconds, complete proofs): [(0.578878333, 1), (0.566100959, 1), (0.573358125, 1), (0.566475333, 1), (0.574212083, 1), (0.56163775, 1), (0.562406, 1), (0.56279625, 1), (0.562271125, 1), (0.560232375, 1)]; first attempt: []
+
+== S1-1K: 1 forest(s), 1048576 padded leaves, 524800 real, f = 1.99805 (context) ==
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 1 leaf claim(s) equal the padded leaves' MLE; digest 58038a40e9e020fdbb157febcce2a8deec774b3fc7263f5cf339eb59c8643f6c
+  check: all harness arms equal the production (proofs, leaf claims, transcript state)
+  production          19.727 ms    37.590 ns/real    18.814 ns/padded  min    19.424  max    21.015 ms  CV  2.40%
+    samples (total seconds, complete proofs): [(0.042030959, 2), (0.038901876, 2), (0.020146875, 1), (0.039403583, 2), (0.039043001, 2), (0.039909334, 2), (0.03950625, 2), (0.039090542, 2), (0.038848333, 2), (0.039551584, 2)]; first attempt: []
+  dense               38.132 ms    72.659 ns/real    36.365 ns/padded  min    37.650  max    38.864 ms  CV  0.91%
+    samples (total seconds, complete proofs): [(0.038463958, 1), (0.038132167, 1), (0.038624833, 1), (0.037972875, 1), (0.038267042, 1), (0.038130875, 1), (0.038121166, 1), (0.037650084, 1), (0.038864042, 1), (0.038016958, 1)]; first attempt: []
+  analytic            22.264 ms    42.424 ns/real    21.233 ns/padded  min    22.026  max    22.467 ms  CV  0.70%
+    samples (total seconds, complete proofs): [(0.022246209, 1), (0.02223675, 1), (0.022025709, 1), (0.022467375, 1), (0.022436666, 1), (0.022117667, 1), (0.022395834, 1), (0.022459708, 1), (0.022138292, 1), (0.022282125, 1)]; first attempt: []
+  dense-shared        29.622 ms    56.444 ns/real    28.249 ns/padded  min    29.350  max    30.059 ms  CV  0.71%
+    samples (total seconds, complete proofs): [(0.029414833, 1), (0.02954225, 1), (0.029799542, 1), (0.029812042, 1), (0.030059375, 1), (0.029569959, 1), (0.029713125, 1), (0.0296735, 1), (0.02934975, 1), (0.029515958, 1)]; first attempt: []
+  analytic-shared     17.924 ms    34.155 ns/real    17.094 ns/padded  min    17.619  max    18.070 ms  CV  0.80%
+    samples (total seconds, complete proofs): [(0.0358625, 2), (0.036140292, 2), (0.035442875, 2), (0.03547, 2), (0.035237999, 2), (0.036008333, 2), (0.035958125, 2), (0.035835208, 2), (0.035667333, 2), (0.035881333, 2)]; first attempt: []
+  analytic-amortized    21.242 ms    40.476 ns/real    20.258 ns/padded  min    20.872  max    21.614 ms  CV  1.06%
+    samples (total seconds, complete proofs): [(0.021108, 1), (0.021261041, 1), (0.020912708, 1), (0.020872459, 1), (0.021614375, 1), (0.021322959, 1), (0.021447209, 1), (0.021222125, 1), (0.021193084, 1), (0.0213255, 1)]; first attempt: []
+
+== S2-1K: 10 forest(s), 699052 padded leaves, 524800 real, f = 1.33204 (context) ==
+  check: production proof accepted by the tv-core driver from the true roots (0 real, 1 padded); transcripts agree; 10 leaf claim(s) equal the padded leaves' MLE; digest 84ad9f44ec9bf441f5a1ad5763db745b02c50ad675ad57b5a822a4a725b9de59
+  check: all harness arms equal the production (proofs, leaf claims, transcript state)
+  production          13.426 ms    25.583 ns/real    19.206 ns/padded  min    13.301  max    13.865 ms  CV  1.30%
+    samples (total seconds, complete proofs): [(0.026732167, 2), (0.026602208, 2), (0.027729959, 2), (0.027073, 2), (0.027061541, 2), (0.027290625, 2), (0.026680791, 2), (0.026725541, 2), (0.026972583, 2), (0.026701833, 2)]; first attempt: []
+  dense               25.924 ms    49.398 ns/real    37.085 ns/padded  min    25.582  max    27.710 ms  CV  2.35%
+    samples (total seconds, complete proofs): [(0.02568475, 1), (0.025934667, 1), (0.025774708, 1), (0.02615275, 1), (0.026296417, 1), (0.025984458, 1), (0.027710125, 1), (0.025913625, 1), (0.02573225, 1), (0.025582, 1)]; first attempt: []
+  analytic            20.867 ms    39.762 ns/real    29.850 ns/padded  min    20.669  max    21.218 ms  CV  0.88%
+    samples (total seconds, complete proofs): [(0.021069708, 1), (0.02066925, 1), (0.021218291, 1), (0.021009583, 1), (0.020697792, 1), (0.021044791, 1), (0.020945084, 1), (0.020785709, 1), (0.020770291, 1), (0.020788667, 1)]; first attempt: []
+  dense-shared        20.112 ms    38.324 ns/real    28.771 ns/padded  min    19.975  max    20.324 ms  CV  0.59%
+    samples (total seconds, complete proofs): [(0.0400115, 2), (0.020323542, 1), (0.039950541, 2), (0.040228416, 2), (0.020208667, 1), (0.040064083, 2), (0.040131249, 2), (0.020296042, 1), (0.040243541, 2), (0.040221334, 2)]; first attempt: []
+  analytic-shared     16.690 ms    31.803 ns/real    23.876 ns/padded  min    16.586  max    17.896 ms  CV  2.31%
+    samples (total seconds, complete proofs): [(0.033410291, 2), (0.033479584, 2), (0.033400709, 2), (0.035791458, 2), (0.033171542, 2), (0.033302041, 2), (0.033259666, 2), (0.0335655, 2), (0.033361041, 2), (0.033308084, 2)]; first attempt: []
+  analytic-amortized    20.045 ms    38.196 ns/real    28.675 ns/padded  min    19.940  max    20.320 ms  CV  0.58%
+    samples (total seconds, complete proofs): [(0.020044292, 1), (0.020319667, 1), (0.040075916, 2), (0.020019958, 1), (0.040092625, 2), (0.040174667, 2), (0.039879583, 2), (0.020160542, 1), (0.039928043, 2), (0.020213459, 1)]; first attempt: []
+
+== ratios (medians) ==
+  u = dense ns per leaf on U23 = 35.263
+  S1         f 1.9995  R_same 2.0775 (R_same/f 1.039)  R_prod 0.9932  prod/dense 0.478  shared: dense/analytic 1.7982  a(c)/u 1.071  inconclusive band
+  S2         f 1.3330  R_same 1.3091 (R_same/f 0.982)  R_prod 0.6652  prod/dense 0.508  shared: dense/analytic 1.2328  a(c)/u 1.061  inconclusive band
+  S3         f 1.6000  R_same 1.7016 (R_same/f 1.064)  R_prod 0.8996  prod/dense 0.529  shared: dense/analytic 1.6020  a(c)/u 0.951  validated band
+  S4         f 2.1323  R_same 2.0441 (R_same/f 0.959)  R_prod 1.0075  prod/dense 0.493  shared: dense/analytic 1.9260  a(c)/u 1.117  inconclusive band
+  U23        f 1.0000  R_same 1.0554 (R_same/f 1.055)  R_prod 0.5592  prod/dense 0.530  shared: dense/analytic 0.9940  a(c)/u 0.948  context
+  U24        f 1.0000  R_same 1.0483 (R_same/f 1.048)  R_prod 0.5521  prod/dense 0.527  shared: dense/analytic 0.9957  a(c)/u 0.954  context
+  S1-1K      f 1.9980  R_same 1.7951 (R_same/f 0.898)  R_prod 0.9287  prod/dense 0.517  shared: dense/analytic 1.6526  a(c)/u 1.148  context
+  S2-1K      f 1.3320  R_same 1.2933 (R_same/f 0.971)  R_prod 0.6698  prod/dense 0.518  shared: dense/analytic 1.2050  a(c)/u 1.083  context
+  pre-registered rule over the judged configurations: inconclusive (a CV above 3% on an arm a ratio needs)
+
+JSON record written to results/amendment-run.json

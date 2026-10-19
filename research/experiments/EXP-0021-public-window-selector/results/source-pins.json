@@ -1,0 +1,21 @@
+{
+  "checked_utc": "2026-10-19T10:34:36.453823+00:00",
+  "checkout": "217238ef0c491d5ffbd677a8353bee79b44a473e",
+  "preregistration_sha256": "90b7307ed2a2162bbd7a56a426c959068c83500c8111a6432e72981f641252bc",
+  "stage": "preregistration only; parent review/commit pending",
+  "sources_sha256": {
+    "research/ideas/IDEA-0034-public-window-attention-shapes.md": "d101611bc5d1e94cfc90a37f84d4233f0ee488bfb2bb6631723a4d0123608a5f",
+    "research/ideas/results/seed-review-2026-10-19.json": "c6cbcb85432cf9dfcea101e116cd2c1f54e07aef0b6a55fee3e88d71615bb9c0",
+    "research/ideas/results/seed-preflight-2026-10-19.json": "900a73c572d21b05034a1a3af0a00f978dbb5d3c3d620dba39ab4948bb4d0305",
+    "docs/rfcs/RFC-0002-field-arithmetic.md": "4a2d4b4c545bf86200b2013609c7f50a824b23ddfda78d95c4f81bd7010380cc",
+    "docs/rfcs/RFC-0009-gadgets.md": "f3268cfe13b95ef32e32673049882f343e11b4c9b3cf76bc91eb4e2e88fd032b",
+    "docs/rfcs/RFC-0010-proof-schedule.md": "28e6667d9bc9a7679112b4ac5b4f8600d0a92ab61632106790e01362490842b9",
+    "docs/rfcs/RFC-0030-masked-exponentials.md": "95e7e904af741fd925b1a345077177cbad284f4a99add77c53a75202f5233db8",
+    "docs/rfcs/RFC-0035-padded-rows.md": "1b26ea9d9e20eb6b5db0141f91ce465348c7fdcdc0b5de86b8bdb377c6f65100",
+    "docs/rfcs/RFC-0038-uniform-layers.md": "73874cb1277a82a5b944203874e52d7aebd4afb28c85ab9b3cd8da4f7d24e5b6",
+    "docs/rfcs/RFC-0047-advice-order.md": "b92c6101879e27ac3835fbcc1f2b1f5aff745072ab202eaf99c54a9de1c937f0",
+    "spec/vectors/tables/generate.py": "893b23777fcbc2b934041e9efd4cc6a196adf4c172d9fff1b464af545d5c6e36"
+  },
+  "draft_revision": 3,
+  "resource_revision_utc": "2026-10-19T10:41:27.104024+00:00"
+}

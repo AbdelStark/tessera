@@ -1,0 +1,608 @@
+{
+  "experiment": "EXP-0014",
+  "verdict": "refuted",
+  "necessary_CVs_clean": true,
+  "anchor_instruction_ratio": 1.002710027100271,
+  "anchors_have_branch_or_call": false,
+  "judged_pairs": {
+    "encode 2^22": {
+      "sigma": -0.45751253103541956,
+      "base": {
+        "ns_per_element": 34.941370248794556,
+        "min_ns": 34.77729344367981,
+        "max_ns": 35.21402668952942,
+        "cv": 0.004635426806650657,
+        "repeated": false
+      },
+      "candidate": {
+        "ns_per_element": 50.92748498916626,
+        "min_ns": 50.246973752975464,
+        "max_ns": 53.06393909454346,
+        "cv": 0.020261494168096326,
+        "repeated": false
+      }
+    },
+    "ntt 2^22": {
+      "sigma": -0.3394968409362005,
+      "base": {
+        "ns_per_element": 12.574722290039062,
+        "min_ns": 12.440065622329712,
+        "max_ns": 12.754231691360474,
+        "cv": 0.008387025299304546,
+        "repeated": false
+      },
+      "candidate": {
+        "ns_per_element": 16.84380078315735,
+        "min_ns": 16.445557355880737,
+        "max_ns": 17.158687114715576,
+        "cv": 0.0138343371868586,
+        "repeated": false
+      }
+    },
+    "ntt 2^23": {
+      "sigma": -0.37407232833654347,
+      "base": {
+        "ns_per_element": 13.160213828086853,
+        "min_ns": 12.95893394947052,
+        "max_ns": 13.45863938331604,
+        "cv": 0.012185220397068675,
+        "repeated": false
+      },
+      "candidate": {
+        "ns_per_element": 18.083085656166077,
+        "min_ns": 17.853255033493042,
+        "max_ns": 18.488203525543213,
+        "cv": 0.010211927911095051,
+        "repeated": false
+      }
+    }
+  },
+  "all_rows": {
+    "ntt 2^20 production": {
+      "ns_per_element": 11.162986516952513,
+      "min_ns": 10.955750942230225,
+      "max_ns": 11.33988332748413,
+      "cv": 0.011547350895080601,
+      "repeated": true
+    },
+    "ntt 2^20 canonical4": {
+      "ns_per_element": 13.946851015090942,
+      "min_ns": 13.774434566497803,
+      "max_ns": 14.213422775268555,
+      "cv": 0.010186344143256395,
+      "repeated": false
+    },
+    "ntt 2^20 canonical8": {
+      "ns_per_element": 13.510813474655153,
+      "min_ns": 13.293862342834473,
+      "max_ns": 14.053106307983398,
+      "cv": 0.017446678075197005,
+      "repeated": false
+    },
+    "ntt 2^20 canonical16": {
+      "ns_per_element": 17.240583896636963,
+      "min_ns": 16.736010551452637,
+      "max_ns": 17.491281032562256,
+      "cv": 0.014371395590769368,
+      "repeated": false
+    },
+    "ntt 2^20 lazy4": {
+      "ns_per_element": 12.978365182876587,
+      "min_ns": 12.756168842315674,
+      "max_ns": 13.552626132965088,
+      "cv": 0.0168603666468485,
+      "repeated": false
+    },
+    "ntt 2^20 lazy8": {
+      "ns_per_element": 13.053655624389648,
+      "min_ns": 12.703697204589844,
+      "max_ns": 13.276000499725342,
+      "cv": 0.014287614747076814,
+      "repeated": true
+    },
+    "ntt 2^20 lazy16": {
+      "ns_per_element": 15.222410440444946,
+      "min_ns": 14.885008335113525,
+      "max_ns": 15.4891414642334,
+      "cv": 0.013478347653913524,
+      "repeated": false
+    },
+    "intt 2^20 production": {
+      "ns_per_element": 10.687430858612059,
+      "min_ns": 10.497689247131348,
+      "max_ns": 10.877331256866455,
+      "cv": 0.012419704975827674,
+      "repeated": false
+    },
+    "intt 2^20 canonical4": {
+      "ns_per_element": 14.598250389099121,
+      "min_ns": 14.34121561050415,
+      "max_ns": 15.007734298706055,
+      "cv": 0.013710398194954183,
+      "repeated": false
+    },
+    "intt 2^20 canonical8": {
+      "ns_per_element": 13.237108707427977,
+      "min_ns": 13.062933921813965,
+      "max_ns": 13.612607955932617,
+      "cv": 0.012107683342472296,
+      "repeated": false
+    },
+    "intt 2^20 canonical16": {
+      "ns_per_element": 16.780237436294556,
+      "min_ns": 16.627212524414062,
+      "max_ns": 17.070531845092773,
+      "cv": 0.007513659656131223,
+      "repeated": false
+    },
+    "intt 2^20 lazy4": {
+      "ns_per_element": 14.493733644485474,
+      "min_ns": 13.936360836029053,
+      "max_ns": 14.74181842803955,
+      "cv": 0.017272102013227958,
+      "repeated": false
+    },
+    "intt 2^20 lazy8": {
+      "ns_per_element": 13.536353826522829,
+      "min_ns": 13.229846954345703,
+      "max_ns": 13.795395851135254,
+      "cv": 0.011364583436629121,
+      "repeated": false
+    },
+    "intt 2^20 lazy16": {
+      "ns_per_element": 14.74610948562622,
+      "min_ns": 14.499545097351074,
+      "max_ns": 15.344858169555664,
+      "cv": 0.01833057984129493,
+      "repeated": false
+    },
+    "coset 2^20 production": {
+      "ns_per_element": 12.9613676071167,
+      "min_ns": 12.531042098999023,
+      "max_ns": 13.24413251876831,
+      "cv": 0.015341631634212724,
+      "repeated": false
+    },
+    "coset 2^20 canonical4": {
+      "ns_per_element": 15.000641345977785,
+      "min_ns": 14.701744079589844,
+      "max_ns": 15.417317390441895,
+      "cv": 0.01460881047337284,
+      "repeated": false
+    },
+    "coset 2^20 canonical8": {
+      "ns_per_element": 14.519234418869019,
+      "min_ns": 14.215052127838135,
+      "max_ns": 14.682531356811523,
+      "cv": 0.00982500159972504,
+      "repeated": false
+    },
+    "coset 2^20 canonical16": {
+      "ns_per_element": 18.14730978012085,
+      "min_ns": 17.670730590820312,
+      "max_ns": 19.168773651123047,
+      "cv": 0.0219397046993366,
+      "repeated": false
+    },
+    "coset 2^20 lazy4": {
+      "ns_per_element": 13.7637357711792,
+      "min_ns": 13.472636699676514,
+      "max_ns": 14.391501903533936,
+      "cv": 0.024890114425595303,
+      "repeated": false
+    },
+    "coset 2^20 lazy8": {
+      "ns_per_element": 14.042834520339964,
+      "min_ns": 13.847391128540039,
+      "max_ns": 14.513572216033936,
+      "cv": 0.014451684788070983,
+      "repeated": false
+    },
+    "coset 2^20 lazy16": {
+      "ns_per_element": 15.816956996917725,
+      "min_ns": 15.584687709808348,
+      "max_ns": 16.201794147491455,
+      "cv": 0.012138830685522576,
+      "repeated": true
+    },
+    "ntt 2^22 production": {
+      "ns_per_element": 12.574722290039062,
+      "min_ns": 12.440065622329712,
+      "max_ns": 12.754231691360474,
+      "cv": 0.008387025299304546,
+      "repeated": false
+    },
+    "ntt 2^22 canonical4": {
+      "ns_per_element": 15.83165419101715,
+      "min_ns": 15.76915383338928,
+      "max_ns": 16.10347628593445,
+      "cv": 0.007226336118063646,
+      "repeated": false
+    },
+    "ntt 2^22 canonical8": {
+      "ns_per_element": 15.924533247947691,
+      "min_ns": 15.784044981002806,
+      "max_ns": 16.477396249771118,
+      "cv": 0.015242306893633447,
+      "repeated": true
+    },
+    "ntt 2^22 canonical16": {
+      "ns_per_element": 18.63686740398407,
+      "min_ns": 18.481522798538208,
+      "max_ns": 18.90451717376709,
+      "cv": 0.007045403659024095,
+      "repeated": false
+    },
+    "ntt 2^22 lazy4": {
+      "ns_per_element": 14.614090442657469,
+      "min_ns": 14.369894981384277,
+      "max_ns": 14.73499321937561,
+      "cv": 0.0069635896418874365,
+      "repeated": false
+    },
+    "ntt 2^22 lazy8": {
+      "ns_per_element": 15.298177719116211,
+      "min_ns": 14.931201934814453,
+      "max_ns": 15.763888597488403,
+      "cv": 0.014957872897721958,
+      "repeated": false
+    },
+    "ntt 2^22 lazy16": {
+      "ns_per_element": 16.84380078315735,
+      "min_ns": 16.445557355880737,
+      "max_ns": 17.158687114715576,
+      "cv": 0.0138343371868586,
+      "repeated": false
+    },
+    "intt 2^22 production": {
+      "ns_per_element": 12.16943073272705,
+      "min_ns": 11.776784896850586,
+      "max_ns": 12.468626260757446,
+      "cv": 0.018629319187070944,
+      "repeated": false
+    },
+    "intt 2^22 canonical4": {
+      "ns_per_element": 16.30096137523651,
+      "min_ns": 16.07757806777954,
+      "max_ns": 16.57469081878662,
+      "cv": 0.010350966939820279,
+      "repeated": false
+    },
+    "intt 2^22 canonical8": {
+      "ns_per_element": 15.616407036781313,
+      "min_ns": 14.588236808776855,
+      "max_ns": 15.846222639083864,
+      "cv": 0.02470450130403698,
+      "repeated": false
+    },
+    "intt 2^22 canonical16": {
+      "ns_per_element": 18.689016461372375,
+      "min_ns": 18.31736183166504,
+      "max_ns": 18.857638120651245,
+      "cv": 0.010906304759786935,
+      "repeated": false
+    },
+    "intt 2^22 lazy4": {
+      "ns_per_element": 15.842626452445982,
+      "min_ns": 15.224039554595947,
+      "max_ns": 16.295631647109985,
+      "cv": 0.020493105983304904,
+      "repeated": false
+    },
+    "intt 2^22 lazy8": {
+      "ns_per_element": 15.91379451751709,
+      "min_ns": 15.3797767162323,
+      "max_ns": 16.41005277633667,
+      "cv": 0.020371037637939356,
+      "repeated": false
+    },
+    "intt 2^22 lazy16": {
+      "ns_per_element": 16.494423270225525,
+      "min_ns": 16.21811580657959,
+      "max_ns": 16.866018295288086,
+      "cv": 0.014056108362629834,
+      "repeated": false
+    },
+    "coset 2^22 production": {
+      "ns_per_element": 14.421775817871094,
+      "min_ns": 14.171183109283447,
+      "max_ns": 15.107423067092894,
+      "cv": 0.021371801907330613,
+      "repeated": false
+    },
+    "coset 2^22 canonical4": {
+      "ns_per_element": 16.50537049770355,
+      "min_ns": 16.321738719940186,
+      "max_ns": 16.588678121566772,
+      "cv": 0.004778352778606039,
+      "repeated": true
+    },
+    "coset 2^22 canonical8": {
+      "ns_per_element": 16.525164246559143,
+      "min_ns": 16.130308151245117,
+      "max_ns": 17.030924558639526,
+      "cv": 0.01765374757681843,
+      "repeated": false
+    },
+    "coset 2^22 canonical16": {
+      "ns_per_element": 19.726877331733704,
+      "min_ns": 19.303500652313232,
+      "max_ns": 21.16301655769348,
+      "cv": 0.027503648073259324,
+      "repeated": false
+    },
+    "coset 2^22 lazy4": {
+      "ns_per_element": 15.534331440925596,
+      "min_ns": 15.182405710220337,
+      "max_ns": 15.822668790817263,
+      "cv": 0.013621895073170227,
+      "repeated": false
+    },
+    "coset 2^22 lazy8": {
+      "ns_per_element": 16.056796073913574,
+      "min_ns": 15.873869180679323,
+      "max_ns": 16.431838274002075,
+      "cv": 0.009771825779875405,
+      "repeated": false
+    },
+    "coset 2^22 lazy16": {
+      "ns_per_element": 17.390807509422302,
+      "min_ns": 17.131159782409668,
+      "max_ns": 17.74655771255493,
+      "cv": 0.011094669690815835,
+      "repeated": false
+    },
+    "ntt 2^23 production": {
+      "ns_per_element": 13.160213828086853,
+      "min_ns": 12.95893394947052,
+      "max_ns": 13.45863938331604,
+      "cv": 0.012185220397068675,
+      "repeated": false
+    },
+    "ntt 2^23 canonical4": {
+      "ns_per_element": 17.175530433654785,
+      "min_ns": 17.04061532020569,
+      "max_ns": 17.36097538471222,
+      "cv": 0.006329642796133848,
+      "repeated": false
+    },
+    "ntt 2^23 canonical8": {
+      "ns_per_element": 16.34312921762466,
+      "min_ns": 16.066799640655518,
+      "max_ns": 16.585538744926453,
+      "cv": 0.009951616659750723,
+      "repeated": false
+    },
+    "ntt 2^23 canonical16": {
+      "ns_per_element": 20.786814332008362,
+      "min_ns": 20.68498730659485,
+      "max_ns": 20.878856301307678,
+      "cv": 0.0030686275077011593,
+      "repeated": true
+    },
+    "ntt 2^23 lazy4": {
+      "ns_per_element": 15.758814930915834,
+      "min_ns": 15.66872501373291,
+      "max_ns": 15.837838292121887,
+      "cv": 0.0035748573945234645,
+      "repeated": false
+    },
+    "ntt 2^23 lazy8": {
+      "ns_per_element": 15.568499743938444,
+      "min_ns": 15.393560171127318,
+      "max_ns": 15.72688913345337,
+      "cv": 0.005728433496498285,
+      "repeated": false
+    },
+    "ntt 2^23 lazy16": {
+      "ns_per_element": 18.083085656166077,
+      "min_ns": 17.853255033493042,
+      "max_ns": 18.488203525543213,
+      "cv": 0.010211927911095051,
+      "repeated": false
+    },
+    "intt 2^23 production": {
+      "ns_per_element": 12.697304248809814,
+      "min_ns": 12.54961383342743,
+      "max_ns": 12.74798321723938,
+      "cv": 0.004394536074750886,
+      "repeated": false
+    },
+    "intt 2^23 canonical4": {
+      "ns_per_element": 17.384611070156097,
+      "min_ns": 17.32104516029358,
+      "max_ns": 17.991413712501526,
+      "cv": 0.01122249063495169,
+      "repeated": false
+    },
+    "intt 2^23 canonical8": {
+      "ns_per_element": 15.781275928020479,
+      "min_ns": 15.705933213233948,
+      "max_ns": 15.910699963569641,
+      "cv": 0.00433670581818808,
+      "repeated": false
+    },
+    "intt 2^23 canonical16": {
+      "ns_per_element": 19.959049940109253,
+      "min_ns": 19.836122751235962,
+      "max_ns": 20.10937523841858,
+      "cv": 0.004464830958962055,
+      "repeated": false
+    },
+    "intt 2^23 lazy4": {
+      "ns_per_element": 17.21172779798508,
+      "min_ns": 17.041186571121216,
+      "max_ns": 17.43832230567932,
+      "cv": 0.00749714078275639,
+      "repeated": false
+    },
+    "intt 2^23 lazy8": {
+      "ns_per_element": 15.840694367885591,
+      "min_ns": 15.667274594306944,
+      "max_ns": 16.289254069328308,
+      "cv": 0.011873166501775646,
+      "repeated": false
+    },
+    "intt 2^23 lazy16": {
+      "ns_per_element": 18.203626096248627,
+      "min_ns": 18.00417411327362,
+      "max_ns": 18.302306532859802,
+      "cv": 0.0050450733709256675,
+      "repeated": false
+    },
+    "coset 2^23 production": {
+      "ns_per_element": 14.67972505092621,
+      "min_ns": 14.580845832824707,
+      "max_ns": 14.86709713935852,
+      "cv": 0.005825579594371159,
+      "repeated": false
+    },
+    "coset 2^23 canonical4": {
+      "ns_per_element": 17.797857463359833,
+      "min_ns": 17.651001691818237,
+      "max_ns": 18.060043454170227,
+      "cv": 0.007609390138887996,
+      "repeated": false
+    },
+    "coset 2^23 canonical8": {
+      "ns_per_element": 16.927833378314972,
+      "min_ns": 16.758809566497803,
+      "max_ns": 17.192527651786804,
+      "cv": 0.0074049376190001666,
+      "repeated": false
+    },
+    "coset 2^23 canonical16": {
+      "ns_per_element": 21.600566864013672,
+      "min_ns": 21.309723496437073,
+      "max_ns": 22.838165402412415,
+      "cv": 0.021014778644570572,
+      "repeated": false
+    },
+    "coset 2^23 lazy4": {
+      "ns_per_element": 16.376229643821713,
+      "min_ns": 16.250540852546692,
+      "max_ns": 16.509642243385315,
+      "cv": 0.004155186455198793,
+      "repeated": false
+    },
+    "coset 2^23 lazy8": {
+      "ns_per_element": 16.082696676254272,
+      "min_ns": 15.938997268676756,
+      "max_ns": 16.250719666481018,
+      "cv": 0.005545241557545902,
+      "repeated": false
+    },
+    "coset 2^23 lazy16": {
+      "ns_per_element": 18.85076117515564,
+      "min_ns": 18.706684350967407,
+      "max_ns": 19.235660672187805,
+      "cv": 0.007798378609094234,
+      "repeated": false
+    },
+    "encode 2^20 production": {
+      "ns_per_element": 32.00987958908081,
+      "min_ns": 31.653404235839844,
+      "max_ns": 32.809813499450684,
+      "cv": 0.011758362245329605,
+      "repeated": false
+    },
+    "encode 2^20 canonical4": {
+      "ns_per_element": 43.110668659210205,
+      "min_ns": 41.704654693603516,
+      "max_ns": 43.86333656311035,
+      "cv": 0.0158722270470749,
+      "repeated": false
+    },
+    "encode 2^20 canonical8": {
+      "ns_per_element": 40.245850563049316,
+      "min_ns": 39.99674320220947,
+      "max_ns": 41.00390338897705,
+      "cv": 0.006785875326575433,
+      "repeated": false
+    },
+    "encode 2^20 canonical16": {
+      "ns_per_element": 52.80586051940918,
+      "min_ns": 52.25861072540283,
+      "max_ns": 53.66325378417969,
+      "cv": 0.00829627872384592,
+      "repeated": false
+    },
+    "encode 2^20 lazy4": {
+      "ns_per_element": 40.945351123809814,
+      "min_ns": 40.56421947479248,
+      "max_ns": 41.494011878967285,
+      "cv": 0.007474588234397793,
+      "repeated": false
+    },
+    "encode 2^20 lazy8": {
+      "ns_per_element": 39.169927597045906,
+      "min_ns": 37.60166931152344,
+      "max_ns": 39.862473487854004,
+      "cv": 0.01803621342207055,
+      "repeated": false
+    },
+    "encode 2^20 lazy16": {
+      "ns_per_element": 45.65540933609009,
+      "min_ns": 45.361677169799805,
+      "max_ns": 46.65915107727051,
+      "cv": 0.007690279184948098,
+      "repeated": false
+    },
+    "encode 2^22 production": {
+      "ns_per_element": 34.941370248794556,
+      "min_ns": 34.77729344367981,
+      "max_ns": 35.21402668952942,
+      "cv": 0.004635426806650657,
+      "repeated": false
+    },
+    "encode 2^22 canonical4": {
+      "ns_per_element": 47.37056791782379,
+      "min_ns": 47.133833169937134,
+      "max_ns": 47.52478003501892,
+      "cv": 0.002529163567174607,
+      "repeated": false
+    },
+    "encode 2^22 canonical8": {
+      "ns_per_element": 45.218661546707146,
+      "min_ns": 44.886618852615356,
+      "max_ns": 46.37443017959595,
+      "cv": 0.009241265365423723,
+      "repeated": false
+    },
+    "encode 2^22 canonical16": {
+      "ns_per_element": 55.82454800605774,
+      "min_ns": 55.513550996780396,
+      "max_ns": 56.16450309753418,
+      "cv": 0.004189767000347094,
+      "repeated": false
+    },
+    "encode 2^22 lazy4": {
+      "ns_per_element": 44.58920657634735,
+      "min_ns": 44.3772177696228,
+      "max_ns": 45.053303241729736,
+      "cv": 0.004593091011700329,
+      "repeated": false
+    },
+    "encode 2^22 lazy8": {
+      "ns_per_element": 43.375531911849976,
+      "min_ns": 42.24472236633301,
+      "max_ns": 43.61810302734375,
+      "cv": 0.009157257980325092,
+      "repeated": false
+    },
+    "encode 2^22 lazy16": {
+      "ns_per_element": 50.92748498916626,
+      "min_ns": 50.246973752975464,
+      "max_ns": 53.06393909454346,
+      "cv": 0.020261494168096326,
+      "repeated": false
+    }
+  },
+  "CPU_time_saving_divided_by_historical_arithmetic_gap": -1.0547315890495947,
+  "arithmetic_gap_fraction_E0": 0.7039083009268868,
+  "conditional_commit_ps_interval_E0": [
+    67.70491788182596,
+    140.29907682048741
+  ],
+  "scope": "CPU realization and conditional E0 calibration only; no GPU timing or mu claim"
+}

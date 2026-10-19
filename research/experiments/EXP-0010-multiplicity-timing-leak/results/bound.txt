@@ -1,0 +1,122 @@
+EXP-0010 bound.py over results/run.json: N = 2^27 keys per stream, T ∈ {2^20, 2^24, 2^28}
+
+== part (b): the probe's derived quantities (medians; ns per key) ==
+count32  T=2^20 uniform 0.770  zipf 0.395  sorted 1.810  sequential 0.283  all_equal 1.093  gauss_narrow 0.272  gauss_wide 0.507
+                R_slow = 2.350 (sorted); s = 0.850; g = 0.3053; t_typ/t_uniform = 0.506; max CV 0.98%
+count64  T=2^20 uniform 0.806  zipf 0.410  sorted 1.807  sequential 0.297  all_equal 1.086  gauss_narrow 0.269  gauss_wide 0.640
+                R_slow = 2.243 (sorted); s = 0.851; g = 0.4608; t_typ/t_uniform = 0.564; max CV 0.87%
+gather   T=2^20 uniform 0.605  zipf 0.407  sorted 0.272  sequential 0.277  all_equal 0.272  gauss_narrow 0.278  gauss_wide 0.426
+                R_slow = 1.000 (uniform); s = 0.550; g = 0.2440; t_typ/t_uniform = 0.582; max CV 1.11%
+count32  T=2^24 uniform 1.879  zipf 0.427  sorted 1.619  sequential 0.281  all_equal 1.089  gauss_narrow 0.520  gauss_wide 0.768
+                R_slow = 1.000 (uniform); s = 0.850; g = 0.1321; t_typ/t_uniform = 0.343; max CV 1.08%
+count64  T=2^24 uniform 2.586  zipf 0.436  sorted 1.618  sequential 0.298  all_equal 1.113  gauss_narrow 0.639  gauss_wide 0.810
+                R_slow = 1.000 (uniform); s = 0.885; g = 0.0662; t_typ/t_uniform = 0.280; max CV 1.05%
+gather   T=2^24 uniform 1.870  zipf 0.435  sorted 0.273  sequential 0.273  all_equal 0.275  gauss_narrow 0.443  gauss_wide 0.618
+                R_slow = 1.000 (uniform); s = 0.854; g = 0.0940; t_typ/t_uniform = 0.284; max CV 2.87%
+count32  T=2^28 uniform 3.475  zipf 0.452  sorted 0.502  sequential 0.283  all_equal 1.108  gauss_narrow 0.778  gauss_wide 1.940
+                R_slow = 1.000 (uniform); s = 0.919; g = 0.3346; t_typ/t_uniform = 0.391; max CV 2.02%
+count64  T=2^28 uniform 3.558  zipf 0.457  sorted 0.553  sequential 0.299  all_equal 1.114  gauss_narrow 0.807  gauss_wide 2.535
+                R_slow = 1.000 (uniform); s = 0.916; g = 0.4856; t_typ/t_uniform = 0.470; max CV 1.11%
+gather   T=2^28 uniform 3.371  zipf 0.478  sorted 0.282  sequential 0.275  all_equal 0.276  gauss_narrow 0.620  gauss_wide 1.888
+                R_slow = 1.000 (uniform); s = 0.918; g = 0.3762; t_typ/t_uniform = 0.372; max CV 1.90%
+
+-- context arms --
+sortcount T=2^28 uniform       n=2^27: 14.35 ns/key, 4.1× the direct count32 of the same stream (3.475 ns/key); CV 0.75%; copy + sort_unstable + run-length
+bitonic   T=2^28 uniform       n=2^22: 107.97 ns/key, 31.1× the direct count32 of the same stream (3.475 ns/key); CV 1.06%; 530579456 compare-exchanges, 0.853 ns each
+bitonic   T=2^28 uniform       n=2^24: 129.34 ns/key, 37.2× the direct count32 of the same stream (3.475 ns/key); CV 0.79%; 2516582400 compare-exchanges, 0.862 ns each
+sortcount T=2^28 zipf          n=2^27: 4.34 ns/key, 9.6× the direct count32 of the same stream (0.452 ns/key); CV 0.21%; copy + sort_unstable + run-length
+sortcount T=2^28 sorted        n=2^27: 1.90 ns/key, 3.8× the direct count32 of the same stream (0.502 ns/key); CV 0.28%; copy + sort_unstable + run-length
+sortcount T=2^28 sequential    n=2^27: 0.89 ns/key, 3.1× the direct count32 of the same stream (0.283 ns/key); CV 0.63%; copy + sort_unstable + run-length
+sortcount T=2^28 all_equal     n=2^27: 0.58 ns/key, 0.5× the direct count32 of the same stream (1.108 ns/key); CV 0.44%; copy + sort_unstable + run-length
+bitonic   T=2^28 all_equal     n=2^22: 110.70 ns/key, 99.9× the direct count32 of the same stream (1.108 ns/key); CV 0.82%; 530579456 compare-exchanges, 0.875 ns each
+bitonic   T=2^28 all_equal     n=2^24: 130.54 ns/key, 117.8× the direct count32 of the same stream (1.108 ns/key); CV 0.50%; 2516582400 compare-exchanges, 0.870 ns each
+sortcount T=2^28 gauss_narrow  n=2^27: 9.27 ns/key, 11.9× the direct count32 of the same stream (0.778 ns/key); CV 0.09%; copy + sort_unstable + run-length
+bitonic   T=2^28 gauss_narrow  n=2^22: 107.77 ns/key, 138.6× the direct count32 of the same stream (0.778 ns/key); CV 0.85%; 530579456 compare-exchanges, 0.852 ns each
+sortcount T=2^28 gauss_wide    n=2^27: 13.30 ns/key, 6.9× the direct count32 of the same stream (1.940 ns/key); CV 0.14%; copy + sort_unstable + run-length
+
+-- the CPU reference backend, one core (E1, reported, not judged) --
+    1K context, 16384 tokens: N_all = 5.898e+11; per-proof spread N_all × (c_uniform − c_sequential) = 1883 s (slowest 2050 s, fastest 167 s)
+    4K context, 16384 tokens: N_all = 9.957e+11; per-proof spread N_all × (c_uniform − c_sequential) = 3179 s (slowest 3460 s, fastest 282 s)
+   16K context, 16384 tokens: N_all = 2.619e+12; per-proof spread N_all × (c_uniform − c_sequential) = 8362 s (slowest 9102 s, fastest 741 s)
+  128K context, 16384 tokens: N_all = 1.777e+13; per-proof spread N_all × (c_uniform − c_sequential) = 56735 s (slowest 61763 s, fastest 5028 s)
+
+== part (a): the E0 leak bound ==
+c_rand at 40 / 60 / 100% of 3.35 TB/s, 32 B per access: 23.9 / 15.9 / 9.6 ps per random increment
+
+-- scope: N_all (linear + attention lookups, the pre-registered scope) --
+    1K: N = 5.898e+11 per 16384-token proof; D_P1 = 75.0 GPU-s per proof (6.66 native equivalents)
+       u=0.4: Δ_max = 14.1 GPU-s (18.78% of D_P1); B(0.1%/1%/3%) = 7.56 / 4.31 / 2.86 bits per proof (Shannon 6.55 / 3.24 / 1.72); per epoch 681 × B(0.1%) = 5149 bits; same witness proven 681×: 12.27 bits
+       u=0.6: Δ_max = 9.4 GPU-s (12.52% of D_P1); B(0.1%/1%/3%) = 6.98 / 3.76 / 2.37 bits per proof (Shannon 5.97 / 2.66 / 1.21); per epoch 681 × B(0.1%) = 4753 bits; same witness proven 681×: 11.68 bits <- central
+       u=1.0: Δ_max = 5.6 GPU-s (7.51% of D_P1); B(0.1%/1%/3%) = 6.25 / 3.09 / 1.81 bits per proof (Shannon 5.23 / 1.96 / 0.68); per epoch 681 × B(0.1%) = 4256 bits; same witness proven 681×: 10.96 bits
+    4K: N = 9.957e+11 per 16384-token proof; D_P1 = 119.1 GPU-s per proof (10.41 native equivalents)
+       u=0.4: Δ_max = 23.8 GPU-s (19.97% of D_P1); B(0.1%/1%/3%) = 7.65 / 4.39 / 2.94 bits per proof (Shannon 6.64 / 3.33 / 1.80); per epoch 681 × B(0.1%) = 5209 bits; same witness proven 681×: 12.35 bits
+       u=0.6: Δ_max = 15.9 GPU-s (13.31% of D_P1); B(0.1%/1%/3%) = 7.07 / 3.84 / 2.44 bits per proof (Shannon 6.06 / 2.75 / 1.28); per epoch 681 × B(0.1%) = 4813 bits; same witness proven 681×: 11.77 bits <- central
+       u=1.0: Δ_max = 9.5 GPU-s (7.99% of D_P1); B(0.1%/1%/3%) = 6.34 / 3.17 / 1.87 bits per proof (Shannon 5.32 / 2.04 / 0.74); per epoch 681 × B(0.1%) = 4316 bits; same witness proven 681×: 11.04 bits
+   16K: N = 2.619e+12 per 16384-token proof; D_P1 = 295.3 GPU-s per proof (24.33 native equivalents)
+       u=0.4: Δ_max = 62.5 GPU-s (21.18% of D_P1); B(0.1%/1%/3%) = 7.73 / 4.47 / 3.01 bits per proof (Shannon 6.73 / 3.41 / 1.88); per epoch 681 × B(0.1%) = 5267 bits; same witness proven 681×: 12.44 bits
+       u=0.6: Δ_max = 41.7 GPU-s (14.12% of D_P1); B(0.1%/1%/3%) = 7.15 / 3.92 / 2.51 bits per proof (Shannon 6.14 / 2.83 / 1.35); per epoch 681 × B(0.1%) = 4871 bits; same witness proven 681×: 11.86 bits <- central
+       u=1.0: Δ_max = 25.0 GPU-s (8.47% of D_P1); B(0.1%/1%/3%) = 6.42 / 3.24 / 1.94 bits per proof (Shannon 5.41 / 2.12 / 0.79); per epoch 681 × B(0.1%) = 4373 bits; same witness proven 681×: 11.13 bits
+  128K: N = 1.777e+13 per 16384-token proof; D_P1 = 1939.8 GPU-s per proof (103.92 native equivalents)
+       u=0.4: Δ_max = 424.4 GPU-s (21.88% of D_P1); B(0.1%/1%/3%) = 7.78 / 4.52 / 3.05 bits per proof (Shannon 6.77 / 3.46 / 1.92); per epoch 681 × B(0.1%) = 5298 bits; same witness proven 681×: 12.49 bits
+       u=0.6: Δ_max = 282.9 GPU-s (14.59% of D_P1); B(0.1%/1%/3%) = 7.20 / 3.96 / 2.55 bits per proof (Shannon 6.19 / 2.88 / 1.39); per epoch 681 × B(0.1%) = 4902 bits; same witness proven 681×: 11.90 bits <- central
+       u=1.0: Δ_max = 169.8 GPU-s (8.75% of D_P1); B(0.1%/1%/3%) = 6.47 / 3.29 / 1.97 bits per proof (Shannon 5.45 / 2.17 / 0.82); per epoch 681 × B(0.1%) = 4405 bits; same witness proven 681×: 11.17 bits
+
+-- scope: N_big (linear-layer lookups only, the queue item's 4.6×10^11) --
+    1K: N = 4.545e+11 per 16384-token proof; D_P1 = 75.0 GPU-s per proof (6.66 native equivalents)
+       u=0.4: Δ_max = 10.9 GPU-s (14.47% of D_P1); B(0.1%/1%/3%) = 7.19 / 3.95 / 2.54 bits per proof (Shannon 6.18 / 2.87 / 1.38); per epoch 681 × B(0.1%) = 4894 bits; same witness proven 681×: 11.89 bits
+       u=0.6: Δ_max = 7.2 GPU-s (9.65% of D_P1); B(0.1%/1%/3%) = 6.61 / 3.41 / 2.08 bits per proof (Shannon 5.59 / 2.30 / 0.92); per epoch 681 × B(0.1%) = 4499 bits; same witness proven 681×: 11.31 bits <- central
+       u=1.0: Δ_max = 4.3 GPU-s (5.79% of D_P1); B(0.1%/1%/3%) = 5.88 / 2.76 / 1.55 bits per proof (Shannon 4.86 / 1.61 / 0.47); per epoch 681 × B(0.1%) = 4004 bits; same witness proven 681×: 10.59 bits
+    4K: N = 4.545e+11 per 16384-token proof; D_P1 = 119.1 GPU-s per proof (10.41 native equivalents)
+       u=0.4: Δ_max = 10.9 GPU-s (9.12% of D_P1); B(0.1%/1%/3%) = 6.53 / 3.34 / 2.01 bits per proof (Shannon 5.51 / 2.22 / 0.86); per epoch 681 × B(0.1%) = 4444 bits; same witness proven 681×: 11.23 bits
+       u=0.6: Δ_max = 7.2 GPU-s (6.08% of D_P1); B(0.1%/1%/3%) = 5.95 / 2.82 / 1.60 bits per proof (Shannon 4.93 / 1.68 / 0.51); per epoch 681 × B(0.1%) = 4051 bits; same witness proven 681×: 10.65 bits <- central
+       u=1.0: Δ_max = 4.3 GPU-s (3.65% of D_P1); B(0.1%/1%/3%) = 5.23 / 2.22 / 1.15 bits per proof (Shannon 4.19 / 1.06 / 0.23); per epoch 681 × B(0.1%) = 3560 bits; same witness proven 681×: 9.93 bits
+   16K: N = 4.545e+11 per 16384-token proof; D_P1 = 295.3 GPU-s per proof (24.33 native equivalents)
+       u=0.4: Δ_max = 10.9 GPU-s (3.68% of D_P1); B(0.1%/1%/3%) = 5.24 / 2.23 / 1.15 bits per proof (Shannon 4.20 / 1.07 / 0.23); per epoch 681 × B(0.1%) = 3568 bits; same witness proven 681×: 9.94 bits
+       u=0.6: Δ_max = 7.2 GPU-s (2.45% of D_P1); B(0.1%/1%/3%) = 4.67 / 1.79 / 0.86 bits per proof (Shannon 3.62 / 0.66 / 0.11); per epoch 681 × B(0.1%) = 3182 bits; same witness proven 681×: 9.38 bits <- central
+       u=1.0: Δ_max = 4.3 GPU-s (1.47% of D_P1); B(0.1%/1%/3%) = 3.97 / 1.30 / 0.58 bits per proof (Shannon 2.89 / 0.31 / 0.04); per epoch 681 × B(0.1%) = 2706 bits; same witness proven 681×: 8.68 bits
+  128K: N = 4.545e+11 per 16384-token proof; D_P1 = 1939.8 GPU-s per proof (103.92 native equivalents)
+       u=0.4: Δ_max = 10.9 GPU-s (0.56% of D_P1); B(0.1%/1%/3%) = 2.72 / 0.64 / 0.25 bits per proof (Shannon 1.57 / 0.05 / 0.01); per epoch 681 × B(0.1%) = 1853 bits; same witness proven 681×: 7.43 bits
+       u=0.6: Δ_max = 7.2 GPU-s (0.37% of D_P1); B(0.1%/1%/3%) = 2.24 / 0.46 / 0.17 bits per proof (Shannon 1.08 / 0.02 / 0.00); per epoch 681 × B(0.1%) = 1527 bits; same witness proven 681×: 6.95 bits <- central
+       u=1.0: Δ_max = 4.3 GPU-s (0.22% of D_P1); B(0.1%/1%/3%) = 1.70 / 0.29 / 0.10 bits per proof (Shannon 0.59 / 0.01 / 0.00); per epoch 681 × B(0.1%) = 1154 bits; same witness proven 681×: 6.40 bits
+
+-- two plausible witnesses (gauss_narrow against gauss_wide), 16K context, scope N_all --
+  count32  T=2^20: g = 0.3053 → separation 4.312% of D_P1 = 43.12 / 4.31 / 1.44 jitter units at 0.1 / 1 / 3% (distinguishable at 0.1%)
+  count64  T=2^20: g = 0.4608 → separation 6.508% of D_P1 = 65.08 / 6.51 / 2.17 jitter units at 0.1 / 1 / 3% (distinguishable at 0.1%)
+  gather   T=2^20: g = 0.2440 → separation 3.445% of D_P1 = 34.45 / 3.45 / 1.15 jitter units at 0.1 / 1 / 3% (distinguishable at 0.1%)
+  count32  T=2^24: g = 0.1321 → separation 1.865% of D_P1 = 18.65 / 1.86 / 0.62 jitter units at 0.1 / 1 / 3% (distinguishable at 0.1%)
+  count64  T=2^24: g = 0.0662 → separation 0.935% of D_P1 = 9.35 / 0.93 / 0.31 jitter units at 0.1 / 1 / 3% (distinguishable at 0.1%)
+  gather   T=2^24: g = 0.0940 → separation 1.327% of D_P1 = 13.27 / 1.33 / 0.44 jitter units at 0.1 / 1 / 3% (distinguishable at 0.1%)
+  count32  T=2^28: g = 0.3346 → separation 4.725% of D_P1 = 47.25 / 4.72 / 1.57 jitter units at 0.1 / 1 / 3% (distinguishable at 0.1%)
+  count64  T=2^28: g = 0.4856 → separation 6.858% of D_P1 = 68.58 / 6.86 / 2.29 jitter units at 0.1 / 1 / 3% (distinguishable at 0.1%)
+  gather   T=2^28: g = 0.3762 → separation 5.313% of D_P1 = 53.13 / 5.31 / 1.77 jitter units at 0.1 / 1 / 3% (distinguishable at 0.1%)
+
+== part (c): mitigations under `counted` ==
+envelope: t_typ/t_uniform (count32, T=2^28) = 0.391 from E1; bracket r = 0 (typical case free)
+-- envelope, scope all --
+    1K: C_max = 9.4 GPU-s per proof; envelope Δμ = 0.508 (2.95% of μ = 17.198); at r = 0: Δμ = 0.834 (4.85%); 3σ margin at 3%: Δμ = 0.600 (3.49%); --set regen_full_equivalents=4.508
+    4K: C_max = 15.9 GPU-s per proof; envelope Δμ = 0.844 (2.83% of μ = 29.842); at r = 0: Δμ = 1.386 (4.65%); 3σ margin at 3%: Δμ = 0.937 (3.14%); --set regen_full_equivalents=4.844
+   16K: C_max = 41.7 GPU-s per proof; envelope Δμ = 2.093 (2.66% of μ = 78.644); at r = 0: Δμ = 3.437 (4.37%); 3σ margin at 3%: Δμ = 2.190 (2.78%); --set regen_full_equivalents=6.093
+  128K: C_max = 282.9 GPU-s per proof; envelope Δμ = 9.230 (2.47% of μ = 373.313); at r = 0: Δμ = 15.157 (4.06%); 3σ margin at 3%: Δμ = 9.352 (2.51%); --set regen_full_equivalents=13.230
+-- envelope, scope big --
+    1K: C_max = 7.2 GPU-s per proof; envelope Δμ = 0.391 (2.28% of μ = 17.198); at r = 0: Δμ = 0.643 (3.74%); 3σ margin at 3%: Δμ = 0.600 (3.49%)
+    4K: C_max = 7.2 GPU-s per proof; envelope Δμ = 0.385 (1.29% of μ = 29.842); at r = 0: Δμ = 0.633 (2.12%); 3σ margin at 3%: Δμ = 0.937 (3.14%)
+   16K: C_max = 7.2 GPU-s per proof; envelope Δμ = 0.363 (0.46% of μ = 78.644); at r = 0: Δμ = 0.596 (0.76%); 3σ margin at 3%: Δμ = 2.190 (2.78%)
+  128K: C_max = 7.2 GPU-s per proof; envelope Δμ = 0.236 (0.06% of μ = 373.313); at r = 0: Δμ = 0.388 (0.10%); 3σ margin at 3%: Δμ = 9.352 (2.51%)
+-- oblivious counting --
+  scope big: N = 4.545e+11 at 16K (log2 N = 38.73); stream 1.82 TB against 640 GB of HBM per node; bucket sort 232 accesses = 1859 B per lookup = 925 ps (462 ps if an access is one 4-byte touch rather than a read and a write); bitonic 385 exchanges = 6154 B per lookup = 3061 ps (c_ℓ is 101 ps)
+      1K: bucket Δμ = 37.3 (217% of μ); bitonic Δμ = 123.6 (719%)
+      4K: bucket Δμ = 36.8 (123% of μ); bitonic Δμ = 121.7 (408%)
+     16K: bucket Δμ = 34.6 (44% of μ); bitonic Δμ = 114.7 (146%)
+    128K: bucket Δμ = 22.5 (6% of μ); bitonic Δμ = 74.5 (20%)
+  scope all: N = 2.619e+12 at 16K (log2 N = 41.25); stream 10.48 TB against 640 GB of HBM per node; bucket sort 248 accesses = 1980 B per lookup = 985 ps (493 ps if an access is one 4-byte touch rather than a read and a write); bitonic 436 exchanges = 6972 B per lookup = 3469 ps (c_ℓ is 101 ps)
+      1K: bucket Δμ = 51.6 (300% of μ); bitonic Δμ = 181.7 (1057%)
+      4K: bucket Δμ = 85.8 (287% of μ); bitonic Δμ = 302.1 (1012%)
+     16K: bucket Δμ = 212.7 (270% of μ); bitonic Δμ = 748.8 (952%); --set lookup_ps=1086 (bucket) / 3570 (bitonic)
+    128K: bucket Δμ = 937.9 (251% of μ); bitonic Δμ = 3302.3 (885%)
+
+== verdict helper (pre-registered rule) ==
+(i)  count32 T=2^28: R_slow = 1.000 (uniform) → ok; max CV 2.02% → ok
+(i)  count64 T=2^28: R_slow = 1.000 (uniform) → ok; max CV 1.11% → ok
+(i)  gather T=2^24: R_slow = 1.000 (uniform) → ok; max CV 2.87% → ok
+(ii) s(2^28, count32) = 0.919 → ok
+(iii) B(0.1%) = 7.15 (≤ 8.0: ok); B(3%) = 2.51 (≤ 3.0: ok)

@@ -1,0 +1,26 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction prepare`
+preflight E-l20-t22
+preflight E-l22-t22
+preflight R-l20-t21
+preflight R-l22-t21
+preflight Q-l20-t20
+preflight Q-l22-t20
+       25.61 real        24.00 user         1.18 sys
+          1603600384  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              850692  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  31  voluntary context switches
+                9977  involuntary context switches
+        562423021295  instructions retired
+         98114994434  cycles elapsed
+          1603044840  peak memory footprint

@@ -1,0 +1,5 @@
+   Compiling integer-fraction v0.0.0 (/Users/abdel/dev/me/tessera-research/research/experiments/EXP-0020-integer-coefficient-fraction-leaves)
+    Finished `release` profile [optimized] target(s) in 6.88s
+     Running `research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction padding-check`
+ragged lookup3: first lookup=row1, table padding=row0; P=e21b2d907ae1a54d08e0b4d17b164f733288150c9c4ee4a4bd66346e1b65f1d6, C=e21b2d907ae1a54d08e0b4d17b164f733288150c9c4ee4a4bd66346e1b65f1d6
+ragged padding independent acceptance pass

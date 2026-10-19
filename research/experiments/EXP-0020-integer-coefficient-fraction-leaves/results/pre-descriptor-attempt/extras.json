@@ -1,0 +1,45 @@
+{
+  "controls": [
+    {
+      "control": 0,
+      "digest": "141d38aea1df6d1d357d7daaecc75e3ba250523808e5a9d5d09ab11af90cc90e",
+      "integer_eligible": true,
+      "lookup_len": 5,
+      "padded_table_m_last": 0,
+      "table_len": 3
+    },
+    {
+      "control": 1,
+      "digest": "67076a879efccf327bf80d676ec80e5b45af5b2e5ba8e473a493fc7dc2420d3d",
+      "integer_eligible": true,
+      "lookup_len": 8,
+      "padded_table_m_last": 0,
+      "table_len": 4
+    },
+    {
+      "control": 2,
+      "digest": "8ffb7972441353648ceebf73d928cb2501e826c6c810335d1ae21d292e4fdc43",
+      "integer_eligible": true,
+      "lookup_len": 8,
+      "padded_table_m_last": 2,
+      "table_len": 4
+    },
+    {
+      "control": 3,
+      "digest": "c64dffde2b4907549fa64ed6d12619cfc84d6f63a573079b4d2f2d664ec5d94b",
+      "integer_eligible": false,
+      "lookup_len": 8,
+      "padded_table_m_last": 2,
+      "table_len": 4
+    },
+    {
+      "control": 4,
+      "digest": "063ed6d28767e862376c94baed1660c5a69cb22696084f116dad06c629998d8e",
+      "integer_eligible": false,
+      "lookup_len": 8,
+      "padded_table_m_last": 2,
+      "table_len": 4
+    }
+  ],
+  "status": "pass"
+}

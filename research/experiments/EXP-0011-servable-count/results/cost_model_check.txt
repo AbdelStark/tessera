@@ -1,0 +1,9 @@
+golden check against embedded chart-data table (the pinned vector is absent on this branch) (±0.05 per term, ±0.1 on the total)
+ok      1K model  2.03   1.13  0.021   3.18   reference  2.06   1.13  0.021   3.20   worst dev 0.035
+ok      2K model  2.01   2.25  0.021   4.29   reference  2.05   2.25  0.021   4.30   worst dev 0.035
+ok      4K model  1.99   4.46  0.021   6.48   reference  2.03   4.46  0.021   6.50   worst dev 0.036
+ok      8K model  1.95   8.75  0.021  10.72   reference  1.99   8.75  0.021  10.80   worst dev 0.035
+ok     16K model  1.88  16.82  0.020  18.72   reference  1.91  16.82  0.020  18.80   worst dev 0.031
+ok     32K model  1.75  31.24  0.018  33.01   reference  1.78  31.24  0.018  33.00   worst dev 0.035
+ok     64K model  1.53  54.68  0.016  56.22   reference  1.56  54.68  0.016  56.30   worst dev 0.033
+ok    128K model  1.22  87.48  0.013  88.72   reference  1.24  87.48  0.013  88.70   worst dev 0.018

@@ -1,0 +1,41 @@
+{
+  "review": "EXP22 accounting completion and residual/registry/omission static review",
+  "timestamp_utc": "2026-10-19T11:59:05.525972+00:00",
+  "artifacts": {
+    "/tmp/tessera-exp22-before-vector-accounting-8b3eb41a8d21.py": "8b3eb41a8d21eba9c9062012e26238aec9f8043f42705e3ea72a3a8b033c1704",
+    "/tmp/tessera-exp22-vector-accounting-preview.py": "9706f6dcd2671b191bfece3368a8cd27e4a548021125bb5011fd8e0c2497f0cd",
+    "/tmp/tessera-exp22-vector-accounting-patch.py": "e3c5c89d421706cbb0d52cf9e19f982d60acf2889a49c6f7bfe32d00eba8a61c",
+    "/tmp/tessera-exp22-vector-accounting.patch": "1cb81387b823fe78bda622a5af2063ba927655ad85f71ca5a7ff146d0a3661f6"
+  },
+  "execution": "No audit import/run or repository writes; scratch patch and ast.parse only",
+  "completed_static_checks": {
+    "acceptance_boundary": "candidate uses only public descriptor/challenges, source-derived RHS/inventory, factored W, sumcheck, lane reconstruction and ideal registry services; direct residual oracle is not an acceptance guard",
+    "root_classification": "exercise uses the actually committed U and source-consistent canonical RHS. D(alpha)=0 is expected full-candidate acceptance; nonroot initial/final rejection is explicit. Swapped-U is legal to register and tested against original equations.",
+    "registry_boundary": "registry fixes arbitrary base tensor+all physical masks+descriptor+physical map+derived symbols before dependent messages. Trusted original root/descriptor and supplied CU association checked in candidate; exact symbol arity avoids zip truncation. No honest-U comparison in ideal service.",
+    "mandatory_omissions": "inventory omissions cover all canonical equations; isolated false-source five-ordinal controls reach the skip-inventory variant; both lanes and missing/unconsumed opening reach strict versus value-only checker; mask/proximity omissions and base-blinding component omissions present. New skip-ideal sensitivity control present but requires lane1 polynomial fix.",
+    "accounting_patch": "expanded remaining vector predicates and equality assertions into visited scalar/schema/length observations; unchanged boolean short-circuit order, algebra/dataflow, domains/caps and typed refusal names",
+    "preserved_function_bodies": [
+      "exercise",
+      "ideal_omission_controls",
+      "runner_diagnostic_corpus",
+      "weight_table",
+      "weight_factored",
+      "ref_residuals",
+      "make_sumcheck",
+      "check_sumcheck",
+      "reference_level2"
+    ]
+  },
+  "material_issue": {
+    "location": "ideal_omission_controls lane1 q polynomial",
+    "status": "reported to root; not edited by reviewer",
+    "cause": "cat1 batch point is all ONE, k1=2,k2=4 gives lane1 column point(1,1); q=(0,-x,1,0) has coefficient MLE q3=0, so nonzero direction assertion fails",
+    "suggested_correction": "lane1 q=(0,0,-x,ONE), polynomial X^2(X-x), zero at sampled x and coefficient MLE ONE at(1,1)"
+  },
+  "pending": [
+    "root application/review of accounting patch",
+    "root correction/preflight of ideal omission control",
+    "frozen full-domain execution, exact domain/counter recount and terminal resource/verdict audit"
+  ],
+  "scope": "Conditional finite algebra under ideal PCS/coefficient-basis assumption only. No extractor, joint ZK, FS uniformity/grinding, current model counts or performance approval."
+}

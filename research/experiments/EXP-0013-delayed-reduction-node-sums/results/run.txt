@@ -1,0 +1,580 @@
+EXP-0013 delayed reduction; arm 0=split, 1=scale-first, 2=relation-first/deferred; all inputs synthetic
+check field:     3 edge products of spec/vectors/field/goldilocks.json reproduced
+check forests:   tree [2, 3, 5, 7]: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+check hand case: tree [2, 3, 5, 7]: candidate's proof accepted from root 210; against 211 rejected (level 0: FinalMismatch { round: 0 })
+check sweep:     n = 1..=12 alone and 6 two-instance batches with front-padding (one instance on no variable): bit-identical to prove_batch, verifier accepts; no fallback
+check forests:   two forests (2^2 x 2^8 leaves, 2^5 x 2^6 leaves): 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 48e3dce488e34727
+check fallback:  (i) r_3 = 0: fallback once, bit-identical, verifier accepts; (ii) r_5 = 1: no fallback, bit-identical, verifier accepts; (iii) scripted c_2 with l_2(c_2) = 0: fallback in rounds 3..12, every later message zero, bit-identical to prove_batch under the same script
+check forests:   tree [2, 3, 5, 7]: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+check hand case: tree [2, 3, 5, 7]: candidate's proof accepted from root 210; against 211 rejected (level 0: FinalMismatch { round: 0 })
+check sweep:     n = 1..=12 alone and 6 two-instance batches with front-padding (one instance on no variable): bit-identical to prove_batch, verifier accepts; no fallback
+check forests:   two forests (2^2 x 2^8 leaves, 2^5 x 2^6 leaves): 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 48e3dce488e34727
+check fallback:  (i) r_3 = 0: fallback once, bit-identical, verifier accepts; (ii) r_5 = 1: no fallback, bit-identical, verifier accepts; (iii) scripted c_2 with l_2(c_2) = 0: fallback in rounds 3..12, every later message zero, bit-identical to prove_batch under the same script
+check forests:   tree [2, 3, 5, 7]: 2 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 7b02d6bbffd83d65
+check hand case: tree [2, 3, 5, 7]: candidate's proof accepted from root 210; against 211 rejected (level 0: FinalMismatch { round: 0 })
+check sweep:     n = 1..=12 alone and 6 two-instance batches with front-padding (one instance on no variable): bit-identical to prove_batch, verifier accepts; no fallback
+check forests:   two forests (2^2 x 2^8 leaves, 2^5 x 2^6 leaves): 8 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 2 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 48e3dce488e34727
+check fallback:  (i) r_3 = 0: fallback once, bit-identical, verifier accepts; (ii) r_5 = 1: no fallback, bit-identical, verifier accepts; (iii) scripted c_2 with l_2(c_2) = 0: fallback in rounds 3..12, every later message zero, bit-identical to prove_batch under the same script
+check fraction leaf 2^1 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 171a3a7606a24e0662cfc90001db5c5cbc4d2c2a8bd7f163821172081e98fffe
+check fraction leaf 2^1 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 171a3a7606a24e0662cfc90001db5c5cbc4d2c2a8bd7f163821172081e98fffe
+check fraction leaf 2^1 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 171a3a7606a24e0662cfc90001db5c5cbc4d2c2a8bd7f163821172081e98fffe
+check fraction generic 2^1 point0 arm 0: production proof/transcript identical, tv-core accepts; digest c3958c85aab291133fbfff1fa8192c2fbcbf36d9173189332c70ed547a399258
+check fraction generic 2^1 point0 arm 1: production proof/transcript identical, tv-core accepts; digest c3958c85aab291133fbfff1fa8192c2fbcbf36d9173189332c70ed547a399258
+check fraction generic 2^1 point0 arm 2: production proof/transcript identical, tv-core accepts; digest c3958c85aab291133fbfff1fa8192c2fbcbf36d9173189332c70ed547a399258
+check fraction leaf 2^2 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 7a0453a843ecbdd5b7d4dc1223156d8c417258367ad6f8146258a990527fd869
+check fraction leaf 2^2 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 7a0453a843ecbdd5b7d4dc1223156d8c417258367ad6f8146258a990527fd869
+check fraction leaf 2^2 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 7a0453a843ecbdd5b7d4dc1223156d8c417258367ad6f8146258a990527fd869
+check fraction generic 2^2 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 56497fd349df69118a6b937a5884e6e0c5cab4d608b7977ca34d661df26a0911
+check fraction generic 2^2 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 56497fd349df69118a6b937a5884e6e0c5cab4d608b7977ca34d661df26a0911
+check fraction generic 2^2 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 56497fd349df69118a6b937a5884e6e0c5cab4d608b7977ca34d661df26a0911
+check fraction leaf 2^3 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 1e5623d005bf808f426f86953f278a1e1ff860db6fdf1aae6058ad307f6e02d4
+check fraction leaf 2^3 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 1e5623d005bf808f426f86953f278a1e1ff860db6fdf1aae6058ad307f6e02d4
+check fraction leaf 2^3 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 1e5623d005bf808f426f86953f278a1e1ff860db6fdf1aae6058ad307f6e02d4
+check fraction generic 2^3 point0 arm 0: production proof/transcript identical, tv-core accepts; digest fc4195dddcec253441cd503cf3ca5980a291ad008360f0044ffd52d72bb40119
+check fraction generic 2^3 point0 arm 1: production proof/transcript identical, tv-core accepts; digest fc4195dddcec253441cd503cf3ca5980a291ad008360f0044ffd52d72bb40119
+check fraction generic 2^3 point0 arm 2: production proof/transcript identical, tv-core accepts; digest fc4195dddcec253441cd503cf3ca5980a291ad008360f0044ffd52d72bb40119
+check fraction leaf 2^4 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 908ce39e21d512a8b00f89b1a2bf5c0467b73b51d32967ada57c70bbe372c1ed
+check fraction leaf 2^4 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 908ce39e21d512a8b00f89b1a2bf5c0467b73b51d32967ada57c70bbe372c1ed
+check fraction leaf 2^4 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 908ce39e21d512a8b00f89b1a2bf5c0467b73b51d32967ada57c70bbe372c1ed
+check fraction generic 2^4 point0 arm 0: production proof/transcript identical, tv-core accepts; digest c9451e34b3cdf3c510329d71af96fa34313858388231c52b9bfb97d5b5ba4e25
+check fraction generic 2^4 point0 arm 1: production proof/transcript identical, tv-core accepts; digest c9451e34b3cdf3c510329d71af96fa34313858388231c52b9bfb97d5b5ba4e25
+check fraction generic 2^4 point0 arm 2: production proof/transcript identical, tv-core accepts; digest c9451e34b3cdf3c510329d71af96fa34313858388231c52b9bfb97d5b5ba4e25
+check fraction leaf 2^5 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 627ecfad139d255885b11296ee3adff5ce92e44843ebfd371f9e38f3828cc5a2
+check fraction leaf 2^5 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 627ecfad139d255885b11296ee3adff5ce92e44843ebfd371f9e38f3828cc5a2
+check fraction leaf 2^5 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 627ecfad139d255885b11296ee3adff5ce92e44843ebfd371f9e38f3828cc5a2
+check fraction generic 2^5 point0 arm 0: production proof/transcript identical, tv-core accepts; digest cad25f80b141746ee7d6733529a4a025f1df7981dbe63c70f0195ec5bf8acf4e
+check fraction generic 2^5 point0 arm 1: production proof/transcript identical, tv-core accepts; digest cad25f80b141746ee7d6733529a4a025f1df7981dbe63c70f0195ec5bf8acf4e
+check fraction generic 2^5 point0 arm 2: production proof/transcript identical, tv-core accepts; digest cad25f80b141746ee7d6733529a4a025f1df7981dbe63c70f0195ec5bf8acf4e
+check fraction leaf 2^6 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 66ff33c8f50f8827d4c3dc06231794b846b329490888a0776cf8c933b0d825d0
+check fraction leaf 2^6 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 66ff33c8f50f8827d4c3dc06231794b846b329490888a0776cf8c933b0d825d0
+check fraction leaf 2^6 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 66ff33c8f50f8827d4c3dc06231794b846b329490888a0776cf8c933b0d825d0
+check fraction generic 2^6 point0 arm 0: production proof/transcript identical, tv-core accepts; digest f0c3d91bedac6da6fa4f3d1e569017f70c65818c0d6246d2914ceca82aa24f0a
+check fraction generic 2^6 point0 arm 1: production proof/transcript identical, tv-core accepts; digest f0c3d91bedac6da6fa4f3d1e569017f70c65818c0d6246d2914ceca82aa24f0a
+check fraction generic 2^6 point0 arm 2: production proof/transcript identical, tv-core accepts; digest f0c3d91bedac6da6fa4f3d1e569017f70c65818c0d6246d2914ceca82aa24f0a
+check fraction leaf 2^7 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 22ec136f5e731fbcf8b79de3f74d4d7ce54284bac8d0a477d4444276c306255d
+check fraction leaf 2^7 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 22ec136f5e731fbcf8b79de3f74d4d7ce54284bac8d0a477d4444276c306255d
+check fraction leaf 2^7 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 22ec136f5e731fbcf8b79de3f74d4d7ce54284bac8d0a477d4444276c306255d
+check fraction generic 2^7 point0 arm 0: production proof/transcript identical, tv-core accepts; digest a189c8aa640d5eb0afd2eb1688a1f43c1deb217ecc6c4dac2a0edb1781f3f0c5
+check fraction generic 2^7 point0 arm 1: production proof/transcript identical, tv-core accepts; digest a189c8aa640d5eb0afd2eb1688a1f43c1deb217ecc6c4dac2a0edb1781f3f0c5
+check fraction generic 2^7 point0 arm 2: production proof/transcript identical, tv-core accepts; digest a189c8aa640d5eb0afd2eb1688a1f43c1deb217ecc6c4dac2a0edb1781f3f0c5
+check fraction leaf 2^8 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 06869990b5d0008cc54bbd8dda23fcb8b4ba6863e5f5fa760dcc6c706cf5764c
+check fraction leaf 2^8 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 06869990b5d0008cc54bbd8dda23fcb8b4ba6863e5f5fa760dcc6c706cf5764c
+check fraction leaf 2^8 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 06869990b5d0008cc54bbd8dda23fcb8b4ba6863e5f5fa760dcc6c706cf5764c
+check fraction generic 2^8 point0 arm 0: production proof/transcript identical, tv-core accepts; digest b730dde5b8a9e0cd1fe7db9efd29b883c84877c07daba1250e1f217e3d5853f4
+check fraction generic 2^8 point0 arm 1: production proof/transcript identical, tv-core accepts; digest b730dde5b8a9e0cd1fe7db9efd29b883c84877c07daba1250e1f217e3d5853f4
+check fraction generic 2^8 point0 arm 2: production proof/transcript identical, tv-core accepts; digest b730dde5b8a9e0cd1fe7db9efd29b883c84877c07daba1250e1f217e3d5853f4
+check fraction leaf 2^9 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 4307581c312048e0bbd5cc1f331353a834983eca519c9ce92b955d6f4f70a643
+check fraction leaf 2^9 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 4307581c312048e0bbd5cc1f331353a834983eca519c9ce92b955d6f4f70a643
+check fraction leaf 2^9 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 4307581c312048e0bbd5cc1f331353a834983eca519c9ce92b955d6f4f70a643
+check fraction generic 2^9 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 5c73fb2a796d47e0a1af2c1e2d5afee500fbdf90f8825f9253cb9fba33cd9bfd
+check fraction generic 2^9 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 5c73fb2a796d47e0a1af2c1e2d5afee500fbdf90f8825f9253cb9fba33cd9bfd
+check fraction generic 2^9 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 5c73fb2a796d47e0a1af2c1e2d5afee500fbdf90f8825f9253cb9fba33cd9bfd
+check fraction leaf 2^10 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 9c3433a974e523bfb1ee6b846a189abb79214a5ce08a0fdd4efc3829ff993bcb
+check fraction leaf 2^10 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 9c3433a974e523bfb1ee6b846a189abb79214a5ce08a0fdd4efc3829ff993bcb
+check fraction leaf 2^10 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 9c3433a974e523bfb1ee6b846a189abb79214a5ce08a0fdd4efc3829ff993bcb
+check fraction generic 2^10 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 5a3dcd598445b9f6356dd60c5cbe40bd536d4e95a51a4ca01cbf1a21fb475018
+check fraction generic 2^10 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 5a3dcd598445b9f6356dd60c5cbe40bd536d4e95a51a4ca01cbf1a21fb475018
+check fraction generic 2^10 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 5a3dcd598445b9f6356dd60c5cbe40bd536d4e95a51a4ca01cbf1a21fb475018
+check fraction leaf 2^11 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 8960ef4cbf4dc4b868bcb920acfaa14917ce4699e3f5bfda80e719368548fe6f
+check fraction leaf 2^11 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 8960ef4cbf4dc4b868bcb920acfaa14917ce4699e3f5bfda80e719368548fe6f
+check fraction leaf 2^11 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 8960ef4cbf4dc4b868bcb920acfaa14917ce4699e3f5bfda80e719368548fe6f
+check fraction generic 2^11 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 5dc61e293f4284dbc59507077ba8f65f0b6331260057bf7c1092052f365132bf
+check fraction generic 2^11 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 5dc61e293f4284dbc59507077ba8f65f0b6331260057bf7c1092052f365132bf
+check fraction generic 2^11 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 5dc61e293f4284dbc59507077ba8f65f0b6331260057bf7c1092052f365132bf
+check fraction leaf 2^12 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 1d93a49781be45f23668a7e2f57dbf9b583a27009253f7192151f6bc5a890302
+check fraction leaf 2^12 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 1d93a49781be45f23668a7e2f57dbf9b583a27009253f7192151f6bc5a890302
+check fraction leaf 2^12 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 1d93a49781be45f23668a7e2f57dbf9b583a27009253f7192151f6bc5a890302
+check fraction generic 2^12 point0 arm 0: production proof/transcript identical, tv-core accepts; digest 711ed500bc33c0e6b1563dc231a9615f1a60ea85b9eb0b4a349b5cc5e8ae8007
+check fraction generic 2^12 point0 arm 1: production proof/transcript identical, tv-core accepts; digest 711ed500bc33c0e6b1563dc231a9615f1a60ea85b9eb0b4a349b5cc5e8ae8007
+check fraction generic 2^12 point0 arm 2: production proof/transcript identical, tv-core accepts; digest 711ed500bc33c0e6b1563dc231a9615f1a60ea85b9eb0b4a349b5cc5e8ae8007
+check fraction leaf 2^8 point1 arm 0: production proof/transcript identical, tv-core accepts; digest 126ff0e79af0d3506155a87bfc9950fce1750deae8ecf0bf89c77a34654402b5
+check fraction leaf 2^8 point1 arm 1: production proof/transcript identical, tv-core accepts; digest 126ff0e79af0d3506155a87bfc9950fce1750deae8ecf0bf89c77a34654402b5
+check fraction leaf 2^8 point1 arm 2: production proof/transcript identical, tv-core accepts; digest 126ff0e79af0d3506155a87bfc9950fce1750deae8ecf0bf89c77a34654402b5
+check fraction generic 2^8 point1 arm 0: production proof/transcript identical, tv-core accepts; digest f720165f21ed40d4e910529472955103cc43e896170385ad02dd1bb0b2ccdcaa
+check fraction generic 2^8 point1 arm 1: production proof/transcript identical, tv-core accepts; digest f720165f21ed40d4e910529472955103cc43e896170385ad02dd1bb0b2ccdcaa
+check fraction generic 2^8 point1 arm 2: production proof/transcript identical, tv-core accepts; digest f720165f21ed40d4e910529472955103cc43e896170385ad02dd1bb0b2ccdcaa
+check fraction leaf 2^8 point2 arm 0: production proof/transcript identical, tv-core accepts; digest f2fd7eedc03f21fd0ca57ef593e2b201c0dea930112c8951d309a235485c7420
+check fraction leaf 2^8 point2 arm 1: production proof/transcript identical, tv-core accepts; digest f2fd7eedc03f21fd0ca57ef593e2b201c0dea930112c8951d309a235485c7420
+check fraction leaf 2^8 point2 arm 2: production proof/transcript identical, tv-core accepts; digest f2fd7eedc03f21fd0ca57ef593e2b201c0dea930112c8951d309a235485c7420
+check fraction generic 2^8 point2 arm 0: production proof/transcript identical, tv-core accepts; digest a26ad0e282ce63e30e4e4402cf2aff461866d13c3a4a65865b39d46de30a2bf5
+check fraction generic 2^8 point2 arm 1: production proof/transcript identical, tv-core accepts; digest a26ad0e282ce63e30e4e4402cf2aff461866d13c3a4a65865b39d46de30a2bf5
+check fraction generic 2^8 point2 arm 2: production proof/transcript identical, tv-core accepts; digest a26ad0e282ce63e30e4e4402cf2aff461866d13c3a4a65865b39d46de30a2bf5
+check forests:   forest 2^8x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest e7341ef840051a0b
+check forests:   forest 2^8x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest e7341ef840051a0b
+check forests:   forest 2^10x2^12: 12 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 76e8a935fbf7ce02
+check forests:   forest 2^10x2^12: 12 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 76e8a935fbf7ce02
+check forests:   forest 2^0x2^22: 22 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 13122752eefe1f26
+check forests:   forest 2^0x2^22: 22 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 13122752eefe1f26
+check forests:   forest 2^6x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 28b6c9aafbc51093
+check forests:   forest 2^6x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 28b6c9aafbc51093
+check forests:   forest 2^7x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 4b2719a8fd642ec2
+check forests:   forest 2^7x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 4b2719a8fd642ec2
+check product level 2^21 arm 0: production proof/transcript identical, tv-core accepts; digest 7745989d1976f06793ab4e2eda7542b8b3254286d130a273a062fa5bb2329829
+check product level 2^21 arm 1: production proof/transcript identical, tv-core accepts; digest 7745989d1976f06793ab4e2eda7542b8b3254286d130a273a062fa5bb2329829
+check product level 2^21 arm 2: production proof/transcript identical, tv-core accepts; digest 7745989d1976f06793ab4e2eda7542b8b3254286d130a273a062fa5bb2329829
+check fraction leaf 2^21 point0 arm 0: production proof/transcript identical, tv-core accepts; digest d230aeb17a2ec70d915a3b5d907c3c70f9e3f972c95398fccd122e7e9bb0a780
+check fraction leaf 2^21 point0 arm 1: production proof/transcript identical, tv-core accepts; digest d230aeb17a2ec70d915a3b5d907c3c70f9e3f972c95398fccd122e7e9bb0a780
+check fraction leaf 2^21 point0 arm 2: production proof/transcript identical, tv-core accepts; digest d230aeb17a2ec70d915a3b5d907c3c70f9e3f972c95398fccd122e7e9bb0a780
+check fraction generic 2^21 point0 arm 0: production proof/transcript identical, tv-core accepts; digest e47ecc93d46cd2c8ab8c90cdac75d99088e4680b1d2a1d2384433eadc588e0b4
+check fraction generic 2^21 point0 arm 1: production proof/transcript identical, tv-core accepts; digest e47ecc93d46cd2c8ab8c90cdac75d99088e4680b1d2a1d2384433eadc588e0b4
+check fraction generic 2^21 point0 arm 2: production proof/transcript identical, tv-core accepts; digest e47ecc93d46cd2c8ab8c90cdac75d99088e4680b1d2a1d2384433eadc588e0b4
+check forests:   forest 2^8x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest e7341ef840051a0b
+check forests:   forest 2^8x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest e7341ef840051a0b
+RAW batch_seconds=0.078647375 executions=1
+RAW batch_seconds=0.076696959 executions=1
+RAW batch_seconds=0.077504458 executions=1
+RAW batch_seconds=0.077388125 executions=1
+RAW batch_seconds=0.078360167 executions=1
+RAW batch_seconds=0.079749084 executions=1
+RAW batch_seconds=0.077960917 executions=1
+RAW batch_seconds=0.078100166 executions=1
+RAW batch_seconds=0.077656458 executions=1
+RAW batch_seconds=0.077759792 executions=1
+RAW batch_seconds=0.078325084 executions=1
+RAW batch_seconds=0.078694584 executions=1
+RAW batch_seconds=0.078183417 executions=1
+forest 2^8x2^14: production context                               18.630 ns/leaf   min    18.451  max    19.014  CV  0.84%  (   78.142 ms x1)
+RAW batch_seconds=0.075007542 executions=1
+RAW batch_seconds=0.075947959 executions=1
+RAW batch_seconds=0.075688084 executions=1
+RAW batch_seconds=0.075700667 executions=1
+RAW batch_seconds=0.079846125 executions=1
+RAW batch_seconds=0.075621208 executions=1
+RAW batch_seconds=0.0756615 executions=1
+RAW batch_seconds=0.07557925 executions=1
+RAW batch_seconds=0.075377916 executions=1
+RAW batch_seconds=0.074755667 executions=1
+RAW batch_seconds=0.075378458 executions=1
+RAW batch_seconds=0.075250166 executions=1
+RAW batch_seconds=0.076385875 executions=1
+forest 2^8x2^14: split                                            18.024 ns/leaf   min    17.823  max    19.037  CV  1.88%  (   75.600 ms x1)
+RAW batch_seconds=0.056077125 executions=1
+RAW batch_seconds=0.0565305 executions=1
+RAW batch_seconds=0.056584375 executions=1
+RAW batch_seconds=0.057208541 executions=1
+RAW batch_seconds=0.058761375 executions=1
+RAW batch_seconds=0.061563667 executions=1
+RAW batch_seconds=0.057065542 executions=1
+RAW batch_seconds=0.05618625 executions=1
+RAW batch_seconds=0.056043375 executions=1
+RAW batch_seconds=0.056820125 executions=1
+RAW batch_seconds=0.0561325 executions=1
+RAW batch_seconds=0.056789667 executions=1
+RAW batch_seconds=0.056069333 executions=1
+forest 2^8x2^14: deferred                                         13.543 ns/leaf   min    13.362  max    14.678  CV  3.00%  (   56.805 ms x1)
+check forests:   forest 2^10x2^12: 12 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 76e8a935fbf7ce02
+check forests:   forest 2^10x2^12: 12 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 76e8a935fbf7ce02
+RAW batch_seconds=0.083892875 executions=1
+RAW batch_seconds=0.081036 executions=1
+RAW batch_seconds=0.077034542 executions=1
+RAW batch_seconds=0.077013042 executions=1
+RAW batch_seconds=0.077479291 executions=1
+RAW batch_seconds=0.07748225 executions=1
+RAW batch_seconds=0.077508375 executions=1
+RAW batch_seconds=0.076685417 executions=1
+RAW batch_seconds=0.077035416 executions=1
+RAW batch_seconds=0.077734333 executions=1
+RAW batch_seconds=0.077247125 executions=1
+RAW batch_seconds=0.07666775 executions=1
+RAW batch_seconds=0.076821292 executions=1
+forest 2^10x2^12: production context                              18.392 ns/leaf   min    18.279  max    18.533  CV  0.49%  (   77.141 ms x1)
+RAW batch_seconds=0.078202583 executions=1
+RAW batch_seconds=0.074976333 executions=1
+RAW batch_seconds=0.074644042 executions=1
+RAW batch_seconds=0.075558834 executions=1
+RAW batch_seconds=0.07553425 executions=1
+RAW batch_seconds=0.075154708 executions=1
+RAW batch_seconds=0.07536925 executions=1
+RAW batch_seconds=0.075158792 executions=1
+RAW batch_seconds=0.07511325 executions=1
+RAW batch_seconds=0.075605625 executions=1
+RAW batch_seconds=0.075003583 executions=1
+RAW batch_seconds=0.076024959 executions=1
+RAW batch_seconds=0.076176875 executions=1
+forest 2^10x2^12: split                                           17.989 ns/leaf   min    17.882  max    18.162  CV  0.52%  (   75.452 ms x1)
+RAW batch_seconds=0.056041708 executions=1
+RAW batch_seconds=0.056357875 executions=1
+RAW batch_seconds=0.055959958 executions=1
+RAW batch_seconds=0.056150875 executions=1
+RAW batch_seconds=0.056275542 executions=1
+RAW batch_seconds=0.056273417 executions=1
+RAW batch_seconds=0.056214416 executions=1
+RAW batch_seconds=0.056376792 executions=1
+RAW batch_seconds=0.056526 executions=1
+RAW batch_seconds=0.055979 executions=1
+RAW batch_seconds=0.055976791 executions=1
+RAW batch_seconds=0.05618775 executions=1
+RAW batch_seconds=0.056305916 executions=1
+forest 2^10x2^12: deferred                                        13.410 ns/leaf   min    13.346  max    13.477  CV  0.30%  (   56.244 ms x1)
+check forests:   forest 2^0x2^22: 22 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 13122752eefe1f26
+check forests:   forest 2^0x2^22: 22 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 13122752eefe1f26
+RAW batch_seconds=0.077686125 executions=1
+RAW batch_seconds=0.077504875 executions=1
+RAW batch_seconds=0.077952583 executions=1
+RAW batch_seconds=0.077709042 executions=1
+RAW batch_seconds=0.077317958 executions=1
+RAW batch_seconds=0.078626208 executions=1
+RAW batch_seconds=0.078028084 executions=1
+RAW batch_seconds=0.077515417 executions=1
+RAW batch_seconds=0.077290833 executions=1
+RAW batch_seconds=0.077378958 executions=1
+RAW batch_seconds=0.0770425 executions=1
+RAW batch_seconds=0.077805209 executions=1
+RAW batch_seconds=0.076991125 executions=1
+forest 2^0x2^22: production context                               18.465 ns/leaf   min    18.356  max    18.746  CV  0.64%  (   77.447 ms x1)
+RAW batch_seconds=0.074364125 executions=1
+RAW batch_seconds=0.07513075 executions=1
+RAW batch_seconds=0.075819709 executions=1
+RAW batch_seconds=0.075190042 executions=1
+RAW batch_seconds=0.07597425 executions=1
+RAW batch_seconds=0.077813542 executions=1
+RAW batch_seconds=0.077432666 executions=1
+RAW batch_seconds=0.076611792 executions=1
+RAW batch_seconds=0.076398625 executions=1
+RAW batch_seconds=0.076345167 executions=1
+RAW batch_seconds=0.075261833 executions=1
+RAW batch_seconds=0.075903583 executions=1
+RAW batch_seconds=0.075377167 executions=1
+forest 2^0x2^22: split                                            18.158 ns/leaf   min    17.927  max    18.552  CV  1.16%  (   76.160 ms x1)
+RAW batch_seconds=0.0564325 executions=1
+RAW batch_seconds=0.056030958 executions=1
+RAW batch_seconds=0.056478875 executions=1
+RAW batch_seconds=0.056333417 executions=1
+RAW batch_seconds=0.056051667 executions=1
+RAW batch_seconds=0.055911542 executions=1
+RAW batch_seconds=0.055701917 executions=1
+RAW batch_seconds=0.055759792 executions=1
+RAW batch_seconds=0.055551 executions=1
+RAW batch_seconds=0.055961708 executions=1
+RAW batch_seconds=0.056123292 executions=1
+RAW batch_seconds=0.055893333 executions=1
+RAW batch_seconds=0.055985125 executions=1
+forest 2^0x2^22: deferred                                         13.336 ns/leaf   min    13.244  max    13.431  CV  0.40%  (   55.937 ms x1)
+check forests:   forest 2^6x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 28b6c9aafbc51093
+check forests:   forest 2^6x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 28b6c9aafbc51093
+RAW batch_seconds=0.058497208 executions=3
+RAW batch_seconds=0.058927166 executions=3
+RAW batch_seconds=0.058831 executions=3
+RAW batch_seconds=0.058847833 executions=3
+RAW batch_seconds=0.058497791 executions=3
+RAW batch_seconds=0.058807709 executions=3
+RAW batch_seconds=0.058587875 executions=3
+RAW batch_seconds=0.059203625 executions=3
+RAW batch_seconds=0.058729417 executions=3
+RAW batch_seconds=0.058597 executions=3
+RAW batch_seconds=0.058677375 executions=3
+RAW batch_seconds=0.059072167 executions=3
+RAW batch_seconds=0.058584875 executions=3
+forest 2^6x2^14: production context                               18.661 ns/leaf   min    18.596  max    18.820  CV  0.39%  (   19.568 ms x3)
+RAW batch_seconds=0.0570265 executions=3
+RAW batch_seconds=0.057019291 executions=3
+RAW batch_seconds=0.057348875 executions=3
+RAW batch_seconds=0.0586905 executions=3
+RAW batch_seconds=0.057187625 executions=3
+RAW batch_seconds=0.05699775 executions=3
+RAW batch_seconds=0.056923125 executions=3
+RAW batch_seconds=0.0569455 executions=3
+RAW batch_seconds=0.056960791 executions=3
+RAW batch_seconds=0.057345625 executions=3
+RAW batch_seconds=0.0575455 executions=3
+RAW batch_seconds=0.057288458 executions=3
+RAW batch_seconds=0.059598375 executions=3
+forest 2^6x2^14: split                                            18.195 ns/leaf   min    18.095  max    18.946  CV  1.55%  (   19.079 ms x3)
+RAW batch_seconds=0.043572334 executions=3
+RAW batch_seconds=0.043760333 executions=3
+RAW batch_seconds=0.043741458 executions=3
+RAW batch_seconds=0.043239459 executions=3
+RAW batch_seconds=0.043242541 executions=3
+RAW batch_seconds=0.043437 executions=3
+RAW batch_seconds=0.043506666 executions=3
+RAW batch_seconds=0.043625125 executions=3
+RAW batch_seconds=0.04329075 executions=3
+RAW batch_seconds=0.0434345 executions=3
+RAW batch_seconds=0.04355975 executions=3
+RAW batch_seconds=0.043718 executions=3
+RAW batch_seconds=0.043519458 executions=3
+forest 2^6x2^14: deferred                                         13.819 ns/leaf   min    13.745  max    13.898  CV  0.37%  (   14.491 ms x3)
+check forests:   forest 2^7x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 4b2719a8fd642ec2
+check forests:   forest 2^7x2^14: 14 level(s) bit-identical to prove_forests; transcripts agree; verifier accepts from the true roots; 1 leaf claim(s) equal the leaves' MLE; fallbacks 0; digest 4b2719a8fd642ec2
+RAW batch_seconds=0.03924775 executions=1
+RAW batch_seconds=0.039342917 executions=1
+RAW batch_seconds=0.039210083 executions=1
+RAW batch_seconds=0.039264 executions=1
+RAW batch_seconds=0.040085667 executions=1
+RAW batch_seconds=0.039107334 executions=1
+RAW batch_seconds=0.039173417 executions=1
+RAW batch_seconds=0.038972 executions=1
+RAW batch_seconds=0.039417459 executions=1
+RAW batch_seconds=0.039269209 executions=1
+RAW batch_seconds=0.039408625 executions=1
+RAW batch_seconds=0.0393375 executions=1
+RAW batch_seconds=0.03913375 executions=1
+forest 2^7x2^14: production context                               18.724 ns/leaf   min    18.583  max    19.114  CV  0.77%  (   39.267 ms x1)
+RAW batch_seconds=0.076171 executions=2
+RAW batch_seconds=0.075812334 executions=2
+RAW batch_seconds=0.076127292 executions=2
+RAW batch_seconds=0.076025917 executions=2
+RAW batch_seconds=0.076220583 executions=2
+RAW batch_seconds=0.076730166 executions=2
+RAW batch_seconds=0.075597292 executions=2
+RAW batch_seconds=0.076199208 executions=2
+RAW batch_seconds=0.075851209 executions=2
+RAW batch_seconds=0.075522208 executions=2
+RAW batch_seconds=0.07584725 executions=2
+RAW batch_seconds=0.075122584 executions=2
+RAW batch_seconds=0.075001875 executions=2
+forest 2^7x2^14: split                                            18.084 ns/leaf   min    17.882  max    18.294  CV  0.69%  (   37.925 ms x2)
+RAW batch_seconds=0.056796083 executions=2
+RAW batch_seconds=0.057341792 executions=2
+RAW batch_seconds=0.056049833 executions=2
+RAW batch_seconds=0.05630425 executions=2
+RAW batch_seconds=0.0559745 executions=2
+RAW batch_seconds=0.056023375 executions=2
+RAW batch_seconds=0.056259541 executions=2
+RAW batch_seconds=0.056815083 executions=2
+RAW batch_seconds=0.057162542 executions=2
+RAW batch_seconds=0.056839208 executions=2
+RAW batch_seconds=0.057083125 executions=2
+RAW batch_seconds=0.056964333 executions=2
+RAW batch_seconds=0.056631666 executions=2
+forest 2^7x2^14: deferred                                         13.524 ns/leaf   min    13.345  max    13.629  CV  0.77%  (   28.362 ms x2)
+check product level 2^21 arm 0: production proof/transcript identical, tv-core accepts; digest 7745989d1976f06793ab4e2eda7542b8b3254286d130a273a062fa5bb2329829
+check product level 2^21 arm 1: production proof/transcript identical, tv-core accepts; digest 7745989d1976f06793ab4e2eda7542b8b3254286d130a273a062fa5bb2329829
+check product level 2^21 arm 2: production proof/transcript identical, tv-core accepts; digest 7745989d1976f06793ab4e2eda7542b8b3254286d130a273a062fa5bb2329829
+RAW batch_seconds=0.059118792 executions=1
+RAW batch_seconds=0.058735959 executions=1
+RAW batch_seconds=0.057665542 executions=1
+RAW batch_seconds=0.057553458 executions=1
+RAW batch_seconds=0.057382041 executions=1
+RAW batch_seconds=0.057849166 executions=1
+RAW batch_seconds=0.057161667 executions=1
+RAW batch_seconds=0.05731625 executions=1
+RAW batch_seconds=0.058899291 executions=1
+RAW batch_seconds=0.058321125 executions=1
+RAW batch_seconds=0.058025875 executions=1
+RAW batch_seconds=0.057715833 executions=1
+RAW batch_seconds=0.05894775 executions=1
+product level 2^21: production context                            27.553 ns/entry  min    27.257  max    28.108  CV  1.09%  (   57.782 ms x1)
+RAW batch_seconds=0.070792833 executions=2
+RAW batch_seconds=0.07118625 executions=2
+RAW batch_seconds=0.071683375 executions=2
+RAW batch_seconds=0.070699709 executions=2
+RAW batch_seconds=0.071021625 executions=2
+RAW batch_seconds=0.070990125 executions=2
+RAW batch_seconds=0.072434791 executions=2
+RAW batch_seconds=0.071327209 executions=2
+RAW batch_seconds=0.071972667 executions=2
+RAW batch_seconds=0.071713958 executions=2
+RAW batch_seconds=0.071614625 executions=2
+RAW batch_seconds=0.071517167 executions=2
+RAW batch_seconds=0.07131625 executions=2
+product level 2^21: split                                         17.028 ns/entry  min    16.856  max    17.270  CV  0.71%  (   35.711 ms x2)
+RAW batch_seconds=0.052050666 executions=2
+RAW batch_seconds=0.052138542 executions=2
+RAW batch_seconds=0.051847167 executions=2
+RAW batch_seconds=0.052176583 executions=2
+RAW batch_seconds=0.052207959 executions=2
+RAW batch_seconds=0.052241917 executions=2
+RAW batch_seconds=0.052443042 executions=2
+RAW batch_seconds=0.052158042 executions=2
+RAW batch_seconds=0.052484542 executions=2
+RAW batch_seconds=0.051924666 executions=2
+RAW batch_seconds=0.052226375 executions=2
+RAW batch_seconds=0.052544584 executions=2
+RAW batch_seconds=0.05217375 executions=2
+product level 2^21: deferred                                      12.450 ns/entry  min    12.380  max    12.528  CV  0.35%  (   26.109 ms x2)
+check fraction leaf 2^21 point0 arm 0: production proof/transcript identical, tv-core accepts; digest d230aeb17a2ec70d915a3b5d907c3c70f9e3f972c95398fccd122e7e9bb0a780
+check fraction leaf 2^21 point0 arm 1: production proof/transcript identical, tv-core accepts; digest d230aeb17a2ec70d915a3b5d907c3c70f9e3f972c95398fccd122e7e9bb0a780
+check fraction leaf 2^21 point0 arm 2: production proof/transcript identical, tv-core accepts; digest d230aeb17a2ec70d915a3b5d907c3c70f9e3f972c95398fccd122e7e9bb0a780
+RAW batch_seconds=0.172529917 executions=1
+RAW batch_seconds=0.172682834 executions=1
+RAW batch_seconds=0.173667958 executions=1
+RAW batch_seconds=0.173331875 executions=1
+RAW batch_seconds=0.175057459 executions=1
+RAW batch_seconds=0.176092541 executions=1
+RAW batch_seconds=0.174782459 executions=1
+RAW batch_seconds=0.171292625 executions=1
+RAW batch_seconds=0.173294708 executions=1
+RAW batch_seconds=0.173931083 executions=1
+RAW batch_seconds=0.173075042 executions=1
+RAW batch_seconds=0.174161958 executions=1
+RAW batch_seconds=0.17511375 executions=1
+fraction leaf 2^21 point0: production context                     82.992 ns/entry  min    81.679  max    83.967  CV  0.78%  (  174.047 ms x1)
+RAW batch_seconds=0.082070541 executions=1
+RAW batch_seconds=0.082604709 executions=1
+RAW batch_seconds=0.081911708 executions=1
+RAW batch_seconds=0.082751583 executions=1
+RAW batch_seconds=0.082489125 executions=1
+RAW batch_seconds=0.082116166 executions=1
+RAW batch_seconds=0.081702458 executions=1
+RAW batch_seconds=0.08164675 executions=1
+RAW batch_seconds=0.0812125 executions=1
+RAW batch_seconds=0.080790125 executions=1
+RAW batch_seconds=0.081040209 executions=1
+RAW batch_seconds=0.08059075 executions=1
+RAW batch_seconds=0.08147225 executions=1
+fraction leaf 2^21 point0: split                                  38.891 ns/entry  min    38.429  max    39.459  CV  0.87%  (   81.560 ms x1)
+RAW batch_seconds=0.053663959 executions=1
+RAW batch_seconds=0.0538575 executions=1
+RAW batch_seconds=0.053406542 executions=1
+RAW batch_seconds=0.053607 executions=1
+RAW batch_seconds=0.053418625 executions=1
+RAW batch_seconds=0.05337625 executions=1
+RAW batch_seconds=0.053541417 executions=1
+RAW batch_seconds=0.053586291 executions=1
+RAW batch_seconds=0.053800916 executions=1
+RAW batch_seconds=0.052958417 executions=1
+RAW batch_seconds=0.054105584 executions=1
+RAW batch_seconds=0.054579708 executions=1
+RAW batch_seconds=0.05350425 executions=1
+fraction leaf 2^21 point0: scale-first                            25.541 ns/entry  min    25.253  max    26.026  CV  0.82%  (   53.564 ms x1)
+RAW batch_seconds=0.072553791 executions=1
+RAW batch_seconds=0.072395375 executions=1
+RAW batch_seconds=0.072362375 executions=1
+RAW batch_seconds=0.072315167 executions=1
+RAW batch_seconds=0.072874541 executions=1
+RAW batch_seconds=0.0731425 executions=1
+RAW batch_seconds=0.071876417 executions=1
+RAW batch_seconds=0.072258833 executions=1
+RAW batch_seconds=0.074417125 executions=1
+RAW batch_seconds=0.0734415 executions=1
+RAW batch_seconds=0.0719125 executions=1
+RAW batch_seconds=0.071978625 executions=1
+RAW batch_seconds=0.072140125 executions=1
+fraction leaf 2^21 point0: relation-first                         34.469 ns/entry  min    34.273  max    35.485  CV  1.14%  (   72.287 ms x1)
+check fraction generic 2^21 point0 arm 0: production proof/transcript identical, tv-core accepts; digest e47ecc93d46cd2c8ab8c90cdac75d99088e4680b1d2a1d2384433eadc588e0b4
+check fraction generic 2^21 point0 arm 1: production proof/transcript identical, tv-core accepts; digest e47ecc93d46cd2c8ab8c90cdac75d99088e4680b1d2a1d2384433eadc588e0b4
+check fraction generic 2^21 point0 arm 2: production proof/transcript identical, tv-core accepts; digest e47ecc93d46cd2c8ab8c90cdac75d99088e4680b1d2a1d2384433eadc588e0b4
+RAW batch_seconds=0.240207708 executions=1
+RAW batch_seconds=0.244613042 executions=1
+RAW batch_seconds=0.241821542 executions=1
+RAW batch_seconds=0.239199875 executions=1
+RAW batch_seconds=0.239136167 executions=1
+RAW batch_seconds=0.240206958 executions=1
+RAW batch_seconds=0.239809875 executions=1
+RAW batch_seconds=0.241337917 executions=1
+RAW batch_seconds=0.242030041 executions=1
+RAW batch_seconds=0.2420575 executions=1
+RAW batch_seconds=0.242228125 executions=1
+RAW batch_seconds=0.241412917 executions=1
+RAW batch_seconds=0.241751291 executions=1
+fraction generic 2^21 point0: production context                 115.097 ns/entry  min   114.029  max   115.503  CV  0.50%  (  241.375 ms x1)
+RAW batch_seconds=0.155179125 executions=1
+RAW batch_seconds=0.15687175 executions=1
+RAW batch_seconds=0.155680583 executions=1
+RAW batch_seconds=0.158688458 executions=1
+RAW batch_seconds=0.158638625 executions=1
+RAW batch_seconds=0.154319916 executions=1
+RAW batch_seconds=0.158949583 executions=1
+RAW batch_seconds=0.155931625 executions=1
+RAW batch_seconds=0.155088125 executions=1
+RAW batch_seconds=0.154224542 executions=1
+RAW batch_seconds=0.154713791 executions=1
+RAW batch_seconds=0.157499916 executions=1
+RAW batch_seconds=0.158124 executions=1
+fraction generic 2^21 point0: split                               74.728 ns/entry  min    73.540  max    75.793  CV  1.25%  (  156.716 ms x1)
+RAW batch_seconds=0.1123335 executions=1
+RAW batch_seconds=0.112553416 executions=1
+RAW batch_seconds=0.111774875 executions=1
+RAW batch_seconds=0.113137417 executions=1
+RAW batch_seconds=0.110443084 executions=1
+RAW batch_seconds=0.1117105 executions=1
+RAW batch_seconds=0.122790875 executions=1
+RAW batch_seconds=0.110624834 executions=1
+RAW batch_seconds=0.1096015 executions=1
+RAW batch_seconds=0.11128975 executions=1
+RAW batch_seconds=0.110457291 executions=1
+RAW batch_seconds=0.111248625 executions=1
+RAW batch_seconds=0.110979709 executions=1
+RAW batch_seconds=0.112234583 executions=1
+RAW batch_seconds=0.110664458 executions=1
+RAW batch_seconds=0.110287042 executions=1
+RAW batch_seconds=0.110683625 executions=1
+RAW batch_seconds=0.109726541 executions=1
+RAW batch_seconds=0.110249292 executions=1
+RAW batch_seconds=0.110881291 executions=1
+RAW batch_seconds=0.110565708 executions=1
+RAW batch_seconds=0.111353041 executions=1
+RAW batch_seconds=0.1109335 executions=1
+RAW batch_seconds=0.111072333 executions=1
+RAW batch_seconds=0.11339575 executions=1
+RAW batch_seconds=0.111274333 executions=1
+fraction generic 2^21 point0: scale-first                         52.885 ns/entry  min    52.322  max    54.071  CV  0.87%  (  110.907 ms x1)  (rerun: first CV > 3%)
+RAW batch_seconds=0.1361455 executions=1
+RAW batch_seconds=0.13645875 executions=1
+RAW batch_seconds=0.1365465 executions=1
+RAW batch_seconds=0.137152583 executions=1
+RAW batch_seconds=0.137458792 executions=1
+RAW batch_seconds=0.13688875 executions=1
+RAW batch_seconds=0.136496417 executions=1
+RAW batch_seconds=0.136255208 executions=1
+RAW batch_seconds=0.135013708 executions=1
+RAW batch_seconds=0.135276833 executions=1
+RAW batch_seconds=0.13529 executions=1
+RAW batch_seconds=0.137141958 executions=1
+RAW batch_seconds=0.137715334 executions=1
+fraction generic 2^21 point0: relation-first                      65.180 ns/entry  min    64.380  max    65.668  CV  0.72%  (  136.693 ms x1)
+RAW batch_seconds=0.040795875 executions=632
+RAW batch_seconds=0.040779333 executions=632
+RAW batch_seconds=0.039642666 executions=632
+RAW batch_seconds=0.040258291 executions=632
+RAW batch_seconds=0.039965709 executions=632
+RAW batch_seconds=0.04018825 executions=632
+RAW batch_seconds=0.039765875 executions=632
+RAW batch_seconds=0.040039875 executions=632
+RAW batch_seconds=0.039885625 executions=632
+RAW batch_seconds=0.040440042 executions=632
+RAW batch_seconds=0.040231708 executions=632
+RAW batch_seconds=0.039909542 executions=632
+RAW batch_seconds=0.040128583 executions=632
+dot ext reduced                                                    3.871 ns/product min     3.840  max     3.905  CV  0.51%  (    0.063 ms x632)
+RAW batch_seconds=0.039530667 executions=2540
+RAW batch_seconds=0.039053667 executions=2540
+RAW batch_seconds=0.039805417 executions=2540
+RAW batch_seconds=0.039594 executions=2540
+RAW batch_seconds=0.039575666 executions=2540
+RAW batch_seconds=0.039408833 executions=2540
+RAW batch_seconds=0.039845834 executions=2540
+RAW batch_seconds=0.041699958 executions=2540
+RAW batch_seconds=0.042365917 executions=2540
+RAW batch_seconds=0.0422475 executions=2540
+RAW batch_seconds=0.04033875 executions=2540
+RAW batch_seconds=0.0397635 executions=2540
+RAW batch_seconds=0.03956375 executions=2540
+dot ext deferred                                                   0.956 ns/product min     0.947  max     1.018  CV  2.93%  (    0.016 ms x2540)
+RAW batch_seconds=0.041717959 executions=702
+RAW batch_seconds=0.041171125 executions=702
+RAW batch_seconds=0.041646 executions=702
+RAW batch_seconds=0.043633208 executions=702
+RAW batch_seconds=0.0413475 executions=702
+RAW batch_seconds=0.040966542 executions=702
+RAW batch_seconds=0.041051291 executions=702
+RAW batch_seconds=0.041059959 executions=702
+RAW batch_seconds=0.041438 executions=702
+RAW batch_seconds=0.041093792 executions=702
+RAW batch_seconds=0.041173417 executions=702
+RAW batch_seconds=0.04199375 executions=702
+RAW batch_seconds=0.040941458 executions=702
+dot base reduced                                                   3.576 ns/product min     3.560  max     3.794  CV  1.98%  (    0.059 ms x702)
+RAW batch_seconds=0.031087333 executions=3556
+RAW batch_seconds=0.031817375 executions=3556
+RAW batch_seconds=0.031474375 executions=3556
+RAW batch_seconds=0.031671417 executions=3556
+RAW batch_seconds=0.030891667 executions=3556
+RAW batch_seconds=0.031418417 executions=3556
+RAW batch_seconds=0.030859125 executions=3556
+RAW batch_seconds=0.03135225 executions=3556
+RAW batch_seconds=0.030954625 executions=3556
+RAW batch_seconds=0.031238625 executions=3556
+RAW batch_seconds=0.031035833 executions=3556
+RAW batch_seconds=0.031167584 executions=3556
+RAW batch_seconds=0.031361167 executions=3556
+dot base deferred                                                  0.536 ns/product min     0.530  max     0.544  CV  0.84%  (    0.009 ms x3556)
+PAIR forest 2^8x2^14 sigma 24.8615% CV 1.879%/3.000%
+PAIR forest 2^10x2^12 sigma 25.4571% CV 0.521%/0.299%
+PAIR forest 2^0x2^22 sigma 26.5535% CV 1.162%/0.398%
+PAIR product level 2^21: deferred sigma 26.8894% CV 0.713%/0.353%
+PAIR fraction leaf 2^21 point0: scale-first sigma 34.3254% CV 0.871%/0.820%
+PAIR fraction leaf 2^21 point0: relation-first sigma 11.3690% CV 0.871%/1.139%
+PAIR fraction generic 2^21 point0: scale-first sigma 29.2302% CV 1.246%/0.872%
+PAIR fraction generic 2^21 point0: relation-first sigma 12.7768% CV 1.246%/0.717%

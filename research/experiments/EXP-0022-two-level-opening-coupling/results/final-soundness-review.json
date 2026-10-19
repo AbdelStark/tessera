@@ -1,0 +1,65 @@
+{
+  "adversaries": {
+    "ADV-P": "No false acceptance outside an explicitly classified batching root appears in the frozen finite corpus. Equation inventory, source/root/session binding, both component lanes, message receipts, final opening consumption and ideal membership are exercised by actual candidate invocations.",
+    "ADV-V": "Not established. The blinded-algebra arm checks coefficient and message ordering only; it is not a masking-distribution, adaptive-view, abort or joint-simulator proof."
+  },
+  "checklist": {
+    "commitments": {
+      "evidence": "audit.py:414 IdealRegistry; audit.py:864 check_level2; ideal/final-opening-required control",
+      "status": "conditional-pass",
+      "scope": "Immutable exact registry and opening service only; no collision resistance, proximity extractor or concrete Merkle/PCS security."
+    },
+    "encoding_and_transcript": {
+      "evidence": "audit.py:977 events_for; audit.py:1027 check_events; 13 immutable-receipt controls plus live/NI order, label, replay, drop and duplicate controls",
+      "status": "conditional-pass",
+      "scope": "Local payload and partial-order model only; no TCE, uniform challenge derivation, grinding or Fiat-Shamir theorem."
+    },
+    "field_and_integers": {
+      "evidence": "Exact Goldilocks/Fp2 arithmetic, independent pair/integer oracle, canonical half and Fraction embeddings; final run judgments/arithmetic=1332",
+      "status": "pass-for-model",
+      "scope": "Exact Python E0 arithmetic; no production encoding or secret-dependent machine code."
+    },
+    "secrets": {
+      "evidence": "All fixtures are deterministic synthetic public values; the runner imports no model, prompt, token, weight or production secret",
+      "status": "not-applicable"
+    },
+    "sumcheck_and_terminal_obligations": {
+      "evidence": "audit.py:670 inventory; audit.py:743 check_sumcheck; audit.py:1072 candidate; 18,432 honest reductions, degree/round/final/weight-axis mutants, lane and must-consume controls",
+      "status": "pass-in-frozen-domain"
+    },
+    "verifier_independence": {
+      "evidence": "audit.py:902 reference_level2 and results/independent-recount.py use separately constructed paths; saved-record recount reports 119,408 checks and no evidence gaps",
+      "status": "conditional-pass",
+      "scope": "Research references only; no tv-* implementation or production verifier acceptance."
+    },
+    "verifier_robustness": {
+      "evidence": "audit.py:2079 runner preserves every attempt, assigns validated/inconclusive status, enforces 15-minute, 256 MiB, 100,000,000-judgment and 3,000,000,000-operation caps",
+      "status": "pass-for-runner",
+      "scope": "The script is an experiment harness, not an untrusted production proof decoder."
+    },
+    "zero_knowledge": {
+      "evidence": "The report keeps joint ZK, adaptive views, mask reuse, retry and selective-abort simulation explicitly open",
+      "status": "unknown"
+    }
+  },
+  "evidence": {
+    "controls": 164,
+    "final_attempt": "attempts/20261019T125605.662653Z-51396",
+    "final_source_sha256": "8a340a70cddf67838c54ad80f582407da2036a1c26328e5bc1ffc1766936e198",
+    "independent_recount_checks": 119408,
+    "saved_balanced_cases": 20,
+    "saved_sensitive_mutants": 12
+  },
+  "limitations_blocking_promotion": [
+    "complete extractor and joint G-4 budget",
+    "cryptographic Fiat-Shamir, grinding, retry and selective-abort analysis",
+    "joint zero-knowledge simulator",
+    "concrete PCS and independent production verifier",
+    "current group, layout and exact serialized payload derivation",
+    "size kill-criterion evaluation",
+    "prover and verifier performance"
+  ],
+  "reviewed_utc": "2026-10-19",
+  "scope": "EXP-0022 bounded conditional finite algebra and obligation audit",
+  "verdict": "No blocker to the preregistered bounded E0 validation. This is not approval to promote or implement the protocol."
+}

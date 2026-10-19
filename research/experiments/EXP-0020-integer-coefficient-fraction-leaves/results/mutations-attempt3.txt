@@ -1,0 +1,9 @@
+noop control_pass 0 0
+table-sign killed 101 None
+mixed-channel killed 101 None
+weighted-carry killed 101 None
+signed-correction killed 101 None
+doubled-cadence killed 101 None
+unit-tag killed 101 None
+lookup-padding killed 101 None
+mutation gates pass

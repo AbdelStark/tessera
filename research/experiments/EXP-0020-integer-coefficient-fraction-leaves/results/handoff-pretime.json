@@ -1,0 +1,81 @@
+{
+  "phase": "pre-timing complete; request explicit exclusive CPU slot after parent reproduction",
+  "source_manifest": "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/source-manifest-pretime.json",
+  "source_manifest_sha256": "f2ceccbab4fd51602a63120a3005d66bf134f579bb623f84322cff3e45bee114",
+  "binary_sha256": "e7bfa38c5494b4571fcf2fc2cada04ac2fba40f8638090f4b6ca83ddf3d71504",
+  "build_provenance": "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/environment-pretime.json",
+  "gate_artifact_hashes": "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/artifacts-pretime.json",
+  "working_directory": "/Users/abdel/dev/me/tessera-research",
+  "commands": {
+    "build": [
+      "cargo",
+      "build",
+      "--release",
+      "--locked",
+      "--manifest-path",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/Cargo.toml"
+    ],
+    "small": [
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction",
+      "check"
+    ],
+    "prepare": [
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction",
+      "prepare"
+    ],
+    "independent_small": [
+      "python3",
+      "-I",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/check.py",
+      "--check"
+    ],
+    "count": [
+      "python3",
+      "-I",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/count.py"
+    ],
+    "auditor_selftest": [
+      "python3",
+      "-I",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/auditor_selftest.py"
+    ],
+    "mutants": [
+      "python3",
+      "-I",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/mutate.py"
+    ],
+    "timing_NOT_AUTHORIZED_YET": [
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/target/release/integer-fraction",
+      "all",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/run.json"
+    ],
+    "post_timing_audit": [
+      "python3",
+      "-I",
+      "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/check.py",
+      "--audit"
+    ]
+  },
+  "private_reproduction": "Set EXP20_RESULTS to a fresh scratch directory for small/prepare; pass --results <same> to check.py/count.py. auditor_selftest is explicitly synthetic. mutate.py uses a distinct package/binary and shares only dependency cache, preserving original executable.",
+  "gates": {
+    "small": "check-attempt18.txt: pass33cases+30diagnostics+extras/multiple/fallback/rejections+12scriptproofs each30directcubicchecks",
+    "prepare": "preflight-attempt4.txt: all6cases, exact P/D/C complete records+independent closure+bottom check",
+    "count": "count.json/count-trace.json:18records match independent structural formulas",
+    "oracle": "audit.json:23sourcepins,all3committedfreezes,18bounds,101groups88594terms,36grids468cells,1000F65537identities",
+    "source_mutants": "mutations-attempt3.txt and mutations.json:noop+7compiled mutants killed incl independent FinalMismatch round1; prior attempts retained",
+    "saved_record_mutants": "auditor-selftest.json:noop+retainedfailedfirst/freshrerun pass,9corruptions killed incl ratio/verdict",
+    "clippy": "clippy-attempt6.txt:pass",
+    "fmt": "cargo fmt --manifest-path <manifest> --check passed",
+    "lint": "lint-attempt2.txt:pass",
+    "kb": "kb-pretime.txt:pass",
+    "table_vectors": "table-conformance.txt:4passed"
+  },
+  "resource": "Final full prepare4 process peak memory footprint1603044840bytes, wholeprocess not per-arm scratch. Conservative registered scratch cap max1946157056bytes<4GiB; commoninputs/oracle excluded by structural cap. Disk~11GiB currently free.",
+  "disclosures": "research/experiments/EXP-0020-integer-coefficient-fraction-leaves/results/debugging-disclosure.md",
+  "timing": {
+    "has_run": false,
+    "primary_v": 2,
+    "whole": "complete native proof + identical owned Record normalization + native/Record drops",
+    "diagnostic": "prefix replay+complete bottom+owned moved-proof Level/drop; no JSON normalization"
+  }
+}

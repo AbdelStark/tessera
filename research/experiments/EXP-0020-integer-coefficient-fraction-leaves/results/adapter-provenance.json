@@ -1,0 +1,56 @@
+{
+  "forest": {
+    "source": "crates/tessera-sumcheck/src/forest.rs",
+    "source_sha256": "57b4c63da0d348e187f208db5ddd9aa59cc3d66f3443447075e517cecfe067c7",
+    "adapter_sha256": "d2b6a6c5e01567e2d378c908bddb668b0a6930656e066a1aa0676f4c873781a4",
+    "adaptation": "Owned research copy/subset. Omit tests and secret-reader entry points; restrict field to BenchField. P whole calls the unchanged public production API. D/C use these scheduling/type adapters; level/trees select actual D arithmetic or Raw window. Kernel retains only three binding helpers; prover retains batch result/label helper subset. Exact complete output checked against public P and independently closed."
+  },
+  "level": {
+    "source": "crates/tessera-sumcheck/src/level.rs",
+    "source_sha256": "dd1e95d7c2b63a055b77831602920841b808a5399f92f5783b37e5f5e53d3b97",
+    "adapter_sha256": "e6caf346fefa87d49cca7216d47abab3e2ffbbe7c8f869892800f4e5d83cfd9b",
+    "adaptation": "Owned research copy/subset. Omit tests and secret-reader entry points; restrict field to BenchField. P whole calls the unchanged public production API. D/C use these scheduling/type adapters; level/trees select actual D arithmetic or Raw window. Kernel retains only three binding helpers; prover retains batch result/label helper subset. Exact complete output checked against public P and independently closed."
+  },
+  "trees": {
+    "source": "crates/tessera-sumcheck/src/trees.rs",
+    "source_sha256": "2565b9252f161dc6b4f0627fcaa22a86351785c1652f6ece8a9450d5f065643c",
+    "adapter_sha256": "f2ff0f3a6a943779e4ce95d45708943be46ab411c4382857714ae23ccb6647fb",
+    "adaptation": "Owned research copy/subset. Omit tests and secret-reader entry points; restrict field to BenchField. P whole calls the unchanged public production API. D/C use these scheduling/type adapters; level/trees select actual D arithmetic or Raw window. Kernel retains only three binding helpers; prover retains batch result/label helper subset. Exact complete output checked against public P and independently closed."
+  },
+  "instance": {
+    "source": "crates/tessera-logup/src/instance.rs",
+    "source_sha256": "dd3c828150669fd360979678b3f4aeec6f785f160b01d0584f2c7780dbee5230",
+    "adapter_sha256": "74ebbbd9f133dede572019efe9cff98cac4f7fa920ef9ef1dd7131fec31a61ae",
+    "adaptation": "Owned research copy/subset. Omit tests and secret-reader entry points; restrict field to BenchField. P whole calls the unchanged public production API. D/C use these scheduling/type adapters; level/trees select actual D arithmetic or Raw window. Kernel retains only three binding helpers; prover retains batch result/label helper subset. Exact complete output checked against public P and independently closed."
+  },
+  "logup": {
+    "source": "crates/tessera-logup/src/prover.rs",
+    "source_sha256": "497c1f71405104e5c8dfd37d65ba7a7d6982534ca629ac1b606f3b5f778caa93",
+    "adapter_sha256": "d00e5046e409ddce66d2e66f6004a9317b29aaf0376471808b242aa083e96720",
+    "adaptation": "Owned research copy/subset. Omit tests and secret-reader entry points; restrict field to BenchField. P whole calls the unchanged public production API. D/C use these scheduling/type adapters; level/trees select actual D arithmetic or Raw window. Kernel retains only three binding helpers; prover retains batch result/label helper subset. Exact complete output checked against public P and independently closed."
+  },
+  "kernel": {
+    "source": "crates/tessera-sumcheck/src/kernel.rs",
+    "source_sha256": "31a9ab42b578549616d5a8ee4d32b6bc008251fe594038c11b4ea659ee383738",
+    "adapter_sha256": "5f600bd18fa1806edb0e07294333baa8b6c8b89bb659c070fe389f743cc2b3b2",
+    "adaptation": "Owned research copy/subset. Omit tests and secret-reader entry points; restrict field to BenchField. P whole calls the unchanged public production API. D/C use these scheduling/type adapters; level/trees select actual D arithmetic or Raw window. Kernel retains only three binding helpers; prover retains batch result/label helper subset. Exact complete output checked against public P and independently closed."
+  },
+  "prover": {
+    "source": "crates/tessera-sumcheck/src/prover.rs",
+    "source_sha256": "e85415c450e154ac70231b06242aac51d8cf03d4ab4b89f262793711c7e4ebb5",
+    "adapter_sha256": "96eb21d8835b12cfd227a39ac21bb85fdb287005ee4cee3a83c97d4c97814ebf",
+    "adaptation": "Owned research copy/subset. Omit tests and secret-reader entry points; restrict field to BenchField. P whole calls the unchanged public production API. D/C use these scheduling/type adapters; level/trees select actual D arithmetic or Raw window. Kernel retains only three binding helpers; prover retains batch result/label helper subset. Exact complete output checked against public P and independently closed."
+  },
+  "contract": {
+    "source": "tessera_poly::eq_table public API",
+    "adaptation": "Thin wrapper for copied level code; no alternative equality polynomial implementation."
+  },
+  "new_modules": [
+    "arith.rs",
+    "coeff.rs",
+    "driver.rs",
+    "measure.rs",
+    "counts.rs",
+    "script_oracle.rs"
+  ]
+}

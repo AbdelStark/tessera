@@ -1,0 +1,6 @@
+
+thread 'main' (92838349) panicked at src/driver.rs:615:9:
+assertion `left == right` failed: signed weighted stress c=519584095192215271993891638268 count=1
+  left: 14533522000276713462
+ right: 14533521995981746166
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

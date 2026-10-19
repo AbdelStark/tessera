@@ -1,0 +1,15 @@
+{
+  "kind": "parent independent execution before first timing",
+  "small_and_six_large_records": "exact check.json/preflight.json/count-trace.json/count.json equal author records",
+  "source_manifest_sha256": "f2ceccbab4fd51602a63120a3005d66bf134f579bb623f84322cff3e45bee114",
+  "binary_sha256": "e7bfa38c5494b4571fcf2fc2cada04ac2fba40f8638090f4b6ca83ddf3d71504",
+  "compiled_mutants_killed": 7,
+  "no_op_and_integer_oracle": "pass",
+  "synthetic_timing_auditor": "pass;9 corrupted records rejected",
+  "raw_records": [
+    "parent-reproduction",
+    "parent-mutations"
+  ],
+  "mutant_orchestration": "output destinations and distinct parent package/binary names only; exact orchestration diff preserved",
+  "no_timing_yet": true
+}

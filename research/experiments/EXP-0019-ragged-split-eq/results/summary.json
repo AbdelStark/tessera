@@ -1,0 +1,304 @@
+{
+  "experiment": "EXP-0019",
+  "idea": "IDEA-0019",
+  "status": "done: inconclusive",
+  "verdict": "inconclusive",
+  "evidence": [
+    "E1 Apple M4 Max synthetic single-thread CPU wall clock",
+    "E0 exact integer loop/storage counts and independently verified equality"
+  ],
+  "preregistration_commit": "6b73a3b03f44bd8acdd1b0ff527f9d625fabf49a",
+  "preregistered_readme_sha256": "50e68fdbe53ba38b1ae1a3909bb160351c3503d7eb6fbc3efc6c44b06c3321aa",
+  "correctness": {
+    "eight_historical_digests_unchanged": true,
+    "both_arms_public_tv_core_accepted": true,
+    "complete_messages_claims_states_equal": true,
+    "scripted_controls": "24 normal/scripted cases on four new shapes; zero eq/rho and zero accumulated-scale branches; no-lambda schedule; separate independent tv-field final-relation/MLE checks because tv-core injectable transcript is private",
+    "all_timed_normal_fallback_rounds": 0,
+    "wrong_root_rejection": "level 0: FinalMismatch { round: 1 }",
+    "no_op_mutation_exit": 0,
+    "five_behavior_fault_exits": [
+      101,
+      101,
+      101,
+      101,
+      101
+    ]
+  },
+  "noise": {
+    "all_required_pass": false,
+    "failed_selected_primary": [
+      "S4"
+    ],
+    "sham_selected_attempt": 2,
+    "sham_selected_pass": true,
+    "all_reruns_fresh_warmups": true,
+    "all_samples_ge_20ms": true,
+    "no_secondary_reruns": true,
+    "background_load": "Other checkout test/build chains finished before timing. User Chrome/background application CPU observed and left untouched; no idle-host or causal explanation claim."
+  },
+  "primary": [
+    {
+      "config": "S1",
+      "real_leaves": 8390656,
+      "padded_leaves": 16777216,
+      "factor": 1.9995118379301928,
+      "selected_attempt": 1,
+      "noise_pass": true,
+      "production_ms": 311.7372915,
+      "candidate_ms": 191.3135625,
+      "candidate_ns_per_real": 22.800787268599734,
+      "R": 1.6356815467172647,
+      "R_over_f": 0.8180404415161906,
+      "R_agg_over_f": 0.8174324102991825,
+      "R_over_f_empirical_band": [
+        0.8055541614788793,
+        0.8291071768249668
+      ],
+      "R_cv": 0.008778847072445495,
+      "arm_cvs": {
+        "A": 0.005105354220585825,
+        "B": 0.00840337906535937,
+        "U": 0.008804424850303454
+      },
+      "u23_ms": 156.5254375,
+      "H": 1.2166047492640435,
+      "H_agg": 1.217764655135146,
+      "H_empirical_band": [
+        1.2000914110411416,
+        1.2447944455783881
+      ],
+      "H_cv": 0.010976519881269017
+    },
+    {
+      "config": "S2",
+      "real_leaves": 8390656,
+      "padded_leaves": 11184812,
+      "factor": 1.3330080508603857,
+      "selected_attempt": 2,
+      "noise_pass": true,
+      "production_ms": 208.293958,
+      "candidate_ms": 189.996917,
+      "candidate_ns_per_real": 22.643869204028864,
+      "R": 1.0984451001916762,
+      "R_over_f": 0.8240348582161139,
+      "R_agg_over_f": 0.8195982644112317,
+      "R_over_f_empirical_band": [
+        0.7936691040813942,
+        0.8336494863403422
+      ],
+      "R_cv": 0.015255490740041308,
+      "arm_cvs": {
+        "A": 0.010503721674509853,
+        "B": 0.017959241672651168,
+        "U": 0.01751595803593973
+      },
+      "u23_ms": 156.62256250000002,
+      "H": 1.211497425866958,
+      "H_agg": 1.217517517377421,
+      "H_empirical_band": [
+        1.187303996018652,
+        1.263717666778878
+      ],
+      "H_cv": 0.018192156588771814
+    },
+    {
+      "config": "S3",
+      "real_leaves": 10485760,
+      "padded_leaves": 16777216,
+      "factor": 1.6,
+      "selected_attempt": 1,
+      "noise_pass": true,
+      "production_ms": 313.002875,
+      "candidate_ms": 215.063854,
+      "candidate_ns_per_real": 20.510087394714354,
+      "R": 1.4623098320152756,
+      "R_over_f": 0.9139436450095473,
+      "R_agg_over_f": 0.9161300516071887,
+      "R_over_f_empirical_band": [
+        0.8968238204698432,
+        0.9464597490662192
+      ],
+      "R_cv": 0.01652501509063899,
+      "arm_cvs": {
+        "A": 0.019589220346565184,
+        "B": 0.01001097435867144,
+        "U": 0.025341552147421207
+      },
+      "u23_ms": 159.15918750000003,
+      "H": 1.0792155137125654,
+      "H_agg": 1.0732968231099485,
+      "H_empirical_band": [
+        1.0308671149603308,
+        1.112335491893783
+      ],
+      "H_cv": 0.026928889924059063
+    },
+    {
+      "config": "S4",
+      "real_leaves": 10490880,
+      "padded_leaves": 22369632,
+      "factor": 2.1322931918008785,
+      "selected_attempt": 2,
+      "noise_pass": false,
+      "production_ms": 432.3325415,
+      "candidate_ms": 268.4146665,
+      "candidate_ns_per_real": 25.58552442693082,
+      "R": 1.6058055315861943,
+      "R_over_f": 0.7530885235486652,
+      "R_agg_over_f": 0.7382685479296645,
+      "R_over_f_empirical_band": [
+        0.5241286425012696,
+        0.9863391200413549
+      ],
+      "R_cv": 0.14865926921662223,
+      "arm_cvs": {
+        "A": 0.1855757403044359,
+        "B": 0.1596753493204795,
+        "U": 0.20476364388095566
+      },
+      "u23_ms": 165.86862499999998,
+      "H": 1.3243741357637657,
+      "H_agg": 1.298997762141864,
+      "H_empirical_band": [
+        0.9632306379555698,
+        1.90259891986404
+      ],
+      "H_cv": 0.18527373553172818
+    }
+  ],
+  "secondary": [
+    {
+      "config": "U23",
+      "real_leaves": 8388608,
+      "padded_leaves": 8388608,
+      "factor": 1.0,
+      "selected_attempt": 1,
+      "noise_pass": true,
+      "production_ms": 169.28325,
+      "candidate_ms": 186.18562450000002,
+      "candidate_ns_per_real": 22.19505602121353,
+      "R": 0.9112260969162933,
+      "R_over_f": 0.9112260969162933,
+      "R_agg_over_f": 0.9078644802713974,
+      "R_over_f_empirical_band": [
+        0.8787589280679724,
+        0.9221216916114379
+      ],
+      "R_cv": 0.014602573637821541,
+      "arm_cvs": {
+        "A": 0.006165907180081859,
+        "B": 0.011613061752651747
+      }
+    },
+    {
+      "config": "U24",
+      "real_leaves": 16777216,
+      "padded_leaves": 16777216,
+      "factor": 1.0,
+      "selected_attempt": 1,
+      "noise_pass": true,
+      "production_ms": 312.484125,
+      "candidate_ms": 343.0008965,
+      "candidate_ns_per_real": 20.444446593523026,
+      "R": 0.9116830156991294,
+      "R_over_f": 0.9116830156991294,
+      "R_agg_over_f": 0.9088002140623507,
+      "R_over_f_empirical_band": [
+        0.8798587074326027,
+        0.9231046849832574
+      ],
+      "R_cv": 0.012864498647566856,
+      "arm_cvs": {
+        "A": 0.02044277246371353,
+        "B": 0.028136887456844586
+      }
+    },
+    {
+      "config": "S1-1K",
+      "real_leaves": 524800,
+      "padded_leaves": 1048576,
+      "factor": 1.9980487804878049,
+      "selected_attempt": 1,
+      "noise_pass": true,
+      "production_ms": 19.806823,
+      "candidate_ms": 14.32989575,
+      "candidate_ns_per_real": 27.30544159679878,
+      "R": 1.3858329107124947,
+      "R_over_f": 0.6935931315821812,
+      "R_agg_over_f": 0.6919913620471441,
+      "R_over_f_empirical_band": [
+        0.6849414771894158,
+        0.7007486254612895
+      ],
+      "R_cv": 0.007626080886420447,
+      "arm_cvs": {
+        "A": 0.011592375689706618,
+        "B": 0.008203096894649707
+      }
+    },
+    {
+      "config": "S2-1K",
+      "real_leaves": 524800,
+      "padded_leaves": 699052,
+      "factor": 1.3320350609756098,
+      "selected_attempt": 1,
+      "noise_pass": true,
+      "production_ms": 13.506479,
+      "candidate_ms": 14.014323000000001,
+      "candidate_ns_per_real": 26.704121570121952,
+      "R": 0.9639857247127526,
+      "R_over_f": 0.7236939574298515,
+      "R_agg_over_f": 0.7247562778945791,
+      "R_over_f_empirical_band": [
+        0.7111297906822905,
+        0.7365206833992064
+      ],
+      "R_cv": 0.010016627629153386,
+      "arm_cvs": {
+        "A": 0.004075262706038649,
+        "B": 0.007586291098546766
+      }
+    }
+  ],
+  "method_notes": [
+    "No actual secondary-attempt deviation: all four first secondary cohorts pass. After terminal only, future driver changed to one secondary attempt; exact measured source archived and hashes retained.",
+    "Future auditor now enforces secondary-only one-attempt policy, permits noisy secondary without deciding primary noise, checks all timestamps for nonoverlap/ordering, and fixes all eight registered denominators. Three malformed-raw controls reject.",
+    "Initial launcher path error was corrected before a benchmark child was spawned; no timing sample existed or was discarded.",
+    "No further timing cohort or kernel tuning after measurement."
+  ],
+  "measured_source_manifest": "results/measured-source.json",
+  "archived_source_paths": {
+    "src/bench.rs": "results/measured-source/src/bench.rs.txt",
+    "src/kernel.rs": "results/measured-source/src/kernel.rs.txt",
+    "src/main.rs": "results/measured-source/src/main.rs.txt",
+    "Cargo.toml": "results/measured-source/Cargo.toml.txt",
+    "Cargo.lock": "results/measured-source/Cargo.lock.txt",
+    "count.py": "results/measured-source/count.py.txt",
+    "audit.py": "results/measured-source/audit.py.txt",
+    "mutate.py": "results/measured-source/mutate.py.txt"
+  },
+  "current_source_sha256": {
+    "src/bench.rs": "4033a100b01272c3a4d744b1ab1f76591f909229fd9701176a35c4f3f6fe83fa",
+    "src/kernel.rs": "f297e4164d8c8d7d0339ce36d04c26cc434995a63528a3dde59d64c264de26eb",
+    "src/main.rs": "ae2e31becfcae5cf417ed6d56e2bed2fbdc28f4e0eb580e831cabc5d137a4d47"
+  },
+  "exact_counts": "results/count.json",
+  "raw_results": "results/run.json",
+  "independent_audit": "results/audit.json",
+  "terminal": "results/run-terminal.json",
+  "limits": [
+    "No H100/E2/E3 claim",
+    "No full proof/fraction-tree/protocol-2 integration",
+    "No general soundness/ZK proof from finite equality checks",
+    "Node-buffer allocated payload/requested-capacity bytes are an exact subset, not total allocator traffic/peak memory/DRAM"
+  ],
+  "score": {
+    "idea_status": "inconclusive",
+    "historical_priority": 3.7,
+    "historical_confidence": 0.7,
+    "historical_score_unchanged": true,
+    "current_measured_mu_gain": "not established; existing model counts valid leaves, so no duplicated padding credit"
+  },
+  "next": "A different boundary/state layout needs a new preregistration; keep accepted RFC0034 requirement but do not port this candidate as a validated optimization. H100 and complete proof/mask integration need separate evidence."
+}

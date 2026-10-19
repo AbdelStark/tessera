@@ -1,0 +1,67 @@
+{
+  "experiment": "EXP-0014",
+  "verdict": "refuted",
+  "necessary_CVs_clean": true,
+  "anchor_instruction_ratio": 1.002710027100271,
+  "anchors_have_branch_or_call": false,
+  "judged_pairs": {
+    "encode 2^22": {
+      "sigma": -0.45751253103541956,
+      "base": {
+        "ns_per_element": 34.941370248794556,
+        "min_ns": 34.77729344367981,
+        "max_ns": 35.21402668952942,
+        "cv": 0.004635426806650657,
+        "repeated": false
+      },
+      "candidate": {
+        "ns_per_element": 50.92748498916626,
+        "min_ns": 50.246973752975464,
+        "max_ns": 53.06393909454346,
+        "cv": 0.020261494168096326,
+        "repeated": false
+      }
+    },
+    "ntt 2^22": {
+      "sigma": -0.3394968409362005,
+      "base": {
+        "ns_per_element": 12.574722290039062,
+        "min_ns": 12.440065622329712,
+        "max_ns": 12.754231691360474,
+        "cv": 0.008387025299304546,
+        "repeated": false
+      },
+      "candidate": {
+        "ns_per_element": 16.84380078315735,
+        "min_ns": 16.445557355880737,
+        "max_ns": 17.158687114715576,
+        "cv": 0.0138343371868586,
+        "repeated": false
+      }
+    },
+    "ntt 2^23": {
+      "sigma": -0.37407232833654347,
+      "base": {
+        "ns_per_element": 13.160213828086853,
+        "min_ns": 12.95893394947052,
+        "max_ns": 13.45863938331604,
+        "cv": 0.012185220397068675,
+        "repeated": false
+      },
+      "candidate": {
+        "ns_per_element": 18.083085656166077,
+        "min_ns": 17.853255033493042,
+        "max_ns": 18.488203525543213,
+        "cv": 0.010211927911095051,
+        "repeated": false
+      }
+    }
+  },
+  "CPU_time_saving_divided_by_historical_arithmetic_gap": -1.0547315890495947,
+  "arithmetic_gap_fraction_E0": 0.7039083009268868,
+  "conditional_commit_ps_interval_E0": [
+    67.70491788182596,
+    140.29907682048741
+  ],
+  "scope": "CPU realization and conditional E0 calibration only; no GPU timing or mu claim"
+}

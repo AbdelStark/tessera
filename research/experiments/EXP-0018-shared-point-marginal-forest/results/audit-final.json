@@ -1,0 +1,26 @@
+{
+  "utc": "2026-10-19T08:40:28.631484+00:00",
+  "committed_preregistration_verified": true,
+  "runtime_sources_unchanged_since_timing": true,
+  "runtime_source_sha256": {
+    "research/experiments/EXP-0018-shared-point-marginal-forest/src/main.rs": "b5624f6bd33bb753b5dc6824e447891c27bd6cccc972e27438bae69dc1dbedd6",
+    "research/experiments/EXP-0018-shared-point-marginal-forest/Cargo.toml": "37ca7ebced50fbf6008db3e4e0290981a6b65b794e6dda3e6ad87f7735723272",
+    "research/experiments/EXP-0018-shared-point-marginal-forest/Cargo.lock": "38482ac0b80288f704a3d827456817926a78c241077e5a8ce9aafa604792aefd",
+    "crates/tessera-sumcheck/src/trees.rs": "2565b9252f161dc6b4f0627fcaa22a86351785c1652f6ece8a9450d5f065643c",
+    "crates/tessera-sumcheck/src/level.rs": "dd1e95d7c2b63a055b77831602920841b808a5399f92f5783b37e5f5e53d3b97",
+    "crates/tessera-sumcheck/src/forest.rs": "57b4c63da0d348e187f208db5ddd9aa59cc3d66f3443447075e517cecfe067c7",
+    "crates/tessera-sumcheck/src/prover.rs": "e85415c450e154ac70231b06242aac51d8cf03d4ab4b89f262793711c7e4ebb5",
+    "crates/tessera-sumcheck/src/kernel.rs": "31a9ab42b578549616d5a8ee4d32b6bc008251fe594038c11b4ea659ee383738",
+    "verifier/crates/tv-core/src/tree.rs": "658cac4daaa460c682f76875bdf6f741eb66727cf17221749766047459cd9f18",
+    "verifier/crates/tv-core/src/sumcheck.rs": "cc488ce551d4b125f3f262dd58ecf0d9d60fa0819c92c4dac9d2f07456feb85d"
+  },
+  "source_sha256": {
+    "research/experiments/EXP-0018-shared-point-marginal-forest/src/main.rs": "b5624f6bd33bb753b5dc6824e447891c27bd6cccc972e27438bae69dc1dbedd6",
+    "research/experiments/EXP-0018-shared-point-marginal-forest/count.py": "c68904acf90255dbe3af81f1627b4af616d029b3ec2bf2734eba505172d1d25c",
+    "research/experiments/EXP-0018-shared-point-marginal-forest/analyze.py": "35f179d1f23934259d479ea698d305e9d2484ebfe8bb87f734f57c2029532e2a",
+    "research/experiments/EXP-0018-shared-point-marginal-forest/README.md": "03faed6a72f8ec5db5184ada2ddd3b260f5432c6f10e55d1d66becad705a2ada",
+    "research/ideas/IDEA-0010-shared-point-forest-fusion.md": "f49c546cc2355ccd19071ed37091e7c5cc7cbfa0eeb25d784d02fd9d4fed0558"
+  },
+  "post_timing_change_note": "Only count.py analytic production split-eq accounting and report/idea/summary were extended after timing. Measured Rust source, manifest, lock and all pinned runtime source files remain unchanged. Analyzer subsequently gained explicit warmup/order/fixed-repetition/chronological-journal assertions, with unchanged verdicts and no new timing.",
+  "binary_sha256": "370d8197e49f1ec030d4b8268b64b1d9b4b199e4879a08eec6a3d9e0bdbc3fe4"
+}
