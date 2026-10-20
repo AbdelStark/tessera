@@ -177,6 +177,9 @@ All notable changes to the verifier release train are recorded here: the crates 
   - Target decisions use exact integer inequalities, including multi-limb base-`2^64` integer exponentiation `A^τ >= 2^{t - g} · B^τ` inside the 2-ulp `LOG2` tie band, and reject invalid inputs with `ERR-USAGE`.
   - `tessera-verify params` prints the human-readable soundness table or `tessera.soundness/1` JSON (`--json`), supports `--lookups` and `--table-rows` overrides, and agrees with `tessera-protocol`'s calculator on every row across 1,000 random profiles.
 - `tessera-verify params` exits 10 (`02 §2.4`, RFC-0051) when any soundness row misses its target (`meets_targets == Some(false)`), while still writing the full report to stdout ([#375](https://github.com/AbdelStark/tessera/issues/375)).
+- Check several reading-site claims on `ChannelParams` in `tv-core::weights` (RFC-0052, accepted; RFC-0012 'Opening'; RFC-0036; RFC-0049; [#386](https://github.com/AbdelStark/tessera/issues/386)):
+  - `Layout::channel_point` embeds a reading site's weight-type index and zero-pads its channel point to `c_vars = ⌈log2 C⌉`.
+  - `Opening` takes `claims: &'a [Claim<'a>]` and `evaluations: &'a [&'a [Fp2]]`: a committed matrix other than `ChannelParams` requires `G = 1`, `ChannelParams` accepts `G >= 1` site claims (checked against `evaluations[g]` with `Evaluation { group: Some(g) }` on the first failure) and re-encodes all `G + 1` combined rows against every queried column, and an empty matrix still requires `G = 0`.
 
 ### Changed
 

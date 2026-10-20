@@ -42,11 +42,12 @@
 
 use core::fmt;
 
-use tessera_field::{Field, Goldilocks, PrimeField};
+use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
 
 use crate::{MatrixRows, PcsError, WeightLayoutParams, WeightMatrix};
 
 type Fp = Goldilocks;
+type Fp2 = GoldilocksExt2;
 
 /// The `ChannelParams` tensor's types: the nine weight types, padded to 16 (RFC-0012 'Layout').
 const LOG2_CHANNEL_TYPES: u32 = 4;
@@ -266,6 +267,71 @@ impl WeightLayout {
     /// The layout of `matrix`.
     pub fn matrix(&self, matrix: WeightMatrix) -> &MatrixLayout {
         &self.matrices[matrix.index()]
+    }
+
+    /// Maps a reading site's claim on weight type `matrix`'s channel parameters at `channel_point`
+    /// (`log2 out_pad` coordinates) and `layer_point` (`log2 L_pad` coordinates for per-layer
+    /// weights, empty for `Embed` and `LmHead`) to its full point on `ChannelParams` (RFC-0052
+    /// 'Point on `Ã_CP`'): `channel_point ‖ 0^{γ − c_i} ‖ layer_point ‖ vertex_4(matrix)`.
+    ///
+    /// Splitting the returned point at `self.matrix(WeightMatrix::ChannelParams).log2_k()` gives
+    /// `(column_point, row_point)`.
+    ///
+    /// # Errors
+    ///
+    /// [`PcsError::WeightPlace`] if `matrix` has no `ChannelParams` in this layout,
+    /// [`PcsError::ClaimPoint`] if `channel_point` does not have `log2 out_pad` coordinates, and
+    /// [`PcsError::LayerPoint`] if `layer_point` does not have `log2 L_pad` coordinates (or 0 for
+    /// `Embed` and `LmHead`).
+    pub fn channel_point(
+        &self,
+        matrix: WeightMatrix,
+        channel_point: &[Fp2],
+        layer_point: &[Fp2],
+    ) -> Result<Vec<Fp2>, PcsError> {
+        if !self.channels.iter().any(|&(m, _)| m == matrix) {
+            return Err(PcsError::WeightPlace {
+                matrix,
+                layer: 0,
+                channels: true,
+            });
+        }
+        let c_i = log2_pad(self.shapes.shapes[matrix.index()].out) as usize;
+        if channel_point.len() != c_i {
+            return Err(PcsError::ClaimPoint {
+                expected: c_i,
+                found: channel_point.len(),
+            });
+        }
+        let log2_l_pad = log2_pad(self.shapes.layers) as usize;
+        let expected_layers = if matrix.per_layer() { log2_l_pad } else { 0 };
+        if layer_point.len() != expected_layers {
+            return Err(PcsError::LayerPoint {
+                matrix,
+                expected: expected_layers,
+                found: layer_point.len(),
+            });
+        }
+        let MatrixKind::ChannelParams { channel_width } =
+            self.matrices[WeightMatrix::ChannelParams.index()].kind
+        else {
+            unreachable!();
+        };
+        let gamma = channel_width.trailing_zeros() as usize;
+        let mut point = Vec::with_capacity(gamma + log2_l_pad + LOG2_CHANNEL_TYPES as usize);
+        point.extend_from_slice(channel_point);
+        point.resize(gamma, Fp2::ZERO);
+        point.extend_from_slice(layer_point);
+        point.resize(gamma + log2_l_pad, Fp2::ZERO);
+        let tag = matrix.index();
+        for bit in 0..LOG2_CHANNEL_TYPES {
+            point.push(if (tag >> bit) & 1 == 1 {
+                Fp2::ONE
+            } else {
+                Fp2::ZERO
+            });
+        }
+        Ok(point)
     }
 
     /// The committed rows of `matrix`, in increasing order: `m_T` of them.

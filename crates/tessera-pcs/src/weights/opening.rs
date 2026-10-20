@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The weight commitment opened by the folding pass (RFC-0012 'Opening by the folding pass',
-//! RFC-0049), as `tessera-protocol/1` opens it: one claim per matrix (#386 brings several), no
-//! mask and no blinding row.
+//! RFC-0049, RFC-0052), as `tessera-protocol/1` opens it: one claim per weight matrix
+//! `Embed`..`LmHead`, `m ≥ 1` claims in pool order on `ChannelParams`, no mask and no blinding row.
 //!
 //! # The claim and its point
 //!
@@ -105,16 +105,18 @@ impl<R: MatrixRows + ?Sized> MatrixRows for &mut R {
     }
 }
 
-/// A weight matrix's two combined rows, RFC-0036's `WeightCombinedRows`: the evaluation row
-/// `u_T` and the proximity row `u_ξ,T`, `k_T` values each, with no mask in `tessera-protocol/1`.
+/// A weight matrix's combined rows, RFC-0036's and RFC-0052's `WeightCombinedRows`: the
+/// evaluation rows (`1` for `Embed`..`LmHead`, `m ≥ 1` in pool order for `ChannelParams`) and the
+/// proximity row `u_ξ,T`, `k_T` values each, with no mask in `tessera-protocol/1`.
 ///
 /// Protocol-class (05 §3): the `Debug` form shows the matrix and the rows' lengths.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WeightCombinedRows {
     /// The matrix.
     pub matrix: WeightMatrix,
-    /// `u_T = θ_T·Σ_ℓ eq(ρ_ℓ, ℓ)·F_ℓ`: the data rows combined with `θ_T·eq(row point, row)`.
-    pub evaluation: CombinedRow,
+    /// The evaluation rows: `u_T = θ_T·Σ_ℓ eq(ρ_ℓ, ℓ)·F_ℓ` for a weight type, and
+    /// `u_{CP, i} = θ_CP·F_i` for each claim `i ∈ 0..m` on `ChannelParams` (RFC-0052).
+    pub evaluations: Vec<CombinedRow>,
     /// `u_ξ,T = Σ_{j < m_T} eq(ξ*_T, j)·W_T[row_j]`: the committed rows combined by position.
     pub proximity: CombinedRow,
 }
@@ -183,15 +185,18 @@ impl WeightFold {
         point: &[Fp2],
         xi_point: &[Fp2],
     ) -> Result<Self, PcsError> {
+        if matrix == WeightMatrix::ChannelParams {
+            return Self::channel_params(layout, rows, &[point], xi_point);
+        }
         let shape = layout.matrix(matrix);
         let count = shape.rows();
         if count == 0 {
             return Err(PcsError::NoRows { matrix });
         }
-        let (bound, layers, fold_vars) = match shape.kind() {
-            MatrixKind::Weight { a, layers, h, .. } => (a, layers as usize, h),
-            MatrixKind::ChannelParams { .. } => (0, 1, shape.row_vars()),
+        let MatrixKind::Weight { a, layers, h, .. } = shape.kind() else {
+            unreachable!();
         };
+        let (bound, layers, fold_vars) = (a, layers as usize, h);
         let layer_vars = shape.row_vars() - fold_vars;
         let expected = (bound + fold_vars) as usize;
         if point.len() != expected {
@@ -271,6 +276,102 @@ impl WeightFold {
         })
     }
 
+    /// The single-pass fold of `ChannelParams` across `m ≥ 1` claims in pool order (RFC-0052
+    /// 'Opening by the single-pass fold'): reads each committed row of `ChannelParams` once from
+    /// `rows`, in order, accumulating `F_i = Σ_{j < m_CP} eq(row_points[i], r_j)·W_CP[row_j]` for
+    /// every `i ∈ 0..m` and the proximity row `u_{ξ, CP}`.
+    ///
+    /// # Errors
+    ///
+    /// In this order, before any row is read: [`PcsError::NoRows`] if `ChannelParams` has no
+    /// committed row, [`PcsError::NoClaims`] if `row_points` is empty, [`PcsError::FoldPoint`]
+    /// unless every point in `row_points` has `row_vars` coordinates, [`PcsError::XiPoint`] unless
+    /// `xi_point` has `⌈log2 m_CP⌉` coordinates, [`PcsError::OtherMatrix`] if `rows` is not for
+    /// `ChannelParams`, and [`PcsError::TooLarge`] if the fold buffers do not fit in memory. Then
+    /// the first error `rows` gives.
+    pub fn channel_params<R: MatrixRows + ?Sized>(
+        layout: &WeightLayout,
+        rows: &mut R,
+        row_points: &[&[Fp2]],
+        xi_point: &[Fp2],
+    ) -> Result<Self, PcsError> {
+        let matrix = WeightMatrix::ChannelParams;
+        let shape = layout.matrix(matrix);
+        let count = shape.rows();
+        if count == 0 {
+            return Err(PcsError::NoRows { matrix });
+        }
+        if row_points.is_empty() {
+            return Err(PcsError::NoClaims);
+        }
+        let expected = shape.row_vars() as usize;
+        for &point in row_points {
+            if point.len() != expected {
+                return Err(PcsError::FoldPoint {
+                    matrix,
+                    expected,
+                    found: point.len(),
+                });
+            }
+        }
+        let xi_vars = (u64::BITS - (count - 1).leading_zeros()) as usize;
+        if xi_point.len() != xi_vars {
+            return Err(PcsError::XiPoint {
+                expected: xi_vars,
+                found: xi_point.len(),
+            });
+        }
+        if rows.matrix() != matrix {
+            return Err(PcsError::OtherMatrix {
+                expected: matrix,
+                found: rows.matrix(),
+            });
+        }
+        let k = shape.message_len();
+        let too_large = PcsError::TooLarge {
+            rows: count,
+            row_len: k,
+        };
+        let m = usize::try_from(count).map_err(|_| too_large)?;
+        let claims = row_points.len();
+        let size = claims.checked_mul(k).ok_or(too_large)?;
+        let weights_len = claims.checked_mul(m).ok_or(too_large)?;
+
+        let committed: Vec<u64> = layout.committed_rows(matrix).collect();
+        let mut fold_weights = vec![Fp2::ZERO; weights_len];
+        for (weights, &row_point) in fold_weights.chunks_exact_mut(m).zip(row_points) {
+            add_scaled_eq(weights, committed.iter().copied(), row_point, Fp2::ONE);
+        }
+        let mut xi_weights = vec![Fp2::ZERO; m];
+        add_scaled_eq(&mut xi_weights, 0..count, xi_point, Fp2::ONE);
+
+        let mut folds = SecretBuf::filled(Fp2::ZERO, size);
+        let mut proximity = SecretBuf::filled(Fp2::ZERO, k);
+        let mut row = SecretBuf::filled(Fp::ZERO, k);
+        for (j, &w_xi) in xi_weights.iter().enumerate() {
+            rows.read_row(j, &mut row)?;
+            for (p, &x) in proximity.iter_mut().zip(row.iter()) {
+                *p += w_xi.mul_base(x);
+            }
+            for (fold, weights) in folds.chunks_exact_mut(k).zip(fold_weights.chunks_exact(m)) {
+                let w_fold = weights[j];
+                for (f, &x) in fold.iter_mut().zip(row.iter()) {
+                    *f += w_fold.mul_base(x);
+                }
+            }
+        }
+        Ok(Self {
+            matrix,
+            k,
+            bound: 0,
+            layers: claims,
+            layer_vars: 0,
+            columns: Vec::new(),
+            folds,
+            proximity,
+        })
+    }
+
     /// The matrix.
     pub fn matrix(&self) -> WeightMatrix {
         self.matrix
@@ -284,6 +385,11 @@ impl WeightFold {
     /// It reads no weight: `2^{a_T}·in_pad` products per layer, from the folds. The table is
     /// secret-class, in a [`SecretBuf`].
     pub fn sumcheck_input(&self) -> SecretBuf<Fp2> {
+        if self.matrix == WeightMatrix::ChannelParams {
+            let mut table = SecretBuf::filled(Fp2::ZERO, self.folds.len());
+            table.copy_from_slice(&self.folds);
+            return table;
+        }
         let free = self.k >> self.bound;
         let mut eq_columns = vec![Fp2::ZERO; 1 << self.bound];
         add_scaled_eq(
@@ -307,8 +413,9 @@ impl WeightFold {
         table
     }
 
-    /// The two combined rows, once the layer point `ρ_ℓ` and `θ_T` are drawn: the evaluation row
-    /// `u_T = θ_T·Σ_ℓ eq(ρ_ℓ, ℓ)·F_ℓ` (RFC-0012 step 3) and the proximity row `u_ξ,T` (RFC-0049),
+    /// The combined rows, once the layer point `ρ_ℓ` and `θ_T` are drawn: the evaluation rows
+    /// (`u_T = θ_T·Σ_ℓ eq(ρ_ℓ, ℓ)·F_ℓ` for a weight type, and `u_{CP, i} = θ_CP·F_i` for each claim
+    /// on `ChannelParams`, RFC-0012 step 3 and RFC-0052) and the proximity row `u_ξ,T` (RFC-0049),
     /// with no mask in `tessera-protocol/1`. `layer_point` has `log2 L_pad` coordinates, the row
     /// point's above the fold point: none for `Embed`, `LmHead` and `ChannelParams`.
     ///
@@ -329,20 +436,31 @@ impl WeightFold {
                 found: layer_point.len(),
             });
         }
-        let mut weights = vec![Fp2::ZERO; self.layers];
-        add_scaled_eq(&mut weights, 0..self.layers as u64, layer_point, theta);
-        let mut u = vec![Fp2::ZERO; self.k];
-        for (fold, &w) in self.folds.chunks_exact(self.k).zip(&weights) {
-            for (value, &f) in u.iter_mut().zip(fold) {
-                *value += w * f;
+        let evaluations = if self.matrix == WeightMatrix::ChannelParams {
+            self.folds
+                .chunks_exact(self.k)
+                .map(|fold| CombinedRow {
+                    u: fold.iter().map(|&f| theta * f).collect(),
+                    mask: Vec::new(),
+                })
+                .collect()
+        } else {
+            let mut weights = vec![Fp2::ZERO; self.layers];
+            add_scaled_eq(&mut weights, 0..self.layers as u64, layer_point, theta);
+            let mut u = vec![Fp2::ZERO; self.k];
+            for (fold, &w) in self.folds.chunks_exact(self.k).zip(&weights) {
+                for (value, &f) in u.iter_mut().zip(fold) {
+                    *value += w * f;
+                }
             }
-        }
-        Ok(WeightCombinedRows {
-            matrix: self.matrix,
-            evaluation: CombinedRow {
+            vec![CombinedRow {
                 u,
                 mask: Vec::new(),
-            },
+            }]
+        };
+        Ok(WeightCombinedRows {
+            matrix: self.matrix,
+            evaluations,
             proximity: CombinedRow {
                 u: self.proximity.to_vec(),
                 mask: Vec::new(),

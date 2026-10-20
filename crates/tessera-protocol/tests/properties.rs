@@ -249,16 +249,20 @@ fn opening(least: usize) -> impl Strategy<Value = Round2Response> {
         });
     let weights = matrices(least).prop_flat_map(|ids| {
         let n = ids.len();
-        (Just(ids), prop::collection::vec((row(), row()), n)).prop_map(|(ids, rows)| {
-            ids.into_iter()
-                .zip(rows)
-                .map(|(matrix, (evaluation, proximity))| WeightCombinedRows {
-                    matrix,
-                    evaluation,
-                    proximity,
-                })
-                .collect::<Vec<_>>()
-        })
+        (
+            Just(ids),
+            prop::collection::vec((prop::collection::vec(row(), 1..3), row()), n),
+        )
+            .prop_map(|(ids, rows)| {
+                ids.into_iter()
+                    .zip(rows)
+                    .map(|(matrix, (evaluations, proximity))| WeightCombinedRows {
+                        matrix,
+                        evaluations,
+                        proximity,
+                    })
+                    .collect::<Vec<_>>()
+            })
     });
     (
         (fp2s(), fp2s()),

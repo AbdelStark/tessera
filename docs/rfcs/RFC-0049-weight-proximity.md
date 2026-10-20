@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-19
 - Target milestone: v0.3
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Non-Goals': opening `ChannelParams` across several claims in one pass)
 - Supersedes, on acceptance:
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule) 'Transcript schedule' rows 3 and 7: where `pcs/weights/{T}/xi` is squeezed in `tessera-protocol/1`;
   - [RFC-0012](RFC-0012-weight-commitment.md#opening-by-the-folding-pass) 'Opening by the folding pass': the proximity row's coefficients and when the fold computes it;
@@ -35,7 +36,7 @@ This RFC squeezes each matrix's `ξ*_T` right after the seed. The fold pass then
 ## Non-Goals
 
 - `tessera-protocol/2`'s blinding rows and masks, and where their labels go (#147).
-- Several claims on one matrix, such as `ChannelParams` claims from several sites ([#386](https://github.com/AbdelStark/tessera/issues/386)).
+- Several claims on one matrix, such as `ChannelParams` claims from several sites ([#386](https://github.com/AbdelStark/tessera/issues/386), resolved by [RFC-0052](RFC-0052-channel-params-claims.md)).
 
 ## Proposed Design
 

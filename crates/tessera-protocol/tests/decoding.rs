@@ -85,8 +85,8 @@ fn a_keyed_sequence_failing_at_its_first_entry_holds_no_more_than_its_input() {
     let entries = 1 << 12;
     let mut input = empty_leading_lists();
     input.extend(le(entries));
-    // An entry's smallest encoding: its id and four empty lists, 1 + 4 · 8 bytes.
-    input.extend(vec![0xFF; entries as usize * 33]);
+    // An entry's smallest encoding: its id and three empty lists, 1 + 3 · 8 bytes.
+    input.extend(vec![0xFF; entries as usize * 25]);
     let (outcome, info) = decoding::<Round2Response>(&input, DecodeLimits::MESSAGE);
     assert_eq!(outcome, Err(failure(ErrorCode::CodecNoncanonical, 56)));
     assert!(info.bytes_max > 0, "nothing was reserved: {info:?}");
@@ -151,7 +151,7 @@ fn every_id_but_0_to_9_is_refused_in_each_keyed_sequence() {
         let mut round2 = empty_round2();
         round2.weight_combined = vec![WeightCombinedRows {
             matrix: id,
-            evaluation: row.clone(),
+            evaluations: vec![row.clone()],
             proximity: row.clone(),
         }];
         let round3 = Round3Response {
@@ -231,7 +231,7 @@ fn keyed_entries_at_their_smallest_fill_their_sequence_exactly() {
     round2.weight_combined = (0..9)
         .map(|matrix| WeightCombinedRows {
             matrix,
-            evaluation: row.clone(),
+            evaluations: vec![],
             proximity: row.clone(),
         })
         .collect();
@@ -250,7 +250,7 @@ fn keyed_entries_at_their_smallest_fill_their_sequence_exactly() {
     // the entries: Round2Response's empty scoring claims, which the short input leaves out.
     let cases: [(&str, Vec<u8>, u64, usize, usize); 3] = [
         ("ColumnQueries", encode(&queries), 8, 9, 0),
-        ("Round2Response", encode(&round2), 48, 33, 8),
+        ("Round2Response", encode(&round2), 48, 25, 8),
         ("Round3Response", encode(&round3), 16, 17, 0),
     ];
     for (name, bytes, at, entry, after) in cases {

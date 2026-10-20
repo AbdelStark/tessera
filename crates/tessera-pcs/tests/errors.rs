@@ -313,6 +313,10 @@ fn every_error_says_what_was_wrong_in_numbers() {
             "the ChannelParams matrix has no committed row",
         ),
         (
+            PcsError::NoClaims,
+            "the fold of the ChannelParams matrix needs at least 1 claim, not 0",
+        ),
+        (
             PcsError::FoldPoint {
                 matrix: WeightMatrix::Q,
                 expected: 6,

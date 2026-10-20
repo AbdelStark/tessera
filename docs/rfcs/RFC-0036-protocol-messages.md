@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('`Round2Response`': `WeightCombinedRows.evaluations` as `Vec<CombinedRow>`)
 - Supersedes, on acceptance:
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#messages) 'Messages': every message's layout, for `tessera-protocol/1`;
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#session-order-live-mode) 'Session order': who chooses `session_id`, and what each seed message holds;
@@ -90,7 +91,7 @@ pub struct TreeProof { pub levels: Vec<SumcheckProof>, pub splits: Vec<Fp2> }
 pub struct StageProof { pub stage: StageId, pub sumcheck: SumcheckProof, pub splits: Vec<Fp2> } // StageId(u16)
 pub struct SumcheckProof { pub rounds: Vec<Vec<Fp2>>, pub final_evals: Vec<Fp2> } // RFC-0010
 pub struct CombinedRow { pub u: Vec<Fp2>, pub mask: Vec<Fp2> }
-pub struct WeightCombinedRows { pub matrix: u8, pub evaluation: CombinedRow, pub proximity: CombinedRow }
+pub struct WeightCombinedRows { pub matrix: u8, pub evaluations: Vec<CombinedRow>, pub proximity: CombinedRow }
 pub struct ScoringClaims { pub requests: Vec<FixedBits> }
 pub struct FixedBits(pub u64);                                                  // units of 2^-8 bits
 ```
@@ -111,7 +112,7 @@ pub struct FixedBits(pub u64);                                                  
   - It holds RFC-0011's `G + 1` combined rows, the groups in group order, then the proximity row ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 5).
   - Each row's `u` holds `k` values. Its `mask` holds the `P_A` coefficients of the combined mask polynomial, constant first.
 - **`weight_combined`.**
-  - It holds one entry for every weight matrix the proof opens, `matrix` strictly increasing. An entry is the matrix's evaluation combined row and its proximity combined row ([RFC-0012](RFC-0012-weight-commitment.md#opening-by-the-folding-pass) 'Opening by the folding pass').
+  - It holds one entry for every weight matrix the proof opens, `matrix` strictly increasing. An entry holds the matrix's evaluation combined rows (`1` for `Embed`..`LmHead`, and `m ≥ 1` in pool order for `ChannelParams`) and its proximity combined row ([RFC-0012](RFC-0012-weight-commitment.md#opening-by-the-folding-pass) 'Opening by the folding pass', [RFC-0052](RFC-0052-channel-params-claims.md)).
   - In `tessera-protocol/1`, a matrix with no committed rows is public zero and is not opened: it has no entry in `weight_combined`, `ColumnQueries.weights` or `Round3Response.weight_columns` ([RFC-0049](RFC-0049-weight-proximity.md#the-schedule)). Its root remains in `WeightCommitmentPublic` ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-matrices)). Claims on that public-zero matrix are checked as zero, not discarded ([RFC-0037](RFC-0037-stage-schedule.md#claims-and-atoms)). This omission does not apply to a masked matrix with reserved blinding rows.
   - Each `u` holds `k_T` values. Each `mask` holds the combined mask's coefficients, none in `tessera-protocol/1`, whose weight encoding has no mask (RFC-0012 'Migration / Rollout').
 - **`scoring`.**
