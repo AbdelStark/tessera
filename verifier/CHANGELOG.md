@@ -164,6 +164,7 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - Make the root input-selector simplification conditional on an explicit residual-padding obligation, covering padded token and feature coordinates. Independent counterexamples pass every bracket/product check and fail only that zero check. Mixed-dimension component batches reproduce the existing front-padding scale and final-point suffix rule; RFC-0050 states the required premise (#124).
 - `tv-core::gadgets::softmax` binds each causal lookup key and maximum-forest leaf at its own point, derives the reciprocal product from both NonNeg decompositions, reduces the row sum to the canonical exponential source, and retains both padded-maximum and padded-reciprocal zero checks. Independent component proofs include six isolated alternative witnesses and omission controls ([#124](https://github.com/AbdelStark/tessera/issues/124)).
+- Argmax final relations check the masked Range29 key, selected-logit contraction and strict suffix of the same next-token OneHot. Results retain typed maximum, logits and indicator obligations for certificate/source binding; independent two-stage proofs exercise valid-range alternative witnesses and omission controls ([#124](https://github.com/AbdelStark/tessera/issues/124)).
 
 ### Changed
 

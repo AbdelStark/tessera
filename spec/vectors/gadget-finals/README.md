@@ -235,3 +235,28 @@ using the actual CPU proof engine. The latter deliberately assembles the compone
 relations; it is not a complete model driver, maximum-forest proof or LogUp proof.
 The full verifier must still check those earlier proofs and discharge all returned
 source claims, including virtual scores through the graph schedule.
+
+## Argmax final relations
+
+`argmax.json`, schema version 1, contains six honest cases and six alternatives.
+Each case has a degree-three key/selected-logit batch followed by a degree-two
+strict-suffix batch consuming the first batch's actual suffix evaluation. The
+second batch binds the suffix to the same next-token indicator role as the
+selected-logit batch. It does not use a pointwise product of input extensions.
+
+Integer fixtures cover scalar domains, padded vocabulary and rows, all-negative
+real logits beside zero padding, lowest-index ties and logits near both strict
+`2^28` boundaries. Every alternative has valid OneHot inputs and valid Range29
+keys: a false key for a later tie, a false suffix hiding a later tie, a raised
+maximum, a nonzero vocabulary-padding key, a padded-row maximum, or a suffix in
+the wrong direction. Each adapted omission proof passes its weakened control
+with true source-role claims and fails the full checker at the appropriate stage.
+
+`verifier/crates/tv-core/tests/gadget_argmax.rs` passed before the producer's
+Argmax implementation was read. The producer consumer in
+`crates/tessera-prover/tests/gadget_argmax.rs` compares actual Argmax and OneHot
+columns and reproduces every round, final evaluation and transcript state for
+six honest and six omission chains using the CPU proof engine. These are
+component proofs. The certificate binder still owes canonical maximum advice,
+the Range29 table, the model logits and the recorded next-token OneHot; a typed
+role claim alone is not a commitment opening or complete model verification.

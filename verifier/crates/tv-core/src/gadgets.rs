@@ -4,6 +4,7 @@
 //! acceptance: its returned obligations must be bound to the graph reductions,
 //! canonical advice roles and prescribed range lookups before the opening checks.
 
+pub mod argmax;
 pub mod comparison;
 pub mod decomposition;
 pub mod onehot;
