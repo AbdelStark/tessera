@@ -14,12 +14,13 @@ use std::str::FromStr;
 
 use proc_macro2::{TokenStream, TokenTree};
 
-/// The directories that compute with integers only: the table generators, prover and verifier
-/// side, and the prover's soundness calculator.
-pub(crate) const INTEGER_ONLY: [&str; 3] = [
+/// The directories and files that compute with integers only: the table generators, prover and
+/// verifier side, and both soundness calculators.
+pub(crate) const INTEGER_ONLY: [&str; 4] = [
     "crates/tessera-tables/src",
     "verifier/crates/tv-tables/src",
     "crates/tessera-protocol/src/soundness",
+    "verifier/crates/tv-core/src/soundness.rs",
 ];
 
 /// The integer suffixes, which a float test must not mistake for exponents (`usize` holds an

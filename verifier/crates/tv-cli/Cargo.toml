@@ -8,5 +8,15 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[[bin]]
+name = "tessera-verify"
+path = "src/main.rs"
+
+[dependencies]
+tv-core = { path = "../tv-core" }
+
+[dev-dependencies]
+tv-testkit = { path = "../tv-testkit" }
+
 [lints]
 workspace = true

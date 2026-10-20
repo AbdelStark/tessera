@@ -172,6 +172,11 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - Test six-head / three-KV-head schedule derivation across padded sequence lengths and exact `ScheduleError::Unsupported` rejection on non-power-of-two head widths in `tv-core::schedule` ([#411](https://github.com/AbdelStark/tessera/issues/411)).
 
+- Add the independent soundness calculator (`tv-core::soundness`) and `tessera-verify params` in `tv-cli`, written from RFC-0014 'Soundness calculator' and RFC-0049 'The calculator' without third-party dependencies ([#110](https://github.com/AbdelStark/tessera/issues/110)):
+  - `log2_lower` normalizes `a / b` by 62 steps of binary long division (shift-and-subtract) before `F` squaring steps, avoiding multi-word division while matching every oracle `LOG2` case and all 86 reports of `spec/vectors/soundness/soundness.json` bit for bit.
+  - Target decisions use exact integer inequalities, including multi-limb base-`2^64` integer exponentiation `A^τ >= 2^{t - g} · B^τ` inside the 2-ulp `LOG2` tie band, and reject invalid inputs with `ERR-USAGE`.
+  - `tessera-verify params` prints the human-readable soundness table or `tessera.soundness/1` JSON (`--json`), supports `--lookups` and `--table-rows` overrides, and agrees with `tessera-protocol`'s calculator on every row across 1,000 random profiles.
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

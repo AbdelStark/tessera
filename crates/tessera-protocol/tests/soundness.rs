@@ -945,3 +945,245 @@ fn a_parameter_set_is_accepted_by_its_id() {
         assert_eq!(set.release, set.targets.is_some(), "{}", set.id);
     }
 }
+
+struct SplitMix64(u64);
+
+impl SplitMix64 {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    fn below(&mut self, n: u64) -> u64 {
+        if n <= 1 {
+            return 0;
+        }
+        let bits = 64 - (n - 1).leading_zeros();
+        let shift = 64 - bits;
+        loop {
+            let x = self.next() >> shift;
+            if x < n {
+                return x;
+            }
+        }
+    }
+
+    fn bits(&mut self, most: u32) -> u64 {
+        let width = self.below(u64::from(most) + 1) as u32;
+        if width == 0 {
+            0
+        } else if width == 64 {
+            self.next()
+        } else {
+            self.below(1u64 << width)
+        }
+    }
+}
+
+fn to_tv_params(p: &ParamSet) -> tv_core::soundness::SoundnessParams {
+    tv_core::soundness::SoundnessParams {
+        id: String::from(p.id),
+        mode: match p.mode {
+            ParamMode::Live => tv_core::soundness::SessionMode::Live,
+            ParamMode::NonInteractive => tv_core::soundness::SessionMode::NonInteractive,
+            ParamMode::Either => tv_core::soundness::SessionMode::Either,
+        },
+        release: p.release,
+        advice: tv_core::claims::AdviceLayoutParams {
+            log2_k: p.layout.advice.log2_k,
+            log2_inv_rate: p.layout.advice.log2_inv_rate,
+            mask_coeffs: p.layout.advice.mask_coeffs,
+            row_block: p.layout.advice.row_block,
+            segments: p.layout.advice.segments,
+        },
+        weights: tv_core::claims::WeightLayoutParams {
+            log2_k: p.layout.weights.log2_k,
+            log2_inv_rate: p.layout.weights.log2_inv_rate,
+            mask_coeffs: p.layout.weights.mask_coeffs,
+            blinding_rows: p.layout.weights.blinding_rows,
+        },
+        advice_queries: p.advice_queries,
+        weight_queries: p.weight_queries,
+        seed_pow: p.seed_pow,
+        query_pow: p.query_pow,
+        targets: p.targets.map(|t| tv_core::soundness::Targets {
+            bits: t.bits,
+            one_shot: t.one_shot,
+        }),
+    }
+}
+
+fn to_tv_statement(s: &StatementSizes) -> tv_core::soundness::StatementSizes {
+    tv_core::soundness::StatementSizes {
+        protocol: u8::try_from(s.protocol).expect("protocol"),
+        rounds: s
+            .rounds
+            .iter()
+            .map(|r| tv_core::soundness::RoundGroup {
+                count: r.count,
+                degree: u64::from(r.degree),
+            })
+            .collect(),
+        stages: s.stages.clone(),
+        tree_levels: s.tree_levels.clone(),
+        zero_checks: s.zero_checks.iter().copied().map(u64::from).collect(),
+        forests: s.forests.iter().copied().map(u64::from).collect(),
+        lookups: s
+            .lookups
+            .iter()
+            .map(|l| tv_core::soundness::LookupSize {
+                lookups: l.lookups,
+                rows: l.rows,
+            })
+            .collect(),
+        claim_groups: s.claim_groups.clone(),
+        advice_rows: s.advice_rows,
+        matrices: s
+            .matrices
+            .iter()
+            .map(|m| tv_core::soundness::MatrixSize {
+                matrix: tv_core::weights::Matrix::by_name(m.matrix.name()).expect("matrix"),
+                width: m.width,
+                rows: m.rows,
+                variables: u64::from(m.variables),
+            })
+            .collect(),
+    }
+}
+
+/// #110, RFC-0014 'Testing Strategy': both calculators agree on every row for 1,000 random
+/// statement and parameter profiles.
+#[test]
+fn prover_and_verifier_calculators_agree_on_1000_random_profiles() {
+    let mut rng = SplitMix64(0x1100_0014_2026_1020);
+    for i in 0..1000 {
+        let p = if rng.below(4) == 0 {
+            *ParamSet::ALL[rng.below(3) as usize]
+        } else {
+            let log2_k = rng.below(25) as u8;
+            let inv_rate = rng.below(u64::from((33 - log2_k).min(5))) as u8;
+            let w_log2_k = rng.below(23) as u8;
+            let w_inv_rate = rng.below(5) as u8;
+            let targets = if rng.below(5) == 0 {
+                None
+            } else {
+                Some(Targets {
+                    bits: 60 + rng.below(70) as u32,
+                    one_shot: 40 + rng.below(70) as u32,
+                })
+            };
+            ParamSet {
+                id: "random",
+                mode: match rng.below(3) {
+                    0 => ParamMode::Live,
+                    1 => ParamMode::NonInteractive,
+                    _ => ParamMode::Either,
+                },
+                release: rng.below(2) == 1,
+                layout: CommitmentLayout {
+                    advice: AdviceLayoutParams {
+                        log2_k,
+                        log2_inv_rate: inv_rate,
+                        mask_coeffs: rng.bits(18) as u32,
+                        row_block: 1 + rng.below(64) as u32,
+                        segments: 1 + rng.below(8) as u32,
+                    },
+                    weights: WeightLayoutParams {
+                        log2_k: w_log2_k,
+                        log2_inv_rate: w_inv_rate,
+                        mask_coeffs: rng.bits(18) as u32,
+                        blinding_rows: rng.bits(13) as u32,
+                    },
+                },
+                advice_queries: 1 + rng.below(300) as u32,
+                weight_queries: 1 + rng.below(300) as u32,
+                seed_pow: rng.below(33) as u32,
+                query_pow: rng.below(33) as u32,
+                targets,
+            }
+        };
+
+        let protocol = 1 + rng.below(2) as u8;
+        let w_inv = u32::from(p.layout.weights.log2_inv_rate);
+        let blinding = u64::from(p.layout.weights.blinding_rows);
+        let mut matrix_indices: Vec<usize> =
+            (0..rng.below(6)).map(|_| rng.below(10) as usize).collect();
+        matrix_indices.sort_unstable();
+        matrix_indices.dedup();
+        let matrices = matrix_indices
+            .into_iter()
+            .map(|idx| {
+                let width = if rng.below(2) == 1 {
+                    1u64 << rng.below(u64::from(33 - w_inv))
+                } else {
+                    rng.bits(32 - w_inv).max(1)
+                };
+                let mut rows = if rng.below(8) == 0 { 0 } else { rng.bits(63) };
+                if protocol == 2 && rows.saturating_add(blinding) == 0 {
+                    rows = 1;
+                }
+                MatrixSizes {
+                    matrix: WeightMatrix::ALL[idx],
+                    width,
+                    rows,
+                    variables: rng.bits(32) as u32,
+                }
+            })
+            .collect();
+
+        let statement = StatementSizes {
+            protocol: u16::from(protocol),
+            rounds: (0..rng.below(5))
+                .map(|_| Rounds {
+                    count: rng.bits(40),
+                    degree: rng.bits(12) as u32,
+                })
+                .collect(),
+            stages: (0..rng.below(5)).map(|_| rng.bits(20)).collect(),
+            tree_levels: (0..rng.below(7)).map(|_| rng.bits(16)).collect(),
+            zero_checks: (0..rng.below(5)).map(|_| rng.bits(7) as u32).collect(),
+            forests: (0..rng.below(4)).map(|_| rng.bits(8) as u32).collect(),
+            lookups: (0..rng.below(5))
+                .map(|_| LookupSizes {
+                    lookups: rng.bits(64),
+                    rows: rng.bits(64),
+                })
+                .collect(),
+            claim_groups: (0..rng.below(5)).map(|_| rng.bits(32)).collect(),
+            advice_rows: rng.bits(64).max(1),
+            matrices,
+        };
+
+        let prover_report = SoundnessReport::new(&p, &statement).expect("prover report");
+        let verifier_report = tv_core::soundness::SoundnessReport::evaluate(
+            to_tv_params(&p),
+            to_tv_statement(&statement),
+        )
+        .expect("verifier report");
+
+        let verifier_json: Value =
+            serde_json::from_str(&verifier_report.to_json()).expect("verifier JSON");
+        let v_rows = list(&verifier_json["rows"]);
+        assert_eq!(
+            prover_report.rows.len(),
+            v_rows.len(),
+            "profile {i}: row count"
+        );
+        for (p_row, v_row) in prover_report.rows.iter().zip(v_rows) {
+            same_row(p_row, v_row, &format!("random-1000/{i}"));
+        }
+        assert_eq!(
+            prover_report.minimum(),
+            verifier_report.minimum,
+            "profile {i}: minimum"
+        );
+        assert_eq!(
+            prover_report.meets_targets(),
+            verifier_report.meets_targets,
+            "profile {i}: meets_targets"
+        );
+    }
+}
