@@ -143,6 +143,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - `tv-core::selectors::suffix_kernel` evaluates the public Argmax suffix reduction factor in linear time without allocating a cube (RFC-0009). Independent strict-pair sums and Boolean tie cases check it ([#124](https://github.com/AbdelStark/tessera/issues/124)).
 
+- Add independent affine gadget components: `gadgets::comparison` derives public carry boxes and checks all six canonical arrays, both terminal carries and the terminal borrow; `gadgets::decomposition` checks every affine lookup key with its narrowed virtual top. Must-use results retain all source and range obligations. Independent integer/cube fixtures and producer cross-checks cover complete products beyond Goldilocks; these components do not replace their caller's range proofs, nonlinear reductions or opening bindings (#124).
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

@@ -46,6 +46,7 @@
 //! | [`schedule::derive()`] | the stage schedule of a lowered graph: the leaf stage's claims, each reduction stage's instances with their relations, variables and degrees, and where every claim goes (RFC-0010, RFC-0037) |
 //! | [`stages::verify`] | the leaf stage's splits, then each reduction stage: its layer and zero-check points, its batched sumcheck with the public factors, its splits; and the claim pool |
 //! | [`selectors`] | the public factors: `LT`, the causal selector `C̃`, the row selector `ψ̃`, layer weights `w̃`, `Rotate`'s kernel, and RFC-0035's padding zero-check |
+//! | [`gadgets`] | affine comparison/decomposition checks with must-use source and range obligations (RFC-0009/0050); the remaining gadget reductions and full driver build on them |
 //!
 //! The gadgets' final checks and their relations in the stages (#124), the masked sumcheck of
 //! RFC-0013 (#159), the leaf stage's integration of the trees with the stages (#130), the
@@ -548,6 +549,7 @@ compile_error!(
 pub mod advice;
 pub mod claims;
 mod fiat_shamir;
+pub mod gadgets;
 mod interpolation;
 pub mod logup;
 pub mod lowering;

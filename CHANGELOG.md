@@ -830,6 +830,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - Regenerate grouped advice openings and column answers on CPU: stable original-claim batching, one row block and clearing accumulators, a random-column leaf and combination self-check before combined rows are released, and canonical P5 answers from replayed masks. Public Merkle metadata is retained separately from the root-only committer. Complete model vectors verify through the independent canonical checker, with exact tamper errors, physical clearing and allocator measurements. The shared combination kernel now clears its unreduced secret scratch (OBS-6); no protocol bytes, transcript labels or parameters change (#119).
 
+- Add independent gadget-final fixtures for canonical comparison arrays and narrowed decompositions, consumed by `tv-core` and producer integration tests. The producer's witness columns and lookup forms match the frozen integer and direct-cube oracles (#124).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

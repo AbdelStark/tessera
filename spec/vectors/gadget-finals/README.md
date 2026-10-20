@@ -43,8 +43,16 @@ python3 -I -B spec/vectors/gadget-finals/generate.py
 cargo xtask gen-vectors --check
 ```
 
-The issue's implementation adds a verifier consumer before comparing with the
-prover, and a consumer in the prover workspace before the issue is published.
+The independent verifier consumers are `verifier/crates/tv-core/tests/gadget_comparison.rs`
+and `gadget_decomposition.rs`. The producer consumer is
+`crates/tessera-prover/tests/gadget_comparison.rs`: it derives actual witness
+columns and lookup forms, compares all values and extensions to these fixtures,
+and passes the resulting evaluations to the independent affine checks. The
+verifier consumers passed before the producer adapters were written.
+
+The final verifier driver must still join these local arithmetic checks to the
+canonical lookup, graph and opening obligations. No complete model proof is
+accepted by these fixture tests.
 
 ## Decompositions
 
