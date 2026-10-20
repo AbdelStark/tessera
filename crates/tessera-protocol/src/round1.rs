@@ -8,6 +8,8 @@
 use tessera_codec::{Decode, Encode, Rational};
 use tessera_hash::{Digest, Domain, Hasher};
 
+pub use tessera_pcs::AdviceCommitment;
+
 /// Step 1: the prover's commitments (schema `0x0510`).
 ///
 /// `tessera-protocol/1` burns no blinding rows, so `Round1` holds no weight reservation: the
@@ -102,14 +104,4 @@ pub enum Decoding {
         /// `0 < t ≤ 4`, an exact fraction.
         t: Rational,
     },
-}
-
-/// The advice commitment (RFC-0011 'Column digests and root').
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Encode, Decode)]
-pub struct AdviceCommitment {
-    /// The Merkle root over the column leaves.
-    pub root: Digest,
-    /// The commitment's `commitment_id` (RFC-0031 '`layout_digest`'), which the verifier
-    /// derives and compares.
-    pub layout_digest: Digest,
 }

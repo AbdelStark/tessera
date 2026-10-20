@@ -9,9 +9,9 @@
 //! leaf_j   = d_j[ceil(m / B)]
 //! ```
 //!
-//! The rows of a committed matrix are secret-class when they hold weights or advice, and so are
-//! their codewords (05 §3). A step's input, a chain and one column's symbols, is laid out in a
-//! [`SecretBuf`], which clears its memory when it drops (OBS-6); the chains are digests.
+//! The rows and codewords are secret-class (05 §3). The default path uses a zeroizing
+//! serialization buffer; the allocation-free path streams each canonical symbol into the
+//! hasher. Only the public column digests are retained.
 
 use core::fmt;
 use core::num::NonZeroUsize;
@@ -85,8 +85,41 @@ impl ColumnChains {
         }
     }
 
-    /// Absorbs the next block of rows, row-major: `B` rows, or fewer for the last block.
+    /// Absorbs the next block of rows, row-major: B rows, or fewer for the last block.
+    /// This path reuses one zeroizing serialization buffer across columns.
     pub fn absorb_block(&mut self, rows: &[Goldilocks]) -> Result<(), ColumnError> {
+        let (columns, count) = self.check_block(rows)?;
+        // One contiguous input per column: the chain, then the column's symbols in row order,
+        // written over the same buffer column after column.
+        let mut input = SecretBuf::filled(0u8, 32 + 8 * count);
+        for (j, chain) in self.chains.iter_mut().enumerate() {
+            let (head, symbols) = input.split_at_mut(32);
+            head.copy_from_slice(chain);
+            for (symbol, row) in symbols.chunks_exact_mut(8).zip(rows.chunks_exact(columns)) {
+                symbol.copy_from_slice(&row[j].to_canonical_u64().to_le_bytes());
+            }
+            *chain = hash(Domain::ColumnStep, &input);
+        }
+        Ok(())
+    }
+
+    /// The same canonical chain update, without a serialization allocation. This trades
+    /// small incremental hash updates for the exact one-block heap bound of streaming PCS.
+    /// The checks and byte sequence are identical to [`Self::absorb_block`].
+    pub fn absorb_block_no_alloc(&mut self, rows: &[Goldilocks]) -> Result<(), ColumnError> {
+        let (columns, _) = self.check_block(rows)?;
+        for (j, chain) in self.chains.iter_mut().enumerate() {
+            let mut input = Hasher::new(Domain::ColumnStep);
+            input.update(chain);
+            for row in rows.chunks_exact(columns) {
+                input.update(&row[j].to_canonical_u64().to_le_bytes());
+            }
+            *chain = input.finalize();
+        }
+        Ok(())
+    }
+
+    fn check_block(&mut self, rows: &[Goldilocks]) -> Result<(usize, usize), ColumnError> {
         let columns = self.chains.len();
         if self.closed {
             return Err(ColumnError::AfterFinalBlock);
@@ -105,18 +138,7 @@ impl ColumnChains {
             });
         }
         self.closed = count < self.block;
-        // One contiguous input per column: the chain, then the column's symbols in row order,
-        // written over the same buffer column after column.
-        let mut input = SecretBuf::filled(0u8, 32 + 8 * count);
-        for (j, chain) in self.chains.iter_mut().enumerate() {
-            let (head, symbols) = input.split_at_mut(32);
-            head.copy_from_slice(chain);
-            for (symbol, row) in symbols.chunks_exact_mut(8).zip(rows.chunks_exact(columns)) {
-                symbol.copy_from_slice(&row[j].to_canonical_u64().to_le_bytes());
-            }
-            *chain = hash(Domain::ColumnStep, &input);
-        }
-        Ok(())
+        Ok((columns, count))
     }
 
     /// The leaves `leaf_j`, one per column.

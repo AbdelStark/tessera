@@ -22,7 +22,12 @@ use std::sync::atomic::Ordering;
 
 use tessera_codec::{DecodeLimits, Secret, SecretBuf, envelope, schema};
 use tessera_compiler::{PublicModel, SequenceTile, Tile, analyze, lower, select, tiles};
+use tessera_field::{Field, Goldilocks as Fp, PrimeField};
 use tessera_ir::{GadgetPolicy, IntegerModel};
+use tessera_pcs::{
+    AdviceLayout, Axis, CommitmentParams, DenseShape, LayoutParams, Padding, RowEncoder,
+    StreamingCommitter, TensorShape, TileShape,
+};
 use tessera_witness::{Checkpoints, Engine, Regenerator, WitnessSource};
 
 /// Forwards to `System` and, at the first free of the watched block, counts its nonzero bytes.
@@ -43,7 +48,8 @@ mod recorder {
     // SAFETY: both methods forward to `System` with their own arguments, so its guarantees carry
     // over. `dealloc` first reads the block it frees: the block is live until the forwarded call,
     // `layout.size()` bytes long, and the test watches only blocks whose every byte is initialized:
-    // a residual/copy, or the table tile's sole fully initialized dense/sorted allocation.
+    // a residual/copy, a fully initialized streamed codeword block, or the table tile's sole
+    // fully initialized dense/sorted allocation.
     // Sorted storage initializes its entire public capacity as two-u64 entries without padding.
     unsafe impl GlobalAlloc for Recorder {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -102,6 +108,7 @@ fn model() -> IntegerModel {
 
 #[test]
 fn checkpoints_and_multiplicities_free_zeros_only() {
+    streamed_codewords_are_cleared_on_abort();
     // One test, so that no other test of this binary frees memory while a block is watched.
     let model = model();
     let tokens = vec![7, 300, 11, 451, 0, 511];
@@ -177,4 +184,65 @@ fn checkpoints_and_multiplicities_free_zeros_only() {
         }
         assert_eq!(nonzero_bytes_when_size_freed(bytes, || drop(tile)), 0);
     }
+}
+
+fn streamed_codewords_are_cleared_on_abort() {
+    let (k, n, block) = (8, 16, 5);
+    let bytes = block * n * size_of::<Fp>();
+    let layout = AdviceLayout::new(
+        LayoutParams {
+            log2_k: 3,
+            segments: 1,
+            layers: 1,
+            group: 1,
+            query_block: 1,
+            max_context: 1,
+        },
+        1,
+        &[TileShape {
+            layer: Some(0),
+            values: vec![TensorShape::Dense(DenseShape::new(
+                vec![Axis::new(17 * k as u64)],
+                Padding::Zero,
+            ))],
+        }],
+    )
+    .expect("layout");
+    let params = CommitmentParams {
+        log2_k: 3,
+        log2_inv_rate: 1,
+        mask_coeffs: 1,
+        row_block: std::num::NonZeroUsize::new(block).expect("B"),
+        commitment_id: [53; 32],
+    };
+    let encoder = RowEncoder::new(k, 1, 1).expect("encoder");
+    let row = SecretBuf::filled(Fp::ONE, k);
+    // A fully initialized plain allocation is a control: freeing it exposes nonzero bytes.
+    let mut copy = vec![Fp::ZERO; block * n];
+    encoder
+        .encode_row(&row, &mut || Fp::ONE, &mut copy[..n])
+        .expect("control codeword");
+    let written: usize = copy
+        .iter()
+        .map(|v| {
+            v.to_canonical_u64()
+                .to_le_bytes()
+                .iter()
+                .filter(|&&b| b != 0)
+                .count()
+        })
+        .sum();
+    assert!(written > 0);
+    assert_eq!(nonzero_bytes_when_size_freed(bytes, || drop(copy)), written);
+    let mut source = || Fp::ONE;
+    assert_eq!(
+        nonzero_bytes_when_size_freed(bytes, || {
+            let mut stream =
+                StreamingCommitter::new(params, &layout, 0, &encoder, &mut source).expect("stream");
+            stream.push_row(0, &row).expect("partial block");
+            // Abort before any full-block or finish clearing: Drop must clear the entire allocation.
+            drop(stream);
+        }),
+        0
+    );
 }

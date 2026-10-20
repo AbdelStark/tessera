@@ -12,6 +12,12 @@ use common::SplitMix64;
 use tessera_field::{Goldilocks, PrimeField};
 use tessera_hash::{ColumnChains, ColumnError, Digest, Domain, hash};
 
+type Absorb = fn(&mut ColumnChains, &[Goldilocks]) -> Result<(), ColumnError>;
+const ABSORBERS: [Absorb; 2] = [
+    ColumnChains::absorb_block,
+    ColumnChains::absorb_block_no_alloc,
+];
+
 /// The definition, column by column, from the whole matrix.
 fn reference(id: &Digest, rows: &[Vec<Goldilocks>], columns: usize, block: usize) -> Vec<Digest> {
     (0..columns)
@@ -58,51 +64,55 @@ fn streamed_chains_match_the_definition() {
                     .collect()
             })
             .collect();
-        let mut chains = ColumnChains::new(&id, nonzero(columns), nonzero(block));
-        let flat: Vec<Goldilocks> = rows.iter().flatten().copied().collect();
-        for chunk in flat.chunks(block * columns) {
-            chains.absorb_block(chunk).expect("a valid block");
+        for absorb in ABSORBERS {
+            let mut chains = ColumnChains::new(&id, nonzero(columns), nonzero(block));
+            let flat: Vec<Goldilocks> = rows.iter().flatten().copied().collect();
+            for chunk in flat.chunks(block * columns) {
+                absorb(&mut chains, chunk).expect("a valid block");
+            }
+            assert_eq!(
+                chains.finish(),
+                reference(&id, &rows, columns, block),
+                "{m} rows, {columns} columns, block {block}"
+            );
         }
-        assert_eq!(
-            chains.finish(),
-            reference(&id, &rows, columns, block),
-            "{m} rows, {columns} columns, block {block}"
-        );
     }
 }
 
 #[test]
 fn malformed_blocks_are_rejected_and_change_nothing() {
-    let id = [9; 32];
-    let x = Goldilocks::from_u64_reduced(5);
-    let fresh = || ColumnChains::new(&id, nonzero(3), nonzero(4));
-    let untouched = fresh().finish();
+    for absorb in ABSORBERS {
+        let id = [9; 32];
+        let x = Goldilocks::from_u64_reduced(5);
+        let fresh = || ColumnChains::new(&id, nonzero(3), nonzero(4));
+        let untouched = fresh().finish();
 
-    let mut chains = fresh();
-    assert_eq!(
-        chains.absorb_block(&[x; 7]),
-        Err(ColumnError::PartialRow {
-            symbols: 7,
-            columns: 3
-        })
-    );
-    assert_eq!(
-        chains.absorb_block(&[]),
-        Err(ColumnError::BlockSize { rows: 0, block: 4 })
-    );
-    assert_eq!(
-        chains.absorb_block(&[x; 15]),
-        Err(ColumnError::BlockSize { rows: 5, block: 4 })
-    );
-    assert_eq!(chains.finish(), untouched);
+        let mut chains = fresh();
+        assert_eq!(
+            absorb(&mut chains, &[x; 7]),
+            Err(ColumnError::PartialRow {
+                symbols: 7,
+                columns: 3
+            })
+        );
+        assert_eq!(
+            absorb(&mut chains, &[]),
+            Err(ColumnError::BlockSize { rows: 0, block: 4 })
+        );
+        assert_eq!(
+            absorb(&mut chains, &[x; 15]),
+            Err(ColumnError::BlockSize { rows: 5, block: 4 })
+        );
+        assert_eq!(chains.finish(), untouched);
 
-    // A short block ends the matrix: nothing may follow it.
-    let mut chains = fresh();
-    chains.absorb_block(&[x; 6]).expect("two rows");
-    let after_short = chains.clone().finish();
-    assert_eq!(
-        chains.absorb_block(&[x; 12]),
-        Err(ColumnError::AfterFinalBlock)
-    );
-    assert_eq!(chains.finish(), after_short);
+        // A short block ends the matrix: nothing may follow it.
+        let mut chains = fresh();
+        absorb(&mut chains, &[x; 6]).expect("two rows");
+        let after_short = chains.clone().finish();
+        assert_eq!(
+            absorb(&mut chains, &[x; 12]),
+            Err(ColumnError::AfterFinalBlock)
+        );
+        assert_eq!(chains.finish(), after_short);
+    }
 }

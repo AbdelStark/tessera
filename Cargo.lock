@@ -638,7 +638,9 @@ dependencies = [
  "cudarc",
  "tessera-codec",
  "tessera-compiler",
+ "tessera-field",
  "tessera-ir",
+ "tessera-pcs",
  "tessera-witness",
 ]
 
@@ -684,6 +686,7 @@ dependencies = [
 name = "tessera-pcs"
 version = "0.1.0"
 dependencies = [
+ "allocation-counter",
  "getrandom 0.3.4",
  "serde_json",
  "tessera-codec",
@@ -716,6 +719,7 @@ dependencies = [
  "tessera-field",
  "tessera-hash",
  "tessera-ir",
+ "tessera-pcs",
  "tessera-sumcheck",
 ]
 

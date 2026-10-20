@@ -70,8 +70,9 @@
 //!
 //! The opening pass is `(G + 1)·N·(k + P_A)` products of an `Fp2` coefficient by an `Fp` value,
 //! for `G` groups and `N` non-zero rows. They are summed unreduced, in 128 bits and a count of
-//! carries, and reduced once per output. The transcript, the canonical layout, streaming and the
-//! blinding rows of RFC-0013 are not here: `γ`, `ξ*`, the queries and the layout are inputs.
+//! carries, and reduced once per output. These reference opening calls take `γ`, `ξ*`, queries
+//! and a row layout from their caller; they neither drive the transcript nor add RFC-0013's
+//! blinding rows.
 //!
 //! ```
 //! use std::num::NonZeroUsize;
@@ -275,15 +276,30 @@
 //! # Ok::<(), tessera_pcs::PcsError>(())
 //! ```
 //!
+//! # Streaming advice commitment
+//!
+//! [`StreamingCommitter`] borrows a canonical [`AdviceLayout`], a shared [`RowEncoder`] and the
+//! caller's per-proof [`MaskSource`]. Push each segment's committed rows in layout order, then
+//! [`finish`](StreamingCommitter::finish) it into [`SegmentDigests`]. [`merge_segments`] checks
+//! the complete ordered set and returns the [`AdviceCommitment`] that the protocol re-exports
+//! in `Round1`; its fields and TCE bytes are unchanged.
+//!
+//! The stream owns one initialized secret codeword block and its column chain state, with no
+//! allocation per row or block. It clears every flushed block and its allocation on abort.
+//! The merge uses a public stack frontier rather than retaining a tree. Encoder tables, layout,
+//! input row and PRG state remain borrowed baseline state. The per-proof seed lifecycle belongs
+//! to the driver of RFC-0018, which supplies the mask stream.
+//!
 //! # Secrets
 //!
 //! Rows, mask coefficients and codewords are secret-class, and combined rows and opened
 //! columns protocol-class (05 §3). Nothing here logs. Errors carry lengths, positions and public
 //! indices only ([`PcsError`]). The `Debug` forms of the plan, the encoder and the commitment
 //! show their sizes, and those of combined rows and answers their lengths. Control flow depends
-//! on lengths, the public layout and public indices, never on values (INV-ARCH-2). The commitment
-//! takes its rows in their `Secret` and keeps its masks and codewords in `SecretBuf`s, so all
-//! three are cleared when it drops (05 §3 OBS-1, OBS-6).
+//! on lengths, the public layout and public indices, never on values (INV-ARCH-2). The reference
+//! commitment owns its rows in `Secret` and its masks and codewords in `SecretBuf`s, which clear
+//! on drop. The streaming path borrows rows and retains only its active secret block until it
+//! is hashed and cleared (05 §3 OBS-1, OBS-6).
 //!
 //! # Features
 //!
@@ -306,6 +322,7 @@ mod error;
 mod layout;
 mod ntt;
 mod opening;
+mod streaming;
 mod weights;
 
 pub use commitment::{ColumnAnswer, CommitmentParams, ReferenceCommitment, RowLayout};
@@ -318,6 +335,7 @@ pub use layout::{
 };
 pub use ntt::NttPlan;
 pub use opening::{ClaimGroup, CombinedRow, RowClaim};
+pub use streaming::{AdviceCommitment, SegmentDigests, StreamingCommitter, merge_segments};
 pub use weights::{
     ChannelParamsRef, ChannelValues, MatrixKind, MatrixLayout, MatrixRows, ModelWeights,
     OpenedColumns, TypeBudget, WeightCombinedRows, WeightCommitment, WeightCommitmentPublic,

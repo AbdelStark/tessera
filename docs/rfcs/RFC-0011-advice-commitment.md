@@ -60,18 +60,34 @@ pub struct AdviceLayoutParams { pub log2_k: u8, pub log2_inv_rate: u8, pub mask_
                                 pub row_block: u32, pub segments: u32 }
 pub struct AdviceCommitment { pub root: Digest, pub layout_digest: Digest }  // layout_digest: the commitment_id
 
-pub struct StreamingCommitter { /* chain state: 32 bytes per column per segment */ }
-impl StreamingCommitter {
-    pub fn new(params: &AdviceLayoutParams, layout: &AdviceLayout, segment: u32, mask_rng: &mut MaskRng) -> Self;
+pub struct StreamingCommitter<'layout, 'work, M: MaskSource + ?Sized> { /* one block and chain state */ }
+impl<'layout, 'work, M: MaskSource + ?Sized> StreamingCommitter<'layout, 'work, M> {
+    pub fn new(params: CommitmentParams, layout: &'layout AdviceLayout, segment: u32,
+               encoder: &'work RowEncoder, mask_rng: &'work mut M) -> Result<Self, PcsError>;
     pub fn push_row(&mut self, row_index: u64, values: &[Fp]) -> Result<(), PcsError>; // must follow layout order
-    pub fn finish(self) -> SegmentDigests;
+    pub fn finish(self) -> Result<SegmentDigests<'layout>, PcsError>;
 }
-pub fn merge_segments(parts: &[SegmentDigests]) -> AdviceCommitment;
+pub fn merge_segments(parts: &[SegmentDigests<'_>]) -> Result<AdviceCommitment, PcsError>;
 ```
+
+The CPU implementation borrows the canonical layout's row runs and the encoder's public
+precomputed tables. `CommitmentParams.commitment_id` is the descriptor hash defined by
+RFC-0031; the caller derives it from the statement and proof unit. `MaskSource` supplies the
+caller's per-proof PRG stream. A refused push draws nothing, and finishing a segment releases
+that borrow so the next segment can consume its prescribed portion. Only public digests and
+layout identity survive `finish`. A merge refuses missing, repeated, reordered or mixed-context
+parts before hashing; a stack frontier produces the root without retaining a Merkle tree. The
+[CPU allocation report](../perf/streaming-advice-commitment.md) measures the one-block bound
+and accounts separately for the borrowed encoder tables and retained segment digests.
 
 ### Streaming procedure (witness pass)
 
 For each non-zero row in layout order within the segment: regenerate the row's values from the witness engine; draw the row's mask coefficients from the per-proof mask stream (a PRG keyed by the per-proof secret seed, so a restart reproduces them, [RFC-0018](RFC-0018-gpu-prover-runtime.md#crash-consistency)); encode; append the codeword to the block buffer; every `B` rows, advance all column chains and clear the buffer. Memory: one block buffer, `B · n · 8` bytes (2 GiB at `k = 2^22`, sharded by column across a GPU's memory), plus `32 · n` bytes of chain state per segment.
+
+For a segment of fewer than `B` committed rows the CPU block holds just those rows, and an
+empty segment has no block. The encoder tables, input row and mask source are shared or
+caller-owned baseline state. [The allocator measurements](../perf/streaming-advice-commitment.md)
+separate that baseline, the per-worker heap, retained segment chains and the merge frontier.
 
 ### Opening protocol
 

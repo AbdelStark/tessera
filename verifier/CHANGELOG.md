@@ -137,6 +137,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - Replay the complete native-model transcript vectors and public geometry boundary cases through both query phases; reject truncated vector replay. Verifier acceptance code and dependencies are unchanged (#125).
 
+- Check every codeword, segment chain, merged leaf and root of the independent synthetic streaming-commitment vectors with the verifier field and hashing implementations. No verifier acceptance code or dependency changed (#115).
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).
