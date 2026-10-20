@@ -228,6 +228,8 @@ pub enum Relation {
     /// The equality zero-check `0 = Σ_x eq(z, x)·(Ỹ(x) − f(x))` of a node's committed output `Y`;
     /// its evaluations are `Y`'s, then those of `f`'s inputs.
     Equality,
+    /// The original OneHot's `0 = sum_x eq(z,x) H(x)(1-H(x))`; one evaluation.
+    Booleanity,
 }
 
 /// What an instance proves.

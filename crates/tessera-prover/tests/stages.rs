@@ -465,7 +465,10 @@ impl Verifier<'_> {
                 let heads = self.lowering.graph.tensors[node.inputs[0].0 as usize].shape[0];
                 2 + usize::from(stacked || heads > 1)
             }
-            Relation::Mul(_) | Relation::SumSquares | Relation::ScaleChannels => 3,
+            Relation::Mul(_)
+            | Relation::SumSquares
+            | Relation::ScaleChannels
+            | Relation::Booleanity => 3,
             Relation::Rotate => 2,
             Relation::Equality => match node.op {
                 Op::Mul { .. } => 3,
@@ -520,6 +523,7 @@ impl Verifier<'_> {
             }
             Relation::Rotate => self.kernel(node, &target, &r, stacked) * e[0],
             Relation::ScaleChannels => panic!("no per-channel ConstMul in the conformance models"),
+            Relation::Booleanity => eq(&target, &r).expect("eq") * e[0] * (F::ONE - e[0]),
             Relation::Equality => {
                 let f = match node.op {
                     Op::ConstMul { .. } => {

@@ -308,6 +308,17 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             Relation::ScaleChannels => {
                 return internal("the stages do not prove a ConstMul by one constant per channel");
             }
+            Relation::Booleanity => {
+                let h = Read::Operand(arena.secret(operand(0)?));
+                Plan::Elementwise {
+                    inputs: vec![h],
+                    terms: vec![
+                        Term::new(GoldilocksExt2::ONE, vec![0]),
+                        Term::new(-GoldilocksExt2::ONE, vec![0, 0]),
+                    ],
+                    shape: ElementwiseShape::elementwise(instance.vars as usize),
+                }
+            }
             Relation::Equality => self.equality(arena, instance, node, &operand, stacked)?,
         })
     }

@@ -389,7 +389,7 @@ pub(crate) fn verify_with(
         reserve(&mut resolved, stage.instances.len())?;
         for (instance, arriving) in stage.instances.iter().zip(&incoming) {
             let claim = match (&instance.relation, arriving) {
-                (Relation::Equality { .. }, Incoming::Missing) => Fp2::ZERO,
+                (Relation::Equality { .. } | Relation::Booleanity, Incoming::Missing) => Fp2::ZERO,
                 (_, Incoming::Value(v)) => *v,
                 (_, Incoming::PerLayer(values)) => stacked(&eq_layers, values)?,
                 _ => return Err(StageError::Internal),
@@ -899,6 +899,9 @@ fn final_value(
             },
             &[x],
         ) => Some(rotate_kernel(rope, *positions, *middle_vars, r, own)? * layer_factor * x),
+        (Relation::Booleanity, &[h]) => {
+            Some(sumcheck::eq(&resolved.zero, point)? * h * (Fp2::ONE - h))
+        }
         (Relation::Equality { constant }, &[y, x]) => {
             Some(sumcheck::eq(&resolved.zero, point)? * (y - Fp2::from(*constant) * x))
         }

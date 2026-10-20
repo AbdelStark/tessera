@@ -72,8 +72,19 @@ impl Run {
     }
 
     fn with(name: &str, n: u32, layers: Option<u32>, seed: u64, lie: Option<(usize, Lie)>) -> Self {
+        Self::with_indicator(name, n, layers, seed, lie, None)
+    }
+
+    fn with_indicator(
+        name: &str,
+        n: u32,
+        layers: Option<u32>,
+        seed: u64,
+        lie: Option<(usize, Lie)>,
+        entry: Option<Fe>,
+    ) -> Self {
         let (graph, schedule, rope) = model(name, n, layers);
-        let witness = Witness::new(&graph, &rope, seed);
+        let witness = Witness::with_indicator_entry(&graph, &rope, seed, entry);
         let mut transcript = reference::Transcript::new(&context().to_tce());
         let (leaf, leaf_splits, stages) = {
             let mut prover = prover(&graph, &witness, &schedule, &rope);
@@ -549,5 +560,38 @@ fn seeded_changes_never_panic_and_are_rejected() {
             outcome.is_err(),
             "trial {trial}: a changed proof was accepted"
         );
+    }
+}
+
+#[test]
+fn native_booleanity_rejects_a_non_boolean_indicator_with_consistent_downstream_values() {
+    for name in MODELS {
+        for n in [1, 3, 5] {
+            let honest = Run::with_indicator(name, n, Some(3), 71, None, None);
+            let accepted = honest.verify().unwrap();
+            let h = honest
+                .graph
+                .nodes()
+                .iter()
+                .find(|n| matches!(n.op(), tv_core::lowering::Op::OneHot { .. }))
+                .unwrap()
+                .outputs()[0];
+            assert!(accepted.pool.iter().any(|c| {
+                c.stage == 1
+                    && c.terms
+                        .iter()
+                        .any(|t| t.tensor == tv_core::stages::PoolTensor::Single(h))
+            }));
+            let changed = Run::with_indicator(name, n, Some(3), 71, None, Some(Fe::base(2)));
+            assert_eq!(
+                changed.verify().unwrap_err(),
+                StageError::Sumcheck {
+                    stage: 1,
+                    error: SumcheckError::FinalMismatch {
+                        round: changed.schedule.stages()[0].rounds as u32
+                    },
+                }
+            );
+        }
     }
 }

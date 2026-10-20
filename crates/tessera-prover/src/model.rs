@@ -157,9 +157,8 @@ pub fn derive_model_schedule(claims: &ClaimList, n: u32) -> Result<ModelSchedule
         };
         let node = &lowering.graph.nodes[id.0 as usize];
         match node.op {
-            Op::OneHot { .. } => {
-                geometry.record(1, vars(shape(node.outputs[0]))? + lambda, true)?
-            }
+            // Its Booleanity instance is already in the native graph zero-checks above.
+            Op::OneHot { .. } => {}
             Op::RsqrtRow { .. } => {
                 geometry.record(1, vars(shape(node.outputs[0]))? + lambda, true)?;
                 let reference = layer.map_or(NodeRef::Node(id), |(_, p)| NodeRef::Position(p));

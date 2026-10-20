@@ -29,6 +29,15 @@ Verifier tests passed before producer implementation comparisons. Producer
 adapters then checked actual witness columns, lookup rows and CPU proof messages,
 including final transcript state and squeeze counter.
 
+The native graph schedule also derives OneHot booleanity in stage 1, in node
+order with the embedding equality check (RFC-0035, RFC-0037). Its degree-three
+sumcheck reads the original indicator and returns that same source to the opening
+pool. The shared zero-check point has the largest zero-check domain, including
+the vocabulary axis. Independent synthetic proofs and actual CPU witness proofs
+exercise this path; a non-Boolean indicator fails even when downstream values
+are recomputed consistently. This does not discharge the other OneHot relations
+or the remaining gadget/source and lookup composition below.
+
 ## Required composition
 
 | Component | Checked relations | Obligations retained for the driver |

@@ -844,6 +844,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - Add exact greedy request scoring in `tessera-scoring`: original teacher-forcing source rows, clearing maximum certificates with zero output padding, per-request `Û = 0` claims, and deterministic `ERR-WITNESS-EXACT-MISMATCH` context after all rows. Proof operands reuse the recorded token's existing OneHot. Actual tiny-model CPU scoring subproofs are checked independently; full model drivers and temperature/mixture scoring remain separate (#127).
 
+- Derive OneHot booleanity in the native stage-one schedule, with degree-three proof operands bound to the original indicator and its opening claim. Both implementations account for its full zero-check domain; consistent downstream recomputation cannot hide a non-Boolean token indicator (#124).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

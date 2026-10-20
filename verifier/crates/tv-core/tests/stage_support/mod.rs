@@ -150,6 +150,19 @@ pub struct Witness {
 impl Witness {
     /// Random graph inputs and gadget outputs, every other output computed.
     pub fn new(graph: &Graph, rope: &Rope, seed: u64) -> Self {
+        Self::with_indicator_entry(graph, rope, seed, None)
+    }
+
+    /// Change one indicator entry before computing all downstream graph values.
+    pub fn with_indicator_entry(graph: &Graph, rope: &Rope, seed: u64, entry: Option<Fe>) -> Self {
+        let vocab = graph
+            .nodes()
+            .iter()
+            .find_map(|node| match node.op() {
+                Op::OneHot { vocab } => Some(u64::from(*vocab)),
+                _ => None,
+            })
+            .unwrap();
         let mut rng = SplitMix64::new(seed);
         let mut values: Vec<Vec<Fe>> = vec![Vec::new(); graph.tensors().len()];
         let size = |t: TensorId| -> usize {
@@ -166,6 +179,9 @@ impl Witness {
             let t = input.tensor;
             values[t.0 as usize] = match input.role {
                 Role::Positions => (0..size(t) as u64).map(Fe::base).collect(),
+                Role::Tokens => (0..size(t))
+                    .map(|_| Fe::base(rng.next_u64() % vocab))
+                    .collect(),
                 _ => (0..size(t)).map(|_| random(&mut rng)).collect(),
             };
         }
@@ -173,8 +189,17 @@ impl Witness {
             let dims = |t: TensorId| graph.tensor(t).unwrap().shape.dims().to_vec();
             let input = |i: usize| values[node.inputs()[i].0 as usize].clone();
             let outs: Vec<Vec<Fe>> = match *node.op() {
-                Op::OneHot { .. }
-                | Op::Requant { .. }
+                Op::OneHot { vocab } => {
+                    let mut h = vec![Fe::ZERO; size(node.outputs()[0])];
+                    for (row, token) in input(0).iter().enumerate() {
+                        h[row * vocab as usize + token.0 as usize] = Fe::ONE;
+                    }
+                    if let Some(value) = entry {
+                        h[0] = value;
+                    }
+                    vec![h]
+                }
+                Op::Requant { .. }
                 | Op::RsqrtRow { .. }
                 | Op::SoftmaxRow { .. }
                 | Op::TableMap { .. } => node
@@ -709,6 +734,11 @@ impl Prover<'_> {
                     })
                     .collect();
                 (vec![x], Some(public(kernel)), Form::Product)
+            }
+            Relation::Booleanity => {
+                let h = table_of(node.outputs()[0]);
+                let eqs = (0..h.len()).map(|v| eq_at(zero, v)).collect();
+                (vec![h], Some(eqs), Form::Booleanity)
             }
             Relation::Equality { .. } => {
                 let Op::ConstMul { c } = *node.op() else {

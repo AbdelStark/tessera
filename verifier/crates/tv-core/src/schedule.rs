@@ -100,7 +100,7 @@
 //! Stage `k ≥ 1` holds one instance per virtual atom that stage `k − 1` leaves, in order: the
 //! atom's producing relation, at the atom's point, stacked over the layers when the atom is a
 //! stacked kind. Stage 1 stacks the leaf stage's per-layer claims at the layer point `ρ_1`, and
-//! holds after them the equality zero-checks of committed outputs of linear nodes, in node order:
+//! holds after them OneHot booleanity and equality zero-checks of committed linear outputs, in node order:
 //! `0 = Σ_x eq(z, x)·(Ỹ(x) − f(x))` at the last coordinates of its zero-check point. The schedule
 //! ends at the first stage with no instance.
 //!
@@ -116,6 +116,7 @@
 //! | `Elementwise` (`Mul`), `Ỹ(r) = Σ_x eq(r, x)·Ã(x)·B̃(x)` | the output's, layers | 3 | `Ã(r')`, `B̃` at the coordinates of `b`'s axes: the highest for `Trailing`, the lowest for `Leading` |
 //! | `SumSquares` (last axis), `Ũ(r) = Σ_x eq(r, x_row)·X̃(x)^2` | the input's, layers | 3 | `X̃(r')` |
 //! | `Rotate`, `Ỹ(r) = Σ_x E_r(x)·X̃(x)` | the input's, layers | 2 | `X̃(r')` |
+//! | `ZeroCheck` (OneHot booleanity), `0 = Σ_x eq(z,x)·H(x)·(1-H(x))` | the indicator's | 3 | `H(r')` |
 //! | `ZeroCheck` (equality, `ConstMul`), `0 = Σ_x eq(z, x)·(Ỹ(x) − c·X̃(x))` | the output's | 2 | `Ỹ(r')`, `X̃(r')` |
 //!
 //! Stacked, every evaluation's claim has the layer weights `eq(r'_ℓ, ·)`. A stage's degree is
@@ -463,8 +464,9 @@ pub enum Relation {
         /// The variables of the axes between the positions and the last.
         middle_vars: usize,
     },
-    /// The equality zero-check of a committed `ConstMul` output: `0 = Σ_x eq(z, x)·(Ỹ(x) −
-    /// c·X̃(x))`.
+    /// The original OneHot zero-check: `0 = Σ_x eq(z,x)·H(x)·(1-H(x))`.
+    Booleanity,
+    /// `0 = Σ_x eq(z,x)·(Y(x)-c·X(x))` for a committed ConstMul output.
     Equality {
         /// The constant `c`.
         constant: Fp,
@@ -480,7 +482,7 @@ impl Relation {
             Relation::Elementwise { .. } => RelationKind::Elementwise,
             Relation::SumSquares { .. } => RelationKind::SumSquares,
             Relation::Rotate { .. } => RelationKind::Rotate,
-            Relation::Equality { .. } => RelationKind::ZeroCheck,
+            Relation::Equality { .. } | Relation::Booleanity => RelationKind::ZeroCheck,
         }
     }
 }
@@ -1089,13 +1091,39 @@ impl Deriving<'_, '_> {
         Ok(leaf)
     }
 
-    /// Stage 1's equality zero-checks: each committed output of a linear or degree-2 node other
-    /// than a matmul, in node order, as an instance's shape. The lowering's only one is `c_0`'s
-    /// `ConstMul` (RFC-0037 'The committed first checkpoint'); any other is refused.
+    /// Stage 1's checks in node order: the original OneHot's booleanity, then committed
+    /// linear outputs. The lowering's only equality check is `c_0`'s ConstMul
+    /// (RFC-0037 'The committed first checkpoint'); any other is refused.
     fn zero_checks(&self) -> Result<Vec<Shaped>, ScheduleError> {
         let mut checks = Vec::new();
         for (i, node) in self.graph.nodes().iter().enumerate() {
             let id = NodeId(u32::try_from(i).map_err(|_| ScheduleError::Internal)?);
+            if matches!(node.op(), Op::OneHot { .. }) {
+                let &[out] = node.outputs() else {
+                    return Err(ScheduleError::Internal);
+                };
+                if self.layout.position(id).is_some() {
+                    return Err(ScheduleError::Unsupported { node: id });
+                }
+                let output = TensorRef::Single(out);
+                push(
+                    &mut checks,
+                    Shaped {
+                        relation: Relation::Booleanity,
+                        atom: Pending {
+                            tensor: output,
+                            point: Point::default(),
+                            layers: Layers::None,
+                            node: id,
+                        },
+                        stacked: false,
+                        vars: self.vars(output)?,
+                        degree: 3,
+                        zero: true,
+                    },
+                )?;
+                continue;
+            }
             if !is_linear(node.op()) && !is_relation(node.op()) {
                 continue;
             }
@@ -1421,6 +1449,12 @@ impl Deriving<'_, '_> {
             }
             (Relation::SumSquares { .. }, &[x]) | (Relation::Rotate { .. }, &[x, _]) => {
                 vec![(x, own.clone())]
+            }
+            (Relation::Booleanity, [_]) => {
+                let TensorRef::Single(output) = atom.tensor else {
+                    return Err(ScheduleError::Internal);
+                };
+                vec![(output, own.clone())]
             }
             // The output Ỹ first, then f's input (RFC-0010 'Sumcheck messages', as amended).
             (Relation::Equality { .. }, &[x]) => {

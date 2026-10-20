@@ -344,6 +344,7 @@ fn check_rules(lowering: &Lowering, schedule: &StageSchedule, label: &str) {
             let order: Vec<usize> = match instance.relation {
                 Relation::MatMulWeight => vec![1, 0],
                 Relation::Equality => (0..=inputs.len()).collect(),
+                Relation::Booleanity => vec![0],
                 Relation::Rotate | Relation::SumSquares | Relation::ScaleChannels => vec![0],
                 Relation::MatMulAct { .. } | Relation::Mul(_) => vec![0, 1],
             };
@@ -359,6 +360,7 @@ fn check_rules(lowering: &Lowering, schedule: &StageSchedule, label: &str) {
                     _ => 0,
                 };
                 let expected = match instance.relation {
+                    Relation::Booleanity => tensor(instance.kind, 0),
                     Relation::Equality if operand == 0 => tensor(instance.kind, 0),
                     Relation::Equality => inputs[operand - 1],
                     _ => inputs[operand],
@@ -1083,6 +1085,17 @@ impl<'a> Witness<'a> {
                                 * partials[0][f]
                         })
                         .fold(F::ZERO, |s, x| s + x)
+                }
+                Relation::Booleanity => {
+                    let residual = partials[0]
+                        .iter()
+                        .enumerate()
+                        .map(|(v, &h)| {
+                            eq_at(&r, u32::try_from(v).expect("small")) * h * (F::ONE - h)
+                        })
+                        .fold(F::ZERO, |s, x| s + x);
+                    assert_eq!(residual, F::ZERO, "{label}: original OneHot booleanity");
+                    continue;
                 }
                 Relation::Equality => {
                     // `Y = c·X` everywhere: the zero-checks here are of `ConstMul`s.

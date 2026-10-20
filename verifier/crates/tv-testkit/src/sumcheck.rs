@@ -275,6 +275,8 @@ pub enum Form {
     Product,
     /// The square of the one table, as `SumSquares` reads its input (RFC-0010 'Relations').
     Square,
+    /// Boolean indicator constraint `T_0 - T_0^2`.
+    Booleanity,
     /// `T_0 − c·T_1`, as an equality zero-check of `Y = c·X` reads `Ỹ` and `X̃` (RFC-0037 'The
     /// committed first checkpoint').
     Difference(Fe),
@@ -327,7 +329,7 @@ impl Product {
         let public = self.public.len();
         match (self.lambda, self.form) {
             (None, Form::Product) => self.tables.len() + public,
-            (None, Form::Square) => 2 + public,
+            (None, Form::Square | Form::Booleanity) => 2 + public,
             (None, Form::Difference(_)) => 1 + public,
             (Some(_), _) => 2 + public,
         }
@@ -342,6 +344,7 @@ impl Product {
                 let own = match self.form {
                     Form::Product => values[..sent].iter().fold(Fe::ONE, |p, &v| p * v),
                     Form::Square => values[0] * values[0],
+                    Form::Booleanity => values[0] - values[0] * values[0],
                     Form::Difference(c) => values[0] - c * values[1],
                 };
                 own * public
