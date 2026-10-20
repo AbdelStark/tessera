@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+  cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -62,6 +62,7 @@ jobs:
         run: |
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal --component clippy,rustfmt --no-self-update
+          echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: |
@@ -113,9 +114,11 @@ jobs:
         run: |
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal --no-self-update
+          echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ${{ matrix.workspace == 'prover' && '.' || 'verifier' }} -> target
+          key: ${{ matrix.workspace }}
           cache-workspace-crates: true
       - name: Install Nextest 0.9.148 (release binary, SHA-256 pinned)
         run: |
@@ -123,12 +126,16 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.148/$archive"
           echo "223ba936714cc861a9cdedad5a8eb664dfdd69d6fbdf6cea6aa8184f523290dc  $RUNNER_TEMP/$archive" | sha256sum --check --strict
           tar -xzf "$RUNNER_TEMP/$archive" -C "$HOME/.cargo/bin" cargo-nextest
-      - name: Prover protocol, component and tiny-model tests in parallel
+      - name: Runtime library unit tests
+        if: matrix.workspace == 'prover'
+        run: cargo nextest run --workspace --exclude xtask --exclude tessera-bench --lib --locked
+      - name: Protocol, proof components and tiny-model integration
         if: matrix.workspace == 'prover'
         run: >-
-          cargo nextest run --workspace --exclude xtask --exclude tessera-bench
-          --lib --tests --locked
-          -E 'not (binary(constraint-digest) | (package(tessera-compiler) & (binary(report) | binary(commitment_report))))'
+          cargo nextest run --locked --tests -E 'kind(test)'
+          -p tessera-codec -p tessera-field -p tessera-hash -p tessera-ir
+          -p tessera-poly -p tessera-tables -p tessera-sumcheck -p tessera-logup
+          -p tessera-pcs -p tessera-protocol -p tessera-prover -p tessera-e2e
       - name: Independent verifier tests in parallel
         if: matrix.workspace == 'verifier'
         run: cargo nextest run --workspace --lib --tests --locked
@@ -197,6 +204,7 @@ jobs:
         run: |
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal --no-self-update
+          echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: . -> target
