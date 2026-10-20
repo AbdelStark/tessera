@@ -3,6 +3,8 @@
 Independent data for the final relations of [RFC-0009](../../../docs/rfcs/RFC-0009-gadgets.md)
 and the canonical comparison arrays of [RFC-0050](../../../docs/rfcs/RFC-0050-gadget-advice-columns.md).
 `generate.py` uses Python integers, weighted prefixes and direct sums over the cube.
+The [composition guide](../../../docs/testing/gadget-finals.md) lists the source,
+lookup and opening obligations each checker returns and how to run its tests.
 It neither imports nor calls either Rust workspace.
 
 ## Comparisons

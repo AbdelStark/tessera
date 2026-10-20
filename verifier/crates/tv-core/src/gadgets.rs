@@ -3,6 +3,46 @@
 //! Independent final relations of RFC-0009. A local relation check is not proof
 //! acceptance: its returned obligations must be bound to the graph reductions,
 //! canonical advice roles and prescribed range lookups before the opening checks.
+//!
+//! # Composition contract
+//!
+//! [`Plan`] derives graph gadget ids, tables, source ids and geometry from the
+//! verifier's own lowering and selection (SP-7). It supplies [`requant`], [`onehot`],
+//! [`root`] and [`softmax`] sites. [`argmax::Argmax`] receives its id from the
+//! verifier-owned scoring certificate; [`Plan::argmax_outputs`] binds the selected
+//! logit and the SAME next-token indicator to their original graph row coordinates.
+//! Maximum claims remain explicit certificate-opening obligations.
+//!
+//! Check lookup key/value evaluations against the earlier LogUp leaf claims at
+//! their prescribed points. A Softmax maximum-forest leaf has its own point and
+//! public root `1 - psi`; it is not interchangeable with the lookup point. Feed
+//! nonlinear relation instances to [`crate::sumcheck::verify_batch`] with the
+//! prescribed degree. Its callback receives the instance's final point AFTER
+//! front-padding has been removed. Preserve every returned graph, advice, weight,
+//! lookup and certificate claim until the corresponding proof discharges it.
+//!
+//! Relations with an incoming evaluation use that claim's point; zero-checks use
+//! the common stage zero-check point. Fix incoming claims before batching gamma.
+//! For a layer template, combine fixed per-layer incoming claims with the layer
+//! weights before gamma, and reduce the nonlinear relation over the layer axis.
+//! Substituting late per-layer evaluations at a known layer point permits
+//! cancellation and does not establish the stacked relation. The full verifier
+//! driver owns this assembly and its soundness/resource accounting (#128).
+//!
+//! Root input simplification is conditional on BOTH residual padding axes being
+//! zero; [`root::Root::residual_padding_instance`] retains that proof obligation.
+//! In a stacked relation the real-layer selector also belongs in `psi`. Tensor
+//! shape metadata and physical commitment row padding do not prove these zeros.
+//!
+//! # Errors
+//!
+//! Failed local affine checks and proof evaluation counts give
+//! [`GadgetError::Rejected`] with the verifier-owned gadget id. Incorrect caller
+//! geometry is [`GadgetError::Internal`]; failed reserves are
+//! [`GadgetError::Memory`]. Nonlinear batched proof failures keep
+//! [`crate::sumcheck::SumcheckError`] and its exact stage/round in the driver;
+//! a failed mixed batch cannot identify an individual guilty gadget. Invalid
+//! lookup membership fails earlier as LogUp, per RFC-0019 steps 7 then 8.
 
 pub mod argmax;
 pub mod argmax_outputs;

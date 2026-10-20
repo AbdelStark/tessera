@@ -46,15 +46,16 @@
 //! | [`schedule::derive()`] | the stage schedule of a lowered graph: the leaf stage's claims, each reduction stage's instances with their relations, variables and degrees, and where every claim goes (RFC-0010, RFC-0037) |
 //! | [`stages::verify`] | the leaf stage's splits, then each reduction stage: its layer and zero-check points, its batched sumcheck with the public factors, its splits; and the claim pool |
 //! | [`selectors`] | the public factors: `LT`, the causal selector `C̃`, the row selector `ψ̃`, layer weights `w̃`, `Rotate`'s kernel, and RFC-0035's padding zero-check |
-//! | [`gadgets`] | affine comparison/decomposition checks with must-use source and range obligations (RFC-0009/0050); the remaining gadget reductions and full driver build on them |
+//! | [`gadgets`] | final checks for requantization, NonNeg, BigIntCompare, OneHot, roots, causal Softmax and Argmax, with canonical source/range obligations (RFC-0009/0050) |
 //!
-//! The gadgets' final checks and their relations in the stages (#124), the masked sumcheck of
-//! RFC-0013 (#159), the leaf stage's integration of the trees with the stages (#130), the
+//! The masked sumcheck of RFC-0013 (#159), the leaf stage's integration of the trees with
+//! the stages (#130), the
 //! regeneration of the tables and the structured evaluation of `t̃` (#100), and the verifier's
 //! driver and verdicts (#128) build on these; so do the transcript steps that squeeze the
 //! opening's challenges and queries, and the hiding of RFC-0013 (blinding
 //! rows, `u'_g`, `q_g`), which take the claim pool. [`weights`] adds the protocol1 weight
-//! opening components; the full driver still joins them to the schedule.
+//! opening components; the full driver still joins them and [`gadgets`] to the schedule,
+//! earlier LogUp/forest claims and canonical openings. No component result is a verdict.
 //! `ConstraintSystemDigest` (#120) builds on the lowering. Validation already derives the
 //! complete lookup catalog and checks the advice layout at `max_context`.
 //!

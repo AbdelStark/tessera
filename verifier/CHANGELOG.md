@@ -166,6 +166,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 - `tv-core::gadgets::softmax` binds each causal lookup key and maximum-forest leaf at its own point, derives the reciprocal product from both NonNeg decompositions, reduces the row sum to the canonical exponential source, and retains both padded-maximum and padded-reciprocal zero checks. Independent component proofs include six isolated alternative witnesses and omission controls ([#124](https://github.com/AbdelStark/tessera/issues/124)).
 - Argmax final relations check the masked Range29 key, selected-logit contraction and strict suffix of the same next-token OneHot. Results retain typed maximum, logits and indicator obligations; model-derived output views bind logits and the existing next-token OneHot through row-slice reductions. Independent proofs exercise valid-range alternative witnesses and omission controls ([#124](https://github.com/AbdelStark/tessera/issues/124)).
 
+- Exercise all gadget final-check families and output views through the existing sumcheck fuzz target. Independent arithmetic/fixture oracles check exact errors and retained claims; allocation tests enforce pre-count rejection, and generated seeds run in the ordinary fuzz test suite. Document the final verifier's composition obligations and preserve RFC-0019's LogUp/Sumcheck/Gadget first-failure ordering (#124).
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).
