@@ -324,6 +324,12 @@ impl Context<'_> {
                     1 + usize::from(shape_vars(out) + lvars > 0),
                 )
             }
+            s::Relation::Booleanity => (json!({"Booleanity":[]}), 3),
+            s::Relation::OneHotVocabulary => {
+                (json!({"Vocabulary":[out[1],shape_vars(&out[1..])]}), 3)
+            }
+            s::Relation::OneHotCount => (json!({"OneHotCount":[shape_vars(&out[1..]),out[0]]}), 2),
+            s::Relation::OneHotIndex => (json!({"OneHotIndex":[shape_vars(&out[1..])]}), 2),
             s::Relation::ScaleChannels => panic!("no per-channel ConstMul in the Llama lowering"),
         }
     }

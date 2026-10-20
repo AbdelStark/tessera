@@ -38,6 +38,9 @@ public `selection::derive` view observes its existing validation pass. Capture i
 disabled during normal validation and changes no acceptance checks.
 The node operations identify RFC-0009 gadget semantics; witness/PCS placement and
 proof acceptance remain the responsibilities of their separate components.
+The native OneHot stage records booleanity, vocabulary masking, row count and
+token index as four distinct relations. Their public vocabulary/row dimensions,
+projected token claim and degree bounds are included in the comparison.
 
 ## Canonical diagnostic framing
 
