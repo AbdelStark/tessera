@@ -342,6 +342,10 @@ def main():
     softmax = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(softmax)
     write('softmax.json', softmax.cases())
+    spec = importlib.util.spec_from_file_location('argmax_oracle', Path(__file__).with_name('argmax.py'))
+    argmax = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(argmax)
+    write('argmax.json', argmax.cases())
     print(f'{len(cases)} comparison cases, {sum(len(c["rows"]) for c in cases)} integer witnesses')
 
 
