@@ -127,3 +127,28 @@ alters each source/key/value in turn. Its frozen cases passed before the produce
 adapter was written. `crates/tessera-prover/tests/gadget_requant.rs` compares
 actual requantization witness columns and constraint evaluations, and actual SiLU
 table outputs, with the same independent data.
+
+## One-hot relations
+
+`onehot.json`, schema version 1, contains six honest and six cheating component
+sumcheck batches, frozen before the verifier implementation. `onehot.py` starts
+from integer indicator rows and evaluates public selectors and indices by direct
+cube sums. Shapes include a singleton vocabulary and token domain, and padding
+on both axes. Each alternative violates exactly one of booleanity, vocabulary
+membership, row sum or token binding, including nonzero padded token rows.
+
+The four relations share the stage's zero-check point. With vocabulary point
+`v`, row point `t`, `D(v)=eq(0,v)`, public index `I(v)` and selector `psi(t)`, the
+row-sum and index residuals are lifted to the full output cube as
+`eq(z_t,t)*(h-D(v)*psi(t))` and
+`eq(z_t,t)*(I(v)*h-D(v)*token(t))`. Summing `D` over the vocabulary cube gives
+one, so the row constants are counted once. These two relations have degree two;
+booleanity and vocabulary padding have degree three. The batch uses the existing
+stage-one labels and degree-three maximum, with no new message schema. Its proof
+contains four indicator evaluations and one token evaluation in relation order.
+
+All claims entering these zero checks are zero. A cheating oracle keeps those
+claims and supplies its actual final source evaluations, so its component proof
+fails the sumcheck's final check. The fixtures also record the actual sum of each
+relation, showing that each alternative tests a single obligation. These are not
+complete model proofs or a replacement for the final source openings.

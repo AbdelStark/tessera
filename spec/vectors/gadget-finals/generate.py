@@ -330,6 +330,10 @@ def main():
     requant = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(requant)
     write('requant.json', requant.cases(mle))
+    spec = importlib.util.spec_from_file_location('onehot_oracle', Path(__file__).with_name('onehot.py'))
+    onehot = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(onehot)
+    write('onehot.json', onehot.cases())
     print(f'{len(cases)} comparison cases, {sum(len(c["rows"]) for c in cases)} integer witnesses')
 
 
