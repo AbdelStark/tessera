@@ -38,10 +38,22 @@ fn context() -> SessionContext<'static> {
 /// A model's graph at `n` tokens, its schedule and its RoPE constants; `layers` repeats its
 /// layers' rescaling over another number of layers.
 fn model(name: &str, n: u32, layers: Option<u32>) -> (Graph, Schedule, Rope) {
+    model_vocabulary(name, n, layers, None)
+}
+
+fn model_vocabulary(
+    name: &str,
+    n: u32,
+    layers: Option<u32>,
+    vocab: Option<u32>,
+) -> (Graph, Schedule, Rope) {
     let golden = goldens().into_iter().find(|g| g.name == name).unwrap();
     let mut claims = ClaimList::open(&golden.envelope, &DecodeLimits::MESSAGE).unwrap();
     if let Some(layers) = layers {
         claims = with_layers(&claims, layers);
+    }
+    if let Some(v) = vocab {
+        claims.arch.vocab = v;
     }
     let public = check_public(&claims).unwrap();
     let graph = lower(&public, n).unwrap();
@@ -85,6 +97,17 @@ impl Run {
     ) -> Self {
         let (graph, schedule, rope) = model(name, n, layers);
         let witness = Witness::with_indicator_entry(&graph, &rope, seed, entry);
+        Self::from_witness(graph, schedule, rope, witness, seed, lie)
+    }
+
+    fn from_witness(
+        graph: Graph,
+        schedule: Schedule,
+        rope: Rope,
+        witness: Witness,
+        seed: u64,
+        lie: Option<(usize, Lie)>,
+    ) -> Self {
         let mut transcript = reference::Transcript::new(&context().to_tce());
         let (leaf, leaf_splits, stages) = {
             let mut prover = prover(&graph, &witness, &schedule, &rope);
@@ -593,5 +616,133 @@ fn native_booleanity_rejects_a_non_boolean_indicator_with_consistent_downstream_
                 }
             );
         }
+    }
+}
+
+#[test]
+fn native_onehot_rejects_every_isolated_premise_and_retains_original_sources() {
+    use stage_support::IndicatorFault;
+    for n in [1, 3, 5] {
+        for fault in [
+            None,
+            Some(IndicatorFault::NonBoolean),
+            Some(IndicatorFault::Missing),
+            Some(IndicatorFault::Extra),
+            Some(IndicatorFault::Index),
+            Some(IndicatorFault::Padding),
+        ] {
+            let (graph, schedule, rope) = model_vocabulary("tiny-2-servable", n, Some(3), Some(5));
+            let witness = Witness::with_onehot_fault(&graph, &rope, 91, fault);
+            let one = graph
+                .nodes()
+                .iter()
+                .find(|node| matches!(node.op(), tv_core::lowering::Op::OneHot { .. }))
+                .unwrap();
+            let h_id = one.outputs()[0];
+            let t_id = one.inputs()[0];
+            let h = witness.table(h_id, graph.tensor(h_id).unwrap().shape.dims());
+            let token = &witness.values[t_id.0 as usize];
+            let mut holds = [true; 4];
+            for (t, row) in h.chunks(8).enumerate() {
+                holds[0] &= row.iter().all(|&v| v == Fe::ZERO || v == Fe::ONE);
+                holds[1] &= row[5..].iter().all(|&v| v == Fe::ZERO);
+                holds[2] &= row.iter().copied().fold(Fe::ZERO, |s, x| s + x)
+                    == if t < n as usize { Fe::ONE } else { Fe::ZERO };
+                holds[3] &= row
+                    .iter()
+                    .enumerate()
+                    .fold(Fe::ZERO, |s, (i, &x)| s + Fe::base(i as u64) * x)
+                    == token.get(t).copied().unwrap_or(Fe::ZERO);
+            }
+            let failed = match fault {
+                None => None,
+                Some(IndicatorFault::NonBoolean) => Some(0),
+                Some(IndicatorFault::Padding) => Some(1),
+                Some(IndicatorFault::Missing | IndicatorFault::Extra) => Some(2),
+                Some(IndicatorFault::Index) => Some(3),
+                _ => unreachable!(),
+            };
+            for (i, &valid) in holds.iter().enumerate() {
+                assert_eq!(valid, Some(i) != failed, "{fault:?}, premise{i}");
+            }
+            let run = Run::from_witness(graph, schedule, rope, witness, 91, None);
+            let verdict = run.verify();
+            if let Ok(checked) = &verdict {
+                let p = run.prover();
+                for claim in &checked.pool {
+                    assert_eq!(to_fp2(p.pool_value(claim)), claim.value);
+                }
+            }
+            if failed.is_some() {
+                assert_eq!(
+                    verdict.unwrap_err(),
+                    StageError::Sumcheck {
+                        stage: 1,
+                        error: SumcheckError::FinalMismatch {
+                            round: run.schedule.stages()[0].rounds as u32
+                        }
+                    }
+                );
+            } else {
+                assert!(verdict.is_ok());
+            }
+        }
+    }
+}
+
+#[test]
+fn native_onehot_scalar_and_ragged_domains_leave_true_source_claims() {
+    for vocab in [1, 5, 512] {
+        for n in [1, 3, 5] {
+            let (graph, schedule, rope) =
+                model_vocabulary("tiny-2-servable", n, Some(3), Some(vocab));
+            let witness = Witness::new(&graph, &rope, 137);
+            let run = Run::from_witness(graph, schedule, rope, witness, 137, None);
+            let checked = run.verify().unwrap();
+            let p = run.prover();
+            for claim in checked.pool {
+                assert_eq!(to_fp2(p.pool_value(&claim)), claim.value);
+            }
+        }
+    }
+}
+
+#[test]
+fn native_onehot_scalar_token_is_checked() {
+    for n in [1, 3] {
+        let (graph, schedule, rope) = model_vocabulary("tiny-2-servable", n, Some(3), Some(1));
+        let witness = Witness::with_onehot_fault(
+            &graph,
+            &rope,
+            157,
+            Some(stage_support::IndicatorFault::ScalarToken),
+        );
+        let one = graph
+            .nodes()
+            .iter()
+            .find(|node| matches!(node.op(), tv_core::lowering::Op::OneHot { .. }))
+            .unwrap();
+        assert_eq!(
+            witness.values[one.outputs()[0].0 as usize],
+            vec![Fe::ONE; n as usize]
+        );
+        assert_eq!(witness.values[one.inputs()[0].0 as usize][0], Fe::ONE);
+        let run = Run::from_witness(graph, schedule, rope, witness, 157, None);
+        let result = run.verify();
+        if let Ok(checked) = &result {
+            let p = run.prover();
+            for claim in &checked.pool {
+                assert_eq!(to_fp2(p.pool_value(claim)), claim.value);
+            }
+        }
+        assert_eq!(
+            result.unwrap_err(),
+            StageError::Sumcheck {
+                stage: 1,
+                error: SumcheckError::FinalMismatch {
+                    round: run.schedule.stages()[0].rounds as u32
+                }
+            }
+        );
     }
 }

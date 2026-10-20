@@ -29,14 +29,38 @@ Verifier tests passed before producer implementation comparisons. Producer
 adapters then checked actual witness columns, lookup rows and CPU proof messages,
 including final transcript state and squeeze counter.
 
-The native graph schedule also derives OneHot booleanity in stage 1, in node
-order with the embedding equality check (RFC-0035, RFC-0037). Its degree-three
-sumcheck reads the original indicator and returns that same source to the opening
-pool. The shared zero-check point has the largest zero-check domain, including
-the vocabulary axis. Independent synthetic proofs and actual CPU witness proofs
-exercise this path; a non-Boolean indicator fails even when downstream values
-are recomputed consistently. This does not discharge the other OneHot relations
-or the remaining gadget/source and lookup composition below.
+The native graph schedule derives all four OneHot relations in stage 1, in node
+order before the embedding equality check (RFC-0009, RFC-0035, RFC-0037). Every
+check reads the original indicator; the index check also reads the original token
+source. All final source claims reach the opening pool, including the token's
+row-coordinate projection. The common zero-check point covers the full indicator
+domain. Count and index use its row suffix.
+
+For padded vocabulary size `W`, the implementation proves these zero sums over
+the full token/vocabulary cube:
+
+```text
+sum eq(z,(v,t)) * H(v,t) * (1-H(v,t))                    = 0
+sum eq(z,(v,t)) * (1-LT(v,vocab)) * H(v,t)               = 0
+sum eq(z_row,t) * (H(v,t) - psi(t)/W)                   = 0
+sum eq(z_row,t) * (index(v)*H(v,t) - T(t)/W)            = 0
+```
+
+The repeated public selector and token terms sum over `W` positions, giving
+exactly RFC-0009's per-row count and index equations. `W` is nonzero in the field.
+This formulation needs no new token evaluation between the zero-point draw and
+batching. It introduces no new transcript label, commitment or advice column.
+Booleanity and vocabulary have degree three; the row equations have degree two.
+The CPU's generic index kernel uses the conservative degree-three bound already
+shared with booleanity in the same batch.
+
+Independent proofs isolate each premise, including a one in vocabulary padding
+with the matching out-of-vocabulary token, and a wrong token for vocabulary one.
+Every other OneHot premise still holds for each alternative. The actual CPU
+engine also proves scalar and ragged-vocabulary model variants with public
+synthetic embedding/head weights. These are graph stage proofs, not complete
+model proofs: the remaining gadget, lookup and opening composition below is
+still required.
 
 ## Required composition
 

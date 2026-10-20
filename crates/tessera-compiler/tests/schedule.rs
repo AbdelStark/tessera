@@ -344,7 +344,10 @@ fn check_rules(lowering: &Lowering, schedule: &StageSchedule, label: &str) {
             let order: Vec<usize> = match instance.relation {
                 Relation::MatMulWeight => vec![1, 0],
                 Relation::Equality => (0..=inputs.len()).collect(),
-                Relation::Booleanity => vec![0],
+                Relation::Booleanity | Relation::OneHotVocabulary | Relation::OneHotCount => {
+                    vec![0]
+                }
+                Relation::OneHotIndex => vec![0, 1],
                 Relation::Rotate | Relation::SumSquares | Relation::ScaleChannels => vec![0],
                 Relation::MatMulAct { .. } | Relation::Mul(_) => vec![0, 1],
             };
@@ -360,7 +363,16 @@ fn check_rules(lowering: &Lowering, schedule: &StageSchedule, label: &str) {
                     _ => 0,
                 };
                 let expected = match instance.relation {
-                    Relation::Booleanity => tensor(instance.kind, 0),
+                    Relation::Booleanity | Relation::OneHotVocabulary | Relation::OneHotCount => {
+                        tensor(instance.kind, 0)
+                    }
+                    Relation::OneHotIndex => {
+                        if operand == 0 {
+                            tensor(instance.kind, 0)
+                        } else {
+                            inputs[0]
+                        }
+                    }
                     Relation::Equality if operand == 0 => tensor(instance.kind, 0),
                     Relation::Equality => inputs[operand - 1],
                     _ => inputs[operand],
@@ -1095,6 +1107,45 @@ impl<'a> Witness<'a> {
                         })
                         .fold(F::ZERO, |s, x| s + x);
                     assert_eq!(residual, F::ZERO, "{label}: original OneHot booleanity");
+                    continue;
+                }
+                Relation::OneHotVocabulary | Relation::OneHotCount | Relation::OneHotIndex => {
+                    let width = output_shape[1].next_power_of_two() as usize;
+                    let vbits = output_shape[1].next_power_of_two().trailing_zeros() as usize;
+                    let scale = F::from_u64_reduced(width as u64).inverse().unwrap();
+                    let residual = partials[0]
+                        .iter()
+                        .enumerate()
+                        .map(|(f, &h)| match instance.relation {
+                            Relation::OneHotVocabulary => {
+                                eq_at(&r, f as u32)
+                                    * if f % width >= output_shape[1] as usize {
+                                        h
+                                    } else {
+                                        F::ZERO
+                                    }
+                            }
+                            Relation::OneHotCount => {
+                                eq_at(&r[vbits..], (f / width) as u32)
+                                    * (h - if f / width < output_shape[0] as usize {
+                                        scale
+                                    } else {
+                                        F::ZERO
+                                    })
+                            }
+                            Relation::OneHotIndex => {
+                                eq_at(&r[vbits..], (f / width) as u32)
+                                    * (F::from_u64_reduced((f % width) as u64) * h
+                                        - scale * partials[1][f])
+                            }
+                            _ => unreachable!(),
+                        })
+                        .fold(F::ZERO, |sum, x| sum + x);
+                    assert_eq!(
+                        residual,
+                        F::ZERO,
+                        "{label}: original OneHot row/vocabulary relation"
+                    );
                     continue;
                 }
                 Relation::Equality => {

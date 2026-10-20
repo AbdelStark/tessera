@@ -66,6 +66,8 @@ pub(super) enum Plan {
         inputs: Vec<Read>,
         terms: Vec<Term<GoldilocksExt2>>,
         shape: ElementwiseShape,
+        /// Drop the vocabulary coordinates of the common zero point for row checks.
+        point_from: usize,
     },
     Rotate {
         x: usize,
@@ -164,7 +166,11 @@ pub(super) fn build<'a>(
                 inputs,
                 terms,
                 shape,
+                point_from,
             } => {
+                let point = point.get(*point_from..).ok_or(StageError::Internal {
+                    rule: "a row zero-check projects its common point",
+                })?;
                 let inputs = inputs
                     .iter()
                     .map(|read| match *read {
@@ -276,6 +282,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                     stacked,
                 )?;
                 Plan::Elementwise {
+                    point_from: 0,
                     inputs: vec![Read::Operand(a), b],
                     terms: vec![Term::new(GoldilocksExt2::ONE, vec![0, 1])],
                     shape: ElementwiseShape::elementwise(vars(output) + lambda),
@@ -285,6 +292,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                 let x = input_shape(0);
                 let last = x.last().map_or(0, |&len| axis_vars(len) as usize);
                 Plan::Elementwise {
+                    point_from: 0,
                     inputs: vec![Read::Operand(arena.secret(operand(0)?))],
                     terms: vec![Term::new(GoldilocksExt2::ONE, vec![0, 0])],
                     shape: ElementwiseShape {
@@ -311,12 +319,93 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             Relation::Booleanity => {
                 let h = Read::Operand(arena.secret(operand(0)?));
                 Plan::Elementwise {
+                    point_from: 0,
                     inputs: vec![h],
                     terms: vec![
                         Term::new(GoldilocksExt2::ONE, vec![0]),
                         Term::new(-GoldilocksExt2::ONE, vec![0, 0]),
                     ],
                     shape: ElementwiseShape::elementwise(instance.vars as usize),
+                }
+            }
+            Relation::OneHotVocabulary | Relation::OneHotCount | Relation::OneHotIndex => {
+                let &[positions, vocab] = output else {
+                    return internal("OneHot has token and vocabulary axes");
+                };
+                let width = vocab.next_power_of_two() as usize;
+                let vocab_vars = axis_vars(vocab) as usize;
+                let length = 1usize << instance.vars;
+                let one = GoldilocksExt2::ONE;
+                let h = Read::Operand(arena.secret(operand(0)?));
+                let inverse_width =
+                    GoldilocksExt2::from(Goldilocks::from_u64_reduced(width as u64))
+                        .inverse()
+                        .ok_or(StageError::Internal {
+                            rule: "the padded vocabulary is nonzero in the field",
+                        })?;
+                match instance.relation {
+                    Relation::OneHotVocabulary => {
+                        let outside = (0..length)
+                            .map(|i| {
+                                if i % width >= vocab as usize {
+                                    Goldilocks::ONE
+                                } else {
+                                    Goldilocks::ZERO
+                                }
+                            })
+                            .collect();
+                        Plan::Elementwise {
+                            inputs: vec![h, Read::Public(arena.public(outside))],
+                            terms: vec![Term::new(one, vec![0, 1])],
+                            shape: ElementwiseShape::elementwise(instance.vars as usize),
+                            point_from: 0,
+                        }
+                    }
+                    Relation::OneHotCount => {
+                        let selector = (0..length)
+                            .map(|i| {
+                                if i / width < positions as usize {
+                                    Goldilocks::ONE
+                                } else {
+                                    Goldilocks::ZERO
+                                }
+                            })
+                            .collect();
+                        Plan::Elementwise {
+                            inputs: vec![h, Read::Public(arena.public(selector))],
+                            terms: vec![
+                                Term::new(one, vec![0]),
+                                Term::new(-inverse_width, vec![1]),
+                            ],
+                            shape: ElementwiseShape {
+                                vars: instance.vars as usize,
+                                summed_vars: vocab_vars,
+                            },
+                            point_from: vocab_vars,
+                        }
+                    }
+                    Relation::OneHotIndex => {
+                        let token = Read::Broadcast {
+                            table: arena.secret(operand(1)?),
+                            low_vars: vocab_vars,
+                        };
+                        let index = (0..length)
+                            .map(|i| Goldilocks::from_u64_reduced((i % width) as u64))
+                            .collect();
+                        Plan::Elementwise {
+                            inputs: vec![h, token, Read::Public(arena.public(index))],
+                            terms: vec![
+                                Term::new(one, vec![0, 2]),
+                                Term::new(-inverse_width, vec![1]),
+                            ],
+                            shape: ElementwiseShape {
+                                vars: instance.vars as usize,
+                                summed_vars: vocab_vars,
+                            },
+                            point_from: vocab_vars,
+                        }
+                    }
+                    _ => return internal("the selected OneHot relation has one canonical plan"),
                 }
             }
             Relation::Equality => self.equality(arena, instance, node, &operand, stacked)?,
@@ -535,6 +624,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             }
         };
         Ok(Plan::Elementwise {
+            point_from: 0,
             inputs,
             terms,
             shape,

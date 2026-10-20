@@ -168,7 +168,7 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - Exercise all gadget final-check families and output views through the existing sumcheck fuzz target. Independent arithmetic/fixture oracles check exact errors and retained claims; allocation tests enforce pre-count rejection, and generated seeds run in the ordinary fuzz test suite. Document the final verifier's composition obligations and preserve RFC-0019's LogUp/Sumcheck/Gadget first-failure ordering (#124).
 
-- Check native stage-one OneHot booleanity on the original indicator, retain its opening claim, and reject non-Boolean indicators after consistent downstream recomputation with the exact sumcheck stage and round (#124).
+- Check all native stage-one OneHot relations against the original indicator and token sources, preserving every opening claim and coordinate projection. Isolated booleanity, count, index and vocabulary-padding alternatives, including scalar vocabulary, fail with the exact sumcheck stage and round (#124).
 
 ### Changed
 

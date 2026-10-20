@@ -166,14 +166,19 @@ struct Proven {
 
 fn prove(name: &str) -> Proven {
     let (model, tokens) = conformance(name);
+    let seed = tokens.len() as u64 * 7919 + name.len() as u64;
+    prove_model(&model, tokens, seed)
+}
+
+fn prove_model(model: &IntegerModel, tokens: Vec<u32>, seed: u64) -> Proven {
     let n = u32::try_from(tokens.len()).expect("small");
-    let lowering = lower(PublicModel::of(&model), n).expect("the model lowers");
+    let lowering = lower(PublicModel::of(model), n).expect("the model lowers");
     let schedule = derive_schedule(&lowering).expect("a schedule");
     let witness = Engine::new(&lowering)
         .expect("an engine")
-        .run(&model, &Secret::new(tokens))
+        .run(model, &Secret::new(tokens))
         .expect("a witness");
-    let points = leaf_points(&schedule, u64::from(n) * 7919 + name.len() as u64);
+    let points = leaf_points(&schedule, seed);
     let mut t = transcript();
     let mut prover = StageProver::new(&lowering, &schedule, &witness);
     let leaf = prover.leaf(&points).expect("the leaf stage's claims");
@@ -209,6 +214,10 @@ struct VerifierSide {
 }
 
 fn verifier_side(name: &str, n: u32) -> VerifierSide {
+    verifier_vocabulary(name, n, None)
+}
+
+fn verifier_vocabulary(name: &str, n: u32, vocab: Option<u32>) -> VerifierSide {
     let lists = json(&vectors().join("claims/claim-lists.json"));
     let case = lists["cases"]
         .as_array()
@@ -221,8 +230,11 @@ fn verifier_side(name: &str, n: u32) -> VerifierSide {
         .step_by(2)
         .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex"))
         .collect();
-    let claims = tv_core::claims::ClaimList::open(&bytes, &tv_codec::DecodeLimits::MESSAGE)
+    let mut claims = tv_core::claims::ClaimList::open(&bytes, &tv_codec::DecodeLimits::MESSAGE)
         .expect("the claim list opens");
+    if let Some(v) = vocab {
+        claims.arch.vocab = v;
+    }
     let public = tv_core::validation::check_public(&claims).expect("its public part");
     let graph = tv_core::lowering::lower(&public, n).expect("the verifier's lowering");
     let schedule = tv_core::schedule::derive(&graph).expect("the verifier's schedule");
@@ -552,4 +564,34 @@ fn a_false_leaf_value_is_rejected_at_stage_1() {
             round: u32::try_from(stage1.rounds).expect("small"),
         })
     );
+}
+
+#[test]
+fn scalar_and_ragged_onehot_sources_prove_through_the_actual_cpu_engine() {
+    for vocab in [1, 5] {
+        for n in [1, 3, 5] {
+            let (mut model, _) = conformance("tiny-2-servable");
+            model.arch.vocab = vocab;
+            for weight in &mut model.weights {
+                match weight.ty {
+                    tessera_ir::WeightType::Embed => weight.cols = vocab,
+                    tessera_ir::WeightType::LmHead => weight.rows = vocab,
+                    _ => continue,
+                }
+                // Public synthetic weights, sized for this model variant.
+                weight.data = (0..weight.rows * weight.cols)
+                    .map(|i| (i % 5) as i8 - 2)
+                    .collect();
+            }
+            let tokens = (0..n).map(|i| (2 * i + 1) % vocab).collect();
+            let proven = prove_model(&model, tokens, 191);
+            let side = verifier_vocabulary("tiny-2-servable", n, Some(vocab));
+            let messages = messages(&proven);
+            let verified =
+                check(&side, &proven, &messages).expect("all native OneHot and graph stage checks");
+            for claim in verified.pool {
+                assert_eq!(tv_fp2(from_witness(&side, &proven, &claim)), claim.value);
+            }
+        }
+    }
 }

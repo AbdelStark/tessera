@@ -277,6 +277,10 @@ pub enum Form {
     Square,
     /// Boolean indicator constraint `T_0 - T_0^2`.
     Booleanity,
+    /// `eq_row * (H - inverse_vocab * psi)`; public factors are eq_row and psi.
+    OneHotCount(Fe),
+    /// `eq_row * (index * H - inverse_vocab * token)`; public factors are eq_row and index.
+    OneHotIndex(Fe),
     /// `T_0 − c·T_1`, as an equality zero-check of `Y = c·X` reads `Ỹ` and `X̃` (RFC-0037 'The
     /// committed first checkpoint').
     Difference(Fe),
@@ -328,6 +332,7 @@ impl Product {
     fn degree(&self) -> usize {
         let public = self.public.len();
         match (self.lambda, self.form) {
+            (None, Form::OneHotCount(_) | Form::OneHotIndex(_)) => 2,
             (None, Form::Product) => self.tables.len() + public,
             (None, Form::Square | Form::Booleanity) => 2 + public,
             (None, Form::Difference(_)) => 1 + public,
@@ -340,11 +345,16 @@ impl Product {
         match self.lambda {
             None => {
                 let sent = self.tables.len();
-                let public = values[sent..].iter().fold(Fe::ONE, |p, &v| p * v);
+                let public = match self.form {
+                    Form::OneHotCount(_) | Form::OneHotIndex(_) => values[sent],
+                    _ => values[sent..].iter().fold(Fe::ONE, |p, &v| p * v),
+                };
                 let own = match self.form {
                     Form::Product => values[..sent].iter().fold(Fe::ONE, |p, &v| p * v),
                     Form::Square => values[0] * values[0],
                     Form::Booleanity => values[0] - values[0] * values[0],
+                    Form::OneHotCount(scale) => values[0] - scale * values[sent + 1],
+                    Form::OneHotIndex(scale) => values[sent + 1] * values[0] - scale * values[1],
                     Form::Difference(c) => values[0] - c * values[1],
                 };
                 own * public

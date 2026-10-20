@@ -100,7 +100,7 @@
 //! Stage `k ≥ 1` holds one instance per virtual atom that stage `k − 1` leaves, in order: the
 //! atom's producing relation, at the atom's point, stacked over the layers when the atom is a
 //! stacked kind. Stage 1 stacks the leaf stage's per-layer claims at the layer point `ρ_1`, and
-//! holds after them OneHot booleanity and equality zero-checks of committed linear outputs, in node order:
+//! holds after them the four OneHot relations and equality zero-checks of committed linear outputs, in node order:
 //! `0 = Σ_x eq(z, x)·(Ỹ(x) − f(x))` at the last coordinates of its zero-check point. The schedule
 //! ends at the first stage with no instance.
 //!
@@ -116,6 +116,9 @@
 //! | `Elementwise` (`Mul`), `Ỹ(r) = Σ_x eq(r, x)·Ã(x)·B̃(x)` | the output's, layers | 3 | `Ã(r')`, `B̃` at the coordinates of `b`'s axes: the highest for `Trailing`, the lowest for `Leading` |
 //! | `SumSquares` (last axis), `Ũ(r) = Σ_x eq(r, x_row)·X̃(x)^2` | the input's, layers | 3 | `X̃(r')` |
 //! | `Rotate`, `Ỹ(r) = Σ_x E_r(x)·X̃(x)` | the input's, layers | 2 | `X̃(r')` |
+//! | `ZeroCheck` (OneHot vocabulary), `0 = Σ eq(z,x)·(1-LT(v,vocab))·H(x)` | the indicator's | 3 | `H(r')` |
+//! | `ZeroCheck` (OneHot count), `0 = Σ eq(z_row,t)·(H(v,t)-psi(t)/V_pad)` | the indicator's | 2 | `H(r')` |
+//! | `ZeroCheck` (OneHot index), `0 = Σ eq(z_row,t)·(index(v)·H(v,t)-T(t)/V_pad)` | the indicator's | 2 | `H(r')`, `T(r'_row)` |
 //! | `ZeroCheck` (OneHot booleanity), `0 = Σ_x eq(z,x)·H(x)·(1-H(x))` | the indicator's | 3 | `H(r')` |
 //! | `ZeroCheck` (equality, `ConstMul`), `0 = Σ_x eq(z, x)·(Ỹ(x) − c·X̃(x))` | the output's | 2 | `Ỹ(r')`, `X̃(r')` |
 //!
@@ -466,6 +469,25 @@ pub enum Relation {
     },
     /// The original OneHot zero-check: `0 = Σ_x eq(z,x)·H(x)·(1-H(x))`.
     Booleanity,
+    /// Zero-check for indicator entries outside the real vocabulary.
+    Vocabulary {
+        /// Real vocabulary length.
+        vocab: u32,
+        /// Lowest coordinates, the padded vocabulary axis.
+        vocab_vars: usize,
+    },
+    /// Row count zero-check, with its public selector divided by the padded vocabulary.
+    OneHotCount {
+        /// Lowest coordinates, the padded vocabulary axis.
+        vocab_vars: usize,
+        /// Real token rows.
+        positions: u32,
+    },
+    /// Row index zero-check against the original token source.
+    OneHotIndex {
+        /// Lowest coordinates, the padded vocabulary axis.
+        vocab_vars: usize,
+    },
     /// `0 = Σ_x eq(z,x)·(Y(x)-c·X(x))` for a committed ConstMul output.
     Equality {
         /// The constant `c`.
@@ -482,7 +504,11 @@ impl Relation {
             Relation::Elementwise { .. } => RelationKind::Elementwise,
             Relation::SumSquares { .. } => RelationKind::SumSquares,
             Relation::Rotate { .. } => RelationKind::Rotate,
-            Relation::Equality { .. } | Relation::Booleanity => RelationKind::ZeroCheck,
+            Relation::Equality { .. }
+            | Relation::Booleanity
+            | Relation::Vocabulary { .. }
+            | Relation::OneHotCount { .. }
+            | Relation::OneHotIndex { .. } => RelationKind::ZeroCheck,
         }
     }
 }
@@ -1091,7 +1117,7 @@ impl Deriving<'_, '_> {
         Ok(leaf)
     }
 
-    /// Stage 1's checks in node order: the original OneHot's booleanity, then committed
+    /// Stage 1's checks in node order: the four original OneHot relations, then committed
     /// linear outputs. The lowering's only equality check is `c_0`'s ConstMul
     /// (RFC-0037 'The committed first checkpoint'); any other is refused.
     fn zero_checks(&self) -> Result<Vec<Shaped>, ScheduleError> {
@@ -1106,22 +1132,45 @@ impl Deriving<'_, '_> {
                     return Err(ScheduleError::Unsupported { node: id });
                 }
                 let output = TensorRef::Single(out);
-                push(
-                    &mut checks,
-                    Shaped {
-                        relation: Relation::Booleanity,
-                        atom: Pending {
-                            tensor: output,
-                            point: Point::default(),
-                            layers: Layers::None,
-                            node: id,
-                        },
-                        stacked: false,
-                        vars: self.vars(output)?,
-                        degree: 3,
-                        zero: true,
+                let shape = dims(self.graph, out)?;
+                let &[positions, vocab] = shape.as_slice() else {
+                    return Err(ScheduleError::Internal);
+                };
+                let vocab_vars = axis_vars(vocab)?;
+                for relation in [
+                    Relation::Booleanity,
+                    Relation::Vocabulary { vocab, vocab_vars },
+                    Relation::OneHotCount {
+                        vocab_vars,
+                        positions,
                     },
-                )?;
+                    Relation::OneHotIndex { vocab_vars },
+                ] {
+                    let degree = if matches!(
+                        relation,
+                        Relation::OneHotCount { .. } | Relation::OneHotIndex { .. }
+                    ) {
+                        2
+                    } else {
+                        3
+                    };
+                    push(
+                        &mut checks,
+                        Shaped {
+                            relation,
+                            atom: Pending {
+                                tensor: output,
+                                point: Point::default(),
+                                layers: Layers::None,
+                                node: id,
+                            },
+                            stacked: false,
+                            vars: self.vars(output)?,
+                            degree,
+                            zero: true,
+                        },
+                    )?;
+                }
                 continue;
             }
             if !is_linear(node.op()) && !is_relation(node.op()) {
@@ -1450,11 +1499,31 @@ impl Deriving<'_, '_> {
             (Relation::SumSquares { .. }, &[x]) | (Relation::Rotate { .. }, &[x, _]) => {
                 vec![(x, own.clone())]
             }
-            (Relation::Booleanity, [_]) => {
+            (
+                Relation::Booleanity | Relation::Vocabulary { .. } | Relation::OneHotCount { .. },
+                [_],
+            ) => {
                 let TensorRef::Single(output) = atom.tensor else {
                     return Err(ScheduleError::Internal);
                 };
                 vec![(output, own.clone())]
+            }
+            (Relation::OneHotIndex { vocab_vars }, [token]) => {
+                let TensorRef::Single(output) = atom.tensor else {
+                    return Err(ScheduleError::Internal);
+                };
+                vec![
+                    (output, own.clone()),
+                    (
+                        *token,
+                        own.slice(
+                            *vocab_vars,
+                            own.len()
+                                .checked_sub(*vocab_vars)
+                                .ok_or(ScheduleError::Internal)?,
+                        )?,
+                    ),
+                ]
             }
             // The output Ỹ first, then f's input (RFC-0010 'Sumcheck messages', as amended).
             (Relation::Equality { .. }, &[x]) => {
