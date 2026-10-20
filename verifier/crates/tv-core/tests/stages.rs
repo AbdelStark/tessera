@@ -108,9 +108,22 @@ impl Run {
         seed: u64,
         lie: Option<(usize, Lie)>,
     ) -> Self {
+        Self::from_witness_omitting(graph, schedule, rope, witness, seed, lie, None)
+    }
+
+    fn from_witness_omitting(
+        graph: Graph,
+        schedule: Schedule,
+        rope: Rope,
+        witness: Witness,
+        seed: u64,
+        lie: Option<(usize, Lie)>,
+        omit: Option<usize>,
+    ) -> Self {
         let mut transcript = reference::Transcript::new(&context().to_tce());
         let (leaf, leaf_splits, stages) = {
             let mut prover = prover(&graph, &witness, &schedule, &rope);
+            prover.omit_onehot = omit;
             let mut rng = SplitMix64::new(seed ^ 0x1eaf);
             let (leaf, splits) = prover.leaf(&mut rng);
             transcript.absorb("stage/0/split", &reference::tce(&splits));
@@ -169,6 +182,7 @@ fn prover<'a>(
         schedule,
         rope,
         sources: Sources::default(),
+        omit_onehot: None,
     }
 }
 
@@ -727,7 +741,7 @@ fn native_onehot_scalar_token_is_checked() {
             vec![Fe::ONE; n as usize]
         );
         assert_eq!(witness.values[one.inputs()[0].0 as usize][0], Fe::ONE);
-        let run = Run::from_witness(graph, schedule, rope, witness, 157, None);
+        let run = Run::from_witness_omitting(graph, schedule, rope, witness, 157, None, Some(3));
         let result = run.verify();
         if let Ok(checked) = &result {
             let p = run.prover();
@@ -745,4 +759,47 @@ fn native_onehot_scalar_token_is_checked() {
             }
         );
     }
+}
+
+fn assert_onehot_omission(fault: stage_support::IndicatorFault, obligation: usize) {
+    for n in [1, 3, 5] {
+        let (graph, schedule, rope) = model_vocabulary("tiny-2-servable", n, Some(3), Some(5));
+        let witness = Witness::with_onehot_fault(&graph, &rope, 91, Some(fault));
+        let run =
+            Run::from_witness_omitting(graph, schedule, rope, witness, 91, None, Some(obligation));
+        let result = run.verify();
+        if let Ok(checked) = &result {
+            let p = run.prover();
+            for claim in &checked.pool {
+                assert_eq!(to_fp2(p.pool_value(claim)), claim.value);
+            }
+        }
+        assert_eq!(
+            result.unwrap_err(),
+            StageError::Sumcheck {
+                stage: 1,
+                error: SumcheckError::FinalMismatch {
+                    round: run.schedule.stages()[0].rounds as u32
+                }
+            }
+        );
+    }
+}
+
+#[test]
+fn native_onehot_omission_booleanity() {
+    assert_onehot_omission(stage_support::IndicatorFault::NonBoolean, 0);
+}
+#[test]
+fn native_onehot_omission_vocabulary() {
+    assert_onehot_omission(stage_support::IndicatorFault::Padding, 1);
+}
+#[test]
+fn native_onehot_omission_count() {
+    assert_onehot_omission(stage_support::IndicatorFault::Missing, 2);
+    assert_onehot_omission(stage_support::IndicatorFault::Extra, 2);
+}
+#[test]
+fn native_onehot_omission_index() {
+    assert_onehot_omission(stage_support::IndicatorFault::Index, 3);
 }

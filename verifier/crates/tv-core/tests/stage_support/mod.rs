@@ -532,6 +532,8 @@ pub struct Prover<'a> {
     pub schedule: &'a Schedule,
     pub rope: &'a Rope,
     pub sources: Sources,
+    /// An adapted malicious proof replaces just this OneHot relation by zero.
+    pub omit_onehot: Option<usize>,
 }
 
 impl Prover<'_> {
@@ -672,6 +674,24 @@ impl Prover<'_> {
 
     /// Instance `instance`'s tables, from its relation's identity and the witness.
     fn product(&self, k: usize, i: usize, zero: &[Fe]) -> Product {
+        let mut product = self.exact_product(k, i, zero);
+        let instance = &self.schedule.stages()[k].instances[i];
+        let obligation = match instance.relation {
+            Relation::Booleanity => Some(0),
+            Relation::Vocabulary { .. } => Some(1),
+            Relation::OneHotCount { .. } => Some(2),
+            Relation::OneHotIndex { .. } => Some(3),
+            _ => None,
+        };
+        if obligation.is_some() && self.omit_onehot == obligation {
+            product.form = Form::Product;
+            product.public = vec![vec![Fe::ZERO; 1usize << instance.vars]];
+            product.lambda = None;
+        }
+        product
+    }
+
+    fn exact_product(&self, k: usize, i: usize, zero: &[Fe]) -> Product {
         let instance = &self.schedule.stages()[k].instances[i];
         let graph = self.layout.graph;
         let node = graph.node(instance.node).unwrap();

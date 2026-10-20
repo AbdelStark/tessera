@@ -1078,7 +1078,8 @@ mod tests {
     }
 
     /// A proof of zeros of the right shapes: every claim, round polynomial, evaluation and split
-    /// value is 0, which every stage accepts whatever its challenges.
+    /// value is 0. Nonhomogeneous row selectors require the padded-row corner
+    /// for the label-order control; exhaustion tests stop before the final check.
     fn zeros(schedule: &Schedule) -> (Vec<LeafValues>, Vec<Fp2>, Vec<StageProof>) {
         let leaf = schedule
             .leaf()
@@ -1118,7 +1119,9 @@ mod tests {
         for name in ["tiny-2-servable", "tiny-4-servable"] {
             let (schedule, rope) = schedule(name, 5);
             let (leaf, leaf_splits, stages) = zeros(&schedule);
-            let mut stub = Stub::default();
+            // n=5 has public padding at row7. All-one coordinates select that row,
+            // where the zero control satisfies the row selector. Only label order is tested.
+            let mut stub = Stub::constant(Fp2::ONE);
             let verified =
                 verify_with(&mut stub, &schedule, &rope, &leaf, &leaf_splits, &stages).unwrap();
             assert!(!verified.pool.is_empty());
