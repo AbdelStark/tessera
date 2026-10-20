@@ -738,6 +738,7 @@ dependencies = [
  "tessera-pcs",
  "tessera-poly",
  "tessera-protocol",
+ "tessera-scoring",
  "tessera-sumcheck",
  "tessera-tables",
  "tessera-witness",
@@ -751,6 +752,15 @@ dependencies = [
 [[package]]
 name = "tessera-scoring"
 version = "0.1.0"
+dependencies = [
+ "tessera-codec",
+ "tessera-compiler",
+ "tessera-field",
+ "tessera-gadgets",
+ "tessera-ir",
+ "tessera-poly",
+ "tessera-tables",
+]
 
 [[package]]
 name = "tessera-sumcheck"

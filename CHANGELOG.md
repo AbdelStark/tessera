@@ -842,6 +842,8 @@ All notable changes to the prover release train are recorded here: the crates un
 - Independent Softmax model-binding fixtures and CPU cross-checks cover causal keys, masked leaves, reciprocal ranges, all NonNeg limbs and padded query/head rows; every round and final evaluation agrees with the independent verifier fixture ([#124](https://github.com/AbdelStark/tessera/issues/124)).
 - Independent Argmax fixtures and CPU cross-checks cover lowest-index ties, negative logits, padding, boundary keys and the separate suffix reduction. Actual witness columns, both Argmax stages and canonical teacher-forcing row-copy proofs match the independent verifier fixtures ([#124](https://github.com/AbdelStark/tessera/issues/124)).
 
+- Add exact greedy request scoring in `tessera-scoring`: original teacher-forcing source rows, clearing maximum certificates with zero output padding, per-request `Û = 0` claims, and deterministic `ERR-WITNESS-EXACT-MISMATCH` context after all rows. Proof operands reuse the recorded token's existing OneHot. Actual tiny-model CPU scoring subproofs are checked independently; full model drivers and temperature/mixture scoring remain separate (#127).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
