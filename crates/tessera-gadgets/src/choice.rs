@@ -194,6 +194,11 @@ impl<B: PrimeField> Argmax<B> {
         &self.range
     }
 
+    #[cfg(debug_assertions)]
+    pub(crate) fn domain(&self) -> &OneHot<B> {
+        &self.domain
+    }
+
     /// The honest maximum over real vocabulary entries only. `real` is the public row selector.
     /// Argmax borrows the next-token indicator separately: it generates no replacement token.
     ///

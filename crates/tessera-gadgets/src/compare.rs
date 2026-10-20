@@ -159,6 +159,11 @@ impl BigIntCompare {
         self.bounds[0].len()
     }
 
+    #[cfg(debug_assertions)]
+    pub(crate) fn limb_bits(&self) -> u8 {
+        self.limb_bits
+    }
+
     /// The range tables used, once each, in ascending bit-width order.
     pub fn tables(&self) -> &[GeneratedTable] {
         &self.tables
@@ -322,6 +327,11 @@ pub struct CompareWitness {
 }
 
 impl CompareWitness {
+    #[cfg(debug_assertions)]
+    pub(crate) fn from_tensors(tensors: Vec<(CompareColumn, SecretBuf<i64>)>) -> Self {
+        Self { tensors }
+    }
+
     /// Transfer the clearing columns without copying their values.
     /// The holder applies the secret borrowing rules of [`Self::tensor`].
     pub fn into_tensors(self) -> Vec<(CompareColumn, SecretBuf<i64>)> {

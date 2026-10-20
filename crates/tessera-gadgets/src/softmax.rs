@@ -244,6 +244,16 @@ impl SoftmaxRow {
         1u64 << (2 * self.sigma)
     }
 
+    #[cfg(debug_assertions)]
+    pub(crate) fn exp_table(&self) -> &GeneratedTable {
+        &self.exp
+    }
+
+    #[cfg(debug_assertions)]
+    pub(crate) fn non_neg(&self) -> &NonNeg {
+        &self.non_neg
+    }
+
     /// Explicit degree-3 reductions and row lookup forms (RFC-0009, RFC-0030, RFC-0035).
     pub fn constraints<F: PrimeField>(&self) -> SoftmaxConstraints<F> {
         use SoftmaxColumn::{Exponentials, Maximum, Reciprocal};
