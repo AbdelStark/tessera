@@ -26,6 +26,8 @@ tessera-sumcheck = { path = "../tessera-sumcheck" }
 allocation-counter = "0.8"
 proptest = "1"
 serde_json = "1"
+# The verifier's independent soundness calculator, compared across 1,000 random profiles (#110, DEP-2).
+tv-core = { path = "../../verifier/crates/tv-core" }
 
 [lints]
 workspace = true

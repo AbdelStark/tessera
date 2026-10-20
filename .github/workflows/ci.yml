@@ -140,7 +140,7 @@ jobs:
         run: >-
           cargo nextest run --locked --tests -E 'kind(test)'
           -p tessera-codec -p tessera-field -p tessera-hash
-          -p tessera-prover -p tessera-e2e
+          -p tessera-protocol -p tessera-prover -p tessera-e2e
       - name: Independent verifier tests in parallel
         if: matrix.workspace == 'verifier'
         run: cargo nextest run --workspace --lib --tests --locked

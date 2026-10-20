@@ -45,7 +45,7 @@ use tv_hash::merkle::{MultiproofError, verify_multiproof};
 use tv_hash::{Digest, Domain, DomainHasher};
 
 /// A matrix in RFC-0012's declaration order, including the hidden channel parameters.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Matrix {
     /// The transposed embedding.
     Embed,
@@ -98,6 +98,27 @@ impl Matrix {
             Self::LmHead => 8,
             Self::ChannelParams => 9,
         }
+    }
+
+    /// The matrix's canonical name in RFC-0012 and `tessera.soundness/1` reports.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Embed => "Embed",
+            Self::Q => "Q",
+            Self::K => "K",
+            Self::V => "V",
+            Self::O => "O",
+            Self::Gate => "Gate",
+            Self::Up => "Up",
+            Self::Down => "Down",
+            Self::LmHead => "LmHead",
+            Self::ChannelParams => "ChannelParams",
+        }
+    }
+
+    /// Parses a matrix from its canonical name.
+    pub fn by_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.name() == name)
     }
 
     fn of_weight(ty: WeightType) -> Self {

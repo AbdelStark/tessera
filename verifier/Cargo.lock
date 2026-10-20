@@ -5,6 +5,10 @@ version = 4
 [[package]]
 name = "tv-cli"
 version = "0.1.0"
+dependencies = [
+ "tv-core",
+ "tv-testkit",
+]
 
 [[package]]
 name = "tv-codec"
