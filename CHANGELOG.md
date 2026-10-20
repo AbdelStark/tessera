@@ -839,6 +839,7 @@ All notable changes to the prover release train are recorded here: the crates un
 - Cross-check actual OneHot witnesses and degree-three CPU batches against independent integer/cube proofs. Each of six alternatives also has a proof adapted to an omitted obligation: true source evaluations pass only that omission control and fail the full independent check (#124).
 
 - Cross-check actual root witness columns and CPU product/padding batches against model-derived independent bindings, including a full integer constant above Goldilocks and a wrong root whose every Range request passes (#124).
+- Independent Softmax model-binding fixtures and CPU cross-checks cover causal keys, masked leaves, reciprocal ranges, all NonNeg limbs and padded query/head rows; every round and final evaluation agrees with the independent verifier fixture ([#124](https://github.com/AbdelStark/tessera/issues/124)).
 
 ### Changed
 

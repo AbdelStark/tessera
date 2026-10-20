@@ -163,6 +163,7 @@ All notable changes to the verifier release train are recorded here: the crates 
 - Bind RFC-0050 roots to verifier-derived graph/auxiliary sources and every canonical Range request. Complete comparison arrays derive nonlinear product targets; final operands retain root, sum-of-squares and low-limb claims, and a separate padding check pins the root on skipped rows. Independent model fixtures and CPU proofs cover 45 sites, 5,885 requests, wide integer constants, a range-valid wrong root and a padded-root alternative. Complete stage/layer-template integration remains separate (#124).
 
 - Make the root input-selector simplification conditional on an explicit residual-padding obligation, covering padded token and feature coordinates. Independent counterexamples pass every bracket/product check and fail only that zero check. Mixed-dimension component batches reproduce the existing front-padding scale and final-point suffix rule; RFC-0050 states the required premise (#124).
+- `tv-core::gadgets::softmax` binds each causal lookup key and maximum-forest leaf at its own point, derives the reciprocal product from both NonNeg decompositions, reduces the row sum to the canonical exponential source, and retains both padded-maximum and padded-reciprocal zero checks. Independent component proofs include six isolated alternative witnesses and omission controls ([#124](https://github.com/AbdelStark/tessera/issues/124)).
 
 ### Changed
 

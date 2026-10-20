@@ -10,6 +10,7 @@ pub mod onehot;
 pub mod requant;
 pub mod root;
 pub mod root_products;
+pub mod softmax;
 
 use crate::advice::Source;
 use crate::claims::GadgetPolicy;

@@ -204,3 +204,34 @@ the comparison checks independently of the source-equality checks. The producer
 adapter in `crates/tessera-prover/tests/gadget_root.rs`, written after the verifier
 tests passed, checks actual root witness columns and reproduces every CPU round
 and final evaluation for six honest batches and three padding-omission controls.
+
+## Softmax model bindings
+
+`softmax.json`, schema version 1, has 14 model-derived cases: eight honest sites
+and six isolated alternatives, each with an adapted omission proof. It covers
+zero-dimensional scalar relations, three real heads padded to four, padded query
+rows, 23-bit exponential precision, and NonNeg limb policies 1, 8, 16 and 32.
+The full padded score square is always represented.
+
+Python integer maxima, table values and bracket slacks determine every witness.
+The lookup key and forest leaf use different incoming points; each reduces
+`C*(c-score)` by summing the actual product over Boolean vertices. The row sum
+uses the exponential extension at half on each key coordinate, scaled by the
+padded key count. Both NonNeg decompositions include their narrowed virtual top.
+The oracle emits mixed-domain degree-three component proofs with front padding.
+
+The alternatives change one obligation: a masked lookup key with the same zero
+exponential, a masked forest leaf, a reciprocal, a padded maximum, a padded
+reciprocal, or a padded-head maximum. Each omission proof replaces only the
+failing relation with a public tautology, passes that weakened control, and fails
+the full checker while every canonical final source claim remains true.
+
+`verifier/crates/tv-core/tests/gadget_softmax.rs` consumes every proof and source
+claim; its tests passed before the prover's Softmax implementation was read.
+`crates/tessera-prover/tests/gadget_softmax.rs` compares the eight honest sites
+with actual `SoftmaxRow` witness/lookup generation and reproduces all rounds,
+final evaluations and transcript states for eight honest and six omission batches
+using the actual CPU proof engine. The latter deliberately assembles the component
+relations; it is not a complete model driver, maximum-forest proof or LogUp proof.
+The full verifier must still check those earlier proofs and discharge all returned
+source claims, including virtual scores through the graph schedule.
