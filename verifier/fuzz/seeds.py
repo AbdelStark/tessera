@@ -20,7 +20,8 @@ libFuzzer names corpus files:
 - inclusion: every tree size and leaf index of the golden proofs in rfc6962/inclusion/ that the
   target's log holds; alone, and followed by each change.
 - sumcheck: the shape of every stage and tree batch of sumcheck/sumcheck.json that the target's
-  limits admit, with a seed for its tables or leaves; alone, and followed by each change.
+  limits admit, with a seed for its tables or leaves; alone, and followed by each change;
+  GDG-prefixed gadget cases cover each family, model variant, affine change and nonlinear final.
 
 The selectors are the indices of `TYPES` in src/lib.rs, read from the source so that the seeds
 follow any change to the list. The proof targets' input formats are those of `multiproof_case`
@@ -158,6 +159,64 @@ def sumcheck_seeds():
                 yield base + bytes([level, change]) + tail
 
 
+
+def gadget_seeds():
+    """GDG scripts of src/gadgets.rs: bounded metadata, fields, then shape controls."""
+    def cells(n,start=0):
+        return b"".join((0xffffffffffffffff-i).to_bytes(8,"little")+(7+13*i).to_bytes(8,"little") for i in range(start,start+n))
+    def tagged(data):
+        return b"GDG"+data
+    for family in range(9):
+        yield tagged(bytes([family]))
+    for bits in range(1,63):
+        for limb in (1,8,16,32):
+            n=(bits+limb-1)//limb
+            yield tagged(bytes([0,bits-1,limb-1,0])+cells(n))
+    for x,y in ((0,0),(65535,1),(1,65535),(65535,65535)):
+        for mode in range(4):
+            yield tagged(bytes([1])+x.to_bytes(2,"little")*2+y.to_bytes(2,"little")*2+bytes([mode]))
+    for width in range(1,33):
+        n=(width+7)//8
+        for j in sorted({0,(2*width+62)//8-1,2*(n-1)+6}):
+            for increment in (0,1):
+                for shape in range(4):
+                    yield tagged(bytes([2,width-1,j,increment])+cells(n+4)+bytes([shape]))
+    for family,file,sites_key in ((3,"requant.json","sites"),(4,"roots.json","roots"),(5,"softmax.json",None)):
+        cases=json.loads((HERE.parent.parent/"spec/vectors/gadget-finals"/file).read_text())["cases"]
+        for ci,case in enumerate(cases):
+            sites=case[sites_key] if sites_key else [case]
+            for si in sorted({0,len(sites)-1}):
+                header=bytes([family])+ci.to_bytes(2,"little")+(si.to_bytes(2,"little") if sites_key else b"")
+                for mode in range(8):
+                    yield tagged(header+bytes([mode])+bytes(16))
+                base=header+bytes(17)
+                if family==4:
+                    root=sites[si];n=(root["width"]+7)//8;m=(2*root["width"]+62)//8
+                    for coefficient in (0,m-1,m,2*m-1):
+                        yield tagged(base+bytes([0])+coefficient.to_bytes(2,"little")+cells(2+n+4)+bytes(2))
+                    for kind in (1,2):
+                        variables=2+((case["dim"]-1).bit_length() if kind==2 else 0)
+                        yield tagged(base+bytes([kind])+cells(2*variables+1)+bytes(2))
+                if family==5:
+                    t=(case["n"]-1).bit_length();h=(case["heads"]-1).bit_length();full=2*t+h;row=t+h
+                    for kind in range(4):
+                        count=1 if kind==3 else 2
+                        data=base+bytes([kind])+cells(full+2+(full if kind<2 else row)+count)+bytes(2)
+                        if kind==3:
+                            for padding in (0,1):
+                                yield tagged(data+cells(row)+bytes([padding]))
+                        else:
+                            yield tagged(data)
+    for relation in range(4):
+        yield tagged(bytes([6])+cells(3)+bytes([relation])+cells(11)+bytes(2))
+    for vocab,rows in ((1,1),(3,3),(8,4)):
+        v=(vocab-1).bit_length();r=(rows-1).bit_length();n=v+r
+        for kind,count in ((0,3),(1,2),(2,1)):
+            yield tagged(bytes([7,vocab-1,rows-1])+cells(n+r+3)+bytes([kind])+cells(n+count,17)+bytes(2))
+    for role in range(4):
+        yield tagged(bytes([8,role])+cells((1 if role==2 else 4)+1+2+1)+bytes(2))
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -205,6 +264,8 @@ def main():
     for seed in inclusion_seeds():
         write("inclusion", seed)
     for seed in sumcheck_seeds():
+        write("sumcheck", seed)
+    for seed in gadget_seeds():
         write("sumcheck", seed)
 
     for target in ("decode", "envelope", "multiproof", "inclusion", "sumcheck"):

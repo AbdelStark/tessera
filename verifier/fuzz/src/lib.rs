@@ -15,6 +15,7 @@
 
 use tv_codec::{Cursor, DecodeError, size};
 
+pub mod gadgets;
 pub mod proofs;
 pub mod sumcheck;
 
