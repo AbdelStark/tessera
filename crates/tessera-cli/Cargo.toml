@@ -20,6 +20,7 @@ tessera-bench = { path = "../tessera-bench" }
 tessera-codec = { path = "../tessera-codec" }
 tessera-compiler = { path = "../tessera-compiler" }
 tessera-ir = { path = "../tessera-ir" }
+tessera-pcs = { path = "../tessera-pcs" }
 tessera-protocol = { path = "../tessera-protocol" }
 
 
