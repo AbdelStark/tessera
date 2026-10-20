@@ -49,3 +49,47 @@ pub use range::{HALF_FIELD, Range, Ranges, analyze};
 pub use report::{CommitmentReport, SCHEMA as REPORT_SCHEMA, TableUse, Tally, report, stage_count};
 pub use schedule::{StageSchedule, derive_schedule};
 pub use select::{Gadget, Selection, select};
+
+/// The three outputs of compiling `D` (RFC-0006 'Outputs', RFC-0029): the public
+/// [`tessera_ir::ClaimList`], the private [`ExecutionPlan`], and the public [`CommitmentReport`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompileOutput {
+    /// The public claim list (RFC-0007); its tables are the table set (RFC-0029).
+    pub claim_list: tessera_ir::ClaimList,
+    /// The prover-private execution plan (RFC-0041).
+    pub plan: ExecutionPlan,
+    /// What the lowered model commits and looks up (RFC-0006 'Outputs').
+    pub report: CommitmentReport,
+}
+
+/// Compiles `model` under `policy`, for the parameter set `params` with its `layout` (RFC-0006
+/// 'Outputs').
+///
+/// Validates `model`, lowers it, analyzes ranges, selects gadgets and tables, emits the claim
+/// list, builds the execution plan, and counts the commitment report.
+///
+/// # Errors
+///
+/// Returns [`CompileError`] if `model` fails validation, range analysis, profile checks, gadget
+/// selection, advice layout bounds, or plan construction.
+pub fn compile(
+    model: &tessera_ir::IntegerModel,
+    policy: &tessera_ir::GadgetPolicy,
+    layout: tessera_ir::CommitmentLayout,
+    params: tessera_ir::ParamSetId,
+) -> Result<CompileOutput, CompileError> {
+    validate(model)?;
+    let public = PublicModel::of(model);
+    let positions = 16.min(model.arch.max_context).max(1);
+    let lowering = lower(public, positions)?;
+    let ranges = analyze(&lowering.graph, &lowering.tables)?;
+    let selection = select(&lowering.graph, &ranges, &lowering.tables, policy)?;
+    let claims = claim_list(public, &selection, policy, layout, params)?;
+    let execution_plan = plan(public, &claims)?;
+    let commitment_report = report(public, &lowering, &selection, policy)?;
+    Ok(CompileOutput {
+        claim_list: claims,
+        plan: execution_plan,
+        report: commitment_report,
+    })
+}

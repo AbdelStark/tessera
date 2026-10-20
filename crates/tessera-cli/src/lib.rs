@@ -20,9 +20,10 @@
 //! tessera recorder ref    --listen ADDR --log-dir DIR
 //! ```
 //!
-//! `tessera bench model` runs, in the `bench` module, and `tessera params check`, in the `params`
-//! module. Every other command checks its arguments and the envelope of each TCE artifact it
-//! reads (RFC-0003), then exits with `ERR-USAGE`, naming the issue that implements it.
+//! `tessera compile` runs, in the `compile` module, `tessera bench model`, in the `bench` module,
+//! and `tessera params check`, in the `params` module. Every other command checks its arguments
+//! and the envelope of each TCE artifact it reads (RFC-0003), then exits with `ERR-USAGE`, naming
+//! the issue that implements it.
 //!
 //! Every command prints its progress to stderr. With `--json` it prints one JSON object to
 //! stdout describing its result, or `{"command", "error": {"code", "message"}}` when it fails
@@ -39,6 +40,7 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 mod bench;
+mod compile;
 mod params;
 
 use std::ffi::OsString;
@@ -49,10 +51,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{ArgGroup, Args, CommandFactory, FromArgMatches, Parser, Subcommand};
-use tessera_codec::DecodeLimits;
 use tessera_codec::envelope::{self, ReadError};
 use tessera_codec::error::{ErrorCode, TesseraError};
 use tessera_codec::schema::{self, Schema};
+use tessera_codec::{Decode, DecodeLimits};
 
 /// The parameter sets of RFC-0014 'Parameter sets' (02 §5).
 const PARAM_SETS: [&str; 3] = ["live-64", "ni-100", "test-small"];
@@ -75,7 +77,7 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Compiles D into its claim list, execution plan, tables and commitment report.
-    Compile(CompileArgs),
+    Compile(compile::CompileArgs),
     /// Commits D's weights under an execution plan (RFC-0012).
     CommitWeights(CommitWeightsArgs),
     /// Weight-commitment maintenance (RFC-0012).
@@ -131,18 +133,6 @@ enum Bench {
 enum Recorder {
     /// Runs the software reference recorder.
     Ref(RecorderArgs),
-}
-
-/// `tessera compile`.
-#[derive(Debug, Args)]
-struct CompileArgs {
-    #[arg(long, value_name = "MODEL.d")]
-    model: PathBuf,
-    #[arg(long, value_name = "PARAMSET", value_parser = PARAM_SETS)]
-    params: String,
-    /// Where claims.tcl, plan.tep and commitment-report.json go.
-    #[arg(long, value_name = "DIR")]
-    out_dir: PathBuf,
 }
 
 /// `tessera commit-weights`.
@@ -369,8 +359,7 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
     match &cli.command {
         Command::Compile(a) => (
             "compile",
-            pending("compile", &[Input::new(&a.model, &INTEGER_MODEL)], 87)
-                .map(|()| ExitCode::SUCCESS),
+            compile::compile(a, cli.json).map(|()| ExitCode::SUCCESS),
         ),
         Command::CommitWeights(a) => (
             "commit-weights",
@@ -471,6 +460,24 @@ impl<'a> Input<'a> {
             Err(ReadError::Io(error)) => Err(io_error(format!("cannot read {shown}"))(error)),
         }
     }
+
+    /// Opens the artifact's envelope and decodes its payload under its schema's limits
+    /// (RFC-0003 'Envelope').
+    pub(crate) fn open<T: Decode>(&self) -> Result<T, TesseraError> {
+        self.verify()?;
+        let shown = self.path.display().to_string();
+        let bytes = fs::read(self.path).map_err(io_error(format!("cannot read {shown}")))?;
+        let limits = match self.schema.id == schema::INTEGER_MODEL.id {
+            true => DecodeLimits::INTEGER_MODEL,
+            false => DecodeLimits::MESSAGE,
+        };
+        envelope::open(&bytes, self.schema, limits).map_err(|error| {
+            TesseraError::from(error).with_source(format!(
+                "{shown} is not a valid {} envelope",
+                self.schema.name
+            ))
+        })
+    }
 }
 
 /// A command of 02 §2.2 that `issue` implements: it checks the envelope of each artifact it
@@ -491,11 +498,16 @@ pub(crate) fn io_error(what: String) -> impl FnOnce(io::Error) -> TesseraError {
 /// Writes `contents` to `path` through a temporary file beside it, renamed on completion, so the
 /// path holds either the old file or the whole new one (04 §6).
 pub(crate) fn write_atomically(path: &Path, contents: &str) -> Result<(), TesseraError> {
+    write_bytes_atomically(path, contents.as_bytes())
+}
+
+/// Writes `bytes` to `path` through a temporary file beside it, renamed on completion (04 §6).
+pub(crate) fn write_bytes_atomically(path: &Path, bytes: &[u8]) -> Result<(), TesseraError> {
     let shown = path.display().to_string();
     let mut temporary = path.as_os_str().to_owned();
     temporary.push(format!(".tmp-{}", std::process::id()));
     let temporary = PathBuf::from(temporary);
-    fs::write(&temporary, contents).map_err(io_error(format!("cannot write {shown}")))?;
+    fs::write(&temporary, bytes).map_err(io_error(format!("cannot write {shown}")))?;
     fs::rename(&temporary, path).map_err(|error| {
         let _ = fs::remove_file(&temporary);
         io_error(format!("cannot write {shown}"))(error)

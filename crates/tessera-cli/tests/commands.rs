@@ -3,9 +3,10 @@
 //! The `tessera` command tree of 02 §2.2, end to end through the built binary.
 //!
 //! - **The tree.** `tessera --help` lists every command of 02 §2.2, and each has its own help.
-//! - **Not yet.** Every command but `bench model` and `params check` checks the envelope of each
-//!   TCE artifact it reads, then exits 64 (`ERR-USAGE`), naming the issue that implements it, and
-//!   writes nothing. `params check` has tests of its own (`params_check.rs`).
+//! - **Not yet.** Every command but `compile`, `bench model` and `params check` checks the
+//!   envelope of each TCE artifact it reads, then exits 64 (`ERR-USAGE`), naming the issue that
+//!   implements it, and writes nothing. `compile` and `params check` have tests of their own
+//!   (`compile.rs`, `params_check.rs`).
 //! - **Exit statuses** (02 §2.4). A malformed artifact exits 65 with its fault's code: bytes
 //!   that are no envelope, another schema's envelope, a truncated one, a corrupted digest,
 //!   trailing bytes. An artifact that cannot be read exits 20. A malformed argument exits 64.
@@ -116,19 +117,7 @@ fn every_command_checks_its_artifacts_then_names_its_issue() {
         dir.as_os_str(),
         out.as_os_str(),
     );
-    let cases: [(&str, Vec<&std::ffi::OsStr>, u32); 10] = [
-        (
-            "compile",
-            vec![
-                "--model".as_ref(),
-                m,
-                "--params".as_ref(),
-                "test-small".as_ref(),
-                "--out-dir".as_ref(),
-                o,
-            ],
-            87,
-        ),
+    let cases: [(&str, Vec<&std::ffi::OsStr>, u32); 8] = [
         (
             "commit-weights",
             vec![
@@ -200,7 +189,6 @@ fn every_command_checks_its_artifacts_then_names_its_issue() {
             vec!["--device".as_ref(), "0".as_ref(), "--out".as_ref(), o],
             49,
         ),
-        ("bench model", vec!["--plan".as_ref(), p], 87),
         (
             "recorder ref",
             vec![
@@ -216,11 +204,7 @@ fn every_command_checks_its_artifacts_then_names_its_issue() {
         let mut args: Vec<&std::ffi::OsStr> = command.split(' ').map(AsRef::as_ref).collect();
         args.extend(flags);
         let output = tessera(&args);
-        let what = match command {
-            "bench model" => "bench model --plan",
-            other => other,
-        };
-        let message = format!("tessera {what} is not implemented yet (#{issue})");
+        let message = format!("tessera {command} is not implemented yet (#{issue})");
         assert_eq!(output.status.code(), Some(64), "{command}");
         assert_eq!(
             text(&output.stderr),

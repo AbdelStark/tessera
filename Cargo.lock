@@ -541,6 +541,8 @@ dependencies = [
  "serde_json",
  "tessera-bench",
  "tessera-codec",
+ "tessera-compiler",
+ "tessera-ir",
  "tessera-protocol",
 ]
 
