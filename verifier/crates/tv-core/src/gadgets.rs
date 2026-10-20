@@ -6,10 +6,37 @@
 
 pub mod comparison;
 pub mod decomposition;
+pub mod requant;
 pub mod root_products;
 
+use crate::claims::GadgetPolicy;
+use crate::lowering::Graph;
+use crate::selection::{self, Selection};
+use crate::validation::ClaimsError;
 use crate::validation::GadgetId;
 use core::fmt;
+
+/// Gadget metadata owned by the verifier, never selected by proof messages.
+/// The graph must be lowered at the proof's actual sequence length.
+#[derive(Debug)]
+pub struct Plan<'g> {
+    graph: &'g Graph,
+    selected: Selection,
+}
+
+impl<'g> Plan<'g> {
+    /// Re-derive ranges, pattern choices and lookup tables from public metadata (SP-7).
+    /// This does not validate a complete claim list or accept a proof.
+    ///
+    /// # Errors
+    /// The same public-domain, allocation and internal errors as [`selection::derive`].
+    pub fn derive(graph: &'g Graph, policy: GadgetPolicy) -> Result<Self, ClaimsError> {
+        Ok(Self {
+            graph,
+            selected: selection::derive(graph, policy)?,
+        })
+    }
+}
 
 /// A failed gadget relation, or a failure of the verifier itself (04 §2/§3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

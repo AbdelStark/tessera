@@ -120,3 +120,10 @@ canonical graph/auxiliary sources, source columns, lookup columns and evaluation
 Class vectors use the channel coordinates alone. Range lookups have value zero;
 the saturation and final requantization lookups retain their actual table values.
 These are binding fixtures, not complete LogUp or model proofs.
+
+`verifier/crates/tv-core/tests/gadget_requant.rs` checks the model-derived ids,
+source-point projections, all affine forms and every retained obligation, then
+alters each source/key/value in turn. Its frozen cases passed before the producer
+adapter was written. `crates/tessera-prover/tests/gadget_requant.rs` compares
+actual requantization witness columns and constraint evaluations, and actual SiLU
+table outputs, with the same independent data.

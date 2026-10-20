@@ -174,7 +174,8 @@ pub enum Auxiliary {
 /// The public identity of one column; attention columns also name their tile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Source {
-    /// A committed graph tensor, allocated exactly once per share.
+    /// A graph tensor. The advice layout locates committed tensors once per share;
+    /// virtual tensor claims must first pass through their graph reductions.
     Tensor(TensorId),
     /// An auxiliary, identified by node and role.
     Auxiliary(NodeId, Auxiliary),

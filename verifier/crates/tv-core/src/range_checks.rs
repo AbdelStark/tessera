@@ -285,7 +285,7 @@ impl Tables<'_> {
 
 /// The narrowest signed box, searched rather than inferred from absolute values at negative
 /// powers of two: [-2^(b-1), 2^(b-1)-1]. Only widths at most 62 are integer gadget inputs.
-fn signed_width(range: Interval) -> Option<u32> {
+pub(crate) fn signed_width(range: Interval) -> Option<u32> {
     let (lo, hi) = range.bounds()?;
     (1u32..=62).find(|&b| {
         let half = 1i128.checked_shl(b.saturating_sub(1)).unwrap_or(0);

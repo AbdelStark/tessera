@@ -103,8 +103,10 @@ def cases(mle):
                           "keys": keys, "values": values,
                           "key_evals": [mle(v, point) for v in keys],
                           "value_evals": [mle(v, point) for v in values]})
+        used = {tid for site in sites for tid in site["tables"]}
         out.append({"name": name, "maximum": maximum, "shifts": shifts,
-                    "n": 3, "sites": sites})
+                    "n": 3, "tables": [table for table in tables if table[0] in used],
+                    "sites": sites})
     assert {"Requant1", "RequantSplit", "RequantWide", "Lookup"} <= {p[0] for p in selected}
     assert any(p[0] == "RequantWide" and p[1] == 0 for p in selected)
     return {"schema_version": 1, "description": "Independent public micro-model bindings and integer-row requantization lookups", "cases": out}
