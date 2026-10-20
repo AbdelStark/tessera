@@ -22,11 +22,11 @@ use std::sync::atomic::Ordering;
 
 use tessera_codec::{DecodeLimits, Secret, SecretBuf, envelope, schema};
 use tessera_compiler::{PublicModel, SequenceTile, Tile, analyze, lower, select, tiles};
-use tessera_field::{Field, Goldilocks as Fp, PrimeField};
+use tessera_field::{Field, Goldilocks as Fp, GoldilocksExt2 as Fp2, PrimeField};
 use tessera_ir::{GadgetPolicy, IntegerModel};
 use tessera_pcs::{
-    AdviceLayout, Axis, CommitmentParams, DenseShape, LayoutParams, Padding, RowEncoder,
-    StreamingCommitter, TensorShape, TileShape,
+    AdviceClaim, AdviceLayout, AdviceOpening, AdvicePoint, Axis, CommitmentParams, DenseShape,
+    LayoutParams, Padding, RowEncoder, StreamingCommitter, TensorShape, TileShape,
 };
 use tessera_witness::{Checkpoints, Engine, Regenerator, WitnessSource};
 
@@ -49,7 +49,9 @@ mod recorder {
     // over. `dealloc` first reads the block it frees: the block is live until the forwarded call,
     // `layout.size()` bytes long, and the test watches only blocks whose every byte is initialized:
     // a residual/copy, a fully initialized streamed codeword block, or the table tile's sole
-    // fully initialized dense/sorted allocation.
+    // fully initialized dense/sorted allocation. Opening blocks initialize their entire capacity;
+    // completed P5 columns do too. The combination scratch has two u128 and two u64 fields,
+    // 48 initialized bytes with no padding on these targets; its SecretBuf clears all capacity.
     // Sorted storage initializes its entire public capacity as two-u64 entries without padding.
     unsafe impl GlobalAlloc for Recorder {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -109,6 +111,7 @@ fn model() -> IntegerModel {
 #[test]
 fn checkpoints_and_multiplicities_free_zeros_only() {
     streamed_codewords_are_cleared_on_abort();
+    regenerated_opening_buffers_are_cleared();
     // One test, so that no other test of this binary frees memory while a block is watched.
     let model = model();
     let tokens = vec![7, 300, 11, 451, 0, 511];
@@ -244,5 +247,120 @@ fn streamed_codewords_are_cleared_on_abort() {
             drop(stream);
         }),
         0
+    );
+}
+
+fn regenerated_opening_buffers_are_cleared() {
+    let (k, n, b, rows, p) = (8usize, 16, 5, 17, 3);
+    let layout = AdviceLayout::new(
+        LayoutParams {
+            log2_k: 3,
+            segments: 1,
+            layers: 1,
+            group: 1,
+            query_block: 1,
+            max_context: 1,
+        },
+        1,
+        &[TileShape {
+            layer: Some(0),
+            values: vec![TensorShape::Dense(DenseShape::new(
+                vec![Axis::new((rows * k) as u64)],
+                Padding::Zero,
+            ))],
+        }],
+    )
+    .unwrap();
+    let params = CommitmentParams {
+        log2_k: 3,
+        log2_inv_rate: 1,
+        mask_coeffs: p,
+        row_block: std::num::NonZeroUsize::new(b).unwrap(),
+        commitment_id: [59; 32],
+    };
+    let encoder = RowEncoder::new(k, 1, p).unwrap();
+    assert_eq!(encoder.codeword_len(), n);
+    let row = SecretBuf::filled(Fp::ONE, k);
+    let mut rng = || Fp::ONE;
+    let mut commit = StreamingCommitter::new(params, &layout, 0, &encoder, &mut rng).unwrap();
+    for r in 0..rows as u64 {
+        commit.push_row(r, &row).unwrap();
+    }
+    let parts = [commit.finish().unwrap()];
+    let state = AdviceOpening::new(&parts).unwrap();
+    let claims: Vec<_> = (0..2)
+        .map(|i| {
+            let mut point = vec![Fp2::from(Fp::from_u64_reduced(3)); layout.variables() as usize];
+            point[0] = Fp2::from(Fp::from_u64_reduced(3 + i));
+            AdviceClaim {
+                pieces: vec![AdvicePoint {
+                    point,
+                    weight: Fp2::ONE,
+                }],
+            }
+        })
+        .collect();
+    let groups = state
+        .prepare(
+            &claims,
+            Fp2::from(Fp::from_u64_reduced(5)),
+            &vec![Fp2::from(Fp::from_u64_reduced(7)); layout.row_vars() as usize],
+        )
+        .unwrap();
+    for count in [b * k, b * p] {
+        let copy = vec![Fp::ONE; count];
+        assert_eq!(
+            nonzero_bytes_when_size_freed(count * 8, || drop(copy)),
+            count
+        );
+        assert_eq!(
+            nonzero_bytes_when_size_freed(count * 8, || {
+                let mut rng = || Fp::ONE;
+                let mut pass = groups.begin(&encoder, &mut rng).unwrap();
+                pass.push_row(0, &row).unwrap();
+                drop(pass);
+            }),
+            0,
+            "an aborted P4 block clears data and masks"
+        );
+    }
+    // The actual shared combination kernel must clear its unreduced secret sums, including
+    // the reference path. All 48 bytes of each Wide are initialized; the first free is watched.
+    let scratch = 3 * 64 * 48;
+    let copy = vec![1u64; scratch / 8];
+    assert_eq!(
+        nonzero_bytes_when_size_freed(scratch, || drop(copy)),
+        scratch / 8
+    );
+    let mut rng = || Fp::ONE;
+    let mut pass = groups.begin(&encoder, &mut rng).unwrap();
+    assert_eq!(
+        nonzero_bytes_when_size_freed(scratch, || {
+            for r in 0..b as u64 {
+                pass.push_row(r, &row).unwrap();
+            }
+        }),
+        0,
+        "combination scratch frees zeros, even while P4 remains live"
+    );
+    for r in b as u64..rows as u64 {
+        pass.push_row(r, &row).unwrap();
+    }
+    let checked = pass.finish().unwrap();
+    let copy = vec![Fp::ONE; rows];
+    assert_eq!(nonzero_bytes_when_size_freed(rows * 8, || drop(copy)), rows);
+    assert_eq!(
+        nonzero_bytes_when_size_freed(rows * 8, || {
+            let mut rng = || Fp::ONE;
+            let mut pass = checked.answer(&encoder, &mut rng, &[1, 9]).unwrap();
+            // Fill the complete reserved capacity before aborting, so a non-clearing mutant also
+            // exposes initialized bytes only. No message has been returned yet.
+            for r in 0..rows as u64 {
+                pass.push_row(r, &row).unwrap();
+            }
+            drop(pass);
+        }),
+        0,
+        "an unsent P5 answer clears its columns"
     );
 }

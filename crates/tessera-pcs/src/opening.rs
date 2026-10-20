@@ -40,6 +40,8 @@
 
 use core::fmt;
 
+use tessera_codec::SecretBuf;
+
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 
 use crate::{PcsError, RowLayout};
@@ -190,6 +192,9 @@ pub(crate) fn add_scaled_eq(
 /// Columns per tile of [`combine`].
 const TILE: usize = 64;
 
+/// Clearing scratch held by one group of the shared combination kernel.
+pub(crate) const COMBINE_SCRATCH: usize = TILE * size_of::<Wide>();
+
 /// `hi·2^128 + lo` for each coordinate of an `Fp2` sum of products, unreduced.
 #[derive(Clone, Copy, Default)]
 struct Wide {
@@ -234,9 +239,22 @@ fn reduce(lo: u128, hi: u64) -> Fp {
 /// coefficients, each list holding `N` values. The [module documentation](self) gives the
 /// algorithm.
 pub(crate) fn combine(coefficients: &[Vec<Fp2>], matrix: &[Fp], width: usize) -> Vec<Vec<Fp2>> {
+    let mut out = vec![vec![Fp2::ZERO; width]; coefficients.len()];
+    combine_into(coefficients, matrix, width, |g, i, value| out[g][i] = value);
+    out
+}
+
+/// The same kernel for final messages and private streaming accumulators (OBS-6).
+/// The caller provides complete rows and one coefficient per row for every group.
+pub(crate) fn combine_into(
+    coefficients: &[Vec<Fp2>],
+    matrix: &[Fp],
+    width: usize,
+    mut write: impl FnMut(usize, usize, Fp2),
+) {
     let count = coefficients.len();
     if count == 0 || width == 0 {
-        return vec![Vec::new(); count];
+        return;
     }
     let rows = matrix.len() / width;
     // Row r's coefficients, as canonical words, side by side.
@@ -247,8 +265,7 @@ pub(crate) fn combine(coefficients: &[Vec<Fp2>], matrix: &[Fp], width: usize) ->
             raw[r * count + g] = [c0.to_canonical_u64(), c1.to_canonical_u64()];
         }
     }
-    let mut out = vec![vec![Fp2::ZERO; width]; count];
-    let mut acc = vec![Wide::default(); count * TILE];
+    let mut acc = SecretBuf::filled(Wide::default(), count * TILE);
     // Four rows; a width too large for a usize leaves them all to the single rows.
     let quad = width.saturating_mul(4);
     let mut start = 0;
@@ -287,14 +304,13 @@ pub(crate) fn combine(coefficients: &[Vec<Fp2>], matrix: &[Fp], width: usize) ->
                 }
             }
         }
-        for (list, sums) in out.iter_mut().zip(acc.chunks_exact(TILE)) {
-            for (value, sum) in list[start..start + len].iter_mut().zip(&sums[..len]) {
-                *value = sum.reduce();
+        for (g, sums) in acc.chunks_exact(TILE).enumerate() {
+            for (i, sum) in sums[..len].iter().enumerate() {
+                write(g, start + i, sum.reduce());
             }
         }
         start += len;
     }
-    out
 }
 
 #[cfg(test)]

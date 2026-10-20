@@ -2,6 +2,8 @@
 
 //! One-block advice commitments (RFC-0011), over the canonical layout's public row runs.
 
+pub mod opening;
+
 use core::fmt;
 use core::num::NonZeroUsize;
 use core::ops::Range;
@@ -225,6 +227,31 @@ impl<'layout, 'work, M: MaskSource + ?Sized> StreamingCommitter<'layout, 'work, 
 /// [`PcsError::SegmentOrder`] for an absent/repeated/reordered index, or
 /// [`PcsError::SegmentContext`] for mixed layouts or commitment parameters. Nothing is mutated.
 pub fn merge_segments(parts: &[SegmentDigests<'_>]) -> Result<AdviceCommitment, PcsError> {
+    let first = check_parts(parts)?;
+    let n = first.digests.len();
+    let mut frontier = [None; crate::ntt::TWO_ADICITY as usize + 1];
+    for column in 0..n {
+        let mut digest = merged_column(parts, column);
+        let (mut index, mut level) = (column, 0);
+        while index & 1 != 0 {
+            digest = merkle_node(
+                &frontier[level].take().expect("the preceding left subtree"),
+                &digest,
+            );
+            index >>= 1;
+            level += 1;
+        }
+        frontier[level] = Some(digest);
+    }
+    Ok(AdviceCommitment {
+        root: frontier[n.trailing_zeros() as usize].expect("a checked power-of-two column count"),
+        layout_digest: first.params.commitment_id,
+    })
+}
+
+fn check_parts<'p, 'layout>(
+    parts: &'p [SegmentDigests<'layout>],
+) -> Result<&'p SegmentDigests<'layout>, PcsError> {
     let first = parts.first().ok_or(PcsError::NoSegments)?;
     let expected = first.layout.params().segments as usize;
     if parts.len() != expected {
@@ -246,29 +273,15 @@ pub fn merge_segments(parts: &[SegmentDigests<'_>]) -> Result<AdviceCommitment, 
             });
         }
     }
-    let n = first.digests.len();
-    let mut frontier = [None; crate::ntt::TWO_ADICITY as usize + 1];
-    for column in 0..n {
-        let mut merge = Hasher::new(Domain::ColumnMerge);
-        for part in parts {
-            merge.update(&part.digests[column]);
-        }
-        let mut digest = merge.finalize();
-        let (mut index, mut level) = (column, 0);
-        while index & 1 != 0 {
-            digest = merkle_node(
-                &frontier[level].take().expect("the preceding left subtree"),
-                &digest,
-            );
-            index >>= 1;
-            level += 1;
-        }
-        frontier[level] = Some(digest);
+    Ok(first)
+}
+
+fn merged_column(parts: &[SegmentDigests<'_>], column: usize) -> Digest {
+    let mut merge = Hasher::new(Domain::ColumnMerge);
+    for part in parts {
+        merge.update(&part.digests[column]);
     }
-    Ok(AdviceCommitment {
-        root: frontier[n.trailing_zeros() as usize].expect("a checked power-of-two column count"),
-        layout_digest: first.params.commitment_id,
-    })
+    merge.finalize()
 }
 
 #[cfg(test)]

@@ -3,8 +3,8 @@
 //! The streaming advice commitment, the persistent weight commitment, openings and the hiding
 //! budget (RFC-0011, RFC-0012).
 //!
-//! The encoding of RFC-0011 'Encoding', the canonical advice layout and a non-streaming
-//! reference of its commitment and opening are here so far, and the weight commitment as `tessera-protocol/1` commits it
+//! The encoding of RFC-0011 'Encoding', canonical advice layouts, streaming commitment and
+//! regenerated openings are here, with a resident reference, and the weight commitment as `tessera-protocol/1` commits it
 //! (RFC-0040): its layout, its roots, `R_W` and its two artifacts, and opens it by the folding
 //! pass (RFC-0012, RFC-0049).
 //!
@@ -290,6 +290,30 @@
 //! input row and PRG state remain borrowed baseline state. The per-proof seed lifecycle belongs
 //! to the driver of RFC-0018, which supplies the mask stream.
 //!
+//! # Regenerated advice openings
+//!
+//! [`AdviceOpening::new`] builds public opening metadata from the complete ordered P1
+//! [`SegmentDigests`], retaining a Merkle tree rather than the witness or its codewords. It samples
+//! one column uniformly with the OS random source. The root-only [`merge_segments`] still uses
+//! no heap. [`AdviceOpening::prepare`] batches [`AdviceClaim`]s: every [`AdvicePoint`] piece of
+//! one original combination takes the same gamma power, starting at gamma^1 per group.
+//!
+//! [`OpeningGroups::begin`] starts P4. Push every retained row, in segment order, replaying P1's
+//! per-proof mask stream. P4 combines blocks into clearing accumulators, then verifies the
+//! sampled column's leaf and every completed combination. [`OpeningPass::finish`] releases a
+//! [`CheckedOpening`] only on success; faults yield [`AdviceOpeningError::SelfCheck`], whose
+//! code is `ERR-INTERNAL`, before any combined-row message exists. The self-check samples one
+//! column; the independent verifier still checks the full proof.
+//!
+//! Absorb [`CheckedOpening::combined`] before drawing column queries. Then
+//! [`CheckedOpening::answer`] starts P5 with a fresh replay of the same masks. Push each retained
+//! row again; [`ColumnPass::finish`] returns the existing [`ColumnAnswer`] format, each distinct
+//! queried column once in increasing order and its canonical multiproof. No codeword matrix is
+//! retained. The driver owns witness regeneration, seed restart policy, resource admission,
+//! transcript timing and the one opening/answer per proof; protocol/2 blinding is separate.
+//! The [allocation report](https://github.com/AbdelStark/tessera/blob/main/docs/perf/regenerated-advice-openings.md)
+//! accounts for the public tree, block scratch, combined rows and output copies.
+//!
 //! # Secrets
 //!
 //! Rows, mask coefficients and codewords are secret-class, and combined rows and opened
@@ -335,6 +359,10 @@ pub use layout::{
 };
 pub use ntt::NttPlan;
 pub use opening::{ClaimGroup, CombinedRow, RowClaim};
+pub use streaming::opening::{
+    AdviceClaim, AdviceOpening, AdviceOpeningError, AdvicePoint, CheckedOpening, ColumnPass,
+    OpeningGroups, OpeningPass,
+};
 pub use streaming::{AdviceCommitment, SegmentDigests, StreamingCommitter, merge_segments};
 pub use weights::{
     ChannelParamsRef, ChannelValues, MatrixKind, MatrixLayout, MatrixRows, ModelWeights,
