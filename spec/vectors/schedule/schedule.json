@@ -497,6 +497,22 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:0",
+            "round:1:1",
+            "round:1:2",
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -1034,14 +1050,33 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
                 "zero:2",
                 "zero:3",
                 "zero:4",
-                "zero:5"
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 9
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -1051,7 +1086,7 @@
           ],
           "rounds": 9,
           "splits": 0,
-          "zero_vars": 6
+          "zero_vars": 9
         },
         {
           "index": 2,
@@ -1679,6 +1714,24 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:0",
+            "round:1:1",
+            "round:1:2",
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -2269,7 +2322,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -2278,7 +2331,28 @@
                 "zero:4",
                 "zero:5",
                 "zero:6",
-                "zero:7"
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 11
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -2288,7 +2362,7 @@
           ],
           "rounds": 11,
           "splits": 0,
-          "zero_vars": 8
+          "zero_vars": 11
         },
         {
           "index": 2,
@@ -2947,6 +3021,25 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:0",
+            "round:1:1",
+            "round:1:2",
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10",
+            "round:1:11"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -3562,7 +3655,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -3572,7 +3665,29 @@
                 "zero:5",
                 "zero:6",
                 "zero:7",
-                "zero:8"
+                "zero:8",
+                "zero:9",
+                "zero:10",
+                "zero:11"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 12
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10",
+                "zero:11"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -3582,7 +3697,7 @@
           ],
           "rounds": 12,
           "splits": 0,
-          "zero_vars": 9
+          "zero_vars": 12
         },
         {
           "index": 2,
@@ -4314,6 +4429,28 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:0",
+            "round:1:1",
+            "round:1:2",
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10",
+            "round:1:11",
+            "round:1:12",
+            "round:1:13",
+            "round:1:14"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -5004,7 +5141,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -5017,7 +5154,32 @@
                 "zero:8",
                 "zero:9",
                 "zero:10",
-                "zero:11"
+                "zero:11",
+                "zero:12",
+                "zero:13",
+                "zero:14"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 15
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10",
+                "zero:11",
+                "zero:12",
+                "zero:13",
+                "zero:14"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -5027,7 +5189,7 @@
           ],
           "rounds": 15,
           "splits": 0,
-          "zero_vars": 12
+          "zero_vars": 15
         },
         {
           "index": 2,
@@ -5488,6 +5650,22 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
+            "round:1:0",
+            "round:1:1",
+            "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -6018,14 +6196,33 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
                 "zero:2",
                 "zero:3",
                 "zero:4",
-                "zero:5"
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 9
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -6035,7 +6232,7 @@
           ],
           "rounds": 9,
           "splits": 0,
-          "zero_vars": 6
+          "zero_vars": 9
         },
         {
           "index": 2,
@@ -6297,44 +6494,20 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
-            "round:1:7"
+            "round:1:7",
+            "round:1:8",
+            "round:1:9"
           ],
           "stage": 1
         },
         {
           "atoms": 1,
           "commitment": "advice",
-          "point": [
-            "round:1:0",
-            "round:1:1",
-            "round:1:2",
-            "round:1:3",
-            "round:1:4",
-            "round:1:5",
-            "round:1:6",
-            "round:1:7"
-          ],
-          "stage": 1
-        },
-        {
-          "atoms": 1,
-          "commitment": "advice",
-          "point": [
-            "round:1:6",
-            "round:1:7"
-          ],
-          "stage": 1
-        },
-        {
-          "atoms": 1,
-          "commitment": "weight",
           "point": [
             "round:1:2",
             "round:1:3",
@@ -6342,6 +6515,30 @@
             "round:1:5",
             "round:1:6",
             "round:1:7",
+            "round:1:8",
+            "round:1:9"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
+            "round:1:8",
+            "round:1:9"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "weight",
+          "point": [
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
             "leaf:7:0",
             "leaf:7:1",
             "leaf:7:2",
@@ -6354,12 +6551,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:2",
-            "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
+            "round:1:8",
+            "round:1:9",
             "leaf:7:5",
             "leaf:7:6"
           ],
@@ -6369,12 +6566,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:2",
-            "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
+            "round:1:8",
+            "round:1:9",
             "leaf:8:2",
             "leaf:8:3"
           ],
@@ -6384,11 +6581,11 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:2",
-            "round:1:3",
             "round:1:4",
             "round:1:5",
+            "round:1:6",
             "round:1:7",
+            "round:1:9",
             "leaf:8:0",
             "leaf:8:1"
           ],
@@ -6398,12 +6595,12 @@
           "atoms": 1,
           "commitment": "weight",
           "point": [
-            "round:1:2",
-            "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
+            "round:1:8",
+            "round:1:9",
             "leaf:9:0",
             "leaf:9:1",
             "leaf:9:2",
@@ -6417,44 +6614,20 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
-            "round:1:7"
+            "round:1:7",
+            "round:1:8",
+            "round:1:9"
           ],
           "stage": 1
         },
         {
           "atoms": 1,
           "commitment": "advice",
-          "point": [
-            "round:1:0",
-            "round:1:1",
-            "round:1:2",
-            "round:1:3",
-            "round:1:4",
-            "round:1:5",
-            "round:1:6",
-            "round:1:7"
-          ],
-          "stage": 1
-        },
-        {
-          "atoms": 1,
-          "commitment": "advice",
-          "point": [
-            "round:1:6",
-            "round:1:7"
-          ],
-          "stage": 1
-        },
-        {
-          "atoms": 1,
-          "commitment": "weight",
           "point": [
             "round:1:2",
             "round:1:3",
@@ -6462,6 +6635,30 @@
             "round:1:5",
             "round:1:6",
             "round:1:7",
+            "round:1:8",
+            "round:1:9"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
+            "round:1:8",
+            "round:1:9"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "weight",
+          "point": [
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
             "leaf:14:0",
             "leaf:14:1",
             "leaf:14:2",
@@ -6477,12 +6674,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:2",
-            "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
+            "round:1:8",
+            "round:1:9",
             "leaf:14:8",
             "leaf:14:9"
           ],
@@ -6492,14 +6689,14 @@
           "atoms": 1,
           "commitment": "weight",
           "point": [
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
+            "round:1:8",
+            "round:1:9",
             "leaf:16:0",
             "leaf:16:1",
             "leaf:16:2",
@@ -6513,44 +6710,20 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:1",
-            "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
-            "round:1:8"
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
           ],
           "stage": 1
         },
         {
           "atoms": 1,
           "commitment": "advice",
-          "point": [
-            "round:1:1",
-            "round:1:2",
-            "round:1:3",
-            "round:1:4",
-            "round:1:5",
-            "round:1:6",
-            "round:1:7",
-            "round:1:8"
-          ],
-          "stage": 1
-        },
-        {
-          "atoms": 1,
-          "commitment": "advice",
-          "point": [
-            "round:1:7",
-            "round:1:8"
-          ],
-          "stage": 1
-        },
-        {
-          "atoms": 1,
-          "commitment": "weight",
           "point": [
             "round:1:3",
             "round:1:4",
@@ -6558,6 +6731,30 @@
             "round:1:6",
             "round:1:7",
             "round:1:8",
+            "round:1:9",
+            "round:1:10"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
+            "round:1:9",
+            "round:1:10"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "weight",
+          "point": [
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10",
             "leaf:21:0",
             "leaf:21:1",
             "leaf:21:2",
@@ -6574,12 +6771,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:3",
-            "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
+            "round:1:9",
+            "round:1:10",
             "leaf:21:9",
             "leaf:21:10"
           ],
@@ -6589,6 +6786,7 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:0",
             "round:1:1",
             "round:1:2",
             "round:1:3",
@@ -6596,7 +6794,24 @@
             "round:1:5",
             "round:1:6",
             "round:1:7",
-            "round:1:8"
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
           ],
           "stage": 1
         },
@@ -6610,12 +6825,12 @@
             "round:2:7",
             "round:2:8",
             "round:2:9",
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
-            "round:1:5"
+            "round:1:5",
+            "round:1:6",
+            "round:1:7"
           ],
           "stage": 2
         },
@@ -6629,8 +6844,8 @@
             "round:2:7",
             "round:2:8",
             "round:2:9",
-            "round:1:6",
-            "round:1:7"
+            "round:1:8",
+            "round:1:9"
           ],
           "stage": 2
         },
@@ -6644,11 +6859,11 @@
             "round:2:7",
             "round:2:8",
             "round:2:9",
-            "round:1:1",
-            "round:1:2",
             "round:1:3",
             "round:1:4",
-            "round:1:5"
+            "round:1:5",
+            "round:1:6",
+            "round:1:7"
           ],
           "stage": 2
         },
@@ -6662,8 +6877,8 @@
             "round:2:7",
             "round:2:8",
             "round:2:9",
-            "round:1:6",
-            "round:1:7"
+            "round:1:8",
+            "round:1:9"
           ],
           "stage": 2
         },
@@ -6708,12 +6923,12 @@
             "round:2:8",
             "round:2:9",
             "round:2:10",
-            "round:1:1",
-            "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
-            "round:1:6"
+            "round:1:6",
+            "round:1:7",
+            "round:1:8"
           ],
           "stage": 2
         },
@@ -6730,8 +6945,8 @@
             "round:2:8",
             "round:2:9",
             "round:2:10",
-            "round:1:7",
-            "round:1:8"
+            "round:1:9",
+            "round:1:10"
           ],
           "stage": 2
         },
@@ -7159,7 +7374,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -7168,7 +7383,28 @@
                 "zero:4",
                 "zero:5",
                 "zero:6",
-                "zero:7"
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 11
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -7176,27 +7412,27 @@
               "vars": 8
             }
           ],
-          "rounds": 9,
+          "rounds": 11,
           "splits": 0,
-          "zero_vars": 8
+          "zero_vars": 11
         },
         {
           "index": 2,
           "instances": [
             {
               "layers": [
-                "round:1:8"
+                "round:1:10"
               ],
               "node": 7,
               "point": [
-                "round:1:0",
-                "round:1:1",
                 "round:1:2",
                 "round:1:3",
                 "round:1:4",
                 "round:1:5",
                 "round:1:6",
-                "round:1:7"
+                "round:1:7",
+                "round:1:8",
+                "round:1:9"
               ],
               "relation": "MatMulWeight",
               "stacked": true,
@@ -7205,17 +7441,17 @@
             },
             {
               "layers": [
-                "round:1:8"
+                "round:1:10"
               ],
               "node": 8,
               "point": [
-                "round:1:1",
-                "round:1:2",
                 "round:1:3",
                 "round:1:4",
                 "round:1:5",
                 "round:1:6",
-                "round:1:7"
+                "round:1:7",
+                "round:1:8",
+                "round:1:9"
               ],
               "relation": "MatMulWeight",
               "stacked": true,
@@ -7224,18 +7460,18 @@
             },
             {
               "layers": [
-                "round:1:8"
+                "round:1:10"
               ],
               "node": 32,
               "point": [
-                "round:1:2",
-                "round:1:3",
                 "round:1:4",
                 "round:1:5",
+                "round:1:6",
+                "round:1:7",
                 "leaf:9:6",
                 "leaf:9:7",
-                "round:1:6",
-                "round:1:7"
+                "round:1:8",
+                "round:1:9"
               ],
               "relation": "Elementwise",
               "stacked": true,
@@ -7244,18 +7480,18 @@
             },
             {
               "layers": [
-                "round:1:8"
+                "round:1:10"
               ],
               "node": 47,
               "point": [
-                "round:1:0",
-                "round:1:1",
                 "round:1:2",
                 "round:1:3",
                 "round:1:4",
                 "round:1:5",
                 "round:1:6",
                 "round:1:7",
+                "round:1:8",
+                "round:1:9",
                 "leaf:16:6",
                 "leaf:16:7"
               ],
@@ -7268,14 +7504,14 @@
               "layers": null,
               "node": 1,
               "point": [
-                "round:1:1",
-                "round:1:2",
                 "round:1:3",
                 "round:1:4",
                 "round:1:5",
                 "round:1:6",
                 "round:1:7",
-                "round:1:8"
+                "round:1:8",
+                "round:1:9",
+                "round:1:10"
               ],
               "relation": "MatMulWeight",
               "stacked": false,
@@ -7457,15 +7693,15 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
-            "round:1:8"
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
           ],
           "stage": 1
         },
@@ -7473,15 +7709,15 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
-            "round:1:8"
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
           ],
           "stage": 1
         },
@@ -7489,9 +7725,9 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:6",
-            "round:1:7",
-            "round:1:8"
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
           ],
           "stage": 1
         },
@@ -7499,12 +7735,12 @@
           "atoms": 1,
           "commitment": "weight",
           "point": [
-            "round:1:3",
-            "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
+            "round:1:9",
+            "round:1:10",
             "leaf:7:0",
             "leaf:7:1",
             "leaf:7:2",
@@ -7517,12 +7753,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:3",
-            "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
+            "round:1:9",
+            "round:1:10",
             "leaf:7:5",
             "leaf:7:6",
             "leaf:7:7"
@@ -7533,12 +7769,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:3",
-            "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
+            "round:1:9",
+            "round:1:10",
             "leaf:8:3",
             "leaf:8:4",
             "leaf:8:5"
@@ -7549,11 +7785,11 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:3",
-            "round:1:4",
             "round:1:5",
             "round:1:6",
+            "round:1:7",
             "round:1:8",
+            "round:1:10",
             "leaf:8:0",
             "leaf:8:1",
             "leaf:8:2"
@@ -7564,12 +7800,12 @@
           "atoms": 1,
           "commitment": "weight",
           "point": [
-            "round:1:3",
-            "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
+            "round:1:9",
+            "round:1:10",
             "leaf:9:0",
             "leaf:9:1",
             "leaf:9:2",
@@ -7583,15 +7819,15 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
-            "round:1:8"
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
           ],
           "stage": 1
         },
@@ -7599,15 +7835,15 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
-            "round:1:8"
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
           ],
           "stage": 1
         },
@@ -7615,9 +7851,9 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:6",
-            "round:1:7",
-            "round:1:8"
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
           ],
           "stage": 1
         },
@@ -7625,12 +7861,12 @@
           "atoms": 1,
           "commitment": "weight",
           "point": [
-            "round:1:3",
-            "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
+            "round:1:9",
+            "round:1:10",
             "leaf:14:0",
             "leaf:14:1",
             "leaf:14:2",
@@ -7646,12 +7882,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:3",
-            "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
+            "round:1:9",
+            "round:1:10",
             "leaf:14:8",
             "leaf:14:9",
             "leaf:14:10"
@@ -7662,14 +7898,14 @@
           "atoms": 1,
           "commitment": "weight",
           "point": [
-            "round:1:1",
-            "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
+            "round:1:9",
+            "round:1:10",
             "leaf:16:0",
             "leaf:16:1",
             "leaf:16:2",
@@ -7683,15 +7919,15 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:1",
-            "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
-            "round:1:9"
+            "round:1:9",
+            "round:1:10",
+            "round:1:11"
           ],
           "stage": 1
         },
@@ -7699,15 +7935,15 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:1",
-            "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
-            "round:1:9"
+            "round:1:9",
+            "round:1:10",
+            "round:1:11"
           ],
           "stage": 1
         },
@@ -7715,9 +7951,9 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:7",
-            "round:1:8",
-            "round:1:9"
+            "round:1:9",
+            "round:1:10",
+            "round:1:11"
           ],
           "stage": 1
         },
@@ -7725,12 +7961,12 @@
           "atoms": 1,
           "commitment": "weight",
           "point": [
-            "round:1:4",
-            "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
             "round:1:9",
+            "round:1:10",
+            "round:1:11",
             "leaf:21:0",
             "leaf:21:1",
             "leaf:21:2",
@@ -7747,12 +7983,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:4",
-            "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
             "round:1:9",
+            "round:1:10",
+            "round:1:11",
             "leaf:21:9",
             "leaf:21:10",
             "leaf:21:11"
@@ -7763,6 +7999,7 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:0",
             "round:1:1",
             "round:1:2",
             "round:1:3",
@@ -7771,7 +8008,25 @@
             "round:1:6",
             "round:1:7",
             "round:1:8",
-            "round:1:9"
+            "round:1:9",
+            "round:1:10",
+            "round:1:11"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10",
+            "round:1:11"
           ],
           "stage": 1
         },
@@ -7785,12 +8040,12 @@
             "round:2:8",
             "round:2:9",
             "round:2:10",
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
-            "round:1:5"
+            "round:1:5",
+            "round:1:6",
+            "round:1:7"
           ],
           "stage": 2
         },
@@ -7804,9 +8059,9 @@
             "round:2:8",
             "round:2:9",
             "round:2:10",
-            "round:1:6",
-            "round:1:7",
-            "round:1:8"
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
           ],
           "stage": 2
         },
@@ -7820,11 +8075,11 @@
             "round:2:8",
             "round:2:9",
             "round:2:10",
-            "round:1:1",
-            "round:1:2",
             "round:1:3",
             "round:1:4",
-            "round:1:5"
+            "round:1:5",
+            "round:1:6",
+            "round:1:7"
           ],
           "stage": 2
         },
@@ -7838,9 +8093,9 @@
             "round:2:8",
             "round:2:9",
             "round:2:10",
-            "round:1:6",
-            "round:1:7",
-            "round:1:8"
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
           ],
           "stage": 2
         },
@@ -7887,12 +8142,12 @@
             "round:2:9",
             "round:2:10",
             "round:2:11",
-            "round:1:1",
-            "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
-            "round:1:6"
+            "round:1:6",
+            "round:1:7",
+            "round:1:8"
           ],
           "stage": 2
         },
@@ -7909,9 +8164,9 @@
             "round:2:9",
             "round:2:10",
             "round:2:11",
-            "round:1:7",
-            "round:1:8",
-            "round:1:9"
+            "round:1:9",
+            "round:1:10",
+            "round:1:11"
           ],
           "stage": 2
         },
@@ -8358,7 +8613,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -8368,7 +8623,29 @@
                 "zero:5",
                 "zero:6",
                 "zero:7",
-                "zero:8"
+                "zero:8",
+                "zero:9",
+                "zero:10",
+                "zero:11"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 12
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10",
+                "zero:11"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -8376,28 +8653,28 @@
               "vars": 9
             }
           ],
-          "rounds": 10,
+          "rounds": 12,
           "splits": 0,
-          "zero_vars": 9
+          "zero_vars": 12
         },
         {
           "index": 2,
           "instances": [
             {
               "layers": [
-                "round:1:9"
+                "round:1:11"
               ],
               "node": 7,
               "point": [
-                "round:1:0",
-                "round:1:1",
                 "round:1:2",
                 "round:1:3",
                 "round:1:4",
                 "round:1:5",
                 "round:1:6",
                 "round:1:7",
-                "round:1:8"
+                "round:1:8",
+                "round:1:9",
+                "round:1:10"
               ],
               "relation": "MatMulWeight",
               "stacked": true,
@@ -8406,18 +8683,18 @@
             },
             {
               "layers": [
-                "round:1:9"
+                "round:1:11"
               ],
               "node": 8,
               "point": [
-                "round:1:1",
-                "round:1:2",
                 "round:1:3",
                 "round:1:4",
                 "round:1:5",
                 "round:1:6",
                 "round:1:7",
-                "round:1:8"
+                "round:1:8",
+                "round:1:9",
+                "round:1:10"
               ],
               "relation": "MatMulWeight",
               "stacked": true,
@@ -8426,19 +8703,19 @@
             },
             {
               "layers": [
-                "round:1:9"
+                "round:1:11"
               ],
               "node": 32,
               "point": [
-                "round:1:3",
-                "round:1:4",
                 "round:1:5",
                 "round:1:6",
+                "round:1:7",
+                "round:1:8",
                 "leaf:9:6",
                 "leaf:9:7",
                 "leaf:9:8",
-                "round:1:7",
-                "round:1:8"
+                "round:1:9",
+                "round:1:10"
               ],
               "relation": "Elementwise",
               "stacked": true,
@@ -8447,18 +8724,18 @@
             },
             {
               "layers": [
-                "round:1:9"
+                "round:1:11"
               ],
               "node": 47,
               "point": [
-                "round:1:1",
-                "round:1:2",
                 "round:1:3",
                 "round:1:4",
                 "round:1:5",
                 "round:1:6",
                 "round:1:7",
                 "round:1:8",
+                "round:1:9",
+                "round:1:10",
                 "leaf:16:6",
                 "leaf:16:7",
                 "leaf:16:8"
@@ -8472,15 +8749,15 @@
               "layers": null,
               "node": 1,
               "point": [
-                "round:1:1",
-                "round:1:2",
                 "round:1:3",
                 "round:1:4",
                 "round:1:5",
                 "round:1:6",
                 "round:1:7",
                 "round:1:8",
-                "round:1:9"
+                "round:1:9",
+                "round:1:10",
+                "round:1:11"
               ],
               "relation": "MatMulWeight",
               "stacked": false,
@@ -8673,8 +8950,6 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
@@ -8684,7 +8959,9 @@
             "round:1:8",
             "round:1:9",
             "round:1:10",
-            "round:1:11"
+            "round:1:11",
+            "round:1:12",
+            "round:1:13"
           ],
           "stage": 1
         },
@@ -8692,8 +8969,6 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
@@ -8703,7 +8978,9 @@
             "round:1:8",
             "round:1:9",
             "round:1:10",
-            "round:1:11"
+            "round:1:11",
+            "round:1:12",
+            "round:1:13"
           ],
           "stage": 1
         },
@@ -8711,12 +8988,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:6",
-            "round:1:7",
             "round:1:8",
             "round:1:9",
             "round:1:10",
-            "round:1:11"
+            "round:1:11",
+            "round:1:12",
+            "round:1:13"
           ],
           "stage": 1
         },
@@ -8724,12 +9001,12 @@
           "atoms": 1,
           "commitment": "weight",
           "point": [
-            "round:1:6",
-            "round:1:7",
             "round:1:8",
             "round:1:9",
             "round:1:10",
             "round:1:11",
+            "round:1:12",
+            "round:1:13",
             "leaf:7:0",
             "leaf:7:1",
             "leaf:7:2",
@@ -8742,12 +9019,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:6",
-            "round:1:7",
             "round:1:8",
             "round:1:9",
             "round:1:10",
             "round:1:11",
+            "round:1:12",
+            "round:1:13",
             "leaf:7:5",
             "leaf:7:6",
             "leaf:7:7",
@@ -8761,12 +9038,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:6",
-            "round:1:7",
             "round:1:8",
             "round:1:9",
             "round:1:10",
             "round:1:11",
+            "round:1:12",
+            "round:1:13",
             "leaf:8:6",
             "leaf:8:7",
             "leaf:8:8",
@@ -8780,11 +9057,11 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:6",
-            "round:1:7",
             "round:1:8",
             "round:1:9",
+            "round:1:10",
             "round:1:11",
+            "round:1:13",
             "leaf:8:0",
             "leaf:8:1",
             "leaf:8:2",
@@ -8798,12 +9075,12 @@
           "atoms": 1,
           "commitment": "weight",
           "point": [
-            "round:1:6",
-            "round:1:7",
             "round:1:8",
             "round:1:9",
             "round:1:10",
             "round:1:11",
+            "round:1:12",
+            "round:1:13",
             "leaf:9:0",
             "leaf:9:1",
             "leaf:9:2",
@@ -8817,8 +9094,6 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
@@ -8828,7 +9103,9 @@
             "round:1:8",
             "round:1:9",
             "round:1:10",
-            "round:1:11"
+            "round:1:11",
+            "round:1:12",
+            "round:1:13"
           ],
           "stage": 1
         },
@@ -8836,8 +9113,6 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
@@ -8847,7 +9122,9 @@
             "round:1:8",
             "round:1:9",
             "round:1:10",
-            "round:1:11"
+            "round:1:11",
+            "round:1:12",
+            "round:1:13"
           ],
           "stage": 1
         },
@@ -8855,12 +9132,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:6",
-            "round:1:7",
             "round:1:8",
             "round:1:9",
             "round:1:10",
-            "round:1:11"
+            "round:1:11",
+            "round:1:12",
+            "round:1:13"
           ],
           "stage": 1
         },
@@ -8868,12 +9145,12 @@
           "atoms": 1,
           "commitment": "weight",
           "point": [
-            "round:1:6",
-            "round:1:7",
             "round:1:8",
             "round:1:9",
             "round:1:10",
             "round:1:11",
+            "round:1:12",
+            "round:1:13",
             "leaf:14:0",
             "leaf:14:1",
             "leaf:14:2",
@@ -8889,12 +9166,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:6",
-            "round:1:7",
             "round:1:8",
             "round:1:9",
             "round:1:10",
             "round:1:11",
+            "round:1:12",
+            "round:1:13",
             "leaf:14:8",
             "leaf:14:9",
             "leaf:14:10",
@@ -8908,14 +9185,14 @@
           "atoms": 1,
           "commitment": "weight",
           "point": [
-            "round:1:4",
-            "round:1:5",
             "round:1:6",
             "round:1:7",
             "round:1:8",
             "round:1:9",
             "round:1:10",
             "round:1:11",
+            "round:1:12",
+            "round:1:13",
             "leaf:16:0",
             "leaf:16:1",
             "leaf:16:2",
@@ -8929,8 +9206,6 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:1",
-            "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -8940,7 +9215,9 @@
             "round:1:9",
             "round:1:10",
             "round:1:11",
-            "round:1:12"
+            "round:1:12",
+            "round:1:13",
+            "round:1:14"
           ],
           "stage": 1
         },
@@ -8948,8 +9225,6 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:1",
-            "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -8959,7 +9234,9 @@
             "round:1:9",
             "round:1:10",
             "round:1:11",
-            "round:1:12"
+            "round:1:12",
+            "round:1:13",
+            "round:1:14"
           ],
           "stage": 1
         },
@@ -8967,12 +9244,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:7",
-            "round:1:8",
             "round:1:9",
             "round:1:10",
             "round:1:11",
-            "round:1:12"
+            "round:1:12",
+            "round:1:13",
+            "round:1:14"
           ],
           "stage": 1
         },
@@ -8980,12 +9257,12 @@
           "atoms": 1,
           "commitment": "weight",
           "point": [
-            "round:1:7",
-            "round:1:8",
             "round:1:9",
             "round:1:10",
             "round:1:11",
             "round:1:12",
+            "round:1:13",
+            "round:1:14",
             "leaf:21:0",
             "leaf:21:1",
             "leaf:21:2",
@@ -9002,12 +9279,12 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
-            "round:1:7",
-            "round:1:8",
             "round:1:9",
             "round:1:10",
             "round:1:11",
             "round:1:12",
+            "round:1:13",
+            "round:1:14",
             "leaf:21:9",
             "leaf:21:10",
             "leaf:21:11",
@@ -9021,6 +9298,7 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:0",
             "round:1:1",
             "round:1:2",
             "round:1:3",
@@ -9032,7 +9310,28 @@
             "round:1:9",
             "round:1:10",
             "round:1:11",
-            "round:1:12"
+            "round:1:12",
+            "round:1:13",
+            "round:1:14"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10",
+            "round:1:11",
+            "round:1:12",
+            "round:1:13",
+            "round:1:14"
           ],
           "stage": 1
         },
@@ -9046,12 +9345,12 @@
             "round:2:11",
             "round:2:12",
             "round:2:13",
-            "round:1:0",
-            "round:1:1",
             "round:1:2",
             "round:1:3",
             "round:1:4",
-            "round:1:5"
+            "round:1:5",
+            "round:1:6",
+            "round:1:7"
           ],
           "stage": 2
         },
@@ -9065,12 +9364,12 @@
             "round:2:11",
             "round:2:12",
             "round:2:13",
-            "round:1:6",
-            "round:1:7",
             "round:1:8",
             "round:1:9",
             "round:1:10",
-            "round:1:11"
+            "round:1:11",
+            "round:1:12",
+            "round:1:13"
           ],
           "stage": 2
         },
@@ -9084,11 +9383,11 @@
             "round:2:11",
             "round:2:12",
             "round:2:13",
-            "round:1:1",
-            "round:1:2",
             "round:1:3",
             "round:1:4",
-            "round:1:5"
+            "round:1:5",
+            "round:1:6",
+            "round:1:7"
           ],
           "stage": 2
         },
@@ -9102,12 +9401,12 @@
             "round:2:11",
             "round:2:12",
             "round:2:13",
-            "round:1:6",
-            "round:1:7",
             "round:1:8",
             "round:1:9",
             "round:1:10",
-            "round:1:11"
+            "round:1:11",
+            "round:1:12",
+            "round:1:13"
           ],
           "stage": 2
         },
@@ -9160,12 +9459,12 @@
             "round:2:12",
             "round:2:13",
             "round:2:14",
-            "round:1:1",
-            "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
-            "round:1:6"
+            "round:1:6",
+            "round:1:7",
+            "round:1:8"
           ],
           "stage": 2
         },
@@ -9182,12 +9481,12 @@
             "round:2:12",
             "round:2:13",
             "round:2:14",
-            "round:1:7",
-            "round:1:8",
             "round:1:9",
             "round:1:10",
             "round:1:11",
-            "round:1:12"
+            "round:1:12",
+            "round:1:13",
+            "round:1:14"
           ],
           "stage": 2
         },
@@ -9691,7 +9990,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -9704,7 +10003,32 @@
                 "zero:8",
                 "zero:9",
                 "zero:10",
-                "zero:11"
+                "zero:11",
+                "zero:12",
+                "zero:13",
+                "zero:14"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 15
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10",
+                "zero:11",
+                "zero:12",
+                "zero:13",
+                "zero:14"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -9712,90 +10036,21 @@
               "vars": 12
             }
           ],
-          "rounds": 13,
+          "rounds": 15,
           "splits": 0,
-          "zero_vars": 12
+          "zero_vars": 15
         },
         {
           "index": 2,
           "instances": [
             {
               "layers": [
-                "round:1:12"
+                "round:1:14"
               ],
               "node": 7,
               "point": [
-                "round:1:0",
-                "round:1:1",
                 "round:1:2",
                 "round:1:3",
-                "round:1:4",
-                "round:1:5",
-                "round:1:6",
-                "round:1:7",
-                "round:1:8",
-                "round:1:9",
-                "round:1:10",
-                "round:1:11"
-              ],
-              "relation": "MatMulWeight",
-              "stacked": true,
-              "tensor": 11,
-              "vars": 7
-            },
-            {
-              "layers": [
-                "round:1:12"
-              ],
-              "node": 8,
-              "point": [
-                "round:1:1",
-                "round:1:2",
-                "round:1:3",
-                "round:1:4",
-                "round:1:5",
-                "round:1:6",
-                "round:1:7",
-                "round:1:8",
-                "round:1:9",
-                "round:1:10",
-                "round:1:11"
-              ],
-              "relation": "MatMulWeight",
-              "stacked": true,
-              "tensor": 13,
-              "vars": 7
-            },
-            {
-              "layers": [
-                "round:1:12"
-              ],
-              "node": 32,
-              "point": [
-                "round:1:6",
-                "round:1:7",
-                "round:1:8",
-                "round:1:9",
-                "leaf:9:6",
-                "leaf:9:7",
-                "leaf:9:8",
-                "leaf:9:9",
-                "leaf:9:10",
-                "leaf:9:11",
-                "round:1:10",
-                "round:1:11"
-              ],
-              "relation": "Elementwise",
-              "stacked": true,
-              "tensor": 41,
-              "vars": 13
-            },
-            {
-              "layers": [
-                "round:1:12"
-              ],
-              "node": 47,
-              "point": [
                 "round:1:4",
                 "round:1:5",
                 "round:1:6",
@@ -9804,6 +10059,75 @@
                 "round:1:9",
                 "round:1:10",
                 "round:1:11",
+                "round:1:12",
+                "round:1:13"
+              ],
+              "relation": "MatMulWeight",
+              "stacked": true,
+              "tensor": 11,
+              "vars": 7
+            },
+            {
+              "layers": [
+                "round:1:14"
+              ],
+              "node": 8,
+              "point": [
+                "round:1:3",
+                "round:1:4",
+                "round:1:5",
+                "round:1:6",
+                "round:1:7",
+                "round:1:8",
+                "round:1:9",
+                "round:1:10",
+                "round:1:11",
+                "round:1:12",
+                "round:1:13"
+              ],
+              "relation": "MatMulWeight",
+              "stacked": true,
+              "tensor": 13,
+              "vars": 7
+            },
+            {
+              "layers": [
+                "round:1:14"
+              ],
+              "node": 32,
+              "point": [
+                "round:1:8",
+                "round:1:9",
+                "round:1:10",
+                "round:1:11",
+                "leaf:9:6",
+                "leaf:9:7",
+                "leaf:9:8",
+                "leaf:9:9",
+                "leaf:9:10",
+                "leaf:9:11",
+                "round:1:12",
+                "round:1:13"
+              ],
+              "relation": "Elementwise",
+              "stacked": true,
+              "tensor": 41,
+              "vars": 13
+            },
+            {
+              "layers": [
+                "round:1:14"
+              ],
+              "node": 47,
+              "point": [
+                "round:1:6",
+                "round:1:7",
+                "round:1:8",
+                "round:1:9",
+                "round:1:10",
+                "round:1:11",
+                "round:1:12",
+                "round:1:13",
                 "leaf:16:6",
                 "leaf:16:7",
                 "leaf:16:8",
@@ -9820,8 +10144,6 @@
               "layers": null,
               "node": 1,
               "point": [
-                "round:1:1",
-                "round:1:2",
                 "round:1:3",
                 "round:1:4",
                 "round:1:5",
@@ -9831,7 +10153,9 @@
                 "round:1:9",
                 "round:1:10",
                 "round:1:11",
-                "round:1:12"
+                "round:1:12",
+                "round:1:13",
+                "round:1:14"
               ],
               "relation": "MatMulWeight",
               "stacked": false,
@@ -10321,6 +10645,22 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
+            "round:1:0",
+            "round:1:1",
+            "round:1:2",
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -10917,14 +11257,33 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
                 "zero:2",
                 "zero:3",
                 "zero:4",
-                "zero:5"
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 9
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -10934,7 +11293,7 @@
           ],
           "rounds": 9,
           "splits": 0,
-          "zero_vars": 6
+          "zero_vars": 9
         },
         {
           "index": 2,
@@ -11566,6 +11925,24 @@
             "round:1:10",
             "leaf:21:9",
             "leaf:21:10"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
+            "round:1:0",
+            "round:1:1",
+            "round:1:2",
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
           ],
           "stage": 1
         },
@@ -12213,7 +12590,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -12222,7 +12599,28 @@
                 "zero:4",
                 "zero:5",
                 "zero:6",
-                "zero:7"
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 11
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -12232,7 +12630,7 @@
           ],
           "rounds": 11,
           "splits": 0,
-          "zero_vars": 8
+          "zero_vars": 11
         },
         {
           "index": 2,
@@ -12908,6 +13306,25 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:0",
+            "round:1:1",
+            "round:1:2",
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10",
+            "round:1:11"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -13575,7 +13992,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -13585,7 +14002,29 @@
                 "zero:5",
                 "zero:6",
                 "zero:7",
-                "zero:8"
+                "zero:8",
+                "zero:9",
+                "zero:10",
+                "zero:11"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 12
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10",
+                "zero:11"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -13595,7 +14034,7 @@
           ],
           "rounds": 12,
           "splits": 0,
-          "zero_vars": 9
+          "zero_vars": 12
         },
         {
           "index": 2,
@@ -14335,6 +14774,28 @@
             "leaf:21:12",
             "leaf:21:13",
             "leaf:21:14"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
+            "round:1:0",
+            "round:1:1",
+            "round:1:2",
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10",
+            "round:1:11",
+            "round:1:12",
+            "round:1:13",
+            "round:1:14"
           ],
           "stage": 1
         },
@@ -15090,7 +15551,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -15103,7 +15564,32 @@
                 "zero:8",
                 "zero:9",
                 "zero:10",
-                "zero:11"
+                "zero:11",
+                "zero:12",
+                "zero:13",
+                "zero:14"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 15
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10",
+                "zero:11",
+                "zero:12",
+                "zero:13",
+                "zero:14"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -15113,7 +15599,7 @@
           ],
           "rounds": 15,
           "splits": 0,
-          "zero_vars": 12
+          "zero_vars": 15
         },
         {
           "index": 2,
@@ -15866,6 +16352,22 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:2",
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -16446,7 +16948,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -16455,7 +16957,26 @@
                 "zero:4",
                 "zero:5",
                 "zero:6",
-                "zero:7"
+                "zero:7",
+                "zero:8"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 9
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:1",
+                "zero:2",
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -16465,7 +16986,7 @@
           ],
           "rounds": 11,
           "splits": 0,
-          "zero_vars": 8
+          "zero_vars": 9
         },
         {
           "index": 2,
@@ -17149,6 +17670,24 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:2",
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10",
+            "round:1:11",
+            "round:1:12"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -17782,7 +18321,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -17793,7 +18332,28 @@
                 "zero:6",
                 "zero:7",
                 "zero:8",
-                "zero:9"
+                "zero:9",
+                "zero:10"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 11
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:1",
+                "zero:2",
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -17803,7 +18363,7 @@
           ],
           "rounds": 13,
           "splits": 0,
-          "zero_vars": 10
+          "zero_vars": 11
         },
         {
           "index": 2,
@@ -18518,6 +19078,25 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:2",
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10",
+            "round:1:11",
+            "round:1:12",
+            "round:1:13"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -19176,7 +19755,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -19188,7 +19767,29 @@
                 "zero:7",
                 "zero:8",
                 "zero:9",
-                "zero:10"
+                "zero:10",
+                "zero:11"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 12
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:1",
+                "zero:2",
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10",
+                "zero:11"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -19198,7 +19799,7 @@
           ],
           "rounds": 14,
           "splits": 0,
-          "zero_vars": 11
+          "zero_vars": 12
         },
         {
           "index": 2,
@@ -19986,6 +20587,28 @@
           "atoms": 1,
           "commitment": "advice",
           "point": [
+            "round:1:2",
+            "round:1:3",
+            "round:1:4",
+            "round:1:5",
+            "round:1:6",
+            "round:1:7",
+            "round:1:8",
+            "round:1:9",
+            "round:1:10",
+            "round:1:11",
+            "round:1:12",
+            "round:1:13",
+            "round:1:14",
+            "round:1:15",
+            "round:1:16"
+          ],
+          "stage": 1
+        },
+        {
+          "atoms": 1,
+          "commitment": "advice",
+          "point": [
             "round:1:3",
             "round:1:4",
             "round:1:5",
@@ -20719,7 +21342,7 @@
             },
             {
               "layers": null,
-              "node": 2,
+              "node": 0,
               "point": [
                 "zero:0",
                 "zero:1",
@@ -20734,7 +21357,32 @@
                 "zero:10",
                 "zero:11",
                 "zero:12",
-                "zero:13"
+                "zero:13",
+                "zero:14"
+              ],
+              "relation": "ZeroCheck",
+              "stacked": false,
+              "tensor": 2,
+              "vars": 15
+            },
+            {
+              "layers": null,
+              "node": 2,
+              "point": [
+                "zero:1",
+                "zero:2",
+                "zero:3",
+                "zero:4",
+                "zero:5",
+                "zero:6",
+                "zero:7",
+                "zero:8",
+                "zero:9",
+                "zero:10",
+                "zero:11",
+                "zero:12",
+                "zero:13",
+                "zero:14"
               ],
               "relation": "ZeroCheck",
               "stacked": false,
@@ -20744,7 +21392,7 @@
           ],
           "rounds": 17,
           "splits": 0,
-          "zero_vars": 14
+          "zero_vars": 15
         },
         {
           "index": 2,
