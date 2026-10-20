@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Independent weight layouts (RFC-0012, RFC-0040 and RFC-0049).
+//! Independent weight layouts (RFC-0012, RFC-0040, RFC-0049 and RFC-0052).
 //!
 //! The caller has validated the claim list. The layout reads only its public architecture,
 //! rescaling sites and commitment parameters, never a weight or a prover-declared row list.
@@ -15,17 +15,18 @@
 //! application's trusted `R_W`; [`derive()`] reconstructs the layouts and descriptor hashes from
 //! public inputs. A supplied root or row map from the proof never replaces these values.
 //!
-//! In step9, [`check_evaluations`] checks a matrix's two unmasked combined rows and reduces its
-//! schedule-derived claim. Its must-use [`Evaluated`] still owes step11: after transcript-derived
-//! column queries, [`Evaluated::check_columns`] authenticates direct chain leaves and the canonical
-//! multiproof, then checks both re-encoded rows at every distinct queried column. Structural row
-//! coordinates bind the evaluation row; dense committed-row positions bind the proximity row.
-//! The smallest failing column across both rows determines the proximity rejection.
+//! In step9, [`check_evaluations`] checks a matrix's unmasked combined rows (`1` evaluation row
+//! for `Embed`..`LmHead`, `m ≥ 1` evaluation rows in pool order for `ChannelParams`, followed by
+//! the proximity row) and reduces its schedule-derived claims. Its must-use [`Evaluated`] still
+//! owes step11: after transcript-derived column queries, [`Evaluated::check_columns`]
+//! authenticates direct chain leaves and the canonical multiproof, then checks all re-encoded rows
+//! at every distinct queried column. Structural row coordinates bind the evaluation rows; dense
+//! committed-row positions bind the proximity row. The smallest failing column across all rows
+//! determines the proximity rejection.
 //!
-//! An empty matrix is public zero: its claim must be zero, with no combined rows, queries or
-//! answers. This module checks protocol1's single evaluation claim per matrix; multiple
-//! ChannelParams claims (#386), protocol2 masks/budgets, and the full verifier driver (#128)
-//! remain separate. No method returns a whole-proof Accept verdict.
+//! An empty matrix is public zero: its claims must be zero, with no combined rows, queries or
+//! answers. Protocol2 masks/budgets and the full verifier driver (#128) remain separate. No method
+//! returns a whole-proof Accept verdict.
 //!
 //! All retained layouts are public and compact. Messages and points are public/protocol data;
 //! nothing is logged. Invalid verifier-derived sizes/points/queries return an inconclusive
@@ -227,6 +228,89 @@ impl Layout {
                 None
             }
         }
+    }
+    /// Map a reading site's claim on weight type `ty` at `channel_point` (`log2(out_pad)`
+    /// coordinates) and `layer_point` (`log2(L_pad)` coordinates) to its `(column_point,
+    /// row_point)` on `ChannelParams` (RFC-0052 'Point on `Ã_CP`').
+    ///
+    /// # Errors
+    /// `Internal` if this layout is not `ChannelParams`, if `ty` has no `ChannelParams` site in
+    /// `claims`, or if `channel_point` or `layer_point` has the wrong length; `Memory` if a
+    /// point buffer cannot be reserved.
+    pub fn channel_point(
+        &self,
+        claims: &ClaimList,
+        ty: WeightType,
+        channel_point: &[Fp2],
+        layer_point: &[Fp2],
+    ) -> Result<(Vec<Fp2>, Vec<Fp2>), Error> {
+        if self.matrix != Matrix::ChannelParams {
+            return Err(Error::Internal);
+        }
+        let has_site = claims
+            .quant
+            .shift_class_sets
+            .iter()
+            .filter(|(_, shifts)| shifts.len() > 1)
+            .map(|(point, _)| point)
+            .chain(claims.quant.affine_sites.iter().map(|(point, _)| point))
+            .any(|point| {
+                matches!(
+                    *point,
+                    QuantPoint::Layer { site, .. } if site.weight_before() == Some(ty)
+                )
+            });
+        if !has_site {
+            return Err(Error::Internal);
+        }
+        let (out, _, _) = shape(claims, Matrix::of_weight(ty)).map_err(|_| Error::Internal)?;
+        let c_i = usize::try_from(padded(out).map_err(|_| Error::Internal)?.trailing_zeros())
+            .map_err(|_| Error::Internal)?;
+        let log2_l_pad = usize::try_from(
+            padded(u64::from(claims.arch.n_layers))
+                .map_err(|_| Error::Internal)?
+                .trailing_zeros(),
+        )
+        .map_err(|_| Error::Internal)?;
+        let expected_layers = if matches!(ty, WeightType::Embed | WeightType::LmHead) {
+            0
+        } else {
+            log2_l_pad
+        };
+        if channel_point.len() != c_i || layer_point.len() != expected_layers {
+            return Err(Error::Internal);
+        }
+        let cv = usize::try_from(self.log2_k).map_err(|_| Error::Internal)?;
+        let rv = usize::try_from(self.row_vars).map_err(|_| Error::Internal)?;
+        let total_vars = cv.checked_add(rv).ok_or(Error::Internal)?;
+        let high_vars = log2_l_pad.checked_add(4).ok_or(Error::Internal)?;
+        let gamma = total_vars.checked_sub(high_vars).ok_or(Error::Internal)?;
+        if c_i > gamma {
+            return Err(Error::Internal);
+        }
+        let mut full = reserve(total_vars)?;
+        full.extend_from_slice(channel_point);
+        for _ in c_i..gamma {
+            full.push(Fp2::ZERO);
+        }
+        full.extend_from_slice(layer_point);
+        for _ in expected_layers..log2_l_pad {
+            full.push(Fp2::ZERO);
+        }
+        let tag = Matrix::of_weight(ty).tag();
+        for bit in 0..4u32 {
+            full.push(if (tag >> bit) & 1 == 1 {
+                Fp2::ONE
+            } else {
+                Fp2::ZERO
+            });
+        }
+        let (col_slice, row_slice) = full.split_at_checked(cv).ok_or(Error::Internal)?;
+        let mut col_pt = reserve(cv)?;
+        col_pt.extend_from_slice(col_slice);
+        let mut row_pt = reserve(rv)?;
+        row_pt.extend_from_slice(row_slice);
+        Ok((col_pt, row_pt))
     }
 }
 
@@ -541,8 +625,9 @@ pub struct Opening<'a> {
     pub layout: &'a Layout,
     /// The matrix root from the bound public weight artifact.
     pub root: Digest,
-    /// The evaluation claim from the schedule.
-    pub claim: Claim<'a>,
+    /// The evaluation claims from the schedule: one for `Embed`..`LmHead`, and `m ≥ 1` in pool
+    /// order for `ChannelParams` (RFC-0052).
+    pub claims: &'a [Claim<'a>],
     /// The seed-time point indexing committed-row positions (RFC-0049).
     pub xi_point: &'a [Fp2],
 }
@@ -556,22 +641,31 @@ pub struct Evaluated<'a> {
     n: usize,
 }
 
-/// Check step9 before queries: two unmasked rows for a nonempty matrix, no row and value0 for
-/// an empty one. The evaluation row must have MLE `gamma*value` at the column point.
+/// Check step9 before queries: `m + 1` unmasked rows (`1 + 1` for `Embed`..`LmHead`, `m + 1` for
+/// `ChannelParams`) for a nonempty matrix, no row and all claim values 0 for an empty one. Each
+/// evaluation row `i` must have MLE `gamma * value_i` at `column_point_i` (RFC-0052).
 ///
 /// # Errors
-/// `Internal` for incorrect verifier-derived point lengths; `Evaluation` for proof shape or
-/// evaluation failure. Remaining column checks are carried by the must-use result.
+/// `Internal` for empty claims, more than one claim on `Embed`..`LmHead`, or incorrect
+/// verifier-derived point lengths; `Evaluation` for proof shape or evaluation failure. Remaining
+/// column checks are carried by the must-use result.
 pub fn check_evaluations<'a>(
     opening: Opening<'a>,
     combined: &'a [CombinedRow],
 ) -> Result<Evaluated<'a>, Error> {
     let layout = opening.layout;
+    if opening.claims.is_empty()
+        || (layout.matrix != Matrix::ChannelParams && opening.claims.len() != 1)
+    {
+        return Err(Error::Internal);
+    }
     let cv = usize::try_from(layout.log2_k).map_err(|_| Error::Internal)?;
     let rv = usize::try_from(layout.row_vars).map_err(|_| Error::Internal)?;
     let xv = usize::try_from(layout.proximity_vars()).map_err(|_| Error::Internal)?;
-    if opening.claim.column_point.len() != cv
-        || opening.claim.row_point.len() != rv
+    if opening
+        .claims
+        .iter()
+        .any(|c| c.column_point.len() != cv || c.row_point.len() != rv)
         || opening.xi_point.len() != xv
     {
         return Err(Error::Internal);
@@ -582,22 +676,24 @@ pub fn check_evaluations<'a>(
         matrix: layout.matrix,
     };
     if layout.count == 0 {
-        if !combined.is_empty() || opening.claim.value != Fp2::ZERO {
+        if !combined.is_empty() || opening.claims.iter().any(|c| c.value != Fp2::ZERO) {
             return Err(failure);
         }
     } else {
-        if combined.len() != 2
+        let expected_rows = opening.claims.len().checked_add(1).ok_or(Error::Internal)?;
+        if combined.len() != expected_rows
             || combined
                 .iter()
                 .any(|r| r.u.len() != k || !r.mask.is_empty())
         {
             return Err(failure);
         }
-        let row = combined.first().ok_or(Error::Internal)?;
-        if multilinear(&row.u, opening.claim.column_point).ok_or(Error::Internal)?
-            != opening.claim.gamma * opening.claim.value
-        {
-            return Err(failure);
+        for (claim, row) in opening.claims.iter().zip(combined) {
+            if multilinear(&row.u, claim.column_point).ok_or(Error::Internal)?
+                != claim.gamma * claim.value
+            {
+                return Err(failure);
+            }
         }
     }
     Ok(Evaluated {
@@ -620,13 +716,13 @@ fn reserve<T>(size: usize) -> Result<Vec<T>, Error> {
 }
 impl Evaluated<'_> {
     /// Check step11: shape, direct chain leaves and canonical multiproof, then consistency of
-    /// both encoded combined rows at every distinct query. Queries are verifier-derived draws
+    /// all encoded combined rows at every distinct query. Queries are verifier-derived draws
     /// with replacement; proof columns occur once per distinct index in increasing order.
     ///
     /// # Errors
     /// Invalid own queries give `Internal`; allocation failure `Memory`. Proof shape or
     /// authentication gives `MerklePath` at the smallest query, consistency `Proximity` at the
-    /// smallest failing query across both rows.
+    /// smallest failing query across all rows.
     pub fn check_columns(
         self,
         queries: &[u64],
@@ -679,16 +775,15 @@ impl Evaluated<'_> {
         let mut agreed = distinct.len();
         for (kind, row) in self.combined.iter().enumerate() {
             coefficients.clear();
+            let claim = o.claims.get(kind);
             for position in 0..l.count {
-                // Structural coordinates for evaluation, dense answer positions for xi.
-                let c = if kind == 0 {
-                    o.claim.gamma
-                        * eq_index(
-                            o.claim.row_point,
-                            l.row_at(position).ok_or(Error::Internal)?,
-                        )
-                } else {
-                    eq_index(o.xi_point, position)
+                // Structural coordinates for evaluation rows 0..m, dense answer positions for xi.
+                let c = match claim {
+                    Some(claim) => {
+                        claim.gamma
+                            * eq_index(claim.row_point, l.row_at(position).ok_or(Error::Internal)?)
+                    }
+                    None => eq_index(o.xi_point, position),
                 };
                 coefficients.push(c);
             }

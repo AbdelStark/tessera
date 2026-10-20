@@ -188,7 +188,7 @@ STAGE = Struct(
 COMBINED_ROW = Struct("CombinedRow", [("u", Vec(FP2)), ("mask", Vec(FP2))])
 WEIGHT_ROWS = Struct(
     "WeightCombinedRows",
-    [("matrix", MATRIX), ("evaluation", COMBINED_ROW), ("proximity", COMBINED_ROW)],
+    [("matrix", MATRIX), ("evaluations", Vec(COMBINED_ROW)), ("proximity", COMBINED_ROW)],
 )
 SCORING = Struct("ScoringClaims", [("requests", Vec(Newtype("FixedBits", U64)))])
 ROUND2 = Struct(
@@ -617,10 +617,10 @@ def messages(rng):
         "advice": {"root": rng.digest(), "layout_digest": rng.digest()},
     }
 
-    def weight_rows(matrix, k):
+    def weight_rows(matrix, k, m=1):
         return {
             "matrix": matrix,
-            "evaluation": {"u": rng.fp2s(k), "mask": []},
+            "evaluations": [{"u": rng.fp2s(k), "mask": []} for _ in range(m)],
             "proximity": {"u": rng.fp2s(k), "mask": []},
         }
 
@@ -646,7 +646,7 @@ def messages(rng):
         ],
         "advice_combined": [{"u": rng.fp2s(4), "mask": rng.fp2s(2)} for _ in range(3)],
         # tessera-protocol/1's weight encoding has no mask (RFC-0012 'Migration / Rollout').
-        "weight_combined": [weight_rows(1, 2), weight_rows(8, 2), weight_rows(9, 2)],
+        "weight_combined": [weight_rows(1, 2), weight_rows(8, 2), weight_rows(9, 2, 2)],
         "scoring": {"requests": [0, 1234]},
     }
     # The indices of a proof with n_A = 16 and n_T = 8, repeats included.

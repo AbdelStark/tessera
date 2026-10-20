@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('The claim pool' and 'Invariants': `ChannelParams` claims in the pool)
 - Supersedes, on acceptance:
   - [RFC-0010](RFC-0010-proof-schedule.md#relations) 'Relations': `Rotate`'s identity and its one claim on its input, and the claims of the linear maps added here;
   - [RFC-0010](RFC-0010-proof-schedule.md#stages) 'Stages' and 'Batching within a stage': how a stage stacks layers, splits claims and orders its instances, and the layer point;
@@ -181,7 +182,7 @@ The leaf stage leaves its gadgets' claims one layer at a time. Each lookup site'
 A claim ready for the pool is a combination `Σ_t a_t·P̃_t(r) = v` at one point `r`. Each `P_t` is a committed kind with its layer weights, or a committed prologue or epilogue tensor.
 
 - **Advice.** RFC-0011's grouping takes the combination as one claim. Its row coefficients add `γ_claim·a_t·w_t(ℓ)·eq(row part of (r ‖ base_{t,ℓ}), row)` for each piece, and its column sub-point is `r`'s.
-- **Weights.** A weight type's claim is `W̃_T(r_i ‖ r_o ‖ ρ)` with `eq(ρ, ·)` its layer weights: RFC-0012's one claim per type.
+- **Weights.** A weight type's claim is `W̃_T(r_i ‖ r_o ‖ ρ)` with `eq(ρ, ·)` its layer weights: RFC-0012's one claim per type. Each site that reads channel classes or affine multipliers leaves one claim on `ChannelParams` in the pool, opened together in one pass ([RFC-0052](RFC-0052-channel-params-claims.md)).
 - **INV-SCH-3.** Every claim on a committed tensor reaches the pool.
 
 ### Messages and transcript
@@ -206,7 +207,7 @@ Stage 1 runs, in order:
 
 ### Invariants
 
-- **INV-SCH-5.** In the Llama templates every weight type the proof opens has exactly one claim in the pool.
+- **INV-SCH-5.** In the Llama templates every weight type `Embed`..`LmHead` the proof opens has exactly one claim in the pool; `ChannelParams` has one claim per reading site ([RFC-0052](RFC-0052-channel-params-claims.md)).
 
 ## Alternatives Considered
 

@@ -189,7 +189,7 @@
 //! assert_eq!(&fold.sumcheck_input()[..], &[fp2(5), fp2(6)]);
 //! // One layer, no layer point: u_T = θ·F_0 at θ = 10, and u_ξ = (1 − 3)·W[0] + 3·W[1].
 //! let combined = fold.combined_rows(&[], fp2(10))?;
-//! assert_eq!(combined.evaluation.u, [fp2(50), fp2(60)]);
+//! assert_eq!(combined.evaluations[0].u, [fp2(50), fp2(60)]);
 //! assert_eq!(combined.proximity.u, [fp2(7), fp2(8)]);
 //! # Ok::<(), tessera_pcs::PcsError>(())
 //! ```

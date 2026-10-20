@@ -181,7 +181,8 @@ impl fmt::Debug for CombinedRow {
     }
 }
 
-/// One opened weight matrix's combined rows (RFC-0012 'Opening by the folding pass').
+/// One opened weight matrix's combined rows (RFC-0012 'Opening by the folding pass',
+/// RFC-0052 '`WeightCombinedRows`').
 ///
 /// It has no `Decode` of its own: an entry decodes only inside its message, which checks that
 /// the ids strictly increase (RFC-0036 'Matrix ids').
@@ -189,25 +190,26 @@ impl fmt::Debug for CombinedRow {
 pub struct WeightCombinedRows {
     /// The matrix's id ([`WeightMatrix`](crate::WeightMatrix)).
     pub matrix: u8,
-    /// The evaluation combined row.
-    pub evaluation: CombinedRow,
+    /// The evaluation combined rows: one for `Embed`..`LmHead`, and `m ≥ 1` in pool order for
+    /// `ChannelParams` (RFC-0052).
+    pub evaluations: Vec<CombinedRow>,
     /// The proximity combined row.
     pub proximity: CombinedRow,
 }
 
 /// Decoded only inside `Round2Response`, whose order it must keep.
 impl ByMatrix for WeightCombinedRows {
-    const MIN_SIZE: usize = u8::MIN_SIZE + 2 * CombinedRow::MIN_SIZE;
+    const MIN_SIZE: usize = u8::MIN_SIZE + <Vec<CombinedRow>>::MIN_SIZE + CombinedRow::MIN_SIZE;
 
     fn decode_after(reader: &mut Reader<'_>, previous: Option<u8>) -> Result<Self, DecodeError> {
         reader.enter()?;
         let matrix = read_matrix(reader, previous)?;
-        let evaluation = Decode::decode_from(reader)?;
+        let evaluations = Decode::decode_from(reader)?;
         let proximity = Decode::decode_from(reader)?;
         reader.leave();
         Ok(Self {
             matrix,
-            evaluation,
+            evaluations,
             proximity,
         })
     }

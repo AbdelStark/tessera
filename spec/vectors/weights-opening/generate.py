@@ -85,30 +85,82 @@ def dot(values, pt):
     return p.total(p.mul(v, p.eq_bits(pt, i)) for i, v in enumerate(values))
 
 
-def case(name, a, ty, log2_kw, channels, rng):
+def channel_site_point(a, channels, site_ty, ch_pt, lay_pt, log2_k):
+    """RFC-0052 'Point on Ã_CP': ch_pt || 0^(gamma - c_i) || lay_pt || vertex_4(site_ty)."""
+    lp = pad(a["n_layers"])
+    c = max((pad(shapes(a)[t][0]) for t, _, _ in channels), default=1)
+    gamma = c.bit_length() - 1
+    c_i = pad(shapes(a)[site_ty][0]).bit_length() - 1
+    p.require(len(ch_pt) == c_i and len(lay_pt) == lp.bit_length() - 1, "site point lengths")
+    vertex = [p.lift((site_ty >> bit) & 1) for bit in range(4)]
+    full = list(ch_pt) + [p.ZERO] * (gamma - c_i) + list(lay_pt) + vertex
+    return full[:log2_k], full[log2_k:]
+
+
+def site_value(a, channels, site_ty, ch_pt, lay_pt):
+    """Direct evaluation of Σ_{ℓ < n_layers} eq(lay_pt, ℓ) · P̃_{site_ty, ℓ}(ch_pt)."""
+    out = shapes(a)[site_ty][0]
+    by_layer = {(t, l): kind for t, l, kind in channels}
+    total = p.ZERO
+    for layer in range(a["n_layers"]):
+        kind = by_layer.get((site_ty, layer))
+        if kind is None:
+            continue
+        vals = [p.lift(ch % 2 if kind == "class" else ch + 1) for ch in range(out)]
+        vals += [p.ZERO] * (pad(out) - out)
+        total = p.add(total, p.mul(p.eq_bits(lay_pt, layer), dot(vals, ch_pt)))
+    return total
+
+
+def case(name, a, ty, log2_kw, channels, rng, sites=None):
     kw = 1 << log2_kw
     k, capacity, live, rows = matrix(a, ty, kw, channels)
+    log2_k = k.bit_length() - 1
+    row_vars = capacity.bit_length() - 1
     layout = dict(log2_k=log2_kw, log2_inv_rate=2, mask_coeffs=64, blinding_rows=32)
     epoch, block = 7, 2
     descriptor = (struct.pack("<HBBIIHBIQI", 1, log2_kw, 2, 64, 32, ty,
-                              k.bit_length() - 1, block, len(live), epoch))
+                              log2_k, block, len(live), epoch))
     cid = p.H("commitment-id", descriptor)
     n = 4 * k
     words = [p.encode_row(row, [], k, n)[1] for row in rows]
     leaves = p.hashing.column_leaves(cid, words, n, block)
     levels = p.hashing.merkle_levels(leaves)
-    rp = point(rng, capacity.bit_length() - 1)
-    cp = point(rng, k.bit_length() - 1)
+    site_claims = []
+    if sites:
+        claim_pts = []
+        lp_vars = pad(a["n_layers"]).bit_length() - 1
+        for site_ty in sites:
+            ch_vars = pad(shapes(a)[site_ty][0]).bit_length() - 1
+            ch_pt = point(rng, ch_vars)
+            lay_pt = point(rng, lp_vars)
+            cp_i, rp_i = channel_site_point(a, channels, site_ty, ch_pt, lay_pt, log2_k)
+            val_i = site_value(a, channels, site_ty, ch_pt, lay_pt)
+            claim_pts.append((rp_i, cp_i, val_i))
+            site_claims.append(dict(matrix=site_ty,
+                                    channel_point=[pair(x) for x in ch_pt],
+                                    layer_point=[pair(x) for x in lay_pt]))
+    else:
+        rp = point(rng, row_vars)
+        cp = point(rng, log2_k)
+        claim_pts = [(rp, cp, None)]
     xi = point(rng, (len(live) - 1).bit_length() if live else 0)
     gamma = (2, 3)
-    claimed = p.total(p.mul(p.eq_bits(rp, r), dot([p.lift(x) for x in row], cp))
-                      for r, row in zip(live, rows))
+    claims = []
+    for rp_i, cp_i, expected_val in claim_pts:
+        claimed_i = p.total(p.mul(p.eq_bits(rp_i, r), dot([p.lift(x) for x in row], cp_i))
+                            for r, row in zip(live, rows))
+        if expected_val is not None:
+            p.require(claimed_i == expected_val, "RFC-0052 point on Ã_CP equals stacked site claim")
+        claims.append((rp_i, cp_i, claimed_i))
+    rp, cp, claimed = claims[0]
     if live:
-        coefficients = [[p.mul(gamma, p.eq_bits(rp, r)) for r in live],
-                        [p.eq_bits(xi, j) for j in range(len(live))]]
+        coefficients = [[p.mul(gamma, p.eq_bits(rp_i, r)) for r in live] for rp_i, _, _ in claims]
+        coefficients.append([p.eq_bits(xi, j) for j in range(len(live))])
         combined = [[p.total(p.mul(c, p.lift(row[i])) for c, row in zip(cs, rows)) for i in range(k)]
                     for cs in coefficients]
-        p.require(dot(combined[0], cp) == p.mul(gamma, claimed), "evaluation binds the public claim")
+        for u_i, (_, cp_i, val_i) in zip(combined, claims):
+            p.require(dot(u_i, cp_i) == p.mul(gamma, val_i), "evaluation binds the public claim")
         queries = [n - 1, 0, n - 1, n // 2, 1]
         distinct = sorted(set(queries))
         columns = [[row[j] for row in words] for j in distinct]
@@ -123,7 +175,8 @@ def case(name, a, ty, log2_kw, channels, rng):
                 p.require(encoded[j] == expected, "encoding and row combination commute")
             at_queries.append([pair(encoded[j]) for j in distinct])
     else:
-        p.require(claimed == p.ZERO, "an empty matrix's polynomial is zero")
+        for _, _, val_i in claims:
+            p.require(val_i == p.ZERO, "an empty matrix's polynomial is zero")
         coefficients, combined, queries, columns, proof, at_queries = [], [], [], [], [], []
     short_columns = None
     if live:
@@ -138,11 +191,14 @@ def case(name, a, ty, log2_kw, channels, rng):
             for j, encoded in enumerate(zip(*lanes)):
                 p.require(encoded == p.total(p.mul(c, p.lift(word[j])) for c, word in zip(cs, short_words)),
                           "short-column codewords are algebraically consistent")
+        short_values = [pair(p.mul(dot(short_combined[i], cp_i), p.inverse(gamma)))
+                        for i, (_, cp_i, _) in enumerate(claims)]
         short_columns = dict(root=short_levels[-1][0].hex(),
                              columns=[[fhex(word[j]) for word in short_words] for j in distinct],
                              siblings=[x.hex() for x in p.hashing.multiproof(short_levels, distinct)],
                              combined=[[pair(x) for x in u] for u in short_combined],
-                             value=pair(p.mul(dot(short_combined[0], cp), p.inverse(gamma))))
+                             value=short_values[0],
+                             values=short_values)
     omitted_columns = None
     if live:
         # A valid authentication proof for a proper subset must not discharge all queries.
@@ -154,7 +210,8 @@ def case(name, a, ty, log2_kw, channels, rng):
         # products make every other queried symbol agree, without using either Rust checker.
         h = p.encoding.points(k, 1)
         xs = p.encoding.points(n, p.SHIFT)
-        for failed in [(3, 1), (1, 3)]:
+        m_claims = len(claims)
+        for failed in [(3,) * m_claims + (1,), (1,) + (3,) * m_claims]:
             wrong = []
             for row, fail in zip(combined, failed):
                 zeros = [xs[j] for index, j in enumerate(distinct) if index != fail]
@@ -167,15 +224,22 @@ def case(name, a, ty, log2_kw, channels, rng):
                 p.require([index for index, j in enumerate(distinct) if encoded[j] != old_encoded[j]] == [fail],
                           "exactly the chosen query fails for this row")
                 wrong.append(changed)
-            value = p.mul(dot(wrong[0], cp), p.inverse(gamma))
+            values = [pair(p.mul(dot(wrong[i], cp_i), p.inverse(gamma)))
+                      for i, (_, cp_i, _) in enumerate(claims)]
             ordered_faults.append(dict(combined=[[pair(x) for x in row] for row in wrong],
-                                       value=pair(value), first_failing_column=distinct[min(failed)]))
+                                       value=values[0], values=values,
+                                       first_failing_column=distinct[min(failed)]))
     return dict(name=name, short_columns=short_columns, omitted_columns=omitted_columns, ordered_faults=ordered_faults, arch=a, channels=[dict(matrix=t, layer=l, kind=z) for t, l, z in channels],
-                matrix=ty, rows=[[fhex(x) for x in row] for row in rows], layout=layout, row_block=block, epoch=epoch, log2_k=k.bit_length() - 1,
-                row_vars=capacity.bit_length() - 1, committed_rows=live, descriptor=descriptor.hex(),
+                matrix=ty, rows=[[fhex(x) for x in row] for row in rows], layout=layout, row_block=block, epoch=epoch, log2_k=log2_k,
+                row_vars=row_vars, committed_rows=live, descriptor=descriptor.hex(),
                 commitment_id=cid.hex(), root=levels[-1][0].hex(), row_point=[pair(x) for x in rp],
                 column_point=[pair(x) for x in cp], xi_point=[pair(x) for x in xi],
-                gamma=pair(gamma), value=pair(claimed), combined=[[pair(x) for x in u] for u in combined],
+                gamma=pair(gamma), value=pair(claimed),
+                claims=[dict(row_point=[pair(x) for x in rp_i],
+                             column_point=[pair(x) for x in cp_i],
+                             value=pair(val_i)) for rp_i, cp_i, val_i in claims],
+                site_claims=site_claims,
+                combined=[[pair(x) for x in u] for u in combined],
                 queries=queries, columns=[[fhex(x) for x in col] for col in columns],
                 siblings=[x.hex() for x in proof], coefficients=[[pair(x) for x in cs] for cs in coefficients],
                 combined_at_queries=at_queries)
@@ -192,8 +256,11 @@ def main():
              case("partial-head", a, 8, 3, [], rng),
              case("channel-gaps", a, 9, 2, [(1, 0, "class"), (1, 2, "class"), (7, 1, "multiplier")], rng),
              case("scalar", scalar, 1, 0, [], rng),
-             case("empty-channel", a, 9, 2, [], rng)]
-    output = dict(description="Independent RFC-0012/0040/0049 protocol1 weight openings; no masks or blinding rows.",
+             case("empty-channel", a, 9, 2, [], rng),
+             case("channel-multi", a, 9, 2,
+                  [(1, 0, "class"), (1, 2, "class"), (5, 0, "class"), (5, 1, "class"), (7, 1, "multiplier")],
+                  rng, sites=[1, 5, 7])]
+    output = dict(description="Independent RFC-0012/0040/0049/0052 protocol1 weight openings; no masks or blinding rows.",
                   seed=hex(SEED), cases=cases)
     (HERE / "openings.json").write_text(json.dumps(output, indent=2) + "\n")
     print(f"weights-opening: {len(cases)} independent cases")

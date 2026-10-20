@@ -263,10 +263,10 @@ mod json {
             }),
             advice_combined: many(&f["advice_combined"], combined_row),
             weight_combined: many(&f["weight_combined"], |entry| {
-                let e = fields(entry, &["matrix", "evaluation", "proximity"]);
+                let e = fields(entry, &["matrix", "evaluations", "proximity"]);
                 WeightCombinedRows {
                     matrix: int(&e["matrix"]),
-                    evaluation: combined_row(&e["evaluation"]),
+                    evaluations: many(&e["evaluations"], combined_row),
                     proximity: combined_row(&e["proximity"]),
                 }
             }),

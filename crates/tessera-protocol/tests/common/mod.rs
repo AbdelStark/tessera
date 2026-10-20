@@ -174,7 +174,7 @@ pub fn round2(rng: &mut SplitMix64, matrices: &[u8]) -> Round2Response {
             .iter()
             .map(|&matrix| WeightCombinedRows {
                 matrix,
-                evaluation: row(rng, 2, 0),
+                evaluations: vec![row(rng, 2, 0)],
                 proximity: row(rng, 2, 0),
             })
             .collect(),

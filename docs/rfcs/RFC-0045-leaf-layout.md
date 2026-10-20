@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Open Questions': opening `ChannelParams` claims)
 - Supersedes, on acceptance:
   - [RFC-0008](RFC-0008-logup-and-tables.md#batching) 'Batching' and 'Fraction tree': how an instance lays out its lookups, and the order of its lookup tree's leaves;
   - [RFC-0037](RFC-0037-stage-schedule.md#the-layer-point) 'The layer point' and 'Splits': the point `r_s` of a site's tensors, and the leaf stage's split values.
@@ -167,7 +168,7 @@ v0.3, for #367:
 
 ## Open Questions
 
-- **Classes.** A site reads its classes over its channel axis, and their claims go to the pool as `ChannelParams` claims ([RFC-0040](RFC-0040-weight-commitment-artifacts.md)), one per site that reads them. RFC-0037's INV-SCH-5 counts one claim per weight type. The weight openings (#105) decide whether they batch those claims, or whether the classes reach the pool through one combined claim.
+- **Classes.** Resolved by [RFC-0052](RFC-0052-channel-params-claims.md): each site that reads channel classes or affine multipliers leaves one claim on `ChannelParams` in the pool, and `ChannelParams` opens all of its claims in one pass over its committed rows.
 
 ## References
 

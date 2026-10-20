@@ -759,16 +759,17 @@ impl Verifier<'_> {
 
         // RFC-0011 step 6: shapes, then θ·v = ⟨u_T, eq(column point)⟩.
         let rows = opening.rows;
-        let evaluation = tv_fp2s(&rows.evaluation.u);
-        let proximity = tv_fp2s(&rows.proximity.u);
         if rows.matrix != d.matrix
-            || evaluation.len() != k
-            || proximity.len() != k
-            || !rows.evaluation.mask.is_empty()
+            || rows.evaluations.len() != 1
+            || rows.evaluations[0].u.len() != k
+            || rows.proximity.u.len() != k
+            || !rows.evaluations[0].mask.is_empty()
             || !rows.proximity.mask.is_empty()
         {
             return Err(Refused::Evaluation);
         }
+        let evaluation = tv_fp2s(&rows.evaluations[0].u);
+        let proximity = tv_fp2s(&rows.proximity.u);
         if opening.theta * opening.value != extension(&evaluation, column_point) {
             return Err(Refused::Evaluation);
         }
@@ -1045,9 +1046,10 @@ fn check_fold(model: &Model, rng: &mut SplitMix64) {
             &tv_fp2s(&challenge.xi),
         );
         assert_eq!(rows.matrix, d.matrix, "{at}");
-        assert_eq!(tv_fp2s(&rows.evaluation.u), u, "{at}: u_T");
+        assert_eq!(rows.evaluations.len(), 1, "{at}");
+        assert_eq!(tv_fp2s(&rows.evaluations[0].u), u, "{at}: u_T");
         assert_eq!(tv_fp2s(&rows.proximity.u), u_xi, "{at}: u_ξ,T");
-        assert!(rows.evaluation.mask.is_empty() && rows.proximity.mask.is_empty());
+        assert!(rows.evaluations[0].mask.is_empty() && rows.proximity.mask.is_empty());
     }
 }
 
@@ -1775,19 +1777,20 @@ fn folding_pass_openings_verify_with_the_independent_weight_checker() {
                 let point = tv_fp2s(&challenge.point);
                 let (column_point, row_point) = point.split_at(d.log2_k as usize);
                 let xi = tv_fp2s(&challenge.xi);
+                let claim = [tv::Claim {
+                    column_point,
+                    row_point,
+                    gamma: tv_fp2(challenge.theta),
+                    value: proven.value,
+                }];
                 let opening = tv::Opening {
                     layout,
                     root: public.roots[d.matrix.index()],
                     xi_point: &xi,
-                    claim: tv::Claim {
-                        column_point,
-                        row_point,
-                        gamma: tv_fp2(challenge.theta),
-                        value: proven.value,
-                    },
+                    claims: &claim,
                 };
                 let combined = common::openings::tv_combined(&[
-                    proven.rows.evaluation.clone(),
+                    proven.rows.evaluations[0].clone(),
                     proven.rows.proximity.clone(),
                 ]);
                 let columns: Vec<Vec<TvFp>> = proven
@@ -1883,7 +1886,7 @@ fn folding_pass_matches_every_independent_weight_opening_vector() {
     )
     .expect("JSON");
     let cases = file["cases"].as_array().expect("cases");
-    assert_eq!(cases.len(), 7);
+    assert_eq!(cases.len(), 8);
     for case in cases {
         let arch = &case["arch"];
         let field = |key| u32::try_from(number(&arch[key])).expect("u32");
@@ -1942,9 +1945,65 @@ fn folding_pass_matches_every_independent_weight_opening_vector() {
                 .collect(),
             reads: vec![0; stated_rows.len()],
         };
+        let xi = oracle_pairs(&case["xi_point"]);
+        let claims = case["claims"].as_array().expect("claims");
+        let site_claims = case["site_claims"].as_array().expect("site_claims");
+        for (site, claim) in site_claims.iter().zip(claims) {
+            let site_matrix = WeightMatrix::ALL[number(&site["matrix"]) as usize];
+            let ch_pt = oracle_pairs(&site["channel_point"]);
+            let lay_pt = oracle_pairs(&site["layer_point"]);
+            let full = layout
+                .channel_point(site_matrix, &ch_pt, &lay_pt)
+                .expect("channel point");
+            let log2_k = layout.matrix(matrix).log2_k() as usize;
+            assert_eq!(
+                &full[..log2_k],
+                oracle_pairs(&claim["column_point"]).as_slice()
+            );
+            assert_eq!(
+                &full[log2_k..],
+                oracle_pairs(&claim["row_point"]).as_slice()
+            );
+        }
+        let gamma = Fp2::new(oracle_fp(&case["gamma"][0]), oracle_fp(&case["gamma"][1]));
+        if claims.len() > 1 {
+            let row_points: Vec<Vec<Fp2>> = claims
+                .iter()
+                .map(|c| oracle_pairs(&c["row_point"]))
+                .collect();
+            let refs: Vec<&[Fp2]> = row_points.iter().map(Vec::as_slice).collect();
+            let fold =
+                WeightFold::channel_params(&layout, &mut rows, &refs, &xi).expect("multi fold");
+            assert_eq!(rows.reads, vec![1; stated_rows.len()]);
+            let combined = fold.combined_rows(&[], gamma).expect("combined rows");
+            assert_eq!(combined.evaluations.len(), claims.len());
+            for (i, (eval, claim)) in combined.evaluations.iter().zip(claims).enumerate() {
+                assert_eq!(
+                    eval.u,
+                    oracle_pairs(&case["combined"][i]),
+                    "{} evaluation {i}",
+                    case["name"]
+                );
+                assert!(eval.mask.is_empty());
+                let column_point = oracle_pairs(&claim["column_point"]);
+                let value = extension(&tv_fp2s(&eval.u), &tv_fp2s(&column_point));
+                let claimed = tv_fp2(Fp2::new(
+                    oracle_fp(&claim["value"][0]),
+                    oracle_fp(&claim["value"][1]),
+                ));
+                assert_eq!(value, tv_fp2(gamma) * claimed);
+            }
+            assert_eq!(
+                combined.proximity.u,
+                oracle_pairs(&case["combined"][claims.len()]),
+                "{} proximity",
+                case["name"]
+            );
+            assert!(combined.proximity.mask.is_empty());
+            continue;
+        }
         let row_point = oracle_pairs(&case["row_point"]);
         let column_point = oracle_pairs(&case["column_point"]);
-        let xi = oracle_pairs(&case["xi_point"]);
         let (fold_point, layer_point) = match layout.matrix(matrix).kind() {
             tessera_pcs::MatrixKind::Weight { a, h, .. } => {
                 let low = &column_point[column_point.len() - a as usize..];
@@ -1965,12 +2024,12 @@ fn folding_pass_matches_every_independent_weight_opening_vector() {
         }
         let fold = WeightFold::new(&layout, matrix, &mut rows, &fold_point, &xi).expect("fold");
         assert_eq!(rows.reads, vec![1; stated_rows.len()]);
-        let gamma = Fp2::new(oracle_fp(&case["gamma"][0]), oracle_fp(&case["gamma"][1]));
         let combined = fold
             .combined_rows(layer_point, gamma)
             .expect("combined rows");
+        assert_eq!(combined.evaluations.len(), 1);
         assert_eq!(
-            combined.evaluation.u,
+            combined.evaluations[0].u,
             oracle_pairs(&case["combined"][0]),
             "{} evaluation",
             case["name"]
@@ -1981,12 +2040,289 @@ fn folding_pass_matches_every_independent_weight_opening_vector() {
             "{} proximity",
             case["name"]
         );
-        assert!(combined.evaluation.mask.is_empty() && combined.proximity.mask.is_empty());
-        let value = extension(&tv_fp2s(&combined.evaluation.u), &tv_fp2s(&column_point));
+        assert!(combined.evaluations[0].mask.is_empty() && combined.proximity.mask.is_empty());
+        let value = extension(
+            &tv_fp2s(&combined.evaluations[0].u),
+            &tv_fp2s(&column_point),
+        );
         let claimed = tv_fp2(Fp2::new(
             oracle_fp(&case["value"][0]),
             oracle_fp(&case["value"][1]),
         ));
         assert_eq!(value, tv_fp2(gamma) * claimed);
     }
+}
+
+/// RFC-0052: `ChannelParams` opens `m ≥ 1` site claims in one pass over its committed rows,
+/// reading each committed row and each channel value once. Tampering with any class or
+/// multiplier after commitment fails `check_columns` (`Proximity`), and tampering with any claim
+/// value fails `check_evaluations` (`Evaluation`).
+#[test]
+fn channel_params_opens_several_site_claims_in_one_pass() {
+    use tv_core::weights as tv;
+    let claims_fixtures = claim_fixtures();
+    let mut rng = SplitMix64::new(0x7E55_E7A0_0052_0386);
+    for model in conformance_models()
+        .into_iter()
+        .filter(|m| m.name != "synthetic" && !m.channels.is_empty())
+    {
+        let c = &claims_fixtures
+            .iter()
+            .find(|(name, _)| *name == model.name)
+            .expect("model claims")
+            .1;
+        let committed = Committed::new(&model);
+        let public = tv_codec::decode(
+            &committed.artifact,
+            &tv_codec::DecodeLimits::MESSAGE,
+            tv_codec::WeightCommitmentPublic::decode,
+        )
+        .expect("public weights");
+        let tv_layouts = tv::derive(c, 0).expect("independent layouts");
+        let tv_layout = &tv_layouts[WeightMatrix::ChannelParams.index()];
+        let d = &committed.defined[WeightMatrix::ChannelParams.index()];
+        let weights = model.weights();
+
+        // Collect all distinct weight types that have a ChannelParams in this model.
+        let mut site_types: Vec<WeightMatrix> = model.channels.iter().map(|&(m, _, _)| m).collect();
+        site_types.sort_unstable();
+        site_types.dedup();
+        assert!(
+            site_types.len() >= 2,
+            "{}: multiple reading sites",
+            model.name
+        );
+
+        let log2_l_pad = pad(u64::from(model.shapes.layers)).trailing_zeros() as usize;
+        let log2_k = committed
+            .layout
+            .matrix(WeightMatrix::ChannelParams)
+            .log2_k() as usize;
+
+        let mut col_points = Vec::new();
+        let mut row_points = Vec::new();
+        let mut tv_col_points = Vec::new();
+        let mut tv_row_points = Vec::new();
+        let mut values = Vec::new();
+
+        for &site_ty in &site_types {
+            let out = model.shapes.shapes[site_ty.index()].out;
+            let ch_vars = pad(u64::from(out)).trailing_zeros() as usize;
+            let ch_pt = fp2s(&mut rng, ch_vars);
+            let lay_pt = fp2s(&mut rng, log2_l_pad);
+            let full = committed
+                .layout
+                .channel_point(site_ty, &ch_pt, &lay_pt)
+                .expect("channel point");
+            let (cp, rp) = full.split_at(log2_k);
+            col_points.push(cp.to_vec());
+            row_points.push(rp.to_vec());
+            tv_col_points.push(tv_fp2s(cp));
+            tv_row_points.push(tv_fp2s(rp));
+
+            // Direct evaluation from the model's per-layer channel parameters:
+            // Σ_{ℓ < n_layers} eq(lay_pt, ℓ) · P̃_{site_ty, ℓ}(ch_pt).
+            let tv_ch = tv_fp2s(&ch_pt);
+            let tv_lay = tv_fp2s(&lay_pt);
+            let mut val = TvFp2::ZERO;
+            for (m, layer, ch_vals) in &model.channels {
+                if *m != site_ty {
+                    continue;
+                }
+                let mut padded = vec![TvFp2::ZERO; 1 << ch_vars];
+                for (i, slot) in padded.iter_mut().enumerate().take(ch_vals.len()) {
+                    *slot = TvFp2::from(
+                        TvFp::from_canonical(ch_vals.get(i)).expect("canonical channel value"),
+                    );
+                }
+                val += eq_at(&tv_lay, u64::from(*layer)) * extension(&padded, &tv_ch);
+            }
+            values.push(val);
+        }
+
+        let xi = fp2s(&mut rng, ceil_log2(d.m()));
+        let theta = fp2(&mut rng);
+        let n = (d.k() as u64) << 2;
+        let queries: Vec<u64> = (0..QUERIES).map(|_| rng.next_u64() % n).collect();
+        let row_refs: Vec<&[Fp2]> = row_points.iter().map(Vec::as_slice).collect();
+
+        let mut counted = CountedRows {
+            inner: committed
+                .layout
+                .rows(WeightMatrix::ChannelParams, &weights)
+                .expect("weights"),
+            reads: vec![0; d.m()],
+        };
+        let fold = WeightFold::channel_params(&committed.layout, &mut counted, &row_refs, &xi)
+            .expect("multi-claim fold");
+        assert_eq!(
+            counted.reads,
+            vec![1; d.m()],
+            "{}: each committed row of ChannelParams read once across {} claims",
+            model.name,
+            site_types.len()
+        );
+        let mut counter = WeightCounter::new(&model, d);
+        let by_counter =
+            WeightFold::channel_params(&committed.layout, &mut counter, &row_refs, &xi)
+                .expect("counter fold");
+        for (reads, (m, layer, _)) in counter.channel_reads.iter().zip(&model.channels) {
+            assert!(
+                reads.iter().all(|&r| r == 1),
+                "{}: channel parameters of {m:?} layer {layer} read once",
+                model.name
+            );
+        }
+
+        let table = tv_fp2s(&fold.sumcheck_input());
+        for (i, (cp, &val)) in tv_col_points.iter().zip(&values).enumerate() {
+            assert_eq!(
+                extension(&table[i * d.k()..(i + 1) * d.k()], cp),
+                val,
+                "{}: fold {i} matches site value",
+                model.name
+            );
+        }
+
+        let combined = fold.combined_rows(&[], theta).expect("combined rows");
+        assert_eq!(
+            by_counter
+                .combined_rows(&[], theta)
+                .expect("counter combined"),
+            combined
+        );
+        let answer = committed
+            .commitment
+            .matrix(WeightMatrix::ChannelParams)
+            .answer(&queries)
+            .expect("answer");
+
+        let tv_xi = tv_fp2s(&xi);
+        let tv_claims: Vec<tv::Claim<'_>> = (0..site_types.len())
+            .map(|i| tv::Claim {
+                column_point: &tv_col_points[i],
+                row_point: &tv_row_points[i],
+                gamma: tv_fp2(theta),
+                value: values[i],
+            })
+            .collect();
+        let opening = tv::Opening {
+            layout: tv_layout,
+            root: public.roots[WeightMatrix::ChannelParams.index()],
+            xi_point: &tv_xi,
+            claims: &tv_claims,
+        };
+        let mut all_rows = combined.evaluations.clone();
+        all_rows.push(combined.proximity.clone());
+        let tv_rows = common::openings::tv_combined(&all_rows);
+        let tv_cols: Vec<Vec<TvFp>> = answer
+            .columns
+            .iter()
+            .map(|col| col.iter().copied().map(common::openings::tv_fp).collect())
+            .collect();
+        assert_eq!(
+            tv::check_evaluations(opening, &tv_rows)
+                .expect("evaluations verify")
+                .check_columns(&queries, &tv_cols, &answer.proof.siblings),
+            Ok(()),
+            "{}",
+            model.name
+        );
+
+        // Tampering with any single claim value fails evaluation check.
+        for i in 0..site_types.len() {
+            let mut bad_claims = tv_claims.clone();
+            bad_claims[i].value += TvFp2::ONE;
+            let bad_opening = tv::Opening {
+                claims: &bad_claims,
+                ..opening
+            };
+            assert_eq!(
+                tv::check_evaluations(bad_opening, &tv_rows).unwrap_err(),
+                tv::Error::Evaluation {
+                    matrix: tv::Matrix::ChannelParams
+                }
+            );
+        }
+
+        // Tampering with a channel parameter after commitment fails column proximity check.
+        let mut changed = model.clone();
+        changed.channels[0].2.change(0);
+        let mut changed_rows = committed
+            .layout
+            .rows(WeightMatrix::ChannelParams, &changed.weights())
+            .expect("changed weights");
+        let cheat_fold =
+            WeightFold::channel_params(&committed.layout, &mut changed_rows, &row_refs, &xi)
+                .expect("cheat fold");
+        let cheat_table = tv_fp2s(&cheat_fold.sumcheck_input());
+        let cheat_values: Vec<TvFp2> = (0..site_types.len())
+            .map(|i| extension(&cheat_table[i * d.k()..(i + 1) * d.k()], &tv_col_points[i]))
+            .collect();
+        let cheat_combined = cheat_fold
+            .combined_rows(&[], theta)
+            .expect("cheat combined");
+        let mut cheat_all = cheat_combined.evaluations;
+        cheat_all.push(cheat_combined.proximity);
+        let cheat_tv_rows = common::openings::tv_combined(&cheat_all);
+        let cheat_claims: Vec<tv::Claim<'_>> = (0..site_types.len())
+            .map(|i| tv::Claim {
+                column_point: &tv_col_points[i],
+                row_point: &tv_row_points[i],
+                gamma: tv_fp2(theta),
+                value: cheat_values[i],
+            })
+            .collect();
+        let cheat_opening = tv::Opening {
+            claims: &cheat_claims,
+            ..opening
+        };
+        assert_eq!(
+            tv::check_evaluations(cheat_opening, &cheat_tv_rows)
+                .expect("cheat evaluations pass step 9")
+                .check_columns(&queries, &tv_cols, &answer.proof.siblings),
+            Err(tv::Error::Proximity {
+                matrix: tv::Matrix::ChannelParams,
+                column: u32::try_from(smallest(&queries)).expect("column")
+            })
+        );
+    }
+
+    // Error cases for channel_point and channel_params.
+    let model = &conformance_models()[0];
+    let layout = model.layout();
+    let weights = model.weights();
+    assert_eq!(
+        layout.channel_point(WeightMatrix::Embed, &[], &[]),
+        Err(PcsError::WeightPlace {
+            matrix: WeightMatrix::Embed,
+            layer: 0,
+            channels: true,
+        })
+    );
+    let site_ty = model.channels[0].0;
+    let c_i = pad(u64::from(model.shapes.shapes[site_ty.index()].out)).trailing_zeros() as usize;
+    let l_vars = pad(u64::from(model.shapes.layers)).trailing_zeros() as usize;
+    assert_eq!(
+        layout.channel_point(site_ty, &vec![Fp2::ZERO; c_i + 1], &vec![Fp2::ZERO; l_vars]),
+        Err(PcsError::ClaimPoint {
+            expected: c_i,
+            found: c_i + 1,
+        })
+    );
+    assert_eq!(
+        layout.channel_point(site_ty, &vec![Fp2::ZERO; c_i], &vec![Fp2::ZERO; l_vars + 1]),
+        Err(PcsError::LayerPoint {
+            matrix: site_ty,
+            expected: l_vars,
+            found: l_vars + 1,
+        })
+    );
+    let mut rows = layout
+        .rows(WeightMatrix::ChannelParams, &weights)
+        .expect("rows");
+    assert_eq!(
+        WeightFold::channel_params(&layout, &mut rows, &[], &[]).map(|_| ()),
+        Err(PcsError::NoClaims)
+    );
 }

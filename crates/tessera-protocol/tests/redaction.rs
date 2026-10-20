@@ -88,7 +88,7 @@ fn round2() -> Round2Response {
         advice_combined: vec![row(), row()],
         weight_combined: vec![WeightCombinedRows {
             matrix: 1,
-            evaluation: row(),
+            evaluations: vec![row()],
             proximity: row(),
         }],
         scoring: ScoringClaims { requests: vec![] },

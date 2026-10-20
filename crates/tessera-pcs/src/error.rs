@@ -268,6 +268,8 @@ pub enum PcsError {
         /// The matrix.
         matrix: WeightMatrix,
     },
+    /// A fold of `ChannelParams` with no claim (RFC-0052).
+    NoClaims,
     /// A fold point that does not have the coordinates the matrix's fold takes: `log2 out_pad`
     /// for a weight type, `r_o`, and the row index's bits for `ChannelParams` (RFC-0012
     /// 'Opening by the folding pass').
@@ -529,6 +531,10 @@ impl fmt::Display for PcsError {
             Self::NoRows { matrix } => write!(
                 f,
                 "the {matrix:?} matrix has no committed row: it has no combined rows and no proximity point"
+            ),
+            Self::NoClaims => write!(
+                f,
+                "the fold of the ChannelParams matrix needs at least 1 claim, not 0"
             ),
             Self::FoldPoint {
                 matrix,
