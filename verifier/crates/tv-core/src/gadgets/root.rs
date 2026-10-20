@@ -31,10 +31,14 @@ pub struct Root<'p> {
     epsilon: Fp2,
     root: TensorId,
     squares: TensorId,
+    residual: TensorId,
+    features: usize,
+    residual_vars: usize,
+    dim: u32,
 }
 
 /// A root leaf check with all source, lookup and nonlinear obligations retained.
-#[must_use = "bind all source/lookup claims, reduce every product claim, and check root padding"]
+#[must_use = "bind all source/lookup claims, reduce every product claim, and check root and residual padding"]
 pub struct Checked<'a> {
     root: &'a Root<'a>,
     point: &'a [Fp2],
@@ -132,13 +136,10 @@ impl<'p> Root<'p> {
             .graph
             .node(input.producer.ok_or(internal)?)
             .ok_or(internal)?;
-        let residual = sum
-            .inputs()
-            .first()
-            .and_then(|&t| plan.graph.tensor(t))
-            .ok_or(internal)?;
-        // RFC-0050: committed residuals extend by zero. Hence S=0 on padding and
-        // the Boolean-domain identity psi*(S+e)=S+e*psi also holds for their MLEs.
+        let &residual_source = sum.inputs().first().ok_or(internal)?;
+        let residual = plan.graph.tensor(residual_source).ok_or(internal)?;
+        // RFC-0050: residual_padding proves the premise S=0 on padded time rows.
+        // Only then does psi*(S+e)=S+e*psi hold as a Boolean-domain/MLE identity.
         if !matches!(sum.op(), Op::SumSquares { axis: 1 })
             || !matches!(residual.kind, Kind::Advice | Kind::Lookup { .. })
             || residual.shape.dims() != [n, dim]
@@ -242,6 +243,12 @@ impl<'p> Root<'p> {
             };
             widths.push(bits);
         }
+        let variables =
+            usize::try_from(u32::BITS.saturating_sub(n.saturating_sub(1).leading_zeros()))
+                .map_err(|_| internal)?;
+        let features =
+            usize::try_from(u32::BITS.saturating_sub(dim.saturating_sub(1).leading_zeros()))
+                .map_err(|_| internal)?;
         Ok(Self {
             choice,
             gadget,
@@ -251,14 +258,15 @@ impl<'p> Root<'p> {
             sources,
             widths,
             low,
-            variables: usize::try_from(
-                u32::BITS.saturating_sub(n.saturating_sub(1).leading_zeros()),
-            )
-            .map_err(|_| internal)?,
+            variables,
             n,
             epsilon: field(eps_int),
             root,
             squares,
+            residual: residual_source,
+            features,
+            dim,
+            residual_vars: variables.checked_add(features).ok_or(internal)?,
         })
     }
 
@@ -452,6 +460,52 @@ impl<'p> Root<'p> {
                     point,
                 },
                 value: rho,
+            },
+        })
+    }
+
+    /// Mandatory zero check on the upstream residual's padded time/feature entries.
+    /// This discharges the padding premise of `u=S+epsilon*psi` and of SumSquares.
+    pub const fn residual_padding_instance(&self) -> Instance {
+        Instance {
+            claim: Fp2::ZERO,
+            vars: self.residual_vars,
+            evals: 1,
+        }
+    }
+
+    /// Evaluate the residual's zero-padding relation and retain its source claim.
+    /// Its natural point lists feature coordinates first, then token coordinates.
+    ///
+    /// # Errors
+    /// `Internal` for wrong own points; `Rejected { gadget }` for a wrong count.
+    pub fn residual_padding<'a>(
+        &self,
+        zero: &[Fp2],
+        point: &'a [Fp2],
+        values: &[Fp2],
+    ) -> Result<Padding<'a>, GadgetError> {
+        let internal = GadgetError::Internal;
+        if zero.len() != self.residual_vars || point.len() != self.residual_vars {
+            return Err(internal);
+        }
+        if values.len() != self.residual_padding_instance().evals {
+            return Err(GadgetError::Rejected {
+                gadget: self.gadget,
+            });
+        }
+        let value = values.first().copied().ok_or(internal)?;
+        let (feature, row) = point.split_at_checked(self.features).ok_or(internal)?;
+        let psi = crate::selectors::lt(feature, u64::from(self.dim)).ok_or(internal)?
+            * crate::selectors::lt(row, u64::from(self.n)).ok_or(internal)?;
+        Ok(Padding {
+            value: eq(zero, point).ok_or(internal)? * (Fp2::ONE - psi) * value,
+            claim: Claim {
+                input: Input {
+                    source: Source::Tensor(self.residual),
+                    point,
+                },
+                value,
             },
         })
     }

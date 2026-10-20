@@ -160,7 +160,9 @@ All notable changes to the verifier release train are recorded here: the crates 
   singleton domains and both padding axes. Full stage integration remains separate
   from these final relation evaluators (#124).
 
-- Bind RFC-0050 roots to verifier-derived graph/auxiliary sources and every canonical Range request. Complete comparison arrays derive nonlinear product targets; final operands retain root, sum-of-squares and low-limb claims, and a separate padding check pins the root on skipped rows. Independent model fixtures and CPU proofs cover 35 sites, 4,745 requests, wide integer constants, a range-valid wrong root and a padded-root alternative. Complete stage/layer-template integration remains separate (#124).
+- Bind RFC-0050 roots to verifier-derived graph/auxiliary sources and every canonical Range request. Complete comparison arrays derive nonlinear product targets; final operands retain root, sum-of-squares and low-limb claims, and a separate padding check pins the root on skipped rows. Independent model fixtures and CPU proofs cover 45 sites, 5,885 requests, wide integer constants, a range-valid wrong root and a padded-root alternative. Complete stage/layer-template integration remains separate (#124).
+
+- Make the root input-selector simplification conditional on an explicit residual-padding obligation, covering padded token and feature coordinates. Independent counterexamples pass every bracket/product check and fail only that zero check. Mixed-dimension component batches reproduce the existing front-padding scale and final-point suffix rule; RFC-0050 states the required premise (#124).
 
 ### Changed
 

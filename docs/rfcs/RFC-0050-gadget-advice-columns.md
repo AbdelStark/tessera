@@ -234,6 +234,29 @@ not in general the product of extensions at the final point. If an implementatio
 inlines that definition instead, it must derive and charge the resulting degree
 and all binding obligations, rather than assume the local gadget degree.
 
+#### Binding the simplified input
+
+The identity `u_tilde = S_tilde + e*psi_tilde`, with `S=sum_i res_i^2`, is valid
+only after establishing `S=0` on padded token rows. A committed source's shape
+or kind alone does not prove this premise. A verifier using the identity must
+retain the residual's zero-padding obligation alongside its graph and opening
+claims, and discharge it before accepting. Feature padding must also be zero
+where the SumSquares relation sums the whole padded feature cube.
+
+One direct discharge is a degree-three zero check over the residual domain:
+
+```text
+0 = sum_x eq(z,x) * (1-psi_res(x)) * res_tilde(x),
+psi_res_tilde = LT(feature_point,d) * LT(token_point,n).
+```
+
+Its final evaluation leaves a claim on the same committed residual source at the
+full feature/token point. The public selector is computed by the verifier. This
+check fits the existing stage batch and zero-check labels; its variables, input
+evaluation and instance count must be included in the derived schedule. A proof
+that omits the premise cannot justify replacing the input-selector reduction by
+the linear identity.
+
 ## Security Argument
 
 - **Integer exactness and uniqueness.** Input and root boxes are below Goldilocks.

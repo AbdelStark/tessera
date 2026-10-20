@@ -34,7 +34,7 @@ fn eq(point: &[F], row: usize) -> F {
 fn column(v: &Value) -> SecretBuf<G> {
     array(v)
         .iter()
-        .map(|x| G::from_u64_reduced(x.as_u64().unwrap()))
+        .map(|x| G::from_i64(x.as_i64().unwrap()))
         .collect()
 }
 fn role(v: &Value) -> R {
@@ -82,7 +82,9 @@ fn actual_root_columns_and_cpu_binding_proofs_match_every_frozen_model_variant()
         .collect();
     let (mut sites, mut batches) = (0, 0);
     for case in array(&fixture["cases"]) {
-        let bad = case["bad_padding"].as_bool().unwrap();
+        let bad_root = case["bad_padding"].as_bool().unwrap();
+        let bad_residual = case["bad_residual"].as_bool().unwrap();
+        let bad = bad_root || bad_residual;
         if let Some(wrong) = case.get("wrong_root") {
             let root = RsqrtRow::new(
                 wrong["dim"].as_u64().unwrap() as u32,
@@ -197,7 +199,8 @@ fn actual_root_columns_and_cpu_binding_proofs_match_every_frozen_model_variant()
         let count = array(&root["root_digits"]).len();
         let m = array(&root["product_targets"]).len() / 2;
         let equals: Vec<_> = (0..4).map(|i| eq(&target, i)).collect();
-        let zero_eq: Vec<_> = (0..4).map(|i| eq(&zero, i)).collect();
+        let row_zero = &zero[zero.len() - 2..];
+        let zero_eq: Vec<_> = (0..4).map(|i| eq(row_zero, i)).collect();
         let not_real = [G::ZERO, G::ZERO, G::ZERO, G::ONE];
         let rho = column(&root["columns"][1]);
         // The additional low factor is derived, not a second sent evaluation.
@@ -231,10 +234,27 @@ fn actual_root_columns_and_cpu_binding_proofs_match_every_frozen_model_variant()
             Table::base(&not_real).public(),
             Table::base(&rho),
         ];
-        instances.push(if bad {
+        instances.push(if bad_root {
             Instance::sum_of_products(padding_tables, vec![Term::new(F::ZERO, vec![0])])
         } else {
             Instance::new(padding_tables)
+        });
+        let residual = column(&root["residuals"]);
+        let dim = root["dim"].as_u64().unwrap() as usize;
+        let padded_dim = dim.next_power_of_two();
+        let residual_eq: Vec<_> = (0..residual.len()).map(|i| eq(&zero, i)).collect();
+        let residual_mask: Vec<_> = (0..residual.len())
+            .map(|i| G::from_u64_reduced(u64::from(i / padded_dim >= 3 || i % padded_dim >= dim)))
+            .collect();
+        let residual_tables = vec![
+            Table::ext(&residual_eq).public(),
+            Table::base(&residual_mask).public(),
+            Table::base(&residual),
+        ];
+        instances.push(if bad_residual {
+            Instance::sum_of_products(residual_tables, vec![Term::new(F::ZERO, vec![0])])
+        } else {
+            Instance::new(residual_tables)
         });
         let batch = prove_batch::<F, _>(&mut t, Prefix::Stage(1), 4, &instances).unwrap();
         let proof = batch.proof();
@@ -271,5 +291,5 @@ fn actual_root_columns_and_cpu_binding_proofs_match_every_frozen_model_variant()
         }
         batches += 1;
     }
-    assert_eq!((sites, batches), (35, 7));
+    assert_eq!((sites, batches), (45, 9));
 }

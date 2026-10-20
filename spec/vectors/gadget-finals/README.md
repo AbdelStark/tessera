@@ -166,9 +166,9 @@ verifier accepts the former and rejects the latter with the exact final-round er
 
 ## Model-derived root bindings
 
-`roots.json`, schema version 1, records 35 root sites from seven public micro-model
+`roots.json`, schema version 1, records 45 root sites from nine public micro-model
 variants, including a zero maximum, widths 1/8/16/32, a constant above Goldilocks,
-and a nonzero padded root.
+and nonzero padded root, residual and feature alternatives.
 `roots.py` uses independent lowering/catalog oracles, whole-integer root and
 comparison witnesses, and direct cube sums. Each site retains every canonical
 source, range request (including repeats and virtual tops), comparison array and
@@ -177,14 +177,19 @@ batch connecting those targets to root/input digits, plus its padding zero check
 
 The input is reduced as `u=S+epsilon*psi` only for a graph-derived `SumSquares`
 over a committed residual with the canonical zero padding. At Boolean padded
-rows `S=0`, so this is the same extension as `psi*(S+epsilon)`. Every derived
-claim on `S` still needs its graph reduction and the residual's source openings.
+rows `S=0` only once the explicit residual-padding obligation has been discharged.
+The component batch includes its degree-three zero check over feature/token
+coordinates, with a verifier-derived selector for both axes. Every derived claim
+on `S` still needs its graph reduction and the residual's source openings.
 
 All root product target claims come from the already bound comparison digits
 and carries, without a new message. Component transcripts absorb the leaf source
 evaluations before stage-one challenges. The padded-root variant passes all
 range, decomposition, comparison and product relations, and fails the padding
-check. Its additional `omission` proof passes when that check alone is disabled.
+check. Residual and feature alternatives pass the bracket, product and root-padding
+checks but fail the residual-padding check. Each additional `omission` proof passes
+when only its failed check is disabled. Mixed instance dimensions exercise the
+existing front-padding scale and final-point suffix rule.
 These fixtures do not define a complete model stage or layer-template stacking.
 
 `wrong_root` is a consistently encoded real-row alternative: every request passes
@@ -192,10 +197,10 @@ its actual Range table, but the lower comparison ends with borrow one. The
 model-derived binder rejects it with the owning gadget id. Both workspaces check
 the range-membership control; the honest CPU root differs from the alternative.
 
-`verifier/crates/tv-core/tests/gadget_root.rs` verifies all 35 model-derived sites,
-4,745 requests, retained source/product debts, exact local errors, product/padding
+`verifier/crates/tv-core/tests/gadget_root.rs` verifies all 45 model-derived sites,
+5,885 requests, retained source/product debts, exact local errors, product/padding
 batches and the two alternatives. Coherently changing a witness and its key tests
 the comparison checks independently of the source-equality checks. The producer
 adapter in `crates/tessera-prover/tests/gadget_root.rs`, written after the verifier
 tests passed, checks actual root witness columns and reproduces every CPU round
-and final evaluation for six honest batches and the padding-omission control.
+and final evaluation for six honest batches and three padding-omission controls.

@@ -4,7 +4,7 @@
 mod claim_support;
 mod support;
 
-use claim_support::{claims_of, items, list, member, number, string};
+use claim_support::{claims_of, integer, items, list, member, number, string};
 use support::{Context, digest, extension};
 use tv_core::advice::{Auxiliary, Comparison, ComparisonRole, Source};
 use tv_core::claims::{ClaimList, QuantPoint};
@@ -128,7 +128,7 @@ fn run(
     fixture: &Json,
     record: &Json,
     proof: &SumcheckProof,
-    omit_padding: bool,
+    omit: Option<usize>,
 ) -> Result<(Batch, Transcript), SumcheckError> {
     let point = fields(member(fixture, "point"));
     let values = fields(member(fixture, "values"));
@@ -138,15 +138,20 @@ fn run(
     let products: Vec<_> = checked.products().collect();
     let mut instances: Vec<_> = products.iter().map(|p| p.instance()).collect();
     instances.push(root.padding_instance());
+    instances.push(root.residual_padding_instance());
     let (mut t, zero) = before(fixture, record);
     let result =
         sumcheck::verify_batch(&mut t, Prefix::Stage(1), 4, &instances, proof, |i, p, v| {
-            if let Some(product) = products.get(i) {
-                product.evaluate(p, v).ok().map(|v| v.value())
-            } else if omit_padding {
+            if omit == Some(i) {
                 Some(Fp2::ZERO)
+            } else if let Some(product) = products.get(i) {
+                product.evaluate(p, v).ok().map(|v| v.value())
+            } else if i == products.len() {
+                root.padding(&zero[zero.len() - p.len()..], p, v)
+                    .ok()
+                    .map(|v| v.value())
             } else {
-                root.padding(&zero, p, v).ok().map(|v| v.value())
+                root.residual_padding(&zero, p, v).ok().map(|v| v.value())
             }
         })?;
     Ok((result, t))
@@ -169,7 +174,8 @@ fn true_final_claims(
         let count = product.instance().evals;
         let v = &proof.final_evals[offset..offset + count];
         offset += count;
-        let final_value = product.evaluate(point, v).unwrap();
+        let row_point = &point[point.len() - product.instance().vars..];
+        let final_value = product.evaluate(row_point, v).unwrap();
         if v == &fields(member(record, "final_evals"))[offset - count..offset] {
             assert_eq!(
                 final_value.value(),
@@ -183,18 +189,37 @@ fn true_final_claims(
         );
         for (j, claim) in claims.iter().enumerate() {
             assert_eq!(claim.input.source, source(&list(fixture, "sources")[j]));
-            assert_eq!(claim.input.point, point);
-            truth &= claim.value == extension(&column(&list(fixture, "columns")[j]), point);
+            assert_eq!(claim.input.point, row_point);
+            truth &= claim.value == extension(&column(&list(fixture, "columns")[j]), row_point);
         }
     }
     let zero = fields(member(record, "zero"));
+    let row_point = &point[point.len() - root.padding_instance().vars..];
     let pad = root
-        .padding(&zero, point, &proof.final_evals[offset..])
+        .padding(
+            &zero[zero.len() - row_point.len()..],
+            row_point,
+            &proof.final_evals[offset..offset + 1],
+        )
         .unwrap();
     let claim = pad.claim();
     assert_eq!(claim.input.source, source(&list(fixture, "sources")[1]));
-    assert_eq!(claim.input.point, point);
-    truth &= claim.value == extension(&column(&list(fixture, "columns")[1]), point);
+    assert_eq!(claim.input.point, row_point);
+    truth &= claim.value == extension(&column(&list(fixture, "columns")[1]), row_point);
+    let residual = root
+        .residual_padding(&zero, point, &proof.final_evals[offset + 1..])
+        .unwrap()
+        .claim();
+    assert_eq!(
+        residual.input.source,
+        Source::Tensor(TensorId(number(member(fixture, "residual_tensor"))))
+    );
+    assert_eq!(residual.input.point, point);
+    let col: Vec<_> = list(fixture, "residuals")
+        .iter()
+        .map(|v| Fp::from_canonical(integer(v).rem_euclid(i128::from(Fp::MODULUS)) as u64).unwrap())
+        .collect();
+    truth &= residual.value == extension(&col, point);
     truth
 }
 
@@ -287,7 +312,7 @@ fn every_root_leaf_binds_complete_sources_ranges_and_derived_product_targets() {
             lookups += keys.len();
         }
     }
-    assert_eq!((sites, lookups), (35, 4745));
+    assert_eq!((sites, lookups), (45, 5885));
 }
 
 #[test]
@@ -301,20 +326,26 @@ fn root_product_and_padding_batches_verify_and_retain_every_final_source() {
         let expected = &list(case, "roots")[0];
         let record = member(case, "proof");
         let p = proof(record);
-        if matches!(member(case, "bad_padding"), Json::Bool(true)) {
+        if matches!(member(case, "bad_padding"), Json::Bool(true))
+            || matches!(member(case, "bad_residual"), Json::Bool(true))
+        {
             for record in [record, member(case, "omission")] {
                 assert_eq!(
-                    run(&root, expected, record, &proof(record), false).err(),
-                    Some(SumcheckError::FinalMismatch { round: 2 })
+                    run(&root, expected, record, &proof(record), None).err(),
+                    Some(SumcheckError::FinalMismatch {
+                        round: list(record, "point").len() as u32
+                    })
                 );
             }
             let record = member(case, "omission");
             let p = proof(record);
-            let (batch, _) = run(&root, expected, record, &p, true).unwrap();
+            let omitted = list(expected, "product_targets").len()
+                + usize::from(matches!(member(case, "bad_residual"), Json::Bool(true)));
+            let (batch, _) = run(&root, expected, record, &p, Some(omitted)).unwrap();
             assert!(true_final_claims(&root, expected, record, &p, &batch.point));
             bad += 1;
         } else {
-            let (batch, t) = run(&root, expected, record, &p, false).unwrap();
+            let (batch, t) = run(&root, expected, record, &p, None).unwrap();
             assert_eq!(batch.point, fields(member(record, "point")));
             assert_eq!(batch.gamma, field(member(record, "gamma")));
             assert_eq!(
@@ -326,8 +357,13 @@ fn root_product_and_padding_batches_verify_and_retain_every_final_source() {
             for j in 0..p.final_evals.len() {
                 let mut changed = p.clone();
                 changed.final_evals[j] += Fp2::ONE;
-                match run(&root, expected, record, &changed, false) {
-                    Err(e) => assert_eq!(e, SumcheckError::FinalMismatch { round: 2 }),
+                match run(&root, expected, record, &changed, None) {
+                    Err(e) => assert_eq!(
+                        e,
+                        SumcheckError::FinalMismatch {
+                            round: batch.point.len() as u32
+                        }
+                    ),
                     Ok((batch, _)) => assert!(!true_final_claims(
                         &root,
                         expected,
@@ -340,7 +376,7 @@ fn root_product_and_padding_batches_verify_and_retain_every_final_source() {
             honest += 1;
         }
     }
-    assert_eq!((honest, bad), (6, 1));
+    assert_eq!((honest, bad), (6, 3));
 }
 
 #[test]
@@ -544,6 +580,43 @@ fn each_altered_leaf_source_key_or_range_value_and_malformed_count_has_the_exact
                 root.padding(&point, &extra, &[Fp2::ZERO])
                     .err()
                     .map(|e| e.code()),
+                Some("ERR-INTERNAL")
+            );
+            let residual_point = vec![Fp2::ZERO; root.residual_padding_instance().vars];
+            assert_eq!(
+                root.residual_padding(&residual_point, &residual_point, &[])
+                    .err()
+                    .map(|e| e.rejected_gadget()),
+                Some(Some(root.gadget()))
+            );
+            assert_eq!(
+                root.residual_padding(&residual_point, &residual_point, &[Fp2::ZERO; 2])
+                    .err()
+                    .map(|e| e.code()),
+                Some("REJ-GADGET")
+            );
+            let mut wrong = residual_point.clone();
+            wrong.push(Fp2::ONE);
+            assert_eq!(
+                root.residual_padding(&wrong, &residual_point, &[])
+                    .err()
+                    .map(|e| e.code()),
+                Some("ERR-INTERNAL")
+            );
+            assert_eq!(
+                root.residual_padding(&residual_point, &wrong, &[Fp2::ZERO])
+                    .err()
+                    .map(|e| e.code()),
+                Some("ERR-INTERNAL")
+            );
+            assert_eq!(
+                root.residual_padding(
+                    &residual_point[..residual_point.len() - 1],
+                    &residual_point,
+                    &[Fp2::ZERO]
+                )
+                .err()
+                .map(|e| e.code()),
                 Some("ERR-INTERNAL")
             );
         }
