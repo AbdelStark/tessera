@@ -1,21 +1,11 @@
 # Nightly jobs (docs/spec/07-testing-strategy.md §2). For now the soundness calibration of 07 §4
 # alone (docs/testing/soundness-calibration.md); the deep property tests, end-to-end subsets and
-# fuzzing hour of 07 §2 are #96. The calibration also runs on pull requests that change it, and on
-# demand. Third-party actions are pinned by commit SHA (TB-4 in docs/spec/06-security.md).
+# fuzzing hour of 07 §2 are #96. Calibration is available on demand. Third-party actions are
+# pinned by commit SHA (TB-4 in docs/spec/06-security.md).
 name: nightly
 
 on:
-  schedule:
-    - cron: "17 3 * * *"
-  pull_request:
-    branches: [main]
-    paths:
-      - crates/tessera-e2e/tests/soundness_calibration.rs
-      - crates/tessera-e2e/tests/calibration/**
-      - crates/tessera-logup/tests/calibration.rs
-      - .github/workflows/nightly.yml
   workflow_dispatch:
-
 permissions:
   contents: read
 

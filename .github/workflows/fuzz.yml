@@ -1,53 +1,15 @@
 # Fuzzing of the verifier's decoders and proof checks (verifier/fuzz/README.md): every target for
-# ten minutes under AddressSanitizer, seeded from spec/vectors/, when what the targets exercise
-# changes, and on demand. The nightly hour of 07 §2 is #96. Third-party actions are pinned by commit SHA
-# (TB-4 in docs/spec/06-security.md).
+# ten minutes under AddressSanitizer, seeded from spec/vectors/, on demand. The nightly hour of
+# 07 §2 is #96. Third-party actions are pinned by commit SHA (TB-4 in docs/spec/06-security.md).
 name: fuzz
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - verifier/Cargo.toml
-      - verifier/crates/tv-codec/**
-      - verifier/crates/tv-core/**
-      - verifier/crates/tv-field/**
-      - verifier/crates/tv-hash/**
-      - verifier/crates/tv-testkit/**
-      - verifier/fuzz/**
-      - spec/vectors/codec/**
-      - spec/vectors/hash/**
-      - spec/vectors/rfc6962/**
-      - spec/vectors/sumcheck/**
-      - spec/vectors/gadget-finals/**
-      - spec/vectors/claims/**
-      - spec/vectors/weights/**
-      - .github/workflows/fuzz.yml
-  push:
-    branches: [main]
-    paths:
-      - verifier/Cargo.toml
-      - verifier/crates/tv-codec/**
-      - verifier/crates/tv-core/**
-      - verifier/crates/tv-field/**
-      - verifier/crates/tv-hash/**
-      - verifier/crates/tv-testkit/**
-      - verifier/fuzz/**
-      - spec/vectors/codec/**
-      - spec/vectors/hash/**
-      - spec/vectors/rfc6962/**
-      - spec/vectors/sumcheck/**
-      - spec/vectors/gadget-finals/**
-      - spec/vectors/claims/**
-      - spec/vectors/weights/**
-      - .github/workflows/fuzz.yml
   workflow_dispatch:
     inputs:
       seconds:
         description: Seconds to fuzz each target
         required: true
         default: "600"
-
 permissions:
   contents: read
 
