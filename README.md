@@ -48,12 +48,14 @@ During the fast-build phase, [`.github/workflows/ci.yml`](.github/workflows/ci.y
 
 | Job | What it runs |
 |---|---|
-| `checks` | rustfmt, clippy `-D warnings` and rustdoc `-D warnings` in both workspaces; repository lint, verifier isolation, test-only feature and branchless-field gates; PR changelog and DCO policy |
-| `test` | `cargo test --workspace --locked` in both workspaces, plus verifier test-parameter coverage |
+| `checks` | rustfmt, clippy `-D warnings`, repository lint, verifier isolation, test-only feature and branchless-field gates; PR changelog and DCO policy |
+| `test` | Parallel Nextest runs on separate prover/verifier runners; runtime library units, primitive conformance/adversarial tests, prover components, tiny-model integration and the complete independent verifier, plus test-parameter unit and claim validation coverage |
 | `python` | `uv sync --locked --extra cpu`, Ruff, strict Pyright and pytest on Python 3.13 ([python/README.md](python/README.md)) |
 | `constraint-digest` | Independent constraint-system digest conformance and the tiny servable-model case |
 
-Fuzz, soundness calibration, microbenchmarks and the standalone PR-policy rerun remain available with manual dispatch from the Actions page. [The manual quality workflow](.github/workflows/quality.yml) retains dependency audits, MSRV, macOS builds and GPU host checks without CUDA. They do not run automatically during fast backlog development. The normal checks still protect verifier independence, secret handling, protocol tests, Python packaging and the existing tiny-model conformance path. To reproduce a failure, run the job's commands locally.
+Documentation-only changes (root Markdown, `docs/`, `research/`) run routing tests and repository/PR policies without rebuilding unchanged code. Unknown paths and manual dispatch run the complete bootstrap pipeline. CI omits debug symbols while retaining overflow checks and debug assertions.
+
+Fuzz, soundness calibration, microbenchmarks and the standalone PR-policy rerun remain available with manual dispatch from the Actions page. [The manual quality workflow](.github/workflows/quality.yml) retains dependency audits, MSRV, macOS builds, GPU host checks, rustdoc and both complete workspace suites. Exhaustive vector-oracle regeneration, infrastructure self-tests, standalone compiler/witness stress tests, benchmark/report tests and doctests run there; the constraint-digest example runs once in its dedicated automatic job. They do not run automatically during fast backlog development. The normal checks still protect verifier independence, secret handling, protocol tests, Python packaging and the existing tiny-model conformance path. To reproduce a failure, run the job's commands locally.
 
 ## Contributing
 

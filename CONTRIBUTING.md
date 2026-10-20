@@ -37,7 +37,7 @@ A change that needs no entry carries the `no-changelog` label. Security fixes ci
 
 ## Local gates
 
-The pull-request pipeline ([README](README.md#continuous-integration)) runs these; run them before you push:
+During bootstrap, run the narrow tests affected by the change and the repository/PR policy gates before pushing. The [automatic pipeline](README.md#continuous-integration) runs the fast protocol and tiny-model coverage; use the manual quality workflow for the complete suites, oracle regeneration and release/toolchain checks. The commands below are the full validation inventory, not a requirement to rerun every suite for every PR:
 
 ```sh
 cargo fmt --all --check && cargo clippy --workspace --all-targets --locked -- -D warnings

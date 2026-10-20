@@ -15,17 +15,44 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+  cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}
 
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
+  # Keep the optimized test profile and its assertions; omit debug symbols in CI.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
+  scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      code: ${{ steps.scope.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check CI routing
+        run: python3 -m unittest discover -s .github/scripts
+      - name: Select the bootstrap pipeline
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "$BASE_SHA" ] && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git diff --no-renames --name-only -z "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-files"
+            python3 .github/scripts/ci_scope.py < "$RUNNER_TEMP/changed-files" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
   checks:
+    needs: scope
     name: checks
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,6 +62,10 @@ jobs:
         run: |
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal --component clippy,rustfmt --no-self-update
+          echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
+          # rust-cache fingerprints every installed toolchain, including the runner image stable.
+          rustup default "$channel"
+          rustup toolchain uninstall stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: |
@@ -46,23 +77,20 @@ jobs:
           cargo fmt --all --check
           (cd verifier && cargo fmt --all --check)
       - name: Clippy
+        if: needs.scope.outputs.code == 'true'
         run: |
           cargo clippy --workspace --all-targets --locked -- -D warnings
           (cd verifier && cargo clippy --workspace --all-targets --locked -- -D warnings)
-      - name: Rustdoc
-        env:
-          RUSTDOCFLAGS: -D warnings
-        run: |
-          cargo doc --workspace --no-deps --locked
-          (cd verifier && cargo doc --workspace --no-deps --locked)
       # Invoke xtask directly so reviewed repository configuration cannot rewrite the cargo alias.
       - name: Repository policies
         run: cargo run --locked --quiet -p xtask -- lint
       - name: Verifier isolation (RFC-0001)
         run: cargo run --locked --quiet -p xtask -- check-isolation
       - name: Test-only features fail release builds (RFC-0001)
+        if: needs.scope.outputs.code == 'true'
         run: cargo run --locked --quiet -p xtask -- check-test-features
       - name: Field operations compile branch-free on x86_64 (INV-ARCH-2)
+        if: needs.scope.outputs.code == 'true'
         run: cargo run --locked --quiet -p xtask -- check-branchless
       - name: Changelog entry and DCO sign-off (09 §6)
         if: github.event_name == 'pull_request'
@@ -71,35 +99,82 @@ jobs:
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: cargo run --locked --quiet -p xtask -- check-pr --base "$BASE_SHA" --labels "$LABELS"
 
-  test:
-    name: test
+  rust:
+    name: rust (${{ matrix.workspace }})
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 8
+    strategy:
+      matrix:
+        workspace: [prover, verifier]
+    defaults:
+      run:
+        working-directory: ${{ matrix.workspace == 'prover' && '.' || 'verifier' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the pinned toolchain
         run: |
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal --component clippy --no-self-update
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+          echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
+          # rust-cache fingerprints every installed toolchain, including the runner image stable.
+          rustup default "$channel"
+          rustup toolchain uninstall stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: |
-            . -> target
-            verifier -> target
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Prover workspace, including tiny-model end-to-end coverage
-        run: cargo test --workspace --locked
-      - name: Independent verifier workspace
-        working-directory: verifier
-        run: cargo test --workspace --locked
-      - name: Verifier claim lists under test-small
-        working-directory: verifier
-        run: cargo test -p tv-core --features test-params --locked
+          workspaces: ${{ matrix.workspace == 'prover' && '.' || 'verifier' }} -> target
+          key: ${{ matrix.workspace }}
+          cache-workspace-crates: true
+      - name: Install Nextest 0.9.148 (release binary, SHA-256 pinned)
+        run: |
+          archive=cargo-nextest-0.9.148-x86_64-unknown-linux-gnu.tar.gz
+          curl --proto '=https' --tlsv1.2 -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.148/$archive"
+          echo "223ba936714cc861a9cdedad5a8eb664dfdd69d6fbdf6cea6aa8184f523290dc  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$HOME/.cargo/bin" cargo-nextest
+      - name: Runtime library unit tests
+        if: matrix.workspace == 'prover'
+        run: cargo nextest run --workspace --exclude xtask --exclude tessera-bench --lib --locked
+      - name: Protocol, proof components and tiny-model integration
+        if: matrix.workspace == 'prover'
+        run: >-
+          cargo nextest run --locked --tests -E 'kind(test)'
+          -p tessera-codec -p tessera-field -p tessera-hash
+          -p tessera-prover -p tessera-e2e
+      - name: Independent verifier tests in parallel
+        if: matrix.workspace == 'verifier'
+        run: cargo nextest run --workspace --lib --tests --locked
+      - name: Test-parameter unit and claim validation coverage
+        if: matrix.workspace == 'verifier'
+        run: cargo nextest run -p tv-core --features test-params --lib --test claims_validation --locked
+
+  test:
+    name: test
+    needs: [scope, rust]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - name: Both workspaces passed, or only documentation changed
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          CODE: ${{ needs.scope.outputs.code }}
+          RESULT: ${{ needs.rust.result }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          if [ "$CODE" = true ]; then
+            test "$RESULT" = success
+          else
+            test "$CODE" = false
+            test "$RESULT" = skipped
+          fi
 
   python:
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
     name: python
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 6
     defaults:
       run:
         working-directory: python
@@ -123,15 +198,21 @@ jobs:
         run: uv run --no-sync pytest
 
   constraint-digest:
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
     name: constraint-digest
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the pinned toolchain
         run: |
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal --no-self-update
+          echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
+          # rust-cache fingerprints every installed toolchain, including the runner image stable.
+          rustup default "$channel"
+          rustup toolchain uninstall stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: . -> target
