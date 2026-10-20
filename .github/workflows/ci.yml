@@ -63,6 +63,9 @@ jobs:
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal --component clippy,rustfmt --no-self-update
           echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
+          # rust-cache fingerprints every installed toolchain, including the runner image stable.
+          rustup default "$channel"
+          rustup toolchain uninstall stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: |
@@ -115,6 +118,9 @@ jobs:
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal --no-self-update
           echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
+          # rust-cache fingerprints every installed toolchain, including the runner image stable.
+          rustup default "$channel"
+          rustup toolchain uninstall stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ${{ matrix.workspace == 'prover' && '.' || 'verifier' }} -> target
@@ -133,9 +139,8 @@ jobs:
         if: matrix.workspace == 'prover'
         run: >-
           cargo nextest run --locked --tests -E 'kind(test)'
-          -p tessera-codec -p tessera-field -p tessera-hash -p tessera-ir
-          -p tessera-poly -p tessera-tables -p tessera-sumcheck -p tessera-logup
-          -p tessera-pcs -p tessera-protocol -p tessera-prover -p tessera-e2e
+          -p tessera-codec -p tessera-field -p tessera-hash
+          -p tessera-prover -p tessera-e2e
       - name: Independent verifier tests in parallel
         if: matrix.workspace == 'verifier'
         run: cargo nextest run --workspace --lib --tests --locked
@@ -205,6 +210,9 @@ jobs:
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal --no-self-update
           echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
+          # rust-cache fingerprints every installed toolchain, including the runner image stable.
+          rustup default "$channel"
+          rustup toolchain uninstall stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: . -> target

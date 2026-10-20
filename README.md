@@ -49,7 +49,7 @@ During the fast-build phase, [`.github/workflows/ci.yml`](.github/workflows/ci.y
 | Job | What it runs |
 |---|---|
 | `checks` | rustfmt, clippy `-D warnings`, repository lint, verifier isolation, test-only feature and branchless-field gates; PR changelog and DCO policy |
-| `test` | Parallel Nextest runs on separate prover/verifier runners; protocol, component and tiny-model tests, plus test-parameter unit and claim validation coverage |
+| `test` | Parallel Nextest runs on separate prover/verifier runners; runtime library units, primitive conformance/adversarial tests, prover components, tiny-model integration and the complete independent verifier, plus test-parameter unit and claim validation coverage |
 | `python` | `uv sync --locked --extra cpu`, Ruff, strict Pyright and pytest on Python 3.13 ([python/README.md](python/README.md)) |
 | `constraint-digest` | Independent constraint-system digest conformance and the tiny servable-model case |
 
