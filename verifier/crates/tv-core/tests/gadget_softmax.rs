@@ -493,6 +493,11 @@ fn every_softmax_affine_field_and_proof_length_is_checked_with_own_error_precede
                 matches!(site.check(&point,&sources,&resize(&keys),&resize(&zeros)),Err(e) if e==reject)
             );
         }
+        for end in 0..keys.len() {
+            assert!(
+                matches!(site.check(&point, &sources, &keys[..end], &zeros[..end]), Err(e) if e == reject)
+            );
+        }
         let mut wrong = point.clone();
         wrong.push(Fp2::ZERO);
         assert!(matches!(
