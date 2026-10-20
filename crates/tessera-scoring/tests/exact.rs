@@ -308,6 +308,21 @@ fn replay_retains_the_fixed_certificate_and_cannot_replace_the_indicator() {
 #[test]
 fn metadata_logit_bounds_roles_and_range_spec_are_required() {
     let lowering = model(3);
+    let mut foreign_indicator = lowering.clone();
+    let producer = foreign_indicator
+        .graph
+        .producer(foreign_indicator.one_hot)
+        .unwrap();
+    foreign_indicator.graph.nodes[producer.0 as usize].op =
+        tessera_ir::Op::Expand { axis: 1, len: 5 };
+    // Same source token and output shape; the role check must reject this alone.
+    foreign_indicator.graph.validate().unwrap();
+    assert_eq!(
+        ExactGreedy::new(&foreign_indicator, table().spec())
+            .unwrap_err()
+            .code(),
+        ErrorCode::Usage
+    );
     let mut invalid = lowering.clone();
     let node = &mut invalid.graph.nodes[1];
     node.inputs[0] = node.outputs[0]; // A self-dependent node, without changing the scoring headers.
