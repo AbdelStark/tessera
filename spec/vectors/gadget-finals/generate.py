@@ -57,16 +57,17 @@ def normalized(coefficients, radix):
     return digits, carries
 
 
-def witness(left, right, bits):
+def witness(left, right, bits, alternative=False):
     radix = 2**bits
     x, y = whole(left, radix), whole(right, radix)
-    assert x <= y
+    assert alternative or x <= y
     ld, lc = normalized(left, radix)
     rd, rc = normalized(right, radix)
     difference = [(y-x) // radix**i % radix for i in range(len(left))]
     # A borrow out of a prefix is exactly the strict comparison of its two values.
     borrows = [int(x % radix**(j+1) > y % radix**(j+1)) for j in range(len(left))]
-    assert borrows[-1] == 0 and whole(difference, radix) == y-x
+    assert borrows[-1] == int(x > y)
+    assert whole(difference, radix) == (y-x) % radix**len(left)
     for j in range(len(left)):
         assert left[j] + (lc[j-1] if j else 0) == ld[j] + radix*lc[j]
         assert right[j] + (rc[j-1] if j else 0) == rd[j] + radix*rc[j]
@@ -91,7 +92,7 @@ def carry_widths(bounds, bits):
     return result
 
 
-def case(name, bits, rows, bounds=None):
+def case(name, bits, rows, bounds=None, alternative=False):
     m = len(rows[0][0])
     assert all(len(l) == len(r) == m for l, r in rows)
     assert len(rows) in (1, 2, 4, 8)
@@ -103,7 +104,7 @@ def case(name, bits, rows, bounds=None):
              for i in range((len(rows)-1).bit_length())]
     records = []
     for left, right in rows:
-        arrays = witness(left, right, bits)
+        arrays = witness(left, right, bits, alternative)
         for side, values in enumerate((left, right)):
             assert all(0 <= v <= b for v, b in zip(values, (left_bounds, right_bounds)[side]))
         expected_widths = [[bits]*m, widths[0], [bits]*m, widths[1], [bits]*m, [1]*m]
@@ -141,6 +142,10 @@ def root_parameters():
     return parameters
 
 
+def root_inputs(epsilon):
+    return [epsilon, min(epsilon+1, 2**55-1), max(epsilon, 2**32-2), 2**55-1]
+
+
 def root_cases():
     from math import isqrt
     cases = []
@@ -148,7 +153,7 @@ def root_cases():
     for name, width, n, epsilon in parameters:
         m = (2*width+55+7)//8
         rows_lower, rows_upper = [], []
-        for u in [epsilon, epsilon+1, 2**32-2, 2**55-1]:
+        for u in root_inputs(epsilon):
             root = isqrt(n//u)
             rows_lower.append((product_coefficients(root, u, width, False),
                                [(n >> (8*i)) & 255 for i in range(m)]))
@@ -197,10 +202,16 @@ def root_products():
                         out = q.add(out, q.mul(q.mul(a1, b1), u))
         return out
 
-    for name, width, n, epsilon in root_parameters():
+    parameters = root_parameters() + [('root-119bit-alternative', 32, (2**32-1)*2**62, 2**31)]
+    for name, width, n, epsilon in parameters:
         byte_count, m = (width+7)//8, (2*width+55+7)//8
-        inputs = [epsilon, epsilon+1, 2**32-2, 2**55-1] + [0]*4
+        inputs = root_inputs(epsilon) + [0]*4
         roots = [isqrt(n//u) if u else 0 for u in inputs]
+        alternative = name == 'root-119bit-alternative'
+        if alternative:
+            inputs = [2**55-1]*4 + [0]*4
+            roots = [2**32-1]*4 + [0]*4
+            assert ((roots[0]+1)**2*inputs[0]).bit_length() == 119
         columns = [[q.lift((r >> (8*i)) & 255) for r in roots] for i in range(byte_count)]
         columns += [[q.lift((u >> (16*i)) & (127 if i == 3 else 65535)) for u in inputs]
                     for i in range(4)]
@@ -244,10 +255,30 @@ def root_products():
         assert q.total(q.mul(w, value) for w, value in zip(weights, terms)) == claim
         final_evals = evaluations * len(kinds)
         t.absorb('stage/1/evals', q.tce(final_evals))
-        cases.append(dict(name=name, width=width, context=context, target=target,
+        dim, kappa = ((2**32-1, 31) if alternative else
+                      (2**32-1, 16) if name == 'root-constant-at-P' else
+                      (4096, 30) if name == 'root-constant-above-P' else (1, width-1))
+        assert n == dim*2**(2*kappa)
+        record = dict(name=name, width=width, dim=dim, kappa=kappa, epsilon=epsilon,
+                          context=context, target=target,
                           columns=columns, claims=claims, degree=4, gamma=gamma,
                           round_point=point, rounds=rounds, final_evals=final_evals,
-                          final_claim=claim, state=t.state.hex(), counter=t.counter))
+                          final_claim=claim, state=t.state.hex(), counter=t.counter)
+        if alternative:
+            lower_rows = [(product_coefficients(r,u,width,False),
+                           [(n >> (8*i)) & 255 if u else 0 for i in range(m)])
+                          for r,u in zip(roots,inputs)]
+            upper_rows = [([(n+1) >> (8*i) & 255 if u else 0 for i in range(m)],
+                           product_coefficients(r,u,width,True)) for r,u in zip(roots,inputs)]
+            max_lower = product_coefficients(2**32-1,2**55-1,width,False)
+            max_upper = product_coefficients(2**32-1,2**55-1,width,True)
+            const_l = [(n >> (8*i)) & 255 for i in range(m)]
+            const_u = [(n+1) >> (8*i) & 255 for i in range(m)]
+            record['alternative_comparisons'] = [
+                case(name+'-lower',8,lower_rows,(max_lower,const_l),alternative=True),
+                case(name+'-upper',8,upper_rows,(const_u,max_upper))]
+            assert witness(*lower_rows[0],8,True)[-1][-1] == 1
+        cases.append(record)
     return {'schema_version': 1, 'cases': cases}
 
 

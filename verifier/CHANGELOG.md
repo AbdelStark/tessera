@@ -145,6 +145,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - Add independent affine gadget components: `gadgets::comparison` derives public carry boxes and checks all six canonical arrays, both terminal carries and the terminal borrow; `gadgets::decomposition` checks every affine lookup key with its narrowed virtual top. Must-use results retain all source and range obligations. Independent integer/cube fixtures and producer cross-checks cover complete products beyond Goldilocks; these components do not replace their caller's range proofs, nonlinear reductions or opening bindings (#124).
 
+- Add `gadgets::root_products`, the independent final-evaluation kernel for complete byte-radix root products. Symmetric square coefficients preserve the original `(rho+1)` polynomial. Direct-vertex sumcheck vectors, actual CPU proofs, source/comparison cross-checks and a rejected root with actual 119-bit products cover the arithmetic; the full model driver still owns scheduling and canonical bindings (#124).
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

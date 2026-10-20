@@ -67,8 +67,8 @@ lookup proofs and source bindings; the fixture does not replace either.
 
 ## Root products
 
-`root-products.json`, schema version 1, contains 34 standalone degree-four
-sumcheck batches with 796 coefficient instances: both products for every root
+`root-products.json`, schema version 1, contains 35 standalone degree-four
+sumcheck batches with 826 coefficient instances: both products for every root
 width, plus the constants-at/above-Goldilocks cases. Each has eight rows, four
 padded, and reduces a coefficient claim at an incoming non-Boolean point to
 claims on the root-byte and input-limb extensions at the sumcheck's final point.
@@ -87,3 +87,20 @@ state/counter. Incoming claims are fixed under `stage/0/split` before the
 `stage/1` batch. These are component proofs with synthetic inputs, not complete
 model proofs: the driver must bind the incoming claims to the comparison arrays
 and every outgoing digit/input claim to its canonical decomposition and source.
+
+The final batch is a deliberate 32-bit root alternative under admissible public
+root parameters (`kappa=31`). Its root and input are at their range-box maxima,
+so the products actually require 119 bits. It has a valid product sumcheck but
+its lower comparison's final borrow is one. The embedded comparison arrays have
+all digits, carries and borrows in range; the affine checker rejects the lower
+comparison with the exact gadget id. This is a rejection control, not an accepted
+root witness. The CPU producer's honest root differs from the alternative.
+
+`verifier/crates/tv-core/tests/gadget_root_products.rs` verifies these batches,
+reconstructs their incoming claims from complete comparison arrays, checks all
+operand extensions and transcript states, and rejects the wrong bracket and the
+`rho+psi` substitution. `crates/tessera-prover/tests/gadget_root_products.rs`
+reproduces every round and final evaluation through the actual CPU sumcheck
+engine, feeds them to the independent verifier, and checks all honest root,
+auxiliary and comparison columns against the oracle. The product kernel remains
+a relation evaluator; complete model scheduling and source binding are separate.

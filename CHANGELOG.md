@@ -832,6 +832,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - Add independent gadget-final fixtures for canonical comparison arrays and narrowed decompositions, consumed by `tv-core` and producer integration tests. The producer's witness columns and lookup forms match the frozen integer and direct-cube oracles (#124).
 
+- Cross-check actual CPU root-product sumchecks and canonical root witnesses against independent coefficient proofs, including padding, constants beyond Goldilocks and a deliberately wrong root whose 119-bit product proof passes but whose complete comparison rejects (#124).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

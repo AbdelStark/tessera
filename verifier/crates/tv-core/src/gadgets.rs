@@ -6,6 +6,7 @@
 
 pub mod comparison;
 pub mod decomposition;
+pub mod root_products;
 
 use crate::validation::GadgetId;
 use core::fmt;
