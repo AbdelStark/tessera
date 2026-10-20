@@ -75,7 +75,7 @@ def cases(oracle):
             sources = [['tensor',inputs[0]],['tensor',outputs[0][0]]]
             sources += [['auxiliary',nid,role,j] for role,j in roles]
             point = [rng.fp2() for _ in range(2)]
-            root = dict(gadget=gid,node=nid,dim=dim,kappa=kappa,epsilon=epsilon,width=width,
+            root = dict(gadget=gid,node=nid,n=3,dim=dim,kappa=kappa,epsilon=epsilon,width=width,
                         constant=str(constant),sources=sources,columns=columns,
                         point=point,values=[q.mle([q.lift(x) for x in c],point) for c in columns],
                         tables=choice['tables'],range_bits=widths,key_columns=key_columns,
@@ -164,7 +164,12 @@ def prove(q,rng,root,omit_padding,context=None):
                        for i in range(1 << variables)],point)
         residual_padding = q.mul(q.eq_points(zero,point),q.mul(q.sub(q.ONE,valid),residual))
         out.append(q.ZERO if omit_padding and root['columns'][1][-1] != 0 else padding)
-        out.append(q.ZERO if omit_padding and bad_residual else residual_padding)
+        if omit_padding and bad_residual:
+            # On a feature-padding attack, retain the time-padding check while
+            # dropping just the feature selector. Its Boolean sum is still zero.
+            residual_padding = (q.mul(q.eq_points(zero,point),q.mul(q.sub(q.ONE,psi),residual))
+                                if root['dim'] != 1 << features else q.ZERO)
+        out.append(residual_padding)
         return out
 
     def at(prefix):
@@ -189,5 +194,7 @@ def prove(q,rng,root,omit_padding,context=None):
                                 q.mle([q.lift(v) for v in root['residuals']],point)]
     assert (q.total(q.mul(w,v) for w,v in zip(weights,terms(point)))==claim) == (not padding_bad or omit_padding)
     t.absorb('stage/1/evals',q.tce(final_evals))
+    valid=q.mle([q.lift(int(i//(1 << features) < 3 and i%(1 << features) < root['dim'])) for i in range(1 << variables)],point)
+    residual_relation=q.mul(q.eq_points(zero,point),q.mul(q.sub(q.ONE,valid),final_evals[-1]))
     return dict(context=context,layer=layer,zero=zero,gamma=gamma,degree=4,rounds=rounds,
-                final_evals=final_evals,point=point,final_relations=terms(point),state=t.state.hex(),counter=t.counter)
+                final_evals=final_evals,point=point,final_relations=terms(point),residual_relation=residual_relation,state=t.state.hex(),counter=t.counter)

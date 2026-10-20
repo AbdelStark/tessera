@@ -143,7 +143,21 @@ fn run(
     let result =
         sumcheck::verify_batch(&mut t, Prefix::Stage(1), 4, &instances, proof, |i, p, v| {
             if omit == Some(i) {
-                Some(Fp2::ZERO)
+                let dim: usize = number(member(fixture, "dim"));
+                if i == products.len() + 1 && !dim.is_power_of_two() {
+                    let feature_vars = dim.next_power_of_two().trailing_zeros() as usize;
+                    Some(
+                        sumcheck::eq(&zero, p)?
+                            * (Fp2::ONE
+                                - tv_core::selectors::lt(
+                                    &p[feature_vars..],
+                                    number(member(fixture, "n")),
+                                )?)
+                            * v[0],
+                    )
+                } else {
+                    Some(Fp2::ZERO)
+                }
             } else if let Some(product) = products.get(i) {
                 product.evaluate(p, v).ok().map(|v| v.value())
             } else if i == products.len() {
@@ -206,10 +220,16 @@ fn true_final_claims(
     assert_eq!(claim.input.source, source(&list(fixture, "sources")[1]));
     assert_eq!(claim.input.point, row_point);
     truth &= claim.value == extension(&column(&list(fixture, "columns")[1]), row_point);
-    let residual = root
+    let residual_final = root
         .residual_padding(&zero, point, &proof.final_evals[offset + 1..])
-        .unwrap()
-        .claim();
+        .unwrap();
+    if proof.final_evals.last() == fields(member(record, "final_evals")).last() {
+        assert_eq!(
+            residual_final.value(),
+            field(member(record, "residual_relation"))
+        );
+    }
+    let residual = residual_final.claim();
     assert_eq!(
         residual.input.source,
         Source::Tensor(TensorId(number(member(fixture, "residual_tensor"))))

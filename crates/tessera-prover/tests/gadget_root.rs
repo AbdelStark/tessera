@@ -244,14 +244,18 @@ fn actual_root_columns_and_cpu_binding_proofs_match_every_frozen_model_variant()
         let padded_dim = dim.next_power_of_two();
         let residual_eq: Vec<_> = (0..residual.len()).map(|i| eq(&zero, i)).collect();
         let residual_mask: Vec<_> = (0..residual.len())
-            .map(|i| G::from_u64_reduced(u64::from(i / padded_dim >= 3 || i % padded_dim >= dim)))
+            .map(|i| {
+                G::from_u64_reduced(u64::from(
+                    i / padded_dim >= 3 || (!bad_residual && i % padded_dim >= dim),
+                ))
+            })
             .collect();
         let residual_tables = vec![
             Table::ext(&residual_eq).public(),
             Table::base(&residual_mask).public(),
             Table::base(&residual),
         ];
-        instances.push(if bad_residual {
+        instances.push(if bad_residual && dim.is_power_of_two() {
             Instance::sum_of_products(residual_tables, vec![Term::new(F::ZERO, vec![0])])
         } else {
             Instance::new(residual_tables)
