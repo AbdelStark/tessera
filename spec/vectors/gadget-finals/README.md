@@ -137,18 +137,20 @@ cube sums. Shapes include a singleton vocabulary and token domain, and padding
 on both axes. Each alternative violates exactly one of booleanity, vocabulary
 membership, row sum or token binding, including nonzero padded token rows.
 
-The four relations share the stage's zero-check point. With vocabulary point
-`v`, row point `t`, `D(v)=eq(0,v)`, public index `I(v)` and selector `psi(t)`, the
-row-sum and index residuals are lifted to the full output cube as
-`eq(z_t,t)*(h-D(v)*psi(t))` and
-`eq(z_t,t)*(I(v)*h-D(v)*token(t))`. Summing `D` over the vocabulary cube gives
-one, so the row constants are counted once. These two relations have degree two;
-booleanity and vocabulary padding have degree three. The batch uses the existing
-stage-one labels and degree-three maximum, with no new message schema. Its proof
-contains four indicator evaluations and one token evaluation in relation order.
+The row-count and index reductions start at the incoming leaf token claim's
+point `a`, with entering claims `psi(a)` and `token(a)`. Their final relations
+are `eq(a,t)*h(v,t)` and `eq(a,t)*I(v)*h(v,t)`, where `I` is the public index
+column. Booleanity and vocabulary padding use the stage's common zero-check
+point and entering claim zero. The row relations have degree two; the zero
+checks have degree three. The incoming token value is absorbed before the
+stage-one challenges and remains a source-opening obligation at `a`. The batch
+uses the existing stage-one labels and degree-three maximum, with no new
+message schema. It sends four indicator evaluations in relation order.
 
-All claims entering these zero checks are zero. A cheating oracle keeps those
-claims and supplies its actual final source evaluations, so its component proof
-fails the sumcheck's final check. The fixtures also record the actual sum of each
-relation, showing that each alternative tests a single obligation. These are not
-complete model proofs or a replacement for the final source openings.
+A cheating oracle keeps the prescribed entering claims and supplies its actual
+final source evaluations, so its component proof fails the final sumcheck check.
+Each alternative also has an `omission` proof adapted to a verifier that replaces
+just its failed obligation by the public tautology `claim*delta_0`. That proof
+passes the omission control with true source claims and fails the full check.
+Actual relation sums identify each alternative's single failed obligation. These
+are not complete model proofs or a replacement for the final source openings.
