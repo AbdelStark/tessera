@@ -16,12 +16,12 @@
 
 | Level | Scope | Tooling | Runs |
 |---|---|---|---|
-| Unit | One function or type | `cargo test`, `pytest` | Every PR |
-| Property | Algebraic laws and codec round-trips over random inputs | `proptest` (Rust), `hypothesis` (Python) | Every PR (256 cases), nightly (65,536 cases) |
-| Conformance | Shared vectors in `spec/vectors/` checked by prover side, verifier side and Python | Vector runners in each workspace | Every PR |
-| Component | One protocol (sumcheck, LogUp, PCS, gadget) end to end, prover against independent verifier | `cargo test` with verifier crates as dev-dependencies | Every PR |
-| End to end | Compile, commit, prove, verify on tiny models | CLI-driven tests | Every PR (tiny), nightly (8B CPU subset) |
-| Adversarial | Tamper corpus, alternative witnesses, malformed artifacts | Dedicated test crates; `cargo-fuzz` | Every PR (corpus), nightly (fuzz 1 h), release (fuzz 24 CPU-h) |
+| Unit | One function or type | `cargo test`, `pytest` | Fast-build CI |
+| Property | Algebraic laws and codec round-trips over random inputs | `proptest` (Rust), `hypothesis` (Python) | Fast-build CI; deeper nightly runs when enabled |
+| Conformance | Shared vectors in `spec/vectors/` checked by prover side, verifier side and Python | Vector runners in each workspace | Fast-build CI |
+| Component | One protocol (sumcheck, LogUp, PCS, gadget) end to end, prover against independent verifier | `cargo test` with verifier crates as dev-dependencies | Fast-build CI |
+| End to end | Compile, commit, prove, verify on tiny models | CLI-driven tests | Existing tiny-model coverage in fast-build CI; 8B CPU subset when enabled |
+| Adversarial | Tamper corpus, alternative witnesses, malformed artifacts | Dedicated test crates; `cargo-fuzz` | Corpus in fast-build CI; fuzzing on demand and at release |
 | GPU | Kernel correctness against CPU reference; determinism across tilings | Self-hosted H100 runner | Nightly and on `gpu`-labeled PRs |
 | Performance | Microbenchmarks and end-to-end `μ` | `cargo bench -p tessera-bench`, `tessera bench` | Nightly; regression gate ([08 §6](08-performance-budget.md#6-regression-gates)) |
 | ML fidelity | `D` versus reference float model | `tessera-quant eval` | On quantization changes; release |
@@ -82,7 +82,7 @@ Required properties, each a named test:
 
 ## 9. CI gates
 
-| Gate | Blocks merge | Command |
+| Gate | Fast-build merge check | Command |
 |---|---|---|
 | Format and lint | Yes | `cargo fmt --check`, `cargo clippy -D warnings`, `ruff check`, `ruff format --check` |
 | Types | Yes | `pyright --strict` on `python/` |
@@ -90,8 +90,10 @@ Required properties, each a named test:
 | Conformance vectors current | Yes | `cargo xtask gen-vectors --check`, also a test of `xtask`: the codec vectors match their cases, and every oracle `spec/vectors/*/generate.py`, rerun on a copy, writes its files byte for byte |
 | Tiny end-to-end and tamper corpus | Yes | `cargo test -p tessera-e2e` |
 | Verifier isolation | Yes | `cargo xtask check-isolation` ([RFC-0001](../rfcs/RFC-0001-workspace-and-verifier-independence.md#enforcement)) |
-| Dependency policy | Yes | `cargo deny check` (both workspaces); `cargo vet` (verifier) |
-| MSRV | Yes | Build with the minimum supported Rust version |
+| Dependency policy | On demand | `cargo xtask check-deps` |
+| MSRV | On demand | Build with the minimum supported Rust version |
 | Docs | Yes | `cargo doc -D warnings`; link check on `docs/`; no merge-conflict marker in any file (`cargo xtask lint`) |
-| GPU correctness | Yes for `gpu`-labeled PRs | Self-hosted runner |
-| Performance regression | Nightly, opens an issue on failure | `tessera bench` |
+| GPU correctness | When a suitable runner is available | Self-hosted runner |
+| Performance regression | On demand during fast-build phase | `tessera bench` |
+
+During backlog development, `.github/workflows/ci.yml` is the only automatic workflow. It runs the core Rust, verifier, Python 3.13, repository-policy and existing tiny-model checks. Fuzzing, calibration and benchmarks stay available through manual workflow dispatch; [the quality workflow](../../.github/workflows/quality.yml) runs the deferred dependency, MSRV, macOS and GPU host jobs. Re-enable broader automatic gates before the production-grade phase.

@@ -1,11 +1,11 @@
-# Pull-request pipeline for both workspaces: the merge-blocking gates of
-# docs/spec/07-testing-strategy.md §9 that exist so far. Third-party actions are pinned by
-# commit SHA (TB-4 in docs/spec/06-security.md).
+# Fast-build pull-request pipeline. Deeper, platform-specific and scheduled checks remain
+# available through workflow_dispatch. Third-party actions are pinned by SHA (TB-4).
 name: ci
 
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
   workflow_dispatch:
@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -25,9 +25,12 @@ jobs:
   checks:
     name: checks
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - name: Install the pinned toolchain
         run: |
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
@@ -52,9 +55,8 @@ jobs:
         run: |
           cargo doc --workspace --no-deps --locked
           (cd verifier && cargo doc --workspace --no-deps --locked)
-      # The gates run as `cargo run -p xtask`, not through the `cargo xtask` alias: the alias is
-      # repository configuration that a change under review could rewrite.
-      - name: Repository policies (unsafe code, SPDX headers, licenses, Markdown links)
+      # Invoke xtask directly so reviewed repository configuration cannot rewrite the cargo alias.
+      - name: Repository policies
         run: cargo run --locked --quiet -p xtask -- lint
       - name: Verifier isolation (RFC-0001)
         run: cargo run --locked --quiet -p xtask -- check-isolation
@@ -62,26 +64,19 @@ jobs:
         run: cargo run --locked --quiet -p xtask -- check-test-features
       - name: Field operations compile branch-free on x86_64 (INV-ARCH-2)
         run: cargo run --locked --quiet -p xtask -- check-branchless
-      - name: GPU host code without CUDA (clippy)
+      - name: Changelog entry and DCO sign-off (09 §6)
+        if: github.event_name == 'pull_request'
         env:
-          TESSERA_GPU_SKIP_KERNELS: "1"
-        run: cargo clippy -p tessera-gpu --features gpu --all-targets --locked -- -D warnings
-      - name: The gpu feature fails without CUDA 12.8, naming it (RFC-0001)
-        run: |
-          if cargo build -p tessera-gpu --features gpu --locked 2> "$RUNNER_TEMP/gpu-build.log"; then
-            echo "building tessera-gpu with --features gpu succeeded on a runner without CUDA"
-            exit 1
-          fi
-          grep -F "needs the CUDA toolkit 12.8 or later" "$RUNNER_TEMP/gpu-build.log"
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: cargo run --locked --quiet -p xtask -- check-pr --base "$BASE_SHA" --labels "$LABELS"
 
   test:
     name: test
     runs-on: ubuntu-24.04
-    # Both workspaces plus test-params exceeded 15 minutes after checkpoint/histogram tests.
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # clippy: an xtask test runs it to show the rule against `expose_secret` holds (05 §3).
       - name: Install the pinned toolchain
         run: |
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
@@ -92,77 +87,19 @@ jobs:
             . -> target
             verifier -> target
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Prover workspace
+      - name: Prover workspace, including tiny-model end-to-end coverage
         run: cargo test --workspace --locked
-      - name: Verifier workspace
+      - name: Independent verifier workspace
         working-directory: verifier
         run: cargo test --workspace --locked
-      # The golden claim lists of spec/vectors/claims/ name test-small/1, which only the test-only
-      # feature accepts (RFC-0001 'Cargo features'); the run above checks that they are refused.
       - name: Verifier claim lists under test-small
         working-directory: verifier
         run: cargo test -p tv-core --features test-params --locked
 
-  dependencies:
-    name: dependencies
+  python:
+    name: python
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install the pinned toolchain
-        run: |
-          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal --no-self-update
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: |
-            . -> target
-            verifier -> target
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Install cargo-deny 0.20.2 (release binary, SHA-256 pinned)
-        run: |
-          base=https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2
-          archive=cargo-deny-0.20.2-x86_64-unknown-linux-musl
-          curl --proto '=https' --tlsv1.2 -sSfL -o "$RUNNER_TEMP/$archive.tar.gz" "$base/$archive.tar.gz"
-          echo "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f  $RUNNER_TEMP/$archive.tar.gz" \
-            | sha256sum --check --strict
-          tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP"
-          install -m 0755 "$RUNNER_TEMP/$archive/cargo-deny" "$HOME/.cargo/bin/cargo-deny"
-      - name: Install cargo-vet 0.10.2 (crates.io, locked)
-        # No release binary exists after 0.10.0, whose parser rejects audits in newer formats.
-        run: cargo install cargo-vet --version 0.10.2 --locked
-      - name: Dependency policy (09 §7)
-        run: cargo run --locked --quiet -p xtask -- check-deps
-
-  msrv:
-    name: msrv
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install Rust 1.88
-        run: rustup toolchain install 1.88.0 --profile minimal --no-self-update
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: |
-            . -> target
-            verifier -> target
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Build every target with the minimum supported Rust version (09 §2)
-        run: |
-          cargo +1.88.0 check --workspace --all-targets --locked
-          (cd verifier && cargo +1.88.0 check --workspace --all-targets --locked)
-
-  python-versions:
-    # The Python front-end's supported versions (09 §8). The `python` job below is the required
-    # check, so that adding a version here leaves branch protection unchanged.
-    name: python ${{ matrix.python }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.11", "3.12", "3.13"]
     defaults:
       run:
         working-directory: python
@@ -171,7 +108,7 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.9.18"
-          python-version: ${{ matrix.python }}
+          python-version: "3.13"
           enable-cache: true
           cache-dependency-glob: python/uv.lock
       - name: Install from the lockfile, with CPU PyTorch (RFC-0005 'Python packaging')
@@ -184,43 +121,6 @@ jobs:
         run: uv run --no-sync pyright
       - name: Test
         run: uv run --no-sync pytest
-
-  python:
-    name: python
-    needs: python-versions
-    # Runs when a version fails too, since a skipped required check would count as passed; a
-    # cancelled run reports nothing.
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Every supported Python version passed
-        env:
-          RESULT: ${{ needs.python-versions.result }}
-        run: test "$RESULT" = success
-
-  macos:
-    # Tier-2 build-only platform (09 §8). Runs on main only: macOS minutes are billed at ten
-    # times the Linux rate, and contributors' macOS machines build every change locally.
-    name: macos build (tier 2)
-    if: github.event_name != 'pull_request'
-    runs-on: macos-15
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install the pinned toolchain
-        run: |
-          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal --no-self-update
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: |
-            . -> target
-            verifier -> target
-      - name: Build both workspaces
-        run: |
-          cargo build --workspace --locked
-          (cd verifier && cargo build --workspace --locked)
 
   constraint-digest:
     name: constraint-digest

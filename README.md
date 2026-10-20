@@ -44,18 +44,16 @@ No crate needs a GPU or the CUDA toolkit to build or test. The CUDA backend is t
 
 ## Continuous integration
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and on `main`. Each job blocks merging:
+During the fast-build phase, [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is the only workflow that runs automatically. It runs on pull requests and `main`; these four checks block merging:
 
 | Job | What it runs |
 |---|---|
-| `checks` | rustfmt, clippy `-D warnings` and rustdoc `-D warnings` in both workspaces; `cargo xtask lint`; `cargo xtask check-isolation`; `cargo xtask check-test-features`; `cargo xtask check-branchless` |
-| `test` | `cargo test --workspace --locked` in both workspaces |
-| `dependencies` | `cargo xtask check-deps`: `cargo deny check` (licenses, advisories, bans, sources) in both workspaces, `cargo vet --locked` in the verifier, and a self-test showing the policies reject an MPL-2.0 crate and a crate under a RustSec advisory; cargo-deny 0.20.2 and cargo-vet 0.10.2 |
-| `msrv` | `cargo +1.88.0 check --workspace --all-targets --locked` in both workspaces |
-| `python` | `uv sync --locked --extra cpu`, `ruff`, `pyright` (strict) and `pytest` in `python/`, on Python 3.11, 3.12 and 3.13 ([python/README.md](python/README.md)) |
-| `pr-policy` | `cargo xtask check-pr`: every change to a release train adds a changelog entry (`CHANGELOG.md` for `crates/*/src` and `python/tessera_quant/`, `verifier/CHANGELOG.md` for `verifier/`, either for `spec/`) unless the PR is labeled `no-changelog`; every commit is signed off (`git commit -s`, [09 §6](docs/spec/09-release-and-versioning.md#6-contribution-workflow)) |
+| `checks` | rustfmt, clippy `-D warnings` and rustdoc `-D warnings` in both workspaces; repository lint, verifier isolation, test-only feature and branchless-field gates; PR changelog and DCO policy |
+| `test` | `cargo test --workspace --locked` in both workspaces, plus verifier test-parameter coverage |
+| `python` | `uv sync --locked --extra cpu`, Ruff, strict Pyright and pytest on Python 3.13 ([python/README.md](python/README.md)) |
+| `constraint-digest` | Independent constraint-system digest conformance and the tiny servable-model case |
 
-To run the dependency checks locally, install cargo-deny 0.20.2 and cargo-vet 0.10.2. `pr-policy` runs in its own workflow so that adding or removing the label re-runs only that check; locally, `cargo xtask check-pr --base origin/main` checks the current branch. A build-only job on macOS aarch64, a tier-2 platform ([09 §8](docs/spec/09-release-and-versioning.md#8-supported-platforms)), runs on `main` only. To reproduce a failure, run the job's commands locally; they are the commands listed above.
+Fuzz, soundness calibration, microbenchmarks and the standalone PR-policy rerun remain available with manual dispatch from the Actions page. [The manual quality workflow](.github/workflows/quality.yml) retains dependency audits, MSRV, macOS builds and GPU host checks without CUDA. They do not run automatically during fast backlog development. The normal checks still protect verifier independence, secret handling, protocol tests, Python packaging and the existing tiny-model conformance path. To reproduce a failure, run the job's commands locally.
 
 ## Contributing
 

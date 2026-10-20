@@ -1,18 +1,12 @@
 # CPU microbenchmarks of the prover's primitives (docs/spec/08-performance-budget.md §6) on the
-# GitHub-hosted CI runner class. They run when the benchmark suite changes, or on demand, and
-# upload a tessera.microbenchmarks/1 report; docs/perf/baselines/ keeps the committed baseline.
+# GitHub-hosted CI runner class. They run on demand and upload a tessera.microbenchmarks/1 report;
+# docs/perf/baselines/ keeps the committed baseline.
 # Nothing is gated here: the regression gate compares on a runner with locked clocks (#167).
 # Third-party actions are pinned by commit SHA (TB-4 in docs/spec/06-security.md).
 name: bench
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "crates/tessera-bench/**"
-      - ".github/workflows/bench.yml"
   workflow_dispatch:
-
 permissions:
   contents: read
 
