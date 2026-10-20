@@ -2278,6 +2278,49 @@ mod tests {
         );
     }
 
+    #[test]
+    fn six_and_three_heads_derive_and_non_power_of_two_head_widths_reject() {
+        let file = tv_testkit::read_vectors("claims/claim-lists.json");
+        let case = file
+            .get("cases")
+            .and_then(tv_testkit::Json::as_array)
+            .unwrap()
+            .iter()
+            .find(|c| c.get("name").and_then(tv_testkit::Json::as_str) == Some("tiny-2-servable"))
+            .unwrap();
+        let bytes = tv_testkit::hex(case.get("hex").unwrap().as_str().unwrap());
+        let base =
+            crate::claims::ClaimList::open(&bytes, &tv_codec::DecodeLimits::MESSAGE).unwrap();
+
+        let mut six = base.clone();
+        six.arch.n_heads = 6;
+        six.arch.n_kv_heads = 3;
+        six.arch.d_model = 96;
+        let public = crate::validation::check_public(&six).unwrap();
+        for n in [1, 3, 5] {
+            let lowered = crate::lowering::lower(&public, n).unwrap();
+            derive(&lowered).unwrap();
+        }
+
+        for (heads, kv_heads, d_head, bad_node) in [
+            (2, 1, 6, NodeId(12)),
+            (6, 3, 48, NodeId(12)),
+            (1, 1, 6, NodeId(11)),
+        ] {
+            let mut claims = base.clone();
+            claims.arch.n_heads = heads;
+            claims.arch.n_kv_heads = kv_heads;
+            claims.arch.d_head = d_head;
+            claims.arch.d_model = heads * d_head;
+            let public = crate::validation::check_public(&claims).unwrap();
+            let lowered = crate::lowering::lower(&public, 3).unwrap();
+            assert_eq!(
+                derive(&lowered),
+                Err(ScheduleError::Unsupported { node: bad_node })
+            );
+        }
+    }
+
     /// A stacked claim through a constant that differs between layers: the leaf stage's per-layer
     /// claims take each layer's, a stage's stacked claim cannot.
     #[test]

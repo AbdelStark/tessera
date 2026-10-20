@@ -170,6 +170,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - Check all native stage-one OneHot relations against the original indicator and token sources, preserving every opening claim and coordinate projection. Isolated booleanity, count, index and vocabulary-padding alternatives, including scalar vocabulary, fail with the exact sumcheck stage and round (#124).
 
+- Test six-head / three-KV-head schedule derivation across padded sequence lengths and exact `ScheduleError::Unsupported` rejection on non-power-of-two head widths in `tv-core::schedule` ([#411](https://github.com/AbdelStark/tessera/issues/411)).
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).
