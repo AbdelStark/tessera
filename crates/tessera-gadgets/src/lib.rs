@@ -108,6 +108,8 @@ mod compare;
 mod constraints;
 mod error;
 mod lookups;
+#[cfg(debug_assertions)]
+pub mod malicious;
 mod non_neg;
 mod requant;
 mod rsqrt;

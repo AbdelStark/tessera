@@ -13,6 +13,7 @@ From the repository root:
 ```sh
 cargo test --manifest-path verifier/Cargo.toml -p tv-core --locked
 cargo test -p tessera-prover --locked --test gadget_comparison --test gadget_root_products --test gadget_requant --test gadget_onehot --test gadget_root --test gadget_softmax --test gadget_argmax --test gadget_argmax_outputs
+cargo test -p tessera-e2e --locked --test alternative_witnesses
 cargo xtask gen-vectors --check
 cargo xtask check-isolation
 ```

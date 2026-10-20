@@ -150,6 +150,33 @@ impl RsqrtRow {
         self.bits
     }
 
+    #[cfg(debug_assertions)]
+    pub(crate) fn n(&self) -> u128 {
+        self.n
+    }
+
+    #[cfg(debug_assertions)]
+    pub(crate) fn input_nonneg(&self) -> &NonNeg {
+        &self.input
+    }
+
+    #[cfg(debug_assertions)]
+    pub(crate) fn digits_nonneg(&self) -> &NonNeg {
+        &self.digits
+    }
+
+    #[cfg(debug_assertions)]
+    pub(crate) fn comparisons(&self) -> &[BigIntCompare; 2] {
+        &self.comparisons
+    }
+
+    #[cfg(debug_assertions)]
+    pub(crate) fn product_relation<F: PrimeField>(&self, b: Bracket, j: usize) -> RsqrtRelation<F> {
+        RsqrtRelation {
+            terms: self.product::<F>(b, j),
+        }
+    }
+
     /// Tables used by this gadget, deduplicated in first-use order.
     pub fn tables(&self) -> Vec<&GeneratedTable> {
         let mut out = vec![&self.root];
@@ -415,6 +442,17 @@ pub struct RsqrtWitness {
     comparisons: Vec<CompareWitness>,
 }
 impl RsqrtWitness {
+    #[cfg(debug_assertions)]
+    pub(crate) fn from_parts(
+        tensors: Vec<(RsqrtColumn, SecretBuf<i64>)>,
+        comparisons: Vec<CompareWitness>,
+    ) -> Self {
+        Self {
+            tensors,
+            comparisons,
+        }
+    }
+
     /// Transfer columns in RFC-0050 allocation order without copying their values.
     /// The holder applies the secret borrowing rules of [`Self::tensor`].
     pub fn into_tensors(self) -> Vec<(RsqrtColumn, SecretBuf<i64>)> {

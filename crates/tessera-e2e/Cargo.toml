@@ -20,9 +20,11 @@ serde_json = "1"
 tessera-codec = { path = "../tessera-codec" }
 tessera-compiler = { path = "../tessera-compiler" }
 tessera-field = { path = "../tessera-field" }
+tessera-gadgets = { path = "../tessera-gadgets" }
 tessera-hash = { path = "../tessera-hash" }
 tessera-ir = { path = "../tessera-ir" }
 tessera-logup = { path = "../tessera-logup" }
+tessera-poly = { path = "../tessera-poly" }
 tessera-sumcheck = { path = "../tessera-sumcheck" }
 tessera-tables = { path = "../tessera-tables" }
 tessera-witness = { path = "../tessera-witness" }
@@ -31,6 +33,7 @@ tessera-witness = { path = "../tessera-witness" }
 tv-codec = { path = "../../verifier/crates/tv-codec" }
 tv-core = { path = "../../verifier/crates/tv-core" }
 tv-field = { path = "../../verifier/crates/tv-field" }
+tv-hash = { path = "../../verifier/crates/tv-hash" }
 tv-tables = { path = "../../verifier/crates/tv-tables" }
 tv-testkit = { path = "../../verifier/crates/tv-testkit" }
 
