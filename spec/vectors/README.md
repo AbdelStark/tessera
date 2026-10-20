@@ -31,6 +31,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | [`weights/`](weights/README.md) | The weight commitment of the conformance models at `test-small/1`, RFC-0040: each matrix's layout, `commitment_id` and root, `R_W` and the `.twr` artifacts; rows encoded at rate 1/4 | its oracle, after the models' |
 | [`rsqrt/`](rsqrt/README.md) | Reciprocal-square-root brackets, 55-bit inputs, 32-bit roots and padded rows, RFC-0009 Lemma 7 | independent Python integer oracle |
 | [`weights-opening/`](weights-opening/README.md) | Unmasked weight openings, RFC-0012/0040/0049: sparse structural rows versus dense proximity positions, folds, direct column roots, authentication and two-row failure ordering | its independent oracle, written before the weight checker |
+| [`advice-opening/`](advice-opening/README.md) | Canonical advice counts and descriptors, original combination-claim grouping/powers, weighted images, and complete micro-model openings (RFC-0011/0031/0037) | its independent oracle, written before the model opening checker |
 
 An oracle is the set's `generate.py`: an independent implementation in standard-library Python, written from the specification, sharing no code with `crates/`, `verifier/` or `python/`. Oracles may import one another, as `models/` takes its tables from `tables/` and its BLAKE3 from `hash/`.
 

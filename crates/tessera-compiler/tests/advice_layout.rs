@@ -368,8 +368,9 @@ fn inconsistent_source_metadata_and_uncommitted_claims_are_refused() {
 fn every_model_source_location_point_zero_row_and_segment_matches_the_oracle() {
     let models = models();
     let oracle = read_json(&vectors().join("advice/layout.json"));
+    let openings = read_json(&vectors().join("advice-opening/opening.json"));
     let mut locations = 0;
-    for case in oracle["cases"].as_array().unwrap() {
+    for (case_index, case) in oracle["cases"].as_array().unwrap().iter().enumerate() {
         let model = &models[case["file"].as_str().unwrap()];
         let (arch, quant) = edited(model, &case["variant"]);
         let public = PublicModel {
@@ -395,6 +396,42 @@ fn every_model_source_location_point_zero_row_and_segment_matches_the_oracle() {
         );
         let mapped = ModelAdviceLayout::new(&lowering, &selection, &claims).unwrap();
         let layout = mapped.layout();
+        let opening = &openings["layouts"][case_index];
+        assert_eq!(opening["case"].as_u64().unwrap() as usize, case_index);
+        let counts: Vec<u64> = layout
+            .segments()
+            .iter()
+            .map(|segment| segment.nonzero.iter().map(|run| run.end - run.start).sum())
+            .collect();
+        assert_eq!(json!(counts), opening["segment_counts"]);
+        assert_eq!(layout.rows(), opening["rows"].as_u64().unwrap());
+        let hex = |text: &Value| -> Vec<u8> {
+            let text = text.as_str().unwrap();
+            (0..text.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
+                .collect()
+        };
+        let descriptor = tessera_pcs::CommitmentDescriptor::Advice {
+            statement_digest: hex(&opening["statement_digest"]).try_into().unwrap(),
+            unit: opening["unit"].as_u64().unwrap() as u32,
+            layout: AdviceLayoutParams {
+                log2_k: k,
+                log2_inv_rate: 1,
+                mask_coeffs: opening["mask_coeffs"].as_u64().unwrap() as u32,
+                row_block: opening["row_block"].as_u64().unwrap() as u32,
+                segments: case["segments"].as_u64().unwrap() as u32,
+            },
+            rows: layout.rows(),
+        };
+        assert_eq!(
+            tessera_codec::encode(&descriptor),
+            hex(&opening["descriptor_tce"])
+        );
+        assert_eq!(
+            descriptor.commitment_id().as_slice(),
+            hex(&opening["commitment_id"])
+        );
         assert_eq!(layout.allocated_rows(), case["rows"].as_u64().unwrap());
         assert_eq!(layout.variables(), case["nu"].as_u64().unwrap() as u32);
         assert_eq!(

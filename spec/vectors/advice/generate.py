@@ -210,10 +210,10 @@ def geometry(shape, log_k):
     return permutation, rows, zero
 
 
-def model_layout(case, log_k, query_block, segments):
+def model_layout(case, log_k, query_block, segments, maximum=32, limb=16):
     require(query_block > 0 and query_block & (query_block-1) == 0, "Layout")
     require(segments > 0, "Layout")
-    tables, choices = catalog(case)
+    tables, choices = catalog(case, maximum, limb)
     by_node = {c["node"]: c for c in choices}
     producers = {o[0]: node[0] for node in case["nodes"] for o in node[4]}
     boundaries = [producers[t] for t in case["checkpoints"]]
