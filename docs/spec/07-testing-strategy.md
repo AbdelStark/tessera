@@ -86,14 +86,16 @@ Required properties, each a named test:
 |---|---|---|
 | Format and lint | Yes | `cargo fmt --check`, `cargo clippy -D warnings`, `ruff check`, `ruff format --check` |
 | Types | Yes | `pyright --strict` on `python/` |
-| Unit, property, conformance, component | Yes | `cargo test --workspace` (both workspaces), `pytest` |
-| Conformance vectors current | Yes | `cargo xtask gen-vectors --check`, also a test of `xtask`: the codec vectors match their cases, and every oracle `spec/vectors/*/generate.py`, rerun on a copy, writes its files byte for byte |
+| Unit, property, conformance, component | Bootstrap subset | Parallel Nextest runs in both workspaces; `pytest`. Full suites remain in the manual quality workflow. |
+| Conformance vectors current | On demand (snapshots still consumed in CI) | `cargo xtask gen-vectors --check`, also a test of `xtask`: the codec vectors match their cases, and every oracle `spec/vectors/*/generate.py`, rerun on a copy, writes its files byte for byte |
 | Tiny end-to-end and tamper corpus | Yes | `cargo test -p tessera-e2e` |
 | Verifier isolation | Yes | `cargo xtask check-isolation` ([RFC-0001](../rfcs/RFC-0001-workspace-and-verifier-independence.md#enforcement)) |
 | Dependency policy | On demand | `cargo xtask check-deps` |
 | MSRV | On demand | Build with the minimum supported Rust version |
-| Docs | Yes | `cargo doc -D warnings`; link check on `docs/`; no merge-conflict marker in any file (`cargo xtask lint`) |
+| Docs | Links and conflict markers; rustdoc on demand | `cargo xtask lint`; manual `cargo doc` with `RUSTDOCFLAGS=-D warnings` |
 | GPU correctness | When a suitable runner is available | Self-hosted runner |
 | Performance regression | On demand during fast-build phase | `tessera bench` |
 
-During backlog development, `.github/workflows/ci.yml` is the only automatic workflow. It runs the core Rust, verifier, Python 3.13, repository-policy and existing tiny-model checks. Fuzzing, calibration and benchmarks stay available through manual workflow dispatch; [the quality workflow](../../.github/workflows/quality.yml) runs the deferred dependency, MSRV, macOS and GPU host jobs. Re-enable broader automatic gates before the production-grade phase.
+During backlog development, `.github/workflows/ci.yml` is the only automatic workflow. It runs the core Rust, verifier, Python 3.13, repository-policy and existing tiny-model checks. Prover and verifier tests run concurrently using Nextest, without debug symbols but with debug assertions and overflow checks. The prover run excludes `xtask`, `tessera-bench`, the compiler `report`/`commitment_report` targets and the separately tested constraint-digest example. The verifier runs its unit and integration tests under default parameters, then only its unit tests and `claims_validation` target with `test-params`. Doctests, rustdoc, exhaustive oracle regeneration and the excluded targets remain in the manual full suites. Fuzzing, calibration and benchmarks stay available through manual workflow dispatch; [the quality workflow](../../.github/workflows/quality.yml) runs the deferred dependency, MSRV, macOS and GPU host jobs. Re-enable broader automatic gates before the production-grade phase.
+
+Root Markdown and changes entirely under `docs/` or `research/` run repository/PR policies and routing self-tests only. Unknown paths, unavailable diffs and manual dispatch run all bootstrap checks. Rename detection is disabled for routing so moving source into documentation still counts as a source deletion. The required `test` result fails if routing or either required Rust run fails.
