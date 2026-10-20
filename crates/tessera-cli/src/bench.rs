@@ -17,9 +17,8 @@ use tessera_bench::{
     Counts, MemoryModel, ModelError, ModelReport, SOURCE_CONTEXTS, Scenario, UnitCosts,
 };
 use tessera_codec::error::{ErrorCode, TesseraError};
-use tessera_codec::schema;
 
-use crate::{Input, io_error, pending, write_atomically};
+use crate::{io_error, write_atomically};
 
 /// `tessera bench model`.
 #[derive(Debug, Args)]
@@ -65,13 +64,10 @@ fn model_error(error: ModelError) -> TesseraError {
 
 /// Runs `tessera bench model`; with `json`, the report is the result printed on stdout.
 pub(crate) fn model(args: &ModelArgs, json: bool) -> Result<(), TesseraError> {
-    if let Some(plan) = &args.plan {
-        return pending(
-            "bench model --plan",
-            &[Input::new(plan, &schema::EXECUTION_PLAN)],
-            87,
-        );
-    }
+    let (source_defaults, counts) = match &args.plan {
+        Some(plan) => (false, crate::compile::counts_from_plan(plan)?),
+        None => (true, Counts::SOURCE_405B),
+    };
     let contexts = match args.context.as_slice() {
         [] => SOURCE_CONTEXTS.to_vec(),
         given => given.to_vec(),
@@ -84,8 +80,8 @@ pub(crate) fn model(args: &ModelArgs, json: bool) -> Result<(), TesseraError> {
         violations: args.violations,
     };
     let report = ModelReport::new(
-        true,
-        Counts::SOURCE_405B,
+        source_defaults,
+        counts,
         UnitCosts::SOURCE,
         MemoryModel::NODE_405B,
         scenario,
