@@ -306,30 +306,93 @@ fn refuses_unsupported_public_inputs() {
 }
 
 #[test]
-fn unsupported_head_reshape_returns_the_compiler_rule() {
+fn six_and_three_heads_derive_complete_schedule_and_expand() {
+    use tessera_compiler::derive_schedule;
+    for n in [1, 3, 4] {
+        let mut claims = claims_for(MODELS[0], n, 512, false);
+        claims.arch.n_heads = 6;
+        claims.arch.n_kv_heads = 3;
+        claims.arch.d_model = 96;
+        let lowered =
+            lower(PublicModel::of_claims(&claims), n).expect("public lowering accepts six heads");
+        let ranges = analyze(&lowered.graph, &lowered.tables).expect("ranges");
+        let selection = select(
+            &lowered.graph,
+            &ranges,
+            &lowered.tables,
+            &claims.gadget_policy,
+        )
+        .expect("selection");
+        claims.tables = selection.tables;
+        derive_schedule(&lowered).expect("six/three heads with d_head=16 preserve coordinates");
+        let complete =
+            derive_model_schedule(&claims, n).expect("complete model schedule for six/three heads");
+        for mode in [Mode::Live, Mode::NonInteractive] {
+            let schedule = TranscriptSchedule::expand(
+                &complete.sizes,
+                &ParamSet::TEST_SMALL,
+                mode,
+                Protocol::One,
+            )
+            .expect("valid transcript schedule");
+            let labels: Vec<String> = schedule.labels().map(|l| l.to_string()).collect();
+            let distinct: BTreeSet<&String> = labels.iter().collect();
+            assert_eq!(distinct.len(), labels.len(), "n={n}, {mode:?}");
+        }
+    }
+}
+
+#[test]
+fn non_power_of_two_head_width_returns_the_compiler_rule() {
     use tessera_compiler::{CompileError, derive_schedule};
     use tessera_ir::NodeId;
-    let mut claims = claims_for(MODELS[0], 3, 512, false);
-    claims.arch.n_heads = 6;
-    claims.arch.n_kv_heads = 3;
-    claims.arch.d_model = 96;
-    let lowered =
-        lower(PublicModel::of_claims(&claims), 3).expect("public lowering accepts six heads");
-    let ranges = analyze(&lowered.graph, &lowered.tables).expect("ranges");
-    let selection = select(
-        &lowered.graph,
-        &ranges,
-        &lowered.tables,
-        &claims.gadget_policy,
-    )
-    .expect("selection");
-    claims.tables = selection.tables;
-    let expected = Err(CompileError::Schedule {
-        node: Some(NodeId(12)),
-        rule: "a Reshape merges or splits only axes whose lengths are powers of two, the leading axis aside",
-    });
-    assert_eq!(derive_schedule(&lowered).map(|_| ()), expected);
-    assert_eq!(derive_model_schedule(&claims, 3).map(|_| ()), expected);
+    for (heads, kv_heads, d_head, expected) in [
+        (
+            2,
+            1,
+            6,
+            CompileError::Schedule {
+                node: Some(NodeId(12)),
+                rule: "a Reshape merges or splits only axes whose lengths are powers of two, the leading axis aside",
+            },
+        ),
+        (
+            6,
+            3,
+            48,
+            CompileError::Schedule {
+                node: Some(NodeId(12)),
+                rule: "a Reshape merges or splits only axes whose lengths are powers of two, the leading axis aside",
+            },
+        ),
+        (
+            1,
+            1,
+            6,
+            CompileError::Schedule {
+                node: Some(NodeId(11)),
+                rule: "a Rotate pairs a last axis whose length is a power of two",
+            },
+        ),
+    ] {
+        let mut claims = claims_for(MODELS[0], 3, 512, false);
+        claims.arch.n_heads = heads;
+        claims.arch.n_kv_heads = kv_heads;
+        claims.arch.d_head = d_head;
+        claims.arch.d_model = heads * d_head;
+        let lowered = lower(PublicModel::of_claims(&claims), 3).expect("public lowering");
+        let ranges = analyze(&lowered.graph, &lowered.tables).expect("ranges");
+        let selection = select(
+            &lowered.graph,
+            &ranges,
+            &lowered.tables,
+            &claims.gadget_policy,
+        )
+        .expect("selection");
+        claims.tables = selection.tables;
+        assert_eq!(derive_schedule(&lowered).map(|_| ()), Err(expected));
+        assert_eq!(derive_model_schedule(&claims, 3).map(|_| ()), Err(expected));
+    }
 }
 
 #[test]

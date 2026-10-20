@@ -462,3 +462,35 @@ fn softmax_selection_keeps_both_slacks_and_repeated_families() {
         }
     }
 }
+
+#[test]
+fn six_and_three_heads_derive_identical_constraint_systems() {
+    let model = fixtures::models()
+        .into_iter()
+        .find(|m| m.name == "tiny-2-servable")
+        .unwrap();
+    let mut native: tessera_ir::ClaimList = tessera_codec::envelope::open(
+        &model.envelope,
+        &tessera_codec::schema::CLAIM_LIST,
+        tessera_codec::DecodeLimits::MESSAGE,
+    )
+    .unwrap();
+    let mut tv = ClaimList::open(&model.envelope, &DecodeLimits::MESSAGE).unwrap();
+    native.arch.n_heads = 6;
+    native.arch.n_kv_heads = 3;
+    native.arch.d_model = 96;
+    tv.arch.n_heads = 6;
+    tv.arch.n_kv_heads = 3;
+    tv.arch.d_model = 96;
+    for n in [1, 3, 4] {
+        let expected = compiler::snapshot(&native, n);
+        let found = verifier::snapshot(&tv, n);
+        assert_eq!(
+            report::difference(&expected, &found),
+            None,
+            "six/three heads at n={n}"
+        );
+        assert_eq!(compiler::frame(&expected), verifier::frame(&found));
+        assert_eq!(compiler::digest(&expected), verifier::digest(&found));
+    }
+}

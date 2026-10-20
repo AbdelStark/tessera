@@ -70,7 +70,7 @@ A layout fits when it allocates at most `2^{32}` rows: a row index of at most 32
 
 ### Heads
 
-`g = n_heads / n_kv_heads` is a power of two. RFC-0037's head layouts expand K and V by `g`, and reshape them as the identity only over axes whose lengths are powers of two. RFC-0034 takes `log2 g`. RFC-0007 step 2's architecture rule gains it (`Architecture`).
+`g = n_heads / n_kv_heads` is a power of two. RFC-0037's head layouts expand K and V by `g`, and reshape `[n, heads · d_head] ↔ [n, heads, d_head]` and `[kv, g, n, d_head] → [n_heads, n, d_head]` as the identity whenever each merged or split group's inner axes (`d_head` and `g`) are powers of two, even when `n_heads` or `n_kv_heads` is not. RFC-0034 takes `log2 g`. RFC-0007 step 2's architecture rule gains it (`Architecture`).
 
 ### A request's sequence length
 

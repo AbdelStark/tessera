@@ -595,3 +595,88 @@ fn scalar_and_ragged_onehot_sources_prove_through_the_actual_cpu_engine() {
         }
     }
 }
+
+#[test]
+fn six_and_three_heads_prove_through_the_actual_cpu_engine_and_verify() {
+    for n in [1, 3] {
+        let (mut model, _) = conformance("tiny-2-servable");
+        model.arch.n_heads = 6;
+        model.arch.n_kv_heads = 3;
+        model.arch.d_model = 96;
+        let shapes = model.arch.weight_shapes().expect("six/three weight shapes");
+        for weight in &mut model.weights {
+            let shape = shapes[weight.ty as usize];
+            weight.rows = shape.out;
+            weight.cols = shape.inputs;
+            weight.data = (0..shape.out * shape.inputs)
+                .map(|i| (i % 5) as i8 - 2)
+                .collect();
+        }
+        for ch in &mut model.quant.channels {
+            let out = shapes[ch.ty as usize].out as usize;
+            if !ch.class.is_empty() {
+                let first = ch.class[0];
+                ch.class.resize(out, first);
+            }
+            if !ch.multiplier.is_empty() {
+                let first = ch.multiplier[0];
+                ch.multiplier.resize(out, first);
+            }
+        }
+        let tokens = (0..n).map(|i| (3 * i + 1) % model.arch.vocab).collect();
+        let proven = prove_model(&model, tokens, 411 + u64::from(n));
+
+        let lists = json(&vectors().join("claims/claim-lists.json"));
+        let case = lists["cases"]
+            .as_array()
+            .expect("cases")
+            .iter()
+            .find(|c| c["name"] == "tiny-2-servable")
+            .expect("the golden claim list");
+        let hex = case["hex"].as_str().expect("hex");
+        let bytes: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex"))
+            .collect();
+        let mut claims = tv_core::claims::ClaimList::open(&bytes, &tv_codec::DecodeLimits::MESSAGE)
+            .expect("the claim list opens");
+        claims.arch.n_heads = 6;
+        claims.arch.n_kv_heads = 3;
+        claims.arch.d_model = 96;
+        let public = tv_core::validation::check_public(&claims).expect("six/three public part");
+        let graph = tv_core::lowering::lower(&public, n).expect("verifier lowering");
+        let schedule = tv_core::schedule::derive(&graph).expect("verifier schedule");
+        let kind = graph.tables()[0].kind.clone();
+        let rope = tv_tables::Table::generate(tv_tables::TableId(0), kind)
+            .expect("RoPE's table")
+            .rope()
+            .expect("a Rope table")
+            .clone();
+        let side = VerifierSide {
+            graph,
+            schedule,
+            rope,
+        };
+        let honest = messages(&proven);
+        let verified = check(&side, &proven, &honest).expect("six/three stage proofs verify");
+        assert_eq!(verified.pool.len(), proven.pool.len());
+        for (claim, prover) in verified.pool.iter().zip(&proven.pool) {
+            let prover = prover.expect("pool claim value");
+            assert_eq!(claim.value, tv_fp2(prover));
+            assert_eq!(from_witness(&side, &proven, claim), prover);
+        }
+
+        let mut tampered = honest;
+        tampered.stages[0].sumcheck.final_evals[0] =
+            changed(tampered.stages[0].sumcheck.final_evals[0]);
+        let error = check(&side, &proven, &tampered).expect_err("tampered evaluation rejected");
+        let stage1 = &side.schedule.stages()[0];
+        assert_eq!(
+            error.rejection(),
+            Some(SumcheckRejection {
+                stage: stage1.index,
+                round: u32::try_from(stage1.rounds).expect("small"),
+            })
+        );
+    }
+}

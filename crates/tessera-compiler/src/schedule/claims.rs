@@ -414,8 +414,7 @@ fn offsets(shape: &[u32]) -> Vec<usize> {
 /// Whether a `Reshape` of `x` into `y` maps the coordinates of their per-dimension padded
 /// extensions as the identity (RFC-0037 'Head layouts'): taking both shapes from the last axis in
 /// groups of equal products, a group of one axis on each side keeps its axis, and any other group
-/// holds only axes whose lengths are powers of two, but for its leading axis when no axis of more
-/// than one position lies above the group.
+/// holds only axes whose lengths are powers of two, its leading axis aside.
 fn reshape_is_identity(x: &[u32], y: &[u32]) -> bool {
     let (mut i, mut j) = (x.len(), y.len());
     loop {
@@ -446,13 +445,8 @@ fn reshape_is_identity(x: &[u32], y: &[u32]) -> bool {
         if group_x.len() == 1 && group_y.len() == 1 {
             continue;
         }
-        let fits = |group: &[u32], above: &[u32]| {
-            group
-                .iter()
-                .enumerate()
-                .all(|(k, &len)| len.is_power_of_two() || (k == 0 && ones(above)))
-        };
-        if !fits(group_x, &x[..i]) || !fits(group_y, &y[..j]) {
+        let fits = |group: &[u32]| group.iter().skip(1).all(|len| len.is_power_of_two());
+        if !fits(group_x) || !fits(group_y) {
             return false;
         }
     }
@@ -465,9 +459,13 @@ mod tests {
     /// The lowering's reshapes, and ones that move a padded axis.
     #[test]
     fn reshapes_are_identities_exactly_on_power_of_two_groups() {
-        let identities: [(&[u32], &[u32]); 7] = [
+        let identities: [(&[u32], &[u32]); 11] = [
             (&[5, 256], &[5, 2, 128]),
             (&[5, 2, 128], &[5, 256]),
+            (&[3, 96], &[3, 6, 16]),
+            (&[3, 6, 16], &[3, 96]),
+            (&[3, 48], &[3, 3, 16]),
+            (&[3, 3, 16], &[3, 48]),
             (&[5, 1, 128], &[5, 128]),
             (&[1, 2, 5, 128], &[2, 5, 128]),
             (&[3, 2, 5, 128], &[6, 5, 128]),
@@ -477,11 +475,13 @@ mod tests {
         for (x, y) in identities {
             assert!(reshape_is_identity(x, y), "{x:?} → {y:?}");
         }
-        let moves: [(&[u32], &[u32]); 4] = [
+        let moves: [(&[u32], &[u32]); 6] = [
             (&[5, 3], &[15]),
             (&[6], &[2, 3]),
             (&[2, 3, 128], &[6, 128]),
             (&[5, 96], &[5, 2, 48]),
+            (&[3, 12], &[3, 2, 6]),
+            (&[3, 288], &[3, 6, 48]),
         ];
         for (x, y) in moves {
             assert!(!reshape_is_identity(x, y), "{x:?} → {y:?}");

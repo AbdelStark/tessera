@@ -98,7 +98,7 @@ RFC-0006 gains two linear operations:
 On per-dimension padded extensions ([RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) rule 1), a claim on `y` is one claim on `x`:
 - **`Transpose`** permutes the coordinate blocks of the axes.
 - **`Expand`** drops the inserted axis's coordinates `r_a`, with coefficient `LT(r_a, len)`, which is 1 when `len` is a power of two.
-- **`Reshape`** maps coordinates as the identity when it merges or splits only axes whose lengths are powers of two, the leading axis aside. The lowering uses no other `Reshape`.
+- **`Reshape`** maps coordinates as the identity when, in each group of axes that merge or split, every axis but the group's leading axis has a length that is a power of two, axes of length 1 aside. When `d_head` is a power of two (`Rotate` below), the lowering uses no other `Reshape`: `[n, heads · d_head] ↔ [n, heads, d_head]` has `heads` as its group's leading axis and `d_head` as its inner axis, and `[kv, g, n, d_head] → [n_heads, n, d_head]` has `kv` as its group's leading axis and `g = n_heads / n_kv_heads` as its inner axis. A non-power-of-two `d_head` is rejected when deriving the stage schedule (`Reshape` when `heads > 1`, `Rotate` when `heads = 1`).
 
 The lowering's attention uses them in place of `GatherPublic`:
 - Q, K and V reshape to `[n, heads, d_head]` and transpose to `[heads, n, d_head]`.
