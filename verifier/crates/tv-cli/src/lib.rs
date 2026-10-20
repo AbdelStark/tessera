@@ -15,6 +15,9 @@ use tv_core::soundness::{
 /// Exit code on success (`02 §2.4`).
 pub const EXIT_SUCCESS: i32 = 0;
 
+/// Exit code on a rejected proof or missed soundness target (`02 §2.4`, `RFC-0051`).
+pub const EXIT_REJECT: i32 = 10;
+
 /// Exit code on a usage error (`02 §2.4`, `ERR-USAGE`).
 pub const EXIT_USAGE: i32 = 64;
 
@@ -198,13 +201,17 @@ fn run_params(args: &[String], json_flag: bool) -> CommandOutput {
 
     match SoundnessReport::evaluate(params, statement) {
         Ok(report) => {
+            let exit_code = match report.meets_targets {
+                Some(false) => EXIT_REJECT,
+                Some(true) | None => EXIT_SUCCESS,
+            };
             let stdout = if json_flag {
                 report.to_json()
             } else {
                 report.to_table()
             };
             CommandOutput {
-                exit_code: EXIT_SUCCESS,
+                exit_code,
                 stdout,
                 stderr: String::new(),
             }

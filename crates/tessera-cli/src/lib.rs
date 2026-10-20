@@ -26,10 +26,10 @@
 //!
 //! Every command prints its progress to stderr. With `--json` it prints one JSON object to
 //! stdout describing its result, or `{"command", "error": {"code", "message"}}` when it fails
-//! (02 §2). The exit status is the error code's (02 §2.4, 04 §3): 0 on success, 64 for a usage
-//! error, 65 for a malformed artifact, 20 when an artifact cannot be read or written, 70 for an
-//! internal error. Errors go to stderr as `error: ERR-...: what happened`; messages hold public
-//! data only (05 §3).
+//! (02 §2). The exit status is 02 §2.4's (04 §3, RFC-0051): 0 on success, 10 when a soundness
+//! target is missed (`tessera params check`), 64 for a usage error, 65 for a malformed artifact,
+//! 20 when an artifact cannot be read or written, 70 for an internal error. Errors go to stderr
+//! as `error: ERR-...: what happened`; messages hold public data only (05 §3).
 //!
 //! Every command's outcome leaves through [`run`]'s one exit point, where the run manifest of
 //! 05 §6 will be written (#95).
@@ -324,7 +324,7 @@ where
     };
     let (name, outcome) = dispatch(&cli);
     match outcome {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(error) => {
             let message = error
                 .source
@@ -362,14 +362,15 @@ fn fail(
 }
 
 /// Runs the command `cli` names, and returns its name, as 02 §2.2 spells it, with its outcome.
-fn dispatch(cli: &Cli) -> (&'static str, Result<(), TesseraError>) {
+fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
     use schema::{
         AUDIT_SAMPLE, EXECUTION_PLAN, INTEGER_MODEL, LOG_MANIFEST, WEIGHT_COMMITMENT_STATE,
     };
     match &cli.command {
         Command::Compile(a) => (
             "compile",
-            pending("compile", &[Input::new(&a.model, &INTEGER_MODEL)], 87),
+            pending("compile", &[Input::new(&a.model, &INTEGER_MODEL)], 87)
+                .map(|()| ExitCode::SUCCESS),
         ),
         Command::CommitWeights(a) => (
             "commit-weights",
@@ -380,7 +381,8 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<(), TesseraError>) {
                     Input::new(&a.plan, &EXECUTION_PLAN),
                 ],
                 111,
-            ),
+            )
+            .map(|()| ExitCode::SUCCESS),
         ),
         Command::Weights(Weights::Refresh(a)) => (
             "weights refresh",
@@ -388,7 +390,8 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<(), TesseraError>) {
                 "weights refresh",
                 &[Input::new(&a.weights, &WEIGHT_COMMITMENT_STATE)],
                 153,
-            ),
+            )
+            .map(|()| ExitCode::SUCCESS),
         ),
         Command::Prove(a) => (
             "prove",
@@ -401,7 +404,8 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<(), TesseraError>) {
                     Input::new(&a.sample, &AUDIT_SAMPLE),
                 ],
                 157,
-            ),
+            )
+            .map(|()| ExitCode::SUCCESS),
         ),
         Command::Audit(Audit::Sample(a)) => (
             "audit sample",
@@ -409,22 +413,32 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<(), TesseraError>) {
                 "audit sample",
                 &[Input::new(&a.manifest, &LOG_MANIFEST)],
                 157,
-            ),
+            )
+            .map(|()| ExitCode::SUCCESS),
         ),
         Command::Audit(Audit::Batch(a)) => (
             "audit batch",
-            pending("audit batch", &[Input::new(&a.sample, &AUDIT_SAMPLE)], 157),
+            pending("audit batch", &[Input::new(&a.sample, &AUDIT_SAMPLE)], 157)
+                .map(|()| ExitCode::SUCCESS),
         ),
         Command::Audit(Audit::Plan(a)) => (
             "audit plan",
-            pending("audit plan", &[Input::new(&a.plan, &EXECUTION_PLAN)], 157),
+            pending("audit plan", &[Input::new(&a.plan, &EXECUTION_PLAN)], 157)
+                .map(|()| ExitCode::SUCCESS),
         ),
         Command::Params(Params::Check(a)) => ("params check", params::check(a, cli.json)),
-        Command::Bench(Bench::UnitCosts(_)) => {
-            ("bench unit-costs", pending("bench unit-costs", &[], 49))
-        }
-        Command::Bench(Bench::Model(a)) => ("bench model", bench::model(a, cli.json)),
-        Command::Recorder(Recorder::Ref(_)) => ("recorder ref", pending("recorder ref", &[], 139)),
+        Command::Bench(Bench::UnitCosts(_)) => (
+            "bench unit-costs",
+            pending("bench unit-costs", &[], 49).map(|()| ExitCode::SUCCESS),
+        ),
+        Command::Bench(Bench::Model(a)) => (
+            "bench model",
+            bench::model(a, cli.json).map(|()| ExitCode::SUCCESS),
+        ),
+        Command::Recorder(Recorder::Ref(_)) => (
+            "recorder ref",
+            pending("recorder ref", &[], 139).map(|()| ExitCode::SUCCESS),
+        ),
     }
 }
 
