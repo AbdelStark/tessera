@@ -5,6 +5,7 @@
 //! canonical advice roles and prescribed range lookups before the opening checks.
 
 pub mod argmax;
+pub mod argmax_outputs;
 pub mod comparison;
 pub mod decomposition;
 pub mod onehot;

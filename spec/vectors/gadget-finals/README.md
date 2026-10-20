@@ -260,3 +260,28 @@ six honest and six omission chains using the CPU proof engine. These are
 component proofs. The certificate binder still owes canonical maximum advice,
 the Range29 table, the model logits and the recorded next-token OneHot; a typed
 role claim alone is not a commitment opening or complete model verification.
+
+## Canonical output views
+
+`argmax-views.json`, schema version 1, has six model-derived cases and twelve
+source views. For `n = prompt + outputs`, output row `u` reads the actual logits
+tensor at `prompt-1+u` and the existing graph OneHot at `prompt+u`. The fixtures
+record the real graph tensor ids, literal source/sliced columns and evaluations.
+Output padding is zero even when the original graph has another real row there.
+
+The row-copy kernel is the literal sum
+`K(r,t) = sum_{u<outputs} eq(r,u)*eq(t,offset+u)`. Each component batch reduces
+the two output-view claims to their original graph tensors with degree two.
+The verifier computes K using addition-carry and comparison states, while Python
+enumerates the shifted rows. Exhaustive small-domain tests compare every Boolean
+source row for every prompt/output interval up to eight tokens, including carry
+chains, equal padded widths and scalar output axes.
+
+The independent consumer is
+`verifier/crates/tv-core/tests/gadget_argmax_outputs.rs`; the producer consumer
+`crates/tessera-prover/tests/gadget_argmax_outputs.rs` reproduces every round,
+evaluation and transcript state with the CPU proof engine and actual OneHot
+source columns. The graph sources still need their graph reductions/openings.
+The maximum remains a typed certificate commitment debt: it is not an auxiliary
+of a fabricated model node. Complete certificate advice placement, global ids,
+stage assembly and soundness/resource accounting remain driver obligations.
