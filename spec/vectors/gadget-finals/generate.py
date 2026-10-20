@@ -326,6 +326,10 @@ def main():
     write('comparison.json', out)
     write('decomposition.json', decompositions())
     write('root-products.json', root_products())
+    spec = importlib.util.spec_from_file_location('requant_oracle', Path(__file__).with_name('requant.py'))
+    requant = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(requant)
+    write('requant.json', requant.cases(mle))
     print(f'{len(cases)} comparison cases, {sum(len(c["rows"]) for c in cases)} integer witnesses')
 
 

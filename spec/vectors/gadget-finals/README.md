@@ -104,3 +104,19 @@ reproduces every round and final evaluation through the actual CPU sumcheck
 engine, feeds them to the independent verifier, and checks all honest root,
 auxiliary and comparison columns against the oracle. The product kernel remains
 a relation evaluator; complete model scheduling and source binding are separate.
+
+## Requantization bindings
+
+`requant.json`, schema version 1, freezes 119 sites and 183 lookups across five
+public micro-model variants before implementing the verifier's binding adapter.
+`requant.py` uses the independent public-model, lowering, selection and table
+oracles. It derives keys from whole integer digits and evaluates their complete
+Boolean tables by direct cube sums. Cases cover single-table and split patterns,
+wide patterns with and without a low column, four classes, three real token rows,
+non-power-of-two channel domains and non-Boolean extension-field points.
+
+Each site records its graph-node and gadget ids, table ids in request order,
+canonical graph/auxiliary sources, source columns, lookup columns and evaluations.
+Class vectors use the channel coordinates alone. Range lookups have value zero;
+the saturation and final requantization lookups retain their actual table values.
+These are binding fixtures, not complete LogUp or model proofs.
