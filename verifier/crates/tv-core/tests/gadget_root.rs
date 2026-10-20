@@ -460,6 +460,22 @@ fn each_altered_leaf_source_key_or_range_value_and_malformed_count_has_the_exact
                     .err(),
                 rejected
             );
+            let mut paired_values = zeros.clone();
+            paired_values.push(Fp2::ZERO);
+            assert_eq!(
+                root.check(&point, &sources, &extra, &paired_values).err(),
+                rejected
+            );
+            assert_eq!(
+                root.check(
+                    &point,
+                    &sources,
+                    &keys[..keys.len() - 1],
+                    &zeros[..zeros.len() - 1]
+                )
+                .err(),
+                rejected
+            );
             assert_eq!(
                 root.check(&point, &sources, &keys, &zeros[..zeros.len() - 1])
                     .err(),
@@ -517,6 +533,11 @@ fn each_altered_leaf_source_key_or_range_value_and_malformed_count_has_the_exact
                 root.padding(&extra, &point, &[Fp2::ZERO])
                     .err()
                     .map(|e| e.code()),
+                Some("ERR-INTERNAL")
+            );
+            // Verifier-owned geometry errors precede proof shape errors.
+            assert_eq!(
+                root.padding(&extra, &point, &[]).err().map(|e| e.code()),
                 Some("ERR-INTERNAL")
             );
             assert_eq!(
