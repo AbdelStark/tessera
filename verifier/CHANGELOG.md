@@ -160,6 +160,8 @@ All notable changes to the verifier release train are recorded here: the crates 
   singleton domains and both padding axes. Full stage integration remains separate
   from these final relation evaluators (#124).
 
+- Bind RFC-0050 roots to verifier-derived graph/auxiliary sources and every canonical Range request. Complete comparison arrays derive nonlinear product targets; final operands retain root, sum-of-squares and low-limb claims, and a separate padding check pins the root on skipped rows. Independent model fixtures and CPU proofs cover 35 sites, 4,745 requests, wide integer constants, a range-valid wrong root and a padded-root alternative. Complete stage/layer-template integration remains separate (#124).
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

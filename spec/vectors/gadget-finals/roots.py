@@ -76,6 +76,33 @@ def cases(oracle):
             assert all(0 <= value < 2**bits for c,bits in zip(key_columns,widths) for value in c)
             roots.append(root)
         record = dict(name=name,kappa=kappa,epsilon=epsilon,dim=public['arch']['d_model'],n=3,bad_padding=bad,roots=roots)
+        if name == 'width-8':
+            alternative = copy.deepcopy(roots[0])
+            rho = alternative['columns'][1]
+            rho[0] += 1
+            width = alternative['width']
+            m = len(alternative['product_targets'])//2
+            constant = int(alternative['constant'])
+            u = [sum(c[row] << (16*j) for j,c in enumerate(alternative['u_digits'])) for row in range(4)]
+            root_digits = [[(v >> (8*j)) & 255 for v in rho] for j in range((width+7)//8)]
+            raw = [[oracle.product_coefficients(r,v,width,inc) for r,v in zip(rho,u)] for inc in (False,True)]
+            arrays = []
+            for inc in (False,True):
+                rows = []
+                for row in range(4):
+                    digits = [((constant+int(inc)) >> (8*j)) & 255 if row < 3 else 0 for j in range(m)]
+                    left,right = (raw[0][row],digits) if not inc else (digits,raw[1][row])
+                    rows.append(oracle.witness(left,right,8,True))
+                arrays.extend([[rows[row][a][j] for row in range(4)] for a in range(6) for j in range(m)])
+            alternative['columns'] = [alternative['columns'][0],rho]+alternative['u_digits'][:3]+root_digits[:-1]+arrays
+            alternative['key_columns'] = [rho]+alternative['u_digits']+root_digits+arrays
+            alternative['root_digits'] = root_digits
+            alternative['values'] = [q.mle([q.lift(v) for v in col],alternative['point']) for col in alternative['columns']]
+            alternative['keys'] = [q.mle([q.lift(v) for v in col],alternative['point']) for col in alternative['key_columns']]
+            alternative['product_targets'] = [q.mle([q.lift(row[j]) for row in raw[inc]],alternative['point']) for inc in range(2) for j in range(m)]
+            assert arrays[6*m-1][0] == 1
+            assert all(0 <= v < 2**bits for col,bits in zip(alternative['key_columns'],alternative['range_bits']) for v in col)
+            record['wrong_root'] = alternative
         record['proof'] = prove(q,rng,roots[0],False)
         if bad:
             record['omission'] = prove(q,rng,roots[0],True,context=record['proof']['context'])

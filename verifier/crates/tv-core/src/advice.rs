@@ -171,6 +171,38 @@ pub enum Auxiliary {
     /// A member of a root comparison array.
     RootComparison(Comparison, ComparisonRole, u32),
 }
+
+pub(crate) fn root_auxiliary(r: u32, m: u32, index: u32) -> Option<Auxiliary> {
+    if index < 3 {
+        return Some(Auxiliary::RootInput(index));
+    }
+    let index = index.checked_sub(3)?;
+    if index < r {
+        return Some(Auxiliary::RootLow(index));
+    }
+    let index = index.checked_sub(r)?;
+    let array = index.checked_div(m)?;
+    let comparison = if array < 6 {
+        Comparison::Lower
+    } else if array < 12 {
+        Comparison::Upper
+    } else {
+        return None;
+    };
+    let role = match array.checked_rem(6)? {
+        0 => ComparisonRole::LeftDigit,
+        1 => ComparisonRole::LeftCarry,
+        2 => ComparisonRole::RightDigit,
+        3 => ComparisonRole::RightCarry,
+        4 => ComparisonRole::Difference,
+        _ => ComparisonRole::Borrow,
+    };
+    Some(Auxiliary::RootComparison(
+        comparison,
+        role,
+        index.checked_rem(m)?,
+    ))
+}
 /// The public identity of one column; attention columns also name their tile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Source {
@@ -575,35 +607,7 @@ impl<'a> Layout<'a> {
             }
             Pattern::RsqrtRow => {
                 let (r, m) = self.root_counts(id).ok()?;
-                if index < 3 {
-                    return Some(Auxiliary::RootInput(index));
-                }
-                let index = index.checked_sub(3)?;
-                if index < r {
-                    return Some(Auxiliary::RootLow(index));
-                }
-                let index = index.checked_sub(r)?;
-                let array = index.checked_div(m)?;
-                let comparison = if array < 6 {
-                    Comparison::Lower
-                } else if array < 12 {
-                    Comparison::Upper
-                } else {
-                    return None;
-                };
-                let role = match array.checked_rem(6)? {
-                    0 => ComparisonRole::LeftDigit,
-                    1 => ComparisonRole::LeftCarry,
-                    2 => ComparisonRole::RightDigit,
-                    3 => ComparisonRole::RightCarry,
-                    4 => ComparisonRole::Difference,
-                    _ => ComparisonRole::Borrow,
-                };
-                Some(Auxiliary::RootComparison(
-                    comparison,
-                    role,
-                    index.checked_rem(m)?,
-                ))
+                root_auxiliary(r, m, index)
             }
             _ => None,
         }

@@ -8,6 +8,7 @@ pub mod comparison;
 pub mod decomposition;
 pub mod onehot;
 pub mod requant;
+pub mod root;
 pub mod root_products;
 
 use crate::advice::Source;

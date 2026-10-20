@@ -186,3 +186,16 @@ evaluations before stage-one challenges. The padded-root variant passes all
 range, decomposition, comparison and product relations, and fails the padding
 check. Its additional `omission` proof passes when that check alone is disabled.
 These fixtures do not define a complete model stage or layer-template stacking.
+
+`wrong_root` is a consistently encoded real-row alternative: every request passes
+its actual Range table, but the lower comparison ends with borrow one. The
+model-derived binder rejects it with the owning gadget id. Both workspaces check
+the range-membership control; the honest CPU root differs from the alternative.
+
+`verifier/crates/tv-core/tests/gadget_root.rs` verifies all 35 model-derived sites,
+4,745 requests, retained source/product debts, exact local errors, product/padding
+batches and the two alternatives. Coherently changing a witness and its key tests
+the comparison checks independently of the source-equality checks. The producer
+adapter in `crates/tessera-prover/tests/gadget_root.rs`, written after the verifier
+tests passed, checks actual root witness columns and reproduces every CPU round
+and final evaluation for six honest batches and the padding-omission control.
