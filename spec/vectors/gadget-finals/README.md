@@ -163,3 +163,26 @@ in `crates/tessera-prover/tests/gadget_onehot.rs`, written after the independent
 checks passed, generates actual OneHot columns and reproduces every CPU round and
 final evaluation for six honest batches and six omission controls. The independent
 verifier accepts the former and rejects the latter with the exact final-round error.
+
+## Model-derived root bindings
+
+`roots.json`, schema version 1, records 35 root sites from seven public micro-model
+variants, including a zero maximum, widths 1/8/16/32, a constant above Goldilocks,
+and a nonzero padded root.
+`roots.py` uses independent lowering/catalog oracles, whole-integer root and
+comparison witnesses, and direct cube sums. Each site retains every canonical
+source, range request (including repeats and virtual tops), comparison array and
+raw product target. The first site of each variant has a degree-four component
+batch connecting those targets to root/input digits, plus its padding zero check.
+
+The input is reduced as `u=S+epsilon*psi` only for a graph-derived `SumSquares`
+over a committed residual with the canonical zero padding. At Boolean padded
+rows `S=0`, so this is the same extension as `psi*(S+epsilon)`. Every derived
+claim on `S` still needs its graph reduction and the residual's source openings.
+
+All root product target claims come from the already bound comparison digits
+and carries, without a new message. Component transcripts absorb the leaf source
+evaluations before stage-one challenges. The padded-root variant passes all
+range, decomposition, comparison and product relations, and fails the padding
+check. Its additional `omission` proof passes when that check alone is disabled.
+These fixtures do not define a complete model stage or layer-template stacking.

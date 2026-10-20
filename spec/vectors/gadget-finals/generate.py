@@ -334,6 +334,10 @@ def main():
     onehot = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(onehot)
     write('onehot.json', onehot.cases())
+    spec = importlib.util.spec_from_file_location('root_binding_oracle', Path(__file__).with_name('roots.py'))
+    roots = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(roots)
+    write('roots.json', roots.cases(sys.modules[__name__]))
     print(f'{len(cases)} comparison cases, {sum(len(c["rows"]) for c in cases)} integer witnesses')
 
 
