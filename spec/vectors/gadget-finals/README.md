@@ -45,3 +45,14 @@ cargo xtask gen-vectors --check
 
 The issue's implementation adds a verifier consumer before comparing with the
 prover, and a consumer in the prover workspace before the issue is published.
+
+## Decompositions
+
+`decomposition.json`, schema version 1, contains 248 cases and 992 integer
+witnesses: every NonNeg width 1–62 with limb widths 1, 8, 16 and 32. Zero,
+one, the last admissible integer and an interior integer have their low limbs
+and their virtual top recorded. The final range width is narrowed independently
+of the policy limb width. Direct cube sums give every value and limb evaluation
+at a non-Boolean point. This includes the 55-bit `(16,16,16,7)` root input and
+all 1–32-bit byte decompositions of roots. These affine relations still owe
+lookup proofs and source bindings; the fixture does not replace either.

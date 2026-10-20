@@ -158,6 +158,33 @@ def root_cases():
     return cases
 
 
+def decompositions():
+    cases = []
+    for bits in range(1, 63):
+        for limb in [1, 8, 16, 32]:
+            count = (bits+limb-1)//limb
+            widths = [min(limb, bits-j*limb) for j in range(count)]
+            values = [0, 1, 2**bits-1, (2**bits-1)//3]
+            rows = [{'value': v, 'limbs': [v // 2**(j*limb) % 2**w
+                                         for j, w in enumerate(widths)]}
+                    for v in values]
+            for row in rows:
+                assert row['value'] == sum(v*2**(j*limb) for j, v in enumerate(row['limbs']))
+                assert all(0 <= v < 2**w for v, w in zip(row['limbs'], widths))
+            point = [[19, P-7], [P-31, 13]]
+            cases.append(dict(bits=bits, limb_bits=limb, widths=widths, rows=rows, point=point,
+                              value=mle(values, point),
+                              limbs=[mle([r['limbs'][j] for r in rows], point) for j in range(count)]))
+    return {'schema_version': 1, 'cases': cases}
+
+
+def write(name, document):
+    rendered = re.sub(r'\[\s+[\d,\s]+\]',
+                      lambda match: json.dumps(json.loads(match[0])),
+                      json.dumps(document, indent=2))
+    Path(__file__).with_name(name).write_text(rendered+'\n')
+
+
 def main():
     cases = []
     for bits in [1, 2, 7, 8, 16, 31, 32]:
@@ -172,10 +199,8 @@ def main():
     out = {"schema_version": 1,
            "description": "RFC-0009/0050 grouped comparison arrays; independent integer prefixes and direct MLE sums",
            "cases": cases}
-    rendered = re.sub(r'\[\s+[\d,\s]+\]',
-                      lambda match: json.dumps(json.loads(match[0])),
-                      json.dumps(out, indent=2))
-    Path(__file__).with_name('comparison.json').write_text(rendered+'\n')
+    write('comparison.json', out)
+    write('decomposition.json', decompositions())
     print(f'{len(cases)} comparison cases, {sum(len(c["rows"]) for c in cases)} integer witnesses')
 
 
