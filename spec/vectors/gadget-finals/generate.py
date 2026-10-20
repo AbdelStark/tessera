@@ -338,6 +338,10 @@ def main():
     roots = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(roots)
     write('roots.json', roots.cases(sys.modules[__name__]))
+    spec = importlib.util.spec_from_file_location('softmax_oracle', Path(__file__).with_name('softmax.py'))
+    softmax = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(softmax)
+    write('softmax.json', softmax.cases())
     print(f'{len(cases)} comparison cases, {sum(len(c["rows"]) for c in cases)} integer witnesses')
 
 
