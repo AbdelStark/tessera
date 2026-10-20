@@ -12,6 +12,9 @@ use tessera_scoring::{ExactGreedy, GreedyInputs};
 use tessera_tables::{GeneratedTable, Table, TableId, TableKind};
 
 fn model(n: u32) -> Lowering {
+    model_with_vocab(n, 5)
+}
+fn model_with_vocab(n: u32, vocab: u32) -> Lowering {
     let bytes = std::fs::read(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../spec/vectors/models/tiny-2-servable.d"
@@ -21,7 +24,7 @@ fn model(n: u32) -> Lowering {
         envelope::open(&bytes, &schema::INTEGER_MODEL, DecodeLimits::INTEGER_MODEL).unwrap();
     // Metadata-only cases use a ragged vocabulary; actual model proofs use the
     // unmodified fixture separately. No secret weights enter this lowering.
-    model.arch.vocab = 5;
+    model.arch.vocab = vocab;
     lower(PublicModel::of(&model), n).unwrap()
 }
 fn table() -> GeneratedTable {
@@ -110,7 +113,7 @@ fn first_mismatch_is_deterministic_and_discloses_no_logit_or_token_value() {
         .request(RequestId(77), 1, 2)
         .unwrap()
         .witness([
-            inputs(&[111_111_111, -9, -9, -9, -9], 4),
+            inputs(&[-9, -9, -9, -9, 111_111_111], 0),
             inputs(&[2, 3, 4, 5, 6], 0),
         ])
         .unwrap_err();
@@ -299,5 +302,118 @@ fn replay_retains_the_fixed_certificate_and_cannot_replace_the_indicator() {
             .unwrap_err()
             .code(),
         ErrorCode::Usage
+    );
+}
+
+#[test]
+fn metadata_logit_bounds_roles_and_range_spec_are_required() {
+    let lowering = model(3);
+    let mut invalid = lowering.clone();
+    let node = &mut invalid.graph.nodes[1];
+    node.inputs[0] = node.outputs[0]; // A self-dependent node, without changing the scoring headers.
+    assert_eq!(
+        ExactGreedy::new(&invalid, table().spec())
+            .unwrap_err()
+            .code(),
+        ErrorCode::Usage
+    );
+    for lower in [true, false] {
+        let mut changed = lowering.clone();
+        let logits = &mut changed.graph.tensors[changed.logits.0 as usize];
+        if lower {
+            logits.range.lo = -(1 << 28)
+        } else {
+            logits.range.hi = 1 << 28
+        }
+        assert_eq!(
+            ExactGreedy::new(&changed, table().spec())
+                .unwrap_err()
+                .code(),
+            ErrorCode::Usage
+        );
+    }
+    let mut changed = lowering.clone();
+    changed.tokens = changed.positions;
+    assert_eq!(
+        ExactGreedy::new(&changed, table().spec())
+            .unwrap_err()
+            .code(),
+        ErrorCode::Usage
+    );
+    let mut changed = model_with_vocab(3, 64);
+    let foreign=changed.graph.nodes.iter().find(|n|matches!(n.op,tessera_ir::Op::MatMulWeight{weight} if weight.ty==tessera_ir::WeightType::Q)).unwrap().outputs[0];
+    assert_eq!(
+        changed.graph.tensors[foreign.0 as usize].shape,
+        changed.graph.tensors[changed.logits.0 as usize].shape
+    );
+    changed.logits = foreign;
+    assert_eq!(
+        ExactGreedy::new(&changed, table().spec())
+            .unwrap_err()
+            .code(),
+        ErrorCode::Usage
+    );
+    let wrong = GeneratedTable::new(TableId(700), TableKind::Range { bits: 28 }).unwrap();
+    assert_eq!(
+        ExactGreedy::new(&lowering, wrong.spec())
+            .unwrap_err()
+            .code(),
+        ErrorCode::Internal
+    );
+}
+
+#[test]
+fn certificate_debug_and_row_debug_show_no_secret_values_or_match_flags() {
+    let lowering = model(2);
+    let scorer = ExactGreedy::new(&lowering, table().spec()).unwrap();
+    let certificate = scorer
+        .request(RequestId(2), 1, 1)
+        .unwrap()
+        .witness([inputs(&[111_111_111, 0, 0, 0, 0], 0)])
+        .unwrap();
+    let input = inputs(&[111_111_111, 0, 0, 0, 0], 0);
+    let row = certificate.prepare_row(0, &input).unwrap();
+    let shown = format!("{certificate:?} {row:?}");
+    assert!(!shown.contains("111111111"));
+    assert!(!shown.contains("matching"));
+    let bad = GreedyInputs {
+        logits: SecretBuf::filled(G::from_i64(0), 8),
+        next_token: OneHotWitness::from_column(SecretBuf::filled(G::from_i64(0), 7)),
+    };
+    assert_eq!(
+        scorer
+            .request(RequestId(2), 1, 1)
+            .unwrap()
+            .witness([bad])
+            .unwrap_err()
+            .code(),
+        ErrorCode::Usage
+    );
+}
+
+#[test]
+fn a_single_vocabulary_entry_needs_no_vocabulary_coordinates() {
+    let lowering = model_with_vocab(2, 1);
+    let scorer = ExactGreedy::new(&lowering, table().spec()).unwrap();
+    let make = || GreedyInputs {
+        logits: [G::from_i64(-7)].into_iter().collect(),
+        next_token: OneHot::<G>::new(1).unwrap().witness(0, true).unwrap(),
+    };
+    let certificate = scorer
+        .request(RequestId(2), 1, 1)
+        .unwrap()
+        .witness([make()])
+        .unwrap();
+    assert_eq!(certificate.uhat(), 0);
+    assert_eq!(certificate.maxima(), &[G::from_i64(-7)]);
+    let input = make();
+    assert_eq!(
+        certificate
+            .prepare_row(0, &input)
+            .unwrap()
+            .evaluated()
+            .keys
+            .len(),
+        1
     );
 }

@@ -79,26 +79,29 @@ fn component(
     point: &[F],
     target: F,
     operands: &[&[G]],
+    degree: usize,
     marker: u8,
     mut final_value: impl FnMut(&[E], &[E]) -> E,
 ) {
+    let vars = operands
+        .iter()
+        .map(|x| x.len().trailing_zeros() as usize)
+        .max()
+        .unwrap();
+    assert_eq!(relation.shape().vars, vars);
+    assert_eq!(relation.shape().summed_vars, vars - point.len());
+    assert!(relation.degree() <= degree);
     let tables = relation.tables(point).unwrap();
     let (mut p, mut v) = sessions(marker, target);
-    let proved = prove_batch(
-        &mut p,
-        Prefix::Stage(1),
-        relation.degree(),
-        &[tables.instance()],
-    )
-    .unwrap();
+    let proved = prove_batch(&mut p, Prefix::Stage(1), degree, &[tables.instance()]).unwrap();
     let proof = proof_of(&proved);
     let checked = tv::verify_batch(
         &mut v,
         tv::Prefix::Stage(1),
-        relation.degree(),
+        degree,
         &[tv::Instance {
             claim: tvf(target),
-            vars: relation.shape().vars,
+            vars,
             evals: operands.len(),
         }],
         &proof,
@@ -223,6 +226,7 @@ fn actual_tiny_model_exact_requests_prove_zero_and_one_altered_output_refuses() 
             &[],
             F::from(maximum[0]),
             &[h, ell],
+            2,
             1,
             |p, e| selected.evaluate(p, e).unwrap().value(),
         );
@@ -233,6 +237,7 @@ fn actual_tiny_model_exact_requests_prove_zero_and_one_altered_output_refuses() 
             &point,
             key,
             &[maximum, ell, &evaluated.suffix],
+            3,
             2,
             |p, e| lookup.evaluate(p, e).unwrap().value(),
         );
@@ -271,17 +276,17 @@ fn actual_tiny_model_exact_requests_prove_zero_and_one_altered_output_refuses() 
         let one = OneHot::<G>::new(vocab).unwrap();
         let r = one.relations::<F>(row.next_token()).unwrap();
         let z = vp.clone();
-        component(&r.booleanity, &point, F::ZERO, &[h], 4, |p, e| {
+        component(&r.booleanity, &point, F::ZERO, &[h], 3, 4, |p, e| {
             tv::eq(&z, p).unwrap() * e[0] * (E::ONE - e[0])
         });
-        component(&r.vocabulary, &point, F::ZERO, &[h], 5, |p, e| {
+        component(&r.vocabulary, &point, F::ZERO, &[h], 3, 5, |p, e| {
             tv::eq(&z, p).unwrap()
                 * (E::ONE - tv_core::selectors::lt(p, vocab as u64).unwrap())
                 * e[0]
         });
-        component(&r.count, &[], F::ONE, &[h], 6, |_, e| e[0]);
+        component(&r.count, &[], F::ONE, &[h], 2, 6, |_, e| e[0]);
         let token = G::from_u64_reduced(u64::from(tokens[row.sources().token_position as usize]));
-        component(&r.index, &[], F::from(token), &[h], 7, |p, e| {
+        component(&r.index, &[], F::from(token), &[h], 2, 7, |p, e| {
             let index = p
                 .iter()
                 .enumerate()
