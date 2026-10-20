@@ -64,3 +64,26 @@ of the policy limb width. Direct cube sums give every value and limb evaluation
 at a non-Boolean point. This includes the 55-bit `(16,16,16,7)` root input and
 all 1–32-bit byte decompositions of roots. These affine relations still owe
 lookup proofs and source bindings; the fixture does not replace either.
+
+## Root products
+
+`root-products.json`, schema version 1, contains 34 standalone degree-four
+sumcheck batches with 796 coefficient instances: both products for every root
+width, plus the constants-at/above-Goldilocks cases. Each has eight rows, four
+padded, and reduces a coefficient claim at an incoming non-Boolean point to
+claims on the root-byte and input-limb extensions at the sumcheck's final point.
+
+The polynomial is `sum_{i+h+2*k=j} R_i*R_h*U_k`, with `R_0+1` on the upper
+side. Every raw coefficient is retained, including the high zero coefficients
+needed for full carry normalization. The upper polynomial uses the constant one
+at arbitrary field points; substituting the row selector changes its polynomial.
+The oracle sums the remaining Boolean vertices in every round and interpolates
+with the independent sumcheck oracle. Its transcript oracle checks the official
+BLAKE3 vectors first.
+
+The fixture records its context, incoming point and claims, operand tables,
+batching challenge, round messages, final evaluations, final point and transcript
+state/counter. Incoming claims are fixed under `stage/0/split` before the
+`stage/1` batch. These are component proofs with synthetic inputs, not complete
+model proofs: the driver must bind the incoming claims to the comparison arrays
+and every outgoing digit/input claim to its canonical decomposition and source.

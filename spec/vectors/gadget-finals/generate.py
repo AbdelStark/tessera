@@ -7,8 +7,12 @@ weighted integer prefixes rather than the production limb recurrence. The two
 normalization chains and subtraction are checked independently as whole integers.
 """
 import json
+import importlib.util
 import re
+import sys
 from pathlib import Path
+
+sys.dont_write_bytecode = True
 
 P = 2**64 - 2**32 + 1
 ONE = (1, 0)
@@ -130,12 +134,17 @@ def product_coefficients(root, u, width, increment):
     return out
 
 
-def root_cases():
-    from math import isqrt
-    cases = []
+def root_parameters():
     parameters = [(f'root-{w}', w, 2**(2*(w-1)), 1) for w in range(1, 33)]
     parameters += [('root-constant-at-P', 32, P-1, 1),
                    ('root-constant-above-P', 32, 4096*2**60, 672)]
+    return parameters
+
+
+def root_cases():
+    from math import isqrt
+    cases = []
+    parameters = root_parameters()
     for name, width, n, epsilon in parameters:
         m = (2*width+55+7)//8
         rows_lower, rows_upper = [], []
@@ -156,6 +165,90 @@ def root_cases():
         cases += [case(f'{name}-lower', 8, rows_lower, (maxima_lower, const_l)),
                   case(f'{name}-upper', 8, rows_upper, (const_u, maxima_upper))]
     return cases
+
+
+def root_products():
+    """Actual degree-four sumchecks of the raw triple-product coefficient claims.
+
+    Every round sums the polynomial at literal remaining Boolean vertices. No
+    production prover, folding kernel or product-of-extensions shortcut is used.
+    """
+    from math import isqrt
+    path = Path(__file__).resolve().parent.parent / 'sumcheck/generate.py'
+    spec = importlib.util.spec_from_file_location('gadget_sumcheck_oracle', path)
+    q = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(q)
+    q.hashing.check_official_vectors()
+    rng = q.Inputs(0x1240050)
+    cases = []
+
+    def coefficient(values, byte_count, j, increment):
+        out = q.ZERO
+        roots, inputs = values[:byte_count], values[byte_count:]
+        for i, a in enumerate(roots):
+            for h, b in enumerate(roots):
+                if increment:
+                    a1 = q.add(a, q.ONE) if i == 0 else a
+                    b1 = q.add(b, q.ONE) if h == 0 else b
+                else:
+                    a1, b1 = a, b
+                for k, u in enumerate(inputs):
+                    if i+h+2*k == j:
+                        out = q.add(out, q.mul(q.mul(a1, b1), u))
+        return out
+
+    for name, width, n, epsilon in root_parameters():
+        byte_count, m = (width+7)//8, (2*width+55+7)//8
+        inputs = [epsilon, epsilon+1, 2**32-2, 2**55-1] + [0]*4
+        roots = [isqrt(n//u) if u else 0 for u in inputs]
+        columns = [[q.lift((r >> (8*i)) & 255) for r in roots] for i in range(byte_count)]
+        columns += [[q.lift((u >> (16*i)) & (127 if i == 3 else 65535)) for u in inputs]
+                    for i in range(4)]
+        target = [rng.fp2() for _ in range(3)]
+        kinds = [(increment, j) for increment in [False, True] for j in range(m)]
+        raw = [[product_coefficients(r, u, width, inc) for r, u in zip(roots, inputs)]
+               for inc in [False, True]]
+        claims = [q.mle([q.lift(row[j]) for row in raw[int(inc)]], target) for inc, j in kinds]
+        context = rng.context()
+        t = q.transcript.Transcript(q.transcript.session_context(context))
+        t.absorb('stage/0/split', q.tce(claims))
+        gamma = q.challenge(t, 'stage/1/gamma')
+        weights = [q.power(gamma, i) for i in range(len(kinds))]
+        entering = q.total(q.mul(w, c) for w, c in zip(weights, claims))
+
+        def at(prefix):
+            out = q.ZERO
+            for rest in range(2**(3-len(prefix))):
+                point = prefix + q.boolean_point(rest, 3-len(prefix))
+                values = [q.mle(table, point) for table in columns]
+                factor = q.eq_points(target, point)
+                value = q.total(q.mul(w, coefficient(values, byte_count, j, inc))
+                                for w, (inc, j) in zip(weights, kinds))
+                out = q.add(out, q.mul(factor, value))
+            return out
+
+        assert at([]) == entering
+        point, rounds, claim = [], [], entering
+        for round_index in range(3):
+            values = [at(point+[q.lift(i)]) for i in range(5)]
+            assert q.add(values[0], values[1]) == claim
+            message = [values[0]] + values[2:]
+            t.absorb(f'stage/1/round/{round_index}', q.tce(message))
+            r = q.challenge(t, f'stage/1/r/{round_index}')
+            point.append(r)
+            claim = q.lagrange(values, r)
+            rounds.append(message)
+        evaluations = [q.mle(table, point) for table in columns]
+        terms = [q.mul(q.eq_points(target, point), coefficient(evaluations, byte_count, j, inc))
+                 for inc, j in kinds]
+        assert q.total(q.mul(w, value) for w, value in zip(weights, terms)) == claim
+        final_evals = evaluations * len(kinds)
+        t.absorb('stage/1/evals', q.tce(final_evals))
+        cases.append(dict(name=name, width=width, context=context, target=target,
+                          columns=columns, claims=claims, degree=4, gamma=gamma,
+                          round_point=point, rounds=rounds, final_evals=final_evals,
+                          final_claim=claim, state=t.state.hex(), counter=t.counter))
+    return {'schema_version': 1, 'cases': cases}
 
 
 def decompositions():
@@ -201,6 +294,7 @@ def main():
            "cases": cases}
     write('comparison.json', out)
     write('decomposition.json', decompositions())
+    write('root-products.json', root_products())
     print(f'{len(cases)} comparison cases, {sum(len(c["rows"]) for c in cases)} integer witnesses')
 
 
