@@ -16,6 +16,9 @@
 //! `tessera-protocol/2`: at a slot that public data determines, whatever its secret-dependent
 //! work took (RFC-0018 'Release schedule', INV-ARCH-2).
 //!
+//! [`derive_model_schedule`] derives complete protocol/1 transcript dimensions from public
+//! claims, including every native gadget lookup, forest and reduction path.
+//!
 //! # Features
 //!
 //! - `test-rng` seeds masking randomness so that tests are reproducible. Tests only: a release
@@ -26,10 +29,12 @@
 #![forbid(unsafe_code)]
 
 pub mod leaf;
+mod model;
 mod release;
 pub mod stages;
 
 pub use leaf::{LeafError, LeafLayout, ProvenLeaf, prove_leaf};
+pub use model::{ModelSchedule, derive_model_schedule};
 pub use release::{Release, ReleaseSchedule, ScheduleError};
 pub use stages::{StageError, StageProof, StageProver, WitnessSource};
 

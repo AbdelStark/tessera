@@ -1,19 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The conformance models' transcript schedules (RFC-0014 'Transcript schedule'): the sizes
-//! `spec/vectors/transcript-schedule/schedule.json` states for each model are those the prover's
-//! derivations give from the model's public part and its first sequence, so that the vectors move
-//! with the schedule. The oracle derives the weights' part itself, from RFC-0040; here it is
-//! derived again with `tessera-pcs`'s weight layout and the stage schedule's pool:
-//!
-//! - **the leaf trees**: each LogUp instance of the requantization sites' layout (RFC-0045, the
-//!   only gadget leaves included in this fixture), its lookup tree then its table tree, in table order;
-//! - **the stages and the layer point**: the stage schedule's (RFC-0037);
-//! - **the proximity points**: each matrix with committed rows, `⌈log2 m_T⌉` coordinates
-//!   (RFC-0040, RFC-0049);
-//! - **the opened matrices**: those the pool has claims on, each with its codeword's length.
-//!
-//! The advice's row-index point comes from the complete canonical layout (RFC-0050).
+//! Complete public model geometry against an independent graph walk (RFC-0014).
+//! Both transcript modes replay every resulting label in the protocol and verifier consumers.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -21,18 +9,13 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use tessera_codec::{Ascii, DecodeLimits, envelope, schema};
-use tessera_compiler::schedule::{LayerMap, NodeRef};
-use tessera_compiler::{
-    Gadget, ModelAdviceLayout, PublicModel, analyze, claim_list, derive_schedule, lower, select,
-};
+use tessera_compiler::{PublicModel, analyze, claim_list, lower, select};
 use tessera_hash::Mode;
-use tessera_ir::{CommitmentClass, GadgetPolicy, IntegerModel, ParamSetId};
-use tessera_pcs::WeightLayout;
+use tessera_ir::{ClaimList, GadgetPolicy, IntegerModel, ParamSetId, QuantPoint};
 use tessera_protocol::{
-    LeafTree, MatrixCodeword, MatrixPoint, ParamSet, Protocol, ScheduleSizes, StageSizes,
-    TranscriptSchedule, WeightMatrix,
+    LeafTree, ParamSet, Protocol, ScheduleSizes, TranscriptSchedule, WeightMatrix,
 };
-use tessera_prover::leaf::{LeafLayout, Site, gadget_nodes};
+use tessera_prover::{ModelSchedule, derive_model_schedule};
 
 const MODELS: [&str; 4] = [
     "tiny-2-servable",
@@ -64,129 +47,64 @@ fn conformance(name: &str) -> (IntegerModel, u32) {
     (model, u32::try_from(tokens.len()).expect("small"))
 }
 
-/// The sizes the prover's derivations give a model at `test-small/1`.
-fn derived(name: &str) -> ScheduleSizes {
-    let (model, n) = conformance(name);
-    let lowering = lower(PublicModel::of(&model), n).expect("the model lowers");
-    let schedule = derive_schedule(&lowering).expect("a schedule");
-    let ranges = analyze(&lowering.graph, &lowering.tables).expect("ranges");
-    let selection = select(
-        &lowering.graph,
-        &ranges,
-        &lowering.tables,
-        &GadgetPolicy::default(),
-    )
-    .expect("every gadget fits");
-    let layers = LayerMap::new(&lowering).expect("one template");
-
-    // The leaf stage: the requantization sites' instances (RFC-0045).
-    let requant = gadget_nodes(&lowering, &layers)
-        .into_iter()
-        .filter(|&site| {
-            let node = match site {
-                NodeRef::Position(position) => layers.node(position, 0),
-                NodeRef::Node(id) => id,
-            };
-            matches!(
-                selection.of(node),
-                Some((
-                    _,
-                    Gadget::Requant1 { .. }
-                        | Gadget::RequantSplit { .. }
-                        | Gadget::RequantWide { .. }
-                ))
-            )
-        });
-    let sites: Vec<Site> = requant
-        .map(|site| Site::requant(&lowering, &layers, &selection, site).expect("a site"))
-        .collect();
-    let layout = LeafLayout::new(&layers, sites).expect("a layout");
-    let trees = layout
-        .instances()
-        .iter()
-        .flat_map(|instance| {
-            let table = selection
-                .tables
+/// Build public claims without reading any weights or channel values.
+fn claims_for(name: &str, n: u32, query_block: u32, padded: bool) -> ClaimList {
+    let (model, _) = conformance(name);
+    let mut arch = model.arch.clone();
+    let mut quant = model.quant.public.clone();
+    let mut silu = model.quant.silu_in_exponents.clone();
+    if padded {
+        arch.n_layers = 3;
+        fn extend<T: Clone>(values: &mut Vec<(QuantPoint, T)>) {
+            let added: Vec<_> = values
                 .iter()
-                .find(|spec| spec.id == instance.table)
-                .expect("the instance's table");
-            [
-                LeafTree::Fraction {
-                    height: instance.height,
-                },
-                LeafTree::Fraction {
-                    height: u32::from(table.log2_rows),
-                },
-            ]
-        })
-        .collect();
-
-    // The weights: the committed rows of each matrix, and the matrices the pool has claims on.
-    let params = ParamSet::TEST_SMALL;
-    let claims = claim_list(
-        PublicModel::of(&model),
-        &selection,
-        &GadgetPolicy::default(),
-        params.layout,
-        ParamSetId(Ascii::new(params.id).expect("a parameter id")),
-    )
-    .expect("the complete layout fits at max_context");
-    let advice = ModelAdviceLayout::new(&lowering, &selection, &claims).expect("the advice layout");
-    let weights = WeightLayout::new(
-        params.layout.weights,
-        model.weight_shapes().expect("the shapes"),
-    )
-    .expect("a weight layout");
-    let proximity = tessera_pcs::WeightMatrix::ALL
-        .into_iter()
-        .filter_map(|matrix| {
-            let rows = weights.matrix(matrix).rows();
-            (rows > 0).then(|| MatrixPoint {
-                matrix: WeightMatrix::ALL[matrix.index()],
-                vars: rows.next_power_of_two().trailing_zeros(),
-            })
-        })
-        .collect();
-    let mut claimed = BTreeSet::new();
-    for claim in schedule
-        .pool
-        .iter()
-        .filter(|claim| claim.commitment == CommitmentClass::Weight)
-    {
-        for atom in &claim.atoms {
-            // A weight-committed parameter that is no weight is a channel's class or multiplier.
-            let matrix = schedule
-                .weight_type(&lowering.graph, atom.kind)
-                .map_or(tessera_pcs::WeightMatrix::ChannelParams, |ty| ty.matrix());
-            claimed.insert(matrix.index());
+                .filter_map(|(p, v)| match p {
+                    QuantPoint::Layer { layer: 0, site } => Some((
+                        QuantPoint::Layer {
+                            layer: 2,
+                            site: *site,
+                        },
+                        v.clone(),
+                    )),
+                    _ => None,
+                })
+                .collect();
+            values.extend(added);
+            values.sort_by_key(|(p, _)| *p);
         }
+        extend(&mut quant.act_exponents);
+        extend(&mut quant.shift_class_sets);
+        extend(&mut quant.affine_sites);
+        quant.score_scales.push((2, quant.score_scales[0].1));
+        silu.push((2, silu[0].1));
     }
-    let inverse_rate = u32::from(params.layout.weights.log2_inv_rate);
-    let opened = claimed
-        .into_iter()
-        .map(|index| {
-            let matrix = tessera_pcs::WeightMatrix::ALL[index];
-            MatrixCodeword {
-                matrix: WeightMatrix::ALL[index].id(),
-                len: 1 << (weights.matrix(matrix).log2_k() + inverse_rate),
-            }
-        })
-        .collect();
+    let public = PublicModel {
+        arch: &arch,
+        profile: model.profile,
+        quant: &quant,
+        silu_in_exponents: &silu,
+    };
+    let lowering = lower(public, n).expect("the public model lowers");
+    let ranges = analyze(&lowering.graph, &lowering.tables).expect("ranges");
+    let policy = GadgetPolicy {
+        query_block,
+        ..GadgetPolicy::default()
+    };
+    let selection = select(&lowering.graph, &ranges, &lowering.tables, &policy).expect("gadgets");
+    let params = ParamSet::TEST_SMALL;
+    claim_list(
+        public,
+        &selection,
+        &policy,
+        params.layout,
+        ParamSetId(Ascii::new(params.id).expect("ASCII")),
+    )
+    .expect("claim list")
+}
 
-    ScheduleSizes {
-        trees,
-        layer_vars: schedule.layers.vars,
-        stages: schedule.stages[1..]
-            .iter()
-            .map(|stage| StageSizes {
-                rounds: stage.rounds,
-                zero_vars: stage.zero_vars,
-            })
-            .collect(),
-        advice_vars: advice.layout().row_vars(),
-        proximity,
-        opened,
-    }
+fn derived(name: &str) -> ModelSchedule {
+    let (_, n) = conformance(name);
+    derive_model_schedule(&claims_for(name, n, 512, false), n).expect("complete model schedule")
 }
 
 /// The sizes the vector file states for `name`, both modes', which must be equal.
@@ -262,7 +180,30 @@ fn the_vectors_state_the_sizes_the_derivations_give() {
     let file: Value =
         serde_json::from_str(&fs::read_to_string(path).expect("vector file")).expect("JSON");
     for name in MODELS {
-        let sizes = derived(name);
+        let complete = derived(name);
+        let counts: Vec<_> = complete
+            .lookup_entries
+            .iter()
+            .map(|(t, n)| [u64::from(t.0), *n])
+            .collect();
+        for case in file["models"]
+            .as_array()
+            .expect("models")
+            .iter()
+            .filter(|case| {
+                case["name"]
+                    .as_str()
+                    .expect("name")
+                    .starts_with(&format!("{name},"))
+            })
+        {
+            assert_eq!(
+                serde_json::to_value(&counts).expect("counts"),
+                case["lookup_entries"],
+                "{name}: exact canonical contributions"
+            );
+        }
+        let sizes = complete.sizes;
         assert_eq!(
             written(&sizes),
             stated(&file, name),
@@ -287,5 +228,123 @@ fn the_vectors_state_the_sizes_the_derivations_give() {
             let distinct: BTreeSet<&String> = labels.iter().collect();
             assert_eq!(distinct.len(), labels.len(), "{name}, {mode:?}");
         }
+    }
+}
+
+#[test]
+fn complete_geometry_at_public_boundaries() {
+    let file: Value = serde_json::from_str(
+        &fs::read_to_string(vectors().join("transcript-schedule/schedule.json")).expect("file"),
+    )
+    .expect("JSON");
+    let cases = file["boundaries"].as_array().expect("boundaries");
+    assert_eq!(cases.len(), 16, "eight public geometries, both modes");
+    for case in cases {
+        let name = case["name"].as_str().expect("name");
+        let n = case["sequence_length"].as_u64().expect("n") as u32;
+        let claims = claims_for(
+            case["model"].as_str().expect("model"),
+            n,
+            case["query_block"].as_u64().expect("Q") as u32,
+            case["padded"].as_bool().expect("padded"),
+        );
+        let actual = derive_model_schedule(&claims, n).expect("complete geometry");
+        assert_eq!(written(&actual.sizes), case["sizes"], "{name}");
+        let counts: Vec<_> = actual
+            .lookup_entries
+            .iter()
+            .map(|(t, n)| [u64::from(t.0), *n])
+            .collect();
+        assert_eq!(
+            serde_json::to_value(counts).expect("counts"),
+            case["lookup_entries"],
+            "{name}"
+        );
+        for mode in [Mode::Live, Mode::NonInteractive] {
+            TranscriptSchedule::expand(&actual.sizes, &ParamSet::TEST_SMALL, mode, Protocol::One)
+                .expect("valid dimensions");
+        }
+    }
+}
+
+#[test]
+fn refuses_unsupported_public_inputs() {
+    use tessera_compiler::CompileError;
+    let claims = claims_for(MODELS[0], 3, 512, false);
+    for n in [0, claims.arch.max_context + 1] {
+        assert_eq!(
+            derive_model_schedule(&claims, n),
+            Err(CompileError::Usage {
+                rule: "a sequence has 1 to max_context positions"
+            })
+        );
+    }
+    for version in [1, 2, u16::MAX] {
+        let mut bad = claims.clone();
+        bad.protocol_version = version;
+        assert_eq!(
+            derive_model_schedule(&bad, 3),
+            Err(CompileError::Usage {
+                rule: "model transcript geometry requires the current claim-list protocol version"
+            })
+        );
+    }
+    for remove in [true, false] {
+        let mut bad = claims.clone();
+        if remove {
+            bad.tables.pop();
+        } else {
+            bad.tables.swap(0, 1);
+        }
+        assert_eq!(
+            derive_model_schedule(&bad, 3),
+            Err(CompileError::Usage {
+                rule: "the claim list contains the complete selected catalog"
+            })
+        );
+    }
+}
+
+#[test]
+fn unsupported_head_reshape_returns_the_compiler_rule() {
+    use tessera_compiler::{CompileError, derive_schedule};
+    use tessera_ir::NodeId;
+    let mut claims = claims_for(MODELS[0], 3, 512, false);
+    claims.arch.n_heads = 6;
+    claims.arch.n_kv_heads = 3;
+    claims.arch.d_model = 96;
+    let lowered =
+        lower(PublicModel::of_claims(&claims), 3).expect("public lowering accepts six heads");
+    let ranges = analyze(&lowered.graph, &lowered.tables).expect("ranges");
+    let selection = select(
+        &lowered.graph,
+        &ranges,
+        &lowered.tables,
+        &claims.gadget_policy,
+    )
+    .expect("selection");
+    claims.tables = selection.tables;
+    let expected = Err(CompileError::Schedule {
+        node: Some(NodeId(12)),
+        rule: "a Reshape merges or splits only axes whose lengths are powers of two, the leading axis aside",
+    });
+    assert_eq!(derive_schedule(&lowered).map(|_| ()), expected);
+    assert_eq!(derive_model_schedule(&claims, 3).map(|_| ()), expected);
+}
+
+#[test]
+fn a_single_committed_row_has_a_zero_coordinate_proximity_point() {
+    let mut claims = claims_for(MODELS[0], 3, 512, false);
+    claims.layout.weights.log2_k = 20;
+    let geometry = derive_model_schedule(&claims, 3).expect("large public row width");
+    // Embed and LmHead each have 64 * 512 symbols and one real layer, hence one row.
+    for matrix in [WeightMatrix::Embed, WeightMatrix::LmHead] {
+        assert!(
+            geometry
+                .sizes
+                .proximity
+                .iter()
+                .any(|p| p.matrix == matrix && p.vars == 0)
+        );
     }
 }
