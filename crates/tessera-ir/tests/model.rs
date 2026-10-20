@@ -8,7 +8,7 @@ use std::fs;
 use std::path::Path;
 
 use tessera_codec::{DecodeLimits, envelope, schema};
-use tessera_ir::IntegerModel;
+use tessera_ir::{IntegerModel, LogitsFile, TokenFile};
 
 /// Each case's name and bytes.
 fn vectors() -> Vec<(String, Vec<u8>)> {
@@ -61,5 +61,39 @@ fn the_debug_form_shows_no_weight_or_channel_entry() {
             shown.contains("rows: 6") && shown.contains("channels: 2"),
             "{name}: {shown}"
         );
+    }
+}
+
+#[test]
+fn token_and_logits_files_round_trip_and_redact_values_in_debug() {
+    let tokens = TokenFile {
+        sequences: vec![vec![3_141_592_653, 2_718_281_828], vec![1_618_033_988]],
+    };
+    let sealed_tokens = envelope::seal(&schema::TOKEN_FILE, &tokens);
+    let opened_tokens: TokenFile =
+        envelope::open(&sealed_tokens, &schema::TOKEN_FILE, DecodeLimits::MESSAGE)
+            .expect("a valid TokenFile");
+    assert_eq!(opened_tokens, tokens);
+    let shown_tokens = format!("{opened_tokens:?}");
+    assert!(shown_tokens.contains("sequences: 2"), "{shown_tokens}");
+    assert!(shown_tokens.contains("lengths: [2, 1]"), "{shown_tokens}");
+    for canary in ["3141592653", "2718281828", "1618033988"] {
+        assert!(!shown_tokens.contains(canary), "{shown_tokens}");
+    }
+
+    let logits = LogitsFile {
+        vocab: 2,
+        positions: vec![vec![-9_876_543_210_123, 7_654_321_098_765]],
+    };
+    let sealed_logits = envelope::seal(&schema::LOGITS_FILE, &logits);
+    let opened_logits: LogitsFile =
+        envelope::open(&sealed_logits, &schema::LOGITS_FILE, DecodeLimits::MESSAGE)
+            .expect("a valid LogitsFile");
+    assert_eq!(opened_logits, logits);
+    let shown_logits = format!("{opened_logits:?}");
+    assert!(shown_logits.contains("vocab: 2"), "{shown_logits}");
+    assert!(shown_logits.contains("positions: 1"), "{shown_logits}");
+    for canary in ["-9876543210123", "9876543210123", "7654321098765"] {
+        assert!(!shown_logits.contains(canary), "{shown_logits}");
     }
 }

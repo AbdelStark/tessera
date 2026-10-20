@@ -18,12 +18,14 @@
 //! tessera bench unit-costs --device INT --out UNIT_COSTS.json
 //! tessera bench model     (--plan plan.tep | --source-defaults) [--context INT,...] [--out MU.json]
 //! tessera recorder ref    --listen ADDR --log-dir DIR
+//! tessera inspect         FILE
 //! ```
 //!
 //! `tessera compile` runs, in the `compile` module, `tessera commit-weights`, in the `weights`
-//! module, `tessera bench model`, in the `bench` module, and `tessera params check`, in the
-//! `params` module. Every other command checks its arguments and the envelope of each TCE artifact
-//! it reads (RFC-0003), then exits with `ERR-USAGE`, naming the issue that implements it.
+//! module, `tessera bench model`, in the `bench` module, `tessera params check`, in the `params`
+//! module, and `tessera inspect`, in the `inspect` module. Every other command checks its
+//! arguments and the envelope of each TCE artifact it reads (RFC-0003), then exits with
+//! `ERR-USAGE`, naming the issue that implements it.
 //!
 //! Every command prints its progress to stderr. With `--json` it prints one JSON object to
 //! stdout describing its result, or `{"command", "error": {"code", "message"}}` when it fails
@@ -41,6 +43,7 @@
 
 mod bench;
 mod compile;
+mod inspect;
 mod params;
 mod weights;
 
@@ -98,6 +101,8 @@ enum Command {
     /// Transcript recorders (RFC-0015).
     #[command(subcommand)]
     Recorder(Recorder),
+    /// Renders a TCE artifact as text (RFC-0003).
+    Inspect(inspect::InspectArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -409,6 +414,10 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
         Command::Recorder(Recorder::Ref(_)) => (
             "recorder ref",
             pending("recorder ref", &[], 139).map(|()| ExitCode::SUCCESS),
+        ),
+        Command::Inspect(a) => (
+            "inspect",
+            inspect::inspect(a, cli.json).map(|()| ExitCode::SUCCESS),
         ),
     }
 }
