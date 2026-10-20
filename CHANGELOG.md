@@ -830,6 +830,18 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - Regenerate grouped advice openings and column answers on CPU: stable original-claim batching, one row block and clearing accumulators, a random-column leaf and combination self-check before combined rows are released, and canonical P5 answers from replayed masks. Public Merkle metadata is retained separately from the root-only committer. Complete model vectors verify through the independent canonical checker, with exact tamper errors, physical clearing and allocator measurements. The shared combination kernel now clears its unreduced secret scratch (OBS-6); no protocol bytes, transcript labels or parameters change (#119).
 
+- Add independent gadget-final fixtures for canonical comparison arrays and narrowed decompositions, consumed by `tv-core` and producer integration tests. The producer's witness columns and lookup forms match the frozen integer and direct-cube oracles (#124).
+
+- Cross-check actual CPU root-product sumchecks and canonical root witnesses against independent coefficient proofs, including padding, constants beyond Goldilocks and a deliberately wrong root whose 119-bit product proof passes but whose complete comparison rejects (#124).
+
+- Freeze independent model-derived requantization sources and lookup rows across single-table, split, wide and four-class cases, with non-power-of-two domains and class-point projections for the independent verifier's binding checks (#124).
+
+- Cross-check actual OneHot witnesses and degree-three CPU batches against independent integer/cube proofs. Each of six alternatives also has a proof adapted to an omitted obligation: true source evaluations pass only that omission control and fail the full independent check (#124).
+
+- Cross-check actual root witness columns and CPU product/padding batches against model-derived independent bindings, including a full integer constant above Goldilocks and a wrong root whose every Range request passes (#124).
+- Independent Softmax model-binding fixtures and CPU cross-checks cover causal keys, masked leaves, reciprocal ranges, all NonNeg limbs and padded query/head rows; every round and final evaluation agrees with the independent verifier fixture ([#124](https://github.com/AbdelStark/tessera/issues/124)).
+- Independent Argmax fixtures and CPU cross-checks cover lowest-index ties, negative logits, padding, boundary keys and the separate suffix reduction. Actual witness columns, both Argmax stages and canonical teacher-forcing row-copy proofs match the independent verifier fixtures ([#124](https://github.com/AbdelStark/tessera/issues/124)).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

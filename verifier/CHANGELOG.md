@@ -141,6 +141,33 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - Add `tv-core::advice::opening`: bind Round1's advice root to the independently derived descriptor, group original combination claims with one batching power across all pieces, and check canonical segment-merged columns through a must-use evaluation state. Compact committed-row counts and lazy source coefficients avoid expanding row maps or attention images; the explicit-layout primitive shares its authentication and consistency engine. Independent vectors and exact adversarial errors cover up to 16 groups and 40 original claims. Protocol bytes, parameter sets and dependencies are unchanged; full drivers and protocol/2 blinding remain separate (#116).
 
+- `tv-core::selectors::suffix_kernel` evaluates the public Argmax suffix reduction factor in linear time without allocating a cube (RFC-0009). Independent strict-pair sums and Boolean tie cases check it ([#124](https://github.com/AbdelStark/tessera/issues/124)).
+
+- Add independent affine gadget components: `gadgets::comparison` derives public carry boxes and checks all six canonical arrays, both terminal carries and the terminal borrow; `gadgets::decomposition` checks every affine lookup key with its narrowed virtual top. Must-use results retain all source and range obligations. Independent integer/cube fixtures and producer cross-checks cover complete products beyond Goldilocks; these components do not replace their caller's range proofs, nonlinear reductions or opening bindings (#124).
+
+- Add `gadgets::root_products`, the independent final-evaluation kernel for complete byte-radix root products. Symmetric square coefficients preserve the original `(rho+1)` polynomial. Direct-vertex sumcheck vectors, actual CPU proofs, source/comparison cross-checks and a rejected root with actual 119-bit products cover the arithmetic; the full model driver still owns scheduling and canonical bindings (#124).
+
+- Model-derived requantization bindings: canonical gadget/table/source identities,
+  class-point projection and all Requant1/Split/Wide/SiLU affine lookup forms.
+  Must-use results retain graph, opening and LogUp obligations. Independent
+  integer-row fixtures cover 119 sites and 183 requests; this component does not
+  yet constitute a complete gadget stage or proof driver (#124).
+
+- Model-derived OneHot final relations bind row-count and index reductions to the
+  existing leaf token claim. Booleanity and vocabulary padding use the shared
+  stage zero-check point; all source claims are retained for opening. Independent
+  component proofs, actual CPU proofs and single-obligation alternatives cover
+  singleton domains and both padding axes. Full stage integration remains separate
+  from these final relation evaluators (#124).
+
+- Bind RFC-0050 roots to verifier-derived graph/auxiliary sources and every canonical Range request. Complete comparison arrays derive nonlinear product targets; final operands retain root, sum-of-squares and low-limb claims, and a separate padding check pins the root on skipped rows. Independent model fixtures and CPU proofs cover 45 sites, 5,885 requests, wide integer constants, a range-valid wrong root and a padded-root alternative. Complete stage/layer-template integration remains separate (#124).
+
+- Make the root input-selector simplification conditional on an explicit residual-padding obligation, covering padded token and feature coordinates. Independent counterexamples pass every bracket/product check and fail only that zero check. Mixed-dimension component batches reproduce the existing front-padding scale and final-point suffix rule; RFC-0050 states the required premise (#124).
+- `tv-core::gadgets::softmax` binds each causal lookup key and maximum-forest leaf at its own point, derives the reciprocal product from both NonNeg decompositions, reduces the row sum to the canonical exponential source, and retains both padded-maximum and padded-reciprocal zero checks. Independent component proofs include six isolated alternative witnesses and omission controls ([#124](https://github.com/AbdelStark/tessera/issues/124)).
+- Argmax final relations check the masked Range29 key, selected-logit contraction and strict suffix of the same next-token OneHot. Results retain typed maximum, logits and indicator obligations; model-derived output views bind logits and the existing next-token OneHot through row-slice reductions. Independent proofs exercise valid-range alternative witnesses and omission controls ([#124](https://github.com/AbdelStark/tessera/issues/124)).
+
+- Exercise all gadget final-check families and output views through the existing sumcheck fuzz target. Independent arithmetic/fixture oracles check exact errors and retained claims; allocation tests enforce pre-count rejection, and generated seeds run in the ordinary fuzz test suite. Document the final verifier's composition obligations and preserve RFC-0019's LogUp/Sumcheck/Gadget first-failure ordering (#124).
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

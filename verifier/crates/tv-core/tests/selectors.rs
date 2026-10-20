@@ -10,7 +10,7 @@
 //! The sums here take no shortcut: each is the definition, `Σ_x eq(r, x)·f(x)` with `eq` a
 //! product over the coordinates, so they share no algorithm with the closed forms they check.
 
-use tv_core::selectors::{causal, layer_weights, lt, rotate_kernel, row_selector};
+use tv_core::selectors::{causal, layer_weights, lt, rotate_kernel, row_selector, suffix_kernel};
 use tv_field::{Fp, Fp2};
 use tv_tables::rope::Rope;
 use tv_tables::{Table, TableId, TableKind};
@@ -35,6 +35,48 @@ fn eq_at(r: &[Fp2], x: u64) -> Fp2 {
 fn signed(v: i64) -> Fp2 {
     let magnitude = Fp2::from(Fp::reduce(v.unsigned_abs()));
     if v < 0 { -magnitude } else { magnitude }
+}
+
+#[test]
+fn the_suffix_kernel_sums_strict_pairs_and_keeps_the_two_points_ordered() {
+    let mut rng = SplitMix64::new(0x124_5aff);
+    for vars in 0..=6 {
+        for _ in 0..5 {
+            let (claim, at) = (point(&mut rng, vars), point(&mut rng, vars));
+            let expected: Fp2 = (0..1u64 << vars)
+                .map(|v| (0..v).fold(Fp2::ZERO, |sum, i| sum + eq_at(&claim, i)) * eq_at(&at, v))
+                .fold(Fp2::ZERO, |sum, value| sum + value);
+            assert_eq!(suffix_kernel(&claim, &at), Some(expected));
+        }
+    }
+    let bits = |v: u64| -> Vec<_> {
+        (0..4)
+            .map(|i| {
+                if (v >> i) & 1 == 0 {
+                    Fp2::ZERO
+                } else {
+                    Fp2::ONE
+                }
+            })
+            .collect()
+    };
+    for i in 0..16 {
+        for v in 0..16 {
+            assert_eq!(
+                suffix_kernel(&bits(i), &bits(v)),
+                Some(if i < v { Fp2::ONE } else { Fp2::ZERO }),
+                "{i} < {v}"
+            );
+        }
+    }
+    assert_eq!(suffix_kernel(&[], &[]), Some(Fp2::ZERO));
+    assert_eq!(suffix_kernel(&[Fp2::ZERO], &[]), None);
+    assert_eq!(suffix_kernel(&[], &[Fp2::ONE]), None);
+    // No cube-size shift or enumeration: the factor remains linear above 64 variables.
+    let mut at = vec![Fp2::ZERO; 129];
+    at[128] = Fp2::ONE;
+    assert_eq!(suffix_kernel(&vec![Fp2::ZERO; 129], &at), Some(Fp2::ONE));
+    assert_eq!(suffix_kernel(&at, &vec![Fp2::ZERO; 129]), Some(Fp2::ZERO));
 }
 
 #[test]

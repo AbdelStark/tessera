@@ -285,7 +285,7 @@ impl Tables<'_> {
 
 /// The narrowest signed box, searched rather than inferred from absolute values at negative
 /// powers of two: [-2^(b-1), 2^(b-1)-1]. Only widths at most 62 are integer gadget inputs.
-fn signed_width(range: Interval) -> Option<u32> {
+pub(crate) fn signed_width(range: Interval) -> Option<u32> {
     let (lo, hi) = range.bounds()?;
     (1u32..=62).find(|&b| {
         let half = 1i128.checked_shl(b.saturating_sub(1)).unwrap_or(0);
@@ -432,6 +432,50 @@ fn root_carry_bits(
     limbs: usize,
     id: GadgetId,
 ) -> Result<[u8; 15], ClaimsError> {
+    let coefficients = root_coefficient_bounds(width, increment, limbs, id)?;
+    let raw = coefficients.get(..limbs).ok_or(ClaimsError::Internal)?;
+    let mut widths = [0u8; 15];
+    let mut carry = 0u64;
+    let mut previous_box = 0u64;
+    for (&a, width) in raw.iter().zip(&mut widths) {
+        carry = a.checked_add(carry).ok_or_else(|| gadget(id))? >> 8;
+        let bits = u64::BITS.saturating_sub(carry.leading_zeros()).max(1);
+        let full_box = 1u64
+            .checked_shl(bits)
+            .and_then(|x| x.checked_sub(1))
+            .ok_or_else(|| gadget(id))?;
+        let left = a.checked_add(previous_box).ok_or_else(|| gadget(id))?;
+        let right = full_box
+            .checked_mul(256)
+            .and_then(|x| x.checked_add(255))
+            .ok_or_else(|| gadget(id))?;
+        if left >= 1 << 40 || right >= 1 << 40 {
+            return Err(gadget(id));
+        }
+        *width = u8::try_from(bits).map_err(|_| gadget(id))?;
+        previous_box = full_box;
+    }
+    if carry != 0 {
+        return Err(gadget(id));
+    }
+    Ok(widths)
+}
+
+pub(crate) fn root_coefficient_bounds(
+    width: u8,
+    increment: bool,
+    limbs: usize,
+    id: GadgetId,
+) -> Result<[u64; 15], ClaimsError> {
+    if !(1..=32).contains(&width)
+        || limbs
+            != usize::from(width)
+                .saturating_mul(2)
+                .saturating_add(55)
+                .div_ceil(8)
+    {
+        return Err(ClaimsError::Internal);
+    }
     let count = usize::from(width).div_ceil(8);
     let mut root = [0u64; 4];
     for (i, digit) in root.iter_mut().take(count).enumerate() {
@@ -464,31 +508,7 @@ fn root_carry_bits(
             }
         }
     }
-    let mut widths = [0u8; 15];
-    let mut carry = 0u64;
-    let mut previous_box = 0u64;
-    for (&a, width) in raw.iter().zip(&mut widths) {
-        carry = a.checked_add(carry).ok_or_else(|| gadget(id))? >> 8;
-        let bits = u64::BITS.saturating_sub(carry.leading_zeros()).max(1);
-        let full_box = 1u64
-            .checked_shl(bits)
-            .and_then(|x| x.checked_sub(1))
-            .ok_or_else(|| gadget(id))?;
-        let left = a.checked_add(previous_box).ok_or_else(|| gadget(id))?;
-        let right = full_box
-            .checked_mul(256)
-            .and_then(|x| x.checked_add(255))
-            .ok_or_else(|| gadget(id))?;
-        if left >= 1 << 40 || right >= 1 << 40 {
-            return Err(gadget(id));
-        }
-        *width = u8::try_from(bits).map_err(|_| gadget(id))?;
-        previous_box = full_box;
-    }
-    if carry != 0 {
-        return Err(gadget(id));
-    }
-    Ok(widths)
+    Ok(coefficients)
 }
 
 fn rsqrt_ranges(

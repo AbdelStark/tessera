@@ -520,9 +520,15 @@ impl TreeCase {
 }
 
 /// Builds the case `data` spells and checks the verifier's result against the oracle.
-pub fn check(data: &[u8]) {
+/// Returns whether the gadget oracle handled the input.
+pub fn check(data: &[u8]) -> bool {
+    if let Some(gadget) = data.strip_prefix(b"GDG") {
+        crate::gadgets::check(gadget);
+        return true;
+    }
     match case(data) {
         Case::Stage(case) => case.check(),
         Case::Trees(case) => case.check(),
     }
+    false
 }

@@ -19,6 +19,8 @@ on:
       - spec/vectors/hash/**
       - spec/vectors/rfc6962/**
       - spec/vectors/sumcheck/**
+      - spec/vectors/gadget-finals/**
+      - spec/vectors/claims/**
       - spec/vectors/weights/**
       - .github/workflows/fuzz.yml
   push:
@@ -35,6 +37,8 @@ on:
       - spec/vectors/hash/**
       - spec/vectors/rfc6962/**
       - spec/vectors/sumcheck/**
+      - spec/vectors/gadget-finals/**
+      - spec/vectors/claims/**
       - spec/vectors/weights/**
       - .github/workflows/fuzz.yml
   workflow_dispatch:
