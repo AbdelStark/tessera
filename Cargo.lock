@@ -543,6 +543,7 @@ dependencies = [
  "tessera-codec",
  "tessera-compiler",
  "tessera-ir",
+ "tessera-pcs",
  "tessera-protocol",
 ]
 

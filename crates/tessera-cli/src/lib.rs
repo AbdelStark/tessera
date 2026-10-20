@@ -20,10 +20,10 @@
 //! tessera recorder ref    --listen ADDR --log-dir DIR
 //! ```
 //!
-//! `tessera compile` runs, in the `compile` module, `tessera bench model`, in the `bench` module,
-//! and `tessera params check`, in the `params` module. Every other command checks its arguments
-//! and the envelope of each TCE artifact it reads (RFC-0003), then exits with `ERR-USAGE`, naming
-//! the issue that implements it.
+//! `tessera compile` runs, in the `compile` module, `tessera commit-weights`, in the `weights`
+//! module, `tessera bench model`, in the `bench` module, and `tessera params check`, in the
+//! `params` module. Every other command checks its arguments and the envelope of each TCE artifact
+//! it reads (RFC-0003), then exits with `ERR-USAGE`, naming the issue that implements it.
 //!
 //! Every command prints its progress to stderr. With `--json` it prints one JSON object to
 //! stdout describing its result, or `{"command", "error": {"code", "message"}}` when it fails
@@ -42,6 +42,7 @@
 mod bench;
 mod compile;
 mod params;
+mod weights;
 
 use std::ffi::OsString;
 use std::fs::{self, File};
@@ -79,7 +80,7 @@ enum Command {
     /// Compiles D into its claim list, execution plan, tables and commitment report.
     Compile(compile::CompileArgs),
     /// Commits D's weights under an execution plan (RFC-0012).
-    CommitWeights(CommitWeightsArgs),
+    CommitWeights(weights::CommitWeightsArgs),
     /// Weight-commitment maintenance (RFC-0012).
     #[command(subcommand)]
     Weights(Weights),
@@ -133,17 +134,6 @@ enum Bench {
 enum Recorder {
     /// Runs the software reference recorder.
     Ref(RecorderArgs),
-}
-
-/// `tessera commit-weights`.
-#[derive(Debug, Args)]
-struct CommitWeightsArgs {
-    #[arg(long, value_name = "MODEL.d")]
-    model: PathBuf,
-    #[arg(long, value_name = "plan.tep")]
-    plan: PathBuf,
-    #[arg(long, value_name = "WEIGHTS.twc")]
-    out: PathBuf,
 }
 
 /// `tessera weights refresh`.
@@ -363,15 +353,7 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
         ),
         Command::CommitWeights(a) => (
             "commit-weights",
-            pending(
-                "commit-weights",
-                &[
-                    Input::new(&a.model, &INTEGER_MODEL),
-                    Input::new(&a.plan, &EXECUTION_PLAN),
-                ],
-                111,
-            )
-            .map(|()| ExitCode::SUCCESS),
+            weights::commit_weights(a, cli.json).map(|()| ExitCode::SUCCESS),
         ),
         Command::Weights(Weights::Refresh(a)) => (
             "weights refresh",
