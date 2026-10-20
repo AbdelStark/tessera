@@ -8,6 +8,8 @@
 //! column queries, and [`Evaluated::check_columns`] on the answer to them. The second takes what
 //! the first returns, so the columns are only ever checked against combined rows that passed the
 //! evaluation check, for the same opening.
+//! [`crate::advice::opening`] binds canonical model geometry and original combination claims
+//! to this shared checking engine; this module's public primitive takes explicit row maps.
 //!
 //! ```
 //! use tv_core::opening::{
@@ -402,8 +404,32 @@ pub fn check_evaluations<'a>(
 ) -> Result<Evaluated<'a>, OpeningError> {
     let sizes = Sizes::of(&opening)?;
 
+    check_combined(
+        sizes,
+        combined,
+        opening.groups.iter().map(|group| {
+            let claimed = group
+                .claims
+                .iter()
+                .fold(Fp2::ZERO, |sum, claim| sum + claim.gamma * claim.value);
+            (group.column_point.as_slice(), claimed)
+        }),
+    )?;
+    Ok(Evaluated {
+        opening,
+        combined,
+        sizes,
+    })
+}
+
+/// Shared shape and evaluation checks; each caller derives its own claim sums.
+pub(crate) fn check_combined<'a>(
+    sizes: Sizes,
+    combined: &[CombinedRow],
+    groups: impl ExactSizeIterator<Item = (&'a [Fp2], Fp2)>,
+) -> Result<(), OpeningError> {
     // RFC-0011 step 5: G + 1 rows of k values and P_A mask coefficients.
-    let rows = opening.groups.len().saturating_add(1);
+    let rows = groups.len().saturating_add(1);
     let shaped = combined.len() == rows
         && combined
             .iter()
@@ -413,21 +439,14 @@ pub fn check_evaluations<'a>(
     }
 
     // Step 6: Σ γ·v = ⟨u_g, eq(column point)⟩, group by group.
-    for (index, (group, row)) in opening.groups.iter().zip(combined).enumerate() {
-        let claimed = group
-            .claims
-            .iter()
-            .fold(Fp2::ZERO, |sum, claim| sum + claim.gamma * claim.value);
-        let opened = multilinear(&row.u, &group.column_point).ok_or(OpeningError::Internal)?;
+    for (index, (group, row)) in groups.zip(combined).enumerate() {
+        let (point, claimed) = group;
+        let opened = multilinear(&row.u, point).ok_or(OpeningError::Internal)?;
         if claimed != opened {
             return Err(OpeningError::Evaluation { group: Some(index) });
         }
     }
-    Ok(Evaluated {
-        opening,
-        combined,
-        sizes,
-    })
+    Ok(())
 }
 
 impl Evaluated<'_> {
@@ -458,6 +477,42 @@ impl Evaluated<'_> {
             sizes,
         } = self;
 
+        ColumnCheck {
+            root: &opening.root,
+            combined,
+            sizes,
+        }
+        .check(
+            queries,
+            columns,
+            siblings,
+            |j, column| leaf(&opening, sizes.block, j, column),
+            |index, out| row_coefficients(&opening, index, out, sizes.rows),
+        )
+    }
+}
+
+/// Authentication and consistency shared by explicit and canonical advice layouts.
+pub(crate) struct ColumnCheck<'a> {
+    pub(crate) root: &'a Digest,
+    pub(crate) combined: &'a [CombinedRow],
+    pub(crate) sizes: Sizes,
+}
+
+impl ColumnCheck<'_> {
+    pub(crate) fn check(
+        self,
+        queries: &[u64],
+        columns: &[Vec<Fp>],
+        siblings: &[Digest],
+        make_leaf: impl Fn(u64, &[Fp]) -> Result<Digest, OpeningError>,
+        fill_coefficients: impl Fn(usize, &mut Vec<Fp2>) -> Result<(), OpeningError>,
+    ) -> Result<(), OpeningError> {
+        let Self {
+            root,
+            combined,
+            sizes,
+        } = self;
         // 1. The queries, the verifier's own; D, their sorted distinct set.
         if queries.is_empty() {
             return Err(OpeningError::NoQueries);
@@ -490,9 +545,9 @@ impl Evaluated<'_> {
             .try_reserve_exact(distinct.len())
             .map_err(|_| OpeningError::Memory)?;
         for (&j, column) in distinct.iter().zip(columns) {
-            leaves.push((j, leaf(&opening, sizes.block, j, column)?));
+            leaves.push((j, make_leaf(j, column)?));
         }
-        verify_multiproof(&opening.root, sizes.leaves, &leaves, siblings).map_err(|error| {
+        verify_multiproof(root, sizes.leaves, &leaves, siblings).map_err(|error| {
             match error {
                 MultiproofError::MissingSiblings { .. }
                 | MultiproofError::ExtraSiblings { .. }
@@ -521,7 +576,10 @@ impl Evaluated<'_> {
             if agreed == 0 {
                 break;
             }
-            row_coefficients(&opening, index, &mut coefficients, sizes.rows)?;
+            fill_coefficients(index, &mut coefficients)?;
+            if coefficients.len() != sizes.rows {
+                return Err(OpeningError::Internal);
+            }
             encode(row, sizes.k, sizes.n, &mut codeword)?;
             for (position, (&j, column)) in distinct.iter().zip(columns).enumerate().take(agreed) {
                 let at = usize::try_from(j).map_err(|_| OpeningError::Internal)?;
@@ -543,32 +601,32 @@ impl Evaluated<'_> {
 
 /// The sizes the verifier's inputs fix, once checked.
 #[derive(Clone, Copy, Debug)]
-struct Sizes {
+pub(crate) struct Sizes {
     /// `k`, the values of a row.
-    k: usize,
+    pub(crate) k: usize,
     /// `n`, the symbols of a codeword.
-    n: usize,
+    pub(crate) n: usize,
     /// `n`, the leaves of the Merkle tree.
-    leaves: u64,
+    pub(crate) leaves: u64,
     /// `P_A`, the coefficients of a mask.
-    mask: usize,
+    pub(crate) mask: usize,
     /// `B`, the rows of a column-digest step.
-    block: NonZeroU32,
+    pub(crate) block: NonZeroU32,
     /// `N`, the non-zero rows.
-    rows: usize,
+    pub(crate) rows: usize,
 }
 
 impl Sizes {
     /// Checks the verifier's inputs in the order of the crate documentation ('The verifier's
     /// inputs') and returns the sizes they fix.
-    fn of(opening: &Opening<'_>) -> Result<Self, OpeningError> {
+    pub(crate) fn parameters(params: Params) -> Result<Self, OpeningError> {
         let Params {
             log2_k,
             log2_inv_rate,
             mask_coeffs,
             row_block,
             ..
-        } = opening.params;
+        } = params;
 
         // 1. 2k ≤ n ≤ 2^32, and n addressable.
         let code_length = OpeningError::CodeLength {
@@ -592,8 +650,25 @@ impl Sizes {
         // 3. B ≥ 1.
         let block = NonZeroU32::new(row_block).ok_or(OpeningError::RowBlock)?;
 
+        Ok(Self {
+            k,
+            n,
+            leaves,
+            mask,
+            block,
+            rows: 0,
+        })
+    }
+
+    fn of(opening: &Opening<'_>) -> Result<Self, OpeningError> {
+        let mut sizes = Self::parameters(opening.params)?;
+        let log2_k = opening.params.log2_k;
+        let code_length = OpeningError::CodeLength {
+            log2_k,
+            log2_inv_rate: opening.params.log2_inv_rate,
+        };
         // 4. to 6. The layout.
-        let rows = check_layout(opening.layout)?;
+        sizes.rows = check_layout(opening.layout)?;
 
         // 7. and 8. The points.
         let column_vars = usize::try_from(log2_k).map_err(|_| code_length)?;
@@ -624,14 +699,7 @@ impl Sizes {
             });
         }
 
-        Ok(Self {
-            k,
-            n,
-            leaves,
-            mask,
-            block,
-            rows,
-        })
+        Ok(sizes)
     }
 }
 
@@ -691,7 +759,7 @@ pub(crate) fn multilinear(values: &[Fp2], point: &[Fp2]) -> Option<Fp2> {
 
 /// `weight·eq(point, x)` for `x` of `point.len()` bits, as `weight` times one entry per 8 bits
 /// of `x`: table `c` holds `eq` of the coordinates `8c, …, 8c + 7` at every value of those bits.
-struct EqTables {
+pub(crate) struct EqTables {
     weight: Fp2,
     vars: u32,
     tables: Vec<Vec<Fp2>>,
@@ -699,7 +767,7 @@ struct EqTables {
 
 impl EqTables {
     /// The tables of `point`, at most [`MAX_ROW_VARS`] coordinates, or `None` for a longer one.
-    fn new(point: &[Fp2], weight: Fp2) -> Option<Self> {
+    pub(crate) fn new(point: &[Fp2], weight: Fp2) -> Option<Self> {
         let vars = u32::try_from(point.len())
             .ok()
             .filter(|&vars| vars <= MAX_ROW_VARS)?;
@@ -728,7 +796,7 @@ impl EqTables {
     }
 
     /// `weight·eq(point, x)`, or `None` when `x ≥ 2^point.len()`.
-    fn at(&self, x: u64) -> Option<Fp2> {
+    pub(crate) fn at(&self, x: u64) -> Option<Fp2> {
         if x.checked_shr(self.vars).is_some_and(|high| high != 0) {
             return None;
         }
@@ -818,18 +886,30 @@ fn leaf(
     column: u64,
     symbols: &[Fp],
 ) -> Result<Digest, OpeningError> {
+    merged_leaf(
+        &opening.params.commitment_id,
+        block,
+        column,
+        symbols,
+        opening.layout.segments.iter().map(|part| Ok(part.len())),
+    )
+}
+
+/// Every segment participates, including empty segments and S=1 (INV-PCS-3).
+pub(crate) fn merged_leaf(
+    commitment_id: &Digest,
+    block: NonZeroU32,
+    column: u64,
+    symbols: &[Fp],
+    segments: impl Iterator<Item = Result<usize, OpeningError>>,
+) -> Result<Digest, OpeningError> {
     let mut merge = DomainHasher::new(Domain::ColumnMerge);
     let mut rest = symbols;
-    for segment in opening.layout.segments {
+    for length in segments {
         let (own, tail) = rest
-            .split_at_checked(segment.len())
+            .split_at_checked(length?)
             .ok_or(OpeningError::Internal)?;
-        merge.update(&column_digest(
-            &opening.params.commitment_id,
-            column,
-            block,
-            own,
-        ));
+        merge.update(&column_digest(commitment_id, column, block, own));
         rest = tail;
     }
     if !rest.is_empty() {
@@ -1086,6 +1166,35 @@ mod tests {
                 .map(|c| c.as_array().unwrap().iter().map(fp).collect())
                 .collect();
             let recorded = member(case, "intermediate");
+
+            let siblings: Vec<_> = list(case, "siblings").iter().map(digest).collect();
+            let reached = std::cell::Cell::new(false);
+            let fault = ColumnCheck {
+                root: &opening.root,
+                combined: &combined,
+                sizes,
+            }
+            .check(
+                &queries,
+                &columns,
+                &siblings,
+                |j, column| leaf(&opening, sizes.block, j, column),
+                |index, out| {
+                    reached.set(true);
+                    row_coefficients(&opening, index, out, sizes.rows)?;
+                    out.pop();
+                    Ok(())
+                },
+            );
+            assert!(
+                reached.get(),
+                "the authenticated fixture reaches coefficient construction"
+            );
+            assert_eq!(
+                fault,
+                Err(OpeningError::Internal),
+                "a short internal row buffer is never zipped away"
+            );
 
             let mut coefficients = Vec::new();
             let mut codeword = Vec::new();

@@ -826,6 +826,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - The CPU `StreamingCommitter` commits canonical advice row runs with one initialized secret codeword block and column chain state; rejects misplaced/missing rows and mixed/reordered segment parts; clears blocks on flush and abort; and merges roots without a retained tree. Independent 16-case vectors, randomized batch equality and actual allocator/clearing checks cover S=1/2/8. `AdviceCommitment` is owned by PCS and re-exported at its existing protocol path with unchanged TCE bytes. An allocation-free column-hash entrypoint preserves the existing resident hash path (#115).
 
+- Add independent canonical advice-opening vectors and prover-side cross-checks for complete groups and messages, plus the verifier's model-bound opening API. Conformance counts/descriptors, combination-claim powers, weighted attention images and exact rejection ordering are covered without changing protocol bytes (#116).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
