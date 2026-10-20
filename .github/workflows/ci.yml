@@ -151,7 +151,7 @@ jobs:
   test:
     name: test
     needs: [scope, rust]
-    if: ${{ !cancelled() }}
+    if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 1
     steps:
