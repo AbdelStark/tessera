@@ -154,3 +154,12 @@ just its failed obligation by the public tautology `claim*delta_0`. That proof
 passes the omission control with true source claims and fails the full check.
 Actual relation sums identify each alternative's single failed obligation. These
 are not complete model proofs or a replacement for the final source openings.
+
+`verifier/crates/tv-core/tests/gadget_onehot.rs` checks all 18 batches, their
+individual final relations, the honest transcripts, canonical source debts and
+exact shape errors. Altering a final evaluation either fails the sumcheck or
+leaves a false source claim, including zero-cofactor cases. The producer adapter
+in `crates/tessera-prover/tests/gadget_onehot.rs`, written after the independent
+checks passed, generates actual OneHot columns and reproduces every CPU round and
+final evaluation for six honest batches and six omission controls. The independent
+verifier accepts the former and rejects the latter with the exact final-round error.

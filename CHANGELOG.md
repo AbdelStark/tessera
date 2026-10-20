@@ -836,6 +836,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - Freeze independent model-derived requantization sources and lookup rows across single-table, split, wide and four-class cases, with non-power-of-two domains and class-point projections for the independent verifier's binding checks (#124).
 
+- Cross-check actual OneHot witnesses and degree-three CPU batches against independent integer/cube proofs. Each of six alternatives also has a proof adapted to an omitted obligation: true source evaluations pass only that omission control and fail the full independent check (#124).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

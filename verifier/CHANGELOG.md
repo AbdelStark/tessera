@@ -6,12 +6,6 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Added
 
-- Model-derived requantization bindings: canonical gadget/table/source identities,
-  class-point projection and all Requant1/Split/Wide/SiLU affine lookup forms.
-  Must-use results retain graph, opening and LogUp obligations. Independent
-  integer-row fixtures cover 119 sites and 183 requests; this component does not
-  yet constitute a complete gadget stage or proof driver (#124).
-
 - Verifier workspace with the seven `tv-*` crates of RFC-0001 as skeletons, its own lockfile, the same toolchain pin as the prover workspace, a stricter `cargo-deny` policy and `allowlist.toml`, the third-party packages permitted in the trusted base ([#28](https://github.com/AbdelStark/tessera/issues/28)).
 - Every verifier crate forbids unsafe code; `tv-core` and `tv-codec` also deny `unwrap`, `expect`, `panic!` and unchecked indexing outside tests (RFC-0019) ([#28](https://github.com/AbdelStark/tessera/issues/28)).
 - `tv-core` declares the `test-params` feature, which will accept the `test-small` parameter set; a release build with it fails to compile, so test parameters can never certify a statement (02 §5, RFC-0001) ([#37](https://github.com/AbdelStark/tessera/issues/37)).
@@ -152,6 +146,19 @@ All notable changes to the verifier release train are recorded here: the crates 
 - Add independent affine gadget components: `gadgets::comparison` derives public carry boxes and checks all six canonical arrays, both terminal carries and the terminal borrow; `gadgets::decomposition` checks every affine lookup key with its narrowed virtual top. Must-use results retain all source and range obligations. Independent integer/cube fixtures and producer cross-checks cover complete products beyond Goldilocks; these components do not replace their caller's range proofs, nonlinear reductions or opening bindings (#124).
 
 - Add `gadgets::root_products`, the independent final-evaluation kernel for complete byte-radix root products. Symmetric square coefficients preserve the original `(rho+1)` polynomial. Direct-vertex sumcheck vectors, actual CPU proofs, source/comparison cross-checks and a rejected root with actual 119-bit products cover the arithmetic; the full model driver still owns scheduling and canonical bindings (#124).
+
+- Model-derived requantization bindings: canonical gadget/table/source identities,
+  class-point projection and all Requant1/Split/Wide/SiLU affine lookup forms.
+  Must-use results retain graph, opening and LogUp obligations. Independent
+  integer-row fixtures cover 119 sites and 183 requests; this component does not
+  yet constitute a complete gadget stage or proof driver (#124).
+
+- Model-derived OneHot final relations bind row-count and index reductions to the
+  existing leaf token claim. Booleanity and vocabulary padding use the shared
+  stage zero-check point; all source claims are retained for opening. Independent
+  component proofs, actual CPU proofs and single-obligation alternatives cover
+  singleton domains and both padding axes. Full stage integration remains separate
+  from these final relation evaluators (#124).
 
 ### Changed
 

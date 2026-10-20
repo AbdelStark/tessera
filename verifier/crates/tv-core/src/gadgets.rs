@@ -6,15 +6,37 @@
 
 pub mod comparison;
 pub mod decomposition;
+pub mod onehot;
 pub mod requant;
 pub mod root_products;
 
+use crate::advice::Source;
 use crate::claims::GadgetPolicy;
 use crate::lowering::Graph;
 use crate::selection::{self, Selection};
 use crate::validation::ClaimsError;
 use crate::validation::GadgetId;
 use core::fmt;
+use tv_field::Fp2;
+
+/// A canonically identified source at its prescribed point.
+#[derive(Clone, Copy)]
+pub struct Input<'a> {
+    /// A graph tensor or a node's canonical auxiliary. Virtual tensors need graph
+    /// reduction; committed tensors and auxiliaries need openings.
+    pub source: Source,
+    /// Natural LSB-first coordinates, with any broadcast projection already applied.
+    pub point: &'a [Fp2],
+}
+
+/// A source evaluation still owed to graph reduction or commitment opening.
+#[derive(Clone, Copy)]
+pub struct Claim<'a> {
+    /// The source and its prescribed point.
+    pub input: Input<'a>,
+    /// Its claimed multilinear extension, not an integer at a general point.
+    pub value: Fp2,
+}
 
 /// Gadget metadata owned by the verifier, never selected by proof messages.
 /// The graph must be lowered at the proof's actual sequence length.

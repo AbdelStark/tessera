@@ -4,6 +4,7 @@
 //! Membership is checked by LogUp, not by treating an extension-field evaluation
 //! as a table row. Every source evaluation remains an explicit obligation.
 
+pub use super::{Claim, Input};
 use super::{GadgetError, Plan};
 use crate::advice::{Auxiliary, Source};
 use crate::lowering::NodeId;
@@ -27,25 +28,6 @@ pub struct Requant<'p> {
     low: Option<usize>,
     middle: Option<usize>,
     saturation: Option<usize>,
-}
-
-/// A canonically identified source at its prescribed point.
-#[derive(Clone, Copy)]
-pub struct Input<'a> {
-    /// A graph tensor or the same node's canonical auxiliary. Virtual tensors
-    /// need graph reduction; committed tensors and auxiliaries need openings.
-    pub source: Source,
-    /// Natural LSB-first coordinates; class vectors use only channel coordinates.
-    pub point: &'a [Fp2],
-}
-
-/// A source evaluation still owed to graph reduction or commitment opening.
-#[derive(Clone, Copy)]
-pub struct Claim<'a> {
-    /// The source and its prescribed point.
-    pub input: Input<'a>,
-    /// Its claimed multilinear extension, not an integer at a general point.
-    pub value: Fp2,
 }
 
 /// A prescribed lookup evaluation still owed to the earlier LogUp reduction.
