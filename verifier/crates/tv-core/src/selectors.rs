@@ -18,6 +18,9 @@
 //!   the bits above the highest bit `k` where they differ, has `h_k = 0` where `a_k = 1`, and any
 //!   bits below `k`, over which `eq` sums to 1. So `LT` is `Σ_{k: a_k = 1} (1 − r_k)·Π_{j>k}
 //!   eq(r_j, a_j)`, and `a = 2^n`, the whole cube, gives 1.
+//! - **`Σ_{i<v} eq(ρ, i)·eq(r, v)`**, Argmax's suffix factor ([`suffix_kernel`]): at the
+//!   highest differing bit, `i` is 0 and `v` is 1, the higher bits agree and the lower
+//!   bits sum to 1 independently (RFC-0009 `Argmax`).
 //! - **`C̃(q, i) = Σ_{i' ≤ q' < S} eq(q, q')·eq(i, i')`** over pairs of `m`-bit positions, for a
 //!   sequence of `S ≤ 2^m` positions ([`causal`]). From the highest bit down, a pair of prefixes
 //!   carries two comparisons, `q'` against `S` and `i'` against `q'`, each still equal or already
@@ -64,6 +67,25 @@ pub fn lt(point: &[Fp2], bound: u64) -> Option<Fp2> {
         } else {
             agree *= Fp2::ONE - r;
         }
+    }
+    Some(sum)
+}
+
+/// The public factor in RFC-0009 `Argmax`'s suffix reduction:
+/// `Σ_{i < v} eq(claim, i)·eq(point, v)` over the full cube.
+///
+/// The two points are LSB-first and must have the same length. The empty cube
+/// contains no strict pair. `None` means inconsistent verifier-owned geometry.
+pub fn suffix_kernel(claim: &[Fp2], point: &[Fp2]) -> Option<Fp2> {
+    if claim.len() != point.len() {
+        return None;
+    }
+    let mut sum = Fp2::ZERO;
+    let mut equal = Fp2::ONE;
+    // Only the highest differing bit decides strict order; lower bits sum to one.
+    for (&i, &v) in claim.iter().zip(point).rev() {
+        sum += equal * (Fp2::ONE - i) * v;
+        equal *= i * v + (Fp2::ONE - i) * (Fp2::ONE - v);
     }
     Some(sum)
 }
