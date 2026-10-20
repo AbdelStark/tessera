@@ -54,6 +54,7 @@ tessera bench unit-costs --device INT --out UNIT_COSTS.json
 tessera bench model     (--plan plan.tep | --source-defaults) [--context INT,...] [--out MU.json]
                         # cost-model projection
 tessera recorder ref    --listen ADDR --log-dir DIR                         # software reference recorder
+tessera inspect         FILE                                                # renders a TCE artifact as text (RFC-0003)
 ```
 
 ### 2.3 `tessera-verify` (Rust, verifier side, independent build)

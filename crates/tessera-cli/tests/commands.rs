@@ -3,10 +3,11 @@
 //! The `tessera` command tree of 02 §2.2, end to end through the built binary.
 //!
 //! - **The tree.** `tessera --help` lists every command of 02 §2.2, and each has its own help.
-//! - **Not yet.** Every command but `compile`, `commit-weights`, `bench model` and `params check`
-//!   checks the envelope of each TCE artifact it reads, then exits 64 (`ERR-USAGE`), naming the
-//!   issue that implements it, and writes nothing. `compile`, `commit-weights` and `params check`
-//!   have tests of their own (`compile.rs`, `commit_weights.rs`, `params_check.rs`).
+//! - **Not yet.** Every command but `compile`, `commit-weights`, `bench model`, `params check`
+//!   and `inspect` checks the envelope of each TCE artifact it reads, then exits 64 (`ERR-USAGE`),
+//!   naming the issue that implements it, and writes nothing. `compile`, `commit-weights`,
+//!   `params check` and `inspect` have tests of their own (`compile.rs`, `commit_weights.rs`,
+//!   `params_check.rs`, `inspect.rs`).
 //! - **Exit statuses** (02 §2.4). A malformed artifact exits 65 with its fault's code: bytes
 //!   that are no envelope, another schema's envelope, a truncated one, a corrupted digest,
 //!   trailing bytes. An artifact that cannot be read exits 20. A malformed argument exits 64.
@@ -21,7 +22,7 @@ use tessera_codec::envelope;
 use tessera_codec::schema::{self, Schema};
 
 /// The commands of 02 §2.2.
-const COMMANDS: [&str; 11] = [
+const COMMANDS: [&str; 12] = [
     "compile",
     "commit-weights",
     "weights refresh",
@@ -33,6 +34,7 @@ const COMMANDS: [&str; 11] = [
     "bench unit-costs",
     "bench model",
     "recorder ref",
+    "inspect",
 ];
 
 fn tessera<S: AsRef<std::ffi::OsStr>>(args: &[S]) -> Output {

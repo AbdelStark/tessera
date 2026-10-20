@@ -29,7 +29,7 @@ mod weights;
 
 pub use claim::{ClaimList, CommitmentLayout, GadgetPolicy, PROTOCOL_VERSION};
 pub use error::IrError;
-pub use files::LogitsFile;
+pub use files::{LogitsFile, TokenFile};
 pub use graph::{Graph, GraphBuilder, Node};
 pub use model::{
     ArchFamily, ArchSpec, CalibrationIdentity, ChannelParams, Digest, IntegerModel, Profile,
