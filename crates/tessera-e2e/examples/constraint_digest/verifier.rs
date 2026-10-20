@@ -224,6 +224,13 @@ fn relation(r: &s::Relation) -> Value {
             positions,
             middle_vars,
         } => json!({"Rotate":[json!(positions),json!(middle_vars)]}),
+        s::Relation::Booleanity => json!({"Booleanity":[]}),
+        s::Relation::Vocabulary { vocab, vocab_vars } => json!({"Vocabulary":[vocab,vocab_vars]}),
+        s::Relation::OneHotCount {
+            vocab_vars,
+            positions,
+        } => json!({"OneHotCount":[vocab_vars,positions]}),
+        s::Relation::OneHotIndex { vocab_vars } => json!({"OneHotIndex":[vocab_vars]}),
         s::Relation::Equality { constant } => json!({"Equality":[constant.to_canonical()]}),
     }
 }

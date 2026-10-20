@@ -25,7 +25,7 @@ struct Planned<'a> {
 }
 
 /// Stage `index`: an instance per virtual part of the stage before's claims `previous`, in order,
-/// then in stage 1 the equality zero-checks in node order, and the claims their evaluations leave.
+/// then in stage 1 the OneHot and equality zero-checks in node order, and the claims their evaluations leave.
 /// It has no instances when nothing remains to prove.
 pub(super) fn stage(
     derivation: &mut Derivation<'_>,
@@ -69,17 +69,29 @@ pub(super) fn stage(
                 NodeRef::Position(_) => Layers::Eq(Vec::new()),
                 NodeRef::Node(_) => Layers::None,
             };
-            let vars = instance_vars(derivation, graph_node, Relation::Equality, &layers)?;
-            planned.push(Planned {
-                source: Source::ZeroCheck,
-                relation: Relation::Equality,
-                node,
-                graph_node,
-                kind,
-                point: Vec::new(),
-                layers,
-                vars,
-            });
+            let relations: &[Relation] = if matches!(graph_node.op, Op::OneHot { .. }) {
+                &[
+                    Relation::Booleanity,
+                    Relation::OneHotVocabulary,
+                    Relation::OneHotCount,
+                    Relation::OneHotIndex,
+                ]
+            } else {
+                &[Relation::Equality]
+            };
+            for &relation in relations {
+                let vars = instance_vars(derivation, graph_node, relation, &layers)?;
+                planned.push(Planned {
+                    source: Source::ZeroCheck,
+                    relation,
+                    node,
+                    graph_node,
+                    kind,
+                    point: Vec::new(),
+                    layers: layers.clone(),
+                    vars,
+                });
+            }
         }
     }
     let rounds = planned.iter().map(|p| p.vars).max().unwrap_or(0);
@@ -174,8 +186,9 @@ fn zero_checks<'a>(derivation: &Derivation<'a>) -> Vec<(NodeRef, &'a Node, Kind)
             Some(_) => continue,
             None => NodeRef::Node(node.id),
         };
-        let checked = node.op.class() != OpClass::Gadget
-            && !matches!(node.op, Op::MatMulWeight { .. } | Op::MatMulAct { .. });
+        let checked = matches!(node.op, Op::OneHot { .. })
+            || (node.op.class() != OpClass::Gadget
+                && !matches!(node.op, Op::MatMulWeight { .. } | Op::MatMulAct { .. }));
         for (output, &t) in (0u32..).zip(&node.outputs) {
             let committed = matches!(
                 derivation.graph.tensors[t.0 as usize].kind,
@@ -249,7 +262,13 @@ fn instance_vars(
             }
             vars(node.inputs[0])
         }
-        Relation::Mul(_) | Relation::ScaleChannels | Relation::Equality => vars(node.outputs[0]),
+        Relation::Mul(_)
+        | Relation::ScaleChannels
+        | Relation::Equality
+        | Relation::Booleanity
+        | Relation::OneHotVocabulary
+        | Relation::OneHotCount
+        | Relation::OneHotIndex => vars(node.outputs[0]),
     };
     Ok(own + lambda)
 }
@@ -310,6 +329,23 @@ fn evaluations(
         ],
         Relation::SumSquares | Relation::Rotate | Relation::ScaleChannels => {
             vec![at(0, own.to_vec())?]
+        }
+        Relation::Booleanity | Relation::OneHotVocabulary | Relation::OneHotCount => {
+            vec![(plan.kind, own.to_vec(), layers.clone())]
+        }
+        Relation::OneHotIndex => {
+            let width = axis_vars(
+                *derivation.graph.tensors[node.outputs[0].0 as usize]
+                    .shape
+                    .last()
+                    .ok_or(CompileError::Usage {
+                        rule: "OneHot has a vocabulary axis",
+                    })?,
+            ) as usize;
+            vec![
+                (plan.kind, own.to_vec(), layers.clone()),
+                at(0, own[width..].to_vec())?,
+            ]
         }
         Relation::Equality => {
             let output = (plan.kind, own.to_vec(), layers.clone());

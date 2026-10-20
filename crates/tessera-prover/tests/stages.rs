@@ -465,7 +465,12 @@ impl Verifier<'_> {
                 let heads = self.lowering.graph.tensors[node.inputs[0].0 as usize].shape[0];
                 2 + usize::from(stacked || heads > 1)
             }
-            Relation::Mul(_) | Relation::SumSquares | Relation::ScaleChannels => 3,
+            Relation::Mul(_)
+            | Relation::SumSquares
+            | Relation::ScaleChannels
+            | Relation::Booleanity
+            | Relation::OneHotVocabulary => 3,
+            Relation::OneHotCount | Relation::OneHotIndex => 2,
             Relation::Rotate => 2,
             Relation::Equality => match node.op {
                 Op::Mul { .. } => 3,
@@ -520,6 +525,41 @@ impl Verifier<'_> {
             }
             Relation::Rotate => self.kernel(node, &target, &r, stacked) * e[0],
             Relation::ScaleChannels => panic!("no per-channel ConstMul in the conformance models"),
+            Relation::Booleanity => eq(&target, &r).expect("eq") * e[0] * (F::ONE - e[0]),
+            Relation::OneHotVocabulary | Relation::OneHotCount | Relation::OneHotIndex => {
+                let &[positions, vocab] = self.lowering.graph.tensors[node.outputs[0].0 as usize]
+                    .shape
+                    .as_slice()
+                else {
+                    panic!("OneHot axes")
+                };
+                let vbits = axis_vars(vocab) as usize;
+                let rv = &r[..vbits];
+                let rows = &r[vbits..];
+                let scale = F::from(Goldilocks::from_u64_reduced(
+                    vocab.next_power_of_two() as u64
+                ))
+                .inverse()
+                .unwrap();
+                match instance.relation {
+                    Relation::OneHotVocabulary => {
+                        eq(&target, &r).unwrap()
+                            * (F::ONE - less_than(rv, vocab as u64).unwrap())
+                            * e[0]
+                    }
+                    Relation::OneHotCount => {
+                        eq(&target[vbits..], rows).unwrap()
+                            * (e[0] - less_than(rows, positions as u64).unwrap() * scale)
+                    }
+                    Relation::OneHotIndex => {
+                        let index = rv.iter().enumerate().fold(F::ZERO, |sum, (i, &x)| {
+                            sum + F::from(Goldilocks::from_u64_reduced(1 << i)) * x
+                        });
+                        eq(&target[vbits..], rows).unwrap() * (index * e[0] - e[1] * scale)
+                    }
+                    _ => unreachable!(),
+                }
+            }
             Relation::Equality => {
                 let f = match node.op {
                     Op::ConstMul { .. } => {

@@ -143,13 +143,48 @@ fn bind(table: &[Fe], low: usize, point: &[Fe]) -> Vec<Fe> {
 // ----- The witness ---------------------------------------------------------------------------------
 
 /// Every tensor's values, row-major in its real shape, by id.
+#[derive(Clone, Copy, Debug)]
+pub enum IndicatorFault {
+    Entry(Fe),
+    NonBoolean,
+    Missing,
+    Extra,
+    Index,
+    ScalarToken,
+    Padding,
+}
+
 pub struct Witness {
     pub values: Vec<Vec<Fe>>,
+    indicator_padding: Option<(TensorId, Vec<Fe>)>,
 }
 
 impl Witness {
     /// Random graph inputs and gadget outputs, every other output computed.
     pub fn new(graph: &Graph, rope: &Rope, seed: u64) -> Self {
+        Self::with_indicator_entry(graph, rope, seed, None)
+    }
+
+    /// Change one indicator entry before computing all downstream graph values.
+    pub fn with_indicator_entry(graph: &Graph, rope: &Rope, seed: u64, entry: Option<Fe>) -> Self {
+        Self::with_onehot_fault(graph, rope, seed, entry.map(IndicatorFault::Entry))
+    }
+
+    pub fn with_onehot_fault(
+        graph: &Graph,
+        rope: &Rope,
+        seed: u64,
+        fault: Option<IndicatorFault>,
+    ) -> Self {
+        let mut indicator_padding = None;
+        let vocab = graph
+            .nodes()
+            .iter()
+            .find_map(|node| match node.op() {
+                Op::OneHot { vocab } => Some(u64::from(*vocab)),
+                _ => None,
+            })
+            .unwrap();
         let mut rng = SplitMix64::new(seed);
         let mut values: Vec<Vec<Fe>> = vec![Vec::new(); graph.tensors().len()];
         let size = |t: TensorId| -> usize {
@@ -166,15 +201,72 @@ impl Witness {
             let t = input.tensor;
             values[t.0 as usize] = match input.role {
                 Role::Positions => (0..size(t) as u64).map(Fe::base).collect(),
+                Role::Tokens => (0..size(t))
+                    .map(|_| Fe::base(rng.next_u64() % vocab))
+                    .collect(),
                 _ => (0..size(t)).map(|_| random(&mut rng)).collect(),
             };
+        }
+        if let Some(fault) = fault {
+            let token = graph
+                .inputs()
+                .iter()
+                .find(|i| i.role == Role::Tokens)
+                .unwrap()
+                .tensor;
+            match fault {
+                IndicatorFault::Entry(_) => {}
+                IndicatorFault::Extra | IndicatorFault::ScalarToken => {
+                    values[token.0 as usize][0] = Fe::ONE
+                }
+                IndicatorFault::Padding => values[token.0 as usize][0] = Fe::base(vocab),
+                _ => values[token.0 as usize][0] = Fe::ZERO,
+            }
         }
         for node in graph.nodes() {
             let dims = |t: TensorId| graph.tensor(t).unwrap().shape.dims().to_vec();
             let input = |i: usize| values[node.inputs()[i].0 as usize].clone();
             let outs: Vec<Vec<Fe>> = match *node.op() {
-                Op::OneHot { .. }
-                | Op::Requant { .. }
+                Op::OneHot { vocab } => {
+                    let mut h = vec![Fe::ZERO; size(node.outputs()[0])];
+                    for (row, token) in input(0).iter().enumerate() {
+                        if token.0 < u64::from(vocab) {
+                            h[row * vocab as usize + token.0 as usize] = Fe::ONE;
+                        }
+                    }
+                    if let Some(fault) = fault {
+                        match fault {
+                            IndicatorFault::Entry(value) => h[0] = value,
+                            IndicatorFault::NonBoolean => {
+                                h[..vocab as usize].fill(Fe::ZERO);
+                                h[0] = Fe::base(2);
+                                h[1] = Fe::ZERO - Fe::base(2);
+                                h[2] = Fe::ONE;
+                            }
+                            IndicatorFault::Missing => h[..vocab as usize].fill(Fe::ZERO),
+                            IndicatorFault::Extra => {
+                                h[0] = Fe::ONE;
+                                h[1] = Fe::ONE;
+                            }
+                            IndicatorFault::Index => {
+                                h[0] = Fe::ZERO;
+                                h[1] = Fe::ONE;
+                            }
+                            IndicatorFault::ScalarToken => {
+                                h[..vocab as usize].fill(Fe::ZERO);
+                                h[0] = Fe::ONE;
+                            }
+                            IndicatorFault::Padding => {
+                                assert!(!vocab.is_power_of_two());
+                                let mut table = padded(&h, &dims(node.outputs()[0]));
+                                table[vocab as usize] = Fe::ONE;
+                                indicator_padding = Some((node.outputs()[0], table));
+                            }
+                        }
+                    }
+                    vec![h]
+                }
+                Op::Requant { .. }
                 | Op::RsqrtRow { .. }
                 | Op::SoftmaxRow { .. }
                 | Op::TableMap { .. } => node
@@ -315,7 +407,17 @@ impl Witness {
                 values[o.0 as usize] = v;
             }
         }
-        Self { values }
+        Self {
+            values,
+            indicator_padding,
+        }
+    }
+
+    pub fn table(&self, tensor: TensorId, dims: &[u32]) -> Vec<Fe> {
+        match &self.indicator_padding {
+            Some((id, table)) if *id == tensor => table.clone(),
+            _ => padded(&self.values[tensor.0 as usize], dims),
+        }
     }
 }
 
@@ -430,13 +532,15 @@ pub struct Prover<'a> {
     pub schedule: &'a Schedule,
     pub rope: &'a Rope,
     pub sources: Sources,
+    /// An adapted malicious proof replaces just this OneHot relation by zero.
+    pub omit_onehot: Option<usize>,
 }
 
 impl Prover<'_> {
     /// A tensor's per-layer value at `point`: the true extension of its padded table.
     fn value_at(&self, t: TensorId, point: &[Fe]) -> Fe {
         let dims = self.layout.dims(t);
-        reference::mle(&padded(&self.witness.values[t.0 as usize], &dims), point)
+        reference::mle(&self.witness.table(t, &dims), point)
     }
 
     /// The table of a schedule tensor over its variables, then the layers' when stacked; padded
@@ -447,7 +551,7 @@ impl Prover<'_> {
         let own = 1usize << shape_vars(&dims);
         let mut table = Vec::new();
         for t in &tensors {
-            table.extend(padded(&self.witness.values[t.0 as usize], &dims));
+            table.extend(self.witness.table(*t, &dims));
         }
         if matches!(tensor, TensorRef::Single(_)) {
             return table;
@@ -570,6 +674,24 @@ impl Prover<'_> {
 
     /// Instance `instance`'s tables, from its relation's identity and the witness.
     fn product(&self, k: usize, i: usize, zero: &[Fe]) -> Product {
+        let mut product = self.exact_product(k, i, zero);
+        let instance = &self.schedule.stages()[k].instances[i];
+        let obligation = match instance.relation {
+            Relation::Booleanity => Some(0),
+            Relation::Vocabulary { .. } => Some(1),
+            Relation::OneHotCount { .. } => Some(2),
+            Relation::OneHotIndex { .. } => Some(3),
+            _ => None,
+        };
+        if obligation.is_some() && self.omit_onehot == obligation {
+            product.form = Form::Product;
+            product.public = vec![vec![Fe::ZERO; 1usize << instance.vars]];
+            product.lambda = None;
+        }
+        product
+    }
+
+    fn exact_product(&self, k: usize, i: usize, zero: &[Fe]) -> Product {
         let instance = &self.schedule.stages()[k].instances[i];
         let graph = self.layout.graph;
         let node = graph.node(instance.node).unwrap();
@@ -603,8 +725,7 @@ impl Prover<'_> {
             table.resize(size * layers, Fe::ZERO);
             table
         };
-        let table_of =
-            |t: TensorId| padded(&self.witness.values[t.0 as usize], &self.layout.dims(t));
+        let table_of = |t: TensorId| self.witness.table(t, &self.layout.dims(t));
         // eq(ρ, ℓ) times a per-layer public factor.
         let public = |own: Vec<Fe>| -> Vec<Fe> {
             match &rho {
@@ -709,6 +830,72 @@ impl Prover<'_> {
                     })
                     .collect();
                 (vec![x], Some(public(kernel)), Form::Product)
+            }
+            Relation::Vocabulary { vocab, vocab_vars } => {
+                let h = table_of(node.outputs()[0]);
+                let mask = (1usize << vocab_vars) - 1;
+                let eqs = (0..h.len()).map(|v| eq_at(zero, v)).collect();
+                let outside = (0..h.len())
+                    .map(|v| {
+                        if v & mask < vocab as usize {
+                            Fe::ZERO
+                        } else {
+                            Fe::ONE
+                        }
+                    })
+                    .collect();
+                return Product {
+                    tables: vec![h],
+                    public: vec![eqs, outside],
+                    lambda: None,
+                    form: Form::Product,
+                };
+            }
+            Relation::OneHotCount {
+                vocab_vars,
+                positions,
+            } => {
+                let h = table_of(node.outputs()[0]);
+                let width = 1usize << vocab_vars;
+                let eqs = (0..h.len())
+                    .map(|v| eq_at(&zero[vocab_vars..], v / width))
+                    .collect();
+                let selector = (0..h.len())
+                    .map(|v| {
+                        if v / width < positions as usize {
+                            Fe::ONE
+                        } else {
+                            Fe::ZERO
+                        }
+                    })
+                    .collect();
+                return Product {
+                    tables: vec![h],
+                    public: vec![eqs, selector],
+                    lambda: None,
+                    form: Form::OneHotCount(Fe::base(width as u64).inverse().unwrap()),
+                };
+            }
+            Relation::OneHotIndex { vocab_vars } => {
+                let h = table_of(node.outputs()[0]);
+                let token = table_of(node.inputs()[0]);
+                let width = 1usize << vocab_vars;
+                let eqs = (0..h.len())
+                    .map(|v| eq_at(&zero[vocab_vars..], v / width))
+                    .collect();
+                let indices = (0..h.len()).map(|v| Fe::base((v % width) as u64)).collect();
+                let tokens = (0..h.len()).map(|v| token[v / width]).collect();
+                return Product {
+                    tables: vec![h, tokens],
+                    public: vec![eqs, indices],
+                    lambda: None,
+                    form: Form::OneHotIndex(Fe::base(width as u64).inverse().unwrap()),
+                };
+            }
+            Relation::Booleanity => {
+                let h = table_of(node.outputs()[0]);
+                let eqs = (0..h.len()).map(|v| eq_at(zero, v)).collect();
+                (vec![h], Some(eqs), Form::Booleanity)
             }
             Relation::Equality { .. } => {
                 let Op::ConstMul { c } = *node.op() else {

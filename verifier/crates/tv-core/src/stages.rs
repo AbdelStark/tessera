@@ -56,7 +56,7 @@
 //! schedule's instances and the proof's length, plus `n·d_head/2` constant pairs for each `Rotate`
 //! instance.
 
-use tv_field::Fp2;
+use tv_field::{Fp, Fp2};
 use tv_hash::transcript::Transcript;
 use tv_tables::rope::Rope;
 
@@ -389,7 +389,14 @@ pub(crate) fn verify_with(
         reserve(&mut resolved, stage.instances.len())?;
         for (instance, arriving) in stage.instances.iter().zip(&incoming) {
             let claim = match (&instance.relation, arriving) {
-                (Relation::Equality { .. }, Incoming::Missing) => Fp2::ZERO,
+                (
+                    Relation::Equality { .. }
+                    | Relation::Booleanity
+                    | Relation::Vocabulary { .. }
+                    | Relation::OneHotCount { .. }
+                    | Relation::OneHotIndex { .. },
+                    Incoming::Missing,
+                ) => Fp2::ZERO,
                 (_, Incoming::Value(v)) => *v,
                 (_, Incoming::PerLayer(values)) => stacked(&eq_layers, values)?,
                 _ => return Err(StageError::Internal),
@@ -899,6 +906,43 @@ fn final_value(
             },
             &[x],
         ) => Some(rotate_kernel(rope, *positions, *middle_vars, r, own)? * layer_factor * x),
+        (Relation::Booleanity, &[h]) => {
+            Some(sumcheck::eq(&resolved.zero, point)? * h * (Fp2::ONE - h))
+        }
+        (Relation::Vocabulary { vocab, vocab_vars }, &[h]) => Some(
+            sumcheck::eq(&resolved.zero, point)?
+                * (Fp2::ONE - crate::selectors::lt(point.get(..*vocab_vars)?, u64::from(*vocab))?)
+                * h,
+        ),
+        (
+            Relation::OneHotCount {
+                vocab_vars,
+                positions,
+            },
+            &[h],
+        ) => {
+            let rows = point.get(*vocab_vars..)?;
+            let zero_rows = resolved.zero.get(*vocab_vars..)?;
+            let scale = Fp2::from(
+                Fp::reduce(2)
+                    .pow(u64::try_from(*vocab_vars).ok()?)
+                    .inverse()?,
+            );
+            Some(
+                sumcheck::eq(zero_rows, rows)?
+                    * (h - crate::selectors::lt(rows, u64::from(*positions))? * scale),
+            )
+        }
+        (Relation::OneHotIndex { vocab_vars }, &[h, token]) => {
+            let rows = point.get(*vocab_vars..)?;
+            let zero_rows = resolved.zero.get(*vocab_vars..)?;
+            let (mut index, mut size) = (Fp2::ZERO, Fp2::ONE);
+            for &r in point.get(..*vocab_vars)? {
+                index += size * r;
+                size += size;
+            }
+            Some(sumcheck::eq(zero_rows, rows)? * (index * h - token * size.inverse()?))
+        }
         (Relation::Equality { constant }, &[y, x]) => {
             Some(sumcheck::eq(&resolved.zero, point)? * (y - Fp2::from(*constant) * x))
         }
@@ -1034,7 +1078,8 @@ mod tests {
     }
 
     /// A proof of zeros of the right shapes: every claim, round polynomial, evaluation and split
-    /// value is 0, which every stage accepts whatever its challenges.
+    /// value is 0. Nonhomogeneous row selectors require the padded-row corner
+    /// for the label-order control; exhaustion tests stop before the final check.
     fn zeros(schedule: &Schedule) -> (Vec<LeafValues>, Vec<Fp2>, Vec<StageProof>) {
         let leaf = schedule
             .leaf()
@@ -1074,7 +1119,9 @@ mod tests {
         for name in ["tiny-2-servable", "tiny-4-servable"] {
             let (schedule, rope) = schedule(name, 5);
             let (leaf, leaf_splits, stages) = zeros(&schedule);
-            let mut stub = Stub::default();
+            // n=5 has public padding at row7. All-one coordinates select that row,
+            // where the zero control satisfies the row selector. Only label order is tested.
+            let mut stub = Stub::constant(Fp2::ONE);
             let verified =
                 verify_with(&mut stub, &schedule, &rope, &leaf, &leaf_splits, &stages).unwrap();
             assert!(!verified.pool.is_empty());

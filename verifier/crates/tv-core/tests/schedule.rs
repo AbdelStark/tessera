@@ -19,7 +19,8 @@ use tv_codec::{DecodeLimits, Rational};
 use tv_core::claims::{ClaimList, Profile, Site, WeightType};
 use tv_core::lowering::{Broadcast, Graph, Kind, NodeId, Op, TensorId, lower};
 use tv_core::schedule::{
-    Class, Commitment, Layers, Part, RelationKind, Route, Run, Schedule, Source, TensorRef, derive,
+    Class, Commitment, Layers, Part, Relation, RelationKind, Route, Run, Schedule, Source,
+    TensorRef, derive,
 };
 use tv_core::validation::check_public;
 use tv_testkit::{Json, read_vectors};
@@ -302,6 +303,22 @@ fn instances_have_the_variables_and_degrees_of_their_relations() {
                     Op::Mul { .. } => (shape_vars(graph, node.outputs()[0]), 3, 2),
                     Op::SumSquares { .. } => (shape_vars(graph, node.inputs()[0]), 3, 1),
                     Op::Rotate { .. } => (shape_vars(graph, node.inputs()[0]), 2, 1),
+                    Op::OneHot { .. } => (
+                        shape_vars(graph, node.outputs()[0]),
+                        if matches!(
+                            instance.relation,
+                            Relation::OneHotCount { .. } | Relation::OneHotIndex { .. }
+                        ) {
+                            2
+                        } else {
+                            3
+                        },
+                        if matches!(instance.relation, Relation::OneHotIndex { .. }) {
+                            2
+                        } else {
+                            1
+                        },
+                    ),
                     Op::ConstMul { .. } => {
                         assert_eq!(instance.relation.kind(), RelationKind::ZeroCheck);
                         (shape_vars(graph, node.outputs()[0]), 2, 2)
@@ -531,6 +548,10 @@ fn tiny_2_servable_has_the_schedule_rfc_0037_gives_it() {
                 SumSquares,   // FinalNorm
                 Elementwise,
                 MatMulWeight, // the logits
+                ZeroCheck,    // original OneHot booleanity (RFC-0035)
+                ZeroCheck,    // OneHot vocabulary padding
+                ZeroCheck,    // OneHot row count
+                ZeroCheck,    // OneHot original token index
                 ZeroCheck,    // c_0 = 2^{s_e}·x_0
             ],
             "{}",
@@ -574,13 +595,13 @@ fn tiny_2_servable_has_the_schedule_rfc_0037_gives_it() {
             }
         ));
         // c_0's zero-check reads the committed first checkpoint and the embedding's matmul.
-        let zero = &stage1[17];
+        let zero = &stage1[21];
         assert_eq!(zero.tensor, TensorRef::Single(case.graph.checkpoints()[0]));
         assert_eq!(zero.zero.len(), zero.vars);
         assert_eq!(
             case.schedule.stages()[0].zero_vars,
-            vars(case.n) + vars(64),
-            "c_0 is [n, d_model]"
+            vars(case.n) + vars(512),
+            "the largest zero-check is the original [n, vocab] indicator"
         );
     }
 }
@@ -668,5 +689,81 @@ fn the_stages_do_not_depend_on_the_number_of_layers() {
                 "{what}"
             );
         }
+    }
+}
+
+/// RFC-0035 and RFC-0037 require this independent check even when every leaf
+/// evaluation supplied to the graph reductions is internally consistent.
+#[test]
+fn native_onehot_booleanity_is_a_stage_one_zero_check_on_the_original_indicator() {
+    for case in cases() {
+        let (id, node) = case
+            .graph
+            .nodes()
+            .iter()
+            .enumerate()
+            .find(|(_, node)| matches!(node.op(), Op::OneHot { .. }))
+            .unwrap();
+        let tensor = node.outputs()[0];
+        let stage = &case.schedule.stages()[0];
+        let instance = stage
+            .instances
+            .iter()
+            .find(|instance| instance.node == NodeId(id as u32))
+            .expect("native stage 1 proves the original OneHot's booleanity");
+        let width = shape_vars(&case.graph, tensor);
+        assert_eq!(instance.relation.kind(), RelationKind::ZeroCheck);
+        assert_eq!(instance.tensor, TensorRef::Single(tensor));
+        assert_eq!(instance.vars, width);
+        assert_eq!(instance.degree, 3);
+        assert!(!instance.stacked);
+        assert_eq!(instance.point.len(), 0);
+        assert_eq!(instance.zero.len(), width);
+        assert_eq!(instance.evals.len(), 1);
+        assert_eq!(instance.evals[0].tensor, TensorRef::Single(tensor));
+        assert!(matches!(instance.evals[0].route, Route::Pool));
+    }
+}
+
+#[test]
+fn native_onehot_derives_every_relation_on_the_original_sources() {
+    for case in cases() {
+        let (id, _) = case
+            .graph
+            .nodes()
+            .iter()
+            .enumerate()
+            .find(|(_, node)| matches!(node.op(), Op::OneHot { .. }))
+            .unwrap();
+        let checks: Vec<_> = case.schedule.stages()[0]
+            .instances
+            .iter()
+            .filter(|instance| instance.node == NodeId(id as u32))
+            .collect();
+        assert_eq!(
+            checks.len(),
+            4,
+            "native OneHot needs booleanity, vocabulary, count and index"
+        );
+        assert_eq!(checks.iter().map(|i| i.evals.len()).sum::<usize>(), 5);
+        let node = case.graph.nodes().get(id).unwrap();
+        for instance in &checks {
+            assert_eq!(
+                instance.evals[0].tensor,
+                TensorRef::Single(node.outputs()[0])
+            );
+        }
+        let index = checks
+            .iter()
+            .find(|i| matches!(i.relation, Relation::OneHotIndex { .. }))
+            .unwrap();
+        assert_eq!(index.evals[1].tensor, TensorRef::Single(node.inputs()[0]));
+        assert_eq!(index.evals[1].vars, vars(case.n));
+        assert!(matches!(index.evals[1].route, Route::Pool));
+        assert!(
+            checks
+                .iter()
+                .all(|i| i.relation.kind() == RelationKind::ZeroCheck)
+        );
     }
 }

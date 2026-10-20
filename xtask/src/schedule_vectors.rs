@@ -57,7 +57,11 @@ fn relation(relation: Relation) -> &'static str {
         Relation::SumSquares => "SumSquares",
         Relation::Rotate => "Rotate",
         Relation::ScaleChannels => "ScaleChannels",
-        Relation::Equality => "ZeroCheck",
+        Relation::Equality
+        | Relation::Booleanity
+        | Relation::OneHotVocabulary
+        | Relation::OneHotCount
+        | Relation::OneHotIndex => "ZeroCheck",
     }
 }
 

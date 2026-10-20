@@ -167,9 +167,17 @@ pub(crate) mod stub {
         pub(crate) ops: Vec<Op>,
         pub(crate) fail_at: Option<usize>,
         challenges: usize,
+        constant: Option<Fp2>,
     }
 
     impl Stub {
+        pub(crate) fn constant(value: Fp2) -> Self {
+            Self {
+                constant: Some(value),
+                ..Self::default()
+            }
+        }
+
         pub(crate) fn failing_at(challenge: usize) -> Self {
             Self {
                 fail_at: Some(challenge),
@@ -201,6 +209,9 @@ pub(crate) mod stub {
             self.challenges += 1;
             if self.fail_at == Some(n) {
                 return Err(TranscriptError::Exhausted);
+            }
+            if let Some(value) = self.constant {
+                return Ok(value);
             }
             // Distinct challenges, far from the interpolation nodes.
             Ok(Fp2::new(

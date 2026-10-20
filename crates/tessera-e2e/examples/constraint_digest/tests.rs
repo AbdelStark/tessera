@@ -119,12 +119,12 @@ fn verifier_collector_matches_independent_graph_oracle_before_compiler_compariso
                         .keys()
                         .next()
                         .unwrap();
+                    let zero = matches!(
+                        relation.as_str(),
+                        "Equality" | "Booleanity" | "Vocabulary" | "OneHotCount" | "OneHotIndex"
+                    );
                     assert_eq!(
-                        if relation == "Equality" {
-                            "ZeroCheck"
-                        } else {
-                            relation
-                        },
+                        if zero { "ZeroCheck" } else { relation },
                         e["relation"].as_str().unwrap()
                     );
                     let point: Vec<_> = e["point"]
@@ -140,14 +140,7 @@ fn verifier_collector_matches_independent_graph_oracle_before_compiler_compariso
                             }
                         })
                         .collect();
-                    assert_eq!(
-                        instance[if relation == "Equality" {
-                            "zero"
-                        } else {
-                            "point"
-                        }],
-                        json!(point)
-                    );
+                    assert_eq!(instance[if zero { "zero" } else { "point" }], json!(point));
                     assert_eq!(
                         if e["layers"].is_null() {
                             json!(["none"])
