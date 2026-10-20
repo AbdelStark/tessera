@@ -346,6 +346,10 @@ def main():
     argmax = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(argmax)
     write('argmax.json', argmax.cases())
+    spec = importlib.util.spec_from_file_location('argmax_view_oracle', Path(__file__).with_name('argmax_views.py'))
+    views = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(views)
+    write('argmax-views.json', views.cases())
     print(f'{len(cases)} comparison cases, {sum(len(c["rows"]) for c in cases)} integer witnesses')
 
 
