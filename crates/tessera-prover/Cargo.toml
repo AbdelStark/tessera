@@ -23,6 +23,7 @@ tessera-tables = { path = "../tessera-tables" }
 tessera-witness = { path = "../tessera-witness" }
 
 [dev-dependencies]
+tessera-scoring = { path = "../tessera-scoring" }
 serde_json = "1"
 tessera-hash = { path = "../tessera-hash" }
 # The verifier's independent LogUp checks, tables, field, codec and transcript: the leaf stage's
