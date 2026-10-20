@@ -96,6 +96,41 @@ pub enum PcsError {
     },
     /// A layout with no segment. A matrix has at least one segment, which may be empty.
     NoSegments,
+    /// A streaming segment index outside the canonical layout.
+    SegmentIndex {
+        /// The index given.
+        segment: u32,
+        /// The layout's segment count.
+        segments: u32,
+    },
+    /// A merge with a different number of parts from its layout.
+    SegmentCount {
+        /// The layout's segment count.
+        expected: usize,
+        /// The number of parts given.
+        found: usize,
+    },
+    /// A merge's part does not have the index of its position.
+    SegmentOrder {
+        /// Its expected position.
+        position: usize,
+        /// The index of the part given.
+        segment: u32,
+    },
+    /// A part belongs to different commitment parameters or a different public layout.
+    SegmentContext {
+        /// The part's index.
+        segment: u32,
+    },
+    /// A push or finish does not supply the segment's next non-zero row (INV-PCS-2).
+    StreamRow {
+        /// The segment.
+        segment: u32,
+        /// The next row, or none when the segment is complete.
+        expected: Option<u64>,
+        /// The row given, or none for a premature finish.
+        found: Option<u64>,
+    },
     /// A row that is not above the row before it in layout order, within its segment or across
     /// segments (INV-PCS-2).
     RowOrder {
@@ -366,6 +401,38 @@ impl fmt::Display for PcsError {
                 write!(f, "a row index has at most 64 bits, not {row_vars}")
             }
             Self::NoSegments => write!(f, "a layout has at least 1 segment, not 0"),
+            Self::SegmentIndex { segment, segments } => {
+                write!(f, "segment {segment} is outside {segments} segments")
+            }
+            Self::SegmentCount { expected, found } => {
+                write!(f, "a merge needs {expected} segments, not {found}")
+            }
+            Self::SegmentOrder { position, segment } => write!(
+                f,
+                "merge position {position} needs segment {position}, not {segment}"
+            ),
+            Self::SegmentContext { segment } => write!(
+                f,
+                "segment {segment} has another commitment's parameters or layout"
+            ),
+            Self::StreamRow {
+                segment,
+                expected,
+                found,
+            } => match (expected, found) {
+                (Some(expected), Some(found)) => write!(
+                    f,
+                    "segment {segment} requires row {expected} next, not {found}"
+                ),
+                (Some(expected), None) => {
+                    write!(f, "segment {segment} ended before row {expected}")
+                }
+                (None, Some(found)) => write!(
+                    f,
+                    "segment {segment} is complete, so cannot accept row {found}"
+                ),
+                (None, None) => write!(f, "segment {segment} has no next row"),
+            },
             Self::RowOrder { segment, position } => write!(
                 f,
                 "row {position} of segment {segment} is not above the row before it in layout order"

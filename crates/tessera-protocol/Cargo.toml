@@ -19,6 +19,7 @@ tessera-codec = { path = "../tessera-codec" }
 tessera-field = { path = "../tessera-field" }
 tessera-hash = { path = "../tessera-hash" }
 tessera-ir = { path = "../tessera-ir" }
+tessera-pcs = { path = "../tessera-pcs" }
 tessera-sumcheck = { path = "../tessera-sumcheck" }
 
 [dev-dependencies]

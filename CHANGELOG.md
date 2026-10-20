@@ -824,6 +824,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - Complete native-model protocol/1 transcript geometry from public claims, including all canonical lookup requests, Softmax forests, gadget zero-checks and their graph dependencies. Independent graph-walk vectors cover all conformance models and sequence/query-block/layer boundaries in both modes; both workspaces replay every step (#125).
 
+- The CPU `StreamingCommitter` commits canonical advice row runs with one initialized secret codeword block and column chain state; rejects misplaced/missing rows and mixed/reordered segment parts; clears blocks on flush and abort; and merges roots without a retained tree. Independent 16-case vectors, randomized batch equality and actual allocator/clearing checks cover S=1/2/8. `AdviceCommitment` is owned by PCS and re-exported at its existing protocol path with unchanged TCE bytes. An allocation-free column-hash entrypoint preserves the existing resident hash path (#115).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
