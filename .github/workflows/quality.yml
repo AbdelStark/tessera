@@ -1,0 +1,112 @@
+# Deferred toolchain, supply-chain and tier-2 checks (09 §2/§7/§8).
+# Run explicitly from Actions during the fast-build phase (07 §9).
+name: quality
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  dependencies:
+    name: dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            . -> target
+            verifier -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install cargo-deny 0.20.2 (release binary, SHA-256 pinned)
+        run: |
+          base=https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2
+          archive=cargo-deny-0.20.2-x86_64-unknown-linux-musl
+          curl --proto '=https' --tlsv1.2 -sSfL -o "$RUNNER_TEMP/$archive.tar.gz" "$base/$archive.tar.gz"
+          echo "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f  $RUNNER_TEMP/$archive.tar.gz" \
+            | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP"
+          install -m 0755 "$RUNNER_TEMP/$archive/cargo-deny" "$HOME/.cargo/bin/cargo-deny"
+      - name: Install cargo-vet 0.10.2 (crates.io, locked)
+        # No release binary exists after 0.10.0, whose parser rejects audits in newer formats.
+        run: cargo install cargo-vet --version 0.10.2 --locked
+      - name: Dependency policy (09 §7)
+        run: cargo run --locked --quiet -p xtask -- check-deps
+
+  msrv:
+    name: msrv
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust 1.88
+        run: rustup toolchain install 1.88.0 --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            . -> target
+            verifier -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build every target with the minimum supported Rust version (09 §2)
+        run: |
+          cargo +1.88.0 check --workspace --all-targets --locked
+          (cd verifier && cargo +1.88.0 check --workspace --all-targets --locked)
+
+  macos:
+    name: macos build (tier 2)
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            . -> target
+            verifier -> target
+      - name: Build both workspaces
+        run: |
+          cargo build --workspace --locked
+          (cd verifier && cargo build --workspace --locked)
+
+  gpu-host:
+    name: GPU host checks without CUDA
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --component clippy,rustfmt --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            . -> target
+            verifier -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: GPU host code without CUDA (clippy)
+        env:
+          TESSERA_GPU_SKIP_KERNELS: "1"
+        run: cargo clippy -p tessera-gpu --features gpu --all-targets --locked -- -D warnings
+      - name: The gpu feature fails without CUDA 12.8, naming it (RFC-0001)
+        run: |
+          if cargo build -p tessera-gpu --features gpu --locked 2> "$RUNNER_TEMP/gpu-build.log"; then
+            echo "building tessera-gpu with --features gpu succeeded on a runner without CUDA"
+            exit 1
+          fi
+          grep -F "needs the CUDA toolkit 12.8 or later" "$RUNNER_TEMP/gpu-build.log"

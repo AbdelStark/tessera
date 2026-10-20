@@ -96,4 +96,4 @@ Required properties, each a named test:
 | GPU correctness | When a suitable runner is available | Self-hosted runner |
 | Performance regression | On demand during fast-build phase | `tessera bench` |
 
-During backlog development, `.github/workflows/ci.yml` is the only automatic workflow. It runs the core Rust, verifier, Python 3.13, repository-policy and existing tiny-model checks. Fuzzing, calibration, benchmarks, dependency audits, MSRV and macOS builds stay available through manual workflow dispatch. Re-enable broader automatic gates before the production-grade phase.
+During backlog development, `.github/workflows/ci.yml` is the only automatic workflow. It runs the core Rust, verifier, Python 3.13, repository-policy and existing tiny-model checks. Fuzzing, calibration and benchmarks stay available through manual workflow dispatch; [the quality workflow](../../.github/workflows/quality.yml) runs the deferred dependency, MSRV, macOS and GPU host jobs. Re-enable broader automatic gates before the production-grade phase.

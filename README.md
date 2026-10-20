@@ -53,7 +53,7 @@ During the fast-build phase, [`.github/workflows/ci.yml`](.github/workflows/ci.y
 | `python` | `uv sync --locked --extra cpu`, Ruff, strict Pyright and pytest on Python 3.13 ([python/README.md](python/README.md)) |
 | `constraint-digest` | Independent constraint-system digest conformance and the tiny servable-model case |
 
-Fuzz, soundness calibration, microbenchmarks, dependency audits, MSRV, macOS builds and the standalone PR-policy rerun remain available with manual dispatch from the Actions page. They do not run automatically during fast backlog development. The normal checks still protect verifier independence, secret handling, protocol tests, Python packaging and the existing tiny-model conformance path. To reproduce a failure, run the job's commands locally.
+Fuzz, soundness calibration, microbenchmarks and the standalone PR-policy rerun remain available with manual dispatch from the Actions page. [The manual quality workflow](.github/workflows/quality.yml) retains dependency audits, MSRV, macOS builds and GPU host checks without CUDA. They do not run automatically during fast backlog development. The normal checks still protect verifier independence, secret handling, protocol tests, Python packaging and the existing tiny-model conformance path. To reproduce a failure, run the job's commands locally.
 
 ## Contributing
 
