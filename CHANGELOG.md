@@ -822,6 +822,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - Complete current-model witness tiles and table counts, including every RFC-0050 root/Softmax auxiliary and virtual-top lookup, with canonical scalar root limb counts/order (#112). Wide logical multiplicity columns use storage bounded by public sizes and clearing chunk reads; no secret-dependent sort or row skipping is needed. [CPU allocation measurements](docs/perf/witness-regeneration.md) include checkpoints, public source metadata and replay/gadget scratch. GPU regeneration and the proof driver remain separate work.
 
+- Complete native-model protocol/1 transcript geometry from public claims, including all canonical lookup requests, Softmax forests, gadget zero-checks and their graph dependencies. Independent graph-walk vectors cover all conformance models and sequence/query-block/layer boundaries in both modes; both workspaces replay every step (#125).
+
 ### Changed
 
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):

@@ -24,6 +24,7 @@ Usage: python3 spec/vectors/transcript-schedule/generate.py
 Inputs come from SplitMix64 with a fixed seed, so any implementation can regenerate them.
 """
 
+import copy
 import importlib.util
 import json
 import sys
@@ -419,7 +420,8 @@ def model_geometry(case):
     for node in nodes.values():
         if node[1] == "SoftmaxRow" and bounds[0] < node[0] <= bounds[1]:
             heads, queries, keys = tensors[node[3][0]][0]
-            trees.append(forest(layer_bits + variables([heads, queries]), (keys - 1).bit_length()))
+            if keys > 1:  # One key has no product-tree reduction level (RFC-0010).
+                trees.append(forest(layer_bits + variables([heads, queries]), (keys - 1).bit_length()))
     return {"trees": trees, "stages": [stage(*stages[k]) for k in range(1, max(stages) + 1)],
             "lookup_entries": [[tid, count] for tid, count in sorted(counts.items())]}
 
@@ -443,25 +445,39 @@ def matrices(arch, channels):
     return [(ty, m, k) for ty, m, k in out if m > 0]
 
 
-def conformance_sizes(name, index):
+def conformance_sizes(name, index, n=None, query_block=512, padded=False):
     """A model's sizes and lookup counts, all from public data; λ = ⌈log2 L⌉; the proximity point of each
     matrix with committed rows, ⌈log2 m_T⌉ coordinates (RFC-0049); the opened matrices, every one
     with committed rows, each read by a claim of the schedule: the nine weight types by their
     MatMulWeight instances, ChannelParams by the sites that read its classes or multipliers."""
     value, _ = weights.read_model(name, index)
+    if padded:
+        value = copy.deepcopy(value)
+        value["arch"].update(n_layers=3)
+        q = value["quant"]["public"]
+        for field in ("act_exponents", "shift_class_sets", "affine_sites"):
+            for point, data in list(q[field]):
+                if point.get("Layer", {}).get("layer") == 0:
+                    point = copy.deepcopy(point)
+                    point["Layer"]["layer"] = 2
+                    q[field].append([point, data])
+        q["score_scales"].append([2, q["score_scales"][0][1]])
+        value["quant"]["silu_in_exponents"].append([2, value["quant"]["silu_in_exponents"][0][1]])
     arch = value["arch"]
-    channels = {}
-    for ch in value["quant"]["channels"]:
-        ty = next(iter(ch["ty"]))
-        channels[weights.WEIGHT_TYPES.index(ty), ch["layer"]] = ch["class"] or ch["multiplier"]
-    committed = matrices(arch, channels)
     public = {"arch": arch, "profile": value["profile"],
               "quant": {"public": value["quant"]["public"],
                         "silu_in_exponents": value["quant"]["silu_in_exponents"]}}
     entry = next(m for m in index["models"] if m["name"] == name)
-    n = len(entry["sequences"][0]["tokens"])
+    n = len(entry["sequences"][0]["tokens"]) if n is None else n
     graph, _ = lowering.case_of(name, entry["file"], lowering.Public(public), n, None)
-    layout = advice.model_layout(graph, 10, 512, 1)  # test-small/1 and default gadget policy
+    # Public class/multiplier inputs determine rows; their values do not affect geometry.
+    channels = {}
+    for _, role, shape, *_ in graph["inputs"]:
+        if role.startswith(("classes ", "multipliers ")):
+            _, ty, layer = role.split()
+            channels[weights.WEIGHT_TYPES.index(ty), int(layer)] = [0] * shape[0]
+    committed = matrices(arch, channels)
+    layout = advice.model_layout(graph, 10, query_block, 1)  # test-small/1, one segment
     geometry = model_geometry(graph)
     return {
         "trees": geometry["trees"],
@@ -481,7 +497,7 @@ PROVENANCE = {
     "stages": "derived here by walking the public graph: nonlinear relations cost one stage; linear "
     "maps cost none; include OneHot/root/Softmax obligations and their dependencies (RFC-0009/0010/0030/0035/0037)",
     "advice_vars": "derived here through the independent public lowering and advice oracles: nu - log2 k, "
-    "at test-small/1, Q=512, one segment (RFC-0011/0047/0050)",
+    "at test-small/1, stated Q (512 for native cases), one segment (RFC-0011/0047/0050)",
     "proximity": "derived here: each matrix with committed rows at test-small/1 (RFC-0040), ceil(log2 m_T) "
     "coordinates (RFC-0049)",
     "opened": "derived here: every matrix with committed rows, n_T = 4 k_T (RFC-0040, RFC-0012)",
@@ -539,6 +555,17 @@ def main():
             model = case(f"{name}, {mode}", sizes, "test-small/1", mode, rng, provenance=PROVENANCE)
             model["lookup_entries"] = entries
             models.append(model)
+    boundaries = []
+    configs = [(name, 1, 512, False) for name in weights.MODEL_NAMES]
+    configs += [("tiny-2-servable", n, q, False) for n, q in ((3, 1), (17, 4), (64, 512))]
+    configs += [("tiny-2-servable", 3, 4, True)]
+    for name, n, q, padded in configs:
+        sizes, entries = conformance_sizes(name, index, n, q, padded)
+        for mode in ("Live", "NonInteractive"):
+            title = f"{name}, n={n}, Q={q}, padded={padded}, {mode}"
+            item = case(title, sizes, "test-small/1", mode, rng, provenance=PROVENANCE)
+            item.update(model=name, sequence_length=n, query_block=q, padded=padded, lookup_entries=entries)
+            boundaries.append(item)
     document = {
         "description": "Transcript schedules of tessera-protocol/1 (RFC-0014 'Transcript schedule' and "
         "'Grinding', as RFC-0049 places pcs/weights/{T}/xi), written by generate.py, an oracle independent of "
@@ -548,12 +575,13 @@ def main():
         "parameter_sets": PARAMETER_SETS,
         "cases": cases,
         "models": models,
+        "boundaries": boundaries,
     }
     text = compact(document) + "\n"
     require(json.loads(text) == document, "the file parses back to the document")
     (HERE / "schedule.json").write_text(text, encoding="utf-8")
-    steps = sum(len(c["steps"]) for c in cases + models)
-    print(f"wrote schedule.json: {len(cases)} cases, {len(models)} model cases, {steps} steps, {len(text)} bytes")
+    steps = sum(len(c["steps"]) for c in cases + models + boundaries)
+    print(f"wrote schedule.json: {len(cases)} cases, {len(models)} model cases, {len(boundaries)} boundary cases, {steps} steps, {len(text)} bytes")
 
 
 if __name__ == "__main__":

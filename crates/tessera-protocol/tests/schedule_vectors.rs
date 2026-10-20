@@ -187,6 +187,7 @@ fn cases(file: &Value) -> Vec<&Value> {
     list(&file["cases"])
         .iter()
         .chain(list(&file["models"]))
+        .chain(list(&file["boundaries"]))
         .collect()
 }
 
@@ -245,6 +246,7 @@ fn replay(case: &Value, schedule: &TranscriptSchedule, verify: bool) {
     let mut t = ScheduledTranscript::new(&session, schedule).expect("a transcript");
     let replayed: usize = number(&case["replayed"]);
     let steps = list(&case["steps"]);
+    assert_eq!(replayed, steps.len(), "{name}: complete replay");
     for (i, (step, theirs)) in schedule
         .steps()
         .iter()
@@ -304,12 +306,7 @@ fn replay(case: &Value, schedule: &TranscriptSchedule, verify: bool) {
         number::<u64>(&case["counter"]),
         "{name}"
     );
-    if replayed == steps.len() {
-        t.finish().unwrap_or_else(|e| panic!("{name}: {e}"));
-    } else {
-        // A conformance model stops at the advice's point, whose size is not derived yet.
-        assert_eq!(schedule.steps()[replayed].label, Label::AdviceXi, "{name}");
-    }
+    t.finish().unwrap_or_else(|e| panic!("{name}: {e}"));
 }
 
 #[test]

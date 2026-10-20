@@ -84,6 +84,7 @@ fn every_step_of_every_schedule() {
     let cases: Vec<&Json> = list(&file, "cases")
         .iter()
         .chain(list(&file, "models"))
+        .chain(list(&file, "boundaries"))
         .collect();
     assert!(cases.len() >= 16, "the cases and four models in two modes");
     let (mut steps_checked, mut proofs_of_work) = (0, 0);
@@ -93,7 +94,7 @@ fn every_step_of_every_schedule() {
         assert_eq!(context.to_tce(), hex(text(case, "context_tce")), "{name}");
         let steps = list(case, "steps");
         let replayed = number(case, "replayed") as usize;
-        assert!(replayed <= steps.len(), "{name}");
+        assert_eq!(replayed, steps.len(), "{name}: complete replay");
         let mut transcript = Transcript::new(&context);
         for (at, step) in steps[..replayed].iter().enumerate() {
             let what = format!("{name}, step {at} ({})", text(step, "label"));
