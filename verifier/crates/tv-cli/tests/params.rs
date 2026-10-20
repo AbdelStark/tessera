@@ -57,19 +57,23 @@ fn oracle(name: &str) -> Json {
         .clone()
 }
 
-fn checked(args: &[&str]) -> Json {
+fn checked_with_code(args: &[&str], code: i32) -> Json {
     let mut all = vec!["params"];
     all.extend_from_slice(args);
     all.push("--json");
     let output = tessera_verify(&all);
     assert_eq!(
         output.status.code(),
-        Some(0),
+        Some(code),
         "{args:?}: {}",
         stderr(&output)
     );
     assert_eq!(stderr(&output), "", "{args:?}");
     Json::parse(stdout(&output)).expect("one JSON object")
+}
+
+fn checked(args: &[&str]) -> Json {
+    checked_with_code(args, 0)
 }
 
 #[test]
@@ -102,8 +106,8 @@ fn reports_match_the_oracle_and_committed_examples_at_405b() {
 
 #[test]
 fn lookups_and_table_rows_override_logup_instances() {
-    // N + T = 2^50 with default T = 2^22 fails ni-100's LogUp row.
-    let report = checked(&["--params", "ni-100", "--lookups", "1125899902648320"]);
+    // N + T = 2^50 with default T = 2^22 fails ni-100's LogUp row and exits 10 (RFC-0051).
+    let report = checked_with_code(&["--params", "ni-100", "--lookups", "1125899902648320"], 10);
     let instances = report
         .get("statement")
         .unwrap()
@@ -134,6 +138,10 @@ fn lookups_and_table_rows_override_logup_instances() {
         Some("1125899906842624")
     );
     assert_eq!(logup.get("bits").unwrap().as_u64(), Some(98 * 256 - 1));
+
+    // N = 2^50 also fails ni-100's LogUp row and exits 10.
+    let report = checked_with_code(&["--params", "ni-100", "--lookups", "1125899906842624"], 10);
+    assert_eq!(report.get("meets_targets"), Some(&Json::Bool(false)));
 
     // --table-rows alone keeps default N = 2^42.
     let report = checked(&["--params", "live-64", "--table-rows", "1"]);
@@ -187,7 +195,8 @@ fn human_readable_table_lists_every_row_and_minimum() {
         "--lookups",
         "1125899902648320",
     ]);
-    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.status.code(), Some(10));
+    assert_eq!(stderr(&output), "");
     let text = stdout(&output);
     let logup = text
         .lines()

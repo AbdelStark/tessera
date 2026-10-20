@@ -75,7 +75,7 @@ tessera-verify audit report --ledger LEDGER.tvl --sample SAMPLE.tas --out REPORT
 | Code | `tessera-verify` meaning | `tessera` meaning |
 |---|---|---|
 | 0 | Accept | Success |
-| 10 | Reject: the proof is invalid or `Û` exceeds the bound | Not used |
+| 10 | Reject: the proof is invalid, `Û` exceeds the bound, or a soundness target is missed ([RFC-0051](../rfcs/RFC-0051-soundness-target-exit-code.md)) | Soundness target missed (`tessera params check`, [RFC-0051](../rfcs/RFC-0051-soundness-target-exit-code.md)) |
 | 20 | Inconclusive: the verifier could not evaluate (I/O, resource limit, internal error) | Completeness failure: the honest prover cannot produce a proof (for example a lookup key out of table range or an exact-mode mismatch) |
 | 64 | Usage error | Usage error |
 | 65 | Malformed input artifact | Malformed input artifact |

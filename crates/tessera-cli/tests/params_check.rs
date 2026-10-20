@@ -12,8 +12,10 @@
 //! - **The table.** Without `--json`, every row with its bits and target, then the minimum.
 //! - **The examples.** `docs/perf/examples/soundness-*.json`, which `cargo xtask lint`
 //!   validates against the report's schema, are what the command prints.
-//! - **Exit statuses** (02 §2.4). A report exits 0, whether or not every row meets its target:
-//!   the report says which do. A malformed argument exits 64.
+//! - **Exit statuses** (02 §2.4, RFC-0051). A report whose rows all meet their targets, or
+//!   whose parameter set has no targets (`test-small`), exits 0; when any row misses its target
+//!   (`meets_targets == false`), the command still prints the report and exits 10. A malformed
+//!   argument exits 64.
 
 use std::fs;
 use std::path::PathBuf;
@@ -54,20 +56,25 @@ fn oracle(name: &str) -> Value {
         .clone()
 }
 
-/// The report `tessera params check --json` prints for `args`, which exits 0.
-fn checked(args: &[&str]) -> Value {
+/// The report `tessera params check --json` prints for `args` with expected exit `code`.
+fn checked_with_code(args: &[&str], code: i32) -> Value {
     let mut all = vec!["params", "check"];
     all.extend(args);
     all.push("--json");
     let output = tessera(&all);
     assert_eq!(
         output.status.code(),
-        Some(0),
+        Some(code),
         "{args:?}: {}",
         stderr(&output)
     );
     assert_eq!(stderr(&output), "", "{args:?}");
     serde_json::from_str(stdout(&output)).expect("one JSON object")
+}
+
+/// The report `tessera params check --json` prints for `args`, which exits 0.
+fn checked(args: &[&str]) -> Value {
+    checked_with_code(args, 0)
 }
 
 fn rows(report: &Value) -> &Vec<Value> {
@@ -95,8 +102,8 @@ fn the_reports_are_the_oracles_at_the_405b_statement() {
 
 #[test]
 fn lookups_and_table_rows_replace_the_logup_instances() {
-    // N + T = 2^50 with the default's T = 2^22.
-    let report = checked(&["--params", "ni-100", "--lookups", "1125899902648320"]);
+    // N + T = 2^50 with the default's T = 2^22 fails ni-100's LogUp row and exits 10 (RFC-0051).
+    let report = checked_with_code(&["--params", "ni-100", "--lookups", "1125899902648320"], 10);
     let instances = report["statement"]["lookups"].as_array().expect("lookups");
     assert_eq!(instances.len(), 1);
     assert_eq!(instances[0]["lookups"], 1_125_899_902_648_320u64);
@@ -112,6 +119,21 @@ fn lookups_and_table_rows_replace_the_logup_instances() {
     assert_eq!(logup["row"], "logup");
     assert_eq!(logup["numerator"], "1125899906842624");
     assert_eq!(logup["bits"], 98 * 256 - 1);
+    // N = 2^50 (#375 acceptance criterion) also fails ni-100's LogUp row, exits 10, and prints
+    // the report in both JSON and table modes.
+    let report = checked_with_code(&["--params", "ni-100", "--lookups", "1125899906842624"], 10);
+    assert_eq!(report["meets_targets"], false);
+    let table_out = tessera(&[
+        "params",
+        "check",
+        "--params",
+        "ni-100",
+        "--lookups",
+        "1125899906842624",
+    ]);
+    assert_eq!(table_out.status.code(), Some(10), "{}", stderr(&table_out));
+    assert_eq!(stderr(&table_out), "");
+    assert!(stdout(&table_out).contains("1 row misses its target"));
     // --table-rows alone keeps the default's N = 2^42.
     let report = checked(&["--params", "live-64", "--table-rows", "1"]);
     let instances = report["statement"]["lookups"].as_array().expect("lookups");
@@ -166,7 +188,7 @@ fn the_table_lists_every_row_and_the_minimum() {
         "{text}"
     );
     assert!(text.contains("every row meets its target"), "{text}");
-    // A row that misses its target says so, and so does the verdict.
+    // A row that misses its target says so, and so does the verdict, exiting 10 (RFC-0051).
     let output = tessera(&[
         "params",
         "check",
@@ -175,7 +197,8 @@ fn the_table_lists_every_row_and_the_minimum() {
         "--lookups",
         "1125899902648320",
     ]);
-    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert_eq!(output.status.code(), Some(10), "{}", stderr(&output));
+    assert_eq!(stderr(&output), "");
     let text = stdout(&output);
     let logup = text
         .lines()

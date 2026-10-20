@@ -176,6 +176,7 @@ All notable changes to the verifier release train are recorded here: the crates 
   - `log2_lower` normalizes `a / b` by 62 steps of binary long division (shift-and-subtract) before `F` squaring steps, avoiding multi-word division while matching every oracle `LOG2` case and all 86 reports of `spec/vectors/soundness/soundness.json` bit for bit.
   - Target decisions use exact integer inequalities, including multi-limb base-`2^64` integer exponentiation `A^τ >= 2^{t - g} · B^τ` inside the 2-ulp `LOG2` tie band, and reject invalid inputs with `ERR-USAGE`.
   - `tessera-verify params` prints the human-readable soundness table or `tessera.soundness/1` JSON (`--json`), supports `--lookups` and `--table-rows` overrides, and agrees with `tessera-protocol`'s calculator on every row across 1,000 random profiles.
+- `tessera-verify params` exits 10 (`02 §2.4`, RFC-0051) when any soundness row misses its target (`meets_targets == Some(false)`), while still writing the full report to stdout ([#375](https://github.com/AbdelStark/tessera/issues/375)).
 
 ### Changed
 

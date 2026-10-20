@@ -5,14 +5,16 @@
 //! It prints every row of RFC-0014's soundness table with its bits, a lower bound rounded down,
 //! its target and whether it reaches it, then the minimum. With `--json` it prints the
 //! `tessera.soundness/1` report (`spec/schemas/soundness-v1.schema.json`), whose integers are
-//! exact: the bits in FixedBits, units of `2^-8` bits. A report exits 0 whether or not every row
-//! reaches its target, and says which do not: 02 §2.4 has no exit status for a missed target.
+//! exact: the bits in FixedBits, units of `2^-8` bits. When any row misses its target
+//! (`meets_targets == Some(false)`), it still prints the report and exits 10 (02 §2.4, RFC-0051);
+//! when every row meets its target or the parameter set has no targets (`test-small`), it exits 0.
 //!
 //! The sizes are the 405B 16K-token, 16K-context statement,
 //! `StatementSizes::llama_405b_16k`. `--lookups` and `--table-rows` replace its LogUp
 //! instances with one instance of `N` lookups and `T` rows.
 
 use std::io::{self, Write as _};
+use std::process::ExitCode;
 
 use clap::Args;
 use serde_json::{Map, Value, json};
@@ -63,8 +65,11 @@ pub(crate) struct CheckArgs {
     table_rows: Option<u64>,
 }
 
+/// Exit status when a soundness row misses its target (02 §2.4, RFC-0051).
+const EXIT_TARGET_MISSED: u8 = 10;
+
 /// Runs `tessera params check`; with `json`, the report is the result printed on stdout.
-pub(crate) fn check(args: &CheckArgs, json: bool) -> Result<(), TesseraError> {
+pub(crate) fn check(args: &CheckArgs, json: bool) -> Result<ExitCode, TesseraError> {
     let Some(params) = ParamSet::ALL
         .into_iter()
         .find(|set| set.name() == args.params)
@@ -103,7 +108,11 @@ pub(crate) fn check(args: &CheckArgs, json: bool) -> Result<(), TesseraError> {
     io::stdout()
         .lock()
         .write_all(shown.as_bytes())
-        .map_err(io_error("cannot write to stdout".to_owned()))
+        .map_err(io_error("cannot write to stdout".to_owned()))?;
+    match report.meets_targets() {
+        Some(false) => Ok(ExitCode::from(EXIT_TARGET_MISSED)),
+        Some(true) | None => Ok(ExitCode::SUCCESS),
+    }
 }
 
 fn commitment(c: Commitment) -> &'static str {
