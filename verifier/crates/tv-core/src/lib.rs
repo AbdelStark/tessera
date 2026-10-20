@@ -50,8 +50,8 @@
 //! The gadgets' final checks and their relations in the stages (#124), the masked sumcheck of
 //! RFC-0013 (#159), the leaf stage's integration of the trees with the stages (#130), the
 //! regeneration of the tables and the structured evaluation of `t̃` (#100), and the verifier's
-//! driver and verdicts (#128) build on these; so do the advice opening (#116), the transcript
-//! steps that squeeze the opening's challenges and queries, the hiding of RFC-0013 (blinding
+//! driver and verdicts (#128) build on these; so do the transcript steps that squeeze the
+//! opening's challenges and queries, and the hiding of RFC-0013 (blinding
 //! rows, `u'_g`, `q_g`), which take the claim pool. [`weights`] adds the protocol1 weight
 //! opening components; the full driver still joins them to the schedule.
 //! `ConstraintSystemDigest` (#120) builds on the lowering. Validation already derives the
@@ -359,6 +359,16 @@
 //! independent Python oracle, and with inputs that violate exactly one check. The caller derives
 //! the layout and runs the transcript, which squeezes the batching challenges `γ`, the point `ξ*`
 //! and the queries; these checks take them as inputs.
+//!
+//! Model verification uses [`advice::opening::Commitment::bind`] with its independently derived
+//! [`advice::Layout`] and validated encoding parameters. It derives the descriptor identifier
+//! and rejects a different Round1 `layout_digest`. [`advice::opening::Commitment::prepare`]
+//! then groups the verifier's original combination claims, with one `γ^(t+1)` per claim across
+//! all its tensor/layer/tile pieces. It does not require individual piece values. Its must-use
+//! evaluation state authenticates the canonical segment-merged columns against that same root.
+//! Counts and source coefficients operate on compact geometry, without expanding a row map
+//! or all attention images. The explicit-layout [`opening`] API below remains the low-level
+//! primitive; both paths share shape, evaluation, authentication and consistency checks.
 //!
 //! ### Conventions
 //!

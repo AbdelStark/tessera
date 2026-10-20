@@ -139,6 +139,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 - Check every codeword, segment chain, merged leaf and root of the independent synthetic streaming-commitment vectors with the verifier field and hashing implementations. No verifier acceptance code or dependency changed (#115).
 
+- Add `tv-core::advice::opening`: bind Round1's advice root to the independently derived descriptor, group original combination claims with one batching power across all pieces, and check canonical segment-merged columns through a must-use evaluation state. Compact committed-row counts and lazy source coefficients avoid expanding row maps or attention images; the explicit-layout primitive shares its authentication and consistency engine. Independent vectors and exact adversarial errors cover up to 16 groups and 40 original claims. Protocol bytes, parameter sets and dependencies are unchanged; full drivers and protocol/2 blinding remain separate (#116).
+
 ### Changed
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

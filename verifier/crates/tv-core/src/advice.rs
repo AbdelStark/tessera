@@ -6,6 +6,8 @@
 //! count and stride, including during the maximum-context check: a hostile model
 //! cannot make the verifier expand its quadratic score domain before rejecting it.
 
+pub mod opening;
+
 use crate::claims::{ArchSpec, GadgetPolicy};
 use crate::lowering::{Graph, Kind, NodeId, Op, Role, TensorId};
 use crate::selection::{Choice, Pattern, Selection};
@@ -116,6 +118,7 @@ impl Domain {
     pub fn rows(&self) -> u64 {
         self.rows
     }
+
     /// First entirely zero row, relative to this domain's base.
     pub fn zero_at(&self) -> u64 {
         self.zero_at
@@ -651,6 +654,79 @@ impl<'a> Layout<'a> {
     pub fn rows(&self) -> u64 {
         self.rows
     }
+    /// The committed rows of the complete advice descriptor (RFC-0031), excluding public zeros.
+    /// Counts compact groups; even a maximum-size layout is never expanded.
+    ///
+    /// # Errors
+    /// `Internal` if already-derived geometry has inconsistent sizes.
+    pub fn committed_rows(&self) -> Result<u64, ClaimsError> {
+        self.count_rows(None)
+    }
+
+    /// Committed rows of one canonical segment, including zero for an empty segment.
+    ///
+    /// # Errors
+    /// `Internal` for an absent segment or inconsistent derived geometry.
+    pub fn committed_rows_in_segment(&self, segment: u32) -> Result<u64, ClaimsError> {
+        if segment >= self.config.segments {
+            return Err(ClaimsError::Internal);
+        }
+        self.count_rows(Some(segment))
+    }
+
+    fn count_rows(&self, segment: Option<u32>) -> Result<u64, ClaimsError> {
+        let mut total = 0u64;
+        for group in &self.groups {
+            if segment.is_some_and(|index| group.segment != index) {
+                continue;
+            }
+            let count = self
+                .group_committed_rows(group)
+                .ok_or(ClaimsError::Internal)?;
+            total = total.checked_add(count).ok_or(ClaimsError::Internal)?;
+        }
+        if total > self.rows {
+            return Err(ClaimsError::Internal);
+        }
+        Ok(total)
+    }
+
+    fn group_committed_rows(&self, group: &Group) -> Option<u64> {
+        let Some(query) = &group.query else {
+            return group
+                .domain
+                .zero_at
+                .checked_mul(u64::from(group.columns))?
+                .checked_mul(group.repeats);
+        };
+        let valid = u64::from(self.n)
+            .checked_div(self.query_block)?
+            .checked_add(u64::from(
+                u64::from(self.n).checked_rem(self.query_block)? != 0,
+            ))?;
+        let prior = valid.checked_sub(1)?;
+        let keys = 1u64.checked_shl(self.key_bits_in_row)?;
+        let triangular = |n: u64| n.checked_mul(n.checked_add(1)?).map(|n| n / 2);
+        // RFC-0034: sum ceil(t*Q'/keys), then the final block's actual n-key prefix.
+        let prefix = if self.query_block >= keys {
+            triangular(prior)?.checked_mul(self.query_block.checked_div(keys)?)?
+        } else {
+            let blocks = keys.checked_div(self.query_block)?;
+            let whole = prior.checked_div(blocks)?;
+            blocks.checked_mul(triangular(whole)?)?.checked_add(
+                prior
+                    .checked_rem(blocks)?
+                    .checked_mul(whole.checked_add(1)?)?,
+            )?
+        };
+        let score = prefix.checked_add(u64::from(self.n).div_ceil(keys))?;
+        let auxiliary = valid
+            .checked_mul(query.zero_at)?
+            .checked_mul(u64::from(group.columns.checked_sub(1)?))?;
+        score
+            .checked_add(auxiliary)?
+            .checked_mul(group.repeats.checked_div(self.blocks)?)
+    }
     /// Variables in the full advice multilinear extension (RFC-0047).
     pub fn nu(&self) -> u32 {
         u32::from(self.config.log_k).saturating_add(log(self.rows))
@@ -1000,6 +1076,111 @@ pub struct ClaimImages<'l, 'g, 'p> {
 }
 
 impl ClaimImages<'_, '_, '_> {
+    /// The mapped source's row coefficient, summed over its images without expanding them.
+    /// Returns zero on public-zero rows and outside this source. The iterator's current
+    /// position does not affect the result; every attention tile share is included (RFC-0037).
+    ///
+    /// # Errors
+    /// `Source` or `Arity` for inconsistent already-derived metadata. This method allocates nothing.
+    pub fn row_coefficient(&self, row: u64) -> Result<Fp2, PointError> {
+        let Some(offset) = row.checked_sub(self.group.base) else {
+            return Ok(Fp2::ZERO);
+        };
+        let repeat = offset
+            .checked_div(self.group.stride)
+            .ok_or(PointError::Source)?;
+        if repeat >= self.group.repeats {
+            return Ok(Fp2::ZERO);
+        }
+        let tile = Tile {
+            layout: self.layout,
+            group: self.group,
+            repeat,
+        };
+        let location = tile.location(self.column).ok_or(PointError::Source)?;
+        let Some(local) = row.checked_sub(location.base) else {
+            return Ok(Fp2::ZERO);
+        };
+        if local >= location.zero_at {
+            return Ok(Fp2::ZERO);
+        }
+        let sequence = log(u64::from(self.layout.n));
+        let queries = log(self.layout.query_block);
+        let keys = if self.column == 0 { sequence } else { 0 };
+        let attention = self.group.query.is_some();
+        let mut coefficient = Fp2::ONE;
+        let factor = |coordinate: usize, bit: u64| -> Result<Fp2, PointError> {
+            let value = *self.point.get(coordinate).ok_or(PointError::Arity)?;
+            Ok(if bit & 1 == 0 {
+                Fp2::ONE - value
+            } else {
+                value
+            })
+        };
+        // Invert the local layout permutation at the row's bits. Attention's
+        // local head coordinates follow Q' query bits, rather than N query bits.
+        for (position, &natural) in location
+            .domain
+            .permutation()
+            .iter()
+            .enumerate()
+            .skip(usize::from(self.layout.config.log_k))
+        {
+            let mut natural = u32::from(natural);
+            if attention && natural >= keys.checked_add(queries).ok_or(PointError::Arity)? {
+                natural = natural
+                    .checked_add(sequence.checked_sub(queries).ok_or(PointError::Arity)?)
+                    .ok_or(PointError::Arity)?;
+            }
+            let shift = u32::try_from(position)
+                .ok()
+                .and_then(|p| p.checked_sub(u32::from(self.layout.config.log_k)))
+                .ok_or(PointError::Arity)?;
+            coefficient *= factor(
+                usize::try_from(natural).map_err(|_| PointError::Arity)?,
+                local.checked_shr(shift).ok_or(PointError::Arity)?,
+            )?;
+        }
+        if attention {
+            let heads = log(u64::from(self.layout.config.heads));
+            let per_kv = self
+                .layout
+                .config
+                .heads
+                .checked_div(self.layout.config.kv_heads)
+                .ok_or(PointError::Source)?;
+            let low_heads = log(u64::from(per_kv));
+            for (first, width, fixed) in [
+                (
+                    keys.checked_add(queries).ok_or(PointError::Arity)?,
+                    sequence.checked_sub(queries).ok_or(PointError::Arity)?,
+                    repeat
+                        .checked_rem(self.layout.blocks)
+                        .ok_or(PointError::Source)?,
+                ),
+                (
+                    keys.checked_add(sequence)
+                        .and_then(|p| p.checked_add(low_heads))
+                        .ok_or(PointError::Arity)?,
+                    heads.checked_sub(low_heads).ok_or(PointError::Arity)?,
+                    repeat
+                        .checked_div(self.layout.blocks)
+                        .ok_or(PointError::Source)?,
+                ),
+            ] {
+                for bit in 0..width {
+                    let coordinate = first
+                        .checked_add(bit)
+                        .and_then(|p| usize::try_from(p).ok())
+                        .ok_or(PointError::Arity)?;
+                    coefficient *=
+                        factor(coordinate, fixed.checked_shr(bit).ok_or(PointError::Arity)?)?;
+                }
+            }
+        }
+        Ok(coefficient)
+    }
+
     fn image(&self, repeat: u64) -> Result<ClaimImage, PointError> {
         let tile = Tile {
             layout: self.layout,
@@ -1141,6 +1322,8 @@ mod tests {
             .unwrap();
         assert_eq!(layout.rows(), MAX_ROWS);
         assert_eq!(layout.nu(), 42);
+        assert_eq!(layout.committed_rows().unwrap(), 3 << 30);
+        assert_eq!(layout.committed_rows_in_segment(0).unwrap(), 3 << 30);
         assert_eq!(
             layout.push(
                 TileKey::Tokens,

@@ -50,5 +50,11 @@ evaluation, mask, symbol and sibling errors. PCS tests reproduce roots, coeffici
 combined rows, columns and siblings. Compiler tests check every original layout count
 and descriptor.
 
+A prover-side current-thread allocator test also exercises the verifier's compact
+counts and lazy source coefficients on complete native metadata with large
+multiplicity tables. The helpers make zero heap allocations; the instrumentation
+adds no dependency to the verifier. Public metadata and sample points are the
+pre-existing baseline, and a plain allocation verifies that the counter is active.
+
 Run `python3 spec/vectors/advice-opening/generate.py` to regenerate;
 `cargo xtask gen-vectors --check` checks byte-for-byte reproducibility.

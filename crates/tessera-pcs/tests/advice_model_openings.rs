@@ -125,3 +125,85 @@ fn the_reference_producer_matches_every_complete_model_opening_and_coefficient_d
         );
     }
 }
+
+#[test]
+fn canonical_verifier_counts_and_lazy_coefficients_allocate_nothing() {
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/vectors/claims/claim-lists.json");
+    let golden: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    let case = list(&golden["cases"])
+        .iter()
+        .find(|case| case["model"] == "tiny-2-servable.d")
+        .unwrap();
+    let hex = case["hex"].as_str().unwrap();
+    let bytes: Vec<_> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+        .collect();
+    let claims =
+        tv_core::claims::ClaimList::open(&bytes, &tv_codec::DecodeLimits::MESSAGE).unwrap();
+    let public = tv_core::validation::check_public(&claims).unwrap();
+    let graph = tv_core::lowering::lower(&public, 5).unwrap();
+    let selected = tv_core::selection::derive(&graph, claims.gadget_policy).unwrap();
+    let mut config = tv_core::advice::Config::new(&claims.arch, claims.gadget_policy, 3, 8);
+    config.query_block = 2;
+    let layout = tv_core::advice::Layout::derive(&graph, &selected, config, 5).unwrap();
+    assert!(
+        layout.rows() > 1 << 20,
+        "complete native table metadata, never a resident matrix"
+    );
+    let mut samples = Vec::new();
+    for tile in layout.tiles() {
+        for column in 0..tile.columns() {
+            let location = tile.location(column).unwrap();
+            let variables = if matches!(tile.key(), tv_core::advice::TileKey::Attention(..)) {
+                claims.arch.n_heads.next_power_of_two().ilog2() + if column == 0 { 6 } else { 3 }
+            } else {
+                location
+                    .domain
+                    .shape()
+                    .iter()
+                    .map(|n| n.next_power_of_two().ilog2())
+                    .sum()
+            };
+            let point: Vec<_> = (0..variables)
+                .map(|i| {
+                    tv_field::Fp2::new(tv_field::Fp::reduce(13 + u64::from(i)), tv_field::Fp::ONE)
+                })
+                .collect();
+            let rows = [
+                location.base,
+                location.base + location.zero_at.saturating_sub(1),
+                location.base + location.domain.rows() - 1,
+                0,
+                u64::MAX,
+            ];
+            samples.push((location.source, point, rows));
+        }
+    }
+    // Prove that the current-thread counter observes allocations before requiring zero.
+    let mut control = None;
+    let observed = allocation_counter::measure(|| control = Some(vec![3u64; 128]));
+    assert!(observed.bytes_max >= 1024);
+    drop(control);
+    let measured = allocation_counter::measure(|| {
+        std::hint::black_box(layout.committed_rows().unwrap());
+        for segment in 0..8 {
+            std::hint::black_box(layout.committed_rows_in_segment(segment).unwrap());
+        }
+        for (source, point, rows) in &samples {
+            let images = layout.claim(*source, point).unwrap();
+            for &row in rows {
+                std::hint::black_box(images.row_coefficient(row).unwrap());
+            }
+        }
+    });
+    assert_eq!(
+        (
+            measured.count_total,
+            measured.bytes_total,
+            measured.bytes_max
+        ),
+        (0, 0, 0)
+    );
+}

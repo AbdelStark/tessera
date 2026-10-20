@@ -359,6 +359,44 @@ fn whole_attention_claims_reconstruct_at_non_boolean_points_including_padded_kv(
                         reconstructed, expected,
                         "kv={kv_heads} Q={query_block} k={log_k} node={node:?} col={column}"
                     );
+                    let lazy = layout.claim(source, &point).unwrap();
+                    let column_point = &images[0].point[..usize::from(log_k)];
+                    assert!(
+                        images
+                            .iter()
+                            .all(|image| &image.point[..usize::from(log_k)] == column_point)
+                    );
+                    let from_rows = sparse.iter().fold(Fp2::ZERO, |sum, &(address, value)| {
+                        let row = address >> log_k;
+                        let column = address & ((1u64 << log_k) - 1);
+                        sum + value
+                            * basis(column, column_point)
+                            * lazy.row_coefficient(row).unwrap()
+                    });
+                    assert_eq!(
+                        from_rows, expected,
+                        "lazy coefficients bind every causal cell"
+                    );
+                    for share in layout.tiles().filter(
+                        |tile| matches!(tile.key(), TileKey::Attention(id, _, _) if id == node),
+                    ) {
+                        let location = share.location(column).unwrap();
+                        for row in location.base..=location.base + location.domain.rows() {
+                            let wanted = if layout.is_zero_row(row) == Some(false) {
+                                images
+                                    .iter()
+                                    .map(|image| {
+                                        image.weight
+                                            * basis(row, &image.point[usize::from(log_k)..])
+                                    })
+                                    .fold(Fp2::ZERO, |a, b| a + b)
+                            } else {
+                                Fp2::ZERO
+                            };
+                            assert_eq!(lazy.row_coefficient(row).unwrap(), wanted);
+                        }
+                    }
+                    assert_eq!(lazy.row_coefficient(u64::MAX).unwrap(), Fp2::ZERO);
                 }
             }
             let missing = Source::Auxiliary(lowering::NodeId(u32::MAX), Auxiliary::RequantLow);
