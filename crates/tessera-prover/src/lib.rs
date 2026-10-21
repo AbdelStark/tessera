@@ -24,6 +24,8 @@
 //! leaf proofs leave the native/graph reductions and commitment openings to the driver.
 //! [`native::ModelNativePlan`] and [`native::ModelNativeProver`] supply every current-model
 //! native relation to the same graph stage batch, retaining the canonical opening debts.
+//! [`advice::visit_rows`] lends the canonical witness rows to the existing P1, P4 and P5
+//! commitment passes, including public padding and bounded multiplicity chunks.
 //!
 //! # Features
 //!
@@ -34,6 +36,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod advice;
 pub mod leaf;
 mod model;
 pub mod native;

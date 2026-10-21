@@ -864,7 +864,7 @@ enum Place {
 }
 
 /// The graph's layers, checked as one template.
-struct Layout {
+pub(crate) struct Layout {
     layers: u32,
     layer_vars: usize,
     /// Node ids of layer 0's first node, and of the first node after the last layer.
@@ -881,7 +881,7 @@ struct Layout {
 }
 
 impl Layout {
-    fn of(graph: &Graph) -> Result<Self, ScheduleError> {
+    pub(crate) fn of(graph: &Graph) -> Result<Self, ScheduleError> {
         let checkpoints = graph.checkpoints();
         let layers = checkpoints
             .len()
@@ -976,6 +976,39 @@ impl Layout {
             .get(index(tensor.0)?)
             .copied()
             .ok_or(ScheduleError::Internal)
+    }
+
+    /// Actual tensors of a checked layer-zero representative, in real-layer order.
+    pub(crate) fn family(&self, rep: TensorId) -> Result<Vec<TensorId>, ScheduleError> {
+        if self.place(rep)? != (Place::Layer { layer: 0, rep }) {
+            return Err(ScheduleError::Internal);
+        }
+        let mut found = Vec::new();
+        reserve(&mut found, index(self.layers)?)?;
+        found.resize(index(self.layers)?, None);
+        for (id, place) in self.places.iter().enumerate() {
+            if let Place::Layer { layer, rep: r } = *place
+                && r == rep
+            {
+                let slot = found
+                    .get_mut(index(layer)?)
+                    .ok_or(ScheduleError::Internal)?;
+                if slot
+                    .replace(TensorId(
+                        u32::try_from(id).map_err(|_| ScheduleError::Internal)?,
+                    ))
+                    .is_some()
+                {
+                    return Err(ScheduleError::Internal);
+                }
+            }
+        }
+        let mut family = Vec::new();
+        reserve(&mut family, found.len())?;
+        for tensor in found {
+            family.push(tensor.ok_or(ScheduleError::Internal)?);
+        }
+        Ok(family)
     }
 
     fn role(&self, tensor: TensorId) -> Result<Option<Role>, ScheduleError> {

@@ -41,6 +41,7 @@
 //! | [`params::ParamSet`] | the parameter sets the verifier accepts and the layout each prescribes (RFC-0014, RFC-0026) |
 //! | [`validation::validate`] | claim-list validation, RFC-0007 'Verifier validation' in RFC-0039's order: steps 1 to 7, and RFC-0019 step 2 before them |
 //! | [`advice::Layout`] | complete public advice geometry, source locations, zero rows, segments and weighted whole-claim opening images (RFC-0050) |
+//! | [`model_openings::Claims`] | every complete-model opening obligation, preserving original source points, layer coefficients and external certificate debts |
 //! | [`validation::check_public`] | steps 2.1 to 2.3, which give the public part the lowering reads |
 //! | [`lowering::lower`] | the Llama lowering of a claim list's public part, node by node (RFC-0044) |
 //! | [`schedule::derive()`] | the stage schedule of a lowered graph: the leaf stage's claims, each reduction stage's instances with their relations, variables and degrees, and where every claim goes (RFC-0010, RFC-0037) |
@@ -558,6 +559,7 @@ mod interpolation;
 pub mod leaf;
 pub mod logup;
 pub mod lowering;
+pub mod model_openings;
 pub mod opening;
 pub mod params;
 mod range_checks;

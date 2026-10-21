@@ -239,6 +239,54 @@ fn honest_stages_verify_and_leave_true_pool_claims() {
     }
 }
 
+#[test]
+fn weight_pool_retains_the_actual_transcript_layer_coordinates() {
+    for name in MODELS {
+        for layers in [1, 3] {
+            let (graph, schedule, rope) = model(name, 3, Some(layers));
+            let witness = Witness::with_indicator_entry(&graph, &rope, 91, None);
+            let mut transcript = reference::Transcript::new(&context().to_tce());
+            let mut prover = prover(&graph, &witness, &schedule, &rope);
+            let (leaf, splits) = prover.leaf(&mut SplitMix64::new(93));
+            transcript.absorb("stage/0/split", &reference::tce(&splits));
+            let stages = prover.stages(&mut transcript, None);
+            let verified = verify(
+                &mut Transcript::new(&context()),
+                &schedule,
+                &rope,
+                &leaf,
+                &splits.iter().copied().map(to_fp2).collect::<Vec<_>>(),
+                &stages,
+            )
+            .unwrap();
+            for claim in verified.pool {
+                if claim.commitment == Commitment::Advice {
+                    continue;
+                }
+                for term in claim.terms {
+                    match term.tensor {
+                        tv_core::stages::PoolTensor::Single(_) => {
+                            assert_eq!(term.layer_point, None)
+                        }
+                        tv_core::stages::PoolTensor::Stacked(_) => {
+                            let source = if claim.stage == 0 {
+                                &prover.sources.layer
+                            } else {
+                                let rounds = &prover.sources.rounds[claim.stage as usize - 1];
+                                &rounds[rounds.len() - schedule.layer_vars()..]
+                            };
+                            assert_eq!(
+                                term.layer_point,
+                                Some(source.iter().copied().map(to_fp2).collect())
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// One layer, three (the stack padded with a layer of zeros, whose weight `eq(ρ, 3)` is not 0)
 /// and eight: honest stages verify and every pool claim holds (RFC-0037 'Layer variables',
 /// 'Stages and their instances', as amended).
