@@ -7,10 +7,12 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 | Kind | Next identifier |
 |---|---|
 | Survey | SUR-0016 |
-| Idea | IDEA-0038 |
-| Experiment | EXP-0025 |
+| Idea | IDEA-0039 |
+| Experiment | EXP-0026 |
 
 ## Queue
+
+Current authorized #128/#130 frontier (2026-10-21): packet draft PR439 is green, but full CPU acceptance still owes greedy maximum/logit/next-token and token-input bindings. IDEA-0038 is triaged and EXP-0025 is pre-registered for exact original-source boundary identities, with zero performance credit. This correctness unit precedes the historical performance queue; #112 is now closed.
 
 Current authorized continuation (2026-10-20): #407/RFC-0050 and the complete #106 layout are merged (PR408/409). #112 remains open for complete auxiliary witnesses/multiplicities and measured memory accounting. SUR-0015 identifies the dense Range(32) allocation barrier and the public-storage/secret-clearing obligations. Next bounded correctness unit: integrate complete canonical root/Softmax witness columns and publicly bounded logical multiplicity access for #112. EXP-0024 validates the finite counter comparison on both toolchains; full source correctness, clearing and measured working-tile memory remain open. No performance gain is credited. This prerequisite takes precedence over the historical performance queue below.
 
@@ -114,6 +116,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | ID | Title | Lever | Priority | Status | Experiment | Decision |
 |---|---|---|---|---|---|---|
+| [IDEA-0038](ideas/IDEA-0038-greedy-boundary-bindings.md) | Original-source greedy boundary bindings | correctness / original linear claims | 0 correctness prerequisite | `triaged` | [EXP-0025](experiments/EXP-0025-greedy-boundary/README.md) | Pre-registered E0; no accepting path or gain |
 | [IDEA-0037](ideas/IDEA-0037-bounded-multiplicity-columns.md) | Publicly bounded exact multiplicity representations | CPU memory / `regen` feasibility | 0 correctness prerequisite | `validated` | [EXP-0024](experiments/EXP-0024-bounded-multiplicities/README.md) | Registered finite comparison passes on pinned/MSRV: 64 KiB sorted wide storage, exact rows and public metadata, 14 physical faults caught. No full-source memory or protocol/performance credit. |
 | [IDEA-0036](ideas/IDEA-0036-canonical-gadget-columns.md) | Canonical public gadget-column contract | exact counts, size, verify | 0 performance credit; format prerequisite | `promoted` | EXP-0023 | Current lowering only; integer boxes, final carries and public metadata must pass before an RFC for #407 |
 | [IDEA-0001](ideas/IDEA-0001-list-decoding-proximity.md) | List-decoding proximity analysis to cut `τ_A` | `τ`, size, verify | 0 | `refuted` | EXP-0001 | RFC-0014 Alternatives Considered 3 confirmed with numbers under [BCIKS20]. The reopening condition fired on 2026-10-16: SUR-0001 found conjecture-free Johnson-regime bounds with error linear in `n/q` ([BCHKS25], [DKT26]), `τ_A` 155 → 130 at live-64 (E0); the successor [IDEA-0012](ideas/IDEA-0012-johnson-regime-tau-linear-error.md) was `validated` by EXP-0003 the same day (`τ_A` 155 → 129–130 at 77–80 one-shot bits, E0, primary), conditional on uniform `Fp2` proximity coefficients and the list-decoding extractor |
@@ -157,6 +160,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | ID | Title | Idea | Status | Verdict | Evidence |
 |---|---|---|---|---|---|
+| [EXP-0025](experiments/EXP-0025-greedy-boundary/README.md) | Original-source greedy boundary | IDEA-0038 | `planned` | pending | E0 pre-registration only; kernels, source identities, degrees and derived ranges |
 | [EXP-0024](experiments/EXP-0024-bounded-multiplicities/README.md) | Bounded exact multiplicity representations | IDEA-0037 | `done: validated` | validated | E0: 225 cases / 83,897,106 row comparisons. E1: wide sorted 65,536 bytes, 10 identical samples / zero retained allocations; pinned/MSRV identical; 14 physical faults caught. Counter-only scope. |
 | [EXP-0023](experiments/EXP-0023-gadget-column-contract/README.md) | Public column/range schema and exact Rsqrt products | IDEA-0036 | `done: validated` | Original and committed polynomial-retention amendment pass; no performance/model credit | E0 4,352 honest rows, 8,704 root and 13,680 auxiliary alternatives per formulation; 19 seeded faults plus u+P control; unchanged canonical-data digest |
 | [EXP-0001](experiments/EXP-0001-list-decoding-tau/README.md) | Does a provable list-decoding bound reduce `τ_A` below 155? | IDEA-0001 | `done: refuted` | the [BCIKS20] Johnson-regime error term caps at 57.2 bits (advice) and 57.9 bits (weights) for every `η`; best `τ_A` with it is 149 (−4%) | E0, primary (theorem read from ECCC TR20-083) |
@@ -269,3 +273,5 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-10-20 | `autoresearch ideate passes` / experiment registration | IDEA-0037 triaged, zero performance credit; EXP-0024 planned with frozen exact/public-allocation/CPU-memory criteria before code. Ten scoped alternatives and all four refutation lenses recorded. Next: verify the committed plan, then implement the standalone experiment. |
 
 | 2026-10-20 | `autoresearch experiment IDEA-0037` | EXP-0024 done: validated for frozen bounded counter criteria. Both toolchains identical; wide sorted64KiB vs analytic32GiB dense, no timing/RSS/GPU claim. Fourteen physical faults caught with controls/restoration. Next: full #112 canonical witness integration, public update bounds and measured complete working set. |
+
+| 2026-10-21 | `autoresearch ideate` / experiment registration for #128 | IDEA-0038 triaged; EXP-0025 planned and frozen before code. Original-source unit-shift openings and native greedy/token identities; no full proof or performance credit. |
