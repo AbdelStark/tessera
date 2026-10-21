@@ -6,6 +6,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Added
 
+- Production shared leaf verification for protocol/1: `leaf::Schedule` validates public tree geometry and checks mixed LogUp/product-forest levels in one transcript, preserving exact failures and all outstanding claims. `leaf::ModelSchedule` independently derives every canonical lookup count and Softmax forest root, including padded queries, heads and layers. The complete gadget/split/opening driver remains under [#128](https://github.com/AbdelStark/tessera/issues/128).
+
 - Verifier workspace with the seven `tv-*` crates of RFC-0001 as skeletons, its own lockfile, the same toolchain pin as the prover workspace, a stricter `cargo-deny` policy and `allowlist.toml`, the third-party packages permitted in the trusted base ([#28](https://github.com/AbdelStark/tessera/issues/28)).
 - Every verifier crate forbids unsafe code; `tv-core` and `tv-codec` also deny `unwrap`, `expect`, `panic!` and unchecked indexing outside tests (RFC-0019) ([#28](https://github.com/AbdelStark/tessera/issues/28)).
 - `tv-core` declares the `test-params` feature, which will accept the `test-small` parameter set; a release build with it fails to compile, so test parameters can never certify a statement (02 §5, RFC-0001) ([#37](https://github.com/AbdelStark/tessera/issues/37)).
