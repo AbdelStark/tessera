@@ -2,6 +2,7 @@
 
 //! Independent causal-key, reciprocal and padding component proofs.
 mod claim_support;
+mod split_support;
 mod support;
 
 use claim_support::{claims_of, integer, items, list, member, number};
@@ -546,5 +547,85 @@ fn every_softmax_affine_field_and_proof_length_is_checked_with_own_error_precede
                 assert!(matches!(site.padding(kind,&point,&point,v),Err(e) if e==reject));
             }
         }
+    }
+}
+
+#[test]
+fn canonical_split_forms_match_frozen_softmax_keys_with_both_virtual_slack_tops() {
+    use tv_core::leaf::split::Column;
+    for case in list(&read_vectors("gadget-finals/softmax.json"), "cases") {
+        let (claims, graph) = model(case);
+        let sites = tv_core::leaf::split::model_sites(&graph, claims.gadget_policy).unwrap();
+        let id = NodeId(number(member(case, "node")));
+        let layer = sites
+            .iter()
+            .flat_map(|s| &s.layers)
+            .find(|l| l.node == id)
+            .unwrap();
+        let sources = fields(member(case, "source_values"));
+        let ranges = fields(member(case, "range_keys"));
+        let parts = (ranges.len() - 1) / 2;
+        let limb: u32 = number(member(case, "limb"));
+        let mut values = vec![
+            (Column::SoftmaxKey, field(member(case, "lookup_key"))),
+            (Column::Output(0), field(member(case, "lookup_value"))),
+            (
+                split_support::local(
+                    &graph,
+                    id,
+                    Source::Tensor(TensorId(number(member(case, "reciprocal")))),
+                ),
+                sources[0],
+            ),
+        ];
+        for (i, column) in [Column::SoftmaxA, Column::SoftmaxB].into_iter().enumerate() {
+            let slack = ranges[1 + i * parts..1 + (i + 1) * parts]
+                .iter()
+                .enumerate()
+                .fold(Fp2::ZERO, |sum, (j, &v)| {
+                    sum + Fp2::from(Fp::reduce(1 << (limb * j as u32))) * v
+                });
+            values.push((column, slack));
+            for j in 0..parts - 1 {
+                values.push((
+                    Column::Auxiliary(if i == 0 {
+                        Auxiliary::SoftmaxA(j as u32)
+                    } else {
+                        Auxiliary::SoftmaxB(j as u32)
+                    }),
+                    sources[2 + i * (parts - 1) + j],
+                ));
+            }
+        }
+        let mut order = vec![Column::SoftmaxKey, Column::Output(0), Column::Output(1)];
+        for (side, column) in [Column::SoftmaxA, Column::SoftmaxB].into_iter().enumerate() {
+            order.extend((0..parts - 1).map(|j| {
+                Column::Auxiliary(if side == 0 {
+                    Auxiliary::SoftmaxA(j as u32)
+                } else {
+                    Auxiliary::SoftmaxB(j as u32)
+                })
+            }));
+            order.push(column);
+        }
+        assert_eq!(split_support::reads(layer), order);
+        assert_eq!(
+            layer.lookups.iter().map(|l| l.table).collect::<Vec<_>>(),
+            list(case, "tables")
+                .iter()
+                .map(|v| TableId(number(v)))
+                .collect::<Vec<_>>()
+        );
+        let mut keys = vec![field(member(case, "lookup_key"))];
+        keys.extend(ranges);
+        let mut outputs = vec![Fp2::ZERO; keys.len()];
+        outputs[0] = field(member(case, "lookup_value"));
+        split_support::check(layer, &values, &keys, &outputs, |column| {
+            if matches!(column, Column::SoftmaxKey | Column::Output(0)) {
+                list(case, "lookup_target").len()
+            } else {
+                list(case, "row_target").len()
+            }
+        });
     }
 }

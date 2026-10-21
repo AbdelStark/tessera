@@ -14,6 +14,7 @@
 //! openings. Passing these checks alone certifies no statement.
 
 mod model;
+pub mod split;
 pub use model::ModelSchedule;
 
 use core::fmt;

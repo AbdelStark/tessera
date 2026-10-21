@@ -45,6 +45,8 @@ fn compare(case: &Json, graph: &Graph, policy: tv_core::claims::GadgetPolicy) {
         "{}: every canonical range family contributes",
         text(case, "name")
     );
+    let splits = tv_core::leaf::split::Layout::derive(graph, policy).unwrap();
+    assert_eq!(splits.instances().collect::<Vec<_>>(), entries);
     let expected = list(member(case, "sizes"), "trees");
     assert_eq!(plan.schedule().trees().len(), expected.len());
     for (tree, value) in plan.schedule().trees().iter().zip(expected) {
@@ -185,4 +187,50 @@ fn softmax_roots_bind_real_queries_heads_and_layers_with_all_padding_equal_to_on
             assert_eq!(model.forest_root(usize::MAX, &point), None);
         }
     }
+}
+
+#[test]
+fn canonical_sites_visit_each_template_position_before_the_next_and_only_real_layers() {
+    use tv_core::lowering::{NodeId, Op};
+    let (graph, claims) = graph("tiny-2-servable", 3, 512, true);
+    let producer = |t| {
+        graph
+            .nodes()
+            .iter()
+            .position(|n| n.outputs().contains(&t))
+            .unwrap()
+    };
+    let boundaries: Vec<_> = graph
+        .checkpoints()
+        .iter()
+        .map(|&t| producer(t) + 1)
+        .collect();
+    let width = boundaries[1] - boundaries[0];
+    let mut expected = Vec::new();
+    for (index, node) in graph.nodes().iter().enumerate() {
+        if !matches!(
+            node.op(),
+            Op::Requant { .. } | Op::TableMap { .. } | Op::RsqrtRow { .. } | Op::SoftmaxRow { .. }
+        ) {
+            continue;
+        }
+        if index >= boundaries[1] && index < *boundaries.last().unwrap() {
+            continue;
+        }
+        expected.push(if index >= boundaries[0] && index < boundaries[1] {
+            (0..3)
+                .map(|l| NodeId((index + l * width) as u32))
+                .collect::<Vec<_>>()
+        } else {
+            vec![NodeId(index as u32)]
+        });
+    }
+    let sites = tv_core::leaf::split::model_sites(&graph, claims.gadget_policy).unwrap();
+    assert_eq!(
+        sites
+            .iter()
+            .map(|s| s.layers.iter().map(|l| l.node).collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+        expected
+    );
 }
