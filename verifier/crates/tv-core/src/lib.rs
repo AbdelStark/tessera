@@ -38,6 +38,7 @@
 //! | [`weights::check_evaluations`] | weight combined-row shapes and the schedule-derived evaluation claim (RFC-0012, RFC-0049) |
 //! | [`weights::Evaluated::check_columns`] | direct weight-column authentication and both combined rows' consistency, with structural and committed-position indices kept distinct |
 //! | [`claims::ClaimList`] | the claim list's schema, decoded from its sealed envelope and encoded back for `claim_list_digest` (RFC-0007, RFC-0026, RFC-0042) |
+//! | [`protocol`] | independently bounded protocol/1 message and envelope decoding, field-based encoding and public-statement hashing (RFC-0036); syntax only |
 //! | [`params::ParamSet`] | the parameter sets the verifier accepts and the layout each prescribes (RFC-0014, RFC-0026) |
 //! | [`validation::validate`] | claim-list validation, RFC-0007 'Verifier validation' in RFC-0039's order: steps 1 to 7, and RFC-0019 step 2 before them |
 //! | [`advice::Layout`] | complete public advice geometry, source locations, zero rows, segments and weighted whole-claim opening images (RFC-0050) |
@@ -562,6 +563,7 @@ pub mod lowering;
 pub mod model_openings;
 pub mod opening;
 pub mod params;
+pub mod protocol;
 mod range_checks;
 pub mod ranges;
 pub mod schedule;

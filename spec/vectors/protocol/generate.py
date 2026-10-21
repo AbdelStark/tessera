@@ -849,6 +849,24 @@ def refusals(cases):
         short = dict(LIMITS, max_depth=level - 1)
         refuse("Round2Response", bytes(enc.out), LIMIT, at, f"{why}, one level past max_depth {level - 1}", short)
 
+    # Isolate branches whose missing struct level would be hidden by the full packet's
+    # deeper siblings. The encoder locates their first deepest value independently.
+    combined_only = bare([], [])
+    combined_only["advice_combined"] = [{"u": [(0, 1)], "mask": []}]
+    logup_only = bare([], [])
+    logup_only["logup"]["roots"] = [(0, 1)]
+    for value, path, why in [
+        (combined_only, ("advice_combined", 0, "u", 0), "CombinedRow's struct depth"),
+        (logup_only, ("logup", "roots", 0), "LogUpProof's struct depth"),
+    ]:
+        enc = encoded(ROUND2, value)
+        level, at = enc.level[path], enc.at[path]
+        require(next(o for o, l in enc.levels if l >= level) == at, f"{why}: the first at its level")
+        refuse("Round2Response", bytes(enc.out), LIMIT, at, f"{why}, one level short",
+               dict(LIMITS, max_depth=level - 1))
+        accept("Round2Response", bytes(enc.out), f"{why}, exactly at its deepest level",
+               dict(LIMITS, max_depth=level))
+
     # The whole input against max_total_bytes, and a length exactly at max_vec_len.
     commit = bytes(built["SeedCommit"].out)
     refuse("SeedCommit", commit, LIMIT, 0, "48 bytes against max_total_bytes 47", dict(LIMITS, max_total_bytes=47))

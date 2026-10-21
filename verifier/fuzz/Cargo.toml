@@ -46,6 +46,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "protocol"
+path = "fuzz_targets/protocol.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "multiproof"
 path = "fuzz_targets/multiproof.rs"
 test = false

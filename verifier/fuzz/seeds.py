@@ -15,6 +15,8 @@ libFuzzer names corpus files:
   probe envelope, which the target reseals (configuration bit 5); and every weight commitment
   artifact (schema 0x0301: the .twr files of weights/ and the 0x0301 cases of
   codec/weight-commitment.json) under each configuration, as a WeightCommitmentPublic.
+- protocol: every protocol/1 packet, malformed payload and boundary-valid payload under each
+  limit, plus all valid and malformed envelopes.
 - multiproof: every opening of hash/hash.json, at most its first 64 indices, in the target's tree
   of the same size; alone, and followed by each change the target's script knows.
 - inclusion: every tree size and leaf index of the golden proofs in rfc6962/inclusion/ that the
@@ -259,6 +261,26 @@ def main():
         for limits in range(DECODE_LIMITS):
             write("decode", bytes([public, limits]) + data[HEADER_LEN:-DIGEST_LEN])
 
+    protocols = json.loads((HERE.parent.parent / "spec/vectors/protocol/protocol.json").read_text())
+    packet_source = (HERE / "src/protocol.rs").read_text()
+    packet_body = re.search(r"pub const TYPES: \[&str; \d+\] = \[(.*?)\];", packet_source, re.S)
+    if packet_body is None:
+        sys.exit("seeds.py: protocol TYPES not found")
+    packets = re.findall(r'"([^"]*)"', packet_body.group(1))
+    for key in ("messages", "refused", "accepted"):
+        for case in protocols[key]:
+            selector = packets.index(case["type"])
+            payload = bytes.fromhex(case["payload" if key == "messages" else "hex"])
+            for config in range(4):
+                write("protocol", bytes([selector, config]) + payload)
+            if key == "messages":
+                for config in range(4, 8):
+                    write("protocol", bytes([selector, config]) + bytes.fromhex(case["envelope"]))
+    for case in protocols["envelopes"]:
+        kind = case["schema"]
+        for config in range(4, 8):
+            write("protocol", bytes([packets.index(kind), config]) + bytes.fromhex(case["hex"]))
+
     for seed in multiproof_seeds():
         write("multiproof", seed)
     for seed in inclusion_seeds():
@@ -268,7 +290,7 @@ def main():
     for seed in gadget_seeds():
         write("sumcheck", seed)
 
-    for target in ("decode", "envelope", "multiproof", "inclusion", "sumcheck"):
+    for target in ("decode", "envelope", "protocol", "multiproof", "inclusion", "sumcheck"):
         print(f"{target}: {sum(1 for _ in (out / target).iterdir())} seeds")
 
 
