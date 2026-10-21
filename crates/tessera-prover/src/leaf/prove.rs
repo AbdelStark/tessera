@@ -34,19 +34,19 @@ pub const SPLIT_LABEL: &str = "stage/0/split";
 ///
 /// The values are secret-class (05 §3), lent for the call. The debug form shows the terms and the
 /// lengths, never a value.
-pub struct SiteTensors<'a> {
-    terms: Vec<(Term, &'a [i64])>,
+pub struct SiteTensors<'a, S = Term> {
+    terms: Vec<(S, &'a [i64])>,
 }
 
-impl<'a> SiteTensors<'a> {
+impl<'a, S: Copy + Eq> SiteTensors<'a, S> {
     /// The tensors `terms`, each term once.
-    pub fn new(terms: Vec<(Term, &'a [i64])>) -> Self {
+    pub fn new(terms: Vec<(S, &'a [i64])>) -> Self {
         Self { terms }
     }
 
     /// The values of `read`'s tensor, after checking that it is given once with `2^{|π_t|}`
     /// entries.
-    fn of(&self, read: &Read) -> Result<&'a [i64], LeafError> {
+    fn of(&self, read: &Read<S>) -> Result<&'a [i64], LeafError> {
         let mut found = self.terms.iter().filter(|(term, _)| *term == read.term);
         let (Some(&(_, values)), None) = (found.next(), found.next()) else {
             return internal("the witness gives each tensor a site's lookups read, once");
@@ -62,7 +62,7 @@ impl<'a> SiteTensors<'a> {
 }
 
 /// Shows the terms and the lengths, never a value (05 §3).
-impl fmt::Debug for SiteTensors<'_> {
+impl<S: fmt::Debug> fmt::Debug for SiteTensors<'_, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_map()
             .entries(self.terms.iter().map(|(term, values)| (term, values.len())))
@@ -154,10 +154,10 @@ impl LeafColumns {
     /// missing, given twice or of another length; then a key that names no row of its table,
     /// which an honest witness never has (INV-IR-2). [`LeafError::Memory`] when a column cannot
     /// be allocated.
-    pub fn new(
-        layout: &LeafLayout,
+    pub fn new<S: Copy + Eq>(
+        layout: &LeafLayout<S>,
         tables: &[TableColumns<Goldilocks>],
-        witness: &[Vec<SiteTensors<'_>>],
+        witness: &[Vec<SiteTensors<'_, S>>],
     ) -> Result<Self, LeafError> {
         check_witness(layout, witness)?;
         let mut instances = Vec::with_capacity(layout.instances().len());
@@ -190,14 +190,14 @@ impl LeafColumns {
                         rule: "the layout reads every site's tensors",
                     })?;
                 let tensors = &witness[block.site][block.layer];
-                let terms: Vec<(Term, &[i64], &[u32])> = reads
+                let terms: Vec<(S, &[i64], &[u32])> = reads
                     .iter()
                     .map(|read| Ok((read.term, tensors.of(read)?, read.coords.as_slice())))
                     .collect::<Result<_, LeafError>>()?;
                 // The value of `term` at the domain's element `x`: its tensor's entry at the bits
                 // of `x` that its axes take. Every term of the gadget's forms is among its reads,
                 // which the layout derives from those forms, so `find` never falls back.
-                let at = |term: Term, x: u64| -> Goldilocks {
+                let at = |term: S, x: u64| -> Goldilocks {
                     terms.iter().find(|(t, _, _)| *t == term).map_or(
                         Goldilocks::ZERO,
                         |&(_, values, coords)| {
@@ -281,10 +281,10 @@ pub fn leaf_point<F: Copy>(proven: &ProvenLogUp<F>) -> Vec<F> {
 /// [`LeafError::Internal`] for a witness without one gadget per site and layer, a tensor missing,
 /// given twice or of another length, or a point shorter than a tensor's coordinates;
 /// [`LeafError::Memory`] when a table cannot be allocated.
-pub fn split_values(
-    layout: &LeafLayout,
+pub fn split_values<S: Copy + Eq>(
+    layout: &LeafLayout<S>,
     point: &[GoldilocksExt2],
-    witness: &[Vec<SiteTensors<'_>>],
+    witness: &[Vec<SiteTensors<'_, S>>],
 ) -> Result<Vec<GoldilocksExt2>, LeafError> {
     check_witness(layout, witness)?;
     let mut values = Vec::with_capacity(layout.split_len());
@@ -454,11 +454,11 @@ impl<T: SumcheckTranscript<GoldilocksExt2> + ?Sized> PreparedLeaf<'_, T> {
 /// # Errors
 /// As [`LeafColumns::new`], then [`LeafError::LogUp`] for invalid tree shapes before the
 /// transcript moves; [`LeafError::Memory`] if a split table cannot be allocated after LogUp.
-pub fn prepare_leaf<'tr, T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
+pub fn prepare_leaf<'tr, S: Copy + Eq, T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
     transcript: &'tr mut T,
-    layout: &LeafLayout,
+    layout: &LeafLayout<S>,
     tables: &[TableColumns<Goldilocks>],
-    witness: &[Vec<SiteTensors<'_>>],
+    witness: &[Vec<SiteTensors<'_, S>>],
     forests: &[Forest<'_, GoldilocksExt2>],
 ) -> Result<PreparedLeaf<'tr, T>, LeafError> {
     let columns = LeafColumns::new(layout, tables, witness)?;
@@ -497,11 +497,11 @@ pub fn prepare_leaf<'tr, T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
 /// As [`LeafColumns::new`], and [`LeafError::LogUp`] when the LogUp prover refuses the
 /// instances, both before the transcript moves; [`LeafError::Memory`] when a split value's table
 /// cannot be allocated, after the LogUp proof.
-pub fn prove_leaf<T>(
+pub fn prove_leaf<S: Copy + Eq, T>(
     transcript: &mut T,
-    layout: &LeafLayout,
+    layout: &LeafLayout<S>,
     tables: &[TableColumns<Goldilocks>],
-    witness: &[Vec<SiteTensors<'_>>],
+    witness: &[Vec<SiteTensors<'_, S>>],
 ) -> Result<ProvenLeaf, LeafError>
 where
     T: SumcheckTranscript<GoldilocksExt2> + ?Sized,
@@ -510,7 +510,10 @@ where
 }
 
 /// Checks that `witness` holds one entry per site and real layer of `layout`.
-fn check_witness(layout: &LeafLayout, witness: &[Vec<SiteTensors<'_>>]) -> Result<(), LeafError> {
+fn check_witness<S: Copy + Eq>(
+    layout: &LeafLayout<S>,
+    witness: &[Vec<SiteTensors<'_, S>>],
+) -> Result<(), LeafError> {
     let shaped = witness.len() == layout.sites().len()
         && layout
             .sites()

@@ -457,8 +457,8 @@ fn derive_instances(sites: &[Site]) -> Vec<VInstance> {
     let mut tables: Vec<(TableId, Vec<VBlock>)> = Vec::new();
     for (site, s) in sites.iter().enumerate() {
         for (layer, gadget) in s.layers.iter().enumerate() {
-            let vars: u32 = gadget.domain.iter().map(|&d| bits(d)).sum();
             for (lookup, l) in gadget.lookups.iter().enumerate() {
+                let vars: u32 = l.domain.iter().map(|&d| bits(d)).sum();
                 let block = VBlock {
                     site,
                     layer,
@@ -502,9 +502,9 @@ fn derive_instances(sites: &[Site]) -> Vec<VInstance> {
 /// they first read them, the key's terms before the value's, each with its point `π_t(P[0..k])` as
 /// indices into `P`.
 fn derive_reads(gadget: &SiteGadget) -> Reads {
-    let widths: Vec<u32> = gadget.domain.iter().map(|&d| bits(d)).collect();
     let mut reads: Reads = Vec::new();
     for lookup in &gadget.lookups {
+        let widths: Vec<u32> = lookup.domain.iter().map(|&d| bits(d)).collect();
         let forms = [Some(&lookup.lookup.key), lookup.lookup.value.as_ref()];
         for form in forms.into_iter().flatten() {
             for &(_, term) in &form.terms {
@@ -583,7 +583,7 @@ fn split_layout(sites: &[Site]) -> tv_core::leaf::split::Layout {
                             .iter()
                             .map(|lookup| v::Lookup {
                                 table: tv_tables::TableId(lookup.lookup.table.0),
-                                variables: gadget.domain.iter().map(|&d| bits(d)).sum(),
+                                variables: lookup.domain.iter().map(|&d| bits(d)).sum(),
                                 key: form(&lookup.lookup.key),
                                 value: lookup.lookup.value.as_ref().map(form),
                             })
@@ -1041,7 +1041,7 @@ fn every_tensor_a_site_reads_has_one_value_per_layer() {
             let classes = reads.iter().find(|r| r.term == Term::Class);
             if let Some(class) = classes {
                 // A channel's class is read over the channel axis: the lowest coordinates.
-                let channels = bits(*gadget.domain.last().expect("an axis"));
+                let channels = bits(*gadget.lookups[0].domain.last().expect("an axis"));
                 assert_eq!(class.coords, (0..channels).collect::<Vec<_>>());
             }
             total += reads.len();
@@ -1167,6 +1167,7 @@ fn offsets_are_aligned_and_the_padding_is_the_tail() {
                     let domain = domain.clone();
                     let lookups = (0..1 + rng.below(3))
                         .map(|_| SiteLookup {
+                            domain: domain.clone(),
                             lookup: tessera_gadgets::Lookup {
                                 table: TableId(rng.below(4) as u32),
                                 key: Affine {
@@ -1178,7 +1179,7 @@ fn offsets_are_aligned_and_the_padding_is_the_tail() {
                             axes: Vec::new(),
                         })
                         .collect();
-                    SiteGadget { domain, lookups }
+                    SiteGadget { lookups }
                 })
                 .collect();
             sites.push(Site {
@@ -1489,6 +1490,7 @@ fn a_tensor_read_over_an_outer_axis_lies_at_its_coordinates() {
     let spec = tessera_tables::Table::spec(&table).clone();
     // The key `x + 4·c_row` over `[4, 8]`, `c` read over the rows, axis 0.
     let lookup = SiteLookup {
+        domain: vec![4, 8],
         lookup: tessera_gadgets::Lookup {
             table: TableId(0),
             key: Affine {
@@ -1503,7 +1505,6 @@ fn a_tensor_read_over_an_outer_axis_lies_at_its_coordinates() {
         axes: vec![(Term::Class, vec![0])],
     };
     let gadget = SiteGadget {
-        domain: vec![4, 8],
         lookups: vec![lookup],
     };
     let mut rng = SplitMix64(0x0a);
@@ -1804,7 +1805,7 @@ fn a_malformed_forest_is_refused_before_the_transcript_moves() {
 
 #[test]
 fn forest_only_and_empty_leaf_stages_bind_their_split_message() {
-    let layout = LeafLayout::new(&model().layers, vec![]).unwrap();
+    let layout = LeafLayout::<Term>::new(&model().layers, vec![]).unwrap();
     let fields: Vec<_> = [2, 3, 4, 5].into_iter().map(Fp::from_i64).collect();
     for with_forest in [false, true] {
         let forests = if with_forest {
