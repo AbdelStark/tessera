@@ -173,9 +173,10 @@ pub(super) fn check(s: &mut Script<'_>) {
     }
     let incoming = incoming.unwrap();
     let result = incoming.evaluate(&point, &raw);
+    let expected_values = if kind == Kind::Tokens { 2 } else { c.nt + 3 };
     let expected_error = if point.len() != c.nv + c.nt {
         Some(GadgetError::Internal)
-    } else if raw.len() != c.b.evaluations(kind) {
+    } else if raw.len() != expected_values {
         Some(GadgetError::Rejected {
             gadget: GadgetId(73),
         })
