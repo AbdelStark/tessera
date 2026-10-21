@@ -148,7 +148,7 @@ The verifier computes a claim's public atoms and moves them to its value. The cl
   - **A part's value.** A virtual atom's value is its tensor's evaluation, and the check weights it by the atom's coefficient. A committed group's value is its combination `Σ_t a_t·P̃_t(r)`, coefficients included, and the check counts it with weight 1. That combination is the claim the pool receives.
   - **Where.** The values go under `stage/{k}/split`, after the stage's final evaluations, as one `Vec<Fp2>` covering every claim the stage splits, claim by claim.
   - **The order of claims.** A reduction stage's claims come by instance, then by evaluation. The leaf stage's come by site, then by layer, as 'The layer point' orders them.
-  - **The leaf stage** is stage 0, and its values follow `logup/values`: one per tensor, site and layer ([RFC-0045](RFC-0045-leaf-layout.md#the-split)).
+  - **The leaf stage** is stage 0, and its values follow `logup/values` in one `Vec<Fp2>` under `stage/0/split` (`TreeProof.splits`): first the lookup tensor values—one per tensor, site and real layer ([RFC-0045](RFC-0045-leaf-layout.md#the-split))—and then the atom split values of any leaf claim that splits into virtual and committed parts.
 - **The check.** The verifier checks that the values, weighted by their coefficients, give the claim's value. A mismatch is `Reject(Sumcheck { stage: k, round: n_k })`, with `n_k` the stage's number of rounds (0 for the leaf stage).
 - **The result.** Each value becomes one claim: a virtual atom's for the next stage, a committed group's for the pool.
 - **Example.** The residual key's claim `acc + 2^r·X_in` at `(r ‖ ρ)` splits into `acc`'s virtual atom and `X_in`'s committed group: two values.

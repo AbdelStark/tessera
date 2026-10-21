@@ -36,7 +36,7 @@ use tessera_prover::leaf::{
     LeafColumns, LeafError, LeafLayout, SPLIT_LABEL, Site, SiteGadget, SiteLookup, SiteTensors,
     gadget_nodes, leaf_index, leaf_point, prove_leaf, split_values,
 };
-use tessera_sumcheck::SumcheckTranscript;
+use tessera_sumcheck::{Forest, SumcheckTranscript};
 use tessera_tables::{GeneratedTable, TableId, TableSpec};
 use tessera_witness::{Engine, Witness};
 use tv_core::logup::{self as tvl, LookupError};
@@ -316,20 +316,27 @@ const STATEMENT: [u8; 32] = [0x45; 32];
 const SESSION: [u8; 16] = [0x67; 16];
 
 fn transcript() -> Transcript {
+    transcript_mode(Mode::NonInteractive)
+}
+
+fn transcript_mode(mode: Mode) -> Transcript {
     Transcript::new(&SessionContext {
         protocol: Ascii::new(PROTOCOL).expect("ASCII"),
-        mode: Mode::NonInteractive,
+        mode,
         params: ParamSetId(Ascii::new("test-small/1").expect("ASCII")),
         statement_digest: STATEMENT,
         session_id: SESSION,
     })
 }
 
-fn tv_transcript() -> tv_hash::transcript::Transcript {
+fn tv_transcript_mode(mode: Mode) -> tv_hash::transcript::Transcript {
     use tv_hash::transcript as t;
     t::Transcript::new(&t::SessionContext {
         protocol: t::Ascii::new(PROTOCOL).expect("ASCII"),
-        mode: t::Mode::NonInteractive,
+        mode: match mode {
+            Mode::Live => t::Mode::Live,
+            Mode::NonInteractive => t::Mode::NonInteractive,
+        },
         params: t::ParamSetId(t::Ascii::new("test-small/1").expect("ASCII")),
         statement_digest: STATEMENT,
         session_id: SESSION,
@@ -605,19 +612,42 @@ fn verify_with(
     messages: &Messages,
     instances: Vec<VInstance>,
 ) -> Result<Accepted, Reject> {
+    verify_combined(
+        sites,
+        specs,
+        messages,
+        instances,
+        &[],
+        0,
+        Mode::NonInteractive,
+    )
+}
+
+/// Component oracle: the tail remains an outstanding graph claim; its length is public.
+/// Forest roots and final leaves are evaluated independently from their explicit test tables.
+fn verify_combined(
+    sites: &[Site],
+    specs: &BTreeMap<TableId, TableSpec>,
+    messages: &Messages,
+    instances: Vec<VInstance>,
+    forests: &[(usize, Vec<i64>)],
+    atom_count: usize,
+    mode: Mode,
+) -> Result<Accepted, Reject> {
     let tables: Vec<tv_tables::Table> = instances
         .iter()
         .map(|i| tv_table(&specs[&i.table]))
         .collect();
-    let mut t = tv_transcript();
+    let mut t = tv_transcript_mode(mode);
     // LogUp: the roots, every level, the leaf checks (RFC-0008 'Fraction tree').
     let roots =
         tvl::check_roots(&mut t, instances.len(), &messages.roots).map_err(Reject::Lookup)?;
-    let heights: Vec<usize> = instances
+    let mut heights: Vec<usize> = instances
         .iter()
         .zip(&tables)
         .flat_map(|(i, table)| [i.height as usize, usize::from(table.log2_rows())])
         .collect();
+    heights.extend(forests.iter().map(|(height, _)| *height));
     let tallest = heights.iter().copied().max().unwrap_or(0);
     assert_eq!(messages.levels.len(), tallest, "one proof per level");
     let mut claims: Vec<tvt::LevelClaim> = roots
@@ -630,8 +660,47 @@ fn verify_with(
             ]
         })
         .collect();
+    let first_forest = claims.len();
+    claims.extend(forests.iter().map(|_| {
+        tvt::LevelClaim::Product(tvt::TreeClaim {
+            point: vec![],
+            value: TvFp2::ZERO,
+        })
+    }));
     let mut last: Option<tvt::TreeLevel> = None;
     for (level, proof) in messages.levels.iter().enumerate() {
+        let joining: Vec<_> = forests
+            .iter()
+            .enumerate()
+            .filter(|(_, (height, _))| tallest - height == level)
+            .collect();
+        let root_vars =
+            |height: usize, leaves: &[i64]| leaves.len().trailing_zeros() as usize - height;
+        let max_vars = joining
+            .iter()
+            .map(|(_, (height, leaves))| root_vars(*height, leaves))
+            .max()
+            .unwrap_or(0);
+        let root_point: Vec<_> = (0..max_vars)
+            .map(|c| {
+                t.challenge_fp2(
+                    tv_hash::transcript::Ascii::new(&format!("tree/{level}/root/{c}"))
+                        .expect("label"),
+                )
+                .expect("root challenge")
+            })
+            .collect();
+        for (index, (height, leaves)) in joining {
+            let point = root_point[max_vars - root_vars(*height, leaves)..].to_vec();
+            let roots: Vec<_> = leaves
+                .chunks_exact(1 << height)
+                .map(|tree| tree.iter().product())
+                .collect();
+            claims[first_forest + index] = tvt::LevelClaim::Product(tvt::TreeClaim {
+                value: mle(&roots, &point),
+                point,
+            });
+        }
         let present: Vec<usize> = (0..heights.len())
             .filter(|&p| tallest - heights[p] <= level)
             .collect();
@@ -642,6 +711,16 @@ fn verify_with(
             claims[p] = next.clone();
         }
         last = Some(checked);
+    }
+    for (index, (_, leaves)) in forests.iter().enumerate() {
+        let tvt::LevelClaim::Product(claim) = &claims[first_forest + index] else {
+            panic!("forest claim")
+        };
+        assert_eq!(
+            claim.value,
+            mle(leaves, &claim.point),
+            "forest {index} leaves are still owed by the model stages"
+        );
     }
     let fraction = |p: usize| match &claims[p] {
         tvt::LevelClaim::Fraction(claim) => claim.clone(),
@@ -676,7 +755,7 @@ fn verify_with(
         .map(|s| s.layers.iter().map(derive_reads).collect())
         .collect();
     let count: usize = reads.iter().flatten().map(Vec::len).sum();
-    if messages.splits.len() != count {
+    if messages.splits.len() != count + atom_count {
         return Err(SPLIT);
     }
     let mut tce = (messages.splits.len() as u64).to_le_bytes().to_vec();
@@ -1639,5 +1718,216 @@ impl SplitMix64 {
 
     fn below(&mut self, n: u64) -> u64 {
         self.next() % n
+    }
+}
+
+/// RFC-0037/0045: lookup values and graph atom values share one transcript message.
+/// This composes components with synthetic lookup sites and forest roots; it is not a
+/// complete model proof. Every returned forest claim is checked against its explicit leaves.
+#[test]
+fn lookup_and_graph_splits_have_one_transcript_message() {
+    struct Trace {
+        inner: Transcript,
+        split_messages: usize,
+        first_layer: Option<Fp2>,
+    }
+    impl SumcheckTranscript<Fp2> for Trace {
+        fn absorb_message(&mut self, label: &str, values: &[Fp2]) {
+            if label == SPLIT_LABEL {
+                self.split_messages += 1;
+            }
+            self.inner.absorb_message(label, values);
+        }
+        fn challenge(&mut self, label: &str) -> Fp2 {
+            let value = self.inner.challenge(label);
+            if label == "stage/1/layer/0" {
+                self.first_layer = Some(value);
+            }
+            value
+        }
+    }
+    let (model, tokens) = conformance("tiny-2-affine");
+    let lowering = lower(PublicModel::of(&model), tokens.len() as u32).expect("lowering");
+    let witness = Engine::new(&lowering)
+        .expect("engine")
+        .run(&model, &Secret::new(tokens))
+        .expect("witness");
+    let schedule = tessera_compiler::derive_schedule(&lowering).expect("graph schedule");
+    let leaf = synthetic();
+    let longest = schedule.stages[0]
+        .claims
+        .iter()
+        .map(|c| c.point.len())
+        .max()
+        .unwrap();
+    // Forests join before, beside and after the lookup trees; one is a single product tree.
+    let forest_data: Vec<_> = [(longest.max(9), 1), (3, 2), (1, 0)]
+        .into_iter()
+        .map(|(height, vars)| {
+            let mut leaves = vec![1i64; 1 << (height + vars)];
+            for (tree, row) in leaves.chunks_exact_mut(1 << height).enumerate() {
+                row[0] = tree as i64 + 2;
+                let last = row.len() - 1;
+                row[last] = 3;
+            }
+            (height, leaves)
+        })
+        .collect();
+    let fields: Vec<Vec<_>> = forest_data
+        .iter()
+        .map(|(_, leaves)| leaves.iter().map(|&x| Fp::from_i64(x)).collect())
+        .collect();
+    let forests: Vec<_> = forest_data
+        .iter()
+        .zip(&fields)
+        .map(|((h, _), leaves)| Forest::new(leaves, *h))
+        .collect();
+    for mode in [Mode::Live, Mode::NonInteractive] {
+        let mut trace = Trace {
+            inner: transcript_mode(mode),
+            split_messages: 0,
+            first_layer: None,
+        };
+        let lookup = tessera_prover::leaf::prepare_leaf(
+            &mut trace,
+            &leaf.layout,
+            &leaf.tables,
+            &leaf.witness(),
+            &forests,
+        )
+        .expect("shared trees");
+        assert_eq!(lookup.logup().forest_claims().len(), forests.len());
+        let points: Vec<_> = schedule.stages[0]
+            .claims
+            .iter()
+            .map(|c| lookup.point()[..c.point.len()].to_vec())
+            .collect();
+        let mut graph = tessera_prover::StageProver::new(&lowering, &schedule, &witness);
+        assert!(
+            graph.leaf_split_values().is_err(),
+            "split before claims is refused"
+        );
+        let _claims = graph.leaf(&points).expect("graph claims");
+        let atoms = graph.leaf_split_values().expect("atom splits");
+        assert!(!atoms.is_empty(), "a real mixed virtual/committed key");
+        let proven = lookup.finish(&atoms).expect("one combined split");
+        assert_eq!(&proven.splits()[leaf.layout.split_len()..], &atoms);
+        assert!(graph.leaf_split_values().is_err(), "no second graph split");
+        assert_eq!(trace.split_messages, 1, "INV-FS-4: a single stage/0/split");
+        let messages = Messages::of(proven.logup(), proven.splits());
+        let verify = |m: &Messages| {
+            verify_combined(
+                &leaf.sites,
+                &leaf.specs,
+                m,
+                derive_instances(&leaf.sites),
+                &forest_data,
+                atoms.len(),
+                mode,
+            )
+        };
+        let accepted = verify(&messages).expect("independent leaf checks");
+        assert_eq!(accepted.point, tv_fp2s(proven.point()));
+        for stage in 1..schedule.stages.len() {
+            let _proof = graph
+                .prove_stage(&mut trace, stage as u16)
+                .expect("graph reduction");
+        }
+        assert_eq!(
+            accepted.next,
+            tv_fp2(trace.first_layer.expect("graph layer challenge")),
+            "the full combined vector binds the next stage"
+        );
+        assert!(graph.pool().iter().all(Option::is_some));
+        // The first two levels are forest-only, then fractions join the same batch.
+        for level in [0, messages.levels.len() - 1] {
+            let mut bad = messages.clone();
+            bad.levels[level].final_evals[0] += TvFp2::ONE;
+            assert_eq!(
+                verify(&bad).err(),
+                Some(Reject::Level(
+                    level,
+                    tv::SumcheckError::FinalMismatch {
+                        round: bad.levels[level].rounds.len() as u32
+                    }
+                ))
+            );
+        }
+        let mut bad = messages.clone();
+        bad.splits[0] += TvFp2::ONE;
+        assert_eq!(verify(&bad).err(), Some(SPLIT));
+        let mut bad = messages.clone();
+        bad.splits.pop();
+        assert_eq!(verify(&bad).err(), Some(SPLIT));
+        let mut bad = messages.clone();
+        *bad.splits.last_mut().unwrap() += TvFp2::ONE;
+        assert_ne!(
+            verify(&bad).unwrap().next,
+            accepted.next,
+            "atom tail is transcript-bound; graph checks remain outstanding"
+        );
+    }
+}
+
+#[test]
+fn a_malformed_forest_is_refused_before_the_transcript_moves() {
+    let leaf = synthetic();
+    let mut t = transcript();
+    let before = transcript().challenge("test/unchanged");
+    let fields = [Fp::ONE; 3];
+    let error = tessera_prover::leaf::prepare_leaf(
+        &mut t,
+        &leaf.layout,
+        &leaf.tables,
+        &leaf.witness(),
+        &[Forest::new(&fields, 1)],
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        LeafError::LogUp(tessera_logup::LogUpError::Sumcheck(
+            tessera_sumcheck::SumcheckError::LeafCount { forest: 0, len: 3 }
+        ))
+    );
+    assert_eq!(t.challenge("test/unchanged"), before);
+}
+
+#[test]
+fn forest_only_and_empty_leaf_stages_bind_their_split_message() {
+    let layout = LeafLayout::new(&model().layers, vec![]).unwrap();
+    let fields: Vec<_> = [2, 3, 4, 5].into_iter().map(Fp::from_i64).collect();
+    for with_forest in [false, true] {
+        let forests = if with_forest {
+            vec![Forest::new(&fields, 1)]
+        } else {
+            vec![]
+        };
+        let forest_data = if with_forest {
+            vec![(1, vec![2, 3, 4, 5])]
+        } else {
+            vec![]
+        };
+        for mode in [Mode::Live, Mode::NonInteractive] {
+            let mut t = transcript_mode(mode);
+            let proven = tessera_prover::leaf::prepare_leaf(&mut t, &layout, &[], &[], &forests)
+                .unwrap()
+                .finish(&[])
+                .unwrap();
+            assert!(proven.splits().is_empty());
+            assert_eq!(proven.logup().forest_claims().len(), forests.len());
+            let messages = Messages::of(proven.logup(), proven.splits());
+            let accepted = verify_combined(
+                &[],
+                &BTreeMap::new(),
+                &messages,
+                vec![],
+                &forest_data,
+                0,
+                mode,
+            )
+            .unwrap();
+            assert_eq!(accepted.point, tv_fp2s(proven.point()));
+            assert_eq!(accepted.next, tv_fp2(t.challenge("stage/1/layer/0")));
+        }
     }
 }

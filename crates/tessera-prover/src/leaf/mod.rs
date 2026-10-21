@@ -50,8 +50,8 @@ pub use layout::{
     Block, InstanceLayout, LeafLayout, Read, Site, SiteGadget, SiteLookup, gadget_nodes, leaf_index,
 };
 pub use prove::{
-    InstanceColumns, LeafColumns, ProvenLeaf, SPLIT_LABEL, SiteTensors, leaf_point, prove_leaf,
-    split_values,
+    InstanceColumns, LeafColumns, PreparedLeaf, ProvenLeaf, SPLIT_LABEL, SiteTensors, leaf_point,
+    prepare_leaf, prove_leaf, split_values,
 };
 
 /// Why the leaf stage's layout, columns or split could not be built.

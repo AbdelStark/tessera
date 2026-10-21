@@ -16,9 +16,9 @@ use core::fmt;
 use tessera_codec::{Secret, SecretBuf};
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
 use tessera_gadgets::{TableColumns, Term};
-use tessera_logup::{LogUpInstance, ProvenLogUp, Tuples, multiplicities, prove_logup};
+use tessera_logup::{LogUpInstance, ProvenLogUp, TreeId, Tuples, multiplicities, prove_logup};
 use tessera_poly::evaluate_base;
-use tessera_sumcheck::SumcheckTranscript;
+use tessera_sumcheck::{Forest, SumcheckTranscript};
 use tessera_tables::TableId;
 
 use super::layout::{LeafLayout, Read, leaf_index};
@@ -345,7 +345,7 @@ impl ProvenLeaf {
     }
 
     /// The `stage/0/split` message: one value per tensor, site and real layer
-    /// ([`split_values`]).
+    /// ([`split_values`]), followed by any graph atom split values supplied at finish.
     pub fn splits(&self) -> &[GoldilocksExt2] {
         &self.splits
     }
@@ -373,6 +373,111 @@ impl fmt::Debug for ProvenLeaf {
     }
 }
 
+/// The shared tree levels and lookup split values, before `stage/0/split` is absorbed.
+///
+/// Use the leaf point and forest claims to compute the graph's atom splits, then call
+/// [`finish`](Self::finish) before drawing any further challenge (INV-FS-1). Dropping this
+/// value leaves the transcript unfinished; it certifies nothing. This value borrows the
+/// transcript exclusively so no challenge can be drawn until it is consumed or dropped.
+///
+/// ```compile_fail,E0499
+/// use tessera_prover::leaf::{prepare_leaf, LeafLayout, LeafError, SiteTensors};
+/// use tessera_field::{Goldilocks, GoldilocksExt2};
+/// use tessera_gadgets::TableColumns;
+/// use tessera_sumcheck::SumcheckTranscript;
+/// fn interleave(
+///     tr: &mut impl SumcheckTranscript<GoldilocksExt2>,
+///     layout: &LeafLayout,
+///     tables: &[TableColumns<Goldilocks>],
+///     witness: &[Vec<SiteTensors<'_>>],
+/// ) -> Result<(), LeafError> {
+///     let pending = prepare_leaf(tr, layout, tables, witness, &[])?;
+///     tr.challenge("stage/1/layer/0"); // split values are not bound yet
+///     let _proven = pending.finish(&[])?;
+///     Ok(())
+/// }
+/// ```
+#[must_use = "finish the single leaf split message before drawing another challenge"]
+pub struct PreparedLeaf<'tr, T: SumcheckTranscript<GoldilocksExt2> + ?Sized> {
+    inner: ProvenLeaf,
+    transcript: &'tr mut T,
+}
+
+impl<T: SumcheckTranscript<GoldilocksExt2> + ?Sized> fmt::Debug for PreparedLeaf<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("PreparedLeaf").field(&self.inner).finish()
+    }
+}
+
+impl<T: SumcheckTranscript<GoldilocksExt2> + ?Sized> PreparedLeaf<'_, T> {
+    /// The shared LogUp/forest proof and its outstanding leaf claims.
+    pub fn logup(&self) -> &ProvenLogUp<GoldilocksExt2> {
+        &self.inner.logup
+    }
+
+    /// The leaf point `P` from the last shared tree level.
+    pub fn point(&self) -> &[GoldilocksExt2] {
+        &self.inner.point
+    }
+
+    /// Append the graph's atom splits after the lookup tensor values and absorb exactly one
+    /// TCE vector under `stage/0/split` (RFC-0037/0045). `atom_splits` is in the graph
+    /// schedule's claim, real-layer and part order, as computed by
+    /// [`StageProver::leaf_split_values`](crate::StageProver::leaf_split_values).
+    ///
+    /// # Errors
+    /// [`LeafError::Memory`] if the combined message cannot be allocated; the transcript has
+    /// not absorbed a split message on that error.
+    pub fn finish(mut self, atom_splits: &[GoldilocksExt2]) -> Result<ProvenLeaf, LeafError> {
+        self.inner
+            .splits
+            .try_reserve(atom_splits.len())
+            .map_err(|_| LeafError::Memory)?;
+        self.inner.splits.extend_from_slice(atom_splits);
+        self.transcript
+            .absorb_message(SPLIT_LABEL, &self.inner.splits);
+        Ok(self.inner)
+    }
+}
+
+/// Prove the lookup trees and product forests together, and compute the lookup tensor values
+/// at their shared leaf point, stopping before `stage/0/split` (RFC-0010/0037/0045).
+///
+/// The schedule takes each lookup instance's lookup tree then table tree, in table order,
+/// followed by `forests` in their supplied public schedule order. The forest roots must be
+/// the public roots of the model's relations; all returned multiplicity, forest and tensor
+/// claims still require stages or commitment openings. Nothing here checks them.
+///
+/// After computing the graph's atom split values, call [`PreparedLeaf::finish`] before
+/// drawing any further challenge. [`prove_leaf`] is the standalone lookup-only case.
+///
+/// # Errors
+/// As [`LeafColumns::new`], then [`LeafError::LogUp`] for invalid tree shapes before the
+/// transcript moves; [`LeafError::Memory`] if a split table cannot be allocated after LogUp.
+pub fn prepare_leaf<'tr, T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
+    transcript: &'tr mut T,
+    layout: &LeafLayout,
+    tables: &[TableColumns<Goldilocks>],
+    witness: &[Vec<SiteTensors<'_>>],
+    forests: &[Forest<'_, GoldilocksExt2>],
+) -> Result<PreparedLeaf<'tr, T>, LeafError> {
+    let columns = LeafColumns::new(layout, tables, witness)?;
+    let instances = columns.instances(tables)?;
+    let mut schedule = layout.trees();
+    schedule.extend((0..forests.len()).map(TreeId::Forest));
+    let logup = prove_logup(transcript, &instances, forests, &schedule)?;
+    let point = leaf_point(&logup);
+    let splits = split_values(layout, &point, witness)?;
+    Ok(PreparedLeaf {
+        inner: ProvenLeaf {
+            logup,
+            point,
+            splits,
+        },
+        transcript,
+    })
+}
+
 /// Proves the LogUp part of the leaf stage over `layout` and its split, on `transcript`
 /// (RFC-0045, RFC-0008 'Fraction tree', RFC-0037 'Splits'):
 ///
@@ -384,8 +489,8 @@ impl fmt::Debug for ProvenLeaf {
 /// 4. the split values at `P` ([`split_values`]), absorbed as one TCE `Vec<Fp2>` under
 ///    `stage/0/split`, before any later challenge.
 ///
-/// The leaf stage's product forests join the same levels in the prover's leaf integration
-/// (#130); here the levels hold the instances' trees alone.
+/// For product forests and graph atom splits in the same leaf stage, use [`prepare_leaf`]
+/// followed by [`PreparedLeaf::finish`]. Here the levels hold the instances' trees alone.
 ///
 /// # Errors
 ///
@@ -401,17 +506,7 @@ pub fn prove_leaf<T>(
 where
     T: SumcheckTranscript<GoldilocksExt2> + ?Sized,
 {
-    let columns = LeafColumns::new(layout, tables, witness)?;
-    let instances = columns.instances(tables)?;
-    let logup = prove_logup(transcript, &instances, &[], &layout.trees())?;
-    let point = leaf_point(&logup);
-    let splits = split_values(layout, &point, witness)?;
-    transcript.absorb_message(SPLIT_LABEL, &splits);
-    Ok(ProvenLeaf {
-        logup,
-        point,
-        splits,
-    })
+    prepare_leaf(transcript, layout, tables, witness, &[])?.finish(&[])
 }
 
 /// Checks that `witness` holds one entry per site and real layer of `layout`.
