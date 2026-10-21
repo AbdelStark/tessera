@@ -10,7 +10,8 @@
 //! [`leaf`] lays out the leaf stage's lookups (RFC-0045): each LogUp instance's column of blocks,
 //! its lookup tree's leaf order, the leaf point `P`, and the split values that turn its leaf
 //! claims into one claim per tensor a site's lookups read. [`prove_leaf`] proves the LogUp part
-//! and the split on a transcript.
+//! and the split on a transcript. [`prepare_leaf`] batches product forests beside the lookup
+//! trees and binds lookup values and graph atom splits in one message via [`PreparedLeaf`].
 //!
 //! [`ReleaseSchedule`] fixes when a message that a verifier can time leaves the prover in
 //! `tessera-protocol/2`: at a slot that public data determines, whatever its secret-dependent
@@ -33,7 +34,7 @@ mod model;
 mod release;
 pub mod stages;
 
-pub use leaf::{LeafError, LeafLayout, ProvenLeaf, prove_leaf};
+pub use leaf::{LeafError, LeafLayout, PreparedLeaf, ProvenLeaf, prepare_leaf, prove_leaf};
 pub use model::{ModelSchedule, derive_model_schedule};
 pub use release::{Release, ReleaseSchedule, ScheduleError};
 pub use stages::{StageError, StageProof, StageProver, WitnessSource};

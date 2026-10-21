@@ -206,11 +206,27 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
         &mut self,
         transcript: &mut T,
     ) -> Result<Vec<GoldilocksExt2>, StageError> {
+        let splits = self.leaf_split_values()?;
+        transcript.absorb_message("stage/0/split", &splits);
+        Ok(splits)
+    }
+
+    /// Compute stage 0's graph atom split values without absorbing a transcript message.
+    ///
+    /// For a leaf stage with lookup tensor values, pass these values to
+    /// [`PreparedLeaf::finish`](crate::leaf::PreparedLeaf::finish) so that the two parts are
+    /// absorbed as one vector (RFC-0037/0045). The returned values follow claim, real-layer
+    /// and part order. This advances the graph prover exactly as [`leaf_splits`](Self::leaf_splits)
+    /// does; call it only once, after [`leaf`](Self::leaf).
+    ///
+    /// # Errors
+    /// [`StageError::Internal`] before the leaf claims or after their splits;
+    /// [`StageError::Memory`] when a table does not fit.
+    pub fn leaf_split_values(&mut self) -> Result<Vec<GoldilocksExt2>, StageError> {
         if self.claims.len() != 1 || !self.parts.is_empty() {
             return internal("the leaf stage's splits follow its claims");
         }
-        let splits = self.split(0, transcript)?;
-        Ok(splits)
+        self.split_values(0)
     }
 
     /// Proves stage `k`, from 1: its points in stage 1, its batched sumcheck, then its splits.
@@ -294,7 +310,9 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
             }
         }
         self.claims.push(values);
-        let splits = self.split(index, transcript)?;
+        let splits = self.split_values(index)?;
+        transcript.absorb_message(&format!("stage/{index}/split"), &splits);
+        self.fill_pool(index)?;
         Ok(StageProof {
             stage: k,
             sumcheck: proven.into_proof(),
@@ -323,13 +341,8 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
             && actual[actual.len() - lambda..] == expected[low..]
     }
 
-    /// Records the parts' values of stage `index`'s claims, sends the split ones' under
-    /// `stage/{index}/split`, and fills the pool.
-    fn split<T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
-        &mut self,
-        index: usize,
-        transcript: &mut T,
-    ) -> Result<Vec<GoldilocksExt2>, StageError> {
+    /// Records the parts' values of stage `index`'s claims and returns the split ones.
+    fn split_values(&mut self, index: usize) -> Result<Vec<GoldilocksExt2>, StageError> {
         let stage = &self.schedule.stages[index];
         let mut splits = Vec::new();
         let mut parts = Vec::with_capacity(stage.claims.len());
@@ -351,12 +364,8 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
             }
             parts.push(values);
         }
-        transcript.absorb_message(&format!("stage/{index}/split"), &splits);
-        self.parts.push(parts);
         // The leaf stage's committed parts are stacked at ρ_1, which stage 1 draws.
-        if index > 0 {
-            self.fill_pool(index)?;
-        }
+        self.parts.push(parts);
         Ok(splits)
     }
 

@@ -101,7 +101,7 @@ The lookup tree's leaf `i` holds column entry `σ_h(i)`, where `σ_h` keeps bit 
 - At the block's point the form is `Σ_t a_t·X~_t(π_t(P[0..k])) + a_0`, with `π_t` the coordinates of `X_t`'s axes.
 
 **What is sent.**
-- The values go under `stage/0/split`, after `logup/values` ([RFC-0037](RFC-0037-stage-schedule.md#splits)).
+- The values go under `stage/0/split`, after `logup/values`, followed in the same `Vec<Fp2>` (`TreeProof.splits`) by the atom split values of any split leaf claim ([RFC-0037](RFC-0037-stage-schedule.md#splits)).
 - For each site in node order, and each of its real layers in order (once for a site outside the layers), the prover sends one value per tensor its lookups read.
 - Each value is the tensor's evaluation at its point.
 - The tensors of a site at a layer come in this order:

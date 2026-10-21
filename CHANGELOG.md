@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- CPU leaf-stage integration: `prepare_leaf` batches lookup trees and product forests, then `PreparedLeaf::finish` binds lookup tensor values followed by graph atom splits in one `stage/0/split` message. Its exclusive transcript borrow prevents an intervening challenge. Standalone `prove_leaf` and `StageProver::leaf_splits` retain their behavior; the full model driver remains under [#130](https://github.com/AbdelStark/tessera/issues/130).
+
 - Prover workspace with the twenty crates of RFC-0001 as skeletons, edition 2024, minimum supported Rust 1.85 and an exact toolchain pin (1.95.0) ([#25](https://github.com/AbdelStark/tessera/issues/25)).
 - `cargo xtask` dispatcher, and a test that enforces the unsafe-code policy of RFC-0001: every crate forbids unsafe code except `tessera-field` and `tessera-gpu`, which deny it crate-wide ([#25](https://github.com/AbdelStark/tessera/issues/25)).
 - `deny.toml` license, advisory, ban and source policy for the prover workspace ([#25](https://github.com/AbdelStark/tessera/issues/25)).
