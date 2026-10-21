@@ -208,6 +208,17 @@ pub struct Claim {
 /// A relation an instance proves (RFC-0010 'Relations', RFC-0037 'Rotate').
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Relation {
+    /// A native stage relation, whose tables and source transformations the CPU backend supplies.
+    Native {
+        /// Verifier-independent stable identity in the compiler's native plan.
+        tag: u32,
+        /// Degree including the equality/selectors.
+        degree: usize,
+        /// Raw proof evaluations before graph-source transformation.
+        evaluations: usize,
+        /// Whether its target is the mandatory zero-check value zero.
+        zero: bool,
+    },
     /// `Y = X·Wᵀ`; its evaluations are `W`'s, then `X`'s.
     MatMulWeight,
     /// `Z = A·B` over the heads; its evaluations are `A`'s, then `B`'s, or `K`'s when `B` enters
@@ -241,6 +252,8 @@ pub enum Relation {
 /// What an instance proves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Source {
+    /// A fixed native target supplied by its own component before stage gamma.
+    Native(u32),
     /// The value of a virtual part: part `part` of claim `claim` of the stage before.
     Part {
         /// The claim, in the stage before's claims.
@@ -325,6 +338,40 @@ pub enum Site {
     Logits,
 }
 
+/// A source provided by a native relation rather than the graph leaf stage. `None` names the
+/// logits at the LM-head node; `Some(i)` names gadget input `i`.
+pub type Deferred = (NodeId, Option<usize>);
+
+/// One original graph source returned by a native component.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NativeOutput {
+    /// Original first-layer tensor, or an outside tensor.
+    pub tensor: TensorId,
+    /// Its local coordinate projection within the native final point, before layer coordinates.
+    pub from: u32,
+    /// Number of local source coordinates.
+    pub vars: u32,
+}
+
+/// Compiler-owned native metadata for one stage-one component. No proof chooses this plan.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Native {
+    /// Backend component identity.
+    pub tag: u32,
+    /// Owning first-layer gadget or LM-head node.
+    pub node: NodeId,
+    /// Total variables, with any layer coordinates highest.
+    pub vars: u32,
+    /// Full polynomial degree.
+    pub degree: usize,
+    /// Raw proof evaluations.
+    pub evaluations: usize,
+    /// Mandatory zero-check.
+    pub zero: bool,
+    /// Transformed outgoing graph sources in component order.
+    pub outputs: Vec<NativeOutput>,
+}
+
 /// The stage schedule of a lowered graph (RFC-0010 'Stages', RFC-0037).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StageSchedule {
@@ -369,9 +416,111 @@ impl StageSchedule {
 /// are not one template ([`LayerMap`]), or a claim that reaches an operation RFC-0037 maps no claim
 /// through, such as `ConstAdd`, `Slice` or `GatherPublic`.
 pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileError> {
+    derive_composed_schedule(lowering, &[], &[])
+}
+
+/// Compose model-owned native components with the existing graph derivation. Each deferred
+/// source must be replaced by a native output at the same site. This is public protocol geometry,
+/// not a proof or an acceptance verdict.
+///
+/// # Errors
+/// Existing graph schedule errors; `CompileError::Schedule` for inconsistent own descriptors,
+/// duplicate identities/deferred sources, bad projections or missing graph replacements.
+pub fn derive_composed_schedule(
+    lowering: &Lowering,
+    deferred: &[Deferred],
+    native: &[Native],
+) -> Result<StageSchedule, CompileError> {
     let layers = LayerMap::new(lowering)?;
+    let graph = &lowering.graph;
+    let lm = graph
+        .nodes
+        .iter()
+        .find(|n| n.outputs.contains(&lowering.logits))
+        .ok_or(CompileError::Schedule {
+            node: None,
+            rule: "the lowered graph has its logits producer",
+        })?
+        .id;
+    let site_node = |node: NodeId| {
+        graph.nodes.get(node.0 as usize).filter(|n| {
+            n.op.class() == tessera_ir::OpClass::Gadget
+                || (n.id == lm
+                    && matches!(n.op,Op::MatMulWeight{weight} if weight.ty==WeightType::LmHead))
+        })
+    };
+    for (i, n) in native.iter().enumerate() {
+        if native[..i].iter().any(|other| other.tag == n.tag)
+            || n.vars > 63
+            || !(1..=7).contains(&n.degree)
+            || n.evaluations == 0
+            || site_node(n.node).is_none()
+            || layers.position(n.node).is_some_and(|(l, _)| l != 0)
+        {
+            return refuse(
+                Some(n.node),
+                "a native descriptor has unique identity and legal model geometry",
+            );
+        }
+        let lambda = if layers.position(n.node).is_some() {
+            layers.vars
+        } else {
+            0
+        };
+        let own = n.vars.checked_sub(lambda).ok_or(CompileError::Schedule {
+            node: Some(n.node),
+            rule: "native layer coordinates fit its variables",
+        })?;
+        for out in &n.outputs {
+            if out.from.checked_add(out.vars).is_none_or(|end| end > own)
+                || graph
+                    .tensors
+                    .get(out.tensor.0 as usize)
+                    .is_none_or(|t| blocks(&t.shape).iter().sum::<u32>() != out.vars)
+            {
+                return refuse(
+                    Some(n.node),
+                    "a native graph projection fits its original source domain",
+                );
+            }
+        }
+    }
+    for (i, &(node, input)) in deferred.iter().enumerate() {
+        let Some(definition) = site_node(node) else {
+            return refuse(Some(node), "a deferred source belongs to a model site");
+        };
+        let tensor = match input {
+            Some(i) => definition.inputs.get(i),
+            None if node == lm => definition.outputs.first(),
+            None => None,
+        };
+        if deferred[..i].contains(&(node, input))
+            || layers.position(node).is_some_and(|(l, _)| l != 0)
+            || !native
+                .iter()
+                .any(|n| n.node == node && n.outputs.iter().any(|o| Some(&o.tensor) == tensor))
+        {
+            return refuse(
+                Some(node),
+                "each deferred graph leaf is replaced at that same native site",
+            );
+        }
+    }
     let mut derivation = claims::Derivation::new(&lowering.graph, &layers);
-    let sites = leaf_sites(&lowering.graph, &layers);
+    let mut sites = leaf_sites(&lowering.graph, &layers);
+    sites.retain(|&s| {
+        let key = match s {
+            Site::Gadget { node, input } => (
+                match node {
+                    NodeRef::Node(n) => n,
+                    NodeRef::Position(p) => layers.node(p, 0),
+                },
+                Some(input as usize),
+            ),
+            Site::Logits => (lm, None),
+        };
+        !deferred.contains(&key)
+    });
     let mut leaf = Stage {
         index: 0,
         instances: Vec::new(),
@@ -414,9 +563,23 @@ pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileErro
             node: None,
             rule: "a schedule of at most 65,535 stages",
         })?;
-        let stage = relations::stage(&mut derivation, index, previous)?;
+        let stage = relations::stage(&mut derivation, index, previous, &sites, native)?;
         if stage.instances.is_empty() {
             break;
+        }
+        // Native slots interleave with graph atoms; update the previous parts' actual indices.
+        for (actual, instance) in stage.instances.iter().enumerate() {
+            if let Source::Part { claim, part } = instance.source {
+                let previous = stages.last_mut().ok_or(CompileError::Schedule {
+                    node: None,
+                    rule: "a reduction stage has its previous claims",
+                })?;
+                let Part::Instance { instance, .. } = &mut previous.claims[claim].parts[part]
+                else {
+                    return refuse(None, "an instance proves its previous virtual atom");
+                };
+                *instance = actual;
+            }
         }
         stages.push(stage);
     }

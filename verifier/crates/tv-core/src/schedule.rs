@@ -406,6 +406,42 @@ impl Claim {
     }
 }
 
+/// A graph leaf source supplied by a native relation instead: `(site, Some(input))` for a
+/// gadget input; `(LM-head node, None)` for the logits consumed by the greedy certificate.
+pub type Deferred = (NodeId, Option<usize>);
+
+/// One original graph source returned by a native relation. Coordinates are a contiguous
+/// projection of that instance's natural final point, before its highest layer coordinates.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NativeOutput {
+    /// Actual graph tensor in layer zero, or outside the layer template.
+    pub tensor: TensorId,
+    /// First local coordinate of the native final point.
+    pub from: usize,
+    /// Source coordinates, excluding the layer axis.
+    pub vars: usize,
+}
+
+/// A verifier-owned native stage-one instance, never decoded from a proof.
+/// Its callback must implement the normative relation and retain every non-graph debt.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Native {
+    /// Unique verifier-owned callback identity.
+    pub tag: u32,
+    /// Owning first-layer gadget node, or a node outside the template.
+    pub node: NodeId,
+    /// Total natural variables, INCLUDING the layer axis for a template site.
+    pub vars: usize,
+    /// Degree of the complete polynomial, including public equality/selectors.
+    pub degree: usize,
+    /// Raw final evaluations sent by the prover; distinct from transformed graph outputs.
+    pub evaluations: usize,
+    /// Whether this is a stage-one zero-check, ordered by owning node after virtual instances.
+    pub zero: bool,
+    /// Transformed original graph source claims, in callback output order.
+    pub outputs: Vec<NativeOutput>,
+}
+
 /// A relation kind (RFC-0010 'Relations').
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RelationKind {
@@ -426,6 +462,15 @@ pub enum RelationKind {
 /// An instance's relation, with what its final check needs to know of its shape.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Relation {
+    /// A normative native relation supplied by the verifier-owned composition callback.
+    Native {
+        /// Unique verifier-owned identity, never selected by proof bytes.
+        tag: u32,
+        /// Raw proof evaluations, before transformation to outgoing graph claims.
+        evaluations: usize,
+        /// Whether its incoming claim must be zero.
+        zero: bool,
+    },
     /// `Ỹ(r_o ‖ r_t) = Σ_i W̃(r_o, i)·X̃(r_t, i)`.
     MatMulWeight {
         /// The summed axis's variables, `in`.
@@ -499,6 +544,13 @@ impl Relation {
     /// Its kind.
     pub fn kind(&self) -> RelationKind {
         match self {
+            Relation::Native { zero, .. } => {
+                if *zero {
+                    RelationKind::ZeroCheck
+                } else {
+                    RelationKind::Elementwise
+                }
+            }
             Relation::MatMulWeight { .. } => RelationKind::MatMulWeight,
             Relation::MatMulAct { .. } => RelationKind::MatMulAct,
             Relation::Elementwise { .. } => RelationKind::Elementwise,
@@ -537,6 +589,16 @@ pub struct Instance {
     pub zero: Point,
     /// The claims its final evaluations leave, in the order its relation's identity names them.
     pub evals: Vec<Claim>,
+}
+impl Instance {
+    /// Raw final proof evaluations consumed by this instance. A native callback may transform
+    /// them into a different number of original graph claims in `evals`.
+    pub fn input_evaluations(&self) -> usize {
+        match self.relation {
+            Relation::Native { evaluations, .. } => evaluations,
+            _ => self.evals.len(),
+        }
+    }
 }
 
 /// A reduction stage.
@@ -680,8 +742,109 @@ pub fn derive(graph: &Graph) -> Result<Schedule, ScheduleError> {
     let deriving = Deriving {
         graph,
         layout: &layout,
+        native: &[],
+        deferred: &[],
     };
     deriving.schedule()
+}
+
+/// Compose independently derived native stage-one relations with graph reductions.
+/// `deferred` names gadget inputs or logits supplied by native outputs instead of the graph leaf stage.
+/// Every such input must be replaced by an output of a native relation at that SAME site.
+/// All descriptors/callbacks are trusted verifier-owned metadata: this is a component schedule,
+/// not an acceptance predicate or a proof-supplied alternative model definition.
+///
+/// # Errors
+/// Existing graph schedule errors; `Internal` for duplicate native tags/deferred inputs, unknown
+/// sites, invalid projections, wrong template representatives or absent replacement outputs.
+/// Native reserves use the same fallible `Memory` paths as graph derivation.
+pub fn derive_composed(
+    graph: &Graph,
+    deferred: &[Deferred],
+    native: &[Native],
+) -> Result<Schedule, ScheduleError> {
+    let layout = Layout::of(graph)?;
+    for (i, spec) in native.iter().enumerate() {
+        if native
+            .get(..i)
+            .ok_or(ScheduleError::Internal)?
+            .iter()
+            .any(|n| n.tag == spec.tag)
+            || spec.vars > 63
+            || !(1..=crate::sumcheck::MAX_DEGREE).contains(&spec.degree)
+            || spec.evaluations == 0
+        {
+            return Err(ScheduleError::Internal);
+        }
+        let node = node_of(graph, spec.node)?;
+        if !(is_gadget(node.op()) || is_logits(node))
+            || layout.position(spec.node).is_some_and(|(l, _)| l != 0)
+        {
+            return Err(ScheduleError::Internal);
+        }
+        let lambda = if layout.position(spec.node).is_some() {
+            layout.layer_vars
+        } else {
+            0
+        };
+        let own = spec
+            .vars
+            .checked_sub(lambda)
+            .ok_or(ScheduleError::Internal)?;
+        for output in &spec.outputs {
+            if output
+                .from
+                .checked_add(output.vars)
+                .ok_or(ScheduleError::Internal)?
+                > own
+            {
+                return Err(ScheduleError::Internal);
+            }
+        }
+    }
+    for (i, &(node, input)) in deferred.iter().enumerate() {
+        if deferred
+            .get(..i)
+            .ok_or(ScheduleError::Internal)?
+            .contains(&(node, input))
+        {
+            return Err(ScheduleError::Internal);
+        }
+        let definition = node_of(graph, node)?;
+        if !(is_gadget(definition.op()) || is_logits(definition))
+            || layout.position(node).is_some_and(|(l, _)| l != 0)
+        {
+            return Err(ScheduleError::Internal);
+        }
+        let tensor = match input {
+            Some(index) => *definition
+                .inputs()
+                .get(index)
+                .ok_or(ScheduleError::Internal)?,
+            None if is_logits(definition) => *definition
+                .outputs()
+                .first()
+                .ok_or(ScheduleError::Internal)?,
+            None => return Err(ScheduleError::Internal),
+        };
+        if !native
+            .iter()
+            .any(|n| n.node == node && n.outputs.iter().any(|o| o.tensor == tensor))
+        {
+            return Err(ScheduleError::Internal);
+        }
+    }
+    Deriving {
+        graph,
+        layout: &layout,
+        native,
+        deferred,
+    }
+    .schedule()
+}
+
+fn is_logits(node: &Node) -> bool {
+    matches!(node.op(),Op::MatMulWeight{weight} if weight.ty==WeightType::LmHead)
 }
 
 /// Validate the common layer template without deriving unrelated graph reductions.
@@ -980,6 +1143,7 @@ struct Pending {
     point: Point,
     layers: Layers,
     node: NodeId,
+    native: Option<usize>,
 }
 
 /// A work item of a claim's walk: a coefficient on a tensor at a point.
@@ -1003,6 +1167,8 @@ struct Shaped {
 struct Deriving<'g, 'l> {
     graph: &'g Graph,
     layout: &'l Layout,
+    native: &'l [Native],
+    deferred: &'l [Deferred],
 }
 
 impl Deriving<'_, '_> {
@@ -1072,6 +1238,9 @@ impl Deriving<'_, '_> {
                 None => false,
             };
             for (input_index, &input) in node.inputs().iter().enumerate() {
+                if self.deferred.contains(&(id, Some(input_index))) {
+                    continue;
+                }
                 let c = u32::try_from(leaf.len()).map_err(|_| ScheduleError::Internal)?;
                 let (tensor, layers) = if template {
                     (self.in_template(input)?, stacking.clone())
@@ -1091,6 +1260,7 @@ impl Deriving<'_, '_> {
                     },
                 )?;
             }
+            self.native_pending(id, pending)?;
         }
         // The logits: the LM head's output.
         let mut logits = None;
@@ -1106,20 +1276,40 @@ impl Deriving<'_, '_> {
             }
         }
         let (site, output) = logits.ok_or(ScheduleError::Internal)?;
-        let c = u32::try_from(leaf.len()).map_err(|_| ScheduleError::Internal)?;
-        let tensor = TensorRef::Single(output);
-        let point = Point::of(Source::Leaf(c), 0, self.vars(tensor)?);
-        let claim = self.claim(tensor, point, Layers::None, false, pending)?;
-        push(
-            &mut leaf,
-            LeafClaim {
-                site,
-                input: None,
-                stacked: false,
-                claim,
-            },
-        )?;
+        if !self.deferred.contains(&(site, None)) {
+            let c = u32::try_from(leaf.len()).map_err(|_| ScheduleError::Internal)?;
+            let tensor = TensorRef::Single(output);
+            let point = Point::of(Source::Leaf(c), 0, self.vars(tensor)?);
+            let claim = self.claim(tensor, point, Layers::None, false, pending)?;
+            push(
+                &mut leaf,
+                LeafClaim {
+                    site,
+                    input: None,
+                    stacked: false,
+                    claim,
+                },
+            )?;
+        }
+        self.native_pending(site, pending)?;
         Ok(leaf)
+    }
+
+    fn native_pending(
+        &self,
+        node: NodeId,
+        pending: &mut Vec<Pending>,
+    ) -> Result<(), ScheduleError> {
+        for (index, _) in self
+            .native
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.node == node && !n.zero)
+        {
+            let shaped = self.native_shape(index)?;
+            push(pending, shaped.atom)?;
+        }
+        Ok(())
     }
 
     /// Stage 1's checks in node order: the four original OneHot relations, then committed
@@ -1168,6 +1358,7 @@ impl Deriving<'_, '_> {
                                 point: Point::default(),
                                 layers: Layers::None,
                                 node: id,
+                                native: None,
                             },
                             stacked: false,
                             vars: self.vars(output)?,
@@ -1202,6 +1393,7 @@ impl Deriving<'_, '_> {
                             point: Point::default(),
                             layers: Layers::None,
                             node: id,
+                            native: None,
                         },
                         stacked: false,
                         vars: self.vars(output)?,
@@ -1211,7 +1403,49 @@ impl Deriving<'_, '_> {
                 )?;
             }
         }
+        for (index, spec) in self.native.iter().enumerate().filter(|(_, n)| n.zero) {
+            let shaped = self.native_shape(index)?;
+            let at = checks.partition_point(|s| s.atom.node.0 <= spec.node.0);
+            reserve(&mut checks, 1)?;
+            checks.insert(at, shaped);
+        }
         Ok(checks)
+    }
+
+    fn native_shape(&self, index: usize) -> Result<Shaped, ScheduleError> {
+        let spec = self.native.get(index).ok_or(ScheduleError::Internal)?;
+        let definition = node_of(self.graph, spec.node)?;
+        let stacked = self.layout.position(spec.node).is_some();
+        let tensor = *definition
+            .outputs()
+            .first()
+            .ok_or(ScheduleError::Internal)?;
+        let (tensor, layers) = if stacked {
+            (
+                self.in_template(tensor)?,
+                Layers::Point(Point::of(Source::Layer, 0, self.layout.layer_vars)),
+            )
+        } else {
+            self.outside(tensor)?
+        };
+        Ok(Shaped {
+            relation: Relation::Native {
+                tag: spec.tag,
+                evaluations: spec.evaluations,
+                zero: spec.zero,
+            },
+            atom: Pending {
+                tensor,
+                point: Point::default(),
+                layers,
+                node: spec.node,
+                native: Some(index),
+            },
+            stacked,
+            vars: spec.vars,
+            degree: spec.degree,
+            zero: spec.zero,
+        })
     }
 
     /// Stage `k` from the virtual atoms stage `k − 1` left and, in stage 1, the zero-checks; and
@@ -1227,6 +1461,10 @@ impl Deriving<'_, '_> {
         let mut shapes = Vec::new();
         reserve(&mut shapes, pending.len().saturating_add(zero_checks.len()))?;
         for atom in pending {
+            if let Some(index) = atom.native {
+                shapes.push(self.native_shape(index)?);
+                continue;
+            }
             let (relation, own, degree) = self.relation(&atom)?;
             let stacked = matches!(atom.layers, Layers::Point(_));
             let layer_vars = if stacked { lambda } else { 0 };
@@ -1289,7 +1527,17 @@ impl Deriving<'_, '_> {
             } else {
                 Point::default()
             };
-            let targets = self.evaluations(&relation, &atom, &own)?;
+            let targets = if let Some(index) = atom.native {
+                let spec = self.native.get(index).ok_or(ScheduleError::Internal)?;
+                let mut out = Vec::new();
+                reserve(&mut out, spec.outputs.len())?;
+                for output in &spec.outputs {
+                    out.push((output.tensor, own.slice(output.from, output.vars)?));
+                }
+                out
+            } else {
+                self.evaluations(&relation, &atom, &own)?
+            };
             let mut evals = Vec::new();
             reserve(&mut evals, targets.len())?;
             for (input, point) in targets {
@@ -1298,6 +1546,9 @@ impl Deriving<'_, '_> {
                 } else {
                     self.outside(input)?
                 };
+                if point.len() != self.vars(tensor)? {
+                    return Err(ScheduleError::Internal);
+                }
                 let claim = self.claim(tensor, point, input_layers, false, &mut next)?;
                 splits = splits
                     .checked_add(claim.parts())
@@ -1795,6 +2046,7 @@ impl Deriving<'_, '_> {
                     point: atom.point.clone(),
                     layers: atom.layers.clone(),
                     node,
+                    native: None,
                 },
             )?;
             Ok(at)

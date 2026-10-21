@@ -202,6 +202,11 @@ fn claim(c: &s::Claim, l: usize) -> Value {
 }
 fn relation(r: &s::Relation) -> Value {
     match r {
+        s::Relation::Native {
+            tag,
+            evaluations,
+            zero,
+        } => json!({"Native":[tag,evaluations,zero]}),
         s::Relation::MatMulWeight { in_vars, out_vars } => {
             json!({"MatMulWeight":[in_vars,out_vars]})
         }

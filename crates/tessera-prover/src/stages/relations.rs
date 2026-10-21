@@ -233,6 +233,9 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         let output = shape(node.outputs[0].0 as usize);
         let vars = |s: &[u32]| Self::vars_of(s) as usize;
         Ok(match instance.relation {
+            Relation::Native { .. } => {
+                return internal("native relations are built by their composed backend");
+            }
             Relation::MatMulWeight => {
                 let (&[n, inner], &[out, _]) = (input_shape(0), input_shape(1)) else {
                     return internal("a MatMulWeight multiplies [n, in] by [out, in]");

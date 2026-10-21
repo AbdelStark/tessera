@@ -73,7 +73,7 @@ pub fn vars(d: u32) -> usize {
     (u32::BITS - (d - 1).leading_zeros()) as usize
 }
 
-fn shape_vars(dims: &[u32]) -> usize {
+pub fn shape_vars(dims: &[u32]) -> usize {
     dims.iter().map(|&d| vars(d)).sum()
 }
 
@@ -526,6 +526,11 @@ pub struct Proven {
     pub stages: Vec<StageProof>,
 }
 
+/// Independent extra relation oracle used only by mixed-stage tests.
+pub trait NativeOracle {
+    fn product(&self, prover: &Prover<'_>, stage: usize, instance: usize, zero: &[Fe]) -> Product;
+}
+
 pub struct Prover<'a> {
     pub layout: Layout<'a>,
     pub witness: &'a Witness,
@@ -534,18 +539,19 @@ pub struct Prover<'a> {
     pub sources: Sources,
     /// An adapted malicious proof replaces just this OneHot relation by zero.
     pub omit_onehot: Option<usize>,
+    pub native: Option<&'a dyn NativeOracle>,
 }
 
 impl Prover<'_> {
     /// A tensor's per-layer value at `point`: the true extension of its padded table.
-    fn value_at(&self, t: TensorId, point: &[Fe]) -> Fe {
+    pub fn value_at(&self, t: TensorId, point: &[Fe]) -> Fe {
         let dims = self.layout.dims(t);
         reference::mle(&self.witness.table(t, &dims), point)
     }
 
     /// The table of a schedule tensor over its variables, then the layers' when stacked; padded
     /// layers zero.
-    fn stacked_table(&self, tensor: TensorRef) -> Vec<Fe> {
+    pub fn stacked_table(&self, tensor: TensorRef) -> Vec<Fe> {
         let tensors = self.layout.tensors(tensor);
         let dims = self.layout.dims(tensors[0]);
         let own = 1usize << shape_vars(&dims);
@@ -739,6 +745,12 @@ impl Prover<'_> {
             }
         };
         let (tables, public_table, form) = match instance.relation {
+            Relation::Native { .. } => {
+                return self
+                    .native
+                    .expect("mixed reference oracle")
+                    .product(self, k, i, zero);
+            }
             Relation::MatMulWeight { in_vars, out_vars } => {
                 let (r_o, r_t) = r.split_at(out_vars);
                 let w = stack(&|n| bind(&table_of(n.inputs()[1]), in_vars, r_o));

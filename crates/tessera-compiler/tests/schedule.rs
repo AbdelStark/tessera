@@ -342,6 +342,7 @@ fn check_rules(lowering: &Lowering, schedule: &StageSchedule, label: &str) {
             };
             let inputs = &graph.nodes[node.0 as usize].inputs;
             let order: Vec<usize> = match instance.relation {
+                Relation::Native { .. } => panic!("this oracle covers graph-only schedules"),
                 Relation::MatMulWeight => vec![1, 0],
                 Relation::Equality => (0..=inputs.len()).collect(),
                 Relation::Booleanity | Relation::OneHotVocabulary | Relation::OneHotCount => {
@@ -1067,6 +1068,7 @@ impl<'a> Witness<'a> {
             let target = self.mle(instance.kind, layer, &instance.point);
             let r = self.point(&instance.point);
             let sum = match instance.relation {
+                Relation::Native { .. } => panic!("this oracle covers graph-only schedules"),
                 Relation::MatMulWeight => dot(&partials[0], &partials[1]),
                 Relation::MatMulAct { .. } => {
                     // eq(r_h, h) over the heads: the target's highest block and the instance's.
@@ -1226,4 +1228,94 @@ fn eq_at(r: &[F], x: u32) -> F {
 
 fn dot(a: &[F], b: &[F]) -> F {
     a.iter().zip(b).fold(F::ZERO, |s, (&x, &y)| s + x * y)
+}
+
+#[test]
+fn composed_native_metadata_requires_legal_original_graph_replacements() {
+    use tessera_compiler::schedule::{Native, NativeOutput, derive_composed_schedule};
+    let low = lowering(Profile::Servable, 3, 5, (2, 1), Sites::Pot);
+    let layers = tessera_compiler::schedule::LayerMap::new(&low).unwrap();
+    let node = low
+        .graph
+        .nodes
+        .iter()
+        .find(|n| matches!(n.op, Op::SoftmaxRow { .. }))
+        .unwrap();
+    let vars = low.graph.tensors[node.inputs[0].0 as usize]
+        .shape
+        .iter()
+        .map(|n| n.next_power_of_two().trailing_zeros())
+        .sum::<u32>();
+    let spec = Native {
+        tag: 7,
+        node: node.id,
+        vars: vars + layers.vars,
+        degree: 3,
+        evaluations: 2,
+        zero: false,
+        outputs: vec![NativeOutput {
+            tensor: node.inputs[0],
+            from: 0,
+            vars,
+        }],
+    };
+    let deferred = [(node.id, Some(0))];
+    assert!(derive_composed_schedule(&low, &deferred, std::slice::from_ref(&spec)).is_ok());
+    assert_eq!(
+        derive_schedule(&low).unwrap(),
+        derive_composed_schedule(&low, &[], &[]).unwrap()
+    );
+    let bad = |d: &[_], n: &[_]| match derive_composed_schedule(&low, d, n) {
+        Err(CompileError::Schedule { .. }) => {}
+        Err(e) => panic!("wrong error for {d:?}, {n:?}: {e}"),
+        Ok(_) => panic!("accepted malformed {d:?}, {n:?}"),
+    };
+    bad(&deferred, &[]);
+    bad(&[deferred[0], deferred[0]], std::slice::from_ref(&spec));
+    bad(&[(node.id, Some(usize::MAX))], std::slice::from_ref(&spec));
+    bad(&[(node.id, None)], std::slice::from_ref(&spec));
+    bad(&deferred, &[spec.clone(), spec.clone()]);
+    let mut forged = low.clone();
+    let ordinary = low
+        .graph
+        .nodes
+        .iter()
+        .find(|n| matches!(n.op, Op::ConstMul { .. }))
+        .unwrap();
+    forged.logits = ordinary.outputs[0];
+    let fake = Native {
+        node: ordinary.id,
+        vars: 0,
+        outputs: Vec::new(),
+        ..spec.clone()
+    };
+    assert!(matches!(
+        derive_composed_schedule(&forged, &[], &[fake]),
+        Err(CompileError::Schedule { .. })
+    ));
+    for fault in 0..=9 {
+        let mut n = spec.clone();
+        match fault {
+            0 => n.degree = 0,
+            1 => n.degree = 8,
+            2 => n.vars = 64,
+            3 => n.vars = 0,
+            4 => n.evaluations = 0,
+            5 => n.node = tessera_ir::NodeId(u32::MAX),
+            6 => {
+                n.node = low
+                    .graph
+                    .nodes
+                    .iter()
+                    .find(|n| matches!(n.op, Op::ConstMul { .. }))
+                    .unwrap()
+                    .id
+            }
+            7 => n.node = layers.node(layers.position(node.id).unwrap().1, 1),
+            8 => n.outputs[0].from = u32::MAX,
+            9 => n.outputs[0].vars -= 1,
+            _ => unreachable!(),
+        }
+        bad(&[], &[n]);
+    }
 }
