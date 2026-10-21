@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Canonical CPU model leaf proofs: `LeafLayout<ModelColumn>::model` reuses the gadget constraints for every Requant, SiLU, root and Softmax lookup, including virtual tops and repeated ranges. Lookup requests now own their domains; existing Requant sites retain `Term` as the default source type. `ModelWitness` assembles canonical tile auxiliaries, virtual inputs and padded Softmax forests in clearing buffers. Complete bounded-table tiny-model leaf proofs verify with the independent production tree/split checks in both modes, and resident/regenerated sources produce identical messages. Native stage reductions, openings and the complete protocol driver remain under [#130](https://github.com/AbdelStark/tessera/issues/130).
+
 - CPU leaf-stage integration: `prepare_leaf` batches lookup trees and product forests, then `PreparedLeaf::finish` binds lookup tensor values followed by graph atom splits in one `stage/0/split` message. Its exclusive transcript borrow prevents an intervening challenge. Standalone `prove_leaf` and `StageProver::leaf_splits` retain their behavior; the full model driver remains under [#130](https://github.com/AbdelStark/tessera/issues/130).
 
 - Prover workspace with the twenty crates of RFC-0001 as skeletons, edition 2024, minimum supported Rust 1.85 and an exact toolchain pin (1.95.0) ([#25](https://github.com/AbdelStark/tessera/issues/25)).

@@ -38,6 +38,10 @@
 //! lends the tensors in [`SiteTensors`], and what is computed from them lives in `SecretBuf`s.
 
 mod layout;
+mod model;
+mod model_witness;
+pub use model::ModelColumn;
+pub use model_witness::ModelWitness;
 mod prove;
 
 use core::fmt;
@@ -57,7 +61,8 @@ pub use prove::{
 /// Why the leaf stage's layout, columns or split could not be built.
 ///
 /// The layout follows from public data, and an honest witness fits it, so every variant but
-/// [`Memory`](Self::Memory) is a bug upstream (`ERR-INTERNAL`). The variants carry rules, never a
+/// [`Memory`](Self::Memory) or a tile-source error is a bug upstream (`ERR-INTERNAL`).
+/// Tile-source errors preserve their original code. The variants carry rules, never a
 /// value (05 §3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LeafError {
@@ -68,6 +73,8 @@ pub enum LeafError {
     },
     /// A gadget refused its selection or its tables (`ERR-INTERNAL`).
     Gadget(GadgetError),
+    /// The canonical witness tile source failed without exposing secret values.
+    Witness(tessera_witness::WitnessError),
     /// The LogUp prover refused the instances (`ERR-INTERNAL`).
     LogUp(LogUpError),
     /// A column does not fit in memory (`ERR-RES-MEMORY`).
@@ -79,6 +86,7 @@ impl LeafError {
     pub fn code(&self) -> ErrorCode {
         match self {
             Self::Internal { .. } | Self::Gadget(_) | Self::LogUp(_) => ErrorCode::Internal,
+            Self::Witness(error) => error.code(),
             Self::Memory => ErrorCode::ResMemory,
         }
     }
@@ -89,6 +97,7 @@ impl fmt::Display for LeafError {
         match self {
             Self::Internal { rule } => write!(f, "the leaf layout breaks a rule: {rule}"),
             Self::Gadget(error) => write!(f, "a leaf site's gadget: {error}"),
+            Self::Witness(error) => write!(f, "a model leaf witness tile: {error}"),
             Self::LogUp(error) => write!(f, "the leaf stage's LogUp instances: {error}"),
             Self::Memory => f.write_str("a leaf column does not fit in memory"),
         }
@@ -99,6 +108,7 @@ impl std::error::Error for LeafError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Gadget(error) => Some(error),
+            Self::Witness(error) => Some(error),
             Self::LogUp(error) => Some(error),
             Self::Internal { .. } | Self::Memory => None,
         }

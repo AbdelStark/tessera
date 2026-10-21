@@ -19,6 +19,9 @@
 //!
 //! [`derive_model_schedule`] derives complete protocol/1 transcript dimensions from public
 //! claims, including every native gadget lookup, forest and reduction path.
+//! [`leaf::LeafLayout::model`] and [`leaf::ModelWitness`] supply the canonical CPU lookup
+//! sites, per-request domains, clearing source buffers and stacked Softmax forests. Their
+//! leaf proofs leave the native/graph reductions and commitment openings to the driver.
 //!
 //! # Features
 //!

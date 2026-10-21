@@ -1,0 +1,1143 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! Complete canonical CPU model leaf stages, checked by the production independent verifier (DEP-2).
+use std::fs;
+use std::path::{Path, PathBuf};
+use tessera_codec::{Ascii, DecodeLimits, Secret, envelope, schema};
+use tessera_compiler::schedule::{LayerMap, NodeRef};
+use tessera_compiler::{
+    AuxColumn, CompareColumn, Lowering, ModelAdviceLayout, PublicModel, Selection, analyze,
+    claim_list, select,
+};
+use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
+use tessera_gadgets::{Slack, TableColumns};
+use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
+use tessera_ir::{ClaimList, GadgetPolicy, IntegerModel, NodeId};
+use tessera_protocol::ParamSet;
+use tessera_prover::leaf::{LeafLayout, ModelColumn, ModelWitness, prepare_leaf};
+use tessera_sumcheck::SumcheckTranscript;
+use tessera_tables::GeneratedTable;
+use tessera_witness::{Engine, Resident, WitnessSource};
+use tv_core::leaf::{self as tv, split};
+use tv_field::{Fp as V, Fp2 as E};
+
+fn vectors() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/vectors")
+}
+fn model(name: &str) -> IntegerModel {
+    let index: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(vectors().join("models/models.json")).unwrap())
+            .unwrap();
+    let entry = index["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["name"] == name)
+        .unwrap();
+    envelope::open(
+        &fs::read(
+            vectors()
+                .join("models")
+                .join(entry["file"].as_str().unwrap()),
+        )
+        .unwrap(),
+        &schema::INTEGER_MODEL,
+        DecodeLimits::INTEGER_MODEL,
+    )
+    .unwrap()
+}
+struct Public {
+    lowering: Lowering,
+    layers: LayerMap,
+    selection: Selection,
+    claims: ClaimList,
+}
+fn public(model: &IntegerModel, n: u32, policy: GadgetPolicy) -> Public {
+    let lowering = tessera_compiler::lower(PublicModel::of(model), n).unwrap();
+    let ranges = analyze(&lowering.graph, &lowering.tables).unwrap();
+    let selection = select(&lowering.graph, &ranges, &lowering.tables, &policy).unwrap();
+    let p = ParamSet::TEST_SMALL;
+    let claims = claim_list(
+        PublicModel::of(model),
+        &selection,
+        &policy,
+        p.layout,
+        ParamSetId(Ascii::new(p.id).unwrap()),
+    )
+    .unwrap();
+    let layers = LayerMap::new(&lowering).unwrap();
+    Public {
+        lowering,
+        layers,
+        selection,
+        claims,
+    }
+}
+fn verifier(p: &Public, n: u32) -> (tv_core::lowering::Graph, tv_core::claims::ClaimList) {
+    let bytes = envelope::seal(&schema::CLAIM_LIST, &p.claims);
+    let claims =
+        tv_core::claims::ClaimList::open(&bytes, &tv_codec::DecodeLimits::MESSAGE).unwrap();
+    let graph =
+        tv_core::lowering::lower(&tv_core::validation::check_public(&claims).unwrap(), n).unwrap();
+    (graph, claims)
+}
+fn v(x: G) -> V {
+    V::from_canonical(x.to_canonical_u64()).unwrap()
+}
+fn e(x: F) -> E {
+    let [a, b] = x.coeffs();
+    E::new(v(a), v(b))
+}
+fn es(xs: &[F]) -> Vec<E> {
+    xs.iter().copied().map(e).collect()
+}
+fn role(c: ModelColumn) -> split::Column {
+    use tv_core::advice::{Auxiliary as A, Comparison as C, ComparisonRole as R};
+    match c {
+        ModelColumn::Input(i) => split::Column::Input(i),
+        ModelColumn::Output(i) => split::Column::Output(i),
+        ModelColumn::RootInput => split::Column::RootInput,
+        ModelColumn::ExpKey => split::Column::SoftmaxKey,
+        ModelColumn::Slack(Slack::A) => split::Column::SoftmaxA,
+        ModelColumn::Slack(Slack::B) => split::Column::SoftmaxB,
+        ModelColumn::Auxiliary(a) => split::Column::Auxiliary(match a {
+            AuxColumn::Low => A::RequantLow,
+            AuxColumn::Middle => A::RequantMiddle,
+            AuxColumn::Saturation => A::RequantSaturation,
+            AuxColumn::Maximum => A::SoftmaxMaximum,
+            AuxColumn::InputLimb(j) => A::RootInput(j),
+            AuxColumn::RootByte(j) => A::RootLow(j),
+            AuxColumn::Slack { second, limb } => {
+                if second {
+                    A::SoftmaxB(limb)
+                } else {
+                    A::SoftmaxA(limb)
+                }
+            }
+            AuxColumn::Comparison {
+                upper,
+                column,
+                limb,
+            } => A::RootComparison(
+                if upper { C::Upper } else { C::Lower },
+                match column {
+                    CompareColumn::LeftByte => R::LeftDigit,
+                    CompareColumn::LeftCarry => R::LeftCarry,
+                    CompareColumn::RightByte => R::RightDigit,
+                    CompareColumn::RightCarry => R::RightCarry,
+                    CompareColumn::Difference => R::Difference,
+                    CompareColumn::Borrow => R::Borrow,
+                },
+                limb,
+            ),
+        }),
+    }
+}
+fn owner(p: &Public, site: NodeRef, l: usize) -> NodeId {
+    match site {
+        NodeRef::Node(id) => id,
+        NodeRef::Position(i) => p.layers.node(i, l as u32),
+    }
+}
+fn compare(p: &Public, n: u32, layout: &LeafLayout<ModelColumn>) {
+    assert_eq!(
+        tessera_prover::derive_model_schedule(&p.claims, n)
+            .unwrap()
+            .lookup_entries,
+        layout
+            .instances()
+            .iter()
+            .map(|i| (i.table, i.entries))
+            .collect::<Vec<_>>()
+    );
+    let (graph, claims) = verifier(p, n);
+    let sites = split::model_sites(&graph, claims.gadget_policy).unwrap();
+    let independent = split::Layout::derive(&graph, claims.gadget_policy).unwrap();
+    assert_eq!(layout.split_len(), independent.values());
+    assert_eq!(
+        layout
+            .instances()
+            .iter()
+            .map(|i| (i.table.0, i.entries))
+            .collect::<Vec<_>>(),
+        independent
+            .instances()
+            .map(|(t, c)| (t.0, c))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(layout.sites().len(), sites.len());
+    for (s, (actual, expected)) in layout.sites().iter().zip(sites).enumerate() {
+        assert_eq!(actual.layers.len(), expected.layers.len());
+        for (l, (a, b)) in actual.layers.iter().zip(expected.layers).enumerate() {
+            assert_eq!(owner(p, actual.node, l).0, b.node.0);
+            assert_eq!(a.lookups.len(), b.lookups.len());
+            for (lookup, other) in a.lookups.iter().zip(b.lookups) {
+                assert_eq!(lookup.lookup.table.0, other.table.0);
+                assert_eq!(lookup.vars(), other.variables);
+                assert_eq!(lookup.lookup.value.is_some(), other.value.is_some());
+                for (form, other) in std::iter::once((&lookup.lookup.key, &other.key))
+                    .chain(lookup.lookup.value.as_ref().zip(other.value.as_ref()))
+                {
+                    assert_eq!(v(form.constant), other.constant);
+                    assert_eq!(form.terms.len(), other.terms.len());
+                    for (&(coefficient, column), (other_coefficient, read)) in
+                        form.terms.iter().zip(&other.terms)
+                    {
+                        assert_eq!(v(coefficient), *other_coefficient);
+                        assert_eq!(role(column), read.column);
+                        let own = layout
+                            .reads(s, l)
+                            .unwrap()
+                            .iter()
+                            .find(|r| r.term == column)
+                            .unwrap();
+                        assert_eq!(own.coords, read.coordinates);
+                    }
+                }
+            }
+        }
+    }
+}
+fn mle(values: &[i64], point: &[E]) -> E {
+    assert_eq!(values.len(), 1 << point.len());
+    values
+        .iter()
+        .enumerate()
+        .fold(E::ZERO, |sum, (row, &value)| {
+            let weight = point.iter().enumerate().fold(E::ONE, |a, (bit, &r)| {
+                a * if row >> bit & 1 == 0 { E::ONE - r } else { r }
+            });
+            sum + E::from(v(G::from_i64(value))) * weight
+        })
+}
+fn transcript(mode: Mode) -> Transcript {
+    Transcript::new(&SessionContext {
+        protocol: Ascii::new("tessera-protocol/1").unwrap(),
+        mode,
+        params: ParamSetId(Ascii::new("test-small/1").unwrap()),
+        statement_digest: [71; 32],
+        session_id: [130; 16],
+    })
+}
+fn vt(mode: Mode) -> tv_hash::transcript::Transcript {
+    use tv_hash::transcript as t;
+    t::Transcript::new(&t::SessionContext {
+        protocol: t::Ascii::new("tessera-protocol/1").unwrap(),
+        mode: if mode == Mode::Live {
+            t::Mode::Live
+        } else {
+            t::Mode::NonInteractive
+        },
+        params: t::ParamSetId(t::Ascii::new("test-small/1").unwrap()),
+        statement_digest: [71; 32],
+        session_id: [130; 16],
+    })
+}
+
+fn bounded_model_named(name: &str) -> IntegerModel {
+    let mut model = model(name);
+    model.arch.d_model = 2;
+    model.arch.n_heads = 1;
+    model.arch.n_kv_heads = 1;
+    model.arch.d_head = 2;
+    model.arch.d_ff = 6;
+    model.arch.vocab = 8;
+    model.arch.max_context = 8;
+    model.quant.public.rsqrt_kappa = 2;
+    model.quant.public.exp_sigma = 3;
+    model.quant.public.residual_bits = 8;
+    model.quant.public.residual_exponent = model
+        .quant
+        .public
+        .act_exponents
+        .iter()
+        .find(|(p, _)| *p == tessera_ir::QuantPoint::Embed)
+        .unwrap()
+        .1;
+    let shifts = model.quant.public.shift_class_sets.clone();
+    for (point, values) in &mut model.quant.public.shift_class_sets {
+        if let tessera_ir::QuantPoint::Layer { site, .. } = *point {
+            *values = shifts
+                .iter()
+                .find(|(p, _)| *p == tessera_ir::QuantPoint::Layer { layer: 0, site })
+                .unwrap()
+                .1
+                .clone();
+        }
+    }
+    let affine = model.quant.public.affine_sites.clone();
+    for (point, value) in &mut model.quant.public.affine_sites {
+        if let tessera_ir::QuantPoint::Layer { site, .. } = *point {
+            *value = affine
+                .iter()
+                .find(|(p, _)| *p == tessera_ir::QuantPoint::Layer { layer: 0, site })
+                .unwrap()
+                .1;
+        }
+    }
+    if name != "tiny-2-servable" {
+        for (point, shifts) in &mut model.quant.public.shift_class_sets {
+            let base = if matches!(
+                point,
+                tessera_ir::QuantPoint::Layer {
+                    site: tessera_ir::Site::Silu,
+                    ..
+                }
+            ) {
+                12
+            } else {
+                24
+            };
+            for (class, shift) in shifts.iter_mut().enumerate() {
+                *shift = base + class as i8;
+            }
+        }
+        for (_, shift) in &mut model.quant.public.affine_sites {
+            *shift = 24;
+        }
+    }
+    let shapes = model.arch.weight_shapes().unwrap();
+    for weight in &mut model.weights {
+        let shape = shapes[weight.ty as usize];
+        weight.rows = shape.out;
+        weight.cols = shape.inputs;
+        weight.data = (0..shape.out * shape.inputs)
+            .map(|i| (i % 5) as i8 - 2)
+            .collect();
+    }
+    for channel in &mut model.quant.channels {
+        let n = shapes[channel.ty as usize].out as usize;
+        if let Some(&value) = channel.class.first() {
+            channel.class.resize(n, value);
+            channel.class.fill(0);
+        }
+        if let Some(&value) = channel.multiplier.first() {
+            channel.multiplier.resize(n, value);
+        }
+    }
+    model
+}
+
+fn bounded_model() -> IntegerModel {
+    bounded_model_named("tiny-2-servable")
+}
+
+#[test]
+fn canonical_factory_matches_every_independent_model_form_and_request() {
+    for name in [
+        "tiny-2-servable",
+        "tiny-2-minimal",
+        "tiny-2-affine",
+        "tiny-4-servable",
+    ] {
+        let model = model(name);
+        for n in [1, 3, 5] {
+            let p = public(&model, n, GadgetPolicy::default());
+            let layout =
+                LeafLayout::model(&p.lowering, &p.layers, &p.selection, &p.claims).unwrap();
+            compare(&p, n, &layout);
+        }
+    }
+}
+
+fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
+    let p = public(
+        model,
+        n,
+        GadgetPolicy {
+            max_log2_rows: maximum,
+            query_block: 2,
+            ..GadgetPolicy::default()
+        },
+    );
+    let layout = LeafLayout::model(&p.lowering, &p.layers, &p.selection, &p.claims).unwrap();
+    compare(&p, n, &layout);
+    let engine = Engine::new(&p.lowering).unwrap();
+    let tokens = Secret::new((0..n).map(|i| (i + 1) % model.arch.vocab).collect());
+    let witness = engine.run(model, &tokens).unwrap();
+    let source = Resident::new(&engine, &p.selection, model, &witness).unwrap();
+    let advice = ModelAdviceLayout::new(&p.lowering, &p.selection, &p.claims).unwrap();
+    let actual =
+        ModelWitness::new(&layout, &p.lowering, &p.layers, &witness, &source, &advice).unwrap();
+    source_truth(&p, &witness, &source, &advice, &layout, &actual);
+    let (graph, claims) = verifier(&p, n);
+    let schedule = tv::ModelSchedule::derive(&graph, claims.gadget_policy).unwrap();
+    let independent = split::Layout::derive(&graph, claims.gadget_policy).unwrap();
+    let tables: Vec<_> = layout
+        .instances()
+        .iter()
+        .map(|i| {
+            let spec = p.selection.tables.iter().find(|t| t.id == i.table).unwrap();
+            assert!(spec.log2_rows <= maximum, "bounded CPU fixture");
+            TableColumns::<G>::new(&GeneratedTable::from_spec(spec).unwrap()).unwrap()
+        })
+        .collect();
+    let vt_tables: Vec<_> = layout
+        .instances()
+        .iter()
+        .map(|i| {
+            let bytes =
+                tessera_codec::encode(p.selection.tables.iter().find(|t| t.id == i.table).unwrap());
+            tv_tables::Table::from_spec(
+                &tv_codec::decode(
+                    &bytes,
+                    &tv_codec::DecodeLimits::MESSAGE,
+                    tv_tables::TableSpec::decode,
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        })
+        .collect();
+    for mode in [Mode::Live, Mode::NonInteractive] {
+        let mut t = transcript(mode);
+        let forests = actual.forests();
+        let borrowed = actual.tensors();
+        let proof = prepare_leaf(&mut t, &layout, &tables, &borrowed, &forests)
+            .unwrap()
+            .finish(&[])
+            .unwrap();
+        let levels: Vec<_> = proof
+            .logup()
+            .levels()
+            .iter()
+            .map(|l| tv_core::sumcheck::SumcheckProof {
+                rounds: l.proof().rounds.iter().map(|r| es(r)).collect(),
+                final_evals: es(&l.proof().final_evals),
+            })
+            .collect();
+        let mut t2 = vt(mode);
+        let leaf = schedule
+            .schedule()
+            .verify(
+                &mut t2,
+                tv::Proof {
+                    roots: &es(proof.logup().roots()),
+                    levels: &levels,
+                    values: &es(proof.logup().values()),
+                },
+                |tree, point| schedule.forest_root(tree, point),
+                |i, beta, point| vt_tables[i].eval_mle(point, beta).ok(),
+            )
+            .unwrap();
+        let splits = es(proof.splits());
+        let row_zero = |id: tv_tables::TableId| {
+            let index = layout.instances().iter().position(|i| i.table.0 == id.0)?;
+            let table = &vt_tables[index];
+            let (k, v) = table.row(0)?;
+            Some((
+                k,
+                (!matches!(table.spec().kind, tv_tables::TableKind::Range { .. })).then_some(v),
+            ))
+        };
+        let bound = independent
+            .bind(&mut t2, leaf.clone(), &splits, 0, |id| {
+                let index = layout.instances().iter().position(|i| i.table.0 == id.0)?;
+                let table = &vt_tables[index];
+                let (k, v) = table.row(0)?;
+                Some((
+                    k,
+                    (!matches!(table.spec().kind, tv_tables::TableKind::Range { .. })).then_some(v),
+                ))
+            })
+            .unwrap();
+        for index in 0..splits.len() {
+            let mut bad = splits.clone();
+            bad[index] += E::ONE;
+            assert_eq!(
+                independent.bind(&mut vt(mode), leaf.clone(), &bad, 0, row_zero),
+                Err(split::Error::Mismatch),
+                "source {index}"
+            );
+        }
+        let mut at = 0;
+        for (s, site) in layout.sites().iter().enumerate() {
+            for l in 0..site.layers.len() {
+                for read in layout.reads(s, l).unwrap() {
+                    let claim = &bound.columns[at];
+                    at += 1;
+                    assert_eq!(claim.node.0, owner(&p, site.node, l).0);
+                    assert_eq!(claim.column, role(read.term));
+                    assert_eq!(
+                        claim.value,
+                        mle(actual.values(s, l, read.term).unwrap(), &claim.point)
+                    );
+                }
+            }
+        }
+        assert_eq!(at, bound.columns.len());
+        assert_eq!(bound.forests.len(), actual.forests().len());
+        for (forest, site) in bound.forests.iter().zip(actual.forest_sites()) {
+            let table = forest_truth(&p, &witness, site);
+            assert_eq!(forest.claim.value, mle(&table, &forest.claim.point));
+        }
+        let checkpoints = tessera_witness::Checkpoints::new(&engine, model, &tokens).unwrap();
+        let replay =
+            tessera_witness::Regenerator::new(&engine, &p.selection, model, &tokens, &checkpoints)
+                .unwrap();
+        let regenerated =
+            ModelWitness::new(&layout, &p.lowering, &p.layers, &witness, &replay, &advice).unwrap();
+        let mut tr = transcript(mode);
+        let other = prepare_leaf(
+            &mut tr,
+            &layout,
+            &tables,
+            &regenerated.tensors(),
+            &regenerated.forests(),
+        )
+        .unwrap()
+        .finish(&[])
+        .unwrap();
+        assert_eq!(other.splits(), proof.splits());
+        assert_eq!(other.logup().roots(), proof.logup().roots());
+        assert_eq!(other.logup().values(), proof.logup().values());
+        for (a, b) in other.logup().levels().iter().zip(proof.logup().levels()) {
+            assert_eq!(a.proof(), b.proof());
+        }
+
+        assert_eq!(
+            e(t.challenge("stage/1/layer/0")),
+            t2.challenge_fp2(tv_hash::transcript::Ascii::new("stage/1/layer/0").unwrap())
+                .unwrap()
+        );
+    }
+}
+
+#[test]
+fn complete_cpu_model_leaf_verifies_with_all_canonical_sources_and_forests_in_both_modes() {
+    for name in [
+        "tiny-2-servable",
+        "tiny-2-minimal",
+        "tiny-2-affine",
+        "tiny-4-servable",
+    ] {
+        for n in [1, 3, 5] {
+            check_complete(&bounded_model_named(name), n, 18);
+        }
+    }
+}
+
+fn layered(mut model: IntegerModel) -> IntegerModel {
+    use tessera_ir::{QuantPoint, WeightType};
+    model.arch.n_layers = 3;
+    fn extend<T: Clone>(values: &mut Vec<(QuantPoint, T)>) {
+        let third: Vec<_> = values
+            .iter()
+            .filter_map(|(p, v)| match *p {
+                QuantPoint::Layer { layer: 0, site } => {
+                    Some((QuantPoint::Layer { layer: 2, site }, v.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        values.extend(third);
+        values.sort_by_key(|(p, _)| *p);
+    }
+    extend(&mut model.quant.public.act_exponents);
+    extend(&mut model.quant.public.shift_class_sets);
+    extend(&mut model.quant.public.affine_sites);
+    model
+        .quant
+        .public
+        .score_scales
+        .push((2, model.quant.public.score_scales[0].1));
+    model
+        .quant
+        .silu_in_exponents
+        .push((2, model.quant.silu_in_exponents[0].1));
+    let mut weights = model
+        .weights
+        .iter()
+        .filter(|w| w.layer == 0 && !matches!(w.ty, WeightType::Embed | WeightType::LmHead))
+        .cloned()
+        .collect::<Vec<_>>();
+    for w in &mut weights {
+        w.layer = 2;
+    }
+    model.weights.extend(weights);
+    model.weights.sort_by_key(|w| (w.ty, w.layer));
+    let mut channels = model
+        .quant
+        .channels
+        .iter()
+        .filter(|c| c.layer == 0 && !matches!(c.ty, WeightType::Embed | WeightType::LmHead))
+        .cloned()
+        .collect::<Vec<_>>();
+    for c in &mut channels {
+        c.layer = 2;
+    }
+    model.quant.channels.extend(channels);
+    model.quant.channels.sort_by_key(|c| (c.ty, c.layer));
+    model
+}
+#[test]
+fn six_heads_three_kv_heads_and_three_layers_preserve_all_canonical_positions() {
+    let mut model = layered(bounded_model());
+    model.arch.n_heads = 6;
+    model.arch.n_kv_heads = 3;
+    model.arch.d_model = 12;
+    let shapes = model.arch.weight_shapes().unwrap();
+    for w in &mut model.weights {
+        let shape = shapes[w.ty as usize];
+        w.rows = shape.out;
+        w.cols = shape.inputs;
+        w.data = (0..shape.out * shape.inputs)
+            .map(|i| (i % 5) as i8 - 2)
+            .collect();
+    }
+    for c in &mut model.quant.channels {
+        let n = shapes[c.ty as usize].out as usize;
+        if let Some(&v) = c.class.first() {
+            c.class.resize(n, v);
+        }
+        if let Some(&v) = c.multiplier.first() {
+            c.multiplier.resize(n, v);
+        }
+    }
+    check_complete(&model, 5, 21);
+}
+
+/// A coordinate dictionary, independent of the production scatter's flat-index arithmetic.
+fn coordinates(ranges: &[std::ops::Range<u32>]) -> Vec<Vec<u32>> {
+    let mut rows = vec![vec![]];
+    for range in ranges {
+        rows = rows
+            .into_iter()
+            .flat_map(|row| {
+                range.clone().map(move |v| {
+                    let mut next = row.clone();
+                    next.push(v);
+                    next
+                })
+            })
+            .collect();
+    }
+    rows
+}
+fn vertex(shape: &[u32], row: usize) -> Vec<u32> {
+    let mut rest = row;
+    let mut result = vec![0; shape.len()];
+    for i in (0..shape.len()).rev() {
+        let size = shape[i].next_power_of_two() as usize;
+        result[i] = (rest % size) as u32;
+        rest /= size;
+    }
+    assert_eq!(rest, 0);
+    result
+}
+fn flat(shape: &[u32], coordinate: &[u32]) -> usize {
+    shape
+        .iter()
+        .zip(coordinate)
+        .fold(0usize, |a, (&d, &x)| a * d as usize + x as usize)
+}
+fn source_truth(
+    p: &Public,
+    witness: &tessera_witness::Witness,
+    source: &impl WitnessSource,
+    advice: &ModelAdviceLayout<'_>,
+    layout: &LeafLayout<ModelColumn>,
+    actual: &ModelWitness,
+) {
+    use std::collections::BTreeMap;
+    use tessera_ir::{Op, TensorId};
+    let mut aux = BTreeMap::<(u32, AuxColumn, Vec<u32>), i64>::new();
+    for tile in advice.tiles() {
+        let node = match tile.tile {
+            tessera_compiler::Tile::Node { node }
+            | tessera_compiler::Tile::Attention { node, .. } => node,
+            _ => continue,
+        };
+        let Some(site) = layout
+            .sites()
+            .iter()
+            .find(|s| (0..s.layers.len()).any(|l| owner(p, s.node, l).0 == node))
+        else {
+            continue;
+        };
+        let _ = site;
+        let values = source.tile(tile).unwrap();
+        let definition = &p.lowering.graph.nodes[node as usize];
+        let output = if matches!(definition.op, Op::SoftmaxRow { .. }) {
+            definition.outputs[1]
+        } else {
+            definition.outputs[0]
+        };
+        let rows = coordinates(
+            &tile
+                .shares
+                .iter()
+                .find(|s| s.tensor == output)
+                .unwrap()
+                .ranges,
+        );
+        for (role, values) in values.gadget() {
+            assert_eq!(rows.len(), values.len());
+            for (row, &v) in rows.iter().zip(values.iter()) {
+                assert!(aux.insert((node, *role, row.clone()), v).is_none());
+            }
+        }
+    }
+    for (s, site) in layout.sites().iter().enumerate() {
+        for l in 0..site.layers.len() {
+            let node = &p.lowering.graph.nodes[owner(p, site.node, l).0 as usize];
+            for read in layout.reads(s, l).unwrap() {
+                let request = site.layers[l]
+                    .lookups
+                    .iter()
+                    .find(|r| {
+                        std::iter::once(&r.lookup.key)
+                            .chain(&r.lookup.value)
+                            .any(|f| f.terms.iter().any(|(_, c)| *c == read.term))
+                    })
+                    .unwrap();
+                let domain = read
+                    .axes
+                    .iter()
+                    .map(|&a| request.domain[a])
+                    .collect::<Vec<_>>();
+                let column = actual.values(s, l, read.term).unwrap();
+                for (row, &value) in column.iter().enumerate() {
+                    let coordinate = vertex(&domain, row);
+                    let real = coordinate.iter().zip(&domain).all(|(&c, &d)| c < d);
+                    let expected = if !real {
+                        if read.term == ModelColumn::ExpKey {
+                            (1i64
+                                << p.selection
+                                    .tables
+                                    .iter()
+                                    .find(|t| t.id == request.lookup.table)
+                                    .unwrap()
+                                    .log2_rows)
+                                - 1
+                        } else {
+                            0
+                        }
+                    } else {
+                        let index = flat(&domain, &coordinate);
+                        match read.term {
+                            ModelColumn::Input(i) | ModelColumn::Output(i) => {
+                                let t: TensorId = if matches!(read.term, ModelColumn::Input(_)) {
+                                    node.inputs[i as usize]
+                                } else {
+                                    node.outputs[i as usize]
+                                };
+                                witness.tensor(t).unwrap()[index]
+                            }
+                            ModelColumn::Auxiliary(role) => aux[&(node.id.0, role, coordinate)],
+                            ModelColumn::RootInput => {
+                                let Op::RsqrtRow { eps_int, .. } = node.op else {
+                                    panic!("root")
+                                };
+                                witness.tensor(node.inputs[0]).unwrap()[index] + eps_int as i64
+                            }
+                            ModelColumn::ExpKey => {
+                                let &[_, n, _] = domain.as_slice() else {
+                                    panic!("scores")
+                                };
+                                let [h, q, k] = coordinate[..] else {
+                                    panic!("coordinate")
+                                };
+                                if k > q {
+                                    (1i64
+                                        << p.selection
+                                            .tables
+                                            .iter()
+                                            .find(|t| t.id == request.lookup.table)
+                                            .unwrap()
+                                            .log2_rows)
+                                        - 1
+                                } else {
+                                    let scores = witness.tensor(node.inputs[0]).unwrap();
+                                    let base = ((h * n + q) * n) as usize;
+                                    *scores[base..=base + q as usize].iter().max().unwrap()
+                                        - scores[base + k as usize]
+                                }
+                            }
+                            ModelColumn::Slack(which) => {
+                                let Op::SoftmaxRow { sigma, .. } = node.op else {
+                                    panic!("softmax")
+                                };
+                                let n = domain[1] as usize;
+                                let e = witness.tensor(node.outputs[0]).unwrap();
+                                let sum: i64 = e[index * n..(index + 1) * n].iter().sum();
+                                let a = (1i64 << (2 * sigma))
+                                    - witness.tensor(node.outputs[1]).unwrap()[index] * sum;
+                                if which == Slack::A { a } else { sum - 1 - a }
+                            }
+                        }
+                    };
+                    assert_eq!(
+                        value, expected,
+                        "node {:?}, source {:?}, vertex {row}",
+                        node.id, read.term
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn forest_truth(p: &Public, witness: &tessera_witness::Witness, site: NodeRef) -> Vec<i64> {
+    let layers = if matches!(site, NodeRef::Position(_)) {
+        p.layers.count
+    } else {
+        1
+    };
+    let node = &p.lowering.graph.nodes[owner(p, site, 0).0 as usize];
+    let shape = &p.lowering.graph.tensors[node.inputs[0].0 as usize].shape;
+    let &[heads, n, _] = shape.as_slice() else {
+        panic!("score shape")
+    };
+    let (h, q) = (
+        heads.next_power_of_two() as usize,
+        n.next_power_of_two() as usize,
+    );
+    let mut leaves = vec![1; layers.next_power_of_two() as usize * h * q * q];
+    for l in 0..layers {
+        let node = &p.lowering.graph.nodes[owner(p, site, l as usize).0 as usize];
+        let scores = witness.tensor(node.inputs[0]).unwrap();
+        for head in 0..heads as usize {
+            for query in 0..n as usize {
+                let row = &scores[(head * n as usize + query) * n as usize
+                    ..(head * n as usize + query + 1) * n as usize];
+                let max = *row[..=query].iter().max().unwrap();
+                for key in 0..=query {
+                    leaves[((l as usize * h + head) * q + query) * q + key] = max - row[key];
+                }
+            }
+        }
+    }
+    leaves
+}
+
+#[test]
+fn per_request_domains_determine_blocks_and_duplicate_sources_require_one_point() {
+    use tessera_gadgets::{Affine, Lookup};
+    use tessera_prover::leaf::{LeafError, Site, SiteGadget, SiteLookup};
+    let model = bounded_model();
+    let p = public(
+        &model,
+        3,
+        GadgetPolicy {
+            max_log2_rows: 18,
+            ..GadgetPolicy::default()
+        },
+    );
+    let request = |column: u8, domain: Vec<u32>, axes: Vec<usize>| SiteLookup {
+        domain,
+        axes: vec![(column, axes)],
+        lookup: Lookup {
+            table: tessera_tables::TableId(0),
+            key: Affine {
+                constant: G::ZERO,
+                terms: vec![(G::ONE, column)],
+            },
+            value: None,
+        },
+    };
+    let gadget = SiteGadget {
+        lookups: vec![
+            request(0, vec![2, 4], vec![0, 1]),
+            request(1, vec![2], vec![0]),
+            request(2, vec![], vec![]),
+        ],
+    };
+    let site = Site {
+        node: NodeRef::Position(0),
+        layers: vec![gadget; p.layers.count as usize],
+    };
+    let layout = LeafLayout::new(&p.layers, vec![site.clone()]).unwrap();
+    assert_eq!(
+        layout.instances()[0].entries,
+        11 * u64::from(p.layers.count)
+    );
+    assert_eq!(layout.split_len(), 3 * p.layers.count as usize);
+    assert_eq!(
+        layout.instances()[0]
+            .blocks
+            .iter()
+            .map(|b| b.vars)
+            .collect::<Vec<_>>(),
+        [3, 3, 1, 1, 0, 0]
+    );
+    assert_eq!(
+        layout
+            .reads(0, 0)
+            .unwrap()
+            .iter()
+            .map(|r| r.coords.clone())
+            .collect::<Vec<_>>(),
+        [vec![0, 1, 2], vec![0], vec![]]
+    );
+    let mut wrong = site.clone();
+    wrong.layers[1].lookups.swap(0, 1);
+    assert!(matches!(
+        LeafLayout::new(&p.layers, vec![wrong]),
+        Err(LeafError::Internal {
+            rule: "a site's real layers read the same tensors over the same axes (RFC-0045 'One claim per input')"
+        })
+    ));
+    let mut wrong = site.clone();
+    for layer in &mut wrong.layers {
+        layer.lookups = vec![
+            request(0, vec![2, 4], vec![0]),
+            request(0, vec![4, 2], vec![0]),
+        ];
+    }
+    assert!(matches!(
+        LeafLayout::new(&p.layers, vec![wrong]),
+        Err(LeafError::Internal {
+            rule: "a gadget's lookups read each tensor over one set of axes (RFC-0045 'One claim per input')"
+        })
+    ));
+    let mut zero = site.clone();
+    for layer in &mut zero.layers {
+        layer.lookups = vec![request(0, vec![0], vec![0])];
+    }
+    assert!(matches!(
+        LeafLayout::new(&p.layers, vec![zero]),
+        Err(LeafError::Internal {
+            rule: "a domain's axes each hold a position"
+        })
+    ));
+    for domain in [vec![0], vec![1 << 16; 4]] {
+        let mut wrong = site.clone();
+        for layer in &mut wrong.layers {
+            layer.lookups[0].domain = domain.clone();
+        }
+        assert!(matches!(
+            LeafLayout::new(&p.layers, vec![wrong]),
+            Err(LeafError::Internal { .. })
+        ));
+    }
+}
+
+#[test]
+fn missing_or_misshaped_graph_sources_and_tile_errors_are_explicit_and_redacted() {
+    struct Wrong<'a> {
+        witness: &'a tessera_witness::Witness,
+        id: tessera_ir::TensorId,
+        missing: bool,
+    }
+    impl tessera_prover::WitnessSource for Wrong<'_> {
+        fn values(&self, id: tessera_ir::TensorId) -> Option<&[i64]> {
+            let values = &self.witness.tensor(id)?[..];
+            if id == self.id {
+                if self.missing {
+                    None
+                } else {
+                    Some(&values[..values.len() - 1])
+                }
+            } else {
+                Some(values)
+            }
+        }
+    }
+    struct NoTiles;
+    impl WitnessSource for NoTiles {
+        fn tile(
+            &self,
+            _: &tessera_compiler::SequenceTile,
+        ) -> Result<tessera_witness::TileWitness, tessera_witness::WitnessError> {
+            Err(tessera_witness::WitnessError::Memory {
+                tensor: tessera_ir::TensorId(0),
+            })
+        }
+    }
+    let model = bounded_model();
+    let p = public(
+        &model,
+        3,
+        GadgetPolicy {
+            max_log2_rows: 18,
+            query_block: 2,
+            ..GadgetPolicy::default()
+        },
+    );
+    let layout = LeafLayout::model(&p.lowering, &p.layers, &p.selection, &p.claims).unwrap();
+    let engine = Engine::new(&p.lowering).unwrap();
+    let tokens = Secret::new(vec![1, 2, 3]);
+    let witness = engine.run(&model, &tokens).unwrap();
+    let tiles = Resident::new(&engine, &p.selection, &model, &witness).unwrap();
+    let advice = ModelAdviceLayout::new(&p.lowering, &p.selection, &p.claims).unwrap();
+    let node = &p.lowering.graph.nodes[owner(&p, layout.sites()[0].node, 0).0 as usize];
+    let id = node.outputs[0];
+    for missing in [true, false] {
+        let wrong = Wrong {
+            witness: &witness,
+            id,
+            missing,
+        };
+        assert!(matches!(
+            ModelWitness::new(&layout, &p.lowering, &p.layers, &wrong, &tiles, &advice),
+            Err(tessera_prover::LeafError::Internal { .. })
+        ));
+    }
+    let error = ModelWitness::new(&layout, &p.lowering, &p.layers, &witness, &NoTiles, &advice)
+        .unwrap_err();
+    assert_eq!(
+        error,
+        tessera_prover::LeafError::Witness(tessera_witness::WitnessError::Memory {
+            tensor: tessera_ir::TensorId(0)
+        })
+    );
+    assert_eq!(error.code(), tessera_codec::error::ErrorCode::ResMemory);
+    let mut sites = layout.sites().to_vec();
+    for layer in &mut sites[0].layers {
+        for lookup in &mut layer.lookups {
+            for (_, column) in &mut lookup.lookup.key.terms {
+                if matches!(column, ModelColumn::Auxiliary(_)) {
+                    *column = ModelColumn::Auxiliary(AuxColumn::Maximum);
+                }
+            }
+        }
+    }
+    let wrong = LeafLayout::new(&p.layers, sites).unwrap();
+    assert!(matches!(
+        ModelWitness::new(&wrong, &p.lowering, &p.layers, &witness, &tiles, &advice),
+        Err(tessera_prover::LeafError::Internal {
+            rule: "the canonical tile contains every requested auxiliary role"
+        })
+    ));
+}
+
+#[test]
+fn inconsistent_catalogs_uncovered_sources_and_wrong_tile_tables_are_refused() {
+    use tessera_gadgets::{Affine, Lookup};
+    use tessera_prover::leaf::{Site, SiteGadget, SiteLookup};
+    let model = bounded_model();
+    let p = public(
+        &model,
+        3,
+        GadgetPolicy {
+            max_log2_rows: 18,
+            query_block: 2,
+            ..GadgetPolicy::default()
+        },
+    );
+    let mut wrong = p.claims.clone();
+    wrong.tables.clear();
+    assert!(matches!(
+        LeafLayout::model(&p.lowering, &p.layers, &p.selection, &wrong),
+        Err(tessera_prover::LeafError::Internal {
+            rule: "model leaf sources and requests follow the canonical lowering and selection"
+        })
+    ));
+    let layout = LeafLayout::model(&p.lowering, &p.layers, &p.selection, &p.claims).unwrap();
+    let engine = Engine::new(&p.lowering).unwrap();
+    let tokens = Secret::new(vec![1, 2, 3]);
+    let witness = engine.run(&model, &tokens).unwrap();
+    let source = Resident::new(&engine, &p.selection, &model, &witness).unwrap();
+    let advice = ModelAdviceLayout::new(&p.lowering, &p.selection, &p.claims).unwrap();
+    let tiled = advice
+        .tiles()
+        .iter()
+        .filter_map(|t| match t.tile {
+            tessera_compiler::Tile::Node { node }
+            | tessera_compiler::Tile::Attention { node, .. } => Some(node),
+            _ => None,
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    let position = p
+        .lowering
+        .graph
+        .nodes
+        .iter()
+        .find_map(|n| match p.layers.position(n.id) {
+            Some((0, pos)) if !tiled.contains(&n.id.0) => Some(pos),
+            _ => None,
+        })
+        .unwrap();
+    let gadget = SiteGadget {
+        lookups: vec![SiteLookup {
+            domain: vec![1],
+            axes: vec![],
+            lookup: Lookup {
+                table: p.selection.tables[0].id,
+                key: Affine {
+                    constant: G::ZERO,
+                    terms: vec![(G::ONE, ModelColumn::Auxiliary(AuxColumn::Maximum))],
+                },
+                value: None,
+            },
+        }],
+    };
+    let uncovered = LeafLayout::new(
+        &p.layers,
+        vec![Site {
+            node: NodeRef::Position(position),
+            layers: vec![gadget; p.layers.count as usize],
+        }],
+    )
+    .unwrap();
+    assert!(matches!(
+        ModelWitness::new(
+            &uncovered,
+            &p.lowering,
+            &p.layers,
+            &witness,
+            &source,
+            &advice
+        ),
+        Err(tessera_prover::LeafError::Internal {
+            rule: "model leaf columns cover every canonical source at its public coordinates"
+        })
+    ));
+    struct WrongTile<'a, S> {
+        source: &'a S,
+        target: u32,
+        other: &'a tessera_compiler::SequenceTile,
+    }
+    impl<S: WitnessSource> WitnessSource for WrongTile<'_, S> {
+        fn tile(
+            &self,
+            t: &tessera_compiler::SequenceTile,
+        ) -> Result<tessera_witness::TileWitness, tessera_witness::WitnessError> {
+            if matches!(t.tile,tessera_compiler::Tile::Node {node} if node==self.target) {
+                self.source.tile(self.other)
+            } else {
+                self.source.tile(t)
+            }
+        }
+    }
+    let target = layout
+        .sites()
+        .iter()
+        .enumerate()
+        .find(|(s, site)| {
+            site.layers[0].lookups.len() == 1
+                && layout
+                    .reads(*s, 0)
+                    .unwrap()
+                    .iter()
+                    .all(|r| matches!(r.term, ModelColumn::Input(_) | ModelColumn::Output(_)))
+        })
+        .unwrap()
+        .1;
+    let target = owner(&p, target.node, 0);
+    let other_node = p
+        .lowering
+        .graph
+        .nodes
+        .iter()
+        .find(|n| matches!(n.op, tessera_ir::Op::TableMap { .. }))
+        .unwrap()
+        .id;
+    let other = advice
+        .tiles()
+        .iter()
+        .find(|t| matches!(t.tile,tessera_compiler::Tile::Node {node} if node==other_node.0))
+        .unwrap();
+    let wrong = WrongTile {
+        source: &source,
+        target: target.0,
+        other,
+    };
+    assert!(matches!(
+        ModelWitness::new(&layout, &p.lowering, &p.layers, &witness, &wrong, &advice),
+        Err(tessera_prover::LeafError::Internal {
+            rule: "model leaf columns cover every canonical source at its public coordinates"
+        })
+    ));
+}

@@ -24,27 +24,24 @@ const MAX_BLOCK_VARS: u32 = 48;
 /// One lookup of a site's gadget in one layer: its table and its forms (RFC-0009), with the axes
 /// of the gadget's domain over which each term's tensor is read (RFC-0045 'A block's claim').
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SiteLookup {
+pub struct SiteLookup<T = Term> {
     /// The table, the key form and the value form.
-    pub lookup: Lookup<Goldilocks>,
+    pub lookup: Lookup<Goldilocks, T>,
+    /// The lookup domain, outermost axis first, before per-axis padding.
+    pub domain: Vec<u32>,
     /// The terms read over some of the domain's axes, each with those axes as indices into the
     /// domain's shape, ascending. A term not listed is read over every axis.
-    pub axes: Vec<(Term, Vec<usize>)>,
+    pub axes: Vec<(T, Vec<usize>)>,
 }
 
-/// A site's gadget in one layer: the domain its lookups run over, and its lookups in RFC-0009's
-/// order.
+/// A site's gadget in one layer, its per-request domains and RFC-0009 lookup order.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SiteGadget {
-    /// The domain: the shape of the tensor the lookups run over, outermost axis first, before its
-    /// per-dimension padding (RFC-0011 rule 1). A block over it has `2^k` entries, `k` the sum of
-    /// its axes' `⌈log2 len⌉`.
-    pub domain: Vec<u32>,
+pub struct SiteGadget<T = Term> {
     /// The lookups, in RFC-0009's order.
-    pub lookups: Vec<SiteLookup>,
+    pub lookups: Vec<SiteLookup<T>>,
 }
 
-impl SiteGadget {
+impl SiteGadget<Term> {
     /// A requantization gadget, `Requant1`, `RequantSplit` or `RequantWide`, over an input of
     /// `shape`: every lookup runs over the input's elements, the classes are read over the last
     /// axis, the output channels, and every other term over every axis (RFC-0009, RFC-0045).
@@ -62,34 +59,39 @@ impl SiteGadget {
                     true => vec![(Term::Class, channels.clone())],
                     false => Vec::new(),
                 };
-                SiteLookup { lookup, axes }
+                SiteLookup {
+                    lookup,
+                    axes,
+                    domain: shape.to_vec(),
+                }
             })
             .collect();
-        Self {
-            domain: shape.to_vec(),
-            lookups,
-        }
+        Self { lookups }
     }
+}
 
-    /// `k = Σ ⌈log2 len⌉` over the domain's axes: a block holds `2^k` entries.
+impl<T> SiteLookup<T> {
+    /// Sum of the padded domain axes' variable counts.
     pub fn vars(&self) -> u32 {
-        self.domain.iter().map(|&len| axis_vars(len)).sum()
+        self.domain
+            .iter()
+            .fold(0u32, |sum, &len| sum.saturating_add(axis_vars(len)))
     }
 }
 
 /// One site of the leaf stage: a gadget node, with its gadget in each of its real layers
 /// (RFC-0045 'Sites').
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Site {
+pub struct Site<T = Term> {
     /// The node: a template position, one site for all its layers, or a node of the prologue or
     /// the epilogue.
     pub node: NodeRef,
     /// Its gadget in each real layer, in order; one for a site outside the layers. A padded layer
     /// has none.
-    pub layers: Vec<SiteGadget>,
+    pub layers: Vec<SiteGadget<T>>,
 }
 
-impl Site {
+impl Site<Term> {
     /// The requantization site of `node`: in each real layer, or once outside the layers, the
     /// `Requant1`, `RequantSplit` or `RequantWide` gadget that `selection` gives the node, over
     /// its input's shape (RFC-0006 'Gadget selection', RFC-0009). Public data alone: the graph's
@@ -169,10 +171,10 @@ pub fn gadget_nodes(lowering: &Lowering, layers: &LayerMap) -> Vec<NodeRef> {
 
 /// A tensor a site's lookups read in one layer, which the split sends (RFC-0045 'What is sent').
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Read {
+pub struct Read<T = Term> {
     /// The tensor, as the gadget's term.
-    pub term: Term,
-    /// The axes of the domain it is read over, ascending.
+    pub term: T,
+    /// The axes of its first lookup domain, ascending.
     pub axes: Vec<usize>,
     /// Its point `π_t(P[0..k])`, as indices into the leaf point `P`, its lowest variable first:
     /// the coordinates of its axes, the domain's last axis taking the lowest. Its tensor, padded
@@ -222,13 +224,13 @@ pub struct InstanceLayout {
 /// instance per table their lookups read with its blocks, offsets and height, and the tensors
 /// each site's split sends in each layer.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LeafLayout {
-    sites: Vec<Site>,
+pub struct LeafLayout<T = Term> {
+    sites: Vec<Site<T>>,
     instances: Vec<InstanceLayout>,
-    reads: Vec<Vec<Vec<Read>>>,
+    reads: Vec<Vec<Vec<Read<T>>>>,
 }
 
-impl LeafLayout {
+impl<T: Copy + Eq> LeafLayout<T> {
     /// The layout of `sites`, in the layers `layers` (RFC-0045 'The column', 'The split'):
     ///
     /// 1. **Sites** come in node order, each once: a template position at its layer-0 node, with
@@ -252,9 +254,9 @@ impl LeafLayout {
     /// layer by layer and lookup by lookup: a domain with an axis of length 0 or blocks of more
     /// than `2^48` entries; axes that are not ascending axes of the domain, or that name a term
     /// the lookup does not read, or twice; a gadget whose lookups read one tensor over two sets
-    /// of axes; a layer whose domain, or whose tensors or their axes, are not the first layer's.
+    /// of coordinates; a layer whose ordered sources or projections differ from the first's.
     /// Then instance by instance, entries that overflow 64 bits.
-    pub fn new(layers: &LayerMap, sites: Vec<Site>) -> Result<Self, LeafError> {
+    pub fn new(layers: &LayerMap, sites: Vec<Site<T>>) -> Result<Self, LeafError> {
         let mut previous: Option<u32> = None;
         for site in &sites {
             let (first, gadgets) = match site.node {
@@ -277,24 +279,24 @@ impl LeafLayout {
         let mut reads = Vec::with_capacity(sites.len());
         let mut tables: BTreeMap<TableId, Vec<Block>> = BTreeMap::new();
         for (s, site) in sites.iter().enumerate() {
-            let mut per_layer: Vec<Vec<Read>> = Vec::with_capacity(site.layers.len());
+            let mut per_layer: Vec<Vec<Read<T>>> = Vec::with_capacity(site.layers.len());
             for (l, gadget) in site.layers.iter().enumerate() {
-                if gadget.domain.contains(&0) {
-                    return internal("a domain's axes each hold a position");
-                }
-                let vars = gadget.vars();
-                if vars > MAX_BLOCK_VARS {
-                    return internal("a block holds at most 2^48 entries");
+                for lookup in &gadget.lookups {
+                    if lookup.domain.contains(&0) {
+                        return internal("a domain's axes each hold a position");
+                    }
+                    if lookup.vars() > MAX_BLOCK_VARS {
+                        return internal("a block holds at most 2^48 entries");
+                    }
                 }
                 let read = reads_of(gadget)?;
                 // Every real layer reads the first's tensors over its axes, so that stage 1 stacks
                 // each of them over the layers.
-                if let (Some(first), Some(first_read)) = (site.layers.first(), per_layer.first())
-                    && (gadget.domain != first.domain || !same_reads(&read, first_read))
+                if let Some(first_read) = per_layer.first()
+                    && !same_reads(&read, first_read)
                 {
                     return internal(
-                        "a site's real layers read the same tensors over the same axes (RFC-0045 \
-                         'One claim per input')",
+                        "a site's real layers read the same tensors over the same axes (RFC-0045 'One claim per input')",
                     );
                 }
                 per_layer.push(read);
@@ -303,7 +305,7 @@ impl LeafLayout {
                         site: s,
                         layer: l,
                         lookup: j,
-                        vars,
+                        vars: lookup.vars(),
                         offset: 0,
                     });
                 }
@@ -338,7 +340,7 @@ impl LeafLayout {
     }
 
     /// The sites, in node order.
-    pub fn sites(&self) -> &[Site] {
+    pub fn sites(&self) -> &[Site<T>] {
         &self.sites
     }
 
@@ -349,7 +351,7 @@ impl LeafLayout {
 
     /// The tensors site `site`'s lookups read in its layer `layer`, in the order the split sends
     /// them; `None` past the sites or the site's layers.
-    pub fn reads(&self, site: usize, layer: usize) -> Option<&[Read]> {
+    pub fn reads(&self, site: usize, layer: usize) -> Option<&[Read<T>]> {
         self.reads.get(site)?.get(layer).map(Vec::as_slice)
     }
 
@@ -379,19 +381,17 @@ pub fn leaf_index(height: u32, index: u64) -> u64 {
     }
 }
 
-/// Whether two layers' reads are the same tensors over the same axes, in any order.
-fn same_reads(a: &[Read], b: &[Read]) -> bool {
-    a.len() == b.len()
-        && a.iter()
-            .all(|read| b.iter().any(|r| r.term == read.term && r.axes == read.axes))
+/// Stage 1 stacks the same ordered sources and projections from every real layer.
+fn same_reads<T: Eq>(a: &[Read<T>], b: &[Read<T>]) -> bool {
+    a == b
 }
 
 /// The tensors `gadget`'s lookups read, in the order they first read them, each with its axes and
 /// point.
-fn reads_of(gadget: &SiteGadget) -> Result<Vec<Read>, LeafError> {
-    let rank = gadget.domain.len();
-    let mut reads: Vec<Read> = Vec::new();
+fn reads_of<T: Copy + Eq>(gadget: &SiteGadget<T>) -> Result<Vec<Read<T>>, LeafError> {
+    let mut reads: Vec<Read<T>> = Vec::new();
     for site_lookup in &gadget.lookups {
+        let rank = site_lookup.domain.len();
         let lookup = &site_lookup.lookup;
         let forms = || core::iter::once(&lookup.key).chain(&lookup.value);
         for (term, axes) in &site_lookup.axes {
@@ -411,8 +411,9 @@ fn reads_of(gadget: &SiteGadget) -> Result<Vec<Read>, LeafError> {
                 .iter()
                 .find(|(t, _)| *t == term)
                 .map_or_else(|| (0..rank).collect(), |(_, axes)| axes.clone());
+            let point = coords(&site_lookup.domain, &axes);
             match reads.iter().find(|read| read.term == term) {
-                Some(read) if read.axes == axes => {}
+                Some(read) if read.coords == point => {}
                 Some(_) => {
                     return internal(
                         "a gadget's lookups read each tensor over one set of axes (RFC-0045 'One \
@@ -421,7 +422,7 @@ fn reads_of(gadget: &SiteGadget) -> Result<Vec<Read>, LeafError> {
                 }
                 None => reads.push(Read {
                     term,
-                    coords: coords(&gadget.domain, &axes),
+                    coords: point,
                     axes,
                 }),
             }
