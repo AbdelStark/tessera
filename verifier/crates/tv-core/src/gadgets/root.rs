@@ -27,14 +27,14 @@ pub struct Root<'p> {
     widths: Vec<u8>,
     low: usize,
     variables: usize,
-    n: u32,
-    epsilon: Fp2,
+    pub(super) n: u32,
+    pub(super) epsilon: Fp2,
     root: TensorId,
     squares: TensorId,
     residual: TensorId,
-    features: usize,
+    pub(super) features: usize,
     residual_vars: usize,
-    dim: u32,
+    pub(super) dim: u32,
 }
 
 /// A root leaf check with all source, lookup and nonlinear obligations retained.

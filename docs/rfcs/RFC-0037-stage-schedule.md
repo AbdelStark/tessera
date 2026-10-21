@@ -175,6 +175,7 @@ The leaf stage leaves its gadgets' claims one layer at a time. Each lookup site'
 - **Drawing it.** Stage 1 draws the layer point `ρ_1`: `λ` coordinates under `stage/1/layer/{c}`, after the leaf stage's splits and before the zero-check point and `γ_1`.
 - **Stacking.** A site's claims `v_ℓ` become the stacked claim `X̃(r_s ‖ ρ_1) = Σ_ℓ eq(ρ_1, ℓ)·v_ℓ`. A padded layer's `v_ℓ` is 0.
 - **Soundness.** A false `v_ℓ` survives with probability at most `λ/|Fp2|` over `ρ_1`.
+- **Native gadget targets.** First apply each real layer's affine checks and move its public terms into the native target; then stack those fixed targets. For example, a Softmax lookup leaves `κ̃_ℓ(r) − K_{0,ℓ}·(1 − C̃_local(r))`, whose stacked target is the zero-padded `C·(c−x)` relation. This retains each layer's original Exp lookup and value claim, even when its table and `K_{0,ℓ}` differ. A forest leaf already has its own layer coordinates: its target is `L̃(r) − 1 + C̃(r)`, at that full point. Every final source claim keeps its original source family and the final layer coordinates; no later per-layer values replace a fixed stacked claim.
 - **Later stages.** Their claims are stacked at their own points' layer coordinates.
 
 ### The claim pool
