@@ -273,6 +273,146 @@ pub fn verify(
     verify_with(transcript, schedule, rope, leaf, leaf_splits, stages)
 }
 
+/// Fixed stage context supplied to a verifier-owned native component before batching and at
+/// its final evaluation. The driver draws these points once for the full mixed stage.
+#[derive(Clone, Copy)]
+pub struct NativeContext<'a> {
+    /// Current stage, derived from the schedule.
+    pub stage: u16,
+    /// Stage one's earlier layer point (retained in later stages).
+    pub layer: &'a [Fp2],
+    /// Full common zero-check point; a native check takes its own highest coordinates.
+    pub zero: &'a [Fp2],
+}
+
+/// A native polynomial's final value and transformed ORIGINAL graph-source values.
+/// Every other native source/lookup/auxiliary debt must also be discharged by the model driver.
+pub struct NativeFinal {
+    /// Polynomial value included in the ONE mixed batched final equality.
+    pub value: Fp2,
+    /// Graph values in the native descriptor's output order; raw evals may have another count.
+    pub graph: Vec<Fp2>,
+}
+
+/// Trusted native callbacks derived from the verifier's own model and already fixed leaf data.
+/// Tags/descriptors/callbacks are never chosen by the prover. Check native per-layer affine and
+/// lookup bindings BEFORE invoking this driver; retain all original component debts afterward.
+pub trait NativeChecks {
+    /// Derive the incoming target BEFORE gamma. It must match the descriptor's variables/count;
+    /// a zero-check must claim zero. Own geometry/errors retain `Internal`/`Memory`.
+    fn instance(
+        &self,
+        tag: u32,
+        context: NativeContext<'_>,
+    ) -> Result<sumcheck::Instance, StageError>;
+    /// Check the native final polynomial AFTER front-padding is removed. The returned graph
+    /// values must be the descriptor's canonical source transformations of these SAME evals.
+    fn evaluate(
+        &self,
+        tag: u32,
+        context: NativeContext<'_>,
+        point: &[Fp2],
+        values: &[Fp2],
+    ) -> Result<NativeFinal, StageError>;
+}
+
+/// A checked native instance, retaining its original raw values/point for canonical binding.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeEvaluation {
+    /// Verifier-owned identity.
+    pub tag: u32,
+    /// Stage that checked it.
+    pub stage: u16,
+    /// Earlier layer point.
+    pub layer: Vec<Fp2>,
+    /// Common stage zero point.
+    pub zero: Vec<Fp2>,
+    /// Natural final point, with front-padding removed and layer coordinates retained.
+    pub point: Vec<Fp2>,
+    /// Original raw proof evaluations, in descriptor order.
+    pub values: Vec<Fp2>,
+}
+
+/// The mixed reductions passed. Neither graph nor native original-source openings are checked.
+#[must_use = "discharge the graph pool and ALL native original-source/lookup/auxiliary debts"]
+pub struct Composed {
+    /// Original graph commitment pool, including transformed native graph outputs.
+    pub graph: Verified,
+    /// Every native instance, in stage/instance order, for canonical source binding.
+    pub native: Vec<NativeEvaluation>,
+}
+
+struct NoNative;
+impl NativeChecks for NoNative {
+    fn instance(&self, _: u32, _: NativeContext<'_>) -> Result<sumcheck::Instance, StageError> {
+        Err(StageError::Internal)
+    }
+    fn evaluate(
+        &self,
+        _: u32,
+        _: NativeContext<'_>,
+        _: &[Fp2],
+        _: &[Fp2],
+    ) -> Result<NativeFinal, StageError> {
+        Err(StageError::Internal)
+    }
+}
+
+/// Verify the ONE combined stage batch, retaining graph and native debts. This standalone entry
+/// absorbs the graph leaf atom vector as `stage/0/split`; after a complete canonical lookup
+/// split has already been bound, use [`verify_composed_bound`] to avoid a second absorb.
+///
+/// # Errors
+/// Existing stage errors/order; inconsistent native callback shapes or nonzero zero-check
+/// targets are `Internal`. Callback `Memory` errors remain `Memory`.
+pub fn verify_composed(
+    transcript: &mut Transcript,
+    schedule: &Schedule,
+    rope: &Rope,
+    leaf: &[LeafValues],
+    leaf_splits: &[Fp2],
+    stages: &[StageProof],
+    native: &impl NativeChecks,
+) -> Result<Composed, StageError> {
+    verify_composed_with(
+        transcript,
+        schedule,
+        rope,
+        leaf,
+        leaf_splits,
+        stages,
+        native,
+        true,
+    )
+}
+
+/// Continue AFTER the canonical full lookup+atom split was checked/absorbed by
+/// [`crate::leaf::split::Layout::bind`]. The bound's atom tail is checked, never absorbed again.
+/// All bound columns/multiplicities/forests and native results remain model-driver debts.
+///
+/// # Errors
+/// The same shape, split, sumcheck and own-callback errors as [`verify_composed`].
+pub fn verify_composed_bound(
+    transcript: &mut Transcript,
+    schedule: &Schedule,
+    rope: &Rope,
+    leaf: &[LeafValues],
+    bound: &crate::leaf::split::Bound,
+    stages: &[StageProof],
+    native: &impl NativeChecks,
+) -> Result<Composed, StageError> {
+    verify_composed_with(
+        transcript,
+        schedule,
+        rope,
+        leaf,
+        &bound.atoms,
+        stages,
+        native,
+        false,
+    )
+}
+
 /// What an instance's claim gets from the stage before.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Incoming {
@@ -340,6 +480,30 @@ pub(crate) fn verify_with(
     leaf_splits: &[Fp2],
     stages: &[StageProof],
 ) -> Result<Verified, StageError> {
+    verify_composed_with(
+        transcript,
+        schedule,
+        rope,
+        leaf,
+        leaf_splits,
+        stages,
+        &NoNative,
+        true,
+    )
+    .map(|r| r.graph)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_composed_with(
+    transcript: &mut impl FiatShamir,
+    schedule: &Schedule,
+    rope: &Rope,
+    leaf: &[LeafValues],
+    leaf_splits: &[Fp2],
+    stages: &[StageProof],
+    native: &impl NativeChecks,
+    absorb_leaf: bool,
+) -> Result<Composed, StageError> {
     // 1. and 2. The verifier's inputs, then the proof's shapes.
     check_inputs(schedule, leaf)?;
     check_shapes(schedule, leaf_splits, stages)?;
@@ -353,12 +517,15 @@ pub(crate) fn verify_with(
     let mut pool = Vec::new();
 
     // 3. The leaf stage's splits.
-    fiat_shamir::absorb(transcript, Prefix::Stage(0), Step::Split, leaf_splits)
-        .map_err(|error| StageError::Sumcheck { stage: 0, error })?;
+    if absorb_leaf {
+        fiat_shamir::absorb(transcript, Prefix::Stage(0), Step::Split, leaf_splits)
+            .map_err(|error| StageError::Sumcheck { stage: 0, error })?;
+    }
     let first = schedule.stages().first().ok_or(StageError::Internal)?;
     let mut incoming = vec_of(Incoming::Missing, first.instances.len())?;
     let groups = leaf_stage(schedule, &sources, leaf, leaf_splits, &mut incoming)?;
 
+    let mut native_evaluations = Vec::new();
     // 4. The reduction stages.
     for (stage, proof) in schedule.stages().iter().zip(stages) {
         let k = stage.index;
@@ -387,7 +554,31 @@ pub(crate) fn verify_with(
         let mut resolved = Vec::new();
         reserve(&mut batch, stage.instances.len())?;
         reserve(&mut resolved, stage.instances.len())?;
+        let context = NativeContext {
+            stage: k,
+            layer: &sources.layer,
+            zero: stage_entry(&sources.zero, k)?,
+        };
         for (instance, arriving) in stage.instances.iter().zip(&incoming) {
+            if let Relation::Native { tag, zero, .. } = instance.relation {
+                if *arriving != Incoming::Missing {
+                    return Err(StageError::Internal);
+                }
+                let own = native.instance(tag, context)?;
+                if own.vars != instance.vars
+                    || own.evals != instance.input_evaluations()
+                    || (zero && own.claim != Fp2::ZERO)
+                {
+                    return Err(StageError::Internal);
+                }
+                batch.push(own);
+                resolved.push(Resolved {
+                    claim: Vec::new(),
+                    layers: None,
+                    zero: Vec::new(),
+                });
+                continue;
+            }
             let claim = match (&instance.relation, arriving) {
                 (
                     Relation::Equality { .. }
@@ -404,7 +595,7 @@ pub(crate) fn verify_with(
             batch.push(sumcheck::Instance {
                 claim,
                 vars: instance.vars,
-                evals: instance.evals.len(),
+                evals: instance.input_evaluations(),
             });
             resolved.push(Resolved {
                 claim: sources.resolve(&instance.point)?,
@@ -418,6 +609,8 @@ pub(crate) fn verify_with(
         }
         // 4.4: the sumcheck.
         let lambda = schedule.layer_vars();
+        let mut native_outputs = vec_of(None, stage.instances.len())?;
+        let mut oracle_error = None;
         let passed = sumcheck::verify_batch_with(
             transcript,
             prefix,
@@ -426,11 +619,41 @@ pub(crate) fn verify_with(
             &proof.sumcheck,
             |i, point, evals| {
                 let instance = stage.instances.get(i)?;
+                if let Relation::Native { tag, .. } = instance.relation {
+                    let result = (|| {
+                        let checked = native.evaluate(tag, context, point, evals)?;
+                        if checked.graph.len() != instance.evals.len() {
+                            return Err(StageError::Internal);
+                        }
+                        let record = NativeEvaluation {
+                            tag,
+                            stage: k,
+                            layer: copied(context.layer)?,
+                            zero: copied(context.zero)?,
+                            point: copied(point)?,
+                            values: copied(evals)?,
+                        };
+                        *native_outputs.get_mut(i).ok_or(StageError::Internal)? =
+                            Some(checked.graph);
+                        push(&mut native_evaluations, record)?;
+                        Ok(checked.value)
+                    })();
+                    return match result {
+                        Ok(value) => Some(value),
+                        Err(error) => {
+                            oracle_error = Some(error);
+                            None
+                        }
+                    };
+                }
                 let resolved = resolved.get(i)?;
                 final_value(instance, resolved, lambda, rope, point, evals)
             },
-        )
-        .map_err(fail)?;
+        );
+        if let Some(error) = oracle_error {
+            return Err(error);
+        }
+        let passed = passed.map_err(fail)?;
         push(&mut sources.rounds, passed.point)?;
 
         // 4.5: the splits, then the claims the evaluations leave.
@@ -442,10 +665,25 @@ pub(crate) fn verify_with(
         let mut next = vec_of(Incoming::Missing, next_len)?;
         let round = u32::try_from(stage.rounds).map_err(|_| StageError::Internal)?;
         let mut splits = proof.splits.iter();
-        let mut evals = proof.sumcheck.final_evals.iter();
-        for instance in &stage.instances {
-            for claim in &instance.evals {
-                let value = *evals.next().ok_or(StageError::Internal)?;
+        let mut at = 0usize;
+        for (i, instance) in stage.instances.iter().enumerate() {
+            let end = at
+                .checked_add(instance.input_evaluations())
+                .ok_or(StageError::Internal)?;
+            let raw = proof
+                .sumcheck
+                .final_evals
+                .get(at..end)
+                .ok_or(StageError::Internal)?;
+            at = end;
+            let transformed = native_outputs.get(i).ok_or(StageError::Internal)?;
+            let values = if matches!(instance.relation, Relation::Native { .. }) {
+                transformed.as_deref().ok_or(StageError::Internal)?
+            } else {
+                raw
+            };
+            // Raw graph counts passed sumcheck shapes; native counts passed the callback guard.
+            for (claim, &value) in instance.evals.iter().zip(values) {
                 follow(
                     schedule,
                     &sources,
@@ -459,9 +697,22 @@ pub(crate) fn verify_with(
                 )?;
             }
         }
+        if at != proof.sumcheck.final_evals.len() || splits.next().is_some() {
+            return Err(StageError::Internal);
+        }
         incoming = next;
     }
-    Ok(Verified { pool })
+    Ok(Composed {
+        graph: Verified { pool },
+        native: native_evaluations,
+    })
+}
+
+fn copied<T: Copy>(values: &[T]) -> Result<Vec<T>, StageError> {
+    let mut out = Vec::new();
+    reserve(&mut out, values.len())?;
+    out.extend_from_slice(values);
+    Ok(out)
 }
 
 /// Step 1: each leaf claim's point and values fit the schedule.

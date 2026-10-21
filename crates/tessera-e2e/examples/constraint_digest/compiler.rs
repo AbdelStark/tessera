@@ -275,6 +275,12 @@ impl Context<'_> {
             0
         };
         match i.relation {
+            s::Relation::Native {
+                tag,
+                degree,
+                evaluations,
+                zero,
+            } => (json!({"Native":[tag,evaluations,zero]}), degree),
             s::Relation::MatMulWeight => {
                 let w = &g.tensors[node.inputs[1].0 as usize].shape;
                 (
@@ -353,7 +359,7 @@ impl Context<'_> {
             let mut degree=1;
             let instances:Vec<_>=stage.instances.iter().map(|i|{
                 let (relation,d)=self.relation(i);degree=degree.max(d);
-                let zero=matches!(i.source,s::Source::ZeroCheck);
+                let zero=matches!(i.source,s::Source::ZeroCheck) || matches!(i.relation,s::Relation::Native{zero:true,..});
                 let mut z=if zero {point(&i.point)}else{Vec::new()};if zero && let s::Layers::Eq(r)=&i.layers {z.extend(point(r));}
                 json!({"relation":relation,"node":self.node(i.node,0).0,"tensor":self.tensor(i.kind),"stacked":matches!(i.node,s::NodeRef::Position(_)),"vars":i.vars,"degree":d,"point":if zero {Vec::new()}else{point(&i.point)},"layers":self.layers(&i.layers),"zero":z,"evals":stage.claims[i.claims.clone()].iter().map(|c|self.claim(c)).collect::<Vec<_>>()})
             }).collect();

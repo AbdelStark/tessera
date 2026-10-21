@@ -7,8 +7,8 @@ use tessera_ir::{Broadcast, Node, NodeKind, Op, OpClass};
 
 use super::claims::Derivation;
 use super::{
-    Claim, Coord, Instance, Kind, Layers, NodeRef, Part, Relation, Source, Stage, axis_vars,
-    blocks, refuse,
+    Claim, Coord, Instance, Kind, Layers, Native, NodeRef, Part, Relation, Site, Source, Stage,
+    axis_vars, blocks, refuse,
 };
 use crate::CompileError;
 
@@ -22,15 +22,19 @@ struct Planned<'a> {
     point: Vec<Coord>,
     layers: Layers,
     vars: u32,
+    origin: u32,
+    native: Option<&'a Native>,
 }
 
 /// Stage `index`: an instance per virtual part of the stage before's claims `previous`, in order,
 /// then in stage 1 the OneHot and equality zero-checks in node order, and the claims their evaluations leave.
 /// It has no instances when nothing remains to prove.
-pub(super) fn stage(
-    derivation: &mut Derivation<'_>,
+pub(super) fn stage<'a>(
+    derivation: &mut Derivation<'a>,
     index: u16,
     previous: &[Claim],
+    sites: &[Site],
+    native: &'a [Native],
 ) -> Result<Stage, CompileError> {
     let lambda = derivation.layers.vars;
     let mut planned = Vec::new();
@@ -59,8 +63,30 @@ pub(super) fn stage(
                 point: atom.point.clone(),
                 layers,
                 vars,
+                origin: if index == 1 {
+                    match sites[c] {
+                        Site::Gadget {
+                            node: NodeRef::Node(n),
+                            ..
+                        } => n.0,
+                        Site::Gadget {
+                            node: NodeRef::Position(p),
+                            ..
+                        } => derivation.layers.node(p, 0).0,
+                        Site::Logits => derivation.graph.nodes.last().map_or(u32::MAX, |n| n.id.0),
+                    }
+                } else {
+                    graph_node.id.0
+                },
+                native: None,
             });
         }
+    }
+    if index == 1 {
+        for n in native.iter().filter(|n| !n.zero) {
+            planned.push(native_plan(derivation, n)?);
+        }
+        planned.sort_by_key(|p| p.origin);
     }
     let first_zero = planned.len();
     if index == 1 {
@@ -90,8 +116,17 @@ pub(super) fn stage(
                     point: Vec::new(),
                     layers: layers.clone(),
                     vars,
+                    origin: graph_node.id.0,
+                    native: None,
                 });
             }
+        }
+    }
+    if index == 1 {
+        for n in native.iter().filter(|n| n.zero) {
+            let plan = native_plan(derivation, n)?;
+            let offset = planned[first_zero..].partition_point(|p| p.origin <= n.node.0);
+            planned.insert(first_zero + offset, plan);
         }
     }
     let rounds = planned.iter().map(|p| p.vars).max().unwrap_or(0);
@@ -109,7 +144,9 @@ pub(super) fn stage(
                 round,
             })
             .collect();
-        if plan.source == Source::ZeroCheck {
+        if plan.source == Source::ZeroCheck
+            || matches!(plan.relation, Relation::Native { zero: true, .. })
+        {
             // Its coordinates of the zero-check point: the last n_i, the layer's the highest.
             let zero: Vec<Coord> = (zero_vars - plan.vars..zero_vars)
                 .map(Coord::Zero)
@@ -121,7 +158,59 @@ pub(super) fn stage(
             plan.point = zero[..own].to_vec();
         }
         let start = claims.len();
-        for (kind, point, layers) in evaluations(derivation, &plan, &challenges)? {
+        let outputs = if let Some(n) = plan.native {
+            let layer_vars = stacked(&plan.layers, lambda);
+            let local = challenges.len() - layer_vars;
+            n.outputs
+                .iter()
+                .map(|out| {
+                    let point =
+                        challenges[out.from as usize..(out.from + out.vars) as usize].to_vec();
+                    let (kind, layers) = if matches!(plan.node, NodeRef::Position(_)) {
+                        let producer = derivation
+                            .graph
+                            .nodes
+                            .iter()
+                            .find(|node| node.outputs.contains(&out.tensor));
+                        let kind = if Some(out.tensor)
+                            == derivation
+                                .layers
+                                .tensor(derivation.graph, Kind::LayerInput, 0)
+                        {
+                            Kind::LayerInput
+                        } else if let Some(node) = producer {
+                            let Some((0, p)) = derivation.layers.position(node.id) else {
+                                return refuse(
+                                    Some(n.node),
+                                    "native graph outputs preserve their layer family",
+                                );
+                            };
+                            Kind::Layer {
+                                position: p,
+                                output: node
+                                    .outputs
+                                    .iter()
+                                    .position(|&t| t == out.tensor)
+                                    .unwrap_or(usize::MAX)
+                                    as u32,
+                            }
+                        } else {
+                            return refuse(
+                                Some(n.node),
+                                "native graph outputs name original tensor sources",
+                            );
+                        };
+                        (kind, Layers::Eq(challenges[local..].to_vec()))
+                    } else {
+                        derivation.layers.outside(out.tensor)
+                    };
+                    Ok((kind, point, layers))
+                })
+                .collect::<Result<Vec<_>, CompileError>>()?
+        } else {
+            evaluations(derivation, &plan, &challenges)?
+        };
+        for (kind, point, layers) in outputs {
             let claim = derivation.claim(index, claims.len(), kind, point, layers)?;
             claims.push(claim);
         }
@@ -143,6 +232,51 @@ pub(super) fn stage(
         rounds,
         zero_vars,
         claims,
+    })
+}
+
+fn native_plan<'a>(
+    derivation: &Derivation<'a>,
+    n: &'a Native,
+) -> Result<Planned<'a>, CompileError> {
+    let graph_node = &derivation.graph.nodes[n.node.0 as usize];
+    let (node, kind, layers) = match derivation.layers.position(n.node) {
+        Some((0, p)) => (
+            NodeRef::Position(p),
+            Kind::Layer {
+                position: p,
+                output: 0,
+            },
+            Layers::Eq((0..derivation.layers.vars).map(Coord::Layer).collect()),
+        ),
+        Some(_) => {
+            return refuse(
+                Some(n.node),
+                "a native site is the first layer's representative",
+            );
+        }
+        None => (
+            NodeRef::Node(n.node),
+            Kind::Tensor(graph_node.outputs[0]),
+            Layers::None,
+        ),
+    };
+    Ok(Planned {
+        source: Source::Native(n.tag),
+        relation: Relation::Native {
+            tag: n.tag,
+            degree: n.degree,
+            evaluations: n.evaluations,
+            zero: n.zero,
+        },
+        node,
+        graph_node,
+        kind,
+        point: Vec::new(),
+        layers,
+        vars: n.vars,
+        origin: n.node.0,
+        native: Some(n),
     })
 }
 
@@ -224,6 +358,9 @@ fn instance_vars(
     let shape = |t: tessera_ir::TensorId| derivation.graph.tensors[t.0 as usize].shape.as_slice();
     let vars = |t| blocks(shape(t)).iter().sum::<u32>();
     let own = match relation {
+        Relation::Native { .. } => {
+            return refuse(Some(node.id), "native geometry comes from its descriptor");
+        }
         Relation::MatMulWeight => match (shape(node.inputs[0]), shape(node.inputs[1])) {
             ([_, inner], [_, inner_w]) if inner == inner_w => axis_vars(*inner),
             _ => {
@@ -301,6 +438,9 @@ fn evaluations(
     };
     let target = plan.point.as_slice();
     Ok(match plan.relation {
+        Relation::Native { .. } => {
+            return refuse(id, "native source transformations come from its descriptor");
+        }
         Relation::MatMulWeight => {
             // Y [n, out] at r_o ‖ r_t; the instance's point r'_i ‖ ρ'.
             let out = axis_vars(shape(1)[0]) as usize;

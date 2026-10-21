@@ -183,6 +183,7 @@ fn prover<'a>(
         rope,
         sources: Sources::default(),
         omit_onehot: None,
+        native: None,
     }
 }
 

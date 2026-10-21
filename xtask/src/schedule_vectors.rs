@@ -51,6 +51,8 @@ fn coords(point: &[Coord]) -> Value {
 /// RFC-0010's name of a relation's kind.
 fn relation(relation: Relation) -> &'static str {
     match relation {
+        Relation::Native { zero: true, .. } => "ZeroCheck",
+        Relation::Native { zero: false, .. } => "Elementwise",
         Relation::MatMulWeight => "MatMulWeight",
         Relation::MatMulAct { .. } => "MatMulAct",
         Relation::Mul(_) => "Elementwise",

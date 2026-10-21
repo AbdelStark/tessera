@@ -391,6 +391,7 @@ impl Verifier<'_> {
                     }
                 }
                 Source::ZeroCheck => F::ZERO,
+                Source::Native(_) => panic!("this oracle covers graph-only schedules"),
             })
             .collect();
         let degree = stage
@@ -460,6 +461,7 @@ impl Verifier<'_> {
         let stacked = matches!(instance.layers, Layers::Eq(_)) && self.schedule.layers.vars > 0;
         let node = self.node(instance.node);
         match instance.relation {
+            Relation::Native { .. } => panic!("this oracle covers graph-only schedules"),
             Relation::MatMulWeight => 2 + usize::from(stacked),
             Relation::MatMulAct { .. } => {
                 let heads = self.lowering.graph.tensors[node.inputs[0].0 as usize].shape[0];
@@ -507,6 +509,7 @@ impl Verifier<'_> {
         let node = self.node(instance.node);
         let shape = |i: usize| &self.lowering.graph.tensors[node.inputs[i].0 as usize].shape;
         match instance.relation {
+            Relation::Native { .. } => panic!("this oracle covers graph-only schedules"),
             Relation::MatMulWeight => {
                 let layers =
                     eq(&target[target.len() - lambda..], &r[r.len() - lambda..]).expect("eq");
@@ -542,6 +545,7 @@ impl Verifier<'_> {
                 .inverse()
                 .unwrap();
                 match instance.relation {
+                    Relation::Native { .. } => panic!("this oracle covers graph-only schedules"),
                     Relation::OneHotVocabulary => {
                         eq(&target, &r).unwrap()
                             * (F::ONE - less_than(rv, vocab as u64).unwrap())
