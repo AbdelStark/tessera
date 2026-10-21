@@ -176,12 +176,10 @@ impl<'a> Claims<'a> {
     ) -> Result<()> {
         for p in &pieces {
             // Only validate source/arity here; the PCS checks later consume ALL its images.
-            let _ = layout
-                .claim(p.source, &point)
-                .map_err(|e| match e {
-                    advice::PointError::Memory => Error::Memory,
-                    _ => Error::Internal,
-                })?;
+            let _ = layout.claim(p.source, &point).map_err(|e| match e {
+                advice::PointError::Memory => Error::Memory,
+                _ => Error::Internal,
+            })?;
         }
         push(
             &mut self.advice,
