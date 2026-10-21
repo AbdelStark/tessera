@@ -393,6 +393,9 @@ def model_geometry(case):
                 record(1, domain(outputs[0][0]) + stacked(node), True)
             if op == "RsqrtRow":
                 record(1, domain(outputs[0][0]) + stacked(node), True)
+                # RFC-0050's simplified u binding retains residual feature/time/layer zeros.
+                residual = producers[inputs[0]][3][0]
+                record(1, domain(residual) + stacked(node), True)
                 follow(inputs[0], 2)
             if op == "SoftmaxRow":
                 record(1, domain(inputs[0]) + stacked(node))

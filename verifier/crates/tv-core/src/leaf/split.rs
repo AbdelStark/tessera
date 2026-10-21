@@ -348,6 +348,31 @@ impl Layout {
         self.values
     }
 
+    pub(crate) fn check_bound(&self, bound: &Bound) -> Result<(), Error> {
+        if bound.columns.len() != self.values {
+            return Err(Error::Internal);
+        }
+        for input in &self.inputs {
+            for (i, read) in input.reads.iter().enumerate() {
+                let at = input.start.checked_add(i).ok_or(Error::Internal)?;
+                let column = bound.columns.get(at).ok_or(Error::Internal)?;
+                if column.node != input.node
+                    || column.column != read.column
+                    || column.point.len() != read.coordinates.len()
+                {
+                    return Err(Error::Internal);
+                }
+                for (&coordinate, value) in read.coordinates.iter().zip(&column.point) {
+                    let coordinate = usize::try_from(coordinate).map_err(|_| Error::Internal)?;
+                    if bound.point.get(coordinate) != Some(value) {
+                        return Err(Error::Internal);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Used tables and their unrounded column lengths, in ascending table order.
     pub fn instances(&self) -> impl Iterator<Item = (TableId, u64)> + '_ {
         self.instances.iter().map(|i| (i.table, i.entries))
@@ -490,5 +515,53 @@ impl Layout {
             atoms: copied(splits.get(self.values..).ok_or(Error::Internal)?).map_err(own)?,
             point: leaf.point,
         })
+    }
+}
+
+#[cfg(test)]
+mod bound_tests {
+    use super::*;
+    #[test]
+    fn original_first_read_identity_and_coordinates_are_required() {
+        let layout = Layout {
+            inputs: vec![Inputs {
+                node: NodeId(7),
+                reads: vec![Read {
+                    column: Column::Input(0),
+                    coordinates: vec![1],
+                }],
+                start: 0,
+            }],
+            instances: Vec::new(),
+            values: 1,
+        };
+        let bound = Bound {
+            columns: vec![ColumnClaim {
+                node: NodeId(7),
+                column: Column::Input(0),
+                point: vec![Fp2::ONE],
+                value: Fp2::ZERO,
+            }],
+            multiplicities: Vec::new(),
+            forests: Vec::new(),
+            atoms: Vec::new(),
+            point: vec![Fp2::ZERO, Fp2::ONE],
+        };
+        assert_eq!(layout.check_bound(&bound), Ok(()));
+        for fault in 0..6 {
+            let mut bad = bound.clone();
+            match fault {
+                0 => bad.columns.push(bad.columns[0].clone()),
+                1 => bad.columns[0].node = NodeId(8),
+                2 => bad.columns[0].column = Column::Output(0),
+                3 => bad.columns[0].point.clear(),
+                4 => bad.columns[0].point[0] = Fp2::ZERO,
+                5 => {
+                    bad.point.pop();
+                }
+                _ => unreachable!(),
+            }
+            assert_eq!(layout.check_bound(&bad), Err(Error::Internal));
+        }
     }
 }

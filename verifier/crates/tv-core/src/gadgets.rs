@@ -50,6 +50,7 @@ pub mod argmax;
 pub mod argmax_outputs;
 pub mod comparison;
 pub mod decomposition;
+pub mod model;
 pub mod onehot;
 pub mod requant;
 pub mod root;
@@ -91,6 +92,7 @@ pub struct Claim<'a> {
 pub struct Plan<'g> {
     graph: &'g Graph,
     selected: Selection,
+    policy: GadgetPolicy,
 }
 
 impl<'g> Plan<'g> {
@@ -103,6 +105,7 @@ impl<'g> Plan<'g> {
         Ok(Self {
             graph,
             selected: selection::derive(graph, policy)?,
+            policy,
         })
     }
 }
