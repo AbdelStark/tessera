@@ -57,7 +57,7 @@ impl ModelSchedule {
     /// The independent selection's public-domain errors; `Memory` on failed reservation;
     /// `Internal` for invalid own graph/template geometry or sizes outside 63 variables.
     pub fn derive(graph: &Graph, policy: GadgetPolicy) -> Result<Self, ClaimsError> {
-        let graph_schedule = crate::schedule::derive(graph).map_err(|error| match error {
+        let layers = crate::schedule::template_layers(graph).map_err(|error| match error {
             crate::schedule::ScheduleError::Memory => ClaimsError::Memory,
             _ => ClaimsError::Internal,
         })?;
@@ -121,7 +121,6 @@ impl ModelSchedule {
         let end = producer(graph, *checkpoints.last().ok_or(ClaimsError::Internal)?)?
             .checked_add(1)
             .ok_or(ClaimsError::Internal)?;
-        let layers = graph_schedule.layers();
         let layer_count = usize::try_from(layers).map_err(|_| ClaimsError::Internal)?;
         let span = end.checked_sub(first).ok_or(ClaimsError::Internal)?;
         if span == 0 || span.checked_rem(layer_count) != Some(0) {

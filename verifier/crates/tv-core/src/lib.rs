@@ -45,6 +45,7 @@
 //! | [`lowering::lower`] | the Llama lowering of a claim list's public part, node by node (RFC-0044) |
 //! | [`schedule::derive()`] | the stage schedule of a lowered graph: the leaf stage's claims, each reduction stage's instances with their relations, variables and degrees, and where every claim goes (RFC-0010, RFC-0037) |
 //! | [`leaf::ModelSchedule`] / [`leaf::Schedule::verify`] | independently derived model lookup counts and Softmax forest roots; the shared tree/LogUp loop, with all leaf claims retained |
+//! | [`leaf::split::Layout`] | canonical model lookup forms, aligned blocks and first-read source order; the combined split absorption and column identities, retaining all reduction/opening debts |
 //! | [`stages::verify`] | the leaf stage's splits, then each reduction stage: its layer and zero-check points, its batched sumcheck with the public factors, its splits; and the claim pool |
 //! | [`selectors`] | the public factors: `LT`, the causal selector `C̃`, the row selector `ψ̃`, layer weights `w̃`, `Rotate`'s kernel, and RFC-0035's padding zero-check |
 //! | [`gadgets`] | final checks for requantization, NonNeg, BigIntCompare, OneHot, roots, causal Softmax and Argmax, with canonical source/range obligations (RFC-0009/0050) |

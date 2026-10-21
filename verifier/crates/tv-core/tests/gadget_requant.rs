@@ -2,6 +2,7 @@
 
 //! Frozen model-derived source ids and independently computed integer lookup rows.
 mod claim_support;
+mod split_support;
 
 use claim_support::{claims_of, integer, items, list, member, number, string, text};
 use tv_core::advice::{Auxiliary, Source};
@@ -258,6 +259,71 @@ fn every_changed_source_key_and_value_rejects_with_the_canonical_gadget_id() {
             assert_eq!(
                 site.check(&longer, &values, &tuples).err(),
                 Some(GadgetError::Internal)
+            );
+        }
+    }
+}
+
+#[test]
+fn canonical_split_forms_match_all_frozen_requant_keys_and_values() {
+    for case in list(&read_vectors("gadget-finals/requant.json"), "cases") {
+        let (claims, graph) = model(case);
+        let sites = tv_core::leaf::split::model_sites(&graph, claims.gadget_policy).unwrap();
+        for expected in list(case, "sites") {
+            let id = NodeId(number(member(expected, "node")));
+            let layer = sites
+                .iter()
+                .flat_map(|s| &s.layers)
+                .find(|l| l.node == id)
+                .unwrap();
+            use tv_core::leaf::split::Column;
+            let low = Column::Auxiliary(Auxiliary::RequantLow);
+            let middle = Column::Auxiliary(Auxiliary::RequantMiddle);
+            let saturation = Column::Auxiliary(Auxiliary::RequantSaturation);
+            let class = list(expected, "sources").len() > 2
+                && string(&items(&list(expected, "sources")[2])[0]) == "tensor";
+            let mut order = match pattern(member(expected, "pattern")) {
+                Pattern::Requant1 | Pattern::Lookup => vec![Column::Input(0)],
+                Pattern::RequantSplit { .. } => vec![low, Column::Input(0)],
+                Pattern::RequantWide { split, .. } => {
+                    if split == 0 {
+                        vec![middle, Column::Input(0), saturation]
+                    } else {
+                        vec![low, middle, Column::Input(0), saturation]
+                    }
+                }
+                _ => unreachable!(),
+            };
+            if class {
+                order.push(Column::Input(1));
+            }
+            order.push(Column::Output(0));
+            assert_eq!(split_support::reads(layer), order);
+            assert_eq!(
+                layer.lookups.iter().map(|l| l.table).collect::<Vec<_>>(),
+                list(expected, "tables")
+                    .iter()
+                    .map(|v| TableId(number(v)))
+                    .collect::<Vec<_>>()
+            );
+            let values: Vec<_> = list(expected, "sources")
+                .iter()
+                .zip(fields(member(expected, "evaluations")))
+                .map(|(s, v)| (split_support::local(&graph, id, source(s)), v))
+                .collect();
+            split_support::check(
+                layer,
+                &values,
+                &fields(member(expected, "key_evals")),
+                &fields(member(expected, "value_evals")),
+                |column| {
+                    if column == Column::Input(1) {
+                        let d: u32 = number(list(expected, "shape").last().unwrap());
+                        (u32::BITS - (d - 1).leading_zeros()) as usize
+                    } else {
+                        list(expected, "point").len()
+                    }
+                },
             );
         }
     }

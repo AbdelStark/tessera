@@ -684,6 +684,11 @@ pub fn derive(graph: &Graph) -> Result<Schedule, ScheduleError> {
     deriving.schedule()
 }
 
+/// Validate the common layer template without deriving unrelated graph reductions.
+pub(crate) fn template_layers(graph: &Graph) -> Result<u32, ScheduleError> {
+    Ok(Layout::of(graph)?.layers)
+}
+
 // ----- Layers and the template --------------------------------------------------------------
 
 /// Where a tensor lives.

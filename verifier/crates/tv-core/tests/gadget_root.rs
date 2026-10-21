@@ -2,6 +2,7 @@
 
 //! Model-derived root bindings against frozen integer witnesses and component proofs.
 mod claim_support;
+mod split_support;
 mod support;
 
 use claim_support::{claims_of, integer, items, list, member, number, string};
@@ -639,6 +640,90 @@ fn each_altered_leaf_source_key_or_range_value_and_malformed_count_has_the_exact
                 .map(|e| e.code()),
                 Some("ERR-INTERNAL")
             );
+        }
+    }
+}
+
+#[test]
+fn canonical_split_forms_match_all_frozen_root_keys_including_virtual_tops() {
+    use tv_core::leaf::split::Column;
+    for case in list(&read_vectors("gadget-finals/roots.json"), "cases") {
+        let (claims, graph) = model(case);
+        let sites = tv_core::leaf::split::model_sites(&graph, claims.gadget_policy).unwrap();
+        let splits = tv_core::leaf::split::Layout::derive(&graph, claims.gadget_policy).unwrap();
+        let trees = tv_core::leaf::ModelSchedule::derive(&graph, claims.gadget_policy).unwrap();
+        assert_eq!(splits.instances().collect::<Vec<_>>(), trees.lookups());
+        for expected in list(case, "roots") {
+            let id = NodeId(number(member(expected, "node")));
+            let layer = sites
+                .iter()
+                .flat_map(|s| &s.layers)
+                .find(|l| l.node == id)
+                .unwrap();
+            let keys = fields(member(expected, "keys"));
+            let mut values: Vec<_> = list(expected, "sources")
+                .iter()
+                .zip(fields(member(expected, "values")))
+                .map(|(s, v)| (split_support::local(&graph, id, source(s)), v))
+                .collect();
+            let mut order = vec![
+                Column::Output(0),
+                Column::Auxiliary(Auxiliary::RootInput(0)),
+                Column::Auxiliary(Auxiliary::RootInput(1)),
+                Column::Auxiliary(Auxiliary::RootInput(2)),
+                Column::RootInput,
+            ];
+            order.extend(values[5..].iter().map(|&(c, _)| c));
+            assert_eq!(split_support::reads(layer), order);
+            assert_eq!(
+                layer.lookups.iter().map(|l| l.table).collect::<Vec<_>>(),
+                list(expected, "tables")
+                    .iter()
+                    .map(|v| TableId(number(v)))
+                    .collect::<Vec<_>>()
+            );
+            let u = keys[1..5]
+                .iter()
+                .enumerate()
+                .fold(Fp2::ZERO, |sum, (i, &v)| {
+                    sum + Fp2::from(Fp::reduce(1 << (16 * i))) * v
+                });
+            values.push((Column::RootInput, u));
+            split_support::check(layer, &values, &keys, &vec![Fp2::ZERO; keys.len()], |_| {
+                list(expected, "point").len()
+            });
+            // Exercise nonzero virtual tops that tiny honest inputs never reach. These affine
+            // identities hold over the field independently of nonlinear range membership.
+            let mut keys = keys;
+            for (j, digit) in [11, 13, 17, 7].into_iter().enumerate() {
+                keys[1 + j] = Fp2::from(Fp::reduce(digit));
+            }
+            let u = keys[1..5]
+                .iter()
+                .enumerate()
+                .fold(Fp2::ZERO, |sum, (j, &v)| {
+                    sum + Fp2::from(Fp::reduce(1 << (16 * j))) * v
+                });
+            let low: usize = (number::<usize>(member(expected, "width")) - 1) / 8;
+            let mut rho = Fp2::from(Fp::reduce(5 << (8 * low)));
+            for j in 0..low {
+                keys[5 + j] = Fp2::from(Fp::reduce(23 + j as u64));
+                rho += Fp2::from(Fp::reduce(1 << (8 * j))) * keys[5 + j];
+            }
+            keys[0] = rho;
+            keys[5 + low] = Fp2::from(Fp::reduce(5));
+            for (column, value) in &mut values {
+                match *column {
+                    Column::RootInput => *value = u,
+                    Column::Output(0) => *value = rho,
+                    Column::Auxiliary(Auxiliary::RootInput(j)) => *value = keys[1 + j as usize],
+                    Column::Auxiliary(Auxiliary::RootLow(j)) => *value = keys[5 + j as usize],
+                    _ => (),
+                }
+            }
+            split_support::check(layer, &values, &keys, &vec![Fp2::ZERO; keys.len()], |_| {
+                list(expected, "point").len()
+            });
         }
     }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The leaf stage's layout and split (RFC-0045), end to end on a conformance model, checked by a
-//! production independent shared-tree verifier and the RFC-0045 split check below.
+//! production independent shared-tree and RFC-0045 split verifiers.
 //!
 //! - **The model.** `tiny-2-servable` is lowered for its first sequence, its gadgets selected, and
 //!   its forward pass computed by the CPU engine (`tessera-witness`). Its leaf sites here are the
@@ -19,7 +19,7 @@
 //!   level, and checks every instance's key and value claims against the split values by
 //!   RFC-0045's identity: `Reject(Sumcheck { stage: 0, round: 0 })` on a mismatch.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -529,45 +529,71 @@ fn derive_reads(gadget: &SiteGadget) -> Reads {
     reads
 }
 
-/// `eq(r, v) = Π_i (v_i·r_i + (1 − v_i)·(1 − r_i))`, `v_i` the bits of `v`.
-fn eq_at(r: &[TvFp2], v: u64) -> TvFp2 {
-    r.iter().enumerate().fold(TvFp2::ONE, |product, (i, &ri)| {
-        product
-            * match i < 64 && (v >> i) & 1 == 1 {
-                true => ri,
-                false => TvFp2::ONE - ri,
-            }
-    })
-}
-
-/// `LT(r, m) = Σ_{x<m} eq(r, x)` over `|r|` bits, in `O(|r|)`: from the highest bit down, each bit
-/// where `m` has a 1 adds the `x` that agree with `m` above it and have 0 there, whatever their
-/// bits below, which sum to 1. `m = 2^{|r|}` is every `x`.
-fn lt(r: &[TvFp2], m: u64) -> TvFp2 {
-    if r.len() < 64 && m >= 1u64 << r.len() {
-        return TvFp2::ONE;
-    }
-    let mut sum = TvFp2::ZERO;
-    let mut agree = TvFp2::ONE;
-    for j in (0..r.len()).rev() {
-        match j < 64 && (m >> j) & 1 == 1 {
-            true => {
-                sum += agree * (TvFp2::ONE - r[j]);
-                agree *= r[j];
-            }
-            false => agree *= TvFp2::ONE - r[j],
-        }
-    }
-    sum
-}
-
-/// `Σ_t a_t·x(t) + a_0` of a form, in the verifier's field.
-fn form(f: &Affine<Fp>, x: impl Fn(Term) -> TvFp2) -> TvFp2 {
-    f.terms
+/// Test-data adapter only: production verifier metadata never imports prover descriptors.
+fn split_layout(sites: &[Site]) -> tv_core::leaf::split::Layout {
+    use tv_core::advice::Auxiliary;
+    use tv_core::leaf::split as v;
+    let column = |term| match term {
+        Term::Input => v::Column::Input(0),
+        Term::Class => v::Column::Input(1),
+        Term::Committed(Committed::Y) => v::Column::Output(0),
+        Term::Committed(role) => v::Column::Auxiliary(match role {
+            Committed::ZLo => Auxiliary::RequantLow,
+            Committed::H0 => Auxiliary::RequantMiddle,
+            Committed::G => Auxiliary::RequantSaturation,
+            Committed::Limb(j) => Auxiliary::SoftmaxA(u32::from(j)),
+            Committed::Y => unreachable!(),
+        }),
+    };
+    let sites: Vec<_> = sites
         .iter()
-        .fold(TvFp2::from(tv_fp(f.constant)), |sum, &(a, t)| {
-            sum + x(t) * TvFp2::from(tv_fp(a))
+        .enumerate()
+        .map(|(s, site)| v::Site {
+            layers: site
+                .layers
+                .iter()
+                .enumerate()
+                .map(|(l, gadget)| {
+                    let reads = derive_reads(gadget);
+                    let form = |f: &Affine<Fp>| v::Affine {
+                        constant: tv_fp(f.constant),
+                        terms: f
+                            .terms
+                            .iter()
+                            .map(|&(a, t)| {
+                                (
+                                    tv_fp(a),
+                                    v::Read {
+                                        column: column(t),
+                                        coordinates: reads
+                                            .iter()
+                                            .find(|(term, _)| *term == t)
+                                            .unwrap()
+                                            .1
+                                            .clone(),
+                                    },
+                                )
+                            })
+                            .collect(),
+                    };
+                    v::Layer {
+                        node: tv_core::lowering::NodeId((s + l * sites.len()) as u32),
+                        lookups: gadget
+                            .lookups
+                            .iter()
+                            .map(|lookup| v::Lookup {
+                                table: tv_tables::TableId(lookup.lookup.table.0),
+                                variables: gadget.domain.iter().map(|&d| bits(d)).sum(),
+                                key: form(&lookup.lookup.key),
+                                value: lookup.lookup.value.as_ref().map(form),
+                            })
+                            .collect(),
+                    }
+                })
+                .collect(),
         })
+        .collect();
+    v::Layout::new(&sites).expect("independent split descriptors")
 }
 
 /// What the verifier ends with on an accepted leaf stage.
@@ -602,21 +628,11 @@ fn verify(
     specs: &BTreeMap<TableId, TableSpec>,
     messages: &Messages,
 ) -> Result<Accepted, Reject> {
-    verify_with(sites, specs, messages, derive_instances(sites))
-}
-
-/// [`verify`] with the instances `instances` in place of the derived ones.
-fn verify_with(
-    sites: &[Site],
-    specs: &BTreeMap<TableId, TableSpec>,
-    messages: &Messages,
-    instances: Vec<VInstance>,
-) -> Result<Accepted, Reject> {
     verify_combined(
         sites,
         specs,
         messages,
-        instances,
+        derive_instances(sites),
         &[],
         0,
         Mode::NonInteractive,
@@ -699,63 +715,36 @@ fn verify_combined(
             "forest {index} leaves are still owed by the model stages"
         );
     }
-    let leaves = checked.lookups;
-    let point = checked.point;
-    // The split: one value per tensor, site and layer, absorbed as one TCE Vec<Fp2>.
-    let reads: Vec<Vec<Reads>> = sites
-        .iter()
-        .map(|s| s.layers.iter().map(derive_reads).collect())
-        .collect();
-    let count: usize = reads.iter().flatten().map(Vec::len).sum();
-    if messages.splits.len() != count + atom_count {
-        return Err(SPLIT);
-    }
-    let mut tce = (messages.splits.len() as u64).to_le_bytes().to_vec();
-    for value in &messages.splits {
-        tce.extend_from_slice(&value.to_le_bytes());
-    }
-    t.absorb(
-        tv_hash::transcript::Ascii::new("stage/0/split").expect("ASCII"),
-        &tce,
+    let leaves = checked.lookups.clone();
+    let forests = checked.forests.clone();
+    let layout = split_layout(sites);
+    let bound = layout
+        .bind(&mut t, checked, &messages.splits, atom_count, |id| {
+            let index = instances.iter().position(|i| i.table.0 == id.0)?;
+            let table = &tables[index];
+            let (key, value) = table.row(0)?;
+            Some((
+                key,
+                (!matches!(table.spec().kind, tv_tables::TableKind::Range { .. })).then_some(value),
+            ))
+        })
+        .map_err(|error| match error {
+            tv_core::leaf::split::Error::Mismatch | tv_core::leaf::split::Error::Count { .. } => {
+                SPLIT
+            }
+            _ => panic!("verifier metadata or resource fault: {error}"),
+        })?;
+    assert_eq!(bound.atoms, messages.splits[layout.values()..]);
+    assert_eq!(bound.forests, forests);
+    assert_eq!(
+        bound.multiplicities,
+        instances
+            .iter()
+            .zip(&leaves.instances)
+            .map(|(i, claim)| (tv_tables::TableId(i.table.0), claim.multiplicity.clone()))
+            .collect::<Vec<_>>()
     );
-    let mut sent = messages.splits.iter().copied();
-    let mut values: HashMap<(usize, usize, Term), TvFp2> = HashMap::new();
-    for (s, layers) in reads.iter().enumerate() {
-        for (l, terms) in layers.iter().enumerate() {
-            for &(term, _) in terms {
-                let value = sent.next().expect("counted");
-                values.insert((s, l, term), value);
-            }
-        }
-    }
-    // The check, instance by instance in table order.
-    for (k, instance) in instances.iter().enumerate() {
-        let h = instance.height as usize;
-        let p = &point[..h];
-        let (key_0, value_0) = tables[k].row(0).expect("row 0");
-        let padding = TvFp2::ONE - lt(p, instance.entries);
-        let mut key = padding * TvFp2::from(key_0);
-        let mut value = padding * TvFp2::from(value_0);
-        for block in &instance.blocks {
-            let k_b = block.vars as usize;
-            let weight = eq_at(&p[k_b..], block.offset >> k_b);
-            let lookup = &sites[block.site].layers[block.layer].lookups[block.lookup].lookup;
-            let x = |term: Term| values[&(block.site, block.layer, term)];
-            key += weight * form(&lookup.key, x);
-            if let Some(f) = &lookup.value {
-                value += weight * form(f, x);
-            }
-        }
-        let claims = &leaves.instances[k];
-        if claims.key.value != key {
-            return Err(SPLIT);
-        }
-        if let Some(claim) = &claims.value
-            && claim.value != value
-        {
-            return Err(SPLIT);
-        }
-    }
+    let point = bound.point;
     let next = t
         .challenge_fp2(tv_hash::transcript::Ascii::new("stage/1/layer/0").expect("ASCII"))
         .expect("a challenge");
@@ -1260,8 +1249,7 @@ fn the_leaf_order_is_an_involution() {
 #[test]
 fn swapping_two_blocks_of_one_size_changes_the_check() {
     let leaf = leaf();
-    let honest = &honest().messages;
-    let mut instances = derive_instances(&leaf.sites);
+    let instances = derive_instances(&leaf.sites);
     let (k, a, b) = instances
         .iter()
         .enumerate()
@@ -1280,15 +1268,6 @@ fn swapping_two_blocks_of_one_size_changes_the_check() {
     assert_eq!(
         instances[k].blocks[a].vars, instances[k].blocks[b].vars,
         "one size"
-    );
-    assert!(verify_with(&leaf.sites, &leaf.specs, honest, instances.clone()).is_ok());
-    let (oa, ob) = (instances[k].blocks[a].offset, instances[k].blocks[b].offset);
-    instances[k].blocks[a].offset = ob;
-    instances[k].blocks[b].offset = oa;
-    assert_eq!(
-        verify_with(&leaf.sites, &leaf.specs, honest, instances).err(),
-        Some(SPLIT),
-        "the verifier's order"
     );
     // The prover's order: the two blocks' keys swapped in the column, the rest as laid out.
     let columns = LeafColumns::new(&leaf.layout, &leaf.tables, &leaf.witness()).expect("columns");
@@ -1318,27 +1297,6 @@ fn swapping_two_blocks_of_one_size_changes_the_check() {
         Some(SPLIT),
         "the prover's order"
     );
-}
-
-/// The verifier's `LT(r, m)` in `O(h)` is `Σ_{x<m} eq(r, x)`, for every `m` up to `2^h`.
-#[test]
-fn lt_is_its_sum_of_eq() {
-    let mut rng = SplitMix64(11);
-    let mut random = || {
-        let c0 = TvFp::reduce(rng.next());
-        TvFp2::new(c0, TvFp::reduce(rng.next()))
-    };
-    for h in 0..=7usize {
-        let r: Vec<TvFp2> = (0..h).map(|_| random()).collect();
-        let mut sum = TvFp2::ZERO;
-        for m in 0..=1u64 << h {
-            assert_eq!(lt(&r, m), sum, "h = {h}, m = {m}");
-            if m < 1 << h {
-                sum += eq_at(&r, m);
-            }
-        }
-        assert_eq!(sum, TvFp2::ONE, "Σ_x eq(r, x) = 1");
-    }
 }
 
 // ----- Synthetic sites: a padded table with values ---------------------------------------------
