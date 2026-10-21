@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The leaf stage's layout and split (RFC-0045), end to end on a conformance model, checked by a
-//! verifier written here from RFC-0045 alone.
+//! production independent shared-tree verifier and the RFC-0045 split check below.
 //!
 //! - **The model.** `tiny-2-servable` is lowered for its first sequence, its gadgets selected, and
 //!   its forward pass computed by the CPU engine (`tessera-witness`). Its leaf sites here are the
@@ -13,8 +13,8 @@
 //!   the engine's.
 //! - **Synthetic sites** at the model's positions and in its prologue pad a `Requant` table, whose
 //!   row 0 has a value other than 0.
-//! - **The verifier** checks LogUp with the verifier workspace's own checks (`tv_core::logup`,
-//!   `tv_core::tree`, `tv-tables`; DEP-2). It then derives the blocks, their offsets, the heights
+//! - **The verifier** runs the production shared-tree driver (`tv_core::leaf`, `tv-tables`;
+//!   DEP-2). It then derives the blocks, their offsets, the heights
 //!   and the tensors each site reads from the sites alone, reads `P` from its own last tree
 //!   level, and checks every instance's key and value claims against the split values by
 //!   RFC-0045's identity: `Reject(Sumcheck { stage: 0, round: 0 })` on a mismatch.
@@ -41,7 +41,6 @@ use tessera_tables::{GeneratedTable, TableId, TableSpec};
 use tessera_witness::{Engine, Witness};
 use tv_core::logup::{self as tvl, LookupError};
 use tv_core::sumcheck as tv;
-use tv_core::tree as tvt;
 
 type Fp = Goldilocks;
 type Fp2 = GoldilocksExt2;
@@ -427,6 +426,7 @@ enum Reject {
     Lookup(LookupError),
     Level(usize, tv::SumcheckError),
     Sumcheck { stage: u16, round: u32 },
+    Malformed,
 }
 
 const SPLIT: Reject = Reject::Sumcheck { stage: 0, round: 0 };
@@ -639,116 +639,68 @@ fn verify_combined(
         .map(|i| tv_table(&specs[&i.table]))
         .collect();
     let mut t = tv_transcript_mode(mode);
-    // LogUp: the roots, every level, the leaf checks (RFC-0008 'Fraction tree').
-    let roots =
-        tvl::check_roots(&mut t, instances.len(), &messages.roots).map_err(Reject::Lookup)?;
-    let mut heights: Vec<usize> = instances
+    let mut trees: Vec<_> = instances
         .iter()
         .zip(&tables)
-        .flat_map(|(i, table)| [i.height as usize, usize::from(table.log2_rows())])
-        .collect();
-    heights.extend(forests.iter().map(|(height, _)| *height));
-    let tallest = heights.iter().copied().max().unwrap_or(0);
-    assert_eq!(messages.levels.len(), tallest, "one proof per level");
-    let mut claims: Vec<tvt::LevelClaim> = roots
-        .instances
-        .iter()
-        .flat_map(|r| {
+        .enumerate()
+        .flat_map(|(instance, (layout, table))| {
             [
-                tvt::LevelClaim::Fraction(r.lookup.clone()),
-                tvt::LevelClaim::Fraction(r.table.clone()),
+                tv_core::leaf::Tree::Lookup {
+                    instance,
+                    height: layout.height,
+                    has_values: !matches!(table.spec().kind, tv_tables::TableKind::Range { .. }),
+                },
+                tv_core::leaf::Tree::Table {
+                    instance,
+                    height: u32::from(table.log2_rows()),
+                },
             ]
         })
         .collect();
-    let first_forest = claims.len();
-    claims.extend(forests.iter().map(|_| {
-        tvt::LevelClaim::Product(tvt::TreeClaim {
-            point: vec![],
-            value: TvFp2::ZERO,
-        })
-    }));
-    let mut last: Option<tvt::TreeLevel> = None;
-    for (level, proof) in messages.levels.iter().enumerate() {
-        let joining: Vec<_> = forests
+    let first_forest = trees.len();
+    trees.extend(
+        forests
             .iter()
-            .enumerate()
-            .filter(|(_, (height, _))| tallest - height == level)
-            .collect();
-        let root_vars =
-            |height: usize, leaves: &[i64]| leaves.len().trailing_zeros() as usize - height;
-        let max_vars = joining
-            .iter()
-            .map(|(_, (height, leaves))| root_vars(*height, leaves))
-            .max()
-            .unwrap_or(0);
-        let root_point: Vec<_> = (0..max_vars)
-            .map(|c| {
-                t.challenge_fp2(
-                    tv_hash::transcript::Ascii::new(&format!("tree/{level}/root/{c}"))
-                        .expect("label"),
-                )
-                .expect("root challenge")
-            })
-            .collect();
-        for (index, (height, leaves)) in joining {
-            let point = root_point[max_vars - root_vars(*height, leaves)..].to_vec();
-            let roots: Vec<_> = leaves
-                .chunks_exact(1 << height)
-                .map(|tree| tree.iter().product())
-                .collect();
-            claims[first_forest + index] = tvt::LevelClaim::Product(tvt::TreeClaim {
-                value: mle(&roots, &point),
-                point,
-            });
-        }
-        let present: Vec<usize> = (0..heights.len())
-            .filter(|&p| tallest - heights[p] <= level)
-            .collect();
-        let entering: Vec<tvt::LevelClaim> = present.iter().map(|&p| claims[p].clone()).collect();
-        let checked = tvt::verify_level(&mut t, level as u32, &entering, proof)
-            .map_err(|error| Reject::Level(level, error))?;
-        for (&p, next) in present.iter().zip(&checked.claims) {
-            claims[p] = next.clone();
-        }
-        last = Some(checked);
-    }
-    for (index, (_, leaves)) in forests.iter().enumerate() {
-        let tvt::LevelClaim::Product(claim) = &claims[first_forest + index] else {
-            panic!("forest claim")
-        };
+            .map(|(height, leaves)| tv_core::leaf::Tree::Forest {
+                height: *height as u32,
+                trees_log: leaves.len().trailing_zeros() - *height as u32,
+            }),
+    );
+    let schedule = tv_core::leaf::Schedule::new(&trees).expect("independent public layout");
+    let checked = schedule
+        .verify(
+            &mut t,
+            tv_core::leaf::Proof {
+                roots: &messages.roots,
+                levels: &messages.levels,
+                values: &messages.values,
+            },
+            |tree, point| {
+                let (height, leaves) = forests.get(tree.checked_sub(first_forest)?)?;
+                let roots: Vec<_> = leaves
+                    .chunks_exact(1 << height)
+                    .map(|tree| tree.iter().product())
+                    .collect();
+                Some(mle(&roots, point))
+            },
+            |instance, beta, point| tables.get(instance)?.eval_mle(point, beta).ok(),
+        )
+        .map_err(|error| match error {
+            tv_core::leaf::Error::Lookup(error) => Reject::Lookup(error),
+            tv_core::leaf::Error::Level { level, error } => Reject::Level(level as usize, error),
+            tv_core::leaf::Error::LevelCount { .. } => Reject::Malformed,
+            _ => panic!("verifier metadata or resource fault: {error}"),
+        })?;
+    for forest in &checked.forests {
+        let index = forest.tree - first_forest;
         assert_eq!(
-            claim.value,
-            mle(leaves, &claim.point),
+            forest.claim.value,
+            mle(&forests[index].1, &forest.claim.point),
             "forest {index} leaves are still owed by the model stages"
         );
     }
-    let fraction = |p: usize| match &claims[p] {
-        tvt::LevelClaim::Fraction(claim) => claim.clone(),
-        tvt::LevelClaim::Product(_) => panic!("a fraction tree's claims"),
-    };
-    let leaves: Vec<tvl::Leaves> = (0..instances.len())
-        .map(|k| tvl::Leaves {
-            lookup: fraction(2 * k),
-            table: fraction(2 * k + 1),
-            has_values: !matches!(tables[k].spec().kind, tv_tables::TableKind::Range { .. }),
-        })
-        .collect();
-    let beta = roots.challenges.beta;
-    let leaves = tvl::check_leaves(
-        &mut t,
-        &roots.challenges,
-        &leaves,
-        &messages.values,
-        |i, rho| tables.get(i)?.eval_mle(rho, beta).ok(),
-    )
-    .map_err(Reject::Lookup)?;
-    // P: the last level's line challenge, then its round challenges from the last to the first.
-    let point: Vec<TvFp2> = match &last {
-        Some(level) => core::iter::once(level.rho)
-            .chain(level.point.iter().rev().copied())
-            .collect(),
-        None => Vec::new(),
-    };
+    let leaves = checked.lookups;
+    let point = checked.point;
     // The split: one value per tensor, site and layer, absorbed as one TCE Vec<Fp2>.
     let reads: Vec<Vec<Reads>> = sites
         .iter()
