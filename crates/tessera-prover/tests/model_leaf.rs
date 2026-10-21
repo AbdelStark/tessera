@@ -391,7 +391,22 @@ fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
             .unwrap()
         })
         .collect();
-    let (stage_plan, independent_stages) = model_stages::schedules(&p, &graph);
+    let native_plan = tessera_prover::native::ModelNativePlan::derive(
+        &p.lowering,
+        &p.selection,
+        &p.claims,
+        &layout,
+    )
+    .unwrap();
+    let stage_plan = native_plan.schedule();
+    let gadgets = tv_core::gadgets::Plan::derive(&graph, claims.gadget_policy).unwrap();
+    let independent_native = tv_core::gadgets::model::Plan::derive(&gadgets).unwrap();
+    model_stages::compare_schedules(&native_plan, &independent_native);
+    let geometry = tessera_prover::derive_model_schedule(&p.claims, n).unwrap();
+    assert_eq!(geometry.sizes.stages.len(), stage_plan.stages.len() - 1);
+    for (a, b) in geometry.sizes.stages.iter().zip(&stage_plan.stages[1..]) {
+        assert_eq!((a.rounds, a.zero_vars), (b.rounds, b.zero_vars));
+    }
     for mode in [Mode::Live, Mode::NonInteractive] {
         let mut t = transcript(mode);
         let forests = actual.forests();
@@ -402,7 +417,7 @@ fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
             .iter()
             .map(|c| lookup.point()[..c.point.len()].to_vec())
             .collect();
-        let mut stages = tessera_prover::StageProver::new(&p.lowering, &stage_plan, &witness);
+        let mut stages = tessera_prover::StageProver::new(&p.lowering, stage_plan, &witness);
         let graph_leaf = stages.leaf(&points).unwrap();
         let atoms = stages.leaf_split_values().unwrap();
         let proof = lookup.finish(&atoms).unwrap();
@@ -510,13 +525,13 @@ fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
             &layout,
             &bound,
             &witness,
-            &source,
-            &advice,
-            &stage_plan,
-            &independent_stages,
+            &actual,
+            &native_plan,
+            &independent_native,
             &mut stages,
             &points,
             &graph_leaf,
+            &proof,
             &mut t,
             &mut t2,
         );

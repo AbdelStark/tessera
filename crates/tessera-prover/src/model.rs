@@ -161,6 +161,13 @@ pub fn derive_model_schedule(claims: &ClaimList, n: u32) -> Result<ModelSchedule
             Op::OneHot { .. } => {}
             Op::RsqrtRow { .. } => {
                 geometry.record(1, vars(shape(node.outputs[0]))? + lambda, true)?;
+                // RFC-0050: the simplified u binding also proves every residual padding axis.
+                let sum = lowering
+                    .graph
+                    .producer(node.inputs[0])
+                    .ok_or_else(internal)?;
+                let residual = lowering.graph.nodes[sum.0 as usize].inputs[0];
+                geometry.record(1, vars(shape(residual))? + lambda, true)?;
                 let reference = layer.map_or(NodeRef::Node(id), |(_, p)| NodeRef::Position(p));
                 let site = graph
                     .sites

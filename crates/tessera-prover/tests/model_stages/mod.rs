@@ -1,311 +1,100 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Actual canonical CPU leaf + mixed Softmax key/forest + ALL graph stages (DEP-2).
-//! This composes components; remaining gadget/opening/greedy debts are not a model verdict.
+//! Actual canonical CPU leaf + ALL native relations + ALL graph stages (DEP-2).
+//! Original source/opening and token/logit debts remain; this is not a model verdict.
 use super::*;
 use tessera_codec::SecretBuf;
-use tessera_ir::Op;
+use tessera_prover::native::{ModelNativePlan, ModelNativeProver};
 use tessera_prover::stages::{NativeContext, NativeProver, StageError};
-use tessera_sumcheck::{Claim, Instance, Table, Term};
-use tv_core::gadgets::stacked::{Key, SoftmaxStack};
-use tv_core::stages::{self, NativeChecks};
+use tessera_sumcheck::{Claim, Instance, Table};
+use tv_core::gadgets::model;
+use tv_core::stages;
 
-pub fn schedules(
-    p: &Public,
-    g: &tv_core::lowering::Graph,
-) -> (tessera_compiler::StageSchedule, tv_core::schedule::Schedule) {
-    let node = p
-        .lowering
-        .graph
-        .nodes
-        .iter()
-        .find(|n| matches!(n.op, Op::SoftmaxRow { .. }))
-        .unwrap();
-    let vars: u32 = p.lowering.graph.tensors[node.inputs[0].0 as usize]
-        .shape
-        .iter()
-        .map(|n| n.next_power_of_two().trailing_zeros())
-        .sum();
-    let mut native: Vec<_> = [10, 11]
-        .into_iter()
-        .map(|tag| tessera_compiler::schedule::Native {
-            tag,
-            node: node.id,
-            vars: vars + p.layers.vars,
-            // Exercise the full mixed degree-four bound; this key polynomial is degree three.
-            degree: if tag == 10 { 4 } else { 3 },
-            evaluations: 2,
-            zero: false,
-            outputs: vec![tessera_compiler::schedule::NativeOutput {
-                tensor: node.inputs[0],
-                from: 0,
-                vars,
-            }],
-        })
-        .collect();
-    let key_vars = p.lowering.graph.tensors[node.inputs[0].0 as usize].shape[2]
-        .next_power_of_two()
-        .trailing_zeros();
-    native.push(tessera_compiler::schedule::Native {
-        tag: 12,
-        node: node.id,
-        vars: vars - key_vars + p.layers.vars,
-        degree: 3,
-        evaluations: 1,
-        zero: true,
-        outputs: Vec::new(),
-    });
-    let plan = tessera_compiler::schedule::derive_composed_schedule(
-        &p.lowering,
-        &[(node.id, Some(0))],
-        &native,
-    )
-    .unwrap();
-    // Own verifier graph supplies the site, domain and source; no prover schedule translation.
-    let (id, node) = g
-        .nodes()
-        .iter()
-        .enumerate()
-        .find(|(_, n)| matches!(n.op(), tv_core::lowering::Op::SoftmaxRow { .. }))
-        .unwrap();
-    let id = tv_core::lowering::NodeId(id as u32);
-    let vars: usize = g
-        .tensor(node.inputs()[0])
-        .unwrap()
-        .shape
-        .dims()
-        .iter()
-        .map(|n| n.next_power_of_two().trailing_zeros() as usize)
-        .sum();
-    let lambda = (g.checkpoints().len() - 1)
-        .next_power_of_two()
-        .trailing_zeros() as usize;
-    let mut native: Vec<_> = [10, 11]
-        .into_iter()
-        .map(|tag| tv_core::schedule::Native {
-            tag,
-            node: id,
-            vars: vars + lambda,
-            // Exercise the full mixed degree-four bound; this key polynomial is degree three.
-            degree: if tag == 10 { 4 } else { 3 },
-            evaluations: 2,
-            zero: false,
-            outputs: vec![tv_core::schedule::NativeOutput {
-                tensor: node.inputs()[0],
-                from: 0,
-                vars,
-            }],
-        })
-        .collect();
-    let key_vars = g.tensor(node.inputs()[0]).unwrap().shape.dims()[2]
-        .next_power_of_two()
-        .trailing_zeros() as usize;
-    native.push(tv_core::schedule::Native {
-        tag: 12,
-        node: id,
-        vars: vars - key_vars + lambda,
-        degree: 3,
-        evaluations: 1,
-        zero: true,
-        outputs: Vec::new(),
-    });
-    let independent = tv_core::schedule::derive_composed(g, &[(id, Some(0))], &native).unwrap();
-    assert_eq!(plan.stage_count() - 1, independent.stages().len());
-    for (a, b) in plan.stages[1..].iter().zip(independent.stages()) {
-        assert_eq!(a.rounds as usize, b.rounds);
-        assert_eq!(a.zero_vars as usize, b.zero_vars);
-        assert_eq!(a.instances.len(), b.instances.len());
+pub fn compare_schedules(plan: &ModelNativePlan, independent: &model::Plan<'_>) {
+    let a = plan.schedule();
+    let b = independent.schedule();
+    assert_eq!(a.stage_count() - 1, b.stages().len());
+    assert_eq!(plan.native().len(), independent.native().len());
+    for (x, y) in plan.native().iter().zip(independent.native()) {
+        assert_eq!(
+            (
+                x.tag,
+                x.node.0,
+                x.vars as usize,
+                x.degree,
+                x.evaluations,
+                x.zero
+            ),
+            (y.tag, y.node.0, y.vars, y.degree, y.evaluations, y.zero)
+        );
+        assert_eq!(x.outputs.len(), y.outputs.len());
+        for (x, y) in x.outputs.iter().zip(&y.outputs) {
+            assert_eq!(
+                (x.tensor.0, x.from as usize, x.vars as usize),
+                (y.tensor.0, y.from, y.vars)
+            );
+        }
     }
-    (plan, independent)
+    for (a, b) in a.stages[1..].iter().zip(b.stages()) {
+        assert_eq!(
+            (a.rounds as usize, a.zero_vars as usize, a.instances.len()),
+            (b.rounds, b.zero_vars, b.instances.len())
+        );
+    }
 }
 
-struct Native<'a> {
-    stack: SoftmaxStack<'a>,
-    lookup: Vec<E>,
-    fixed: Vec<(E, E)>,
-    forest: Option<(Vec<E>, E)>,
-    heads: usize,
-    maximum: SecretBuf<G>,
-    maximum_rows: SecretBuf<G>,
-    padding: Vec<G>,
-    scores: SecretBuf<G>,
-    causal: Vec<G>,
-    equalities: Vec<Vec<F>>,
-    targets: Vec<F>,
-}
-impl Native<'_> {
-    fn with_key<R>(&self, tag: u32, layer: &[E], f: impl FnOnce(&Key<'_, '_>) -> R) -> R {
-        match tag {
-            10 => f(&self.stack.lookup(&self.lookup, layer, &self.fixed).unwrap()),
-            11 => {
-                let scalar;
-                let (point, value) = if let Some((p, v)) = &self.forest {
-                    (p.as_slice(), *v)
-                } else {
-                    scalar = self.lookup.iter().chain(layer).copied().collect::<Vec<_>>();
-                    let real = tv_core::selectors::lt(&self.lookup, self.heads as u64).unwrap()
-                        * tv_core::selectors::lt(layer, self.stack.sites().len() as u64).unwrap();
-                    (scalar.as_slice(), E::ONE - real)
-                };
-                f(&self.stack.forest(point, value).unwrap())
-            }
-            _ => panic!("own native tag"),
-        }
-    }
-}
-impl NativeProver for Native<'_> {
-    fn prepare(&mut self, ctx: NativeContext<'_>) -> Result<(), StageError> {
-        assert_eq!(ctx.stage, 1);
-        let layer = es(ctx.layer);
-        self.targets = [10, 11]
-            .into_iter()
-            .map(|tag| self.with_key(tag, &layer, |k| from_e(k.instance().unwrap().claim)))
-            .collect();
-        self.targets.push(F::ZERO);
-        let mut lookup = self.lookup.clone();
-        lookup.extend(&layer);
-        let forest = self
-            .forest
-            .as_ref()
-            .map(|(p, _)| p.clone())
-            .unwrap_or_else(|| lookup.clone());
-        self.equalities = [&lookup, &forest]
-            .into_iter()
-            .map(|point| {
-                tessera_poly::eq_table(&point.iter().copied().map(from_e).collect::<Vec<_>>())
-                    .unwrap()
-            })
-            .collect();
-        let vars = self.maximum_rows.len().trailing_zeros() as usize;
-        self.equalities
-            .push(tessera_poly::eq_table(&ctx.zero[ctx.zero.len() - vars..]).unwrap());
-        Ok(())
-    }
-    fn claim(&self, tag: u32) -> Result<F, StageError> {
-        Ok(self.targets[(tag - 10) as usize])
-    }
-    fn instance(&self, tag: u32) -> Result<Instance<'_, F>, StageError> {
-        if tag == 12 {
-            return Ok(Instance::new(vec![
-                Table::base(&self.maximum_rows),
-                Table::ext(&self.equalities[2]).public(),
-                Table::base(&self.padding).public(),
-            ]));
-        }
-        Ok(Instance::sum_of_products(
-            vec![
-                Table::base(&self.maximum),
-                Table::base(&self.scores),
-                Table::ext(&self.equalities[(tag - 10) as usize]).public(),
-                Table::base(&self.causal).public(),
-            ],
-            vec![
-                Term::new(F::ONE, vec![0, 2, 3]),
-                Term::new(-F::ONE, vec![1, 2, 3]),
-            ],
-        ))
-    }
-    fn claims(&self, tag: u32, point: &[F], values: &[F]) -> Result<Vec<Claim<F>>, StageError> {
-        if tag == 12 {
-            return Ok(Vec::new());
-        }
-        Ok(vec![Claim {
-            point: point.to_vec(),
-            value: values[1],
-        }])
-    }
-}
-impl NativeChecks for Native<'_> {
-    fn instance(
-        &self,
-        tag: u32,
-        ctx: stages::NativeContext<'_>,
-    ) -> Result<tv_core::sumcheck::Instance, stages::StageError> {
-        if tag == 12 {
-            return Ok(self.stack.padding_instance().unwrap());
-        }
-        Ok(self.with_key(tag, ctx.layer, |k| k.instance().unwrap()))
-    }
-    fn evaluate(
-        &self,
-        tag: u32,
-        ctx: stages::NativeContext<'_>,
-        point: &[E],
-        values: &[E],
-    ) -> Result<stages::NativeFinal, stages::StageError> {
-        if tag == 12 {
-            let result = self
-                .stack
-                .padding(
-                    tv_core::gadgets::softmax::Padding::Maximum,
-                    &ctx.zero[ctx.zero.len() - point.len()..],
-                    point,
-                    values,
-                )
-                .unwrap();
-            return Ok(stages::NativeFinal {
-                value: result.value,
-                graph: Vec::new(),
-            });
-        }
-        let result = self.with_key(tag, ctx.layer, |k| k.evaluate(point, values).unwrap());
-        Ok(stages::NativeFinal {
-            value: result.value,
-            graph: vec![result.claims[1].value],
-        })
-    }
-}
-struct Broken<'a, 'p> {
-    native: &'a Native<'p>,
+struct Broken<'a> {
+    native: ModelNativeProver<'a>,
+    tag: u32,
+    zero: u32,
+    count: usize,
+    table: SecretBuf<G>,
     fault: u8,
 }
-impl NativeProver for Broken<'_, '_> {
-    fn prepare(&mut self, _: NativeContext<'_>) -> Result<(), StageError> {
-        Ok(())
+impl NativeProver for Broken<'_> {
+    fn prepare(&mut self, ctx: NativeContext<'_>) -> Result<(), StageError> {
+        self.native.prepare(ctx)
     }
     fn claim(&self, tag: u32) -> Result<F, StageError> {
-        if self.fault == 0 && tag == 12 {
+        if tag == self.zero && self.fault == 0 {
             Ok(F::ONE)
         } else {
-            NativeProver::claim(self.native, tag)
+            self.native.claim(tag)
         }
     }
     fn instance(&self, tag: u32) -> Result<Instance<'_, F>, StageError> {
-        if tag == 10 {
+        if tag == self.tag {
             match self.fault {
                 1 => return Ok(Instance::new(Vec::new())),
                 2 => {
-                    return Ok(Instance::new(vec![
-                        Table::base(&self.native.scores[..self.native.scores.len() - 1]),
-                        Table::base(&self.native.maximum),
-                    ]));
+                    return Ok(Instance::new(
+                        (0..self.count)
+                            .map(|_| Table::base(&self.table[..self.table.len() - 1]))
+                            .collect(),
+                    ));
                 }
-                3 => return Ok(Instance::new(vec![Table::base(&self.native.scores)])),
+                3 => {
+                    return Ok(Instance::new(
+                        (0..self.count - 1)
+                            .map(|_| Table::base(&self.table))
+                            .collect(),
+                    ));
+                }
                 _ => {}
             }
         }
-        NativeProver::instance(self.native, tag)
+        self.native.instance(tag)
     }
     fn claims(&self, tag: u32, point: &[F], values: &[F]) -> Result<Vec<Claim<F>>, StageError> {
-        if tag == 10 {
-            if self.fault == 4 {
-                return Ok(Vec::new());
-            }
-            if self.fault == 5 {
-                return Ok(vec![Claim {
-                    point: Vec::new(),
-                    value: values[1],
-                }]);
-            }
+        if tag == self.tag && self.fault == 4 {
+            return Ok(Vec::new());
         }
-        NativeProver::claims(self.native, tag, point, values)
+        let mut claims = self.native.claims(tag, point, values)?;
+        if tag == self.tag && self.fault == 5 {
+            claims[0].point.clear();
+        }
+        Ok(claims)
     }
-}
-fn from_e(x: E) -> F {
-    F::new(
-        G::from_u64_reduced(x.c0.to_canonical()),
-        G::from_u64_reduced(x.c1.to_canonical()),
-    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -315,159 +104,72 @@ pub fn prove_stages(
     layout: &LeafLayout<ModelColumn>,
     bound: &split::Bound,
     witness: &tessera_witness::Witness,
-    source: &impl WitnessSource,
-    advice: &ModelAdviceLayout<'_>,
-    plan: &tessera_compiler::StageSchedule,
-    independent: &tv_core::schedule::Schedule,
+    actual: &ModelWitness,
+    native_plan: &ModelNativePlan,
+    independent: &model::Plan<'_>,
     prover: &mut tessera_prover::StageProver<'_, tessera_witness::Witness>,
     points: &[Vec<F>],
     leaf: &[Vec<F>],
+    proof: &tessera_prover::ProvenLeaf,
     transcript: &mut Transcript,
     verifier_transcript: &mut tv_hash::transcript::Transcript,
 ) {
-    let (_, site) = layout
-        .sites()
+    let leaf: Vec<_> = points
         .iter()
-        .enumerate()
-        .find(|(_, s)| {
+        .zip(leaf)
+        .map(|(p, v)| stages::LeafValues {
+            point: es(p),
+            values: es(v),
+        })
+        .collect();
+    let token = independent
+        .schedule()
+        .leaf()
+        .iter()
+        .position(|l| {
             matches!(
-                p.lowering.graph.nodes[owner(p, s.node, 0).0 as usize].op,
-                Op::SoftmaxRow { .. }
+                graph.node(l.site).unwrap().op(),
+                tv_core::lowering::Op::OneHot { .. }
             )
         })
         .unwrap();
-    let first = owner(p, site.node, 0);
-    let gadgets = tv_core::gadgets::Plan::derive(
-        graph,
-        tv_core::claims::GadgetPolicy {
-            max_log2_rows: p.claims.gadget_policy.max_log2_rows,
-            limb_bits: p.claims.gadget_policy.limb_bits,
-            query_block: p.claims.gadget_policy.query_block,
-        },
-    )
-    .unwrap();
-    let stack = gadgets
-        .softmax_stack(tv_core::lowering::NodeId(first.0))
+    let external = model::External {
+        tokens: &leaf[token],
+        logits: leaf.last().unwrap(),
+    };
+    let prepared = independent.bind(bound, external).unwrap();
+    assert_eq!(prepared.leaf(), leaf);
+    let mut native =
+        ModelNativeProver::new(native_plan, &p.lowering, actual, witness, proof).unwrap();
+    // Exercise transformations with distinct raw values even when a CPU fixture has equal operands.
+    for meta in native_plan.native() {
+        let point: Vec<_> = (0..meta.vars)
+            .map(|j| F::from(G::from_u64_reduced(7 + u64::from(j))))
+            .collect();
+        let raw: Vec<_> = (0..meta.evaluations)
+            .map(|j| F::from(G::from_u64_reduced(31 + j as u64)))
+            .collect();
+        let layer = vec![E::ONE; independent.schedule().layer_vars()];
+        let zero = vec![E::ONE; independent.schedule().stages()[0].zero_vars];
+        let checked = stages::NativeChecks::evaluate(
+            &prepared,
+            meta.tag,
+            stages::NativeContext {
+                stage: 1,
+                layer: &layer,
+                zero: &zero,
+            },
+            &es(&point),
+            &es(&raw),
+        )
         .unwrap();
-    assert_eq!(stack.sites().len(), site.layers.len());
-    let read = |l, column| {
-        bound
-            .columns
-            .iter()
-            .find(|c| c.node.0 == owner(p, site.node, l).0 && c.column == column)
-            .unwrap()
-    };
-    let lookup_point = read(0, split::Column::SoftmaxKey).point.clone();
-    let fixed: Vec<_> = (0..site.layers.len())
-        .map(|l| {
-            let key = read(l, split::Column::SoftmaxKey);
-            let value = read(l, split::Column::Output(0));
-            assert_eq!(key.point, lookup_point);
-            assert_eq!(value.point, lookup_point);
-            (key.value, value.value)
-        })
-        .collect();
-    let node = &p.lowering.graph.nodes[first.0 as usize];
-    let shape = &p.lowering.graph.tensors[node.inputs[0].0 as usize].shape;
-    let (heads, n) = (shape[0] as usize, shape[1] as usize);
-    let (hp, np, lp) = (
-        heads.next_power_of_two(),
-        n.next_power_of_two(),
-        site.layers.len().next_power_of_two(),
-    );
-    let rows = hp * np;
-    let cube = rows * np;
-    let mut maximum_rows = SecretBuf::new();
-    maximum_rows.resize(lp * rows, G::ZERO);
-    let mut maximum = SecretBuf::new();
-    maximum.resize(lp * cube, G::ZERO);
-    let mut scores = SecretBuf::new();
-    scores.resize(lp * cube, G::ZERO);
-    let mut causal = vec![G::ZERO; lp * cube];
-    let mut seen = vec![false; site.layers.len() * heads * n];
-    for tile in advice.tiles() {
-        let id = match tile.tile {
-            tessera_compiler::Tile::Attention { node, .. }
-            | tessera_compiler::Tile::Node { node } => node,
-            _ => continue,
-        };
-        let Some(l) = (0..site.layers.len()).find(|&l| owner(p, site.node, l).0 == id) else {
-            continue;
-        };
-        let values = source.tile(tile).unwrap();
-        let maximum = values
-            .gadget()
-            .iter()
-            .find(|(r, _)| *r == AuxColumn::Maximum)
-            .unwrap();
-        let node = &p.lowering.graph.nodes[id as usize];
-        let share = tile
-            .shares
-            .iter()
-            .find(|s| s.tensor == node.outputs[1])
-            .unwrap();
-        for (position, &value) in coordinates(&share.ranges).iter().zip(maximum.1.iter()) {
-            let (h, q) = (position[0] as usize, position[1] as usize);
-            let at = (l * heads + h) * n + q;
-            assert!(!seen[at]);
-            seen[at] = true;
-            maximum_rows[(l * hp + h) * np + q] = G::from_i64(value);
-        }
+        let claims = native.claims(meta.tag, &point, &raw).unwrap();
+        assert_eq!(
+            es(&claims.iter().map(|c| c.value).collect::<Vec<_>>()),
+            checked.graph
+        );
     }
-    assert!(seen.into_iter().all(|v| v));
-    for l in 0..site.layers.len() {
-        let node = &p.lowering.graph.nodes[owner(p, site.node, l).0 as usize];
-        let x = witness.tensor(node.inputs[0]).unwrap();
-        for h in 0..hp {
-            for q in 0..np {
-                for k in 0..np {
-                    let at = ((l * hp + h) * np + q) * np + k;
-                    maximum[at] = maximum_rows[(l * hp + h) * np + q];
-                    if h < heads && q < n && k < n {
-                        scores[at] = G::from_i64(x[(h * n + q) * n + k]);
-                    }
-                    if h < heads && k <= q && q < n {
-                        causal[at] = G::ONE;
-                    }
-                }
-            }
-        }
-    }
-
-    let forest = if n == 1 {
-        assert!(bound.forests.is_empty());
-        None
-    } else {
-        assert_eq!(bound.forests.len(), 1);
-        Some((
-            bound.forests[0].claim.point.clone(),
-            bound.forests[0].claim.value,
-        ))
-    };
-    let padding = (0..lp * rows)
-        .map(|i| {
-            if i / rows < site.layers.len() && i % rows / np < heads && i % np < n {
-                G::ZERO
-            } else {
-                G::ONE
-            }
-        })
-        .collect();
-    let mut native = Native {
-        stack,
-        lookup: lookup_point,
-        fixed,
-        forest,
-        heads,
-        maximum,
-        maximum_rows,
-        padding,
-        scores,
-        causal,
-        equalities: Vec::new(),
-        targets: Vec::new(),
-    };
-    let proofs: Vec<_> = (1..plan.stages.len())
+    let proofs: Vec<_> = (1..native_plan.schedule().stages.len())
         .map(|k| {
             prover
                 .prove_stage_composed(transcript, k as u16, &mut native)
@@ -485,87 +187,164 @@ pub fn prove_stages(
             splits: es(&p.splits),
         })
         .collect();
-    let leaf: Vec<_> = points
-        .iter()
-        .zip(leaf)
-        .map(|(p, v)| stages::LeafValues {
-            point: es(p),
-            values: es(v),
-        })
-        .collect();
     let rope = tv_tables::Table::generate(tv_tables::TableId(0), graph.tables()[0].kind.clone())
         .unwrap()
         .rope()
         .unwrap()
         .clone();
-    let accepted = stages::verify_composed_bound(
-        verifier_transcript,
-        independent,
-        &rope,
-        &leaf,
-        bound,
-        &proofs,
-        &native,
-    )
-    .unwrap();
+    let accepted = prepared
+        .verify(verifier_transcript, &rope, &proofs)
+        .unwrap();
     assert_eq!(accepted.graph.pool.len(), prover.pool().len());
     for (claim, value) in accepted.graph.pool.iter().zip(prover.pool()) {
         assert_eq!(claim.value, e(value.unwrap()));
         assert_eq!(claim.value, pool_value(p, graph, witness, claim));
     }
-    assert_eq!(accepted.native.len(), 3);
-    for raw in &accepted.native {
-        if raw.tag == 12 {
-            assert_eq!(
-                raw.values,
-                vec![e(tessera_poly::evaluate_base::<F>(
-                    &native.maximum_rows,
-                    &raw.point.iter().copied().map(from_e).collect::<Vec<_>>()
-                )
-                .unwrap())]
-            );
-            continue;
-        }
-        let result = native.with_key(raw.tag, &raw.layer, |key| {
-            key.evaluate(&raw.point, &raw.values).unwrap()
-        });
-        assert_eq!(result.claims.len(), 2);
-        for (i, c) in result.claims.iter().enumerate() {
-            let data = if i == 0 {
-                &native.maximum_rows
+    assert_eq!(accepted.multiplicities, bound.multiplicities);
+    assert_eq!(accepted.external.tokens, &leaf[token]);
+    assert_eq!(accepted.external.logits, leaf.last().unwrap());
+    let original = bound
+        .columns
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.column,
+                split::Column::Output(_) | split::Column::Auxiliary(_)
+            )
+        })
+        .count();
+    let softmax = p
+        .selection
+        .gadgets
+        .iter()
+        .filter(|(id, _)| {
+            matches!(
+                p.lowering.graph.nodes[id.0 as usize].op,
+                tessera_ir::Op::SoftmaxRow { .. }
+            )
+        })
+        .count();
+    let products = native_plan
+        .native()
+        .iter()
+        .filter(|n| n.degree == 4)
+        .map(|n| n.evaluations - 2)
+        .sum::<usize>();
+    // Every original read, extra half-key binding, and every repeated native operand is owed.
+    let families = native_plan
+        .native()
+        .iter()
+        .filter(|n| n.zero && n.outputs.is_empty())
+        .count();
+    assert_eq!(
+        accepted.sources.len(),
+        original + softmax + products + 4 * families
+    );
+    for claim in &accepted.sources {
+        let mut sum = E::ZERO;
+        assert_eq!(
+            claim.sources.len(),
+            if claim.layer_point.is_empty() {
+                1
             } else {
-                &native.scores
+                p.layers.count as usize
+            }
+        );
+        let mut family = None;
+        for (l, source) in claim.sources.iter().enumerate() {
+            use tv_core::advice::Source;
+            let (value, identity) = match *source {
+                Source::Tensor(t) => {
+                    let id = tessera_ir::TensorId(t.0);
+                    let shape = &p.lowering.graph.tensors[id.0 as usize].shape;
+                    let values = witness.tensor(id).unwrap();
+                    (
+                        tensor_value(values, shape, &claim.point),
+                        (p.lowering.graph.producer(id).map(|n| n.0), None),
+                    )
+                }
+                Source::Auxiliary(node, role) => {
+                    let (s, l) = layout
+                        .sites()
+                        .iter()
+                        .enumerate()
+                        .find_map(|(s, site)| {
+                            (0..site.layers.len())
+                                .find(|&l| owner(p, site.node, l).0 == node.0)
+                                .map(|l| (s, l))
+                        })
+                        .unwrap();
+                    let column = layout
+                        .reads(s, l)
+                        .unwrap()
+                        .iter()
+                        .map(|r| r.term)
+                        .chain([ModelColumn::Auxiliary(AuxColumn::Maximum)])
+                        .find(|&c| matches!(super::role(c),split::Column::Auxiliary(r) if r==role))
+                        .unwrap();
+                    (
+                        mle(actual.values(s, l, column).unwrap(), &claim.point),
+                        (Some(node.0), Some(role)),
+                    )
+                }
+                Source::Multiplicity(_) => {
+                    panic!("multiplicities retain their original table points separately")
+                }
             };
-            let point: Vec<_> = c
-                .point
-                .iter()
-                .chain(&c.layer_point)
-                .copied()
-                .map(from_e)
-                .collect();
-            assert_eq!(
-                c.value,
-                e(tessera_poly::evaluate_base::<F>(data, &point).unwrap())
-            );
+            // Original role and node position must be the same across the ordered family.
+            if !claim.layer_point.is_empty() {
+                let node = NodeId(identity.0.unwrap());
+                let (layer, position) = p.layers.position(node).unwrap();
+                assert_eq!(layer, l as u32);
+                if let Some((expected, role)) = family {
+                    assert_eq!((position, identity.1), (expected, role));
+                } else {
+                    family = Some((position, identity.1));
+                }
+            }
+            let weight = if claim.layer_point.is_empty() {
+                E::ONE
+            } else {
+                tv_core::sumcheck::eq(
+                    &claim.layer_point,
+                    &(0..claim.layer_point.len())
+                        .map(|j| E::from(V::from_canonical((l >> j & 1) as u64).unwrap()))
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap()
+            };
+            sum += weight * value;
         }
+        assert_eq!(claim.value, sum, "original source {:?}", claim.sources);
     }
-    if n == 3 && site.layers.len() == 2 {
+    assert_eq!(
+        e(transcript.challenge("test/after-mixed")),
+        verifier_transcript
+            .challenge_fp2(tv_hash::transcript::Ascii::new("test/after-mixed").unwrap())
+            .unwrap()
+    );
+    if p.lowering.graph.tensors[p.lowering.logits.0 as usize].shape[0] == 3 && p.layers.count == 2 {
+        let meta = &native_plan.native()[0];
+        let zero = native_plan.native().iter().find(|n| n.zero).unwrap().tag;
         for fault in 0..=6 {
-            let mut p2 = tessera_prover::StageProver::new(&p.lowering, plan, witness);
-            let _leaf = p2.leaf(points).unwrap();
-            let _atoms = p2.leaf_split_values().unwrap();
+            let mut broken = Broken {
+                native: ModelNativeProver::new(native_plan, &p.lowering, actual, witness, proof)
+                    .unwrap(),
+                tag: meta.tag,
+                zero,
+                count: meta.evaluations,
+                table: SecretBuf::filled(G::ZERO, 1 << meta.vars),
+                fault,
+            };
+            let mut own =
+                tessera_prover::StageProver::new(&p.lowering, native_plan.schedule(), witness);
+            let _leaf = own.leaf(points).unwrap();
+            let _atoms = own.leaf_split_values().unwrap();
             let mut t = super::transcript(Mode::NonInteractive);
             let error = if fault == 6 {
-                p2.prove_stage(&mut t, 1)
+                own.prove_stage(&mut t, 1)
             } else {
-                p2.prove_stage_composed(
-                    &mut t,
-                    1,
-                    &mut Broken {
-                        native: &native,
-                        fault,
-                    },
-                )
+                own.prove_stage_composed(&mut t, 1, &mut broken)
             }
             .unwrap_err();
             assert!(
@@ -574,12 +353,23 @@ pub fn prove_stages(
             );
         }
     }
-    assert_eq!(
-        e(transcript.challenge("test/after-mixed")),
-        verifier_transcript
-            .challenge_fp2(tv_hash::transcript::Ascii::new("test/after-mixed").unwrap())
-            .unwrap()
-    );
+}
+fn tensor_value(values: &[i64], shape: &[u32], point: &[E]) -> E {
+    let bits: Vec<_> = shape
+        .iter()
+        .map(|n| n.next_power_of_two().trailing_zeros())
+        .collect();
+    let mut padded = SecretBuf::filled(0i64, 1usize << bits.iter().sum::<u32>());
+    for (flat, &v) in values.iter().enumerate() {
+        let (mut rest, mut index, mut shift) = (flat, 0, 0);
+        for (axis, &n) in shape.iter().enumerate().rev() {
+            index |= (rest % n as usize) << shift;
+            rest /= n as usize;
+            shift += bits[axis];
+        }
+        padded[index] = v;
+    }
+    mle(&padded, point)
 }
 
 fn pool_value(

@@ -22,6 +22,8 @@
 //! [`leaf::LeafLayout::model`] and [`leaf::ModelWitness`] supply the canonical CPU lookup
 //! sites, per-request domains, clearing source buffers and stacked Softmax forests. Their
 //! leaf proofs leave the native/graph reductions and commitment openings to the driver.
+//! [`native::ModelNativePlan`] and [`native::ModelNativeProver`] supply every current-model
+//! native relation to the same graph stage batch, retaining the canonical opening debts.
 //!
 //! # Features
 //!
@@ -34,6 +36,7 @@
 
 pub mod leaf;
 mod model;
+pub mod native;
 mod release;
 pub mod stages;
 

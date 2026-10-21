@@ -291,6 +291,16 @@ impl<'p> Root<'p> {
         &self.widths
     }
 
+    /// Complete public byte-coefficient geometry, including narrowed virtual digits.
+    pub fn product_geometry(&self) -> Products {
+        self.products
+    }
+
+    /// The original residual tensor whose feature/time padding is a required premise.
+    pub fn residual_source(&self) -> Source {
+        Source::Tensor(self.residual)
+    }
+
     /// Check affine lookup bindings and both complete comparisons at the leaf point.
     /// All values must already be fixed by the leaf-stage transcript. Membership
     /// is the earlier LogUp obligation, not an integer test on these evaluations.

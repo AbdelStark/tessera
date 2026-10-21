@@ -212,6 +212,21 @@ impl ModelWitness {
                     }
                     columns.push(column);
                 }
+                if matches!(node.op, tessera_ir::Op::SoftmaxRow { .. }) {
+                    // The masked key hides its maximum; the native relation still needs it.
+                    let domain = lowering.graph.tensors[node.outputs[1].0 as usize]
+                        .shape
+                        .clone();
+                    let len = 1usize
+                        .checked_shl(variables(&domain).ok_or(LeafError::Memory)?)
+                        .ok_or(LeafError::Memory)?;
+                    columns.push(Column {
+                        name: ModelColumn::Auxiliary(tessera_compiler::AuxColumn::Maximum),
+                        domain,
+                        values: buffer(len, 0)?,
+                        written: 0,
+                    });
+                }
                 real_layers.push(columns);
             }
             sites.push(real_layers);
