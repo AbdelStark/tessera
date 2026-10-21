@@ -217,6 +217,13 @@ def gadget_seeds():
             yield tagged(bytes([7,vocab-1,rows-1])+cells(n+r+3)+bytes([kind])+cells(n+count,17)+bytes(2))
     for role in range(4):
         yield tagged(bytes([8,role])+cells((1 if role==2 else 4)+1+2+1)+bytes(2))
+    greedy = json.loads((HERE.parent.parent / "spec/vectors/greedy-boundary/greedy-boundary.json").read_text())["cases"]
+    for case in range(len(greedy)):
+        for kind in range(3):
+            for shape in range(16):
+                yield tagged(bytes([9, case, kind, 0, shape]))
+            for flags in range(1, 8):
+                yield tagged(bytes([9, case, kind, flags, 0]) + cells(32))
 
 
 def main():

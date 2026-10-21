@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `planned` |
+| Status | `done: validated` |
 | Idea | [IDEA-0038](../../ideas/IDEA-0038-greedy-boundary-bindings.md) |
 | Evidence level | E0 exact integer and Goldilocks-extension arithmetic |
 | Hardware | none for the analytic result; synthetic CPU execution only |
@@ -81,7 +81,24 @@ time are under `results/`; the caller commits them before code is written.
 
 ## Results
 
-Pending registered execution. No result or performance credit.
+All counts below are E0 finite exact arithmetic, primary own experiment.
+
+| Check | Count | Result |
+|---|---|---|
+| Public domains | 324 | All registered shapes executed |
+| Public kernel equalities | 5,184 | Literal index sums match |
+| Original-point shift equalities | 5,184 | Cyclic tensor and weighted original MLEs match |
+| Native final-value equalities | 15,552 | Actual candidate final path matches literal coefficients/sources |
+| Boolean-cube relation equalities | 15,552 | Key, selected and token identities match |
+| Honest selected/token zero checks | 2,592 | All zero |
+| Per-coordinate degree checks | 1,704 | Bounds 2/3/2 hold in the registered finite checks |
+| Exhaustive integer cases | 129,885 | Both range predicates accept exactly the lowest-index maximum |
+| Large-integer/negative-key boundaries | 207 | Public-span completeness and negative-encoding exclusion hold |
+| Actual experiment-source faults | 18 | All fail executed assertions; two unchanged/restored controls pass |
+
+Raw output: [exact.json](results/exact.json),
+[source-mutations.json](results/source-mutations.json). Python 3.15.0, macOS
+26.6.2, arm64; environment is provenance, not a timing/memory measurement.
 
 ## Analysis
 
@@ -91,10 +108,51 @@ opening groups, assign a release protocol number or establish a G-4/ZK budget.
 
 ## Verdict
 
-Pending; status planned.
+`validated` for the frozen finite E0 criteria. No source branch was omitted.
+The experiment did not run a complete proof or establish a production security
+bound. The idea retains zero performance credit.
 
 ## Follow-ups
 
 If validated, specify the complete runtime advice/catalog/order contract in an
 RFC draft and implement independent native/opening composition with real CPU
 proofs in the existing #128 draft. No accepting path is authorized by an E0 pass.
+
+## Integration refinement after the frozen experiment
+
+The carry identity can be realized with the existing PCS: native final messages
+carry all original-point source evaluations, the transcript fixes them before
+PCS Gamma, and each retains its own canonical opening obligation. The native
+polynomial uses their verifier-derived weighted sum. The experiment's algebra,
+source points and success criteria are unchanged. A new whole-linear-claim PCS
+interface is unnecessary. Its naive cross-group aggregation variant, retaining
+old per-group-reset Gamma powers, is unsafe: false claims +delta and -delta in
+different groups have cancelling aggregate errors. Existing per-group checks
+reject both. No such construction was added to production.
+
+Analytic per-variable degrees: a shifted source is multilinear because each
+carry coefficient uses only the fixed lower source coordinates' challenge bits,
+while its original MLE uses the disjoint higher coordinates. The key multiplies
+one such source by a public multilinear coefficient. The selected relation
+multiplies two sources by one public multilinear coefficient; the maximum term
+has lower degree. Token binding multiplies one source by a public coefficient.
+These give the E0 bounds 2/3/2; complete masked/dynamic protocol accounting is
+not part of this result.
+
+## Post-registration implementation checks
+
+The independent Rust primitive agrees with 32 literal conformance fixtures.
+CPU mixed batches pass in 32 NI/Live transcript-context cases. Each uses real
+OneHot row encoding, Merkle authentication and PCS column checks; two false
+carry values that preserve the native sumcheck are rejected at the original
+opening's `Evaluation { group: Some(0) }` check. These are E1 component tests,
+not full model proofs, Live coin-toss sessions or additions to the frozen E0
+success criteria. Runtime layout/catalog, graph routing, complete budget and
+session integration remain outstanding.
+
+The implementation fault-injection record is
+[native-mutations.json](results/native-mutations.json): 42 arithmetic/source
+faults and four allocation/check-order faults fail executed Rust tests, with
+four unchanged/restored controls passing. No compilation failure counts as a
+caught fault. The replayable masks and fixture transcript labels establish no
+zero-knowledge or protocol-session claim.

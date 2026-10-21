@@ -29,7 +29,7 @@ fn fp(v: &Json) -> Fp2 {
 fn fields(v: &Json) -> Vec<Fp2> {
     v.as_array().unwrap().iter().map(fp).collect()
 }
-fn base() -> ClaimList {
+pub(super) fn base() -> ClaimList {
     static BYTES: OnceLock<Vec<u8>> = OnceLock::new();
     let bytes = BYTES.get_or_init(|| {
         let f = read_vectors("claims/claim-lists.json");

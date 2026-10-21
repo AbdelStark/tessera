@@ -27,7 +27,7 @@ allocate nothing, nested impossible columns reserve only the bounded outer vecto
 insufficient memory for honest stages is a reader failure (`ERR-RES-MEMORY`).
 These checks establish packet syntax, not proof acceptance.
 
-`sumcheck` also reserves the `GDG` prefix for the nine families in `src/gadgets.rs`.
+`sumcheck` also reserves the `GDG` prefix for the ten families in `src/gadgets.rs`.
 Its arithmetic oracles enumerate cube equality/public masks, strict triangular sums,
 integer comparison prefixes and literal root-digit triples. Model affine cases use
 the independent `spec/vectors/gadget-finals/` fixtures, perturb one field or length,
@@ -59,3 +59,8 @@ On macOS 26, AddressSanitizer in the pinned nightly deadlocks before the first i
 ## In CI
 
 `.github/workflows/fuzz.yml` checks this crate's format and lints and runs its tests, then fuzzes each target of `fuzz_targets/` for 10 minutes under AddressSanitizer, seeded as above, with a limit of 10 seconds per input. It is dispatched manually with a chosen duration; automatic nightly scheduling remains #96. A new target needs only its file in `fuzz_targets/` and its `[[bin]]` entry, of the same name, in `Cargo.toml`; it runs unseeded until `seeds.py` learns its input format.
+
+The greedy boundary gadget family (9) uses the independent literal
+`greedy-boundary` fixtures, dense public-coefficient sums and original carry
+endpoints. It predicts malformed target/point/value errors before allocating
+source obligations; arithmetic success remains subject to graph and PCS checks.

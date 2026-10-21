@@ -50,6 +50,7 @@ pub mod argmax;
 pub mod argmax_outputs;
 pub mod comparison;
 pub mod decomposition;
+pub mod greedy;
 pub mod model;
 pub mod onehot;
 pub mod requant;

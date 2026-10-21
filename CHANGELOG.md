@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Independent exact-greedy boundary components retain every original logit, OneHot, token and certificate-maximum obligation. Literal conformance fixtures and CPU mixed-sumcheck/PCS tests cover ragged domains, public range widths and compensating carry-value forgeries. RFC-0053 remains Draft; runtime layout, full semantic bindings and an accepting session driver remain under [#128](https://github.com/AbdelStark/tessera/issues/128).
+
 - Canonical CPU advice rows now feed the existing commitment, combined-row and column passes from resident or regenerated witnesses. Complete bounded-table model proofs in both modes continue through every original advice/weight opening, with matching replay messages and exact tampering errors. Whole rows of public table-tree padding remain implicit zeros (RFC-0011 rule 4). The protocol driver, semantic token/greedy bindings and final verdict remain under [#128](https://github.com/AbdelStark/tessera/issues/128).
 
 - Complete CPU model native relations (`native::ModelNativePlan` and `ModelNativeProver`): all root quartic coefficients, Softmax key/forest/reciprocal relations and every padding axis join the existing graph stage batch. Actual bounded-table CPU proofs in both modes retain original source identities, points and values. Openings and the complete protocol driver remain under [#128](https://github.com/AbdelStark/tessera/issues/128). Model transcript geometry now includes the residual feature axis required by RFC-0050's simplified root input binding; independent golden transcripts reflect the additional zero-check coordinate.

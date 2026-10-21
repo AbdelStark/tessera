@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `triaged` |
+| Status | `validated` |
 | Origin | #128/#130 integration; RFC-0009/0017/0037; packet-only draft PR439 |
 | Lever | Correctness of the first complete CPU proof; zero performance credit |
 | Spec surfaces | Runtime scoring advice, implicit tables, native schedule and original linear opening claims; an RFC is required before production acceptance |
@@ -21,8 +21,9 @@ The time shift has an exact linear opening decomposition. For padded time width
 `b`, cyclic `Hnext[t]=H[t+1 mod 2^b]` at point `r` is the sum over carry lengths:
 `alpha_k=prod(i<k,r_i)*(1-r_k)`, source point `(0^k,1,r[k+1:])`, plus
 `alpha_wrap=prod(r_i)` at the all-zero source point. Vocabulary coordinates are
-unchanged. A whole linear claim retains one value and one PCS batching power
-over its weighted original-source points; no prover-selected per-image values.
+unchanged. Native final messages fix each original-source evaluation separately
+before PCS Gamma; the verifier retains all of them under the existing group
+checks, and computes the shifted value with the public carry coefficients.
 The active output mask excludes the cyclic wrap from every real certificate.
 
 Use public multilinear coefficients to express the masked key's evaluation as
@@ -68,7 +69,7 @@ Boolean values, source identities and per-variable degrees remain explicit.
 
 No mu, proof-size, verification-time or GPU credit at any context (E0 accounting
 decision). The candidate removes missing bindings, not a measured bottleneck.
-An extra linear-claim group must be charged and the complete dynamic soundness
+Additional original-source openings must be charged and the complete dynamic soundness
 budget checked before any accepting production path. No cost-model inputs change.
 
 ## Security gate
@@ -105,7 +106,7 @@ polynomials against literal tensor/index formulas before changing runtime code.
 
 | Lens | Verdict | Argument |
 |---|---|---|
-| Soundness | weakened | PCS images must share one original value; full FS/budget integration is still owed |
+| Soundness | weakened | Every original source value must remain owed after the local equality; full FS/budget integration is still owed |
 | Prior art | survives | Composition of the accepted Argmax, OneHot, sumcheck and linear PCS obligations |
 | Cost model | survives with zero credit | Additional groups and rows cannot be called a speedup |
 | Feasibility | survives provisionally | Public increment has logarithmically many original points; finite oracle can refute it |
@@ -118,5 +119,20 @@ polynomials against literal tensor/index formulas before changing runtime code.
 
 ## Decision and links
 
-Triaged for EXP-0025. No accepted RFC, accepting driver or performance result.
+Validated for EXP-0025's frozen E0 criteria only. No accepted RFC, accepting driver or performance result.
 Ledger updated 2026-10-21.
+
+## Integration refinement, 2026-10-21
+
+The bounded E0 criteria pass. Retain the existing per-group PCS equations and
+Gamma powers: send each carry branch as an original-source native final
+evaluation, absorb that final vector before the PCS challenge, and open each
+value at its prescribed original point. The verifier computes the shifted
+native operand from those bound values. These are actual source obligations,
+not unchecked per-image values for one PCS claim. This avoids a new cross-group
+PCS aggregation rule. A global sum using the old per-group-reset powers could
+cancel two false claims in different groups; that construction is rejected.
+
+EXP-0025 validates finite algebra/degree/range criteria only. A complete runtime
+maximum/table/schedule RFC, original-source openings, actual native proofs,
+full dynamic soundness accounting and NI/Live integration remain owed.

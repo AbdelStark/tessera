@@ -5,6 +5,7 @@
 //! judge arithmetic, exact errors and retained debts. A final relation alone is
 //! never called proof acceptance; source/opening/lookup obligations remain explicit.
 
+mod greedy;
 mod models;
 use crate::proofs::Script;
 use tv_core::gadgets::{
@@ -17,8 +18,8 @@ use tv_core::gadgets::{
 use tv_core::validation::GadgetId;
 use tv_field::{Fp, Fp2};
 
-/// The nine gadget families in the bounded script format.
-pub const FAMILIES: u8 = 9;
+/// The ten gadget families in the bounded script format.
+pub const FAMILIES: u8 = 10;
 fn element(s: &mut Script<'_>) -> Fp2 {
     Fp2::new(Fp::reduce(s.u64()), Fp::reduce(s.u64()))
 }
@@ -350,6 +351,7 @@ pub fn check(data: &[u8]) {
         5 => models::softmax(&mut s),
         6 => models::onehot(&mut s),
         7 => argmax(&mut s),
-        _ => models::outputs(&mut s),
+        8 => models::outputs(&mut s),
+        _ => greedy::check(&mut s),
     }
 }

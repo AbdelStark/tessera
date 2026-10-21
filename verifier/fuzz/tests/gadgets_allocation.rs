@@ -206,4 +206,24 @@ fn million_element_gadget_inputs_reject_without_proof_sized_allocations() {
     let (result, bytes) = measured(|| view.evaluate(&source_point, &huge).map(|c| c.value()));
     assert!(matches!(result,Err(GadgetError::Rejected{gadget})if gadget==gid));
     assert_eq!(bytes, 0);
+    let boundary = plan.greedy_boundary(gid, 1).unwrap();
+    let target = [Fp2::ZERO; 4];
+    let key = boundary.key(&target, Fp2::ZERO).unwrap();
+    let natural = vec![Fp2::ZERO; boundary.variables()];
+    let raw = vec![Fp2::ZERO; key.instance().evals];
+    let (result, bytes) = measured(|| key.evaluate(&natural, &huge).map(|f| f.claims.len()));
+    assert!(matches!(result,Err(GadgetError::Rejected{gadget})if gadget==gid));
+    assert_eq!(bytes, 0);
+    let (result, bytes) = measured(|| key.evaluate(&huge, &raw).map(|f| f.claims.len()));
+    assert!(matches!(result, Err(GadgetError::Internal)));
+    assert_eq!(bytes, 0);
+    let (honest, bytes) = measured(|| key.evaluate(&natural, &raw).map(|f| f.claims.len()));
+    assert_eq!(honest, Ok(raw.len()));
+    // Every reservation boundary, including each retained source point, fails as Memory.
+    for spare in 0..bytes {
+        ALLOCATOR.set_limit(ALLOCATOR.allocated() + spare).unwrap();
+        let result = key.evaluate(&natural, &raw).map(|f| f.claims.len());
+        ALLOCATOR.set_limit(usize::MAX).unwrap();
+        assert_eq!(result, Err(GadgetError::Memory), "spare={spare}");
+    }
 }

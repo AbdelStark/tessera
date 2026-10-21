@@ -1,0 +1,165 @@
+{
+  "source_sha256": "c1c9b08d9d97c668ddc19d91ec6713c971ff8fd8f1d92d7237bb2b79f2f6d28d",
+  "results": [
+    {
+      "name": "control-before",
+      "caught": true,
+      "exit": 0,
+      "log": "/tmp/tessera-greedy-mutant-control-before.log",
+      "before": "",
+      "after": ""
+    },
+    {
+      "name": "shift-carry-weight",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-shift-carry-weight.log",
+      "before": "carry *= time[k]",
+      "after": "carry *= ONE - time[k]"
+    },
+    {
+      "name": "shift-original-point",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-shift-original-point.log",
+      "before": "v + [ZERO] * k + [ONE]",
+      "after": "v + [ONE] * k + [ONE]"
+    },
+    {
+      "name": "shift-wrap",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-shift-wrap.log",
+      "before": "terms.append((carry, v + [ZERO] * len(time)))",
+      "after": "terms.append((ZERO, v + [ZERO] * len(time)))"
+    },
+    {
+      "name": "shift-vocabulary-point",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-shift-vocabulary-point.log",
+      "before": "v, time = point[:vocabulary_bits], point[vocabulary_bits:]",
+      "after": "v, time = [ZERO] * vocabulary_bits, point[vocabulary_bits:]"
+    },
+    {
+      "name": "row-add-carry",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-row-add-carry.log",
+      "before": "t, next_carry = total & 1, total >> 1",
+      "after": "t, next_carry = total & 1, 0"
+    },
+    {
+      "name": "row-output-bound",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-row-output-bound.log",
+      "before": "compare_bit(u, (count >> j) & 1, comparison)",
+      "after": "compare_bit(u, ((count + 1) >> j) & 1, comparison)"
+    },
+    {
+      "name": "prefix-full-domain",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-prefix-full-domain.log",
+      "before": "return lower[-1]",
+      "after": "return ZERO"
+    },
+    {
+      "name": "suffix-strictness",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-suffix-strictness.log",
+      "before": "return states.get((-1, -1), ZERO)",
+      "after": "return states.get((0, -1), ZERO)"
+    },
+    {
+      "name": "suffix-vocabulary-bound",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-suffix-vocabulary-bound.log",
+      "before": "return states.get((-1, -1), ZERO)",
+      "after": "return states.get((-1, -1), ZERO) + states.get((-1, 0), ZERO)"
+    },
+    {
+      "name": "selected-maximum-sign",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-selected-maximum-sign.log",
+      "before": "return active * left * right - cm * maximum",
+      "after": "return active * left * right + cm * maximum"
+    },
+    {
+      "name": "selected-last-unused-row",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-selected-last-unused-row.log",
+      "before": "active = prefix([zero, rt], n - 1) - prefix([zero, rt], prompt - 1)",
+      "after": "active = prefix([zero, rt], n) - prefix([zero, rt], prompt - 1)"
+    },
+    {
+      "name": "selected-vocabulary-mask",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-selected-vocabulary-mask.log",
+      "before": "return finish(kind, l, hp, m, (active * prefix([rv], vocab), eq(zero, rt) * delta_v))",
+      "after": "return finish(kind, l, hp, m, (active, eq(zero, rt) * delta_v))"
+    },
+    {
+      "name": "token-source-term",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-token-source-term.log",
+      "before": "return ch * left - ct * right",
+      "after": "return ch * left"
+    },
+    {
+      "name": "range-width",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-range-width.log",
+      "before": "return max(1, (hi - lo).bit_length())",
+      "after": "return max(1, (hi - lo).bit_length() - 1)"
+    },
+    {
+      "name": "drop-selected-equality",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-drop-selected-equality.log",
+      "before": "return maximum == logits[selected] and all(0 <= key < 1 << range_bits for key in keys)",
+      "after": "return all(0 <= key < 1 << range_bits for key in keys)"
+    },
+    {
+      "name": "allow-negative-range-key",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-allow-negative-range-key.log",
+      "before": "all(0 <= key < 1 << range_bits for key in keys)",
+      "after": "all(key < 1 << range_bits for key in keys)"
+    },
+    {
+      "name": "key-previous-logit-row",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-key-previous-logit-row.log",
+      "before": "time = row(target_o, rt, prompt - 1, n - prompt)",
+      "after": "time = row(target_o, rt, prompt, n - prompt)"
+    },
+    {
+      "name": "key-suffix-sign",
+      "caught": true,
+      "exit": 1,
+      "log": "/tmp/tessera-greedy-mutant-key-suffix-sign.log",
+      "before": "return cm * maximum - cl * left - ch * right",
+      "after": "return cm * maximum - cl * left + ch * right"
+    },
+    {
+      "name": "control-after",
+      "caught": true,
+      "exit": 0,
+      "log": "/tmp/tessera-greedy-mutant-control-after.log",
+      "before": "",
+      "after": ""
+    }
+  ]
+}
