@@ -106,6 +106,9 @@ pub struct PoolTerm {
     /// For a stacked kind, its weight at each real layer; for a tensor outside the layers, its
     /// one coefficient.
     pub weights: Vec<Fp2>,
+    /// Original equality-point coordinates, before any per-layer coefficient or slice shift.
+    /// Weight openings use this provenance and check its weights; advice can use arbitrary weights.
+    pub layer_point: Option<Vec<Fp2>>,
 }
 
 /// A claim of the pool: `Σ_t Σ_ℓ w_t(ℓ)·P̃_{t,ℓ}(point) = value`, every tensor of one commitment.
@@ -973,6 +976,22 @@ fn pool_claim(
     let mut terms = Vec::new();
     for &m in members {
         let atom: &Atom = claim.atoms.get(m).ok_or(StageError::Internal)?;
+        let layer_point = match &atom.layers {
+            Layers::None => None,
+            Layers::Point(p) => Some(sources.resolve(p)?),
+            Layers::One(l) => {
+                let mut point = Vec::new();
+                reserve(&mut point, schedule.layer_vars())?;
+                for j in 0..schedule.layer_vars() {
+                    point.push(if (u64::from(*l) >> j) & 1 == 0 {
+                        Fp2::ZERO
+                    } else {
+                        Fp2::ONE
+                    });
+                }
+                Some(point)
+            }
+        };
         let weights: Option<Vec<Fp2>> = match (&atom.layers, stacking) {
             (Layers::None, _) => None,
             // A leaf claim's per-layer coefficients, stacked at ρ_1.
@@ -1003,6 +1022,7 @@ fn pool_claim(
                 PoolTerm {
                     tensor: PoolTensor::Single(t),
                     weights: vec![coefficient(sources, &atom.coefficient, 0)?],
+                    layer_point: None,
                 },
             )?,
             (TensorRef::Stacked(t), Some(weights)) => push(
@@ -1010,6 +1030,7 @@ fn pool_claim(
                 PoolTerm {
                     tensor: PoolTensor::Stacked(t),
                     weights,
+                    layer_point,
                 },
             )?,
             // The layer input's slices: c_0 at layer 0, X_last[ℓ − 1] at layer ℓ.
@@ -1020,6 +1041,7 @@ fn pool_claim(
                     PoolTerm {
                         tensor: PoolTensor::Single(schedule.first_checkpoint()),
                         weights: vec![first],
+                        layer_point: None,
                     },
                 )?;
                 let mut shifted = vec_of(Fp2::ZERO, layers)?;
@@ -1033,6 +1055,7 @@ fn pool_claim(
                     PoolTerm {
                         tensor: PoolTensor::Stacked(schedule.last_output()),
                         weights: shifted,
+                        layer_point: None,
                     },
                 )?;
             }

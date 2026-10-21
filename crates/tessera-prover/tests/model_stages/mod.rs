@@ -112,7 +112,10 @@ pub fn prove_stages(
     leaf: &[Vec<F>],
     proof: &tessera_prover::ProvenLeaf,
     transcript: &mut Transcript,
-    verifier_transcript: &mut tv_hash::transcript::Transcript,
+    mut verifier_transcript: tv_hash::transcript::Transcript,
+    committed: &model_openings::Committed<'_>,
+    xi: &[Vec<F>; 10],
+    mode: Mode,
 ) {
     let leaf: Vec<_> = points
         .iter()
@@ -193,7 +196,7 @@ pub fn prove_stages(
         .unwrap()
         .clone();
     let accepted = prepared
-        .verify(verifier_transcript, &rope, &proofs)
+        .verify(&mut verifier_transcript, &rope, &proofs)
         .unwrap();
     assert_eq!(accepted.graph.pool.len(), prover.pool().len());
     for (claim, value) in accepted.graph.pool.iter().zip(prover.pool()) {
@@ -317,12 +320,6 @@ pub fn prove_stages(
         }
         assert_eq!(claim.value, sum, "original source {:?}", claim.sources);
     }
-    assert_eq!(
-        e(transcript.challenge("test/after-mixed")),
-        verifier_transcript
-            .challenge_fp2(tv_hash::transcript::Ascii::new("test/after-mixed").unwrap())
-            .unwrap()
-    );
     if p.lowering.graph.tensors[p.lowering.logits.0 as usize].shape[0] == 3 && p.layers.count == 2 {
         let meta = &native_plan.native()[0];
         let zero = native_plan.native().iter().find(|n| n.zero).unwrap().tag;
@@ -353,6 +350,7 @@ pub fn prove_stages(
             );
         }
     }
+    committed.check(graph, accepted, transcript, verifier_transcript, xi, mode);
 }
 fn tensor_value(values: &[i64], shape: &[u32], point: &[E]) -> E {
     let bits: Vec<_> = shape

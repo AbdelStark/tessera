@@ -21,6 +21,7 @@ use tessera_witness::{Engine, Resident, WitnessSource};
 use tv_core::leaf::{self as tv, split};
 use tv_field::{Fp as V, Fp2 as E};
 
+mod model_openings;
 mod model_stages;
 
 fn vectors() -> PathBuf {
@@ -407,8 +408,15 @@ fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
     for (a, b) in geometry.sizes.stages.iter().zip(&stage_plan.stages[1..]) {
         assert_eq!((a.rounds, a.zero_vars), (b.rounds, b.zero_vars));
     }
+    let checkpoints = tessera_witness::Checkpoints::new(&engine, model, &tokens).unwrap();
+    let replay =
+        tessera_witness::Regenerator::new(&engine, &p.selection, model, &tokens, &checkpoints)
+            .unwrap();
+    let regenerated =
+        ModelWitness::new(&layout, &p.lowering, &p.layers, &witness, &replay, &advice).unwrap();
+    let committed = model_openings::Committed::new(&p, model, &advice, &source, &replay, &claims);
     for mode in [Mode::Live, Mode::NonInteractive] {
-        let mut t = transcript(mode);
+        let (mut t, mut t2, xi) = committed.start(mode);
         let forests = actual.forests();
         let borrowed = actual.tensors();
         let lookup = prepare_leaf(&mut t, &layout, &tables, &borrowed, &forests).unwrap();
@@ -430,7 +438,6 @@ fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
                 final_evals: es(&l.proof().final_evals),
             })
             .collect();
-        let mut t2 = vt(mode);
         let leaf = schedule
             .schedule()
             .verify(
@@ -495,13 +502,7 @@ fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
             let table = forest_truth(&p, &witness, site);
             assert_eq!(forest.claim.value, mle(&table, &forest.claim.point));
         }
-        let checkpoints = tessera_witness::Checkpoints::new(&engine, model, &tokens).unwrap();
-        let replay =
-            tessera_witness::Regenerator::new(&engine, &p.selection, model, &tokens, &checkpoints)
-                .unwrap();
-        let regenerated =
-            ModelWitness::new(&layout, &p.lowering, &p.layers, &witness, &replay, &advice).unwrap();
-        let mut tr = transcript(mode);
+        let mut tr = committed.start(mode).0;
         let other = prepare_leaf(
             &mut tr,
             &layout,
@@ -533,7 +534,10 @@ fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
             &graph_leaf,
             &proof,
             &mut t,
-            &mut t2,
+            t2,
+            &committed,
+            &xi,
+            mode,
         );
     }
 }

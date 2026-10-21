@@ -122,7 +122,7 @@ impl Matrix {
         Self::ALL.into_iter().find(|m| m.name() == name)
     }
 
-    fn of_weight(ty: WeightType) -> Self {
+    pub(crate) fn of_weight(ty: WeightType) -> Self {
         match ty {
             WeightType::Embed => Self::Embed,
             WeightType::Q => Self::Q,
