@@ -27,8 +27,8 @@ pub struct Softmax<'p> {
     ranges: &'p [TableId],
     decomposition: Decomposition,
     limb_bits: u8,
-    n: u32,
-    heads: u32,
+    pub(super) n: u32,
+    pub(super) heads: u32,
     token_vars: usize,
     row_vars: usize,
     numerator: Fp2,
@@ -255,7 +255,7 @@ impl<'p> Softmax<'p> {
             Some(Source::Auxiliary(self.node, aux))
         }
     }
-    fn psi(self, point: &[Fp2]) -> Result<Fp2, GadgetError> {
+    pub(super) fn psi(self, point: &[Fp2]) -> Result<Fp2, GadgetError> {
         if point.len() != self.row_vars {
             return Err(GadgetError::Internal);
         }
@@ -268,7 +268,7 @@ impl<'p> Softmax<'p> {
         )
         .ok_or(GadgetError::Internal)
     }
-    fn causal(self, point: &[Fp2]) -> Result<Fp2, GadgetError> {
+    pub(super) fn causal(self, point: &[Fp2]) -> Result<Fp2, GadgetError> {
         if point.len() != self.variables() {
             return Err(GadgetError::Internal);
         }

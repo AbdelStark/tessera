@@ -28,6 +28,8 @@
 //! Substituting late per-layer evaluations at a known layer point permits
 //! cancellation and does not establish the stacked relation. The full verifier
 //! driver owns this assembly and its soundness/resource accounting (#128).
+//! [`stacked`] composes root and Softmax native targets over actual template
+//! families, retaining original per-layer bindings and explicit stacked source debts.
 //!
 //! Root input simplification is conditional on BOTH residual padding axes being
 //! zero; [`root::Root::residual_padding_instance`] retains that proof obligation.
@@ -53,6 +55,7 @@ pub mod requant;
 pub mod root;
 pub mod root_products;
 pub mod softmax;
+pub mod stacked;
 
 use crate::advice::Source;
 use crate::claims::GadgetPolicy;

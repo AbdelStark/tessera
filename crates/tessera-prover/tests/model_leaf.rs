@@ -495,10 +495,27 @@ fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
             assert_eq!(a.proof(), b.proof());
         }
 
-        assert_eq!(
-            e(t.challenge("stage/1/layer/0")),
-            t2.challenge_fp2(tv_hash::transcript::Ascii::new("stage/1/layer/0").unwrap())
-                .unwrap()
+        let layer_point: Vec<_> = (0..p.layers.vars)
+            .map(|i| {
+                let label = format!("stage/1/layer/{i}");
+                let value = t2
+                    .challenge_fp2(tv_hash::transcript::Ascii::new(&label).unwrap())
+                    .unwrap();
+                assert_eq!(e(t.challenge(&label)), value);
+                value
+            })
+            .collect();
+        native_softmax_batch(
+            &p,
+            &graph,
+            &layout,
+            &bound,
+            &witness,
+            &source,
+            &advice,
+            &layer_point,
+            &mut t,
+            &mut t2,
         );
     }
 }
@@ -1140,4 +1157,248 @@ fn inconsistent_catalogs_uncovered_sources_and_wrong_tile_tables_are_refused() {
             rule: "model leaf columns cover every canonical source at its public coordinates"
         })
     ));
+}
+
+/// A native-only component batch after the actual model leaf, not the full mixed graph stage.
+#[allow(clippy::too_many_arguments)]
+fn native_softmax_batch(
+    p: &Public,
+    graph: &tv_core::lowering::Graph,
+    layout: &LeafLayout<ModelColumn>,
+    bound: &split::Bound,
+    witness: &tessera_witness::Witness,
+    source: &impl WitnessSource,
+    advice: &ModelAdviceLayout<'_>,
+    layer: &[E],
+    transcript: &mut Transcript,
+    verifier_transcript: &mut tv_hash::transcript::Transcript,
+) {
+    use tessera_codec::SecretBuf;
+    use tessera_ir::Op;
+    use tessera_sumcheck::{Instance, Prefix, Table, Term, prove_batch};
+    let (_, site) = layout
+        .sites()
+        .iter()
+        .enumerate()
+        .find(|(_, s)| {
+            matches!(
+                p.lowering.graph.nodes[owner(p, s.node, 0).0 as usize].op,
+                Op::SoftmaxRow { .. }
+            )
+        })
+        .unwrap();
+    let first = owner(p, site.node, 0);
+    let plan = tv_core::gadgets::Plan::derive(
+        graph,
+        tv_core::claims::GadgetPolicy {
+            max_log2_rows: p.claims.gadget_policy.max_log2_rows,
+            limb_bits: p.claims.gadget_policy.limb_bits,
+            query_block: p.claims.gadget_policy.query_block,
+        },
+    )
+    .unwrap();
+    let stack = plan
+        .softmax_stack(tv_core::lowering::NodeId(first.0))
+        .unwrap();
+    assert_eq!(stack.sites().len(), site.layers.len());
+    let read = |l, column| {
+        bound
+            .columns
+            .iter()
+            .find(|c| c.node.0 == owner(p, site.node, l).0 && c.column == column)
+            .unwrap()
+    };
+    let lookup_point = read(0, split::Column::SoftmaxKey).point.clone();
+    let fixed: Vec<_> = (0..site.layers.len())
+        .map(|l| {
+            let key = read(l, split::Column::SoftmaxKey);
+            let value = read(l, split::Column::Output(0));
+            assert_eq!(key.point, lookup_point);
+            assert_eq!(value.point, lookup_point);
+            (key.value, value.value)
+        })
+        .collect();
+    let lookup = stack.lookup(&lookup_point, layer, &fixed).unwrap();
+    let node = &p.lowering.graph.nodes[first.0 as usize];
+    let shape = &p.lowering.graph.tensors[node.inputs[0].0 as usize].shape;
+    let (heads, n) = (shape[0] as usize, shape[1] as usize);
+    let (hp, np, lp) = (
+        heads.next_power_of_two(),
+        n.next_power_of_two(),
+        site.layers.len().next_power_of_two(),
+    );
+    let rows = hp * np;
+    let cube = rows * np;
+    let mut maximum_rows = SecretBuf::new();
+    maximum_rows.resize(lp * rows, G::ZERO);
+    let mut maximum = SecretBuf::new();
+    maximum.resize(lp * cube, G::ZERO);
+    let mut scores = SecretBuf::new();
+    scores.resize(lp * cube, G::ZERO);
+    let mut causal = vec![G::ZERO; lp * cube];
+    let mut seen = vec![false; site.layers.len() * heads * n];
+    for tile in advice.tiles() {
+        let id = match tile.tile {
+            tessera_compiler::Tile::Attention { node, .. }
+            | tessera_compiler::Tile::Node { node } => node,
+            _ => continue,
+        };
+        let Some(l) = (0..site.layers.len()).find(|&l| owner(p, site.node, l).0 == id) else {
+            continue;
+        };
+        let values = source.tile(tile).unwrap();
+        let maximum = values
+            .gadget()
+            .iter()
+            .find(|(r, _)| *r == AuxColumn::Maximum)
+            .unwrap();
+        let node = &p.lowering.graph.nodes[id as usize];
+        let share = tile
+            .shares
+            .iter()
+            .find(|s| s.tensor == node.outputs[1])
+            .unwrap();
+        for (position, &value) in coordinates(&share.ranges).iter().zip(maximum.1.iter()) {
+            let (h, q) = (position[0] as usize, position[1] as usize);
+            let at = (l * heads + h) * n + q;
+            assert!(!seen[at]);
+            seen[at] = true;
+            maximum_rows[(l * hp + h) * np + q] = G::from_i64(value);
+        }
+    }
+    assert!(seen.into_iter().all(|v| v));
+    for l in 0..site.layers.len() {
+        let node = &p.lowering.graph.nodes[owner(p, site.node, l).0 as usize];
+        let x = witness.tensor(node.inputs[0]).unwrap();
+        for h in 0..hp {
+            for q in 0..np {
+                for k in 0..np {
+                    let at = ((l * hp + h) * np + q) * np + k;
+                    maximum[at] = maximum_rows[(l * hp + h) * np + q];
+                    if h < heads && q < n && k < n {
+                        scores[at] = G::from_i64(x[(h * n + q) * n + k]);
+                    }
+                    if h < heads && k <= q && q < n {
+                        causal[at] = G::ONE;
+                    }
+                }
+            }
+        }
+    }
+    let to_prover = |x: E| {
+        F::new(
+            G::from_u64_reduced(x.c0.to_canonical()),
+            G::from_u64_reduced(x.c1.to_canonical()),
+        )
+    };
+    let (forest_point, forest_value) = if n == 1 {
+        assert!(bound.forests.is_empty());
+        let mut point = lookup_point.clone();
+        point.extend_from_slice(layer);
+        let leaf = mle(&forest_truth(p, witness, site.node), &point);
+        (point, leaf)
+    } else {
+        assert_eq!(bound.forests.len(), 1);
+        (
+            bound.forests[0].claim.point.clone(),
+            bound.forests[0].claim.value,
+        )
+    };
+    let forest = stack.forest(&forest_point, forest_value).unwrap();
+    let mut lookup_full = lookup_point.clone();
+    lookup_full.extend_from_slice(layer);
+    let targets = [&lookup_full, &forest_point];
+    let equality: Vec<Vec<F>> = targets
+        .iter()
+        .map(|p| {
+            (0..lp * cube)
+                .map(|i| {
+                    p.iter().enumerate().fold(F::ONE, |a, (j, &r)| {
+                        a * if i >> j & 1 == 0 {
+                            F::ONE - to_prover(r)
+                        } else {
+                            to_prover(r)
+                        }
+                    })
+                })
+                .collect()
+        })
+        .collect();
+    let instances: Vec<_> = equality
+        .iter()
+        .map(|eq| {
+            Instance::sum_of_products(
+                vec![
+                    Table::base(&maximum),
+                    Table::base(&scores),
+                    Table::ext(eq).public(),
+                    Table::base(&causal).public(),
+                ],
+                vec![
+                    Term::new(F::ONE, vec![0, 2, 3]),
+                    Term::new(-F::ONE, vec![1, 2, 3]),
+                ],
+            )
+        })
+        .collect();
+    let proof = prove_batch::<F, _>(transcript, Prefix::Stage(1), 3, &instances)
+        .unwrap()
+        .into_proof();
+    let proof = tv_core::sumcheck::SumcheckProof {
+        rounds: proof.rounds.iter().map(|r| es(r)).collect(),
+        final_evals: es(&proof.final_evals),
+    };
+    let batch = tv_core::sumcheck::verify_batch(
+        verifier_transcript,
+        tv_core::sumcheck::Prefix::Stage(1),
+        3,
+        &[lookup.instance().unwrap(), forest.instance().unwrap()],
+        &proof,
+        |i, p, e| [&lookup, &forest][i].evaluate(p, e).ok().map(|r| r.value),
+    )
+    .unwrap();
+    for (i, key) in [&lookup, &forest].iter().enumerate() {
+        let result = key
+            .evaluate(&batch.point, &proof.final_evals[i * 2..i * 2 + 2])
+            .unwrap();
+        assert_eq!(result.claims.len(), 2);
+        for (j, claim) in result.claims.iter().enumerate() {
+            let sources: Vec<_> = stack
+                .sites()
+                .iter()
+                .map(|s| {
+                    if j == 0 {
+                        tv_core::advice::Source::Auxiliary(
+                            s.node(),
+                            tv_core::advice::Auxiliary::SoftmaxMaximum,
+                        )
+                    } else {
+                        tv_core::advice::Source::Tensor(graph.node(s.node()).unwrap().inputs()[0])
+                    }
+                })
+                .collect();
+            assert_eq!(claim.sources, sources);
+            let point: Vec<_> = claim
+                .point
+                .iter()
+                .chain(&claim.layer_point)
+                .copied()
+                .map(to_prover)
+                .collect();
+            assert_eq!(
+                claim.value,
+                e(tessera_poly::evaluate_base::<F>(
+                    if j == 0 { &maximum_rows } else { &scores },
+                    &point
+                )
+                .unwrap())
+            );
+        }
+    }
+    assert_eq!(
+        e(transcript.challenge("stage/2/gamma")),
+        verifier_transcript
+            .challenge_fp2(tv_hash::transcript::Ascii::new("stage/2/gamma").unwrap())
+            .unwrap()
+    );
 }
