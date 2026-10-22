@@ -77,3 +77,5 @@ Tessera is dual-licensed under the [Apache License, Version 2.0](LICENSE-APACHE)
 Contributions are inbound = outbound: unless you explicitly state otherwise, any contribution you intentionally submit for inclusion in Tessera is dual-licensed as above, without additional terms or conditions. The Developer Certificate of Origin sign-off on each commit affirms this ([09 §6](docs/spec/09-release-and-versioning.md#6-contribution-workflow)).
 
 Model weights are never redistributed. Test vectors use randomly generated weights, and users supply checkpoints under their own licenses ([09 §7](docs/spec/09-release-and-versioning.md#7-licensing)).
+
+The [exact-mode CLI suite](docs/testing/exact-cli.md) runs the CPU compile → commit → prove → independent verify path in NI and directory Live modes. Its synthetic test parameters certify nothing.

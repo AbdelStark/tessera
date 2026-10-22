@@ -107,8 +107,17 @@ impl Drop for Temporary {
         }
     }
 }
+static NEXT: AtomicU64 = AtomicU64::new(0);
+
 pub(crate) fn write(path: &Path, bytes: &[u8]) -> Result<(), ErrorCode> {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
+    atomic(path, bytes, true, &NEXT)
+}
+
+pub(crate) fn publish(path: &Path, bytes: &[u8]) -> Result<(), ErrorCode> {
+    atomic(path, bytes, false, &NEXT)
+}
+
+fn atomic(path: &Path, bytes: &[u8], replace: bool, next: &AtomicU64) -> Result<(), ErrorCode> {
     let parent = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -117,7 +126,7 @@ pub(crate) fn write(path: &Path, bytes: &[u8]) -> Result<(), ErrorCode> {
         let temp = parent.join(format!(
             ".tessera-verdict-{}-{}.tmp",
             std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
+            next.fetch_add(1, Ordering::Relaxed)
         ));
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
@@ -139,8 +148,18 @@ pub(crate) fn write(path: &Path, bytes: &[u8]) -> Result<(), ErrorCode> {
             .and_then(|_| file.sync_all())
             .map_err(|_| ErrorCode::Io)?;
         drop(file);
-        fs::rename(&guard.path, path).map_err(|_| ErrorCode::Io)?;
-        guard.armed = false;
+        if replace {
+            fs::rename(&guard.path, path).map_err(|_| ErrorCode::Io)?;
+            guard.armed = false;
+        } else {
+            fs::hard_link(&guard.path, path).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    ErrorCode::Usage
+                } else {
+                    ErrorCode::Io
+                }
+            })?;
+        }
         return Ok(());
     }
     Err(ErrorCode::Io)
@@ -202,7 +221,12 @@ mod tests {
             )
             .unwrap();
         }
-        let result = write(&dir.join("verdict"), b"overwrite attempt");
+        let result = atomic(
+            &dir.join("verdict"),
+            b"overwrite attempt",
+            true,
+            &AtomicU64::new(0),
+        );
         let contents = fs::read(&canary).unwrap();
         let count = fs::read_dir(&dir).unwrap().count();
         fs::remove_dir_all(&dir).unwrap();

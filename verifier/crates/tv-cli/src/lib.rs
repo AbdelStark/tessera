@@ -7,7 +7,9 @@
 
 #![forbid(unsafe_code)]
 
+mod directory;
 mod files;
+mod live;
 mod options;
 mod tables;
 mod verify;
@@ -51,7 +53,8 @@ COMMANDS:
     verify    Verify one protocol/1 NI proof against caller-pinned inputs
     tables    Regenerate the claim list's table catalog and print digests
     params    Compute the independent soundness table for a parameter set (RFC-0014)
-    live, weights link, audit plan/report    Reserved; require later transport/ledger/anchor work
+    live      Verify one caller-pinned Live session through a directory
+    weights link, audit plan/report    Reserved; require later ledger/anchor work
 ";
 
 const PARAMS_HELP: &str = "\
@@ -119,7 +122,8 @@ where
         "params" => run_params(&collected[1..], json_flag),
         "verify" => verify::run(&collected[1..], json_flag),
         "tables" => tables::run(&collected[1..], json_flag),
-        "live" | "weights" | "audit" => usage_error(
+        "live" => live::run(&collected[1..], json_flag),
+        "weights" | "audit" => usage_error(
             first,
             "this operation requires unfinished live transport, anchor or ledger support",
             json_flag,

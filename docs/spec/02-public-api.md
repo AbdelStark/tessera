@@ -57,10 +57,31 @@ tessera recorder ref    --listen ADDR --log-dir DIR                         # so
 tessera inspect         FILE                                                # renders a TCE artifact as text (RFC-0003)
 ```
 
+The v0.3 CPU reference path implements one exact-greedy request from an existing
+`TokenFile` (one prompt followed by its recorded continuation):
+
+```text
+tessera compile --model MODEL.d --params PARAMSET --out-dir DIR
+                [--max-log2-rows 32] [--query-block 512]
+tessera prove --plan plan.tep --model MODEL.d --weights WEIGHTS.twc
+              --reference-tokens TOKENS.ttk --prompt-len N --request-id N
+              --request-session HEX --manifest-digest HEX
+              (--live DIR | --out PROOF.tnp) [--memory-budget GIB] [--json]
+              [--timeout-ms N]  # Live only
+```
+
+The optional compile flags select the existing gadget policy; their defaults
+remain unchanged. `--live DIR` uses RFC-0014's one-shot directory transport.
+A completed producer emits an informational `tessera.proof-run/1` receipt;
+only the independent verifier supplies acceptance. A changed recorded output
+returns `ERR-WITNESS-EXACT-MISMATCH`. The sampled-audit route remains
+[#157](https://github.com/AbdelStark/tessera/issues/157). See the
+[exact CLI suite](../testing/exact-cli.md) for reproducible commands and limits.
+
 ### 2.3 `tessera-verify` (Rust, verifier side, independent build)
 
 The current v0.3 protocol/1 reference interface verifies one exact-greedy NI
-request. Its application-owned whole-statement digest authenticates the expected
+or directory Live request. Its application-owned whole-statement digest authenticates the expected
 statement before any proof is evaluated:
 
 ```text
@@ -68,6 +89,11 @@ tessera-verify verify --claims claims.tcl --weights-root ROOT --weights WEIGHTS.
                       --statement-digest HEX --proof PROOF.tnp --bound BITS
                       [--out VERDICT.json] [--json] [--max-artifact-bytes N]
                       [--max-memory-bytes N] [--timeout-ms N]
+tessera-verify live --claims claims.tcl --weights-root ROOT --weights WEIGHTS.twr
+                    --statement-digest HEX --bound BITS --connect DIR
+                    --request-id N --request-session HEX --prompt-len N
+                    --output-len N --manifest-digest HEX [--out VERDICT.json] [--json]
+                    [--max-artifact-bytes N] [--max-memory-bytes N] [--timeout-ms N]
 tessera-verify tables --claims claims.tcl [--json] [--max-table-rows N]
 tessera-verify params --params PARAMSET [--lookups N] [--table-rows T] [--json]
 ```
@@ -77,7 +103,7 @@ using the proof's own digest supplies no trust anchor. `--bound` is exact bits
 in increments of 1/256. [The reference CLI guide](../verifier/reference-cli.md)
 describes resource allowances, atomic report output and the measured CLI trace.
 The commands below are the full target interface: anchor integration, the ledger,
-audit commands and live transport remain with
+audit commands and authenticated network transport remain with
 [#137](https://github.com/AbdelStark/tessera/issues/137),
 [#158](https://github.com/AbdelStark/tessera/issues/158),
 [#151](https://github.com/AbdelStark/tessera/issues/151) and

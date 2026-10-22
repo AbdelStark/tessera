@@ -79,14 +79,14 @@ impl<'a> Config<'a> {
         })
     }
 }
-struct Execution {
+pub(crate) struct Execution {
     start: Instant,
     durations: [Option<u64>; 3],
     outcomes: [&'static str; 3],
-    pinned: bool,
+    pub(crate) pinned: bool,
 }
 impl Execution {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             start: Instant::now(),
             durations: [None; 3],
@@ -94,7 +94,7 @@ impl Execution {
             pinned: false,
         }
     }
-    fn phase<T>(
+    pub(crate) fn phase<T>(
         &mut self,
         index: usize,
         f: impl FnOnce() -> Result<T, ErrorCode>,
@@ -105,11 +105,22 @@ impl Execution {
         self.outcomes[index] = if result.is_ok() { "completed" } else { "error" };
         result
     }
-    fn remaining(&self, limit: Duration) -> Result<Duration, ErrorCode> {
+    pub(crate) fn remaining(&self, limit: Duration) -> Result<Duration, ErrorCode> {
         limit
             .checked_sub(self.start.elapsed())
             .filter(|d| !d.is_zero())
             .ok_or(ErrorCode::Time)
+    }
+    pub(crate) fn evaluate(&mut self, f: impl FnOnce() -> Verdict) -> Verdict {
+        let at = Instant::now();
+        let verdict = f();
+        self.durations[2] = Some(nanos(at.elapsed()));
+        self.outcomes[2] = match &verdict {
+            Verdict::Accept(_) => "accept",
+            Verdict::Reject(_) => "reject",
+            Verdict::Inconclusive(_) => "inconclusive",
+        };
+        verdict
     }
 }
 fn nanos(duration: Duration) -> u64 {
@@ -119,6 +130,36 @@ pub(crate) fn inconclusive(code: ErrorCode) -> Verdict {
     Verdict::Inconclusive(VerifierError { code })
 }
 
+pub(crate) fn decode_limits(limits: ResourceLimits) -> DecodeLimits {
+    DecodeLimits {
+        max_total_bytes: limits.max_artifact_bytes.min(limits.max_memory_bytes / 8),
+        max_vec_len: DecodeLimits::MESSAGE
+            .max_vec_len
+            .min(limits.max_memory_bytes / 8),
+        ..DecodeLimits::MESSAGE
+    }
+}
+pub(crate) fn public_inputs(
+    claims: &str,
+    weights: &str,
+    input: &mut files::Inputs,
+    limits: &DecodeLimits,
+) -> Result<(ClaimList, WeightCommitmentPublic), ErrorCode> {
+    let claims = {
+        let bytes = input.read(Path::new(claims))?;
+        ClaimList::open(&bytes, limits).map_err(|e| ErrorCode::from(e.code()))?
+    };
+    let weights = {
+        let bytes = input.read(Path::new(weights))?;
+        Envelope::open(&bytes, WeightCommitmentPublic::EXPECTED, limits, |b| {
+            hash(Domain::Envelope, b)
+        })
+        .and_then(|e| e.decode_payload(|c, _| WeightCommitmentPublic::decode(c)))
+        .map_err(|e| ErrorCode::from(e.code()))?
+    };
+    Ok((claims, weights))
+}
+
 fn verify(c: &Config<'_>, e: &mut Execution) -> Result<Verdict, ErrorCode> {
     e.remaining(c.limits.max_wall_time)?;
     // Reserve a conservative input/decoded-object allowance before any file allocation.
@@ -126,29 +167,9 @@ fn verify(c: &Config<'_>, e: &mut Execution) -> Result<Verdict, ErrorCode> {
         remaining: c.limits.max_memory_bytes / 8,
         max_artifact: c.limits.max_artifact_bytes,
     };
-    let limits = DecodeLimits {
-        max_total_bytes: c
-            .limits
-            .max_artifact_bytes
-            .min(c.limits.max_memory_bytes / 8),
-        max_vec_len: DecodeLimits::MESSAGE
-            .max_vec_len
-            .min(c.limits.max_memory_bytes / 8),
-        ..DecodeLimits::MESSAGE
-    };
+    let limits = decode_limits(c.limits);
     let (claims, weights, proof) = e.phase(0, || {
-        let claims = {
-            let bytes = input.read(Path::new(c.claims))?;
-            ClaimList::open(&bytes, &limits).map_err(|e| ErrorCode::from(e.code()))?
-        };
-        let weights = {
-            let bytes = input.read(Path::new(c.weights))?;
-            Envelope::open(&bytes, WeightCommitmentPublic::EXPECTED, &limits, |b| {
-                hash(Domain::Envelope, b)
-            })
-            .and_then(|e| e.decode_payload(|c, _| WeightCommitmentPublic::decode(c)))
-            .map_err(|e| ErrorCode::from(e.code()))?
-        };
+        let (claims, weights) = public_inputs(c.claims, c.weights, &mut input, &limits)?;
         let proof = {
             let bytes = input.read(Path::new(c.proof))?;
             NiProof::open(&bytes, &limits).map_err(|e| ErrorCode::from(e.code()))?
@@ -179,15 +200,10 @@ fn verify(c: &Config<'_>, e: &mut Execution) -> Result<Verdict, ErrorCode> {
             ..c.limits
         },
     };
-    let at = Instant::now();
     // Only after the external whole-statement pin matches is its content trusted.
-    let verdict = tv_core::verify_non_interactive(&claims, &proof.round1.statement, &proof, &cfg);
-    e.durations[2] = Some(nanos(at.elapsed()));
-    e.outcomes[2] = match &verdict {
-        Verdict::Accept(_) => "accept",
-        Verdict::Reject(_) => "reject",
-        Verdict::Inconclusive(_) => "inconclusive",
-    };
+    let verdict = e.evaluate(|| {
+        tv_core::verify_non_interactive(&claims, &proof.round1.statement, &proof, &cfg)
+    });
     Ok(verdict)
 }
 
@@ -254,15 +270,25 @@ pub(crate) fn run(args: &[String], json_flag: bool) -> CommandOutput {
     let mut execution = Execution::new();
     let checked_output =
         files::output_distinct(config.out, &[config.claims, config.weights, config.proof]);
-    let mut verdict = match checked_output {
+    let verdict = match checked_output {
         Ok(()) => verify(&config, &mut execution).unwrap_or_else(inconclusive),
         Err(code) => inconclusive(code),
     };
+    finish(verdict, execution, config.out, json_flag, checked_output)
+}
+
+pub(crate) fn finish(
+    mut verdict: Verdict,
+    execution: Execution,
+    out: Option<&str>,
+    json_flag: bool,
+    checked_output: Result<(), ErrorCode>,
+) -> CommandOutput {
     let mut report = match json(&verdict, &execution) {
         Ok(report) => report,
         Err(code) => return failure(code),
     };
-    if let (Ok(()), Some(out)) = (checked_output, config.out)
+    if let (Ok(()), Some(out)) = (checked_output, out)
         && let Err(code) = files::write(Path::new(out), report.as_bytes())
     {
         verdict = inconclusive(code);

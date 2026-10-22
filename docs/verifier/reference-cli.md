@@ -1,6 +1,6 @@
 # Protocol/1 verifier CLI
 
-The v0.3 reference CLI verifies one non-interactive exact-greedy request through
+The v0.3 reference CLI verifies one exact-greedy request in NI or directory Live mode through
 the independent verifier. It regenerates table catalogs and retains the existing
 parameter calculator. Protocol/1 does not hide weights or tokens. Test-small
 parameters certify nothing and are accepted only by an explicit test build.
@@ -80,7 +80,7 @@ The default total work allowance is 16,777,216 padded rows; a larger catalog
 returns `ERR-RES-TIME` before generation. `--max-table-rows N` explicitly
 selects another allowance. The input file limit is 1 GiB.
 
-`live`, `weights link` and `audit plan/report` are recognized reserved surfaces
+`weights link` and `audit plan/report` are recognized reserved surfaces
 and fail explicitly without accessing or changing a ledger. Their implementations
 remain with [#181](https://github.com/AbdelStark/tessera/issues/181),
 [#158](https://github.com/AbdelStark/tessera/issues/158) and
@@ -102,3 +102,29 @@ TESSERA_VERIFY_BIN="$PWD/verifier/target/debug/tessera-verify" \
 
 These test features fail release builds. The verifier has no producer dependency;
 the differential test and repository JSON Schema validator live on the root side.
+
+## Directory Live
+
+```sh
+target/debug/tessera-verify live \
+  --claims claims.tcl --weights weights.twr --weights-root "$TRUSTED_ROOT" \
+  --statement-digest "$TRUSTED_STATEMENT" --bound 0 --connect "$FRESH_DIR" \
+  --request-id 23 --request-session "$REQUEST_SESSION_HEX" \
+  --prompt-len 2 --output-len 3 --manifest-digest "$MANIFEST_HEX" \
+  --out verdict.json --json
+```
+
+The application supplies every expected request field before the verifier emits
+`SeedCommit`. The independently constructed statement must match the external
+whole-statement pin. The verifier waits for each canonical packet, validates it
+through the existing one-shot Live core, and publishes the next challenge only
+after its checks pass. Only the final Round3 checks can accept.
+
+Both actors require a fresh existing directory. Role markers and atomically
+published packets cannot be overwritten; reuse is an input error. Verdict files
+must be outside the exchange directory. The default deadlines are 600 seconds
+per message and 3,600 seconds for Round2; `--timeout-ms` overrides each wait.
+The full session also has a cooperative core deadline. This reference exchange
+provides no authenticated TLS channel; full network transport remains #181.
+The [exact CLI suite](../testing/exact-cli.md) exercises both real binaries,
+ragged geometry, mismatched outputs and tampered packets at every Live round.

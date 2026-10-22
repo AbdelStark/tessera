@@ -36,6 +36,7 @@ tv-field = { path = "../../verifier/crates/tv-field" }
 tv-hash = { path = "../../verifier/crates/tv-hash" }
 tv-tables = { path = "../../verifier/crates/tv-tables" }
 tv-testkit = { path = "../../verifier/crates/tv-testkit" }
+xtask = { path = "../../xtask" }
 
 [lints]
 workspace = true
