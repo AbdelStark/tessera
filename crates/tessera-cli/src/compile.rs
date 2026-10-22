@@ -31,6 +31,12 @@ pub(crate) struct CompileArgs {
     /// Where claims.tcl, plan.tep and commitment-report.json go.
     #[arg(long, value_name = "DIR")]
     pub(crate) out_dir: PathBuf,
+    /// Largest lookup table, as log2(rows); wider keys use the existing split gadgets.
+    #[arg(long,value_parser=clap::value_parser!(u8).range(1..=32),default_value_t=32)]
+    pub(crate) max_log2_rows: u8,
+    /// Positions per attention tile; use 2 for the resident tiny-model reference path.
+    #[arg(long,value_parser=clap::value_parser!(u32).range(1..),default_value_t=512)]
+    pub(crate) query_block: u32,
 }
 
 fn compile_error(error: CompileError) -> TesseraError {
@@ -87,9 +93,13 @@ pub(crate) fn compile(args: &CompileArgs, json: bool) -> Result<(), TesseraError
     let param_id = ParamSetId(Ascii::new(params.id).map_err(|_| {
         TesseraError::new(ErrorCode::Internal).with_source("parameter set id is not ASCII")
     })?);
-    let output =
-        tessera_compiler::compile(&model, &GadgetPolicy::default(), params.layout, param_id)
-            .map_err(compile_error)?;
+    let policy = GadgetPolicy {
+        max_log2_rows: args.max_log2_rows,
+        query_block: args.query_block,
+        ..GadgetPolicy::default()
+    };
+    let output = tessera_compiler::compile(&model, &policy, params.layout, param_id)
+        .map_err(compile_error)?;
 
     let cost_model = ModelReport::new(
         false,

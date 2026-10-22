@@ -1,0 +1,72 @@
+{
+  "description": "Synthetic public three-layer exact-greedy CLI fixture; nonzero integer logits from the independent Python oracle.",
+  "model": "tiny-3-reference.d",
+  "tokens": "recorded.ttk",
+  "layers": 3,
+  "prompt_len": 2,
+  "output_len": 3,
+  "request_id": 23,
+  "request_session": "11111111111111111111111111111111",
+  "manifest_digest": "1313131313131313131313131313131313131313131313131313131313131313",
+  "token_ids": [
+    1,
+    2,
+    2,
+    6,
+    0
+  ],
+  "logits": [
+    [
+      -2893,
+      958,
+      2647,
+      -133,
+      -2626,
+      -918,
+      3973,
+      -145
+    ],
+    [
+      -2071,
+      1018,
+      3229,
+      1769,
+      -1894,
+      -666,
+      1351,
+      641
+    ],
+    [
+      -3082,
+      796,
+      1918,
+      -1402,
+      -2788,
+      -972,
+      5242,
+      -658
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  ],
+  "model_sha256": "3cc18e95074a5087be133245c3e18f44f68ca0583081b69fd1999fba5441b1be",
+  "tokens_sha256": "a9fa8c918227bdffc0528550c0d6837d2db28d53ec3cc4ec7fefd2121abedf11"
+}

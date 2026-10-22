@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Exact-mode CLI suite now compiles a synthetic three-layer model, commits weights, produces NI and directory Live proofs, and obtains independent `Û = 0` verdicts for five-token sequences. `tessera prove --reference-tokens` uses clearing input buffers and exact public request metadata; optional compile policy flags retain their defaults. Required CI runs both separately built binaries, exact mismatch and per-round tamper regressions ([#133](https://github.com/AbdelStark/tessera/issues/133)).
+
 - Real CPU proofs now exercise the independent verifier CLI, caller-pin failures, proof tampering, table regeneration, report schemas and output safety. Required CI runs the separately built verifier binary using its own workspace and lockfile ([#131](https://github.com/AbdelStark/tessera/issues/131)).
 
 - Public CPU `Prover` API for one exact-greedy request in NI and Live modes, reusing the protocol state machine and existing witness, tree, stage and streaming PCS kernels. The producer derives its own original opening claims, validates model/plan/epoch/configuration coherence, retains owned public P1 metadata and a commitment-bound P4-to-P5 permit, and clears per-proof witness/randomness on completion or abort. GPU targets and multi-request units fail explicitly; pass planning and zero knowledge remain separate work ([#130](https://github.com/AbdelStark/tessera/issues/130)).

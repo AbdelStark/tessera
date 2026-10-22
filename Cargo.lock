@@ -546,9 +546,11 @@ dependencies = [
  "tessera-bench",
  "tessera-codec",
  "tessera-compiler",
+ "tessera-hash",
  "tessera-ir",
  "tessera-pcs",
  "tessera-protocol",
+ "tessera-prover",
 ]
 
 [[package]]
@@ -610,6 +612,7 @@ dependencies = [
  "tv-hash",
  "tv-tables",
  "tv-testkit",
+ "xtask",
 ]
 
 [[package]]

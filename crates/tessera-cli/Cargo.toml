@@ -22,6 +22,8 @@ tessera-compiler = { path = "../tessera-compiler" }
 tessera-ir = { path = "../tessera-ir" }
 tessera-pcs = { path = "../tessera-pcs" }
 tessera-protocol = { path = "../tessera-protocol" }
+tessera-prover = { path = "../tessera-prover" }
+tessera-hash = { path = "../tessera-hash" }
 
 
 [lints]

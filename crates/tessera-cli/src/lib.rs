@@ -21,9 +21,10 @@
 //! tessera inspect         FILE
 //! ```
 //!
-//! `tessera compile` runs, in the `compile` module, `tessera commit-weights`, in the `weights`
-//! module, `tessera bench model`, in the `bench` module, `tessera params check`, in the `params`
-//! module, and `tessera inspect`, in the `inspect` module. Every other command checks its
+//! `tessera prove --reference-tokens` produces one exact-greedy CPU proof in NI or directory
+//! Live mode; sampled audits remain #157. `tessera compile` runs in `compile`,
+//! `tessera commit-weights` in `weights`, `tessera bench model` in `bench`,
+//! `tessera params check` in `params`, and `tessera inspect` in `inspect`. Other commands check their
 //! arguments and the envelope of each TCE artifact it reads (RFC-0003), then exits with
 //! `ERR-USAGE`, naming the issue that implements it.
 //!
@@ -45,20 +46,21 @@ mod bench;
 mod compile;
 mod inspect;
 mod params;
+mod prove;
 mod weights;
 
 use std::ffi::OsString;
 use std::fs::{self, File};
-use std::io::{self, BufReader};
+use std::io::{self, Read};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::{ArgGroup, Args, CommandFactory, FromArgMatches, Parser, Subcommand};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use tessera_codec::envelope::{self, ReadError};
 use tessera_codec::error::{ErrorCode, TesseraError};
 use tessera_codec::schema::{self, Schema};
-use tessera_codec::{Decode, DecodeLimits};
+use tessera_codec::{Decode, DecodeLimits, SecretBuf};
 
 /// The parameter sets of RFC-0014 'Parameter sets' (02 §5).
 const PARAM_SETS: [&str; 3] = ["live-64", "ni-100", "test-small"];
@@ -88,7 +90,7 @@ enum Command {
     #[command(subcommand)]
     Weights(Weights),
     /// Proves a sample of recorded requests, live or non-interactively (RFC-0014).
-    Prove(ProveArgs),
+    Prove(Box<prove::ProveArgs>),
     /// Audit sampling, batching and planning (RFC-0015).
     #[command(subcommand)]
     Audit(Audit),
@@ -148,37 +150,6 @@ struct RefreshArgs {
     weights: PathBuf,
     #[arg(long, value_name = "WEIGHTS2.twc")]
     out: PathBuf,
-}
-
-/// `tessera prove`.
-#[derive(Debug, Args)]
-#[command(group(ArgGroup::new("mode").required(true).args(["live", "out"])))]
-struct ProveArgs {
-    #[arg(long, value_name = "plan.tep")]
-    plan: PathBuf,
-    #[arg(long, value_name = "MODEL.d")]
-    model: PathBuf,
-    #[arg(long, value_name = "WEIGHTS.twc")]
-    weights: PathBuf,
-    #[arg(long, value_name = "SAMPLE.tas")]
-    sample: PathBuf,
-    /// The recorded transcripts.
-    #[arg(long, value_name = "DIR")]
-    transcripts: PathBuf,
-    /// Prove live against a verifier at this endpoint.
-    #[arg(long, value_name = "ENDPOINT")]
-    live: Option<String>,
-    /// Write a non-interactive proof.
-    #[arg(long, value_name = "PROOF.tnp")]
-    out: Option<PathBuf>,
-    #[arg(long, value_parser = ["cpu", "gpu"], default_value = "cpu")]
-    backend: String,
-    /// GPU ordinals, comma-separated.
-    #[arg(long, value_delimiter = ',', value_name = "0,1,...")]
-    devices: Vec<u32>,
-    /// Device memory the prover may use, in GiB.
-    #[arg(long, value_name = "GIB", value_parser = clap::value_parser!(u64).range(1..))]
-    memory_budget: Option<u64>,
 }
 
 /// `tessera audit sample`.
@@ -348,9 +319,7 @@ fn fail(
 
 /// Runs the command `cli` names, and returns its name, as 02 §2.2 spells it, with its outcome.
 fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
-    use schema::{
-        AUDIT_SAMPLE, EXECUTION_PLAN, INTEGER_MODEL, LOG_MANIFEST, WEIGHT_COMMITMENT_STATE,
-    };
+    use schema::{AUDIT_SAMPLE, EXECUTION_PLAN, LOG_MANIFEST, WEIGHT_COMMITMENT_STATE};
     match &cli.command {
         Command::Compile(a) => (
             "compile",
@@ -371,17 +340,7 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
         ),
         Command::Prove(a) => (
             "prove",
-            pending(
-                "prove",
-                &[
-                    Input::new(&a.plan, &EXECUTION_PLAN),
-                    Input::new(&a.model, &INTEGER_MODEL),
-                    Input::new(&a.weights, &WEIGHT_COMMITMENT_STATE),
-                    Input::new(&a.sample, &AUDIT_SAMPLE),
-                ],
-                157,
-            )
-            .map(|()| ExitCode::SUCCESS),
+            prove::prove(a, cli.json).map(|()| ExitCode::SUCCESS),
         ),
         Command::Audit(Audit::Sample(a)) => (
             "audit sample",
@@ -437,12 +396,19 @@ impl<'a> Input<'a> {
     /// and digest (RFC-0003 'Envelope'), under its schema's limits.
     fn verify(&self) -> Result<(), TesseraError> {
         let shown = self.path.display().to_string();
+        if !fs::metadata(self.path)
+            .map_err(io_error(format!("cannot read {shown}")))?
+            .is_file()
+        {
+            return Err(TesseraError::new(ErrorCode::ResIo));
+        }
         let file = File::open(self.path).map_err(io_error(format!("cannot read {shown}")))?;
         let limits = match self.schema.id == schema::INTEGER_MODEL.id {
             true => DecodeLimits::INTEGER_MODEL,
             false => DecodeLimits::MESSAGE,
         };
-        match envelope::verify(BufReader::new(file), self.schema, limits) {
+        // OBS-6: the envelope reader clears its buffer; read-ahead would add an uncleared copy.
+        match envelope::verify(file, self.schema, limits) {
             Ok(_) => Ok(()),
             Err(ReadError::Invalid(error)) => Err(TesseraError::from(error).with_source(format!(
                 "{shown} is not a valid {} envelope",
@@ -457,11 +423,37 @@ impl<'a> Input<'a> {
     pub(crate) fn open<T: Decode>(&self) -> Result<T, TesseraError> {
         self.verify()?;
         let shown = self.path.display().to_string();
-        let bytes = fs::read(self.path).map_err(io_error(format!("cannot read {shown}")))?;
         let limits = match self.schema.id == schema::INTEGER_MODEL.id {
             true => DecodeLimits::INTEGER_MODEL,
             false => DecodeLimits::MESSAGE,
         };
+        let mut file = File::open(self.path).map_err(io_error(format!("cannot read {shown}")))?;
+        let metadata = file
+            .metadata()
+            .map_err(io_error(format!("cannot read {shown}")))?;
+        if !metadata.is_file() {
+            return Err(TesseraError::new(ErrorCode::ResIo));
+        }
+        if metadata.len() > limits.max_total_bytes {
+            return Err(TesseraError::new(ErrorCode::CodecLimit));
+        }
+        let len =
+            usize::try_from(metadata.len()).map_err(|_| TesseraError::new(ErrorCode::ResMemory))?;
+        let mut bytes = SecretBuf::try_with_capacity(len)
+            .map_err(|_| TesseraError::new(ErrorCode::ResMemory))?;
+        bytes.resize(len, 0);
+        file.read_exact(&mut bytes)
+            .map_err(io_error(format!("cannot read {shown}")))?;
+        let mut extra =
+            SecretBuf::try_with_capacity(1).map_err(|_| TesseraError::new(ErrorCode::ResMemory))?;
+        extra.push(0);
+        if file
+            .read(&mut extra)
+            .map_err(io_error(format!("cannot read {shown}")))?
+            != 0
+        {
+            return Err(TesseraError::new(ErrorCode::ResIo));
+        }
         envelope::open(&bytes, self.schema, limits).map_err(|error| {
             TesseraError::from(error).with_source(format!(
                 "{shown} is not a valid {} envelope",

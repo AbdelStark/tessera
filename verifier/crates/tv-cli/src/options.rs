@@ -44,13 +44,21 @@ impl<'a> Options<'a> {
             v.parse().map_err(|_| ErrorCode::Usage)
         })
     }
+    pub(crate) fn required_number(&self, key: &str) -> Result<u64, ErrorCode> {
+        self.required(key)?;
+        self.number(key, 0)
+    }
 }
 
 pub(crate) fn digest(text: &str) -> Result<[u8; 32], ErrorCode> {
-    if text.len() != 64 {
+    hex(text)
+}
+
+pub(crate) fn hex<const N: usize>(text: &str) -> Result<[u8; N], ErrorCode> {
+    if text.len() != 2 * N {
         return Err(ErrorCode::Usage);
     }
-    let mut out = [0; 32];
+    let mut out = [0; N];
     for (byte, pair) in out.iter_mut().zip(text.as_bytes().chunks_exact(2)) {
         let digit = |x: u8| match x {
             b'0'..=b'9' => Ok(x - b'0'),
@@ -124,5 +132,38 @@ mod tests {
         for bad in ["00".repeat(31), "gg".repeat(32), "00".repeat(33)] {
             assert_eq!(digest(&bad), Err(ErrorCode::Usage));
         }
+        assert_eq!(hex::<16>(&"Af".repeat(16)), Ok([0xaf; 16]));
+        for bad in [
+            "00".repeat(15),
+            "00".repeat(17),
+            "é".repeat(16),
+            "gg".repeat(16),
+        ] {
+            assert_eq!(hex::<16>(&bad), Err(ErrorCode::Usage));
+        }
+        for (text, value) in [("0", 0), ("18446744073709551615", u64::MAX)] {
+            let args = vec!["--n".into(), text.into()];
+            assert_eq!(
+                Options::parse(&args, &["--n"])
+                    .unwrap()
+                    .required_number("--n"),
+                Ok(value)
+            );
+        }
+        for text in ["-1", "+1", "1.0", "18446744073709551616"] {
+            let args = vec!["--n".into(), text.into()];
+            assert_eq!(
+                Options::parse(&args, &["--n"])
+                    .unwrap()
+                    .required_number("--n"),
+                Err(ErrorCode::Usage)
+            );
+        }
+        assert_eq!(
+            Options::parse(&[], &["--n"])
+                .unwrap()
+                .required_number("--n"),
+            Err(ErrorCode::Usage)
+        );
     }
 }

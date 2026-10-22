@@ -135,6 +135,13 @@ jobs:
       - name: Runtime library unit tests
         if: matrix.workspace == 'prover'
         run: cargo nextest run --workspace --exclude xtask --exclude tessera-bench --lib --locked
+      - name: Build the real exact-mode CLI pair
+        if: matrix.workspace == 'prover'
+        run: |
+          cargo build -p tessera-cli --locked
+          (cd verifier && cargo build -p tv-cli --features tv-core/test-params --locked)
+          echo "TESSERA_BIN=$PWD/target/debug/tessera" >> "$GITHUB_ENV"
+          echo "TESSERA_VERIFY_BIN=$PWD/verifier/target/debug/tessera-verify" >> "$GITHUB_ENV"
       - name: Protocol, proof components and tiny-model integration
         if: matrix.workspace == 'prover'
         run: >-
@@ -152,8 +159,7 @@ jobs:
       - name: Independent CLI accepts the real CPU proof and rejects tampering
         if: matrix.workspace == 'prover'
         run: |
-          (cd verifier && cargo build -p tv-cli --features tv-core/test-params --locked)
-          TESSERA_VERIFY_BIN="$PWD/verifier/target/debug/tessera-verify" cargo test -p tessera-prover --test model_leaf --features test-rng,tv-core/test-params --locked public_cli_binary -- --ignored
+          cargo test -p tessera-prover --test model_leaf --features test-rng,tv-core/test-params --locked public_cli_binary -- --ignored
       - name: Test-parameter unit and claim validation coverage
         if: matrix.workspace == 'verifier'
         run: cargo nextest run -p tv-core --features test-params --lib --test claims_validation --locked

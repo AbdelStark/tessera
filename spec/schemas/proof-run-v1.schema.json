@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tessera.proof-run/1",
+  "description": "Informational non-hiding protocol/1 producer receipt; only an independent verifier supplies acceptance. Test-small parameters certify nothing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "protocol", "params", "mode", "statement_digest", "weights_root", "test_parameters", "zero_knowledge", "verifier_acceptance"],
+  "properties": {
+    "schema": {"const": "tessera.proof-run/1"},
+    "protocol": {"const": "tessera-protocol/1"},
+    "params": {"type": "string"},
+    "mode": {"enum": ["Live", "NonInteractive"]},
+    "statement_digest": {"type": "string", "minLength": 64, "maxLength": 64},
+    "weights_root": {"type": "string", "minLength": 64, "maxLength": 64},
+    "test_parameters": {"type": "boolean"},
+    "zero_knowledge": {"const": false},
+    "verifier_acceptance": {"const": false}
+  }
+}
