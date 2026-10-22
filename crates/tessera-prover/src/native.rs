@@ -15,6 +15,7 @@ use crate::ProvenLeaf;
 use crate::leaf::{LeafLayout, ModelColumn, ModelWitness};
 use crate::stages::{NativeContext, NativeProver, StageError, WitnessSource};
 
+mod openings;
 mod runtime;
 use runtime::Runtime;
 

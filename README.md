@@ -4,6 +4,12 @@ Tessera proves that a committed integer language model `D` produced a recorded t
 
 **Status:** pre-release. Milestone v0.1 (primitives and the unit-cost gate) is in progress. Nothing here is usable for audits yet, and every performance figure in the specification is a projection until it is measured.
 
+The reference CPU path now exposes [`tessera_prover::Prover`](docs/spec/02-public-api.md#31-prover)
+for one exact-greedy request through NI and Live sessions. Tiny-model acceptance
+tests use `test-small/1`, which certifies nothing. The current protocol/1 path
+provides no zero knowledge; the CLI and proof-unit/pass planner remain separate
+milestones.
+
 ## Specification
 
 - [`SPEC.md`](SPEC.md): executive summary, reading order, release plan and risk register.

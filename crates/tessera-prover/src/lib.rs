@@ -39,14 +39,21 @@
 #![forbid(unsafe_code)]
 
 pub mod advice;
+pub mod cpu;
 pub mod leaf;
 mod model;
 pub mod native;
+pub mod openings;
 mod release;
 pub mod stages;
 
+pub use cpu::{
+    Backend, MaskRng, MemoryBudget, Mode, ParamSet, ProofBatch, Prover, ProverBackend,
+    ProverConfig, ProverError, ReleaseConfig,
+};
 pub use leaf::{LeafError, LeafLayout, PreparedLeaf, ProvenLeaf, prepare_leaf, prove_leaf};
 pub use model::{ModelSchedule, derive_model_schedule, derive_runtime_schedule};
+pub use openings::ModelOpenings;
 pub use release::{Release, ReleaseSchedule, ScheduleError};
 pub use stages::{StageError, StageProof, StageProver, WitnessSource};
 

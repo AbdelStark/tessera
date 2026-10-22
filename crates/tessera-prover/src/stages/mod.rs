@@ -619,7 +619,7 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
 
     /// The layers `layers` weighs, each with its weight: the real layers only, a padded layer's
     /// tensors being 0.
-    fn weights(
+    pub(crate) fn weights(
         &self,
         layers: &Layers,
         each: Option<u32>,
@@ -644,7 +644,7 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
     }
 
     /// A coefficient's value in `layer`.
-    fn coefficient(
+    pub(crate) fn coefficient(
         &self,
         products: &[Vec<Factor>],
         layer: u32,
@@ -708,7 +708,7 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
     }
 
     /// The values of `coords`, every one drawn.
-    fn point(&self, coords: &[Coord]) -> Result<Vec<GoldilocksExt2>, StageError> {
+    pub(crate) fn point(&self, coords: &[Coord]) -> Result<Vec<GoldilocksExt2>, StageError> {
         coords
             .iter()
             .map(|&c| {

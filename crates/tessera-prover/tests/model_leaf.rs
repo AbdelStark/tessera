@@ -21,6 +21,7 @@ use tessera_witness::{Engine, Resident, WitnessSource};
 use tv_core::leaf::{self as tv, split};
 use tv_field::{Fp as V, Fp2 as E};
 
+mod cpu_api;
 mod model_openings;
 mod model_stages;
 

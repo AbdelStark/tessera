@@ -117,6 +117,12 @@ fn rows<Failure: Into<tessera_prover::advice::Error>>(
     .unwrap();
 }
 impl<'a> Committed<'a> {
+    pub fn statement(&self) -> protocol::PublicStatement {
+        self.statement.clone()
+    }
+    pub fn public_weights(&self) -> pcs::WeightCommitmentPublic {
+        *self.weights.public()
+    }
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         p: &'a Public,
@@ -421,6 +427,41 @@ impl<'a> Committed<'a> {
             },
         )
     }
+    pub fn openings(
+        &self,
+        layout: &LeafLayout<ModelColumn>,
+        leaf: &tessera_prover::ProvenLeaf,
+        native: &tessera_prover::native::ModelNativePlan,
+        stages: &tessera_prover::StageProver<'_, tessera_witness::Witness>,
+        witness: &tessera_witness::Witness,
+    ) -> tessera_prover::ModelOpenings {
+        let unfinished =
+            tessera_prover::StageProver::new(&self.p.lowering, native.schedule(), witness);
+        assert!(matches!(
+            tessera_prover::ModelOpenings::derive(
+                &self.p.lowering,
+                layout,
+                leaf,
+                native,
+                &unfinished,
+                self.advice,
+                &self.weight_layout
+            ),
+            Err(tessera_prover::StageError::Internal {
+                rule: "INV-SCH-3: original opening sources, points and order follow the runtime schedule"
+            })
+        ));
+        tessera_prover::ModelOpenings::derive(
+            &self.p.lowering,
+            layout,
+            leaf,
+            native,
+            stages,
+            self.advice,
+            &self.weight_layout,
+        )
+        .unwrap()
+    }
     #[allow(clippy::too_many_arguments)]
     pub fn check(
         &self,
@@ -432,6 +473,7 @@ impl<'a> Committed<'a> {
         mode: Mode,
         first: First,
         round2: tv_core::protocol::Round2Response,
+        cpu_openings: tessera_prover::ModelOpenings,
     ) {
         let First {
             round1,
@@ -501,6 +543,75 @@ impl<'a> Committed<'a> {
             }
             cpu.push(pcs::AdviceClaim { pieces });
         }
+        assert_eq!(
+            cpu.len(),
+            cpu_openings.advice().len(),
+            "original advice count"
+        );
+        for (i, (expected, actual)) in cpu.iter().zip(cpu_openings.advice()).enumerate() {
+            if expected.pieces.len() == actual.pieces.len()
+                && expected
+                    .pieces
+                    .iter()
+                    .zip(&actual.pieces)
+                    .all(|(a, b)| a.point == b.point && a.weight == b.weight)
+            {
+                continue;
+            }
+            let k = usize::from(self.p.claims.layout.advice.log2_k);
+            let columns = |claim: &pcs::AdviceClaim| {
+                let mut out = Vec::new();
+                for p in &claim.pieces {
+                    let c = p.point[..k].to_vec();
+                    if !out.contains(&c) {
+                        out.push(c);
+                    }
+                }
+                out
+            };
+            let groups = columns(expected);
+            assert_eq!(groups, columns(actual), "original claim {i} column groups");
+            // Independent implementations may decompose the same linear map differently.
+            // Compare EVERY Boolean row coefficient, not samples or the current witness values.
+            for group in groups {
+                let coefficients = |claim: &pcs::AdviceClaim| {
+                    let n = 1usize << (claim.pieces[0].point.len() - k);
+                    let mut row = vec![F::ZERO; n];
+                    for p in claim.pieces.iter().filter(|p| p.point[..k] == group) {
+                        let eq = tessera_poly::eq_table(&p.point[k..]).unwrap();
+                        for (v, c) in row.iter_mut().zip(eq) {
+                            *v += p.weight * c;
+                        }
+                    }
+                    row
+                };
+                assert!(
+                    coefficients(expected) == coefficients(actual),
+                    "original claim {i} complete row coefficients"
+                );
+            }
+        }
+        for matrix in pcs::WeightMatrix::ALL {
+            let expected = claims
+                .weight_claims(vw::Matrix::ALL[matrix.index()], E::ONE)
+                .unwrap();
+            let points = expected
+                .iter()
+                .map(|c| {
+                    c.column_point
+                        .iter()
+                        .chain(c.row_point)
+                        .copied()
+                        .map(from_e)
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                cpu_openings.weight_points(matrix),
+                points,
+                "matrix {matrix:?} original points"
+            );
+        }
         let gamma = t.challenge("pcs/advice/gamma");
         assert_eq!(
             e(gamma),
@@ -521,7 +632,10 @@ impl<'a> Committed<'a> {
                 assert_eq!(e(theta[i]), v.challenge_fp2(ascii(&label)).unwrap());
             }
         }
-        let prepared = self.advice_state.prepare(&cpu, gamma, &av).unwrap();
+        let prepared = self
+            .advice_state
+            .prepare(cpu_openings.advice(), gamma, &av)
+            .unwrap();
         let combine = |source| {
             let mut masks = Masks(831);
             let mut pass = prepared.begin(&self.encoder, &mut masks).unwrap();
@@ -758,9 +872,11 @@ impl<'a> Committed<'a> {
                 continue;
             }
             let mut reader = self.weight_layout.rows(m, &self.model_weights).unwrap();
-            let rowpoints = original
+            let full_points = cpu_openings.weight_points(m);
+            let k = self.weight_layout.matrix(m).log2_k() as usize;
+            let rowpoints = full_points
                 .iter()
-                .map(|c| c.row_point.iter().copied().map(from_e).collect::<Vec<_>>())
+                .map(|p| p[k..].to_vec())
                 .collect::<Vec<_>>();
             let layer;
             let fold = if m == pcs::WeightMatrix::ChannelParams {
@@ -773,13 +889,7 @@ impl<'a> Committed<'a> {
                 )
                 .unwrap()
             } else {
-                let full = original[0]
-                    .column_point
-                    .iter()
-                    .chain(original[0].row_point)
-                    .copied()
-                    .map(from_e)
-                    .collect::<Vec<_>>();
+                let full = &full_points[0];
                 let pcs::MatrixKind::Weight { shape, a, h, .. } =
                     self.weight_layout.matrix(m).kind()
                 else {
