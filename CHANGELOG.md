@@ -6,7 +6,11 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
-- Independent exact-greedy boundary components retain every original logit, OneHot, token and certificate-maximum obligation. Literal conformance fixtures and CPU mixed-sumcheck/PCS tests cover ragged domains, public range widths and compensating carry-value forgeries. RFC-0053 remains Draft; runtime layout, full semantic bindings and an accepting session driver remain under [#128](https://github.com/AbdelStark/tessera/issues/128).
+- Verifier table regeneration now reserves its digest buffer and bounded header fallibly, and streams across hash-block boundaries without growing the buffer. Class copies reserve fallibly; Range/Requant evaluation uses fixed-size public coefficient arrays. Sampled allocation caps return `ERR-RES-MEMORY`, including an implicit greedy Range table, instead of aborting ([#128](https://github.com/AbdelStark/tessera/issues/128)).
+
+- Per-request exact-greedy metadata now preserves the model catalog, reuses or appends its public-span Range table, places a separate maximum before runtime multiplicities, and derives complete leaf counts. The independent verifier composes token/key/selected relations with the existing model batch and retains every original graph/PCS debt, including prompt-only logit observations. Runtime witness generation, complete model proofs, budget enforcement and the accepting driver remain under [#128](https://github.com/AbdelStark/tessera/issues/128); RFC-0053 is Draft.
+
+- Independent exact-greedy boundary components retain every original logit, OneHot, token and certificate-maximum obligation. Literal conformance fixtures and CPU mixed-sumcheck/PCS tests cover ragged domains, public range widths and compensating carry-value forgeries. RFC-0053 remains Draft; complete runtime proofs, full semantic bindings and an accepting session driver remain under [#128](https://github.com/AbdelStark/tessera/issues/128).
 
 - Canonical CPU advice rows now feed the existing commitment, combined-row and column passes from resident or regenerated witnesses. Complete bounded-table model proofs in both modes continue through every original advice/weight opening, with matching replay messages and exact tampering errors. Whole rows of public table-tree padding remain implicit zeros (RFC-0011 rule 4). The protocol driver, semantic token/greedy bindings and final verdict remain under [#128](https://github.com/AbdelStark/tessera/issues/128).
 

@@ -5,7 +5,7 @@
 - Created: 2026-10-21
 - Target milestone: v0.3
 - Origin: #128 and #130; IDEA-0038 / EXP-0025
-- Supersedes on acceptance: RFC-0009 Argmax's physical range/maximum representation; RFC-0037's native boundary and source schedule; RFC-0045's runtime lookup columns; RFC-0047/0050's complete advice order, extended below. It adds no protocol-message field or parameter preset and preserves RFC-0011's per-group evaluation checks.
+- Supersedes on acceptance: RFC-0009 Argmax's physical range/maximum representation; RFC-0037's native boundary and source schedule; RFC-0045's runtime lookup columns; RFC-0047/0050's complete advice order and RFC-0041's private tile enum, extended below. It adds no protocol-message field or parameter preset and preserves RFC-0011's per-group evaluation checks.
 
 ## Summary
 
@@ -46,7 +46,8 @@ their independent per-axis power-of-two padding.
 
 `L[t,v]` is the actual final LM-head output; `H[t,v]` the model's actual OneHot.
 The output token at `prompt+u` uses logits at `prompt-1+u`. Certificate ids are
-verifier-derived request ordinals, after the model's gadget ids. A maximum is a
+the graph node count plus the verifier-derived request ordinal, reserving every
+model node id. Arithmetic is checked. A maximum is a
 certificate source, never an invented model node or model auxiliary.
 
 Allocate `M[t]` on the model's padded time domain. Real output-logit positions
@@ -55,6 +56,12 @@ maximum after its model tensors/auxiliaries and before table multiplicities.
 Multiple requests retain their public batch order and separate source identities.
 Apply the existing whole-row public-zero rule and segment/maximum-size checks to
 the complete runtime layout; secret-observed zeros never remove rows.
+Real inactive maximum positions remain committed and are proved zero by the
+selected relation; model-time padding follows the existing implicit-zero rule.
+Append `GreedyMaximum { gadget: u32 }` as private `Tile` tag 4. Existing tags
+0 through 3 retain their encodings. The compiler's model-only execution plan
+remains unchanged; a per-request runtime expansion inserts this separate tile
+before all used table tiles. This tile has no graph shares or query block.
 
 ### Public range and catalog
 
@@ -72,6 +79,8 @@ implicit Range(k) to the runtime catalog after the model catalog. For several
 required widths, append unique missing widths in ascending order. This rule
 defines proof-local ids; it does not change RFC-0029's model catalog order.
 Multiplicity counts include model and certificate uses of a shared table.
+The physical width must satisfy `GadgetPolicy.max_log2_rows`; refuse its gadget
+domain otherwise. No policy or range is weakened to make the table fit.
 
 Append each request's logical key column after its model lookup columns, with
 canonical first-read/table packing as RFC-0045 prescribes. Its domain is padded
@@ -120,6 +129,13 @@ arbitrary product of public MLEs on overlapping axes.
    derived schedule contains that exact replacement. No token scalar is supplied
    from outside the proof's canonical token commitment.
 
+For zero-output requests, append a degree-one, zero-valued observation instance
+whose raw final vector contains `L(r)` at the model vocabulary/time point. Its
+local relation is identically zero; it asserts no greedy predicate. It sends the
+actual LM-head observation into the ordinary GKR reduction, which still owes
+all graph checks and canonical source openings. Supplying an arbitrary logit
+scalar is not permitted. Token binding remains mandatory even when `n=1`.
+
 Key/selected raw final order is `L(r), M(r_time)`, followed by all carry/wrap
 original `H` evaluations. Token-binding order is `H(r), Tokens(r_time)`.
 Retain original points and values separately even when they repeat. Route `L(r)`
@@ -129,7 +145,11 @@ their canonical locations. A local native check never discharges those debts.
 ### Schedule, transcript and budget
 
 The verifier derives native tags, owners, projections, lookup counts and field
-counts. The graph's LM-head boundary and weighted OneHot input boundary may be
+counts. Preserve the model's existing native slots in their original order, then
+append token binding, then key and selected for nonempty outputs, or the logit
+observation for empty outputs. Use the actual OneHot node as token-binding owner
+and the actual LM-head node as the greedy/observation owner. Native tags follow
+this registration order; a source id never changes the graph's node count. The graph's LM-head boundary and weighted OneHot input boundary may be
 deferred only to these replacements; absence/mismatch is an internal error.
 Use the existing stage labels, one mixed batching challenge and final-vector
 absorption. No proof supplies an alternative schedule or source map.

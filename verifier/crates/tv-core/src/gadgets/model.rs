@@ -3,7 +3,7 @@
 //! Model-owned native reductions and canonical fixed leaf bindings (RFC-0009/0037/0045/0050).
 //! The result still owes canonical openings and the greedy certificate; it is never Accept.
 
-use super::{GadgetError, Plan as Gadgets, root, softmax, stacked};
+use super::{GadgetError, Plan as Gadgets, greedy, root, runtime, softmax, stacked};
 use crate::advice::Source;
 use crate::leaf::{self, split};
 use crate::lowering::{Graph, NodeId, Op, Role as GraphRole, TensorId};
@@ -96,6 +96,10 @@ enum Relation {
     Reciprocal,
     MaximumPadding,
     ReciprocalPadding,
+    Tokens,
+    GreedyKey,
+    GreedySelected,
+    ObserveLogits,
 }
 enum Family<'p> {
     Root(stacked::RootStack<'p>),
@@ -103,18 +107,38 @@ enum Family<'p> {
         stack: stacked::SoftmaxStack<'p>,
         forest: Option<usize>,
     },
+    Tokens {
+        node: NodeId,
+        indicator: TensorId,
+        tokens: TensorId,
+        nv: usize,
+        nt: usize,
+    },
+    Greedy {
+        node: NodeId,
+        certificate: runtime::Certificate,
+    },
+    ObserveLogits {
+        node: NodeId,
+        tensor: TensorId,
+        vars: usize,
+    },
 }
 impl Family<'_> {
     fn layer_variables(&self) -> usize {
         match self {
             Self::Root(s) => s.layer_variables(),
             Self::Softmax { stack, .. } => stack.layer_variables(),
+            Self::Tokens { .. } | Self::Greedy { .. } | Self::ObserveLogits { .. } => 0,
         }
     }
     fn node(&self) -> Result<NodeId> {
         match self {
             Self::Root(s) => s.sites().first().map(|s| s.node()),
             Self::Softmax { stack, .. } => stack.sites().first().map(|s| s.node()),
+            Self::Tokens { node, .. }
+            | Self::Greedy { node, .. }
+            | Self::ObserveLogits { node, .. } => Some(*node),
         }
         .ok_or_else(internal)
     }
@@ -171,6 +195,21 @@ struct Slot {
     relation: Relation,
     outputs: Vec<Projection>,
 }
+fn append(
+    slots: &mut Vec<Slot>,
+    native: &mut Vec<Native>,
+    slot: Slot,
+    mut spec: Native,
+) -> Result<()> {
+    spec.tag =
+        u32::try_from(slots.len().checked_add(1).ok_or_else(internal)?).map_err(|_| internal())?;
+    spec.outputs = reserve(slot.outputs.len())?;
+    for out in &slot.outputs {
+        spec.outputs.push(out.metadata()?);
+    }
+    push(native, spec)?;
+    push(slots, slot)
+}
 
 /// Complete current-model native slots, derived from the independent gadget plan.
 /// Own source identities and coordinates are fixed before any proof value is read.
@@ -191,10 +230,29 @@ impl<'p> Plan<'p> {
     /// # Errors
     /// Independent metadata errors become `Internal`, allocation failures `Memory`.
     pub fn derive(gadgets: &'p Gadgets<'p>) -> Result<Self> {
+        Self::derive_inner(gadgets, None)
+    }
+    /// Compose all model checks with canonical token/greedy bindings from one runtime catalog.
+    /// No external token/logit scalar substitutes for a source or a native relation.
+    ///
+    /// # Errors
+    /// Own metadata errors `Internal`; all failed reservations `Memory`.
+    pub fn derive_runtime(runtime: &'p runtime::Plan<'p>) -> Result<Self> {
+        Self::derive_inner(runtime.gadgets(), Some(runtime))
+    }
+    fn derive_inner(gadgets: &'p Gadgets<'p>, runtime: Option<&runtime::Plan<'p>>) -> Result<Self> {
         let graph = gadgets.graph;
-        let sites = split::model_sites(graph, gadgets.policy).map_err(claims_error)?;
+        let sites = match runtime {
+            Some(r) => r.split_sites(),
+            None => split::model_sites(graph, gadgets.policy),
+        }
+        .map_err(claims_error)?;
         let layout = split::Layout::new(&sites).map_err(split_error)?;
-        let leaf = leaf::ModelSchedule::derive(graph, gadgets.policy).map_err(claims_error)?;
+        let leaf = match runtime {
+            Some(r) => r.leaf_schedule(),
+            None => leaf::ModelSchedule::derive(graph, gadgets.policy),
+        }
+        .map_err(claims_error)?;
         let mut forest_trees = leaf
             .schedule()
             .trees()
@@ -241,30 +299,22 @@ impl<'p> Plan<'p> {
                            zero,
                            outputs: Vec<Projection>|
              -> Result<()> {
-                let tag = u32::try_from(slots.len().checked_add(1).ok_or_else(internal)?)
-                    .map_err(|_| internal())?;
-                let mut graph_outputs = reserve(outputs.len())?;
-                for out in &outputs {
-                    graph_outputs.push(out.metadata()?);
-                }
-                push(
+                append(
+                    &mut slots,
                     &mut native,
+                    Slot {
+                        family: f,
+                        relation,
+                        outputs,
+                    },
                     Native {
-                        tag,
+                        tag: 0,
                         node,
                         vars,
                         degree,
                         evaluations,
                         zero,
-                        outputs: graph_outputs,
-                    },
-                )?;
-                push(
-                    &mut slots,
-                    Slot {
-                        family: f,
-                        relation,
-                        outputs,
+                        outputs: Vec::new(),
                     },
                 )
             };
@@ -368,7 +418,126 @@ impl<'p> Plan<'p> {
                     )?;
                     push(&mut deferred, (node, Some(0)))?;
                 }
+                _ => return Err(internal()),
             }
+        }
+        if let Some(runtime) = runtime {
+            let first = graph.nodes().first().ok_or_else(internal)?;
+            let Op::OneHot { vocab } = *first.op() else {
+                return Err(internal());
+            };
+            let node = NodeId(0);
+            let indicator = *first.outputs().first().ok_or_else(internal)?;
+            let tokens = *first.inputs().first().ok_or_else(internal)?;
+            let nv = bits(vocab)?;
+            let nt = bits(graph.length())?;
+            let vars = nv.checked_add(nt).ok_or_else(internal)?;
+            let family = families.len();
+            push(
+                &mut families,
+                Family::Tokens {
+                    node,
+                    indicator,
+                    tokens,
+                    nv,
+                    nt,
+                },
+            )?;
+            append(
+                &mut slots,
+                &mut native,
+                Slot {
+                    family,
+                    relation: Relation::Tokens,
+                    outputs: list([
+                        Projection::new(0, [Source::Tensor(indicator)].into_iter(), 0, vars)?,
+                        Projection::new(1, [Source::Tensor(tokens)].into_iter(), nv, nt)?,
+                    ])?,
+                },
+                Native {
+                    tag: 0,
+                    node,
+                    vars,
+                    degree: 2,
+                    evaluations: 2,
+                    zero: true,
+                    outputs: Vec::new(),
+                },
+            )?;
+            push(&mut deferred, (node, Some(0)))?;
+            let last = graph.nodes().last().ok_or_else(internal)?;
+            let node = NodeId(
+                u32::try_from(graph.nodes().len().checked_sub(1).ok_or_else(internal)?)
+                    .map_err(|_| internal())?,
+            );
+            let logits = *last.outputs().first().ok_or_else(internal)?;
+            let vars = variables(graph, logits)?;
+            let family = families.len();
+            if let Some(certificate) = runtime.certificate() {
+                push(&mut families, Family::Greedy { node, certificate })?;
+                for (relation, kind, zero) in [
+                    (Relation::GreedyKey, greedy::Kind::Key, false),
+                    (Relation::GreedySelected, greedy::Kind::Selected, true),
+                ] {
+                    let boundary = certificate.boundary();
+                    append(
+                        &mut slots,
+                        &mut native,
+                        Slot {
+                            family,
+                            relation,
+                            outputs: list([Projection::new(
+                                0,
+                                [Source::Tensor(logits)].into_iter(),
+                                0,
+                                vars,
+                            )?])?,
+                        },
+                        Native {
+                            tag: 0,
+                            node,
+                            vars,
+                            degree: boundary.degree(kind),
+                            evaluations: boundary.evaluations(kind),
+                            zero,
+                            outputs: Vec::new(),
+                        },
+                    )?;
+                }
+            } else {
+                push(
+                    &mut families,
+                    Family::ObserveLogits {
+                        node,
+                        tensor: logits,
+                        vars,
+                    },
+                )?;
+                append(
+                    &mut slots,
+                    &mut native,
+                    Slot {
+                        family,
+                        relation: Relation::ObserveLogits,
+                        outputs: list([Projection::new(
+                            0,
+                            [Source::Tensor(logits)].into_iter(),
+                            0,
+                            vars,
+                        )?])?,
+                    },
+                    Native {
+                        tag: 0,
+                        node,
+                        vars,
+                        degree: 1,
+                        evaluations: 1,
+                        zero: true,
+                        outputs: Vec::new(),
+                    },
+                )?;
+            }
+            push(&mut deferred, (node, None))?;
         }
         let schedule =
             schedule::derive_composed(graph, &deferred, &native).map_err(schedule_error)?;
@@ -419,7 +588,7 @@ pub struct Prepared<'a, 'p> {
     columns: Vec<Option<(usize, usize)>>,
     leaf: Vec<LeafValues>,
     original: Vec<stacked::Claim>,
-    external: External<'a>,
+    external: Option<External<'a>>,
 }
 /// Complete model reductions, with all remaining canonical opening and external debts.
 #[must_use = "check graph/source/multiplicity openings and the token/greedy certificate bindings"]
@@ -431,7 +600,7 @@ pub struct Reduced<'a> {
     /// Multiplicities retain their table identities and original table-tree points.
     pub multiplicities: &'a [(TableId, crate::logup::Claim)],
     /// Bind these same original token/logit claims to the anchor/greedy certificate.
-    pub external: External<'a>,
+    pub external: Option<External<'a>>,
 }
 fn own_claims<'a>(claims: impl Iterator<Item = super::Claim<'a>>) -> Result<Vec<stacked::Claim>> {
     let mut out = Vec::new();
@@ -471,6 +640,21 @@ impl<'p> Plan<'p> {
         &'a self,
         bound: &'a split::Bound,
         external: External<'a>,
+    ) -> Result<Prepared<'a, 'p>> {
+        self.bind_inner(bound, Some(external))
+    }
+    /// Bind runtime leaves without an external token/logit scalar. All such sources must
+    /// have the exact native replacement in the derived schedule.
+    ///
+    /// # Errors
+    /// Same fixed-gadget errors as bind; absent own replacement metadata is Internal.
+    pub fn bind_runtime<'a>(&'a self, bound: &'a split::Bound) -> Result<Prepared<'a, 'p>> {
+        self.bind_inner(bound, None)
+    }
+    fn bind_inner<'a>(
+        &'a self,
+        bound: &'a split::Bound,
+        external: Option<External<'a>>,
     ) -> Result<Prepared<'a, 'p>> {
         self.layout.check_bound(bound).map_err(split_error)?;
         if bound.point.len() != self.leaf_height {
@@ -694,6 +878,7 @@ impl<'a, 'p> Prepared<'a, 'p> {
         }
         for family in &self.plan.families {
             match family {
+                Family::Tokens { .. } | Family::Greedy { .. } | Family::ObserveLogits { .. } => {}
                 Family::Root(stack) => {
                     for site in stack.sites() {
                         let node = site.node();
@@ -774,15 +959,19 @@ impl<'a, 'p> Prepared<'a, 'p> {
         for leaf in self.plan.schedule.leaf() {
             if leaf.input.is_none() {
                 self.leaf.try_reserve(1).map_err(|_| GadgetError::Memory)?;
-                self.leaf
-                    .push(copy_leaf(self.external.logits, leaf.claim.vars)?);
+                self.leaf.push(copy_leaf(
+                    self.external.ok_or_else(internal)?.logits,
+                    leaf.claim.vars,
+                )?);
                 continue;
             }
             let node = graph.node(leaf.site).ok_or_else(internal)?;
             if matches!(node.op(), Op::OneHot { .. }) {
                 self.leaf.try_reserve(1).map_err(|_| GadgetError::Memory)?;
-                self.leaf
-                    .push(copy_leaf(self.external.tokens, leaf.claim.vars)?);
+                self.leaf.push(copy_leaf(
+                    self.external.ok_or_else(internal)?.tokens,
+                    leaf.claim.vars,
+                )?);
                 continue;
             }
             let input = leaf.input.ok_or_else(internal)?;
@@ -971,12 +1160,45 @@ impl Prepared<'_, '_> {
             _ => Err(internal()),
         }
     }
+    fn greedy<T>(
+        &self,
+        slot: &Slot,
+        ctx: NativeContext<'_>,
+        call: impl FnOnce(&greedy::Check<'_>) -> Result<T>,
+    ) -> Result<T> {
+        let Family::Greedy { node, certificate } =
+            self.plan.families.get(slot.family).ok_or_else(internal)?
+        else {
+            return Err(internal());
+        };
+        let boundary = certificate.boundary();
+        match slot.relation {
+            Relation::GreedyKey => {
+                let claim = self.column(*node, split::Column::GreedyKey)?;
+                call(&boundary.key(&claim.point, claim.value)?)
+            }
+            Relation::GreedySelected => call(&boundary.zero(
+                greedy::Kind::Selected,
+                own_point(ctx.zero, bits(self.plan.gadgets.graph.length())?)?,
+            )?),
+            _ => Err(internal()),
+        }
+    }
     fn instance(&self, tag: u32, ctx: NativeContext<'_>) -> Result<Instance> {
         self.context(ctx)?;
-        let (slot, _) = self.slot(tag)?;
+        let (slot, meta) = self.slot(tag)?;
         let family = self.plan.families.get(slot.family).ok_or_else(internal)?;
         let layer = self.layer(family, ctx.layer)?;
         match (family, slot.relation) {
+            (Family::Tokens { .. }, Relation::Tokens)
+            | (Family::ObserveLogits { .. }, Relation::ObserveLogits) => Ok(Instance {
+                claim: Fp2::ZERO,
+                vars: meta.vars,
+                evals: meta.evaluations,
+            }),
+            (Family::Greedy { .. }, Relation::GreedyKey | Relation::GreedySelected) => {
+                self.greedy(slot, ctx, |c| Ok(c.instance()))
+            }
             (Family::Root(stack), Relation::Product(i)) => self
                 .root(stack, layer)?
                 .products()
@@ -1010,6 +1232,93 @@ impl Prepared<'_, '_> {
         let family = self.plan.families.get(slot.family).ok_or_else(internal)?;
         let layer = self.layer(family, ctx.layer)?;
         match (family, slot.relation) {
+            (Family::Greedy { .. }, Relation::GreedyKey | Relation::GreedySelected) => {
+                let checked = self.greedy(slot, ctx, |c| c.evaluate(point, values))?;
+                let mut claims = reserve(checked.claims.len())?;
+                for c in checked.claims {
+                    let source = match c.source {
+                        greedy::Source::Logits(t)
+                        | greedy::Source::OneHot(t)
+                        | greedy::Source::Tokens(t) => Source::Tensor(t),
+                        greedy::Source::Maximum(g) => Source::GreedyMaximum(g),
+                    };
+                    claims.push(stacked::Claim {
+                        sources: list([source])?,
+                        point: c.point,
+                        layer_point: Vec::new(),
+                        value: c.value,
+                    });
+                }
+                Ok(stacked::Final {
+                    value: checked.value,
+                    claims,
+                })
+            }
+            (
+                Family::Tokens {
+                    indicator,
+                    tokens,
+                    nv,
+                    nt,
+                    ..
+                },
+                Relation::Tokens,
+            ) => {
+                if point.len() != meta.vars {
+                    return Err(internal());
+                }
+                if values.len() != 2 {
+                    return Err(GadgetError::Rejected {
+                        gadget: crate::validation::GadgetId(0),
+                    });
+                }
+                let v = point.get(..*nv).ok_or_else(internal)?;
+                let t = point.get(*nv..).ok_or_else(internal)?;
+                let mut index = Fp2::ZERO;
+                for (j, &r) in v.iter().enumerate() {
+                    index += r * Fp2::from(Fp::reduce(
+                        1u64.checked_shl(u32::try_from(j).map_err(|_| internal())?)
+                            .ok_or_else(internal)?,
+                    ));
+                }
+                let h = *values.first().ok_or_else(internal)?;
+                let token = *values.get(1).ok_or_else(internal)?;
+                let delta = v.iter().fold(Fp2::ONE, |a, &r| a * (Fp2::ONE - r));
+                let value = crate::sumcheck::eq(own_point(ctx.zero, *nt)?, t)
+                    .ok_or_else(internal)?
+                    * (index * h - delta * token);
+                Ok(stacked::Final {
+                    value,
+                    claims: list([
+                        stacked::Claim {
+                            sources: list([Source::Tensor(*indicator)])?,
+                            point: copy(point)?,
+                            layer_point: Vec::new(),
+                            value: h,
+                        },
+                        stacked::Claim {
+                            sources: list([Source::Tensor(*tokens)])?,
+                            point: copy(t)?,
+                            layer_point: Vec::new(),
+                            value: token,
+                        },
+                    ])?,
+                })
+            }
+            (Family::ObserveLogits { tensor, vars, .. }, Relation::ObserveLogits) => {
+                if point.len() != *vars || values.len() != 1 {
+                    return Err(internal());
+                }
+                Ok(stacked::Final {
+                    value: Fp2::ZERO,
+                    claims: list([stacked::Claim {
+                        sources: list([Source::Tensor(*tensor)])?,
+                        point: copy(point)?,
+                        layer_point: Vec::new(),
+                        value: *values.first().ok_or_else(internal)?,
+                    }])?,
+                })
+            }
             (Family::Root(stack), Relation::Product(i)) => self
                 .root(stack, layer)?
                 .products()
@@ -1285,3 +1594,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod runtime_tests;

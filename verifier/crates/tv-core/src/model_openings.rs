@@ -74,7 +74,7 @@ struct Weight {
 pub struct Claims<'a> {
     advice: Vec<Advice>,
     weights: [Vec<Weight>; 10],
-    external: External<'a>,
+    external: Option<External<'a>>,
 }
 impl<'a> Claims<'a> {
     /// Pack the EXACT complete reducer output, using the same validated graph/claim list and
@@ -308,8 +308,10 @@ impl<'a> Claims<'a> {
         }
         Ok(out)
     }
-    /// The same original token/logit certificate claims; their semantic bindings remain owed.
-    pub fn external(&self) -> External<'a> {
+    /// Legacy token/logit debts, when the plan used external boundaries. Runtime plans return
+    /// `None` only after routing those sources through native and graph reductions; all
+    /// canonical openings in this plan remain owed.
+    pub fn external(&self) -> Option<External<'a>> {
         self.external
     }
 }

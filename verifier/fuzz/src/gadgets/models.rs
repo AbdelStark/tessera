@@ -274,7 +274,7 @@ pub(super) fn requant(s: &mut Script<'_>) {
                         .map(|&d| u64::from(d))
                         .collect(),
                     Source::Auxiliary(_, _) => list(expected, "shape").iter().map(num).collect(),
-                    Source::Multiplicity(_) => unreachable!(),
+                    Source::Multiplicity(_) | Source::GreedyMaximum(_) => unreachable!(),
                 };
                 let variables: usize = dims
                     .iter()

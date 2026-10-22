@@ -6,13 +6,13 @@
 
 use crate::schedule::LayerMap;
 use crate::{
-    CompileError, ExecutionPlan, Gadget, Lowering, PublicModel, Selection, SequenceTile, Tile,
-    tiles,
+    CompileError, ExecutionPlan, Gadget, Lowering, PublicModel, RuntimePlan, Selection,
+    SequenceTile, Tile, tiles,
 };
 use core::ops::Range;
 use std::collections::{BTreeMap, BTreeSet};
 use tessera_field::Field;
-use tessera_ir::{ClaimList, CommitmentClass, NodeId, NodeKind, Op, TableId, TensorId};
+use tessera_ir::{ClaimList, CommitmentClass, GadgetId, NodeId, NodeKind, Op, TableId, TensorId};
 use tessera_pcs::{
     AdviceLayout, AdviceLayoutCounter, Axis, DenseShape, LayoutParams, Padding, PcsError,
     Placement, TensorShape, TileShape,
@@ -97,6 +97,8 @@ pub enum AdviceSource {
     Auxiliary(NodeId, AuxColumn),
     /// One counter per actual table row, before power-of-two padding.
     Multiplicity(TableId),
+    /// A request maximum, identified separately from every model node.
+    GreedyMaximum(GadgetId),
 }
 
 fn committed(kind: NodeKind) -> bool {
@@ -317,6 +319,9 @@ fn shapes(
                     .get(node.0 as usize)
                     .and_then(|n| n.outputs.first())
                     .copied(),
+                AdviceSource::GreedyMaximum(_) => {
+                    return Ok(dense([Axis::new(u64::from(positions(lowering)?))]));
+                }
                 AdviceSource::Multiplicity(table) => {
                     let spec = selection
                         .tables
@@ -338,6 +343,15 @@ pub(crate) fn allocated_rows(
     lowering: &Lowering,
     selection: &Selection,
     claims: &ClaimList,
+) -> Result<u64, CompileError> {
+    allocated_runtime_rows(lowering, selection, claims, None)
+}
+
+fn allocated_runtime_rows(
+    lowering: &Lowering,
+    selection: &Selection,
+    claims: &ClaimList,
+    greedy: Option<(GadgetId, TableId)>,
 ) -> Result<u64, CompileError> {
     let params = params(claims)?;
     let n = positions(lowering)?;
@@ -373,7 +387,23 @@ pub(crate) fn allocated_rows(
             )
             .map_err(pcs)?;
     }
-    for table in used_tables(selection)? {
+    let mut used = used_tables(selection)?;
+    if let Some((gadget, table)) = greedy {
+        counter
+            .append(
+                &shapes(
+                    lowering,
+                    selection,
+                    &[AdviceSource::GreedyMaximum(gadget)],
+                    &attention,
+                    None,
+                )?,
+                1,
+            )
+            .map_err(pcs)?;
+        used.insert(table);
+    }
+    for table in used {
         counter
             .append(
                 &shapes(
@@ -395,6 +425,7 @@ enum GroupKey {
     Tokens,
     Node(NodeId),
     Table(TableId),
+    GreedyMaximum(GadgetId),
 }
 #[derive(Debug)]
 struct Columns {
@@ -429,14 +460,54 @@ impl<'a> ModelAdviceLayout<'a> {
         if claims.tables != selection.tables {
             return Err(usage(METADATA));
         }
-        let expected_rows = allocated_rows(lowering, selection, claims)?;
+        Self::derive(lowering, selection, claims, None)
+    }
+
+    /// Complete per-request advice, adding the maximum and every used runtime table.
+    /// The model claim-list bytes and all original table ids stay fixed (draft RFC-0053).
+    ///
+    /// # Errors
+    /// The same allocation/metadata errors as [`Self::new`], over the complete runtime layout.
+    pub fn runtime(
+        lowering: &'a Lowering,
+        runtime: &RuntimePlan,
+        claims: &ClaimList,
+    ) -> Result<Self, CompileError> {
+        let selection = runtime.selection();
+        if !selection.tables.starts_with(&claims.tables) {
+            return Err(usage(METADATA));
+        }
+        Self::derive(
+            lowering,
+            selection,
+            claims,
+            runtime.certificate().map(|c| (c.gadget, c.table)),
+        )
+    }
+
+    fn derive(
+        lowering: &'a Lowering,
+        selection: &Selection,
+        claims: &ClaimList,
+        greedy: Option<(GadgetId, TableId)>,
+    ) -> Result<Self, CompileError> {
+        let expected_rows = allocated_runtime_rows(lowering, selection, claims, greedy)?;
         let params = params(claims)?;
         let n = positions(lowering)?;
         let attention = params.attention(n).map_err(pcs)?;
         let layers = LayerMap::new(lowering)?;
+        let mut order = tiles(PublicModel::of_claims(claims), lowering, selection)?;
+        if let Some((gadget, table)) = greedy {
+            let first_table = order.partition_point(|t| !matches!(t, Tile::Table { .. }));
+            order.insert(first_table, Tile::GreedyMaximum { gadget: gadget.0 });
+            let mut used = used_tables(selection)?;
+            used.insert(table);
+            order.truncate(first_table + 1);
+            order.extend(used.into_iter().map(|t| Tile::Table { table: t.0 }));
+        }
         let plan = ExecutionPlan {
             claims: claims.clone(),
-            tiles: tiles(PublicModel::of_claims(claims), lowering, selection)?,
+            tiles: order,
         };
         let tiles = plan.expand(lowering)?;
         let mut groups = Vec::<Columns>::new();
@@ -451,12 +522,14 @@ impl<'a> ModelAdviceLayout<'a> {
                     layers.position(NodeId(node)).map(|(layer, _)| layer),
                 ),
                 Tile::Table { table } => (GroupKey::Table(TableId(table)), None),
+                Tile::GreedyMaximum { gadget } => (GroupKey::GreedyMaximum(GadgetId(gadget)), None),
             };
             if prior != Some(key) {
                 let sources = match key {
                     GroupKey::Tokens => vec![AdviceSource::Tensor(lowering.tokens)],
                     GroupKey::Node(node) => columns(lowering, selection, node)?,
                     GroupKey::Table(table) => vec![AdviceSource::Multiplicity(table)],
+                    GroupKey::GreedyMaximum(gadget) => vec![AdviceSource::GreedyMaximum(gadget)],
                 };
                 for (column, &source) in sources.iter().enumerate() {
                     if bindings.insert(source, (groups.len(), column)).is_some() {
@@ -565,7 +638,9 @@ impl<'a> ModelAdviceLayout<'a> {
                 .get(node.0 as usize)
                 .and_then(|n| n.outputs.get(1))
                 .ok_or_else(|| usage(METADATA))?,
-            AdviceSource::Multiplicity(_) => return Err(usage(METADATA)),
+            AdviceSource::Multiplicity(_) | AdviceSource::GreedyMaximum(_) => {
+                return Err(usage(METADATA));
+            }
         };
         self.lowering
             .graph

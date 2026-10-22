@@ -57,11 +57,19 @@ impl ModelSchedule {
     /// The independent selection's public-domain errors; `Memory` on failed reservation;
     /// `Internal` for invalid own graph/template geometry or sizes outside 63 variables.
     pub fn derive(graph: &Graph, policy: GadgetPolicy) -> Result<Self, ClaimsError> {
+        let selected = selection::derive(graph, policy)?;
+        Self::from_selection(graph, &selected, None)
+    }
+
+    pub(crate) fn from_selection(
+        graph: &Graph,
+        selected: &selection::Selection,
+        extra: Option<(TableId, u64)>,
+    ) -> Result<Self, ClaimsError> {
         let layers = crate::schedule::template_layers(graph).map_err(|error| match error {
             crate::schedule::ScheduleError::Memory => ClaimsError::Memory,
             _ => ClaimsError::Internal,
         })?;
-        let selected = selection::derive(graph, policy)?;
         let mut totals = reserved(selected.tables.len()).map_err(own)?;
         totals.resize(selected.tables.len(), 0u64);
         for choice in &selected.choices {
@@ -83,6 +91,15 @@ impl ModelSchedule {
                     .ok_or(ClaimsError::Internal)?;
                 *total = total.checked_add(entries).ok_or(ClaimsError::Internal)?;
             }
+        }
+        if let Some((table, entries)) = extra {
+            let total = totals
+                .get_mut(usize::try_from(table.0).map_err(|_| ClaimsError::Internal)?)
+                .ok_or(ClaimsError::Internal)?;
+            if entries == 0 {
+                return Err(ClaimsError::Internal);
+            }
+            *total = total.checked_add(entries).ok_or(ClaimsError::Internal)?;
         }
         let mut trees = reserved(
             selected

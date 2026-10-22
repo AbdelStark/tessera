@@ -31,6 +31,7 @@ fn tile(tile: &Tile) -> Value {
             json!({ "Attention": { "node": number(node), "kv_head": number(kv_head) } })
         }
         Tile::Table { table } => json!({ "Table": { "table": number(table) } }),
+        Tile::GreedyMaximum { gadget } => json!({ "GreedyMaximum": { "gadget": number(gadget) } }),
     }
 }
 

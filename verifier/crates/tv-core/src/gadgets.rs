@@ -56,6 +56,7 @@ pub mod onehot;
 pub mod requant;
 pub mod root;
 pub mod root_products;
+pub mod runtime;
 pub mod softmax;
 pub mod stacked;
 

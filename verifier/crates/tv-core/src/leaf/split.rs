@@ -34,6 +34,8 @@ pub enum Column {
     SoftmaxA,
     /// Softmax's virtual second bracket slack `b`.
     SoftmaxB,
+    /// Runtime greedy Range key, owed to the native original-source reduction.
+    GreedyKey,
 }
 
 /// One column read at public coordinates of RFC-0045's common point `P`.

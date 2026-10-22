@@ -148,7 +148,9 @@ fn all_model_sources_points_and_lookup_requests_match_the_frozen_integer_oracle(
                 let dims = match id {
                     Source::Tensor(t) => graph.tensor(t).unwrap().shape.dims().to_vec(),
                     Source::Auxiliary(_, _) => list(expected, "shape").iter().map(number).collect(),
-                    Source::Multiplicity(_) => panic!("not a source"),
+                    Source::Multiplicity(_) | Source::GreedyMaximum(_) => {
+                        panic!("not a model source")
+                    }
                 };
                 let vars: usize = dims
                     .iter()

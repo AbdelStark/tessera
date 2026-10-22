@@ -43,7 +43,7 @@ pub fn local(graph: &Graph, owner: NodeId, source: Source) -> Column {
                 )
             }
         }
-        Source::Multiplicity(_) => panic!("not a gadget source"),
+        Source::Multiplicity(_) | Source::GreedyMaximum(_) => panic!("not a model gadget source"),
     }
 }
 

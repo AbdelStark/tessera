@@ -214,7 +214,9 @@ fn column<'a>(
                 *node.outputs.get(output).ok_or(Error::Internal)?,
             )
         }
-        AdviceSource::Multiplicity(_) => return Err(Error::Internal),
+        AdviceSource::Multiplicity(_) | AdviceSource::GreedyMaximum(_) => {
+            return Err(Error::Internal);
+        }
     };
     let share = tile
         .shares

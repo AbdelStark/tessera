@@ -204,8 +204,8 @@ pub fn prove_stages(
         assert_eq!(claim.value, pool_value(p, graph, witness, claim));
     }
     assert_eq!(accepted.multiplicities, bound.multiplicities);
-    assert_eq!(accepted.external.tokens, &leaf[token]);
-    assert_eq!(accepted.external.logits, leaf.last().unwrap());
+    assert_eq!(accepted.external.unwrap().tokens, &leaf[token]);
+    assert_eq!(accepted.external.unwrap().logits, leaf.last().unwrap());
     let original = bound
         .columns
         .iter()
@@ -290,6 +290,7 @@ pub fn prove_stages(
                         (Some(node.0), Some(role)),
                     )
                 }
+                Source::GreedyMaximum(_) => panic!("model-only stages have no greedy maximum"),
                 Source::Multiplicity(_) => {
                     panic!("multiplicities retain their original table points separately")
                 }

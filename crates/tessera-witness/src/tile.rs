@@ -359,6 +359,11 @@ impl Structure<'_> {
                     shares,
                 )
             }
+            Tile::GreedyMaximum { .. } => {
+                return usage(
+                    "greedy certificates require the runtime witness source (draft RFC-0053)",
+                );
+            }
             Tile::Table { table } => {
                 no_block()?;
                 if !read.contains(&TableId(table)) {

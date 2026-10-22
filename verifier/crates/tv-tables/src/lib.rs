@@ -145,7 +145,8 @@
 //! `k_2 = ⌈(σ + 2)·LN2·den / (num·2^64)⌉` on, since `x = ⌊k·num·2^64 / den⌋` below `k_1`: so
 //! `z = min(T, k_1, k_2)`, and the rule, applied to keys `z − 1` and `z`, confirms it. Every
 //! limit on a core, `z ≤ 2^24`, `Σ_c 2^{b − r_c} ≤ 2^24` and `2^24` pairs, is checked before its
-//! memory is reserved, and memory that cannot be reserved is `Memory`.
+//! memory is reserved, and memory that cannot be reserved is `Memory`. Digest buffering and its
+//! bounded header are also reserved fallibly; streaming never grows the hash buffer.
 //!
 //! ## Validation
 //!
@@ -200,7 +201,7 @@
 //! |---|---|---|
 //! | the parameter errors above, `Log2Rows`, `Digest` | the claim list's | `Reject(StatementMismatch)` at claim-list validation (RFC-0007 step 4) |
 //! | `NotLookupTable`, `PointLength` | the verifier's: what it passes in | `Inconclusive(ERR-INTERNAL)` |
-//! | `Memory` | the verifier's: memory for a core that the limits admit could not be reserved | `Inconclusive(ERR-RES-MEMORY)` |
+//! | `Memory` | the verifier's: memory for a core that the limits admit, or its digest buffers, could not be reserved | `Inconclusive(ERR-RES-MEMORY)` |
 //! | `Internal` | the verifier's: a bound the parameter checks guarantee failed, a bug of this crate that no input reaches | `Inconclusive(ERR-INTERNAL)` |
 //!
 //! `NotLookupTable` is the verifier's fault under a precondition on its caller. A claim list

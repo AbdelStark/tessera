@@ -129,10 +129,10 @@ impl Fixture {
             },
             sources: self.sources.clone(),
             multiplicities: &self.multiplicities,
-            external: External {
+            external: Some(External {
                 tokens: &self.tokens,
                 logits: &self.logits,
-            },
+            }),
         }
     }
 }
@@ -358,8 +358,8 @@ fn original_combinations_duplicates_and_channel_coordinates_are_preserved() {
                     assert!(packed.weight_claims(m, Fp2::ONE).unwrap().is_empty());
                 }
             }
-            assert_eq!(packed.external().tokens, &original.tokens);
-            assert_eq!(packed.external().logits, &original.logits);
+            assert_eq!(packed.external().unwrap().tokens, &original.tokens);
+            assert_eq!(packed.external().unwrap().logits, &original.logits);
         }
     }
 }

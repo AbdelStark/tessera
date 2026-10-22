@@ -12,6 +12,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | [`encoding/`](encoding/README.md) | The advice commitment's encoding conventions, RFC-0011: its transforms, coset and mask | its oracle |
 | `errors/` | The error codes of 04 §3, with their classes and exit codes | kept by hand; a test keeps it, the specification's table and the error enum equal |
 | [`gadget-finals/`](gadget-finals/README.md) | Gadget final relations and full comparison arrays, including constants beyond Goldilocks (RFC-0009/0050) | independent integer and direct-cube oracle |
+| [`greedy-runtime/`](greedy-runtime/README.md) | Complete per-request catalogs, advice tails, leaf counts and native descriptors (draft RFC-0053) | independent Python public-model/range/advice oracles |
 | `field/` | Goldilocks and its quadratic extension, RFC-0002 | its oracle |
 | `hash/` | Hash domains, Merkle multiproofs and column digests, RFC-0004; `commitment_id` of commitment descriptors, RFC-0031 | its oracle |
 | [`lowering/`](lowering/README.md) | The Llama lowering, RFC-0044: every input, node, constant, shift-class set, weight and table of the conformance models' graphs and of two variants', at several lengths | its oracle, which rebuilds the models with theirs |

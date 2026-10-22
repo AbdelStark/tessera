@@ -58,6 +58,7 @@ fn source(s: va::Source) -> AdviceSource {
     match s {
         va::Source::Tensor(t) => AdviceSource::Tensor(tessera_ir::TensorId(t.0)),
         va::Source::Multiplicity(t) => AdviceSource::Multiplicity(tessera_ir::TableId(t.0)),
+        va::Source::GreedyMaximum(g) => AdviceSource::GreedyMaximum(tessera_ir::GadgetId(g.0)),
         va::Source::Auxiliary(n, a) => {
             use va::{Auxiliary as A, Comparison as C, ComparisonRole as R};
             let role = match a {

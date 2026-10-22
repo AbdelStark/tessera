@@ -119,6 +119,9 @@ impl<'a> FirstPass<'a> {
             lookups: Vec::new(),
         };
         match tile.tile {
+            Tile::GreedyMaximum { .. } => {
+                panic!("model-only regeneration has no greedy certificate")
+            }
             Tile::Tokens | Tile::Table { .. } => {}
             Tile::Node { node } => self.node(node, &mut expected),
             Tile::Attention { node, kv_head } => {
@@ -279,6 +282,9 @@ impl<'a> FirstPass<'a> {
     /// What kind of tile `tile` is, for the coverage the test asserts.
     fn kind(&self, tile: &SequenceTile) -> String {
         match tile.tile {
+            Tile::GreedyMaximum { .. } => {
+                panic!("model-only regeneration has no greedy certificate")
+            }
             Tile::Tokens => "Tokens".into(),
             Tile::Table { .. } => "Table".into(),
             Tile::Attention { .. } if tile.shares.iter().all(|s| s.ranges[1].is_empty()) => {
@@ -658,6 +664,14 @@ fn sources_refuse_what_is_not_their_sequences() {
     let nodes = u32::try_from(lowering.graph.nodes.len()).expect("small");
     let kv_heads = c.model.arch.n_kv_heads;
     let cases: Vec<(SequenceTile, &str)> = vec![
+        (
+            SequenceTile {
+                tile: Tile::GreedyMaximum { gadget: nodes },
+                block: None,
+                shares: Vec::new(),
+            },
+            "greedy certificates require the runtime witness source (draft RFC-0053)",
+        ),
         (
             altered(attention, |t| {
                 t.tile = Tile::Node { node: softmax };

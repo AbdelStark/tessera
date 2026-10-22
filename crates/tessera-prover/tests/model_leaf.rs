@@ -98,6 +98,7 @@ fn role(c: ModelColumn) -> split::Column {
     use tv_core::advice::{Auxiliary as A, Comparison as C, ComparisonRole as R};
     match c {
         ModelColumn::Input(i) => split::Column::Input(i),
+        ModelColumn::GreedyKey => split::Column::GreedyKey,
         ModelColumn::Output(i) => split::Column::Output(i),
         ModelColumn::RootInput => split::Column::RootInput,
         ModelColumn::ExpKey => split::Column::SoftmaxKey,
@@ -755,6 +756,9 @@ fn source_truth(
                     } else {
                         let index = flat(&domain, &coordinate);
                         match read.term {
+                            ModelColumn::GreedyKey => {
+                                panic!("model-only witness has no runtime key")
+                            }
                             ModelColumn::Input(i) | ModelColumn::Output(i) => {
                                 let t: TensorId = if matches!(read.term, ModelColumn::Input(_)) {
                                     node.inputs[i as usize]
@@ -1179,4 +1183,123 @@ fn inconsistent_catalogs_uncovered_sources_and_wrong_tile_tables_are_refused() {
             rule: "model leaf columns cover every canonical source at its public coordinates"
         })
     ));
+}
+
+#[test]
+fn runtime_leaf_counts_and_implicit_table_digests_match_independent_metadata() {
+    let data: serde_json::Value =
+        serde_json::from_slice(&fs::read(vectors().join("greedy-runtime/runtime.json")).unwrap())
+            .unwrap();
+    let mut cache: Vec<(String, Public)> = Vec::new();
+    let mut checked = 0;
+    for case in data["cases"].as_array().unwrap() {
+        // Model rescale variants are covered by the full compiler/verifier geometry oracle.
+        if !case["variant"].is_null() {
+            continue;
+        }
+        let key = format!(
+            "{}/{}/{}/{}/{}",
+            case["file"], case["vocab"], case["custom"], case["n"], case["query_block"]
+        );
+        let index = cache
+            .iter()
+            .position(|(k, _)| k == &key)
+            .unwrap_or_else(|| {
+                let file = case["file"].as_str().unwrap();
+                let mut m = model(file.strip_suffix(".d").unwrap());
+                if let Some(v) = case["vocab"].as_u64() {
+                    m.arch.vocab = v as u32;
+                }
+                if let Some(c) = case["custom"].as_object() {
+                    let u = |k| c[k].as_u64().unwrap() as u32;
+                    m.arch.d_model = u("d_model");
+                    m.arch.n_heads = u("n_heads");
+                    m.arch.n_kv_heads = u("n_kv_heads");
+                    m.arch.d_head = u("d_head");
+                    m.arch.d_ff = u("d_ff");
+                    m.quant.public.rsqrt_kappa = u("rsqrt_kappa") as u8;
+                    m.quant.public.exp_sigma = u("exp_sigma") as u8;
+                    m.quant.public.residual_bits = u("residual_bits") as u8;
+                    m.quant.public.residual_exponent =
+                        c["residual_exponent"].as_i64().unwrap() as i8;
+                }
+                let policy = GadgetPolicy {
+                    query_block: case["query_block"].as_u64().unwrap() as u32,
+                    ..GadgetPolicy::default()
+                };
+                cache.push((
+                    key.clone(),
+                    public(&m, case["n"].as_u64().unwrap() as u32, policy),
+                ));
+                cache.len() - 1
+            });
+        let p = &cache[index].1;
+        let runtime = tessera_compiler::RuntimePlan::derive(
+            &p.lowering,
+            &p.selection,
+            &p.claims,
+            case["prompt"].as_u64().unwrap() as u32,
+            case["ordinal"].as_u64().unwrap() as u32,
+        )
+        .unwrap();
+        let layout = LeafLayout::runtime(&p.lowering, &p.layers, &runtime, &p.claims).unwrap();
+        assert_eq!(
+            serde_json::json!(
+                layout
+                    .instances()
+                    .iter()
+                    .map(|i| (i.table.0, i.entries))
+                    .collect::<Vec<_>>()
+            ),
+            case["lookups"]
+        );
+        let (graph, claims) = verifier(p, case["n"].as_u64().unwrap() as u32);
+        let base = tv_core::selection::derive(&graph, claims.gadget_policy).unwrap();
+        let tables = base
+            .tables
+            .iter()
+            .map(|t| tv_tables::Table::generate(t.id, t.kind.clone()).unwrap())
+            .collect::<Vec<_>>();
+        let independent = tv_core::gadgets::runtime::Plan::derive(
+            &graph,
+            claims.gadget_policy,
+            case["prompt"].as_u64().unwrap() as u32,
+            case["ordinal"].as_u64().unwrap() as u32,
+            &tables,
+        )
+        .unwrap();
+        let other = split::Layout::new(&independent.split_sites().unwrap()).unwrap();
+        assert_eq!(layout.split_len(), other.values());
+        assert_eq!(
+            layout
+                .instances()
+                .iter()
+                .map(|i| (i.table.0, i.entries))
+                .collect::<Vec<_>>(),
+            other.instances().map(|(t, n)| (t.0, n)).collect::<Vec<_>>()
+        );
+        if let Some(c) = runtime.certificate() {
+            let spec = &runtime.selection().tables[c.table.0 as usize];
+            assert_eq!(
+                spec.digest,
+                independent
+                    .table(tv_tables::TableId(c.table.0))
+                    .unwrap()
+                    .spec()
+                    .digest
+            );
+            let last = layout.sites().last().unwrap();
+            assert_eq!(
+                last.node,
+                NodeRef::Node(p.lowering.graph.producer(p.lowering.logits).unwrap())
+            );
+            let [read] = layout.reads(layout.sites().len() - 1, 0).unwrap() else {
+                panic!("one virtual key")
+            };
+            assert_eq!(read.term, ModelColumn::GreedyKey);
+            assert_eq!(read.coords.len(), c.variables as usize);
+        }
+        checked += 1;
+    }
+    assert_eq!(checked, 101);
 }
