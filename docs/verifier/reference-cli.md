@@ -1,0 +1,104 @@
+# Protocol/1 verifier CLI
+
+The v0.3 reference CLI verifies one non-interactive exact-greedy request through
+the independent verifier. It regenerates table catalogs and retains the existing
+parameter calculator. Protocol/1 does not hide weights or tokens. Test-small
+parameters certify nothing and are accepted only by an explicit test build.
+
+```sh
+cd verifier
+cargo build -p tv-cli --locked
+target/debug/tessera-verify verify \
+  --claims claims.tcl --weights weights.twr --weights-root "$TRUSTED_ROOT" \
+  --statement-digest "$TRUSTED_STATEMENT" --proof proof.tnp --bound 0 \
+  --out verdict.json --json
+```
+
+`TRUSTED_STATEMENT` is the 32-byte, hexadecimal
+`H("statement", TCE(PublicStatement))` selected by the application. Obtain it
+independently of the proof. It binds the entire expected statement, including
+the claim list, epoch, manifest commitment, request identities/lengths and
+predictor. The CLI authenticates the decoded statement against this pin before
+using its content as the verifier's expected statement. Supplying a digest
+extracted from an untrusted proof supplies no independent expectation.
+`TRUSTED_ROOT` is the caller's trusted weight root and must agree with the
+public epoch artifact. The parameter identity comes from the caller's claim
+list. A pin/flag/artifact contradiction is an input-policy usage error, not an
+accepted or cryptographically judged proof.
+
+`--bound` is a nonnegative number of bits representable exactly in increments
+of 1/256: `0`, `1.5` and `0.00390625` are valid; `0.1`, exponents and rounded
+values are refused. No floating-point parsing enters the verification policy.
+
+The command's process exit code is authoritative:
+
+| Code | Meaning |
+|---|---|
+| 0 | Supported proof accepted; test parameters still certify nothing |
+| 10 | Well-formed proof/claim list rejected with the existing exact reason |
+| 20 | I/O, resource policy or cooperative deadline prevented a result |
+| 64 | Invalid arguments, unsupported capability or contradictory trusted pins |
+| 65 | Input artifact failed canonical envelope/payload decoding |
+| 70 | Internal invariant failure or contained panic |
+
+Every nonzero status means not certified. A failed report write also returns
+a nonzero status, even if the mathematical checks passed. Report writes use a
+temporary file and atomic rename; an output path that aliases any input is
+refused before writing. Error text contains public codes, not protocol values
+or panic payloads. Input files must be regular local files. Help is a separate
+invocation (`verify --help`); a help-looking value inside a verification request
+cannot turn it into a successful help command.
+
+The default policy allows artifacts up to 8 GiB, a 64 GiB conservative memory
+allowance and 300 seconds of cooperative verification time. Override with
+`--max-artifact-bytes`, `--max-memory-bytes` and `--timeout-ms`. The CLI reserves
+an input/decoded-object allowance of one eighth of the memory policy, checks
+lengths before allocation and detects input growth while reading. These are
+conservative allowances and phase deadlines, not hard peak-RSS or blocking-I/O
+guarantees; full hardening remains [#182](https://github.com/AbdelStark/tessera/issues/182).
+
+`--json` prints one result. `--out` always writes a
+[`tessera.verdict/1`](../../spec/schemas/verdict-v1.schema.json) object. Existing
+core per-check durations stay null. The optional `execution` object records
+measured CLI `load`, `statement_pin` and `verification` phases, the selected
+exit code and whether the input pins were authenticated. Its overall duration
+covers evaluation through verdict preparation, before a successful report
+write; it does not invent timings for individual internal verifier checks.
+On a contained panic the core inconclusive report may omit this context. If
+the report itself cannot be allocated, exit 20 is returned without a report.
+
+```sh
+target/debug/tessera-verify tables --claims claims.tcl --json
+target/debug/tessera-verify params --params ni-100 --json
+```
+
+`tables` independently regenerates every declared table and compares its
+canonical digest and row count, in catalog order. Its JSON is
+[`tessera.table-digests/1`](../../spec/schemas/table-digests-v1.schema.json).
+This operation accepts no model proof and does not validate the entire model.
+The default total work allowance is 16,777,216 padded rows; a larger catalog
+returns `ERR-RES-TIME` before generation. `--max-table-rows N` explicitly
+selects another allowance. The input file limit is 1 GiB.
+
+`live`, `weights link` and `audit plan/report` are recognized reserved surfaces
+and fail explicitly without accessing or changing a ledger. Their implementations
+remain with [#181](https://github.com/AbdelStark/tessera/issues/181),
+[#158](https://github.com/AbdelStark/tessera/issues/158) and
+[#151](https://github.com/AbdelStark/tessera/issues/151). The future `--manifest`
+anchor interface is not substituted with a different file format. Current
+reports explicitly say `anchor_verified`, `ledger_updated` and `zero_knowledge`
+are false. These boundaries preserve the v0.4 work rather than claiming it from
+a reference proof.
+
+The cross-workspace binary test builds the verifier with its own lockfile and
+runs the real producer proof through that binary. It is required by CI:
+
+```sh
+(cd verifier && cargo build -p tv-cli --features tv-core/test-params --locked)
+TESSERA_VERIFY_BIN="$PWD/verifier/target/debug/tessera-verify" \
+  cargo test -p tessera-prover --test model_leaf \
+  --features test-rng,tv-core/test-params --locked public_cli_binary -- --ignored
+```
+
+These test features fail release builds. The verifier has no producer dependency;
+the differential test and repository JSON Schema validator live on the root side.

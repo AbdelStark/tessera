@@ -57,7 +57,7 @@ pub(crate) fn schema_path(identifier: &str) -> Option<PathBuf> {
 
 /// Problems with `schema` itself: a keyword the validator does not implement, a `$ref` that is
 /// not a local `#/$defs/…` or names no definition, or a malformed keyword value.
-pub(crate) fn schema_problems(schema: &Value) -> Vec<String> {
+pub fn schema_problems(schema: &Value) -> Vec<String> {
     let mut problems = Vec::new();
     let defs = schema.get("$defs").and_then(Value::as_object);
     walk_schema(schema, "", defs, &mut problems);
@@ -136,7 +136,7 @@ fn walk_schema(schema: &Value, at: &str, defs: Option<&Map<String, Value>>, out:
 }
 
 /// The ways `instance` fails `schema`, each with its JSON pointer; `root` holds the `$defs`.
-pub(crate) fn validate(schema: &Value, root: &Value, instance: &Value, at: &str) -> Vec<String> {
+pub fn validate(schema: &Value, root: &Value, instance: &Value, at: &str) -> Vec<String> {
     let mut errors = Vec::new();
     check(schema, root, instance, at, &mut errors);
     errors
@@ -298,7 +298,7 @@ fn read_json(path: &Path) -> Result<Value, String> {
 
 /// The committed reports under `docs/perf/` that fail their schemas, and the schema files under
 /// `spec/schemas/` that use a keyword the validator does not implement.
-pub(crate) fn check_reports(repo: &Path, files: &[PathBuf]) -> io::Result<Vec<String>> {
+pub fn check_reports(repo: &Path, files: &[PathBuf]) -> io::Result<Vec<String>> {
     let mut problems = Vec::new();
     for file in files {
         let schema_file =

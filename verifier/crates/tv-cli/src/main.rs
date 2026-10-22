@@ -3,19 +3,33 @@
 //! Binary entry point for `tessera-verify` (RFC-0019, 02 §2.3).
 
 #![forbid(unsafe_code)]
-#![allow(clippy::print_stdout, clippy::print_stderr)]
 
 use std::env;
+use std::io::{self, Write};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    let output = tv_cli::run(env::args().skip(1));
-    if !output.stdout.is_empty() {
-        print!("{}", output.stdout);
+    // Panic payloads can contain protocol values; only the public ERR-INTERNAL is reported.
+    std::panic::set_hook(Box::new(|_| {}));
+    let args = env::args_os()
+        .skip(1)
+        .take(65)
+        .map(|a| a.into_string())
+        .collect::<Result<Vec<_>, _>>();
+    let output = match args {
+        Ok(args) => tv_cli::run(args),
+        Err(_) => tv_cli::run(["invalid-utf8-argument"]),
+    };
+    if io::stdout()
+        .lock()
+        .write_all(output.stdout.as_bytes())
+        .is_err()
+        || io::stderr()
+            .lock()
+            .write_all(output.stderr.as_bytes())
+            .is_err()
+    {
+        return ExitCode::from(20);
     }
-    if !output.stderr.is_empty() {
-        eprint!("{}", output.stderr);
-    }
-    let code = u8::try_from(output.exit_code).unwrap_or(70);
-    ExitCode::from(code)
+    ExitCode::from(u8::try_from(output.exit_code).unwrap_or(70))
 }

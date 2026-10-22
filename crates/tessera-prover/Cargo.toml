@@ -29,10 +29,12 @@ tessera-witness = { path = "../tessera-witness" }
 [dev-dependencies]
 tessera-scoring = { path = "../tessera-scoring" }
 serde_json = "1"
+xtask = { path = "../../xtask" }
 # The verifier's independent LogUp checks, tables, field, codec and transcript: the leaf stage's
 # LogUp and canonical model leaf proofs are checked by the production independent tree/split
 # verifiers (DEP-2).
 tv-codec = { path = "../../verifier/crates/tv-codec" }
+tv-cli = { path = "../../verifier/crates/tv-cli" }
 tv-core = { path = "../../verifier/crates/tv-core" }
 tv-field = { path = "../../verifier/crates/tv-field" }
 tv-hash = { path = "../../verifier/crates/tv-hash" }

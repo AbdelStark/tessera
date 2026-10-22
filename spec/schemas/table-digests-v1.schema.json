@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/table-digests-v1.schema.json",
+  "title": "tessera.table-digests/1",
+  "description": "Regenerated table catalog only; accepts no model proof.",
+  "type": "object",
+  "required": [
+    "schema",
+    "tables"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.table-digests/1"
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "log2_rows",
+          "digest"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "log2_rows": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 32
+          },
+          "digest": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          }
+        }
+      }
+    }
+  }
+}

@@ -8,6 +8,8 @@ use tessera_prover::{
     Backend, MaskRng, MemoryBudget, ProofBatch, Prover, ProverConfig, ProverError, ReleaseConfig,
 };
 
+mod cli;
+
 fn cfg(mode: Mode) -> ProverConfig {
     ProverConfig {
         backend: Backend::Cpu { threads: 1 },
@@ -159,6 +161,7 @@ fn check_api(model: &IntegerModel, n: u32, prompt: u32) {
         protocol::MessageKind::ColumnQueries,
     );
     let proof = prover.prove_non_interactive(&batch).unwrap();
+    cli::check(&plan, &batch, &weights, &proof);
     out_of_order(
         prover.prove_non_interactive(&batch),
         protocol::MessageKind::SeedCommit,

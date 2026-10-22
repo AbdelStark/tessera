@@ -6,7 +6,10 @@ version = 4
 name = "tv-cli"
 version = "0.1.0"
 dependencies = [
+ "tv-codec",
  "tv-core",
+ "tv-hash",
+ "tv-tables",
  "tv-testkit",
 ]
 

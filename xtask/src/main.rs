@@ -25,7 +25,7 @@ mod no_float;
 mod plan_vectors;
 mod pr_policy;
 mod repo;
-mod reports;
+use xtask::reports;
 mod schedule_vectors;
 mod secret_access;
 mod spdx;
