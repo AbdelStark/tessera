@@ -284,6 +284,10 @@ fn original_combinations_duplicates_and_channel_coordinates_are_preserved() {
             let w = weights::derive(&c, 0).unwrap();
             let original = fixture(&c, &g, &s);
             let packed = Claims::derive(&g, &c, &layout, &w, original.reduced()).unwrap();
+            assert_eq!(
+                packed.matrices().collect::<Vec<_>>(),
+                [weights::Matrix::Q, weights::Matrix::ChannelParams]
+            );
             let a = packed.advice_claims().unwrap();
             assert_eq!(a.len(), 1 + 3 + 2);
             let cp = g.checkpoints();
@@ -541,6 +545,124 @@ fn unlayered_weight_claims_retain_the_full_original_point() {
                 Err(Error::Internal)
             ),
             "single fault {fault}"
+        );
+    }
+}
+
+#[test]
+fn complete_runtime_budget_keeps_original_groups_and_checks_preset_name_mode_and_layout() {
+    use tv_core::params::ParamSet;
+    use tv_core::runtime::{Error as R, Geometry};
+    use tv_hash::transcript::Mode;
+    let (base, graph, selected) = public(3, 5);
+    let tables = selected
+        .tables
+        .iter()
+        .map(|t| tv_tables::Table::generate(t.id, t.kind.clone()).unwrap())
+        .collect::<Vec<_>>();
+    for params in [ParamSet::Live64, ParamSet::Ni100] {
+        let mode = if params == ParamSet::Live64 {
+            Mode::Live
+        } else {
+            Mode::NonInteractive
+        };
+        let mut c = base.clone();
+        c.params = tv_core::claims::ParamSetId::new(params.name()).unwrap();
+        c.layout = params.layout();
+        let runtime =
+            tv_core::gadgets::runtime::Plan::derive(&graph, c.gadget_policy, 2, 0, &tables)
+                .unwrap();
+        let layout = runtime
+            .advice_layout(advice::Config::new(
+                &c.arch,
+                c.gadget_policy,
+                c.layout.advice.log2_k,
+                c.layout.advice.segments,
+            ))
+            .unwrap();
+        let layouts = weights::derive(&c, 0).unwrap();
+        let original = fixture(&c, &graph, &selected);
+        let claims = Claims::derive(&graph, &c, &layout, &layouts, original.reduced()).unwrap();
+        let views = claims.advice_claims().unwrap();
+        let mut descriptor = tv_hash::DomainHasher::new(tv_hash::Domain::CommitmentId);
+        descriptor.update(&0u16.to_le_bytes());
+        descriptor.update(&[0; 32]);
+        descriptor.update(&0u32.to_le_bytes());
+        let a = c.layout.advice;
+        descriptor.update(&[a.log2_k, a.log2_inv_rate]);
+        for n in [a.mask_coeffs, a.row_block, a.segments] {
+            descriptor.update(&n.to_le_bytes());
+        }
+        descriptor.update(&layout.committed_rows().unwrap().to_le_bytes());
+        let binding = advice::opening::Commitment::bind(
+            &layout,
+            a,
+            &[0; 32],
+            0,
+            [0; 32],
+            descriptor.finalize(),
+        )
+        .unwrap();
+        let xi = point((layout.nu() - u32::from(a.log2_k)) as usize);
+        let opening = binding.prepare(&views, f(37), &xi).unwrap();
+        let budget = Geometry::derive(&c, &runtime)
+            .unwrap()
+            .check_budget(params, mode, &opening, &claims, &layouts)
+            .unwrap();
+        let report = budget.report();
+        assert_eq!(report.meets_targets, Some(true));
+        assert_eq!(report.params.id, params.name());
+        assert_eq!(
+            report.statement.claim_groups.iter().sum::<u64>(),
+            views.len() as u64
+        );
+        assert_eq!(
+            report
+                .statement
+                .matrices
+                .iter()
+                .map(|m| m.matrix)
+                .collect::<Vec<_>>(),
+            [weights::Matrix::Q, weights::Matrix::ChannelParams]
+        );
+        let opposite = if mode == Mode::Live {
+            Mode::NonInteractive
+        } else {
+            Mode::Live
+        };
+        assert_eq!(
+            Geometry::derive(&c, &runtime)
+                .unwrap()
+                .check_budget(params, opposite, &opening, &claims, &layouts)
+                .err(),
+            Some(R::Params)
+        );
+        let mut renamed = c.clone();
+        renamed.params = tv_core::claims::ParamSetId::new("unknown/1").unwrap();
+        assert_eq!(
+            Geometry::derive(&renamed, &runtime)
+                .unwrap()
+                .check_budget(params, mode, &opening, &claims, &layouts)
+                .err(),
+            Some(R::Params)
+        );
+        let mut other_layout = c.clone();
+        other_layout.layout.advice.mask_coeffs += 1;
+        assert_eq!(
+            Geometry::derive(&other_layout, &runtime)
+                .unwrap()
+                .check_budget(params, mode, &opening, &claims, &layouts)
+                .err(),
+            Some(R::Params)
+        );
+        let mut misplaced = layouts.clone();
+        misplaced.swap(1, 2);
+        assert_eq!(
+            Geometry::derive(&c, &runtime)
+                .unwrap()
+                .check_budget(params, mode, &opening, &claims, &misplaced)
+                .err(),
+            Some(R::Internal)
         );
     }
 }

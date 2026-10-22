@@ -156,4 +156,53 @@ fn runtime_catalog_layout_leaf_and_mixed_metadata_preserve_memory_errors() {
         || model::Plan::derive_runtime(&r),
         GadgetError::Memory,
     );
+    capped(
+        "runtime geometry",
+        || tv_core::runtime::Geometry::derive(&c, &r),
+        tv_core::runtime::Error::Memory,
+    );
+    use tv_core::soundness::{
+        MatrixSize, SoundnessError, SoundnessParams, SoundnessReport, StatementSizes,
+    };
+    let matrices = [
+        MatrixSize {
+            matrix: tv_core::weights::Matrix::Embed,
+            width: 8,
+            rows: 1,
+            variables: 3,
+        },
+        MatrixSize {
+            matrix: tv_core::weights::Matrix::LmHead,
+            width: 8,
+            rows: 1,
+            variables: 3,
+        },
+    ];
+    capped(
+        "complete soundness report",
+        || {
+            let params = SoundnessParams::try_from_param_set(tv_core::params::ParamSet::Live64)?;
+            let mut copies = Vec::new();
+            copies
+                .try_reserve_exact(matrices.len())
+                .map_err(|_| SoundnessError::Memory)?;
+            copies.extend_from_slice(&matrices);
+            SoundnessReport::evaluate(
+                params,
+                StatementSizes {
+                    protocol: 1,
+                    rounds: Vec::new(),
+                    stages: Vec::new(),
+                    tree_levels: Vec::new(),
+                    zero_checks: Vec::new(),
+                    forests: Vec::new(),
+                    lookups: Vec::new(),
+                    claim_groups: Vec::new(),
+                    advice_rows: 1,
+                    matrices: copies,
+                },
+            )
+        },
+        SoundnessError::Memory,
+    );
 }

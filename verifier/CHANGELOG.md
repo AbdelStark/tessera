@@ -6,6 +6,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Added
 
+- Complete runtime geometry and preset budgets now count shared tree batches, mixed graph/native stages, padded lookup populations, original opening groups and actual matrix rows. Budget checks enforce the unchanged preset name, commitment layout and session mode, with fallible metadata/report reservations. Runtime packet sizes and the prover transcript schedule are checked against actual CPU proofs and independent vectors. Accepting NI/Live session drivers remain under [#128](https://github.com/AbdelStark/tessera/issues/128); RFC-0053 remains Draft.
+
 - Independent protocol/1 packet types, bounded decoders and fallible encoders (`tv-core::protocol`, RFC-0036), including sealed Live messages and nested `NiProof` payloads. Independent fixtures pin decoded values, bytes, statement hashes, every truncated-prefix offset and malformed boundaries. A seeded packet fuzz target and capped-allocation tests cover hostile lengths and reader memory failures. Decoding establishes syntax; complete session verification remains under [#128](https://github.com/AbdelStark/tessera/issues/128).
 
 - `model_openings::Claims` preserves every complete-model graph, native and multiplicity obligation for the canonical advice and weight checks. Stage pool terms retain their original layer coordinates; the adapter checks weight provenance and retains duplicate claims, ChannelParams reading sites and external token/logit debts (RFC-0037/0052). Independent literal fixtures precede actual CPU commitment comparisons. This packs obligations; the complete protocol driver and final verdict remain under [#128](https://github.com/AbdelStark/tessera/issues/128).

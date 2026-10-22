@@ -135,8 +135,11 @@ const PRODUCTION_WEIGHTS: WeightLayoutParams = WeightLayoutParams {
 impl SoundnessParams {
     /// `live-64/1` (RFC-0014 'Parameter sets').
     pub fn live_64() -> Self {
+        Self::live_64_named(String::from("live-64/1"))
+    }
+    fn live_64_named(id: String) -> Self {
         Self {
-            id: String::from("live-64/1"),
+            id,
             mode: SessionMode::Live,
             release: true,
             advice: AdviceLayoutParams {
@@ -160,8 +163,11 @@ impl SoundnessParams {
 
     /// `ni-100/1` (RFC-0014 'Parameter sets').
     pub fn ni_100() -> Self {
+        Self::ni_100_named(String::from("ni-100/1"))
+    }
+    fn ni_100_named(id: String) -> Self {
         Self {
-            id: String::from("ni-100/1"),
+            id,
             mode: SessionMode::NonInteractive,
             release: true,
             advice: AdviceLayoutParams {
@@ -185,8 +191,11 @@ impl SoundnessParams {
 
     /// `test-small/1` (RFC-0014 'Parameter sets').
     pub fn test_small() -> Self {
+        Self::test_small_named(String::from("test-small/1"))
+    }
+    fn test_small_named(id: String) -> Self {
         Self {
-            id: String::from("test-small/1"),
+            id,
             mode: SessionMode::Either,
             release: false,
             advice: AdviceLayoutParams {
@@ -218,6 +227,23 @@ impl SoundnessParams {
             #[cfg(feature = "test-params")]
             ParamSet::TestSmall => Self::test_small(),
         }
+    }
+
+    /// The accepted preset with a fallible name reservation for verifier sessions.
+    ///
+    /// # Errors
+    /// `Memory` when its fixed public identifier cannot be reserved.
+    pub fn try_from_param_set(set: ParamSet) -> Result<Self, SoundnessError> {
+        let mut name = String::new();
+        name.try_reserve_exact(set.name().len())
+            .map_err(|_| SoundnessError::Memory)?;
+        name.push_str(set.name());
+        Ok(match set {
+            ParamSet::Live64 => Self::live_64_named(name),
+            ParamSet::Ni100 => Self::ni_100_named(name),
+            #[cfg(feature = "test-params")]
+            ParamSet::TestSmall => Self::test_small_named(name),
+        })
     }
 
     /// Looks up a named parameter set by its CLI name (`"live-64"`, `"ni-100"`, `"test-small"`).
@@ -610,9 +636,11 @@ impl SoundnessRow {
     }
 }
 
-/// Invalid input to the soundness calculator (`ERR-USAGE`, RFC-0014 'Statement sizes').
+/// Invalid calculator input (`ERR-USAGE`) or a report reservation failure (`ERR-RES-MEMORY`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SoundnessError {
+    /// The report's bounded row reservation failed (`ERR-RES-MEMORY`).
+    Memory,
     /// `protocol` is neither 1 nor 2.
     Protocol(u8),
     /// `advice_queries` or `weight_queries` lies outside `1..=2^16`.
@@ -638,13 +666,17 @@ pub enum SoundnessError {
 impl SoundnessError {
     /// Stable error code (`04 §3`).
     pub const fn code(self) -> &'static str {
-        "ERR-USAGE"
+        match self {
+            Self::Memory => "ERR-RES-MEMORY",
+            _ => "ERR-USAGE",
+        }
     }
 }
 
 impl fmt::Display for SoundnessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Memory => f.write_str("memory for the soundness report could not be reserved"),
             Self::Protocol(p) => write!(f, "protocol must be 1 or 2, got {p}"),
             Self::Queries => f.write_str("column query count τ must be in 1..=65536"),
             Self::AdviceCodeword => f.write_str("advice codeword length must be at most 2^32"),
@@ -688,8 +720,8 @@ impl SoundnessReport {
     ///
     /// # Errors
     ///
-    /// Returns [`SoundnessError`] (`ERR-USAGE`) if `params` or `statement` violates any rule of
-    /// RFC-0014 'Statement sizes'.
+    /// Returns [`SoundnessError`] (`ERR-USAGE`) for invalid RFC-0014 inputs, or `Memory`
+    /// (`ERR-RES-MEMORY`) if its bounded report row reservation fails.
     pub fn evaluate(
         params: SoundnessParams,
         statement: StatementSizes,
@@ -697,8 +729,15 @@ impl SoundnessReport {
         validate(&params, &statement)?;
         let v2 = statement.protocol == 2;
         let targets = params.targets;
-        let mut rows =
-            Vec::with_capacity(7usize.saturating_add(statement.matrices.len().saturating_mul(2)));
+        let capacity = statement
+            .matrices
+            .len()
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(9))
+            .ok_or(SoundnessError::Memory)?;
+        let mut rows = Vec::new();
+        rows.try_reserve_exact(capacity)
+            .map_err(|_| SoundnessError::Memory)?;
 
         // 1. Sumcheck and tree rounds (RFC-0014 'Rows' row 1).
         let max_round_deg = statement

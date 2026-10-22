@@ -313,6 +313,14 @@ impl<'a> Claims<'a> {
         }
         Ok(out)
     }
+    /// Matrices required by the original reduction claims, in canonical order.
+    /// A proof's matrix list never determines which commitments must be opened.
+    pub fn matrices(&self) -> impl Iterator<Item = Matrix> + '_ {
+        Matrix::ALL
+            .into_iter()
+            .zip(&self.weights)
+            .filter_map(|(matrix, claims)| (!claims.is_empty()).then_some(matrix))
+    }
     /// Legacy token/logit debts, when the plan used external boundaries. Runtime plans return
     /// `None` only after routing those sources through native and graph reductions; all
     /// canonical openings in this plan remain owed.

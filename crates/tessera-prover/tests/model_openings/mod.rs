@@ -417,6 +417,163 @@ impl<'a> Committed<'a> {
         .unwrap();
         let av = es(&av);
         let bound = binding.prepare(&original, e(gamma), &av).unwrap();
+        if let Some(runtime) = &runtime {
+            let g = tv_core::runtime::Geometry::derive(self.claims, runtime).unwrap();
+            let rounds: Vec<_> = g
+                .levels()
+                .iter()
+                .copied()
+                .chain(g.stages().iter().map(|s| s.sumcheck))
+                .map(|f| tv_core::soundness::RoundGroup {
+                    count: f.rounds as u64,
+                    degree: f.degree as u64,
+                })
+                .collect();
+            let tree_levels: Vec<_> = g.levels().iter().map(|f| f.instances as u64).collect();
+            let report =
+                if let Some(params) = tv_core::params::ParamSet::accept(&self.claims.params) {
+                    let budget = g
+                        .check_budget(
+                            params,
+                            if mode == Mode::Live {
+                                tv_hash::transcript::Mode::Live
+                            } else {
+                                tv_hash::transcript::Mode::NonInteractive
+                            },
+                            &bound,
+                            &claims,
+                            &wl,
+                        )
+                        .unwrap();
+                    budget.report().clone()
+                } else {
+                    tv_core::soundness::SoundnessReport::evaluate(
+                        tv_core::soundness::SoundnessParams::test_small(),
+                        g.statement_sizes(&bound, &claims, &wl).unwrap(),
+                    )
+                    .unwrap()
+                };
+            assert_eq!(report.statement.rounds, rounds);
+            assert_eq!(report.statement.tree_levels, tree_levels);
+            let r = tessera_compiler::RuntimePlan::derive(
+                &self.p.lowering,
+                &self.p.selection,
+                &self.p.claims,
+                self.prompt.unwrap(),
+                0,
+            )
+            .unwrap();
+            let leaf =
+                LeafLayout::runtime(&self.p.lowering, &self.p.layers, &r, &self.p.claims).unwrap();
+            let plan = tessera_prover::native::ModelNativePlan::derive_runtime(
+                &self.p.lowering,
+                &r,
+                &self.p.claims,
+                &leaf,
+            )
+            .unwrap();
+            let stages = &plan.schedule().stages[1..];
+            assert_eq!(
+                report.statement.stages,
+                stages
+                    .iter()
+                    .map(|s| s.instances.len() as u64)
+                    .collect::<Vec<_>>()
+            );
+            let zero_checks: Vec<_> = stages
+                .iter()
+                .flat_map(|s| &s.instances)
+                .filter(|i| {
+                    i.source == tessera_compiler::schedule::Source::ZeroCheck
+                        || matches!(
+                            i.relation,
+                            tessera_compiler::schedule::Relation::Native { zero: true, .. }
+                        )
+                })
+                .map(|i| u64::from(i.vars))
+                .collect();
+            assert_eq!(report.statement.zero_checks, zero_checks);
+            let lookup_sizes: Vec<_> = leaf
+                .instances()
+                .iter()
+                .map(|i| {
+                    let table = r
+                        .selection()
+                        .tables
+                        .iter()
+                        .find(|t| t.id == i.table)
+                        .unwrap();
+                    tv_core::soundness::LookupSize {
+                        lookups: i.entries.next_power_of_two(),
+                        rows: 1u64 << table.log2_rows,
+                    }
+                })
+                .collect();
+            assert_eq!(report.statement.lookups, lookup_sizes);
+            let schedule = tessera_prover::derive_runtime_schedule(
+                &self.p.claims,
+                graph.length(),
+                self.prompt.unwrap(),
+                0,
+            )
+            .unwrap();
+            assert_eq!(
+                report.statement.forests,
+                schedule
+                    .sizes
+                    .trees
+                    .iter()
+                    .filter_map(|t| match *t {
+                        protocol::LeafTree::Forest { trees_log, .. } => Some(u64::from(trees_log)),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                report
+                    .statement
+                    .matrices
+                    .iter()
+                    .map(|m| m.matrix.tag())
+                    .collect::<Vec<_>>(),
+                schedule
+                    .sizes
+                    .opened
+                    .iter()
+                    .map(|m| u16::from(m.matrix))
+                    .collect::<Vec<_>>()
+            );
+            for size in &report.statement.matrices {
+                let matrix = self
+                    .weight_layout
+                    .matrix(pcs::WeightMatrix::ALL[usize::from(size.matrix.tag())]);
+                assert_eq!(
+                    (size.width, size.rows, size.variables),
+                    (
+                        1 << matrix.log2_k(),
+                        matrix.rows(),
+                        u64::from(matrix.log2_k() + matrix.row_vars())
+                    )
+                );
+            }
+            assert_eq!(
+                report.statement.claim_groups.iter().sum::<u64>(),
+                original.len() as u64
+            );
+            assert!(
+                report
+                    .statement
+                    .matrices
+                    .iter()
+                    .any(|m| m.matrix == vw::Matrix::LmHead)
+            );
+            assert_eq!(
+                report.statement.advice_rows,
+                1u64 << a
+                    .nu()
+                    .saturating_sub(u32::from(self.claims.layout.advice.log2_k))
+            );
+        }
         assert_eq!(bound.group_count(), prepared.group_count());
         let ac = checked
             .combined()

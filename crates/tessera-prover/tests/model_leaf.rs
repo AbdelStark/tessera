@@ -484,12 +484,46 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
     }
     .unwrap();
     model_stages::compare_schedules(&native_plan, &independent_native);
-    if runtime.is_none() {
-        let geometry = tessera_prover::derive_model_schedule(&p.claims, n).unwrap();
-        assert_eq!(geometry.sizes.stages.len(), stage_plan.stages.len() - 1);
-        for (a, b) in geometry.sizes.stages.iter().zip(&stage_plan.stages[1..]) {
-            assert_eq!((a.rounds, a.zero_vars), (b.rounds, b.zero_vars));
-        }
+    let geometry = match prompt {
+        Some(prompt) => tessera_prover::derive_runtime_schedule(&p.claims, n, prompt, 0),
+        None => tessera_prover::derive_model_schedule(&p.claims, n),
+    }
+    .unwrap();
+    assert_eq!(geometry.sizes.stages.len(), stage_plan.stages.len() - 1);
+    for (a, b) in geometry.sizes.stages.iter().zip(&stage_plan.stages[1..]) {
+        assert_eq!((a.rounds, a.zero_vars), (b.rounds, b.zero_vars));
+    }
+    let trees: Vec<_> = schedule
+        .schedule()
+        .trees()
+        .iter()
+        .map(|t| match *t {
+            tv::Tree::Lookup { height, .. } | tv::Tree::Table { height, .. } => {
+                tessera_protocol::LeafTree::Fraction { height }
+            }
+            tv::Tree::Forest { height, trees_log } => {
+                tessera_protocol::LeafTree::Forest { height, trees_log }
+            }
+        })
+        .collect();
+    assert_eq!(geometry.sizes.trees, trees);
+    assert_eq!(geometry.sizes.advice_vars, advice.layout().row_vars());
+    assert_eq!(
+        geometry.lookup_entries,
+        layout
+            .instances()
+            .iter()
+            .map(|i| (i.table, i.entries))
+            .collect::<Vec<_>>()
+    );
+    for mode in [Mode::Live, Mode::NonInteractive] {
+        tessera_protocol::TranscriptSchedule::expand(
+            &geometry.sizes,
+            &ParamSet::TEST_SMALL,
+            mode,
+            tessera_protocol::Protocol::One,
+        )
+        .unwrap();
     }
     let checkpoints = tessera_witness::Checkpoints::new(&engine, model, &tokens).unwrap();
     let replay = match &runtime {
@@ -504,6 +538,9 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
     let committed =
         model_openings::Committed::new(&p, model, &advice, &source, &replay, &claims, prompt);
     for mode in [Mode::Live, Mode::NonInteractive] {
+        let runtime_geometry = tv_runtime
+            .as_ref()
+            .map(|r| tv_core::runtime::Geometry::derive(&claims, r).unwrap());
         let (mut t, mut t2, xi) = committed.start(mode);
         let forests = actual.forests();
         let borrowed = actual.tensors();
@@ -517,6 +554,24 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
         let graph_leaf = stages.leaf(&points).unwrap();
         let atoms = stages.leaf_split_values().unwrap();
         let proof = lookup.finish(&atoms).unwrap();
+        if let Some(g) = &runtime_geometry {
+            assert_eq!(g.roots(), proof.logup().roots().len());
+            assert_eq!(g.values(), proof.logup().values().len());
+            assert_eq!(g.leaf_splits(), proof.splits().len());
+            assert_eq!(g.levels().len(), proof.logup().levels().len());
+            for (f, p) in g.levels().iter().zip(proof.logup().levels()) {
+                assert_eq!(f.rounds, p.proof().rounds.len());
+                assert!(p.proof().rounds.iter().all(|r| r.len() == f.degree));
+                assert_eq!(f.evaluations, p.proof().final_evals.len());
+                assert_eq!(
+                    f.field_count(),
+                    Some(
+                        p.proof().rounds.iter().map(Vec::len).sum::<usize>()
+                            + p.proof().final_evals.len()
+                    )
+                );
+            }
+        }
         let levels: Vec<_> = proof
             .logup()
             .levels()
@@ -626,6 +681,7 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
             &committed,
             &xi,
             mode,
+            runtime_geometry.as_ref(),
         );
     }
 }

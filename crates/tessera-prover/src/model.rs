@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use tessera_compiler::schedule::{Claim, NodeRef, Part, Site, Source};
 use tessera_compiler::{
-    CompileError, ModelAdviceLayout, PublicModel, StageSchedule, analyze, derive_schedule, lower,
-    select,
+    CompileError, Lowering, ModelAdviceLayout, PublicModel, RuntimePlan, Selection, StageSchedule,
+    analyze, derive_schedule, lower, select,
 };
 use tessera_ir::{ClaimList, Op, TableId};
 use tessera_pcs::{WeightLayout, WeightMatrix as Matrix, WeightShapes};
@@ -54,24 +54,7 @@ pub struct ModelSchedule {
 /// a catalog different from the claim list's; other compiler errors retain their public rules.
 /// [`CompileError::Schedule`] for geometry that exceeds its integer domains.
 pub fn derive_model_schedule(claims: &ClaimList, n: u32) -> Result<ModelSchedule, CompileError> {
-    if claims.protocol_version != tessera_ir::PROTOCOL_VERSION {
-        return Err(CompileError::Usage {
-            rule: "model transcript geometry requires the current claim-list protocol version",
-        });
-    }
-    let lowering = lower(PublicModel::of_claims(claims), n)?;
-    let ranges = analyze(&lowering.graph, &lowering.tables)?;
-    let selection = select(
-        &lowering.graph,
-        &ranges,
-        &lowering.tables,
-        &claims.gadget_policy,
-    )?;
-    if selection.tables != claims.tables {
-        return Err(CompileError::Usage {
-            rule: "the claim list contains the complete selected catalog",
-        });
-    }
+    let (lowering, selection) = public_model(claims, n)?;
     let advice = ModelAdviceLayout::new(&lowering, &selection, claims)?;
     let graph = derive_schedule(&lowering)?;
     let shape = |t: tessera_ir::TensorId| lowering.graph.tensors[t.0 as usize].shape.as_slice();
@@ -203,6 +186,147 @@ pub fn derive_model_schedule(claims: &ClaimList, n: u32) -> Result<ModelSchedule
             _ => return Err(internal()),
         }
     }
+    let (proximity, opened) = weight_schedule(claims, &lowering, &graph)?;
+    Ok(ModelSchedule {
+        sizes: ScheduleSizes {
+            trees,
+            layer_vars: graph.layers.vars,
+            stages: geometry.stages,
+            advice_vars: advice.layout().row_vars(),
+            proximity,
+            opened,
+        },
+        lookup_entries: entries.into_iter().collect(),
+    })
+}
+
+/// Derive protocol/1 sizes for the complete exact-greedy runtime (draft RFC-0053).
+///
+/// `prompt` is positive and at most `n`; `ordinal` identifies the request's certificate.
+/// Trees come from the complete shared lookup layout, stages from the composed native/graph
+/// plan, and opening domains from the original pool. No witness or transcript is read.
+/// A schedule is metadata, and does not validate a proof or its parameter set.
+///
+/// # Errors
+/// Compiler errors for unsupported public model/request data; `Schedule` for inconsistent
+/// runtime geometry or dimensions outside their integer domains.
+pub fn derive_runtime_schedule(
+    claims: &ClaimList,
+    n: u32,
+    prompt: u32,
+    ordinal: u32,
+) -> Result<ModelSchedule, CompileError> {
+    let (lowering, selection) = public_model(claims, n)?;
+    let runtime = RuntimePlan::derive(&lowering, &selection, claims, prompt, ordinal)?;
+    let layers = tessera_compiler::schedule::LayerMap::new(&lowering)?;
+    let leaf =
+        crate::LeafLayout::runtime(&lowering, &layers, &runtime, claims).map_err(|_| internal())?;
+    let native = crate::native::ModelNativePlan::derive_runtime(&lowering, &runtime, claims, &leaf)
+        .map_err(|_| internal())?;
+    let graph = native.schedule();
+    let advice = ModelAdviceLayout::runtime(&lowering, &runtime, claims)?;
+    let mut trees = Vec::new();
+    for instance in leaf.instances() {
+        let table = runtime
+            .selection()
+            .tables
+            .iter()
+            .find(|t| t.id == instance.table)
+            .ok_or_else(internal)?;
+        trees.extend([
+            LeafTree::Fraction {
+                height: instance.height,
+            },
+            LeafTree::Fraction {
+                height: u32::from(table.log2_rows),
+            },
+        ]);
+    }
+    for site in leaf.sites() {
+        let (node, lambda) = match site.node {
+            NodeRef::Node(n) => (n, 0),
+            NodeRef::Position(p) => (layers.node(p, 0), layers.vars),
+        };
+        let node = lowering
+            .graph
+            .nodes
+            .get(node.0 as usize)
+            .ok_or_else(internal)?;
+        if matches!(node.op, Op::SoftmaxRow { .. }) {
+            let input = node.inputs.first().ok_or_else(internal)?;
+            let score = &lowering
+                .graph
+                .tensors
+                .get(input.0 as usize)
+                .ok_or_else(internal)?
+                .shape;
+            let [heads, queries, keys] = score.as_slice() else {
+                return Err(internal());
+            };
+            if *keys > 1 {
+                trees.push(LeafTree::Forest {
+                    trees_log: lambda
+                        .checked_add(vars(&[*heads, *queries])?)
+                        .ok_or_else(internal)?,
+                    height: vars(&[*keys])?,
+                });
+            }
+        }
+    }
+    let stages = graph
+        .stages
+        .iter()
+        .skip(1)
+        .map(|s| StageSizes {
+            rounds: s.rounds,
+            zero_vars: s.zero_vars,
+        })
+        .collect();
+    let (proximity, opened) = weight_schedule(claims, &lowering, graph)?;
+    Ok(ModelSchedule {
+        sizes: ScheduleSizes {
+            trees,
+            layer_vars: layers.vars,
+            stages,
+            advice_vars: advice.layout().row_vars(),
+            proximity,
+            opened,
+        },
+        lookup_entries: leaf
+            .instances()
+            .iter()
+            .map(|i| (i.table, i.entries))
+            .collect(),
+    })
+}
+
+fn public_model(claims: &ClaimList, n: u32) -> Result<(Lowering, Selection), CompileError> {
+    if claims.protocol_version != tessera_ir::PROTOCOL_VERSION {
+        return Err(CompileError::Usage {
+            rule: "model transcript geometry requires the current claim-list protocol version",
+        });
+    }
+    let lowering = lower(PublicModel::of_claims(claims), n)?;
+    let ranges = analyze(&lowering.graph, &lowering.tables)?;
+    let selection = select(
+        &lowering.graph,
+        &ranges,
+        &lowering.tables,
+        &claims.gadget_policy,
+    )?;
+    if selection.tables != claims.tables {
+        return Err(CompileError::Usage {
+            rule: "the claim list contains the complete selected catalog",
+        });
+    }
+    Ok((lowering, selection))
+}
+
+fn weight_schedule(
+    claims: &ClaimList,
+    lowering: &Lowering,
+    graph: &StageSchedule,
+) -> Result<(Vec<MatrixPoint>, Vec<MatrixCodeword>), CompileError> {
     let channels = lowering
         .classes
         .iter()
@@ -256,17 +380,7 @@ pub fn derive_model_schedule(claims: &ClaimList, n: u32) -> Result<ModelSchedule
             })
         })
         .collect::<Result<_, CompileError>>()?;
-    Ok(ModelSchedule {
-        sizes: ScheduleSizes {
-            trees,
-            layer_vars: graph.layers.vars,
-            stages: geometry.stages,
-            advice_vars: advice.layout().row_vars(),
-            proximity,
-            opened,
-        },
-        lookup_entries: entries.into_iter().collect(),
-    })
+    Ok((proximity, opened))
 }
 
 fn vars(shape: &[u32]) -> Result<u32, CompileError> {

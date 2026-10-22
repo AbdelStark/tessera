@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Complete runtime geometry and preset budgets now count shared tree batches, mixed graph/native stages, padded lookup populations, original opening groups and actual matrix rows. Budget checks enforce the unchanged preset name, commitment layout and session mode, with fallible metadata/report reservations. Runtime packet sizes and the prover transcript schedule are checked against actual CPU proofs and independent vectors. Accepting NI/Live session drivers remain under [#128](https://github.com/AbdelStark/tessera/issues/128); RFC-0053 remains Draft.
+
 - Clearing CPU runtime witnesses now supply exact-greedy maxima and independently padded keys, with complete shared-table multiplicities. Producer native token/key/selected relations and prompt-only observations compose with the model graph and canonical advice/weight openings. Same-point weight aliases retain every value check against the original evaluation row and proximity check. Bounded runtime proofs exercise empty/ragged domains and regenerated rows in both transcript contexts; complete budget enforcement and NI/Live verdict drivers remain under [#128](https://github.com/AbdelStark/tessera/issues/128), and RFC-0053 remains Draft.
 
 - Verifier table regeneration now reserves its digest buffer and bounded header fallibly, and streams across hash-block boundaries without growing the buffer. Class copies reserve fallibly; Range/Requant evaluation uses fixed-size public coefficient arrays. Sampled allocation caps return `ERR-RES-MEMORY`, including an implicit greedy Range table, instead of aborting ([#128](https://github.com/AbdelStark/tessera/issues/128)).

@@ -15,7 +15,7 @@ use tessera_ir::{ClaimList, GadgetPolicy, IntegerModel, ParamSetId, QuantPoint};
 use tessera_protocol::{
     LeafTree, ParamSet, Protocol, ScheduleSizes, TranscriptSchedule, WeightMatrix,
 };
-use tessera_prover::{ModelSchedule, derive_model_schedule};
+use tessera_prover::{ModelSchedule, derive_model_schedule, derive_runtime_schedule};
 
 const MODELS: [&str; 4] = [
     "tiny-2-servable",
@@ -278,6 +278,10 @@ fn refuses_unsupported_public_inputs() {
                 rule: "a sequence has 1 to max_context positions"
             })
         );
+        assert_eq!(
+            derive_runtime_schedule(&claims, n, 1, 0),
+            derive_model_schedule(&claims, n)
+        );
     }
     for version in [1, 2, u16::MAX] {
         let mut bad = claims.clone();
@@ -287,6 +291,10 @@ fn refuses_unsupported_public_inputs() {
             Err(CompileError::Usage {
                 rule: "model transcript geometry requires the current claim-list protocol version"
             })
+        );
+        assert_eq!(
+            derive_runtime_schedule(&bad, 3, 1, 0),
+            derive_model_schedule(&bad, 3)
         );
     }
     for remove in [true, false] {
@@ -302,7 +310,25 @@ fn refuses_unsupported_public_inputs() {
                 rule: "the claim list contains the complete selected catalog"
             })
         );
+        assert_eq!(
+            derive_runtime_schedule(&bad, 3, 1, 0),
+            derive_model_schedule(&bad, 3)
+        );
     }
+    for prompt in [0, 4] {
+        assert_eq!(
+            derive_runtime_schedule(&claims, 3, prompt, 0),
+            Err(CompileError::Usage {
+                rule: "the greedy request names a positive prompt within the model sequence"
+            })
+        );
+    }
+    assert_eq!(
+        derive_runtime_schedule(&claims, 3, 1, u32::MAX),
+        Err(CompileError::Usage {
+            rule: "the greedy request names a positive prompt within the model sequence"
+        })
+    );
 }
 
 #[test]

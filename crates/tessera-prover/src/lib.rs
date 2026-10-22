@@ -19,6 +19,8 @@
 //!
 //! [`derive_model_schedule`] derives complete protocol/1 transcript dimensions from public
 //! claims, including every native gadget lookup, forest and reduction path.
+//! [`derive_runtime_schedule`] uses the complete exact-greedy runtime layout and composed
+//! graph/native plan, including every shared table and original weight obligation.
 //! [`leaf::LeafLayout::model`] and [`leaf::ModelWitness`] supply the canonical CPU lookup
 //! sites, per-request domains, clearing source buffers and stacked Softmax forests. Their
 //! leaf proofs leave the native/graph reductions and commitment openings to the driver.
@@ -44,7 +46,7 @@ mod release;
 pub mod stages;
 
 pub use leaf::{LeafError, LeafLayout, PreparedLeaf, ProvenLeaf, prepare_leaf, prove_leaf};
-pub use model::{ModelSchedule, derive_model_schedule};
+pub use model::{ModelSchedule, derive_model_schedule, derive_runtime_schedule};
 pub use release::{Release, ReleaseSchedule, ScheduleError};
 pub use stages::{StageError, StageProof, StageProver, WitnessSource};
 

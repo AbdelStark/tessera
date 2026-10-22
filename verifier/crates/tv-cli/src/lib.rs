@@ -18,6 +18,9 @@ pub const EXIT_SUCCESS: i32 = 0;
 /// Exit code on a rejected proof or missed soundness target (`02 §2.4`, `RFC-0051`).
 pub const EXIT_REJECT: i32 = 10;
 
+/// Exit code on an operational/resource failure (`02 §2.4`).
+pub const EXIT_FAILURE: i32 = 20;
+
 /// Exit code on a usage error (`02 §2.4`, `ERR-USAGE`).
 pub const EXIT_USAGE: i32 = 64;
 
@@ -216,26 +219,45 @@ fn run_params(args: &[String], json_flag: bool) -> CommandOutput {
                 stderr: String::new(),
             }
         }
-        Err(err) => usage_error("params", &err.to_string(), json_flag),
+        Err(err) => command_error(
+            "params",
+            &err.to_string(),
+            json_flag,
+            err.code(),
+            if err == tv_core::soundness::SoundnessError::Memory {
+                EXIT_FAILURE
+            } else {
+                EXIT_USAGE
+            },
+        ),
     }
 }
 
 fn usage_error(command: &str, message: &str, json_flag: bool) -> CommandOutput {
+    command_error(command, message, json_flag, "ERR-USAGE", EXIT_USAGE)
+}
+fn command_error(
+    command: &str,
+    message: &str,
+    json_flag: bool,
+    code: &str,
+    exit_code: i32,
+) -> CommandOutput {
     if json_flag {
         let escaped = escape_json(message);
         let stdout = format!(
-            "{{\"command\":\"{command}\",\"error\":{{\"code\":\"ERR-USAGE\",\"message\":\"{escaped}\"}}}}\n"
+            "{{\"command\":\"{command}\",\"error\":{{\"code\":\"{code}\",\"message\":\"{escaped}\"}}}}\n"
         );
         CommandOutput {
-            exit_code: EXIT_USAGE,
+            exit_code,
             stdout,
             stderr: String::new(),
         }
     } else {
         CommandOutput {
-            exit_code: EXIT_USAGE,
+            exit_code,
             stdout: String::new(),
-            stderr: format!("error (ERR-USAGE): {message}\n"),
+            stderr: format!("error ({code}): {message}\n"),
         }
     }
 }

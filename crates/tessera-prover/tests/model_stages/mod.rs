@@ -116,6 +116,7 @@ pub fn prove_stages(
     committed: &model_openings::Committed<'_>,
     xi: &[Vec<F>; 10],
     mode: Mode,
+    geometry: Option<&tv_core::runtime::Geometry>,
 ) {
     let leaf: Vec<_> = points
         .iter()
@@ -186,6 +187,34 @@ pub fn prove_stages(
                 .unwrap()
         })
         .collect();
+    if let Some(g) = geometry {
+        assert_eq!(proofs.len(), g.stages().len());
+        for (p, f) in proofs.iter().zip(g.stages()) {
+            assert_eq!(
+                f.sumcheck.instances,
+                native_plan.schedule().stages[usize::from(p.stage)]
+                    .instances
+                    .len()
+            );
+            assert_eq!(p.stage, f.index);
+            assert_eq!(p.sumcheck.rounds.len(), f.sumcheck.rounds);
+            assert!(
+                p.sumcheck
+                    .rounds
+                    .iter()
+                    .all(|r| r.len() == f.sumcheck.degree)
+            );
+            assert_eq!(p.sumcheck.final_evals.len(), f.sumcheck.evaluations);
+            assert_eq!(
+                f.sumcheck.field_count(),
+                Some(
+                    p.sumcheck.rounds.iter().map(Vec::len).sum::<usize>()
+                        + p.sumcheck.final_evals.len()
+                )
+            );
+            assert_eq!(p.splits.len(), f.splits);
+        }
+    }
     let proofs: Vec<_> = proofs
         .iter()
         .map(|p| stages::StageProof {

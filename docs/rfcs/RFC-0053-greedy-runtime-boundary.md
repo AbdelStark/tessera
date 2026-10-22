@@ -168,9 +168,24 @@ absorption. No proof supplies an alternative schedule or source map.
 Before acceptance, derive the complete field/proximity budget from the actual
 runtime schedule, degree maxima, variable counts, original source claims,
 opening groups, table counts and matrix rows. Enforce the accepted preset's
-targets without weakening it. An E0 primitive test does not establish that a
+targets without weakening it. The preset name, complete commitment layout and
+session mode must all match: NI grinding credits cannot apply to a Live session.
+An E0 primitive test does not establish that a
 model/preset passes. Protocol/2 is not supported by this contract; its joint
 mask/opening budget remains a separate prerequisite.
+
+Count each shared tree level once, with its actual maximum degree/variables and
+all fraction/product instances. Count every graph and native zero-check, and
+every raw native final even when it leaves fewer graph projections. For the
+packet geometry a degree-`d` round sends `d` fields, since the sumcheck omits
+`p(1)` and recovers it from the current claim (RFC-0010 'Sumcheck messages'). For the
+LogUp bound use the complete padded lookup/table tree leaf populations. Advice
+groups count original combinations, including repeated source obligations, not
+only their images or distinct points. Their counts come from the canonical
+opening plan after the original claims are fixed. Advice proximity spans the
+padded allocated row index, including gaps; weight proximity uses actual
+committed rows. A failed target is `Reject(Params { name })`, not a weight-epoch
+budget rejection. No proof supplies a count or a substitute parameter set.
 
 ## Security Argument
 
