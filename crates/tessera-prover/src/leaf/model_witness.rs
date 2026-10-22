@@ -33,6 +33,7 @@ pub struct ModelWitness {
     // shortcut: materialize CPU leaf columns; add bounded tree streaming under #134.
     columns: Vec<Vec<Vec<Column>>>,
     forests: Vec<Trees>,
+    maximum: Option<(tessera_ir::GadgetId, SecretBuf<i64>)>,
 }
 impl fmt::Debug for ModelWitness {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -156,6 +157,7 @@ impl ModelWitness {
         advice: &ModelAdviceLayout<'_>,
     ) -> Result<Self, LeafError> {
         let mut sites = Vec::new();
+        let mut maximum = None;
         for (s, site) in layout.sites().iter().enumerate() {
             let mut real_layers = Vec::new();
             for (l, gadget) in site.layers.iter().enumerate() {
@@ -234,11 +236,64 @@ impl ModelWitness {
         // Canonical attention shares preserve head and query axes, including empty padded
         // blocks. Concatenating tiles would permute heads whenever there is more than one block.
         for tile in advice.tiles() {
+            if matches!(tile.tile, Tile::GreedyMaximum { .. }) {
+                let values = source.tile(tile).map_err(LeafError::Witness)?;
+                let (id, m) = values.greedy_maximum().ok_or(LeafError::Internal {
+                    rule: "runtime maximum advice remains a distinct certificate source",
+                })?;
+                let n = lowering.graph.tensors[lowering.tokens.0 as usize].shape[0];
+                if tile.tile != (Tile::GreedyMaximum { gadget: id.0 })
+                    || m.len() != n as usize
+                    || maximum.is_some()
+                {
+                    return own();
+                }
+                let mut padded = buffer(n.next_power_of_two() as usize, 0)?;
+                padded[..m.len()].copy_from_slice(m);
+                maximum = Some((id, padded));
+                let requests: Vec<_> = values.lookups().collect();
+                let [request] = requests.as_slice() else {
+                    return own();
+                };
+                let Some((s, _)) = sites.iter().enumerate().find(|(_, layers)| {
+                    layers
+                        .iter()
+                        .flatten()
+                        .any(|c| c.name == ModelColumn::GreedyKey)
+                }) else {
+                    return own();
+                };
+                let [columns] = sites[s].as_mut_slice() else {
+                    return own();
+                };
+                let [column] = columns.as_mut_slice() else {
+                    return own();
+                };
+                if layout.sites()[s].layers[0].lookups[0].lookup.table != request.table()
+                    || column.values.len() != request.keys().len()
+                    || request.values().is_some()
+                {
+                    return own();
+                }
+                // This domain is outputs x vocabulary, independently padded on both axes.
+                for (out, &key) in column.values.iter_mut().zip(request.keys()) {
+                    *out = i64::from(key);
+                }
+                column.written = elements(&column.domain).ok_or(LeafError::Memory)?;
+                continue;
+            }
             let id = match tile.tile {
                 Tile::Node { node } | Tile::Attention { node, .. } => NodeId(node),
                 _ => continue,
             };
             let target = layout.sites().iter().enumerate().find_map(|(s, site)| {
+                if sites[s]
+                    .iter()
+                    .flatten()
+                    .any(|c| c.name == ModelColumn::GreedyKey)
+                {
+                    return None;
+                }
                 (0..site.layers.len())
                     .find(|&l| owner(layers, site.node, l) == id)
                     .map(|l| (s, l))
@@ -343,6 +398,7 @@ impl ModelWitness {
         let mut result = Self {
             columns: sites,
             forests: Vec::new(),
+            maximum,
         };
         result.build_forests(layout)?;
         Ok(result)
@@ -375,6 +431,11 @@ impl ModelWitness {
             .iter()
             .find(|c| c.name == column)
             .map(|c| &c.values)
+    }
+    /// The padded runtime maximum, with its own certificate identity. Values remain secret
+    /// and are lent only to the canonical native proof/commitment borrowers.
+    pub fn greedy_maximum(&self) -> Option<(tessera_ir::GadgetId, &[i64])> {
+        self.maximum.as_ref().map(|(id, m)| (*id, &m[..]))
     }
     /// Product forests in template-node order, with padded layer/head/query roots equal to one.
     /// No forest is sent for a one-key maximum; its scalar root remains a native obligation.

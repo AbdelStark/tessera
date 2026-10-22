@@ -345,6 +345,9 @@ fn canonical_factory_matches_every_independent_model_form_and_request() {
 }
 
 fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
+    check_complete_runtime(model, n, maximum, None);
+}
+fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Option<u32>) {
     let p = public(
         model,
         n,
@@ -354,24 +357,89 @@ fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
             ..GadgetPolicy::default()
         },
     );
-    let layout = LeafLayout::model(&p.lowering, &p.layers, &p.selection, &p.claims).unwrap();
-    compare(&p, n, &layout);
+    let runtime = prompt.map(|prompt| {
+        tessera_compiler::RuntimePlan::derive(&p.lowering, &p.selection, &p.claims, prompt, 0)
+            .unwrap()
+    });
+    let selection = runtime.as_ref().map_or(&p.selection, |r| r.selection());
+    let layout = match &runtime {
+        Some(r) => LeafLayout::runtime(&p.lowering, &p.layers, r, &p.claims),
+        None => LeafLayout::model(&p.lowering, &p.layers, &p.selection, &p.claims),
+    }
+    .unwrap();
+    if runtime.is_none() {
+        compare(&p, n, &layout);
+    }
     let engine = Engine::new(&p.lowering).unwrap();
-    let tokens = Secret::new((0..n).map(|i| (i + 1) % model.arch.vocab).collect());
+    let mut input: Vec<_> = (0..n).map(|i| (i + 1) % model.arch.vocab).collect();
+    if let Some(prompt) = prompt {
+        for t in prompt..n {
+            let pass = engine.run(model, &Secret::new(input.clone())).unwrap();
+            let v = model.arch.vocab as usize;
+            let logits =
+                &pass.tensor(p.lowering.logits).unwrap()[(t as usize - 1) * v..t as usize * v];
+            let max = *logits.iter().max().unwrap();
+            input[t as usize] = logits.iter().position(|&l| l == max).unwrap() as u32;
+        }
+    }
+    let tokens = Secret::new(input);
     let witness = engine.run(model, &tokens).unwrap();
-    let source = Resident::new(&engine, &p.selection, model, &witness).unwrap();
-    let advice = ModelAdviceLayout::new(&p.lowering, &p.selection, &p.claims).unwrap();
+    let source = match &runtime {
+        Some(r) => Resident::runtime(&engine, r, model, &witness),
+        None => Resident::new(&engine, &p.selection, model, &witness),
+    }
+    .unwrap();
+    let advice = match &runtime {
+        Some(r) => ModelAdviceLayout::runtime(&p.lowering, r, &p.claims),
+        None => ModelAdviceLayout::new(&p.lowering, &p.selection, &p.claims),
+    }
+    .unwrap();
     let actual =
         ModelWitness::new(&layout, &p.lowering, &p.layers, &witness, &source, &advice).unwrap();
-    source_truth(&p, &witness, &source, &advice, &layout, &actual);
+    if runtime.is_none() {
+        source_truth(&p, &witness, &source, &advice, &layout, &actual);
+    }
     let (graph, claims) = verifier(&p, n);
-    let schedule = tv::ModelSchedule::derive(&graph, claims.gadget_policy).unwrap();
-    let independent = split::Layout::derive(&graph, claims.gadget_policy).unwrap();
+    let model_tables = p
+        .selection
+        .tables
+        .iter()
+        .map(|spec| {
+            tv_tables::Table::from_spec(
+                &tv_codec::decode(
+                    &tessera_codec::encode(spec),
+                    &tv_codec::DecodeLimits::MESSAGE,
+                    tv_tables::TableSpec::decode,
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+    let tv_runtime = prompt.map(|prompt| {
+        tv_core::gadgets::runtime::Plan::derive(
+            &graph,
+            claims.gadget_policy,
+            prompt,
+            0,
+            &model_tables,
+        )
+        .unwrap()
+    });
+    let schedule = match &tv_runtime {
+        Some(r) => r.leaf_schedule(),
+        None => tv::ModelSchedule::derive(&graph, claims.gadget_policy),
+    }
+    .unwrap();
+    let independent = match &tv_runtime {
+        Some(r) => split::Layout::new(&r.split_sites().unwrap()).unwrap(),
+        None => split::Layout::derive(&graph, claims.gadget_policy).unwrap(),
+    };
     let tables: Vec<_> = layout
         .instances()
         .iter()
         .map(|i| {
-            let spec = p.selection.tables.iter().find(|t| t.id == i.table).unwrap();
+            let spec = selection.tables.iter().find(|t| t.id == i.table).unwrap();
             assert!(spec.log2_rows <= maximum, "bounded CPU fixture");
             TableColumns::<G>::new(&GeneratedTable::from_spec(spec).unwrap()).unwrap()
         })
@@ -381,7 +449,7 @@ fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
         .iter()
         .map(|i| {
             let bytes =
-                tessera_codec::encode(p.selection.tables.iter().find(|t| t.id == i.table).unwrap());
+                tessera_codec::encode(selection.tables.iter().find(|t| t.id == i.table).unwrap());
             tv_tables::Table::from_spec(
                 &tv_codec::decode(
                     &bytes,
@@ -393,29 +461,48 @@ fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
             .unwrap()
         })
         .collect();
-    let native_plan = tessera_prover::native::ModelNativePlan::derive(
-        &p.lowering,
-        &p.selection,
-        &p.claims,
-        &layout,
-    )
+    let native_plan = match &runtime {
+        Some(r) => tessera_prover::native::ModelNativePlan::derive_runtime(
+            &p.lowering,
+            r,
+            &p.claims,
+            &layout,
+        ),
+        None => tessera_prover::native::ModelNativePlan::derive(
+            &p.lowering,
+            &p.selection,
+            &p.claims,
+            &layout,
+        ),
+    }
     .unwrap();
     let stage_plan = native_plan.schedule();
     let gadgets = tv_core::gadgets::Plan::derive(&graph, claims.gadget_policy).unwrap();
-    let independent_native = tv_core::gadgets::model::Plan::derive(&gadgets).unwrap();
+    let independent_native = match &tv_runtime {
+        Some(r) => tv_core::gadgets::model::Plan::derive_runtime(r),
+        None => tv_core::gadgets::model::Plan::derive(&gadgets),
+    }
+    .unwrap();
     model_stages::compare_schedules(&native_plan, &independent_native);
-    let geometry = tessera_prover::derive_model_schedule(&p.claims, n).unwrap();
-    assert_eq!(geometry.sizes.stages.len(), stage_plan.stages.len() - 1);
-    for (a, b) in geometry.sizes.stages.iter().zip(&stage_plan.stages[1..]) {
-        assert_eq!((a.rounds, a.zero_vars), (b.rounds, b.zero_vars));
+    if runtime.is_none() {
+        let geometry = tessera_prover::derive_model_schedule(&p.claims, n).unwrap();
+        assert_eq!(geometry.sizes.stages.len(), stage_plan.stages.len() - 1);
+        for (a, b) in geometry.sizes.stages.iter().zip(&stage_plan.stages[1..]) {
+            assert_eq!((a.rounds, a.zero_vars), (b.rounds, b.zero_vars));
+        }
     }
     let checkpoints = tessera_witness::Checkpoints::new(&engine, model, &tokens).unwrap();
-    let replay =
-        tessera_witness::Regenerator::new(&engine, &p.selection, model, &tokens, &checkpoints)
-            .unwrap();
+    let replay = match &runtime {
+        Some(r) => tessera_witness::Regenerator::runtime(&engine, r, model, &tokens, &checkpoints),
+        None => {
+            tessera_witness::Regenerator::new(&engine, &p.selection, model, &tokens, &checkpoints)
+        }
+    }
+    .unwrap();
     let regenerated =
         ModelWitness::new(&layout, &p.lowering, &p.layers, &witness, &replay, &advice).unwrap();
-    let committed = model_openings::Committed::new(&p, model, &advice, &source, &replay, &claims);
+    let committed =
+        model_openings::Committed::new(&p, model, &advice, &source, &replay, &claims, prompt);
     for mode in [Mode::Live, Mode::NonInteractive] {
         let (mut t, mut t2, xi) = committed.start(mode);
         let forests = actual.forests();
@@ -541,6 +628,79 @@ fn check_complete(model: &IntegerModel, n: u32, maximum: u8) {
             mode,
         );
     }
+}
+
+#[test]
+fn complete_runtime_cpu_proofs_discharge_original_sources_in_both_contexts() {
+    let mut coverage = [false; 2];
+    for d in [2, 16] {
+        let mut model = bounded_model();
+        model.arch.vocab = 3;
+        model.arch.d_model = d;
+        model.arch.n_heads = d / 2;
+        model.arch.d_ff = 3 * d;
+        if d == 16 {
+            model.quant.public.rsqrt_kappa = 0;
+        }
+        let maximum = if d == 16 { 20 } else { 18 };
+        let shapes = model.arch.weight_shapes().unwrap();
+        for weight in &mut model.weights {
+            let shape = shapes[weight.ty as usize];
+            weight.rows = shape.out;
+            weight.cols = shape.inputs;
+            weight.data.resize((shape.out * shape.inputs) as usize, 0);
+        }
+        for channel in &mut model.quant.channels {
+            let n = shapes[channel.ty as usize].out as usize;
+            if !channel.class.is_empty() {
+                channel.class.resize(n, 0);
+            }
+            if let Some(&value) = channel.multiplier.first() {
+                channel.multiplier.resize(n, value);
+            }
+        }
+        let p = public(
+            &model,
+            5,
+            GadgetPolicy {
+                max_log2_rows: maximum,
+                query_block: 2,
+                ..GadgetPolicy::default()
+            },
+        );
+        let runtime =
+            tessera_compiler::RuntimePlan::derive(&p.lowering, &p.selection, &p.claims, 2, 0)
+                .unwrap();
+        let c = runtime.certificate().unwrap();
+        let reused = (c.table.0 as usize) < p.selection.tables.len();
+        coverage[usize::from(reused)] = true;
+        if reused {
+            let base = LeafLayout::model(&p.lowering, &p.layers, &p.selection, &p.claims).unwrap();
+            let entries = base
+                .instances()
+                .iter()
+                .find(|i| i.table == c.table)
+                .unwrap()
+                .entries;
+            assert!(
+                !(entries + c.entries()).is_power_of_two(),
+                "shared table needs a new combined tail"
+            );
+        }
+        let requests: &[_] = if d == 16 {
+            &[(5, 2)]
+        } else {
+            &[(1, 1), (5, 1), (5, 2), (5, 4), (5, 5)]
+        };
+        for &(n, prompt) in requests {
+            check_complete_runtime(&model, n, maximum, Some(prompt));
+        }
+    }
+    assert_eq!(
+        coverage,
+        [true, true],
+        "both appended and reused runtime Range tables"
+    );
 }
 
 #[test]
@@ -1269,6 +1429,15 @@ fn runtime_leaf_counts_and_implicit_table_digests_match_independent_metadata() {
         )
         .unwrap();
         let other = split::Layout::new(&independent.split_sites().unwrap()).unwrap();
+        let native = tessera_prover::native::ModelNativePlan::derive_runtime(
+            &p.lowering,
+            &runtime,
+            &p.claims,
+            &layout,
+        )
+        .unwrap();
+        let checked_native = tv_core::gadgets::model::Plan::derive_runtime(&independent).unwrap();
+        model_stages::compare_schedules(&native, &checked_native);
         assert_eq!(layout.split_len(), other.values());
         assert_eq!(
             layout

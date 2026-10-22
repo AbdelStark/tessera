@@ -32,6 +32,7 @@ pub struct Committed<'a> {
     weights: pcs::WeightCommitment,
     statement: protocol::PublicStatement,
     digest: [u8; 32],
+    prompt: Option<u32>,
 }
 fn ascii(s: &str) -> tv_hash::transcript::Ascii<'_> {
     tv_hash::transcript::Ascii::new(s).unwrap()
@@ -106,6 +107,7 @@ fn rows<Failure: Into<tessera_prover::advice::Error>>(
     .unwrap();
 }
 impl<'a> Committed<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         p: &'a Public,
         model: &'a IntegerModel,
@@ -113,6 +115,7 @@ impl<'a> Committed<'a> {
         source: &'a dyn WitnessSource,
         replay: &'a dyn WitnessSource,
         claims: &'a tv_core::claims::ClaimList,
+        prompt: Option<u32>,
     ) -> Self {
         let channels = p
             .lowering
@@ -192,8 +195,11 @@ impl<'a> Committed<'a> {
                 requests: vec![protocol::RequestRef {
                     request_id: 0,
                     session_id: [130; 16],
-                    prompt_len: p.lowering.graph.tensors[p.lowering.tokens.0 as usize].shape[0],
-                    output_len: 0,
+                    prompt_len: prompt
+                        .unwrap_or(p.lowering.graph.tensors[p.lowering.tokens.0 as usize].shape[0]),
+                    output_len: prompt.map_or(0, |prompt| {
+                        p.lowering.graph.tensors[p.lowering.tokens.0 as usize].shape[0] - prompt
+                    }),
                 }],
             },
             predictor: protocol::PredictorSpec::Exact {
@@ -251,6 +257,7 @@ impl<'a> Committed<'a> {
             weights,
             statement,
             digest,
+            prompt,
         }
     }
     pub fn start(&self, mode: Mode) -> (Transcript, tv_hash::transcript::Transcript, [Vec<F>; 10]) {
@@ -321,17 +328,32 @@ impl<'a> Committed<'a> {
         mode: Mode,
     ) {
         let selected = tv_core::selection::derive(graph, self.claims.gadget_policy).unwrap();
-        let a = va::Layout::derive(
-            graph,
-            &selected,
-            va::Config::new(
-                &self.claims.arch,
+        let config = va::Config::new(
+            &self.claims.arch,
+            self.claims.gadget_policy,
+            self.claims.layout.advice.log2_k,
+            self.claims.layout.advice.segments,
+        );
+        let tables = selected
+            .tables
+            .iter()
+            .map(|t| tv_tables::Table::generate(t.id, t.kind.clone()).unwrap())
+            .collect::<Vec<_>>();
+        let runtime = self.prompt.map(|prompt| {
+            tv_core::gadgets::runtime::Plan::derive(
+                graph,
                 self.claims.gadget_policy,
-                self.claims.layout.advice.log2_k,
-                self.claims.layout.advice.segments,
-            ),
-            graph.length(),
-        )
+                prompt,
+                0,
+                &tables,
+            )
+            .unwrap()
+        });
+        let a = if let Some(runtime) = &runtime {
+            runtime.advice_layout(config)
+        } else {
+            va::Layout::derive(graph, &selected, config, graph.length())
+        }
         .unwrap();
         let wl = vw::derive(self.claims, 0).unwrap();
         let claims =
@@ -401,8 +423,9 @@ impl<'a> Committed<'a> {
             .iter()
             .map(tv_combined)
             .collect::<Vec<_>>();
-        let attacks =
-            graph.length() == 3 && self.claims.arch.n_layers == 2 && mode == Mode::NonInteractive;
+        let attacks = (graph.length() == 3 || self.prompt.is_some())
+            && self.claims.arch.n_layers == 2
+            && mode == Mode::NonInteractive;
         if attacks {
             use tv_core::opening::OpeningError as O;
             for index in 0..original.len() {
@@ -507,6 +530,29 @@ impl<'a> Committed<'a> {
             wc.push((i, original, rows));
         }
         let vxis: [Vec<E>; 10] = core::array::from_fn(|i| es(&xi[i]));
+        if attacks {
+            for (i, original, rows) in &wc {
+                for index in 0..original.len() {
+                    let mut bad = original.clone();
+                    bad[index].value += E::ONE;
+                    assert_eq!(
+                        vw::check_evaluations(
+                            vw::Opening {
+                                layout: &wl[*i],
+                                root: self.weights.public().roots[*i],
+                                claims: &bad,
+                                xi_point: &vxis[*i],
+                            },
+                            rows
+                        )
+                        .err(),
+                        Some(vw::Error::Evaluation {
+                            matrix: vw::Matrix::ALL[*i]
+                        })
+                    );
+                }
+            }
+        }
         let weights_evaluated = wc
             .iter()
             .map(|(i, original, rows)| {

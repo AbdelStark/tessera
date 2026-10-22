@@ -125,22 +125,29 @@ pub fn prove_stages(
             values: es(v),
         })
         .collect();
-    let token = independent
+    let runtime = independent
         .schedule()
         .leaf()
         .iter()
-        .position(|l| {
-            matches!(
-                graph.node(l.site).unwrap().op(),
-                tv_core::lowering::Op::OneHot { .. }
-            )
-        })
-        .unwrap();
-    let external = model::External {
-        tokens: &leaf[token],
-        logits: leaf.last().unwrap(),
-    };
-    let prepared = independent.bind(bound, external).unwrap();
+        .all(|l| l.input.is_some());
+    let token = independent.schedule().leaf().iter().position(|l| {
+        matches!(
+            graph.node(l.site).unwrap().op(),
+            tv_core::lowering::Op::OneHot { .. }
+        )
+    });
+    let prepared = if runtime {
+        independent.bind_runtime(bound)
+    } else {
+        independent.bind(
+            bound,
+            model::External {
+                tokens: &leaf[token.unwrap()],
+                logits: leaf.last().unwrap(),
+            },
+        )
+    }
+    .unwrap();
     assert_eq!(prepared.leaf(), leaf);
     let mut native =
         ModelNativeProver::new(native_plan, &p.lowering, actual, witness, proof).unwrap();
@@ -204,8 +211,12 @@ pub fn prove_stages(
         assert_eq!(claim.value, pool_value(p, graph, witness, claim));
     }
     assert_eq!(accepted.multiplicities, bound.multiplicities);
-    assert_eq!(accepted.external.unwrap().tokens, &leaf[token]);
-    assert_eq!(accepted.external.unwrap().logits, leaf.last().unwrap());
+    if runtime {
+        assert!(accepted.external.is_none());
+    } else {
+        assert_eq!(accepted.external.unwrap().tokens, &leaf[token.unwrap()]);
+        assert_eq!(accepted.external.unwrap().logits, leaf.last().unwrap());
+    }
     let original = bound
         .columns
         .iter()
@@ -239,10 +250,12 @@ pub fn prove_stages(
         .iter()
         .filter(|n| n.zero && n.outputs.is_empty())
         .count();
-    assert_eq!(
-        accepted.sources.len(),
-        original + softmax + products + 4 * families
-    );
+    if !runtime {
+        assert_eq!(
+            accepted.sources.len(),
+            original + softmax + products + 4 * families
+        );
+    }
     for claim in &accepted.sources {
         let mut sum = E::ZERO;
         assert_eq!(
@@ -290,7 +303,11 @@ pub fn prove_stages(
                         (Some(node.0), Some(role)),
                     )
                 }
-                Source::GreedyMaximum(_) => panic!("model-only stages have no greedy maximum"),
+                Source::GreedyMaximum(g) => {
+                    let (id, m) = actual.greedy_maximum().unwrap();
+                    assert_eq!(g.0, id.0);
+                    (mle(m, &claim.point), (None, None))
+                }
                 Source::Multiplicity(_) => {
                     panic!("multiplicities retain their original table points separately")
                 }

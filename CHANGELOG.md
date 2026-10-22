@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Clearing CPU runtime witnesses now supply exact-greedy maxima and independently padded keys, with complete shared-table multiplicities. Producer native token/key/selected relations and prompt-only observations compose with the model graph and canonical advice/weight openings. Same-point weight aliases retain every value check against the original evaluation row and proximity check. Bounded runtime proofs exercise empty/ragged domains and regenerated rows in both transcript contexts; complete budget enforcement and NI/Live verdict drivers remain under [#128](https://github.com/AbdelStark/tessera/issues/128), and RFC-0053 remains Draft.
+
 - Verifier table regeneration now reserves its digest buffer and bounded header fallibly, and streams across hash-block boundaries without growing the buffer. Class copies reserve fallibly; Range/Requant evaluation uses fixed-size public coefficient arrays. Sampled allocation caps return `ERR-RES-MEMORY`, including an implicit greedy Range table, instead of aborting ([#128](https://github.com/AbdelStark/tessera/issues/128)).
 
 - Per-request exact-greedy metadata now preserves the model catalog, reuses or appends its public-span Range table, places a separate maximum before runtime multiplicities, and derives complete leaf counts. The independent verifier composes token/key/selected relations with the existing model batch and retains every original graph/PCS debt, including prompt-only logit observations. Runtime witness generation, complete model proofs, budget enforcement and the accepting driver remain under [#128](https://github.com/AbdelStark/tessera/issues/128); RFC-0053 is Draft.

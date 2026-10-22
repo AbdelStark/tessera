@@ -339,6 +339,16 @@ fn original_combinations_duplicates_and_channel_coordinates_are_preserved() {
             assert_eq!(q[0].row_point, rho);
             assert_eq!(q[0].value, f(47));
             assert_eq!(q[0].gamma, f(83));
+            let mut aliases = original.clone();
+            let mut repeated = aliases.pool[1].clone();
+            repeated.value = f(101);
+            aliases.pool.push(repeated);
+            let aliased = Claims::derive(&g, &c, &layout, &w, aliases.reduced()).unwrap();
+            let q = aliased.weight_claims(weights::Matrix::Q, f(83)).unwrap();
+            assert_eq!(q.len(), 2);
+            assert_eq!(q[0].column_point, q[1].column_point);
+            assert_eq!(q[0].row_point, q[1].row_point);
+            assert_eq!((q[0].value, q[1].value), (f(47), f(101)));
             let channel = packed
                 .weight_claims(weights::Matrix::ChannelParams, f(89))
                 .unwrap();
@@ -400,7 +410,11 @@ fn malformed_original_sources_and_weight_provenance_are_internal_errors() {
             9 => bad.pool[1].terms[0].layer_point.as_mut().unwrap()[0] += Fp2::ONE,
             10 => bad.pool[1].terms[0].weights[0] += Fp2::ONE,
             11 => bad.pool[1].commitment = Commitment::Weight(WeightType::K),
-            12 => bad.pool.push(bad.pool[1].clone()),
+            12 => {
+                let mut distinct = bad.pool[1].clone();
+                distinct.point[0] += Fp2::ONE;
+                bad.pool.push(distinct);
+            }
             13 => bad.pool[2].terms[0].tensor = bad.pool[1].terms[0].tensor,
             14 => bad.sources[0].sources.clear(),
             15 => bad.sources[0].layer_point.push(Fp2::ONE),

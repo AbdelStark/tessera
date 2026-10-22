@@ -16,7 +16,7 @@
 use core::fmt;
 
 use tessera_codec::{Secret, SecretBuf};
-use tessera_compiler::{Selection, SequenceTile, Tile};
+use tessera_compiler::{RuntimePlan, Selection, SequenceTile, Tile};
 use tessera_ir::{IntegerModel, TableId};
 
 use crate::engine::{Input, Operand, elements};
@@ -37,8 +37,8 @@ pub trait WitnessSource {
     /// # Errors
     ///
     /// [`WitnessError::Usage`] for a tile that is not one of the sequence's, with the shares
-    /// RFC-0041 gives it; otherwise the source's own. Future greedy/sampling certificates are
-    /// outside the accepted current-model layout (RFC-0050 'Non-goals').
+    /// RFC-0041 gives it; otherwise the source's own. Runtime constructors additionally supply
+    /// draft RFC-0053's greedy certificate; ordinary sources still refuse that distinct tile.
     fn tile(&self, tile: &SequenceTile) -> Result<TileWitness, WitnessError>;
 }
 
@@ -66,6 +66,23 @@ impl fmt::Debug for Regenerator<'_> {
 }
 
 impl<'a> Regenerator<'a> {
+    /// Regenerate the complete exact-greedy runtime advice, including its separate maximum
+    /// and the combined model/certificate table counts (draft RFC-0053).
+    ///
+    /// # Errors
+    /// As [`Self::new`], or `Usage` for runtime metadata from another lowering.
+    pub fn runtime(
+        engine: &'a Engine<'a>,
+        runtime: &RuntimePlan,
+        model: &'a IntegerModel,
+        tokens: &'a Secret<Vec<u32>>,
+        checkpoints: &'a Checkpoints,
+    ) -> Result<Self, WitnessError> {
+        let mut source = Self::new(engine, runtime.selection(), model, tokens, checkpoints)?;
+        crate::runtime::configure(&source.replay.structure, runtime, &mut source.gadgets)?;
+        Ok(source)
+    }
+
     /// The regenerator of `model` on `tokens`, on `engine`, the engine of `model`'s lowering for
     /// the tokens' positions, with the gadgets `selection` gives that lowering's nodes and the
     /// store `checkpoints` holds for the same model and tokens.
@@ -110,8 +127,19 @@ impl WitnessSource for Regenerator<'_> {
     /// a key outside its table (`ERR-INTERNAL`).
     fn tile(&self, tile: &SequenceTile) -> Result<TileWitness, WitnessError> {
         let structure = &self.replay.structure;
-        match structure.target(tile, &self.gadgets.read)? {
+        match structure.target(tile, &self.gadgets)? {
             Target::Tokens => Ok(TileWitness::tokens(self.replay.tokens()?)),
+            Target::Greedy(c) => {
+                let logits = structure.lowering.logits;
+                let live = self.replay.compute(self.store, &[logits])?;
+                crate::runtime::maximum(
+                    c,
+                    &self.replay.tokens()?,
+                    live.get(logits).ok_or(WitnessError::Internal {
+                        rule: "the runtime replay contains the LM-head logits",
+                    })?,
+                )
+            }
             Target::Table(table) => multiplicities(
                 self,
                 structure,
@@ -182,6 +210,22 @@ impl fmt::Debug for Resident<'_> {
 }
 
 impl<'a> Resident<'a> {
+    /// Cut complete exact-greedy runtime advice from the first CPU pass. Maximum advice
+    /// remains separate from graph shares; table counts include every certificate key.
+    ///
+    /// # Errors
+    /// As [`Self::new`], or `Usage` for runtime metadata from another lowering.
+    pub fn runtime(
+        engine: &'a Engine<'a>,
+        runtime: &RuntimePlan,
+        model: &IntegerModel,
+        witness: &'a Witness,
+    ) -> Result<Self, WitnessError> {
+        let mut source = Self::new(engine, runtime.selection(), model, witness)?;
+        crate::runtime::configure(&source.structure, runtime, &mut source.gadgets)?;
+        Ok(source)
+    }
+
     /// The source of `witness`, [`Engine::run`]'s on `engine` for `model`, with the gadgets
     /// `selection` gives the lowering's nodes.
     ///
@@ -248,7 +292,12 @@ impl WitnessSource for Resident<'_> {
     /// [`WitnessError::Memory`] when a buffer cannot be allocated.
     fn tile(&self, tile: &SequenceTile) -> Result<TileWitness, WitnessError> {
         let structure = &self.structure;
-        match structure.target(tile, &self.gadgets.read)? {
+        match structure.target(tile, &self.gadgets)? {
+            Target::Greedy(c) => crate::runtime::maximum(
+                c,
+                self.values(structure.lowering.tokens)?,
+                self.values(structure.lowering.logits)?,
+            ),
             Target::Tokens => {
                 let tokens = structure.lowering.tokens;
                 Ok(TileWitness::tokens(Self::copied(
@@ -376,6 +425,20 @@ fn multiplicities(
         }
         gadgets.padding(structure, node, &mut counts, &read_classes)?;
     }
+    if let Some(c) = gadgets.certificate.filter(|c| c.table == table) {
+        let witness = source.tile(&SequenceTile {
+            tile: Tile::GreedyMaximum { gadget: c.gadget.0 },
+            block: None,
+            shares: Vec::new(),
+        })?;
+        let lookup = witness.lookups().next().ok_or(WitnessError::Internal {
+            rule: "the runtime certificate supplies its single range lookup",
+        })?;
+        for &key in lookup.keys() {
+            counts.add(u64::from(key), 1)?;
+        }
+    }
+    // Add the combined tail once, after both model and certificate requests (RFC-0045).
     counts.finish().map(TileWitness::table)
 }
 

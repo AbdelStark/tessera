@@ -80,7 +80,8 @@ impl<'a> Claims<'a> {
     /// Pack the EXACT complete reducer output, using the same validated graph/claim list and
     /// canonical layouts as the bound commitments. No proof supplies source positions.
     /// Arbitrary advice weights are retained; a weight claim must retain its original equality
-    /// point and unit-coefficient weight tensor, as RFC-0012/0052 prescribe.
+    /// point and unit-coefficient weight tensor, as RFC-0012/0052 prescribe. Draft RFC-0053's
+    /// same-point weight aliases remain separate value obligations for the evaluation check.
     ///
     /// # Errors
     /// `Internal` for inconsistent own metadata, `Memory` for failed reservations.
@@ -261,7 +262,11 @@ impl<'a> Claims<'a> {
             )
         };
         let bucket = self.weights.get_mut(index).ok_or(Error::Internal)?;
-        if matrix != Matrix::ChannelParams && !bucket.is_empty() {
+        if matrix != Matrix::ChannelParams
+            && bucket
+                .first()
+                .is_some_and(|prior| prior.column != column || prior.row != row)
+        {
             return Err(Error::Internal);
         }
         push(

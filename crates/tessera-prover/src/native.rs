@@ -4,7 +4,7 @@
 
 use tessera_codec::SecretBuf;
 use tessera_compiler::schedule::{LayerMap, Native, NativeOutput, NodeRef, StageSchedule};
-use tessera_compiler::{AuxColumn, CompareColumn, Lowering, Selection};
+use tessera_compiler::{AuxColumn, CompareColumn, Lowering, RuntimePlan, Selection};
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField};
 use tessera_gadgets::{RsqrtRow, Slack};
 use tessera_ir::{ClaimList, NodeId, Op, TensorId};
@@ -14,6 +14,9 @@ use tessera_sumcheck::{Claim, Instance, Table, Term};
 use crate::ProvenLeaf;
 use crate::leaf::{LeafLayout, ModelColumn, ModelWitness};
 use crate::stages::{NativeContext, NativeProver, StageError, WitnessSource};
+
+mod runtime;
+use runtime::Runtime;
 
 fn bad() -> StageError {
     StageError::Internal {
@@ -60,6 +63,7 @@ enum Relation {
     Reciprocal,
     MaxPad,
     ReciprocalPad,
+    Runtime,
 }
 struct Family {
     site: usize,
@@ -79,6 +83,7 @@ enum Kind {
         sigma: u8,
         forest: Option<usize>,
     },
+    Runtime(Runtime),
 }
 struct Slot {
     family: usize,
@@ -105,8 +110,34 @@ impl ModelNativePlan {
         claims: &ClaimList,
         layout: &LeafLayout<ModelColumn>,
     ) -> Result<Self, StageError> {
+        Self::derive_inner(lowering, selection, claims, layout, None)
+    }
+
+    /// Derive the complete runtime schedule, replacing only the legacy weighted token
+    /// boundary and appending exact-greedy relations in draft RFC-0053 order.
+    ///
+    /// # Errors
+    /// `Internal` for inconsistent public metadata; `Memory` for unsupported geometry.
+    pub fn derive_runtime(
+        lowering: &Lowering,
+        runtime: &RuntimePlan,
+        claims: &ClaimList,
+        layout: &LeafLayout<ModelColumn>,
+    ) -> Result<Self, StageError> {
+        Self::derive_inner(lowering, runtime.selection(), claims, layout, Some(runtime))
+    }
+
+    fn derive_inner(
+        lowering: &Lowering,
+        selection: &Selection,
+        claims: &ClaimList,
+        layout: &LeafLayout<ModelColumn>,
+        runtime: Option<&RuntimePlan>,
+    ) -> Result<Self, StageError> {
         let layers = LayerMap::new(lowering).map_err(|_| bad())?;
-        if selection.tables != claims.tables {
+        if (runtime.is_none() && selection.tables != claims.tables)
+            || !selection.tables.starts_with(&claims.tables)
+        {
             return Err(bad());
         }
         let mut families = Vec::new();
@@ -151,6 +182,7 @@ impl ModelNativePlan {
             let tensor = match kind {
                 Kind::Root { .. } => node.outputs[0],
                 Kind::Softmax { .. } => node.inputs[0],
+                Kind::Runtime(_) => return Err(bad()),
             };
             families.push(Family {
                 site,
@@ -255,7 +287,19 @@ impl ModelNativePlan {
                     );
                     deferred.push((node.id, Some(0)));
                 }
+                Kind::Runtime(_) => return Err(bad()),
             }
+        }
+        if let Some(runtime) = runtime {
+            runtime::append(
+                lowering,
+                runtime,
+                layout,
+                &mut families,
+                &mut slots,
+                &mut native,
+                &mut deferred,
+            )?;
         }
         let schedule =
             tessera_compiler::schedule::derive_composed_schedule(lowering, &deferred, &native)
@@ -317,6 +361,7 @@ struct Data {
     full_point: bool,
     equality: Vec<F>,
     target: F,
+    public: Vec<Vec<F>>,
 }
 /// Clearing resident CPU tables for every native relation in [`ModelNativePlan`].
 /// All returned final evaluations still owe their original graph/auxiliary openings.
@@ -409,6 +454,7 @@ impl<'a> ModelNativeProver<'a> {
             full_point,
             equality: Vec::new(),
             target: F::ZERO,
+            public: Vec::new(),
         });
     }
     fn padding(&mut self, raw: usize, shape: &[u32]) -> Result<(), StageError> {
@@ -454,6 +500,9 @@ impl<'a> ModelNativeProver<'a> {
         let p = leaf.point().get(..local).ok_or_else(bad)?;
         let node = &lowering.graph.nodes[f.nodes[0].0 as usize];
         match f.kind {
+            Kind::Runtime(kind) => {
+                return runtime::build(self, f, kind, lowering, witness, graph, leaf);
+            }
             Kind::Root {
                 digits,
                 coefficients,
@@ -696,6 +745,10 @@ impl NativeProver for ModelNativeProver<'_> {
             .zip(&self.plan.slots)
         {
             let family = &self.plan.families[slot.family];
+            if let Kind::Runtime(kind) = family.kind {
+                runtime::prepare(data, family, kind, &ctx)?;
+                continue;
+            }
             let layer = if family.lambda == 0 {
                 &[][..]
             } else {
@@ -753,10 +806,13 @@ impl NativeProver for ModelNativeProver<'_> {
             .iter()
             .map(|&i| Table::base(&self.tables[i]))
             .collect();
-        tables.push(Table::ext(&d.equality).public());
+        if !d.equality.is_empty() {
+            tables.push(Table::ext(&d.equality).public());
+        }
         if let Some(m) = &d.mask {
             tables.push(Table::base(m).public());
         }
+        tables.extend(d.public.iter().map(|v| Table::ext(v).public()));
         Ok(Instance::sum_of_products(tables, d.terms.clone()))
     }
     fn claims(&self, tag: u32, point: &[F], values: &[F]) -> Result<Vec<Claim<F>>, StageError> {
@@ -772,6 +828,14 @@ impl NativeProver for ModelNativeProver<'_> {
             value: v,
         };
         Ok(match (slot.relation, &f.kind) {
+            (Relation::Runtime, Kind::Runtime(Runtime::Tokens)) => vec![
+                output(values[0]),
+                Claim {
+                    point: point[vars(&[f.shape[1]]) as usize..].to_vec(),
+                    value: values[1],
+                },
+            ],
+            (Relation::Runtime, Kind::Runtime(_)) => vec![output(values[0])],
             (
                 Relation::Product,
                 Kind::Root {

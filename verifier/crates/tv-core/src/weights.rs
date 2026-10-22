@@ -644,9 +644,10 @@ pub struct Evaluated<'a> {
 /// Check step9 before queries: `m + 1` unmasked rows (`1 + 1` for `Embed`..`LmHead`, `m + 1` for
 /// `ChannelParams`) for a nonempty matrix, no row and all claim values 0 for an empty one. Each
 /// evaluation row `i` must have MLE `gamma * value_i` at `column_point_i` (RFC-0052).
+/// Weight-type aliases at the same point/gamma each check evaluation row zero (draft RFC-0053).
 ///
 /// # Errors
-/// `Internal` for empty claims, more than one claim on `Embed`..`LmHead`, or incorrect
+/// `Internal` for empty claims, distinct point/gamma aliases on `Embed`..`LmHead`, or incorrect
 /// verifier-derived point lengths; `Evaluation` for proof shape or evaluation failure. Remaining
 /// column checks are carried by the must-use result.
 pub fn check_evaluations<'a>(
@@ -654,8 +655,13 @@ pub fn check_evaluations<'a>(
     combined: &'a [CombinedRow],
 ) -> Result<Evaluated<'a>, Error> {
     let layout = opening.layout;
-    if opening.claims.is_empty()
-        || (layout.matrix != Matrix::ChannelParams && opening.claims.len() != 1)
+    let first = opening.claims.first().ok_or(Error::Internal)?;
+    if layout.matrix != Matrix::ChannelParams
+        && opening.claims.iter().any(|c| {
+            c.row_point != first.row_point
+                || c.column_point != first.column_point
+                || c.gamma != first.gamma
+        })
     {
         return Err(Error::Internal);
     }
@@ -680,7 +686,12 @@ pub fn check_evaluations<'a>(
             return Err(failure);
         }
     } else {
-        let expected_rows = opening.claims.len().checked_add(1).ok_or(Error::Internal)?;
+        let evaluations = if layout.matrix == Matrix::ChannelParams {
+            opening.claims.len()
+        } else {
+            1
+        };
+        let expected_rows = evaluations.checked_add(1).ok_or(Error::Internal)?;
         if combined.len() != expected_rows
             || combined
                 .iter()
@@ -688,7 +699,14 @@ pub fn check_evaluations<'a>(
         {
             return Err(failure);
         }
-        for (claim, row) in opening.claims.iter().zip(combined) {
+        for (index, claim) in opening.claims.iter().enumerate() {
+            let row = combined
+                .get(if layout.matrix == Matrix::ChannelParams {
+                    index
+                } else {
+                    0
+                })
+                .ok_or(Error::Internal)?;
             if multilinear(&row.u, claim.column_point).ok_or(Error::Internal)?
                 != claim.gamma * claim.value
             {
@@ -775,7 +793,12 @@ impl Evaluated<'_> {
         let mut agreed = distinct.len();
         for (kind, row) in self.combined.iter().enumerate() {
             coefficients.clear();
-            let claim = o.claims.get(kind);
+            // The final row is proximity even when several claims alias evaluation row zero.
+            let claim = if kind.checked_add(1) == Some(self.combined.len()) {
+                None
+            } else {
+                o.claims.get(kind)
+            };
             for position in 0..l.count {
                 // Structural coordinates for evaluation rows 0..m, dense answer positions for xi.
                 let c = match claim {

@@ -103,6 +103,17 @@ retains each as a separate original-source opening claim. No value is an
 unchecked per-image split. The complete native final vector is absorbed before
 PCS Gamma. Existing per-group Gamma powers and evaluation checks remain intact.
 
+The key and selected instances have the same variable count and therefore project
+their LM-head claims at the same stage point. Retain both original obligations.
+For a weight type, repeated claims with identical column point, row point and
+gamma share its existing single evaluation row; check that row's evaluation
+against **each** claimed value. Distinct verifier-derived points on that weight
+type remain an internal geometry error. `ChannelParams` retains RFC-0052's one
+evaluation row per original claim. The last combined row always uses the
+independent proximity point, never an alias's row point. No wire field, row or
+challenge is added, and this introduces no batching error term: equal-point
+values are checked individually against the same row.
+
 ### Native relations
 
 All three relations participate in the existing stage-one batch. Let `N` be the

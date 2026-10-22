@@ -210,6 +210,49 @@ fn independent_weight_openings_verify_with_positions_distinct_from_structural_ro
         assert_eq!(c.check(), Ok(()), "{}", c.name);
     }
 }
+
+#[test]
+fn same_point_weight_aliases_each_owe_the_original_evaluation_and_proximity() {
+    for honest in cases()
+        .into_iter()
+        .filter(|c| c.layout.matrix() != Matrix::ChannelParams)
+    {
+        let mut aliased = honest.clone();
+        aliased.claims.push(aliased.claims[0].clone());
+        assert_eq!(
+            aliased.check(),
+            Ok(()),
+            "{} same-point aliases",
+            aliased.name
+        );
+        for index in 0..2 {
+            let mut bad = aliased.clone();
+            bad.claims[index].value += Fp2::ONE;
+            assert_eq!(
+                bad.check(),
+                Err(bad.eval_error()),
+                "{} alias {index}",
+                bad.name
+            );
+        }
+        if !aliased.combined.is_empty() {
+            let mut bad = aliased.clone();
+            let last = bad.combined.len() - 1;
+            bad.combined[last].u[0] += Fp2::ONE;
+            assert_eq!(bad.check(), Err(bad.proximity_error()));
+        }
+        for fault in 0..3 {
+            let mut bad = aliased.clone();
+            match fault {
+                0 => bad.claims[1].gamma += Fp2::ONE,
+                1 if !bad.claims[1].column.is_empty() => bad.claims[1].column[0] += Fp2::ONE,
+                2 if !bad.claims[1].row.is_empty() => bad.claims[1].row[0] += Fp2::ONE,
+                _ => continue,
+            }
+            assert_eq!(bad.check(), Err(Error::Internal));
+        }
+    }
+}
 #[test]
 fn value_and_combined_row_shape_fail_at_evaluation() {
     for honest in cases().into_iter().filter(|c| !c.combined.is_empty()) {
@@ -341,7 +384,11 @@ fn incorrect_verifier_points_and_queries_are_inconclusive() {
             1 => c.claims[0].row.push(Fp2::ZERO),
             2 => c.xi.push(Fp2::ZERO),
             3 => c.claims.clear(),
-            _ => c.claims.push(c.claims[0].clone()),
+            _ => {
+                let mut distinct = c.claims[0].clone();
+                distinct.gamma += Fp2::ONE;
+                c.claims.push(distinct);
+            }
         }
         assert_eq!(c.check(), Err(Error::Internal));
         c.combined.clear();
