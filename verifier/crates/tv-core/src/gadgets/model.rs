@@ -60,6 +60,7 @@ fn schedule_error(e: ScheduleError) -> GadgetError {
 fn stage_error(e: GadgetError) -> StageError {
     match e {
         GadgetError::Memory => StageError::Memory,
+        GadgetError::Rejected { gadget } => StageError::Gadget { gadget },
         _ => StageError::Internal,
     }
 }
@@ -1597,3 +1598,18 @@ mod tests {
 
 #[cfg(test)]
 mod runtime_tests;
+
+#[cfg(test)]
+mod rejection_mapping_tests {
+    use super::*;
+    #[test]
+    fn native_rejections_keep_their_gadget_instead_of_becoming_internal() {
+        let gadget = crate::validation::GadgetId(23);
+        assert_eq!(
+            stage_error(GadgetError::Rejected { gadget }),
+            StageError::Gadget { gadget }
+        );
+        assert_eq!(stage_error(GadgetError::Memory), StageError::Memory);
+        assert_eq!(stage_error(GadgetError::Internal), StageError::Internal);
+    }
+}

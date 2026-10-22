@@ -541,7 +541,8 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
         let runtime_geometry = tv_runtime
             .as_ref()
             .map(|r| tv_core::runtime::Geometry::derive(&claims, r).unwrap());
-        let (mut t, mut t2, xi) = committed.start(mode);
+        let (mut t, mut t2, xi, mut first) = committed.start(mode);
+        let initial_transcript = first.replay.take().unwrap();
         let forests = actual.forests();
         let borrowed = actual.tensors();
         let lookup = prepare_leaf(&mut t, &layout, &tables, &borrowed, &forests).unwrap();
@@ -645,7 +646,7 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
             let table = forest_truth(&p, &witness, site);
             assert_eq!(forest.claim.value, mle(&table, &forest.claim.point));
         }
-        let mut tr = committed.start(mode).0;
+        let mut tr = initial_transcript;
         let other = prepare_leaf(
             &mut tr,
             &layout,
@@ -656,7 +657,10 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
         .unwrap()
         .finish(&atoms)
         .unwrap();
-        assert_eq!(other.splits(), proof.splits());
+        assert!(
+            other.splits() == proof.splits(),
+            "replayed leaf splits differ"
+        );
         assert_eq!(other.logup().roots(), proof.logup().roots());
         assert_eq!(other.logup().values(), proof.logup().values());
         for (a, b) in other.logup().levels().iter().zip(proof.logup().levels()) {
@@ -682,6 +686,7 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
             &xi,
             mode,
             runtime_geometry.as_ref(),
+            first,
         );
     }
 }
@@ -756,6 +761,18 @@ fn complete_runtime_cpu_proofs_discharge_original_sources_in_both_contexts() {
         coverage,
         [true, true],
         "both appended and reused runtime Range tables"
+    );
+    let enabled = tv_core::params::ParamSet::accept(
+        &tv_core::claims::ParamSetId::new("test-small/1").unwrap(),
+    )
+    .is_some();
+    assert_eq!(
+        model_openings::NI_REPLAYS.load(std::sync::atomic::Ordering::SeqCst),
+        if enabled { 100 } else { 0 }
+    );
+    assert_eq!(
+        model_openings::LIVE_ACCEPTANCES.load(std::sync::atomic::Ordering::SeqCst),
+        if enabled { 6 } else { 0 }
     );
 }
 

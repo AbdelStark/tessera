@@ -15,6 +15,7 @@ test-params = []
 # The verifier's own field, codec, hash and tables, nothing else: the checks are written from the
 # specifications without reference to the prover's crates (SP-6, RFC-0001).
 [dependencies]
+zeroize = "1.8.2"
 tv-codec = { path = "../tv-codec" }
 tv-field = { path = "../tv-field" }
 tv-hash = { path = "../tv-hash" }

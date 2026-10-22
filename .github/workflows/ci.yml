@@ -141,6 +141,11 @@ jobs:
           cargo nextest run --locked --tests -E 'kind(test)'
           -p tessera-codec -p tessera-field -p tessera-hash
           -p tessera-protocol -p tessera-prover -p tessera-e2e
+      - name: Accept real CPU proofs in NI and fresh Live sessions
+        if: matrix.workspace == 'prover'
+        run: >-
+          cargo nextest run --locked -p tessera-prover --test model_leaf
+          --features tv-core/test-params -E 'test(complete_runtime_cpu_proofs)'
       - name: Independent verifier tests in parallel
         if: matrix.workspace == 'verifier'
         run: cargo nextest run --workspace --lib --tests --locked

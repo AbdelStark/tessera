@@ -123,6 +123,7 @@ pub struct VerifierConfig {
     pub params: ParamSet,
     pub limits: ResourceLimits,  // max artifact bytes, max memory, max wall time
     pub accept_bound: UBound,    // public policy threshold on Û, fixed-point bits
+    pub weights: WeightCommitmentPublic, // trusted epoch artifact (RFC-0040)
 }
 
 pub fn verify_non_interactive(claims: &ClaimList, statement: &PublicStatement,
@@ -131,7 +132,7 @@ pub fn verify_non_interactive(claims: &ClaimList, statement: &PublicStatement,
 pub struct LiveVerifier { /* private */ }
 impl LiveVerifier {
     pub fn new(claims: ClaimList, statement: PublicStatement, cfg: VerifierConfig) -> Self;
-    pub fn start(&mut self) -> SeedCommit;                                       // verifier commits to its share
+    pub fn start(&mut self) -> Result<SeedCommit, Verdict>;                      // fresh OS randomness may fail
     pub fn on_round1(&mut self, m: &Round1, s: &ProverSeedShare) -> Result<SeedReveal, Verdict>;
     pub fn on_round2(&mut self, m: &Round2Response) -> Result<ColumnQueries, Verdict>;
     pub fn on_round3(&mut self, m: &Round3Response) -> Verdict;
@@ -143,6 +144,23 @@ pub enum Verdict {
     Inconclusive(VerifierError),
 }
 ```
+
+The current `tv-core` protocol/1 driver composes one exact-greedy request. Other
+predictors and multi-request proof units return `Inconclusive(ERR-USAGE)`; no
+request is silently omitted. The caller supplies the expected statement and the
+trusted epoch's weight artifact, whose hash and epoch must agree. The byte entry
+point `verify_non_interactive_bytes` checks the canonical NI envelope before
+verification. `LiveVerifier` is one-shot: a valid-phase failure is terminal;
+an out-of-order call leaves its state unchanged. Unix hosts obtain fresh entropy
+from `/dev/urandom`; unsupported hosts fail with `ERR-RES-IO`. The unrevealed
+verifier share is cleared on failure or drop.
+
+`ResourceLimits.max_memory_bytes` currently bounds a conservative work estimate,
+not every allocation; `max_wall_time` is checked between phases. Complete
+allocation/deadline hardening remains [#182](https://github.com/AbdelStark/tessera/issues/182).
+The core report has deterministic bytes and null timings; the CLI's measured
+check trace is separate. Protocol/1 acceptance makes no anchor, persistent-ledger
+or zero-knowledge claim. `test-small/1` acceptance certifies nothing.
 
 The verifier API never panics on any input. Every malformed byte sequence yields `Reject(Malformed(..))` or `Inconclusive(..)`, never a crash ([RFC-0019](../rfcs/RFC-0019-verifier.md#robustness)).
 

@@ -53,16 +53,12 @@
 //! | [`gadgets`] | final checks for requantization, NonNeg, BigIntCompare, OneHot, roots, causal Softmax and Argmax, with canonical source/range obligations (RFC-0009/0050) |
 //! | [`soundness::SoundnessReport::evaluate`] | independent integer-only soundness calculator for every row of RFC-0014's table (RFC-0014, RFC-0049) |
 //!
-//! The masked sumcheck of RFC-0013 (#159), the leaf stage's integration of the trees with
-//! the stages (#130), the
-//! regeneration of the tables and the structured evaluation of `t̃` (#100), and the verifier's
-//! driver and verdicts (#128) build on these; so do the transcript steps that squeeze the
-//! opening's challenges and queries, and the hiding of RFC-0013 (blinding
-//! rows, `u'_g`, `q_g`), which take the claim pool. [`weights`] adds the protocol1 weight
-//! opening components; the full driver still joins them and [`gadgets`] to the schedule,
-//! earlier LogUp/forest claims and canonical openings. No component result is a verdict.
-//! `ConstraintSystemDigest` (#120) builds on the lowering. Validation already derives the
-//! complete lookup catalog and checks the advice layout at `max_context`.
+//! [`driver`] composes one exact-greedy protocol/1 proof unit through all original source
+//! openings and the mandatory runtime budget. [`verify_non_interactive`] judges typed proofs;
+//! [`verify_non_interactive_bytes`] also checks the canonical envelope. [`LiveVerifier`] owns
+//! fresh coin-toss/query entropy and one-shot state. [`Verdict`] distinguishes proof rejection
+//! from inability to judge. Masking, anchors, persistent ledgers, broader batching and full
+//! resource hardening remain their roadmap work. A component result alone is not a verdict.
 //!
 //! # Claim lists
 //!
@@ -576,3 +572,11 @@ pub mod sumcheck;
 pub mod tree;
 pub mod validation;
 pub mod weights;
+
+pub mod verdict;
+pub use verdict::{AcceptReport, ErrorCode, RejectReason, Verdict, VerifierError};
+pub mod driver;
+pub use driver::{
+    LiveVerifier, ResourceLimits, VerifierConfig, verify_non_interactive,
+    verify_non_interactive_bytes,
+};

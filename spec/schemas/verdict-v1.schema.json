@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/verdict-v1.schema.json",
+  "title": "tessera.verdict/1",
+  "description": "Deterministic protocol/1 core verdict. Timings are absent (null); the CLI audit trace is separate. Test-small parameters certify nothing.",
+  "type": "object",
+  "required": [
+    "schema",
+    "protocol",
+    "params",
+    "digests",
+    "checks",
+    "requests",
+    "batch_uhat_fixed",
+    "verdict"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.verdict/1"
+    },
+    "protocol": {
+      "const": "tessera-protocol/1"
+    },
+    "params": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "test_parameters": {
+      "type": "boolean"
+    },
+    "anchor_verified": {
+      "const": false
+    },
+    "ledger_updated": {
+      "const": false
+    },
+    "zero_knowledge": {
+      "const": false
+    },
+    "digests": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "statement",
+        "claim_list",
+        "weights",
+        "manifest"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "statement": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "claim_list": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "weights": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "manifest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "step",
+          "check",
+          "outcome",
+          "duration_ns"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "step": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 13
+          },
+          "check": {
+            "enum": [
+              "input",
+              "params",
+              "claims",
+              "statement",
+              "weight_reservation",
+              "transcript",
+              "leaf",
+              "stages",
+              "evaluations",
+              "queries",
+              "columns",
+              "exact_bound",
+              "complete"
+            ]
+          },
+          "outcome": {
+            "enum": [
+              "pass",
+              "not_applicable"
+            ]
+          },
+          "duration_ns": {
+            "const": null
+          }
+        }
+      }
+    },
+    "requests": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "uhat_fixed"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "uhat_fixed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "batch_uhat_fixed": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "verdict": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "accept",
+            "reject",
+            "inconclusive"
+          ]
+        },
+        "reason": {
+          "type": "object",
+          "required": [
+            "code"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "REJ-MALFORMED",
+                "REJ-STATEMENT",
+                "REJ-SUMCHECK",
+                "REJ-TREE",
+                "REJ-LOGUP-IDENTITY",
+                "REJ-LOOKUP",
+                "REJ-GADGET",
+                "REJ-PCS-MERKLE",
+                "REJ-PCS-PROXIMITY",
+                "REJ-PCS-EVAL",
+                "REJ-POW",
+                "REJ-ANCHOR",
+                "REJ-UHAT",
+                "REJ-BUDGET",
+                "REJ-PARAMS"
+              ]
+            },
+            "artifact": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "error": {
+              "type": "string"
+            },
+            "field": {
+              "type": "string"
+            },
+            "stage": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "round": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "level": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "table": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "gadget": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "commitment": {
+              "enum": [
+                "Advice",
+                "Weight"
+              ]
+            },
+            "column": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "phase": {
+              "enum": [
+                "Seed",
+                "Queries"
+              ]
+            },
+            "request_id": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "kind": {
+              "enum": [
+                "ManifestSignature",
+                "Inclusion",
+                "Frames"
+              ]
+            },
+            "uhat_fixed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "bound_fixed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "epoch": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "error": {
+          "type": "object",
+          "required": [
+            "code"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}

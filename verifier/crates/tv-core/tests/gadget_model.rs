@@ -887,9 +887,27 @@ fn bound_identity_point_forest_and_fixed_gadget_failures_have_exact_errors() {
                 }
                 _ => unreachable!(),
             }
+            let expected = if fault == 0 {
+                StageError::Internal
+            } else {
+                let gadget = gadgets
+                    .roots()
+                    .map(Result::unwrap)
+                    .find(|site| site.node() == meta.node)
+                    .map(|site| site.gadget())
+                    .or_else(|| {
+                        gadgets
+                            .softmaxes()
+                            .map(Result::unwrap)
+                            .find(|site| site.node() == meta.node)
+                            .map(|site| site.gadget())
+                    })
+                    .unwrap();
+                StageError::Gadget { gadget }
+            };
             assert!(matches!(
                 NativeChecks::evaluate(&prepared, meta.tag, ctx, &p, &raw),
-                Err(StageError::Internal)
+                Err(actual) if actual == expected
             ));
         }
     }

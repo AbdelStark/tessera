@@ -576,7 +576,7 @@ message!(ColumnQueries, 0x0512);
 message!(Round3Response, 0x0513);
 message!(NiProof, 0x0520);
 
-trait Sink {
+pub(crate) trait Sink {
     fn put(&mut self, bytes: &[u8]);
 }
 impl Sink for Vec<u8> {
@@ -595,10 +595,10 @@ impl Sink for Count {
         self.0 = self.0.and_then(|n| n.checked_add(b.len()));
     }
 }
-trait Tce {
+pub(crate) trait Tce {
     fn write(&self, out: &mut impl Sink);
 }
-fn encode(value: &impl Tce) -> Result<Vec<u8>, ErrorCode> {
+pub(crate) fn encode(value: &(impl Tce + ?Sized)) -> Result<Vec<u8>, ErrorCode> {
     let mut count = Count(Some(0));
     value.write(&mut count);
     let len = count.0.ok_or(ErrorCode::Memory)?;
@@ -618,13 +618,23 @@ impl<const N: usize> Tce for [u8; N] {
         out.put(self);
     }
 }
-impl<T: Tce> Tce for Vec<T> {
+impl<T: Tce> Tce for [T] {
     fn write(&self, out: &mut impl Sink) {
         u64::try_from(self.len()).unwrap_or(u64::MAX).write(out);
         for item in self {
             item.write(out);
         }
     }
+}
+impl<T: Tce> Tce for Vec<T> {
+    fn write(&self, out: &mut impl Sink) {
+        self.as_slice().write(out);
+    }
+}
+pub(crate) fn encoded_len(value: &(impl Tce + ?Sized)) -> Result<u64, ErrorCode> {
+    let mut count = Count(Some(0));
+    value.write(&mut count);
+    u64::try_from(count.0.ok_or(ErrorCode::Memory)?).map_err(|_| ErrorCode::Memory)
 }
 impl Tce for Fp {
     fn write(&self, out: &mut impl Sink) {

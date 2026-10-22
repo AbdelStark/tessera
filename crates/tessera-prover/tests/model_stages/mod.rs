@@ -117,6 +117,7 @@ pub fn prove_stages(
     xi: &[Vec<F>; 10],
     mode: Mode,
     geometry: Option<&tv_core::runtime::Geometry>,
+    first: model_openings::First,
 ) {
     let leaf: Vec<_> = points
         .iter()
@@ -397,7 +398,40 @@ pub fn prove_stages(
             );
         }
     }
-    committed.check(graph, accepted, transcript, verifier_transcript, xi, mode);
+    let round2 = tv_core::protocol::Round2Response {
+        logup: tv_core::protocol::LogUpProof {
+            roots: es(proof.logup().roots()),
+            values: es(proof.logup().values()),
+        },
+        trees: tv_core::protocol::TreeProof {
+            levels: proof
+                .logup()
+                .levels()
+                .iter()
+                .map(|p| tv_core::sumcheck::SumcheckProof {
+                    rounds: p.proof().rounds.iter().map(|r| es(r)).collect(),
+                    final_evals: es(&p.proof().final_evals),
+                })
+                .collect(),
+            splits: es(proof.splits()),
+        },
+        stages: proofs,
+        advice_combined: Vec::new(),
+        weight_combined: Vec::new(),
+        scoring: tv_core::protocol::ScoringClaims {
+            requests: vec![tv_core::protocol::FixedBits(0)],
+        },
+    };
+    committed.check(
+        graph,
+        accepted,
+        transcript,
+        verifier_transcript,
+        xi,
+        mode,
+        first,
+        round2,
+    );
 }
 fn tensor_value(values: &[i64], shape: &[u32], point: &[E]) -> E {
     let bits: Vec<_> = shape

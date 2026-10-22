@@ -45,7 +45,7 @@
 
 ### Dependencies
 
-The verifier implements its two hash functions itself, in safe Rust from their specifications: BLAKE3 for every Tessera hash (RFC-0004) and SHA-256 (FIPS 180-4) for the recorder logs (RFC-0015). Taking the `blake3` and `sha2` crates would have brought seventeen crates into the trusted base, with unsafe SIMD code and about 250,000 lines to audit. The official BLAKE3 vectors and NIST's SHA-256 vectors check the two implementations, and a differential test checks BLAKE3 against the prover's crate. The allowlist of [RFC-0001](RFC-0001-workspace-and-verifier-independence.md#enforcement) applies to everything else: `ed25519-dalek` 2.x, `rayon` 1.x, `thiserror` 2.x; `clap` 4.x, `serde` 1.x and `serde_json` 1.x in `tv-cli` only; `rustls` 0.23.x in `tv-transport` only. Every crate declares `#![forbid(unsafe_code)]`; `tv-core` additionally denies `clippy::unwrap_used`, `clippy::expect_used`, `clippy::panic`, `clippy::indexing_slicing` and `clippy::arithmetic_side_effects` on size computations (field arithmetic is exempt through its own types).
+The verifier implements its two hash functions itself, in safe Rust from their specifications: BLAKE3 for every Tessera hash (RFC-0004) and SHA-256 (FIPS 180-4) for the recorder logs (RFC-0015). Taking the `blake3` and `sha2` crates would have brought seventeen crates into the trusted base, with unsafe SIMD code and about 250,000 lines to audit. The official BLAKE3 vectors and NIST's SHA-256 vectors check the two implementations, and a differential test checks BLAKE3 against the prover's crate. The allowlist of [RFC-0001](RFC-0001-workspace-and-verifier-independence.md#enforcement) applies to everything else: `ed25519-dalek` 2.x, `rayon` 1.x, `thiserror` 2.x; `clap` 4.x, `serde` 1.x and `serde_json` 1.x in `tv-cli` only; `rustls` 0.23.x in `tv-transport` only. `zeroize` 1.x clears the heap-resident unrevealed Live coin-toss share in `tv-core`; the verifier lockfile pins 1.8.2, covered by imported safe-to-deploy audits without exemptions. Unix entropy is read directly from `/dev/urandom`, with an explicit I/O failure elsewhere. Every crate declares `#![forbid(unsafe_code)]`; `tv-core` additionally denies `clippy::unwrap_used`, `clippy::expect_used`, `clippy::panic`, `clippy::indexing_slicing` and `clippy::arithmetic_side_effects` on size computations (field arithmetic is exempt through its own types).
 
 ### Inputs
 
@@ -86,6 +86,24 @@ Checks run in this order; the first failure determines the verdict.
 13. Update the ledger (used blinding rows, opened weight columns, proven requests) and return `Accept(report)`.
 
 In live mode, steps 1–6 complete before `SeedReveal` is sent and steps 7–9 before `ColumnQueries`; step 10 draws the queries `ColumnQueries` carries, and steps 11–13 run after `Round3Response`.
+
+### Current protocol/1 composition
+
+`tv-core::driver` checks trusted input coherence, parameter name/mode/layout,
+claim-list validation and statement fields before seed processing. It then runs
+the complete runtime leaf/split/native/graph reductions, derives original opening
+groups and required matrices, enforces their soundness budget before evaluation
+checks, fixes every combined row before query generation, and checks every
+queried advice/weight column. Exact proofs establish an unexplained-information
+bound of zero; the scoring circuit and persistent ledger are later work.
+
+The current proof unit contains one exact-greedy request. Unsupported batches or
+predictors return Usage. The driver never treats a supplied statement or weight
+artifact as its own trust anchor. Live entropy and session state are verifier-owned;
+Round3 consumes the session. To reconstruct borrowed opening state, Round3 currently
+replays its immutable cached Round2; it cannot draw new queries. Full allocation
+accounting and deadlines inside arithmetic loops remain #182. The complete CLI
+check trace and measured durations remain separate from deterministic core JSON.
 
 ### Ledger
 

@@ -1,11 +1,11 @@
 # RFC-0053: Exact-Greedy Runtime Boundary
 
-- Status: Draft
+- Status: Accepted
 - Authors: @AbdelStark
 - Created: 2026-10-21
 - Target milestone: v0.3
 - Origin: #128 and #130; IDEA-0038 / EXP-0025
-- Supersedes on acceptance: RFC-0009 Argmax's physical range/maximum representation; RFC-0037's native boundary and source schedule; RFC-0045's runtime lookup columns; RFC-0047/0050's complete advice order and RFC-0041's private tile enum, extended below. It adds no protocol-message field or parameter preset and preserves RFC-0011's per-group evaluation checks.
+- Supersedes: RFC-0009 Argmax's physical range/maximum representation; RFC-0037's native boundary and source schedule; RFC-0045's runtime lookup columns; RFC-0047/0050's complete advice order and RFC-0041's private tile enum, extended below. It adds no protocol-message field or parameter preset and preserves RFC-0011's per-group evaluation checks.
 
 ## Summary
 
@@ -13,7 +13,7 @@ Bind exact-greedy certificates to the actual model logits, next-token OneHot and
 token input. One maximum array and publicly derived range keys join the runtime
 circuit. Native final messages expose only evaluations that remain owed to the
 original graph or canonical openings. No external scalar substitutes for a
-model output. This draft does not authorize an accepting implementation.
+model output. This contract defines the protocol/1 exact-greedy runtime boundary.
 
 ## Motivation
 
@@ -202,13 +202,14 @@ batch metadata. Each additional raw source value is fixed before PCS Gamma and
 checked individually under the existing commitment equations. A hypothetical
 global PCS sum with per-group-reset powers could cancel unrelated false claims;
 it is not part of this construction. The runtime budget predicate is mandatory.
-This is an analytic conditional argument (E0), not an implementation approval.
+The analytic argument is conditional on enforcing every source and budget predicate.
+The finite experiment alone does not establish implementation soundness.
 
 ## Alternatives Considered
 
 - Direct physical Range(29): valid but unnecessarily large for small proved
   logit intervals. NonNeg limbs add auxiliary columns; neither changes the
-  original logical predicate, but they are outside this draft.
+  original logical predicate, but they are outside this contract.
 - Another committed shifted OneHot: adds a vocabulary-sized witness column.
 - Separate row-view/suffix stages: needs dependent native scheduling machinery.
 - A tensor-product time/vocabulary proof: expands domains and can exceed the
@@ -225,10 +226,15 @@ The finite experiment does not settle whole-proof performance or protocol/2.
 
 No release has assigned tessera-protocol/1. Follow 09 section 3 before emitting
 new complete proofs; do not silently read a released old artifact as this
-runtime schedule. Keep this RFC Draft and the implementation PR in draft until
-review, complete CPU proofs, deterministic reports and full budget checks pass.
-Only a merged acceptance decision sets Accepted. No current claim-list field,
-wire schema version, parameter value or protocol/2 decoder is changed here.
+runtime schedule. PR439 accepts this contract with complete bounded CPU proofs in
+NI and fresh Live sessions, original-source opening checks, the complete runtime
+budget, deterministic repeated reports and actual driver fault injection. The
+frozen E0 experiment remains E0; implementation tests are separate evidence.
+No current claim-list field, wire schema version, parameter value or protocol/2
+decoder changes. The current driver proof unit contains one exact-greedy request;
+pass planning and batching remain their roadmap issues. Test-small acceptances
+certify nothing, and no production-scale performance or zero-knowledge claim
+follows from the bounded CPU cases.
 
 ## Testing Strategy
 
