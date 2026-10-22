@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Real CPU proofs now exercise the independent verifier CLI, caller-pin failures, proof tampering, table regeneration, report schemas and output safety. Required CI runs the separately built verifier binary using its own workspace and lockfile ([#131](https://github.com/AbdelStark/tessera/issues/131)).
+
 - Public CPU `Prover` API for one exact-greedy request in NI and Live modes, reusing the protocol state machine and existing witness, tree, stage and streaming PCS kernels. The producer derives its own original opening claims, validates model/plan/epoch/configuration coherence, retains owned public P1 metadata and a commitment-bound P4-to-P5 permit, and clears per-proof witness/randomness on completion or abort. GPU targets and multi-request units fail explicitly; pass planning and zero knowledge remain separate work ([#130](https://github.com/AbdelStark/tessera/issues/130)).
 
 - Protocol/1 NI and one-shot Live drivers now verify real CPU runtime proofs against application-owned statements and epoch weight artifacts. Live sessions draw fresh OS coin-toss/query randomness and clear unrevealed shares. Typed verdicts, exact native-gadget errors and deterministic public JSON include explicit test-parameter/anchor/ledger/ZK boundaries. Real six-case NI/Live integrations, 100 complete replays in each mode and input/report allocation tests cover the accepting path. RFC-0053 is accepted. The current unit is one exact-greedy request; broader batching, full resource hardening and the CLI remain separate work ([#128](https://github.com/AbdelStark/tessera/issues/128)).

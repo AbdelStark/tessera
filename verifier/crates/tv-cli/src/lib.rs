@@ -2,11 +2,17 @@
 
 //! The `tessera-verify` command-line interface and its JSON verdict report (RFC-0019, 02 §2.3).
 //!
-//! Currently exposes the `params` subcommand (`tessera-verify params`), which runs the verifier's
-//! independent soundness calculator ([`tv_core::soundness`], RFC-0014 'Soundness calculator').
+//! NI verification authenticates a caller-owned statement pin before running the independent
+//! core. `params` retains the independent soundness calculator (RFC-0014).
 
 #![forbid(unsafe_code)]
 
+mod files;
+mod options;
+mod tables;
+mod verify;
+
+use std::fmt::Write;
 use tv_core::soundness::{
     DEFAULT_EXP_LOOKUPS, DEFAULT_EXP_ROWS, LookupSize, SoundnessParams, SoundnessReport,
     StatementSizes,
@@ -42,7 +48,10 @@ USAGE:
     tessera-verify <COMMAND> [OPTIONS]
 
 COMMANDS:
+    verify    Verify one protocol/1 NI proof against caller-pinned inputs
+    tables    Regenerate the claim list's table catalog and print digests
     params    Compute the independent soundness table for a parameter set (RFC-0014)
+    live, weights link, audit plan/report    Reserved; require later transport/ledger/anchor work
 ";
 
 const PARAMS_HELP: &str = "\
@@ -69,8 +78,33 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    let collected: Vec<String> = args.into_iter().map(|s| String::from(s.as_ref())).collect();
-    let json_flag = collected.iter().any(|a| a == "--json");
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_inner(args)))
+        .unwrap_or_else(|_| verify::failure(tv_core::verdict::ErrorCode::Internal))
+}
+fn run_inner<I, S>(args: I) -> CommandOutput
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut collected = Vec::new();
+    let mut json_flag = false;
+    let mut oversized = false;
+    for (i, arg) in args.into_iter().take(65).enumerate() {
+        let value = arg.as_ref();
+        json_flag |= value == "--json";
+        if i == 64 || value.len() > 8192 {
+            oversized = true;
+        } else {
+            collected.push(String::from(value));
+        }
+    }
+    if oversized {
+        return usage_error(
+            "tessera-verify",
+            "too many or oversized arguments",
+            json_flag,
+        );
+    }
 
     let Some(first) = collected.first().map(String::as_str) else {
         return usage_error("tessera-verify", "missing command", json_flag);
@@ -83,6 +117,13 @@ where
             stderr: String::new(),
         },
         "params" => run_params(&collected[1..], json_flag),
+        "verify" => verify::run(&collected[1..], json_flag),
+        "tables" => tables::run(&collected[1..], json_flag),
+        "live" | "weights" | "audit" => usage_error(
+            first,
+            "this operation requires unfinished live transport, anchor or ledger support",
+            json_flag,
+        ),
         other => usage_error(
             "tessera-verify",
             &format!("unknown command `{other}`"),
@@ -92,7 +133,7 @@ where
 }
 
 fn run_params(args: &[String], json_flag: bool) -> CommandOutput {
-    if args.iter().any(|a| a == "-h" || a == "--help") {
+    if args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h") {
         return CommandOutput {
             exit_code: EXIT_SUCCESS,
             stdout: String::from(PARAMS_HELP),
@@ -271,6 +312,9 @@ fn escape_json(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
+            '\u{00}'..='\u{1f}' => {
+                let _ = write!(out, "\\u{:04x}", u32::from(ch));
+            }
             c => out.push(c),
         }
     }

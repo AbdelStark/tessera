@@ -59,6 +59,31 @@ tessera inspect         FILE                                                # re
 
 ### 2.3 `tessera-verify` (Rust, verifier side, independent build)
 
+The current v0.3 protocol/1 reference interface verifies one exact-greedy NI
+request. Its application-owned whole-statement digest authenticates the expected
+statement before any proof is evaluated:
+
+```text
+tessera-verify verify --claims claims.tcl --weights-root ROOT --weights WEIGHTS.twr
+                      --statement-digest HEX --proof PROOF.tnp --bound BITS
+                      [--out VERDICT.json] [--json] [--max-artifact-bytes N]
+                      [--max-memory-bytes N] [--timeout-ms N]
+tessera-verify tables --claims claims.tcl [--json] [--max-table-rows N]
+tessera-verify params --params PARAMSET [--lookups N] [--table-rows T] [--json]
+```
+
+`--statement-digest` must come from the application independently of the proof;
+using the proof's own digest supplies no trust anchor. `--bound` is exact bits
+in increments of 1/256. [The reference CLI guide](../verifier/reference-cli.md)
+describes resource allowances, atomic report output and the measured CLI trace.
+The commands below are the full target interface: anchor integration, the ledger,
+audit commands and live transport remain with
+[#137](https://github.com/AbdelStark/tessera/issues/137),
+[#158](https://github.com/AbdelStark/tessera/issues/158),
+[#151](https://github.com/AbdelStark/tessera/issues/151) and
+[#181](https://github.com/AbdelStark/tessera/issues/181).
+Reserved commands fail explicitly; they never certify a statement or update a ledger.
+
 ```text
 tessera-verify verify   --claims claims.tcl --weights-root ROOT --weights WEIGHTS.twr --manifest MANIFEST.tlm
                         --proof PROOF.tnp --bound UHAT [--out VERDICT.json]

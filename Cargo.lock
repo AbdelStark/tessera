@@ -755,11 +755,13 @@ dependencies = [
  "tessera-sumcheck",
  "tessera-tables",
  "tessera-witness",
+ "tv-cli",
  "tv-codec",
  "tv-core",
  "tv-field",
  "tv-hash",
  "tv-tables",
+ "xtask",
  "zeroize",
 ]
 
@@ -870,6 +872,16 @@ dependencies = [
  "target-triple",
  "termcolor",
  "toml",
+]
+
+[[package]]
+name = "tv-cli"
+version = "0.1.0"
+dependencies = [
+ "tv-codec",
+ "tv-core",
+ "tv-hash",
+ "tv-tables",
 ]
 
 [[package]]

@@ -102,8 +102,12 @@ predictors return Usage. The driver never treats a supplied statement or weight
 artifact as its own trust anchor. Live entropy and session state are verifier-owned;
 Round3 consumes the session. To reconstruct borrowed opening state, Round3 currently
 replays its immutable cached Round2; it cannot draw new queries. Full allocation
-accounting and deadlines inside arithmetic loops remain #182. The complete CLI
-check trace and measured durations remain separate from deterministic core JSON.
+accounting and deadlines inside arithmetic loops remain #182. The reference CLI
+authenticates an externally supplied digest of the whole `PublicStatement`
+before using the decoded statement as its expected input. Its measured load,
+pin and verification trace is optional execution context; deterministic core
+JSON retains null internal check durations. Anchor, ledger, audit commands and
+live transport remain later work, as the target milestones below require.
 
 ### Ledger
 

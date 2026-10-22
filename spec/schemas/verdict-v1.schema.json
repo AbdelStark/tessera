@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/verdict-v1.schema.json",
   "title": "tessera.verdict/1",
-  "description": "Deterministic protocol/1 core verdict. Timings are absent (null); the CLI audit trace is separate. Test-small parameters certify nothing.",
+  "description": "Protocol/1 verdict. Core check durations remain null; optional CLI execution context records measured CLI phases. Test-small parameters certify nothing.",
   "type": "object",
   "required": [
     "schema",
@@ -279,6 +279,76 @@
             "code": {
               "type": "string",
               "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": [
+        "source",
+        "duration_ns",
+        "statement_pinned",
+        "exit_code",
+        "trace"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "const": "cli"
+        },
+        "duration_ns": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "statement_pinned": {
+          "type": "boolean"
+        },
+        "exit_code": {
+          "enum": [
+            0,
+            10,
+            20,
+            64,
+            65,
+            70
+          ]
+        },
+        "trace": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "required": [
+              "phase",
+              "outcome",
+              "duration_ns"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "phase": {
+                "enum": [
+                  "load",
+                  "statement_pin",
+                  "verification"
+                ]
+              },
+              "outcome": {
+                "enum": [
+                  "completed",
+                  "error",
+                  "accept",
+                  "reject",
+                  "inconclusive"
+                ]
+              },
+              "duration_ns": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 18446744073709551615
+              }
             }
           }
         }

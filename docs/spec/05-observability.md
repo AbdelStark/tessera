@@ -92,4 +92,12 @@ Every `compile`, `commit-weights`, `prove`, `verify` and `bench` invocation writ
 
 ## 7. Verifier audit trail
 
-`tessera-verify --out VERDICT.json` writes `tessera.verdict/1`: protocol version, parameter set, statement digests, each check in execution order with its outcome and duration, `Û` per request and per batch, and the final verdict. The report contains no protocol-class data, so a verifier can publish it. The library core serializer uses null durations so identical inputs yield identical bytes. Its accepted report records all completed protocol/1 phases and explicit false anchor/ledger/zero-knowledge flags; a rejection or operational error carries its exact reason but no partial check trace. The CLI adds measured timing and execution-trace context when that interface is implemented.
+`tessera-verify verify --out VERDICT.json` writes `tessera.verdict/1`: protocol version, parameter set, statement digests, each check in execution order with its outcome and duration, `Û` per request and per batch, and the final verdict. The report contains no protocol-class data, so a verifier can publish it. The library core serializer uses null durations so identical inputs yield identical bytes. Its accepted report records all completed protocol/1 phases and explicit false anchor/ledger/zero-knowledge flags; a rejection or operational error carries its exact reason but no partial core check trace.
+
+The reference CLI's optional `execution` context records measured `load`,
+`statement_pin` and `verification` phases, the authenticated-pin flag and exit
+code. Internal per-check durations remain null; their timings are not measured
+by this interface. The overall duration ends at verdict preparation, before a
+successful report write. A contained panic can omit the context, and report
+allocation failure returns a nonzero status without a report. See the
+[reference CLI guide](../verifier/reference-cli.md).

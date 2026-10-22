@@ -14,6 +14,9 @@ path = "src/main.rs"
 
 [dependencies]
 tv-core = { path = "../tv-core" }
+tv-codec = { path = "../tv-codec" }
+tv-hash = { path = "../tv-hash" }
+tv-tables = { path = "../tv-tables" }
 
 [dev-dependencies]
 tv-testkit = { path = "../tv-testkit" }
