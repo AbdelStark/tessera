@@ -1365,6 +1365,34 @@ impl Deriving<'_, '_> {
                     return Err(ScheduleError::Internal);
                 };
                 let vocab_vars = axis_vars(vocab)?;
+                let token_replaced = self.deferred.contains(&(id, Some(0)));
+                if token_replaced {
+                    let &[token] = node.inputs() else {
+                        return Err(ScheduleError::Internal);
+                    };
+                    let row_vars = axis_vars(positions)?;
+                    let vars = vocab_vars
+                        .checked_add(row_vars)
+                        .ok_or(ScheduleError::Internal)?;
+                    if !self.native.iter().any(|n| {
+                        let [h, t] = n.outputs.as_slice() else {
+                            return false;
+                        };
+                        n.node == id
+                            && n.zero
+                            && n.degree == 2
+                            && n.vars == vars
+                            && n.evaluations == 2
+                            && h.tensor == out
+                            && h.from == 0
+                            && h.vars == vars
+                            && t.tensor == token
+                            && t.from == vocab_vars
+                            && t.vars == row_vars
+                    }) {
+                        return Err(ScheduleError::Internal);
+                    }
+                }
                 for relation in [
                     Relation::Booleanity,
                     Relation::Vocabulary { vocab, vocab_vars },
@@ -1374,6 +1402,9 @@ impl Deriving<'_, '_> {
                     },
                     Relation::OneHotIndex { vocab_vars },
                 ] {
+                    if token_replaced && matches!(relation, Relation::OneHotIndex { .. }) {
+                        continue;
+                    }
                     let degree = if matches!(
                         relation,
                         Relation::OneHotCount { .. } | Relation::OneHotIndex { .. }

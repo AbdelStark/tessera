@@ -181,6 +181,20 @@ fn column<'a>(
     values: &'a TileWitness,
     source: AdviceSource,
 ) -> Result<(&'a [i64], Vec<u32>), Error> {
+    if let AdviceSource::GreedyMaximum(id) = source {
+        let (actual, data) = values.greedy_maximum().ok_or(Error::Internal)?;
+        if actual != id || tile.tile != (tessera_compiler::Tile::GreedyMaximum { gadget: id.0 }) {
+            return Err(Error::Internal);
+        }
+        let domain = lowering
+            .graph
+            .tensors
+            .get(lowering.tokens.0 as usize)
+            .ok_or(Error::Internal)?
+            .shape
+            .clone();
+        return Ok((data, domain));
+    }
     let (data, tensor) = match source {
         AdviceSource::Tensor(t) => {
             let i = tile
@@ -214,7 +228,9 @@ fn column<'a>(
                 *node.outputs.get(output).ok_or(Error::Internal)?,
             )
         }
-        AdviceSource::Multiplicity(_) => return Err(Error::Internal),
+        AdviceSource::Multiplicity(_) | AdviceSource::GreedyMaximum(_) => {
+            return Err(Error::Internal);
+        }
     };
     let share = tile
         .shares

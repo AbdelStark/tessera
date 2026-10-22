@@ -35,6 +35,7 @@ pub(super) fn stage<'a>(
     previous: &[Claim],
     sites: &[Site],
     native: &'a [Native],
+    deferred: &[super::Deferred],
 ) -> Result<Stage, CompileError> {
     let lambda = derivation.layers.vars;
     let mut planned = Vec::new();
@@ -106,6 +107,10 @@ pub(super) fn stage<'a>(
                 &[Relation::Equality]
             };
             for &relation in relations {
+                if relation == Relation::OneHotIndex && deferred.contains(&(graph_node.id, Some(0)))
+                {
+                    continue;
+                }
                 let vars = instance_vars(derivation, graph_node, relation, &layers)?;
                 planned.push(Planned {
                     source: Source::ZeroCheck,

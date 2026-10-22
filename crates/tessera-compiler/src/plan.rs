@@ -94,6 +94,12 @@ pub enum Tile {
         /// The table's [`tessera_ir::TableId`].
         table: u32,
     },
+    /// A request's exact-greedy maximum, after model tiles and before multiplicities. Tag 4
+    /// (draft RFC-0053); model-only execution plans never contain it.
+    GreedyMaximum {
+        /// Separate certificate identity, after the model node ids.
+        gadget: u32,
+    },
 }
 
 /// The execution plan, schema `0x0202`, version 1, private, `.tep` (RFC-0041 'The plan', 03 §5):
@@ -210,7 +216,7 @@ impl ExecutionPlan {
                         });
                     }
                 }
-                Tile::Table { .. } => expanded.push(SequenceTile {
+                Tile::Table { .. } | Tile::GreedyMaximum { .. } => expanded.push(SequenceTile {
                     tile,
                     block: None,
                     shares: Vec::new(),

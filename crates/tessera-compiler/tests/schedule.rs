@@ -1319,3 +1319,82 @@ fn composed_native_metadata_requires_legal_original_graph_replacements() {
         bad(&[], &[n]);
     }
 }
+
+#[test]
+fn one_hot_index_is_removed_only_for_the_exact_native_token_binding() {
+    use tessera_compiler::schedule::{Native, NativeOutput, derive_composed_schedule};
+    let low = lowering(Profile::Servable, 3, 5, (2, 1), Sites::Pot);
+    let node = low
+        .graph
+        .nodes
+        .iter()
+        .find(|n| matches!(n.op, Op::OneHot { .. }))
+        .unwrap();
+    let variables = |t: TensorId| {
+        low.graph.tensors[t.0 as usize]
+            .shape
+            .iter()
+            .map(|d| d.next_power_of_two().trailing_zeros())
+            .sum::<u32>()
+    };
+    let total = variables(node.outputs[0]);
+    let time = variables(node.inputs[0]);
+    let native = Native {
+        tag: 97,
+        node: node.id,
+        vars: total,
+        degree: 2,
+        evaluations: 2,
+        zero: true,
+        outputs: vec![
+            NativeOutput {
+                tensor: node.outputs[0],
+                from: 0,
+                vars: total,
+            },
+            NativeOutput {
+                tensor: node.inputs[0],
+                from: total - time,
+                vars: time,
+            },
+        ],
+    };
+    let plan = derive_composed_schedule(&low, &[(node.id, Some(0))], std::slice::from_ref(&native))
+        .unwrap();
+    let count = |relation| {
+        plan.stages[1]
+            .instances
+            .iter()
+            .filter(|i| i.relation == relation)
+            .count()
+    };
+    assert_eq!(count(Relation::OneHotIndex), 0);
+    for relation in [
+        Relation::Booleanity,
+        Relation::OneHotCount,
+        Relation::OneHotVocabulary,
+    ] {
+        assert_eq!(count(relation), 1);
+    }
+    for fault in 0..8 {
+        let mut bad = native.clone();
+        match fault {
+            0 => bad.zero = false,
+            1 => bad.degree = 3,
+            2 => bad.evaluations = 3,
+            3 => bad.vars += 1,
+            4 => bad.outputs.swap(0, 1),
+            5 => bad.outputs[1].from = 0,
+            6 => bad.outputs[0].tensor = low.tokens,
+            7 => bad.outputs.pop().map(|_| ()).unwrap(),
+            _ => unreachable!(),
+        }
+        assert!(
+            matches!(
+                derive_composed_schedule(&low, &[(node.id, Some(0))], &[bad]),
+                Err(CompileError::Schedule { .. })
+            ),
+            "malformed token replacement {fault}"
+        );
+    }
+}

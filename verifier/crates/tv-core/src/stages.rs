@@ -148,6 +148,11 @@ pub struct SumcheckRejection {
 /// the module documentation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum StageError {
+    /// A native gadget's fixed/final predicate failed: `Reject(Gadget)`.
+    Gadget {
+        /// Verifier-derived gadget identity.
+        gadget: crate::validation::GadgetId,
+    },
     /// The proof has `found` stage proofs where the schedule has `expected` reduction stages:
     /// `Reject(Malformed)`.
     StageCount {
@@ -229,6 +234,9 @@ impl StageError {
 impl core::fmt::Display for StageError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
+            StageError::Gadget { gadget } => {
+                write!(f, "gadget {} failed its final relation", gadget.0)
+            }
             StageError::StageCount { expected, found } => {
                 write!(
                     f,

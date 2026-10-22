@@ -56,6 +56,7 @@ fn key(layers: &LayerMap, tile: &SequenceTile) -> Key {
         Tile::Node { node } => ("node", node, 0),
         Tile::Attention { node, kv_head } => ("attention", node, kv_head),
         Tile::Table { table } => ("table", table, 0),
+        Tile::GreedyMaximum { gadget } => ("greedy.maximum", gadget, 0),
     };
     let place = matches!(tile.tile, Tile::Node { .. } | Tile::Attention { .. })
         .then(|| layers.position(NodeId(node)))

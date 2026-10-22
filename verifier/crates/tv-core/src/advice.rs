@@ -11,7 +11,7 @@ pub mod opening;
 use crate::claims::{ArchSpec, GadgetPolicy};
 use crate::lowering::{Graph, Kind, NodeId, Op, Role, TensorId};
 use crate::selection::{Choice, Pattern, Selection};
-use crate::validation::{ClaimsError, StatementField};
+use crate::validation::{ClaimsError, GadgetId, StatementField};
 use tv_field::Fp2;
 use tv_tables::{TableId, TableKind};
 
@@ -213,6 +213,8 @@ pub enum Source {
     Auxiliary(NodeId, Auxiliary),
     /// A used lookup table's multiplicities.
     Multiplicity(TableId),
+    /// Runtime greedy maximum, distinct from every model tensor/auxiliary (RFC-0053 draft).
+    GreedyMaximum(GadgetId),
 }
 /// A tile's identity in production order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -225,6 +227,8 @@ pub enum TileKey {
     Attention(NodeId, u32, u32),
     /// A used table, in ascending id order.
     Table(TableId),
+    /// One runtime maximum after model tiles and before all multiplicities.
+    GreedyMaximum(GadgetId),
 }
 
 /// Public layout controls, copied from the validated statement.
@@ -298,6 +302,16 @@ impl<'a> Layout<'a> {
         config: Config,
         n: u32,
     ) -> Result<Self, ClaimsError> {
+        Self::derive_runtime(graph, selection, config, n, None)
+    }
+
+    pub(crate) fn derive_runtime(
+        graph: &'a Graph,
+        selection: &'a Selection,
+        config: Config,
+        n: u32,
+        greedy: Option<(GadgetId, TableId)>,
+    ) -> Result<Self, ClaimsError> {
         if n == 0
             || n > graph.length()
             || config.log_k > 31 // RFC-0011: a 2k-symbol codeword needs 2k <= 2^32.
@@ -342,6 +356,7 @@ impl<'a> Layout<'a> {
             .len()
             .checked_add(selection.tables.len())
             .and_then(|x| x.checked_add(1))
+            .and_then(|x| x.checked_add(usize::from(greedy.is_some())))
             .ok_or(ClaimsError::Memory)?;
         out.groups
             .try_reserve_exact(capacity)
@@ -423,10 +438,30 @@ impl<'a> Layout<'a> {
                 out.push(TileKey::Node(id), segment, domain, None, columns, 1)?;
             }
         }
+        if let Some((gadget, _)) = greedy {
+            out.push(
+                TileKey::GreedyMaximum(gadget),
+                config.segments.saturating_sub(1),
+                Domain::new(&[u64::from(n)], config.log_k)?,
+                None,
+                1,
+                1,
+            )?;
+        }
         let mut used = Vec::new();
         used.try_reserve_exact(selection.tables.len())
             .map_err(|_| ClaimsError::Memory)?;
         used.resize(selection.tables.len(), false);
+        if let Some((_, table)) = greedy {
+            let index = usize::try_from(table.0).map_err(|_| ClaimsError::Internal)?;
+            if !matches!(
+                selection.tables.get(index).map(|t| &t.kind),
+                Some(TableKind::Range { .. })
+            ) {
+                return Err(ClaimsError::Internal);
+            }
+            *used.get_mut(index).ok_or(ClaimsError::Internal)? = true;
+        }
         for choice in &selection.choices {
             for table in &choice.tables {
                 *used
@@ -789,6 +824,7 @@ impl<'a> Layout<'a> {
     ) -> Result<ClaimImages<'l, 'a, 'p>, PointError> {
         let key = match source {
             Source::Multiplicity(id) => TileKey::Table(id),
+            Source::GreedyMaximum(id) => TileKey::GreedyMaximum(id),
             Source::Tensor(id) => {
                 let tensor = self.graph.tensor(id).ok_or(PointError::Source)?;
                 if let Some(node) = tensor.producer {
@@ -991,6 +1027,7 @@ impl Tile<'_, '_> {
                     .tensor,
             ),
             TileKey::Table(id) => Source::Multiplicity(id),
+            TileKey::GreedyMaximum(id) => Source::GreedyMaximum(id),
             TileKey::Node(id) | TileKey::Attention(id, _, _) => {
                 let mut outputs = self.layout.graph.node(id)?.outputs().iter().filter(|&&t| {
                     self.layout

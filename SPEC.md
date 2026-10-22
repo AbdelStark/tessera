@@ -93,6 +93,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0050](docs/rfcs/RFC-0050-gadget-advice-columns.md) | Canonical gadget advice columns: public roles/domains, exact Rsqrt products, comparison arrays, complete range requests and explicit migration (amends RFC-0006, RFC-0009, RFC-0022, RFC-0041) | v0.3 |
 | [RFC-0051](docs/rfcs/RFC-0051-soundness-target-exit-code.md) | Soundness target exit code: exit 10 when `tessera params check` or `tessera-verify params` misses a target while still printing the report (amends 02, RFC-0014) | v0.3 |
 | [RFC-0052](docs/rfcs/RFC-0052-channel-params-claims.md) | Opening several claims on `ChannelParams`: one evaluation row per reading site in pool order, folded in a single pass (amends RFC-0012, RFC-0036, RFC-0037, RFC-0045, RFC-0049) | v0.3 |
+| [RFC-0053](docs/rfcs/RFC-0053-greedy-runtime-boundary.md) | Original-source exact-greedy runtime boundary, public-span range and canonical maximum/native obligations | v0.3 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 

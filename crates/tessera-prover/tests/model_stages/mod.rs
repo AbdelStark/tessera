@@ -116,6 +116,8 @@ pub fn prove_stages(
     committed: &model_openings::Committed<'_>,
     xi: &[Vec<F>; 10],
     mode: Mode,
+    geometry: Option<&tv_core::runtime::Geometry>,
+    first: model_openings::First,
 ) {
     let leaf: Vec<_> = points
         .iter()
@@ -125,22 +127,29 @@ pub fn prove_stages(
             values: es(v),
         })
         .collect();
-    let token = independent
+    let runtime = independent
         .schedule()
         .leaf()
         .iter()
-        .position(|l| {
-            matches!(
-                graph.node(l.site).unwrap().op(),
-                tv_core::lowering::Op::OneHot { .. }
-            )
-        })
-        .unwrap();
-    let external = model::External {
-        tokens: &leaf[token],
-        logits: leaf.last().unwrap(),
-    };
-    let prepared = independent.bind(bound, external).unwrap();
+        .all(|l| l.input.is_some());
+    let token = independent.schedule().leaf().iter().position(|l| {
+        matches!(
+            graph.node(l.site).unwrap().op(),
+            tv_core::lowering::Op::OneHot { .. }
+        )
+    });
+    let prepared = if runtime {
+        independent.bind_runtime(bound)
+    } else {
+        independent.bind(
+            bound,
+            model::External {
+                tokens: &leaf[token.unwrap()],
+                logits: leaf.last().unwrap(),
+            },
+        )
+    }
+    .unwrap();
     assert_eq!(prepared.leaf(), leaf);
     let mut native =
         ModelNativeProver::new(native_plan, &p.lowering, actual, witness, proof).unwrap();
@@ -179,6 +188,34 @@ pub fn prove_stages(
                 .unwrap()
         })
         .collect();
+    if let Some(g) = geometry {
+        assert_eq!(proofs.len(), g.stages().len());
+        for (p, f) in proofs.iter().zip(g.stages()) {
+            assert_eq!(
+                f.sumcheck.instances,
+                native_plan.schedule().stages[usize::from(p.stage)]
+                    .instances
+                    .len()
+            );
+            assert_eq!(p.stage, f.index);
+            assert_eq!(p.sumcheck.rounds.len(), f.sumcheck.rounds);
+            assert!(
+                p.sumcheck
+                    .rounds
+                    .iter()
+                    .all(|r| r.len() == f.sumcheck.degree)
+            );
+            assert_eq!(p.sumcheck.final_evals.len(), f.sumcheck.evaluations);
+            assert_eq!(
+                f.sumcheck.field_count(),
+                Some(
+                    p.sumcheck.rounds.iter().map(Vec::len).sum::<usize>()
+                        + p.sumcheck.final_evals.len()
+                )
+            );
+            assert_eq!(p.splits.len(), f.splits);
+        }
+    }
     let proofs: Vec<_> = proofs
         .iter()
         .map(|p| stages::StageProof {
@@ -204,8 +241,12 @@ pub fn prove_stages(
         assert_eq!(claim.value, pool_value(p, graph, witness, claim));
     }
     assert_eq!(accepted.multiplicities, bound.multiplicities);
-    assert_eq!(accepted.external.tokens, &leaf[token]);
-    assert_eq!(accepted.external.logits, leaf.last().unwrap());
+    if runtime {
+        assert!(accepted.external.is_none());
+    } else {
+        assert_eq!(accepted.external.unwrap().tokens, &leaf[token.unwrap()]);
+        assert_eq!(accepted.external.unwrap().logits, leaf.last().unwrap());
+    }
     let original = bound
         .columns
         .iter()
@@ -239,10 +280,12 @@ pub fn prove_stages(
         .iter()
         .filter(|n| n.zero && n.outputs.is_empty())
         .count();
-    assert_eq!(
-        accepted.sources.len(),
-        original + softmax + products + 4 * families
-    );
+    if !runtime {
+        assert_eq!(
+            accepted.sources.len(),
+            original + softmax + products + 4 * families
+        );
+    }
     for claim in &accepted.sources {
         let mut sum = E::ZERO;
         assert_eq!(
@@ -289,6 +332,11 @@ pub fn prove_stages(
                         mle(actual.values(s, l, column).unwrap(), &claim.point),
                         (Some(node.0), Some(role)),
                     )
+                }
+                Source::GreedyMaximum(g) => {
+                    let (id, m) = actual.greedy_maximum().unwrap();
+                    assert_eq!(g.0, id.0);
+                    (mle(m, &claim.point), (None, None))
                 }
                 Source::Multiplicity(_) => {
                     panic!("multiplicities retain their original table points separately")
@@ -350,7 +398,40 @@ pub fn prove_stages(
             );
         }
     }
-    committed.check(graph, accepted, transcript, verifier_transcript, xi, mode);
+    let round2 = tv_core::protocol::Round2Response {
+        logup: tv_core::protocol::LogUpProof {
+            roots: es(proof.logup().roots()),
+            values: es(proof.logup().values()),
+        },
+        trees: tv_core::protocol::TreeProof {
+            levels: proof
+                .logup()
+                .levels()
+                .iter()
+                .map(|p| tv_core::sumcheck::SumcheckProof {
+                    rounds: p.proof().rounds.iter().map(|r| es(r)).collect(),
+                    final_evals: es(&p.proof().final_evals),
+                })
+                .collect(),
+            splits: es(proof.splits()),
+        },
+        stages: proofs,
+        advice_combined: Vec::new(),
+        weight_combined: Vec::new(),
+        scoring: tv_core::protocol::ScoringClaims {
+            requests: vec![tv_core::protocol::FixedBits(0)],
+        },
+    };
+    committed.check(
+        graph,
+        accepted,
+        transcript,
+        verifier_transcript,
+        xi,
+        mode,
+        first,
+        round2,
+    );
 }
 fn tensor_value(values: &[i64], shape: &[u32], point: &[E]) -> E {
     let bits: Vec<_> = shape

@@ -35,8 +35,10 @@
 //! set: replay inputs, outputs and gadget scratch, plus its counter for a table tile. No regenerated
 //! value is retained between calls. The allocator test measures all these components separately;
 //! [`TileWitness::bytes`] alone is not the regeneration peak. This is the CPU witness source, not
-//! the proof driver or GPU regeneration, and future greedy/sampling certificates remain outside
-//! RFC-0050's current-model layout.
+//! the proof driver or GPU regeneration. [`Resident::runtime`] and [`Regenerator::runtime`]
+//! additionally supply draft RFC-0053's separate exact-greedy maximum and padded range requests,
+//! recounting shared model/certificate multiplicities before adding one combined row-zero tail.
+//! Sampling certificates remain outside RFC-0050's current-model layout.
 //!
 //! # Features
 //!
@@ -56,6 +58,7 @@ mod engine;
 mod error;
 mod multiplicity;
 mod replay;
+mod runtime;
 mod source;
 mod structure;
 mod tile;

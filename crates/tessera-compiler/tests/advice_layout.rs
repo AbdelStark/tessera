@@ -264,6 +264,7 @@ fn identity(source: AdviceSource) -> Value {
     match source {
         AdviceSource::Tensor(id) => json!(["tensor", id.0]),
         AdviceSource::Multiplicity(id) => json!(["multiplicity", id.0]),
+        AdviceSource::GreedyMaximum(id) => json!(["greedy.maximum", id.0]),
         AdviceSource::Auxiliary(node, column) => {
             let (name, index) = auxiliary(column);
             json!(["aux", node.0, name, index])
@@ -444,6 +445,7 @@ fn every_model_source_location_point_zero_row_and_segment_matches_the_oracle() {
                 Tile::Tokens => json!(["tokens"]),
                 Tile::Node { node } => json!(["node", node]),
                 Tile::Table { table } => json!(["table", table]),
+                Tile::GreedyMaximum { gadget } => json!(["greedy.maximum", gadget]),
                 Tile::Attention { node, kv_head } => json!([
                     "attention",
                     node,
@@ -648,6 +650,324 @@ fn whole_attention_claims_reconstruct_over_the_extension_field_with_partial_boxe
             let token = AdviceSource::Tensor(lowering.tokens);
             assert!(mapped.claim::<Fp2>(token, &[]).is_err());
             assert!(mapped.location(mapped.tiles().len(), token).is_none());
+        }
+    }
+}
+
+#[test]
+fn runtime_catalog_and_every_tail_location_match_the_independent_oracle() {
+    use tessera_compiler::RuntimePlan;
+    let models = models();
+    let data = read_json(&vectors().join("greedy-runtime/runtime.json"));
+    let cases = data["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 141);
+    let mut appended = 0;
+    for case in cases {
+        let model = &models[case["file"].as_str().unwrap()];
+        let (mut arch, mut quant) = if case["variant"].is_null() {
+            (model.arch.clone(), model.quant.public.clone())
+        } else {
+            edited(model, &case["variant"])
+        };
+        if let Some(vocab) = case["vocab"].as_u64() {
+            arch.vocab = vocab as u32;
+        }
+        if let Some(custom) = case["custom"].as_object() {
+            let u = |key| custom[key].as_u64().unwrap() as u32;
+            arch.d_model = u("d_model");
+            arch.n_heads = u("n_heads");
+            arch.n_kv_heads = u("n_kv_heads");
+            arch.d_head = u("d_head");
+            arch.d_ff = u("d_ff");
+            quant.rsqrt_kappa = u("rsqrt_kappa") as u8;
+            quant.exp_sigma = u("exp_sigma") as u8;
+            quant.residual_bits = u("residual_bits") as u8;
+            quant.residual_exponent = custom["residual_exponent"].as_i64().unwrap() as i8;
+        }
+        let public = PublicModel {
+            arch: &arch,
+            profile: model.profile,
+            quant: &quant,
+            silu_in_exponents: &model.quant.silu_in_exponents,
+        };
+        let n = case["n"].as_u64().unwrap() as u32;
+        let policy = GadgetPolicy {
+            query_block: case["query_block"].as_u64().unwrap() as u32,
+            ..GadgetPolicy::default()
+        };
+        let lowering = lower(public, n).unwrap();
+        let selection = selected(&lowering, &policy);
+        let claims = claims(
+            public,
+            &selection,
+            &policy,
+            case["log2_k"].as_u64().unwrap() as u8,
+            case["segments"].as_u64().unwrap() as u32,
+        );
+        let original = tessera_codec::encode(&claims);
+        let runtime = RuntimePlan::derive(
+            &lowering,
+            &selection,
+            &claims,
+            case["prompt"].as_u64().unwrap() as u32,
+            case["ordinal"].as_u64().unwrap() as u32,
+        )
+        .unwrap();
+        let tables = &runtime.selection().tables;
+        assert_eq!(&tables[..selection.tables.len()], selection.tables);
+        assert_eq!(tables.len(), case["tables"].as_array().unwrap().len());
+        appended += usize::from(tables.len() > selection.tables.len());
+        for (actual, expected) in tables.iter().zip(case["tables"].as_array().unwrap()) {
+            assert_eq!(u64::from(actual.id.0), expected[0].as_u64().unwrap());
+            assert_eq!(u64::from(actual.log2_rows), expected[2].as_u64().unwrap());
+            if let Some(range) = expected[1].get("Range") {
+                assert_eq!(
+                    actual.kind,
+                    tessera_tables::TableKind::Range {
+                        bits: range["bits"].as_u64().unwrap() as u8
+                    }
+                );
+            }
+        }
+        if let Some(cert) = runtime.certificate() {
+            let expected = &case["certificate"];
+            assert_eq!(u64::from(cert.gadget.0), expected["id"].as_u64().unwrap());
+            assert_eq!(u64::from(cert.table.0), expected["range"].as_u64().unwrap());
+            assert_eq!(
+                u64::from(cert.range_bits),
+                expected["bits"].as_u64().unwrap()
+            );
+            assert_eq!(cert.entries(), expected["entries"].as_u64().unwrap());
+            assert_eq!(
+                json!([cert.logits.lo as i64, cert.logits.hi as i64]),
+                expected["logit_bounds"]
+            );
+        } else {
+            assert!(case["certificate"].is_null());
+        }
+        let mapped = ModelAdviceLayout::runtime(&lowering, &runtime, &claims).unwrap();
+        let layout = mapped.layout();
+        assert_eq!(layout.allocated_rows(), case["rows"].as_u64().unwrap());
+        assert_eq!(u64::from(layout.variables()), case["nu"].as_u64().unwrap());
+        let model_tiles = case["model_tiles"].as_u64().unwrap() as usize;
+        let base = ModelAdviceLayout::new(&lowering, &selection, &claims).unwrap();
+        for tile in 0..model_tiles {
+            assert_eq!(mapped.tiles()[tile], base.tiles()[tile]);
+            assert_eq!(mapped.sources(tile), base.sources(tile));
+            for &source in mapped.sources(tile).unwrap() {
+                let a = mapped.location(tile, source).unwrap();
+                let b = base.location(tile, source).unwrap();
+                assert_eq!(
+                    (a.first_row(), a.row_count(), a.vars(), a.nonzero()),
+                    (b.first_row(), b.row_count(), b.vars(), b.nonzero())
+                );
+            }
+        }
+        let tail = case["tail"].as_array().unwrap();
+        assert_eq!(mapped.tiles().len(), model_tiles + tail.len());
+        for (tile, expected) in (model_tiles..mapped.tiles().len()).zip(tail) {
+            let key = match mapped.tiles()[tile].tile {
+                Tile::Table { table } => json!(["table", table]),
+                Tile::GreedyMaximum { gadget } => json!(["greedy.maximum", gadget]),
+                other => panic!("unexpected runtime tail {other:?}"),
+            };
+            assert_eq!(key, expected["key"]);
+            assert_eq!(
+                u64::from(layout.tiles()[tile].segment),
+                expected["segment"].as_u64().unwrap()
+            );
+            let [source] = mapped.sources(tile).unwrap() else {
+                panic!("one tail source")
+            };
+            let place = mapped.location(tile, *source).unwrap();
+            let value = &expected["values"][0];
+            assert_eq!(identity(*source), value[0]);
+            assert_eq!(place.first_row(), value[3].as_u64().unwrap());
+            assert_eq!(place.row_count(), value[4].as_u64().unwrap());
+            assert_eq!(
+                place.nonzero().iter().map(|r| r.end - r.start).sum::<u64>(),
+                value[5].as_u64().unwrap()
+            );
+            let perm = value[2]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_u64().unwrap() as usize)
+                .collect::<Vec<_>>();
+            assert_eq!(place.vars() as usize, perm.len());
+            let natural = point(perm.len());
+            let mut image = perm.iter().map(|&i| natural[i]).collect::<Vec<_>>();
+            for bit in perm.len() as u32..layout.variables() {
+                let fixed = bit >= layout.params().log2_k
+                    && place.first_row() >> (bit - layout.params().log2_k) & 1 == 1;
+                image.push(if fixed { Fp2::ONE } else { Fp2::ZERO });
+            }
+            let actual = mapped
+                .claim(*source, &natural)
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            assert_eq!(actual.len(), 1);
+            assert_eq!(
+                (
+                    actual[0].tile,
+                    actual[0].source,
+                    actual[0].weight,
+                    &actual[0].point
+                ),
+                (tile, *source, Fp2::ONE, &image)
+            );
+        }
+        assert_eq!(
+            json!(
+                layout
+                    .segments()
+                    .iter()
+                    .map(|s| [s.rows.start, s.rows.end])
+                    .collect::<Vec<_>>()
+            ),
+            case["segment_rows"]
+        );
+        assert_eq!(tessera_codec::encode(&claims), original);
+    }
+    assert_eq!(appended, 8);
+}
+
+#[test]
+fn runtime_refuses_request_identity_catalog_and_physical_width_faults() {
+    use tessera_compiler::{CompileError, RuntimePlan};
+    let models = models();
+    let public = PublicModel::of(&models["tiny-2-servable.d"]);
+    let lowering = lower(public, 5).unwrap();
+    let policy = GadgetPolicy::default();
+    let selection = selected(&lowering, &policy);
+    let claims = claims(public, &selection, &policy, 10, 3);
+    let request = CompileError::Usage {
+        rule: "the greedy request names a positive prompt within the model sequence",
+    };
+    for prompt in [0, 6, u32::MAX] {
+        assert_eq!(
+            RuntimePlan::derive(&lowering, &selection, &claims, prompt, 0).unwrap_err(),
+            request
+        );
+    }
+    assert_eq!(
+        RuntimePlan::derive(&lowering, &selection, &claims, 1, u32::MAX).unwrap_err(),
+        request
+    );
+    assert!(
+        RuntimePlan::derive(&lowering, &selection, &claims, 5, u32::MAX)
+            .unwrap()
+            .certificate()
+            .is_none()
+    );
+    let mut bad = lowering.clone();
+    bad.logits = tessera_ir::TensorId(u32::MAX);
+    assert_eq!(
+        RuntimePlan::derive(&bad, &selection, &claims, 1, 0).unwrap_err(),
+        request
+    );
+    let mut bad = selection.clone();
+    bad.tables.pop();
+    assert_eq!(
+        RuntimePlan::derive(&lowering, &bad, &claims, 1, 0).unwrap_err(),
+        CompileError::Usage {
+            rule: "runtime selection preserves the model's canonical table catalog",
+        }
+    );
+    let runtime = RuntimePlan::derive(&lowering, &selection, &claims, 1, 0).unwrap();
+    let c = runtime.certificate().unwrap();
+    let mut capped = claims.clone();
+    capped.gadget_policy.max_log2_rows = c.range_bits - 1;
+    assert_eq!(
+        RuntimePlan::derive(&lowering, &selection, &capped, 1, 0).unwrap_err(),
+        CompileError::Model {
+            rule: "the greedy physical Range width fits GadgetPolicy.max_log2_rows",
+        }
+    );
+    capped.gadget_policy.max_log2_rows = c.range_bits;
+    assert_eq!(
+        RuntimePlan::derive(&lowering, &selection, &capped, 1, 0)
+            .unwrap()
+            .certificate(),
+        Some(c)
+    );
+    let layout = ModelAdviceLayout::runtime(&lowering, &runtime, &claims).unwrap();
+    let source = AdviceSource::GreedyMaximum(c.gadget);
+    assert!(matches!(
+        layout.claim::<Fp2>(source, &[]),
+        Err(CompileError::Usage {
+            rule: "the advice claim point has its source's natural variable count",
+        })
+    ));
+    assert!(matches!(
+        layout.claim::<Fp2>(
+            AdviceSource::GreedyMaximum(tessera_ir::GadgetId(u32::MAX)),
+            &[]
+        ),
+        Err(CompileError::Usage {
+            rule: "the advice claim names a committed tensor or gadget auxiliary"
+        })
+    ));
+}
+
+#[test]
+fn runtime_derives_the_widest_allowed_range_and_refuses_the_public_logit_bound() {
+    use tessera_compiler::{CompileError, RuntimePlan};
+    let models = models();
+    let base = &models["tiny-2-servable.d"];
+    for dimension in [16_384, 32_768] {
+        let mut arch = base.arch.clone();
+        arch.d_model = dimension;
+        arch.n_heads = dimension / 2;
+        arch.n_kv_heads = 1;
+        arch.d_head = 2;
+        arch.d_ff = 3 * dimension;
+        arch.max_context = 8;
+        let mut quant = base.quant.public.clone();
+        quant.rsqrt_kappa = 0;
+        quant.exp_sigma = 3;
+        quant.residual_bits = 8;
+        quant.residual_exponent = quant
+            .act_exponents
+            .iter()
+            .find(|(p, _)| *p == tessera_ir::QuantPoint::Embed)
+            .unwrap()
+            .1;
+        for (point, shifts) in &mut quant.shift_class_sets {
+            if matches!(
+                point,
+                tessera_ir::QuantPoint::Layer {
+                    site: tessera_ir::Site::Silu,
+                    ..
+                }
+            ) {
+                *shifts = vec![20];
+            }
+        }
+        let public = PublicModel {
+            arch: &arch,
+            profile: base.profile,
+            quant: &quant,
+            silu_in_exponents: &base.quant.silu_in_exponents,
+        };
+        let lowering = lower(public, 2).unwrap();
+        let policy = GadgetPolicy::default();
+        let selected = selected(&lowering, &policy);
+        let claims = claims(public, &selected, &policy, 22, 3);
+        let result = RuntimePlan::derive(&lowering, &selected, &claims, 1, 0);
+        if dimension == 16_384 {
+            let certificate = result.unwrap().certificate().unwrap();
+            assert_eq!(certificate.range_bits, 29);
+            assert_eq!(certificate.logits.lo, -266_338_304);
+            assert_eq!(certificate.logits.hi, 266_338_304);
+        } else {
+            assert_eq!(
+                result.unwrap_err(),
+                CompileError::Model {
+                    rule: "greedy logits have a public interval strictly within the signed 28-bit bound",
+                }
+            );
         }
     }
 }

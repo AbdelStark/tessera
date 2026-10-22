@@ -4,6 +4,7 @@
 
 | Target | Input | It fails when |
 |---|---|---|
+| `protocol` | Packet selector (the eight `TYPES` in `src/protocol.rs`), limit configuration and envelope/payload bytes | A packet decoder panics, reports an input error outside the input, or accepts bytes different from its decoded fields' encoding |
 | `decode` | A type selector byte (`TYPES` in `src/lib.rs`), a limits byte, then a whole input for that type's decoder | a decoder panics; a rejection is a fault of the reader (`ERR-RES-MEMORY`, `ERR-INTERNAL`) or points past the input; an accepted input is not the canonical encoding of its value (INV-TCE-2), or its value is past a limit; a proper prefix of an accepted input is not `ERR-CODEC-TRUNCATED` |
 | `envelope` | A reader configuration byte (expected schema, limits, whether to reseal), a payload type selector, then an envelope | opening or decoding panics; a rejection is a fault of the reader, or points outside the input (the payload, for a payload error); an opened envelope is not, byte for byte, the one a writer of the version found emits for its payload; a decoded payload is not canonical, or is past a limit |
 | `multiproof` | A tree of 2^0 to 2^10 leaves, the indices to open, then a script of changes to the canonical multiproof (`multiproof_case` in `src/proofs.rs`) | `verify_multiproof` panics, or its result is not exactly the oracle's: an accepted proof that is not the canonical multiproof of its leaves under its root, or a rejection by another check than the first that fails |
@@ -18,7 +19,17 @@ The `sumcheck` target's proofs come from the test kit's reference prover (`tv_te
 
 `tests/allocation.rs` measures and caps memory with the `cap` allocator: a hostile length is rejected before any allocation; thirty nested sequences, each declaring as many elements as 16 MiB allow, stay within 4 MiB; and memory too short for honest values is `ERR-RES-MEMORY`, not a fault of the input. `tests/hash_allocation.rs` counts what `tv-hash` allocates: checking multiproofs and inclusion proofs of every shape the scripts build, hashing, chaining columns and replaying a transcript allocate nothing, and `challenge_indices` exactly its indices. `tests/sumcheck_allocation.rs` counts what `tv-core`'s sumcheck checks allocate: a round of a million values, 131,072 rounds past the last, or a million final evaluations make a check allocate no more than the honest proof of the same batch. `tests/logup_allocation.rs` does the same for the LogUp checks, on a leaf stage of the test kit's reference prover: a roots message, a level's evaluations or a values message of a million values allocates no more than the honest message. `tests/opening_allocation.rs` does the same for the opening checks, on the honest openings of `spec/vectors/pcs/`: the evaluation check allocates nothing, whatever the proof holds; the column check allocates the sorted queries, the leaves, one combined row's coefficients and codeword, the NTT's twiddles and the tables of `eq`, all sized by the draws, the layout and the parameters, so that 10,000 extra columns, a column of a million symbols or 65,536 extra siblings allocate no more than the honest answer; and memory too short for the codeword is `ERR-RES-MEMORY`, never a verdict on the proof. `tests/sumcheck_oracle.rs` runs the `sumcheck` target's cases and oracle on seeded inputs, so that `cargo test` covers them without the fuzzer. `tests/weights_oracle.rs` opens each `.twr` artifact of `spec/vectors/weights/` under the `envelope` target's `0x0301` reader and checks that the `WeightCommitmentPublic` echo of its payload is the payload, so that the seeds `seeds.py` draws from those artifacts start the `decode` and `envelope` targets on accepted inputs.
 
-`sumcheck` also reserves the `GDG` prefix for the nine families in `src/gadgets.rs`.
+`tests/runtime_allocation.rs` caps allocations for a request with an appended greedy Range table. Table regeneration and catalog, advice, leaf, split and mixed-native metadata return memory errors under sampled allocation caps; Range/Requant evaluation allocates no heap memory; the measured honest allocation bound remains sufficient. These checks do not establish a complete runtime proof.
+
+`protocol` exercises all eight RFC-0036 packet types as raw payloads and sealed envelopes,
+including nested `NiProof` messages. `seeds.py` includes the independent protocol fixtures;
+`tests/protocol_oracle.rs` replays the target and byte mutations without libFuzzer.
+`tests/protocol_allocation.rs` caps actual decoder/encoder allocations: impossible lengths
+allocate nothing, nested impossible columns reserve only the bounded outer vector, and
+insufficient memory for honest stages is a reader failure (`ERR-RES-MEMORY`).
+These checks establish packet syntax, not proof acceptance.
+
+`sumcheck` also reserves the `GDG` prefix for the ten families in `src/gadgets.rs`.
 Its arithmetic oracles enumerate cube equality/public masks, strict triangular sums,
 integer comparison prefixes and literal root-digit triples. Model affine cases use
 the independent `spec/vectors/gadget-finals/` fixtures, perturb one field or length,
@@ -37,6 +48,7 @@ cargo test                # allocation tests
 python3 seeds.py seeds    # seed corpora from spec/vectors/
 cargo fuzz run decode corpus/decode seeds/decode -- -max_total_time=600
 cargo fuzz run envelope corpus/envelope seeds/envelope -- -max_total_time=600
+cargo fuzz run protocol corpus/protocol seeds/protocol -- -max_total_time=600
 cargo fuzz run multiproof corpus/multiproof seeds/multiproof -- -max_total_time=600
 cargo fuzz run inclusion corpus/inclusion seeds/inclusion -- -max_total_time=600
 cargo fuzz run sumcheck corpus/sumcheck seeds/sumcheck -- -max_total_time=600
@@ -48,4 +60,9 @@ On macOS 26, AddressSanitizer in the pinned nightly deadlocks before the first i
 
 ## In CI
 
-`.github/workflows/fuzz.yml` checks this crate's format and lints and runs its tests, then fuzzes each target of `fuzz_targets/` for 10 minutes under AddressSanitizer, seeded as above, with a limit of 10 seconds per input. It runs on pull requests and pushes to `main` that touch `verifier/Cargo.toml`, `tv-codec`, `tv-core`, `tv-field`, `tv-hash`, `tv-testkit`, this directory, or the codec, hash, RFC 6962, sumcheck and weight commitment vectors, and on demand with a chosen duration. A new target needs only its file in `fuzz_targets/` and its `[[bin]]` entry, of the same name, in `Cargo.toml`; it runs unseeded until `seeds.py` learns its input format.
+`.github/workflows/fuzz.yml` checks this crate's format and lints and runs its tests, then fuzzes each target of `fuzz_targets/` for 10 minutes under AddressSanitizer, seeded as above, with a limit of 10 seconds per input. It is dispatched manually with a chosen duration; automatic nightly scheduling remains #96. A new target needs only its file in `fuzz_targets/` and its `[[bin]]` entry, of the same name, in `Cargo.toml`; it runs unseeded until `seeds.py` learns its input format.
+
+The greedy boundary gadget family (9) uses the independent literal
+`greedy-boundary` fixtures, dense public-coefficient sums and original carry
+endpoints. It predicts malformed target/point/value errors before allocating
+source obligations; arithmetic success remains subject to graph and PCS checks.

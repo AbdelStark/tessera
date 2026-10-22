@@ -38,6 +38,7 @@
 //! | [`weights::check_evaluations`] | weight combined-row shapes and the schedule-derived evaluation claim (RFC-0012, RFC-0049) |
 //! | [`weights::Evaluated::check_columns`] | direct weight-column authentication and both combined rows' consistency, with structural and committed-position indices kept distinct |
 //! | [`claims::ClaimList`] | the claim list's schema, decoded from its sealed envelope and encoded back for `claim_list_digest` (RFC-0007, RFC-0026, RFC-0042) |
+//! | [`protocol`] | independently bounded protocol/1 message and envelope decoding, field-based encoding and public-statement hashing (RFC-0036); syntax only |
 //! | [`params::ParamSet`] | the parameter sets the verifier accepts and the layout each prescribes (RFC-0014, RFC-0026) |
 //! | [`validation::validate`] | claim-list validation, RFC-0007 'Verifier validation' in RFC-0039's order: steps 1 to 7, and RFC-0019 step 2 before them |
 //! | [`advice::Layout`] | complete public advice geometry, source locations, zero rows, segments and weighted whole-claim opening images (RFC-0050) |
@@ -52,16 +53,12 @@
 //! | [`gadgets`] | final checks for requantization, NonNeg, BigIntCompare, OneHot, roots, causal Softmax and Argmax, with canonical source/range obligations (RFC-0009/0050) |
 //! | [`soundness::SoundnessReport::evaluate`] | independent integer-only soundness calculator for every row of RFC-0014's table (RFC-0014, RFC-0049) |
 //!
-//! The masked sumcheck of RFC-0013 (#159), the leaf stage's integration of the trees with
-//! the stages (#130), the
-//! regeneration of the tables and the structured evaluation of `t̃` (#100), and the verifier's
-//! driver and verdicts (#128) build on these; so do the transcript steps that squeeze the
-//! opening's challenges and queries, and the hiding of RFC-0013 (blinding
-//! rows, `u'_g`, `q_g`), which take the claim pool. [`weights`] adds the protocol1 weight
-//! opening components; the full driver still joins them and [`gadgets`] to the schedule,
-//! earlier LogUp/forest claims and canonical openings. No component result is a verdict.
-//! `ConstraintSystemDigest` (#120) builds on the lowering. Validation already derives the
-//! complete lookup catalog and checks the advice layout at `max_context`.
+//! [`driver`] composes one exact-greedy protocol/1 proof unit through all original source
+//! openings and the mandatory runtime budget. [`verify_non_interactive`] judges typed proofs;
+//! [`verify_non_interactive_bytes`] also checks the canonical envelope. [`LiveVerifier`] owns
+//! fresh coin-toss/query entropy and one-shot state. [`Verdict`] distinguishes proof rejection
+//! from inability to judge. Masking, anchors, persistent ledgers, broader batching and full
+//! resource hardening remain their roadmap work. A component result alone is not a verdict.
 //!
 //! # Claim lists
 //!
@@ -562,8 +559,10 @@ pub mod lowering;
 pub mod model_openings;
 pub mod opening;
 pub mod params;
+pub mod protocol;
 mod range_checks;
 pub mod ranges;
+pub mod runtime;
 pub mod schedule;
 pub mod selection;
 pub mod selectors;
@@ -573,3 +572,11 @@ pub mod sumcheck;
 pub mod tree;
 pub mod validation;
 pub mod weights;
+
+pub mod verdict;
+pub use verdict::{AcceptReport, ErrorCode, RejectReason, Verdict, VerifierError};
+pub mod driver;
+pub use driver::{
+    LiveVerifier, ResourceLimits, VerifierConfig, verify_non_interactive,
+    verify_non_interactive_bytes,
+};

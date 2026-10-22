@@ -13,6 +13,9 @@ use tessera_tables::TableError;
 /// Why the engine cannot compute a witness.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WitnessError {
+    /// A recorded output is not its preceding logit row's lowest-index maximum
+    /// (`ERR-WITNESS-EXACT-MISMATCH`). No token, value or mismatch vector is disclosed.
+    ExactMismatch,
     /// The request is malformed, such as a sequence of another length than the lowering's or a
     /// token outside the vocabulary (`ERR-USAGE`).
     Usage {
@@ -64,6 +67,7 @@ impl WitnessError {
     /// The stable error code (04 §3).
     pub fn code(&self) -> ErrorCode {
         match self {
+            Self::ExactMismatch => ErrorCode::WitnessExactMismatch,
             Self::Usage { .. } => ErrorCode::Usage,
             Self::Model { .. } => ErrorCode::QuantArch,
             Self::Table { .. } | Self::Range { .. } | Self::Internal { .. } | Self::Gadget(_) => {
@@ -77,6 +81,9 @@ impl WitnessError {
 impl fmt::Display for WitnessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ExactMismatch => {
+                f.write_str("the recorded outputs do not satisfy exact greedy mode")
+            }
             Self::Usage { rule } => write!(f, "the request breaks a rule: {rule}"),
             Self::Model { rule } => write!(f, "the model does not fit the lowering: {rule}"),
             Self::Internal { rule } => write!(f, "an invariant fails: {rule}"),

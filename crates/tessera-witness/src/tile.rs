@@ -25,10 +25,12 @@ use core::fmt;
 use core::ops::Range;
 
 use tessera_codec::SecretBuf;
-use tessera_compiler::{AuxColumn, Gadget, Selection, SequenceTile, Share, Tile};
+use tessera_compiler::{
+    AuxColumn, Gadget, GreedyCertificate, Selection, SequenceTile, Share, Tile,
+};
 use tessera_field::{Field, Goldilocks, PrimeField};
 use tessera_gadgets::{Affine, Committed, Constraints, Requant, Term};
-use tessera_ir::{CommitmentClass, Node, NodeKind, Op, OpClass, TableId, TensorId};
+use tessera_ir::{CommitmentClass, GadgetId, Node, NodeKind, Op, OpClass, TableId, TensorId};
 use tessera_tables::{Table, TableKind};
 
 mod auxiliary;
@@ -70,6 +72,7 @@ pub struct TileWitness {
     gadget: Vec<(AuxColumn, SecretBuf<i64>)>,
     lookups: Vec<Lookup>,
     multiplicities: Option<MultiplicityColumn>,
+    maximum: Option<(GadgetId, SecretBuf<i64>)>,
 }
 
 /// A lookup's columns: its keys, and the committed tensor of the tile that holds its values.
@@ -94,6 +97,7 @@ impl TileWitness {
             gadget: Vec::new(),
             lookups: Vec::new(),
             multiplicities: None,
+            maximum: None,
         }
     }
 
@@ -101,10 +105,30 @@ impl TileWitness {
     pub(crate) fn tokens(tokens: SecretBuf<i64>) -> Self {
         Self {
             shares: vec![tokens],
-            gadget: Vec::new(),
-            lookups: Vec::new(),
-            multiplicities: None,
+            ..Self::empty()
         }
+    }
+
+    pub(crate) fn greedy(
+        certificate: GreedyCertificate,
+        maximum: SecretBuf<i64>,
+        keys: SecretBuf<u32>,
+    ) -> Self {
+        Self {
+            maximum: Some((certificate.gadget, maximum)),
+            lookups: vec![Lookup {
+                table: certificate.table,
+                keys,
+                values: None,
+            }],
+            ..Self::empty()
+        }
+    }
+
+    /// The distinct runtime certificate's maximum at each real model time, lent under this
+    /// tile's secret borrowing rules. Inactive times are zero; graph shares remain separate.
+    pub fn greedy_maximum(&self) -> Option<(GadgetId, &[i64])> {
+        self.maximum.as_ref().map(|(id, values)| (*id, &values[..]))
     }
 
     /// The table tile's multiplicities, in table-row order, including zero-valued table-tree
@@ -153,7 +177,8 @@ impl TileWitness {
     /// The bytes its buffers hold: the memory the tile takes beside the source that regenerated it.
     pub fn bytes(&self) -> usize {
         let wide = self.shares.iter().map(SecretBuf::capacity).sum::<usize>()
-            + self.gadget.iter().map(|(_, g)| g.capacity()).sum::<usize>();
+            + self.gadget.iter().map(|(_, g)| g.capacity()).sum::<usize>()
+            + self.maximum.as_ref().map_or(0, |(_, m)| m.capacity());
         let keys: usize = self.lookups.iter().map(|l| l.keys.capacity()).sum();
         wide * size_of::<i64>()
             + keys * size_of::<u32>()
@@ -173,6 +198,10 @@ impl fmt::Debug for TileWitness {
         f.debug_struct("TileWitness")
             .field("shares", &shares)
             .field("gadget", &gadget)
+            .field(
+                "maximum",
+                &self.maximum.as_ref().map(|(id, m)| (*id, m.len())),
+            )
             .field(
                 "multiplicities",
                 &self.multiplicities.as_ref().map(MultiplicityColumn::rows),
@@ -227,6 +256,8 @@ impl fmt::Debug for TileLookup<'_> {
 pub(crate) enum Target {
     /// The tokens.
     Tokens,
+    /// A distinct per-request maximum and its virtual range keys.
+    Greedy(GreedyCertificate),
     /// A table's multiplicities: no graph tensor.
     Table(TableId),
     /// The node of this index.
@@ -273,7 +304,7 @@ impl Structure<'_> {
     pub(crate) fn target(
         &self,
         tile: &SequenceTile,
-        read: &[TableId],
+        gadgets: &Gadgets,
     ) -> Result<Target, WitnessError> {
         let graph = self.graph();
         let node_of = |node: u32| {
@@ -359,9 +390,18 @@ impl Structure<'_> {
                     shares,
                 )
             }
+            Tile::GreedyMaximum { gadget } => {
+                no_block()?;
+                let certificate = gadgets.certificate.filter(|c| c.gadget.0 == gadget).ok_or(
+                    WitnessError::Usage {
+                        rule: "greedy certificates require the runtime witness source (draft RFC-0053)",
+                    },
+                )?;
+                (Target::Greedy(certificate), Vec::new())
+            }
             Tile::Table { table } => {
                 no_block()?;
-                if !read.contains(&TableId(table)) {
+                if !gadgets.read.contains(&TableId(table)) {
                     return usage(NOT_READ);
                 }
                 (Target::Table(TableId(table)), Vec::new())
@@ -390,6 +430,7 @@ pub(crate) struct Gadgets {
     auxiliary: Vec<Option<Prepared>>,
     pub(crate) read: Vec<TableId>,
     incomplete: Vec<TableId>,
+    pub(crate) certificate: Option<GreedyCertificate>,
 }
 
 impl Gadgets {
@@ -457,6 +498,7 @@ impl Gadgets {
                 .collect(),
             read,
             incomplete,
+            certificate: None,
         })
     }
 
@@ -695,9 +737,7 @@ impl Gadgets {
         let Rows { scores, e, r } = rows;
         let mut tile = TileWitness {
             shares: vec![e, r],
-            gadget: Vec::new(),
-            lookups: Vec::new(),
-            multiplicities: None,
+            ..TileWitness::empty()
         };
         let held = queries.len().max(1);
         self.prepared(core.softmax)?.softmax_tile(
@@ -816,6 +856,9 @@ impl Gadgets {
         structure: &Structure<'_>,
         table: TableId,
     ) -> Result<u64, WitnessError> {
+        if let Some(c) = self.certificate.filter(|c| c.table == table) {
+            return Ok(1u64 << c.range_bits);
+        }
         if self.incomplete.contains(&table) {
             return usage(
                 "future greedy and sampling multiplicities are outside the current model layout",
@@ -847,7 +890,13 @@ impl Gadgets {
     ) -> Result<u64, WitnessError> {
         let error = WitnessError::MemoryTable { table };
         let graph = structure.graph();
-        let mut total = 1u64;
+        let mut total = 1u64
+            .checked_add(
+                self.certificate
+                    .filter(|c| c.table == table)
+                    .map_or(0, GreedyCertificate::entries),
+            )
+            .ok_or(error)?;
         for node in &graph.nodes {
             let frequency = self.requests[node.id.0 as usize]
                 .iter()

@@ -629,6 +629,7 @@ fn changed(tile: Tile) -> Tile {
             kv_head: kv_head + 1,
         },
         Tile::Table { table } => Tile::Table { table: table + 1 },
+        Tile::GreedyMaximum { gadget } => Tile::GreedyMaximum { gadget: gadget + 1 },
     }
 }
 
@@ -641,6 +642,7 @@ fn edits(tiles: &[Tile]) -> Vec<(String, Vec<Tile>)> {
         Tile::Node { .. } => 1,
         Tile::Attention { .. } => 2,
         Tile::Table { .. } => 3,
+        Tile::GreedyMaximum { .. } => 4,
     };
     let mut places = Vec::new();
     for k in 0..4 {
@@ -690,6 +692,12 @@ fn edits(tiles: &[Tile]) -> Vec<(String, Vec<Tile>)> {
         table: last.max().expect("a table") + 1,
     });
     edits.push(("a table added at the end".to_owned(), other));
+    let mut runtime = tiles.to_vec();
+    runtime.push(Tile::GreedyMaximum { gadget: 0 });
+    edits.push((
+        "a runtime certificate added to a model-only plan".to_owned(),
+        runtime,
+    ));
     edits
 }
 
@@ -991,11 +999,12 @@ fn a_tile_encodes_its_declaration_index_then_its_fields() {
             vec![2, 0, 7, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF],
         ),
         (Tile::Table { table: 0 }, vec![3, 0, 0, 0, 0, 0]),
+        (Tile::GreedyMaximum { gadget: 73 }, vec![4, 0, 73, 0, 0, 0]),
     ] {
         assert_eq!(encode(&tile), bytes, "{tile:?}");
         assert_eq!(decode::<Tile>(&bytes, DecodeLimits::MESSAGE), Ok(tile));
     }
-    let error = decode::<Tile>(&[4, 0, 0, 0, 0, 0], DecodeLimits::MESSAGE).expect_err("tag 4");
+    let error = decode::<Tile>(&[5, 0, 0, 0, 0, 0], DecodeLimits::MESSAGE).expect_err("tag 5");
     assert_eq!(
         (error.code, error.offset),
         (ErrorCode::CodecNoncanonical, 0)

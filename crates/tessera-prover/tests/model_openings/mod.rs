@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Real current-model P1/P4/P5, checked by independent canonical PCS components (DEP-2).
-//! Header, semantic certificates, verdicts and the protocol driver remain separate.
+//! The accepting driver consumes these real messages without sharing producer code.
 use super::*;
 use std::num::{NonZeroU32, NonZeroUsize};
 use tessera_compiler::AdviceSource;
@@ -19,6 +19,16 @@ impl pcs::MaskSource for Masks {
         G::from_u64_reduced(self.0)
     }
 }
+pub static NI_REPLAYS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+pub static LIVE_ACCEPTANCES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+pub struct First {
+    pub round1: tv_core::protocol::Round1,
+    pub seed_nonce: u64,
+    pub live: Option<tv_core::LiveVerifier>,
+    pub replay: Option<Transcript>,
+    pub live_seed: Option<[u8; 32]>,
+}
 pub struct Committed<'a> {
     p: &'a Public,
     advice: &'a ModelAdviceLayout<'a>,
@@ -32,6 +42,7 @@ pub struct Committed<'a> {
     weights: pcs::WeightCommitment,
     statement: protocol::PublicStatement,
     digest: [u8; 32],
+    prompt: Option<u32>,
 }
 fn ascii(s: &str) -> tv_hash::transcript::Ascii<'_> {
     tv_hash::transcript::Ascii::new(s).unwrap()
@@ -58,6 +69,7 @@ fn source(s: va::Source) -> AdviceSource {
     match s {
         va::Source::Tensor(t) => AdviceSource::Tensor(tessera_ir::TensorId(t.0)),
         va::Source::Multiplicity(t) => AdviceSource::Multiplicity(tessera_ir::TableId(t.0)),
+        va::Source::GreedyMaximum(g) => AdviceSource::GreedyMaximum(tessera_ir::GadgetId(g.0)),
         va::Source::Auxiliary(n, a) => {
             use va::{Auxiliary as A, Comparison as C, ComparisonRole as R};
             let role = match a {
@@ -105,6 +117,7 @@ fn rows<Failure: Into<tessera_prover::advice::Error>>(
     .unwrap();
 }
 impl<'a> Committed<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         p: &'a Public,
         model: &'a IntegerModel,
@@ -112,6 +125,7 @@ impl<'a> Committed<'a> {
         source: &'a dyn WitnessSource,
         replay: &'a dyn WitnessSource,
         claims: &'a tv_core::claims::ClaimList,
+        prompt: Option<u32>,
     ) -> Self {
         let channels = p
             .lowering
@@ -191,8 +205,11 @@ impl<'a> Committed<'a> {
                 requests: vec![protocol::RequestRef {
                     request_id: 0,
                     session_id: [130; 16],
-                    prompt_len: p.lowering.graph.tensors[p.lowering.tokens.0 as usize].shape[0],
-                    output_len: 0,
+                    prompt_len: prompt
+                        .unwrap_or(p.lowering.graph.tensors[p.lowering.tokens.0 as usize].shape[0]),
+                    output_len: prompt.map_or(0, |prompt| {
+                        p.lowering.graph.tensors[p.lowering.tokens.0 as usize].shape[0] - prompt
+                    }),
                 }],
             },
             predictor: protocol::PredictorSpec::Exact {
@@ -250,17 +267,63 @@ impl<'a> Committed<'a> {
             weights,
             statement,
             digest,
+            prompt,
         }
     }
-    pub fn start(&self, mode: Mode) -> (Transcript, tv_hash::transcript::Transcript, [Vec<F>; 10]) {
+    fn verifier_config(&self) -> Option<tv_core::VerifierConfig> {
+        let params = tv_core::params::ParamSet::accept(&self.claims.params)?;
+        let weights = tv_codec::decode(
+            &tessera_codec::encode(self.weights.public()),
+            &tv_codec::DecodeLimits::MESSAGE,
+            tv_codec::WeightCommitmentPublic::decode,
+        )
+        .unwrap();
+        Some(tv_core::VerifierConfig {
+            params,
+            limits: Default::default(),
+            accept_bound: tv_core::protocol::FixedBits(0),
+            weights,
+        })
+    }
+    pub fn start(
+        &self,
+        mode: Mode,
+    ) -> (
+        Transcript,
+        tv_hash::transcript::Transcript,
+        [Vec<F>; 10],
+        First,
+    ) {
+        let mut live = if mode == Mode::Live && self.prompt.is_some() {
+            self.verifier_config().map(|cfg| {
+                let context = protocol::Round1 {
+                    protocol_version: tessera_ir::PROTOCOL_VERSION,
+                    session_id: [0; 16],
+                    statement: self.statement.clone(),
+                    advice: self.advice_state.commitment(),
+                };
+                let decoded = tv_codec::decode(
+                    &tessera_codec::encode(&context),
+                    &tv_codec::DecodeLimits::MESSAGE,
+                    tv_core::protocol::Round1::decode,
+                )
+                .unwrap();
+                tv_core::LiveVerifier::new(self.claims.clone(), decoded.statement, cfg)
+            })
+        } else {
+            None
+        };
+        let commit = live.as_mut().map(|v| v.start().unwrap());
+        let session_id = commit.as_ref().map_or([130; 16], |c| c.session_id);
         let context = SessionContext {
             protocol: Ascii::new("tessera-protocol/1").unwrap(),
             mode,
             params: ParamSetId(Ascii::new("test-small/1").unwrap()),
             statement_digest: self.digest,
-            session_id: [130; 16],
+            session_id,
         };
         let mut t = Transcript::new(&context);
+        let mut replay = Transcript::new(&context);
         let mut v = tv_hash::transcript::Transcript::new(&tv_hash::transcript::SessionContext {
             protocol: ascii("tessera-protocol/1"),
             mode: if mode == Mode::Live {
@@ -270,22 +333,53 @@ impl<'a> Committed<'a> {
             },
             params: tv_hash::transcript::ParamSetId(ascii("test-small/1")),
             statement_digest: self.digest,
-            session_id: [130; 16],
+            session_id,
         });
         let round1 = protocol::Round1 {
             protocol_version: tessera_ir::PROTOCOL_VERSION,
-            session_id: [130; 16],
+            session_id,
             statement: self.statement.clone(),
             advice: self.advice_state.commitment(),
         };
+        let wire_round1 = tv_codec::decode(
+            &tessera_codec::encode(&round1),
+            &tv_codec::DecodeLimits::MESSAGE,
+            tv_core::protocol::Round1::decode,
+        )
+        .unwrap();
         t.absorb("round1", &round1);
+        replay.absorb("round1", &round1);
         v.absorb(ascii("round1"), &tessera_codec::encode(&round1));
+        let mut seed_nonce = 0;
+        let mut live_seed = None;
         if mode == Mode::Live {
-            let seed = protocol::coin_toss(&[13; 32], &[17; 32]);
+            let share = if let Some(driver) = live.as_mut() {
+                let reveal = driver
+                    .on_round1(
+                        &wire_round1,
+                        &tv_core::protocol::ProverSeedShare {
+                            session_id,
+                            share: [17; 32],
+                        },
+                    )
+                    .unwrap();
+                assert_eq!(
+                    tessera_hash::hash(tessera_hash::Domain::CoinCommit, &reveal.share),
+                    commit.as_ref().unwrap().commitment
+                );
+                reveal.share
+            } else {
+                [13; 32]
+            };
+            let seed = protocol::coin_toss(&share, &[17; 32]);
+            live_seed = Some(seed);
             t.absorb("seed", &seed);
+            replay.absorb("seed", &seed);
             v.absorb(ascii("seed"), &seed);
         } else {
             let nonce = t.grind("seed-pow", ParamSet::TEST_SMALL.seed_pow as u8);
+            seed_nonce = nonce;
+            assert!(replay.check_grind("seed-pow", ParamSet::TEST_SMALL.seed_pow as u8, nonce));
             v = v
                 .check_grind(
                     ascii("seed-pow"),
@@ -293,7 +387,9 @@ impl<'a> Committed<'a> {
                     nonce,
                 )
                 .unwrap();
-            assert_eq!(t.squeeze("seed"), v.squeeze(ascii("seed")));
+            let seed = t.squeeze("seed");
+            assert_eq!(seed, replay.squeeze("seed"));
+            assert_eq!(seed, v.squeeze(ascii("seed")));
         }
         let mut xi: [Vec<F>; 10] = core::array::from_fn(|_| Vec::new());
         let vl = vw::derive(self.claims, 0).unwrap();
@@ -302,12 +398,28 @@ impl<'a> Committed<'a> {
                 let label = format!("pcs/weights/{m:?}/xi");
                 for _ in 0..vl[i].proximity_vars() {
                     let x = t.challenge(&label);
+                    assert!(
+                        x == replay.challenge(&label),
+                        "initial proximity transcript differs"
+                    );
                     assert_eq!(e(x), v.challenge_fp2(ascii(&label)).unwrap());
                     xi[i].push(x);
                 }
             }
         }
-        (t, v, xi)
+
+        (
+            t,
+            v,
+            xi,
+            First {
+                round1: wire_round1,
+                seed_nonce,
+                live,
+                replay: Some(replay),
+                live_seed,
+            },
+        )
     }
     #[allow(clippy::too_many_arguments)]
     pub fn check(
@@ -318,19 +430,57 @@ impl<'a> Committed<'a> {
         mut v: tv_hash::transcript::Transcript,
         xi: &[Vec<F>; 10],
         mode: Mode,
+        first: First,
+        round2: tv_core::protocol::Round2Response,
     ) {
+        let First {
+            round1,
+            seed_nonce,
+            mut live,
+            live_seed,
+            ..
+        } = first;
+        let mut ni = tv_core::protocol::NiProof {
+            round1,
+            seed_nonce,
+            round2,
+            query_nonce: 0,
+            round3: tv_core::protocol::Round3Response {
+                advice_columns: Vec::new(),
+                advice_proof: tv_core::protocol::MultiProof {
+                    siblings: Vec::new(),
+                },
+                weight_columns: Vec::new(),
+            },
+        };
+
         let selected = tv_core::selection::derive(graph, self.claims.gadget_policy).unwrap();
-        let a = va::Layout::derive(
-            graph,
-            &selected,
-            va::Config::new(
-                &self.claims.arch,
+        let config = va::Config::new(
+            &self.claims.arch,
+            self.claims.gadget_policy,
+            self.claims.layout.advice.log2_k,
+            self.claims.layout.advice.segments,
+        );
+        let tables = selected
+            .tables
+            .iter()
+            .map(|t| tv_tables::Table::generate(t.id, t.kind.clone()).unwrap())
+            .collect::<Vec<_>>();
+        let runtime = self.prompt.map(|prompt| {
+            tv_core::gadgets::runtime::Plan::derive(
+                graph,
                 self.claims.gadget_policy,
-                self.claims.layout.advice.log2_k,
-                self.claims.layout.advice.segments,
-            ),
-            graph.length(),
-        )
+                prompt,
+                0,
+                &tables,
+            )
+            .unwrap()
+        });
+        let a = if let Some(runtime) = &runtime {
+            runtime.advice_layout(config)
+        } else {
+            va::Layout::derive(graph, &selected, config, graph.length())
+        }
         .unwrap();
         let wl = vw::derive(self.claims, 0).unwrap();
         let claims =
@@ -394,14 +544,172 @@ impl<'a> Committed<'a> {
         .unwrap();
         let av = es(&av);
         let bound = binding.prepare(&original, e(gamma), &av).unwrap();
+        if let Some(runtime) = &runtime {
+            let g = tv_core::runtime::Geometry::derive(self.claims, runtime).unwrap();
+            let rounds: Vec<_> = g
+                .levels()
+                .iter()
+                .copied()
+                .chain(g.stages().iter().map(|s| s.sumcheck))
+                .map(|f| tv_core::soundness::RoundGroup {
+                    count: f.rounds as u64,
+                    degree: f.degree as u64,
+                })
+                .collect();
+            let tree_levels: Vec<_> = g.levels().iter().map(|f| f.instances as u64).collect();
+            let report =
+                if let Some(params) = tv_core::params::ParamSet::accept(&self.claims.params) {
+                    let budget = g
+                        .check_budget(
+                            params,
+                            if mode == Mode::Live {
+                                tv_hash::transcript::Mode::Live
+                            } else {
+                                tv_hash::transcript::Mode::NonInteractive
+                            },
+                            &bound,
+                            &claims,
+                            &wl,
+                        )
+                        .unwrap();
+                    budget.report().clone()
+                } else {
+                    tv_core::soundness::SoundnessReport::evaluate(
+                        tv_core::soundness::SoundnessParams::test_small(),
+                        g.statement_sizes(&bound, &claims, &wl).unwrap(),
+                    )
+                    .unwrap()
+                };
+            assert_eq!(report.statement.rounds, rounds);
+            assert_eq!(report.statement.tree_levels, tree_levels);
+            let r = tessera_compiler::RuntimePlan::derive(
+                &self.p.lowering,
+                &self.p.selection,
+                &self.p.claims,
+                self.prompt.unwrap(),
+                0,
+            )
+            .unwrap();
+            let leaf =
+                LeafLayout::runtime(&self.p.lowering, &self.p.layers, &r, &self.p.claims).unwrap();
+            let plan = tessera_prover::native::ModelNativePlan::derive_runtime(
+                &self.p.lowering,
+                &r,
+                &self.p.claims,
+                &leaf,
+            )
+            .unwrap();
+            let stages = &plan.schedule().stages[1..];
+            assert_eq!(
+                report.statement.stages,
+                stages
+                    .iter()
+                    .map(|s| s.instances.len() as u64)
+                    .collect::<Vec<_>>()
+            );
+            let zero_checks: Vec<_> = stages
+                .iter()
+                .flat_map(|s| &s.instances)
+                .filter(|i| {
+                    i.source == tessera_compiler::schedule::Source::ZeroCheck
+                        || matches!(
+                            i.relation,
+                            tessera_compiler::schedule::Relation::Native { zero: true, .. }
+                        )
+                })
+                .map(|i| u64::from(i.vars))
+                .collect();
+            assert_eq!(report.statement.zero_checks, zero_checks);
+            let lookup_sizes: Vec<_> = leaf
+                .instances()
+                .iter()
+                .map(|i| {
+                    let table = r
+                        .selection()
+                        .tables
+                        .iter()
+                        .find(|t| t.id == i.table)
+                        .unwrap();
+                    tv_core::soundness::LookupSize {
+                        lookups: i.entries.next_power_of_two(),
+                        rows: 1u64 << table.log2_rows,
+                    }
+                })
+                .collect();
+            assert_eq!(report.statement.lookups, lookup_sizes);
+            let schedule = tessera_prover::derive_runtime_schedule(
+                &self.p.claims,
+                graph.length(),
+                self.prompt.unwrap(),
+                0,
+            )
+            .unwrap();
+            assert_eq!(
+                report.statement.forests,
+                schedule
+                    .sizes
+                    .trees
+                    .iter()
+                    .filter_map(|t| match *t {
+                        protocol::LeafTree::Forest { trees_log, .. } => Some(u64::from(trees_log)),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                report
+                    .statement
+                    .matrices
+                    .iter()
+                    .map(|m| m.matrix.tag())
+                    .collect::<Vec<_>>(),
+                schedule
+                    .sizes
+                    .opened
+                    .iter()
+                    .map(|m| u16::from(m.matrix))
+                    .collect::<Vec<_>>()
+            );
+            for size in &report.statement.matrices {
+                let matrix = self
+                    .weight_layout
+                    .matrix(pcs::WeightMatrix::ALL[usize::from(size.matrix.tag())]);
+                assert_eq!(
+                    (size.width, size.rows, size.variables),
+                    (
+                        1 << matrix.log2_k(),
+                        matrix.rows(),
+                        u64::from(matrix.log2_k() + matrix.row_vars())
+                    )
+                );
+            }
+            assert_eq!(
+                report.statement.claim_groups.iter().sum::<u64>(),
+                original.len() as u64
+            );
+            assert!(
+                report
+                    .statement
+                    .matrices
+                    .iter()
+                    .any(|m| m.matrix == vw::Matrix::LmHead)
+            );
+            assert_eq!(
+                report.statement.advice_rows,
+                1u64 << a
+                    .nu()
+                    .saturating_sub(u32::from(self.claims.layout.advice.log2_k))
+            );
+        }
         assert_eq!(bound.group_count(), prepared.group_count());
         let ac = checked
             .combined()
             .iter()
             .map(tv_combined)
             .collect::<Vec<_>>();
-        let attacks =
-            graph.length() == 3 && self.claims.arch.n_layers == 2 && mode == Mode::NonInteractive;
+        let attacks = (graph.length() == 3 || self.prompt.is_some())
+            && self.claims.arch.n_layers == 2
+            && mode == Mode::NonInteractive;
         if attacks {
             use tv_core::opening::OpeningError as O;
             for index in 0..original.len() {
@@ -429,6 +737,7 @@ impl<'a> Committed<'a> {
                 Some(O::Evaluation { group: None })
             );
         }
+        ni.round2.advice_combined = ac.clone();
         let advice_evaluated = bound.check_evaluations(&ac).unwrap();
         let advice_wire = checked.combined().iter().map(wire).collect::<Vec<_>>();
         t.absorb("pcs/advice/combined", &advice_wire);
@@ -503,9 +812,39 @@ impl<'a> Committed<'a> {
                 .chain([&combined.proximity])
                 .map(tv_combined)
                 .collect::<Vec<_>>();
+            ni.round2
+                .weight_combined
+                .push(tv_core::protocol::WeightCombinedRows {
+                    matrix: i as u8,
+                    evaluations: combined.evaluations.iter().map(tv_combined).collect(),
+                    proximity: tv_combined(&combined.proximity),
+                });
             wc.push((i, original, rows));
         }
         let vxis: [Vec<E>; 10] = core::array::from_fn(|i| es(&xi[i]));
+        if attacks {
+            for (i, original, rows) in &wc {
+                for index in 0..original.len() {
+                    let mut bad = original.clone();
+                    bad[index].value += E::ONE;
+                    assert_eq!(
+                        vw::check_evaluations(
+                            vw::Opening {
+                                layout: &wl[*i],
+                                root: self.weights.public().roots[*i],
+                                claims: &bad,
+                                xi_point: &vxis[*i],
+                            },
+                            rows
+                        )
+                        .err(),
+                        Some(vw::Error::Evaluation {
+                            matrix: vw::Matrix::ALL[*i]
+                        })
+                    );
+                }
+            }
+        }
         let weights_evaluated = wc
             .iter()
             .map(|(i, original, rows)| {
@@ -525,6 +864,7 @@ impl<'a> Committed<'a> {
         v.absorb(ascii("scoring"), &tessera_codec::encode(&vec![0u64]));
         if mode == Mode::NonInteractive {
             let nonce = t.grind("query-pow", ParamSet::TEST_SMALL.query_pow as u8);
+            ni.query_nonce = nonce;
             v = v
                 .check_grind(
                     ascii("query-pow"),
@@ -533,16 +873,37 @@ impl<'a> Committed<'a> {
                 )
                 .unwrap();
         }
+        let supplied_queries = live
+            .as_mut()
+            .map(|driver| driver.on_round2(&ni.round2).unwrap());
         let query = |t: &mut Transcript,
                      v: &mut tv_hash::transcript::Transcript,
                      label: &str,
                      bits: u32,
                      count: u32| {
             if mode == Mode::Live {
-                // Supplied verifier-query fixture; the production Live RNG belongs to the driver.
-                (0..count)
-                    .map(|i| u64::from(i * 7 + 3) & ((1u64 << bits) - 1))
-                    .collect::<Vec<_>>()
+                if let Some(q) = &supplied_queries {
+                    let values = if label == "pcs/advice/queries" {
+                        &q.advice
+                    } else {
+                        &q.weights
+                            .iter()
+                            .find(|p| {
+                                format!(
+                                    "pcs/weights/{:?}/queries",
+                                    pcs::WeightMatrix::ALL[usize::from(p.matrix)]
+                                ) == label
+                            })
+                            .unwrap()
+                            .indices
+                    };
+                    assert_eq!(values.len(), count as usize);
+                    values.iter().copied().map(u64::from).collect()
+                } else {
+                    (0..count)
+                        .map(|i| u64::from(i * 7 + 3) & ((1u64 << bits) - 1))
+                        .collect()
+                }
             } else {
                 let q = t.challenge_indices(label, bits, count);
                 assert_eq!(q, v.challenge_indices(ascii(label), bits, count).unwrap());
@@ -642,6 +1003,8 @@ impl<'a> Committed<'a> {
                 Err(O::Proximity { column: first })
             );
         }
+        ni.round3.advice_columns = columns.clone();
+        ni.round3.advice_proof.siblings = answer.proof.siblings.clone();
         advice_evaluated
             .check_columns(&aq, &columns, &answer.proof.siblings)
             .unwrap();
@@ -706,9 +1069,193 @@ impl<'a> Committed<'a> {
                     })
                 );
             }
+            ni.round3
+                .weight_columns
+                .push(tv_core::protocol::MatrixColumns {
+                    matrix: *i as u8,
+                    columns: columns.clone(),
+                    proof: tv_core::protocol::MultiProof {
+                        siblings: answer.proof.siblings.clone(),
+                    },
+                });
             evaluated
                 .check_columns(queries, &columns, &answer.proof.siblings)
                 .unwrap();
+        }
+        if let Some(driver) = live.as_mut() {
+            let result = driver.on_round3(&ni.round3);
+            assert!(
+                matches!(result, tv_core::Verdict::Accept(_)),
+                "actual Live session: {result:?}"
+            );
+            let parsed: serde_json::Value =
+                serde_json::from_str(&result.to_json().unwrap()).unwrap();
+            assert_eq!(parsed["test_parameters"], true);
+            assert_eq!(parsed["anchor_verified"], false);
+            if graph.length() == 5
+                && self.prompt == Some(4)
+                && self.p.claims.arch.d_model == 2
+                && let Some(folder) = std::env::var_os("TESSERA_CAPTURE_DRIVER_FIXTURE")
+            {
+                let folder = PathBuf::from(folder);
+                fs::create_dir(&folder).unwrap();
+                let decoded: protocol::NiProof =
+                    tessera_codec::decode(&ni.to_tce().unwrap(), DecodeLimits::MESSAGE).unwrap();
+                fs::write(
+                    folder.join("live-messages.tnp"),
+                    envelope::seal(&schema::NI_PROOF, &decoded),
+                )
+                .unwrap();
+                fs::write(
+                    folder.join("claims.tcl"),
+                    envelope::seal(&schema::CLAIM_LIST, &self.p.claims),
+                )
+                .unwrap();
+                fs::write(
+                    folder.join("weights.tce"),
+                    tessera_codec::encode(self.weights.public()),
+                )
+                .unwrap();
+                fs::write(folder.join("live-seed.bin"), live_seed.unwrap()).unwrap();
+                fs::write(
+                    folder.join("queries.tce"),
+                    supplied_queries.as_ref().unwrap().to_tce().unwrap(),
+                )
+                .unwrap();
+            }
+            LIVE_ACCEPTANCES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            assert!(matches!(
+                driver.on_round3(&ni.round3),
+                tv_core::Verdict::Inconclusive(tv_core::VerifierError {
+                    code: tv_core::ErrorCode::ProtocolOrder
+                })
+            ));
+        }
+        if self.prompt.is_some()
+            && mode == Mode::NonInteractive
+            && let Some(cfg) = self.verifier_config()
+        {
+            let result =
+                tv_core::verify_non_interactive(self.claims, &ni.round1.statement, &ni, &cfg);
+            assert!(
+                matches!(result, tv_core::Verdict::Accept(_)),
+                "full NI driver: {result:?}"
+            );
+            let json = result.to_json().unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed["verdict"]["status"], "accept");
+            assert_eq!(parsed["test_parameters"], true);
+            assert_eq!(parsed["anchor_verified"], false);
+            assert_eq!(parsed["zero_knowledge"], false);
+            assert_eq!(parsed["checks"].as_array().unwrap().len(), 13);
+            let rejected = |bad: &tv_core::protocol::NiProof, expected: tv_core::RejectReason| {
+                match tv_core::verify_non_interactive(self.claims, &ni.round1.statement, bad, &cfg)
+                {
+                    tv_core::Verdict::Reject(actual) => assert_eq!(actual, expected),
+                    other => panic!("expected {expected:?}, got {other:?}"),
+                }
+            };
+            use tv_core::verdict::{
+                ArtifactKind, CommitmentClass as C, ErrorCode, RejectReason as R,
+            };
+            let mut bad = ni.clone();
+            bad.round2.logup.roots[1] = E::ZERO;
+            let table = runtime.as_ref().unwrap().leaf_schedule().unwrap().lookups()[0].0;
+            rejected(&bad, R::Lookup { table });
+            let mut bad = ni.clone();
+            bad.round2.stages.clear();
+            rejected(
+                &bad,
+                R::Malformed {
+                    artifact: ArtifactKind(0x0520),
+                    code: ErrorCode::CodecNoncanonical,
+                },
+            );
+            let mut bad = ni.clone();
+            bad.round2.stages[0].sumcheck.final_evals[0] += E::ONE;
+            rejected(
+                &bad,
+                R::Sumcheck {
+                    stage: 1,
+                    round: ni.round2.stages[0].sumcheck.rounds.len() as u32,
+                },
+            );
+            let mut bad = ni.clone();
+            bad.round2.advice_combined[0].u[0] += E::ONE;
+            rejected(
+                &bad,
+                R::Evaluation {
+                    commitment: C::Advice,
+                },
+            );
+            let mut bad = ni.clone();
+            bad.round2.weight_combined[0].evaluations[0].u[0] += E::ONE;
+            rejected(
+                &bad,
+                R::Evaluation {
+                    commitment: C::Weight,
+                },
+            );
+            let mut bad = ni.clone();
+            bad.round3.advice_columns[0][0] += V::ONE;
+            rejected(
+                &bad,
+                R::MerklePath {
+                    commitment: C::Advice,
+                    column: *aq.iter().min().unwrap() as u32,
+                },
+            );
+            let mut bad = ni.clone();
+            bad.round3.weight_columns[0].columns[0][0] += V::ONE;
+            rejected(
+                &bad,
+                R::MerklePath {
+                    commitment: C::Weight,
+                    column: *wq[0].1.iter().min().unwrap() as u32,
+                },
+            );
+            if graph.length() == 5 && self.prompt == Some(4) && self.p.claims.arch.d_model == 2 {
+                for _ in 0..100 {
+                    let repeated = tv_core::verify_non_interactive(
+                        self.claims,
+                        &ni.round1.statement,
+                        &ni,
+                        &cfg,
+                    );
+                    assert!(matches!(repeated, tv_core::Verdict::Accept(_)));
+                    assert_eq!(repeated.to_json().unwrap(), json);
+                    NI_REPLAYS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            }
+            let encoded = ni.to_tce().unwrap();
+            let root_proof: protocol::NiProof =
+                tessera_codec::decode(&encoded, DecodeLimits::MESSAGE).unwrap();
+            let envelope = envelope::seal(&schema::NI_PROOF, &root_proof);
+            if graph.length() == 5
+                && self.prompt == Some(4)
+                && self.p.claims.arch.d_model == 2
+                && let Some(folder) = std::env::var_os("TESSERA_CAPTURE_DRIVER_FIXTURE")
+            {
+                let file = fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(PathBuf::from(folder).join("ni.tnp"))
+                    .unwrap();
+                use std::io::Write;
+                let mut file = file;
+                file.write_all(&envelope).unwrap();
+            }
+
+            let result = tv_core::verify_non_interactive_bytes(
+                self.claims,
+                &ni.round1.statement,
+                &envelope,
+                &cfg,
+            );
+            assert!(
+                matches!(result, tv_core::Verdict::Accept(_)),
+                "canonical NI envelope: {result:?}"
+            );
         }
         assert_eq!(
             e(t.challenge("test/after-openings")),

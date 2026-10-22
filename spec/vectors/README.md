@@ -12,6 +12,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | [`encoding/`](encoding/README.md) | The advice commitment's encoding conventions, RFC-0011: its transforms, coset and mask | its oracle |
 | `errors/` | The error codes of 04 §3, with their classes and exit codes | kept by hand; a test keeps it, the specification's table and the error enum equal |
 | [`gadget-finals/`](gadget-finals/README.md) | Gadget final relations and full comparison arrays, including constants beyond Goldilocks (RFC-0009/0050) | independent integer and direct-cube oracle |
+| [`greedy-runtime/`](greedy-runtime/README.md) | Complete per-request catalogs, advice tails, leaf counts and native descriptors (draft RFC-0053) | independent Python public-model/range/advice oracles |
 | `field/` | Goldilocks and its quadratic extension, RFC-0002 | its oracle |
 | `hash/` | Hash domains, Merkle multiproofs and column digests, RFC-0004; `commitment_id` of commitment descriptors, RFC-0031 | its oracle |
 | [`lowering/`](lowering/README.md) | The Llama lowering, RFC-0044: every input, node, constant, shift-class set, weight and table of the conformance models' graphs and of two variants', at several lengths | its oracle, which rebuilds the models with theirs |
@@ -22,6 +23,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | [`poly/`](poly/README.md) | Multilinear extensions and their conventions, RFC-0010 | its oracle |
 | [`protocol/`](protocol/README.md) | The protocol messages of `tessera-protocol/1`, RFC-0036: encodings, envelopes, the coin toss and refused inputs | its oracle |
 | [`rfc6962/`](rfc6962/README.md) | RFC 6962 inclusion proofs, for RFC-0015's logs | copied unmodified from transparency-dev/merkle |
+| [`runtime-budget/`](runtime-budget/README.md) | Shared tree-level parent populations, raw final fields and instance counts (RFC-0010/0014/0053) | independent literal Python oracle |
 | [`schedule/`](schedule/README.md) | The stage schedules of the conformance models, RFC-0010 and RFC-0037: each stage's instances, relations, variable counts and points, the leaf stage's claims and the claim pool | `cargo xtask gen-vectors`, from `tessera-compiler`'s derivation, after the models' oracle |
 | [`sha256/`](sha256/README.md) | NIST's SHA-256 test vectors (CAVP) | copied unmodified from NIST |
 | [`soundness/`](soundness/README.md) | The soundness calculator, RFC-0014: every row's bound, bits, target and decision for the parameter sets at the 405B statement, at statements that miss one target each, and at random sizes | its oracle |

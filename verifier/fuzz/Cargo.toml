@@ -24,6 +24,7 @@ tv-hash = { path = "../crates/tv-hash" }
 tv-testkit = { path = "../crates/tv-testkit" }
 
 [dev-dependencies]
+tv-tables = { path = "../crates/tv-tables" }
 # A global allocator that counts and caps allocations, for tests/allocation.rs and the other
 # tests/*_allocation.rs.
 cap = { version = "0.1.2", features = ["stats"] }
@@ -41,6 +42,13 @@ bench = false
 [[bin]]
 name = "envelope"
 path = "fuzz_targets/envelope.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "protocol"
+path = "fuzz_targets/protocol.rs"
 test = false
 doc = false
 bench = false

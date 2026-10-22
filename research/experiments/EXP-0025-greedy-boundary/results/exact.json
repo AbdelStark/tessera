@@ -1,0 +1,22 @@
+{
+  "evidence": "E0 finite exact arithmetic, not full protocol validation",
+  "preregistration_sha256": "9410afaeebf3ebcb26254c2bd2a27e591dd967257c119206b7247d5265b5ff17",
+  "seed": 1271313924133,
+  "quick": false,
+  "counters": {
+    "domains": 324,
+    "kernel_equalities": 5184,
+    "shift_equalities": 5184,
+    "cube_equalities": 15552,
+    "honest_zero_checks": 2592,
+    "degree_checks": 1704,
+    "native_final_equalities": 15552,
+    "integer_cases": 129885,
+    "boundary_cases": 207
+  },
+  "environment": {
+    "python": "3.15.0 (main, Oct  9 2026, 11:16:41) [Clang 21.0.0 (clang-2100.3.34.2)]",
+    "system": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64"
+  }
+}

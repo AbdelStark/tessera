@@ -2615,6 +2615,30 @@
    }
   },
   {
+   "type": "Round2Response",
+   "hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000010000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000",
+   "code": "ERR-CODEC-LIMIT",
+   "offset": 56,
+   "why": "CombinedRow's struct depth, one level short",
+   "limits": {
+    "max_total_bytes": 8589934592,
+    "max_vec_len": 17179869184,
+    "max_depth": 4
+   }
+  },
+  {
+   "type": "Round2Response",
+   "hex": "0100000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "code": "ERR-CODEC-LIMIT",
+   "offset": 8,
+   "why": "LogUpProof's struct depth, one level short",
+   "limits": {
+    "max_total_bytes": 8589934592,
+    "max_vec_len": 17179869184,
+    "max_depth": 3
+   }
+  },
+  {
    "type": "SeedCommit",
    "hex": "582bcb12d87f24864482ff25cef78930a6935600e1168afa1222f73ae9e6ad2633acb70e150b7c8c0f02dcb445c284c6",
    "code": "ERR-CODEC-LIMIT",
@@ -2719,6 +2743,26 @@
     "max_depth": 8
    },
    "why": "max_depth 8, its deepest value's level"
+  },
+  {
+   "type": "Round2Response",
+   "hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000010000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000",
+   "limits": {
+    "max_total_bytes": 8589934592,
+    "max_vec_len": 17179869184,
+    "max_depth": 5
+   },
+   "why": "CombinedRow's struct depth, exactly at its deepest level"
+  },
+  {
+   "type": "Round2Response",
+   "hex": "0100000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "limits": {
+    "max_total_bytes": 8589934592,
+    "max_vec_len": 17179869184,
+    "max_depth": 4
+   },
+   "why": "LogUpProof's struct depth, exactly at its deepest level"
   },
   {
    "type": "SeedCommit",

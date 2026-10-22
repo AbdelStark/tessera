@@ -880,6 +880,7 @@ dependencies = [
  "tv-field",
  "tv-hash",
  "tv-tables",
+ "zeroize",
 ]
 
 [[package]]

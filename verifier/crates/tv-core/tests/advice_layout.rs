@@ -80,6 +80,7 @@ fn auxiliary(role: Auxiliary) -> (String, u32) {
 fn source(found: Source, expected: &Json) {
     let expected = items(expected);
     match found {
+        Source::GreedyMaximum(_) => panic!("model-only oracle contains a runtime maximum"),
         Source::Tensor(id) => {
             assert_eq!(expected[0].as_str(), Some("tensor"));
             assert_eq!(id.0, number(&expected[1]));
@@ -104,6 +105,7 @@ fn source(found: Source, expected: &Json) {
 fn key(found: TileKey, expected: &Json) {
     let expected = items(expected);
     match found {
+        TileKey::GreedyMaximum(_) => panic!("model-only oracle contains a runtime maximum"),
         TileKey::Tokens => assert_eq!(expected[0].as_str(), Some("tokens")),
         TileKey::Node(id) => {
             assert_eq!(expected[0].as_str(), Some("node"));

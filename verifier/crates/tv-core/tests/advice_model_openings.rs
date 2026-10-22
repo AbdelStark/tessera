@@ -577,6 +577,14 @@ fn canonical_openings_verify_original_values_without_individual_image_values() {
             .unwrap();
         assert_eq!(prepared.group_count(), list(data, "groups").len());
         assert_eq!(
+            prepared.claim_counts().collect::<Vec<_>>(),
+            list(data, "groups")
+                .iter()
+                .map(|g| list(g, "claim_indices").len() as u64)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(prepared.claim_counts().sum::<u64>(), views.len() as u64);
+        assert_eq!(
             check(&prepared, &case.combined, &case),
             Ok(()),
             "{}",

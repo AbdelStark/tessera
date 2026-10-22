@@ -163,7 +163,7 @@ impl Table {
         if regenerated.digest != spec.digest {
             return Err(TableError::Digest);
         }
-        Ok(regenerated.into_table(spec.id, spec.kind.clone()))
+        Ok(regenerated.into_table(spec.id, copy_kind(&spec.kind)?))
     }
 
     /// The regenerated specification: the identifier and kind given, `⌈log2 T⌉` and the digest.
@@ -256,7 +256,7 @@ impl Table {
                 found: rho.len(),
             });
         }
-        let powers = powers_of_two(rho.len());
+        let powers = powers_of_two(rho.len())?;
         let (lt, key) = prefix(rho, self.rows, Fp::ZERO, &powers).ok_or(TableError::Internal)?;
         let first = field(self.value(0).ok_or(TableError::Internal)?);
         let value = self.body.extension(rho)? + (Fp2::ONE - lt) * first;
@@ -497,7 +497,7 @@ impl Body {
                 hi,
             } => Body::Requant(Requant {
                 b: *b,
-                shifts: r_by_class.clone(),
+                shifts: copy_slice(r_by_class)?,
                 lo: *lo,
                 hi: *hi,
             }),
@@ -910,13 +910,14 @@ fn requant_class(low: &[Fp2], b: u8, shift: u8, lo: i32, hi: i32) -> Result<Fp2,
 /// The affine form of `f(x) = ⌊(x − 2^{b−1} + 2^{r−1}) / 2^r⌋` in the `b` bits `x_i` of `x`:
 /// for `r < b`, `f(x) = (x >> r) + x_{r−1} − 2^{b−1−r}` (the rounding reads bit `r − 1`), so
 /// `w_0 = −2^{b−1−r}`, `w_{r−1} = 1` and `w_i = 2^{i−r}` for `i ≥ r`; for `r ≥ b`, `f` is 0.
-fn rounding_form(b: u8, shift: u8) -> Option<(Fp, Vec<Fp>)> {
-    let mut weights = vec![Fp::ZERO; usize::from(b)];
+fn rounding_form(b: u8, shift: u8) -> Option<(Fp, [Fp; 32])> {
+    let mut weights = [Fp::ZERO; 32];
+    let actual = weights.get_mut(..usize::from(b))?;
     if shift >= b {
         return Some((Fp::ZERO, weights));
     }
     let r = usize::from(shift);
-    for (i, weight) in weights.iter_mut().enumerate() {
+    for (i, weight) in actual.iter_mut().enumerate() {
         if let Some(above) = i.checked_sub(r) {
             *weight = Fp::reduce(1u64.checked_shl(u32::try_from(above).ok()?)?);
         } else if i.checked_add(1) == Some(r) {
@@ -969,14 +970,17 @@ impl Body {
     /// `H("table", TCE(id, kind, log2_rows) ‖ TCE(pieces) ‖ TCE(core))`, the pieces a
     /// `Vec<u64>` and the core a `Vec<Fp>` in row order (RFC-0008 'Generators and digests').
     fn digest(&self, id: TableId, kind: &TableKind, log2_rows: u8) -> Result<Digest, TableError> {
-        let mut input = HashInput::new();
+        let mut input = HashInput::new()?;
         let mut head = Vec::new();
+        // RFC-0008's validated kinds have at most four classes: the header is at most 28 bytes.
+        head.try_reserve_exact(28).map_err(|_| TableError::Memory)?;
         encode_head(id, kind, log2_rows, &mut head);
         input.push(&head);
-        let pieces = self.pieces();
-        input.length(pieces.len());
-        for piece in &pieces {
-            input.push(&piece.to_le_bytes());
+        if let Body::Exp(core) = self {
+            input.length(1);
+            input.push(&length(core.len()).to_le_bytes());
+        } else {
+            input.length(0);
         }
         match self {
             Body::Range | Body::Requant(_) => input.length(0),
@@ -1025,18 +1029,29 @@ struct HashInput {
 }
 
 impl HashInput {
-    fn new() -> Self {
-        Self {
+    fn new() -> Result<Self, TableError> {
+        let mut buffer = Vec::new();
+        buffer
+            .try_reserve_exact(HASH_BUFFER)
+            .map_err(|_| TableError::Memory)?;
+        Ok(Self {
             hasher: DomainHasher::new(Domain::Table),
-            buffer: Vec::with_capacity(HASH_BUFFER),
-        }
+            buffer,
+        })
     }
 
-    fn push(&mut self, bytes: &[u8]) {
-        self.buffer.extend_from_slice(bytes);
-        if self.buffer.len() >= HASH_BUFFER {
-            self.hasher.update(&self.buffer);
-            self.buffer.clear();
+    fn push(&mut self, mut bytes: &[u8]) {
+        while !bytes.is_empty() {
+            let take = bytes
+                .len()
+                .min(HASH_BUFFER.saturating_sub(self.buffer.len()));
+            let (chunk, rest) = bytes.split_at(take);
+            self.buffer.extend_from_slice(chunk);
+            bytes = rest;
+            if self.buffer.len() == HASH_BUFFER {
+                self.hasher.update(&self.buffer);
+                self.buffer.clear();
+            }
         }
     }
 
@@ -1064,12 +1079,49 @@ pub(crate) fn field(value: i64) -> Fp {
 }
 
 /// `2^0, 2^1, …, 2^{n−1}` in `Fp`: the weights of `j = Σ_i 2^i·j_i`.
-fn powers_of_two(n: usize) -> Vec<Fp> {
-    let mut powers = Vec::with_capacity(n);
+fn powers_of_two(n: usize) -> Result<[Fp; 32], TableError> {
+    let mut powers = [Fp::ZERO; 32];
     let mut power = Fp::ONE;
-    for _ in 0..n {
-        powers.push(power);
+    for slot in powers.get_mut(..n).ok_or(TableError::Internal)? {
+        *slot = power;
         power += power;
     }
-    powers
+    Ok(powers)
+}
+
+fn copy_slice<T: Copy>(source: &[T]) -> Result<Vec<T>, TableError> {
+    let mut out = Vec::new();
+    out.try_reserve_exact(source.len())
+        .map_err(|_| TableError::Memory)?;
+    out.extend_from_slice(source);
+    Ok(out)
+}
+
+fn copy_kind(kind: &TableKind) -> Result<TableKind, TableError> {
+    Ok(match kind {
+        TableKind::Requant {
+            b,
+            r_by_class,
+            lo,
+            hi,
+        } => TableKind::Requant {
+            b: *b,
+            r_by_class: copy_slice(r_by_class)?,
+            lo: *lo,
+            hi: *hi,
+        },
+        TableKind::Silu {
+            b,
+            r_by_class,
+            in_exp,
+            out_exp,
+        } => TableKind::Silu {
+            b: *b,
+            r_by_class: copy_slice(r_by_class)?,
+            in_exp: *in_exp,
+            out_exp: *out_exp,
+        },
+        // These are the only two kinds with heap-owned fields (RFC-0008).
+        other => other.clone(),
+    })
 }

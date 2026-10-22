@@ -494,6 +494,38 @@ pub fn derive_composed_schedule(
             None if node == lm => definition.outputs.first(),
             None => None,
         };
+        if matches!(definition.op, Op::OneHot { .. }) && input == Some(0) {
+            let token = definition.inputs[0];
+            let h = definition.outputs[0];
+            let total = blocks(&graph.tensors[h.0 as usize].shape).iter().sum();
+            let time = blocks(&graph.tensors[token.0 as usize].shape).iter().sum();
+            let vocabulary = total - time;
+            if !native.iter().any(|n| {
+                n.node == node
+                    && n.zero
+                    && n.degree == 2
+                    && n.vars == total
+                    && n.evaluations == 2
+                    && n.outputs
+                        == [
+                            NativeOutput {
+                                tensor: h,
+                                from: 0,
+                                vars: total,
+                            },
+                            NativeOutput {
+                                tensor: token,
+                                from: vocabulary,
+                                vars: time,
+                            },
+                        ]
+            }) {
+                return refuse(
+                    Some(node),
+                    "the deferred OneHot index has its exact native token binding",
+                );
+            }
+        }
         if deferred[..i].contains(&(node, input))
             || layers.position(node).is_some_and(|(l, _)| l != 0)
             || !native
@@ -563,7 +595,7 @@ pub fn derive_composed_schedule(
             node: None,
             rule: "a schedule of at most 65,535 stages",
         })?;
-        let stage = relations::stage(&mut derivation, index, previous, &sites, native)?;
+        let stage = relations::stage(&mut derivation, index, previous, &sites, native, deferred)?;
         if stage.instances.is_empty() {
             break;
         }

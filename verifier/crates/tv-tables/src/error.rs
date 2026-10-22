@@ -159,7 +159,7 @@ pub enum TableError {
         /// The point's coordinates.
         found: usize,
     },
-    /// Memory for a table's dense core could not be reserved.
+    /// Memory for a table's data or digest buffers could not be reserved.
     Memory,
     /// A step that the parameter checks make infallible failed, a bound of RFC-0008
     /// 'Fixed-point generators' among them: a bug of this crate that no input reaches.
@@ -285,7 +285,10 @@ impl fmt::Display for TableError {
                 f,
                 "an evaluation point of {found} coordinates for a table of 2^{expected} rows"
             ),
-            TableError::Memory => write!(f, "memory for a table's core could not be reserved"),
+            TableError::Memory => write!(
+                f,
+                "memory for a table's data or digest buffers could not be reserved"
+            ),
             TableError::Internal => write!(f, "a table generator broke a bound it guarantees"),
         }
     }

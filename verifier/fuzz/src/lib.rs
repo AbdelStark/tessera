@@ -17,6 +17,7 @@ use tv_codec::{Cursor, DecodeError, size};
 
 pub mod gadgets;
 pub mod proofs;
+pub mod protocol;
 pub mod sumcheck;
 
 /// What a decoder learned about the value it decoded.

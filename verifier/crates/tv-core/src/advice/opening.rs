@@ -186,11 +186,13 @@ impl<'a> Commitment<'a> {
                         power: Fp2::ONE,
                         expected: Fp2::ZERO,
                         pieces: Vec::new(),
+                        claims: 0,
                     });
                     index
                 }
             };
             let group = groups.get_mut(index).ok_or(OpeningError::Internal)?;
+            group.claims = group.claims.checked_add(1).ok_or(OpeningError::Internal)?;
             group.power *= gamma;
             group.expected += group.power * claim.value;
             group
@@ -220,6 +222,7 @@ struct Group<'a> {
     power: Fp2,
     expected: Fp2,
     pieces: Vec<WeightedPiece<'a>>,
+    claims: u64,
 }
 
 /// Verifier-derived groups bound to one canonical advice commitment and proximity point.
@@ -234,6 +237,12 @@ impl Opening<'_> {
     /// The derived number of column-point groups; the proof sends this many rows plus proximity.
     pub fn group_count(&self) -> usize {
         self.groups.len()
+    }
+
+    /// Original combinations in each canonical group, including repeated obligations.
+    /// These are Gamma's powers, not image/piece counts (RFC-0014 'Statement sizes').
+    pub fn claim_counts(&self) -> impl ExactSizeIterator<Item = u64> + '_ {
+        self.groups.iter().map(|g| g.claims)
     }
 
     /// Checks combined-row shape and each original combination's batched value (RFC-0019 step 9).

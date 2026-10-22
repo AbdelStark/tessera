@@ -146,7 +146,7 @@ impl Outputs {
 
 // LSB addition by offset, with the higher bit overriding u's comparison with rows.
 // The context guarantees 0<rows<sequence<=2^17 and offset+rows<=sequence.
-fn kernel(target: &[Fp2], point: &[Fp2], offset: u32, rows: u32) -> Option<Fp2> {
+pub(super) fn kernel(target: &[Fp2], point: &[Fp2], offset: u32, rows: u32) -> Option<Fp2> {
     let mut state = [[Fp2::ZERO; 3]; 2];
     *state.get_mut(0)?.get_mut(1)? = Fp2::ONE;
     for (i, &r) in point.iter().enumerate() {

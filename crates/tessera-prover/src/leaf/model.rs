@@ -3,7 +3,9 @@
 //! Current-model lookup sites from the scalar gadgets' canonical constraints.
 use super::{LeafError, LeafLayout, Site, SiteGadget, SiteLookup, gadget_nodes, internal};
 use tessera_compiler::schedule::{LayerMap, NodeRef};
-use tessera_compiler::{AuxColumn, CompareColumn as Array, Gadget, Lowering, Selection};
+use tessera_compiler::{
+    AuxColumn, CompareColumn as Array, Gadget, Lowering, RuntimePlan, Selection,
+};
 use tessera_field::{Field, Goldilocks, PrimeField};
 use tessera_gadgets::{
     Affine, Bracket, Committed, CompareColumn, Lookup, Requant, RsqrtColumn, RsqrtRow, RsqrtTerm,
@@ -28,6 +30,8 @@ pub enum ModelColumn {
     ExpKey,
     /// Softmax's virtual bracket slack, A then B.
     Slack(Slack),
+    /// Exact-greedy comparison key, reduced to original model/certificate sources.
+    GreedyKey,
 }
 
 fn own<T>() -> Result<T, LeafError> {
@@ -304,6 +308,38 @@ impl LeafLayout<ModelColumn> {
         if claims.tables != selection.tables {
             return own();
         }
+        Self::derive_model(lowering, layers, selection, claims, None)
+    }
+
+    /// Complete model sites followed by the request's exact-greedy key (draft RFC-0053).
+    ///
+    /// # Errors
+    /// The same public geometry and scalar constraint errors as [`Self::model`].
+    pub fn runtime(
+        lowering: &Lowering,
+        layers: &LayerMap,
+        runtime: &RuntimePlan,
+        claims: &ClaimList,
+    ) -> Result<Self, LeafError> {
+        if !runtime.selection().tables.starts_with(&claims.tables) {
+            return own();
+        }
+        Self::derive_model(
+            lowering,
+            layers,
+            runtime.selection(),
+            claims,
+            runtime.certificate(),
+        )
+    }
+
+    fn derive_model(
+        lowering: &Lowering,
+        layers: &LayerMap,
+        selection: &Selection,
+        claims: &ClaimList,
+        greedy: Option<tessera_compiler::GreedyCertificate>,
+    ) -> Result<Self, LeafError> {
         let mut sites = Vec::new();
         for site in gadget_nodes(lowering, layers) {
             let nodes: Vec<NodeId> = match site {
@@ -329,6 +365,34 @@ impl LeafLayout<ModelColumn> {
                         )
                     })
                     .collect::<Result<_, LeafError>>()?,
+            });
+        }
+        if let Some(c) = greedy {
+            let node = lowering
+                .graph
+                .nodes
+                .iter()
+                .find(|node| node.outputs.contains(&lowering.logits))
+                .ok_or(LeafError::Internal {
+                    rule: "the runtime key belongs to the actual LM-head node",
+                })?
+                .id;
+            sites.push(Site {
+                node: NodeRef::Node(node),
+                layers: vec![SiteGadget {
+                    lookups: vec![SiteLookup {
+                        lookup: Lookup {
+                            table: c.table,
+                            key: Affine {
+                                constant: Goldilocks::ZERO,
+                                terms: vec![(Goldilocks::ONE, ModelColumn::GreedyKey)],
+                            },
+                            value: None,
+                        },
+                        domain: vec![c.positions - c.prompt, c.vocab],
+                        axes: Vec::new(),
+                    }],
+                }],
             });
         }
         Self::new(layers, sites)

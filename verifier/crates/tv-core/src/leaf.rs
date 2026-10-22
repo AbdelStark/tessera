@@ -55,7 +55,8 @@ pub enum Tree {
 }
 
 impl Tree {
-    fn height(self) -> u32 {
+    /// Height of the fraction tree or of each product tree in the forest.
+    pub fn height(self) -> u32 {
         match self {
             Self::Lookup { height, .. }
             | Self::Table { height, .. }

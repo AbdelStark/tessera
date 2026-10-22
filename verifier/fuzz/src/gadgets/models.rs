@@ -29,7 +29,7 @@ fn fp(v: &Json) -> Fp2 {
 fn fields(v: &Json) -> Vec<Fp2> {
     v.as_array().unwrap().iter().map(fp).collect()
 }
-fn base() -> ClaimList {
+pub(super) fn base() -> ClaimList {
     static BYTES: OnceLock<Vec<u8>> = OnceLock::new();
     let bytes = BYTES.get_or_init(|| {
         let f = read_vectors("claims/claim-lists.json");
@@ -274,7 +274,7 @@ pub(super) fn requant(s: &mut Script<'_>) {
                         .map(|&d| u64::from(d))
                         .collect(),
                     Source::Auxiliary(_, _) => list(expected, "shape").iter().map(num).collect(),
-                    Source::Multiplicity(_) => unreachable!(),
+                    Source::Multiplicity(_) | Source::GreedyMaximum(_) => unreachable!(),
                 };
                 let variables: usize = dims
                     .iter()
