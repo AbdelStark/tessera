@@ -187,6 +187,23 @@ A claim ready for the pool is a combination `Σ_t a_t·P̃_t(r) = v` at one poin
 - **Weights.** A weight type's claim is `W̃_T(r_i ‖ r_o ‖ ρ)` with `eq(ρ, ·)` its layer weights: RFC-0012's one claim per type. Each site that reads channel classes or affine multipliers leaves one claim on `ChannelParams` in the pool, opened together in one pass ([RFC-0052](RFC-0052-channel-params-claims.md)).
 - **INV-SCH-3.** Every claim on a committed tensor reaches the pool.
 
+The complete current-model advice opening orders original combinations before
+assigning the per-group powers of `gamma`: graph pool claims first in pool
+order; fixed non-native leaf claims in actual graph-node order across layers;
+fixed native families in template-site order, then real layer order; remaining
+raw native sources in stage/instance order; finally each multiplicity at its
+own LogUp table-leaf point. Fixed Requant claims take outputs followed by real
+auxiliaries in canonical first-read order. Root claims take the output,
+input-low limbs, root-low bytes and canonical comparison columns. Softmax takes
+the reciprocal at its row point, the Exp row sum at key coordinates all `1/2`
+followed by that row point, the low A then low B slack limbs, then Exp at its
+original full score-leaf point. Virtual top digits are graph reconstructions,
+not extra committed sources. Retain repeated obligations, including Softmax's
+Exp at its native reciprocal-final point. An implementation may split a row
+coefficient among equivalent layout images, but the complete Boolean row
+coefficient of each original claim must agree; neither witness equality nor
+equality of the final batched sum substitutes for that check.
+
 ### Messages and transcript
 
 - **`TreeProof`** ([RFC-0036](RFC-0036-protocol-messages.md#round2response)) is `{ levels, splits }`: the leaf stage's levels, then its split values.

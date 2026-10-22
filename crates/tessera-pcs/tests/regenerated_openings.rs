@@ -255,6 +255,60 @@ fn changed_regeneration_or_mask_stream_is_internal_before_combined_rows_exist() 
 }
 
 #[test]
+fn owned_p1_retains_its_p4_permit_and_rejects_another_commitment() {
+    let layout = layout(2);
+    let indices: Vec<_> = layout.row_layout().unwrap().row_indices().collect();
+    let encoder = RowEncoder::new(8, 1, 3).unwrap();
+    let values = vec![fp(19); indices.len() * 8];
+    let masks = vec![fp(23); indices.len() * 3];
+    let state = {
+        let parts = committed(&layout, params(5), &encoder, &values, &masks);
+        AdviceOpening::new(&parts).unwrap().into_owned()
+    };
+    let xi = vec![Fp2::from(fp(2)); layout.row_vars() as usize];
+    let prepared = state.prepare(&[], Fp2::ONE, &xi).unwrap();
+    let mut source = Replay::new(masks.clone());
+    let mut pass = prepared.begin(&encoder, &mut source).unwrap();
+    for (&row, value) in indices.iter().zip(values.chunks_exact(8)) {
+        pass.push_row(row, value).unwrap();
+    }
+    let (_, permit) = pass.finish().unwrap().into_parts();
+    let mut different = values.clone();
+    different[0] += Fp::ONE;
+    let other_parts = committed(&layout, params(5), &encoder, &different, &masks);
+    let other = AdviceOpening::new(&other_parts).unwrap().into_owned();
+    let mut source = Replay::new(masks.clone());
+    let error = other
+        .begin_columns(&permit, &encoder, &mut source, &[3])
+        .err()
+        .unwrap();
+    assert_eq!(
+        error,
+        AdviceOpeningError::Invalid(PcsError::LayoutData {
+            rule: "P5 uses the P1 whose P4 self-check passed"
+        })
+    );
+    assert_eq!(source.drawn, 0);
+    let mut source = Replay::new(masks.clone());
+    let queries = [3, 1, 3];
+    let mut pass = state
+        .begin_columns(&permit, &encoder, &mut source, &queries)
+        .unwrap();
+    for (&row, value) in indices.iter().zip(values.chunks_exact(8)) {
+        pass.push_row(row, value).unwrap();
+    }
+    let answer = pass.finish().unwrap();
+    let reference = ReferenceCommitment::commit(
+        params(5),
+        layout.row_layout().unwrap(),
+        Secret::new(values),
+        &mut Replay::new(masks),
+    )
+    .unwrap();
+    assert_eq!(answer, reference.answer(&queries).unwrap());
+}
+
+#[test]
 fn shapes_are_checked_before_draws_and_refused_rows_can_be_retried() {
     let layout = layout(8);
     let indices: Vec<_> = layout.row_layout().unwrap().row_indices().collect();

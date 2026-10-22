@@ -32,17 +32,30 @@ Source principles 8–10 (§6): tile everything, recompute instead of storing, a
 ### Backend interface
 
 ```rust
-pub trait ProverBackend {
-    fn witness_pass(&mut self, unit: &ProofUnit, sink: &mut dyn RowSink) -> Result<WitnessSummary, ProverError>;
-    fn weight_fold(&mut self, ty: WeightType, point: &FoldPoint) -> Result<FoldResult, ProverError>;
-    fn tree_levels(&mut self, req: &TreeRequest, tr: &mut Transcript) -> Result<TreeProof, ProverError>;
-    fn stage(&mut self, stage: &Stage, tr: &mut Transcript) -> Result<StageProof, ProverError>;
-    fn opening_pass(&mut self, groups: &OpeningGroups) -> Result<CombinedRows, ProverError>;
-    fn answer_columns(&mut self, q: &ColumnQueries) -> Result<Round3Response, ProverError>;
-}
+// The phase boundary used by the existing RFC-0036 session machine.
+pub use tessera_protocol::ProverEngine as ProverBackend;
 ```
 
-`tessera-prover` drives the protocol and owns the transcript; backends compute. The CPU backend (`rayon` 1.x) is the reference for every kernel.
+Its concrete methods are `commit`, `prover_share`, `prove`, `answer` and
+`discard`, with the messages and query shape specified by RFC-0036. The CPU
+adapter uses this existing state machine instead of implementing another one.
+The earlier six-method sketch described the computation's decomposition; the
+reference implementation composes those existing kernels inside the phase
+adapter rather than publishing placeholder `ProofUnit`, `TreeRequest` or
+`OpeningGroups` types before their planner exists.
+
+`tessera-prover` drives the protocol and owns the transcript; backends compute.
+The CPU adapter runs the exact witness engine, streams canonical rows through
+P1, proves tree levels and mixed graph/native stages, derives its own original
+opening targets, streams P4, and regenerates P5 columns. Public P1 metadata owns
+its layout across network rounds. Successful P4 releases an opaque permit tied
+to that same commitment; P5 cannot consume a permit from another P1. Per-proof
+randomness is a fresh OS seed held on the heap in `Secret`; separately labeled
+BLAKE3 streams produce replayable masks, the prover coin-toss share and the NI
+session id. Every mask coefficient uses rejection sampling. Completion and
+abort clear the witness and private seed/PRG state. The CPU backend (`rayon`
+1.x) is the reference for every kernel. The current driver composes one
+exact-greedy request; proof-unit/pass planning and protocol/2 are separate work.
 
 ### Witness engine
 

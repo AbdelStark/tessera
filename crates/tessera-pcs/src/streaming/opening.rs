@@ -107,7 +107,7 @@ fn zeros<T: Copy + Default>(len: usize) -> Result<SecretBuf<T>> {
 /// Public P1 opening metadata: canonical context and a Merkle tree, never a witness/codeword matrix.
 /// The root-only [`super::merge_segments`] keeps its original zero-heap implementation.
 pub struct AdviceOpening<'layout> {
-    layout: &'layout AdviceLayout,
+    layout: std::borrow::Cow<'layout, AdviceLayout>,
     params: crate::CommitmentParams,
     tree: MerkleTree,
     sample: usize,
@@ -163,11 +163,78 @@ impl<'layout> AdviceOpening<'layout> {
         let tree = MerkleTree::new(leaves)
             .map_err(|_| invalid("the P1 tree has a checked power-of-two length"))?;
         Ok(Self {
-            layout: first.layout,
+            layout: std::borrow::Cow::Borrowed(first.layout),
             params: first.params,
             tree,
             sample,
             leaf,
+        })
+    }
+
+    /// Own the public layout so a CPU session can retain P1 across network rounds.
+    /// Secret witness rows and codewords are never copied into this metadata.
+    pub fn into_owned(self) -> AdviceOpening<'static> {
+        AdviceOpening {
+            layout: std::borrow::Cow::Owned(self.layout.into_owned()),
+            params: self.params,
+            tree: self.tree,
+            sample: self.sample,
+            leaf: self.leaf,
+        }
+    }
+
+    /// Start P5 with the opaque permit released by the successful P4 of this same P1.
+    ///
+    /// # Errors
+    /// A permit for another commitment, invalid queries, an encoder mismatch or allocation failure.
+    pub fn begin_columns<'state, 'work>(
+        &'state self,
+        permit: &ColumnPermit,
+        encoder: &'work RowEncoder,
+        masks: &'work mut dyn MaskSource,
+        queries: &[u64],
+    ) -> Result<ColumnPass<'work, 'state, 'layout>> {
+        if permit.commitment != self.commitment() {
+            return Err(invalid("P5 uses the P1 whose P4 self-check passed"));
+        }
+        check_encoder(self, encoder)?;
+        if queries.is_empty() {
+            return Err(PcsError::NoQueries.into());
+        }
+        if let Some(position) = queries
+            .iter()
+            .position(|&q| q >= encoder.codeword_len() as u64)
+        {
+            return Err(PcsError::QueryRange {
+                position,
+                query: queries[position],
+                columns: encoder.codeword_len(),
+            }
+            .into());
+        }
+        let mut distinct = copied(queries)?;
+        distinct.sort_unstable();
+        distinct.dedup();
+        let n = self.layout.rows();
+        let count = usize::try_from(n).map_err(|_| capacity(n, distinct.len()))?;
+        count
+            .checked_mul(distinct.len())
+            .filter(|&len| len <= isize::MAX as usize / size_of::<Fp>())
+            .ok_or_else(|| capacity(n, distinct.len()))?;
+        let mut columns = public_capacity(distinct.len())?;
+        for _ in &distinct {
+            columns.push(
+                SecretBuf::try_with_capacity(count).map_err(|_| capacity(n, distinct.len()))?,
+            );
+        }
+        Ok(ColumnPass {
+            state: self,
+            encoder,
+            masks,
+            cursor: Cursor::new(&self.layout),
+            codeword: zeros(encoder.codeword_len())?,
+            distinct,
+            columns,
         })
     }
 
@@ -358,7 +425,7 @@ pub struct OpeningPass<'groups, 'work, 'state, 'layout> {
     groups: &'groups OpeningGroups<'state, 'layout>,
     encoder: &'work RowEncoder,
     masks: &'work mut dyn MaskSource,
-    cursor: Cursor<'layout>,
+    cursor: Cursor<'state>,
     values: SecretBuf<Fp>,
     mask_values: SecretBuf<Fp>,
     codeword: SecretBuf<Fp>,
@@ -414,7 +481,7 @@ impl<'g, 'w, 's, 'l> OpeningPass<'g, 'w, 's, 'l> {
             groups,
             encoder,
             masks,
-            cursor: Cursor::new(state.layout),
+            cursor: Cursor::new(&state.layout),
             values: zeros(value_size)?,
             mask_values: zeros(mask_size)?,
             codeword: zeros(encoder.codeword_len())?,
@@ -603,6 +670,12 @@ fn sample_weights(encoder: &RowEncoder, column: usize) -> Result<(Vec<Fp>, Fp, F
     Ok((weights, x, vanishing))
 }
 
+/// Opaque P4 completion marker, bound to its P1 commitment for a later session phase.
+#[must_use = "answer only the late queries of this completed opening"]
+pub struct ColumnPermit {
+    commitment: AdviceCommitment,
+}
+
 /// Combined rows released only after P4's self-check, bound to their P1 tree.
 #[must_use = "absorb the combined rows before drawing column queries, then answer those queries"]
 pub struct CheckedOpening<'state, 'layout> {
@@ -613,6 +686,16 @@ impl<'s, 'l> CheckedOpening<'s, 'l> {
     /// The checked combined-row message, in group order followed by proximity.
     pub fn combined(&self) -> &[CombinedRow] {
         &self.combined
+    }
+
+    /// Release the checked rows and an owned P5 permit without cloning secret or public matrices.
+    pub fn into_parts(self) -> (Vec<CombinedRow>, ColumnPermit) {
+        (
+            self.combined,
+            ColumnPermit {
+                commitment: self.state.commitment(),
+            },
+        )
     }
 
     /// Starts P5 after the driver has absorbed the combined rows and drawn queries.
@@ -626,45 +709,14 @@ impl<'s, 'l> CheckedOpening<'s, 'l> {
         masks: &'work mut dyn MaskSource,
         queries: &[u64],
     ) -> Result<ColumnPass<'work, 's, 'l>> {
-        check_encoder(self.state, encoder)?;
-        if queries.is_empty() {
-            return Err(PcsError::NoQueries.into());
-        }
-        if let Some(position) = queries
-            .iter()
-            .position(|&q| q >= encoder.codeword_len() as u64)
-        {
-            return Err(PcsError::QueryRange {
-                position,
-                query: queries[position],
-                columns: encoder.codeword_len(),
-            }
-            .into());
-        }
-        let mut distinct = copied(queries)?;
-        distinct.sort_unstable();
-        distinct.dedup();
-        let n = self.state.layout.rows();
-        let count = usize::try_from(n).map_err(|_| capacity(n, distinct.len()))?;
-        count
-            .checked_mul(distinct.len())
-            .filter(|&len| len <= isize::MAX as usize / size_of::<Fp>())
-            .ok_or_else(|| capacity(n, distinct.len()))?;
-        let mut columns = public_capacity(distinct.len())?;
-        for _ in &distinct {
-            columns.push(
-                SecretBuf::try_with_capacity(count).map_err(|_| capacity(n, distinct.len()))?,
-            );
-        }
-        Ok(ColumnPass {
-            state: self.state,
+        self.state.begin_columns(
+            &ColumnPermit {
+                commitment: self.state.commitment(),
+            },
             encoder,
             masks,
-            cursor: Cursor::new(self.state.layout),
-            codeword: zeros(encoder.codeword_len())?,
-            distinct,
-            columns,
-        })
+            queries,
+        )
     }
 }
 
@@ -674,7 +726,7 @@ pub struct ColumnPass<'work, 'state, 'layout> {
     state: &'state AdviceOpening<'layout>,
     encoder: &'work RowEncoder,
     masks: &'work mut dyn MaskSource,
-    cursor: Cursor<'layout>,
+    cursor: Cursor<'state>,
     codeword: SecretBuf<Fp>,
     distinct: Vec<u64>,
     columns: Vec<SecretBuf<Fp>>,

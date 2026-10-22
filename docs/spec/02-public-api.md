@@ -116,6 +116,28 @@ impl<'a> Prover<'a> {
 
 `Prover` is a state machine: `start → on_seed → on_queries` in live mode, in the session order of [RFC-0014](../rfcs/RFC-0014-interaction-and-soundness.md#session-order-live-mode) and the states of [RFC-0036](../rfcs/RFC-0036-protocol-messages.md#the-provers-live-session). Calling a method out of order returns `ProverError::Protocol(OutOfOrder)` and leaves the state unchanged. `prove_non_interactive` runs all three internally. In `tessera-protocol/2`, each method that yields a message returns at that message's release time, on the schedule of [RFC-0018 'Release schedule'](../rfcs/RFC-0018-gpu-prover-runtime.md#release-schedule), so that no caller can send it early. `WeightCommitmentState` is borrowed mutably because every proof consumes hiding budget ([RFC-0012](../rfcs/RFC-0012-weight-commitment.md#budget-state-machine)).
 
+The current protocol/1 CPU implementation exposes these types from
+`tessera_prover`. `ProofBatch` holds one expected `PublicStatement` and
+`Secret<Vec<u32>>` containing its prompt and recorded continuation. P1 borrows
+the tokens to compute the clearing witness; later rounds need no borrow of the
+caller's batch, which can then be dropped. The driver checks the full named parameter bundle, execution plan,
+actual model commitment and epoch; unsupported GPU targets, predictors and
+multi-request units fail explicitly. `MemoryBudget { host: u64 }` supplies a
+conservative allowance for this resident reference backend, excluding the
+caller's model; weight and runtime estimates are checked before P1. This is not
+the tile/pass planner of RFC-0018. `ReleaseConfig` is a unit type for immediate
+protocol/1 release; protocol/2 scheduling and hiding are not implemented here.
+Only `MaskRng::OsRng` is available in production; `Seeded(u64)` requires
+`test-rng` and cannot compile in a release build.
+
+`Prover` reuses `tessera_protocol::ProverSession` for live transitions. A second
+reveal after a successful seed response returns `Reuse`, as RFC-0036 requires.
+`abort()` ends an unfinished session. Completion, abort, or a backend failure
+discards per-proof witness and randomness; retry with a new prover and fresh
+seed. Protocol/1 leaves the weight state's hiding budget unchanged. Actual tiny
+model acceptance is tested with `test-small/1`, which certifies nothing; it
+does not establish production-preset performance or zero knowledge.
+
 ### 3.2 Verifier
 
 ```rust

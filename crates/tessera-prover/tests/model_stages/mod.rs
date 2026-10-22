@@ -422,6 +422,7 @@ pub fn prove_stages(
             requests: vec![tv_core::protocol::FixedBits(0)],
         },
     };
+    let cpu_openings = committed.openings(layout, proof, native_plan, prover, witness);
     committed.check(
         graph,
         accepted,
@@ -431,6 +432,7 @@ pub fn prove_stages(
         mode,
         first,
         round2,
+        cpu_openings,
     );
 }
 fn tensor_value(values: &[i64], shape: &[u32], point: &[E]) -> E {
