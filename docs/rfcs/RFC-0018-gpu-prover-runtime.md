@@ -4,11 +4,11 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2 (CPU witness engine), v0.3 (CPU prover), v0.5 (GPU prover), v1.0 (405B)
-- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Kernels': constant subtrees in closed form; 'Testing Strategy'); [RFC-0054](RFC-0054-token-groups.md) ('Pass structure': P2, 'Leaf levels', 'Proof units' and 'Fusion' for the leaf stage; Alternative 2; OQ-0018-1; 'Drawbacks'; 'Testing Strategy')
+- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Kernels': constant subtrees in closed form; 'Testing Strategy'); [RFC-0054](RFC-0054-token-groups.md) ('Pass structure': P2, 'Leaf levels', 'Proof units' and 'Fusion' for the leaf stage; Alternative 2; OQ-0018-1; 'Drawbacks'; 'Testing Strategy'); [RFC-0055](RFC-0055-windowed-stages.md) ('Pass structure': P3 and P3b for a reduction stage larger than memory; 'Drawbacks')
 
 ## Summary
 
-The prover has two backends behind one interface: a CPU reference backend, which is also the bit-exact test oracle, and a CUDA backend for H100, H200 and B200 nodes. The witness engine executes `D` exactly: INT8 GEMMs with INT32 accumulation on tensor cores, integer gadget arithmetic on CUDA cores. Field-heavy work (encoding, hashing, sumcheck rounds, fraction trees) runs in custom kernels; folds that are matrix products run as limb-decomposed INT8 GEMMs. Work is partitioned across the GPUs of one node by layer range. Every proof is a fixed sequence of passes over a regenerated witness; this RFC fixes that pass structure, how passes are counted and fused, crash consistency, and the determinism rules. A leaf stage that exceeds memory is proven in token groups ([RFC-0054](RFC-0054-token-groups.md)).
+The prover has two backends behind one interface: a CPU reference backend, which is also the bit-exact test oracle, and a CUDA backend for H100, H200 and B200 nodes. The witness engine executes `D` exactly: INT8 GEMMs with INT32 accumulation on tensor cores, integer gadget arithmetic on CUDA cores. Field-heavy work (encoding, hashing, sumcheck rounds, fraction trees) runs in custom kernels; folds that are matrix products run as limb-decomposed INT8 GEMMs. Work is partitioned across the GPUs of one node by layer range. Every proof is a fixed sequence of passes over a regenerated witness; this RFC fixes that pass structure, how passes are counted and fused, crash consistency, and the determinism rules. A leaf stage that exceeds memory is proven in token groups ([RFC-0054](RFC-0054-token-groups.md)), and a reduction stage that does in windowed rounds ([RFC-0055](RFC-0055-windowed-stages.md)).
 
 ## Motivation
 
@@ -93,13 +93,14 @@ Every proof unit runs these passes, each regenerating the parts of the witness i
 |---|---|---|---|
 | P1 witness and commit | Before `Round1` | Everything; streams rows to the committer; counts multiplicities; writes checkpoints | 1× forward |
 | P2 leaf stage | After the seed | Lookup keys and values and softmax keys: once, group by group when the stage is grouped, and once more for the merge (P2b, [RFC-0054](RFC-0054-token-groups.md#pass-structure)) | 1× forward; 2× when grouped |
-| P3 stage regeneration | Per reduction stage | Folds of the tensors the stage reads; most are elementwise from checkpoints, not GEMMs | ≤ 1× forward in total |
+| P3 stage regeneration | Per reduction stage | Folds of the tensors the stage reads; most are elementwise from checkpoints, not GEMMs. A stage larger than memory accumulates its window's grid instead ([RFC-0055](RFC-0055-windowed-stages.md#the-window)) | ≤ 1× forward in total for the stages that fit; ≤ 1× per windowed stage |
+| P3b window fold | Per windowed reduction stage, after its window's rounds | The stage's windowed tables, bound at the window's challenges ([RFC-0055](RFC-0055-windowed-stages.md#pass-structure)) | ≤ 1× forward per windowed stage |
 | P4 opening | After the last stage | Every committed row, which it combines into the opening's combined rows ('Opening pass') | 1× forward, plus `c_r` per committed element |
 | P5 column answers | After the column queries | Every committed row, whose masked codeword it evaluates at the queried columns, hashing nothing | 1× forward, plus `c_a` per committed element |
 | W weight fold | Once per proof unit | Weights of the unit's layers | 0.24 GPU-s per 405B unit (source §5) |
 | WA weight column answers | After the column queries, beside P5 | Nothing: the queried columns of the epoch's stored codewords ([RFC-0012 'Column answers'](RFC-0012-weight-commitment.md#column-answers)) | None: 0.35 GB of reads per 405B proof at `live-64`, overlapped with P5 |
 
-`n_regen` in the cost model ([08 §1](../spec/08-performance-budget.md#1-cost-model)) counts the forward passes of P1 to P5, five, and the model adds the merge's pass P2b when the leaf stage is grouped. The merge's folds and the table trees' streamed rounds, the combination of P4, the evaluation of P5 and the weight fold are the model's streaming, row-combination, column-answer and weight terms ([RFC-0020](RFC-0020-cost-model.md#executable-cost-model)). WA costs no GPU time, so the model has no term for it. A prover without the store evaluates the weight answers instead, which adds about 1.3 GPU-s per 405B unit to the weight term. The run manifest records every pass and its time.
+`n_regen` in the cost model ([08 §1](../spec/08-performance-budget.md#1-cost-model)) counts the forward passes of P1 to P5, five. The model adds the merge's pass P2b when the leaf stage is grouped, and a fold pass P3b per windowed stage. The merge's folds, the table trees' streamed rounds and the windows' folds, the combination of P4, the evaluation of P5 and the weight fold are the model's streaming, row-combination, column-answer and weight terms ([RFC-0020](RFC-0020-cost-model.md#executable-cost-model)). WA costs no GPU time, so the model has no term for it. A prover without the store evaluates the weight answers instead, which adds about 1.3 GPU-s per 405B unit to the weight term. The run manifest records every pass and its time.
 
 **Leaf levels** ([RFC-0054](RFC-0054-token-groups.md)).
 - **When it fits.** A leaf stage whose lookup trees and product forests fit in the unit's memory budget is proven in memory after one regeneration. Its table trees' levels that do not fit beside them stream: each round recomputes the table leaves from the tables' rows and the stored multiplicities, and regenerates nothing.
@@ -108,7 +109,7 @@ Every proof unit runs these passes, each regenerating the parts of the witness i
 
 **Proof units.** A batch is split into proof units: sets of requests (short context), or for long requests, layer ranges of one request. The leaf stage's memory no longer chooses them: token groups do (RFC-0054). Units of one batch share the seed and the stage structure but have their own advice commitments; boundary residuals of a split request are committed in both adjacent units and linked by an equality claim at a random point, as in the weight linking proof. The planner minimizes total time subject to the proof-size budget, because every unit adds combined rows.
 
-**Fusion.** P2 builds each group's trees bottom-up as it regenerates their leaves; P3 regenerations are fused into P2b or P4 when the stage's point is known before the pass begins. The pass planner's objective is the fewest full-forward equivalents; v0.5 publishes the achieved count per context length.
+**Fusion.** P2 builds each group's trees bottom-up as it regenerates their leaves; P3 regenerations are fused into P2b or P4 when the stage's point is known before the pass begins. A windowed stage's P3 and P3b fuse with neither, since each needs challenges the pass before it fixes (RFC-0055 'Pass structure'). The pass planner's objective is the fewest full-forward equivalents; v0.5 publishes the achieved count per context length.
 
 **Opening pass.** P4 folds every committed element into `u_ξ`, and into the `u_g` of each claim group on its tensor ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 4). That is one product of an `Fp2` coefficient by the element per combined row it enters; every row's `P_A` mask coefficients are combined the same way.
 - **Blocking.** The `G + 1` accumulators hold `k` values of `Fp2` each, 64 MiB at `k = 2^22`: too much to stay on chip. The pass therefore combines rows in blocks of the parameter set's row block `B`. It holds a block's rows as it regenerates them, multiplies them into each accumulator tile in one sweep, and reads and writes each tile once per block. Accumulator traffic is then `32/B` bytes per product, 1 byte at `B = 32`; combining row by row would move 32.
@@ -178,7 +179,7 @@ A release time therefore reveals only the public statement and which of the `L +
 
 ## Drawbacks
 
-- A leaf stage larger than memory pays the merge's regeneration (RISK-10, RFC-0054), which at 405B means a 16K-token batch at every context length. Proof units add combined rows.
+- A leaf stage larger than memory pays the merge's regeneration (RISK-10, RFC-0054), which at 405B means a 16K-token batch at every context length. A reduction stage larger than memory pays its window's fold pass (RFC-0055): two for `minimal`, one for `servable` at 405B and 16K tokens. Proof units add combined rows.
 - Openings alone cost two of the five regenerations: P4 forms the combined rows, and P5 answers the column queries that depend on them.
 - Two backends double the kernel test burden.
 - The pass planner is a new optimization component with its own failure modes.

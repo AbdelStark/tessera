@@ -5,31 +5,56 @@
 //! native work, each input moving the terms it enters and no other; the streaming term is zero
 //! while a batch's leaves fit in memory and steps up one pass per doubling of them beyond it;
 //! the column answers and the row combination price every committed element; each table row
-//! costs what a token's committed lookup costs, once per batch; the corrected projections the
-//! documents quote are the model's; and an input the model cannot price is refused, never turned
-//! into a number.
+//! costs what a token's committed lookup costs, once per batch; a reduction stage larger than
+//! memory takes the fewest window rounds after which its tables fit, front padding counted, and
+//! one fold pass; the corrected projections the documents quote are the model's; and an input
+//! the model cannot price is refused, never turned into a number.
 
 use tessera_bench::{
-    Counts, MemoryModel, ModelError, ModelReport, MuBreakdown, Problem, Scenario,
-    TENSOR_BYTES_PER_LEAF, UnitCosts, detection_probability, leaf_plan, mu, proof_time_s,
-    sampling_rate, shared_streaming_passes,
+    Counts, MemoryModel, ModelError, ModelReport, MuBreakdown, Problem, ReductionStage, Scenario,
+    StageTable, TENSOR_BYTES_PER_LEAF, UnitCosts, detection_probability, leaf_plan, mu,
+    proof_time_s, sampling_rate, shared_streaming_passes, stage_plan,
 };
 
-/// The source's model with the table trees' streamed rounds priced at 7 ps per leaf and the merge
-/// at 3 ps per element (RFC-0054), column answers at 15 ps and the row combination at 2 ps per
-/// committed element, five regenerations, 2 · 10^10 table rows and a score block of 512
-/// (RFC-0034), so that every term is positive: the batch's leaf stage is grouped at every
-/// context, and its table trees stream.
+/// A tables class of a reduction stage.
+fn tables(per_token: bool, log2_entries: u32, count: f64) -> StageTable {
+    StageTable {
+        per_token,
+        windowable: true,
+        log2_entries,
+        count,
+    }
+}
+
+/// A class of a matrix product's tables, which no window folds.
+fn resident(per_token: bool, log2_entries: u32, count: f64) -> StageTable {
+    StageTable {
+        windowable: false,
+        ..tables(per_token, log2_entries, count)
+    }
+}
+
+/// The source's model with the table trees' streamed rounds priced at 7 ps per leaf, the merge
+/// at 3 ps per element (RFC-0054) and a window's fold at 1.5 ps per entry (RFC-0055), column
+/// answers at 15 ps and the row combination at 2 ps per committed element, five regenerations,
+/// 2 · 10^10 table rows, a score block of 512 (RFC-0034) and one reduction stage of two
+/// `2^23`-entry tables per token, 4.4 TB at 16K tokens, so that every term is positive: the
+/// batch's leaf stage is grouped at every context, its table trees stream, and its reduction
+/// stage is windowed.
 fn every_term() -> (Counts, UnitCosts, MemoryModel) {
     let counts = Counts {
         regen_full_equivalents: 5.0,
         table_rows: 2e10,
         score_block: 512.0,
+        reduction_stages: vec![ReductionStage {
+            tables: vec![tables(true, 23, 2.0), tables(false, 21, 4.0)],
+        }],
         ..Counts::SOURCE_405B
     };
     let costs = UnitCosts {
         streaming_pass_ps: 7.0,
         merge_ps: 3.0,
+        window_ps: 1.5,
         column_answer_ps: 15.0,
         row_combination_ps: 2.0,
         ..UnitCosts::SOURCE
@@ -77,7 +102,7 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
     // Each input raised by half, with the terms it must move: linear, attention, weights, regen,
     // streaming, column answers, row combination, tables, in that order.
     type Raise = (&'static str, fn(&mut Counts, &mut UnitCosts), [Move; 8]);
-    let raises: [Raise; 18] = [
+    let raises: [Raise; 20] = [
         (
             "commit_ps",
             |_, u| u.commit_ps *= 1.5,
@@ -111,6 +136,11 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
         (
             "merge_ps",
             |_, u| u.merge_ps *= 1.5,
+            [Same, Same, Same, Same, Up, Same, Same, Same],
+        ),
+        (
+            "window_ps",
+            |_, u| u.window_ps *= 1.5,
             [Same, Same, Same, Same, Up, Same, Same, Same],
         ),
         (
@@ -169,11 +199,17 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
             |c, _| c.table_rows *= 1.5,
             [Same, Same, Same, Same, Up, Same, Same, Up],
         ),
+        // A windowed stage's larger tables: more entries to fold, the same one fold pass.
+        (
+            "reduction stage tables",
+            |c, _| c.reduction_stages[0].tables[0].count *= 1.5,
+            [Same, Same, Same, Same, Up, Same, Same, Same],
+        ),
     ];
     for (name, raise, expected) in raises {
         for context in CONTEXTS {
             let before = mu(&counts, &costs, &memory, context, BATCH).expect("a projection");
-            let (mut c, mut u) = (counts, costs);
+            let (mut c, mut u) = (counts.clone(), costs);
             raise(&mut c, &mut u);
             let after = mu(&c, &u, &memory, context, BATCH).expect("a projection");
             assert_eq!(moves(&before, &after), expected, "{name} at {context}");
@@ -195,8 +231,10 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
 #[test]
 fn the_leaf_plan_doubles_its_groups_per_doubling_of_the_leaves() {
     let (counts, costs, _) = every_term();
+    // The leaf stage alone: no table rows, and no reduction stage to window.
     let no_tables = Counts {
         table_rows: 0.0,
+        reduction_stages: Vec::new(),
         ..counts
     };
     let context = 4096;
@@ -266,7 +304,7 @@ fn the_leaf_plan_doubles_its_groups_per_doubling_of_the_leaves() {
     // memory, while those fit; alone once the stage is grouped.
     let rows = |bytes: f64| Counts {
         table_rows: bytes / 32.0,
-        ..no_tables
+        ..no_tables.clone()
     };
     let free = exact.free_bytes;
     let ungrouped = MemoryModel {
@@ -374,23 +412,182 @@ fn each_table_row_costs_a_committed_lookup_once_per_batch() {
         }
         let none = Counts {
             table_rows: 0.0,
-            ..counts
+            ..counts.clone()
         };
         let m = mu(&none, &costs, &memory, context, BATCH).expect("a projection");
         assert_eq!(m.tables, 0.0);
     }
 }
 
+/// RFC-0055's plan: a reduction stage whose tables fit takes no window; a larger one takes the
+/// fewest rounds `c` after which its tables, each folded by `2^{min(n, c − p)}` with `p` its front
+/// padding, fit, and one fold pass, a regeneration counted when the model counts any, with its
+/// folds at `window_ps` per entry. Per-token tables grow with the batch, padded to a power of two,
+/// and fixed ones do not.
+#[test]
+fn a_stage_takes_the_fewest_window_rounds_after_which_its_tables_fit() {
+    let stage = |classes: Vec<StageTable>| Counts {
+        regen_full_equivalents: 5.0,
+        reduction_stages: vec![ReductionStage { tables: classes }],
+        ..Counts::SOURCE_405B
+    };
+    let memory = |free_bytes: f64| MemoryModel {
+        free_bytes,
+        ..MemoryModel::NODE_405B
+    };
+    let window = |counts: &Counts, free: f64, batch: u32| {
+        stage_plan(counts, &memory(free), batch).map(|p| (p[0].bytes, p[0].window_rounds))
+    };
+    // One table of 2^20 entries per token: 2^34 entries, 2^38 bytes, at 2^14 tokens. Each halving
+    // of the memory adds a round.
+    let one = stage(vec![tables(true, 20, 1.0)]);
+    let bytes = f64::from(2u8).powi(38);
+    for k in 0..=12 {
+        let free = bytes / f64::from(1u32 << k);
+        assert_eq!(
+            window(&one, free, 1 << 14),
+            Ok((bytes, k)),
+            "memory / 2^{k}"
+        );
+    }
+    // A batch is padded to a power of two: 3·2^12 tokens hold what 2^14 do.
+    assert_eq!(window(&one, bytes / 2.0, 3 << 12), Ok((bytes, 1)));
+    // Front padding. Beside it, four tables of 2^18 entries per token are padded by 2: a window
+    // of c rounds folds them by 2^{c − 2} only. Half the memory takes three rounds, not one.
+    let padded = stage(vec![tables(true, 20, 1.0), tables(true, 18, 4.0)]);
+    assert_eq!(window(&padded, bytes, 1 << 14), Ok((2.0 * bytes, 3)));
+    assert_eq!(window(&padded, 2.0 * bytes, 1 << 14), Ok((2.0 * bytes, 0)));
+    // Fixed tables do not grow with the batch.
+    let fixed = stage(vec![tables(false, 34, 1.0)]);
+    for batch in [1u32 << 10, 1 << 14, 1 << 17] {
+        assert_eq!(
+            window(&fixed, bytes / 4.0, batch),
+            Ok((bytes, 2)),
+            "{batch}"
+        );
+    }
+    // A window stops one round short of the stage's last, so that every windowed table keeps a
+    // round in memory (RFC-0013's masked last round): its 33 rounds leave the five tables two
+    // entries each, 160 bytes. Less memory has no plan.
+    assert_eq!(window(&padded, 160.0, 1 << 14), Ok((2.0 * bytes, 33)));
+    let too_small = Err(ModelError::Input {
+        name: "free_bytes",
+        problem: Problem::TooSmall,
+    });
+    assert_eq!(window(&padded, 159.0, 1 << 14), too_small);
+    // A matrix product's tables stay whole: a stage of them alone has no window, and beside
+    // windowed ones they count in full, so the window must fold the others further.
+    let product = stage(vec![resident(true, 20, 1.0)]);
+    assert_eq!(window(&product, bytes, 1 << 14), Ok((bytes, 0)));
+    assert_eq!(window(&product, bytes / 2.0, 1 << 14), too_small);
+    let beside = stage(vec![tables(true, 20, 1.0), resident(false, 30, 1.0)]);
+    let whole = 16.0 * f64::from(2u8).powi(30);
+    assert_eq!(
+        window(&beside, whole + bytes / 4.0, 1 << 14),
+        Ok((bytes + whole, 2))
+    );
+    // Only the windowed tables' entries are folded and priced.
+    let plan = stage_plan(&beside, &memory(whole + bytes / 4.0), 1 << 14).expect("a plan");
+    assert_eq!(plan[0].windowed_entries, f64::from(2u8).powi(34));
+    // A batch beyond 2^31 tokens pads beyond u32 and is refused, never wrapped.
+    assert_eq!(
+        stage_plan(&one, &memory(bytes), (1 << 31) + 1),
+        Err(ModelError::Input {
+            name: "batch_tokens",
+            problem: Problem::TooLarge
+        })
+    );
+    // μ: the fold pass is one more regeneration, and the folds cost window_ps per entry, shared by
+    // the batch's tokens. A stage that fits adds neither.
+    let costs = UnitCosts {
+        window_ps: 2.0,
+        ..UnitCosts::SOURCE
+    };
+    let base = |counts: &Counts, free: f64| {
+        mu(counts, &costs, &memory(free), 1024, 1 << 14).expect("a projection")
+    };
+    let fits = base(&one, bytes);
+    let windowed = base(&one, bytes / 2.0);
+    assert_eq!(windowed.regen - fits.regen, 1.0);
+    let native =
+        (one.native_ops_lin + one.native_ops_att_per_ctx * 1024.0) / costs.native_ops_per_s;
+    let folds = 2e-12 * f64::from(2u8).powi(34) / f64::from(1u32 << 14) / native;
+    assert!(
+        (windowed.streaming - fits.streaming - folds).abs() <= 1e-12 * folds,
+        "the folds: {} against {folds}",
+        windowed.streaming - fits.streaming
+    );
+    // The source's counts count no regeneration, and no fold pass either.
+    let uncounted = Counts {
+        regen_full_equivalents: 0.0,
+        ..one.clone()
+    };
+    assert_eq!(base(&uncounted, bytes / 2.0).regen, 0.0);
+}
+
+/// The reduction stages' tables of `minimal`'s two-class report at `B_max = 32`
+/// (`docs/perf/v0.2/`, RFC-0055): stages 1 to 3, by size, per token or fixed.
+fn minimal_stages() -> Vec<ReductionStage> {
+    vec![
+        ReductionStage {
+            tables: vec![
+                tables(true, 14, 5.0),
+                tables(true, 17, 6.0),
+                tables(true, 21, 7.0),
+                resident(false, 14, 2.0),
+                resident(false, 21, 8.0),
+                resident(false, 23, 2.0),
+            ],
+        },
+        ReductionStage {
+            tables: vec![
+                tables(true, 21, 2.0),
+                tables(true, 23, 2.0),
+                resident(false, 17, 2.0),
+                resident(false, 21, 4.0),
+            ],
+        },
+        ReductionStage {
+            tables: vec![resident(true, 14, 2.0), resident(false, 21, 2.0)],
+        },
+    ]
+}
+
+/// The same for `servable`'s two-class report: stages 1 and 2.
+fn servable_stages() -> Vec<ReductionStage> {
+    vec![
+        ReductionStage {
+            tables: vec![
+                tables(true, 14, 5.0),
+                tables(true, 17, 6.0),
+                tables(true, 21, 9.0),
+                tables(true, 23, 2.0),
+                resident(false, 14, 2.0),
+                resident(false, 21, 10.0),
+                resident(false, 23, 2.0),
+            ],
+        },
+        ReductionStage {
+            tables: vec![
+                resident(true, 14, 2.0),
+                resident(false, 17, 2.0),
+                resident(false, 21, 4.0),
+            ],
+        },
+    ]
+}
+
 /// The corrected 405B projections that 08 §3, SC-2, RISK-9 and RISK-10 quote, each to the digits
 /// quoted. The counts are the source's model with RISK-2's upper bound for `minimal`: 285,696
 /// commitments and 302,080 lookups per layer per token over 126 layers (RFC-0024's wide rescale
-/// and RFC-0022's two steps at classed residual sites), five regenerations (RFC-0018 P1 to P5), and
+/// and RFC-0022's two steps at classed residual sites), five regenerations (RFC-0018 P1 to P5),
 /// the table rows of the two-class report at `B_max = 32` with RFC-0028's balanced split
-/// (`docs/perf/v0.2/`), and RFC-0034's score block of 512. The 16K-token batch's leaf stage is
-/// grouped at every context, so its merge adds a sixth regeneration (RFC-0054). The column answers
-/// are free or priced as committing is, 30 ps per element; the merge's folds are free or priced at
-/// RFC-0054's 2 or 4 ps per element, and the table trees' streamed rounds at 6 or 8 ps per leaf.
-/// A change to the model that moves one fails here until the documents follow.
+/// (`docs/perf/v0.2/`), RFC-0034's score block of 512, and the report's reduction stages. The
+/// 16K-token batch's leaf stage is grouped at every context, so its merge adds a sixth
+/// regeneration (RFC-0054), and its stages 1 and 2 are windowed, a seventh and an eighth
+/// (RFC-0055). The column answers are free or priced as committing is, 30 ps per element; the
+/// merge's folds are free or priced at RFC-0054's 2 or 4 ps per element, the table trees'
+/// streamed rounds at 6 or 8 ps per leaf, and the windows at RFC-0055's 1 or 8 ps per entry. A change to the model that moves one fails here until the documents follow.
 #[test]
 fn the_corrected_projections_are_the_ones_the_documents_quote() {
     let corrected = Counts {
@@ -399,17 +596,22 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         regen_full_equivalents: 5.0,
         table_rows: 6_659_571_712.0,
         score_block: 512.0,
+        reduction_stages: minimal_stages(),
         ..Counts::SOURCE_405B
     };
-    let at = |counts: &Counts, context: u32, column_answer_ps: f64, merge_ps: f64, ps: f64| {
-        let costs = UnitCosts {
-            column_answer_ps,
-            merge_ps,
-            streaming_pass_ps: ps,
-            ..UnitCosts::SOURCE
+    // The column answers', the merge's, the table rounds' and the windows' unit costs.
+    let at =
+        |counts: &Counts, context: u32, [column_answer_ps, merge_ps, ps, window_ps]: [f64; 4]| {
+            let costs = UnitCosts {
+                column_answer_ps,
+                merge_ps,
+                streaming_pass_ps: ps,
+                window_ps,
+                ..UnitCosts::SOURCE
+            };
+            mu(counts, &costs, &MemoryModel::NODE_405B, context, BATCH).expect("a projection")
         };
-        mu(counts, &costs, &MemoryModel::NODE_405B, context, BATCH).expect("a projection")
-    };
+    let free = [0.0; 4];
     let quoted = |what: &str, value: f64, figure: f64, digits: i32| {
         let half = 0.5 * 10f64.powi(-digits);
         assert!(
@@ -420,46 +622,51 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
     let (k1, k4, k16, k128) = (1024, 4096, 16_384, 131_072);
     quoted(
         "source linear term at 1K",
-        at(&Counts::SOURCE_405B, k1, 0.0, 0.0, 0.0).linear,
+        at(&Counts::SOURCE_405B, k1, free).linear,
         2.0,
         1,
     );
     quoted(
         "corrected linear term at 1K",
-        at(&corrected, k1, 0.0, 0.0, 0.0).linear,
+        at(&corrected, k1, free).linear,
         4.4,
         1,
     );
-    let (base1, base16) = (
-        at(&corrected, k1, 0.0, 0.0, 0.0),
-        at(&corrected, k16, 0.0, 0.0, 0.0),
-    );
+    let (base1, base16) = (at(&corrected, k1, free), at(&corrected, k16, free));
     let (mu1, mu16) = (base1.total, base16.total);
-    // RISK-9: five regenerations, and the merge's sixth.
-    assert_eq!((base1.regen, base16.regen), (6.0, 6.0));
-    quoted("μ(1K)", mu1, 11.8, 1);
-    quoted("μ(16K)", mu16, 27.1, 1);
+    // RISK-9: five regenerations, the merge's sixth, and the two windows' folds (RFC-0055).
+    assert_eq!((base1.regen, base16.regen), (8.0, 8.0));
+    let windows = stage_plan(&corrected, &MemoryModel::NODE_405B, BATCH).expect("a plan");
+    let windows: Vec<(f64, u32)> = windows
+        .iter()
+        .map(|w| ((w.bytes / 1e10).round() / 100.0, w.window_rounds))
+        .collect();
+    assert_eq!(windows, [(4.08, 6), (5.5, 6), (0.01, 0)]);
+    quoted("μ(1K)", mu1, 13.8, 1);
+    quoted("μ(4K)", at(&corrected, k4, free).total, 17.0, 1);
+    quoted("μ(16K)", mu16, 29.1, 1);
+    quoted("μ(128K)", at(&corrected, k128, free).total, 98.3, 1);
     // RFC-0034: the diagonal blocks' masked halves, which the layout cannot skip, add 0.21 at 1K
     // and 0.19 at 16K.
     let valid_half = Counts {
         score_block: 0.0,
-        ..corrected
+        ..corrected.clone()
     };
     quoted(
         "diagonal blocks at 1K",
-        mu1 - at(&valid_half, k1, 0.0, 0.0, 0.0).total,
+        mu1 - at(&valid_half, k1, free).total,
         0.21,
         2,
     );
     quoted(
         "diagonal blocks at 16K",
-        mu16 - at(&valid_half, k16, 0.0, 0.0, 0.0).total,
+        mu16 - at(&valid_half, k16, free).total,
         0.19,
         2,
     );
     quoted("1K table term", base1.tables, 0.048, 3);
     quoted("16K table term", base16.tables, 0.044, 3);
-    let per_ps = |context| at(&corrected, context, 1.0, 0.0, 0.0).column_answers;
+    let per_ps = |context| at(&corrected, context, [1.0, 0.0, 0.0, 0.0]).column_answers;
     quoted("1K per ps of c_a", per_ps(k1), 0.070, 3);
     quoted("16K per ps of c_a", per_ps(k16), 0.23, 2);
     // 08 §3: a picosecond of the row combination costs what one of the column answers does,
@@ -473,32 +680,32 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
             mu(&corrected, &costs, &MemoryModel::NODE_405B, context, BATCH).expect("a projection");
         assert_eq!(m.row_combination, per_ps(context), "at {context}");
     }
-    let (full1, full16) = (
-        at(&corrected, k1, 30.0, 0.0, 0.0),
-        at(&corrected, k16, 30.0, 0.0, 0.0),
-    );
+    let at_cc = [30.0, 0.0, 0.0, 0.0];
+    let (full1, full16) = (at(&corrected, k1, at_cc), at(&corrected, k16, at_cc));
     quoted("1K column answers at c_c", full1.column_answers, 2.1, 1);
     quoted("16K column answers at c_c", full16.column_answers, 7.0, 1);
-    quoted("μ(1K) at c_c", full1.total, 13.9, 1);
-    quoted("μ(16K) at c_c", full16.total, 34.1, 1);
-    // SC-2's headroom: ceilings of 12 and 45 over the corrected figures.
-    quoted("1K headroom", 12.0 / mu1, 1.02, 2);
-    quoted("16K headroom", 45.0 / mu16, 1.66, 2);
-    quoted("16K headroom at c_c", 45.0 / full16.total, 1.32, 2);
+    quoted("μ(1K) at c_c", full1.total, 15.9, 1);
+    quoted("μ(16K) at c_c", full16.total, 36.1, 1);
+    // SC-2's ceilings of 12 and 45: the 1K one missed before the column answers, the 16K one's
+    // headroom.
+    quoted("1K excess", 100.0 * (mu1 / 12.0 - 1.0), 15.0, 0);
     quoted(
         "1K excess at c_c",
         100.0 * (full1.total / 12.0 - 1.0),
-        16.0,
+        32.0,
         0,
     );
+    quoted("16K headroom", 45.0 / mu16, 1.55, 2);
+    quoted("16K headroom at c_c", 45.0 / full16.total, 1.25, 2);
     // RISK-10, 08 §3 and SC-2: RFC-0054's plan. The batch takes 256, 512, 1,024 and 8,192 groups
     // and its table trees stream one round. The merge's folds at 2 and 4 ps per element; the
-    // table trees' round at 6 or 8 ps per leaf adds under 0.005.
-    for (context, groups, low, high) in [
-        (k1, 256, 0.16, 0.32),
-        (k4, 512, 0.30, 0.60),
-        (k16, 1024, 0.82, 1.63),
-        (k128, 8192, 3.78, 7.56),
+    // table trees' round at 6 or 8 ps per leaf adds under 0.005. RFC-0055's windows at 1 and 8 ps
+    // per entry.
+    for (context, groups, low, high, (window_low, window_high)) in [
+        (k1, 256, 0.16, 0.32, (0.05, 0.42)),
+        (k4, 512, 0.30, 0.60, (0.05, 0.42)),
+        (k16, 1024, 0.82, 1.63, (0.05, 0.39)),
+        (k128, 8192, 3.78, 7.56, (0.03, 0.26)),
     ] {
         let plan = leaf_plan(&corrected, &MemoryModel::NODE_405B, context, BATCH).expect("a plan");
         assert_eq!(
@@ -508,20 +715,32 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         );
         quoted(
             &format!("merge at 2 ps, {context}"),
-            at(&corrected, context, 0.0, 2.0, 0.0).streaming,
+            at(&corrected, context, [0.0, 2.0, 0.0, 0.0]).streaming,
             low,
             2,
         );
         quoted(
             &format!("merge at 4 ps, {context}"),
-            at(&corrected, context, 0.0, 4.0, 0.0).streaming,
+            at(&corrected, context, [0.0, 4.0, 0.0, 0.0]).streaming,
             high,
             2,
         );
-        let rounds = at(&corrected, context, 0.0, 0.0, 8.0).streaming;
+        let rounds = at(&corrected, context, [0.0, 0.0, 8.0, 0.0]).streaming;
         assert!(
             rounds > 0.0 && rounds < 0.005,
             "table rounds at {context}: {rounds}"
+        );
+        quoted(
+            &format!("windows at 1 ps, {context}"),
+            at(&corrected, context, [0.0, 0.0, 0.0, 1.0]).streaming,
+            window_low,
+            2,
+        );
+        quoted(
+            &format!("windows at 8 ps, {context}"),
+            at(&corrected, context, [0.0, 0.0, 0.0, 8.0]).streaming,
+            window_high,
+            2,
         );
     }
     // RFC-0054 'Motivation': RFC-0018 as written streams 36, 45 and 55 passes, each a
@@ -549,43 +768,41 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
             );
         }
     }
-    // 08 §3 and SC-2: with the merge and the table round at their upper estimates, and c_a = c_c,
-    // 14.2 at 1K, 18% above that ceiling, and 35.7 at 16K, 1.26 times below it.
-    let (all1, all16) = (
-        at(&corrected, k1, 30.0, 4.0, 8.0),
-        at(&corrected, k16, 30.0, 4.0, 8.0),
-    );
-    quoted("μ(1K) at c_c, upper", all1.total, 14.2, 1);
+    // 08 §3 and SC-2: with the merge, the table round and the windows at their upper estimates,
+    // and c_a = c_c, 16.6 at 1K, 39% above that ceiling, and 38.1 at 16K, 1.18 times below it.
+    let upper = [30.0, 4.0, 8.0, 8.0];
+    let (all1, all16) = (at(&corrected, k1, upper), at(&corrected, k16, upper));
+    quoted("μ(1K) at c_c, upper", all1.total, 16.6, 1);
     quoted(
         "1K excess at c_c, upper",
         100.0 * (all1.total / 12.0 - 1.0),
-        18.0,
+        39.0,
         0,
     );
-    quoted("μ(16K) at c_c, upper", all16.total, 35.7, 1);
-    quoted("16K headroom at c_c, upper", 45.0 / all16.total, 1.26, 2);
-    // The upper estimates alone take 1K to 12.1, past its ceiling; at the lower ones the ceiling
-    // holds while c_a stays below about 1 ps. At 16K it holds while c_a stays below about 70 ps.
+    quoted("μ(16K) at c_c, upper", all16.total, 38.1, 1);
+    quoted("16K headroom at c_c, upper", 45.0 / all16.total, 1.18, 2);
+    // The upper estimates alone take 1K to 14.5, the lower ones to 14.0: no c_a meets that
+    // ceiling. At 16K it holds while c_a stays below about 60 ps at the upper estimates.
     quoted(
         "μ(1K), upper",
-        at(&corrected, k1, 0.0, 4.0, 8.0).total,
-        12.1,
+        at(&corrected, k1, [0.0, 4.0, 8.0, 8.0]).total,
+        14.5,
         1,
     );
     quoted(
-        "c_a that meets the 1K ceiling, lower",
-        (12.0 - at(&corrected, k1, 0.0, 2.0, 6.0).total) / per_ps(k1),
-        1.0,
-        0,
+        "μ(1K), lower",
+        at(&corrected, k1, [0.0, 2.0, 6.0, 1.0]).total,
+        14.0,
+        1,
     );
     quoted(
         "c_a that meets the 16K ceiling, upper",
-        (45.0 - at(&corrected, k16, 0.0, 4.0, 8.0).total) / per_ps(k16),
-        70.0,
+        (45.0 - at(&corrected, k16, [0.0, 4.0, 8.0, 8.0]).total) / per_ps(k16),
+        60.0,
         0,
     );
     // 08 §3's sampling rate for 10% overhead at η = 0.3, and daily detection of 100 violations.
-    for (total, rate, detection) in [(mu1, 2.8, 94.0), (full1.total, 2.4, 91.0)] {
+    for (total, rate, detection) in [(mu1, 2.4, 91.0), (full1.total, 2.1, 88.0)] {
         let s = sampling_rate(0.1, total, 0.3).expect("a rate");
         quoted("sampling at 1K", 100.0 * s, rate, 1);
         let d = detection_probability(s, 100).expect("a probability");
@@ -597,7 +814,9 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
 /// 00 §9 RISK-10, 08 §3 and `SPEC.md` quote beside `minimal`'s: 359,424 commitments and lookups per
 /// layer per token under RFC-0006's selection rule, with RFC-0022's two steps at both classed
 /// residual sites, over 126 layers, the two-class report's table rows at `B_max = 32` with the
-/// balanced split, and RFC-0034's score block of 512.
+/// balanced split, RFC-0034's score block of 512, and the report's reduction stages: stage 1 is
+/// windowed, a seventh regeneration. Its window binds eight variables of `a·u`, so its folds are
+/// priced at RFC-0055's 5 or 17 ps per entry.
 #[test]
 fn the_servable_projections_are_the_ones_the_documents_quote() {
     let servable = Counts {
@@ -606,17 +825,20 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
         regen_full_equivalents: 5.0,
         table_rows: 7_693_467_648.0,
         score_block: 512.0,
+        reduction_stages: servable_stages(),
         ..Counts::SOURCE_405B
     };
-    let at = |context: u32, column_answer_ps: f64, merge_ps: f64, ps: f64| {
+    let at = |context: u32, [column_answer_ps, merge_ps, ps, window_ps]: [f64; 4]| {
         let costs = UnitCosts {
             column_answer_ps,
             merge_ps,
             streaming_pass_ps: ps,
+            window_ps,
             ..UnitCosts::SOURCE
         };
         mu(&servable, &costs, &MemoryModel::NODE_405B, context, BATCH).expect("a projection")
     };
+    let free = [0.0; 4];
     let quoted = |what: &str, value: f64, figure: f64, digits: i32| {
         let half = 0.5 * 10f64.powi(-digits);
         assert!(
@@ -625,53 +847,94 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
         );
     };
     let (k1, k16) = (1024, 16_384);
-    quoted("linear term at 1K", at(k1, 0.0, 0.0, 0.0).linear, 5.3, 1);
-    let (mu1, mu16) = (at(k1, 0.0, 0.0, 0.0).total, at(k16, 0.0, 0.0, 0.0).total);
-    quoted("μ(1K)", mu1, 12.7, 1);
-    quoted("μ(16K)", mu16, 28.0, 1);
-    quoted("1K table term", at(k1, 0.0, 0.0, 0.0).tables, 0.055, 3);
-    quoted("16K table term", at(k16, 0.0, 0.0, 0.0).tables, 0.051, 3);
+    quoted("linear term at 1K", at(k1, free).linear, 5.3, 1);
+    let (mu1, mu16) = (at(k1, free).total, at(k16, free).total);
+    assert_eq!(at(k1, free).regen, 7.0);
+    let windows = stage_plan(&servable, &MemoryModel::NODE_405B, BATCH).expect("a plan");
+    let windows: Vec<(f64, u32)> = windows
+        .iter()
+        .map(|w| ((w.bytes / 1e10).round() / 100.0, w.window_rounds))
+        .collect();
+    assert_eq!(windows, [(9.57, 8), (0.01, 0)]);
+    quoted("μ(1K)", mu1, 13.7, 1);
+    quoted("μ(16K)", mu16, 29.0, 1);
+    quoted("1K table term", at(k1, free).tables, 0.055, 3);
+    quoted("16K table term", at(k16, free).tables, 0.051, 3);
     quoted(
         "1K per ps of c_a",
-        at(k1, 1.0, 0.0, 0.0).column_answers,
+        at(k1, [1.0, 0.0, 0.0, 0.0]).column_answers,
         0.084,
         3,
     );
     quoted(
         "16K per ps of c_a",
-        at(k16, 1.0, 0.0, 0.0).column_answers,
+        at(k16, [1.0, 0.0, 0.0, 0.0]).column_answers,
         0.25,
         2,
     );
-    let (full1, full16) = (at(k1, 30.0, 0.0, 0.0), at(k16, 30.0, 0.0, 0.0));
+    let at_cc = [30.0, 0.0, 0.0, 0.0];
+    let (full1, full16) = (at(k1, at_cc), at(k16, at_cc));
     quoted("1K column answers at c_c", full1.column_answers, 2.5, 1);
     quoted("16K column answers at c_c", full16.column_answers, 7.4, 1);
-    quoted("μ(1K) at c_c", full1.total, 15.2, 1);
-    quoted("μ(16K) at c_c", full16.total, 35.4, 1);
-    // SC-2: the 1K ceiling missed by 6% before the column answers, by 27% at c_a = c_c; 16K's
+    quoted("μ(1K) at c_c", full1.total, 16.2, 1);
+    quoted("μ(16K) at c_c", full16.total, 36.4, 1);
+    // SC-2: the 1K ceiling missed by 14% before the column answers, by 35% at c_a = c_c; 16K's
     // headroom.
-    quoted("1K excess", 100.0 * (mu1 / 12.0 - 1.0), 6.0, 0);
+    quoted("1K excess", 100.0 * (mu1 / 12.0 - 1.0), 14.0, 0);
     quoted(
         "1K excess at c_c",
         100.0 * (full1.total / 12.0 - 1.0),
-        27.0,
+        35.0,
         0,
     );
-    quoted("16K headroom", 45.0 / mu16, 1.61, 2);
-    quoted("16K headroom at c_c", 45.0 / full16.total, 1.27, 2);
-    // With the merge and the table round at their upper estimates as well: 15.6 at 1K, 30% above
-    // the ceiling, and 37.0 at 16K, below it; `SPEC.md` rounds them to 15.6 and 37.
-    let (all1, all16) = (at(k1, 30.0, 4.0, 8.0), at(k16, 30.0, 4.0, 8.0));
-    quoted("μ(1K) at c_c, upper", all1.total, 15.6, 1);
+    quoted("16K headroom", 45.0 / mu16, 1.55, 2);
+    quoted("16K headroom at c_c", 45.0 / full16.total, 1.24, 2);
+    // The window at 5 and 17 ps per entry.
+    quoted(
+        "1K windows at 5 ps",
+        at(k1, [0.0, 0.0, 0.0, 5.0]).streaming,
+        0.265,
+        3,
+    );
+    quoted(
+        "1K windows at 17 ps",
+        at(k1, [0.0, 0.0, 0.0, 17.0]).streaming,
+        0.90,
+        2,
+    );
+    quoted(
+        "16K windows at 5 ps",
+        at(k16, [0.0, 0.0, 0.0, 5.0]).streaming,
+        0.25,
+        2,
+    );
+    quoted(
+        "16K windows at 17 ps",
+        at(k16, [0.0, 0.0, 0.0, 17.0]).streaming,
+        0.84,
+        2,
+    );
+    // With the merge, the table round and the window at their upper estimates as well: 17.5 at
+    // 1K, 46% above the ceiling, and 38.9 at 16K, below it, while c_a stays below about 55 ps.
+    let upper = [30.0, 4.0, 8.0, 17.0];
+    let (all1, all16) = (at(k1, upper), at(k16, upper));
+    quoted("μ(1K) at c_c, upper", all1.total, 17.5, 1);
     quoted(
         "1K excess at c_c, upper",
         100.0 * (all1.total / 12.0 - 1.0),
-        30.0,
+        46.0,
         0,
     );
-    quoted("μ(16K) at c_c, upper", all16.total, 37.0, 1);
-    quoted("16K headroom at c_c, upper", 45.0 / all16.total, 1.21, 2);
-    for (total, rate, detection) in [(mu1, 2.6, 93.0), (full1.total, 2.2, 89.0)] {
+    quoted("μ(16K) at c_c, upper", all16.total, 38.9, 1);
+    quoted("16K headroom at c_c, upper", 45.0 / all16.total, 1.16, 2);
+    quoted(
+        "c_a that meets the 16K ceiling, upper",
+        (45.0 - at(k16, [0.0, 4.0, 8.0, 17.0]).total)
+            / at(k16, [1.0, 0.0, 0.0, 0.0]).column_answers,
+        55.0,
+        0,
+    );
+    for (total, rate, detection) in [(mu1, 2.4, 91.0), (full1.total, 2.1, 87.0)] {
         let s = sampling_rate(0.1, total, 0.3).expect("a rate");
         quoted("sampling at 1K", 100.0 * s, rate, 1);
         let d = detection_probability(s, 100).expect("a probability");
@@ -738,8 +1001,15 @@ fn the_report_states_each_input_and_term_under_its_own_name() {
         lookups_per_token: 1.5 * counts.commits_per_token,
         ..counts
     };
-    let report = ModelReport::new(false, counts, costs, memory, Scenario::SOURCE, &CONTEXTS)
-        .expect("a report");
+    let report = ModelReport::new(
+        false,
+        counts.clone(),
+        costs,
+        memory,
+        Scenario::SOURCE,
+        &CONTEXTS,
+    )
+    .expect("a report");
     let json: serde_json::Value =
         serde_json::from_str(&report.to_json().expect("JSON")).expect("JSON");
     // serde_json parses a float to within an ulp or so, not always to the nearest.
@@ -840,7 +1110,7 @@ fn inputs_the_model_cannot_price_are_refused() {
         refused("merge_ps", Problem::Negative)
     );
     let with_counts = |change: fn(&mut Counts), context: u32| {
-        let mut c = counts;
+        let mut c = counts.clone();
         change(&mut c);
         mu(&c, &costs, &memory, context, BATCH).map(|m| m.total)
     };

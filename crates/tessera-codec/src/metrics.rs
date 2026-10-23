@@ -36,8 +36,10 @@ pub enum Pass {
     P2,
     /// A grouped leaf stage's merge pass (RFC-0054).
     P2b,
-    /// One reduction stage's pass.
+    /// One reduction stage's pass: its window's grid when it is windowed (RFC-0055).
     P3,
+    /// A windowed reduction stage's fold pass (RFC-0055).
+    P3b,
     /// The opening pass: the combined rows.
     P4,
     /// The column answers.
@@ -304,6 +306,7 @@ mod tests {
         pass(Pass::P3, Duration::from_millis(500));
         pass(Pass::P3, Duration::from_millis(250));
         pass(Pass::P2b, Duration::from_millis(125));
+        pass(Pass::P3b, Duration::from_millis(125));
         let samples = snapshot();
         let get = |n: &str, l: &[(&str, &str)]| {
             samples
@@ -360,7 +363,11 @@ mod tests {
             get("tessera_passes_total", &[("pass", "p2b")]),
             Some(Value::Counter(1))
         );
-        assert_eq!(samples.len(), 9);
+        assert_eq!(
+            get("tessera_passes_total", &[("pass", "p3b")]),
+            Some(Value::Counter(1))
+        );
+        assert_eq!(samples.len(), 11);
         reset();
         assert!(snapshot().is_empty());
     }

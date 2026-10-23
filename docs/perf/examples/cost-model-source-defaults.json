@@ -5,6 +5,7 @@
       "lookups_per_token": 17289216.0,
       "native_ops_att_per_ctx": 4128768.0,
       "native_ops_lin": 811706777600.0,
+      "reduction_stages": [],
       "regen_full_equivalents": 0.0,
       "score_block": 0.0,
       "scores_per_token_per_ctx": 8064.0,
@@ -32,7 +33,8 @@
       "product_leaf_ps": 12.0,
       "row_combination_ps": 0.0,
       "streaming_pass_ps": 0.0,
-      "weight_pass_gpu_s": 0.24
+      "weight_pass_gpu_s": 0.24,
+      "window_ps": 0.0
     }
   },
   "projections": [
@@ -52,6 +54,7 @@
         "weights": 0.021317338325147216
       },
       "proof_time_s": 0.27969484419839996,
+      "reduction_stages": [],
       "sampling_rate": 0.10482444668092619,
       "table_rounds": 0
     },
@@ -71,6 +74,7 @@
         "weights": 0.02120744950531686
       },
       "proof_time_s": 0.7587332134656,
+      "reduction_stages": [],
       "sampling_rate": 0.07768416029372326,
       "table_rounds": 0
     },
@@ -90,6 +94,7 @@
         "weights": 0.020991035979795694
       },
       "proof_time_s": 2.314840527206399,
+      "reduction_stages": [],
       "sampling_rate": 0.05144996201232491,
       "table_rounds": 0
     },
@@ -109,6 +114,7 @@
         "weights": 0.020571194385914184
       },
       "proof_time_s": 7.819177455513598,
+      "reduction_stages": [],
       "sampling_rate": 0.03108489657879544,
       "table_rounds": 0
     },
@@ -128,6 +134,7 @@
         "weights": 0.01977995677502842
       },
       "proof_time_s": 28.3963405154304,
+      "reduction_stages": [],
       "sampling_rate": 0.017803782759462962,
       "table_rounds": 0
     },
@@ -147,6 +154,7 @@
         "weights": 0.01836703999697306
       },
       "proof_time_s": 107.82462344847357,
+      "reduction_stages": [],
       "sampling_rate": 0.010098872141538266,
       "table_rounds": 0
     },
@@ -166,6 +174,7 @@
         "weights": 0.01607107081431725
       },
       "proof_time_s": 419.7770165673983,
+      "reduction_stages": [],
       "sampling_rate": 0.0059292057346130725,
       "table_rounds": 0
     },
@@ -185,6 +194,7 @@
         "weights": 0.012856756767785797
       },
       "proof_time_s": 1656.0651118166013,
+      "reduction_stages": [],
       "sampling_rate": 0.0037573456693320256,
       "table_rounds": 0
     }

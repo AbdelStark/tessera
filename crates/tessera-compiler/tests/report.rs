@@ -21,12 +21,18 @@
 //! - **Stages.** RFC-0010's: 3 in `servable` and 4 in `minimal`, at any depth (INV-SCH-4). On a
 //!   chain built by hand, each sumcheck relation adds a stage, each claim map none, and a committed
 //!   tensor ends the chain.
+//! - **Stage tables.** RFC-0055's working sets: each reduction stage's tables by size, per token
+//!   or fixed, are the schedule's own at every batch of a power of two, and an upper bound on it
+//!   when the report's sequence is not one.
 
 mod common;
 
+use std::collections::BTreeMap;
+
 use common::{ADVICE, decl, llama, one, virt};
 use tessera_compiler::{
-    CommitmentReport, Gadget, PublicModel, Selection, analyze, lower, report, select, stage_count,
+    CommitmentReport, Gadget, PublicModel, Selection, analyze, derive_schedule, lower, report,
+    select, stage_count,
 };
 use tessera_ir::{
     Broadcast, GadgetPolicy, GraphBuilder, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint,
@@ -38,6 +44,8 @@ type Shape = (u32, u32, u32, u32);
 
 const B8: Shape = (4096, 32, 8, 14_336);
 const B405: Shape = (16_384, 128, 8, 53_248);
+/// A small Llama shape: two heads of 128, as `llama` fixes them.
+const SMALL: Shape = (256, 2, 1, 768);
 
 /// The report of a Llama-shaped model whose public part `quant` edits and whose selection
 /// `selection` edits.
@@ -480,4 +488,94 @@ fn softmax_ranges_count_each_reciprocal_and_bracket_lookup() {
         .collect();
     changed.sort_unstable();
     assert_eq!(changed, [(4, 128), (1 << 16, 256), (1 << 17, 64)]);
+}
+
+/// The reduction stages' tables of a two-layer model of the small shape lowered for `positions`,
+/// from its schedule: per stage, the tables of each size, keyed by `log2` of their entries, one
+/// table per evaluation an instance leaves.
+fn scheduled_tables(profile: Profile, positions: u32) -> Vec<BTreeMap<u32, u64>> {
+    let (d, heads, kv_heads, d_ff) = SMALL;
+    let (arch, quant, silu) = llama(profile, 2, d, heads, kv_heads, d_ff);
+    let model = PublicModel {
+        arch: &arch,
+        profile,
+        quant: &quant,
+        silu_in_exponents: &silu,
+    };
+    let lowering = lower(model, positions).expect("the shape lowers");
+    let schedule = derive_schedule(&lowering).expect("a schedule");
+    schedule
+        .stages
+        .iter()
+        .filter(|s| s.index > 0)
+        .map(|s| {
+            let mut tables = BTreeMap::new();
+            for i in &s.instances {
+                *tables.entry(i.vars).or_default() += i.claims.len() as u64;
+            }
+            tables
+        })
+        .collect()
+}
+
+#[test]
+fn the_stage_tables_are_the_schedules_at_every_batch() {
+    for profile in [Profile::Servable, Profile::Minimal] {
+        let r = report_of(profile, 2, SMALL, 16);
+        assert_eq!(r.stage_tables.len() as u32 + 1, r.stages, "{profile:?}");
+        for (k, stage) in r.stage_tables.iter().enumerate() {
+            assert_eq!(usize::from(stage.stage), k + 1, "{profile:?}");
+        }
+        for bits in [2u32, 5, 8] {
+            let reported: Vec<BTreeMap<u32, u64>> = r
+                .stage_tables
+                .iter()
+                .map(|stage| {
+                    let mut tables = BTreeMap::new();
+                    for class in &stage.tables {
+                        let vars = class.log2_entries + if class.per_token { bits } else { 0 };
+                        *tables.entry(vars).or_default() += class.count;
+                    }
+                    tables
+                })
+                .collect();
+            assert_eq!(
+                reported,
+                scheduled_tables(profile, 1 << bits),
+                "{profile:?} at {} positions",
+                1 << bits
+            );
+            for (stage, scheduled) in r.stage_tables.iter().zip(&reported) {
+                let entries: u64 = scheduled.iter().map(|(&vars, &n)| n << vars).sum();
+                assert_eq!(
+                    entries,
+                    (stage.entries(true) << bits) + stage.entries(false),
+                    "{profile:?}, stage {}: per_token·T + fixed",
+                    stage.stage
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_sequence_not_a_power_of_two_bounds_every_larger_batch() {
+    for profile in [Profile::Servable, Profile::Minimal] {
+        let r = report_of(profile, 2, SMALL, 12);
+        for positions in [12u32, 32] {
+            for (stage, scheduled) in r
+                .stage_tables
+                .iter()
+                .zip(scheduled_tables(profile, positions))
+            {
+                assert!(stage.tables.iter().all(|c| c.per_token), "{profile:?}");
+                let entries: u64 = scheduled.iter().map(|(&vars, &n)| n << vars).sum();
+                assert!(
+                    entries <= stage.entries(true) * u64::from(positions),
+                    "{profile:?}, stage {} at {positions} positions",
+                    stage.stage
+                );
+            }
+        }
+    }
 }

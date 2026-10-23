@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.1
-- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Executable cost model': the score block), [RFC-0054](RFC-0054-token-groups.md#the-executable-model) ('Executable cost model': the leaf stage's plan, the merge and the streaming term)
+- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Executable cost model': the score block), [RFC-0054](RFC-0054-token-groups.md#the-executable-model) ('Executable cost model': the leaf stage's plan, the merge and the streaming term), [RFC-0055](RFC-0055-windowed-stages.md#the-executable-model) ('Executable cost model': the reduction stages' plan, their fold passes and folds; 'Testing Strategy')
 
 ## Summary
 
@@ -37,6 +37,7 @@ pub struct UnitCosts { pub commit_ps: f64, pub lookup_ps: f64, pub product_leaf_
                        pub glue_fraction: f64, pub weight_pass_gpu_s: f64, pub native_ops_per_s: f64,
                        pub streaming_pass_ps: f64,                       // per table leaf per streamed round
                        pub merge_ps: f64,                                // per merged element, RFC-0054
+                       pub window_ps: f64,                               // per windowed table entry, RFC-0055
                        pub column_answer_ps: f64,                        // per committed element, P5
                        pub row_combination_ps: f64 }                     // per committed element, P4
 pub struct Counts {                       // from the compiler's CommitmentReport
@@ -46,13 +47,19 @@ pub struct Counts {                       // from the compiler's CommitmentRepor
     pub regen_full_equivalents: f64,                                 // RISK-9
     pub table_rows: f64,                  // M: table rows per proof, the report's multiplicities
     pub score_block: f64,                 // b: RFC-0034's score block, 0 for the valid half alone
+    pub reduction_stages: Vec<ReductionStage>,  // the report's stage tables, RFC-0055
 }
+pub struct ReductionStage { pub tables: Vec<StageTable> }
+pub struct StageTable { pub per_token: bool, pub log2_entries: u32, pub count: f64 }
 pub struct MemoryModel { pub free_bytes: f64, pub bytes_per_leaf: f64 }  // RISK-10, RFC-0054
 pub struct LeafPlan { pub groups: u32, pub table_rounds: u32 }          // RFC-0054's plan
 pub fn leaf_plan(counts: &Counts, mem: &MemoryModel, context: u32, batch_tokens: u32)
     -> Result<LeafPlan, ModelError>;
 pub fn shared_streaming_passes(counts: &Counts, mem: &MemoryModel, context: u32, batch_tokens: u32)
     -> Result<u32, ModelError>;                                          // RFC-0018 as first written
+pub struct StageWindow { pub bytes: f64, pub window_rounds: u32 }       // RFC-0055's plan
+pub fn stage_plan(counts: &Counts, mem: &MemoryModel, batch_tokens: u32)
+    -> Result<Vec<StageWindow>, ModelError>;
 pub fn mu(counts: &Counts, u: &UnitCosts, mem: &MemoryModel, context: u32, batch_tokens: u32)
     -> Result<MuBreakdown, ModelError>;
 pub struct MuBreakdown { pub linear: f64, pub attention: f64, pub weights: f64, pub regen: f64,
@@ -64,6 +71,7 @@ pub struct MuBreakdown { pub linear: f64, pub attention: f64, pub weights: f64, 
 `μ` follows [08 §1](../spec/08-performance-budget.md#1-cost-model): the source's formula plus `n_regen` and four more terms. A token commits `A·S'` scores, `S' = S + min(S, score_block)`, and looks up and multiplies `A·S` of them ([RFC-0034](RFC-0034-causal-blocks.md#cost)):
 
 - the leaf stage's plan ([RFC-0054](RFC-0054-token-groups.md#when-groups-apply)): its token groups `G` and its table trees' streamed rounds `r_t`, from the batch's `T·(K + 2·A·S)` lookup and forest leaves and `M` table leaves at `bytes_per_leaf` against `free_bytes`. A grouped stage adds its merge's pass to `n_regen` when `n_regen` is positive. Then a streaming term `(p_m · merge_ps · (K + 2·A·S) + r_t · streaming_pass_ps · M / batch_tokens) / native`, with `p_m` one when the stage is grouped: the merge's folds, an element per leaf, and the table trees' rounds. `shared_streaming_passes` counts what RFC-0018 first specified, every level of every tree streaming in one batch, `c(c + 1)/2` regenerations;
+- the reduction stages' plan ([RFC-0055](RFC-0055-windowed-stages.md#the-window)): each stage's working set, its tables at 16 bytes per entry at the batch, and its window `c < n_max`, the fewest rounds after which its tables fit in `free_bytes`. Each windowable table is folded by `2^{max(0, c − p_i)}` with `p_i` its front padding; a matrix product's stays whole. Each windowed stage adds its fold pass to `n_regen` when `n_regen` is positive, and `window_ps · Σ_w E_w / batch_tokens / native` to the streaming term, `E_w` its windowed tables' entries. The native gadget relations are not counted yet ([#458](https://github.com/AbdelStark/tessera/issues/458));
 - a column-answer term `(C + A · S') · column_answer_ps / native`, P5's evaluation of every committed element at the queried columns ([RFC-0018 'Column answers'](RFC-0018-gpu-prover-runtime.md#pass-structure)). A token commits `C` elements in its linear layers and one per score. P5 runs no sumcheck, so the term carries no glue.
 - a row-combination term `(C + A · S') · row_combination_ps / native`: P4's combination of every committed element into the opening's combined rows ([RFC-0018 'Opening pass'](RFC-0018-gpu-prover-runtime.md#pass-structure)). It carries no glue either.
 - a table term `(1 + glue) · M · (c_c + c_ℓ) / batch_tokens / native`. A proof commits one multiplicity per table row and builds the table's fraction tree over every row, however few lookups the table serves ([RFC-0008](RFC-0008-logup-and-tables.md)). Each of the `M` rows therefore costs one committed element and one tree leaf, priced as a lookup, once per proof. `M` is the commitment report's multiplicities ([#304](https://github.com/AbdelStark/tessera/issues/304)).
@@ -133,7 +141,7 @@ v0.1 delivers the model, its golden test, the microbenchmarks, the report and th
 ## Testing Strategy
 
 - Golden test against the source's tables, as above.
-- Model unit tests: monotonicity in each unit cost; the streaming term is zero when leaves fit in memory and steps up by one pass per doubling of `N_level` beyond it; the column-answer and row-combination terms priced at `c_c`, with glue and the other unit costs at zero, each equal the linear and attention terms, since P4 and P5 handle exactly the elements P1 commits; each table row costs what a token's committed lookup costs, once per batch; the corrected projections and streaming figures that [08 §3](../spec/08-performance-budget.md#3-end-to-end-targets-llama-31-405b-one-8h100-node), SC-2 and RISK-10 quote are the model's.
+- Model unit tests: monotonicity in each unit cost; the streaming term is zero when leaves fit in memory and steps up by one pass per doubling of `N_level` beyond it; the column-answer and row-combination terms priced at `c_c`, with glue and the other unit costs at zero, each equal the linear and attention terms, since P4 and P5 handle exactly the elements P1 commits; each table row costs what a token's committed lookup costs, once per batch; a reduction stage takes the fewest window rounds after which its tables fit, front padding counted, and one fold pass; the corrected projections and streaming figures that [08 §3](../spec/08-performance-budget.md#3-end-to-end-targets-llama-31-405b-one-8h100-node), SC-2 and RISK-10 quote are the model's.
 - Benchmark correctness: output digests match CPU references; a deliberately slowed kernel (sleep injection) changes the reported unit cost proportionally.
 - Report validation: JSON Schema validation in CI for every committed report.
 

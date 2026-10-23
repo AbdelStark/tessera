@@ -4,7 +4,7 @@ These are the compiler's current commitment reports ([RFC-0006](../../rfcs/RFC-0
 
 ## How they are made
 
-`crates/tessera-bench/tests/commitment_report.rs` builds each model's public part, lowers it for 16 positions, selects its gadgets and projects their counts. The test requires all six `B_max = 32` configurations to compile and all six `B_max = 30` configurations to fail at the first root. It also checks every committed report against the current compiler.
+`crates/tessera-bench/tests/commitment_report.rs` builds each model's public part, lowers it for 16 positions, selects its gadgets and projects their counts. The test requires all six `B_max = 32` configurations to compile and all six `B_max = 30` configurations to fail at the first root. It also checks every committed report against the current compiler, and the two-class reports' stage tables against the schedule lowered at 16,384 positions.
 
 ```sh
 cargo test -p tessera-bench --test commitment_report --locked
@@ -15,7 +15,7 @@ The reports assume:
 
 - **Model.** 126 layers, `d_model = 16384`, 128 heads and 8 KV heads of width 128, `d_ff = 53248`, and vocabulary 128,256. The residual scale is `2^−7`; shifts are those of the compiler's lowering tests.
 - **Classes.** Every site after a weight takes one, two or four shift classes. A site's shifts change its gadget where a split would reach a rounding bit. Three classes also use two class-index bits, but their actual table row counts differ from four classes.
-- **Projection inputs.** Source unit costs, memory and scenario; five regenerations, and the merge's sixth, since each batch's leaf stage takes token groups ([RFC-0054](../../rfcs/RFC-0054-token-groups.md)): 256, 512, 1,024 and 8,192 at the contexts 1K, 4K, 16K and 128K, which each projection's `leaf_groups` records. The table side is shared by a 16K-token batch ([#304](https://github.com/AbdelStark/tessera/issues/304)). Masked halves of score diagonal blocks are included, with block size 512 ([RFC-0034](../../rfcs/RFC-0034-causal-blocks.md)). Requant splits use [RFC-0028](../../rfcs/RFC-0028-balanced-split.md)'s balanced point.
+- **Projection inputs.** Source unit costs, memory and scenario; five regenerations, and the merge's sixth, since each batch's leaf stage takes token groups ([RFC-0054](../../rfcs/RFC-0054-token-groups.md)): 256, 512, 1,024 and 8,192 at the contexts 1K, 4K, 16K and 128K, which each projection's `leaf_groups` records. Each reduction stage larger than memory adds its window's fold pass ([RFC-0055](../../rfcs/RFC-0055-windowed-stages.md)), which each projection's `reduction_stages` records. The table side is shared by a 16K-token batch ([#304](https://github.com/AbdelStark/tessera/issues/304)). Masked halves of score diagonal blocks are included, with block size 512 ([RFC-0034](../../rfcs/RFC-0034-causal-blocks.md)). Requant splits use [RFC-0028](../../rfcs/RFC-0028-balanced-split.md)'s balanced point.
 
 ## Counts
 
@@ -23,14 +23,30 @@ All rows use `B_max = 32`. Committed elements include lookup outputs, split limb
 
 | Profile | Classes | Committed, per layer/token | Lookups, per layer/token | Committed, per token | Lookups, per token | `μ(1K)` | `μ(16K)` | Table rows |
 |---|---|---|---|---|---|---|---|---|
-| `servable` | 1 | 327,798 | 327,930 | 41,480,143 | 41,352,137 | 12.28 | 27.60 | 9.5 · 10^9 |
-| `servable` | 2 | 360,566 | 360,698 | 45,608,911 | 45,480,905 | 12.78 | 28.07 | 12.2 · 10^9 |
-| `servable` | 4 | 376,950 | 377,082 | 47,673,295 | 47,545,289 | 13.03 | 28.29 | 12.2 · 10^9 |
-| `minimal` | 1 | 254,070 | 270,586 | 32,190,415 | 34,126,793 | 11.34 | 26.73 | 11.1 · 10^9 |
-| `minimal` | 2 | 286,838 | 303,354 | 36,319,183 | 38,255,561 | 11.83 | 27.18 | 11.1 · 10^9 |
-| `minimal` | 4 | 286,838 | 303,354 | 36,319,183 | 38,255,561 | 11.83 | 27.18 | 11.4 · 10^9 |
+| `servable` | 1 | 327,798 | 327,930 | 41,480,143 | 41,352,137 | 13.28 | 28.60 | 9.5 · 10^9 |
+| `servable` | 2 | 360,566 | 360,698 | 45,608,911 | 45,480,905 | 13.78 | 29.07 | 12.2 · 10^9 |
+| `servable` | 4 | 376,950 | 377,082 | 47,673,295 | 47,545,289 | 14.03 | 29.29 | 12.2 · 10^9 |
+| `minimal` | 1 | 254,070 | 270,586 | 32,190,415 | 34,126,793 | 13.34 | 28.73 | 11.1 · 10^9 |
+| `minimal` | 2 | 286,838 | 303,354 | 36,319,183 | 38,255,561 | 13.83 | 29.18 | 11.1 · 10^9 |
+| `minimal` | 4 | 286,838 | 303,354 | 36,319,183 | 38,255,561 | 13.83 | 29.18 | 11.4 · 10^9 |
 
 Every configuration requantizes [RISK-2](../../spec/00-overview.md#9-risks)'s elements per layer/token: 260,096 in `servable` and 137,216 in `minimal`. Stage counts remain 3 and 4. The row scalars are now exact: two roots at 187 columns each, plus 768 softmax row values, for 1,142 per layer/token. Each root has 189 lookup requests; repeated table families still count as separate reads.
+
+## Reduction stages
+
+Each report lists its reduction stages' sumcheck tables (`stage_tables`, [RFC-0055](../../rfcs/RFC-0055-windowed-stages.md#working-sets)). Each class is `count` tables of `2^{log2_entries}` entries, per token or fixed. They are the same at every class count.
+
+| Profile | Stage | Entries per token | Fixed entries | At 16K tokens, 16 B per entry | Window over 0.2 TB |
+|---|---|---|---|---|---|
+| `minimal` | 1 | 15,548,416 | 33,587,200 | 4.08 TB | 6 rounds |
+| `minimal` | 2 | 20,971,520 | 8,650,752 | 5.50 TB | 6 rounds |
+| `minimal` | 3 | 32,768 | 4,194,304 | 8.7 GB | none |
+| `servable` | 1 | 36,519,936 | 37,781,504 | 9.57 TB | 8 rounds |
+| `servable` | 2 | 32,768 | 8,650,752 | 8.7 GB | none |
+
+Every fixed class is a matrix product's, which no window folds. These classes cover the compiler's stage schedule; the native gadget relations the prover composes into stage 1, `SoftmaxRow`'s score instances among them, are not counted yet ([#458](https://github.com/AbdelStark/tessera/issues/458)).
+
+A window counts each table's front padding. `servable`'s stage 1 holds 4.4 TB unpadded and 4.9 TB padded by two variables, so it takes 8 rounds where its total alone would suggest 6.
 
 ## RISK-2
 

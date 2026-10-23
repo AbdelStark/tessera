@@ -38,7 +38,8 @@
             "native_ops_att_per_ctx",
             "regen_full_equivalents",
             "table_rows",
-            "score_block"
+            "score_block",
+            "reduction_stages"
           ],
           "additionalProperties": false,
           "properties": {
@@ -75,6 +76,52 @@
               "description": "b, the score block of RFC-0034: a token commits A·(S + min(S, b)) scores at context S.",
               "type": "number",
               "minimum": 0
+            },
+            "reduction_stages": {
+              "description": "The reduction stages' sumcheck tables by size, stage 1 first (RFC-0055 'Working sets').",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "tables"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "tables": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "per_token",
+                        "windowable",
+                        "log2_entries",
+                        "count"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "per_token": {
+                          "description": "Whether the tables grow with the batch: a batch of T tokens, padded to a power of two, gives each log2_entries + ⌈log2 T⌉ variables.",
+                          "type": "boolean"
+                        },
+                        "windowable": {
+                          "description": "Whether a window may fold them: an elementwise relation's operands; a matrix product's tables stay resident (RFC-0055 'The window').",
+                          "type": "boolean"
+                        },
+                        "log2_entries": {
+                          "description": "log2 of one table's entries, per token when per_token.",
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "count": {
+                          "description": "The tables of this size.",
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         },
@@ -88,6 +135,7 @@
             "weight_pass_gpu_s",
             "streaming_pass_ps",
             "merge_ps",
+            "window_ps",
             "column_answer_ps",
             "row_combination_ps",
             "native_ops_per_s"
@@ -121,6 +169,11 @@
             },
             "merge_ps": {
               "description": "c_m: picoseconds per merged tensor element of a grouped leaf stage (RFC-0054 'The merge').",
+              "type": "number",
+              "minimum": 0
+            },
+            "window_ps": {
+              "description": "c_w: picoseconds per table entry of a windowed reduction stage, its fold at the window's challenges (RFC-0055 'Cost').",
               "type": "number",
               "minimum": 0
             },
@@ -201,6 +254,7 @@
           "mu",
           "leaf_groups",
           "table_rounds",
+          "reduction_stages",
           "proof_time_s",
           "sampling_rate",
           "detection"
@@ -239,11 +293,12 @@
                 "minimum": 0
               },
               "regen": {
+                "description": "Witness regenerations: n_regen, a grouped leaf stage's merge pass (RFC-0054) and each windowed reduction stage's fold pass (RFC-0055).",
                 "type": "number",
                 "minimum": 0
               },
               "streaming": {
-                "description": "The leaf stage's memory plan: a grouped stage's merge, one regeneration and its folds, and the table trees' streamed rounds (RFC-0054).",
+                "description": "The memory plans beside their regenerations: a grouped leaf stage's merge folds and the table trees' streamed rounds (RFC-0054), and the windowed reduction stages' folds (RFC-0055).",
                 "type": "number",
                 "minimum": 0
               },
@@ -277,6 +332,29 @@
             "description": "The table trees' streamed rounds, summed over their levels (RFC-0054 'The table batch').",
             "type": "integer",
             "minimum": 0
+          },
+          "reduction_stages": {
+            "description": "Each reduction stage's working set at the scenario's batch and the rounds its window answers, 0 when its tables fit (RFC-0055).",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "bytes",
+                "window_rounds"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "bytes": {
+                  "description": "The stage's tables at 16 bytes per entry.",
+                  "type": "number",
+                  "minimum": 0
+                },
+                "window_rounds": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
           },
           "proof_time_s": {
             "type": "number",

@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 
 use clap::Args;
 use serde_json::Value;
-use tessera_bench::{Counts, MemoryModel, ModelReport, Scenario, UnitCosts};
+use tessera_bench::{
+    Counts, MemoryModel, ModelReport, ReductionStage, Scenario, StageTable, UnitCosts,
+};
 use tessera_codec::error::{ErrorCode, TesseraError};
 use tessera_codec::{Ascii, Public, envelope, schema};
 use tessera_compiler::{
@@ -56,6 +58,27 @@ pub(crate) fn counts_of(report: &CommitmentReport) -> Counts {
         regen_full_equivalents: 5.0,
         table_rows: number("table_rows"),
         score_block: number("score_block"),
+        reduction_stages: counts["reduction_stages"]
+            .as_array()
+            .map_or(&[][..], Vec::as_slice)
+            .iter()
+            .map(|stage| ReductionStage {
+                tables: stage["tables"]
+                    .as_array()
+                    .map_or(&[][..], Vec::as_slice)
+                    .iter()
+                    .map(|t| StageTable {
+                        per_token: t["per_token"].as_bool().unwrap_or(true),
+                        windowable: t["windowable"].as_bool().unwrap_or(false),
+                        log2_entries: t["log2_entries"]
+                            .as_u64()
+                            .and_then(|n| u32::try_from(n).ok())
+                            .unwrap_or(u32::MAX),
+                        count: t["count"].as_f64().unwrap_or(0.0),
+                    })
+                    .collect(),
+            })
+            .collect(),
     }
 }
 
