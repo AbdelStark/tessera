@@ -22,6 +22,8 @@ pub enum Prefix {
     Stage(u32),
     /// Level `ℓ` of the leaf stage's trees, counted from 0 at the roots: labels `tree/{ℓ}/…`.
     Tree(u32),
+    /// The merge of a grouped leaf stage's claims (RFC-0054 'The merge'): labels `merge/…`.
+    Merge,
 }
 
 /// `stage/{k}` or `tree/{ℓ}`.
@@ -30,6 +32,7 @@ impl fmt::Display for Prefix {
         match self {
             Self::Stage(k) => write!(f, "stage/{k}"),
             Self::Tree(level) => write!(f, "tree/{level}"),
+            Self::Merge => write!(f, "merge"),
         }
     }
 }
@@ -871,6 +874,31 @@ where
         vars,
         instances,
         gamma,
+    ))
+}
+
+/// [`prove_batch`] with every instance's weight 1 and no `γ`, for a batch whose weights its
+/// tables already carry, as RFC-0054's merge carries `β^h·γ_h^k` in its `W_i`: rounds and final
+/// evaluations only, under `<prefix>/round/{j}`, `<prefix>/r/{j}` and `<prefix>/evals`. The
+/// result's `γ` is 1.
+pub(crate) fn prove_batch_unweighted<F, T>(
+    transcript: &mut T,
+    prefix: Prefix,
+    degree: usize,
+    instances: &[Instance<'_, F>],
+) -> Result<ProvenBatch<F>, SumcheckError>
+where
+    F: PolyField,
+    T: SumcheckTranscript<F> + ?Sized,
+{
+    let (nodes, vars) = check_batch(degree, instances)?;
+    Ok(prove_checked(
+        transcript,
+        Labels::new(prefix),
+        nodes,
+        vars,
+        instances,
+        F::ONE,
     ))
 }
 

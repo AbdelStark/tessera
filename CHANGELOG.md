@@ -6,6 +6,13 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- `tessera-sumcheck` proves RFC-0054's merge ([#134](https://github.com/AbdelStark/tessera/issues/134)):
+  - **The relation.** `Merge` holds the merged polynomials (`MergePolynomial`, with their group variables), each group's claims (`MergeClaim`), `γ_h` and `β`. It checks their shapes, and gives the first claim and each `W_i`, as a table and at a point.
+  - **In memory.** `prove_merge` runs the batch engine over `W_i·P̃_i` at weight 1, under the new `Prefix::Merge`: degree 2, rounds under `merge/round/{j}` and `merge/r/{j}`, and every `P̃_i(r_i)` under `merge/evals`. Each polynomial binds its free variables first, then its group variables.
+  - **In two passes.** `MergeTables` keeps, in each group's pass, the tables of RFC-0054 'The prover in two passes' for the first `j*` rounds, a class's claims combined by `γ_h^k`. `prove_merge_two_pass` answers those rounds from them, regenerates every polynomial once, folds the variables they bound, and runs the rest in memory.
+  - **Tests.** A reference verifier replays the challenges on `tv-hash`'s transcript and checks every round, and the final evaluations against the weights it computes itself; they are the tensors' evaluations at the merge's point. Every false claim fails. The two provers' messages are equal at every `j*` the polynomials allow. Each shape rule refuses with its own rule.
+  - **Not yet.** The grouped leaf stage that produces these claims follows in #134.
+
 - `tessera-protocol` carries RFC-0054's messages ([#454](https://github.com/AbdelStark/tessera/issues/454)):
   - **The messages.** `Round1.leaf_groups` (`LeafGroups`, `MAX_LEAF_GROUP_BITS = 14`), absorbed with `Round1`, and `TreeProof`'s `groups` (`GroupProof`), `table_roots` and `merge`. `TreeProof::ungrouped` builds a leaf stage proven in one batch.
   - **The bound.** Decoding refuses more than 14 group bits with `ERR-CODEC-LIMIT`.
