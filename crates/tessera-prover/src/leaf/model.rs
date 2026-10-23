@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Current-model lookup sites from the scalar gadgets' canonical constraints.
+use super::layout::{token, tokens};
 use super::{LeafError, LeafLayout, Site, SiteGadget, SiteLookup, gadget_nodes, internal};
 use tessera_compiler::schedule::{LayerMap, NodeRef};
 use tessera_compiler::{
@@ -123,6 +124,7 @@ fn shape(lowering: &Lowering, tensor: tessera_ir::TensorId) -> Result<&[u32], Le
 fn map_lookup<T: Copy>(
     lookup: Lookup<Goldilocks, T>,
     domain: &[u32],
+    token: Option<usize>,
     column: fn(T) -> Result<ModelColumn, LeafError>,
 ) -> Result<SiteLookup<ModelColumn>, LeafError> {
     Ok(SiteLookup {
@@ -133,12 +135,15 @@ fn map_lookup<T: Copy>(
         },
         domain: domain.to_vec(),
         axes: Vec::new(),
+        token,
     })
 }
+/// The site's gadget at `node`, each lookup's token axis its domain tensor's among `tokens`.
 fn layer(
     lowering: &Lowering,
     selection: &Selection,
     claims: &ClaimList,
+    tokens: &[Option<u8>],
     node: &Node,
 ) -> Result<SiteGadget<ModelColumn>, LeafError> {
     let (_, ref gadget) = selection.of(node.id).ok_or(LeafError::Internal {
@@ -147,11 +152,12 @@ fn layer(
     let lookups = match node.op {
         Op::Requant { .. } => {
             let shape = shape(lowering, node.inputs[0])?;
-            SiteGadget::requant(&Requant::new(gadget, &selection.tables)?, shape)
+            let axis = token(tokens, node.inputs[0]);
+            SiteGadget::requant(&Requant::new(gadget, &selection.tables)?, shape, axis)
                 .lookups
                 .into_iter()
                 .map(|l| {
-                    let mut out = map_lookup(l.lookup, &l.domain, requant)?;
+                    let mut out = map_lookup(l.lookup, &l.domain, l.token, requant)?;
                     out.axes = l
                         .axes
                         .into_iter()
@@ -200,6 +206,7 @@ fn layer(
             vec![SiteLookup {
                 domain: domain.to_vec(),
                 axes,
+                token: token(tokens, node.inputs[0]),
                 lookup: Lookup {
                     table,
                     key: Affine {
@@ -235,7 +242,10 @@ fn layer(
                 .constraints::<Goldilocks>()?
                 .lookups
                 .into_iter()
-                .map(|l| map_lookup(l, shape(lowering, node.outputs[0])?, root))
+                .map(|l| {
+                    let rows = node.outputs[0];
+                    map_lookup(l, shape(lowering, rows)?, token(tokens, rows), root)
+                })
                 .collect::<Result<_, LeafError>>()?
         }
         Op::SoftmaxRow { exp_table, .. } => {
@@ -256,21 +266,19 @@ fn layer(
                 .lookups
                 .into_iter()
                 .map(|l| {
-                    let domain = shape(
-                        lowering,
-                        if l.per_position {
-                            node.inputs[0]
-                        } else {
-                            node.outputs[1]
-                        },
-                    )?;
+                    // A score's lookups run over the scores, a row's over the reciprocals.
+                    let tensor = match l.per_position {
+                        true => node.inputs[0],
+                        false => node.outputs[1],
+                    };
                     map_lookup(
                         Lookup {
                             table: l.table,
                             key: l.key,
                             value: l.value,
                         },
-                        domain,
+                        shape(lowering, tensor)?,
+                        token(tokens, tensor),
                         softmax,
                     )
                 })
@@ -340,6 +348,7 @@ impl LeafLayout<ModelColumn> {
         claims: &ClaimList,
         greedy: Option<tessera_compiler::GreedyCertificate>,
     ) -> Result<Self, LeafError> {
+        let tokens = tokens(lowering)?;
         let mut sites = Vec::new();
         for site in gadget_nodes(lowering, layers) {
             let nodes: Vec<NodeId> = match site {
@@ -361,6 +370,7 @@ impl LeafLayout<ModelColumn> {
                             lowering,
                             selection,
                             claims,
+                            &tokens,
                             &lowering.graph.nodes[id.0 as usize],
                         )
                     })
@@ -391,6 +401,10 @@ impl LeafLayout<ModelColumn> {
                         },
                         domain: vec![c.positions - c.prompt, c.vocab],
                         axes: Vec::new(),
+                        // The generated positions, not the batch's token index: no token
+                        // indexes the key, so its block stays in token subset 0 (RFC-0054
+                        // 'What a group holds').
+                        token: None,
                     }],
                 }],
             });

@@ -30,6 +30,12 @@
 //!   claims by the identity above, `Reject(Sumcheck { stage: 0, round: 0 })` on a mismatch, and
 //!   each value is then RFC-0037's per-layer claim on its tensor.
 //!
+//! - **Token groups.** A leaf stage larger than memory is proven in groups (RFC-0054): group `h`
+//!   holds the blocks of its layers, restricted to its tokens, with the token axis's low bits set
+//!   to its own ([`SiteLookup::token`]). [`GroupedLayout::new`] derives the merge's polynomials,
+//!   one per value of the ungrouped split, and [`GroupedLayout::group`] lays out one group at a
+//!   time: its instances by RFC-0045 over its blocks, and its split as claims on the polynomials.
+//!
 //! [`prove_leaf`] runs it all on a transcript: the columns ([`LeafColumns`]), `tessera-logup`'s
 //! [`prove_logup`](tessera_logup::prove_logup), the leaf point and the split.
 //!
@@ -37,6 +43,7 @@
 //! claim list. The tensors, the columns and the multiplicities are secret-class (05 §3): the caller
 //! lends the tensors in [`SiteTensors`], and what is computed from them lives in `SecretBuf`s.
 
+mod groups;
 mod layout;
 mod model;
 mod model_witness;
@@ -50,6 +57,7 @@ use tessera_codec::error::ErrorCode;
 use tessera_gadgets::GadgetError;
 use tessera_logup::LogUpError;
 
+pub use groups::{GroupLayout, GroupRead, GroupedLayout};
 pub use layout::{
     Block, InstanceLayout, LeafLayout, Read, Site, SiteGadget, SiteLookup, gadget_nodes, leaf_index,
 };

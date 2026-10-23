@@ -6,12 +6,11 @@
 
 use std::collections::BTreeMap;
 
-use tessera_compiler::Lowering;
-use tessera_compiler::Selection;
-use tessera_compiler::schedule::{LayerMap, NodeRef};
+use tessera_compiler::schedule::{LayerMap, NodeRef, token_axes};
+use tessera_compiler::{CompileError, Lowering, Selection};
 use tessera_field::Goldilocks;
 use tessera_gadgets::{Lookup, Requant, Term};
-use tessera_ir::{NodeId, OpClass};
+use tessera_ir::{NodeId, OpClass, TensorId};
 use tessera_logup::TreeId;
 use tessera_tables::TableId;
 
@@ -32,6 +31,10 @@ pub struct SiteLookup<T = Term> {
     /// The terms read over some of the domain's axes, each with those axes as indices into the
     /// domain's shape, ascending. A term not listed is read over every axis.
     pub axes: Vec<(T, Vec<usize>)>,
+    /// The domain's token axis, the one a token group splits (RFC-0054 'The token axis'): its
+    /// lookup tensor's, as an index into the domain's shape. `None` when no token indexes the
+    /// domain.
+    pub token: Option<usize>,
 }
 
 /// A site's gadget in one layer, its per-request domains and RFC-0009 lookup order.
@@ -43,9 +46,10 @@ pub struct SiteGadget<T = Term> {
 
 impl SiteGadget<Term> {
     /// A requantization gadget, `Requant1`, `RequantSplit` or `RequantWide`, over an input of
-    /// `shape`: every lookup runs over the input's elements, the classes are read over the last
-    /// axis, the output channels, and every other term over every axis (RFC-0009, RFC-0045).
-    pub fn requant(gadget: &Requant, shape: &[u32]) -> Self {
+    /// `shape` whose token axis is `token`: every lookup runs over the input's elements, the
+    /// classes are read over the last axis, the output channels, and every other term over every
+    /// axis (RFC-0009, RFC-0045).
+    pub fn requant(gadget: &Requant, shape: &[u32], token: Option<usize>) -> Self {
         let channels = vec![shape.len().saturating_sub(1)];
         let lookups = gadget
             .constraints::<Goldilocks>()
@@ -63,6 +67,7 @@ impl SiteGadget<Term> {
                     lookup,
                     axes,
                     domain: shape.to_vec(),
+                    token,
                 }
             })
             .collect();
@@ -94,15 +99,15 @@ pub struct Site<T = Term> {
 impl Site<Term> {
     /// The requantization site of `node`: in each real layer, or once outside the layers, the
     /// `Requant1`, `RequantSplit` or `RequantWide` gadget that `selection` gives the node, over
-    /// its input's shape (RFC-0006 'Gadget selection', RFC-0009). Public data alone: the graph's
-    /// shapes, the selection and its tables.
+    /// its input's shape and token axis (RFC-0006 'Gadget selection', RFC-0009, RFC-0054 'The
+    /// token axis'). Public data alone: the graph, the selection and its tables.
     ///
     /// # Errors
     ///
-    /// [`LeafError::Internal`] for a position past the template, a node inside the layers named
-    /// as a node, a node without a gadget or input, or classes that are not one per output
-    /// channel; [`LeafError::Gadget`] for a gadget that is no requantization or whose tables do
-    /// not regenerate.
+    /// [`LeafError::Internal`] for a graph the token axes' rules do not fit, a position past the
+    /// template, a node inside the layers named as a node, a node without a gadget or input, or
+    /// classes that are not one per output channel; [`LeafError::Gadget`] for a gadget that is
+    /// no requantization or whose tables do not regenerate.
     pub fn requant(
         lowering: &Lowering,
         layers: &LayerMap,
@@ -116,6 +121,7 @@ impl Site<Term> {
             NodeRef::Node(id) if layers.position(id).is_none() => vec![id],
             _ => return internal("a site is a template position or a node outside the layers"),
         };
+        let tokens = tokens(lowering)?;
         let mut gadgets = Vec::with_capacity(nodes.len());
         for id in nodes {
             let (_, gadget) = selection.of(id).ok_or(LeafError::Internal {
@@ -123,11 +129,17 @@ impl Site<Term> {
             })?;
             let requant = Requant::new(&gadget, &selection.tables)?;
             let graph = &lowering.graph;
-            let shape = graph
+            let input = graph
                 .nodes
                 .get(id.0 as usize)
                 .and_then(|n| n.inputs.first())
-                .and_then(|t| graph.tensors.get(t.0 as usize))
+                .copied()
+                .ok_or(LeafError::Internal {
+                    rule: "a requantization reads its key",
+                })?;
+            let shape = graph
+                .tensors
+                .get(input.0 as usize)
                 .map(|t| t.shape.as_slice())
                 .ok_or(LeafError::Internal {
                     rule: "a requantization reads its key",
@@ -143,7 +155,7 @@ impl Site<Term> {
                     return internal("a requantization's classes are one per output channel");
                 }
             }
-            gadgets.push(SiteGadget::requant(&requant, shape));
+            gadgets.push(SiteGadget::requant(&requant, shape, token(&tokens, input)));
         }
         Ok(Self {
             node,
@@ -167,6 +179,26 @@ pub fn gadget_nodes(lowering: &Lowering, layers: &LayerMap) -> Vec<NodeRef> {
         }
     }
     nodes
+}
+
+/// Every tensor's token axis (RFC-0054 'The token axis'), by tensor id, the rule a graph breaks as
+/// [`LeafError::Internal`].
+pub(super) fn tokens(lowering: &Lowering) -> Result<Vec<Option<u8>>, LeafError> {
+    token_axes(lowering).map_err(|error| LeafError::Internal {
+        rule: match error {
+            CompileError::Schedule { rule, .. } => rule,
+            _ => "the graph's token axes follow RFC-0054",
+        },
+    })
+}
+
+/// `tensor`'s token axis among `tokens`.
+pub(super) fn token(tokens: &[Option<u8>], tensor: TensorId) -> Option<usize> {
+    tokens
+        .get(tensor.0 as usize)
+        .copied()
+        .flatten()
+        .map(usize::from)
 }
 
 /// A tensor a site's lookups read in one layer, which the split sends (RFC-0045 'What is sent').
@@ -251,8 +283,8 @@ impl<T: Copy + Eq> LeafLayout<T> {
     /// [`LeafError::Internal`] (`ERR-INTERNAL`) for the first rule broken, in this order. Site by
     /// site: a node that is neither a template position nor outside the layers, a site out of
     /// node order or repeated, another number of gadgets than its real layers. Then site by site,
-    /// layer by layer and lookup by lookup: a domain with an axis of length 0 or blocks of more
-    /// than `2^48` entries; axes that are not ascending axes of the domain, or that name a term
+    /// layer by layer and lookup by lookup: a domain with an axis of length 0, blocks of more than
+    /// `2^48` entries or a token axis outside it; axes that are not ascending axes of the domain, or that name a term
     /// the lookup does not read, or twice; a gadget whose lookups read one tensor over two sets
     /// of coordinates; a layer whose ordered sources or projections differ from the first's.
     /// Then instance by instance, entries that overflow 64 bits.
@@ -288,6 +320,9 @@ impl<T: Copy + Eq> LeafLayout<T> {
                     if lookup.vars() > MAX_BLOCK_VARS {
                         return internal("a block holds at most 2^48 entries");
                     }
+                    if lookup.token.is_some_and(|a| a >= lookup.domain.len()) {
+                        return internal("a lookup's token axis is an axis of its domain");
+                    }
                 }
                 let read = reads_of(gadget)?;
                 // Every real layer reads the first's tensors over its axes, so that stage 1 stacks
@@ -312,29 +347,9 @@ impl<T: Copy + Eq> LeafLayout<T> {
             }
             reads.push(per_layer);
         }
-        let mut instances = Vec::with_capacity(tables.len());
-        for (table, mut blocks) in tables {
-            // Stable: blocks of one size keep their site, layer and lookup order.
-            blocks.sort_by_key(|block| core::cmp::Reverse(block.vars));
-            let mut offset = 0u64;
-            for block in &mut blocks {
-                block.offset = offset;
-                offset = offset
-                    .checked_add(block.entries())
-                    .ok_or(LeafError::Internal {
-                        rule: "an instance's entries fit 64 bits",
-                    })?;
-            }
-            instances.push(InstanceLayout {
-                table,
-                blocks,
-                entries: offset,
-                height: ceil_log2(offset),
-            });
-        }
         Ok(Self {
             sites,
-            instances,
+            instances: instance_layouts(tables)?,
             reads,
         })
     }
@@ -365,6 +380,34 @@ impl<T: Copy + Eq> LeafLayout<T> {
     pub fn trees(&self) -> Vec<TreeId> {
         TreeId::paired(self.instances.len())
     }
+}
+
+/// One instance per table of `tables`, in table order (RFC-0045 'The column'): its blocks, given
+/// by site, layer and lookup, stably sorted larger first at prefix-sum offsets, and its height.
+pub(super) fn instance_layouts(
+    tables: BTreeMap<TableId, Vec<Block>>,
+) -> Result<Vec<InstanceLayout>, LeafError> {
+    let mut instances = Vec::with_capacity(tables.len());
+    for (table, mut blocks) in tables {
+        // Stable: blocks of one size keep their site, layer and lookup order.
+        blocks.sort_by_key(|block| core::cmp::Reverse(block.vars));
+        let mut offset = 0u64;
+        for block in &mut blocks {
+            block.offset = offset;
+            offset = offset
+                .checked_add(block.entries())
+                .ok_or(LeafError::Internal {
+                    rule: "an instance's entries fit 64 bits",
+                })?;
+        }
+        instances.push(InstanceLayout {
+            table,
+            blocks,
+            entries: offset,
+            height: ceil_log2(offset),
+        });
+    }
+    Ok(instances)
 }
 
 /// `σ_h(i) = (i mod 2) + 2·rev_{h−1}(⌊i / 2⌋)` (RFC-0045 'The leaves'): bit 0 kept, bits 1 to
@@ -448,7 +491,7 @@ fn coords(domain: &[u32], axes: &[usize]) -> Vec<u32> {
 }
 
 /// `⌈log2 len⌉`: an axis's variables, padded to a power of two.
-fn axis_vars(len: u32) -> u32 {
+pub(super) fn axis_vars(len: u32) -> u32 {
     len.checked_next_power_of_two()
         .map_or(u32::BITS, u32::trailing_zeros)
 }
