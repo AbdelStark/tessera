@@ -73,6 +73,7 @@ impl WeightCommitment {
         let params = *layout.params();
         let mut roots = [Digest::default(); 10];
         let mut matrices = Vec::with_capacity(roots.len());
+        let mut elements = 0u64;
         for matrix in WeightMatrix::ALL {
             let shape = layout.matrix(matrix);
             let descriptor = CommitmentDescriptor::WeightMatrix {
@@ -109,11 +110,13 @@ impl WeightCommitment {
             // that an error or a panic from here on drops them cleared (05 §3 OBS-6); the
             // commitment keeps them there.
             let mut values = Secret::new(vec![Fp::ZERO; len]);
+            elements += layout.committed_rows(matrix).count() as u64 * shape.message_len() as u64;
             layout.fill(matrix, &checked, values.expose_secret_mut());
             let commitment = ReferenceCommitment::commit_unmasked(code, rows, values)?;
             roots[matrix.index()] = commitment.root();
             matrices.push(commitment);
         }
+        tessera_codec::metrics::committed(tessera_codec::metrics::Committed::Weight, elements);
         tessera_codec::event!(
             DEBUG,
             "pcs.weights_committed",

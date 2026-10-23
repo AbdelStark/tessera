@@ -3,7 +3,8 @@
 //! Protocol/1 CPU driver for one exact-greedy request (02 section 3.1).
 
 use std::num::{NonZeroU32, NonZeroUsize};
-use tessera_codec::{Ascii, Public, Secret, error::ErrorCode, event, span};
+use std::time::Instant;
+use tessera_codec::{Ascii, Public, Secret, error::ErrorCode, event, metrics, span};
 use tessera_compiler::{self as compiler, ExecutionPlan, PublicModel};
 use tessera_hash::{SessionContext, Transcript};
 use tessera_ir::IntegerModel;
@@ -244,6 +245,12 @@ impl<'a> Prover<'a> {
             .ok_or_else(|| internal("unstarted CPU backend"))?;
         let mut session = protocol::ProverSession::new(backend::CpuBackend::new(prepared, batch)?);
         let answer = session.start(commit).map_err(Into::into);
+        if let Ok((round1, _)) = &answer {
+            metrics::proof_bytes(
+                metrics::ProofPart::Round1,
+                tessera_codec::encode(round1).len() as u64,
+            );
+        }
         self.session = Some(session);
         answer
     }
@@ -299,6 +306,10 @@ impl<'a> Prover<'a> {
             statement,
             advice,
         };
+        metrics::proof_bytes(
+            metrics::ProofPart::Round1,
+            tessera_codec::encode(&round1).len() as u64,
+        );
         let mut tr = transcript(Mode::NonInteractive, params, &round1)?;
         let seed_nonce = tr.grind("seed-pow", params.seed_pow as u8);
         let _seed = tr.squeeze("seed");

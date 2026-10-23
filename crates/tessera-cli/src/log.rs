@@ -264,7 +264,7 @@ fn json_line(
 }
 
 /// UTC, to the microsecond: `YYYY-MM-DDTHH:MM:SS.ffffffZ`.
-fn rfc3339(now: SystemTime) -> String {
+pub(crate) fn rfc3339(now: SystemTime) -> String {
     let since = now.duration_since(UNIX_EPOCH).unwrap_or_default();
     let secs = since.as_secs();
     let (days, of_day) = (secs / 86_400, secs % 86_400);

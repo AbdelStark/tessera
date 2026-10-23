@@ -574,6 +574,7 @@ dependencies = [
  "tessera-prover",
  "tracing",
  "tracing-subscriber",
+ "xtask",
 ]
 
 [[package]]

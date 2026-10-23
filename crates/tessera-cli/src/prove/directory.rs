@@ -25,7 +25,9 @@ impl Drop for Temporary {
 }
 pub(super) fn publish(path: &Path, bytes: &[u8]) -> Result<(), TesseraError> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    atomic(path, bytes, &NEXT)
+    atomic(path, bytes, &NEXT)?;
+    crate::manifest::output_envelope(path, bytes);
+    Ok(())
 }
 fn atomic(path: &Path, bytes: &[u8], next: &AtomicU64) -> Result<(), TesseraError> {
     let parent = path
@@ -120,6 +122,11 @@ pub(super) fn run(
     )?;
     let reveal = receive(dir, "02-SeedReveal.tce", &schema::SEED_REVEAL, timeout)?;
     let second = prover.on_seed(&reveal).map_err(super::prover_error)?;
+    // The seed both transcripts absorb is public; the shares behind it were revealed (RFC-0014).
+    crate::manifest::seed(
+        "coin_toss",
+        &tessera_protocol::coin_toss(&reveal.share, &share.share),
+    );
     send(
         dir,
         "03-Round2Response.tce",

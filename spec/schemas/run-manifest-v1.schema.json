@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/run-manifest-v1.schema.json",
+  "title": "tessera.run-manifest/1",
+  "description": "The run manifest of 05 §6, which every compile, commit-weights, prove and bench model invocation writes. Private-class: its timings depend on secret data and stay on the prover's side of TB-1 (05 §4). A secret-class artifact is named without its digest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "tool", "toolchain", "host", "command", "arguments", "params", "protocol", "inputs", "outputs", "public_seeds", "started_at", "elapsed_seconds", "metrics", "exit_code", "error_code"],
+  "properties": {
+    "schema": { "const": "tessera.run-manifest/1" },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "git_commit", "profile", "features"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "git_commit": { "description": "The build's commit, null outside a git checkout.", "type": ["string", "null"], "minLength": 40, "maxLength": 40 },
+        "profile": { "enum": ["debug", "release"] },
+        "features": { "description": "The enabled cargo features of the tool.", "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rustc", "cuda_runtime", "cuda_driver", "python", "torch"],
+      "properties": {
+        "rustc": { "type": ["string", "null"] },
+        "cuda_runtime": { "type": ["string", "null"] },
+        "cuda_driver": { "type": ["string", "null"] },
+        "python": { "type": ["string", "null"] },
+        "torch": { "type": ["string", "null"] }
+      }
+    },
+    "host": {
+      "description": "Host fields, which OBS-5 lets two identical runs differ in.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "arch", "cpu_model", "cores", "memory_bytes", "gpus", "ecc"],
+      "properties": {
+        "os": { "type": "string" },
+        "arch": { "type": "string" },
+        "cpu_model": { "type": ["string", "null"] },
+        "cores": { "type": ["integer", "null"], "minimum": 1 },
+        "memory_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "gpus": { "type": "array", "items": { "type": "string" } },
+        "ecc": { "type": ["boolean", "null"] }
+      }
+    },
+    "command": { "enum": ["compile", "commit-weights", "prove", "bench model", "verify"] },
+    "arguments": { "description": "The command line after the program name.", "type": "array", "items": { "type": "string" } },
+    "params": { "description": "The parameter set's identifier, such as test-small/1.", "type": ["string", "null"] },
+    "protocol": { "type": ["string", "null"] },
+    "inputs": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
+    "outputs": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
+    "public_seeds": {
+      "description": "Seeds a protocol transcript absorbs, such as a Live session's coin toss; never a per-proof secret seed.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "digest"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "digest": { "type": "string", "minLength": 64, "maxLength": 64 }
+        }
+      }
+    },
+    "started_at": { "description": "UTC, RFC 3339, to the microsecond.", "type": "string", "minLength": 27, "maxLength": 27 },
+    "elapsed_seconds": { "type": "number", "minimum": 0 },
+    "metrics": { "description": "The 05 §4 registry's snapshot at the run's end.", "type": "array", "items": { "$ref": "#/$defs/sample" } },
+    "exit_code": { "type": "integer", "minimum": 0, "maximum": 255 },
+    "error_code": { "type": ["string", "null"], "minLength": 4 }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schema", "class", "digest"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "schema": { "description": "A TCE schema name of 03 §5, or a JSON report's identifier.", "type": "string", "minLength": 1 },
+        "class": { "enum": ["public", "protocol", "private", "secret"] },
+        "digest": { "description": "The envelope digest; null for a secret-class artifact (OBS-6) and for a JSON report.", "type": ["string", "null"], "minLength": 64, "maxLength": 64 }
+      }
+    },
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "labels", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 9 },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+        "type": { "enum": ["counter", "gauge", "histogram"] },
+        "value": { "type": "number" },
+        "count": { "type": "integer", "minimum": 1 },
+        "sum": { "type": "number", "minimum": 0 },
+        "min": { "type": "number", "minimum": 0 },
+        "max": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

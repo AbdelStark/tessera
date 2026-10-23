@@ -82,6 +82,8 @@ pub(crate) fn counts_from_plan(path: &Path) -> Result<Counts, TesseraError> {
 /// Runs `tessera compile`; writes `claims.tcl`, `plan.tep` and `commitment-report.json` to
 /// `args.out_dir`, and with `json` prints the `tessera.commitment-report/1` report on stdout.
 pub(crate) fn compile(args: &CompileArgs, json: bool) -> Result<(), TesseraError> {
+    // The output directory holds the private plan: the operator's own (05 §6).
+    crate::manifest::directory(&args.out_dir);
     let model: IntegerModel = Input::new(&args.model, &schema::INTEGER_MODEL).open()?;
     let Some(params) = ParamSet::ALL
         .into_iter()
@@ -90,6 +92,7 @@ pub(crate) fn compile(args: &CompileArgs, json: bool) -> Result<(), TesseraError
         return Err(TesseraError::new(ErrorCode::Usage)
             .with_source(format!("{} is not a parameter set", args.params)));
     };
+    crate::manifest::params(params.id, None);
     let param_id = ParamSetId(Ascii::new(params.id).map_err(|_| {
         TesseraError::new(ErrorCode::Internal).with_source("parameter set id is not ASCII")
     })?);
@@ -130,6 +133,10 @@ pub(crate) fn compile(args: &CompileArgs, json: bool) -> Result<(), TesseraError
         &dir.join("commitment-report.json"),
         &format!("{report_text}\n"),
     )?;
+    crate::manifest::output_report(
+        &dir.join("commitment-report.json"),
+        "tessera.commitment-report/1",
+    );
 
     tessera_codec::event!(
         INFO,

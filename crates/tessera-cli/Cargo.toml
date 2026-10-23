@@ -28,6 +28,18 @@ tessera-hash = { path = "../tessera-hash" }
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"] }
 
+[features]
+# Test-only: `prove --test-mask-seed` pins the masks, for OBS-5's reproducibility test. A release
+# build with it fails to compile (RFC-0001 'Cargo features').
+test-rng = ["tessera-prover/test-rng"]
+
+[dev-dependencies]
+# The JSON Schema validator of `spec/schemas/` (tests/run_manifest.rs).
+xtask = { path = "../../xtask" }
+
+[[test]]
+name = "run_manifest"
+required-features = ["test-rng"]
 
 [lints]
 workspace = true

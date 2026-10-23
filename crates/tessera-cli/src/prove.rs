@@ -63,7 +63,20 @@ pub(crate) struct ProveArgs {
     memory_budget: Option<u64>,
     #[arg(long, requires = "live")]
     timeout_ms: Option<u64>,
+    /// Pins the masks for reproducibility tests (OBS-5); release builds refuse `test-rng`.
+    #[cfg(feature = "test-rng")]
+    #[arg(long, hide = true)]
+    test_mask_seed: Option<u64>,
 }
+#[cfg(not(feature = "test-rng"))]
+fn mask_rng(_: &ProveArgs) -> MaskRng {
+    MaskRng::OsRng
+}
+#[cfg(feature = "test-rng")]
+fn mask_rng(a: &ProveArgs) -> MaskRng {
+    a.test_mask_seed.map_or(MaskRng::OsRng, MaskRng::Seeded)
+}
+
 fn usage(message: &'static str) -> TesseraError {
     TesseraError::new(ErrorCode::Usage).with_source(message)
 }
@@ -123,6 +136,8 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
             157,
         );
     }
+    // Beside the secret weight state: the operator's own, never the exchange directory (05 §6).
+    crate::manifest::beside(&a.weights);
     let input = a
         .reference_tokens
         .as_deref()
@@ -162,6 +177,7 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
         envelope::ReadError::Invalid(e) => TesseraError::from(e),
         envelope::ReadError::Io(_) => TesseraError::new(ErrorCode::ResIo),
     })?;
+    crate::manifest::input(&a.weights, &schema::WEIGHT_COMMITMENT_STATE);
     let data: tokens::Tokens = Input::new(input, &schema::TOKEN_FILE).open()?;
     let output_len = data
         .len
@@ -170,6 +186,7 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
         .ok_or_else(|| usage("recorded continuation is nonempty"))?;
     let params = ParamSet::defined(&plan.claims.params)
         .ok_or_else(|| usage("undefined claim-list parameter set"))?;
+    crate::manifest::params(params.id, Some("tessera-protocol/1"));
     let mode = if a.live.is_some() {
         Mode::Live
     } else {
@@ -211,7 +228,7 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
         params: *params,
         mode,
         memory_budget: MemoryBudget { host: budget },
-        mask_rng: MaskRng::OsRng,
+        mask_rng: mask_rng(a),
         release: ReleaseConfig,
     };
     let mut prover = Prover::new(&plan, &model, &mut weights, cfg).map_err(prover_error)?;
