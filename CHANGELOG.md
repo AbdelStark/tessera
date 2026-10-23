@@ -6,6 +6,17 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- RFC-0054 defines the token axis every tensor's groups split, and `tessera_compiler::schedule::token_axes` derives it ([#134](https://github.com/AbdelStark/tessera/issues/134)):
+  - **The gap.** RFC-0054 split blocks and tensors by "the token axis" but said nowhere how to find it. The IR has no axis semantics, and lengths cannot tell it: a head or channel axis can be as long as the sequence.
+  - **The rule.** Structural, from the graph alone, input to output, so that the verifier's lowering derives the same:
+    - the tokens and the positions start it at axis 0;
+    - elementwise operations, weight products and the one-hot vectors keep it, and `Transpose` and `Expand` move it;
+    - `Reshape` may regroup only the axes before it;
+    - the scores and the attention output keep their queries' rows.
+
+    A graph that breaks a rule is refused at its node.
+  - **Tests.** Both profiles at 1 to 129 positions and at 405B's widths: the activations, checkpoints, one-hot vectors and logits at axis 0; the scores and their rows at the query axis; weights, classes and multipliers without one; every token axis as long as the sequence. The axis stays put when a head or a head's width is as long as the sequence. Mutated graphs are refused at their node.
+
 - A grouped leaf stage's trees, in `tessera-sumcheck` and `tessera-logup` ([#134](https://github.com/AbdelStark/tessera/issues/134)):
   - **Scoped labels.** `TreeScope` (`Stage`, `Group(h)`, `Tables`) and `prove_trees_in` run the tree levels under `tree/{ℓ}/…`, `group/{h}/tree/{ℓ}/…` or `tables/tree/{ℓ}/…`, through the new `Prefix::GroupTree` and `Prefix::TableTree`. `prove_trees` is `TreeScope::Stage`, its labels and messages unchanged.
   - **The groups.** `begin_groups` squeezes `logup/alpha` and `logup/beta`, then absorbs `logup/roots` and `logup/values` empty.
