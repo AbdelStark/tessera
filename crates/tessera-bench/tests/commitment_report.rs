@@ -169,31 +169,40 @@ fn report_json(
             .as_array()
             .expect("the reduction stages")
             .iter()
-            .map(|stage| ReductionStage {
-                tables: ["tables", "residents"]
-                    .iter()
-                    .flat_map(|key| stage[*key].as_array().expect("the tables"))
-                    .map(|t| StageTable {
-                        growth: match t["growth"].as_str().expect("a growth") {
-                            "fixed" => Growth::Fixed,
-                            "tokens" => Growth::Tokens,
-                            "keys" => Growth::Keys,
-                            "tokens_and_context" => Growth::TokensAndContext,
-                            other => panic!("no growth {other}"),
-                        },
-                        kind: match t["kind"].as_str().expect("a kind") {
-                            "windowable" => Holding::Windowable,
-                            "resident" => Holding::Resident,
-                            "computed" => Holding::Computed,
-                            other => panic!("no kind {other}"),
-                        },
-                        log2_entries: u32::try_from(t["log2_entries"].as_u64().expect("a size"))
+            .map(|stage| {
+                let classes = |key: &str| -> Vec<StageTable> {
+                    stage[key]
+                        .as_array()
+                        .expect("the tables")
+                        .iter()
+                        .map(|t| StageTable {
+                            growth: match t["growth"].as_str().expect("a growth") {
+                                "fixed" => Growth::Fixed,
+                                "tokens" => Growth::Tokens,
+                                "keys" => Growth::Keys,
+                                "tokens_and_context" => Growth::TokensAndContext,
+                                other => panic!("no growth {other}"),
+                            },
+                            kind: match t["kind"].as_str().expect("a kind") {
+                                "windowable" => Holding::Windowable,
+                                "resident" => Holding::Resident,
+                                "computed" => Holding::Computed,
+                                other => panic!("no kind {other}"),
+                            },
+                            log2_entries: u32::try_from(
+                                t["log2_entries"].as_u64().expect("a size"),
+                            )
                             .expect("a size"),
-                        count: t["count"].as_f64().expect("a count"),
-                        count_per_bit: t["count_per_bit"].as_f64().expect("a count"),
-                        bytes: t["bytes"].as_f64().expect("a width"),
-                    })
-                    .collect(),
+                            count: t["count"].as_f64().expect("a count"),
+                            count_per_bit: t["count_per_bit"].as_f64().expect("a count"),
+                            bytes: t["bytes"].as_f64().expect("a width"),
+                        })
+                        .collect()
+                };
+                ReductionStage {
+                    tables: classes("tables"),
+                    residents: classes("residents"),
+                }
             })
             .collect(),
     };
@@ -567,29 +576,35 @@ fn report_counts(r: &tessera_compiler::CommitmentReport) -> Counts {
         reduction_stages: r
             .stage_tables
             .iter()
-            .map(|s| ReductionStage {
-                tables: s
-                    .tables
-                    .iter()
-                    .chain(&s.residents)
-                    .map(|c| StageTable {
-                        growth: match c.growth {
-                            tessera_compiler::Growth::Fixed => Growth::Fixed,
-                            tessera_compiler::Growth::Tokens => Growth::Tokens,
-                            tessera_compiler::Growth::Keys => Growth::Keys,
-                            tessera_compiler::Growth::TokensAndContext => Growth::TokensAndContext,
-                        },
-                        kind: match c.kind {
-                            tessera_compiler::Holding::Windowable => Holding::Windowable,
-                            tessera_compiler::Holding::Resident => Holding::Resident,
-                            tessera_compiler::Holding::Computed => Holding::Computed,
-                        },
-                        log2_entries: c.log2_entries,
-                        count: c.count as f64,
-                        count_per_bit: c.count_per_bit as f64,
-                        bytes: f64::from(c.bytes),
-                    })
-                    .collect(),
+            .map(|s| {
+                let classes = |classes: &[tessera_compiler::TableClass]| -> Vec<StageTable> {
+                    classes
+                        .iter()
+                        .map(|c| StageTable {
+                            growth: match c.growth {
+                                tessera_compiler::Growth::Fixed => Growth::Fixed,
+                                tessera_compiler::Growth::Tokens => Growth::Tokens,
+                                tessera_compiler::Growth::Keys => Growth::Keys,
+                                tessera_compiler::Growth::TokensAndContext => {
+                                    Growth::TokensAndContext
+                                }
+                            },
+                            kind: match c.kind {
+                                tessera_compiler::Holding::Windowable => Holding::Windowable,
+                                tessera_compiler::Holding::Resident => Holding::Resident,
+                                tessera_compiler::Holding::Computed => Holding::Computed,
+                            },
+                            log2_entries: c.log2_entries,
+                            count: c.count as f64,
+                            count_per_bit: c.count_per_bit as f64,
+                            bytes: f64::from(c.bytes),
+                        })
+                        .collect()
+                };
+                ReductionStage {
+                    tables: classes(&s.tables),
+                    residents: classes(&s.residents),
+                }
             })
             .collect(),
         ..Counts::SOURCE_405B

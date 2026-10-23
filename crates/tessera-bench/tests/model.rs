@@ -73,6 +73,7 @@ fn every_term() -> (Counts, UnitCosts, MemoryModel) {
                 tables(Growth::Tokens, 23, 2.0),
                 tables(Growth::Fixed, 21, 4.0),
             ],
+            residents: Vec::new(),
         }],
         ..Counts::SOURCE_405B
     };
@@ -453,7 +454,10 @@ fn each_table_row_costs_a_committed_lookup_once_per_batch() {
 fn a_stage_takes_the_fewest_window_rounds_after_which_its_tables_fit() {
     let stage = |classes: Vec<StageTable>| Counts {
         regen_full_equivalents: 5.0,
-        reduction_stages: vec![ReductionStage { tables: classes }],
+        reduction_stages: vec![ReductionStage {
+            tables: classes,
+            residents: Vec::new(),
+        }],
         ..Counts::SOURCE_405B
     };
     let memory = |free_bytes: f64| MemoryModel {
@@ -567,7 +571,10 @@ fn a_stage_takes_the_fewest_window_rounds_after_which_its_tables_fit() {
 fn classes_grow_with_the_batch_and_the_context_and_wide_windows_split() {
     let stage = |classes: Vec<StageTable>| Counts {
         regen_full_equivalents: 5.0,
-        reduction_stages: vec![ReductionStage { tables: classes }],
+        reduction_stages: vec![ReductionStage {
+            tables: classes,
+            residents: Vec::new(),
+        }],
         ..Counts::SOURCE_405B
     };
     let memory = |free_bytes: f64| MemoryModel {
@@ -640,6 +647,25 @@ fn classes_grow_with_the_batch_and_the_context_and_wide_windows_split() {
     };
     assert_eq!(rounds(&alone), Ok((bytes, 1, 1)));
     assert_eq!(rounds(&beside), Ok((bytes, 7, 1)));
+    // Residents are held whole but are no instance: an INT8 resident of 2^{16 + 6} entries beside
+    // them sets none of the rounds, so the table, padded by the context's bits only, still folds
+    // after 7 rounds.
+    let keys = class(Growth::Keys, Holding::Resident, 16, 1.0, 0.0, 1.0);
+    let with_keys = Counts {
+        reduction_stages: vec![ReductionStage {
+            tables: vec![scores, table],
+            residents: vec![keys],
+        }],
+        ..beside.clone()
+    };
+    assert_eq!(
+        plan(&with_keys, pow2(22) + bytes / 2.0, 1 << 6, 1 << 4).map(|w| (
+            w.bytes,
+            w.window_rounds,
+            w.own_vars
+        )),
+        Ok((pow2(22) + bytes, 7, 1))
+    );
     // Windows: one table of 2^20 entries per token at 2^14 tokens. Eight own variables take one
     // window, nine two, seventeen three.
     let one = stage(vec![tables(Growth::Tokens, 20, 1.0)]);
@@ -696,90 +722,64 @@ fn classes_grow_with_the_batch_and_the_context_and_wide_windows_split() {
     );
 }
 
-/// The reduction stages' tables and residents of `minimal`'s two-class report at `B_max = 32`
-/// (`docs/perf/v0.2/`, RFC-0055, RFC-0056): stages 1 to 3, by class.
-fn minimal_stages() -> Vec<ReductionStage> {
-    vec![
-        ReductionStage {
-            tables: vec![
+/// The reduction stages' tables and residents of `profile`'s two-class report at `B_max = 32`
+/// (`docs/perf/v0.2/`, RFC-0055, RFC-0056), stage 1 first, as the committed report states them:
+/// `commitment_report` holds the report to the compiler's.
+fn report_stages(profile: &str) -> Vec<ReductionStage> {
+    let path = format!(
+        "{}/../../docs/perf/v0.2/commitment-report-405b-{profile}-c2-b32.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("the report")).expect("JSON");
+    let classes = |stage: &serde_json::Value, key: &str| -> Vec<StageTable> {
+        stage[key]
+            .as_array()
+            .expect("the classes")
+            .iter()
+            .map(|t| {
+                let number = |key: &str| t[key].as_f64().expect("a number");
                 class(
-                    Growth::TokensAndContext,
-                    Holding::Computed,
-                    14,
-                    4.0,
-                    0.0,
-                    16.0,
-                ),
-                class(Growth::Tokens, Holding::Windowable, 0, 9.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 7, 18.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 14, 10.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 17, 6.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 17, 6.0, 2.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 21, 9.0, 0.0, 16.0),
-                class(Growth::Fixed, Holding::Resident, 21, 6.0, 0.0, 16.0),
-                class(Growth::Fixed, Holding::Resident, 23, 2.0, 0.0, 16.0),
-                class(Growth::Keys, Holding::Resident, 17, 1.0, 0.0, 1.0),
-                class(Growth::Tokens, Holding::Resident, 14, 2.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Resident, 21, 1.0, 0.0, 1.0),
-            ],
-        },
-        ReductionStage {
-            tables: vec![
-                class(Growth::Tokens, Holding::Windowable, 14, 1.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 21, 4.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 23, 2.0, 0.0, 16.0),
-                class(Growth::Fixed, Holding::Resident, 14, 2.0, 0.0, 16.0),
-                class(Growth::Fixed, Holding::Resident, 17, 2.0, 0.0, 16.0),
-                class(Growth::Fixed, Holding::Resident, 21, 6.0, 0.0, 16.0),
-            ],
-        },
-        ReductionStage {
-            tables: vec![
-                class(Growth::Tokens, Holding::Resident, 14, 2.0, 0.0, 16.0),
-                class(Growth::Fixed, Holding::Resident, 21, 2.0, 0.0, 16.0),
-            ],
-        },
-    ]
+                    match t["growth"].as_str().expect("a growth") {
+                        "fixed" => Growth::Fixed,
+                        "tokens" => Growth::Tokens,
+                        "keys" => Growth::Keys,
+                        "tokens_and_context" => Growth::TokensAndContext,
+                        other => panic!("no growth {other}"),
+                    },
+                    match t["kind"].as_str().expect("a holding") {
+                        "windowable" => Holding::Windowable,
+                        "resident" => Holding::Resident,
+                        "computed" => Holding::Computed,
+                        other => panic!("no holding {other}"),
+                    },
+                    u32::try_from(t["log2_entries"].as_u64().expect("a size")).expect("a size"),
+                    number("count"),
+                    number("count_per_bit"),
+                    number("bytes"),
+                )
+            })
+            .collect()
+    };
+    report["counts"]["reduction_stages"]
+        .as_array()
+        .expect("the stages")
+        .iter()
+        .map(|stage| ReductionStage {
+            tables: classes(stage, "tables"),
+            residents: classes(stage, "residents"),
+        })
+        .collect()
 }
 
-/// The same for `servable`'s two-class report: stages 1 and 2.
+/// `minimal`'s stages 1 to 3.
+fn minimal_stages() -> Vec<ReductionStage> {
+    report_stages("minimal")
+}
+
+/// `servable`'s stages 1 and 2.
 fn servable_stages() -> Vec<ReductionStage> {
-    vec![
-        ReductionStage {
-            tables: vec![
-                class(
-                    Growth::TokensAndContext,
-                    Holding::Computed,
-                    14,
-                    4.0,
-                    0.0,
-                    16.0,
-                ),
-                class(Growth::Tokens, Holding::Windowable, 0, 9.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 7, 18.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 14, 10.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 17, 6.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 17, 6.0, 2.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 21, 11.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 23, 2.0, 0.0, 16.0),
-                class(Growth::Fixed, Holding::Resident, 21, 8.0, 0.0, 16.0),
-                class(Growth::Fixed, Holding::Resident, 23, 2.0, 0.0, 16.0),
-                class(Growth::Keys, Holding::Resident, 17, 1.0, 0.0, 1.0),
-                class(Growth::Tokens, Holding::Resident, 14, 2.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Resident, 21, 1.0, 0.0, 1.0),
-            ],
-        },
-        ReductionStage {
-            tables: vec![
-                class(Growth::Tokens, Holding::Windowable, 14, 1.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Windowable, 21, 2.0, 0.0, 16.0),
-                class(Growth::Tokens, Holding::Resident, 14, 2.0, 0.0, 16.0),
-                class(Growth::Fixed, Holding::Resident, 14, 2.0, 0.0, 16.0),
-                class(Growth::Fixed, Holding::Resident, 17, 2.0, 0.0, 16.0),
-                class(Growth::Fixed, Holding::Resident, 21, 6.0, 0.0, 16.0),
-            ],
-        },
-    ]
+    report_stages("servable")
 }
 
 /// The corrected 405B projections that 08 §3, SC-2, RISK-9 and RISK-10 quote, each to the digits
@@ -850,6 +850,32 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         .collect();
     assert_eq!(windows, [(6.41, 15, 1), (6.6, 7, 1), (0.01, 0, 0)]);
     quoted("μ(1K)", mu1, 13.8, 1);
+    // RFC-0055 Alternative 4 and RFC-0056 'At 405B': at 256 tokens the stages fit, and the batch
+    // still costs more at 2,048 tokens than at 16K.
+    for (batch, windows, (one, sixteen)) in [
+        (256, [0, 0, 0], (16.1, 31.2)),
+        (2048, [1, 1, 0], (14.2, 29.6)),
+    ] {
+        let plan = stage_plan(&corrected, &MemoryModel::NODE_405B, k16, batch).expect("a plan");
+        assert_eq!(
+            plan.iter().map(|w| w.windows).collect::<Vec<_>>(),
+            windows,
+            "at {batch} tokens"
+        );
+        let mu_at = |context| {
+            mu(
+                &corrected,
+                &UnitCosts::SOURCE,
+                &MemoryModel::NODE_405B,
+                context,
+                batch,
+            )
+            .expect("a projection")
+            .total
+        };
+        quoted(&format!("μ(1K) at {batch} tokens"), mu_at(k1), one, 1);
+        quoted(&format!("μ(16K) at {batch} tokens"), mu_at(k16), sixteen, 1);
+    }
     quoted("μ(4K)", at(&corrected, k4, free).total, 17.0, 1);
     quoted("μ(16K)", mu16, 29.1, 1);
     quoted("μ(128K)", at(&corrected, k128, free).total, 98.3, 1);
@@ -1066,6 +1092,26 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
     assert_eq!(windows, [(11.91, 15, 2), (1.11, 3, 1)]);
     quoted("μ(1K)", mu1, 15.7, 1);
     quoted("μ(16K)", mu16, 31.0, 1);
+    // RFC-0056 OQ-0056-2: at 2,048 tokens stage 1 takes one window and stage 2 fits, two
+    // regenerations fewer, which outweigh the weight pass shared by fewer tokens.
+    let plan = stage_plan(&servable, &MemoryModel::NODE_405B, k16, 2048).expect("a plan");
+    assert_eq!(plan.iter().map(|w| w.windows).collect::<Vec<_>>(), [1, 0]);
+    for (context, figure) in [(k1, 14.3), (k16, 29.5)] {
+        let small = mu(
+            &servable,
+            &UnitCosts::SOURCE,
+            &MemoryModel::NODE_405B,
+            context,
+            2048,
+        )
+        .expect("a projection");
+        quoted(
+            &format!("μ({context}) at 2,048 tokens"),
+            small.total,
+            figure,
+            1,
+        );
+    }
     quoted("1K table term", at(k1, free).tables, 0.055, 3);
     quoted("16K table term", at(k16, free).tables, 0.051, 3);
     quoted(
@@ -1204,8 +1250,14 @@ fn the_committed_scores_are_the_layouts_rows() {
 #[test]
 fn the_report_states_each_input_and_term_under_its_own_name() {
     let (counts, costs, memory) = every_term();
+    let mut stages = counts.reduction_stages.clone();
+    stages[0]
+        .tables
+        .push(class(Growth::Keys, Holding::Resident, 4, 1.0, 3.0, 16.0));
+    stages[0].residents = vec![class(Growth::Tokens, Holding::Resident, 9, 2.0, 0.0, 1.0)];
     let counts = Counts {
         lookups_per_token: 1.5 * counts.commits_per_token,
+        reduction_stages: stages,
         ..counts
     };
     let report = ModelReport::new(
@@ -1250,8 +1302,42 @@ fn the_report_states_each_input_and_term_under_its_own_name() {
         ("merge_ps", costs.merge_ps),
         ("column_answer_ps", costs.column_answer_ps),
         ("row_combination_ps", costs.row_combination_ps),
+        ("window_ps", costs.window_ps),
     ] {
         states(&json["inputs"]["unit_costs"], key, value);
+    }
+    // Each stage's classes and residents, every field under its name.
+    let names = |t: &StageTable| {
+        let growth = match t.growth {
+            Growth::Fixed => "fixed",
+            Growth::Tokens => "tokens",
+            Growth::Keys => "keys",
+            Growth::TokensAndContext => "tokens_and_context",
+        };
+        let kind = match t.kind {
+            Holding::Windowable => "windowable",
+            Holding::Resident => "resident",
+            Holding::Computed => "computed",
+        };
+        (growth, kind)
+    };
+    for (s, stage) in counts.reduction_stages.iter().enumerate() {
+        for (key, classes) in [("tables", &stage.tables), ("residents", &stage.residents)] {
+            let stated = json["inputs"]["counts"]["reduction_stages"][s][key]
+                .as_array()
+                .expect("the classes");
+            assert_eq!(stated.len(), classes.len(), "{key}");
+            for (c, t) in stated.iter().zip(classes) {
+                assert_eq!((c["growth"].as_str(), c["kind"].as_str()), {
+                    let (growth, kind) = names(t);
+                    (Some(growth), Some(kind))
+                });
+                assert_eq!(c["log2_entries"], u64::from(t.log2_entries));
+                states(c, "count", t.count);
+                states(c, "count_per_bit", t.count_per_bit);
+                states(c, "bytes", t.bytes);
+            }
+        }
     }
     assert_eq!(report.projections.len(), CONTEXTS.len());
     for (k, p) in report.projections.iter().enumerate() {
@@ -1271,6 +1357,14 @@ fn the_report_states_each_input_and_term_under_its_own_name() {
         let projection = &json["projections"][k];
         assert_eq!(projection["leaf_groups"], u64::from(p.leaf_groups));
         assert_eq!(projection["table_rounds"], u64::from(p.table_rounds));
+        assert!(p.reduction_stages.iter().any(|w| w.windows > 0));
+        for (s, w) in p.reduction_stages.iter().enumerate() {
+            let stated = &projection["reduction_stages"][s];
+            states(stated, "bytes", w.bytes);
+            assert_eq!(stated["window_rounds"], u64::from(w.window_rounds));
+            assert_eq!(stated["own_vars"], u64::from(w.own_vars));
+            assert_eq!(stated["windows"], u64::from(w.windows));
+        }
     }
 }
 

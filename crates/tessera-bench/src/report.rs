@@ -7,9 +7,28 @@ use serde_json::{Map, Number, Value};
 
 use crate::error::{ModelError, Problem};
 use crate::model::{
-    Counts, Growth, Holding, MemoryModel, MuBreakdown, StageWindow, UnitCosts,
+    Counts, Growth, Holding, MemoryModel, MuBreakdown, StageTable, StageWindow, UnitCosts,
     detection_probability, leaf_plan, mu, proof_time_s, sampling_rate, stage_plan,
 };
+
+/// A class's growth as the reports name it (RFC-0056).
+fn growth_name(growth: Growth) -> &'static str {
+    match growth {
+        Growth::Fixed => "fixed",
+        Growth::Tokens => "tokens",
+        Growth::Keys => "keys",
+        Growth::TokensAndContext => "tokens_and_context",
+    }
+}
+
+/// A class's holding as the reports name it (RFC-0056).
+fn holding_name(kind: Holding) -> &'static str {
+    match kind {
+        Holding::Windowable => "windowable",
+        Holding::Resident => "resident",
+        Holding::Computed => "computed",
+    }
+}
 
 /// The report's schema identifier (03 §5).
 pub const SCHEMA: &str = "tessera.cost-model/1";
@@ -222,38 +241,29 @@ impl ModelReport {
                     c.reduction_stages
                         .iter()
                         .map(|stage| {
-                            let tables = stage
-                                .tables
-                                .iter()
-                                .map(|t| {
-                                    Ok(object([
-                                        (
-                                            "growth",
-                                            Value::from(match t.growth {
-                                                Growth::Fixed => "fixed",
-                                                Growth::Tokens => "tokens",
-                                                Growth::Keys => "keys",
-                                                Growth::TokensAndContext => "tokens_and_context",
-                                            }),
-                                        ),
-                                        (
-                                            "kind",
-                                            Value::from(match t.kind {
-                                                Holding::Windowable => "windowable",
-                                                Holding::Resident => "resident",
-                                                Holding::Computed => "computed",
-                                            }),
-                                        ),
-                                        ("log2_entries", Value::from(t.log2_entries)),
-                                        ("count", number("count", t.count)?),
-                                        (
-                                            "count_per_bit",
-                                            number("count_per_bit", t.count_per_bit)?,
-                                        ),
-                                    ]))
-                                })
-                                .collect::<Result<Vec<_>, ModelError>>()?;
-                            Ok(object([("tables", Value::Array(tables))]))
+                            let classes = |tables: &[StageTable]| {
+                                tables
+                                    .iter()
+                                    .map(|t| {
+                                        Ok(object([
+                                            ("growth", Value::from(growth_name(t.growth))),
+                                            ("kind", Value::from(holding_name(t.kind))),
+                                            ("log2_entries", Value::from(t.log2_entries)),
+                                            ("count", number("count", t.count)?),
+                                            (
+                                                "count_per_bit",
+                                                number("count_per_bit", t.count_per_bit)?,
+                                            ),
+                                            ("bytes", number("bytes", t.bytes)?),
+                                        ]))
+                                    })
+                                    .collect::<Result<Vec<_>, ModelError>>()
+                                    .map(Value::Array)
+                            };
+                            Ok(object([
+                                ("tables", classes(&stage.tables)?),
+                                ("residents", classes(&stage.residents)?),
+                            ]))
                         })
                         .collect::<Result<Vec<_>, ModelError>>()?,
                 ),

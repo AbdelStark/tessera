@@ -10,13 +10,13 @@
   - [RFC-0020](RFC-0020-cost-model.md#executable-cost-model) 'Executable cost model': the reduction stages' plan, their fold passes and their windows' arithmetic;
   - [RFC-0006](RFC-0006-compiler-ir.md#outputs) 'Outputs': the commitment report lists each reduction stage's tables;
   - [RFC-0010](RFC-0010-proof-schedule.md#sumcheck-messages) 'Sumcheck messages': a pointer to the windows, its messages unchanged.
-- Amended by: [RFC-0056](RFC-0056-native-working-sets.md) ('Native relations'; the 405B windows and `c_w` bands, which now count the native relations; Alternative 7, adopted beyond eight own variables per window)
+- Amended by: [RFC-0056](RFC-0056-native-working-sets.md) ('Native relations'; the 405B working sets, windows and `c_w` bands, which now count the native relations; 'The executable model': classes by growth, holding and width, the plan at a context, and a fold pass per window; Alternative 7, adopted beyond eight own variables per window)
 - Scope: the prover and the cost model. Messages, labels, the verifier and the soundness bound are RFC-0010's, in `tessera-protocol/1` and `/2`.
 - Origin: [#452](https://github.com/AbdelStark/tessera/issues/452)
 
 ## Summary
 
-A reduction stage runs one batched sumcheck over every layer and token ([RFC-0010](RFC-0010-proof-schedule.md#sumcheck-messages)). The instances of the compiler's stage schedule ([RFC-0037](RFC-0037-stage-schedule.md)) hold tables of every layer and token. A 405B batch of 16K tokens gives `minimal`'s stages 1 and 2 working sets of 4.1 and 5.5 TB, and `servable`'s stage 1 one of 9.6 TB, against about 0.2 TB of free HBM. Under RFC-0010 as written, each round whose tables do not fit streams them: one regeneration pass per round, 12 for `minimal` and 8 for `servable`.
+A reduction stage runs one batched sumcheck over every layer and token ([RFC-0010](RFC-0010-proof-schedule.md#sumcheck-messages)). The instances of the compiler's stage schedule ([RFC-0037](RFC-0037-stage-schedule.md)) hold tables of every layer and token. A 405B batch of 16K tokens gives `minimal`'s stages 1 and 2 working sets of 4.1 and 5.5 TB, and `servable`'s stage 1 one of 9.6 TB, against about 0.2 TB of free HBM. Under RFC-0010 as written, each round whose tables do not fit streams them: one regeneration pass per round, 12 for `minimal` and 8 for `servable`. With the native relations counted ([RFC-0056](RFC-0056-native-working-sets.md#at-405b)), the stages hold 6.4, 6.6 and 11.9 TB at 16K of context, and streaming would cost 18 to 25 and 14 to 21 regenerations, by context.
 
 This RFC answers a stage's first `c` rounds from a **window** instead. One pass accumulates each elementwise instance's products on a small grid. A second pass folds its tables at the window's challenges, after which they fit. The messages are RFC-0010's, so the verifier, the transcript, soundness and zero knowledge do not change.
 
@@ -36,7 +36,7 @@ The prover also composes native gadget relations into stage 1 ([RFC-0050](RFC-00
 | `servable`, 1 | 6.0×10^11 | 9.57 TB | 4.40 TB unpadded; 4.95 TB padded by 2; 0.21 TB padded by 6 |
 | `servable`, 2 | 5.5×10^8 | 8.7 GB | fits |
 
-These tables do not depend on context. They are the elementwise instances' operands, such as the norms' squares, `a·u`, RoPE's rotations and the one-hot checks, and the matrix products' folded operands. Each is linear in the tokens or independent of them.
+These tables do not depend on context; with the native relations, stage 1's do, a little ([RFC-0056](RFC-0056-native-working-sets.md#at-405b)). They are the elementwise instances' operands, such as the norms' squares, `a·u`, RoPE's rotations and the one-hot checks, and the matrix products' folded operands. Each is linear in the tokens or independent of them.
 
 RFC-0010 binds the lowest variable first. A smaller instance is front-padded: constant in the stage's first `p = n_max − n_i` rounds. Under RFC-0010 as written, every round whose tables do not fit streams them, regenerating the stage's tensors. A stage then streams until its tables, each folded by `2^{max(0, j − p)}` after round `j`, fit: 6 rounds for each of `minimal`'s stages and 8 for `servable`'s stage 1. That adds 12 and 8 regenerations to `μ`, which RFC-0018's estimate of at most one forward pass for all of P3 does not count.
 
@@ -178,7 +178,7 @@ The prover composes native gadget relations into stage 1 (RFC-0050; [RFC-0010](R
 
 ### The executable model
 
-`tessera-bench` reads the report's classes into `Counts::reduction_stages`, one `ReductionStage { tables: Vec<StageTable> }` per stage.
+`tessera-bench` reads the report's classes into `Counts::reduction_stages`, one `ReductionStage { tables: Vec<StageTable> }` per stage. [RFC-0056](RFC-0056-native-working-sets.md#the-executable-model) adds the classes' growth, holding and width, the residents, the context, and a window per eight own variables.
 
 `stage_plan(counts, memory, batch_tokens)` sizes each stage at the batch:
 - **Its working set.** Its tables at `STAGE_BYTES_PER_ENTRY` = 16.

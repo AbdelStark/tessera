@@ -117,8 +117,11 @@ pub struct StageTable {
 /// tables and RFC-0056's residents (RFC-0055 'Working sets').
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReductionStage {
-    /// Its tables by size.
+    /// Its instances' tables by size.
     pub tables: Vec<StageTable>,
+    /// What the prover of its score instances holds beside them, whole: no instance of the
+    /// stage's, so they set none of its rounds (RFC-0056 'Working sets').
+    pub residents: Vec<StageTable>,
 }
 
 /// What a model costs per token: the compiler's commitment report, or the source's counts.
@@ -277,7 +280,11 @@ impl Counts {
         input("regen_full_equivalents", self.regen_full_equivalents, false)?;
         input("table_rows", self.table_rows, false)?;
         input("score_block", self.score_block, false)?;
-        for table in self.reduction_stages.iter().flat_map(|s| &s.tables) {
+        for table in self
+            .reduction_stages
+            .iter()
+            .flat_map(|s| s.tables.iter().chain(&s.residents))
+        {
             input("count", table.count, false)?;
             input("count_per_bit", table.count_per_bit, false)?;
             input("bytes", table.bytes, false)?;
@@ -437,8 +444,8 @@ pub fn shared_streaming_passes(
 /// them (RFC-0055 'Working sets'). RFC-0056's INT8 residents take 1.
 pub const STAGE_BYTES_PER_ENTRY: f64 = 16.0;
 
-/// The most own variables one window binds of an instance, 8: beyond it, a second window saves
-/// more of the grid's arithmetic than its regeneration costs (RFC-0056 'The windows').
+/// The most own variables one window binds of an instance, 8, calibrated at 405B: there a second
+/// window pays for its regeneration only beyond eight (RFC-0056 'The windows', OQ-0056-1).
 pub const MAX_WINDOW_VARS: u32 = 8;
 
 /// How one reduction stage of a batch meets the memory budget (RFC-0055, RFC-0056).
@@ -477,8 +484,8 @@ fn pow2(n: u32) -> f64 {
 /// - **Variables.** The batch and the context are padded to `2^b` and `2^s`, so a table has
 ///   `log2_entries` variables plus `b` (tokens), `max(b, s)` (keys) or `b + s` (tokens and
 ///   context), and `count + count_per_bit·min(b, s)` copies.
-/// - **The working set.** The windowable and resident tables, each at its `bytes`; a computed
-///   instance holds none but sets the stage's `n_max`.
+/// - **The working set.** The windowable and resident tables and the residents, each at its
+///   `bytes`. A computed instance holds none but sets the stage's `n_max`; a resident sets none.
 /// - **The rounds.** A windowable table front-padded by `p = n_max − n` is folded by
 ///   `2^{max(0, c − p)}` after `c` rounds, and the others stay whole. `c` is the fewest rounds
 ///   after which the tables fit in `free_bytes`, 0 when they fit, and at most `n_max − 1`, so that
@@ -516,25 +523,32 @@ pub fn stage_plan(
         .reduction_stages
         .iter()
         .map(|stage| {
-            let vars = stage
-                .tables
+            let sized = |tables: &[StageTable]| {
+                tables
+                    .iter()
+                    .map(|t| {
+                        let growth = match t.growth {
+                            Growth::Fixed => 0,
+                            Growth::Tokens => tb,
+                            Growth::Keys => tb.max(sb),
+                            Growth::TokensAndContext => tb + sb,
+                        };
+                        let count = t.count + t.count_per_bit * f64::from(tb.min(sb));
+                        t.log2_entries
+                            .checked_add(growth)
+                            .map(|n| (n, t.kind, count * t.bytes, count))
+                            .ok_or(ModelError::Output {
+                                name: "stage_bytes",
+                            })
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            };
+            let vars = sized(&stage.tables)?;
+            // The residents are held whole beside the instances' tables.
+            let residents = sized(&stage.residents)?
                 .iter()
-                .map(|t| {
-                    let growth = match t.growth {
-                        Growth::Fixed => 0,
-                        Growth::Tokens => tb,
-                        Growth::Keys => tb.max(sb),
-                        Growth::TokensAndContext => tb + sb,
-                    };
-                    let count = t.count + t.count_per_bit * f64::from(tb.min(sb));
-                    t.log2_entries
-                        .checked_add(growth)
-                        .map(|n| (n, t.kind, count * t.bytes, count))
-                        .ok_or(ModelError::Output {
-                            name: "stage_bytes",
-                        })
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(|&(n, _, bytes, _)| bytes * pow2(n))
+                .sum::<f64>();
             let n_max = vars.iter().map(|&(n, ..)| n).max().unwrap_or(0);
             // A table's own variables among `c` rounds: none when it stays whole.
             let own = |c: u32, n: u32, kind: Holding| match kind {
@@ -548,7 +562,7 @@ pub fn stage_plan(
                     .filter(|&&(_, kind, ..)| kind != Holding::Computed)
                     .map(|&(n, kind, bytes, _)| bytes * pow2(n - own(c, n, kind)))
                     .sum::<f64>();
-                output("stage_bytes", held)
+                output("stage_bytes", residents + held)
             };
             let bytes = folded(0)?;
             let mut window_rounds = 0u32;

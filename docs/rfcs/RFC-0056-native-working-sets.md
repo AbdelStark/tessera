@@ -24,7 +24,7 @@ The compiler's schedule did not hold them, so RFC-0055 sized the reduction stage
 This RFC makes four changes, none of which touches the messages:
 - **The score instances.** They are proven without the score tensor. The rounds over the key index read the INT8 queries, the keys folded over their bound bits, and the causal mask's closed form, with prefix sums. The remaining rounds run on row tables. The scores are `Q·Kᵀ`, bilinear, so the round polynomials are the same: an exact check against a literal prover passed on 336 runs ([EXP-0026](../../research/experiments/EXP-0026-causal-score-rounds/README.md)). Their working set becomes about 45 GB for 16K tokens.
 - **Shared tables.** Instances of one relation of one tensor at one point hold one set of tables, and so do a root's coefficient products. Each root's thirty products leave thirty identical claims on the norm's sum of squares, which stage 2 proves as thirty identical instances over the residual.
-- **The windows.** A stage's rounds take one window per eight own variables they bind of an instance, each a regeneration.
+- **The windows.** A stage's rounds take one window per eight own variables they bind of an instance, each a regeneration: eight is where a second window starts to pay at 405B.
 - **The report and the model.** The commitment report counts the native relations, from a compiler-side derivation that a prover test holds equal to the prover's. The cost model sizes each stage at its batch and context.
 
 **At 405B and 16K tokens**, with the native relations counted:
@@ -39,7 +39,7 @@ This RFC makes four changes, none of which touches the messages:
 - **The score instances.** `SoftmaxRow`'s key and forest relations prove `Σ_x eq(z, x)·M(x)·(c(row(x)) − s(x))` over `x = (ℓ, h, q, i)`, the score tensor's `h·S²` entries per sequence and layer. The prover builds two tables of that size: the scores, and the row maxima broadcast.
 - **The window cost.** A window of RFC-0055 over them would bind 9 to 13 own variables, at 115 to 584 `Fp` multiplications per index against about 40 for the rounds it answers.
 
-Composing the native relations also showed duplicated work. Each root's `2·⌈(2w + 55)/8⌉` coefficient products, thirty at 405B, end at one point. Each leaves a claim on the norm's sum of squares there. Stage 2 proves each claim as its own `SumSquares` instance over the residual: thirty identical instances per norm, which at 405B would hold 38.6 TB.
+Composing the native relations also showed duplicated work. Each root's `2·⌈(2w + 55)/8⌉` coefficient products, thirty at 405B, end at one point. Each leaves a claim on the norm's sum of squares there. Stage 2 proves each claim as its own `SumSquares` instance over the residual: thirty identical instances per norm. At 405B they hold 33.1 TB of `minimal`'s stage 2, which holds 38.6 TB unshared.
 
 ## Goals
 
@@ -64,6 +64,7 @@ Composing the native relations also showed duplicated work. Each root's `2·⌈(
 - **Tables.** A graph instance holds one table per evaluation it leaves. A native instance holds its evaluations.
 - **Classes.** Each class is `count + count_per_bit·b` tables of `2^{log2_entries}` entries of `bytes` bytes, each grown as its class grows, with `b` the bits of a request's positions:
   - **Growth.** With a batch of `T` tokens at context `S`, each padded to a power of two, a table gains no variables (`fixed`), `log2 T` (`tokens`), `log2 max(T, S)` (`keys`, the key positions the batch attends), or `log2 T + log2 S` (`tokens_and_context`, the score tensor). The greedy relations' evaluations grow by two per bit of a request's positions, `log2 min(T, S)`.
+  - **The batch's form.** The growths assume that a batch with `T ≥ S` holds `T/S` whole sequences of `S` tokens, and that one with `T < S` is a chunk of one sequence whose earlier keys are cached. How a proof unit holds several requests is [#357](https://github.com/AbdelStark/tessera/issues/357)'s.
   - **Classification.** The compiler classifies each instance from the schedules of `m` and `m/2` positions, `m` the largest power of two at or below the sequence. It refuses one that grows by anything other than 0, 1 or 2 variables, or whose table count grows by anything other than 0 or 1.
   - **Holding.** Windowable, an elementwise operand a window may fold (RFC-0055). Resident, held whole: a matrix product's folded operand, or one of the residents below. Computed, never held: the score instances.
   - **Width.** 16 bytes for an `Fp2` table, 1 for an INT8 operand held as it is.
@@ -102,7 +103,9 @@ The remaining rounds run as RFC-0010's prover runs them, and the final evaluatio
 
 **What it holds.** The residents above: about 2.6 MB per token and 0.13 MB per key position at 405B. That is 45 GB for 16K tokens at up to 16K of context, and 60 GB at 128K. The score tensor is never built.
 
-**Its work.** `O(L·d·(H·T + H_kv·max(T, S))·log S)` multiplications by `Fp2` values, most of them INT8 values times `Fp2` vectors. EXP-0026 counted 0.027 of the literal prover's multiplications at `n = 2^{10}`, falling as `d·log n/n`.
+**Its work.** `O(L·d·(H·T + H_kv·max(T, S))·log S)` multiplications by `Fp2` values, most of them INT8 values times `Fp2` vectors.
+- **Against the literal prover.** EXP-0026 counted 0.027 of its multiplications at `d = 4` and `n = 2^{10}`. The ratio scales as `d·log n/n`: at 405B's `d = 128`, about 0.9 at 1K of context and 0.08 at 16K. The structured rounds save memory at every context, and arithmetic only at long ones.
+- **In `μ`.** Neither prover's sumcheck arithmetic has a term of its own; `μ`'s glue prices it, as RFC-0020 does every stage's.
 
 **The check** ([EXP-0026](../../research/experiments/EXP-0026-causal-score-rounds/README.md), E0). Against a literal prover over the materialized tensors, with arbitrary values on every padded position:
 - **Equality.** Every round polynomial at 0 to 3 and both final evaluations are equal in `Fp2` on 336 registered runs: 1 to 16 positions, grouped key heads, and padded heads and layers.
@@ -123,7 +126,7 @@ The report counts shared tables once.
 
 ### The windows
 
-A window binds the own variables of each instance among its rounds, and its grid costs `3·1.5^v` `Fp` multiplications per pair at `v` of them (RFC-0055 'Cost'). Beyond about eight, the grid costs more than a second window's regeneration saves.
+A window binds the own variables of each instance among its rounds, and its grid costs `3·1.5^v` `Fp` multiplications per pair at `v` of them (RFC-0055 'Cost'). Splitting a wide window trades a regeneration for less grid arithmetic. Whether that pays depends on `v` and on the stage's windowed entries per token against the native time.
 
 **The rule.** A stage's `c` rounds take `k = ⌈v/8⌉` windows, `v` the most own variables they bind of one instance, each binding at most eight:
 - **Front padding.** The rounds before an instance's own bind none of its variables.
@@ -139,12 +142,15 @@ A window binds the own variables of each instance among its rounds, and its grid
 | `c_w` by the count, ps | 1 to 2 | 1 to 2 | 1 to 2 | 4.3 to 8.6 | 11 to 21 | 20 to 41 | 35 to 70 |
 | `c_w` by the measurement, ps | 1 to 2 | 3.4 to 4.4 | 6.7 to 8.6 | 12 to 15 | 19 to 27 | 30 to 45 | 46 to 75 |
 
-**The cap at 405B.** A window costs about 1 on `μ`. `servable`'s stage 1 binds ten own variables, and `minimal`'s stages eight and seven. Two windows instead of one change `μ` by:
-- **`servable`'s stage 1:** −0.01 to −1.3, from the count's lower bound to the measurement's upper one;
+**The cap at 405B.** A window costs about 1 on `μ`. `servable`'s stage 1 binds ten own variables, and `minimal`'s stages eight and seven. Two windows instead of one change `μ` by, from the count's lower bound to the measurement's upper one:
+- **`servable`'s stage 1:** −0.09 to −1.3 at 1K, and −0.01 to −1.1 at 16K;
 - **`minimal`'s stage 1:** +0.4 to +0.8;
 - **`minimal`'s stage 2:** +0.7 to +1.0.
 
-A second window wins only beyond eight.
+So at 405B a second window pays only beyond eight, and `MAX_WINDOW_VARS = 8` is a calibration for 405B's stages, not a law.
+- **Smaller stages.** For a stage as large as `minimal`'s stage 1, nine own variables split into five and four would change `μ` by −0.27 to +0.40 by estimate.
+- **A planner.** It could choose each stage's windows by cost once OQ-0055-1 measures the grid (OQ-0056-1).
+- **The model's charge.** The model charges every window's grid on every windowed entry. A second window's grid runs on entries the first already folded, so the charge errs high.
 
 ### At 405B
 
@@ -180,7 +186,7 @@ Two classes, `B_max = 32`, 16K tokens, 0.2 TB:
 
 `stage_plan(counts, memory, context, batch_tokens)` sizes each stage at the batch and the context, with `b` and `s` their bits:
 - **Variables.** A table gains `0`, `b`, `max(b, s)` or `b + s` variables, by its growth, and counts `count + count_per_bit·min(b, s)` tables.
-- **What it holds.** The windowable and resident tables at their widths. A computed instance sets `n_max` and holds nothing.
+- **What it holds.** The windowable and resident tables at their widths, and the residents (`ReductionStage::residents`). A computed instance sets `n_max` and holds nothing; a resident is no instance and sets none of the rounds.
 - **The rounds.** RFC-0055's rule over the held tables.
 - **The windows.** `⌈v/MAX_WINDOW_VARS⌉`, `MAX_WINDOW_VARS = 8`, with `v` the most own variables the rounds bind (`own_vars`).
 
@@ -202,6 +208,7 @@ Two classes, `B_max = 32`, 16K tokens, 0.2 TB:
 - **Wider windows.** The residents and the native relations' tables leave less memory for the windows. `minimal`'s bind eight and seven own variables, so the grid's arithmetic adds up to 1.2 to its `μ(1K)` at the upper estimates.
 - **A mirror.** The compiler derives the native relations again, beside the prover. The prover's tests hold the two equal, and a future native relation must enter both.
 - **Estimates.** The bands and the cap rest on a count and on a CPU measurement of windows of three to five variables, extrapolated (OQ-0056-1).
+- **A small overcount.** The roots' and the reciprocal's padding checks count tables the products and the reciprocal relation already hold. They are row-sized, so the overcount is negligible, and it errs high.
 
 ## Migration / Rollout
 
@@ -220,11 +227,12 @@ Two classes, `B_max = 32`, 16K tokens, 0.2 TB:
   - **The sharing rule.** These tests apply the rule; they do not prove it. [#461](https://github.com/AbdelStark/tessera/issues/461)'s equivalence tests do: the shared prover's messages equal the unshared one's byte for byte.
 - **The classification.** A growth of 0, 1 or 2 variables and a count growth of 0 or 1 are accepted, and any other is refused. Classes part by growth, holding and width.
 - **The structured prover.** EXP-0026: exact equality on 336 runs and 9 of 9 planted faults detected. The production prover's equivalence tests come with #461.
-- **The model.** Each growth, the per-bit tables, a computed instance's padding, and the windows' split at nine own variables and at seventeen, front padding excluded, each with its regenerations and folds in `μ`. The documents' figures are pinned by `tessera-bench`'s tests.
+- **The model.** Each growth, the per-bit tables, a computed instance's padding, a resident wider than every instance that sets none of the rounds, and the windows' split at nine own variables and at seventeen, front padding excluded, each with its regenerations and folds in `μ`. The cost-model report states each class, resident and window under its name.
+- **The documents' figures.** `tessera-bench`'s tests pin the projections, the working sets, rounds and windows, the windows' terms, and the batches of 256 and 2,048 tokens, from the committed reports' classes. The `c_w` table, the cap's deltas and the shares of own variables follow from the formulas above and those classes, and are not pinned.
 
 ## Open Questions
 
-- **OQ-0056-1: the window cap.** Eight own variables rests on SUR-0007's count and EXP-0012's extrapolation. At those estimates a second window saves 0.01 to 1.3 on `servable`'s stage 1 and costs 0.4 to 1.0 on `minimal`'s stages. OQ-0055-1's H100 measurement of the grid settles the cap. Owner: @AbdelStark. Resolve with v0.5's measurements.
+- **OQ-0056-1: the window cap.** Eight own variables rests on SUR-0007's count and EXP-0012's extrapolation, at 405B's stages. At those estimates a second window saves 0.01 to 1.3 on `servable`'s stage 1 and costs 0.4 to 1.0 on `minimal`'s stages. OQ-0055-1's H100 measurement of the grid settles the cap, or replaces it by a choice per stage by cost. Owner: @AbdelStark. Resolve with v0.5's measurements.
 - **OQ-0056-2: the batch.** `servable`'s corrected `μ` is lower at 2,048 tokens than at the scenario's 16K: 14.3 and 29.5 against 15.7 and 31.0. The projections keep the source's scenario. How a proof unit holds several requests, and so which batches a prover can choose, is [#357](https://github.com/AbdelStark/tessera/issues/357)'s. Owner: @AbdelStark. Resolve with #357.
 
 ## References

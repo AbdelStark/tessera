@@ -63,12 +63,19 @@ pub(crate) fn counts_of(report: &CommitmentReport) -> Counts {
             .as_array()
             .map_or(&[][..], Vec::as_slice)
             .iter()
-            .map(|stage| ReductionStage {
-                tables: ["tables", "residents"]
-                    .iter()
-                    .flat_map(|key| stage[*key].as_array().map_or(&[][..], Vec::as_slice))
-                    .map(stage_table)
-                    .collect(),
+            .map(|stage| {
+                let classes = |key: &str| {
+                    stage[key]
+                        .as_array()
+                        .map_or(&[][..], Vec::as_slice)
+                        .iter()
+                        .map(stage_table)
+                        .collect()
+                };
+                ReductionStage {
+                    tables: classes("tables"),
+                    residents: classes("residents"),
+                }
             })
             .collect(),
     }
