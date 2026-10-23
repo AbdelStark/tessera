@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.1
-- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Executable cost model': the score block)
+- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Executable cost model': the score block), [RFC-0054](RFC-0054-token-groups.md#the-executable-model) ('Executable cost model': the leaf stage's plan, the merge and the streaming term)
 
 ## Summary
 
@@ -35,7 +35,8 @@ Every performance number in the source and in this corpus is a projection from a
 ```rust
 pub struct UnitCosts { pub commit_ps: f64, pub lookup_ps: f64, pub product_leaf_ps: f64,
                        pub glue_fraction: f64, pub weight_pass_gpu_s: f64, pub native_ops_per_s: f64,
-                       pub streaming_pass_ps: f64,                       // per score per streamed pass
+                       pub streaming_pass_ps: f64,                       // per table leaf per streamed round
+                       pub merge_ps: f64,                                // per merged element, RFC-0054
                        pub column_answer_ps: f64,                        // per committed element, P5
                        pub row_combination_ps: f64 }                     // per committed element, P4
 pub struct Counts {                       // from the compiler's CommitmentReport
@@ -46,7 +47,12 @@ pub struct Counts {                       // from the compiler's CommitmentRepor
     pub table_rows: f64,                  // M: table rows per proof, the report's multiplicities
     pub score_block: f64,                 // b: RFC-0034's score block, 0 for the valid half alone
 }
-pub struct MemoryModel { pub free_bytes: f64, pub bytes_per_leaf: f64 }  // RISK-10 streaming passes
+pub struct MemoryModel { pub free_bytes: f64, pub bytes_per_leaf: f64 }  // RISK-10, RFC-0054
+pub struct LeafPlan { pub groups: u32, pub table_rounds: u32 }          // RFC-0054's plan
+pub fn leaf_plan(counts: &Counts, mem: &MemoryModel, context: u32, batch_tokens: u32)
+    -> Result<LeafPlan, ModelError>;
+pub fn shared_streaming_passes(counts: &Counts, mem: &MemoryModel, context: u32, batch_tokens: u32)
+    -> Result<u32, ModelError>;                                          // RFC-0018 as first written
 pub fn mu(counts: &Counts, u: &UnitCosts, mem: &MemoryModel, context: u32, batch_tokens: u32)
     -> Result<MuBreakdown, ModelError>;
 pub struct MuBreakdown { pub linear: f64, pub attention: f64, pub weights: f64, pub regen: f64,
@@ -57,7 +63,7 @@ pub struct MuBreakdown { pub linear: f64, pub attention: f64, pub weights: f64, 
 
 `μ` follows [08 §1](../spec/08-performance-budget.md#1-cost-model): the source's formula plus `n_regen` and four more terms. A token commits `A·S'` scores, `S' = S + min(S, score_block)`, and looks up and multiplies `A·S` of them ([RFC-0034](RFC-0034-causal-blocks.md#cost)):
 
-- a streaming term `c(S) · streaming_pass_ps · A · S / native`, where `c(S) = max(0, ⌈log2(N_level(S) · bytes_per_leaf / free_bytes)⌉)` and `N_level(S) = A · S · batch_tokens` is the batch's attention leaves ([RFC-0018 'Leaf levels'](RFC-0018-gpu-prover-runtime.md#pass-structure)). This counts the attention trees' leaf level alone; [#329](https://github.com/AbdelStark/tessera/issues/329) covers the rest of the leaf stage;
+- the leaf stage's plan ([RFC-0054](RFC-0054-token-groups.md#when-groups-apply)): its token groups `G` and its table trees' streamed rounds `r_t`, from the batch's `T·(K + 2·A·S)` lookup and forest leaves and `M` table leaves at `bytes_per_leaf` against `free_bytes`. A grouped stage adds its merge's pass to `n_regen` when `n_regen` is positive. Then a streaming term `(p_m · merge_ps · (K + 2·A·S) + r_t · streaming_pass_ps · M / batch_tokens) / native`, with `p_m` one when the stage is grouped: the merge's folds, an element per leaf, and the table trees' rounds. `shared_streaming_passes` counts what RFC-0018 first specified, every level of every tree streaming in one batch, `c(c + 1)/2` regenerations;
 - a column-answer term `(C + A · S') · column_answer_ps / native`, P5's evaluation of every committed element at the queried columns ([RFC-0018 'Column answers'](RFC-0018-gpu-prover-runtime.md#pass-structure)). A token commits `C` elements in its linear layers and one per score. P5 runs no sumcheck, so the term carries no glue.
 - a row-combination term `(C + A · S') · row_combination_ps / native`: P4's combination of every committed element into the opening's combined rows ([RFC-0018 'Opening pass'](RFC-0018-gpu-prover-runtime.md#pass-structure)). It carries no glue either.
 - a table term `(1 + glue) · M · (c_c + c_ℓ) / batch_tokens / native`. A proof commits one multiplicity per table row and builds the table's fraction tree over every row, however few lookups the table serves ([RFC-0008](RFC-0008-logup-and-tables.md)). Each of the `M` rows therefore costs one committed element and one tree leaf, priced as a lookup, once per proof. `M` is the commitment report's multiplicities ([#304](https://github.com/AbdelStark/tessera/issues/304)).
@@ -68,7 +74,7 @@ Floating-point is acceptable here: the model is a planning tool, not part of the
 
 `tessera bench model --plan plan.tep --context S` reads counts from the commitment report; with `--source-defaults` it uses the source's counts and unit costs. Outputs: `MuBreakdown` per context, proof time per request on `G` GPUs, sampling rate for a target amortized overhead, and daily detection probability for a given violation count (as in [RFC-0016](RFC-0016-audit-sampling.md#calculators)).
 
-**Golden test.** With source defaults, `regen_full_equivalents = 0`, no streaming, no column answers, no row combination, no table rows and no score block, the model reproduces the source's §5 chart data and §8 table: `μ` at 1K, 2K, 4K, 8K, 16K, 32K, 64K and 128K within ±0.05, and the sampling and detection columns within ±0.1 percentage point, computed from that table's `μ` column, which the source rounds to one decimal. [`spec/vectors/cost-model/`](../../spec/vectors/cost-model/README.md) records each figure with its line and each input with its provenance: `F_lin`, which the source writes as 8.1×10^11, is two operations per parameter, 2 × 405,853,388,800.
+**Golden test.** With source defaults, `regen_full_equivalents = 0`, no merge or streaming cost, no column answers, no row combination, no table rows and no score block, the model reproduces the source's §5 chart data and §8 table: `μ` at 1K, 2K, 4K, 8K, 16K, 32K, 64K and 128K within ±0.05, and the sampling and detection columns within ±0.1 percentage point, computed from that table's `μ` column, which the source rounds to one decimal. [`spec/vectors/cost-model/`](../../spec/vectors/cost-model/README.md) records each figure with its line and each input with its provenance: `F_lin`, which the source writes as 8.1×10^11, is two operations per parameter, 2 × 405,853,388,800.
 
 ### Measurement protocol (v0.1 gate)
 

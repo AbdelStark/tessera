@@ -118,7 +118,7 @@ fn table(report: &ModelReport) -> String {
         "combine",
         "tables",
         "μ",
-        "passes",
+        "groups",
         "proof time",
         "sampling",
         "detection"
@@ -136,7 +136,7 @@ fn table(report: &ModelReport) -> String {
             p.mu.row_combination,
             p.mu.tables,
             p.mu.total,
-            p.streaming_passes,
+            p.leaf_groups,
             p.proof_time_s,
             100.0 * p.sampling_rate,
             100.0 * p.detection,

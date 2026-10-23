@@ -87,6 +87,7 @@
             "glue_fraction",
             "weight_pass_gpu_s",
             "streaming_pass_ps",
+            "merge_ps",
             "column_answer_ps",
             "row_combination_ps",
             "native_ops_per_s"
@@ -114,6 +115,12 @@
               "minimum": 0
             },
             "streaming_pass_ps": {
+              "description": "c_s: picoseconds per table leaf of one streamed round over the table trees, which regenerates nothing (RFC-0054).",
+              "type": "number",
+              "minimum": 0
+            },
+            "merge_ps": {
+              "description": "c_m: picoseconds per merged tensor element of a grouped leaf stage (RFC-0054 'The merge').",
               "type": "number",
               "minimum": 0
             },
@@ -192,7 +199,8 @@
         "required": [
           "context",
           "mu",
-          "streaming_passes",
+          "leaf_groups",
+          "table_rounds",
           "proof_time_s",
           "sampling_rate",
           "detection"
@@ -235,6 +243,7 @@
                 "minimum": 0
               },
               "streaming": {
+                "description": "The leaf stage's memory plan: a grouped stage's merge, one regeneration and its folds, and the table trees' streamed rounds (RFC-0054).",
                 "type": "number",
                 "minimum": 0
               },
@@ -258,7 +267,14 @@
               }
             }
           },
-          "streaming_passes": {
+          "leaf_groups": {
+            "description": "G: the leaf stage's token groups, 1 while its lookup trees and product forests fit in memory (RFC-0054).",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16384
+          },
+          "table_rounds": {
+            "description": "The table trees' streamed rounds, summed over their levels (RFC-0054 'The table batch').",
             "type": "integer",
             "minimum": 0
           },

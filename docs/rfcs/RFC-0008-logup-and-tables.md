@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.1 (argument), v0.2 (registry)
-- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Fraction tree', in `tessera-protocol/2`: the roots are not sent, and the leaf checks read masked keys, values and multiplicities)
+- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Fraction tree', in `tessera-protocol/2`: the roots are not sent, and the leaf checks read masked keys, values and multiplicities); [RFC-0054](RFC-0054-token-groups.md) ('Batching' and 'Fraction tree', for a leaf stage larger than memory: a lookup tree per table and token group, their roots and the identity's check)
 
 ## Summary
 
@@ -64,6 +64,7 @@ An instance, with at least one lookup, proves its identity with two fraction tre
 - All lookups into one table definition, across every layer, head, token and channel, form one instance. Its lookups are blocks, one per lookup of a site at a layer, aligned and sorted by size ([RFC-0045](RFC-0045-leaf-layout.md#the-column)).
 - All instances run their GKR layers in one batched sumcheck per level, with a random combination: the lookup tree and the table tree of each instance, beside the product forests of the leaf stage. Trees of different heights join the batch at the level where their height matches, as in Stwo's LogUp-GKR batching ([RFC-0010 'Tree levels'](RFC-0010-proof-schedule.md#tree-levels)).
 - `α` and `β` are shared by all instances and derived from the transcript immediately after Round 1 (RFC-0014, label `logup/alpha`, `logup/beta`).
+- **Token groups.** A leaf stage larger than the prover's memory budget gives each instance one lookup tree per token group. The groups' roots and the table tree's root sum to the instance's identity ([RFC-0054](RFC-0054-token-groups.md#the-leaf-stage-with-groups)).
 
 ### Table kinds
 

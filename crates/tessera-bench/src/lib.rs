@@ -9,10 +9,11 @@
 //!
 //! - [`mu`] evaluates 08 §1 term by term: the linear layers' commitments and lookups, the
 //!   attention scores' commitments, lookups and product-tree leaves, the shared weight pass,
-//!   the witness regenerations of RISK-9, the streamed leaf passes of RISK-10, the column
-//!   answers of RFC-0018 P5, the opening pass's row combination (P4) and the table side of
-//!   LogUp, each over the native time of a token. [`streaming_passes`] counts the streamed
-//!   passes.
+//!   the witness regenerations of RISK-9, the leaf stage's memory plan of RISK-10 and RFC-0054,
+//!   the column answers of RFC-0018 P5, the opening pass's row combination (P4) and the table
+//!   side of LogUp, each over the native time of a token. [`leaf_plan`] gives the plan: the
+//!   stage's token groups and the table trees' streamed rounds. [`shared_streaming_passes`]
+//!   counts the passes of the design RFC-0054 replaces.
 //! - [`proof_time_s`], [`sampling_rate`] and [`detection_probability`] turn `μ` into the
 //!   columns of the source's §8: the time to prove a request, the sampling rate for an amortized
 //!   overhead, and the daily detection probability of violating requests (RFC-0016
@@ -25,8 +26,8 @@
 //!   `tessera.microbenchmarks/1` baseline of 08 §6's regression gate (`docs/perf/`).
 //!
 //! [`Counts::SOURCE_405B`], [`UnitCosts::SOURCE`] and [`Scenario::SOURCE`] are the source's
-//! inputs. With them, which regenerate nothing, stream nothing and price neither the column
-//! answers nor the row combination, the
+//! inputs. With them, which regenerate nothing, merge and stream at no cost and price neither the
+//! column answers nor the row combination, the
 //! model reproduces the source's chart (source §5) within ±0.05, and its calculators reproduce
 //! §8 within 0.1 percentage point from that table's `μ`: `spec/vectors/cost-model/` holds both,
 //! each figure with its line.
@@ -60,7 +61,7 @@ pub use measure::{
     measure,
 };
 pub use model::{
-    Counts, MemoryModel, MuBreakdown, UnitCosts, detection_probability, mu, proof_time_s,
-    sampling_rate, streaming_passes,
+    Counts, LeafPlan, MAX_LEAF_GROUPS, MemoryModel, MuBreakdown, TENSOR_BYTES_PER_LEAF, UnitCosts,
+    detection_probability, leaf_plan, mu, proof_time_s, sampling_rate, shared_streaming_passes,
 };
 pub use report::{ModelReport, Projection, SCHEMA, SOURCE_CONTEXTS, Scenario};

@@ -7,8 +7,8 @@ use serde_json::{Map, Number, Value};
 
 use crate::error::{ModelError, Problem};
 use crate::model::{
-    Counts, MemoryModel, MuBreakdown, UnitCosts, detection_probability, mu, proof_time_s,
-    sampling_rate, streaming_passes,
+    Counts, MemoryModel, MuBreakdown, UnitCosts, detection_probability, leaf_plan, mu,
+    proof_time_s, sampling_rate,
 };
 
 /// The report's schema identifier (03 §5).
@@ -62,8 +62,11 @@ pub struct Projection {
     pub context: u32,
     /// The proof multiplier, term by term.
     pub mu: MuBreakdown,
-    /// The streamed passes over the attention leaves of a batch, `c(S)`.
-    pub streaming_passes: u32,
+    /// `G`: the leaf stage's token groups, 1 while its lookup trees and forests fit in memory
+    /// (RFC-0054).
+    pub leaf_groups: u32,
+    /// The table trees' streamed rounds, summed over their levels (RFC-0054 'The table batch').
+    pub table_rounds: u32,
     /// Seconds to prove one request of `S` tokens on the scenario's GPUs.
     pub proof_time_s: f64,
     /// The sampling rate for the scenario's target overhead, in `[0, 1]`.
@@ -82,7 +85,7 @@ pub struct ModelReport {
     pub counts: Counts,
     /// The unit costs.
     pub unit_costs: UnitCosts,
-    /// The memory model of the streamed passes.
+    /// The memory model of the leaf stage's plan.
     pub memory: MemoryModel,
     /// How the projections are used.
     pub scenario: Scenario,
@@ -108,8 +111,9 @@ impl ModelReport {
         )
     }
 
-    /// The projections of a model at each of `contexts`: [`mu`], [`streaming_passes`],
-    /// [`proof_time_s`] from the total, then [`sampling_rate`] and [`detection_probability`].
+    /// The projections of a model at each of `contexts`: [`mu`], the leaf stage's
+    /// [`leaf_plan`], [`proof_time_s`] from the total, then [`sampling_rate`] and
+    /// [`detection_probability`].
     ///
     /// # Errors
     ///
@@ -140,15 +144,12 @@ impl ModelReport {
                     scenario.batch_tokens,
                 )?;
                 let rate = sampling_rate(scenario.target_overhead, breakdown.total, scenario.eta)?;
+                let plan = leaf_plan(&counts, &memory, context, scenario.batch_tokens)?;
                 Ok(Projection {
                     context,
                     mu: breakdown,
-                    streaming_passes: streaming_passes(
-                        &counts,
-                        &memory,
-                        context,
-                        scenario.batch_tokens,
-                    )?,
+                    leaf_groups: plan.groups,
+                    table_rounds: plan.table_rounds,
                     proof_time_s: proof_time_s(
                         breakdown.total,
                         &counts,
@@ -232,6 +233,7 @@ impl ModelReport {
                 "streaming_pass_ps",
                 number("streaming_pass_ps", u.streaming_pass_ps)?,
             ),
+            ("merge_ps", number("merge_ps", u.merge_ps)?),
             (
                 "column_answer_ps",
                 number("column_answer_ps", u.column_answer_ps)?,
@@ -282,7 +284,8 @@ impl ModelReport {
                 Ok(object([
                     ("context", Value::from(p.context)),
                     ("mu", mu),
-                    ("streaming_passes", Value::from(p.streaming_passes)),
+                    ("leaf_groups", Value::from(p.leaf_groups)),
+                    ("table_rounds", Value::from(p.table_rounds)),
                     ("proof_time_s", number("proof_time_s", p.proof_time_s)?),
                     ("sampling_rate", number("sampling_rate", p.sampling_rate)?),
                     ("detection", number("detection", p.detection)?),

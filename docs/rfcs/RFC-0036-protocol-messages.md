@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
-- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('`Round2Response`': `WeightCombinedRows.evaluations` as `Vec<CombinedRow>`)
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('`Round2Response`': `WeightCombinedRows.evaluations` as `Vec<CombinedRow>`), [RFC-0054](RFC-0054-token-groups.md#messages) (`Round1`'s `leaf_groups`; `LogUpProof` and `TreeProof` for a leaf stage in token groups)
 - Supersedes, on acceptance:
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#messages) 'Messages': every message's layout, for `tessera-protocol/1`;
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#session-order-live-mode) 'Session order': who chooses `session_id`, and what each seed message holds;

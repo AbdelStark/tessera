@@ -20,10 +20,12 @@ pub enum Problem {
     Empty,
     /// A name outside its alphabet or length, or one already used.
     Malformed,
+    /// Too small for any plan: memory in which no group of a leaf stage fits (RFC-0054).
+    TooSmall,
 }
 
-/// `is not finite`, `is negative`, `is not positive`, `is above 1`, `is empty` or `is
-/// malformed`.
+/// `is not finite`, `is negative`, `is not positive`, `is above 1`, `is empty`, `is malformed`
+/// or `is too small`.
 impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -33,6 +35,7 @@ impl fmt::Display for Problem {
             Self::AboveOne => "is above 1",
             Self::Empty => "is empty",
             Self::Malformed => "is malformed",
+            Self::TooSmall => "is too small",
         })
     }
 }
