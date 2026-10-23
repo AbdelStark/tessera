@@ -16,7 +16,7 @@ Tier A is the treaty-facing contract: two parties pin a protocol version, not a 
 
 ## 2. Command-line interface
 
-Every command reads and writes TCE artifacts, prints human-readable progress to stderr, and with `--json` prints one JSON object to stdout describing its result, or `{"command", "error": {"code", "message"}}` when it fails. JSON output is informational and never hashed. With `--log-format json`, stderr's lines are `tessera.log-event/1` objects instead ([05 §2](05-observability.md#2-logging)); `tessera` also takes `--log-level {error,warn,info,debug,trace}`, `info` by default.
+Every command reads and writes TCE artifacts, prints human-readable progress to stderr, and with `--json` prints one JSON object to stdout describing its result, or `{"command", "error": {"code", "message"}}` when it fails. JSON output is informational and never hashed. With `--log-format json`, stderr's lines are `tessera.log-event/1` objects instead ([05 §2](05-observability.md#2-logging)); `tessera` also takes `--log-level {error,warn,info,debug,trace}`, `info` by default. `compile`, `commit-weights`, `prove` and `bench model --out` write the run manifest of [05 §6](05-observability.md#6-run-manifest), `run-manifest.json` in a directory of the operator's own, or at `--run-manifest PATH`.
 
 ### 2.1 `tessera-quant` (Python)
 

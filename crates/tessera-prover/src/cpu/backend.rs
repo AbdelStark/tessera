@@ -8,7 +8,7 @@ use tessera_field::{Goldilocks as G, GoldilocksExt2 as F};
 use tessera_gadgets::TableColumns;
 use tessera_ir::{ClaimList, StageId};
 use tessera_sumcheck::SumcheckTranscript;
-use tessera_tables::GeneratedTable;
+use tessera_tables::{GeneratedTable, Table as _};
 use tessera_witness::{Engine, Resident, Witness};
 
 struct Unit {
@@ -278,13 +278,17 @@ impl<'a> CpuBackend<'a> {
                     .ok_or_else(|| internal("leaf table exists"))?;
                 let generated = GeneratedTable::from_spec(spec)
                     .map_err(|_| internal("selected table regenerates"))?;
+                metrics::lookups(i.table.0, i.entries);
+                metrics::table_rows(i.table.0, generated.row_count());
                 TableColumns::new(&generated)
                     .map_err(|e| ProverError::Leaf(crate::LeafError::Gadget(e)))
             })
             .collect::<Result<_, _>>()?;
         let tensors = actual.tensors();
         let forests = actual.forests();
+        metrics::product_leaves(forests.iter().map(|f| f.len() as u64).sum());
         let leaf_stage = span!(DEBUG, "stage", id = 0u16).entered();
+        let leaf_started = Instant::now();
         let lookup = prepare_leaf(tr, &u.leaf, &tables, &tensors, &forests)?;
         let mut stages = crate::StageProver::new(&u.lowering, u.native.schedule(), &d.witness);
         let points: Vec<_> = u.native.schedule().stages[0]
@@ -301,13 +305,18 @@ impl<'a> CpuBackend<'a> {
             rounds = leaf.logup().levels().len();
             "stage {id}: {rounds} tree levels"
         );
+        metrics::stage(0, leaf_started.elapsed());
+        metrics::phase(metrics::Phase::Stage, leaf_started.elapsed());
         drop(leaf_stage);
         let mut native =
             ModelNativeProver::new(&u.native, &u.lowering, &actual, &d.witness, &leaf)?;
         let mut proofs = Vec::new();
         for k in 1..u.native.schedule().stages.len() {
             let _stage = span!(DEBUG, "stage", id = k as u16).entered();
+            let started = Instant::now();
             let result = stages.prove_stage_composed(tr, k as u16, &mut native)?;
+            metrics::stage(k as u16, started.elapsed());
+            metrics::phase(metrics::Phase::Stage, started.elapsed());
             event!(
                 DEBUG,
                 "prover.stage_proved",
@@ -342,6 +351,7 @@ impl<'a> CpuBackend<'a> {
         }
         let encoder = encoder(c)?;
         let advice_opening = span!(DEBUG, "opening", commitment = "advice").entered();
+        let opening = Instant::now();
         let prepared = d.p1.prepare(targets.advice(), gamma, &av)?;
         let mut masks = d.seed.masks();
         let mut pass = prepared.begin(&encoder, &mut masks)?;
@@ -416,6 +426,7 @@ impl<'a> CpuBackend<'a> {
                 len: 1u64 << (matrix.log2_k() + u32::from(c.layout.weights.log2_inv_rate)),
             });
         }
+        metrics::phase(metrics::Phase::Opening, opening.elapsed());
         let scoring = protocol::ScoringClaims {
             requests: vec![protocol::FixedBits(0)],
         };
@@ -439,6 +450,18 @@ impl<'a> CpuBackend<'a> {
             weight_combined,
             scoring,
         };
+        let size = |bytes: Vec<u8>| bytes.len() as u64;
+        metrics::proof_bytes(
+            metrics::ProofPart::Sumcheck,
+            size(tessera_codec::encode(&round2.logup))
+                + size(tessera_codec::encode(&round2.trees))
+                + size(tessera_codec::encode(&round2.stages)),
+        );
+        metrics::proof_bytes(
+            metrics::ProofPart::Openings,
+            size(tessera_codec::encode(&round2.advice_combined))
+                + size(tessera_codec::encode(&round2.weight_combined)),
+        );
         let shape = protocol::QueryShape {
             advice_count: p.cfg.params.advice_queries,
             advice_len: encoder.codeword_len() as u64,
@@ -460,7 +483,9 @@ impl CpuBackend<'_> {
         let tile = Public(format!("0..{}", c.arch.n_layers));
         let witness = {
             let _pass = span!(DEBUG, "witness_pass", layer_tile = tile).entered();
+            let started = Instant::now();
             let witness = engine.run(self.prepared.model, &batch.tokens)?;
+            metrics::phase(metrics::Phase::Witness, started.elapsed());
             event!(
                 DEBUG,
                 "prover.witness_computed",
@@ -469,6 +494,7 @@ impl CpuBackend<'_> {
             );
             witness
         };
+        let committing = Instant::now();
         let source = Resident::runtime(&engine, &unit.runtime, self.prepared.model, &witness)?;
         let advice = ModelAdviceLayout::runtime(&unit.lowering, &unit.runtime, c)?;
         let id = pcs::CommitmentDescriptor::Advice {
@@ -505,6 +531,10 @@ impl CpuBackend<'_> {
             parts.push(pass.finish()?);
         }
         let p1 = pcs::AdviceOpening::new(&parts)?.into_owned();
+        metrics::phase(metrics::Phase::Round1, committing.elapsed());
+        let rows = advice.layout().rows();
+        metrics::committed(metrics::Committed::Advice, rows << a.log2_k);
+        metrics::committed(metrics::Committed::Mask, rows * u64::from(a.mask_coeffs));
         event!(
             DEBUG,
             "prover.round1_committed",
@@ -564,6 +594,7 @@ impl ProverEngine for CpuBackend<'_> {
         queries: &protocol::ColumnQueries,
     ) -> Result<protocol::Round3Response, ProverError> {
         let _round3 = span!(DEBUG, "round3").entered();
+        let answering = Instant::now();
         // Taking Data clears every per-proof allocation on both success and error.
         let mut d = self
             .data
@@ -622,13 +653,19 @@ impl ProverEngine for CpuBackend<'_> {
             matrices = weight_columns.len();
             "{advice} advice columns, {matrices} matrices answered"
         );
-        Ok(protocol::Round3Response {
+        let round3 = protocol::Round3Response {
             advice_columns: answer.columns,
             advice_proof: protocol::MultiProof {
                 siblings: answer.proof.siblings,
             },
             weight_columns,
-        })
+        };
+        metrics::phase(metrics::Phase::Round3, answering.elapsed());
+        metrics::proof_bytes(
+            metrics::ProofPart::Columns,
+            tessera_codec::encode(&round3).len() as u64,
+        );
+        Ok(round3)
     }
     fn discard(&mut self) {
         self.data = None;

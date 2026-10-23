@@ -43,10 +43,16 @@
 // A command line writes its results to stdout and its errors to stderr (02 §2).
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+#[cfg(all(feature = "test-rng", not(debug_assertions)))]
+compile_error!(
+    "the `test-rng` feature pins masking randomness to a seed; it must not be enabled in a release build (RFC-0001 'Cargo features')"
+);
+
 mod bench;
 mod compile;
 mod inspect;
 mod log;
+mod manifest;
 mod params;
 mod prove;
 mod weights;
@@ -90,6 +96,10 @@ struct Cli {
     /// The most detailed events written to stderr; `trace` exists in debug builds only.
     #[arg(long, global = true, value_enum, default_value_t, value_name = "LEVEL")]
     log_level: log::LogLevel,
+    /// Where `compile`, `commit-weights`, `prove` and `bench model` write their run manifest
+    /// (05 §6), instead of their output's directory.
+    #[arg(long, global = true, value_name = "PATH")]
+    run_manifest: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
@@ -293,7 +303,31 @@ where
         }
     };
     log::install(cli.log_format, cli.log_level);
-    let (name, outcome) = dispatch(&cli);
+    tessera_codec::metrics::reset();
+    let started = (std::time::SystemTime::now(), std::time::Instant::now());
+    let (name, mut outcome) = dispatch(&cli);
+    // 05 §6: the commands that write a run manifest, at their one exit point.
+    if ["compile", "commit-weights", "prove", "bench model"].contains(&name)
+        && let Some(path) = manifest::path(cli.run_manifest.as_deref())
+    {
+        let arguments: Vec<String> = args
+            .iter()
+            .skip(1)
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        let rendered = manifest::render(
+            name,
+            &arguments,
+            started.0,
+            started.1.elapsed(),
+            outcome.as_ref().err(),
+        );
+        if let Err(error) = write_atomically(&path, &format!("{rendered:#}\n"))
+            && outcome.is_ok()
+        {
+            outcome = Err(error);
+        }
+    }
     match outcome {
         Ok(code) => code,
         Err(error) => {
@@ -431,7 +465,10 @@ impl<'a> Input<'a> {
         };
         // OBS-6: the envelope reader clears its buffer; read-ahead would add an uncleared copy.
         match envelope::verify(file, self.schema, limits) {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                manifest::input(self.path, self.schema);
+                Ok(())
+            }
             Err(ReadError::Invalid(error)) => Err(TesseraError::from(error).with_source(format!(
                 "{shown} is not a valid {} envelope",
                 self.schema.name
@@ -516,5 +553,7 @@ pub(crate) fn write_bytes_atomically(path: &Path, bytes: &[u8]) -> Result<(), Te
     fs::rename(&temporary, path).map_err(|error| {
         let _ = fs::remove_file(&temporary);
         io_error(format!("cannot write {shown}"))(error)
-    })
+    })?;
+    manifest::output_envelope(path, bytes);
+    Ok(())
 }

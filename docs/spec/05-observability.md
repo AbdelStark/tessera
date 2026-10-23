@@ -60,16 +60,23 @@ Metrics are collected in-process and written to the run manifest at the end of e
 | `tessera_committed_elements_total` | counter | `class` (advice, weight, mask) | elements |
 | `tessera_lookups_total` | counter | `table` | lookups |
 | `tessera_product_leaves_total` | counter | — | leaves |
+| `tessera_table_rows_total` | counter | `table` | rows |
 | `tessera_bytes_hashed_total` | counter | `domain` | bytes |
 | `tessera_device_memory_peak_bytes` | gauge | `device` | bytes |
 | `tessera_host_memory_peak_bytes` | gauge | — | bytes |
-| `tessera_unit_cost_ps` | gauge | `kind` (commit, lookup, product_leaf, glue) | ps |
+| `tessera_unit_cost_ps` | gauge | `kind` (commit, lookup, product_leaf) | ps |
+| `tessera_glue_fraction` | gauge | — | ratio |
 | `tessera_proof_bytes` | gauge | `part` (round1, sumcheck, openings, columns) | bytes |
 | `tessera_weight_budget_remaining` | gauge | `weight_type`, `resource` (columns, blinding_rows) | count |
 | `tessera_verifier_seconds` | histogram | `check` | s |
 | `tessera_release_overruns_total` | counter | `message` (round1, round2, round3, proof), `slot` | releases |
 
-Derived unit costs (`tessera_unit_cost_ps`) are computed per run as phase time divided by element counts, so every production run doubles as a unit-cost measurement ([RFC-0020](../rfcs/RFC-0020-cost-model.md#continuous-measurement)). Phase and stage times depend on secret data, so they and the unit costs derived from them stay on the prover's side of TB-1 ([06 §3](06-security.md#3-trust-boundaries)). A verifier sees only when messages are released, on the schedule of INV-ARCH-2 ([RFC-0018 'Release schedule'](../rfcs/RFC-0018-gpu-prover-runtime.md#release-schedule)).
+Derived unit costs (`tessera_unit_cost_ps`) are computed per run as phase time divided by element counts, so every production run doubles as a unit-cost measurement ([RFC-0020](../rfcs/RFC-0020-cost-model.md#continuous-measurement)):
+- `commit` is P1's commitment time, after the witness, per committed advice element.
+- `lookup` and `product_leaf` share the leaf stage's time per leaf, over every lookup, table row and product leaf: the stage proves all their trees in one batched sumcheck per level, so one run cannot price them apart.
+- `tessera_glue_fraction` is RFC-0020's glue, a ratio and not a time: the reduction stages' time over commitment and leaf time, the factor `1 + glue` the cost model applies.
+
+The registry is `tessera_codec::metrics`: fixed names, and labels that are enum variants, table identifiers or stage numbers, so no sample carries secret-class data (OBS-1). The CPU prover records phases, stages, committed elements, lookups, table rows, product leaves and proof bytes; the CLI adds the host memory peak where `/proc` reports it. Device memory needs the GPU backend, `tessera_verifier_seconds` the verifier (#446), and the weight budget and release overruns `tessera-protocol/2`, which spends the budget and releases on a schedule. `tessera_bytes_hashed_total` waits for a per-thread count: an atomic per hash would cost the Merkle and column-chain loops. Phase and stage times depend on secret data, so they and the unit costs derived from them stay on the prover's side of TB-1 ([06 §3](06-security.md#3-trust-boundaries)). A verifier sees only when messages are released, on the schedule of INV-ARCH-2 ([RFC-0018 'Release schedule'](../rfcs/RFC-0018-gpu-prover-runtime.md#release-schedule)).
 
 ## 5. Tracing
 
@@ -90,7 +97,13 @@ Every `compile`, `commit-weights`, `prove`, `verify` and `bench` invocation writ
 - per-phase timings and the metrics snapshot;
 - exit code and error code, if any.
 
-**OBS-5.** Two runs with identical manifests, apart from timings and host fields, must produce identical output artifact digests, given pinned masking randomness in test builds and identical seeds. CI checks this on the tiny-model end-to-end test.
+The manifest is `tessera.run-manifest/1` ([`spec/schemas/run-manifest-v1.schema.json`](../../spec/schemas/run-manifest-v1.schema.json)), written at the command's one exit point whether it succeeded or failed:
+- **Where.** In a directory of the operator's own: `compile`'s output directory, which holds the private plan; beside the secret weight state for `commit-weights` and `prove`; beside the report for `bench model --out`. `--run-manifest PATH` names another. Never in a Live exchange directory.
+- **Class.** It is private-class (§3): its timings depend on secret data and stay on the prover's side of TB-1 (§4).
+- **Artifacts.** Each is named by path, schema and class, and by its envelope digest, except a secret-class artifact: a digest of secret data is derived secret data (OBS-6), so the manifest names it without one. A JSON report carries its schema identifier.
+- **Seeds.** A Live session's coin-toss seed, which both transcripts absorb; the masks' seed never.
+
+**OBS-5.** Two runs with identical manifests, apart from timings and host fields, must produce identical output artifact digests, given pinned masking randomness in test builds and identical seeds. CI checks this on the tiny-model end-to-end test: `tessera-cli`'s `run_manifest` test runs `compile`, `commit-weights` and an NI `prove` twice each, the last with `--test-mask-seed` (feature `test-rng`, refused by release builds).
 
 ## 7. Verifier audit trail
 

@@ -41,6 +41,8 @@ fn hex(digest: &[u8; 32]) -> String {
 /// Runs `tessera commit-weights`; writes `args.out` (`.twc`, mode `0600`) and its sibling `.twr`,
 /// and prints `R_W` (or a JSON summary when `json` is set) to stdout.
 pub(crate) fn commit_weights(args: &CommitWeightsArgs, json: bool) -> Result<(), TesseraError> {
+    // Beside the secret state: the operator's own (05 §6).
+    crate::manifest::beside(&args.out);
     let public_out = args.out.with_extension("twr");
     if public_out == args.out {
         return Err(TesseraError::new(ErrorCode::Usage)
@@ -62,6 +64,7 @@ pub(crate) fn commit_weights(args: &CommitWeightsArgs, json: bool) -> Result<(),
             plan.claims.params.0.as_str()
         )));
     };
+    crate::manifest::params(params.id, None);
     if plan.claims.layout != params.layout {
         return Err(TesseraError::new(ErrorCode::Usage)
             .with_source("the plan's commitment layout is not its parameter set's"));
@@ -109,9 +112,11 @@ pub(crate) fn commit_weights(args: &CommitWeightsArgs, json: bool) -> Result<(),
     state
         .write(&args.out)
         .map_err(io_error(format!("cannot write {}", args.out.display())))?;
+    crate::manifest::output_file(&args.out, &schema::WEIGHT_COMMITMENT_STATE);
     public
         .write(&public_out)
         .map_err(io_error(format!("cannot write {}", public_out.display())))?;
+    crate::manifest::output_file(&public_out, &schema::WEIGHT_COMMITMENT_PUBLIC);
     tessera_codec::event!(
         INFO,
         "cli.weights_written",

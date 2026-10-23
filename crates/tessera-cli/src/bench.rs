@@ -90,7 +90,9 @@ pub(crate) fn model(args: &ModelArgs, json: bool) -> Result<(), TesseraError> {
     .map_err(model_error)?;
     let text = report.to_json().map_err(model_error)?;
     if let Some(path) = &args.out {
+        crate::manifest::beside(path);
         write_atomically(path, &format!("{text}\n"))?;
+        crate::manifest::output_report(path, "tessera.cost-model/1");
     }
     let shown = match json {
         true => format!("{text}\n"),

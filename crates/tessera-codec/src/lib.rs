@@ -23,6 +23,7 @@ pub mod envelope;
 pub mod error;
 #[doc(hidden)]
 pub mod golden;
+pub mod metrics;
 pub mod schema;
 mod secret;
 mod tce;
