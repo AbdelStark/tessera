@@ -574,30 +574,6 @@ fn stage_tables(
     };
     let at_n = instances(lowering)?;
     let bits = n.max(1).ilog2();
-    let classify = |stage: u16, sizes: Vec<(Relation, bool, u32, u64)>| {
-        let mut tables: Vec<TableClass> = Vec::new();
-        for (relation, per_token, log2_entries, count) in sizes {
-            let windowable = !matches!(
-                relation,
-                Relation::MatMulWeight | Relation::MatMulAct { .. }
-            );
-            match tables.iter_mut().find(|c| {
-                c.per_token == per_token
-                    && c.windowable == windowable
-                    && c.log2_entries == log2_entries
-            }) {
-                Some(class) => class.count += count,
-                None => tables.push(TableClass {
-                    per_token,
-                    windowable,
-                    log2_entries,
-                    count,
-                }),
-            }
-        }
-        tables.sort_by_key(|c| (!c.per_token, !c.windowable, c.log2_entries));
-        StageTables { stage, tables }
-    };
     if n < 2 || !n.is_power_of_two() {
         return Ok(at_n
             .into_iter()
@@ -635,6 +611,32 @@ fn stage_tables(
             Ok(classify(stage, sizes))
         })
         .collect()
+}
+
+/// A stage's tables by class: one class per kind (per token or fixed, windowable or not) and
+/// size, per-token classes first, each kind by increasing size. A matrix product's tables are
+/// not windowable.
+fn classify(stage: u16, sizes: Vec<(Relation, bool, u32, u64)>) -> StageTables {
+    let mut tables: Vec<TableClass> = Vec::new();
+    for (relation, per_token, log2_entries, count) in sizes {
+        let windowable = !matches!(
+            relation,
+            Relation::MatMulWeight | Relation::MatMulAct { .. }
+        );
+        match tables.iter_mut().find(|c| {
+            c.per_token == per_token && c.windowable == windowable && c.log2_entries == log2_entries
+        }) {
+            Some(class) => class.count += count,
+            None => tables.push(TableClass {
+                per_token,
+                windowable,
+                log2_entries,
+                count,
+            }),
+        }
+    }
+    tables.sort_by_key(|c| (!c.per_token, !c.windowable, c.log2_entries));
+    StageTables { stage, tables }
 }
 
 /// One instance's tables, `(per_token, log2_entries, count)`, from its schedules at `2^bits`
@@ -813,5 +815,42 @@ mod tests {
         // A per-token table smaller than the sequence holds less than one entry per token.
         assert_eq!(table_class((mul, 3, 1), (mul, 2, 1), 4), None);
         assert_eq!(table_class((mul, 4, 1), (mul, 3, 1), 4), Some((true, 0, 1)));
+    }
+
+    /// Tables of one size share a class only when they are of one kind: per token or fixed, and
+    /// windowable or a matrix product's.
+    #[test]
+    fn classes_part_tables_of_one_size_by_kind() {
+        let mul = Relation::Mul(Broadcast::Trailing);
+        let weight = Relation::MatMulWeight;
+        let stage = classify(
+            1,
+            vec![
+                (mul, true, 14, 2),
+                (mul, false, 14, 3),
+                (Relation::SumSquares, true, 14, 1),
+                (weight, true, 14, 5),
+                (weight, false, 21, 7),
+            ],
+        );
+        let class = |per_token, windowable, log2_entries, count| TableClass {
+            per_token,
+            windowable,
+            log2_entries,
+            count,
+        };
+        assert_eq!(
+            stage.tables,
+            [
+                class(true, true, 14, 3),
+                class(true, false, 14, 5),
+                class(false, true, 14, 3),
+                class(false, false, 21, 7),
+            ]
+        );
+        assert_eq!(
+            (stage.entries(true), stage.entries(false)),
+            (8 << 14, (3 << 14) + (7 << 21))
+        );
     }
 }
