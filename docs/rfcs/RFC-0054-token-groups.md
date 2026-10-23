@@ -213,7 +213,7 @@ pub struct GroupProof { pub roots: Vec<Fp2>, pub levels: Vec<SumcheckProof>, pub
 ```
 
 - **`leaf_groups`.** It is absorbed with `Round1`, before any challenge, so a prover cannot choose its grouping after seeing one.
-  - The verifier rejects, with `Reject(Malformed { artifact: Round1, code: ERR-CODEC-LIMIT })`: `token_bits + layer_bits > 14`, `token_bits > t`, or `layer_bits > n_ℓ`. In `tessera-protocol/2` it also rejects any `leaf_groups` other than zero (OQ-0054-1).
+  - The verifier rejects, with `Reject(Malformed { artifact, code: ERR-CODEC-LIMIT })`, `artifact` being `Round1` in live mode and `NiProof` otherwise: `token_bits + layer_bits > 14`, `token_bits > t`, or `layer_bits > n_ℓ`. The first is a decoding failure; the others need the claim list and the statement. In `tessera-protocol/2` it also rejects any `leaf_groups` other than zero (OQ-0054-1).
 - **`g = 0`.** `groups` and `table_roots` are empty, `merge` has no rounds and no evaluations, nothing is absorbed for them, and `levels`, `splits` and `LogUpProof` are as now.
   - The leaf stage is RFC-0010's, but the proof is not byte-identical to today's. `Round1`'s new bytes change every challenge, and `TreeProof`'s new fields its encoding.
 - **`g ≥ 1`.**
@@ -269,7 +269,7 @@ At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` beco
 ## Migration / Rollout
 
 - **v0.3.** The CPU prover plans `g` from `ProverConfig.memory_budget` and proves grouped stages. `tv-core` verifies them. Both soundness calculators take `G` and the merge's sizes, and the transcript, protocol and tamper vectors are regenerated.
-  - Until each part lands, a prover keeps `g = 0` and a verifier rejects `g ≥ 1` with `ERR-CODEC-LIMIT`: `Reject(Malformed { artifact, code: ERR-CODEC-LIMIT })` at RFC-0019 step 1, `artifact` being `Round1` in live mode and `NiProof` otherwise. An ungrouped proof with a group, a table root or a merge round or evaluation is `Malformed` with `ERR-CODEC-NONCANONICAL` there too, its `Round2Response` in live mode: the grouping fixes those lengths ('Messages').
+  - Until each part lands, a prover keeps `g = 0` and a verifier rejects `g ≥ 1` with `ERR-CODEC-LIMIT`: `Reject(Malformed { artifact, code: ERR-CODEC-LIMIT })` at RFC-0019 step 1, `artifact` being `Round1` in live mode and `NiProof` otherwise. An ungrouped proof with a group, a table root or a merge round or evaluation is `Malformed` with `ERR-CODEC-NONCANONICAL` there too, its `Round2Response` in live mode: the grouping fixes those lengths ('Messages'). Both checks follow decoding, so a proof that fails to decode is `Malformed` with the codec's code first, and the grouping comes before the ungrouped fields.
   - [#134](https://github.com/AbdelStark/tessera/issues/134) implements the groups and the table batch's streaming in place of RFC-0018's per-level streaming. [#132](https://github.com/AbdelStark/tessera/issues/132)'s planner chooses `g`.
 - **v0.5.** The GPU backend proves the groups. The merge tables live in HBM or host memory, as the planner fits them.
 

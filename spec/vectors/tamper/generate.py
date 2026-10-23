@@ -695,6 +695,22 @@ def render():
     ]
     for name, expected, edits in pairs:
         corpus.add(f"live-order-{name}", "order", "check-order", expected, edits)
+    # The grouping is judged once the proof has decoded, and before its ungrouped fields.
+    ni_groups = (ni["round1"]["token_bits"].lo, ni["round1"]["layer_bits"].hi, bytes([1, 0]))
+    corpus.add(
+        "ni-order-decode-before-leaf-groups",
+        "order",
+        "check-order",
+        reject("REJ-MALFORMED", artifact=ni_kind, error="ERR-CODEC-NONCANONICAL"),
+        [("ni.tnp", *ni_groups), ("ni.tnp", ni.hi, ni.hi, b"\x00")],
+    )
+    corpus.add(
+        "ni-order-leaf-groups-before-ungrouped",
+        "order",
+        "check-order",
+        reject("REJ-MALFORMED", artifact=ni_kind, error="ERR-CODEC-LIMIT"),
+        [("ni.tnp", *ni_groups), ("ni.tnp", ni["round2"]["groups"], u64(1) + bytes(32))],
+    )
     ni_first, ni_manifest = ni["round2"]["roots"][1], ni["round1"]["manifest"]
     corpus.add(
         "ni-order-statement-before-logup",

@@ -166,7 +166,7 @@ Each implementation is tested against the same golden vectors (RFC-0001, "Shared
 | Non-canonical value, bad tag, unsorted map, trailing bytes | `ERR-CODEC-NONCANONICAL` |
 | Truncated input | `ERR-CODEC-TRUNCATED` |
 | Digest mismatch | `ERR-CODEC-DIGEST` |
-| Length above `max_vec_len`, input above `max_total_bytes`, or nesting beyond `max_depth` | `ERR-CODEC-LIMIT` |
+| Length above `max_vec_len`, input above `max_total_bytes`, nesting beyond `max_depth`, or a value above a bound its schema states, such as RFC-0054's 14 leaf group bits | `ERR-CODEC-LIMIT` |
 
 ## Alternatives Considered
 

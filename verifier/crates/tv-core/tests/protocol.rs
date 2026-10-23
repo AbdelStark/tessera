@@ -473,3 +473,57 @@ fn coin_toss_vectors_use_the_public_domains_and_verifier_share_first() {
         );
     }
 }
+
+/// RFC-0043 'Malformed': a live message of the prover's that fails to decode rejects it under its
+/// own schema, as `open_live` judges it for the CLI and the corpus; one that decodes opens.
+#[test]
+fn a_live_prover_message_that_fails_to_decode_is_malformed_under_its_own_schema() {
+    fn judge<T: p::ProverMessage>(envelope: &[u8], schema: u16) {
+        let limits = DecodeLimits::MESSAGE;
+        assert!(
+            tv_core::open_live::<T>(envelope, &limits).is_ok(),
+            "{schema:#06x}"
+        );
+        let mut changed = envelope.to_vec();
+        *changed.last_mut().unwrap() ^= 1;
+        let verdict = match tv_core::open_live::<T>(&changed, &limits) {
+            Err(verdict) => verdict,
+            Ok(_) => panic!("{schema:#06x}: a changed digest opens"),
+        };
+        let tv_core::Verdict::Reject(reason) = verdict else {
+            panic!("{schema:#06x}: {verdict:?}");
+        };
+        assert_eq!(
+            reason,
+            tv_core::RejectReason::Malformed {
+                artifact: tv_core::verdict::ArtifactKind(schema),
+                code: tv_core::ErrorCode::CodecDigest,
+            },
+            "{schema:#06x}"
+        );
+    }
+    let vectors = read_vectors("protocol/protocol.json");
+    let mut judged = Vec::new();
+    for case in list(member(&vectors, "messages")) {
+        let envelope = hex(text(member(case, "envelope")));
+        let kind = text(member(case, "type"));
+        match kind {
+            "ProverSeedShare" => judge::<p::ProverSeedShare>(&envelope, 0x0502),
+            "Round1" => judge::<p::Round1>(&envelope, 0x0510),
+            "Round2Response" => judge::<p::Round2Response>(&envelope, 0x0511),
+            "Round3Response" => judge::<p::Round3Response>(&envelope, 0x0513),
+            _ => continue,
+        }
+        judged.push(kind);
+    }
+    judged.dedup();
+    assert_eq!(
+        judged,
+        [
+            "ProverSeedShare",
+            "Round1",
+            "Round2Response",
+            "Round3Response"
+        ]
+    );
+}

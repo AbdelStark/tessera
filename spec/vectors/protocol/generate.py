@@ -810,6 +810,9 @@ def refusals(cases):
     at = r1.at[("leaf_groups",)]
     refuse("Round1", changed(data, at, le(7, 1) + le(8, 1)), LIMIT, at, "leaf_groups 7 + 8 = 15 bits, one past RFC-0054's 14")
     refuse("Round1", changed(data, at, le(255, 1) + le(255, 1)), LIMIT, at, "leaf_groups 255 + 255: the sum, not each field, is bounded")
+    # Sums that wrap a u8 to 0 and to 1: the bound is on the integer sum.
+    refuse("Round1", changed(data, at, le(128, 1) + le(128, 1)), LIMIT, at, "leaf_groups 128 + 128, 0 modulo 256")
+    refuse("Round1", changed(data, at, le(250, 1) + le(7, 1)), LIMIT, at, "leaf_groups 250 + 7, 1 modulo 256")
     refuse("Round1", data[: at + 1], TRUNCATED, at + 1, "cut inside leaf_groups: truncation before the bound")
     at = ni.at[("round1", "leaf_groups")]
     refuse("NiProof", changed(bytes(ni.out), at, le(15, 1)), LIMIT, at, "leaf_groups 15 + 0 inside the proof")

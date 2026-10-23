@@ -644,6 +644,29 @@ message!(ColumnQueries, 0x0512);
 message!(Round3Response, 0x0513);
 message!(NiProof, 0x0520);
 
+/// A message the prover sends in a live session, which [`crate::driver::open_live`] opens from
+/// its sealed bytes and RFC-0043 'Malformed' names when it fails.
+pub trait ProverMessage: Sized {
+    /// Its envelope schema.
+    const SCHEMA: Expected;
+    /// Its envelope and payload decoded, as the type's own `open` does.
+    ///
+    /// # Errors
+    /// The first RFC-0003 envelope or payload failure.
+    fn open_sealed(bytes: &[u8], limits: &DecodeLimits) -> Result<Self, DecodeError>;
+}
+macro_rules! prover_message {
+    ($($ty:ident),+) => {$(
+        impl ProverMessage for $ty {
+            const SCHEMA: Expected = $ty::SCHEMA;
+            fn open_sealed(bytes: &[u8], limits: &DecodeLimits) -> Result<Self, DecodeError> {
+                $ty::open(bytes, limits)
+            }
+        }
+    )+};
+}
+prover_message!(ProverSeedShare, Round1, Round2Response, Round3Response);
+
 pub(crate) trait Sink {
     fn put(&mut self, bytes: &[u8]);
 }

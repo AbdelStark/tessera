@@ -10,7 +10,8 @@ All notable changes to the verifier release train are recorded here: the crates 
   - **The messages.** `Round1.leaf_groups` (`LeafGroups { token_bits, layer_bits }`), and `TreeProof`'s `groups` (`GroupProof { roots, levels, values, splits }`), `table_roots` and `merge`.
   - **The bound.** More than 14 group bits is `ERR-CODEC-LIMIT` at the struct's first byte.
   - **The rollout.** This verifier checks no grouped stage yet, so the drivers reject any grouping as `Malformed` with `ERR-CODEC-LIMIT`, and an ungrouped proof with a grouped field as `Malformed` with `ERR-CODEC-NONCANONICAL`: `Round1` or `Round2Response` in live mode, `NiProof` otherwise.
-  - **The tamper corpus.** The recorded live replay now runs the live verifier's three phases, so each message is judged under its own schema, and a live message that fails to decode yields its `Malformed` verdict instead of a panic.
+  - **Live decoding.** `open_live` opens a prover's live message as RFC-0043 requires: a decoding failure that is the input's fault is `Reject(Malformed)` under the message's own schema, any other `Inconclusive`. `tessera-verify live` now uses it; it used to answer `Inconclusive` for every live message that failed to decode.
+  - **The tamper corpus.** The recorded live replay now runs the live verifier's three phases, opening each message through `open_live` only once the phase before it has passed, so each message is judged under its own schema.
 
 - `tv-core` judges the SC-4 tamper corpus: every NI and recorded-Live case in `spec/vectors/tamper/protocol-1.json` must yield its predeclared verdict exactly, and the producer's lookup metadata must match the verifier's own derivation. An ignored sweep changes every value of the recorded Live session in turn and requires that none is accepted ([#135](https://github.com/AbdelStark/tessera/issues/135)).
 

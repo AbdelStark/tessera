@@ -82,7 +82,7 @@
    8
   ],
   "families": {
-   "check-order": 13,
+   "check-order": 15,
    "combined-row": 96,
    "decode": 4,
    "fiat-shamir": 1,
@@ -100,7 +100,7 @@
    "tree-evaluation": 36,
    "tree-round-length": 36
   },
-  "cases": 427
+  "cases": 429
  },
  "mutations": [
   {
@@ -10045,6 +10045,62 @@
      "code": "REJ-PCS-PROXIMITY",
      "commitment": "Advice",
      "column": 0
+    }
+   }
+  },
+  {
+   "id": "ni-order-decode-before-leaf-groups",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 847594,
+     "before": "",
+     "after": "00"
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 226,
+     "before": "0000",
+     "after": "0100"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-MALFORMED",
+     "artifact": 1312,
+     "error": "ERR-CODEC-NONCANONICAL"
+    }
+   }
+  },
+  {
+   "id": "ni-order-leaf-groups-before-ungrouped",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 33292,
+     "before": "0000000000000000",
+     "after": "01000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 226,
+     "before": "0000",
+     "after": "0100"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-MALFORMED",
+     "artifact": 1312,
+     "error": "ERR-CODEC-LIMIT"
     }
    }
   },

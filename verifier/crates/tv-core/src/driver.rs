@@ -308,6 +308,32 @@ fn flat_rows(packet: &protocol::WeightCombinedRows) -> Check<Vec<opening::Combin
     Ok(out)
 }
 
+/// Open one of the prover's live messages (RFC-0043 'Malformed'): a decoding failure that is the
+/// input's fault is `Reject(Malformed)` under the message's own schema, any other the
+/// verifier's `Inconclusive`, as [`verify_non_interactive_bytes`] judges an `NiProof`.
+///
+/// # Errors
+/// The verdict that ends the session.
+#[allow(
+    clippy::result_large_err,
+    reason = "the specified Live API returns Verdict; reports stay by value without an infallible allocation"
+)]
+pub fn open_live<T: protocol::ProverMessage>(
+    bytes: &[u8],
+    limits: &DecodeLimits,
+) -> Result<T, Verdict> {
+    T::open_sealed(bytes, limits).map_err(|e| {
+        if e.code().is_input_fault() {
+            reject(RejectReason::Malformed {
+                artifact: ArtifactKind(T::SCHEMA.schema_id),
+                code: e.code().into(),
+            })
+            .into()
+        } else {
+            codec(e.code()).into()
+        }
+    })
+}
 /// Verify a canonical NI envelope under the caller's limits, then every semantic predicate.
 /// Decoding a prover artifact fails as Malformed; reader failures remain Inconclusive.
 pub fn verify_non_interactive_bytes(
