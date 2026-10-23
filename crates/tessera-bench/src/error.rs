@@ -20,12 +20,15 @@ pub enum Problem {
     Empty,
     /// A name outside its alphabet or length, or one already used.
     Malformed,
-    /// Too small for any plan: memory in which no group of a leaf stage fits (RFC-0054).
+    /// Too small for any plan: memory in which no group of a leaf stage fits (RFC-0054), or no
+    /// window of a reduction stage (RFC-0055).
     TooSmall,
+    /// Too large to plan: a batch whose padded size exceeds the model's integers.
+    TooLarge,
 }
 
-/// `is not finite`, `is negative`, `is not positive`, `is above 1`, `is empty`, `is malformed`
-/// or `is too small`.
+/// `is not finite`, `is negative`, `is not positive`, `is above 1`, `is empty`, `is malformed`,
+/// `is too small` or `is too large`.
 impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -36,6 +39,7 @@ impl fmt::Display for Problem {
             Self::Empty => "is empty",
             Self::Malformed => "is malformed",
             Self::TooSmall => "is too small",
+            Self::TooLarge => "is too large",
         })
     }
 }

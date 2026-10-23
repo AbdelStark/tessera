@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site), [RFC-0030](RFC-0030-masked-exponentials.md) ('Multilinear extensions': the causal selector's sequence length; 'Tree levels': `SoftmaxRow`'s root values), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Tree levels', in `tessera-protocol/2`: forests of two trees at least, masked levels), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Sumcheck messages': a failed tree level's reason), [RFC-0035](RFC-0035-padded-rows.md) ('Relations': the padding zero-check; 'Batching within a stage': the zero-check point), [RFC-0054](RFC-0054-token-groups.md) ('Tree levels' and 'Sumcheck messages': a leaf stage larger than memory, in token groups with a merge)
+- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site), [RFC-0030](RFC-0030-masked-exponentials.md) ('Multilinear extensions': the causal selector's sequence length; 'Tree levels': `SoftmaxRow`'s root values), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Tree levels', in `tessera-protocol/2`: forests of two trees at least, masked levels), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Sumcheck messages': a failed tree level's reason), [RFC-0035](RFC-0035-padded-rows.md) ('Relations': the padding zero-check; 'Batching within a stage': the zero-check point), [RFC-0054](RFC-0054-token-groups.md) ('Tree levels' and 'Sumcheck messages': a leaf stage larger than memory, in token groups with a merge), [RFC-0055](RFC-0055-windowed-stages.md) ('Sumcheck messages': a reduction stage larger than memory, in windowed rounds with these messages)
 
 ## Summary
 
@@ -155,7 +155,7 @@ pub fn prove_stage(stage: &Stage, w: &mut dyn WitnessSource, tr: &mut Transcript
     -> (StageProof, Vec<Claim>);
 ```
 
-`WitnessSource` regenerates the evaluation tables a stage needs from committed data and weights on demand (recompute, never store; RFC-0018). A leaf stage whose trees exceed device memory is proven in token groups ([RFC-0054](RFC-0054-token-groups.md)). A reduction stage whose tables exceed it is proven by streaming its early rounds over the regenerated witness, one pass per streamed round, until the folded state fits in memory ([RFC-0018](RFC-0018-gpu-prover-runtime.md#pass-structure)). The messages are identical to those of the in-memory prover. At 405B that is 3 to 5 regenerations for each stage with elementwise products, which [#452](https://github.com/AbdelStark/tessera/issues/452) prices and revises.
+`WitnessSource` regenerates the evaluation tables a stage needs from committed data and weights on demand (recompute, never store; RFC-0018). A leaf stage whose trees exceed device memory is proven in token groups ([RFC-0054](RFC-0054-token-groups.md)). A reduction stage whose tables exceed it answers its first rounds from a window: a grid accumulated in one pass over the regenerated witness. A second pass then folds its tables at the window's challenges, after which they fit ([RFC-0055](RFC-0055-windowed-stages.md)). The messages are identical to those of the in-memory prover. Streaming round by round, one pass per round, would cost 6 to 8 regenerations per stage at 405B.
 
 ### Claim pool and openings
 

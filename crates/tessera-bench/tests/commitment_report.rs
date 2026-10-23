@@ -14,17 +14,25 @@
 //!   RFC-0006's selection rule it would change one gadget: with four classes, `servable`'s down
 //!   projection update, whose 33-bit key would fit one table.
 //!
+//! - **The reduction stages' working sets** (RFC-0055). The two-class reports' tables, evaluated at
+//!   the projections' batch of 16K tokens, are the schedule's own at 16K positions, and the cost
+//!   model's working sets and windows follow from them: 4.08 and 5.50 TB in `minimal`'s stages 1
+//!   and 2, windows of 6 rounds each; 9.57 TB in `servable`'s stage 1, a window of 8.
+//!
 //! `docs/perf/v0.2/README.md` reads these numbers and answers OQ-0006-1.
 
 use std::fs;
 use std::path::PathBuf;
 
 use serde_json::Value;
-use tessera_bench::{Counts, MemoryModel, ModelReport, Scenario, UnitCosts};
+use tessera_bench::{
+    Counts, MemoryModel, ModelReport, ReductionStage, STAGE_BYTES_PER_ENTRY, Scenario, StageTable,
+    UnitCosts, stage_plan,
+};
 use tessera_codec::{Ascii, Rational, envelope, schema};
 use tessera_compiler::{
     CompileError, Gadget, Lowering, ModelAdviceLayout, PublicModel, Range, Ranges, Selection,
-    analyze, claim_list, lower, report, select,
+    analyze, claim_list, derive_schedule, lower, report, schedule::Relation, select,
 };
 use tessera_ir::{
     AdviceLayoutParams, ArchFamily, ArchSpec, CommitmentLayout, GadgetPolicy, Op, ParamSetId,
@@ -153,6 +161,25 @@ fn report_json(
         regen_full_equivalents: 5.0,
         table_rows: number("table_rows"),
         score_block: number("score_block"),
+        reduction_stages: counts["reduction_stages"]
+            .as_array()
+            .expect("the reduction stages")
+            .iter()
+            .map(|stage| ReductionStage {
+                tables: stage["tables"]
+                    .as_array()
+                    .expect("the tables")
+                    .iter()
+                    .map(|t| StageTable {
+                        per_token: t["per_token"].as_bool().expect("a flag"),
+                        windowable: t["windowable"].as_bool().expect("a flag"),
+                        log2_entries: u32::try_from(t["log2_entries"].as_u64().expect("a size"))
+                            .expect("a size"),
+                        count: t["count"].as_f64().expect("a count"),
+                    })
+                    .collect(),
+            })
+            .collect(),
     };
     let cost_model = ModelReport::new(
         false,
@@ -361,6 +388,112 @@ fn the_committed_405b_reports_are_the_compilers() {
                     }
                     Err(error) => panic!("{case}: {error}"),
                 }
+            }
+        }
+    }
+}
+
+/// RFC-0055 'Working sets' at the projections' batch: for each profile's two-class model, the
+/// report's tables at `2^14` tokens are the schedule's at 16,384 positions, stage by stage, and
+/// the cost model's working sets and windows are what the schedule's own tables give: each
+/// instance front-padded by `p = n_max − n_i` folds by `2^{min(n_i, c − p)}` under a window of
+/// `c` rounds, and `c` is the fewest after which the folded tables fit in 0.2 TB.
+#[test]
+fn the_stage_working_sets_at_the_batch_are_the_schedules() {
+    const BATCH_BITS: u32 = 14;
+    for (profile, windows) in [
+        (Profile::Minimal, vec![6, 6, 0]),
+        (Profile::Servable, vec![8, 0]),
+    ] {
+        let (arch, quant, silu) = llama_405b(profile, 2);
+        let model = PublicModel {
+            arch: &arch,
+            profile,
+            quant: &quant,
+            silu_in_exponents: &silu,
+        };
+        let lowering = lower(model, POSITIONS).expect("405B's shape lowers");
+        let ranges = analyze(&lowering.graph, &lowering.tables).expect("ranges");
+        let policy = GadgetPolicy::default();
+        let selection = select(&lowering.graph, &ranges, &lowering.tables, &policy).expect("fits");
+        let r = report(model, &lowering, &selection, &policy).expect("a report");
+        let at_batch = lower(model, 1 << BATCH_BITS).expect("16K positions lower");
+        let schedule = derive_schedule(&at_batch).expect("a schedule");
+        // Each instance's variables, tables, and whether a window may fold them: a matrix
+        // product's stay whole.
+        let stages: Vec<Vec<(u32, u64, bool)>> = schedule
+            .stages
+            .iter()
+            .filter(|s| s.index > 0)
+            .map(|s| {
+                s.instances
+                    .iter()
+                    .map(|i| {
+                        let product = matches!(
+                            i.relation,
+                            Relation::MatMulWeight | Relation::MatMulAct { .. }
+                        );
+                        (i.vars, i.claims.len() as u64, !product)
+                    })
+                    .collect()
+            })
+            .collect();
+        assert_eq!(r.stage_tables.len(), stages.len(), "{profile:?}");
+        // The report's classes are the schedule's tables at the batch.
+        for (reported, scheduled) in r.stage_tables.iter().zip(&stages) {
+            let mut by_vars = std::collections::BTreeMap::<u32, u64>::new();
+            for &(vars, tables, _) in scheduled {
+                *by_vars.entry(vars).or_default() += tables;
+            }
+            let mut predicted = std::collections::BTreeMap::<u32, u64>::new();
+            for class in &reported.tables {
+                let vars = class.log2_entries + if class.per_token { BATCH_BITS } else { 0 };
+                *predicted.entry(vars).or_default() += class.count;
+            }
+            assert_eq!(predicted, by_vars, "{profile:?}, stage {}", reported.stage);
+        }
+        // The cost model's plan, against the schedule's tables directly.
+        let counts = Counts {
+            reduction_stages: r
+                .stage_tables
+                .iter()
+                .map(|s| ReductionStage {
+                    tables: s
+                        .tables
+                        .iter()
+                        .map(|c| StageTable {
+                            per_token: c.per_token,
+                            windowable: c.windowable,
+                            log2_entries: c.log2_entries,
+                            count: c.count as f64,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            ..Counts::SOURCE_405B
+        };
+        let memory = MemoryModel::NODE_405B;
+        let plan = stage_plan(&counts, &memory, 1 << BATCH_BITS).expect("a plan");
+        for ((window, scheduled), expected) in plan.iter().zip(&stages).zip(&windows) {
+            let n_max = scheduled.iter().map(|&(vars, ..)| vars).max().unwrap_or(0);
+            let folded = |c: u32| -> f64 {
+                scheduled
+                    .iter()
+                    .map(|&(vars, tables, windowable)| {
+                        let p = n_max - vars;
+                        let bound = match windowable {
+                            true => vars.min(c.saturating_sub(p)),
+                            false => 0,
+                        };
+                        tables as f64 * (1u64 << (vars - bound)) as f64 * STAGE_BYTES_PER_ENTRY
+                    })
+                    .sum()
+            };
+            assert_eq!(window.bytes, folded(0), "{profile:?}");
+            assert_eq!(window.window_rounds, *expected, "{profile:?}");
+            assert!(folded(*expected) <= memory.free_bytes, "{profile:?}");
+            if *expected > 0 {
+                assert!(folded(expected - 1) > memory.free_bytes, "{profile:?}");
             }
         }
     }

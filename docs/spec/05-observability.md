@@ -57,7 +57,7 @@ Metrics are collected in-process and written to the run manifest at the end of e
 |---|---|---|---|
 | `tessera_phase_seconds` | histogram | `phase` (witness, round1, stage, opening, round3) | s |
 | `tessera_stage_seconds` | histogram | `stage` | s |
-| `tessera_passes_total` | counter | `pass` (p1, p2, p2b, p3, p4, p5) | passes |
+| `tessera_passes_total` | counter | `pass` (p1, p2, p2b, p3, p3b, p4, p5) | passes |
 | `tessera_pass_seconds` | histogram | `pass` | s |
 | `tessera_committed_elements_total` | counter | `class` (advice, weight, mask) | elements |
 | `tessera_lookups_total` | counter | `table` | lookups |
@@ -79,7 +79,7 @@ Derived unit costs (`tessera_unit_cost_ps`) are computed per run as phase time d
 - `tessera_glue_fraction` is RFC-0020's glue, a ratio and not a time: the reduction stages' time over commitment and leaf time, the factor `1 + glue` the cost model applies.
 
 Passes are [RFC-0018](../rfcs/RFC-0018-gpu-prover-runtime.md#pass-structure)'s, counted as they run.
-- **The passes.** `p1` is the witness pass with its commitment, `p2` the leaf stage, `p2b` a grouped leaf stage's merge ([RFC-0054](../rfcs/RFC-0054-token-groups.md#pass-structure)), `p3` one reduction stage, `p4` the opening pass and `p5` the column answers.
+- **The passes.** `p1` is the witness pass with its commitment, `p2` the leaf stage, `p2b` a grouped leaf stage's merge ([RFC-0054](../rfcs/RFC-0054-token-groups.md#pass-structure)), `p3` one reduction stage, `p3b` a windowed reduction stage's fold ([RFC-0055](../rfcs/RFC-0055-windowed-stages.md#pass-structure)), `p4` the opening pass and `p5` the column answers.
 - **On CPU.** The CPU backend computes the witness in P1 and reads it back for the others, so a CPU proof regenerates once and still counts every pass.
 
 The registry is `tessera_codec::metrics`: fixed names, and labels that are enum variants, table identifiers or stage numbers, so no sample carries secret-class data (OBS-1). The CPU prover records phases, stages, passes, committed elements, lookups, table rows, product leaves and proof bytes; the CLI adds the host memory peak where `/proc` reports it. Device memory needs the GPU backend, `tessera_verifier_seconds` the verifier (#446), and the weight budget and release overruns `tessera-protocol/2`, which spends the budget and releases on a schedule. `tessera_bytes_hashed_total` waits for a per-thread count: an atomic per hash would cost the Merkle and column-chain loops. Phase and stage times depend on secret data, so they and the unit costs derived from them stay on the prover's side of TB-1 ([06 §3](06-security.md#3-trust-boundaries)). A verifier sees only when messages are released, on the schedule of INV-ARCH-2 ([RFC-0018 'Release schedule'](../rfcs/RFC-0018-gpu-prover-runtime.md#release-schedule)).

@@ -188,6 +188,40 @@ fn bench_model_reads_compiled_plan_and_refuses_tampered_plan() {
     assert_eq!(bench_report["schema"], "tessera.cost-model/1");
     assert_eq!(bench_report["inputs"]["source_defaults"], false);
     assert_eq!(bench_report["projections"], commit_report["projections"]);
+    // RFC-0055: every projection sizes each reduction stage the report lists, from its tables at
+    // the scenario's batch of 2^14 tokens, 16 bytes per entry.
+    let stages = commit_report["stage_tables"]
+        .as_array()
+        .expect("stage tables");
+    assert!(!stages.is_empty());
+    let bytes: Vec<f64> = stages
+        .iter()
+        .map(|stage| {
+            stage["tables"]
+                .as_array()
+                .expect("tables")
+                .iter()
+                .map(|t| {
+                    let per_token = t["per_token"].as_bool().expect("a flag");
+                    let log2 = t["log2_entries"].as_u64().expect("a size") as i32;
+                    let count = t["count"].as_u64().expect("a count") as f64;
+                    count * 2f64.powi(log2 + if per_token { 14 } else { 0 }) * 16.0
+                })
+                .sum()
+        })
+        .collect();
+    for p in commit_report["projections"]
+        .as_array()
+        .expect("projections")
+    {
+        let planned: Vec<f64> = p["reduction_stages"]
+            .as_array()
+            .expect("the stages' plan")
+            .iter()
+            .map(|w| w["bytes"].as_f64().expect("bytes"))
+            .collect();
+        assert_eq!(planned, bytes, "at {}", p["context"]);
+    }
 
     // Tamper with the plan's tiles and reseal: bench model --plan must refuse with ERR-USAGE (64).
     let plan_bytes = fs::read(&plan_path).unwrap();

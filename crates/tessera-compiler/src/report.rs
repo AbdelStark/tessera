@@ -39,6 +39,7 @@ use tessera_ir::{
 };
 use tessera_tables::{TableId, TableKind};
 
+use crate::schedule::Relation;
 use crate::{CompileError, Gadget, Lowering, PublicModel, Selection};
 
 /// The report's schema identifier (03 §5).
@@ -98,6 +99,50 @@ pub struct TableUse {
     pub score_lookups: u64,
 }
 
+/// Tables of one size in a reduction stage: `count` tables of `2^{log2_entries}` entries, per
+/// token of the batch when `per_token` (RFC-0055 'Working sets'). A stage's instances of `n_i`
+/// variables each hold one table per evaluation they leave, and a batch of `T` tokens, a power of
+/// two, gives a per-token instance `log2_entries + log2(T)` variables.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TableClass {
+    /// Whether the tables grow with the batch: their entries are per token.
+    pub per_token: bool,
+    /// Whether a window may fold them: an elementwise relation's operands, which a regeneration
+    /// yields block by block. A matrix product's tables are folds over another index, and stay
+    /// resident (RFC-0055 'The window').
+    pub windowable: bool,
+    /// `log2` of the entries of one table, per token when `per_token`.
+    pub log2_entries: u32,
+    /// The tables of this size.
+    pub count: u64,
+}
+
+/// A reduction stage's sumcheck tables (RFC-0055 'Working sets'). They do not depend on the
+/// context: a stage's tables are its instances' elementwise operands and folded matrix products,
+/// each linear in the tokens or independent of them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StageTables {
+    /// The stage, from 1.
+    pub stage: u16,
+    /// Its tables by size, per-token classes first, each by increasing size.
+    pub tables: Vec<TableClass>,
+}
+
+impl StageTables {
+    /// The entries of the stage's per-token tables, per token, or of its other tables, saturating
+    /// at `u64::MAX`.
+    pub fn entries(&self, per_token: bool) -> u64 {
+        self.tables
+            .iter()
+            .filter(|c| c.per_token == per_token)
+            .map(|c| {
+                let size = 1u64.checked_shl(c.log2_entries).unwrap_or(u64::MAX);
+                c.count.saturating_mul(size)
+            })
+            .fold(0, u64::saturating_add)
+    }
+}
+
 /// What a lowered model commits and looks up (RFC-0006 'Outputs').
 #[derive(Clone, Debug, PartialEq)]
 pub struct CommitmentReport {
@@ -125,6 +170,8 @@ pub struct CommitmentReport {
     pub product_tree_leaves: u64,
     /// The tables.
     pub tables: Vec<TableUse>,
+    /// Each reduction stage's sumcheck tables, in stage order.
+    pub stage_tables: Vec<StageTables>,
 }
 
 impl CommitmentReport {
@@ -175,6 +222,7 @@ impl CommitmentReport {
             "native_ops_att_per_ctx": 4.0 * f64::from(self.shape[4]) * a,
             "table_rows": self.multiplicities() as f64,
             "score_block": self.score_block() as f64,
+            "reduction_stages": self.stage_tables.iter().map(stage_json).collect::<Vec<_>>(),
         })
     }
 
@@ -254,6 +302,13 @@ impl CommitmentReport {
                 "total": self.multiplicities(),
                 "excludes": "tables without lookups and power-of-two padding",
             },
+            "stage_tables": self.stage_tables.iter().map(|s| {
+                let mut stage = stage_json(s);
+                stage["stage"] = json!(s.stage);
+                stage["table_entries_per_token"] = json!(s.entries(true));
+                stage["table_entries_fixed"] = json!(s.entries(false));
+                stage
+            }).collect::<Vec<_>>(),
             "estimates": [],
             "counts": self.counts(),
             "projection_inputs": projection_inputs,
@@ -444,6 +499,7 @@ pub fn report(
         .iter()
         .map(|&(_, t)| elements(graph, Some(t)))
         .sum();
+    let stage_tables = stage_tables(model, lowering, n)?;
     Ok(CommitmentReport {
         profile: model.profile,
         shape: [
@@ -465,7 +521,140 @@ pub fn report(
         scores,
         product_tree_leaves: leaves,
         tables,
+        stage_tables,
     })
+}
+
+/// A stage's tables as the cost model reads them: each class's `count`, `log2_entries` and
+/// `per_token`.
+fn stage_json(stage: &StageTables) -> Value {
+    json!({
+        "tables": stage.tables.iter().map(|c| json!({
+            "per_token": c.per_token,
+            "windowable": c.windowable,
+            "log2_entries": c.log2_entries,
+            "count": c.count,
+        })).collect::<Vec<_>>(),
+    })
+}
+
+/// A reduction stage's instances: each one's relation, variables and tables, one table per
+/// evaluation it leaves.
+type StageInstances = (u16, Vec<(Relation, u32, u64)>);
+
+/// Each reduction stage's instances in `lowering`.
+fn instances(lowering: &Lowering) -> Result<Vec<StageInstances>, CompileError> {
+    Ok(crate::schedule::derive_schedule(lowering)?
+        .stages
+        .iter()
+        .filter(|s| s.index > 0)
+        .map(|s| {
+            let instances = s
+                .instances
+                .iter()
+                .map(|i| (i.relation, i.vars, i.claims.len() as u64))
+                .collect();
+            (s.index, instances)
+        })
+        .collect())
+}
+
+/// The reduction stages' tables, from the schedules of `n` and `n/2` positions: each instance's
+/// variables grow by one when the sequence doubles, a per-token instance, or not at all, and the
+/// report refuses a graph where one does anything else. A sequence that is not a power of two of
+/// at least 2 counts every table as per token, `2^{n_i − ⌊log2 n⌋}` entries per token: an upper
+/// bound at every larger batch.
+fn stage_tables(
+    model: PublicModel<'_>,
+    lowering: &Lowering,
+    n: u64,
+) -> Result<Vec<StageTables>, CompileError> {
+    let linear = || CompileError::Usage {
+        rule: "every stage's tables are linear in the sequence's length",
+    };
+    let at_n = instances(lowering)?;
+    let bits = n.max(1).ilog2();
+    let classify = |stage: u16, sizes: Vec<(Relation, bool, u32, u64)>| {
+        let mut tables: Vec<TableClass> = Vec::new();
+        for (relation, per_token, log2_entries, count) in sizes {
+            let windowable = !matches!(
+                relation,
+                Relation::MatMulWeight | Relation::MatMulAct { .. }
+            );
+            match tables.iter_mut().find(|c| {
+                c.per_token == per_token
+                    && c.windowable == windowable
+                    && c.log2_entries == log2_entries
+            }) {
+                Some(class) => class.count += count,
+                None => tables.push(TableClass {
+                    per_token,
+                    windowable,
+                    log2_entries,
+                    count,
+                }),
+            }
+        }
+        tables.sort_by_key(|c| (!c.per_token, !c.windowable, c.log2_entries));
+        StageTables { stage, tables }
+    };
+    if n < 2 || !n.is_power_of_two() {
+        return Ok(at_n
+            .into_iter()
+            .map(|(stage, instances)| {
+                let sizes = instances
+                    .into_iter()
+                    .map(|(relation, vars, count)| {
+                        (relation, true, vars.saturating_sub(bits), count)
+                    })
+                    .collect();
+                classify(stage, sizes)
+            })
+            .collect());
+    }
+    let half = u32::try_from(n / 2).map_err(|_| linear())?;
+    let at_half = instances(&crate::lower(model, half)?)?;
+    if at_half.len() != at_n.len() {
+        return Err(linear());
+    }
+    at_n.into_iter()
+        .zip(at_half)
+        .map(|((stage, full), (other, halved))| {
+            if stage != other || full.len() != halved.len() {
+                return Err(linear());
+            }
+            let sizes = full
+                .into_iter()
+                .zip(halved)
+                .map(|(full, half)| {
+                    let (per_token, log2_entries, count) =
+                        table_class(full, half, bits).ok_or_else(linear)?;
+                    Ok((full.0, per_token, log2_entries, count))
+                })
+                .collect::<Result<Vec<_>, CompileError>>()?;
+            Ok(classify(stage, sizes))
+        })
+        .collect()
+}
+
+/// One instance's tables, `(per_token, log2_entries, count)`, from its schedules at `2^bits`
+/// positions and at half as many: per token when its variables grow by one, `log2_entries` then
+/// being its variables per token; fixed when they do not grow. `None` for anything else: another
+/// relation or table count, a growth of more than one variable, or fewer variables than the
+/// sequence's bits.
+fn table_class(
+    (relation, vars, count): (Relation, u32, u64),
+    (r, v, c): (Relation, u32, u64),
+    bits: u32,
+) -> Option<(bool, u32, u64)> {
+    if relation != r || count != c {
+        return None;
+    }
+    match vars.checked_sub(v) {
+        Some(1) if vars >= bits => Some((true, vars - bits, count)),
+        Some(0) => Some((false, vars, count)),
+        _ => None,
+    }
 }
 
 /// `x` per position of an `n`-position sequence, exactly.
@@ -591,5 +780,38 @@ fn kind_name(kind: &TableKind) -> &'static str {
         TableKind::Exp2Frac { .. } => "Exp2Frac",
         TableKind::Silu { .. } => "Silu",
         TableKind::Rope { .. } => "Rope",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tessera_ir::Broadcast;
+
+    /// RFC-0055 'Working sets': a table grows by one variable per doubling of the sequence or not
+    /// at all, and each other change refuses the graph.
+    #[test]
+    fn a_table_is_per_token_or_fixed_and_nothing_else() {
+        let mul = Relation::Mul(Broadcast::Trailing);
+        // Per token: 2^20 entries at 16 positions are 2^16 per token.
+        assert_eq!(
+            table_class((mul, 20, 2), (mul, 19, 2), 4),
+            Some((true, 16, 2))
+        );
+        // Fixed: a weight's folded table.
+        let weight = Relation::MatMulWeight;
+        assert_eq!(
+            table_class((weight, 21, 1), (weight, 21, 1), 4),
+            Some((false, 21, 1))
+        );
+        // Growing by two variables, or shrinking, is not linear in the tokens.
+        assert_eq!(table_class((mul, 20, 2), (mul, 18, 2), 4), None);
+        assert_eq!(table_class((mul, 19, 2), (mul, 20, 2), 4), None);
+        // Another relation or table count is another instance.
+        assert_eq!(table_class((mul, 20, 2), (weight, 19, 2), 4), None);
+        assert_eq!(table_class((mul, 20, 2), (mul, 19, 1), 4), None);
+        // A per-token table smaller than the sequence holds less than one entry per token.
+        assert_eq!(table_class((mul, 3, 1), (mul, 2, 1), 4), None);
+        assert_eq!(table_class((mul, 4, 1), (mul, 3, 1), 4), Some((true, 0, 1)));
     }
 }

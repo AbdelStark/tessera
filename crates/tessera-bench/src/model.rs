@@ -33,6 +33,10 @@ pub struct UnitCosts {
     /// tables while its group is resident, and its fold in the merge's pass (RFC-0054 'The
     /// merge').
     pub merge_ps: f64,
+    /// Picoseconds per table entry of a windowed reduction stage: its fold at the window's
+    /// challenges, beside the regeneration that fold costs. The window's grid replaces the
+    /// in-memory rounds it answers at no more arithmetic (RFC-0055 'Cost').
+    pub window_ps: f64,
     /// Picoseconds per committed element to evaluate its row's masked codeword at the queried
     /// columns, hashing nothing: the column answers' pass (RFC-0018 P5).
     pub column_answer_ps: f64,
@@ -46,9 +50,10 @@ pub struct UnitCosts {
 impl UnitCosts {
     /// The source's assumed unit costs on an H100 SXM (source §5): 30, 40 and 12 ps, 15% glue,
     /// one 0.24 GPU-s weight pass per batch, native INT8 at 60% of 1,979 TOPS. The source has no
-    /// streamed rounds, no merge, no column-answer pass and no row combination, so they cost
-    /// nothing here; RFC-0018 estimates 6 to 8 ps per leaf for a streamed round, and RFC-0054 2 to
-    /// 4 ps per element for the merge.
+    /// streamed rounds, no merge, no windows, no column-answer pass and no row combination, so
+    /// they cost nothing here; RFC-0018 estimates 6 to 8 ps per leaf for a streamed round,
+    /// RFC-0054 2 to 4 ps per element for the merge, and RFC-0055 1 to 2 ps per entry for a
+    /// window's fold.
     pub const SOURCE: Self = Self {
         commit_ps: 30.0,
         lookup_ps: 40.0,
@@ -58,13 +63,38 @@ impl UnitCosts {
         native_ops_per_s: 0.6 * 1979e12,
         streaming_pass_ps: 0.0,
         merge_ps: 0.0,
+        window_ps: 0.0,
         column_answer_ps: 0.0,
         row_combination_ps: 0.0,
     };
 }
 
-/// What a model costs per token: the compiler's commitment report, or the source's counts.
+/// Tables of one size in a reduction stage: `count` tables of `2^{log2_entries}` entries, times
+/// the batch's tokens when `per_token` (RFC-0055 'Working sets').
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StageTable {
+    /// Whether the tables grow with the batch: a batch of `T` tokens, padded to a power of two,
+    /// gives each `log2_entries + ⌈log2 T⌉` variables.
+    pub per_token: bool,
+    /// Whether a window may fold them: an elementwise relation's operands. A matrix product's
+    /// tables stay resident (RFC-0055 'The window').
+    pub windowable: bool,
+    /// `log2` of one table's entries, per token when `per_token`.
+    pub log2_entries: u32,
+    /// The tables of this size.
+    pub count: f64,
+}
+
+/// A reduction stage's sumcheck tables: the commitment report's `stage_tables` (RFC-0055
+/// 'Working sets').
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReductionStage {
+    /// Its tables by size.
+    pub tables: Vec<StageTable>,
+}
+
+/// What a model costs per token: the compiler's commitment report, or the source's counts.
+#[derive(Clone, Debug, PartialEq)]
 pub struct Counts {
     /// `C_lin`: committed elements per token in the linear layers.
     pub commits_per_token: f64,
@@ -86,6 +116,8 @@ pub struct Counts {
     /// advice layout cannot skip. Its lookups and tree leaves stay `A·S`: the masked ones are
     /// constant subtrees. A block of 0 commits the valid half alone.
     pub score_block: f64,
+    /// The reduction stages' tables, stage 1 first: the commitment report's `stage_tables`.
+    pub reduction_stages: Vec<ReductionStage>,
 }
 
 impl Counts {
@@ -99,7 +131,8 @@ impl Counts {
     ///   `8.1×10^11`, and this is the reading that reproduces its chart;
     /// - no regeneration, which the source's model leaves out (RISK-9);
     /// - no table rows, which it leaves out too;
-    /// - no score block: the source commits the valid half of the scores alone.
+    /// - no score block: the source commits the valid half of the scores alone;
+    /// - no reduction stages' tables, which it does not size.
     pub const SOURCE_405B: Self = Self {
         commits_per_token: 137_216.0 * 126.0,
         lookups_per_token: 137_216.0 * 126.0,
@@ -109,13 +142,15 @@ impl Counts {
         regen_full_equivalents: 0.0,
         table_rows: 0.0,
         score_block: 0.0,
+        reduction_stages: Vec::new(),
     };
 }
 
-/// The memory the leaf stage's trees must fit in (RISK-10, RFC-0054 'When groups apply').
+/// The memory the leaf stage's trees and each reduction stage's tables must fit in (RISK-10,
+/// RFC-0054 'When groups apply', RFC-0055 'Working sets').
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MemoryModel {
-    /// Device memory left for the leaf stage's trees, in bytes.
+    /// Device memory left for a stage's working set, in bytes.
     pub free_bytes: f64,
     /// Bytes per leaf of a level held in memory.
     pub bytes_per_leaf: f64,
@@ -140,11 +175,12 @@ pub struct MuBreakdown {
     pub attention: f64,
     /// The weight pass, shared by the batch's tokens.
     pub weights: f64,
-    /// Witness regenerations (RISK-9): `n_regen`, and a grouped leaf stage's merge pass
-    /// (RFC-0054).
+    /// Witness regenerations (RISK-9): `n_regen`, a grouped leaf stage's merge pass (RFC-0054),
+    /// and each windowed reduction stage's fold pass (RFC-0055).
     pub regen: f64,
-    /// The leaf stage's memory plan beside its regenerations (RISK-10, RFC-0054): a grouped
-    /// stage's merge folds, and the table trees' streamed rounds.
+    /// The memory plans beside their regenerations (RISK-10): a grouped leaf stage's merge folds
+    /// and its table trees' streamed rounds (RFC-0054), and the windowed stages' folds
+    /// (RFC-0055).
     pub streaming: f64,
     /// The column answers' evaluation of every committed element (RFC-0018 P5).
     pub column_answers: f64,
@@ -192,6 +228,7 @@ impl UnitCosts {
         input("native_ops_per_s", self.native_ops_per_s, true)?;
         input("streaming_pass_ps", self.streaming_pass_ps, false)?;
         input("merge_ps", self.merge_ps, false)?;
+        input("window_ps", self.window_ps, false)?;
         input("column_answer_ps", self.column_answer_ps, false)?;
         input("row_combination_ps", self.row_combination_ps, false)
     }
@@ -211,7 +248,11 @@ impl Counts {
         input("native_ops_att_per_ctx", self.native_ops_att_per_ctx, false)?;
         input("regen_full_equivalents", self.regen_full_equivalents, false)?;
         input("table_rows", self.table_rows, false)?;
-        input("score_block", self.score_block, false)
+        input("score_block", self.score_block, false)?;
+        for table in self.reduction_stages.iter().flat_map(|s| &s.tables) {
+            input("count", table.count, false)?;
+        }
+        Ok(())
     }
 
     /// The leaves a token adds to the leaf stage's lookup trees and product forests at
@@ -361,28 +402,148 @@ pub fn shared_streaming_passes(
     Ok(streamed_rounds(bytes, mem.free_bytes))
 }
 
+/// The bytes per table entry of a reduction stage: one `Fp2`. A table enters the stage as
+/// base-field integers, 8 bytes each, and the first round writes half as many `Fp2` values beside
+/// them (RFC-0055 'Working sets').
+pub const STAGE_BYTES_PER_ENTRY: f64 = 16.0;
+
+/// How one reduction stage of a batch meets the memory budget (RFC-0055).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StageWindow {
+    /// The stage's working set: its tables at [`STAGE_BYTES_PER_ENTRY`] bytes per entry.
+    pub bytes: f64,
+    /// `c`: the stage's rounds its window answers, the fewest after which the folded tables fit,
+    /// 0 when the tables fit.
+    pub window_rounds: u32,
+    /// The entries the window folds: those of the tables with an own variable among its rounds.
+    pub windowed_entries: f64,
+}
+
+impl StageWindow {
+    /// The regenerations the window adds to the stage's P3 pass: its fold's pass, once, when the
+    /// stage is windowed.
+    pub fn fold_passes(&self) -> u32 {
+        u32::from(self.window_rounds > 0)
+    }
+}
+
+/// `2^n`, exactly.
+fn pow2(n: u32) -> f64 {
+    // 2^n for n ≤ 1023 is a normal number; larger is infinite, which `output` refuses.
+    f64::from(2u8).powi(i32::try_from(n).unwrap_or(i32::MAX))
+}
+
+/// Each reduction stage's plan for a batch of `batch_tokens` tokens, stage 1 first (RFC-0055
+/// 'Working sets', 'The window'). The batch is padded to `2^b` tokens, `b = ⌈log2 T⌉`, so a
+/// per-token table has `n = log2_entries + b` variables, and another `n = log2_entries`. The
+/// stage's working set is its tables at [`STAGE_BYTES_PER_ENTRY`] bytes per entry. A windowable
+/// table of `n` variables in a stage of `n_max` is front-padded by `p = n_max − n`, so a window of
+/// `c` rounds folds it by `2^{max(0, c − p)}`; the others stay whole. The window is the fewest
+/// rounds after which the tables fit in `free_bytes`, 0 when they fit, and at most `n_max − 1`,
+/// so that every windowed table keeps a variable for the rounds in memory. The stages do not
+/// depend on context.
+///
+/// # Errors
+///
+/// [`ModelError::Input`] for a count or a memory figure that is not finite, a negative one, no
+/// free memory, or a batch above `2^31` tokens ([`Problem::TooLarge`]); `free_bytes`
+/// [`Problem::TooSmall`] when no window
+/// of at most `n_max − 1` rounds fits a stage; [`ModelError::Output`] for a size that overflows.
+pub fn stage_plan(
+    counts: &Counts,
+    mem: &MemoryModel,
+    batch_tokens: u32,
+) -> Result<Vec<StageWindow>, ModelError> {
+    counts.check()?;
+    mem.check()?;
+    let token_bits = batch_tokens
+        .checked_next_power_of_two()
+        .ok_or(ModelError::Input {
+            name: "batch_tokens",
+            problem: Problem::TooLarge,
+        })?
+        .ilog2();
+    counts
+        .reduction_stages
+        .iter()
+        .map(|stage| {
+            let vars = stage
+                .tables
+                .iter()
+                .map(|t| {
+                    let n = match t.per_token {
+                        true => t.log2_entries.checked_add(token_bits),
+                        false => Some(t.log2_entries),
+                    };
+                    n.map(|n| (n, t.windowable, t.count))
+                        .ok_or(ModelError::Output {
+                            name: "stage_bytes",
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let n_max = vars.iter().map(|&(n, ..)| n).max().unwrap_or(0);
+            // A table's own variables among a window's `c` rounds: none when it stays whole.
+            let own = |c: u32, n: u32, windowable: bool| match windowable {
+                true => n.min(c.saturating_sub(n_max - n)),
+                false => 0,
+            };
+            // The tables after a window of `c` rounds, in bytes.
+            let folded = |c: u32| {
+                let entries = vars
+                    .iter()
+                    .map(|&(n, w, count)| count * pow2(n - own(c, n, w)))
+                    .sum::<f64>();
+                output("stage_bytes", entries * STAGE_BYTES_PER_ENTRY)
+            };
+            let bytes = folded(0)?;
+            let mut window_rounds = 0u32;
+            while folded(window_rounds)? > mem.free_bytes {
+                if window_rounds + 1 >= n_max {
+                    return Err(ModelError::Input {
+                        name: "free_bytes",
+                        problem: Problem::TooSmall,
+                    });
+                }
+                window_rounds += 1;
+            }
+            let windowed_entries = vars
+                .iter()
+                .filter(|&&(n, w, _)| own(window_rounds, n, w) > 0)
+                .map(|&(n, _, count)| count * pow2(n))
+                .sum::<f64>();
+            Ok(StageWindow {
+                bytes,
+                window_rounds,
+                windowed_entries: output("stage_bytes", windowed_entries)?,
+            })
+        })
+        .collect()
+}
+
 /// `μ` at `context` tokens of context for a batch of `batch_tokens` tokens, term by term
 /// (08 §1, RFC-0020 'Executable cost model'):
 ///
 /// ```text
 /// μ(S) = [(1 + glue)·(C·c_c + K·c_ℓ) + (1 + glue)·A·(S'·c_c + S·(c_ℓ + c_π)) + W/T
-///         + p_m·c_m·(K + 2·A·S) + r_t·c_s·M/T
+///         + p_m·c_m·(K + 2·A·S) + r_t·c_s·M/T + c_w·Σ_w E_w/T
 ///         + (C + A·S')·(c_a + c_r) + (1 + glue)·M·(c_c + c_ℓ)/T]
-///        / [F/R]  +  n_regen + p_m,        S' = S + min(S, b),  F = F_lin + F_att·S
+///        / [F/R]  +  n_regen + p_m + p_w,        S' = S + min(S, b),  F = F_lin + F_att·S
 /// ```
 ///
 /// with `T` the batch's tokens, and the leaf stage's plan from [`leaf_plan`]: `p_m` its merge
 /// passes, one when it is grouped, each a regeneration with `c_m` per merged element, about one
-/// per leaf; and `r_t` the table trees' streamed rounds at `c_s` per table leaf. The merge's
-/// regeneration counts only when `n_regen` is positive: a model that counts no regeneration, as
-/// the source's, counts none. `c_a` and `c_r`
+/// per leaf; and `r_t` the table trees' streamed rounds at `c_s` per table leaf. The reduction
+/// stages' plan from [`stage_plan`] adds `p_w`, one fold pass per windowed stage, each a
+/// regeneration with `c_w` per entry of the stage's `E_w` table entries. The merge's and the
+/// folds' regenerations count only when `n_regen` is positive: a model that counts no
+/// regeneration, as the source's, counts none. `c_a` and `c_r`
 /// are the column answers' and the row combination's costs per committed element. A token
 /// commits `C` elements in its linear layers and `A·S'` scores, `b` the score block (RFC-0034),
 /// and looks up and multiplies `A·S` of them. Each of the `M` table rows costs one committed
 /// multiplicity and one fraction-tree leaf, priced as a lookup, once per proof. The source's
 /// counts and unit costs regenerate nothing, merge and stream nothing at no cost, price neither
-/// the column answers nor the row combination, and count no table rows and no score block. With
-/// them, this is the source's formula (source §5).
+/// the column answers nor the row combination, and count no table rows, no score block and no
+/// reduction stages' tables. With them, this is the source's formula (source §5).
 ///
 /// # Errors
 ///
@@ -413,6 +574,7 @@ pub fn mu(
         });
     }
     let plan = leaf_plan(counts, mem, context, batch_tokens)?;
+    let stages = stage_plan(counts, mem, batch_tokens)?;
     let native = counts.native_s(u, context)?;
     let s = f64::from(context);
     let glue = 1.0 + u.glue_fraction;
@@ -429,7 +591,11 @@ pub fn mu(
     let merge = f64::from(plan.merge_passes()) * u.merge_ps * counts.leaves_per_token(context);
     let table_streaming = f64::from(plan.table_rounds) * u.streaming_pass_ps * counts.table_rows
         / f64::from(batch_tokens);
-    let streaming = (merge + table_streaming) * PS;
+    // A window folds each entry of its windowed tables once at its challenges, and its grid
+    // answers their rounds (RFC-0055 'Cost').
+    let windowed = stages.iter().map(|w| w.windowed_entries).sum::<f64>();
+    let folds = u.window_ps * windowed / f64::from(batch_tokens);
+    let streaming = (merge + table_streaming + folds) * PS;
     let committed = counts.commits_per_token + counts.scores_per_token_per_ctx * s + diagonal;
     let column_answers = committed * u.column_answer_ps;
     let row_combination = committed * u.row_combination_ps;
@@ -441,13 +607,15 @@ pub fn mu(
     let column_answers = output("column_answers", column_answers * PS / native)?;
     let row_combination = output("row_combination", row_combination * PS / native)?;
     let tables = output("tables", tables * PS / native)?;
-    // The merge's pass is one more regeneration, counted when the model counts regenerations:
-    // the source's counts count none (RISK-9, RFC-0054).
-    let merge_regen = match counts.regen_full_equivalents > 0.0 {
-        true => f64::from(plan.merge_passes()),
+    // The merge's pass and each windowed stage's fold pass are one more regeneration each,
+    // counted when the model counts regenerations: the source's counts count none (RISK-9,
+    // RFC-0054, RFC-0055).
+    let added = plan.merge_passes() + stages.iter().map(StageWindow::fold_passes).sum::<u32>();
+    let added_regen = match counts.regen_full_equivalents > 0.0 {
+        true => f64::from(added),
         false => 0.0,
     };
-    let regen = counts.regen_full_equivalents + merge_regen;
+    let regen = counts.regen_full_equivalents + added_regen;
     let total = linear
         + attention
         + weights

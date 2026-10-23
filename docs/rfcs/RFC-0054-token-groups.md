@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-23
 - Target milestone: v0.3 (CPU prover and verifier), v0.5 (GPU backend)
+- Amended by: [RFC-0055](RFC-0055-windowed-stages.md) ('Reduction stages', 'The executable model', 'Drawbacks', OQ-0054-2: the reduction stages larger than memory, in windowed rounds)
 - Supersedes:
   - [RFC-0018](RFC-0018-gpu-prover-runtime.md#pass-structure) 'Pass structure', 'Leaf levels' and 'Proof units' as they bear on the leaf stage, its P2 row, Alternative 2 and OQ-0018-1;
   - [RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels' and 'Sumcheck messages' for a leaf stage that is grouped: its instances, labels and order;
@@ -56,7 +57,7 @@ Proving each group with challenges of its own removes the level-to-level depende
 
 ## Non-Goals
 
-- **The reduction stages' working sets.** They exceed the budget at 405B too ('Reduction stages'); [#452](https://github.com/AbdelStark/tessera/issues/452) addresses them.
+- **The reduction stages' working sets.** They exceed the budget at 405B too ('Reduction stages'); [RFC-0055](RFC-0055-windowed-stages.md) proves them in windowed rounds.
 - **Zero knowledge for groups** (OQ-0054-1). `tessera-protocol/2` proofs keep `g = 0`.
 - **Multi-node proving.**
 
@@ -228,15 +229,7 @@ pub struct GroupProof { pub roots: Vec<Fp2>, pub levels: Vec<SumcheckProof>, pub
 
 ### Reduction stages
 
-#329 asked for the reduction stages' working sets against the same budget. Instances whose relation is linear are answered by splits ([RFC-0037](RFC-0037-stage-schedule.md#splits)) and hold no tables, and the matrix products' tables are small after the folds P3 computes. The elementwise products, such as these, run their sumchecks over a stacked tensor of every layer and token:
-
-| Instance (405B, 16K tokens) | Entries | At 32 B | Streamed rounds on 0.2 TB |
-|---|---:|---:|---:|
-| `a·u`, the MLP's gate and up | `T·d_ff·n_layers ≈ 1.1×10^11` | 3.5 TB | 5 |
-| the norms' scaling, two per layer | `2·T·d·n_layers ≈ 6.8×10^10` | 2.2 TB | 4 |
-| `R_q·PV`, the attention output's rescale | `T·d·n_layers ≈ 3.4×10^10` | 1.1 TB | 3 |
-
-They do not depend on context. Under RFC-0010 'Sumcheck messages' they stream, one regeneration per round, and RFC-0018's P3 estimate of at most one forward pass in total does not hold. This RFC does not change the stages. Groups and a merge per stage, or groups carried through the stages to the openings, are the candidates. [#452](https://github.com/AbdelStark/tessera/issues/452) prices them and fixes the design. Until then the cost model does not count them, and every projection that quotes it says so.
+#329 asked for the reduction stages' working sets against the same budget. They exceed it at 405B too. The compiler's schedule gives `minimal`'s stages 1 and 2 4.1 and 5.5 TB of tables at 16K tokens, and `servable`'s stage 1 9.6 TB, against 0.2 TB, whatever the context. This RFC does not change the stages. [RFC-0055](RFC-0055-windowed-stages.md) proves such a stage in windowed rounds, with RFC-0010's messages and one more regeneration per stage. It sizes the stages from the compiler's report, which replaced the first-order table, from the model's shape, that this section first gave. Stage 1's native relations, whose score instances read the same scores as this RFC's forests, are [#458](https://github.com/AbdelStark/tessera/issues/458)'s.
 
 ### The executable model
 
@@ -248,7 +241,7 @@ They do not depend on context. Under RFC-0010 'Sumcheck messages' they stream, o
 
 The plan counts `G` alone, not how the planner splits it: every 405B plan above keeps 256-token groups.
 
-At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` become about 11.8 and 27.1 with the merge's regeneration. At an estimated 2 to 4 ps per element, the folds add 0.16 to 0.32 at 1K and 0.82 to 1.63 at 16K. The table rounds add under 0.005.
+At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` become about 11.8 and 27.1 with the merge's regeneration. RFC-0055's windows add two more, for about 13.8 and 29.1. At an estimated 2 to 4 ps per element, the folds add 0.16 to 0.32 at 1K and 0.82 to 1.63 at 16K. The table rounds add under 0.005.
 
 ## Alternatives Considered
 
@@ -266,12 +259,12 @@ At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` beco
 
 ## Drawbacks
 
-- **One more regeneration** than a leaf stage that fits, at every size. At 405B that is +1.0 on `μ`, which puts `minimal`'s 1K projection at its ceiling and `servable`'s 6% above it before the column answers.
+- **One more regeneration** than a leaf stage that fits, at every size. At 405B that is +1.0 on `μ`, which put `minimal`'s 1K projection at its ceiling and `servable`'s 6% above it before the column answers. With RFC-0055's windows, both are 14 to 15% above it.
 - **Proof size.** About 120 KB of messages per group at 405B: 32 levels of at most 32 rounds, 27 instances, and about 2,500 split values. That is about 30 MB at 1K, 120 MB at 16K and 1 GB at 128K, against 08 §5's 2 GiB target and 4 GiB gate.
 - **Soundness.** At the most groups a verifier accepts, the union row loses about 9 bits and stays above 100.
 - **Verification.** It checks `G` sets of levels, about `10^5` field operations each. For the merge, it computes one `eq` product per class and group and one sum per polynomial. Milliseconds to a second.
 - **No zero knowledge yet** for grouped proofs (OQ-0054-1).
-- **The reduction stages are still unpriced** (#452).
+- **The reduction stages exceed memory too.** [RFC-0055](RFC-0055-windowed-stages.md) windows them, one more regeneration each.
 
 ## Migration / Rollout
 
@@ -315,7 +308,7 @@ At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` beco
   - the splits masked by values that cancel in the merge.
 
   Owner: @AbdelStark. Resolve before v0.4 grouped proofs.
-- **OQ-0054-2: fusing the merge's pass.** The merge's pass is the only regeneration this RFC adds. A schedule that carries the groups' claims into stage 1's folds, where #452's design regenerates anyway, could share it. Resolve with #452.
+- **OQ-0054-2: fusing the merge's pass.** The merge's pass is the only regeneration this RFC adds. [RFC-0055](RFC-0055-windowed-stages.md)'s windows do not share it: stage 1's grid pass needs the claims the merge leaves. A schedule that carries the groups' claims into stage 1, groups through the stages (RFC-0055 Alternative 3), could, at the costs that alternative lists. Open.
 
 ## References
 

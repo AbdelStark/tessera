@@ -7,8 +7,8 @@ use serde_json::{Map, Number, Value};
 
 use crate::error::{ModelError, Problem};
 use crate::model::{
-    Counts, MemoryModel, MuBreakdown, UnitCosts, detection_probability, leaf_plan, mu,
-    proof_time_s, sampling_rate,
+    Counts, MemoryModel, MuBreakdown, StageWindow, UnitCosts, detection_probability, leaf_plan, mu,
+    proof_time_s, sampling_rate, stage_plan,
 };
 
 /// The report's schema identifier (03 §5).
@@ -56,7 +56,7 @@ impl Scenario {
 }
 
 /// The model's outputs at one context.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Projection {
     /// `S`: tokens of context.
     pub context: u32,
@@ -67,6 +67,9 @@ pub struct Projection {
     pub leaf_groups: u32,
     /// The table trees' streamed rounds, summed over their levels (RFC-0054 'The table batch').
     pub table_rounds: u32,
+    /// Each reduction stage's working set and window, stage 1 first (RFC-0055). They depend on
+    /// the batch, not on the context.
+    pub reduction_stages: Vec<StageWindow>,
     /// Seconds to prove one request of `S` tokens on the scenario's GPUs.
     pub proof_time_s: f64,
     /// The sampling rate for the scenario's target overhead, in `[0, 1]`.
@@ -112,8 +115,8 @@ impl ModelReport {
     }
 
     /// The projections of a model at each of `contexts`: [`mu`], the leaf stage's
-    /// [`leaf_plan`], [`proof_time_s`] from the total, then [`sampling_rate`] and
-    /// [`detection_probability`].
+    /// [`leaf_plan`], the reduction stages' [`stage_plan`], [`proof_time_s`] from the total, then
+    /// [`sampling_rate`] and [`detection_probability`].
     ///
     /// # Errors
     ///
@@ -150,6 +153,7 @@ impl ModelReport {
                     mu: breakdown,
                     leaf_groups: plan.groups,
                     table_rounds: plan.table_rounds,
+                    reduction_stages: stage_plan(&counts, &memory, scenario.batch_tokens)?,
                     proof_time_s: proof_time_s(
                         breakdown.total,
                         &counts,
@@ -212,6 +216,29 @@ impl ModelReport {
             ),
             ("table_rows", number("table_rows", c.table_rows)?),
             ("score_block", number("score_block", c.score_block)?),
+            (
+                "reduction_stages",
+                Value::Array(
+                    c.reduction_stages
+                        .iter()
+                        .map(|stage| {
+                            let tables = stage
+                                .tables
+                                .iter()
+                                .map(|t| {
+                                    Ok(object([
+                                        ("per_token", Value::from(t.per_token)),
+                                        ("windowable", Value::from(t.windowable)),
+                                        ("log2_entries", Value::from(t.log2_entries)),
+                                        ("count", number("count", t.count)?),
+                                    ]))
+                                })
+                                .collect::<Result<Vec<_>, ModelError>>()?;
+                            Ok(object([("tables", Value::Array(tables))]))
+                        })
+                        .collect::<Result<Vec<_>, ModelError>>()?,
+                ),
+            ),
         ]);
         let unit_costs = object([
             ("commit_ps", number("commit_ps", u.commit_ps)?),
@@ -234,6 +261,7 @@ impl ModelReport {
                 number("streaming_pass_ps", u.streaming_pass_ps)?,
             ),
             ("merge_ps", number("merge_ps", u.merge_ps)?),
+            ("window_ps", number("window_ps", u.window_ps)?),
             (
                 "column_answer_ps",
                 number("column_answer_ps", u.column_answer_ps)?,
@@ -286,6 +314,20 @@ impl ModelReport {
                     ("mu", mu),
                     ("leaf_groups", Value::from(p.leaf_groups)),
                     ("table_rounds", Value::from(p.table_rounds)),
+                    (
+                        "reduction_stages",
+                        Value::Array(
+                            p.reduction_stages
+                                .iter()
+                                .map(|w| {
+                                    Ok(object([
+                                        ("bytes", number("stage_bytes", w.bytes)?),
+                                        ("window_rounds", Value::from(w.window_rounds)),
+                                    ]))
+                                })
+                                .collect::<Result<Vec<_>, ModelError>>()?,
+                        ),
+                    ),
                     ("proof_time_s", number("proof_time_s", p.proof_time_s)?),
                     ("sampling_rate", number("sampling_rate", p.sampling_rate)?),
                     ("detection", number("detection", p.detection)?),
