@@ -55,7 +55,9 @@ Done when `cargo xtask gen-vectors --check`, `cargo test --workspace --locked`, 
 
 Passing tests only prove that the tests accept the current code; mutation testing proves that the tests **reject broken code**.
 
-Give the mutation scratch copy its own `CARGO_TARGET_DIR`, separate from normal validation: shared build artifacts can make an unmodified checkout run a mutant binary.
+Give the mutation scratch copy its own `CARGO_TARGET_DIR`, separate from normal validation: shared build artifacts can make an unmodified checkout run a mutant binary. Make it a detached `git worktree` of the commit, not a plain copy: `cargo xtask` gates list files through `git ls-files`.
+
+Count a mutant as caught only when its test fails on its own assertion and the code compiled. trybuild prints its cases' expected `error[E…]` lines, so recognize a compile failure by cargo's `could not compile`, never by `error[`.
 
 Use `.agents/skills/harness-engineering/scripts/mutate.py` (or targeted manual mutations) whenever you touch a verifier check, transcript label, range bound, or algebraic reduction:
 
@@ -71,9 +73,11 @@ python3 .agents/skills/harness-engineering/scripts/mutate.py \
 3. **Degree bound off-by-one**: changing `degree` to `degree + 1` in `tv-core::sumcheck` must be caught by the degree-overflow adversarial test.
 4. **Loop boundary off-by-one**: changing `0..num_rounds` to `0..num_rounds.saturating_sub(1)` must be caught by the round-count test.
 
-If any mutation **survives** (all tests still pass), you have found either:
-- A **missing adversarial test** (write the test that kills the mutant before committing), or
-- **Dead / redundant code** (simplify the code).
+If any mutation **survives** (all tests still pass), you have found one of:
+- A **missing adversarial test**: write the test that kills the mutant before committing.
+- A **shadowed adversarial test**: its input violates two checks, and an earlier one rejects with the same reason, so the targeted check is never exercised. Make the input violate exactly that check. In #135, zeroing a LogUp root's `d_a` alone also broke the identity `n_a·d_t + n_t·d_a = 0`; zeroing the whole root `(n_a, d_a)` keeps the identity and leaves only `d_a ≠ 0` to reject.
+- **Dead or redundant code**: simplify the code.
+- An **equivalent mutant**: one the specification cannot tell apart, such as an event renamed to another valid name. Replace it with a mutant of observable behavior.
 
 Done when 100% of mutations to security-critical checks in the changed module are killed by the test suite.
 
