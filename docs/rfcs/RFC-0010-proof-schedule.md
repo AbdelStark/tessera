@@ -127,7 +127,7 @@ At level `ℓ`, each instance `i` of height `h_i` holds its claims on its own le
    - for a forest, `Ṽ_{t_i+1}(ρ ‖ r'_i) = u_i + ρ·(w_i − u_i)`;
    - for a fraction tree, `N(ρ ‖ r'_i) = N_0 + ρ·(N_1 − N_0)` and `D(ρ ‖ r'_i) = D_0 + ρ·(D_1 − D_0)`.
 
-A leaf stage larger than the prover's memory budget runs its lookup trees and forests in token groups, each with its own challenges, its table trees in a batch of their own, and a merge that brings the groups' leaf claims to one point per tensor ([RFC-0054](RFC-0054-token-groups.md#the-leaf-stage-with-groups)).
+A leaf stage larger than the prover's memory budget runs its lookup trees and forests in token groups, each with its own challenges, its table trees in a batch of their own, and a merge that brings the groups' leaf claims to one point per tensor and per forest leaf table ([RFC-0054](RFC-0054-token-groups.md#the-leaf-stage-with-groups)).
 
 The claims after a forest's last level are the leaf claims the next stage consumes. Each is a claim on the forest's leaf table of `2^{s+h}` entries, its trees' leaves stacked as above, every entry included. A gadget whose trees hold fewer than `2^h` meaningful leaves, as SoftmaxRow's rows do, defines the others in its leaf formula ([RFC-0009](RFC-0009-gadgets.md#softmaxrow): the constant 1 at masked positions). The consuming stage proves the table's extension with that formula. A fraction tree's leaf claims go to the final checks of RFC-0008 'Fraction tree', after the prover sends the lookup trees' value evaluations under `logup/values`. A level with no fraction tree squeezes no `λ`, so the levels of a leaf stage of product forests alone run exactly as before. Such a stage still squeezes `α` and `β` and absorbs `logup/roots` and `logup/values`, empty.
 

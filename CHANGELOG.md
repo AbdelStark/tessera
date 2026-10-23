@@ -885,7 +885,12 @@ All notable changes to the prover release train are recorded here: the crates un
 - RFC-0054, accepted, proves a leaf stage larger than the memory budget in token groups ([#329](https://github.com/AbdelStark/tessera/issues/329)):
   - **The accounting it replaces.** RFC-0018 streamed every level of every tree in one batch with shared challenges. Counted for every tree and every level, that is 36 to 55 regeneration passes for a 405B 16K-token batch, +53 to +235 on `μ`. RISK-10 had counted the attention trees' leaf level alone.
   - **The design.** Each group's lookup trees and product forests are proven in memory with challenges of their own. The table trees stream in a batch of their own and regenerate nothing. One merge sumcheck brings the groups' leaf claims back to one point per tensor, so the reduction stages and openings are unchanged. The stage costs two regenerations at any size. `g = 0` is the current leaf stage.
-  - **Tier-A changes, for `tessera-protocol/1`.** `Round1` gains `leaf_groups`; `LogUpProof` and `TreeProof` gain the groups and the merge; new labels `group/{h}/…`, `tables/tree/{ℓ}/…` and `merge/…`. The union bound keeps 103 bits at the most groups admitted, 2^14.
+  - **Groups.** They are interleaved token subsets, at least 256 tokens each so that their GEMMs stay compute-bound, and interleaved layer subsets.
+  - **Tier-A changes, for `tessera-protocol/1`.**
+    - `Round1` gains `leaf_groups`; `TreeProof` gains the groups, the table roots and the merge.
+    - New labels: `group/{h}/…`, `tables/…` and `merge/…`.
+    - `TreeLevel` gains `group`, and `LeafMerge` is a new rejection.
+    - The union bound keeps 103 bits at the most groups a verifier accepts, 2^14.
   - **The cost model.** `tessera_bench::leaf_plan` gives a batch's groups and table rounds, and `shared_streaming_passes` the replaced design. The regeneration term adds the merge's pass. The streaming term prices the merge's folds (new unit cost `merge_ps`) and the table trees' rounds.
   - **The reports.** `tessera.cost-model/1` and `tessera.commitment-report/1` replace `streaming_passes` with `leaf_groups` and `table_rounds`, and add `merge_ps`.
   - **The projections.** RISK-9, RISK-10, SC-2, 08 §3 and `SPEC.md` restate them. For `minimal`, the corrected `μ(1K)` and `μ(16K)` are about 11.8 and 27.1. The merge's folds add 0.16 to 0.32 and 0.82 to 1.63.

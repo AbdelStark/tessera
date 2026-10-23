@@ -61,7 +61,7 @@ pub use measure::{
     measure,
 };
 pub use model::{
-    Counts, LeafPlan, MAX_LEAF_GROUPS, MemoryModel, MuBreakdown, UnitCosts, detection_probability,
-    leaf_plan, mu, proof_time_s, sampling_rate, shared_streaming_passes,
+    Counts, LeafPlan, MAX_LEAF_GROUPS, MemoryModel, MuBreakdown, TENSOR_BYTES_PER_LEAF, UnitCosts,
+    detection_probability, leaf_plan, mu, proof_time_s, sampling_rate, shared_streaming_passes,
 };
 pub use report::{ModelReport, Projection, SCHEMA, SOURCE_CONTEXTS, Scenario};

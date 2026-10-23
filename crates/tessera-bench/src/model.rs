@@ -266,6 +266,11 @@ impl LeafPlan {
     }
 }
 
+/// The bytes per leaf a leaf stage keeps beside its level tables: the tensor value its leaf reads,
+/// one integer, which stays until the stage's leaf point is known and the tensors' values at it
+/// are computed (RFC-0045 'The split', RFC-0054 'When groups apply').
+pub const TENSOR_BYTES_PER_LEAF: f64 = 8.0;
+
 /// The rounds a batch of `bytes` streams over every level when `free` holds less: the leaf
 /// level `c = ⌈log2(bytes/free)⌉` of them, the level above `c − 1`, and so on, `c(c + 1)/2` in
 /// all. The count is exact: halving is exact in floating point.
@@ -281,12 +286,16 @@ fn streamed_rounds(bytes: f64, free: f64) -> u32 {
 
 /// The leaf stage's plan for a batch of `batch_tokens` tokens at `context`, from its sizes
 /// (RFC-0054 'When groups apply'). Its lookup trees and product forests hold
-/// `T·(K + 2·A·S)·bytes_per_leaf` bytes and its table trees `M·bytes_per_leaf`:
+/// `T·(K + 2·A·S)·(bytes_per_leaf + TENSOR_BYTES_PER_LEAF)` bytes, their level tables and the
+/// tensors their leaves read, and its table trees `M·bytes_per_leaf`:
 ///
 /// - while the lookup trees and forests fit in `free_bytes`, the stage is one batch, and its
 ///   levels that do not fit with the table trees stream the table trees alone;
 /// - otherwise the stage takes the fewest groups `G = 2^g` whose lookup trees and forests fit,
 ///   one share of the tokens each, and the table trees stream in a batch of their own.
+///
+/// The planner splits `G` over interleaved token subsets of at least 256 tokens, which keep a
+/// group's GEMMs compute-bound, and over layer subsets; the plan counts `G` alone.
 ///
 /// # Errors
 ///
@@ -302,7 +311,8 @@ pub fn leaf_plan(
     counts.check()?;
     mem.check()?;
     let leaves = counts.leaves_per_token(context) * f64::from(batch_tokens);
-    let trees = output("leaf_stage_bytes", leaves * mem.bytes_per_leaf)?;
+    let per_leaf = mem.bytes_per_leaf + TENSOR_BYTES_PER_LEAF;
+    let trees = output("leaf_stage_bytes", leaves * per_leaf)?;
     let tables = output("table_tree_bytes", counts.table_rows * mem.bytes_per_leaf)?;
     let too_small = ModelError::Input {
         name: "free_bytes",

@@ -10,8 +10,9 @@
 //! into a number.
 
 use tessera_bench::{
-    Counts, MemoryModel, ModelError, ModelReport, MuBreakdown, Problem, Scenario, UnitCosts,
-    detection_probability, leaf_plan, mu, proof_time_s, sampling_rate, shared_streaming_passes,
+    Counts, MemoryModel, ModelError, ModelReport, MuBreakdown, Problem, Scenario,
+    TENSOR_BYTES_PER_LEAF, UnitCosts, detection_probability, leaf_plan, mu, proof_time_s,
+    sampling_rate, shared_streaming_passes,
 };
 
 /// The source's model with the table trees' streamed rounds priced at 7 ps per leaf and the merge
@@ -202,8 +203,9 @@ fn the_leaf_plan_doubles_its_groups_per_doubling_of_the_leaves() {
     let leaves = (no_tables.lookups_per_token
         + 2.0 * no_tables.scores_per_token_per_ctx * f64::from(context))
         * f64::from(BATCH);
+    // A group keeps its level tables, 32 bytes, and the tensor value each leaf reads.
     let exact = MemoryModel {
-        free_bytes: leaves * 32.0,
+        free_bytes: leaves * (32.0 + TENSOR_BYTES_PER_LEAF),
         bytes_per_leaf: 32.0,
     };
     let below = MemoryModel {

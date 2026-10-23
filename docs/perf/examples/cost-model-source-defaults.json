@@ -77,7 +77,7 @@
     {
       "context": 4096,
       "detection": 0.9949181179999204,
-      "leaf_groups": 256,
+      "leaf_groups": 512,
       "mu": {
         "attention": 4.463388914195717,
         "column_answers": 0.0,
