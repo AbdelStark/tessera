@@ -28,7 +28,8 @@
 //! arguments and the envelope of each TCE artifact it reads (RFC-0003), then exits with
 //! `ERR-USAGE`, naming the issue that implements it.
 //!
-//! Every command prints its progress to stderr. With `--json` it prints one JSON object to
+//! Every command prints its progress to stderr, readable or, with `--log-format json`, as JSON
+//! lines (05 §2, the subscriber of `log`). With `--json` it prints one JSON object to
 //! stdout describing its result, or `{"command", "error": {"code", "message"}}` when it fails
 //! (02 §2). The exit status is 02 §2.4's (04 §3, RFC-0051): 0 on success, 10 when a soundness
 //! target is missed (`tessera params check`), 64 for a usage error, 65 for a malformed artifact,
@@ -45,6 +46,7 @@
 mod bench;
 mod compile;
 mod inspect;
+mod log;
 mod params;
 mod prove;
 mod weights;
@@ -60,7 +62,7 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use tessera_codec::envelope::{self, ReadError};
 use tessera_codec::error::{ErrorCode, TesseraError};
 use tessera_codec::schema::{self, Schema};
-use tessera_codec::{Decode, DecodeLimits, SecretBuf};
+use tessera_codec::{Decode, DecodeLimits, Public, SecretBuf, event};
 
 /// The parameter sets of RFC-0014 'Parameter sets' (02 §5).
 const PARAM_SETS: [&str; 3] = ["live-64", "ni-100", "test-small"];
@@ -76,6 +78,18 @@ struct Cli {
     /// Print the result, or the error, as one JSON object on stdout.
     #[arg(long, global = true)]
     json: bool,
+    /// The format of stderr's lines: readable, or one JSON object per line (05 §2).
+    #[arg(
+        long,
+        global = true,
+        value_enum,
+        default_value_t,
+        value_name = "FORMAT"
+    )]
+    log_format: log::LogFormat,
+    /// The most detailed events written to stderr; `trace` exists in debug builds only.
+    #[arg(long, global = true, value_enum, default_value_t, value_name = "LEVEL")]
+    log_level: log::LogLevel,
     #[command(subcommand)]
     command: Command,
 }
@@ -278,6 +292,7 @@ where
             );
         }
     };
+    log::install(cli.log_format, cli.log_level);
     let (name, outcome) = dispatch(&cli);
     match outcome {
         Ok(code) => code,
@@ -301,10 +316,17 @@ fn fail(
     message: &str,
     shown: bool,
 ) -> ExitCode {
+    // Before parsing succeeds no subscriber is installed: clap has printed its own message.
     if shown {
         match message.is_empty() {
-            true => eprintln!("error: {error}"),
-            false => eprintln!("error: {error}: {message}"),
+            true => event!(ERROR, "cli.command_failed", error = Public(error); "{error}"),
+            false => event!(
+                ERROR,
+                "cli.command_failed",
+                error = Public(error),
+                detail = Public(message);
+                "{error}: {detail}"
+            ),
         }
     }
     if json {

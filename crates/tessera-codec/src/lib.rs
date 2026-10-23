@@ -26,6 +26,7 @@ pub mod golden;
 pub mod schema;
 mod secret;
 mod tce;
+pub mod telemetry;
 mod types;
 
 pub use secret::{Public, Secret, SecretBuf};

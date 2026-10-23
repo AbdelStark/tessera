@@ -29,6 +29,7 @@ use xtask::reports;
 mod schedule_vectors;
 mod secret_access;
 mod spdx;
+mod telemetry;
 mod test_features;
 #[cfg(test)]
 mod testing;

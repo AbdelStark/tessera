@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/log-event-v1.schema.json",
+  "title": "tessera.log-event/1",
+  "description": "One line of `--log-format json` on stderr (05 §2): an event of public data only (05 §3 OBS-1). A line carries no schema identifier; this schema versions the format.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ts", "level", "target", "event", "span_path", "fields"],
+  "properties": {
+    "ts": {
+      "description": "When the event happened: UTC, RFC 3339, to the microsecond (YYYY-MM-DDTHH:MM:SS.ffffffZ).",
+      "type": "string",
+      "minLength": 27,
+      "maxLength": 27
+    },
+    "level": {
+      "description": "error, a failed operation; warn, a degraded but valid state; info, phase boundaries and results; debug, per-stage detail; trace, per-tile detail, absent from release builds.",
+      "enum": ["error", "warn", "info", "debug", "trace"]
+    },
+    "target": {
+      "description": "The Rust module that emitted the event.",
+      "type": "string",
+      "minLength": 1
+    },
+    "event": {
+      "description": "tessera.<crate>.<event>, in snake case.",
+      "type": "string",
+      "minLength": 11
+    },
+    "span_path": {
+      "description": "The spans the event lies in, from the outermost.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/span" }
+    },
+    "fields": {
+      "description": "The event's typed fields; `message` is its template with every named field substituted.",
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "fields"],
+      "properties": {
+        "name": {
+          "description": "05 §5's spans.",
+          "enum": ["compile", "commit_weights", "prove", "witness_pass", "round1", "stage", "opening", "round3", "verify", "check"]
+        },
+        "fields": { "$ref": "#/$defs/fields" }
+      }
+    },
+    "fields": {
+      "description": "Public values only: integers, booleans, and the text of fixed identifiers or of values cleared as Public.",
+      "type": "object",
+      "additionalProperties": { "type": ["string", "integer", "boolean"] }
+    }
+  }
+}

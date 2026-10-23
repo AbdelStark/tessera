@@ -3,7 +3,7 @@
 //! Protocol/1 CPU driver for one exact-greedy request (02 section 3.1).
 
 use std::num::{NonZeroU32, NonZeroUsize};
-use tessera_codec::{Ascii, Secret, error::ErrorCode};
+use tessera_codec::{Ascii, Public, Secret, error::ErrorCode, event, span};
 use tessera_compiler::{self as compiler, ExecutionPlan, PublicModel};
 use tessera_hash::{SessionContext, Transcript};
 use tessera_ir::IntegerModel;
@@ -112,6 +112,8 @@ pub struct Prover<'a> {
     prepared: Option<Prepared<'a>>,
     session: Option<protocol::ProverSession<backend::CpuBackend<'a>>>,
     mode: Mode,
+    /// The batch's statement digest, the `prove` span's public field (05 §5), once started.
+    batch: Option<String>,
 }
 impl core::fmt::Debug for Prover<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -120,6 +122,20 @@ impl core::fmt::Debug for Prover<'_> {
             .field("state", &self.session.as_ref().map(|s| s.state()))
             .finish_non_exhaustive()
     }
+}
+
+/// The `prove{batch}` span of 05 §5: the batch's statement digest, public.
+fn prove_span(batch: Option<&str>) -> tessera_codec::telemetry::Span {
+    span!(INFO, "prove", batch = Public(batch.unwrap_or("")))
+}
+
+fn statement_hex(batch: &ProofBatch) -> String {
+    batch
+        .statement
+        .digest()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn usage(rule: &'static str) -> ProverError {
@@ -196,6 +212,7 @@ impl<'a> Prover<'a> {
         }
         Ok(Self {
             mode: cfg.mode,
+            batch: None,
             prepared: Some(Prepared {
                 plan,
                 model,
@@ -219,6 +236,8 @@ impl<'a> Prover<'a> {
         if self.mode != Mode::Live || self.prepared.is_none() {
             return Err(order(protocol::MessageKind::SeedCommit));
         }
+        self.batch = Some(statement_hex(batch));
+        let _prove = prove_span(self.batch.as_deref()).entered();
         let prepared = self
             .prepared
             .take()
@@ -234,6 +253,7 @@ impl<'a> Prover<'a> {
         &mut self,
         reveal: &protocol::SeedReveal,
     ) -> Result<protocol::Round2Response, ProverError> {
+        let _prove = prove_span(self.batch.as_deref()).entered();
         self.session
             .as_mut()
             .ok_or_else(|| order(protocol::MessageKind::SeedReveal))?
@@ -246,6 +266,7 @@ impl<'a> Prover<'a> {
         &mut self,
         queries: &protocol::ColumnQueries,
     ) -> Result<protocol::Round3Response, ProverError> {
+        let _prove = prove_span(self.batch.as_deref()).entered();
         self.session
             .as_mut()
             .ok_or_else(|| order(protocol::MessageKind::ColumnQueries))?
@@ -262,6 +283,8 @@ impl<'a> Prover<'a> {
         if self.mode != Mode::NonInteractive || self.prepared.is_none() {
             return Err(order(protocol::MessageKind::SeedCommit));
         }
+        self.batch = Some(statement_hex(batch));
+        let _prove = prove_span(self.batch.as_deref()).entered();
         let prepared = self
             .prepared
             .take()
@@ -315,6 +338,7 @@ impl<'a> Prover<'a> {
             .check(&queries)
             .map_err(|e| ProverError::Protocol(protocol::ProtocolError::Queries(e)))?;
         let round3 = backend.answer(&queries)?;
+        event!(DEBUG, "prover.proof_completed", mode = "non-interactive"; "proof completed");
         Ok(protocol::NiProof {
             round1,
             seed_nonce,

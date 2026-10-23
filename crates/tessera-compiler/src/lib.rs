@@ -80,6 +80,13 @@ pub fn compile(
     layout: tessera_ir::CommitmentLayout,
     params: tessera_ir::ParamSetId,
 ) -> Result<CompileOutput, CompileError> {
+    let _compile = tessera_codec::span!(
+        INFO,
+        "compile",
+        params = tessera_codec::Public(params.0.as_str()),
+        layers = model.arch.n_layers
+    )
+    .entered();
     validate(model)?;
     let public = PublicModel::of(model);
     let positions = 16.min(model.arch.max_context).max(1);
@@ -89,6 +96,13 @@ pub fn compile(
     let claims = claim_list(public, &selection, policy, layout, params)?;
     let execution_plan = plan(public, &claims)?;
     let commitment_report = report(public, &lowering, &selection, policy)?;
+    tessera_codec::event!(
+        DEBUG,
+        "compiler.compiled",
+        tables = claims.tables.len(),
+        gadgets = selection.gadgets.len();
+        "{tables} tables, {gadgets} gadgets"
+    );
     Ok(CompileOutput {
         claim_list: claims,
         plan: execution_plan,

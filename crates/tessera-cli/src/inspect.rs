@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use tessera_codec::envelope::{self, ReadError};
 use tessera_codec::error::{ErrorCode, SchemaId, TesseraError};
 use tessera_codec::schema::{self, Class, Schema};
-use tessera_codec::{Decode, DecodeLimits, SecretBuf, Zeroize};
+use tessera_codec::{Decode, DecodeLimits, Public, SecretBuf, Zeroize};
 use tessera_compiler::ExecutionPlan;
 use tessera_ir::{ClaimList, IntegerModel, LogitsFile, TokenFile};
 use tessera_pcs::{WeightCommitmentPublic, WeightCommitmentState, WeightMatrix};
@@ -135,9 +135,13 @@ pub(crate) fn inspect(args: &InspectArgs, json: bool) -> Result<(), TesseraError
     let digest = hex(&bytes[bytes.len() - envelope::DIGEST_LEN..]);
     let (body_lines, artifact_json) = render_payload(schema, &bytes, &shown)?;
 
-    eprintln!(
-        "tessera inspect: {} (0x{:04x}) v{}",
-        schema.name, schema.id.0, header.version
+    tessera_codec::event!(
+        INFO,
+        "cli.inspected",
+        schema = schema.name,
+        id = Public(format!("{:04x}", schema.id.0)),
+        version = header.version;
+        "tessera inspect: {schema} (0x{id}) v{version}"
     );
     let output = match json {
         true => {

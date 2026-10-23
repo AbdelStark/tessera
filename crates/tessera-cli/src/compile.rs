@@ -11,7 +11,7 @@ use clap::Args;
 use serde_json::Value;
 use tessera_bench::{Counts, MemoryModel, ModelReport, Scenario, UnitCosts};
 use tessera_codec::error::{ErrorCode, TesseraError};
-use tessera_codec::{Ascii, envelope, schema};
+use tessera_codec::{Ascii, Public, envelope, schema};
 use tessera_compiler::{
     CommitmentReport, CompileError, ExecutionPlan, PublicModel, analyze, check_plan, lower, report,
     select,
@@ -131,9 +131,11 @@ pub(crate) fn compile(args: &CompileArgs, json: bool) -> Result<(), TesseraError
         &format!("{report_text}\n"),
     )?;
 
-    eprintln!(
-        "tessera compile: wrote claims.tcl, plan.tep, commitment-report.json to {}",
-        dir.display()
+    tessera_codec::event!(
+        INFO,
+        "cli.compile_written",
+        dir = Public(dir.display());
+        "tessera compile: wrote claims.tcl, plan.tep, commitment-report.json to {dir}"
     );
     if json {
         io::stdout()

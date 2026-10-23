@@ -340,6 +340,133 @@ impl Fixture {
     }
 }
 
+/// Runs the producer with `--log-format json --log-level trace` and returns its stderr lines,
+/// each checked against `tessera.log-event/1` (05 §2).
+fn logged(f: &Fixture, args: &[String], expected: i32) -> Vec<Value> {
+    let mut full: Vec<String> = ["--log-format", "json", "--log-level", "trace"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    full.extend_from_slice(args);
+    let process = f.process(false, &full);
+    let stderr = process.stderr.clone();
+    process.wait(expected);
+    let schema: Value = serde_json::from_slice(
+        &fs::read(root().join("spec/schemas/log-event-v1.schema.json")).unwrap(),
+    )
+    .unwrap();
+    assert!(xtask::reports::schema_problems(&schema).is_empty());
+    fs::read_to_string(stderr)
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let value: Value = serde_json::from_str(line).unwrap_or_else(|e| panic!("{e}: {line}"));
+            let errors = xtask::reports::validate(&schema, &schema, &value, "");
+            assert!(errors.is_empty(), "{errors:?}: {line}");
+            let event = value["event"].as_str().unwrap();
+            let krate = value["target"]
+                .as_str()
+                .unwrap()
+                .split("::")
+                .next()
+                .unwrap();
+            assert_eq!(
+                event.split('.').take(2).collect::<Vec<_>>(),
+                ["tessera", krate.strip_prefix("tessera_").unwrap()],
+                "{line}"
+            );
+            value
+        })
+        .collect()
+}
+
+/// 05 §2: every stderr line of a JSON-logged compile, weight commitment, NI proof and failed
+/// command is a `tessera.log-event/1` object; the failure keeps 02 §2's code and message.
+#[test]
+fn e2e_json_log_lines_follow_their_schema() {
+    let f = Fixture::new();
+    let mut lines = logged(
+        &f,
+        &[
+            "compile".into(),
+            "--model".into(),
+            f.model.clone(),
+            "--params".into(),
+            "test-small".into(),
+            "--out-dir".into(),
+            f.path("logged"),
+            "--max-log2-rows".into(),
+            "18".into(),
+            "--query-block".into(),
+            "2".into(),
+        ],
+        0,
+    );
+    lines.extend(logged(
+        &f,
+        &[
+            "commit-weights".into(),
+            "--model".into(),
+            f.model.clone(),
+            "--plan".into(),
+            f.path("logged/plan.tep"),
+            "--out".into(),
+            f.path("logged.twc"),
+        ],
+        0,
+    ));
+    lines.extend(logged(&f, &f.prove(false), 0));
+    let failed = logged(&f, &["inspect".into(), f.path("missing.tnp")], 20);
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["event"], "tessera.cli.command_failed");
+    assert_eq!(failed[0]["level"], "error");
+    assert_eq!(failed[0]["fields"]["error"], "ERR-RES-IO");
+    assert!(
+        failed[0]["fields"]["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("ERR-RES-IO: cannot read ")
+    );
+    let events: std::collections::BTreeSet<&str> =
+        lines.iter().map(|l| l["event"].as_str().unwrap()).collect();
+    for event in [
+        "tessera.cli.compile_written",
+        "tessera.cli.weights_written",
+        "tessera.compiler.compiled",
+        "tessera.pcs.weights_committed",
+        "tessera.pcs.row_block_committed",
+        "tessera.prover.stage_proved",
+        "tessera.prover.round3_answered",
+    ] {
+        assert!(events.contains(event), "{event}: {events:?}");
+    }
+    // The `prove` span names the batch by the statement digest the verifier pins.
+    for line in &lines {
+        for span in line["span_path"].as_array().unwrap() {
+            if span["name"] == "prove" {
+                assert_eq!(span["fields"]["batch"], f.pin.as_str(), "{line}");
+            }
+        }
+    }
+    let spans: std::collections::BTreeSet<&str> = lines
+        .iter()
+        .flat_map(|l| l["span_path"].as_array().unwrap())
+        .map(|s| s["name"].as_str().unwrap())
+        .collect();
+    for span in [
+        "compile",
+        "commit_weights",
+        "prove",
+        "witness_pass",
+        "round1",
+        "stage",
+        "opening",
+        "round3",
+    ] {
+        assert!(spans.contains(span), "{span}: {spans:?}");
+    }
+}
+
 #[test]
 fn e2e_exact_tiny_ni_and_live_ragged() {
     let f = Fixture::new();

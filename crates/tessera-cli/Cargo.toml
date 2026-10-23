@@ -24,6 +24,9 @@ tessera-pcs = { path = "../tessera-pcs" }
 tessera-protocol = { path = "../tessera-protocol" }
 tessera-prover = { path = "../tessera-prover" }
 tessera-hash = { path = "../tessera-hash" }
+# The subscriber of 05 §2: the span registry only, with no formatting, ANSI or filter crates.
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"] }
 
 
 [lints]

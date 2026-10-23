@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use clap::Args;
 use serde_json::json;
 use tessera_codec::error::{ErrorCode, TesseraError};
-use tessera_codec::schema;
+use tessera_codec::{Public, schema};
 use tessera_compiler::{ExecutionPlan, PublicModel, check_plan, validate};
 use tessera_ir::IntegerModel;
 use tessera_pcs::{WeightCommitment, WeightCommitmentState, WeightLayout, WeightMatrix};
@@ -66,10 +66,12 @@ pub(crate) fn commit_weights(args: &CommitWeightsArgs, json: bool) -> Result<(),
         return Err(TesseraError::new(ErrorCode::Usage)
             .with_source("the plan's commitment layout is not its parameter set's"));
     }
-    eprintln!(
-        "tessera commit-weights: checking {} against {}",
-        args.plan.display(),
-        args.model.display()
+    tessera_codec::event!(
+        INFO,
+        "cli.weights_checking",
+        plan = Public(args.plan.display()),
+        model = Public(args.model.display());
+        "tessera commit-weights: checking {plan} against {model}"
     );
     check_plan(&plan, PublicModel::of(&model), &plan.claims)
         .map_err(|error| TesseraError::new(error.code()).with_source(error))?;
@@ -86,9 +88,12 @@ pub(crate) fn commit_weights(args: &CommitWeightsArgs, json: bool) -> Result<(),
         TesseraError::new(ErrorCode::Internal).with_source("parameter set row_block is 0")
     })?;
     let epoch = 0u32;
-    eprintln!(
-        "tessera commit-weights: committing {} weight matrices at epoch {epoch}",
-        WeightMatrix::ALL.len()
+    tessera_codec::event!(
+        INFO,
+        "cli.weights_committing",
+        matrices = WeightMatrix::ALL.len(),
+        epoch = epoch;
+        "tessera commit-weights: committing {matrices} weight matrices at epoch {epoch}"
     );
     let commitment = WeightCommitment::commit(&layout, row_block, epoch, &weights)
         .map_err(|error| TesseraError::new(ErrorCode::Internal).with_source(error))?;
@@ -107,10 +112,12 @@ pub(crate) fn commit_weights(args: &CommitWeightsArgs, json: bool) -> Result<(),
     public
         .write(&public_out)
         .map_err(io_error(format!("cannot write {}", public_out.display())))?;
-    eprintln!(
-        "tessera commit-weights: wrote {} and {}",
-        args.out.display(),
-        public_out.display()
+    tessera_codec::event!(
+        INFO,
+        "cli.weights_written",
+        state = Public(args.out.display()),
+        public = Public(public_out.display());
+        "tessera commit-weights: wrote {state} and {public}"
     );
 
     let weights_root = hex(&public.weights_root());
