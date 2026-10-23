@@ -27,6 +27,7 @@
       "commit_ps": 30.0,
       "glue_fraction": 0.15,
       "lookup_ps": 40.0,
+      "merge_ps": 0.0,
       "native_ops_per_s": 1187400000000000.0,
       "product_leaf_ps": 12.0,
       "row_combination_ps": 0.0,
@@ -38,6 +39,7 @@
     {
       "context": 1024,
       "detection": 0.9999844825148898,
+      "leaf_groups": 128,
       "mu": {
         "attention": 1.1331928978184198,
         "column_answers": 0.0,
@@ -51,11 +53,12 @@
       },
       "proof_time_s": 0.27969484419839996,
       "sampling_rate": 0.10482444668092619,
-      "streaming_passes": 5
+      "table_rounds": 0
     },
     {
       "context": 2048,
       "detection": 0.9996924138893002,
+      "leaf_groups": 256,
       "mu": {
         "attention": 2.2547027957911685,
         "column_answers": 0.0,
@@ -69,11 +72,12 @@
       },
       "proof_time_s": 0.7587332134656,
       "sampling_rate": 0.07768416029372326,
-      "streaming_passes": 6
+      "table_rounds": 0
     },
     {
       "context": 4096,
       "detection": 0.9949181179999204,
+      "leaf_groups": 256,
       "mu": {
         "attention": 4.463388914195717,
         "column_answers": 0.0,
@@ -87,11 +91,12 @@
       },
       "proof_time_s": 2.314840527206399,
       "sampling_rate": 0.05144996201232491,
-      "streaming_passes": 7
+      "table_rounds": 0
     },
     {
       "context": 8192,
       "detection": 0.9574820249366286,
+      "leaf_groups": 512,
       "mu": {
         "attention": 8.748233394695767,
         "column_answers": 0.0,
@@ -105,11 +110,12 @@
       },
       "proof_time_s": 7.819177455513598,
       "sampling_rate": 0.03108489657879544,
-      "streaming_passes": 8
+      "table_rounds": 0
     },
     {
       "context": 16384,
       "detection": 0.8341078946511197,
+      "leaf_groups": 1024,
       "mu": {
         "attention": 16.823493586102007,
         "column_answers": 0.0,
@@ -123,11 +129,12 @@
       },
       "proof_time_s": 28.3963405154304,
       "sampling_rate": 0.017803782759462962,
-      "streaming_passes": 9
+      "table_rounds": 0
     },
     {
       "context": 32768,
       "detection": 0.6376052418183357,
+      "leaf_groups": 2048,
       "mu": {
         "attention": 31.243524250250676,
         "column_answers": 0.0,
@@ -141,11 +148,12 @@
       },
       "proof_time_s": 107.82462344847357,
       "sampling_rate": 0.010098872141538266,
-      "streaming_passes": 10
+      "table_rounds": 0
     },
     {
       "context": 65536,
       "detection": 0.44826384479474235,
+      "leaf_groups": 4096,
       "mu": {
         "attention": 54.67586402570768,
         "column_answers": 0.0,
@@ -159,11 +167,12 @@
       },
       "proof_time_s": 419.7770165673983,
       "sampling_rate": 0.0059292057346130725,
-      "streaming_passes": 11
+      "table_rounds": 0
     },
     {
       "context": 131072,
       "detection": 0.31370123077494316,
+      "leaf_groups": 8192,
       "mu": {
         "attention": 87.48070280678644,
         "column_answers": 0.0,
@@ -177,7 +186,7 @@
       },
       "proof_time_s": 1656.0651118166013,
       "sampling_rate": 0.0037573456693320256,
-      "streaming_passes": 12
+      "table_rounds": 0
     }
   ],
   "schema": "tessera.cost-model/1"

@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3 (protocol), v0.4 (zero-knowledge messages), v1.0 (live transport)
-- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Transcript schedule', rows 4 and 5, and 'Soundness budget', in `tessera-protocol/2`), [RFC-0035](RFC-0035-padded-rows.md) ('Transcript schedule', row 6: the zero-check point)
+- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Transcript schedule', rows 4 and 5, and 'Soundness budget', in `tessera-protocol/2`), [RFC-0035](RFC-0035-padded-rows.md) ('Transcript schedule', row 6: the zero-check point), [RFC-0054](RFC-0054-token-groups.md) ('Transcript schedule', rows 4 and 5, and the calculator's union row: token groups, the table batch and the merge)
 
 ## Summary
 
@@ -91,6 +91,13 @@ Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{c}`, `{T}` are decimal
 | 10 | live: absorb `ColumnQueries`; NI: grind `query-pow`, then squeeze indices | `queries`, `pcs/advice/queries`, `pcs/weights/{T}/queries` |
 
 Both sides construct labels from these patterns only; the full expanded list for a claim list is part of the derived constraint system and covered by transcript vectors. What each label absorbs, the spelling of `{T}` as a matrix's name, and the labels `tessera-protocol/1` leaves out (`zk-sum`, `zk-rho` and the blinding claims) are [RFC-0036](RFC-0036-protocol-messages.md#what-the-transcript-absorbs)'s. In `tessera-protocol/2`, rows 4 and 5 are [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)'s: a masked LogUp identity sumcheck in place of `logup/roots`, and masked tree levels.
+
+A leaf stage in token groups ([RFC-0054](RFC-0054-token-groups.md#the-leaf-stage-with-groups)) changes rows 4 and 5:
+- **Row 4.** `logup/roots` holds every group's lookup-tree roots before each table root.
+- **Row 5.** It runs per group, in order, under `group/{h}/tree/{ℓ}/…`, `group/{h}/logup/values` and `group/{h}/split`. Then the table trees' levels run under `tables/tree/{ℓ}/…`, and the merge under `merge/gamma`, `merge/beta`, `merge/round/{j}`, `merge/r/{j}` and `merge/evals`.
+- **Before row 6.** The leaf stage's atom split values follow under `stage/0/split`.
+
+`Round1` states the group count, `leaf_groups`, and absorbs it at row 2.
 
 ### Soundness budget
 

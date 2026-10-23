@@ -11,12 +11,14 @@
 
 use tessera_bench::{
     Counts, MemoryModel, ModelError, ModelReport, MuBreakdown, Problem, Scenario, UnitCosts,
-    detection_probability, mu, proof_time_s, sampling_rate, streaming_passes,
+    detection_probability, leaf_plan, mu, proof_time_s, sampling_rate, shared_streaming_passes,
 };
 
-/// The source's model with streamed passes priced at RFC-0018's 7 ps per score, column answers
-/// at 15 ps and the row combination at 2 ps per committed element, five regenerations,
-/// 2 · 10^10 table rows and a score block of 512 (RFC-0034), so that every term is positive.
+/// The source's model with the table trees' streamed rounds priced at 7 ps per leaf and the merge
+/// at 3 ps per element (RFC-0054), column answers at 15 ps and the row combination at 2 ps per
+/// committed element, five regenerations, 2 · 10^10 table rows and a score block of 512
+/// (RFC-0034), so that every term is positive: the batch's leaf stage is grouped at every
+/// context, and its table trees stream.
 fn every_term() -> (Counts, UnitCosts, MemoryModel) {
     let counts = Counts {
         regen_full_equivalents: 5.0,
@@ -26,6 +28,7 @@ fn every_term() -> (Counts, UnitCosts, MemoryModel) {
     };
     let costs = UnitCosts {
         streaming_pass_ps: 7.0,
+        merge_ps: 3.0,
         column_answer_ps: 15.0,
         row_combination_ps: 2.0,
         ..UnitCosts::SOURCE
@@ -73,7 +76,7 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
     // Each input raised by half, with the terms it must move: linear, attention, weights, regen,
     // streaming, column answers, row combination, tables, in that order.
     type Raise = (&'static str, fn(&mut Counts, &mut UnitCosts), [Move; 8]);
-    let raises: [Raise; 17] = [
+    let raises: [Raise; 18] = [
         (
             "commit_ps",
             |_, u| u.commit_ps *= 1.5,
@@ -105,6 +108,11 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
             [Same, Same, Same, Same, Up, Same, Same, Same],
         ),
         (
+            "merge_ps",
+            |_, u| u.merge_ps *= 1.5,
+            [Same, Same, Same, Same, Up, Same, Same, Same],
+        ),
+        (
             "column_answer_ps",
             |_, u| u.column_answer_ps *= 1.5,
             [Same, Same, Same, Same, Same, Up, Same, Same],
@@ -128,7 +136,7 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
         (
             "lookups_per_token",
             |c, _| c.lookups_per_token *= 1.5,
-            [Up, Same, Same, Same, Same, Same, Same, Same],
+            [Up, Same, Same, Same, Up, Same, Same, Same],
         ),
         (
             "scores_per_token_per_ctx",
@@ -158,7 +166,7 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
         (
             "table_rows",
             |c, _| c.table_rows *= 1.5,
-            [Same, Same, Same, Same, Same, Same, Same, Up],
+            [Same, Same, Same, Same, Up, Same, Same, Up],
         ),
     ];
     for (name, raise, expected) in raises {
@@ -178,14 +186,22 @@ fn mu_rises_with_every_cost_and_count_of_proof_work_and_falls_with_native_work()
     }
 }
 
-/// `c(S)` is 0 while a batch's attention leaves fit in the free memory, and one more per
-/// doubling of the leaves beyond it, whatever doubles them; the streaming term is the passes
-/// times the cost of one, so it steps with them.
+/// RFC-0054's plan: one batch while the lookup trees and product forests fit, and one more
+/// doubling of the token groups per doubling of their leaves beyond the memory, whatever doubles
+/// them. A grouped stage pays one merge, a regeneration and its folds, however many groups it
+/// has; the table trees stream their levels that do not fit, `c(c + 1)/2` rounds, and regenerate
+/// nothing.
 #[test]
-fn the_streaming_term_steps_one_pass_per_doubling_of_the_leaves() {
+fn the_leaf_plan_doubles_its_groups_per_doubling_of_the_leaves() {
     let (counts, costs, _) = every_term();
+    let no_tables = Counts {
+        table_rows: 0.0,
+        ..counts
+    };
     let context = 4096;
-    let leaves = counts.scores_per_token_per_ctx * f64::from(context) * f64::from(BATCH);
+    let leaves = (no_tables.lookups_per_token
+        + 2.0 * no_tables.scores_per_token_per_ctx * f64::from(context))
+        * f64::from(BATCH);
     let exact = MemoryModel {
         free_bytes: leaves * 32.0,
         bytes_per_leaf: 32.0,
@@ -194,72 +210,94 @@ fn the_streaming_term_steps_one_pass_per_doubling_of_the_leaves() {
         free_bytes: exact.free_bytes * (1.0 - 1e-9),
         ..exact
     };
+    let plan =
+        |c: &Counts, m: &MemoryModel, batch: u32| leaf_plan(c, m, context, batch).expect("a plan");
+    let fits = plan(&no_tables, &exact, BATCH);
     assert_eq!(
-        streaming_passes(&counts, &exact, context, BATCH),
-        Ok(0),
-        "the leaves just fit"
+        (fits.groups, fits.table_rounds, fits.merge_passes()),
+        (1, 0, 0)
     );
+    let split = plan(&no_tables, &below, BATCH);
     assert_eq!(
-        streaming_passes(&counts, &below, context, BATCH),
-        Ok(1),
+        (split.groups, split.merge_passes()),
+        (2, 1),
         "one byte short"
     );
-    let one = mu(&counts, &costs, &below, context, BATCH)
-        .expect("a projection")
-        .streaming;
-    assert!(one > 0.0);
+    let terms = |c: &Counts, m: &MemoryModel| {
+        let m = mu(c, &costs, m, context, BATCH).expect("a projection");
+        (m.regen, m.streaming)
+    };
+    let regenerations = no_tables.regen_full_equivalents;
     assert_eq!(
-        mu(&counts, &costs, &exact, context, BATCH)
-            .expect("a projection")
-            .streaming,
-        0.0
+        terms(&no_tables, &exact),
+        (regenerations, 0.0),
+        "nothing to merge or stream"
     );
+    // The merge: one more regeneration, and 3 ps per merged element, an element per leaf.
+    let native = (no_tables.native_ops_lin + no_tables.native_ops_att_per_ctx * f64::from(context))
+        / costs.native_ops_per_s;
+    let folds = costs.merge_ps * 1e-12 * leaves / f64::from(BATCH) / native;
+    let merged = |m: &MemoryModel| {
+        let (regen, streaming) = terms(&no_tables, m);
+        regen == regenerations + 1.0 && (streaming - folds).abs() < 1e-12 * folds
+    };
+    assert!(merged(&below));
     for k in 1..=12u32 {
-        let batch = BATCH << k;
-        assert_eq!(
-            streaming_passes(&counts, &exact, context, batch),
-            Ok(k),
-            "batch 2^{k}·T"
-        );
         let memory = MemoryModel {
             free_bytes: exact.free_bytes / f64::from(1u32 << k),
             ..exact
         };
         assert_eq!(
-            streaming_passes(&counts, &memory, context, BATCH),
-            Ok(k),
+            plan(&no_tables, &memory, BATCH).groups,
+            1 << k,
             "memory / 2^{k}"
         );
-        let streaming = mu(&counts, &costs, &memory, context, BATCH)
-            .expect("a projection")
-            .streaming;
-        assert!(
-            (streaming / one - f64::from(k)).abs() < 1e-12,
-            "memory / 2^{k}: {k} passes' worth"
+        assert_eq!(
+            plan(&no_tables, &exact, BATCH << k).groups,
+            1 << k,
+            "batch 2^{k}·T"
+        );
+        // However many groups, one merge.
+        assert!(merged(&memory), "memory / 2^{k}");
+    }
+    // The table trees stream c(c + 1)/2 rounds: beside the lookups, which fill half of twice the
+    // memory, while those fit; alone once the stage is grouped.
+    let rows = |bytes: f64| Counts {
+        table_rows: bytes / 32.0,
+        ..no_tables
+    };
+    let free = exact.free_bytes;
+    let ungrouped = MemoryModel {
+        free_bytes: 2.0 * free,
+        ..exact
+    };
+    for (tables, rounds) in [(0.5, 0), (1.5, 1), (3.5, 3), (7.5, 6), (15.5, 10)] {
+        let beside = plan(&rows(tables * free), &ungrouped, BATCH);
+        assert_eq!(
+            (beside.groups, beside.table_rounds),
+            (1, rounds),
+            "{tables}·M beside"
         );
     }
-    // The source prices no pass: its streaming term is zero however many there are.
-    let source = mu(
-        &Counts::SOURCE_405B,
-        &UnitCosts::SOURCE,
-        &MemoryModel::NODE_405B,
-        131_072,
-        BATCH,
-    )
-    .expect("the source's model");
-    assert_eq!(source.streaming, 0.0);
-    // The counts RFC-0018 'Leaf levels', RISK-10 and 08 §3 quote for the source's 16K-token batch
-    // on 0.2 TB: at 16K, 2.165×10^12 leaves of 32 bytes are 346 times the memory, so 9 passes.
-    for (context, passes) in [(1024, 5), (4096, 7), (16_384, 9)] {
+    for (tables, rounds) in [(0.5, 0), (1.5, 1), (3.5, 3), (7.5, 6), (15.5, 10)] {
+        let alone = plan(&rows(tables * free), &below, BATCH);
         assert_eq!(
-            streaming_passes(
-                &Counts::SOURCE_405B,
-                &MemoryModel::NODE_405B,
-                context,
-                BATCH
-            ),
-            Ok(passes),
-            "the documents count {passes} passes over the attention leaves at {context}"
+            (alone.groups, alone.table_rounds),
+            (2, rounds),
+            "{tables}·M alone"
+        );
+    }
+    // RFC-0018 as written: one batch, every level of every tree streaming, one regeneration per
+    // round: c(c + 1)/2 with c the leaf level's.
+    for k in 0..=12u32 {
+        let memory = MemoryModel {
+            free_bytes: exact.free_bytes / f64::from(1u32 << k),
+            ..exact
+        };
+        assert_eq!(
+            shared_streaming_passes(&no_tables, &memory, context, BATCH),
+            Ok(k * (k + 1) / 2),
+            "memory / 2^{k}"
         );
     }
 }
@@ -346,10 +384,11 @@ fn each_table_row_costs_a_committed_lookup_once_per_batch() {
 /// commitments and 302,080 lookups per layer per token over 126 layers (RFC-0024's wide rescale
 /// and RFC-0022's two steps at classed residual sites), five regenerations (RFC-0018 P1 to P5), and
 /// the table rows of the two-class report at `B_max = 32` with RFC-0028's balanced split
-/// (`docs/perf/v0.2/`), and RFC-0034's score block of 512. The column answers are free or priced
-/// as committing is, 30 ps per element.
-/// The streamed passes over the attention leaves are free or priced at RFC-0018's 6 or 8 ps per
-/// score. A change to the model that moves one fails here until the documents follow.
+/// (`docs/perf/v0.2/`), and RFC-0034's score block of 512. The 16K-token batch's leaf stage is
+/// grouped at every context, so its merge adds a sixth regeneration (RFC-0054). The column answers
+/// are free or priced as committing is, 30 ps per element; the merge's folds are free or priced at
+/// RFC-0054's 2 or 4 ps per element, and the table trees' streamed rounds at 6 or 8 ps per leaf.
+/// A change to the model that moves one fails here until the documents follow.
 #[test]
 fn the_corrected_projections_are_the_ones_the_documents_quote() {
     let corrected = Counts {
@@ -360,10 +399,11 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         score_block: 512.0,
         ..Counts::SOURCE_405B
     };
-    let at = |counts: &Counts, context: u32, column_answer_ps: f64, streaming_pass_ps: f64| {
+    let at = |counts: &Counts, context: u32, column_answer_ps: f64, merge_ps: f64, ps: f64| {
         let costs = UnitCosts {
             column_answer_ps,
-            streaming_pass_ps,
+            merge_ps,
+            streaming_pass_ps: ps,
             ..UnitCosts::SOURCE
         };
         mu(counts, &costs, &MemoryModel::NODE_405B, context, BATCH).expect("a projection")
@@ -375,25 +415,28 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
             "{what}: the model gives {value}, the documents {figure}"
         );
     };
-    let (k1, k4, k16) = (1024, 4096, 16_384);
+    let (k1, k4, k16, k128) = (1024, 4096, 16_384, 131_072);
     quoted(
         "source linear term at 1K",
-        at(&Counts::SOURCE_405B, k1, 0.0, 0.0).linear,
+        at(&Counts::SOURCE_405B, k1, 0.0, 0.0, 0.0).linear,
         2.0,
         1,
     );
     quoted(
         "corrected linear term at 1K",
-        at(&corrected, k1, 0.0, 0.0).linear,
+        at(&corrected, k1, 0.0, 0.0, 0.0).linear,
         4.4,
         1,
     );
-    let (mu1, mu16) = (
-        at(&corrected, k1, 0.0, 0.0).total,
-        at(&corrected, k16, 0.0, 0.0).total,
+    let (base1, base16) = (
+        at(&corrected, k1, 0.0, 0.0, 0.0),
+        at(&corrected, k16, 0.0, 0.0, 0.0),
     );
-    quoted("μ(1K)", mu1, 10.8, 1);
-    quoted("μ(16K)", mu16, 26.1, 1);
+    let (mu1, mu16) = (base1.total, base16.total);
+    // RISK-9: five regenerations, and the merge's sixth.
+    assert_eq!((base1.regen, base16.regen), (6.0, 6.0));
+    quoted("μ(1K)", mu1, 11.8, 1);
+    quoted("μ(16K)", mu16, 27.1, 1);
     // RFC-0034: the diagonal blocks' masked halves, which the layout cannot skip, add 0.21 at 1K
     // and 0.19 at 16K.
     let valid_half = Counts {
@@ -402,29 +445,19 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
     };
     quoted(
         "diagonal blocks at 1K",
-        mu1 - at(&valid_half, k1, 0.0, 0.0).total,
+        mu1 - at(&valid_half, k1, 0.0, 0.0, 0.0).total,
         0.21,
         2,
     );
     quoted(
         "diagonal blocks at 16K",
-        mu16 - at(&valid_half, k16, 0.0, 0.0).total,
+        mu16 - at(&valid_half, k16, 0.0, 0.0, 0.0).total,
         0.19,
         2,
     );
-    quoted(
-        "1K table term",
-        at(&corrected, k1, 0.0, 0.0).tables,
-        0.048,
-        3,
-    );
-    quoted(
-        "16K table term",
-        at(&corrected, k16, 0.0, 0.0).tables,
-        0.044,
-        3,
-    );
-    let per_ps = |context| at(&corrected, context, 1.0, 0.0).column_answers;
+    quoted("1K table term", base1.tables, 0.048, 3);
+    quoted("16K table term", base16.tables, 0.044, 3);
+    let per_ps = |context| at(&corrected, context, 1.0, 0.0, 0.0).column_answers;
     quoted("1K per ps of c_a", per_ps(k1), 0.070, 3);
     quoted("16K per ps of c_a", per_ps(k16), 0.23, 2);
     // 08 §3: a picosecond of the row combination costs what one of the column answers does,
@@ -439,79 +472,118 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         assert_eq!(m.row_combination, per_ps(context), "at {context}");
     }
     let (full1, full16) = (
-        at(&corrected, k1, 30.0, 0.0),
-        at(&corrected, k16, 30.0, 0.0),
+        at(&corrected, k1, 30.0, 0.0, 0.0),
+        at(&corrected, k16, 30.0, 0.0, 0.0),
     );
     quoted("1K column answers at c_c", full1.column_answers, 2.1, 1);
     quoted("16K column answers at c_c", full16.column_answers, 7.0, 1);
-    quoted("μ(1K) at c_c", full1.total, 12.9, 1);
+    quoted("μ(1K) at c_c", full1.total, 13.9, 1);
+    quoted("μ(16K) at c_c", full16.total, 34.1, 1);
     // SC-2's headroom: ceilings of 12 and 45 over the corrected figures.
-    quoted("1K headroom", 12.0 / mu1, 1.11, 2);
-    quoted("16K headroom", 45.0 / mu16, 1.72, 2);
-    quoted("16K headroom at c_c", 45.0 / full16.total, 1.36, 2);
+    quoted("1K headroom", 12.0 / mu1, 1.02, 2);
+    quoted("16K headroom", 45.0 / mu16, 1.66, 2);
+    quoted("16K headroom at c_c", 45.0 / full16.total, 1.32, 2);
     quoted(
         "1K excess at c_c",
         100.0 * (full1.total / 12.0 - 1.0),
-        7.0,
+        16.0,
         0,
     );
-    // RISK-10, 08 §3 and SC-2: the streamed passes over the attention leaves at 6 and 8 ps per
-    // score, and their share of the attention term. They do not depend on the profile.
-    for (context, low, high, share_low, share_high, digits) in [
-        (k1, 0.36, 0.48, 27.0, 36.0, 2),
-        (k4, 2.0, 2.7, 43.0, 57.0, 1),
-        (k16, 9.6, 12.8, 57.0, 75.0, 1),
+    // RISK-10, 08 §3 and SC-2: RFC-0054's plan. The batch takes 256, 512, 1,024 and 8,192 groups
+    // and its table trees stream one round. The merge's folds at 2 and 4 ps per element; the
+    // table trees' round at 6 or 8 ps per leaf adds under 0.005.
+    for (context, groups, low, high) in [
+        (k1, 256, 0.16, 0.32),
+        (k4, 512, 0.30, 0.60),
+        (k16, 1024, 0.82, 1.63),
+        (k128, 8192, 3.78, 7.56),
     ] {
-        let attention = at(&corrected, context, 0.0, 0.0).attention;
-        for (ps, figure, share) in [(6.0, low, share_low), (8.0, high, share_high)] {
-            let streaming = at(&corrected, context, 0.0, ps).streaming;
+        let plan = leaf_plan(&corrected, &MemoryModel::NODE_405B, context, BATCH).expect("a plan");
+        assert_eq!(
+            (plan.groups, plan.table_rounds),
+            (groups, 1),
+            "at {context}"
+        );
+        quoted(
+            &format!("merge at 2 ps, {context}"),
+            at(&corrected, context, 0.0, 2.0, 0.0).streaming,
+            low,
+            2,
+        );
+        quoted(
+            &format!("merge at 4 ps, {context}"),
+            at(&corrected, context, 0.0, 4.0, 0.0).streaming,
+            high,
+            2,
+        );
+        let rounds = at(&corrected, context, 0.0, 0.0, 8.0).streaming;
+        assert!(
+            rounds > 0.0 && rounds < 0.005,
+            "table rounds at {context}: {rounds}"
+        );
+    }
+    // RFC-0054 'Motivation': RFC-0018 as written streams 36, 45 and 55 passes, each a
+    // regeneration and a fold at 6 to 8 ps per leaf: +53 to +59, +85 to +99 and +190 to +235.
+    for (context, passes, low, high) in [
+        (k1, 36, 53.0, 59.0),
+        (k4, 45, 85.0, 99.0),
+        (k16, 55, 190.0, 235.0),
+    ] {
+        let shared = shared_streaming_passes(&corrected, &MemoryModel::NODE_405B, context, BATCH)
+            .expect("a count");
+        assert_eq!(shared, passes, "at {context}");
+        let leaves = corrected.lookups_per_token
+            + 2.0 * corrected.scores_per_token_per_ctx * f64::from(context);
+        let native = (corrected.native_ops_lin
+            + corrected.native_ops_att_per_ctx * f64::from(context))
+            / UnitCosts::SOURCE.native_ops_per_s;
+        for (ps, figure) in [(6.0, low), (8.0, high)] {
+            let added = f64::from(shared) * (1.0 + ps * 1e-12 * leaves / native);
             quoted(
-                &format!("streaming at {ps} ps, {context}"),
-                streaming,
+                &format!("RFC-0018 passes at {ps} ps, {context}"),
+                added,
                 figure,
-                digits,
-            );
-            quoted(
-                &format!("share of attention at {ps} ps, {context}"),
-                100.0 * streaming / attention,
-                share,
                 0,
             );
         }
     }
-    // 08 §3 and SC-2: at c_c with the upper streaming estimate, 11% above the 1K ceiling and
-    // 2.1% above the 16K one.
+    // 08 §3 and SC-2: with the merge and the table round at their upper estimates, and c_a = c_c,
+    // 14.2 at 1K, 18% above that ceiling, and 35.7 at 16K, 1.26 times below it.
     let (all1, all16) = (
-        at(&corrected, k1, 30.0, 8.0),
-        at(&corrected, k16, 30.0, 8.0),
+        at(&corrected, k1, 30.0, 4.0, 8.0),
+        at(&corrected, k16, 30.0, 4.0, 8.0),
     );
-    quoted("μ(1K) at c_c with streaming", all1.total, 13.4, 1);
+    quoted("μ(1K) at c_c, upper", all1.total, 14.2, 1);
     quoted(
-        "1K excess at c_c with streaming",
+        "1K excess at c_c, upper",
         100.0 * (all1.total / 12.0 - 1.0),
-        11.0,
+        18.0,
         0,
     );
-    quoted("μ(16K) at c_c with streaming", all16.total, 45.9, 1);
+    quoted("μ(16K) at c_c, upper", all16.total, 35.7, 1);
+    quoted("16K headroom at c_c, upper", 45.0 / all16.total, 1.26, 2);
+    // The upper estimates alone take 1K to 12.1, past its ceiling; at the lower ones the ceiling
+    // holds while c_a stays below about 1 ps. At 16K it holds while c_a stays below about 70 ps.
     quoted(
-        "16K excess at c_c with streaming",
-        100.0 * (all16.total / 45.0 - 1.0),
-        2.1,
+        "μ(1K), upper",
+        at(&corrected, k1, 0.0, 4.0, 8.0).total,
+        12.1,
         1,
     );
-    // RISK-10 and 08 §3: with the upper streaming estimate, the ceilings hold while c_a stays below
-    // about 11 ps at 1K and 26 ps at 16K.
-    for (context, ceiling, room) in [(k1, 12.0, 11.0), (k16, 45.0, 26.0)] {
-        let streamed = at(&corrected, context, 0.0, 8.0).total;
-        quoted(
-            &format!("c_a that meets the ceiling at {context}"),
-            (ceiling - streamed) / per_ps(context),
-            room,
-            0,
-        );
-    }
+    quoted(
+        "c_a that meets the 1K ceiling, lower",
+        (12.0 - at(&corrected, k1, 0.0, 2.0, 6.0).total) / per_ps(k1),
+        1.0,
+        0,
+    );
+    quoted(
+        "c_a that meets the 16K ceiling, upper",
+        (45.0 - at(&corrected, k16, 0.0, 4.0, 8.0).total) / per_ps(k16),
+        70.0,
+        0,
+    );
     // 08 §3's sampling rate for 10% overhead at η = 0.3, and daily detection of 100 violations.
-    for (total, rate, detection) in [(mu1, 3.1, 96.0), (full1.total, 2.6, 93.0)] {
+    for (total, rate, detection) in [(mu1, 2.8, 94.0), (full1.total, 2.4, 91.0)] {
         let s = sampling_rate(0.1, total, 0.3).expect("a rate");
         quoted("sampling at 1K", 100.0 * s, rate, 1);
         let d = detection_probability(s, 100).expect("a probability");
@@ -534,10 +606,11 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
         score_block: 512.0,
         ..Counts::SOURCE_405B
     };
-    let at = |context: u32, column_answer_ps: f64, streaming_pass_ps: f64| {
+    let at = |context: u32, column_answer_ps: f64, merge_ps: f64, ps: f64| {
         let costs = UnitCosts {
             column_answer_ps,
-            streaming_pass_ps,
+            merge_ps,
+            streaming_pass_ps: ps,
             ..UnitCosts::SOURCE
         };
         mu(&servable, &costs, &MemoryModel::NODE_405B, context, BATCH).expect("a projection")
@@ -550,72 +623,53 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
         );
     };
     let (k1, k16) = (1024, 16_384);
-    quoted("linear term at 1K", at(k1, 0.0, 0.0).linear, 5.3, 1);
-    let (mu1, mu16) = (at(k1, 0.0, 0.0).total, at(k16, 0.0, 0.0).total);
-    quoted("μ(1K)", mu1, 11.7, 1);
-    quoted("μ(16K)", mu16, 27.0, 1);
-    quoted("1K table term", at(k1, 0.0, 0.0).tables, 0.055, 3);
-    quoted("16K table term", at(k16, 0.0, 0.0).tables, 0.051, 3);
+    quoted("linear term at 1K", at(k1, 0.0, 0.0, 0.0).linear, 5.3, 1);
+    let (mu1, mu16) = (at(k1, 0.0, 0.0, 0.0).total, at(k16, 0.0, 0.0, 0.0).total);
+    quoted("μ(1K)", mu1, 12.7, 1);
+    quoted("μ(16K)", mu16, 28.0, 1);
+    quoted("1K table term", at(k1, 0.0, 0.0, 0.0).tables, 0.055, 3);
+    quoted("16K table term", at(k16, 0.0, 0.0, 0.0).tables, 0.051, 3);
     quoted(
         "1K per ps of c_a",
-        at(k1, 1.0, 0.0).column_answers,
+        at(k1, 1.0, 0.0, 0.0).column_answers,
         0.084,
         3,
     );
     quoted(
         "16K per ps of c_a",
-        at(k16, 1.0, 0.0).column_answers,
+        at(k16, 1.0, 0.0, 0.0).column_answers,
         0.25,
         2,
     );
-    let (full1, full16) = (at(k1, 30.0, 0.0), at(k16, 30.0, 0.0));
+    let (full1, full16) = (at(k1, 30.0, 0.0, 0.0), at(k16, 30.0, 0.0, 0.0));
     quoted("1K column answers at c_c", full1.column_answers, 2.5, 1);
     quoted("16K column answers at c_c", full16.column_answers, 7.4, 1);
-    quoted("μ(1K) at c_c", full1.total, 14.2, 1);
-    quoted("μ(16K) at c_c", full16.total, 34.4, 1);
-    // SC-2's headroom, and the 1K ceiling missed by 19% at c_a = c_c.
-    quoted("1K headroom", 12.0 / mu1, 1.02, 2);
-    quoted("16K headroom", 45.0 / mu16, 1.67, 2);
+    quoted("μ(1K) at c_c", full1.total, 15.2, 1);
+    quoted("μ(16K) at c_c", full16.total, 35.4, 1);
+    // SC-2: the 1K ceiling missed by 6% before the column answers, by 27% at c_a = c_c; 16K's
+    // headroom.
+    quoted("1K excess", 100.0 * (mu1 / 12.0 - 1.0), 6.0, 0);
     quoted(
         "1K excess at c_c",
         100.0 * (full1.total / 12.0 - 1.0),
-        19.0,
+        27.0,
         0,
     );
-    // SC-2, RISK-10 and 08 §3: the upper streaming estimate alone brings the 1K projection to
-    // about 12.2, 1.7% above the ceiling, which leaves the column answers no room.
-    let streamed1 = at(k1, 0.0, 8.0).total;
-    quoted("μ(1K) with streaming", streamed1, 12.2, 1);
+    quoted("16K headroom", 45.0 / mu16, 1.61, 2);
+    quoted("16K headroom at c_c", 45.0 / full16.total, 1.27, 2);
+    // With the merge and the table round at their upper estimates as well: 15.6 at 1K, 30% above
+    // the ceiling, and 37.0 at 16K, below it; `SPEC.md` rounds them to 15.6 and 37.
+    let (all1, all16) = (at(k1, 30.0, 4.0, 8.0), at(k16, 30.0, 4.0, 8.0));
+    quoted("μ(1K) at c_c, upper", all1.total, 15.6, 1);
     quoted(
-        "1K excess with streaming",
-        100.0 * (streamed1 / 12.0 - 1.0),
-        1.7,
-        1,
-    );
-    // With the column answers priced as committing as well: 14.7 at 1K and 47.2 at 16K, 23% and
-    // 5% above the ceilings; `SPEC.md` rounds them to 14.7 and 47.
-    let (all1, all16) = (at(k1, 30.0, 8.0), at(k16, 30.0, 8.0));
-    quoted("μ(1K) at c_c with streaming", all1.total, 14.7, 1);
-    quoted(
-        "1K excess at c_c with streaming",
+        "1K excess at c_c, upper",
         100.0 * (all1.total / 12.0 - 1.0),
-        23.0,
+        30.0,
         0,
     );
-    quoted("μ(16K) at c_c with streaming", all16.total, 47.2, 1);
-    quoted(
-        "μ(16K) at c_c with streaming, SPEC.md",
-        all16.total,
-        47.0,
-        0,
-    );
-    quoted(
-        "16K excess at c_c with streaming",
-        100.0 * (all16.total / 45.0 - 1.0),
-        5.0,
-        0,
-    );
-    for (total, rate, detection) in [(mu1, 2.8, 94.0), (full1.total, 2.3, 91.0)] {
+    quoted("μ(16K) at c_c, upper", all16.total, 37.0, 1);
+    quoted("16K headroom at c_c, upper", 45.0 / all16.total, 1.21, 2);
+    for (total, rate, detection) in [(mu1, 2.6, 93.0), (full1.total, 2.2, 89.0)] {
         let s = sampling_rate(0.1, total, 0.3).expect("a rate");
         quoted("sampling at 1K", 100.0 * s, rate, 1);
         let d = detection_probability(s, 100).expect("a probability");
@@ -714,6 +768,7 @@ fn the_report_states_each_input_and_term_under_its_own_name() {
         ("weight_pass_gpu_s", costs.weight_pass_gpu_s),
         ("native_ops_per_s", costs.native_ops_per_s),
         ("streaming_pass_ps", costs.streaming_pass_ps),
+        ("merge_ps", costs.merge_ps),
         ("column_answer_ps", costs.column_answer_ps),
         ("row_combination_ps", costs.row_combination_ps),
     ] {
@@ -734,6 +789,9 @@ fn the_report_states_each_input_and_term_under_its_own_name() {
         ] {
             states(&json["projections"][k]["mu"], key, value);
         }
+        let projection = &json["projections"][k];
+        assert_eq!(projection["leaf_groups"], u64::from(p.leaf_groups));
+        assert_eq!(projection["table_rounds"], u64::from(p.table_rounds));
     }
 }
 
@@ -775,6 +833,10 @@ fn inputs_the_model_cannot_price_are_refused() {
         with_costs(|u| u.row_combination_ps = f64::NAN),
         refused("row_combination_ps", Problem::NotFinite)
     );
+    assert_eq!(
+        with_costs(|u| u.merge_ps = -1.0),
+        refused("merge_ps", Problem::Negative)
+    );
     let with_counts = |change: fn(&mut Counts), context: u32| {
         let mut c = counts;
         change(&mut c);
@@ -814,6 +876,19 @@ fn inputs_the_model_cannot_price_are_refused() {
         mu(&counts, &costs, &memory, 1024, 0).map(|m| m.total),
         refused("batch_tokens", Problem::NotPositive)
     );
+    // RFC-0054: memory in which one token's leaves do not fit, or that would take more than
+    // 2^14 groups, has no plan.
+    for free_bytes in [1e6, 1e9] {
+        let small = MemoryModel {
+            free_bytes,
+            ..memory
+        };
+        assert_eq!(
+            mu(&counts, &costs, &small, 1024, BATCH).map(|m| m.total),
+            refused("free_bytes", Problem::TooSmall),
+            "{free_bytes} bytes"
+        );
+    }
     assert_eq!(
         proof_time_s(3.0, &counts, &costs, 1024, 0),
         refused("gpus", Problem::NotPositive)

@@ -11,7 +11,7 @@ Tessera proves that a committed integer language model `D` produced a recorded t
 
 The design is a sumcheck/GKR proof over the Goldilocks field in which matmuls and attention products are never committed. Only lookup outputs, per-row scalars and weights are. Every layer, head and query block is proven in a constant number of batched stages under one seed. Softmax is pinned by a max certificate at one lookup, one commitment and one product-tree leaf per score. A persistent weight commitment is opened by the same pass that folds the weights for the sumcheck. An independent verifier rebuilds every constraint from a public claim list and shares no code with the prover.
 
-The source projects a proof multiplier of 3.2 at 1K tokens and 18.8 at 16K for Llama-3.1-405B on one 8×H100 node. This corpus finds four costs the source's model leaves out, rescale decompositions (RISK-2), witness regeneration (RISK-9), memory-bound tree levels (RISK-10) and the table side of LogUp, and restates the projection as about 10.8 to 11.7 at 1K and 26 to 27 at 16K, or up to 14.7 and 47 with the unmeasured column answers and streaming at their upper estimates. Their streaming covers the attention trees' leaf level alone. Under RFC-0018's current rules, the rest of the leaf stage streams too and adds an order of magnitude more ([#329](https://github.com/AbdelStark/tessera/issues/329)). Both remain four orders of magnitude below the best published frontier-scale proof. Every figure is a projection until milestone v0.1 measures the unit costs on H100 and records a go/no-go decision against a rule fixed in advance ([RFC-0020](docs/rfcs/RFC-0020-cost-model.md#decision-rule)).
+The source projects a proof multiplier of 3.2 at 1K tokens and 18.8 at 16K for Llama-3.1-405B on one 8×H100 node. This corpus finds four costs the source's model leaves out: rescale decompositions (RISK-2), witness regeneration (RISK-9), a leaf stage larger than memory (RISK-10), and the table side of LogUp. It restates the projection as about 11.8 to 12.7 at 1K and 27 to 28 at 16K. With the unmeasured column answers and the leaf stage's merge at their upper estimates, it is up to 15.6 and 37. The leaf stage is proven in token groups with one merge ([RFC-0054](docs/rfcs/RFC-0054-token-groups.md)). Streaming it in one batch would have added 53 to 235. The reduction stages exceed memory too and are not priced yet ([#452](https://github.com/AbdelStark/tessera/issues/452)). Both remain four orders of magnitude below the best published frontier-scale proof. Every figure is a projection until milestone v0.1 measures the unit costs on H100 and records a go/no-go decision against a rule fixed in advance ([RFC-0020](docs/rfcs/RFC-0020-cost-model.md#decision-rule)).
 
 Sub-10% overhead is an amortized property, reached by recording every request and proving an unpredictable sample in full. It is not a per-request cost, and this corpus never claims it is.
 
@@ -94,6 +94,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0051](docs/rfcs/RFC-0051-soundness-target-exit-code.md) | Soundness target exit code: exit 10 when `tessera params check` or `tessera-verify params` misses a target while still printing the report (amends 02, RFC-0014) | v0.3 |
 | [RFC-0052](docs/rfcs/RFC-0052-channel-params-claims.md) | Opening several claims on `ChannelParams`: one evaluation row per reading site in pool order, folded in a single pass (amends RFC-0012, RFC-0036, RFC-0037, RFC-0045, RFC-0049) | v0.3 |
 | [RFC-0053](docs/rfcs/RFC-0053-greedy-runtime-boundary.md) | Original-source exact-greedy runtime boundary, public-span range and canonical maximum/native obligations | v0.3 |
+| [RFC-0054](docs/rfcs/RFC-0054-token-groups.md) | Token groups: a leaf stage larger than memory proven group by group in memory, the table trees streamed without regeneration, and one merge sumcheck back to one point per tensor; two regenerations at any size (amends RFC-0008, RFC-0010, RFC-0014, RFC-0018, RFC-0020, RFC-0036) | v0.3 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 
@@ -105,7 +106,7 @@ All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision chang
 | **v0.2** Integer model and compiler | Python front-end for Llama-3.1 (import, calibration, W8A8, export, integer reference, fidelity); table registry; IR, range analysis, gadget selection, lowering, claim list, commitment report; CPU witness engine | SC-7 bit-exactness; fidelity gates for 8B; commitment report for 8B and 405B shapes resolves RISK-2's count |
 | **v0.3** End-to-end reference proof | Gadgets, stage schedule, advice layout and streaming commitment, binding weight commitment, openings, live and non-interactive protocol, soundness calculator, verifier driver, CLIs | Exact-mode greedy proofs of tiny models verify in both modes; tamper corpus rejected in full (SC-4); `tessera-protocol/1` |
 | **v0.4** Full statement | Zero knowledge (after the simulator-argument gate), weight hiding budget and refresh, transcript anchor and reference recorder, audit sampling, sampler PRF and mixture scoring, verifier ledger | SC-5 and SC-6; `tessera-protocol/2` |
-| **v0.5** GPU prover | CUDA kernels, GPU witness engine, layer-range partitioning, streaming passes, pass planner; 8B and 70B proofs | Measured `μ` for 8B and 70B; model re-fit; RISK-9 and RISK-10 measured |
+| **v0.5** GPU prover | CUDA kernels, GPU witness engine, layer-range partitioning, token groups, pass planner; 8B and 70B proofs | Measured `μ` for 8B and 70B; model re-fit; RISK-9 and RISK-10 measured |
 | **v1.0** Frontier | Llama-3.1-405B at 1K, 4K and 16K on one 8×H100 node; verifier hardening, fuzzing and written specification; live transport; reproducible builds; external review; documentation | SC-1, SC-2, SC-3; protocol frozen |
 
 The implementation tracker, generated from this corpus, is [docs/roadmap/IMPLEMENTATION.md](docs/roadmap/IMPLEMENTATION.md).
@@ -125,7 +126,7 @@ Full statements and resolution plans are in [00 §9](docs/spec/00-overview.md#9-
 | RISK-7 | W8A8 fidelity and bounded-mode `Û` at 405B unmeasured | v0.2 and v0.4 fidelity studies |
 | RISK-8 | BLAKE3 throughput within the committed-element budget | v0.1 measurement |
 | RISK-9 | Witness regeneration absent from the source cost model | Explicit `n_regen` term; measured at v0.3 and v0.5 |
-| RISK-10 | Tree leaf levels exceed device memory | Pass structure and proof units (RFC-0018); the whole leaf stage's streaming in #329; measured at v0.5 |
+| RISK-10 | The leaf stage exceeds device memory | Token groups and one merge (RFC-0054); the reduction stages in #452; measured at v0.5 |
 
 ## Open questions
 
