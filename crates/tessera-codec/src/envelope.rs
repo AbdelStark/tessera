@@ -68,7 +68,8 @@ const AT_SCHEMA_VERSION: u64 = 8;
 const AT_PAYLOAD_LEN: u64 = 12;
 
 /// The unit in which payloads are hashed and copied while streaming. The buffers that hold a
-/// chunk are zeroized when dropped: a payload may be secret-class data (05 §3, OBS-2).
+/// chunk, and the hasher whose block buffer holds up to 63 of its bytes, are zeroized when
+/// dropped: a payload may be secret-class data (05 §3, OBS-2, OBS-6).
 const CHUNK: usize = 64 << 10;
 
 /// An envelope digest.
@@ -466,8 +467,8 @@ impl From<ReadError> for TesseraError {
     }
 }
 
-fn hasher() -> blake3::Hasher {
-    blake3::Hasher::new_derive_key(DIGEST_CONTEXT)
+fn hasher() -> Zeroizing<blake3::Hasher> {
+    Zeroizing::new(blake3::Hasher::new_derive_key(DIGEST_CONTEXT))
 }
 
 /// A buffer size for `len` bytes: one chunk at most.
@@ -558,7 +559,7 @@ impl Sink for Count {
 /// Writes an encoding and hashes it, through a buffer, keeping the first write error.
 struct Tee<'w, W: Write> {
     out: &'w mut W,
-    hasher: blake3::Hasher,
+    hasher: Zeroizing<blake3::Hasher>,
     buffer: Zeroizing<Vec<u8>>,
     written: u64,
     error: Option<io::Error>,

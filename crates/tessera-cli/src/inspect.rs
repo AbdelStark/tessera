@@ -8,7 +8,7 @@
 //! mask seeds, token ids or logit values (05 §3).
 
 use std::fs::File;
-use std::io::{self, BufReader, Read, Write as _};
+use std::io::{self, Read, Write as _};
 use std::path::{Path, PathBuf};
 
 use clap::Args;
@@ -88,7 +88,8 @@ fn verify_and_read(
     let label = found.map_or("catalog", |s| s.name);
     let limits = limits_for(expected);
     let file = File::open(path).map_err(io_error(format!("cannot read {shown}")))?;
-    let header = match envelope::verify(BufReader::new(file), expected, limits) {
+    // OBS-6: the envelope reader clears its buffer; read-ahead would add an uncleared copy.
+    let header = match envelope::verify(file, expected, limits) {
         Ok(header) => header,
         Err(ReadError::Invalid(error)) => {
             return Err(TesseraError::from(error)

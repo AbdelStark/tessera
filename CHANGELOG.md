@@ -992,6 +992,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Security
 
+- Reading a secret-class envelope no longer leaves copies of its bytes in uncleared memory (05 §3 OBS-6, [#444](https://github.com/AbdelStark/tessera/issues/444)): `WeightCommitmentState::read` and `tessera inspect` pass the file straight to the envelope reader, whose buffer clears, instead of through a `BufReader`, whose 8 KiB read-ahead held the mask seed or model bytes; the envelope hasher, whose block buffer kept up to 63 payload bytes, is zeroized when dropped. Clippy now refuses `std::io::BufReader` in the prover workspace.
+
 - `RequantSplit` takes a key of `n` classes only when `n·2^b < P` (RFC-0009 Lemma 2, [#118](https://github.com/AbdelStark/tessera/issues/118)):
   - **The gap.** Lemma 2's proof bounded `z_off − z_lo'` by `2^b` and left out the high key's class term `2^b·c`. The two sides it compares lie in `[0, n·2^b)`, so they can differ by `P` once `n·2^b > P`. With four classes at 62 bits and `s = 32`, `z_lo ± 1` wraps the high key from one end of the table to the other, and passes with another output: `127` where the true one is `−128` at shifts 33 to 36. The compiler's selection took `RequantSplit` for such a key.
   - **The fix.** RFC-0009 states the precondition and a corrected proof, and RFC-0006, RFC-0024 and RFC-0028 give such a key `RequantWide`, whose class term reads only values its lookups pin (Lemma 11). The compiler selects it, and `tessera-gadgets` refuses the split. Of keys of at most 62 bits, only four classes at 62 bits change gadget.

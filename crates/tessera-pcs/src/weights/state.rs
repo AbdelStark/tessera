@@ -46,7 +46,7 @@
 
 use core::fmt;
 use std::fs::File;
-use std::io::{self, BufReader, Read};
+use std::io::{self, Read};
 use std::path::Path;
 
 use tessera_codec::envelope::{self, ReadError};
@@ -213,11 +213,8 @@ impl WeightCommitmentState {
     /// [`ReadError::Io`] when the file cannot be read, [`ReadError::Invalid`] when its envelope or
     /// payload breaks RFC-0003 or RFC-0040.
     pub fn read(path: &Path) -> Result<Self, ReadError> {
-        let header = envelope::verify(
-            BufReader::new(File::open(path)?),
-            &schema::WEIGHT_COMMITMENT_STATE,
-            LIMITS,
-        )?;
+        // OBS-6: the envelope reader clears its buffer; read-ahead would add an uncleared copy.
+        let header = envelope::verify(File::open(path)?, &schema::WEIGHT_COMMITMENT_STATE, LIMITS)?;
         // The header bounded the whole envelope by the limits, 8 GiB.
         let len = (envelope::HEADER_LEN + envelope::DIGEST_LEN) as u64 + header.payload_len;
         let len = usize::try_from(len).map_err(|_| io::Error::other("an envelope past memory"))?;

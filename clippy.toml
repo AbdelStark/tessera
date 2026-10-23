@@ -8,3 +8,8 @@ disallowed-methods = [
     { path = "tessera_codec::Secret::expose_secret", reason = "secret-class values leave Secret<T> only in the modules listed in secret-access.toml (05 §3 OBS-1)" },
     { path = "tessera_codec::Secret::expose_secret_mut", reason = "secret-class values leave Secret<T> only in the modules listed in secret-access.toml (05 §3 OBS-1)" },
 ]
+# OBS-6: a `BufReader` reads ahead into a buffer it frees uncleared, so secret-class file bytes
+# would outlive their reader. Read a `File` through `envelope::verify`, or into a `SecretBuf`.
+disallowed-types = [
+    { path = "std::io::BufReader", reason = "read-ahead leaves file bytes, secret-class ones included, in an uncleared buffer (05 §3 OBS-6); read a File through envelope::verify or into a SecretBuf" },
+]
