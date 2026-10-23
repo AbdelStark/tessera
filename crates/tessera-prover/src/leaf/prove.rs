@@ -21,7 +21,7 @@ use tessera_poly::evaluate_base;
 use tessera_sumcheck::{Forest, SumcheckTranscript};
 use tessera_tables::TableId;
 
-use super::layout::{LeafLayout, Read, leaf_index};
+use super::layout::{Block, InstanceLayout, LeafLayout, Read, leaf_index};
 use super::{LeafError, internal};
 
 /// The label of the leaf stage's split values, stage 0's (RFC-0037 'Splits', RFC-0045 'What is
@@ -46,7 +46,7 @@ impl<'a, S: Copy + Eq> SiteTensors<'a, S> {
 
     /// The values of `read`'s tensor, after checking that it is given once with `2^{|π_t|}`
     /// entries.
-    fn of(&self, read: &Read<S>) -> Result<&'a [i64], LeafError> {
+    pub(super) fn of(&self, read: &Read<S>) -> Result<&'a [i64], LeafError> {
         let mut found = self.terms.iter().filter(|(term, _)| *term == read.term);
         let (Some(&(_, values)), None) = (found.next(), found.next()) else {
             return internal("the witness gives each tensor a site's lookups read, once");
@@ -162,61 +162,8 @@ impl LeafColumns {
         check_witness(layout, witness)?;
         let mut instances = Vec::with_capacity(layout.instances().len());
         for instance in layout.instances() {
-            let table = columns(tables, instance.table)?;
-            let rows = table.tuples();
-            let key_0 = *rows.keys.first().ok_or(LeafError::Internal {
-                rule: "an instance's table has a row",
-            })?;
-            let value_0 = rows.values.and_then(|v| v.first().copied());
-            let leaves = 1usize
-                .checked_shl(instance.height)
-                .ok_or(LeafError::Memory)?;
-            // Every entry starts as row 0's tuple: the padding stays it, the blocks overwrite the
-            // rest.
-            let mut keys = filled(key_0, leaves)?;
-            let mut values = match value_0 {
-                Some(value) => Some(filled(value, leaves)?),
-                None => None,
-            };
-            for block in &instance.blocks {
-                let gadget = &layout.sites()[block.site].layers[block.layer];
-                let lookup = &gadget.lookups[block.lookup].lookup;
-                if lookup.value.is_some() != values.is_some() {
-                    return internal("a lookup has values exactly when its table does");
-                }
-                let reads = layout
-                    .reads(block.site, block.layer)
-                    .ok_or(LeafError::Internal {
-                        rule: "the layout reads every site's tensors",
-                    })?;
-                let tensors = &witness[block.site][block.layer];
-                let terms: Vec<(S, &[i64], &[u32])> = reads
-                    .iter()
-                    .map(|read| Ok((read.term, tensors.of(read)?, read.coords.as_slice())))
-                    .collect::<Result<_, LeafError>>()?;
-                // The value of `term` at the domain's element `x`: its tensor's entry at the bits
-                // of `x` that its axes take. Every term of the gadget's forms is among its reads,
-                // which the layout derives from those forms, so `find` never falls back.
-                let at = |term: S, x: u64| -> Goldilocks {
-                    terms.iter().find(|(t, _, _)| *t == term).map_or(
-                        Goldilocks::ZERO,
-                        |&(_, values, coords)| {
-                            let index = coords
-                                .iter()
-                                .enumerate()
-                                .fold(0usize, |i, (j, &c)| i | ((((x >> c) & 1) as usize) << j));
-                            Goldilocks::from_i64(values[index])
-                        },
-                    )
-                };
-                for x in 0..block.entries() {
-                    let leaf = leaf_index(instance.height, block.offset + x) as usize;
-                    keys[leaf] = lookup.key.evaluate::<Goldilocks>(|term| at(term, x));
-                    if let (Some(column), Some(form)) = (&mut values, &lookup.value) {
-                        column[leaf] = form.evaluate::<Goldilocks>(|term| at(term, x));
-                    }
-                }
-            }
+            let rows = columns(tables, instance.table)?.tuples();
+            let (keys, values) = lookup_columns(layout, instance, rows, witness, |_, x| Some(x))?;
             let multiplicities = count(rows, &keys)?;
             instances.push(InstanceColumns {
                 table: instance.table,
@@ -257,6 +204,76 @@ impl LeafColumns {
     }
 }
 
+/// One instance's lookups in leaf order (RFC-0045 'The column', 'The leaves'), keys then values:
+/// each block's key and value forms, evaluated entry by entry from the tensors of `stage`'s
+/// `witness`, each read through its axes, and row 0's tuple in the padding. Entry `x` of block `b`
+/// is the stage block's entry `source(b, x)`: `x` itself for the stage's own instances, a group's
+/// share of it for a group's (RFC-0054 'What a group holds'); `None` is refused.
+pub(super) fn lookup_columns<S: Copy + Eq>(
+    stage: &LeafLayout<S>,
+    instance: &InstanceLayout,
+    rows: Tuples<'_, Goldilocks>,
+    witness: &[Vec<SiteTensors<'_, S>>],
+    source: impl Fn(&Block, u64) -> Option<u64>,
+) -> Result<(SecretBuf<Goldilocks>, Option<SecretBuf<Goldilocks>>), LeafError> {
+    let key_0 = *rows.keys.first().ok_or(LeafError::Internal {
+        rule: "an instance's table has a row",
+    })?;
+    let value_0 = rows.values.and_then(|v| v.first().copied());
+    let leaves = 1usize
+        .checked_shl(instance.height)
+        .ok_or(LeafError::Memory)?;
+    // Every entry starts as row 0's tuple: the padding stays it, the blocks overwrite the rest.
+    let mut keys = filled(key_0, leaves)?;
+    let mut values = match value_0 {
+        Some(value) => Some(filled(value, leaves)?),
+        None => None,
+    };
+    for block in &instance.blocks {
+        let gadget = &stage.sites()[block.site].layers[block.layer];
+        let lookup = &gadget.lookups[block.lookup].lookup;
+        if lookup.value.is_some() != values.is_some() {
+            return internal("a lookup has values exactly when its table does");
+        }
+        let reads = stage
+            .reads(block.site, block.layer)
+            .ok_or(LeafError::Internal {
+                rule: "the layout reads every site's tensors",
+            })?;
+        let tensors = &witness[block.site][block.layer];
+        let terms: Vec<(S, &[i64], &[u32])> = reads
+            .iter()
+            .map(|read| Ok((read.term, tensors.of(read)?, read.coords.as_slice())))
+            .collect::<Result<_, LeafError>>()?;
+        // The value of `term` at the domain's element `x`: its tensor's entry at the bits of `x`
+        // that its axes take. Every term of the gadget's forms is among its reads, which the
+        // layout derives from those forms, so `find` never falls back.
+        let at = |term: S, x: u64| -> Goldilocks {
+            terms.iter().find(|(t, _, _)| *t == term).map_or(
+                Goldilocks::ZERO,
+                |&(_, values, coords)| {
+                    let index = coords
+                        .iter()
+                        .enumerate()
+                        .fold(0usize, |i, (j, &c)| i | ((((x >> c) & 1) as usize) << j));
+                    Goldilocks::from_i64(values[index])
+                },
+            )
+        };
+        for j in 0..block.entries() {
+            let x = source(block, j).ok_or(LeafError::Internal {
+                rule: "a block's entries are its stage block's",
+            })?;
+            let leaf = leaf_index(instance.height, block.offset + j) as usize;
+            keys[leaf] = lookup.key.evaluate::<Goldilocks>(|term| at(term, x));
+            if let (Some(column), Some(form)) = (&mut values, &lookup.value) {
+                column[leaf] = form.evaluate::<Goldilocks>(|term| at(term, x));
+            }
+        }
+    }
+    Ok((keys, values))
+}
+
 /// The leaf point `P = (ρ_{H−1}, r_{n−1}, …, r_0)` of a proven leaf stage (RFC-0045 'The leaf
 /// point'): the last tree level's line challenge, then its round challenges from the last squeezed
 /// to the first. Empty when no tree has a level, `H = 0`.
@@ -264,12 +281,7 @@ impl LeafColumns {
 /// An instance of height `h` has its key and value claims, read in column order, at `P[0..h]`, and
 /// a block of `2^k` entries its claims at `P[0..k]`, in every instance.
 pub fn leaf_point<F: Copy>(proven: &ProvenLogUp<F>) -> Vec<F> {
-    match proven.levels().last() {
-        Some(level) => core::iter::once(*level.rho())
-            .chain(level.point().iter().rev().copied())
-            .collect(),
-        None => Vec::new(),
-    }
+    super::grouped::level_point(proven.levels())
 }
 
 /// The split values (RFC-0045 'What is sent'): for each site in node order, each of its real
@@ -510,7 +522,7 @@ where
 }
 
 /// Checks that `witness` holds one entry per site and real layer of `layout`.
-fn check_witness<S: Copy + Eq>(
+pub(super) fn check_witness<S: Copy + Eq>(
     layout: &LeafLayout<S>,
     witness: &[Vec<SiteTensors<'_, S>>],
 ) -> Result<(), LeafError> {
@@ -527,7 +539,7 @@ fn check_witness<S: Copy + Eq>(
 }
 
 /// The columns of `table` among `tables`.
-fn columns(
+pub(super) fn columns(
     tables: &[TableColumns<Goldilocks>],
     table: TableId,
 ) -> Result<&TableColumns<Goldilocks>, LeafError> {
@@ -550,7 +562,7 @@ fn filled(value: Goldilocks, len: usize) -> Result<SecretBuf<Goldilocks>, LeafEr
 /// every lookup table (RFC-0008 'Table specifications'). Which lookup names which row is
 /// secret-class: the rows are counted in their `Secret`, and whether every key fits a row index
 /// is folded over the keys without branching (INV-ARCH-2).
-fn count(
+pub(super) fn count(
     rows: Tuples<'_, Goldilocks>,
     keys: &[Goldilocks],
 ) -> Result<SecretBuf<Goldilocks>, LeafError> {

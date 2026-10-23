@@ -6,6 +6,29 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- `tessera-prover` proves a grouped leaf stage up to its atom splits ([#134](https://github.com/AbdelStark/tessera/issues/134)):
+  - **The prover.** `prove_grouped_leaf` runs RFC-0054's steps 1 to 4:
+    - `logup/alpha` and `logup/beta`, then `logup/roots` and `logup/values` absorbed empty;
+    - each group's lookup columns, read through `GroupedLayout::source`, and its share of each product forest (`StageForest`), proven by `prove_group` under `group/{h}/…`;
+    - each group's split under `group/{h}/split`, every tensor at the group's leaf point and at its bits on `S`, then `γ_h`;
+    - the table batch;
+    - `merge/beta` and the in-memory merge.
+
+    It returns one claim per merged polynomial, at its own point (`ProvenGroupedLeaf::merged`).
+  - **The multiplicities.** `grouped_multiplicities` counts each instance's lookups and every group's padding at row 0. `ModelWitness::stage_forests` gives the model's forests with their query and layer variables.
+  - **RFC-0054.** It now states the orders the verifier must follow:
+    - a group's tree schedule: its lookup trees in table order, then its forests;
+    - the merge's polynomials: the ungrouped split's tensors, then the forests' leaf tables;
+    - a group's claim order `k`;
+    - a forest's group variables.
+  - **Tests.** A model's leaf stage under three groupings, checked from the recorded messages:
+    - every label in RFC-0054's order;
+    - each group's key and value claims by RFC-0045's identity over its blocks;
+    - RFC-0008's identity over the groups' roots and the table root;
+    - the merge's rounds and its final check, with weights computed independently;
+    - every merged claim equal to its tensor's or its forest's extension, and a site's layers at one point;
+    - two identical runs, and the refusals before the transcript moves.
+
 - `tessera-prover` lays out a grouped leaf stage's groups, from public data ([#134](https://github.com/AbdelStark/tessera/issues/134)):
   - **Token axes.** Each `SiteLookup` carries its domain's token axis, `token`, its lookup tensor's from `token_axes`. `LeafLayout::new` refuses one outside the domain.
   - **The groups.** `GroupedLayout::new(stage, layers, LeafGroups)` derives every group's layout.
