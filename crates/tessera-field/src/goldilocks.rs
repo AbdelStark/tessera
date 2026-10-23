@@ -483,13 +483,19 @@ mod wide_tests {
 
     #[test]
     fn additions_carry_across_every_word() {
-        let top = Goldilocks(P - 1);
-        // Start one below a carry out of each word in turn.
-        for start in [
-            (u64::MAX, 0, 0),
-            (u64::MAX, u64::MAX, 0),
-            (0, u64::MAX, 7),
-            (u64::MAX, u64::MAX, 1 << 40),
+        let (top, one) = (Goldilocks(P - 1), Goldilocks(1));
+        // `(P − 1)²`'s high half: a middle word of `u64::MAX − high` overflows only on the low
+        // word's carry, a ripple that sums of random products almost never reach.
+        let high = ((u128::from(P - 1) * u128::from(P - 1)) >> 64) as u64;
+        // Start one below a carry out of each word in turn, and below each ripple.
+        for (a, b, start) in [
+            (top, top, (u64::MAX, 0, 0)),
+            (top, top, (u64::MAX, u64::MAX, 0)),
+            (top, top, (0, u64::MAX, 7)),
+            (top, top, (u64::MAX, u64::MAX, 1 << 40)),
+            (top, top, (u64::MAX, u64::MAX - high, 0)),
+            (top, top, (u64::MAX, u64::MAX - high, 1 << 40)),
+            (top, one, (u64::MAX, u64::MAX, 0)),
         ] {
             let mut w = Wide192 {
                 lo: start.0,
@@ -498,8 +504,8 @@ mod wide_tests {
             };
             let mut expected = start;
             for _ in 0..3 {
-                w.add_product(top, top);
-                expected = add192(expected, u128::from(P - 1) * u128::from(P - 1));
+                w.add_product(a, b);
+                expected = add192(expected, u128::from(a.0) * u128::from(b.0));
                 assert_eq!(words(&w), expected, "from {start:?}");
             }
             assert_eq!(w.reduce().0, oracle(expected.0, expected.1, expected.2));
