@@ -1,0 +1,55 @@
+{
+  "format": "tessera-tamper-base/1",
+  "layers": 3,
+  "lookup_tables": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18
+  ],
+  "model": "../exact-cli/tiny-3-reference.d",
+  "params": "test-small/1",
+  "positions": 5,
+  "pow": {
+    "bits": 20,
+    "cases": [
+      {
+        "invalid": 321622,
+        "phase": "seed",
+        "valid": 321621
+      },
+      {
+        "invalid": 669770,
+        "phase": "queries",
+        "valid": 669769
+      }
+    ],
+    "params": "ni-100/1",
+    "session_id": "09090909090909090909090909090909",
+    "statement_digest": "0707070707070707070707070707070707070707070707070707070707070707"
+  },
+  "protocol": 1,
+  "request": {
+    "manifest_digest": "1313131313131313131313131313131313131313131313131313131313131313",
+    "output_len": 3,
+    "prompt_len": 2,
+    "request_id": 23,
+    "session_id": "11111111111111111111111111111111"
+  },
+  "statement_digest": "f6890727557faf079f50ddc94f93ab235c1c0a914321bd2241aa7ffa4bd70612",
+  "synthetic_public_data": true
+}

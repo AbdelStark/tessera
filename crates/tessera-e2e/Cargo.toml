@@ -14,6 +14,22 @@ name = "constraint-digest"
 path = "examples/constraint_digest/main.rs"
 test = true
 
+# The SC-4 tamper corpus (07 §4): the generator of its base proofs, whose test checks that they
+# regenerate byte for byte, and the corpus run through the verifier's public API.
+[[example]]
+name = "tamper-base"
+path = "examples/tamper_base.rs"
+required-features = ["tamper"]
+test = true
+
+[[test]]
+name = "tamper_corpus"
+required-features = ["tamper"]
+
+[features]
+# Seeded masks and the test-small parameter set: test-only features that release builds refuse.
+tamper = ["tessera-prover/test-rng", "tessera-pcs/test-rng", "tv-core/test-params"]
+
 [dev-dependencies]
 blake3 = "1"
 serde_json = "1"
@@ -25,6 +41,9 @@ tessera-hash = { path = "../tessera-hash" }
 tessera-ir = { path = "../tessera-ir" }
 tessera-logup = { path = "../tessera-logup" }
 tessera-poly = { path = "../tessera-poly" }
+tessera-pcs = { path = "../tessera-pcs" }
+tessera-protocol = { path = "../tessera-protocol" }
+tessera-prover = { path = "../tessera-prover" }
 tessera-sumcheck = { path = "../tessera-sumcheck" }
 tessera-tables = { path = "../tessera-tables" }
 tessera-witness = { path = "../tessera-witness" }

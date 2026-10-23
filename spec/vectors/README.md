@@ -28,6 +28,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | [`sha256/`](sha256/README.md) | NIST's SHA-256 test vectors (CAVP) | copied unmodified from NIST |
 | [`soundness/`](soundness/README.md) | The soundness calculator, RFC-0014: every row's bound, bits, target and decision for the parameter sets at the 405B statement, at statements that miss one target each, and at random sizes | its oracle |
 | [`sumcheck/`](sumcheck/README.md) | Honest sumcheck proofs, RFC-0010 | its oracle |
+| [`tamper/`](tamper/README.md) | The SC-4 tamper corpus of `tessera-protocol/1`, 07 §4: mutations of a valid tiny NI proof and recorded live session, one per verifier check, each with its RFC-0019 verdict | its oracle, on base proofs from the `tessera-e2e` example `tamper-base` |
 | `tables/` | RFC-0008's table kinds: specifications, digests, rows and lookups at the edges of their keys | its oracle |
 | `transcript/` | Fiat–Shamir transcript sessions, RFC-0004 | its oracle |
 | [`transcript-schedule/`](transcript-schedule/README.md) | The transcript schedule of `tessera-protocol/1`, RFC-0014: every label of a proof unit in both modes, with the challenges, seeds, indices and nonces drawn at each, for synthetic sizes and the conformance models | its oracle |
