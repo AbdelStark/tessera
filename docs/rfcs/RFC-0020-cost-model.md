@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.1
-- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Executable cost model': the score block), [RFC-0054](RFC-0054-token-groups.md#the-executable-model) ('Executable cost model': the leaf stage's plan, the merge and the streaming term), [RFC-0055](RFC-0055-windowed-stages.md#the-executable-model) ('Executable cost model': the reduction stages' plan, their fold passes and folds; 'Testing Strategy')
+- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Executable cost model': the score block), [RFC-0054](RFC-0054-token-groups.md#the-executable-model) ('Executable cost model': the leaf stage's plan, the merge and the streaming term), [RFC-0055](RFC-0055-windowed-stages.md#the-executable-model) ('Executable cost model': the reduction stages' plan, their fold passes and folds; 'Testing Strategy'), [RFC-0056](RFC-0056-native-working-sets.md#the-executable-model) ('Executable cost model': the stages' tables by growth, holding and width, and the plan at a context)
 
 ## Summary
 
@@ -50,15 +50,20 @@ pub struct Counts {                       // from the compiler's CommitmentRepor
     pub reduction_stages: Vec<ReductionStage>,  // the report's stage tables, RFC-0055
 }
 pub struct ReductionStage { pub tables: Vec<StageTable> }
-pub struct StageTable { pub per_token: bool, pub log2_entries: u32, pub count: f64 }
+pub enum Growth { Fixed, Tokens, Keys, TokensAndContext }              // RFC-0056
+pub enum Holding { Windowable, Resident, Computed }
+pub struct StageTable { pub growth: Growth, pub kind: Holding, pub log2_entries: u32,
+                        pub count: f64, pub count_per_bit: f64, pub bytes: f64 }
 pub struct MemoryModel { pub free_bytes: f64, pub bytes_per_leaf: f64 }  // RISK-10, RFC-0054
 pub struct LeafPlan { pub groups: u32, pub table_rounds: u32 }          // RFC-0054's plan
 pub fn leaf_plan(counts: &Counts, mem: &MemoryModel, context: u32, batch_tokens: u32)
     -> Result<LeafPlan, ModelError>;
 pub fn shared_streaming_passes(counts: &Counts, mem: &MemoryModel, context: u32, batch_tokens: u32)
     -> Result<u32, ModelError>;                                          // RFC-0018 as first written
-pub struct StageWindow { pub bytes: f64, pub window_rounds: u32 }       // RFC-0055's plan
-pub fn stage_plan(counts: &Counts, mem: &MemoryModel, batch_tokens: u32)
+pub struct StageWindow { pub bytes: f64, pub window_rounds: u32,       // RFC-0055's plan
+                         pub own_vars: u32, pub windows: u32,             // RFC-0056
+                         pub windowed_entries: f64 }
+pub fn stage_plan(counts: &Counts, mem: &MemoryModel, context: u32, batch_tokens: u32)
     -> Result<Vec<StageWindow>, ModelError>;
 pub fn mu(counts: &Counts, u: &UnitCosts, mem: &MemoryModel, context: u32, batch_tokens: u32)
     -> Result<MuBreakdown, ModelError>;
@@ -71,7 +76,7 @@ pub struct MuBreakdown { pub linear: f64, pub attention: f64, pub weights: f64, 
 `μ` follows [08 §1](../spec/08-performance-budget.md#1-cost-model): the source's formula plus `n_regen` and four more terms. A token commits `A·S'` scores, `S' = S + min(S, score_block)`, and looks up and multiplies `A·S` of them ([RFC-0034](RFC-0034-causal-blocks.md#cost)):
 
 - the leaf stage's plan ([RFC-0054](RFC-0054-token-groups.md#when-groups-apply)): its token groups `G` and its table trees' streamed rounds `r_t`, from the batch's `T·(K + 2·A·S)` lookup and forest leaves and `M` table leaves at `bytes_per_leaf` against `free_bytes`. A grouped stage adds its merge's pass to `n_regen` when `n_regen` is positive. Then a streaming term `(p_m · merge_ps · (K + 2·A·S) + r_t · streaming_pass_ps · M / batch_tokens) / native`, with `p_m` one when the stage is grouped: the merge's folds, an element per leaf, and the table trees' rounds. `shared_streaming_passes` counts what RFC-0018 first specified, every level of every tree streaming in one batch, `c(c + 1)/2` regenerations;
-- the reduction stages' plan ([RFC-0055](RFC-0055-windowed-stages.md#the-window)): each stage's working set, its tables at 16 bytes per entry at the batch, and its window `c < n_max`, the fewest rounds after which its tables fit in `free_bytes`. Each windowable table is folded by `2^{max(0, c − p_i)}` with `p_i` its front padding; a matrix product's stays whole. Each windowed stage adds its fold pass to `n_regen` when `n_regen` is positive, and `window_ps · Σ_w E_w / batch_tokens / native` to the streaming term, `E_w` its windowed tables' entries. The native gadget relations are not counted yet ([#458](https://github.com/AbdelStark/tessera/issues/458));
+- the reduction stages' plan ([RFC-0055](RFC-0055-windowed-stages.md#the-window), [RFC-0056](RFC-0056-native-working-sets.md#the-executable-model)): each stage's working set at the batch and the context, its held tables each at its width, and its rounds `c < n_max`, the fewest after which they fit in `free_bytes`. A table grows by the batch's bits, the larger of the batch's and the context's (the keys), or both (the score tensor), and its per-bit copies by the bits of the shorter. A computed table, a score instance's, holds nothing but sets `n_max`. Each windowable table is folded by `2^{max(0, c − p_i)}` with `p_i` its front padding; a matrix product's stays whole. The rounds take `k = ⌈v/8⌉` windows, `v` the most own variables they bind of one instance. Each window adds its fold pass to `n_regen` when `n_regen` is positive, and `window_ps · Σ_w k_w · E_w / batch_tokens / native` to the streaming term, `E_w` the stage's windowed tables' entries. The native gadget relations are counted, from the report (RFC-0056);
 - a column-answer term `(C + A · S') · column_answer_ps / native`, P5's evaluation of every committed element at the queried columns ([RFC-0018 'Column answers'](RFC-0018-gpu-prover-runtime.md#pass-structure)). A token commits `C` elements in its linear layers and one per score. P5 runs no sumcheck, so the term carries no glue.
 - a row-combination term `(C + A · S') · row_combination_ps / native`: P4's combination of every committed element into the opening's combined rows ([RFC-0018 'Opening pass'](RFC-0018-gpu-prover-runtime.md#pass-structure)). It carries no glue either.
 - a table term `(1 + glue) · M · (c_c + c_ℓ) / batch_tokens / native`. A proof commits one multiplicity per table row and builds the table's fraction tree over every row, however few lookups the table serves ([RFC-0008](RFC-0008-logup-and-tables.md)). Each of the `M` rows therefore costs one committed element and one tree leaf, priced as a lookup, once per proof. `M` is the commitment report's multiplicities ([#304](https://github.com/AbdelStark/tessera/issues/304)).

@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2 (CPU witness engine), v0.3 (CPU prover), v0.5 (GPU prover), v1.0 (405B)
-- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Kernels': constant subtrees in closed form; 'Testing Strategy'); [RFC-0054](RFC-0054-token-groups.md) ('Pass structure': P2, 'Leaf levels', 'Proof units' and 'Fusion' for the leaf stage; Alternative 2; OQ-0018-1; 'Drawbacks'; 'Testing Strategy'); [RFC-0055](RFC-0055-windowed-stages.md) ('Pass structure': P3 and P3b for a reduction stage larger than memory; 'Drawbacks')
+- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Kernels': constant subtrees in closed form; 'Testing Strategy'); [RFC-0054](RFC-0054-token-groups.md) ('Pass structure': P2, 'Leaf levels', 'Proof units' and 'Fusion' for the leaf stage; Alternative 2; OQ-0018-1; 'Drawbacks'; 'Testing Strategy'); [RFC-0055](RFC-0055-windowed-stages.md) ('Pass structure': P3 and P3b for a reduction stage larger than memory; 'Drawbacks'); [RFC-0056](RFC-0056-native-working-sets.md) ('Pass structure': what stage 1 holds for `SoftmaxRow`'s score instances)
 
 ## Summary
 
@@ -95,6 +95,8 @@ Every proof unit runs these passes, each regenerating the parts of the witness i
 | P2 leaf stage | After the seed | Lookup keys and values and softmax keys: once, group by group when the stage is grouped, and once more for the merge (P2b, [RFC-0054](RFC-0054-token-groups.md#pass-structure)) | 1× forward; 2× when grouped |
 | P3 stage regeneration | Per reduction stage | Folds of the tensors the stage reads; most are elementwise from checkpoints, not GEMMs. A stage larger than memory accumulates its window's grid instead ([RFC-0055](RFC-0055-windowed-stages.md#the-window)) | ≤ 1× forward in total for the stages that fit; ≤ 1× per windowed stage |
 | P3b window fold | Per windowed reduction stage, after its window's rounds | The stage's windowed tables, bound at the window's challenges ([RFC-0055](RFC-0055-windowed-stages.md#pass-structure)) | ≤ 1× forward per windowed stage |
+
+Stage 1's P3 also keeps what `SoftmaxRow`'s score instances need, which never hold the score tensor ([RFC-0056](RFC-0056-native-working-sets.md#score-instances-without-the-score-tensor)): the INT8 queries and keys and two row tables, about 45 GB for a 405B batch of 16K tokens and 60 GB at 128K of context. A stage whose rounds bind more than eight own variables of an instance takes one P3b per window ([RFC-0056](RFC-0056-native-working-sets.md#the-windows)).
 | P4 opening | After the last stage | Every committed row, which it combines into the opening's combined rows ('Opening pass') | 1× forward, plus `c_r` per committed element |
 | P5 column answers | After the column queries | Every committed row, whose masked codeword it evaluates at the queried columns, hashing nothing | 1× forward, plus `c_a` per committed element |
 | W weight fold | Once per proof unit | Weights of the unit's layers | 0.24 GPU-s per 405B unit (source §5) |

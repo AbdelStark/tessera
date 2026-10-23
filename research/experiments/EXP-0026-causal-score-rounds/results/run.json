@@ -1,0 +1,153 @@
+{
+  "experiment": "EXP-0026",
+  "seed": "0x45800260001",
+  "python": "3.15.0",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "started": "2026-10-23T16:49:54Z",
+  "control_before": {
+    "runs": 336,
+    "equal": 336
+  },
+  "faults": {
+    "prefix includes q_hi": {
+      "detected": true,
+      "first": {
+        "n": 2,
+        "H": 1,
+        "Hkv": 1,
+        "L": 1,
+        "d": 1,
+        "equal": false
+      }
+    },
+    "LT at q_lo": {
+      "detected": true,
+      "first": {
+        "n": 2,
+        "H": 1,
+        "Hkv": 1,
+        "L": 1,
+        "d": 1,
+        "equal": false
+      }
+    },
+    "padded rows unmasked": {
+      "detected": true,
+      "first": {
+        "n": 3,
+        "H": 1,
+        "Hkv": 1,
+        "L": 1,
+        "d": 1,
+        "equal": false
+      }
+    },
+    "key head mod": {
+      "detected": true,
+      "first": {
+        "n": 2,
+        "H": 4,
+        "Hkv": 2,
+        "L": 1,
+        "d": 1,
+        "equal": false
+      }
+    },
+    "fold swapped": {
+      "detected": true,
+      "first": {
+        "n": 2,
+        "H": 1,
+        "Hkv": 1,
+        "L": 1,
+        "d": 1,
+        "equal": false
+      }
+    },
+    "high eq dropped": {
+      "detected": true,
+      "first": {
+        "n": 3,
+        "H": 1,
+        "Hkv": 1,
+        "L": 1,
+        "d": 1,
+        "equal": false
+      }
+    },
+    "padded heads unmasked": {
+      "detected": true,
+      "first": {
+        "n": 2,
+        "H": 3,
+        "Hkv": 1,
+        "L": 1,
+        "d": 1,
+        "equal": false
+      }
+    },
+    "row maximum on the edge only": {
+      "detected": true,
+      "first": {
+        "n": 3,
+        "H": 1,
+        "Hkv": 1,
+        "L": 1,
+        "d": 1,
+        "equal": false
+      }
+    },
+    "row mask at q": {
+      "detected": true,
+      "first": {
+        "n": 1,
+        "H": 1,
+        "Hkv": 1,
+        "L": 3,
+        "d": 1,
+        "equal": false
+      }
+    }
+  },
+  "neutral": {
+    "runs": 336,
+    "equal": 336
+  },
+  "control_after": {
+    "runs": 336,
+    "equal": 336
+  },
+  "counts": [
+    {
+      "n": 64,
+      "literal": 225792,
+      "candidate": 51600,
+      "ratio": 0.22852891156462585
+    },
+    {
+      "n": 128,
+      "literal": 910336,
+      "candidate": 125227,
+      "ratio": 0.1375612960489314
+    },
+    {
+      "n": 256,
+      "literal": 3655680,
+      "candidate": 297670,
+      "ratio": 0.08142671130952381
+    },
+    {
+      "n": 512,
+      "literal": 14651392,
+      "candidate": 696033,
+      "ratio": 0.04750627107649567
+    },
+    {
+      "n": 1024,
+      "literal": 58662912,
+      "candidate": 1605884,
+      "ratio": 0.02737477471285435
+    }
+  ],
+  "finished": "2026-10-23T16:51:08Z"
+}

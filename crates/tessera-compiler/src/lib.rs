@@ -48,8 +48,8 @@ pub use lower::{Lowering, PublicModel, check_profile, lower, validate};
 pub use plan::{ExecutionPlan, QueryBlock, SequenceTile, Share, Tile, check_plan, plan, tiles};
 pub use range::{HALF_FIELD, Range, Ranges, analyze};
 pub use report::{
-    CommitmentReport, SCHEMA as REPORT_SCHEMA, StageTables, TableClass, TableUse, Tally, report,
-    stage_count,
+    CommitmentReport, Growth, Holding, SCHEMA as REPORT_SCHEMA, StageTables, TableClass, TableUse,
+    Tally, report, stage_count,
 };
 pub use runtime::{GreedyCertificate, RuntimePlan};
 pub use schedule::{StageSchedule, derive_schedule};

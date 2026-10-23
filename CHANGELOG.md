@@ -882,6 +882,28 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- RFC-0056, accepted, counts the prover's native relations in the reduction stages and proves `SoftmaxRow`'s score instances without the score tensor ([#458](https://github.com/AbdelStark/tessera/issues/458)):
+  - **The gap.** The CPU prover composes native relations into stage 1, and the compiler's schedule held none of them, so RFC-0055 sized the stages without them:
+    - the roots' coefficient products and padding checks;
+    - `SoftmaxRow`'s key, forest and reciprocal relations, whose key and forest relations span the score tensor: 8.8 TB at 1K context and 141 TB at 16K for a 405B batch of 16K tokens;
+    - a request's token relation and greedy certificate (RFC-0053), 1.17 TB of stage 1 at 16K.
+  - **Duplicates.** Each root's thirty coefficient products left thirty identical `SumSquares` instances in stage 2, 38.6 TB in `minimal`.
+  - **The score instances, without the score tensor.**
+    - **How.** The rounds over the key bits read the INT8 queries, the keys folded over their bound bits block by block, prefix sums over the key blocks and the causal mask's closed form. The rest run on row tables.
+    - **The cost.** About 45 GB of residents for 16K tokens, 60 GB at 128K of context. The messages are unchanged.
+    - **The evidence.** EXP-0026, pre-registered, checked every round polynomial against a literal prover exactly on 336 runs and caught 9 of 9 planted faults (IDEA-0039, validated).
+  - **Shared tables.** Instances of one relation of one tensor at one point hold one set of tables, weighted by the sum of their batching coefficients; a root's coefficient products share theirs. The messages are unchanged.
+  - **The windows.** A stage's rounds take one window per eight own variables they bind of an instance, each a regeneration: at the grid's estimated cost, a second window wins only beyond eight.
+  - **The report.**
+    - **The natives.** `tessera_compiler::schedule::model_natives(lowering, request)` derives the native relations from the lowering, a request's included. The prover's complete-proof tests hold them, and the composed schedule built from them, equal to `ModelNativePlan`'s for the model alone and each kind of request.
+    - **The classes.** `stage_tables` reads the composed schedule with a request with outputs. Each class has a growth (`fixed`, `tokens`, `keys`, `tokens_and_context`), a holding (`windowable`, `resident`, `computed`), a width (`bytes`) and tables per bit of a request (`count_per_bit`), and each stage lists its score instances' `residents`. The stage's entry totals are gone: classes of several growths do not sum to one figure.
+  - **The cost model.** `stage_plan` takes the context, grows each class by its growth, sizes the held tables at their widths, lets the score instances set the stage's variables, and splits wide windows (`own_vars`, `windows`, `MAX_WINDOW_VARS`). `μ` counts a regeneration and the folds per window.
+  - **The projections.** RISK-2, RISK-9, RISK-10, SC-2, 08 §1, §3 and §4, `SPEC.md`, `docs/perf/v0.2/`, RFC-0055, RFC-0054, RFC-0020 and RFC-0018 restate them.
+    - **`minimal`.** About 13.8 and 29.1, unchanged: its stages take a window each, of up to eight own variables. The windows' arithmetic adds 0.42 to 1.20 at 1K.
+    - **`servable`.** About 15.7 and 31.0, up from 13.7 and 29.0: the roots' products push its stage 2 past memory, and its stage 1 takes two windows. The windows' arithmetic adds 0.13 to 0.47 at 1K.
+    - **The batch.** At 2,048 tokens, `servable` would cost 14.3 and 29.5 (OQ-0056-2, [#357](https://github.com/AbdelStark/tessera/issues/357)).
+  - **Follow-up.** [#461](https://github.com/AbdelStark/tessera/issues/461) builds the structured score rounds and shared tables in the prover; [#459](https://github.com/AbdelStark/tessera/issues/459) the windows.
+
 - RFC-0055, accepted, proves a reduction stage larger than the memory budget in windowed rounds ([#452](https://github.com/AbdelStark/tessera/issues/452)):
   - **The working sets.** The compiler's schedule gives each reduction stage's tables. At 405B and 16K tokens, `minimal`'s stages 1 and 2 hold 4.1 and 5.5 TB and `servable`'s stage 1 9.6 TB, against 0.2 TB, at every context. Streamed round by round, as RFC-0010 had it, they would cost 12 and 8 regenerations, which no projection counted.
   - **The design.** One pass accumulates each instance's products on a grid over the stage's first `c` rounds, and the rounds read their polynomials from it. A second pass folds the tables at those rounds' challenges, after which they fit. The messages, the verifier and the soundness bound are unchanged. Each such stage costs one more regeneration, counted as P3b (`tessera_passes_total{pass="p3b"}`).

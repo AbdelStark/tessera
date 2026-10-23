@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-23
 - Target milestone: v0.3 (CPU prover and verifier), v0.5 (GPU backend)
-- Amended by: [RFC-0055](RFC-0055-windowed-stages.md) ('Reduction stages', 'The executable model', 'Drawbacks', OQ-0054-2: the reduction stages larger than memory, in windowed rounds)
+- Amended by: [RFC-0055](RFC-0055-windowed-stages.md) ('Reduction stages', 'The executable model', 'Drawbacks', OQ-0054-2: the reduction stages larger than memory, in windowed rounds); [RFC-0056](RFC-0056-native-working-sets.md) ('Reduction stages': stage 1's score instances without the score tensor)
 - Supersedes:
   - [RFC-0018](RFC-0018-gpu-prover-runtime.md#pass-structure) 'Pass structure', 'Leaf levels' and 'Proof units' as they bear on the leaf stage, its P2 row, Alternative 2 and OQ-0018-1;
   - [RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels' and 'Sumcheck messages' for a leaf stage that is grouped: its instances, labels and order;
@@ -229,7 +229,7 @@ pub struct GroupProof { pub roots: Vec<Fp2>, pub levels: Vec<SumcheckProof>, pub
 
 ### Reduction stages
 
-#329 asked for the reduction stages' working sets against the same budget. They exceed it at 405B too. The compiler's schedule gives `minimal`'s stages 1 and 2 4.1 and 5.5 TB of tables at 16K tokens, and `servable`'s stage 1 9.6 TB, against 0.2 TB, whatever the context. This RFC does not change the stages. [RFC-0055](RFC-0055-windowed-stages.md) proves such a stage in windowed rounds, with RFC-0010's messages and one more regeneration per stage. It sizes the stages from the compiler's report, which replaced the first-order table, from the model's shape, that this section first gave. Stage 1's native relations, whose score instances read the same scores as this RFC's forests, are [#458](https://github.com/AbdelStark/tessera/issues/458)'s.
+#329 asked for the reduction stages' working sets against the same budget. They exceed it at 405B too. The compiler's schedule gives `minimal`'s stages 1 and 2 4.1 and 5.5 TB of tables at 16K tokens, and `servable`'s stage 1 9.6 TB, against 0.2 TB, whatever the context. This RFC does not change the stages. [RFC-0055](RFC-0055-windowed-stages.md) proves such a stage in windowed rounds, with RFC-0010's messages and one more regeneration per stage. It sizes the stages from the compiler's report, which replaced the first-order table, from the model's shape, that this section first gave. Stage 1's native relations, whose score instances read the same scores as this RFC's forests, are counted, and those instances proven without the score tensor, by [RFC-0056](RFC-0056-native-working-sets.md).
 
 ### The executable model
 
@@ -241,7 +241,7 @@ pub struct GroupProof { pub roots: Vec<Fp2>, pub levels: Vec<SumcheckProof>, pub
 
 The plan counts `G` alone, not how the planner splits it: every 405B plan above keeps 256-token groups.
 
-At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` become about 11.8 and 27.1 with the merge's regeneration. RFC-0055's windows add two more, for about 13.8 and 29.1. At an estimated 2 to 4 ps per element, the folds add 0.16 to 0.32 at 1K and 0.82 to 1.63 at 16K. The table rounds add under 0.005.
+At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` become about 11.8 and 27.1 with the merge's regeneration. RFC-0055's windows add two more, for about 13.8 and 29.1, with every native relation counted (RFC-0056). At an estimated 2 to 4 ps per element, the folds add 0.16 to 0.32 at 1K and 0.82 to 1.63 at 16K. The table rounds add under 0.005.
 
 ## Alternatives Considered
 

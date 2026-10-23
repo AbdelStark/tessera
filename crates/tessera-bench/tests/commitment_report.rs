@@ -14,10 +14,12 @@
 //!   RFC-0006's selection rule it would change one gadget: with four classes, `servable`'s down
 //!   projection update, whose 33-bit key would fit one table.
 //!
-//! - **The reduction stages' working sets** (RFC-0055). The two-class reports' tables, evaluated at
-//!   the projections' batch of 16K tokens, are the schedule's own at 16K positions, and the cost
-//!   model's working sets and windows follow from them: 4.08 and 5.50 TB in `minimal`'s stages 1
-//!   and 2, windows of 6 rounds each; 9.57 TB in `servable`'s stage 1, a window of 8.
+//! - **The reduction stages' working sets** (RFC-0055, RFC-0056). The two-class reports' tables,
+//!   evaluated at the projections' batch of 16K tokens, are the composed schedule's own at 16K
+//!   positions, native relations and a request with outputs included, and the cost model's working
+//!   sets and windows follow from them and the residents: 6.41 and 6.60 TB in `minimal`'s stages 1
+//!   and 2, windows of 15 and 7 rounds at 16K context; 11.91 and 1.11 TB in `servable`'s, 15
+//!   rounds in two windows and 3 in one.
 //!
 //! `docs/perf/v0.2/README.md` reads these numbers and answers OQ-0006-1.
 
@@ -26,13 +28,15 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 use tessera_bench::{
-    Counts, MemoryModel, ModelReport, ReductionStage, STAGE_BYTES_PER_ENTRY, Scenario, StageTable,
-    UnitCosts, stage_plan,
+    Counts, Growth, Holding, MAX_WINDOW_VARS, MemoryModel, ModelReport, ReductionStage,
+    STAGE_BYTES_PER_ENTRY, Scenario, StageTable, UnitCosts, stage_plan,
 };
 use tessera_codec::{Ascii, Rational, envelope, schema};
 use tessera_compiler::{
     CompileError, Gadget, Lowering, ModelAdviceLayout, PublicModel, Range, Ranges, Selection,
-    analyze, claim_list, derive_schedule, lower, report, schedule::Relation, select,
+    analyze, claim_list, lower, report,
+    schedule::{NativeKind, Relation, Request, derive_composed_schedule, model_natives},
+    select,
 };
 use tessera_ir::{
     AdviceLayoutParams, ArchFamily, ArchSpec, CommitmentLayout, GadgetPolicy, Op, ParamSetId,
@@ -166,16 +170,28 @@ fn report_json(
             .expect("the reduction stages")
             .iter()
             .map(|stage| ReductionStage {
-                tables: stage["tables"]
-                    .as_array()
-                    .expect("the tables")
+                tables: ["tables", "residents"]
                     .iter()
+                    .flat_map(|key| stage[*key].as_array().expect("the tables"))
                     .map(|t| StageTable {
-                        per_token: t["per_token"].as_bool().expect("a flag"),
-                        windowable: t["windowable"].as_bool().expect("a flag"),
+                        growth: match t["growth"].as_str().expect("a growth") {
+                            "fixed" => Growth::Fixed,
+                            "tokens" => Growth::Tokens,
+                            "keys" => Growth::Keys,
+                            "tokens_and_context" => Growth::TokensAndContext,
+                            other => panic!("no growth {other}"),
+                        },
+                        kind: match t["kind"].as_str().expect("a kind") {
+                            "windowable" => Holding::Windowable,
+                            "resident" => Holding::Resident,
+                            "computed" => Holding::Computed,
+                            other => panic!("no kind {other}"),
+                        },
                         log2_entries: u32::try_from(t["log2_entries"].as_u64().expect("a size"))
                             .expect("a size"),
                         count: t["count"].as_f64().expect("a count"),
+                        count_per_bit: t["count_per_bit"].as_f64().expect("a count"),
+                        bytes: t["bytes"].as_f64().expect("a width"),
                     })
                     .collect(),
             })
@@ -393,17 +409,23 @@ fn the_committed_405b_reports_are_the_compilers() {
     }
 }
 
-/// RFC-0055 'Working sets' at the projections' batch: for each profile's two-class model, the
-/// report's tables at `2^14` tokens are the schedule's at 16,384 positions, stage by stage, and
-/// the cost model's working sets and windows are what the schedule's own tables give: each
-/// instance front-padded by `p = n_max − n_i` folds by `2^{min(n_i, c − p)}` under a window of
-/// `c` rounds, and `c` is the fewest after which the folded tables fit in 0.2 TB.
+/// RFC-0055 'Working sets' and RFC-0056 at the projections' batch, one sequence of 16,384
+/// tokens: for each profile's two-class model, the report's tables at `2^14` tokens and context
+/// are the composed schedule's at 16,384 positions, the native relations and a request with
+/// outputs included and shared tables once, stage by stage.
+/// The cost model's working sets and windows are what the schedule's own tables and RFC-0056's
+/// residents give.
+/// - **Folding.** Each windowable instance front-padded by `p = n_max − n_i` folds by
+///   `2^{min(n_i, c − p)}` under a window of `c` rounds. A matrix product's tables and the
+///   residents stay whole, and the score instances hold nothing.
+/// - **The window.** `c` is the fewest rounds after which the held tables fit in 0.2 TB, and the
+///   rounds take a window per eight own variables they bind of one instance.
 #[test]
 fn the_stage_working_sets_at_the_batch_are_the_schedules() {
-    const BATCH_BITS: u32 = 14;
+    const BITS: u32 = 14;
     for (profile, windows) in [
-        (Profile::Minimal, vec![6, 6, 0]),
-        (Profile::Servable, vec![8, 0]),
+        (Profile::Minimal, vec![(15, 1), (7, 1), (0, 0)]),
+        (Profile::Servable, vec![(15, 2), (3, 1)]),
     ] {
         let (arch, quant, silu) = llama_405b(profile, 2);
         let model = PublicModel {
@@ -417,23 +439,46 @@ fn the_stage_working_sets_at_the_batch_are_the_schedules() {
         let policy = GadgetPolicy::default();
         let selection = select(&lowering.graph, &ranges, &lowering.tables, &policy).expect("fits");
         let r = report(model, &lowering, &selection, &policy).expect("a report");
-        let at_batch = lower(model, 1 << BATCH_BITS).expect("16K positions lower");
-        let schedule = derive_schedule(&at_batch).expect("a schedule");
-        // Each instance's variables, tables, and whether a window may fold them: a matrix
-        // product's stay whole.
-        let stages: Vec<Vec<(u32, u64, bool)>> = schedule
+        let at_batch = lower(model, 1 << BITS).expect("16K positions lower");
+        let natives = model_natives(&at_batch, Request::Generate).expect("the native relations");
+        let schedule = derive_composed_schedule(&at_batch, &natives.deferred, &natives.native)
+            .expect("a schedule");
+        // Each instance's variables, tables, and how the prover holds them.
+        let stages: Vec<Vec<(u32, u64, Holding)>> = schedule
             .stages
             .iter()
             .filter(|s| s.index > 0)
             .map(|s| {
+                // Instances of one relation of one tensor at one point share their tables, and so
+                // do a root's coefficient products (RFC-0056 'Shared instances').
+                let mut seen = std::collections::HashSet::new();
                 s.instances
                     .iter()
-                    .map(|i| {
-                        let product = matches!(
-                            i.relation,
-                            Relation::MatMulWeight | Relation::MatMulAct { .. }
-                        );
-                        (i.vars, i.claims.len() as u64, !product)
+                    .filter(|i| match i.relation {
+                        Relation::Native { tag, .. } => match natives.kinds[tag as usize - 1] {
+                            NativeKind::Product => seen.insert((None, Some(i.node), None)),
+                            _ => seen.insert((None, None, Some(tag))),
+                        },
+                        _ => seen.insert((
+                            Some((i.relation, i.kind, &i.point, &i.layers, i.vars)),
+                            Some(i.node),
+                            None,
+                        )),
+                    })
+                    .map(|i| match i.relation {
+                        Relation::MatMulWeight | Relation::MatMulAct { .. } => {
+                            (i.vars, i.claims.len() as u64, Holding::Resident)
+                        }
+                        Relation::Native {
+                            tag, evaluations, ..
+                        } => {
+                            let kind = match natives.kinds[tag as usize - 1] {
+                                NativeKind::Key | NativeKind::Forest => Holding::Computed,
+                                _ => Holding::Windowable,
+                            };
+                            (i.vars, evaluations as u64, kind)
+                        }
+                        _ => (i.vars, i.claims.len() as u64, Holding::Windowable),
                     })
                     .collect()
             })
@@ -447,54 +492,106 @@ fn the_stage_working_sets_at_the_batch_are_the_schedules() {
             }
             let mut predicted = std::collections::BTreeMap::<u32, u64>::new();
             for class in &reported.tables {
-                let vars = class.log2_entries + if class.per_token { BATCH_BITS } else { 0 };
-                *predicted.entry(vars).or_default() += class.count;
+                *predicted
+                    .entry(class.log2_entries + growth(class.growth) * BITS)
+                    .or_default() += class.count + class.count_per_bit * u64::from(BITS);
             }
             assert_eq!(predicted, by_vars, "{profile:?}, stage {}", reported.stage);
         }
-        // The cost model's plan, against the schedule's tables directly.
-        let counts = Counts {
-            reduction_stages: r
-                .stage_tables
-                .iter()
-                .map(|s| ReductionStage {
-                    tables: s
-                        .tables
-                        .iter()
-                        .map(|c| StageTable {
-                            per_token: c.per_token,
-                            windowable: c.windowable,
-                            log2_entries: c.log2_entries,
-                            count: c.count as f64,
-                        })
-                        .collect(),
-                })
-                .collect(),
-            ..Counts::SOURCE_405B
-        };
+        // The cost model's plan, against the schedule's tables and the residents directly.
+        let counts = report_counts(&r);
         let memory = MemoryModel::NODE_405B;
-        let plan = stage_plan(&counts, &memory, 1 << BATCH_BITS).expect("a plan");
-        for ((window, scheduled), expected) in plan.iter().zip(&stages).zip(&windows) {
+        let plan = stage_plan(&counts, &memory, 1 << BITS, 1 << BITS).expect("a plan");
+        for (((window, scheduled), expected), reported) in
+            plan.iter().zip(&stages).zip(&windows).zip(&r.stage_tables)
+        {
             let n_max = scheduled.iter().map(|&(vars, ..)| vars).max().unwrap_or(0);
+            let residents: f64 = reported
+                .residents
+                .iter()
+                .map(|c| {
+                    let vars = c.log2_entries + growth(c.growth) * BITS;
+                    let count = c.count + c.count_per_bit * u64::from(BITS);
+                    count as f64 * (1u64 << vars) as f64 * f64::from(c.bytes)
+                })
+                .sum();
+            let bound = |c: u32, vars: u32, kind| match kind {
+                Holding::Windowable => vars.min(c.saturating_sub(n_max - vars)),
+                Holding::Resident | Holding::Computed => 0,
+            };
             let folded = |c: u32| -> f64 {
-                scheduled
-                    .iter()
-                    .map(|&(vars, tables, windowable)| {
-                        let p = n_max - vars;
-                        let bound = match windowable {
-                            true => vars.min(c.saturating_sub(p)),
-                            false => 0,
-                        };
-                        tables as f64 * (1u64 << (vars - bound)) as f64 * STAGE_BYTES_PER_ENTRY
-                    })
-                    .sum()
+                residents
+                    + scheduled
+                        .iter()
+                        .filter(|&&(.., kind)| kind != Holding::Computed)
+                        .map(|&(vars, tables, kind)| {
+                            let entries = (1u64 << (vars - bound(c, vars, kind))) as f64;
+                            tables as f64 * entries * STAGE_BYTES_PER_ENTRY
+                        })
+                        .sum::<f64>()
             };
             assert_eq!(window.bytes, folded(0), "{profile:?}");
-            assert_eq!(window.window_rounds, *expected, "{profile:?}");
-            assert!(folded(*expected) <= memory.free_bytes, "{profile:?}");
-            if *expected > 0 {
-                assert!(folded(expected - 1) > memory.free_bytes, "{profile:?}");
+            assert_eq!(
+                (window.window_rounds, window.windows),
+                *expected,
+                "{profile:?}"
+            );
+            let own = scheduled
+                .iter()
+                .map(|&(vars, _, kind)| bound(window.window_rounds, vars, kind))
+                .max()
+                .unwrap_or(0);
+            assert_eq!(window.own_vars, own, "{profile:?}");
+            assert_eq!(window.windows, own.div_ceil(MAX_WINDOW_VARS), "{profile:?}");
+            let c = window.window_rounds;
+            assert!(folded(c) <= memory.free_bytes, "{profile:?}");
+            if c > 0 {
+                assert!(folded(c - 1) > memory.free_bytes, "{profile:?}");
             }
         }
+    }
+}
+
+/// The variables a class gains per bit of a batch of as many tokens as context positions.
+fn growth(growth: tessera_compiler::Growth) -> u32 {
+    match growth {
+        tessera_compiler::Growth::Fixed => 0,
+        tessera_compiler::Growth::Tokens | tessera_compiler::Growth::Keys => 1,
+        tessera_compiler::Growth::TokensAndContext => 2,
+    }
+}
+
+/// The cost model's counts of a report's reduction stages: its tables and its residents.
+fn report_counts(r: &tessera_compiler::CommitmentReport) -> Counts {
+    Counts {
+        reduction_stages: r
+            .stage_tables
+            .iter()
+            .map(|s| ReductionStage {
+                tables: s
+                    .tables
+                    .iter()
+                    .chain(&s.residents)
+                    .map(|c| StageTable {
+                        growth: match c.growth {
+                            tessera_compiler::Growth::Fixed => Growth::Fixed,
+                            tessera_compiler::Growth::Tokens => Growth::Tokens,
+                            tessera_compiler::Growth::Keys => Growth::Keys,
+                            tessera_compiler::Growth::TokensAndContext => Growth::TokensAndContext,
+                        },
+                        kind: match c.kind {
+                            tessera_compiler::Holding::Windowable => Holding::Windowable,
+                            tessera_compiler::Holding::Resident => Holding::Resident,
+                            tessera_compiler::Holding::Computed => Holding::Computed,
+                        },
+                        log2_entries: c.log2_entries,
+                        count: c.count as f64,
+                        count_per_bit: c.count_per_bit as f64,
+                        bytes: f64::from(c.bytes),
+                    })
+                    .collect(),
+            })
+            .collect(),
+        ..Counts::SOURCE_405B
     }
 }

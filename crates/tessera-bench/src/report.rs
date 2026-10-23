@@ -7,8 +7,8 @@ use serde_json::{Map, Number, Value};
 
 use crate::error::{ModelError, Problem};
 use crate::model::{
-    Counts, MemoryModel, MuBreakdown, StageWindow, UnitCosts, detection_probability, leaf_plan, mu,
-    proof_time_s, sampling_rate, stage_plan,
+    Counts, Growth, Holding, MemoryModel, MuBreakdown, StageWindow, UnitCosts,
+    detection_probability, leaf_plan, mu, proof_time_s, sampling_rate, stage_plan,
 };
 
 /// The report's schema identifier (03 §5).
@@ -67,8 +67,8 @@ pub struct Projection {
     pub leaf_groups: u32,
     /// The table trees' streamed rounds, summed over their levels (RFC-0054 'The table batch').
     pub table_rounds: u32,
-    /// Each reduction stage's working set and window, stage 1 first (RFC-0055). They depend on
-    /// the batch, not on the context.
+    /// Each reduction stage's working set, rounds and windows at the batch and the projection's
+    /// context, stage 1 first (RFC-0055, RFC-0056).
     pub reduction_stages: Vec<StageWindow>,
     /// Seconds to prove one request of `S` tokens on the scenario's GPUs.
     pub proof_time_s: f64,
@@ -153,7 +153,7 @@ impl ModelReport {
                     mu: breakdown,
                     leaf_groups: plan.groups,
                     table_rounds: plan.table_rounds,
-                    reduction_stages: stage_plan(&counts, &memory, scenario.batch_tokens)?,
+                    reduction_stages: stage_plan(&counts, &memory, context, scenario.batch_tokens)?,
                     proof_time_s: proof_time_s(
                         breakdown.total,
                         &counts,
@@ -227,10 +227,29 @@ impl ModelReport {
                                 .iter()
                                 .map(|t| {
                                     Ok(object([
-                                        ("per_token", Value::from(t.per_token)),
-                                        ("windowable", Value::from(t.windowable)),
+                                        (
+                                            "growth",
+                                            Value::from(match t.growth {
+                                                Growth::Fixed => "fixed",
+                                                Growth::Tokens => "tokens",
+                                                Growth::Keys => "keys",
+                                                Growth::TokensAndContext => "tokens_and_context",
+                                            }),
+                                        ),
+                                        (
+                                            "kind",
+                                            Value::from(match t.kind {
+                                                Holding::Windowable => "windowable",
+                                                Holding::Resident => "resident",
+                                                Holding::Computed => "computed",
+                                            }),
+                                        ),
                                         ("log2_entries", Value::from(t.log2_entries)),
                                         ("count", number("count", t.count)?),
+                                        (
+                                            "count_per_bit",
+                                            number("count_per_bit", t.count_per_bit)?,
+                                        ),
                                     ]))
                                 })
                                 .collect::<Result<Vec<_>, ModelError>>()?;
@@ -323,6 +342,8 @@ impl ModelReport {
                                     Ok(object([
                                         ("bytes", number("stage_bytes", w.bytes)?),
                                         ("window_rounds", Value::from(w.window_rounds)),
+                                        ("own_vars", Value::from(w.own_vars)),
+                                        ("windows", Value::from(w.windows)),
                                     ]))
                                 })
                                 .collect::<Result<Vec<_>, ModelError>>()?,

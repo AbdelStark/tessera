@@ -21,17 +21,20 @@
 //! - **Stages.** RFC-0010's: 3 in `servable` and 4 in `minimal`, at any depth (INV-SCH-4). On a
 //!   chain built by hand, each sumcheck relation adds a stage, each claim map none, and a committed
 //!   tensor ends the chain.
-//! - **Stage tables.** RFC-0055's working sets: each reduction stage's tables by size, per token
-//!   or fixed, are the schedule's own at every batch of a power of two, and an upper bound on it
-//!   when the report's sequence is not one.
+//! - **Stage tables.** RFC-0055's and RFC-0056's working sets: each reduction stage's tables by
+//!   size, growth and per-bit count are the composed schedule's own, native relations included,
+//!   at every batch of a power of two, and the same for a report whose sequence is not one.
 
 mod common;
 
 use std::collections::BTreeMap;
 
 use common::{ADVICE, decl, llama, one, virt};
+use tessera_compiler::schedule::{
+    NativeKind, Relation, Request, derive_composed_schedule, model_natives,
+};
 use tessera_compiler::{
-    CommitmentReport, Gadget, PublicModel, Selection, analyze, derive_schedule, lower, report,
+    CommitmentReport, Gadget, Growth, Holding, PublicModel, Selection, analyze, lower, report,
     select, stage_count,
 };
 use tessera_ir::{
@@ -491,8 +494,10 @@ fn softmax_ranges_count_each_reciprocal_and_bracket_lookup() {
 }
 
 /// The reduction stages' tables of a two-layer model of the small shape lowered for `positions`,
-/// from its schedule: per stage, the tables of each size, keyed by `log2` of their entries, one
-/// table per evaluation an instance leaves.
+/// from its composed schedule, the native relations of a request with outputs included: per
+/// stage, the tables of each size, keyed by `log2` of their entries. A graph instance holds one
+/// table per evaluation it leaves and a native one its evaluations; instances of one relation of
+/// one tensor at one point, and a root's coefficient products, share theirs.
 fn scheduled_tables(profile: Profile, positions: u32) -> Vec<BTreeMap<u32, u64>> {
     let (d, heads, kv_heads, d_ff) = SMALL;
     let (arch, quant, silu) = llama(profile, 2, d, heads, kv_heads, d_ff);
@@ -503,15 +508,58 @@ fn scheduled_tables(profile: Profile, positions: u32) -> Vec<BTreeMap<u32, u64>>
         silu_in_exponents: &silu,
     };
     let lowering = lower(model, positions).expect("the shape lowers");
-    let schedule = derive_schedule(&lowering).expect("a schedule");
+    let natives = model_natives(&lowering, Request::Generate).expect("the native relations");
+    let schedule = derive_composed_schedule(&lowering, &natives.deferred, &natives.native)
+        .expect("a schedule");
     schedule
         .stages
         .iter()
         .filter(|s| s.index > 0)
         .map(|s| {
             let mut tables = BTreeMap::new();
+            let mut graph = std::collections::HashSet::new();
+            let mut products = std::collections::HashSet::new();
             for i in &s.instances {
-                *tables.entry(i.vars).or_default() += i.claims.len() as u64;
+                let count = match i.relation {
+                    Relation::Native {
+                        tag, evaluations, ..
+                    } => {
+                        let kind = natives.kinds[tag as usize - 1];
+                        if kind == NativeKind::Product && !products.insert(i.node) {
+                            continue;
+                        }
+                        evaluations as u64
+                    }
+                    relation => {
+                        let key = (relation, i.node, i.kind, i.point.clone(), i.layers.clone());
+                        if !graph.insert((key, i.vars)) {
+                            continue;
+                        }
+                        i.claims.len() as u64
+                    }
+                };
+                *tables.entry(i.vars).or_default() += count;
+            }
+            tables
+        })
+        .collect()
+}
+
+/// The report's classes at a sequence of `2^bits` positions, keyed as `scheduled_tables`.
+fn reported_tables(r: &CommitmentReport, bits: u32) -> Vec<BTreeMap<u32, u64>> {
+    r.stage_tables
+        .iter()
+        .map(|stage| {
+            let mut tables = BTreeMap::new();
+            for class in &stage.tables {
+                let growth = match class.growth {
+                    Growth::Fixed => 0,
+                    Growth::Tokens | Growth::Keys => 1,
+                    Growth::TokensAndContext => 2,
+                };
+                *tables
+                    .entry(class.log2_entries + growth * bits)
+                    .or_default() += class.count + class.count_per_bit * u64::from(bits);
             }
             tables
         })
@@ -526,56 +574,40 @@ fn the_stage_tables_are_the_schedules_at_every_batch() {
         for (k, stage) in r.stage_tables.iter().enumerate() {
             assert_eq!(usize::from(stage.stage), k + 1, "{profile:?}");
         }
-        for bits in [2u32, 5, 8] {
-            let reported: Vec<BTreeMap<u32, u64>> = r
-                .stage_tables
+        // The score instances grow with the square of the sequence, held by none; the greedy
+        // relations add a table per bit; the stage-1 residents of RFC-0056 grow with the tokens or
+        // the keys.
+        let stage1 = &r.stage_tables[0];
+        assert!(
+            stage1
+                .tables
                 .iter()
-                .map(|stage| {
-                    let mut tables = BTreeMap::new();
-                    for class in &stage.tables {
-                        let vars = class.log2_entries + if class.per_token { bits } else { 0 };
-                        *tables.entry(vars).or_default() += class.count;
-                    }
-                    tables
-                })
-                .collect();
+                .any(|c| c.growth == Growth::TokensAndContext && c.kind == Holding::Computed)
+        );
+        assert!(stage1.tables.iter().any(|c| c.count_per_bit > 0));
+        assert!(!stage1.residents.is_empty());
+        assert!(
+            stage1
+                .residents
+                .iter()
+                .all(|c| matches!(c.growth, Growth::Tokens | Growth::Keys))
+        );
+        for bits in [2u32, 5, 8] {
             assert_eq!(
-                reported,
+                reported_tables(&r, bits),
                 scheduled_tables(profile, 1 << bits),
                 "{profile:?} at {} positions",
                 1 << bits
             );
-            for (stage, scheduled) in r.stage_tables.iter().zip(&reported) {
-                let entries: u64 = scheduled.iter().map(|(&vars, &n)| n << vars).sum();
-                assert_eq!(
-                    entries,
-                    (stage.entries(true) << bits) + stage.entries(false),
-                    "{profile:?}, stage {}: per_token·T + fixed",
-                    stage.stage
-                );
-            }
         }
     }
 }
 
 #[test]
-fn a_sequence_not_a_power_of_two_bounds_every_larger_batch() {
+fn a_sequence_not_a_power_of_two_has_the_classes_of_the_power_below() {
     for profile in [Profile::Servable, Profile::Minimal] {
-        let r = report_of(profile, 2, SMALL, 12);
-        for positions in [12u32, 32] {
-            for (stage, scheduled) in r
-                .stage_tables
-                .iter()
-                .zip(scheduled_tables(profile, positions))
-            {
-                assert!(stage.tables.iter().all(|c| c.per_token), "{profile:?}");
-                let entries: u64 = scheduled.iter().map(|(&vars, &n)| n << vars).sum();
-                assert!(
-                    entries <= stage.entries(true) * u64::from(positions),
-                    "{profile:?}, stage {} at {positions} positions",
-                    stage.stage
-                );
-            }
-        }
+        let odd = report_of(profile, 2, SMALL, 12);
+        let even = report_of(profile, 2, SMALL, 8);
+        assert_eq!(odd.stage_tables, even.stage_tables, "{profile:?}");
     }
 }
