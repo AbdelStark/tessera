@@ -71,6 +71,15 @@
 //! # Ok::<(), tessera_sumcheck::SumcheckError>(())
 //! ```
 //!
+//! # The merge
+//!
+//! A leaf stage proven in token groups ends with each merged polynomial's claims at the points of
+//! the groups that read it (RFC-0054 'The merge'). [`Merge`] holds those claims, with each
+//! group's `γ_h` and `β`; [`prove_merge`] reduces them to one claim per polynomial at one point,
+//! a degree-2 sumcheck under `merge/…` whose weights `W_i` the verifier computes itself.
+//! [`prove_merge_two_pass`] sends the same messages from the tables each group's pass keeps
+//! ([`MergeTables`]) and one regeneration of every polynomial.
+//!
 //! # Product forests
 //!
 //! A [`Forest`] stacks `2^s` product trees of height `h` into one table of `2^{s+h}` leaves over
@@ -344,6 +353,7 @@ mod kernel;
 mod level;
 mod linear;
 mod matmul;
+mod merge;
 mod proof;
 mod prover;
 mod rotate;
@@ -359,6 +369,10 @@ pub use linear::{Linear, LinearClaim, LinearInput, LinearTerm, Placement};
 pub use matmul::{
     MatMulAct, MatMulActClaims, MatMulActShape, MatMulActTables, MatMulWeight, MatMulWeightClaims,
     MatMulWeightShape, MatMulWeightTables, Operand, RightLayout,
+};
+pub use merge::{
+    MAX_MERGE_VARS, Merge, MergeClaim, MergePolynomial, MergeTables, prove_merge,
+    prove_merge_two_pass,
 };
 pub use proof::SumcheckProof;
 pub use prover::{Instance, Prefix, ProvenBatch, Table, prove_batch};

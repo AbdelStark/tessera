@@ -228,6 +228,13 @@ pub enum SumcheckError {
         /// The target's variables.
         target_vars: usize,
     },
+    /// RFC-0054's merge was given inputs that do not fit its shapes: a claim on no polynomial,
+    /// a point or group bits of the wrong size, a group variable out of order, a table of the
+    /// wrong length, or a two-pass prover asked for more table rounds than its polynomials have.
+    Merge {
+        /// The rule broken.
+        rule: &'static str,
+    },
 }
 
 impl fmt::Display for SumcheckError {
@@ -357,6 +364,7 @@ impl fmt::Display for SumcheckError {
                 f,
                 "input {input} does not sit within a target of {target_vars} variables"
             ),
+            Self::Merge { rule } => write!(f, "the merge's inputs break a rule: {rule}"),
         }
     }
 }
