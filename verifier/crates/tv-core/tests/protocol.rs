@@ -93,6 +93,13 @@ fn round1(v: &p::Round1) -> J {
                 ("layout_digest", bytes(&v.advice.layout_digest)),
             ]),
         ),
+        (
+            "leaf_groups",
+            o([
+                ("token_bits", n(v.leaf_groups.token_bits)),
+                ("layer_bits", n(v.leaf_groups.layer_bits)),
+            ]),
+        ),
     ])
 }
 fn sumcheck(v: &tv_core::sumcheck::SumcheckProof) -> J {
@@ -117,6 +124,19 @@ fn round2(v: &p::Round2Response) -> J {
             "trees",
             o([
                 ("levels", a(&v.trees.levels, sumcheck)),
+                (
+                    "groups",
+                    a(&v.trees.groups, |g| {
+                        o([
+                            ("roots", a(&g.roots, ext)),
+                            ("levels", a(&g.levels, sumcheck)),
+                            ("values", a(&g.values, ext)),
+                            ("splits", a(&g.splits, ext)),
+                        ])
+                    }),
+                ),
+                ("table_roots", a(&v.trees.table_roots, ext)),
+                ("merge", sumcheck(&v.trees.merge)),
                 ("splits", a(&v.trees.splits, ext)),
             ]),
         ),

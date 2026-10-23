@@ -28,9 +28,9 @@ use core::fmt;
 use tessera_hash::Digest;
 
 use crate::{
-    AdviceCommitment, ColumnQueries, MessageKind, PROTOCOL_VERSION, ProtocolError, ProverSeedShare,
-    PublicStatement, QueryShape, Round1, Round2Response, Round3Response, SeedCommit, SeedReveal,
-    coin_commitment, coin_toss,
+    AdviceCommitment, ColumnQueries, LeafGroups, MessageKind, PROTOCOL_VERSION, ProtocolError,
+    ProverSeedShare, PublicStatement, QueryShape, Round1, Round2Response, Round3Response,
+    SeedCommit, SeedReveal, coin_commitment, coin_toss,
 };
 
 /// The proving work a prover's live session drives, one call per accepted message, in the
@@ -280,6 +280,9 @@ impl<E: ProverEngine> ProverSession<E> {
             session_id: commit.session_id,
             statement,
             advice,
+            // Every engine proves its leaf stage in one batch until grouped stages land
+            // (RFC-0054 'Migration / Rollout', #134).
+            leaf_groups: LeafGroups::NONE,
         };
         let share_message = ProverSeedShare {
             session_id: commit.session_id,

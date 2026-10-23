@@ -18,10 +18,11 @@ use tessera_codec::error::ErrorCode;
 use tessera_codec::{Decode, DecodeLimits, Encode, Rational, decode, encode};
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_protocol::{
-    AdviceCommitment, BatchDescriptor, ColumnQueries, CombinedRow, Decoding, FixedBits, LogUpProof,
-    MatrixColumns, MatrixQueries, MultiProof, NiProof, PredictorSpec, ProverSeedShare,
-    PublicStatement, RequestRef, Round1, Round2Response, Round3Response, ScoringClaims, SeedCommit,
-    SeedReveal, StageId, StageProof, SumcheckProof, TreeProof, WeightCombinedRows, WeightMatrix,
+    AdviceCommitment, BatchDescriptor, ColumnQueries, CombinedRow, Decoding, FixedBits, GroupProof,
+    LeafGroups, LogUpProof, MAX_LEAF_GROUP_BITS, MatrixColumns, MatrixQueries, MultiProof, NiProof,
+    PredictorSpec, ProverSeedShare, PublicStatement, RequestRef, Round1, Round2Response,
+    Round3Response, ScoringClaims, SeedCommit, SeedReveal, StageId, StageProof, SumcheckProof,
+    TreeProof, WeightCombinedRows, WeightMatrix,
 };
 
 const LIMITS: DecodeLimits = DecodeLimits {
@@ -210,9 +211,10 @@ fn round1() -> impl Strategy<Value = Round1> {
         statement(),
         any::<[u8; 32]>(),
         any::<[u8; 32]>(),
+        leaf_groups(),
     )
         .prop_map(
-            |(protocol_version, session_id, statement, root, layout_digest)| Round1 {
+            |(protocol_version, session_id, statement, root, layout_digest, leaf_groups)| Round1 {
                 protocol_version,
                 session_id,
                 statement,
@@ -220,8 +222,34 @@ fn round1() -> impl Strategy<Value = Round1> {
                     root,
                     layout_digest,
                 },
+                leaf_groups,
             },
         )
+}
+
+/// Every grouping RFC-0054 allows, `token_bits + layer_bits ≤ 14`.
+fn leaf_groups() -> impl Strategy<Value = LeafGroups> {
+    (0..=MAX_LEAF_GROUP_BITS)
+        .prop_flat_map(|g| (0..=g).prop_map(move |t| (t, g - t)))
+        .prop_map(|(token_bits, layer_bits)| LeafGroups {
+            token_bits,
+            layer_bits,
+        })
+}
+
+fn group() -> impl Strategy<Value = GroupProof> {
+    (
+        fp2s(),
+        prop::collection::vec(sumcheck(), 0..3),
+        fp2s(),
+        fp2s(),
+    )
+        .prop_map(|(roots, levels, values, splits)| GroupProof {
+            roots,
+            levels,
+            values,
+            splits,
+        })
 }
 
 fn sumcheck() -> impl Strategy<Value = SumcheckProof<GoldilocksExt2>> {
@@ -266,7 +294,13 @@ fn opening(least: usize) -> impl Strategy<Value = Round2Response> {
     });
     (
         (fp2s(), fp2s()),
-        (prop::collection::vec(sumcheck(), 0..3), fp2s()),
+        (
+            prop::collection::vec(sumcheck(), 0..3),
+            prop::collection::vec(group(), 0..3),
+            fp2s(),
+            sumcheck(),
+            fp2s(),
+        ),
         prop::collection::vec(stage, 0..3),
         prop::collection::vec(row(), 0..3),
         weights,
@@ -275,7 +309,7 @@ fn opening(least: usize) -> impl Strategy<Value = Round2Response> {
         .prop_map(
             |(
                 (roots, values),
-                (levels, splits),
+                (levels, groups, table_roots, merge, splits),
                 stages,
                 advice_combined,
                 weight_combined,
@@ -283,7 +317,13 @@ fn opening(least: usize) -> impl Strategy<Value = Round2Response> {
             )| {
                 Round2Response {
                     logup: LogUpProof { roots, values },
-                    trees: TreeProof { levels, splits },
+                    trees: TreeProof {
+                        levels,
+                        groups,
+                        table_roots,
+                        merge,
+                        splits,
+                    },
                     stages,
                     advice_combined,
                     weight_combined,

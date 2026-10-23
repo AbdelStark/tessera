@@ -269,7 +269,7 @@ At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` beco
 ## Migration / Rollout
 
 - **v0.3.** The CPU prover plans `g` from `ProverConfig.memory_budget` and proves grouped stages. `tv-core` verifies them. Both soundness calculators take `G` and the merge's sizes, and the transcript, protocol and tamper vectors are regenerated.
-  - Until each part lands, a prover keeps `g = 0` and a verifier rejects `g ≥ 1` with `ERR-CODEC-LIMIT`.
+  - Until each part lands, a prover keeps `g = 0` and a verifier rejects `g ≥ 1` with `ERR-CODEC-LIMIT`: `Reject(Malformed { artifact, code: ERR-CODEC-LIMIT })` at RFC-0019 step 1, `artifact` being `Round1` in live mode and `NiProof` otherwise. An ungrouped proof with a group, a table root or a merge round or evaluation is `Malformed` with `ERR-CODEC-NONCANONICAL` there too, its `Round2Response` in live mode: the grouping fixes those lengths ('Messages').
   - [#134](https://github.com/AbdelStark/tessera/issues/134) implements the groups and the table batch's streaming in place of RFC-0018's per-level streaming. [#132](https://github.com/AbdelStark/tessera/issues/132)'s planner chooses `g`.
 - **v0.5.** The GPU backend proves the groups. The merge tables live in HBM or host memory, as the planner fits them.
 

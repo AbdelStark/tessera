@@ -434,6 +434,12 @@ const EMPTY_ROUND2: protocol::Round2Response = protocol::Round2Response {
     },
     trees: protocol::TreeProof {
         levels: Vec::new(),
+        groups: Vec::new(),
+        table_roots: Vec::new(),
+        merge: sumcheck::SumcheckProof {
+            rounds: Vec::new(),
+            final_evals: Vec::new(),
+        },
         splits: Vec::new(),
     },
     stages: Vec::new(),
@@ -508,6 +514,23 @@ fn verify_unit(
     }
     if !matrix_order(proof.round2.weight_combined.iter().map(|m| m.matrix))
         || !matrix_order(proof.round3.weight_columns.iter().map(|m| m.matrix))
+    {
+        return Err(malformed(artifact));
+    }
+    // RFC-0054 'Migration / Rollout': this verifier checks no grouped leaf stage yet (#454), so
+    // a grouping is beyond its limits; and an ungrouped stage has no groups, no table roots and
+    // an empty merge ('Messages').
+    if proof.round1.leaf_groups != protocol::LeafGroups::NONE {
+        return Err(reject(RejectReason::Malformed {
+            artifact,
+            code: ErrorCode::CodecLimit,
+        }));
+    }
+    let trees = &proof.round2.trees;
+    if !trees.groups.is_empty()
+        || !trees.table_roots.is_empty()
+        || !trees.merge.rounds.is_empty()
+        || !trees.merge.final_evals.is_empty()
     {
         return Err(malformed(artifact));
     }

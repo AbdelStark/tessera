@@ -124,6 +124,26 @@ pub struct Round1 {
     pub statement: PublicStatement,
     /// Advice commitment; weights are supplied separately (RFC-0040).
     pub advice: AdviceCommitment,
+    /// The leaf stage's grouping, absorbed with the rest before any challenge (RFC-0054).
+    pub leaf_groups: LeafGroups,
+}
+/// The most group bits RFC-0054 lets a leaf stage take: `g_T + g_L ≤ 14`.
+pub const MAX_LEAF_GROUP_BITS: u8 = 14;
+/// A leaf stage's grouping (RFC-0054 'Messages'): `2^token_bits` token subsets by
+/// `2^layer_bits` layer subsets; zero for a leaf stage in one batch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LeafGroups {
+    /// `g_T`, the token index bits a group fixes.
+    pub token_bits: u8,
+    /// `g_L`, the layer index bits a group fixes.
+    pub layer_bits: u8,
+}
+impl LeafGroups {
+    /// No grouping: the leaf stage in one batch, RFC-0010's.
+    pub const NONE: Self = Self {
+        token_bits: 0,
+        layer_bits: 0,
+    };
 }
 /// LogUp roots and final value evaluations, in schedule order.
 #[derive(Clone, PartialEq, Eq)]
@@ -133,12 +153,30 @@ pub struct LogUpProof {
     /// Value-column evaluations of the instances that have values.
     pub values: Vec<Fp2>,
 }
-/// Leaf levels, followed by stage0's original split values.
+/// Leaf levels, the groups and their merge (RFC-0054), then stage0's split values.
 #[derive(Clone, PartialEq, Eq)]
 pub struct TreeProof {
-    /// Fraction/product tree levels in root-to-leaf order.
+    /// Fraction/product tree levels in root-to-leaf order; a grouped stage's table batch.
     pub levels: Vec<SumcheckProof>,
+    /// One per group in group order; none in an ungrouped stage.
+    pub groups: Vec<GroupProof>,
+    /// The table trees' roots of a grouped stage; none in an ungrouped one.
+    pub table_roots: Vec<Fp2>,
+    /// The merge of a grouped stage; no rounds and no evaluations in an ungrouped one.
+    pub merge: SumcheckProof,
     /// The leaf stage's split values.
+    pub splits: Vec<Fp2>,
+}
+/// One token group's roots, levels, values and splits (RFC-0054 'The leaf stage with groups').
+#[derive(Clone, PartialEq, Eq)]
+pub struct GroupProof {
+    /// The group's lookup-tree roots `(n, d)`, two per tree, in schedule order.
+    pub roots: Vec<Fp2>,
+    /// The group's levels, from its roots.
+    pub levels: Vec<SumcheckProof>,
+    /// Its lookup trees' value evaluations.
+    pub values: Vec<Fp2>,
+    /// Its split values.
     pub splits: Vec<Fp2>,
 }
 /// Combined rows for one opened weight matrix (RFC-0052).
@@ -244,7 +282,8 @@ macro_rules! counts {
     };
 }
 counts!(LogUpProof, roots, values);
-counts!(TreeProof, levels, splits);
+counts!(TreeProof, levels, groups, table_roots, splits);
+counts!(GroupProof, roots, levels, values, splits);
 counts!(WeightCombinedRows, evaluations);
 counts!(Round2Response, stages, advice_combined, weight_combined);
 counts!(MatrixQueries, indices);
@@ -279,6 +318,16 @@ fn sumcheck(c: &mut Cursor<'_>) -> Result<SumcheckProof, DecodeError> {
         Ok(SumcheckProof {
             rounds: c.vec(size::SEQUENCE, fp2s)?,
             final_evals: fp2s(c)?,
+        })
+    })
+}
+fn group(c: &mut Cursor<'_>) -> Result<GroupProof, DecodeError> {
+    c.nested(|c| {
+        Ok(GroupProof {
+            roots: fp2s(c)?,
+            levels: c.vec(16, sumcheck)?,
+            values: fp2s(c)?,
+            splits: fp2s(c)?,
         })
     })
 }
@@ -441,9 +490,25 @@ impl Round1 {
                         layout_digest: c.digest()?,
                     })
                 })?,
+                leaf_groups: leaf_groups(c)?,
             })
         })
     }
+}
+/// RFC-0054's grouping: more than 14 group bits is `ERR-CODEC-LIMIT` at the struct's first byte.
+fn leaf_groups(c: &mut Cursor<'_>) -> Result<LeafGroups, DecodeError> {
+    let at = c.offset();
+    let groups = c.nested(|c| {
+        Ok(LeafGroups {
+            token_bits: c.u8()?,
+            layer_bits: c.u8()?,
+        })
+    })?;
+    let bits = u16::from(groups.token_bits).saturating_add(u16::from(groups.layer_bits));
+    if bits > u16::from(MAX_LEAF_GROUP_BITS) {
+        return Err(DecodeError::new(ErrorCode::Limit, at));
+    }
+    Ok(groups)
 }
 impl Round2Response {
     /// Decode syntax, including canonical matrix ids, without schedule-dependent checks.
@@ -462,6 +527,9 @@ impl Round2Response {
                 trees: c.nested(|c| {
                     Ok(TreeProof {
                         levels: c.vec(16, sumcheck)?,
+                        groups: c.vec(32, group)?,
+                        table_roots: fp2s(c)?,
+                        merge: sumcheck(c)?,
                         splits: fp2s(c)?,
                     })
                 })?,
@@ -704,9 +772,18 @@ fields!(
     predictor
 );
 fields!(AdviceCommitment, root, layout_digest);
-fields!(Round1, protocol_version, session_id, statement, advice);
+fields!(LeafGroups, token_bits, layer_bits);
+fields!(
+    Round1,
+    protocol_version,
+    session_id,
+    statement,
+    advice,
+    leaf_groups
+);
 fields!(LogUpProof, roots, values);
-fields!(TreeProof, levels, splits);
+fields!(TreeProof, levels, groups, table_roots, merge, splits);
+fields!(GroupProof, roots, levels, values, splits);
 fields!(SumcheckProof, rounds, final_evals);
 fields!(StageProof, stage, sumcheck, splits);
 fields!(CombinedRow, u, mask);

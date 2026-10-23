@@ -35,16 +35,17 @@ fn packets_allocate_from_decoded_bytes_and_report_memory_as_a_reader_failure() {
         assert_eq!(bytes, 0);
     }
 
-    // Empty LogUp/trees, then 100,000 minimal stages and three empty vectors. The payload
-    // fits, but its decoded stage structs require more space than their wire representation.
+    // Empty LogUp (16 bytes) and trees (48: four empty lists and an empty merge, RFC-0054),
+    // then 100,000 minimal stages and three empty vectors. The payload fits, but its decoded
+    // stage structs require more space than their wire representation.
     let count = 100_000u64;
-    let mut bytes = vec![0; 32];
+    let mut bytes = vec![0; 64];
     bytes.extend(count.to_le_bytes());
     bytes.extend([0u8; 26].repeat(count as usize));
     bytes.extend([0; 24]);
     let read = || decode(&bytes, &DecodeLimits::MESSAGE, Round2Response::decode);
     let (short, allocated) = within(256 << 10, read);
-    assert_eq!(short, Err(DecodeError::new(ErrorCode::Memory, 32)));
+    assert_eq!(short, Err(DecodeError::new(ErrorCode::Memory, 64)));
     // Total includes freed reservations while the enforced cap bounds simultaneous memory.
     assert!(allocated <= 512 << 10);
     let (enough, allocated) = within(16 << 20, read);

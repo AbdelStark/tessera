@@ -13,9 +13,9 @@ use common::{
 };
 use tessera_codec::error::ErrorCode;
 use tessera_protocol::{
-    Ending, MatrixCodeword, MessageKind, PROTOCOL_VERSION, ProtocolError, ProverSeedShare,
-    QueryShape, Round1, Round2Response, Round3Response, SeedCommit, VerifierSession, VerifierState,
-    coin_commitment, coin_toss,
+    Ending, LeafGroups, MatrixCodeword, MessageKind, PROTOCOL_VERSION, ProtocolError,
+    ProverSeedShare, QueryShape, Round1, Round2Response, Round3Response, SeedCommit,
+    VerifierSession, VerifierState, coin_commitment, coin_toss,
 };
 
 /// What a prover sends a verifier's session, made for its `SeedCommit`.
@@ -35,6 +35,7 @@ impl Prover {
                 session_id: commit.session_id,
                 statement: statement(&mut rng),
                 advice: advice(&mut rng),
+                leaf_groups: LeafGroups::NONE,
             },
             share: ProverSeedShare {
                 session_id: commit.session_id,

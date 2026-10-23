@@ -319,6 +319,9 @@ impl<'a> Prover<'a> {
             session_id,
             statement,
             advice,
+            // The CPU prover proves its leaf stage in one batch until grouped stages land
+            // (RFC-0054 'Migration / Rollout', #134).
+            leaf_groups: protocol::LeafGroups::NONE,
         };
         metrics::proof_bytes(
             metrics::ProofPart::Round1,

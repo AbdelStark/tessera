@@ -5,7 +5,7 @@
 //!
 //! Every field is public (05 §3): digests, roots, ids, lengths and the predictor.
 
-use tessera_codec::{Decode, Encode, Rational};
+use tessera_codec::{Decode, DecodeError, Encode, Rational, Reader};
 use tessera_hash::{Digest, Domain, Hasher};
 
 pub use tessera_pcs::AdviceCommitment;
@@ -27,6 +27,61 @@ pub struct Round1 {
     pub statement: PublicStatement,
     /// The advice commitment (RFC-0011).
     pub advice: AdviceCommitment,
+    /// How the leaf stage is grouped (RFC-0054 'Messages'), absorbed with `Round1` before any
+    /// challenge: [`LeafGroups::NONE`] for a leaf stage proven in one batch.
+    pub leaf_groups: LeafGroups,
+}
+
+/// The most group bits a leaf stage takes, `g_T + g_L ≤ 14`: at most `2^{14}` groups, the most
+/// RFC-0054's union bound is evaluated at (RFC-0054 'Soundness').
+pub const MAX_LEAF_GROUP_BITS: u8 = 14;
+
+/// A leaf stage's token groups (RFC-0054 'Groups'): `2^{token_bits}` token subsets times
+/// `2^{layer_bits}` layer subsets.
+///
+/// Its decoding refuses `token_bits + layer_bits > 14` with `ERR-CODEC-LIMIT` at its first
+/// byte. The bounds the claim list and the statement set, `token_bits ≤ t` and
+/// `layer_bits ≤ n_ℓ`, are the verifier's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Encode)]
+pub struct LeafGroups {
+    /// `g_T`: the low bits of the token index each group fixes.
+    pub token_bits: u8,
+    /// `g_L`: the low bits of the layer index each group fixes.
+    pub layer_bits: u8,
+}
+
+impl LeafGroups {
+    /// An ungrouped leaf stage, `g = 0`.
+    pub const NONE: Self = Self {
+        token_bits: 0,
+        layer_bits: 0,
+    };
+
+    /// `g = g_T + g_L`.
+    pub fn bits(self) -> u8 {
+        self.token_bits.saturating_add(self.layer_bits)
+    }
+}
+
+/// The fields in order, then the bound on their sum.
+impl Decode for LeafGroups {
+    const MIN_SIZE: usize = 2;
+
+    fn decode_from(reader: &mut Reader<'_>) -> Result<Self, DecodeError> {
+        let at = reader.position();
+        reader.enter()?;
+        let value = Self {
+            token_bits: Decode::decode_from(reader)?,
+            layer_bits: Decode::decode_from(reader)?,
+        };
+        reader.leave();
+        if u16::from(value.token_bits) + u16::from(value.layer_bits)
+            > u16::from(MAX_LEAF_GROUP_BITS)
+        {
+            return Err(reader.limit(at));
+        }
+        Ok(value)
+    }
 }
 
 /// The public statement (03 §4, RFC-0007 'Public statement'). The verifier compares it with the

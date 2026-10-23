@@ -120,6 +120,8 @@ class Reader:
                 ("predictor", self.predictor),
                 ("advice_root", lambda: self.raw(DIGEST)),
                 ("layout_digest", lambda: self.raw(DIGEST)),
+                ("token_bits", lambda: self.uint(1)),
+                ("layer_bits", lambda: self.uint(1)),
             ]
         )
 
@@ -154,12 +156,27 @@ class Reader:
             ]
         )
 
+    def group(self):
+        return self.obj(
+            [
+                ("roots", lambda: self.seq(self.fp2, FP2)),
+                ("levels", lambda: self.seq(self.sumcheck, 16)),
+                ("values", lambda: self.seq(self.fp2, FP2)),
+                ("splits", lambda: self.seq(self.fp2, FP2)),
+            ]
+        )
+
     def round2(self):
+        # TreeProof's groups, table roots and merge sit between its levels and its splits
+        # (RFC-0054 'Messages').
         return self.obj(
             [
                 ("roots", lambda: self.seq(self.fp2, FP2)),
                 ("values", lambda: self.seq(self.fp2, FP2)),
                 ("levels", lambda: self.seq(self.sumcheck, 16)),
+                ("groups", lambda: self.seq(self.group, 32)),
+                ("table_roots", lambda: self.seq(self.fp2, FP2)),
+                ("merge", self.sumcheck),
                 ("splits", lambda: self.seq(self.fp2, FP2)),
                 ("stages", lambda: self.seq(self.stage, 26)),
                 ("advice", lambda: self.seq(self.row, 16)),
@@ -536,6 +553,45 @@ def render():
         reseal=False,
     )
 
+    # Step 1 too: RFC-0054's grouping, which this verifier checks no stage of yet ('Migration /
+    # Rollout'), so any nonzero grouping is beyond its limits, as more than 14 group bits is
+    # beyond the codec's. An ungrouped stage has no groups, no table roots and an empty merge,
+    # lengths the grouping fixes ('Messages'), so a nonempty one is malformed.
+    for prefix, r1, target, kind in [
+        ("ni", ni["round1"], "ni.tnp", ni_kind),
+        ("live", live1, "live-round1.tce", BASES["live-round1.tce"]),
+    ]:
+        require(r1["token_bits"].value == r1["layer_bits"].value == 0, "the base is ungrouped")
+        for name, token, layer in [("token", 1, 0), ("layer", 0, 1), ("past-bound", 8, 7)]:
+            corpus.add(
+                f"{prefix}-leaf-groups-{name}",
+                "1",
+                "leaf-groups",
+                reject("REJ-MALFORMED", artifact=kind, error="ERR-CODEC-LIMIT"),
+                [(target, r1["token_bits"].lo, r1["layer_bits"].hi, bytes([token, layer]))],
+            )
+    for prefix, r2, target, kind in [
+        ("ni", ni["round2"], "ni.tnp", ni_kind),
+        ("live", live2, "live-round2.tce", BASES["live-round2.tce"]),
+    ]:
+        groups, table_roots, merge = r2["groups"], r2["table_roots"], r2["merge"]
+        require(len(groups) == len(table_roots) == 0, "the base is ungrouped")
+        require(len(merge["rounds"]) == len(merge["evals"]) == 0, "the base merges nothing")
+        for name, vec, after in [
+            # One group of four empty lists.
+            ("group", groups, u64(1) + bytes(32)),
+            ("table-root", table_roots, u64(1) + bytes(16)),
+            ("merge-round", merge["rounds"], u64(1) + u64(0)),
+            ("merge-eval", merge["evals"], u64(1) + bytes(16)),
+        ]:
+            corpus.add(
+                f"{prefix}-ungrouped-{name}",
+                "1",
+                "leaf-groups",
+                reject("REJ-MALFORMED", artifact=kind, error="ERR-CODEC-NONCANONICAL"),
+                [(target, vec, after)],
+            )
+
     # Step 4 in both sessions; the manifest digest is protocol/1's anchor-side input.
     statement_cases(corpus, "ni.tnp", "ni", ni["round1"])
     statement_cases(corpus, "live-round1.tce", "live", live1)
@@ -606,7 +662,12 @@ def render():
     adv_prox = live2["advice"][len(live2["advice"]) - 1]["u"][0]
     split = live2["splits"][0]
     last = len(levels) - 1
+    groups_lo, groups_hi = live1["token_bits"].lo, live1["layer_bits"].hi
     pairs = [
+        ("leaf-groups-before-statement",
+         reject("REJ-MALFORMED", artifact=BASES["live-round1.tce"], error="ERR-CODEC-LIMIT"),
+         [("live-round1.tce", groups_lo, groups_hi, bytes([1, 0])),
+          ("live-round1.tce", live1["manifest"], changed(live1["manifest"]))]),
         ("statement-before-logup", reject("REJ-STATEMENT", field="ManifestDigest"),
          [("live-round1.tce", live1["manifest"], changed(live1["manifest"])), (t2, d_a0, changed(d_a0))]),
         ("logup-before-tree", reject("REJ-LOOKUP", table=tables[0]),

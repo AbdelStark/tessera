@@ -307,6 +307,7 @@ impl<'a> Committed<'a> {
                     session_id: [0; 16],
                     statement: self.statement.clone(),
                     advice: self.advice_state.commitment(),
+                    leaf_groups: protocol::LeafGroups::NONE,
                 };
                 let decoded = tv_codec::decode(
                     &tessera_codec::encode(&context),
@@ -346,6 +347,7 @@ impl<'a> Committed<'a> {
             session_id,
             statement: self.statement.clone(),
             advice: self.advice_state.commitment(),
+            leaf_groups: protocol::LeafGroups::NONE,
         };
         let wire_round1 = tv_codec::decode(
             &tessera_codec::encode(&round1),

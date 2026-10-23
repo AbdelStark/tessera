@@ -228,10 +228,51 @@ impl Fixture {
             );
         }
         let limits = DecodeLimits::MESSAGE;
-        let round1 = Round1::open(&bytes("live-round1.tce"), &limits).unwrap();
-        let round2 = Round2Response::open(&bytes("live-round2.tce"), &limits).unwrap();
-        let round3 = Round3Response::open(&bytes("live-round3.tce"), &limits).unwrap();
-        // Replays a recorded session with its fixed queries; a live verifier draws its own.
+        // A live message that fails to decode is Malformed under its own schema (RFC-0043).
+        let malformed = |schema: u16, e: tv_codec::DecodeError| -> Verdict {
+            reject(RejectReason::Malformed {
+                artifact: ArtifactKind(schema),
+                code: e.code().into(),
+            })
+            .into()
+        };
+        let round1 = match Round1::open(&bytes("live-round1.tce"), &limits) {
+            Ok(round1) => round1,
+            Err(e) => return malformed(0x0510, e),
+        };
+        let round2 = match Round2Response::open(&bytes("live-round2.tce"), &limits) {
+            Ok(round2) => round2,
+            Err(e) => return malformed(0x0511, e),
+        };
+        let round3 = match Round3Response::open(&bytes("live-round3.tce"), &limits) {
+            Ok(round3) => round3,
+            Err(e) => return malformed(0x0513, e),
+        };
+        // Replays a recorded session in the live verifier's three phases, each judging its own
+        // message under its own schema (RFC-0043), but with the recorded queries in the last: a
+        // live verifier draws its own, and the queries the second phase draws are dropped.
+        let phases = [
+            (&EMPTY_ROUND2, Session::Initial),
+            (
+                &round2,
+                Session::Live {
+                    seed: &self.seed,
+                    queries: None,
+                },
+            ),
+        ];
+        for (round2, session) in phases {
+            let frame = Frame {
+                round1: &round1,
+                round2,
+                round3: &EMPTY_ROUND3,
+            };
+            match verify_unit(&self.claims, &self.expected, frame, &self.config, session) {
+                Ok(Outcome::Ready | Outcome::Queries(_)) => {}
+                Ok(Outcome::Accepted(_)) => panic!("an early phase accepts nothing"),
+                Err(failure) => return failure.into(),
+            }
+        }
         match verify_unit(
             &self.claims,
             &self.expected,

@@ -173,15 +173,39 @@ STATEMENT = Struct(
     ],
 )
 ADVICE = Struct("AdviceCommitment", [("root", DIGEST), ("layout_digest", DIGEST)])
+# RFC-0054 'Messages': g_T and g_L, whose sum is at most 14; a larger sum is ERR-CODEC-LIMIT at the
+# struct's first byte, once both fields are read.
+MAX_LEAF_GROUP_BITS = 14
+LEAF_GROUPS = Struct("LeafGroups", [("token_bits", U8), ("layer_bits", U8)])
 ROUND1 = Struct(
     "Round1",
-    [("protocol_version", U16), ("session_id", SESSION_ID), ("statement", STATEMENT), ("advice", ADVICE)],
+    [
+        ("protocol_version", U16),
+        ("session_id", SESSION_ID),
+        ("statement", STATEMENT),
+        ("advice", ADVICE),
+        ("leaf_groups", LEAF_GROUPS),
+    ],
 )
 
-# RFC-0036 'Round2Response', with RFC-0037's TreeProof and StageProof.
+# RFC-0036 'Round2Response', with RFC-0037's TreeProof and StageProof, and RFC-0054's groups and
+# merge in TreeProof.
 SUMCHECK = Struct("SumcheckProof", [("rounds", Vec(Vec(FP2))), ("final_evals", Vec(FP2))])
 LOGUP = Struct("LogUpProof", [("roots", Vec(FP2)), ("values", Vec(FP2))])
-TREES = Struct("TreeProof", [("levels", Vec(SUMCHECK)), ("splits", Vec(FP2))])
+GROUP = Struct(
+    "GroupProof",
+    [("roots", Vec(FP2)), ("levels", Vec(SUMCHECK)), ("values", Vec(FP2)), ("splits", Vec(FP2))],
+)
+TREES = Struct(
+    "TreeProof",
+    [
+        ("levels", Vec(SUMCHECK)),
+        ("groups", Vec(GROUP)),
+        ("table_roots", Vec(FP2)),
+        ("merge", SUMCHECK),
+        ("splits", Vec(FP2)),
+    ],
+)
 STAGE = Struct(
     "StageProof", [("stage", Newtype("StageId", U16)), ("sumcheck", SUMCHECK), ("splits", Vec(FP2))]
 )
@@ -330,6 +354,8 @@ class Encoder:
                 self.value(t.item, item, path + (i,), level)
         elif isinstance(t, Struct):
             require(list(v) == [f for f, _ in t.fields], f"{path}: the fields of {t.name}")
+            if t is LEAF_GROUPS:
+                require(v["token_bits"] + v["layer_bits"] <= MAX_LEAF_GROUP_BITS, f"{path}: {v}")
             for field, ft in t.fields:
                 self.value(ft, v[field], path + (field,), level)
         elif isinstance(t, Newtype):
@@ -407,6 +433,7 @@ class Decoder:
             if m >= len(WEIGHT_MATRICES) or (previous is not None and m <= previous):
                 raise Refused(NONCANONICAL, at)
             return m
+        start = self.pos
         self.enter()
         if isinstance(t, Fp2):
             value = (self.read(FP), self.read(FP))
@@ -437,6 +464,8 @@ class Decoder:
             value = {}
             for field, ft in t.fields:
                 value[field] = self.read(ft, previous if isinstance(ft, Matrix) else None)
+            if t is LEAF_GROUPS and value["token_bits"] + value["layer_bits"] > MAX_LEAF_GROUP_BITS:
+                raise Refused(LIMIT, start)
         elif isinstance(t, Newtype):
             value = self.read(t.inner)
         elif isinstance(t, Enum):
@@ -600,6 +629,7 @@ def messages(rng):
         "session_id": session,
         "statement": exact,
         "advice": {"root": rng.digest(), "layout_digest": rng.digest()},
+        "leaf_groups": {"token_bits": 0, "layer_bits": 0},
     }
     mixture = statement(
         [
@@ -615,6 +645,8 @@ def messages(rng):
         "session_id": rng.session(),
         "statement": mixture,
         "advice": {"root": rng.digest(), "layout_digest": rng.digest()},
+        # RFC-0054's bound exactly: 2^6 token subsets by 2^8 layer subsets.
+        "leaf_groups": {"token_bits": 6, "layer_bits": 8},
     }
 
     def weight_rows(matrix, k, m=1):
@@ -634,6 +666,18 @@ def messages(rng):
                 {"rounds": [rng.fp2s(3)], "final_evals": rng.fp2s(4)},
                 {"rounds": [rng.fp2s(3), rng.fp2s(3)], "final_evals": rng.fp2s(6)},
             ],
+            # Two groups, the second holding no tree of any instance (RFC-0054 'Groups').
+            "groups": [
+                {
+                    "roots": rng.fp2s(4),
+                    "levels": [{"rounds": [], "final_evals": rng.fp2s(2)}, {"rounds": [rng.fp2s(3)], "final_evals": rng.fp2s(2)}],
+                    "values": rng.fp2s(1),
+                    "splits": rng.fp2s(2),
+                },
+                {"roots": [], "levels": [], "values": [], "splits": []},
+            ],
+            "table_roots": rng.fp2s(2),
+            "merge": {"rounds": [rng.fp2s(2), rng.fp2s(2)], "final_evals": rng.fp2s(3)},
             "splits": rng.fp2s(2),
         },
         "stages": [
@@ -762,6 +806,14 @@ def refusals(cases):
     at = ni.at[("round1", "statement", "predictor")]
     refuse("NiProof", changed(bytes(ni.out), at, le(0xFFFF, 2)), NONCANONICAL, at, "PredictorSpec tag 65535 inside the proof")
 
+    # RFC-0054's grouping: at most 14 group bits, checked once both fields are read.
+    at = r1.at[("leaf_groups",)]
+    refuse("Round1", changed(data, at, le(7, 1) + le(8, 1)), LIMIT, at, "leaf_groups 7 + 8 = 15 bits, one past RFC-0054's 14")
+    refuse("Round1", changed(data, at, le(255, 1) + le(255, 1)), LIMIT, at, "leaf_groups 255 + 255: the sum, not each field, is bounded")
+    refuse("Round1", data[: at + 1], TRUNCATED, at + 1, "cut inside leaf_groups: truncation before the bound")
+    at = ni.at[("round1", "leaf_groups")]
+    refuse("NiProof", changed(bytes(ni.out), at, le(15, 1)), LIMIT, at, "leaf_groups 15 + 0 inside the proof")
+
     # Rationals: reduced, the denominator positive.
     data = bytes(mixture.out)
     at = mixture.at[("statement", "predictor", "decoding", "t")]
@@ -789,6 +841,10 @@ def refusals(cases):
         (("logup", "roots", 0, "c0"), P, "a root's c0 equal to P"),
         (("logup", "roots", 1, "c1"), 2**64 - 1, "a root's c1 equal to 2^64 - 1"),
         (("trees", "levels", 1, "rounds", 0, 2, "c0"), P + 1, "a tree round's value at P + 1"),
+        (("trees", "groups", 0, "roots", 3, "c1"), P, "a group root's c1 at P"),
+        (("trees", "groups", 0, "levels", 1, "rounds", 0, 0, "c0"), P, "a group level's round value at P"),
+        (("trees", "table_roots", 1, "c0"), 2**64 - 1, "a table root's c0 at 2^64 - 1"),
+        (("trees", "merge", "final_evals", 2, "c1"), P, "a merge evaluation at P"),
         (("stages", 0, "sumcheck", "final_evals", 0, "c1"), P, "a stage's final evaluation at P"),
         (("advice_combined", 2, "mask", 1, "c0"), P, "a combined mask coefficient at P"),
     ]:
@@ -826,28 +882,26 @@ def refusals(cases):
         refuse(ty, data, LIMIT, at, f"max_depth {deepest - 1}, one level short of its deepest value", short)
         accept(ty, data, f"max_depth {deepest}, its deepest value's level", dict(LIMITS, max_depth=deepest))
 
-    # A struct of one unnamed field takes a level of its own: StageId and FixedBits, each the
-    # first value at its level in a Round2Response whose other lists are empty.
+    # A struct of one unnamed field takes a level of its own (RFC-0003), but no input observes
+    # StageId's or FixedBits' since RFC-0054: TreeProof's merge, always present, puts two
+    # sequences at their level before them, so a reader that skipped their level would fail
+    # where a correct one fails on every input. A Round2Response whose other lists are empty
+    # still isolates the branches below.
     def bare(stages, scoring):
         return {
             "logup": {"roots": [], "values": []},
-            "trees": {"levels": [], "splits": []},
+            "trees": {
+                "levels": [],
+                "groups": [],
+                "table_roots": [],
+                "merge": {"rounds": [], "final_evals": []},
+                "splits": [],
+            },
             "stages": stages,
             "advice_combined": [],
             "weight_combined": [],
             "scoring": {"requests": scoring},
         }
-
-    stage = {"stage": 1, "sumcheck": {"rounds": [], "final_evals": []}, "splits": []}
-    for value, path, why in [
-        (bare([stage], []), ("stages", 0, "stage"), "a StageId, a struct of one u16"),
-        (bare([], [5]), ("scoring", "requests", 0), "a FixedBits, a struct of one u64"),
-    ]:
-        enc = encoded(ROUND2, value)
-        level, at = enc.level[path], enc.at[path]
-        require(next(o for o, l in enc.levels if l >= level) == at, f"{why}: the first at its level")
-        short = dict(LIMITS, max_depth=level - 1)
-        refuse("Round2Response", bytes(enc.out), LIMIT, at, f"{why}, one level past max_depth {level - 1}", short)
 
     # Isolate branches whose missing struct level would be hidden by the full packet's
     # deeper siblings. The encoder locates their first deepest value independently.

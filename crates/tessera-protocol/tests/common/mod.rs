@@ -11,10 +11,11 @@ use tessera_codec::Rational;
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_hash::Digest;
 use tessera_protocol::{
-    AdviceCommitment, BatchDescriptor, ColumnQueries, CombinedRow, Decoding, FixedBits, LogUpProof,
-    MatrixCodeword, MatrixColumns, MatrixQueries, MultiProof, PredictorSpec, ProverEngine,
-    PublicStatement, QueryShape, RequestRef, Round1, Round2Response, Round3Response, ScoringClaims,
-    StageId, StageProof, SumcheckProof, TreeProof, VerifierChecks, WeightCombinedRows,
+    AdviceCommitment, BatchDescriptor, ColumnQueries, CombinedRow, Decoding, FixedBits, GroupProof,
+    LogUpProof, MatrixCodeword, MatrixColumns, MatrixQueries, MultiProof, PredictorSpec,
+    ProverEngine, PublicStatement, QueryShape, RequestRef, Round1, Round2Response, Round3Response,
+    ScoringClaims, StageId, StageProof, SumcheckProof, TreeProof, VerifierChecks,
+    WeightCombinedRows,
 };
 
 /// SplitMix64 (Steele, Lea and Flood, 2014): reproducible inputs, nothing secret.
@@ -159,6 +160,20 @@ pub fn round2(rng: &mut SplitMix64, matrices: &[u8]) -> Round2Response {
                     final_evals: rng.fp2s(4),
                 },
             ],
+            groups: vec![GroupProof {
+                roots: rng.fp2s(4),
+                levels: vec![SumcheckProof {
+                    rounds: vec![rng.fp2s(2)],
+                    final_evals: rng.fp2s(2),
+                }],
+                values: rng.fp2s(1),
+                splits: rng.fp2s(2),
+            }],
+            table_roots: rng.fp2s(4),
+            merge: SumcheckProof {
+                rounds: vec![rng.fp2s(2)],
+                final_evals: rng.fp2s(2),
+            },
             splits: rng.fp2s(2),
         },
         stages: vec![StageProof {

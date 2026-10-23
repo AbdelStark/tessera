@@ -28,13 +28,14 @@
 | `edits` | Per target file, in decreasing offset. A literal edit replaces the bytes `before` at `offset` with `after`, either possibly empty. A `shift_fp2` edit adds `delta` to `count` consecutive `Fp2` values from `offset`, coordinate-wise modulo `P` |
 | `expected` | The verdict object of the core JSON report: `status` and the `reason` with its [RFC-0043](../../../docs/rfcs/RFC-0043-rejection-payloads.md) payload |
 
-The caller's expected statement comes from `claims.tcl`, `weights.twr` and `base.json`'s request, never from a proof. A recorded live case replays `live-seed.bin` and `live-queries.tce`; a live verifier draws its own queries.
+The caller's expected statement comes from `claims.tcl`, `weights.twr` and `base.json`'s request, never from a proof. A recorded live case replays `live-seed.bin` and `live-queries.tce` in the live verifier's three phases, each judging its own message under its own schema; a live verifier draws its own queries.
 
 ## Families
 
 | Family | Step | Mutation | Verdict |
 |---|---|---|---|
 | `decode` | 1 | A field element `P`, a trailing byte, a missing byte, a changed envelope digest | `REJ-MALFORMED` with the codec's code |
+| `leaf-groups` | 1 | `Round1.leaf_groups` of one token bit, one layer bit, or 15 bits; an ungrouped `TreeProof` with a group, a table root, a merge round or a merge evaluation (RFC-0054 'Messages', 'Migration / Rollout') | `REJ-MALFORMED`: `ERR-CODEC-LIMIT` for a grouping, `ERR-CODEC-NONCANONICAL` for a grouped field; `Round1` or `Round2Response` in a live session |
 | `statement` | 4 | Each statement field, each request field, the predictor, the layout digest | `REJ-STATEMENT` with the field |
 | `fiat-shamir` | 6 | The seed nonce, which test-small's zero-bit predicate accepts | `REJ-TREE` at level 1, round 1: the nonce is absorbed |
 | `logup-root` | 7.1 | Each instance's zero `d_a`, zero `d_t`, and a changed `n_a` | `REJ-LOOKUP` with its table |

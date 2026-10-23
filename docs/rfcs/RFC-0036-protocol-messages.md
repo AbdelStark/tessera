@@ -67,8 +67,11 @@ pub struct Round1 {
     pub session_id: [u8; 16],
     pub statement: PublicStatement,     // 03 §4
     pub advice: AdviceCommitment,       // RFC-0011: { root, layout_digest }
+    pub leaf_groups: LeafGroups,        // RFC-0054: { token_bits, layer_bits }
 }
 ```
+
+- **`leaf_groups`** ([RFC-0054](RFC-0054-token-groups.md#messages) 'Messages'). The leaf stage's grouping, `g_T` and `g_L`, zero for a leaf stage proven in one batch. A decoder refuses `token_bits + layer_bits > 14` with `ERR-CODEC-LIMIT` at the struct's first byte, once both bytes are read.
 
 - **`session_id`.** In live mode it is `SeedCommit`'s. In non-interactive mode the prover chooses it fresh, and `SessionContext` binds it either way.
 - **`protocol_version`.** It is the protocol's number, `tessera-protocol/{protocol_version}`, the one the claim list states ([RFC-0007](RFC-0007-claim-list.md#schema)). It is 0 until `tessera-protocol/1` is assigned, when the first end-to-end proof verifies ([09 §3](../spec/09-release-and-versioning.md#3-protocol-and-schema-versions)), and 1 from then on. A reader of another version answers `ERR-PROTO-VERSION`.
@@ -87,7 +90,10 @@ pub struct Round2Response {
     pub scoring: ScoringClaims,
 }
 pub struct LogUpProof { pub roots: Vec<Fp2>, pub values: Vec<Fp2> }
-pub struct TreeProof { pub levels: Vec<SumcheckProof>, pub splits: Vec<Fp2> }
+pub struct TreeProof { pub levels: Vec<SumcheckProof>, pub groups: Vec<GroupProof>,           // RFC-0054
+                       pub table_roots: Vec<Fp2>, pub merge: SumcheckProof, pub splits: Vec<Fp2> }
+pub struct GroupProof { pub roots: Vec<Fp2>, pub levels: Vec<SumcheckProof>, pub values: Vec<Fp2>,
+                        pub splits: Vec<Fp2> }
 pub struct StageProof { pub stage: StageId, pub sumcheck: SumcheckProof, pub splits: Vec<Fp2> } // StageId(u16)
 pub struct SumcheckProof { pub rounds: Vec<Vec<Fp2>>, pub final_evals: Vec<Fp2> } // RFC-0010
 pub struct CombinedRow { pub u: Vec<Fp2>, pub mask: Vec<Fp2> }
