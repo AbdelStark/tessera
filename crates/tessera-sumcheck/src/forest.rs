@@ -338,10 +338,10 @@ fn level_above<B: Field>(below: &Halves<B>) -> Halves<B> {
     halves
 }
 
-/// `tree/{ℓ}/{suffix}`: `root/{c}`, `gamma`, `lambda` and `line`, the labels of a level that its
-/// rounds do not squeeze (RFC-0014 'Transcript schedule', row 5).
-pub(crate) fn label(level: u32, suffix: fmt::Arguments<'_>) -> String {
-    format!("{}/{suffix}", Prefix::Tree(level))
+/// `<level's prefix>/{suffix}`: `root/{c}`, `gamma`, `lambda` and `line`, the labels of a level
+/// that its rounds do not squeeze (RFC-0014 'Transcript schedule', row 5).
+pub(crate) fn label(prefix: Prefix, suffix: fmt::Arguments<'_>) -> String {
+    format!("{prefix}/{suffix}")
 }
 
 /// Proves the levels of a batch of product forests on `transcript`, from the roots to the

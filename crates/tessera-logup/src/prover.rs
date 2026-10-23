@@ -198,7 +198,7 @@ fn check_schedule(
 
 /// `key + β·value`, the pair compressed, or the key alone without values.
 #[inline(always)]
-fn compress<F: PolyField>(beta: F, key: F::Base, value: Option<F::Base>) -> F {
+pub(crate) fn compress<F: PolyField>(beta: F, key: F::Base, value: Option<F::Base>) -> F {
     match value {
         Some(value) => beta.mul_by_base(value).add_base(key),
         None => F::from(key),
@@ -239,35 +239,58 @@ fn trees<F: PolyField>(
     alpha: F,
     beta: F,
 ) -> Result<(FractionTree<F>, FractionTree<F>), LogUpError> {
+    Ok((
+        lookup_tree(instance, alpha, beta)?,
+        table_tree(instance, alpha, beta)?,
+    ))
+}
+
+/// `α − t_0`, row 0's denominator, the padding of both trees.
+fn padding<F: PolyField>(instance: &LogUpInstance<'_, F::Base>, alpha: F, beta: F) -> F {
     let table = instance.table;
     // The instance's checks give the table a row, and values to each row when it has them.
     let row_0 = table.keys.first().map_or(F::ZERO, |&key| {
         compress(beta, key, table.values.and_then(|v| v.first().copied()))
     });
-    let padding = alpha - row_0;
-    let lookup = tree(
+    alpha - row_0
+}
+
+/// An instance's lookup tree: leaves `(1, α − a_i)`, then `(1, α − t_0)`.
+pub(crate) fn lookup_tree<F: PolyField>(
+    instance: &LogUpInstance<'_, F::Base>,
+    alpha: F,
+    beta: F,
+) -> Result<FractionTree<F>, LogUpError> {
+    tree(
         instance.lookups,
         instance.lookup_height(),
         LeafNumerators::Unit,
         alpha,
         beta,
-        padding,
-    )?;
+        padding(instance, alpha, beta),
+    )
+}
+
+/// An instance's table tree: leaves `(−m_j, α − t_j)`, then `(−m_j, α − t_0)`.
+pub(crate) fn table_tree<F: PolyField>(
+    instance: &LogUpInstance<'_, F::Base>,
+    alpha: F,
+    beta: F,
+) -> Result<FractionTree<F>, LogUpError> {
     let negated: SecretBuf<F::Base> = instance.multiplicities.iter().map(|&m| -m).collect();
-    let rows = tree(
-        table,
+    tree(
+        instance.table,
         instance.table_height(),
         LeafNumerators::Base(&negated),
         alpha,
         beta,
-        padding,
-    )?;
-    Ok((lookup, rows))
+        padding(instance, alpha, beta),
+    )
 }
 
 /// `valũe(point)` of the lookup-side value polynomial: `values`, then row 0's value in the padding
 /// slots, `2^{|point|}` entries.
-fn value_at<F: PolyField>(values: &[F::Base], padding: F::Base, point: &[F]) -> F {
+pub(crate) fn value_at<F: PolyField>(values: &[F::Base], padding: F::Base, point: &[F]) -> F {
     let leaves = 1usize << point.len();
     let value = match values.len() == leaves {
         true => evaluate_base(values, point),

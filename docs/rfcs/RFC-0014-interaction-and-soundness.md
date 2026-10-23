@@ -93,7 +93,7 @@ Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{c}`, `{T}` are decimal
 Both sides construct labels from these patterns only; the full expanded list for a claim list is part of the derived constraint system and covered by transcript vectors. What each label absorbs, the spelling of `{T}` as a matrix's name, and the labels `tessera-protocol/1` leaves out (`zk-sum`, `zk-rho` and the blinding claims) are [RFC-0036](RFC-0036-protocol-messages.md#what-the-transcript-absorbs)'s. In `tessera-protocol/2`, rows 4 and 5 are [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)'s: a masked LogUp identity sumcheck in place of `logup/roots`, and masked tree levels.
 
 A leaf stage in token groups ([RFC-0054](RFC-0054-token-groups.md#the-leaf-stage-with-groups)) changes rows 4 and 5:
-- **Row 4.** `logup/roots` and `logup/values` are absorbed empty.
+- **Row 4.** `logup/roots`, then `logup/values`, are absorbed empty, right after `logup/beta`.
 - **Row 5, per group.** Each group, in order, runs `group/{h}/logup/roots`, its levels under `group/{h}/tree/{ℓ}/…`, `group/{h}/logup/values`, `group/{h}/split` and `group/{h}/merge/gamma`.
 - **Row 5, then.** The table trees follow, `tables/logup/roots` and their levels under `tables/tree/{ℓ}/…`, and then the merge under `merge/beta`, `merge/round/{j}`, `merge/r/{j}` and `merge/evals`.
 - **Before row 6.** The leaf stage's atom split values follow under `stage/0/split`.

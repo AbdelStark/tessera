@@ -104,9 +104,9 @@ A group fixes `g_T` bits of the token index and `g_L` bits of the layer index, `
 
 With `g ≥ 1`, the leaf stage runs in this order:
 
-1. **Challenges.** `logup/alpha` and `logup/beta`, as RFC-0008 states. `logup/roots` and `logup/values` are absorbed empty.
+1. **Challenges.** `logup/alpha` and `logup/beta`, as RFC-0008 states. `logup/roots`, then `logup/values`, are absorbed empty, right after `logup/beta`.
 2. **Each group `h`, in order from 0.**
-   - **Roots.** The roots `(n, d)` of the group's lookup trees, in schedule order, under `group/{h}/logup/roots`. The verifier checks every `d ≠ 0`, else `Reject(Lookup)`.
+   - **Roots.** The roots `(n, d)` of the group's lookup trees, in schedule order, under `group/{h}/logup/roots`. The group's value evaluations follow the same order. The verifier checks every `d ≠ 0`, else `Reject(Lookup)`.
    - **Levels.** RFC-0010 'Tree levels' for the group's instances, under `group/{h}/tree/{ℓ}/root/{c}`, `group/{h}/tree/{ℓ}/gamma`, `group/{h}/tree/{ℓ}/lambda`, `group/{h}/tree/{ℓ}/round/{j}`, `group/{h}/tree/{ℓ}/r/{j}`, `group/{h}/tree/{ℓ}/evals` and `group/{h}/tree/{ℓ}/line`. `ℓ` counts the group's levels from its root, and each lookup tree enters with its root as its claims.
    - **Values and splits.** The group's lookup trees' value evaluations under `group/{h}/logup/values`, then its split values under `group/{h}/split`. The verifier checks the leaf claims against them as RFC-0008 and RFC-0045 check the stage's.
    - **Merge challenge.** `γ_h` is squeezed under `group/{h}/merge/gamma` ('The merge').
