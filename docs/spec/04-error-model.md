@@ -70,7 +70,7 @@ Codes are stable tier-A identifiers ([02 §1](02-public-api.md#1-stability-tiers
 | `ERR-CODEC-NONCANONICAL` | Input | Non-canonical field element, trailing bytes, invalid tag, non-minimal length | Codec | 65 |
 | `ERR-CODEC-TRUNCATED` | Input | Input ended inside a value | Codec | 65 |
 | `ERR-CODEC-DIGEST` | Input | Envelope digest does not match payload | Codec | 65 |
-| `ERR-CODEC-LIMIT` | Input | A length exceeds the configured resource limit | Codec | 65 |
+| `ERR-CODEC-LIMIT` | Input | A length exceeds the configured resource limit, or a value exceeds a bound its schema states | Codec | 65 |
 | `ERR-QUANT-ARCH` | Model | Checkpoint or integer model outside `ArchSpec` support, or inconsistent with its architecture | Front-end, compiler | 65 |
 | `ERR-QUANT-CALIB` | Model | Calibration produced non-finite or degenerate statistics, or its data failed a hygiene check: too few usable documents, a malformed file, or a document shared with evaluation data | Front-end | 20 |
 | `ERR-COMPILE-RANGE` | Model | A lookup key cannot fit any gadget's table bound | Compiler | 20 |

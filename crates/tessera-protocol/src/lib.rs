@@ -132,11 +132,12 @@ pub use params::{ParamMode, ParamSet, Targets};
 pub use prover::{ProverEngine, ProverSession, ProverState, SessionError};
 pub use queries::{MatrixCodeword, QueryShape};
 pub use round1::{
-    AdviceCommitment, BatchDescriptor, Decoding, PredictorSpec, PublicStatement, RequestRef, Round1,
+    AdviceCommitment, BatchDescriptor, Decoding, LeafGroups, MAX_LEAF_GROUP_BITS, PredictorSpec,
+    PublicStatement, RequestRef, Round1,
 };
 pub use round2::{
-    CombinedRow, FixedBits, LogUpProof, Round2Response, ScoringClaims, StageProof, TreeProof,
-    WeightCombinedRows,
+    CombinedRow, FixedBits, GroupProof, LogUpProof, Round2Response, ScoringClaims, StageProof,
+    TreeProof, WeightCombinedRows,
 };
 pub use round3::{
     ColumnQueries, MatrixColumns, MatrixQueries, MultiProof, NiProof, Round3Response,

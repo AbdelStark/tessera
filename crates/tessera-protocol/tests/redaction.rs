@@ -14,10 +14,10 @@ mod common;
 use common::{Checks, Engine, SplitMix64, advice, statement};
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_protocol::{
-    AdviceCommitment, ColumnQueries, CombinedRow, LogUpProof, MatrixColumns, MatrixQueries,
-    MultiProof, NiProof, PROTOCOL_VERSION, ProverSeedShare, ProverSession, Round1, Round2Response,
-    Round3Response, ScoringClaims, SeedCommit, StageId, StageProof, SumcheckProof, TreeProof,
-    VerifierSession, WeightCombinedRows, coin_commitment,
+    AdviceCommitment, ColumnQueries, CombinedRow, GroupProof, LeafGroups, LogUpProof,
+    MatrixColumns, MatrixQueries, MultiProof, NiProof, PROTOCOL_VERSION, ProverSeedShare,
+    ProverSession, Round1, Round2Response, Round3Response, ScoringClaims, SeedCommit, StageId,
+    StageProof, SumcheckProof, TreeProof, VerifierSession, WeightCombinedRows, coin_commitment,
 };
 
 /// An element no length or index in these messages comes near.
@@ -75,6 +75,20 @@ fn round2() -> Round2Response {
                 rounds: vec![vec![canary(); 3]],
                 final_evals: vec![canary(); 4],
             }],
+            groups: vec![GroupProof {
+                roots: vec![canary(); 4],
+                levels: vec![SumcheckProof {
+                    rounds: vec![vec![canary(); 2]],
+                    final_evals: vec![canary(); 2],
+                }],
+                values: vec![canary()],
+                splits: vec![canary(); 2],
+            }],
+            table_roots: vec![canary(); 4],
+            merge: SumcheckProof {
+                rounds: vec![vec![canary(); 2]],
+                final_evals: vec![canary(); 2],
+            },
             splits: vec![canary(); 2],
         },
         stages: vec![StageProof {
@@ -137,6 +151,7 @@ fn protocol_class_messages_show_lengths_only() {
                 root: [6; 32],
                 layout_digest: [7; 32],
             },
+            leaf_groups: LeafGroups::NONE,
         },
         seed_nonce: 1,
         round2: round2(),
@@ -175,6 +190,7 @@ fn sessions_show_no_share() {
         session_id: commit.session_id,
         statement: statement(&mut rng),
         advice: advice(&mut rng),
+        leaf_groups: LeafGroups::NONE,
     };
     let share = ProverSeedShare {
         session_id: commit.session_id,

@@ -449,15 +449,14 @@ impl<'a> CpuBackend<'a> {
                 roots: leaf.logup().roots().to_vec(),
                 values: leaf.logup().values().to_vec(),
             },
-            trees: protocol::TreeProof {
-                levels: leaf
-                    .logup()
+            trees: protocol::TreeProof::ungrouped(
+                leaf.logup()
                     .levels()
                     .iter()
                     .map(|p| p.proof().clone())
                     .collect(),
-                splits: leaf.splits().to_vec(),
-            },
+                leaf.splits().to_vec(),
+            ),
             stages: proofs,
             advice_combined,
             weight_combined,

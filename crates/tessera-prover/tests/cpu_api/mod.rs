@@ -94,6 +94,7 @@ fn independent(
             root: [0; 32],
             layout_digest: [0; 32],
         },
+        leaf_groups: protocol::LeafGroups::NONE,
     };
     let statement = tv_codec::decode(
         &tessera_codec::encode(&packet),

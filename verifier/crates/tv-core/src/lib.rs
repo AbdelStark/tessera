@@ -577,6 +577,6 @@ pub mod verdict;
 pub use verdict::{AcceptReport, ErrorCode, RejectReason, Verdict, VerifierError};
 pub mod driver;
 pub use driver::{
-    LiveVerifier, ResourceLimits, VerifierConfig, verify_non_interactive,
+    LiveVerifier, ResourceLimits, VerifierConfig, open_live, verify_non_interactive,
     verify_non_interactive_bytes,
 };

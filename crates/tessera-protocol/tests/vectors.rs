@@ -21,11 +21,11 @@ use tessera_codec::error::ErrorCode;
 use tessera_codec::{Decode, DecodeError, DecodeLimits, Encode, Rational, decode, encode};
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_protocol::{
-    AdviceCommitment, BatchDescriptor, ColumnQueries, CombinedRow, Decoding, FixedBits, LogUpProof,
-    MatrixColumns, MatrixQueries, Message, MessageKind, MultiProof, NiProof, PROTOCOL_VERSION,
-    PredictorSpec, ProverSeedShare, PublicStatement, RequestRef, Round1, Round2Response,
-    Round3Response, ScoringClaims, SeedCommit, SeedReveal, StageId, StageProof, SumcheckProof,
-    TreeProof, WeightCombinedRows, WeightMatrix, coin_commitment, coin_toss,
+    AdviceCommitment, BatchDescriptor, ColumnQueries, CombinedRow, Decoding, FixedBits, GroupProof,
+    LeafGroups, LogUpProof, MatrixColumns, MatrixQueries, Message, MessageKind, MultiProof,
+    NiProof, PROTOCOL_VERSION, PredictorSpec, ProverSeedShare, PublicStatement, RequestRef, Round1,
+    Round2Response, Round3Response, ScoringClaims, SeedCommit, SeedReveal, StageId, StageProof,
+    SumcheckProof, TreeProof, WeightCombinedRows, WeightMatrix, coin_commitment, coin_toss,
 };
 
 fn load() -> Value {
@@ -199,9 +199,16 @@ mod json {
     pub fn round1(v: &Value) -> Round1 {
         let f = fields(
             v,
-            &["protocol_version", "session_id", "statement", "advice"],
+            &[
+                "protocol_version",
+                "session_id",
+                "statement",
+                "advice",
+                "leaf_groups",
+            ],
         );
         let advice = fields(&f["advice"], &["root", "layout_digest"]);
+        let groups = fields(&f["leaf_groups"], &["token_bits", "layer_bits"]);
         Round1 {
             protocol_version: int(&f["protocol_version"]),
             session_id: array(&f["session_id"]),
@@ -209,6 +216,10 @@ mod json {
             advice: AdviceCommitment {
                 root: array(&advice["root"]),
                 layout_digest: array(&advice["layout_digest"]),
+            },
+            leaf_groups: LeafGroups {
+                token_bits: int(&groups["token_bits"]),
+                layer_bits: int(&groups["layer_bits"]),
             },
         }
     }
@@ -242,7 +253,10 @@ mod json {
             ],
         );
         let logup = fields(&f["logup"], &["roots", "values"]);
-        let trees = fields(&f["trees"], &["levels", "splits"]);
+        let trees = fields(
+            &f["trees"],
+            &["levels", "groups", "table_roots", "merge", "splits"],
+        );
         let scoring = fields(&f["scoring"], &["requests"]);
         Round2Response {
             logup: LogUpProof {
@@ -251,6 +265,17 @@ mod json {
             },
             trees: TreeProof {
                 levels: many(&trees["levels"], sumcheck),
+                groups: many(&trees["groups"], |group| {
+                    let g = fields(group, &["roots", "levels", "values", "splits"]);
+                    GroupProof {
+                        roots: many(&g["roots"], fp2),
+                        levels: many(&g["levels"], sumcheck),
+                        values: many(&g["values"], fp2),
+                        splits: many(&g["splits"], fp2),
+                    }
+                }),
+                table_roots: many(&trees["table_roots"], fp2),
+                merge: sumcheck(&trees["merge"]),
                 splits: many(&trees["splits"], fp2),
             },
             stages: many(&f["stages"], |stage| {

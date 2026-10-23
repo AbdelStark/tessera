@@ -413,6 +413,12 @@ pub fn prove_stages(
                     final_evals: es(&p.proof().final_evals),
                 })
                 .collect(),
+            groups: Vec::new(),
+            table_roots: Vec::new(),
+            merge: tv_core::sumcheck::SumcheckProof {
+                rounds: Vec::new(),
+                final_evals: Vec::new(),
+            },
             splits: es(proof.splits()),
         },
         stages: proofs,

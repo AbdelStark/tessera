@@ -17,8 +17,8 @@ use allocation_counter::{AllocationInfo, measure};
 use tessera_codec::error::ErrorCode;
 use tessera_codec::{Decode, DecodeError, DecodeLimits, Encode, decode, encode};
 use tessera_protocol::{
-    AdviceCommitment, BatchDescriptor, ColumnQueries, CombinedRow, Decoding, FixedBits, LogUpProof,
-    MatrixColumns, MatrixQueries, MultiProof, NiProof, PredictorSpec, ProverSeedShare,
+    AdviceCommitment, BatchDescriptor, ColumnQueries, CombinedRow, Decoding, FixedBits, LeafGroups,
+    LogUpProof, MatrixColumns, MatrixQueries, MultiProof, NiProof, PredictorSpec, ProverSeedShare,
     PublicStatement, Round1, Round2Response, Round3Response, ScoringClaims, SeedCommit, SeedReveal,
     StageId, StageProof, SumcheckProof, TreeProof, WeightCombinedRows,
 };
@@ -169,9 +169,11 @@ fn every_id_but_0_to_9_is_refused_in_each_keyed_sequence() {
                 decode::<ColumnQueries>(&encode(&queries), limits).map(drop),
                 16,
             ),
+            // The empty LogUp lists (16 bytes), trees (48: four lists and a merge of two), stages
+            // and advice rows (16), then the length (8).
             (
                 decode::<Round2Response>(&encode(&round2), limits).map(drop),
-                56,
+                88,
             ),
             (
                 decode::<Round3Response>(&encode(&round3), limits).map(drop),
@@ -196,10 +198,7 @@ fn empty_round2() -> Round2Response {
             roots: vec![],
             values: vec![],
         },
-        trees: TreeProof {
-            levels: vec![],
-            splits: vec![],
-        },
+        trees: TreeProof::ungrouped(vec![], vec![]),
         stages: vec![],
         advice_combined: vec![],
         weight_combined: vec![],
@@ -250,7 +249,7 @@ fn keyed_entries_at_their_smallest_fill_their_sequence_exactly() {
     // the entries: Round2Response's empty scoring claims, which the short input leaves out.
     let cases: [(&str, Vec<u8>, u64, usize, usize); 3] = [
         ("ColumnQueries", encode(&queries), 8, 9, 0),
-        ("Round2Response", encode(&round2), 48, 25, 8),
+        ("Round2Response", encode(&round2), 80, 25, 8),
         ("Round3Response", encode(&round3), 16, 17, 0),
     ];
     for (name, bytes, at, entry, after) in cases {
@@ -310,6 +309,7 @@ fn min_size_is_the_length_of_the_smallest_value() {
             root: zero,
             layout_digest: zero,
         },
+        leaf_groups: LeafGroups::NONE,
     };
     let empty_sumcheck = SumcheckProof {
         rounds: vec![],
@@ -320,10 +320,7 @@ fn min_size_is_the_length_of_the_smallest_value() {
             roots: vec![],
             values: vec![],
         },
-        trees: TreeProof {
-            levels: vec![],
-            splits: vec![],
-        },
+        trees: TreeProof::ungrouped(vec![], vec![]),
         stages: vec![],
         advice_combined: vec![],
         weight_combined: vec![],

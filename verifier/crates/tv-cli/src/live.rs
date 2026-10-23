@@ -10,7 +10,7 @@ use crate::{
 };
 use std::{path::Path, time::Duration};
 use tv_core::{
-    LiveVerifier, ResourceLimits, VerifierConfig,
+    LiveVerifier, ResourceLimits, VerifierConfig, open_live,
     params::ParamSet,
     protocol::*,
     verdict::{ErrorCode, RejectReason, Verdict},
@@ -214,10 +214,15 @@ pub(crate) fn run(args: &[String], json: bool) -> CommandOutput {
                     SeedCommit::SCHEMA,
                     &commit.to_tce().map_err(ErrorCode::from)?,
                 )?;
-                let first =
-                    Round1::open(&d.receive(1)?, &decode).map_err(|e| ErrorCode::from(e.code()))?;
-                let share = ProverSeedShare::open(&d.receive(2)?, &decode)
-                    .map_err(|e| ErrorCode::from(e.code()))?;
+                // A prover's message that fails to decode is Malformed (RFC-0043).
+                let first = match open_live::<Round1>(&d.receive(1)?, &decode) {
+                    Ok(m) => m,
+                    Err(v) => return Ok(v),
+                };
+                let share = match open_live::<ProverSeedShare>(&d.receive(2)?, &decode) {
+                    Ok(m) => m,
+                    Err(v) => return Ok(v),
+                };
                 let reveal = match verifier.on_round1(&first, &share) {
                     Ok(r) => r,
                     Err(v) => return Ok(v),
@@ -227,8 +232,10 @@ pub(crate) fn run(args: &[String], json: bool) -> CommandOutput {
                     SeedReveal::SCHEMA,
                     &reveal.to_tce().map_err(ErrorCode::from)?,
                 )?;
-                let second = Round2Response::open(&d.receive(4)?, &decode)
-                    .map_err(|e| ErrorCode::from(e.code()))?;
+                let second = match open_live::<Round2Response>(&d.receive(4)?, &decode) {
+                    Ok(m) => m,
+                    Err(v) => return Ok(v),
+                };
                 let queries = match verifier.on_round2(&second) {
                     Ok(q) => q,
                     Err(v) => return Ok(v),
@@ -238,8 +245,10 @@ pub(crate) fn run(args: &[String], json: bool) -> CommandOutput {
                     ColumnQueries::SCHEMA,
                     &queries.to_tce().map_err(ErrorCode::from)?,
                 )?;
-                let third = Round3Response::open(&d.receive(6)?, &decode)
-                    .map_err(|e| ErrorCode::from(e.code()))?;
+                let third = match open_live::<Round3Response>(&d.receive(6)?, &decode) {
+                    Ok(m) => m,
+                    Err(v) => return Ok(v),
+                };
                 Ok(verifier.on_round3(&third))
             })();
             exchange.unwrap_or_else(verify::inconclusive)

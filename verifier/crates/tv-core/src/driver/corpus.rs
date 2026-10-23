@@ -228,10 +228,44 @@ impl Fixture {
             );
         }
         let limits = DecodeLimits::MESSAGE;
-        let round1 = Round1::open(&bytes("live-round1.tce"), &limits).unwrap();
-        let round2 = Round2Response::open(&bytes("live-round2.tce"), &limits).unwrap();
-        let round3 = Round3Response::open(&bytes("live-round3.tce"), &limits).unwrap();
-        // Replays a recorded session with its fixed queries; a live verifier draws its own.
+        // Replays a recorded session as the live verifier runs it: each message is opened as the
+        // CLI opens it (`open_live`, RFC-0043), only once the phase before it has passed, and
+        // judged in its own phase, with the recorded queries in the last; a live verifier draws
+        // its own, and the queries the second phase draws are dropped.
+        let round1 = match open_live::<Round1>(&bytes("live-round1.tce"), &limits) {
+            Ok(m) => m,
+            Err(verdict) => return verdict,
+        };
+        let phase = |round2: &Round2Response, session| {
+            let frame = Frame {
+                round1: &round1,
+                round2,
+                round3: &EMPTY_ROUND3,
+            };
+            match verify_unit(&self.claims, &self.expected, frame, &self.config, session) {
+                Ok(Outcome::Ready | Outcome::Queries(_)) => None,
+                Ok(Outcome::Accepted(_)) => panic!("an early phase accepts nothing"),
+                Err(failure) => Some(Verdict::from(failure)),
+            }
+        };
+        if let Some(verdict) = phase(&EMPTY_ROUND2, Session::Initial) {
+            return verdict;
+        }
+        let round2 = match open_live::<Round2Response>(&bytes("live-round2.tce"), &limits) {
+            Ok(m) => m,
+            Err(verdict) => return verdict,
+        };
+        let live = Session::Live {
+            seed: &self.seed,
+            queries: None,
+        };
+        if let Some(verdict) = phase(&round2, live) {
+            return verdict;
+        }
+        let round3 = match open_live::<Round3Response>(&bytes("live-round3.tce"), &limits) {
+            Ok(m) => m,
+            Err(verdict) => return verdict,
+        };
         match verify_unit(
             &self.claims,
             &self.expected,

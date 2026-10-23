@@ -54,6 +54,7 @@ fn fixture() -> (ClaimList, PublicStatement, NiProof, VerifierConfig) {
                 root: [0; 32],
                 layout_digest: [0; 32],
             },
+            leaf_groups: LeafGroups::NONE,
         },
         seed_nonce: 0,
         round2: Round2Response {
@@ -63,6 +64,12 @@ fn fixture() -> (ClaimList, PublicStatement, NiProof, VerifierConfig) {
             },
             trees: TreeProof {
                 levels: vec![],
+                groups: vec![],
+                table_roots: vec![],
+                merge: tv_core::sumcheck::SumcheckProof {
+                    rounds: vec![],
+                    final_evals: vec![],
+                },
                 splits: vec![],
             },
             stages: vec![],

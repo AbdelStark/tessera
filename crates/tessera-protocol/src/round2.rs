@@ -84,22 +84,81 @@ impl fmt::Debug for LogUpProof {
     }
 }
 
-/// The leaf stage's levels (RFC-0010 'Tree levels'), then the values of its split claims,
-/// stage 0's (RFC-0037 'Splits').
+/// The leaf stage's levels (RFC-0010 'Tree levels'), its token groups and their merge
+/// (RFC-0054 'Messages'), then the values of its split claims, stage 0's (RFC-0037 'Splits').
+///
+/// An ungrouped stage, `Round1.leaf_groups` zero, has no groups, no table roots and a merge of
+/// no rounds and no evaluations, and nothing is absorbed for them.
 #[derive(Clone, PartialEq, Eq, Encode, Decode)]
 pub struct TreeProof {
     /// `levels[ℓ]` is level `ℓ` from the roots: the one sumcheck its fraction trees and product
-    /// forests share.
+    /// forests share. In a grouped stage, the table batch's levels.
     pub levels: Vec<SumcheckProof<GoldilocksExt2>>,
-    /// The leaf stage's split values, under `stage/0/split`.
+    /// One entry per token group, in group order; empty when the stage is ungrouped.
+    pub groups: Vec<GroupProof>,
+    /// The table trees' roots, under `tables/logup/roots`; empty when the stage is ungrouped.
+    pub table_roots: Vec<GoldilocksExt2>,
+    /// The merge's rounds and evaluations, under `merge/round/{j}` and `merge/evals`; empty when
+    /// the stage is ungrouped.
+    pub merge: SumcheckProof<GoldilocksExt2>,
+    /// The leaf stage's split values, under `stage/0/split`: in a grouped stage, RFC-0037's atom
+    /// splits of the merged claims.
     pub splits: Vec<GoldilocksExt2>,
 }
 
-/// The levels' own forms and a count: tree messages are protocol-class.
+impl TreeProof {
+    /// An ungrouped leaf stage's proof: its levels and its split values.
+    pub fn ungrouped(
+        levels: Vec<SumcheckProof<GoldilocksExt2>>,
+        splits: Vec<GoldilocksExt2>,
+    ) -> Self {
+        Self {
+            levels,
+            groups: Vec::new(),
+            table_roots: Vec::new(),
+            merge: SumcheckProof {
+                rounds: Vec::new(),
+                final_evals: Vec::new(),
+            },
+            splits,
+        }
+    }
+}
+
+/// The levels' own forms and counts: tree messages are protocol-class.
 impl fmt::Debug for TreeProof {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TreeProof")
             .field("levels", &self.levels)
+            .field("groups", &self.groups)
+            .field("table_roots", &self.table_roots.len())
+            .field("merge", &self.merge)
+            .field("splits", &self.splits.len())
+            .finish()
+    }
+}
+
+/// One token group's part of a grouped leaf stage (RFC-0054 'The leaf stage with groups').
+#[derive(Clone, PartialEq, Eq, Encode, Decode)]
+pub struct GroupProof {
+    /// The roots `(n, d)` of the group's lookup trees, in schedule order, under
+    /// `group/{h}/logup/roots`.
+    pub roots: Vec<GoldilocksExt2>,
+    /// The group's levels, under `group/{h}/tree/{ℓ}/…`.
+    pub levels: Vec<SumcheckProof<GoldilocksExt2>>,
+    /// Its lookup trees' value evaluations, under `group/{h}/logup/values`.
+    pub values: Vec<GoldilocksExt2>,
+    /// Its split values, under `group/{h}/split`.
+    pub splits: Vec<GoldilocksExt2>,
+}
+
+/// Counts and the levels' own forms: group messages are protocol-class.
+impl fmt::Debug for GroupProof {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GroupProof")
+            .field("roots", &self.roots.len())
+            .field("levels", &self.levels)
+            .field("values", &self.values.len())
             .field("splits", &self.splits.len())
             .finish()
     }
