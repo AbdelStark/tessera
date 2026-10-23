@@ -84,6 +84,18 @@ A group fixes `g_T` bits of the token index and `g_L` bits of the layer index, `
 - **Tokens, interleaved.** The batch's token index is its requests' positions in claim-list order, per-dimension padded to `2^t` ([RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) rule 1). Token subset `s` holds the tokens whose low `g_T` index bits are `s`.
   - **Why interleaved.** Every subset then holds queries at every position, so causal attention loads every group alike. A contiguous range of queries would put about twice the average scores into the last group.
   - **Score tensors.** In a score tensor the token axis is the query axis. Keys are not split.
+  - **The token axis.** Each tensor has at most one token axis, derived from the graph alone, input to output, so that the prover's lowering and the verifier's (RFC-0044) agree. Lengths cannot tell it, since a head or channel axis can be as long as the sequence. With `x` an operation's first input:
+    - **Inputs.** The tokens and the positions, `[n]`, have it at axis 0. Every other input has none: weights, constants, channel classes and multipliers.
+    - **Kept.** `Add`, `Sub`, `ConstMul`, `ConstAdd`, `Rotate`, `Requant`, `TableMap`, `RsqrtRow`, `MatMulWeight` and `Mul` keep `x`'s, and `OneHot` puts it at axis 0, its tokens'.
+      - `Add` and `Sub` need their inputs' to agree.
+      - `Mul` needs its `Trailing` operand's to be `x`'s and its `Leading` operand to have none.
+      - `MatMulWeight` needs it not to be the axis the weights contract, `x`'s last.
+    - **Moved.** `Transpose` moves it with its permutation, and `Expand` past its new axis. `Sum`, `SumSquares` and `Slice` move it past an axis they remove or cut, which may not be it.
+    - **Regrouped.** `Reshape` may regroup only the axes before it. The token axis is then the output axis whose leading axes hold as many elements as `x`'s before it, and which is as long.
+    - **Rows.** `MatMulAct` and `SoftmaxRow` keep `x`'s, which must be its second-to-last axis, the queries' rows. So the scores' token axis is the query axis, and `MatMulAct`'s second operand, the keys, is never split.
+    - **Refused.** `GatherPublic` over the token axis, and `Argmax`, `InverseCdf` and `Bitwise`, which RFC-0006's Llama lowering does not emit. A graph that breaks a rule is refused at its node, `ERR-INTERNAL`.
+
+    A block's token axis is its lookup tensor's. A term read over some of a block's axes, such as a channel's class, has the token axis among them or none.
 - **Layers, interleaved.** The template's layer index, padded to `2^{n_ℓ}`, splits the same way: layer subset `o` holds the layers whose low `g_L` bits are `o`. On a node partitioned by layer range (RFC-0018 'Partitioning'), every GPU then holds a share of every group's layers.
   - Prologue and epilogue blocks belong to layer subset 0.
 - **Compute-bound groups.** A group's GEMMs multiply the weights of its layers by its tokens. An INT8 GEMM of `n` tokens performs `2n` operations per weight byte, against about 355 for H100 at 60% of its rate over 3.35 TB/s. The planner therefore keeps at least 256 tokens per group and splits layers instead.

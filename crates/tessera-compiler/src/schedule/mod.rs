@@ -32,6 +32,7 @@ mod claims;
 mod layers;
 mod natives;
 mod relations;
+mod tokens;
 
 use core::ops::Range;
 
@@ -41,6 +42,7 @@ use crate::{CompileError, Lowering};
 
 pub use layers::LayerMap;
 pub use natives::{ModelNatives, NativeKind, Request, model_natives};
+pub use tokens::token_axes;
 
 /// A coordinate of a point, by the challenge or constant that sets it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
