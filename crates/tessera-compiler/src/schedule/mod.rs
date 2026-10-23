@@ -30,6 +30,7 @@
 
 mod claims;
 mod layers;
+mod natives;
 mod relations;
 
 use core::ops::Range;
@@ -39,6 +40,7 @@ use tessera_ir::{Broadcast, CommitmentClass, Graph, NodeId, NodeKind, Op, Tensor
 use crate::{CompileError, Lowering};
 
 pub use layers::LayerMap;
+pub use natives::{ModelNatives, NativeKind, Request, model_natives};
 
 /// A coordinate of a point, by the challenge or constant that sets it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

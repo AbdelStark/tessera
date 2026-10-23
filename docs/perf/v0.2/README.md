@@ -15,7 +15,7 @@ The reports assume:
 
 - **Model.** 126 layers, `d_model = 16384`, 128 heads and 8 KV heads of width 128, `d_ff = 53248`, and vocabulary 128,256. The residual scale is `2^−7`; shifts are those of the compiler's lowering tests.
 - **Classes.** Every site after a weight takes one, two or four shift classes. A site's shifts change its gadget where a split would reach a rounding bit. Three classes also use two class-index bits, but their actual table row counts differ from four classes.
-- **Projection inputs.** Source unit costs, memory and scenario; five regenerations, and the merge's sixth, since each batch's leaf stage takes token groups ([RFC-0054](../../rfcs/RFC-0054-token-groups.md)): 256, 512, 1,024 and 8,192 at the contexts 1K, 4K, 16K and 128K, which each projection's `leaf_groups` records. Each reduction stage larger than memory adds its window's fold pass ([RFC-0055](../../rfcs/RFC-0055-windowed-stages.md)), which each projection's `reduction_stages` records. The table side is shared by a 16K-token batch ([#304](https://github.com/AbdelStark/tessera/issues/304)). Masked halves of score diagonal blocks are included, with block size 512 ([RFC-0034](../../rfcs/RFC-0034-causal-blocks.md)). Requant splits use [RFC-0028](../../rfcs/RFC-0028-balanced-split.md)'s balanced point.
+- **Projection inputs.** Source unit costs, memory and scenario; five regenerations, and the merge's sixth, since each batch's leaf stage takes token groups ([RFC-0054](../../rfcs/RFC-0054-token-groups.md)): 256, 512, 1,024 and 8,192 at the contexts 1K, 4K, 16K and 128K, which each projection's `leaf_groups` records. Each reduction stage larger than memory adds a fold pass per window ([RFC-0055](../../rfcs/RFC-0055-windowed-stages.md), [RFC-0056](../../rfcs/RFC-0056-native-working-sets.md#the-windows)), which each projection's `reduction_stages` records; with the native relations counted, both profiles window two stages, and `servable`'s stage 1 takes two windows: eight regenerations in `minimal` and nine in `servable`. The table side is shared by a 16K-token batch ([#304](https://github.com/AbdelStark/tessera/issues/304)). Masked halves of score diagonal blocks are included, with block size 512 ([RFC-0034](../../rfcs/RFC-0034-causal-blocks.md)). Requant splits use [RFC-0028](../../rfcs/RFC-0028-balanced-split.md)'s balanced point.
 
 ## Counts
 
@@ -23,9 +23,9 @@ All rows use `B_max = 32`. Committed elements include lookup outputs, split limb
 
 | Profile | Classes | Committed, per layer/token | Lookups, per layer/token | Committed, per token | Lookups, per token | `μ(1K)` | `μ(16K)` | Table rows |
 |---|---|---|---|---|---|---|---|---|
-| `servable` | 1 | 327,798 | 327,930 | 41,480,143 | 41,352,137 | 13.28 | 28.60 | 9.5 · 10^9 |
-| `servable` | 2 | 360,566 | 360,698 | 45,608,911 | 45,480,905 | 13.78 | 29.07 | 12.2 · 10^9 |
-| `servable` | 4 | 376,950 | 377,082 | 47,673,295 | 47,545,289 | 14.03 | 29.29 | 12.2 · 10^9 |
+| `servable` | 1 | 327,798 | 327,930 | 41,480,143 | 41,352,137 | 15.28 | 30.60 | 9.5 · 10^9 |
+| `servable` | 2 | 360,566 | 360,698 | 45,608,911 | 45,480,905 | 15.78 | 31.07 | 12.2 · 10^9 |
+| `servable` | 4 | 376,950 | 377,082 | 47,673,295 | 47,545,289 | 16.03 | 31.29 | 12.2 · 10^9 |
 | `minimal` | 1 | 254,070 | 270,586 | 32,190,415 | 34,126,793 | 13.34 | 28.73 | 11.1 · 10^9 |
 | `minimal` | 2 | 286,838 | 303,354 | 36,319,183 | 38,255,561 | 13.83 | 29.18 | 11.1 · 10^9 |
 | `minimal` | 4 | 286,838 | 303,354 | 36,319,183 | 38,255,561 | 13.83 | 29.18 | 11.4 · 10^9 |
@@ -34,19 +34,26 @@ Every configuration requantizes [RISK-2](../../spec/00-overview.md#9-risks)'s el
 
 ## Reduction stages
 
-Each report lists its reduction stages' sumcheck tables (`stage_tables`, [RFC-0055](../../rfcs/RFC-0055-windowed-stages.md#working-sets)). Each class is `count` tables of `2^{log2_entries}` entries, per token or fixed. They are the same at every class count.
+Each report lists its reduction stages' sumcheck tables (`stage_tables`, [RFC-0055](../../rfcs/RFC-0055-windowed-stages.md#working-sets), [RFC-0056](../../rfcs/RFC-0056-native-working-sets.md)). The tables come from the compiler's composed schedule, the prover's native relations and a request with outputs included, shared tables counted once.
+- **A class.** Each class is `count + count_per_bit·b` tables of `2^{log2_entries}` entries of `bytes` bytes, `b` the bits of a request's positions, grown with a batch of `T` tokens at context `S`: not at all, by `T`, by `max(T, S)` (the keys), or by `T·S` (the score tensor).
+- **Its holding.** Windowable, an elementwise operand; resident, held whole; or computed, never held: `SoftmaxRow`'s score instances.
+- **Residents.** Each stage with score instances also lists their prover's residents: the INT8 queries and keys, and two row tables.
+- **By class count.** The tables are the same at every class count.
 
-| Profile | Stage | Entries per token | Fixed entries | At 16K tokens, 16 B per entry | Window over 0.2 TB |
-|---|---|---|---|---|---|
-| `minimal` | 1 | 15,548,416 | 33,587,200 | 4.08 TB | 6 rounds |
-| `minimal` | 2 | 20,971,520 | 8,650,752 | 5.50 TB | 6 rounds |
-| `minimal` | 3 | 32,768 | 4,194,304 | 8.7 GB | none |
-| `servable` | 1 | 36,519,936 | 37,781,504 | 9.57 TB | 8 rounds |
-| `servable` | 2 | 32,768 | 8,650,752 | 8.7 GB | none |
+At 16K tokens:
 
-Every fixed class is a matrix product's, which no window folds. These classes cover the compiler's stage schedule; the native gadget relations the prover composes into stage 1, `SoftmaxRow`'s score instances among them, are not counted yet ([#458](https://github.com/AbdelStark/tessera/issues/458)).
+| Profile | Stage | Held at 1K to 128K context | Rounds at 1K, 16K, 128K | Windows |
+|---|---|---|---|---|
+| `minimal` | 1 | 6.14 to 6.43 TB | 11, 15, 18 | 1 |
+| `minimal` | 2 | 6.60 TB | 7 | 1 |
+| `minimal` | 3 | 8.7 GB | none | |
+| `servable` | 1 | 11.63 to 11.92 TB | 11, 15, 18 | 2 |
+| `servable` | 2 | 1.11 TB | 3 | 1 |
 
-A window counts each table's front padding. `servable`'s stage 1 holds 4.4 TB unpadded and 4.9 TB padded by two variables, so it takes 8 rounds where its total alone would suggest 6.
+- **The score tensor.** The tokens-and-context class is `SoftmaxRow`'s key and forest instances over it: about 8.8 TB at 1K context and 141 TB at 16K were they held. RFC-0056's prover holds only its residents, about 45 GB, 60 GB at 128K.
+- **The greedy certificate.** Its relations over the logits grow by two tables per bit of a request: 1.17 TB of stage 1 at 16K.
+- **The windows' rounds.** The score instances front-pad every other instance of stage 1, so its rounds grow with the context. The own variables they bind stay the same: eight and seven for most of `minimal`'s windowed entries, ten for `servable`'s stage 1, which takes two windows of five.
+- **The roots' products.** They leave thirty claims on each norm's sum of squares, which stage 2 proves as one shared instance. That puts `servable`'s stage 2 over the memory too.
 
 ## RISK-2
 

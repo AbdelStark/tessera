@@ -6,86 +6,178 @@
     "native_ops_lin": 811698487296.0,
     "reduction_stages": [
       {
-        "tables": [
+        "residents": [
           {
-            "count": 5,
-            "log2_entries": 14,
-            "per_token": true,
-            "windowable": true
+            "bytes": 1,
+            "count": 1,
+            "count_per_bit": 0,
+            "growth": "keys",
+            "kind": "resident",
+            "log2_entries": 17
           },
           {
-            "count": 6,
-            "log2_entries": 17,
-            "per_token": true,
-            "windowable": true
-          },
-          {
-            "count": 7,
-            "log2_entries": 21,
-            "per_token": true,
-            "windowable": true
-          },
-          {
+            "bytes": 16,
             "count": 2,
-            "log2_entries": 14,
-            "per_token": false,
-            "windowable": false
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "resident",
+            "log2_entries": 14
           },
           {
-            "count": 8,
-            "log2_entries": 21,
-            "per_token": false,
-            "windowable": false
-          },
-          {
-            "count": 2,
-            "log2_entries": 23,
-            "per_token": false,
-            "windowable": false
+            "bytes": 1,
+            "count": 1,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "resident",
+            "log2_entries": 21
           }
-        ]
-      },
-      {
+        ],
         "tables": [
           {
-            "count": 2,
-            "log2_entries": 21,
-            "per_token": true,
-            "windowable": true
-          },
-          {
-            "count": 2,
-            "log2_entries": 23,
-            "per_token": true,
-            "windowable": true
-          },
-          {
-            "count": 2,
-            "log2_entries": 17,
-            "per_token": false,
-            "windowable": false
-          },
-          {
+            "bytes": 16,
             "count": 4,
-            "log2_entries": 21,
-            "per_token": false,
-            "windowable": false
+            "count_per_bit": 0,
+            "growth": "tokens_and_context",
+            "kind": "computed",
+            "log2_entries": 14
+          },
+          {
+            "bytes": 16,
+            "count": 9,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 0
+          },
+          {
+            "bytes": 16,
+            "count": 18,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 7
+          },
+          {
+            "bytes": 16,
+            "count": 10,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 14
+          },
+          {
+            "bytes": 16,
+            "count": 6,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 17
+          },
+          {
+            "bytes": 16,
+            "count": 6,
+            "count_per_bit": 2,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 17
+          },
+          {
+            "bytes": 16,
+            "count": 9,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 21
+          },
+          {
+            "bytes": 16,
+            "count": 6,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 21
+          },
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 23
           }
         ]
       },
       {
+        "residents": [],
         "tables": [
           {
-            "count": 2,
-            "log2_entries": 14,
-            "per_token": true,
-            "windowable": false
+            "bytes": 16,
+            "count": 1,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 14
           },
           {
+            "bytes": 16,
+            "count": 4,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 21
+          },
+          {
+            "bytes": 16,
             "count": 2,
-            "log2_entries": 21,
-            "per_token": false,
-            "windowable": false
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 23
+          },
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 14
+          },
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 17
+          },
+          {
+            "bytes": 16,
+            "count": 6,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 21
+          }
+        ]
+      },
+      {
+        "residents": [],
+        "tables": [
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "resident",
+            "log2_entries": 14
+          },
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 21
           }
         ]
       }
@@ -200,16 +292,22 @@
       "proof_time_s": 1.173498721796098,
       "reduction_stages": [
         {
-          "bytes": 4076461359104.0,
-          "window_rounds": 6
+          "bytes": 6136436883456.0,
+          "own_vars": 8,
+          "window_rounds": 11,
+          "windows": 1
         },
         {
-          "bytes": 5497696550912.0,
-          "window_rounds": 6
+          "bytes": 6601570779136.0,
+          "own_vars": 7,
+          "window_rounds": 7,
+          "windows": 1
         },
         {
           "bytes": 8657043456.0,
-          "window_rounds": 0
+          "own_vars": 0,
+          "window_rounds": 0,
+          "windows": 0
         }
       ],
       "sampling_rate": 0.024983886938945717,
@@ -233,16 +331,22 @@
       "proof_time_s": 5.933808711011724,
       "reduction_stages": [
         {
-          "bytes": 4076461359104.0,
-          "window_rounds": 6
+          "bytes": 6273875836928.0,
+          "own_vars": 8,
+          "window_rounds": 13,
+          "windows": 1
         },
         {
-          "bytes": 5497696550912.0,
-          "window_rounds": 6
+          "bytes": 6601570779136.0,
+          "own_vars": 7,
+          "window_rounds": 7,
+          "windows": 1
         },
         {
           "bytes": 8657043456.0,
-          "window_rounds": 0
+          "own_vars": 0,
+          "window_rounds": 0,
+          "windows": 0
         }
       ],
       "sampling_rate": 0.02007096477365828,
@@ -266,16 +370,22 @@
       "proof_time_s": 43.57225602528421,
       "reduction_stages": [
         {
-          "bytes": 4076461359104.0,
-          "window_rounds": 6
+          "bytes": 6411314790400.0,
+          "own_vars": 8,
+          "window_rounds": 15,
+          "windows": 1
         },
         {
-          "bytes": 5497696550912.0,
-          "window_rounds": 6
+          "bytes": 6601570779136.0,
+          "own_vars": 7,
+          "window_rounds": 7,
+          "windows": 1
         },
         {
           "bytes": 8657043456.0,
-          "window_rounds": 0
+          "own_vars": 0,
+          "window_rounds": 0,
+          "windows": 0
         }
       ],
       "sampling_rate": 0.011602738933210788,
@@ -299,16 +409,22 @@
       "proof_time_s": 1829.7422964013265,
       "reduction_stages": [
         {
-          "bytes": 4076461359104.0,
-          "window_rounds": 6
+          "bytes": 6426347175936.0,
+          "own_vars": 8,
+          "window_rounds": 18,
+          "windows": 1
         },
         {
-          "bytes": 5497696550912.0,
-          "window_rounds": 6
+          "bytes": 6601570779136.0,
+          "own_vars": 7,
+          "window_rounds": 7,
+          "windows": 1
         },
         {
           "bytes": 8657043456.0,
-          "window_rounds": 0
+          "own_vars": 0,
+          "window_rounds": 0,
+          "windows": 0
         }
       ],
       "sampling_rate": 0.0034006815920413387,
@@ -322,95 +438,181 @@
   },
   "stage_tables": [
     {
+      "residents": [
+        {
+          "bytes": 1,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "keys",
+          "kind": "resident",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "resident",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 1,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "resident",
+          "log2_entries": 21
+        }
+      ],
       "stage": 1,
-      "table_entries_fixed": 33587200,
-      "table_entries_per_token": 15548416,
       "tables": [
         {
-          "count": 5,
-          "log2_entries": 14,
-          "per_token": true,
-          "windowable": true
-        },
-        {
-          "count": 6,
-          "log2_entries": 17,
-          "per_token": true,
-          "windowable": true
-        },
-        {
-          "count": 7,
-          "log2_entries": 21,
-          "per_token": true,
-          "windowable": true
-        },
-        {
-          "count": 2,
-          "log2_entries": 14,
-          "per_token": false,
-          "windowable": false
-        },
-        {
-          "count": 8,
-          "log2_entries": 21,
-          "per_token": false,
-          "windowable": false
-        },
-        {
-          "count": 2,
-          "log2_entries": 23,
-          "per_token": false,
-          "windowable": false
-        }
-      ]
-    },
-    {
-      "stage": 2,
-      "table_entries_fixed": 8650752,
-      "table_entries_per_token": 20971520,
-      "tables": [
-        {
-          "count": 2,
-          "log2_entries": 21,
-          "per_token": true,
-          "windowable": true
-        },
-        {
-          "count": 2,
-          "log2_entries": 23,
-          "per_token": true,
-          "windowable": true
-        },
-        {
-          "count": 2,
-          "log2_entries": 17,
-          "per_token": false,
-          "windowable": false
-        },
-        {
+          "bytes": 16,
           "count": 4,
-          "log2_entries": 21,
-          "per_token": false,
-          "windowable": false
+          "count_per_bit": 0,
+          "growth": "tokens_and_context",
+          "kind": "computed",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 16,
+          "count": 9,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 0
+        },
+        {
+          "bytes": 16,
+          "count": 18,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 7
+        },
+        {
+          "bytes": 16,
+          "count": 10,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 16,
+          "count": 6,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 6,
+          "count_per_bit": 2,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 9,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 21
+        },
+        {
+          "bytes": 16,
+          "count": 6,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 21
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 23
         }
       ]
     },
     {
-      "stage": 3,
-      "table_entries_fixed": 4194304,
-      "table_entries_per_token": 32768,
+      "residents": [],
+      "stage": 2,
       "tables": [
         {
-          "count": 2,
-          "log2_entries": 14,
-          "per_token": true,
-          "windowable": false
+          "bytes": 16,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 14
         },
         {
+          "bytes": 16,
+          "count": 4,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 21
+        },
+        {
+          "bytes": 16,
           "count": 2,
-          "log2_entries": 21,
-          "per_token": false,
-          "windowable": false
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 23
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 6,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 21
+        }
+      ]
+    },
+    {
+      "residents": [],
+      "stage": 3,
+      "tables": [
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "resident",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 21
         }
       ]
     }

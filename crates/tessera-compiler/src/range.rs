@@ -473,7 +473,7 @@ fn keys(kind: &TableKind) -> Option<(i128, i128)> {
 /// largest root any row can have, `⌊√(d · 2^{2κ} / e)⌋` at a sum of 0, with a minimum of one bit
 /// (RFC-0050). `None` when `e = 0` leaves
 /// the roots unbounded, or when `w` exceeds the 32 bits of one lookup.
-fn root_bits(kappa: u8, eps_int: u64, dim: u32) -> Option<u32> {
+pub(crate) fn root_bits(kappa: u8, eps_int: u64, dim: u32) -> Option<u32> {
     // d < 2^32 and κ ≤ 31 keep N below 2^94.
     let big = u128::from(dim) << (2 * u32::from(kappa));
     let quotient = big.checked_div(u128::from(eps_int))?;

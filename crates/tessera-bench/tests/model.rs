@@ -11,26 +11,48 @@
 //! the model cannot price is refused, never turned into a number.
 
 use tessera_bench::{
-    Counts, MemoryModel, ModelError, ModelReport, MuBreakdown, Problem, ReductionStage, Scenario,
-    StageTable, TENSOR_BYTES_PER_LEAF, UnitCosts, detection_probability, leaf_plan, mu,
-    proof_time_s, sampling_rate, shared_streaming_passes, stage_plan,
+    Counts, Growth, Holding, MAX_WINDOW_VARS, MemoryModel, ModelError, ModelReport, MuBreakdown,
+    Problem, ReductionStage, Scenario, StageTable, TENSOR_BYTES_PER_LEAF, UnitCosts,
+    detection_probability, leaf_plan, mu, proof_time_s, sampling_rate, shared_streaming_passes,
+    stage_plan,
 };
 
 /// A tables class of a reduction stage.
-fn tables(per_token: bool, log2_entries: u32, count: f64) -> StageTable {
+fn tables(growth: Growth, log2_entries: u32, count: f64) -> StageTable {
     StageTable {
-        per_token,
-        windowable: true,
+        growth,
+        kind: Holding::Windowable,
         log2_entries,
         count,
+        count_per_bit: 0.0,
+        bytes: 16.0,
+    }
+}
+
+/// A class of any growth, holding and width.
+fn class(
+    growth: Growth,
+    kind: Holding,
+    log2_entries: u32,
+    count: f64,
+    count_per_bit: f64,
+    bytes: f64,
+) -> StageTable {
+    StageTable {
+        growth,
+        kind,
+        log2_entries,
+        count,
+        count_per_bit,
+        bytes,
     }
 }
 
 /// A class of a matrix product's tables, which no window folds.
-fn resident(per_token: bool, log2_entries: u32, count: f64) -> StageTable {
+fn resident(growth: Growth, log2_entries: u32, count: f64) -> StageTable {
     StageTable {
-        windowable: false,
-        ..tables(per_token, log2_entries, count)
+        kind: Holding::Resident,
+        ..tables(growth, log2_entries, count)
     }
 }
 
@@ -47,7 +69,11 @@ fn every_term() -> (Counts, UnitCosts, MemoryModel) {
         table_rows: 2e10,
         score_block: 512.0,
         reduction_stages: vec![ReductionStage {
-            tables: vec![tables(true, 23, 2.0), tables(false, 21, 4.0)],
+            tables: vec![
+                tables(Growth::Tokens, 23, 2.0),
+                tables(Growth::Fixed, 21, 4.0),
+            ],
+            residents: Vec::new(),
         }],
         ..Counts::SOURCE_405B
     };
@@ -428,7 +454,10 @@ fn each_table_row_costs_a_committed_lookup_once_per_batch() {
 fn a_stage_takes_the_fewest_window_rounds_after_which_its_tables_fit() {
     let stage = |classes: Vec<StageTable>| Counts {
         regen_full_equivalents: 5.0,
-        reduction_stages: vec![ReductionStage { tables: classes }],
+        reduction_stages: vec![ReductionStage {
+            tables: classes,
+            residents: Vec::new(),
+        }],
         ..Counts::SOURCE_405B
     };
     let memory = |free_bytes: f64| MemoryModel {
@@ -436,11 +465,11 @@ fn a_stage_takes_the_fewest_window_rounds_after_which_its_tables_fit() {
         ..MemoryModel::NODE_405B
     };
     let window = |counts: &Counts, free: f64, batch: u32| {
-        stage_plan(counts, &memory(free), batch).map(|p| (p[0].bytes, p[0].window_rounds))
+        stage_plan(counts, &memory(free), 1024, batch).map(|p| (p[0].bytes, p[0].window_rounds))
     };
     // One table of 2^20 entries per token: 2^34 entries, 2^38 bytes, at 2^14 tokens. Each halving
     // of the memory adds a round.
-    let one = stage(vec![tables(true, 20, 1.0)]);
+    let one = stage(vec![tables(Growth::Tokens, 20, 1.0)]);
     let bytes = f64::from(2u8).powi(38);
     for k in 0..=12 {
         let free = bytes / f64::from(1u32 << k);
@@ -454,11 +483,14 @@ fn a_stage_takes_the_fewest_window_rounds_after_which_its_tables_fit() {
     assert_eq!(window(&one, bytes / 2.0, 3 << 12), Ok((bytes, 1)));
     // Front padding. Beside it, four tables of 2^18 entries per token are padded by 2: a window
     // of c rounds folds them by 2^{c − 2} only. Half the memory takes three rounds, not one.
-    let padded = stage(vec![tables(true, 20, 1.0), tables(true, 18, 4.0)]);
+    let padded = stage(vec![
+        tables(Growth::Tokens, 20, 1.0),
+        tables(Growth::Tokens, 18, 4.0),
+    ]);
     assert_eq!(window(&padded, bytes, 1 << 14), Ok((2.0 * bytes, 3)));
     assert_eq!(window(&padded, 2.0 * bytes, 1 << 14), Ok((2.0 * bytes, 0)));
     // Fixed tables do not grow with the batch.
-    let fixed = stage(vec![tables(false, 34, 1.0)]);
+    let fixed = stage(vec![tables(Growth::Fixed, 34, 1.0)]);
     for batch in [1u32 << 10, 1 << 14, 1 << 17] {
         assert_eq!(
             window(&fixed, bytes / 4.0, batch),
@@ -477,21 +509,24 @@ fn a_stage_takes_the_fewest_window_rounds_after_which_its_tables_fit() {
     assert_eq!(window(&padded, 159.0, 1 << 14), too_small);
     // A matrix product's tables stay whole: a stage of them alone has no window, and beside
     // windowed ones they count in full, so the window must fold the others further.
-    let product = stage(vec![resident(true, 20, 1.0)]);
+    let product = stage(vec![resident(Growth::Tokens, 20, 1.0)]);
     assert_eq!(window(&product, bytes, 1 << 14), Ok((bytes, 0)));
     assert_eq!(window(&product, bytes / 2.0, 1 << 14), too_small);
-    let beside = stage(vec![tables(true, 20, 1.0), resident(false, 30, 1.0)]);
+    let beside = stage(vec![
+        tables(Growth::Tokens, 20, 1.0),
+        resident(Growth::Fixed, 30, 1.0),
+    ]);
     let whole = 16.0 * f64::from(2u8).powi(30);
     assert_eq!(
         window(&beside, whole + bytes / 4.0, 1 << 14),
         Ok((bytes + whole, 2))
     );
     // Only the windowed tables' entries are folded and priced.
-    let plan = stage_plan(&beside, &memory(whole + bytes / 4.0), 1 << 14).expect("a plan");
+    let plan = stage_plan(&beside, &memory(whole + bytes / 4.0), 1024, 1 << 14).expect("a plan");
     assert_eq!(plan[0].windowed_entries, f64::from(2u8).powi(34));
     // A batch beyond 2^31 tokens pads beyond u32 and is refused, never wrapped.
     assert_eq!(
-        stage_plan(&one, &memory(bytes), (1 << 31) + 1),
+        stage_plan(&one, &memory(bytes), 1024, (1 << 31) + 1),
         Err(ModelError::Input {
             name: "batch_tokens",
             problem: Problem::TooLarge
@@ -525,56 +560,226 @@ fn a_stage_takes_the_fewest_window_rounds_after_which_its_tables_fit() {
     assert_eq!(base(&uncounted, bytes / 2.0).regen, 0.0);
 }
 
-/// The reduction stages' tables of `minimal`'s two-class report at `B_max = 32`
-/// (`docs/perf/v0.2/`, RFC-0055): stages 1 to 3, by size, per token or fixed.
-fn minimal_stages() -> Vec<ReductionStage> {
-    vec![
-        ReductionStage {
-            tables: vec![
-                tables(true, 14, 5.0),
-                tables(true, 17, 6.0),
-                tables(true, 21, 7.0),
-                resident(false, 14, 2.0),
-                resident(false, 21, 8.0),
-                resident(false, 23, 2.0),
-            ],
-        },
-        ReductionStage {
-            tables: vec![
-                tables(true, 21, 2.0),
-                tables(true, 23, 2.0),
-                resident(false, 17, 2.0),
-                resident(false, 21, 4.0),
-            ],
-        },
-        ReductionStage {
-            tables: vec![resident(true, 14, 2.0), resident(false, 21, 2.0)],
-        },
-    ]
+/// RFC-0056's classes and windows.
+/// - **Growth.** A table gains the batch's bits per token, the larger of the batch's and the
+///   context's for the keys, and both for the score tensor; its per-bit copies count once per bit
+///   of a request, the fewer of the two.
+/// - **Computed.** A score instance holds nothing, but its variables front-pad the others.
+/// - **Windows.** Rounds that bind more than eight own variables of an instance take a window per
+///   eight, each a fold pass that folds the windowed entries again; front padding binds none.
+#[test]
+fn classes_grow_with_the_batch_and_the_context_and_wide_windows_split() {
+    let stage = |classes: Vec<StageTable>| Counts {
+        regen_full_equivalents: 5.0,
+        reduction_stages: vec![ReductionStage {
+            tables: classes,
+            residents: Vec::new(),
+        }],
+        ..Counts::SOURCE_405B
+    };
+    let memory = |free_bytes: f64| MemoryModel {
+        free_bytes,
+        ..MemoryModel::NODE_405B
+    };
+    let plan = |counts: &Counts, free: f64, context: u32, batch: u32| {
+        stage_plan(counts, &memory(free), context, batch).map(|p| p[0])
+    };
+    let pow2 = |n: i32| f64::from(2u8).powi(n);
+    // One INT8 table of 2^10 entries per unit of growth, held whole, at 2^4 tokens and 2^12
+    // positions of context, and the other way round.
+    let held = |growth, count, per_bit, context, batch| {
+        let one = stage(vec![class(
+            growth,
+            Holding::Resident,
+            10,
+            count,
+            per_bit,
+            1.0,
+        )]);
+        plan(&one, 1e30, context, batch).map(|w| w.bytes)
+    };
+    for (growth, short, long) in [
+        (Growth::Fixed, 10, 10),
+        (Growth::Tokens, 14, 22),
+        (Growth::Keys, 22, 22),
+        (Growth::TokensAndContext, 26, 26),
+    ] {
+        assert_eq!(
+            held(growth, 1.0, 0.0, 1 << 12, 1 << 4),
+            Ok(pow2(short)),
+            "{growth:?}"
+        );
+        assert_eq!(
+            held(growth, 1.0, 0.0, 1 << 4, 1 << 12),
+            Ok(pow2(long)),
+            "{growth:?}"
+        );
+    }
+    // Three tables and two per bit of the shorter of the batch and the context.
+    for (context, batch, tables) in [
+        (1 << 12, 1 << 4, 11.0),
+        (1 << 4, 1 << 12, 11.0),
+        (1 << 12, 1 << 12, 27.0),
+    ] {
+        assert_eq!(
+            held(Growth::Fixed, 3.0, 2.0, context, batch),
+            Ok(tables * pow2(10)),
+            "{context}, {batch}"
+        );
+    }
+    // A score instance of 2^{10 + 4 + 6} entries beside a table of 2^{10 + 4}: the stage holds
+    // the table alone, front-padded by the context's 6 bits, so halving the memory takes 7 rounds
+    // instead of 1.
+    let table = tables(Growth::Tokens, 10, 1.0);
+    let scores = class(
+        Growth::TokensAndContext,
+        Holding::Computed,
+        10,
+        1.0,
+        0.0,
+        16.0,
+    );
+    let bytes = 16.0 * pow2(14);
+    let alone = stage(vec![table]);
+    let beside = stage(vec![scores, table]);
+    let rounds = |counts: &Counts| {
+        plan(counts, bytes / 2.0, 1 << 6, 1 << 4).map(|w| (w.bytes, w.window_rounds, w.own_vars))
+    };
+    assert_eq!(rounds(&alone), Ok((bytes, 1, 1)));
+    assert_eq!(rounds(&beside), Ok((bytes, 7, 1)));
+    // Residents are held whole but are no instance: an INT8 resident of 2^{16 + 6} entries beside
+    // them sets none of the rounds, so the table, padded by the context's bits only, still folds
+    // after 7 rounds.
+    let keys = class(Growth::Keys, Holding::Resident, 16, 1.0, 0.0, 1.0);
+    let with_keys = Counts {
+        reduction_stages: vec![ReductionStage {
+            tables: vec![scores, table],
+            residents: vec![keys],
+        }],
+        ..beside.clone()
+    };
+    assert_eq!(
+        plan(&with_keys, pow2(22) + bytes / 2.0, 1 << 6, 1 << 4).map(|w| (
+            w.bytes,
+            w.window_rounds,
+            w.own_vars
+        )),
+        Ok((pow2(22) + bytes, 7, 1))
+    );
+    // Windows: one table of 2^20 entries per token at 2^14 tokens. Eight own variables take one
+    // window, nine two, seventeen three.
+    let one = stage(vec![tables(Growth::Tokens, 20, 1.0)]);
+    let whole = 16.0 * pow2(34);
+    let windows = |counts: &Counts, rounds: i32, context: u32| {
+        plan(counts, whole / pow2(rounds), context, 1 << 14)
+            .map(|w| (w.window_rounds, w.own_vars, w.windows, w.fold_passes()))
+    };
+    assert_eq!(windows(&one, 8, 1024), Ok((8, 8, 1, 1)));
+    assert_eq!(windows(&one, 9, 1024), Ok((9, 9, 2, 2)));
+    assert_eq!(windows(&one, 17, 1024), Ok((17, 17, 3, 3)));
+    // Front padding binds no own variable: beside a score instance padding the table by ten
+    // (2^4 positions of context), eighteen rounds bind eight of its own and take one window.
+    let padded = stage(vec![
+        class(
+            Growth::TokensAndContext,
+            Holding::Computed,
+            20,
+            1.0,
+            0.0,
+            16.0,
+        ),
+        tables(Growth::Tokens, 20, 1.0),
+    ]);
+    assert_eq!(MAX_WINDOW_VARS, 8);
+    assert_eq!(
+        plan(&padded, whole / pow2(8), 1 << 10, 1 << 14).map(|w| (
+            w.window_rounds,
+            w.own_vars,
+            w.windows
+        )),
+        Ok((18, 8, 1))
+    );
+    // μ: each window is a regeneration and folds every windowed entry once more. A table of
+    // 2^28 entries per token in 2^37 bytes takes two windows, against a table that fits.
+    let large = stage(vec![tables(Growth::Tokens, 28, 1.0)]);
+    let small = stage(vec![tables(Growth::Tokens, 0, 1.0)]);
+    let costs = UnitCosts {
+        window_ps: 2.0,
+        ..UnitCosts::SOURCE
+    };
+    let at = |counts: &Counts| {
+        mu(counts, &costs, &memory(pow2(37)), 1024, 1 << 14).expect("a projection")
+    };
+    let (fits, two) = (at(&small), at(&large));
+    assert_eq!(two.regen - fits.regen, 2.0);
+    let native =
+        (large.native_ops_lin + large.native_ops_att_per_ctx * 1024.0) / costs.native_ops_per_s;
+    let folds = 2.0 * 2e-12 * pow2(42) / pow2(14) / native;
+    assert!(
+        (two.streaming - fits.streaming - folds).abs() <= 1e-12 * folds,
+        "the folds: {} against {folds}",
+        two.streaming - fits.streaming
+    );
 }
 
-/// The same for `servable`'s two-class report: stages 1 and 2.
+/// The reduction stages' tables and residents of `profile`'s two-class report at `B_max = 32`
+/// (`docs/perf/v0.2/`, RFC-0055, RFC-0056), stage 1 first, as the committed report states them:
+/// `commitment_report` holds the report to the compiler's.
+fn report_stages(profile: &str) -> Vec<ReductionStage> {
+    let path = format!(
+        "{}/../../docs/perf/v0.2/commitment-report-405b-{profile}-c2-b32.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("the report")).expect("JSON");
+    let classes = |stage: &serde_json::Value, key: &str| -> Vec<StageTable> {
+        stage[key]
+            .as_array()
+            .expect("the classes")
+            .iter()
+            .map(|t| {
+                let number = |key: &str| t[key].as_f64().expect("a number");
+                class(
+                    match t["growth"].as_str().expect("a growth") {
+                        "fixed" => Growth::Fixed,
+                        "tokens" => Growth::Tokens,
+                        "keys" => Growth::Keys,
+                        "tokens_and_context" => Growth::TokensAndContext,
+                        other => panic!("no growth {other}"),
+                    },
+                    match t["kind"].as_str().expect("a holding") {
+                        "windowable" => Holding::Windowable,
+                        "resident" => Holding::Resident,
+                        "computed" => Holding::Computed,
+                        other => panic!("no holding {other}"),
+                    },
+                    u32::try_from(t["log2_entries"].as_u64().expect("a size")).expect("a size"),
+                    number("count"),
+                    number("count_per_bit"),
+                    number("bytes"),
+                )
+            })
+            .collect()
+    };
+    report["counts"]["reduction_stages"]
+        .as_array()
+        .expect("the stages")
+        .iter()
+        .map(|stage| ReductionStage {
+            tables: classes(stage, "tables"),
+            residents: classes(stage, "residents"),
+        })
+        .collect()
+}
+
+/// `minimal`'s stages 1 to 3.
+fn minimal_stages() -> Vec<ReductionStage> {
+    report_stages("minimal")
+}
+
+/// `servable`'s stages 1 and 2.
 fn servable_stages() -> Vec<ReductionStage> {
-    vec![
-        ReductionStage {
-            tables: vec![
-                tables(true, 14, 5.0),
-                tables(true, 17, 6.0),
-                tables(true, 21, 9.0),
-                tables(true, 23, 2.0),
-                resident(false, 14, 2.0),
-                resident(false, 21, 10.0),
-                resident(false, 23, 2.0),
-            ],
-        },
-        ReductionStage {
-            tables: vec![
-                resident(true, 14, 2.0),
-                resident(false, 17, 2.0),
-                resident(false, 21, 4.0),
-            ],
-        },
-    ]
+    report_stages("servable")
 }
 
 /// The corrected 405B projections that 08 §3, SC-2, RISK-9 and RISK-10 quote, each to the digits
@@ -584,10 +789,12 @@ fn servable_stages() -> Vec<ReductionStage> {
 /// the table rows of the two-class report at `B_max = 32` with RFC-0028's balanced split
 /// (`docs/perf/v0.2/`), RFC-0034's score block of 512, and the report's reduction stages. The
 /// 16K-token batch's leaf stage is grouped at every context, so its merge adds a sixth
-/// regeneration (RFC-0054), and its stages 1 and 2 are windowed, a seventh and an eighth
-/// (RFC-0055). The column answers are free or priced as committing is, 30 ps per element; the
-/// merge's folds are free or priced at RFC-0054's 2 or 4 ps per element, the table trees'
-/// streamed rounds at 6 or 8 ps per leaf, and the windows at RFC-0055's 1 or 8 ps per entry. A change to the model that moves one fails here until the documents follow.
+/// regeneration (RFC-0054), and its stages 1 and 2 take a window each, a seventh and an eighth
+/// (RFC-0055), the native relations counted (RFC-0056). The column answers are free or priced
+/// as committing is, 30 ps per element; the merge's folds are free or priced at RFC-0054's 2 or
+/// 4 ps per element, the table trees' streamed rounds at 6 or 8 ps per leaf, and the windows,
+/// which bind up to eight own variables, at RFC-0056's 6 or 17 ps per entry. A change to the
+/// model that moves one fails here until the documents follow.
 #[test]
 fn the_corrected_projections_are_the_ones_the_documents_quote() {
     let corrected = Counts {
@@ -636,13 +843,39 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
     let (mu1, mu16) = (base1.total, base16.total);
     // RISK-9: five regenerations, the merge's sixth, and the two windows' folds (RFC-0055).
     assert_eq!((base1.regen, base16.regen), (8.0, 8.0));
-    let windows = stage_plan(&corrected, &MemoryModel::NODE_405B, BATCH).expect("a plan");
-    let windows: Vec<(f64, u32)> = windows
+    let windows = stage_plan(&corrected, &MemoryModel::NODE_405B, 16_384, BATCH).expect("a plan");
+    let windows: Vec<(f64, u32, u32)> = windows
         .iter()
-        .map(|w| ((w.bytes / 1e10).round() / 100.0, w.window_rounds))
+        .map(|w| ((w.bytes / 1e10).round() / 100.0, w.window_rounds, w.windows))
         .collect();
-    assert_eq!(windows, [(4.08, 6), (5.5, 6), (0.01, 0)]);
+    assert_eq!(windows, [(6.41, 15, 1), (6.6, 7, 1), (0.01, 0, 0)]);
     quoted("μ(1K)", mu1, 13.8, 1);
+    // RFC-0055 Alternative 4 and RFC-0056 'At 405B': at 256 tokens the stages fit, and the batch
+    // still costs more at 2,048 tokens than at 16K.
+    for (batch, windows, (one, sixteen)) in [
+        (256, [0, 0, 0], (16.1, 31.2)),
+        (2048, [1, 1, 0], (14.2, 29.6)),
+    ] {
+        let plan = stage_plan(&corrected, &MemoryModel::NODE_405B, k16, batch).expect("a plan");
+        assert_eq!(
+            plan.iter().map(|w| w.windows).collect::<Vec<_>>(),
+            windows,
+            "at {batch} tokens"
+        );
+        let mu_at = |context| {
+            mu(
+                &corrected,
+                &UnitCosts::SOURCE,
+                &MemoryModel::NODE_405B,
+                context,
+                batch,
+            )
+            .expect("a projection")
+            .total
+        };
+        quoted(&format!("μ(1K) at {batch} tokens"), mu_at(k1), one, 1);
+        quoted(&format!("μ(16K) at {batch} tokens"), mu_at(k16), sixteen, 1);
+    }
     quoted("μ(4K)", at(&corrected, k4, free).total, 17.0, 1);
     quoted("μ(16K)", mu16, 29.1, 1);
     quoted("μ(128K)", at(&corrected, k128, free).total, 98.3, 1);
@@ -699,13 +932,13 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
     quoted("16K headroom at c_c", 45.0 / full16.total, 1.25, 2);
     // RISK-10, 08 §3 and SC-2: RFC-0054's plan. The batch takes 256, 512, 1,024 and 8,192 groups
     // and its table trees stream one round. The merge's folds at 2 and 4 ps per element; the
-    // table trees' round at 6 or 8 ps per leaf adds under 0.005. RFC-0055's windows at 1 and 8 ps
-    // per entry.
+    // table trees' round at 6 or 8 ps per leaf adds under 0.005. RFC-0056's windows at 6 and 17
+    // ps per entry.
     for (context, groups, low, high, (window_low, window_high)) in [
-        (k1, 256, 0.16, 0.32, (0.05, 0.42)),
-        (k4, 512, 0.30, 0.60, (0.05, 0.42)),
-        (k16, 1024, 0.82, 1.63, (0.05, 0.39)),
-        (k128, 8192, 3.78, 7.56, (0.03, 0.26)),
+        (k1, 256, 0.16, 0.32, (0.42, 1.20)),
+        (k4, 512, 0.30, 0.60, (0.42, 1.19)),
+        (k16, 1024, 0.82, 1.63, (0.40, 1.14)),
+        (k128, 8192, 3.78, 7.56, (0.26, 0.74)),
     ] {
         let plan = leaf_plan(&corrected, &MemoryModel::NODE_405B, context, BATCH).expect("a plan");
         assert_eq!(
@@ -731,14 +964,14 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
             "table rounds at {context}: {rounds}"
         );
         quoted(
-            &format!("windows at 1 ps, {context}"),
-            at(&corrected, context, [0.0, 0.0, 0.0, 1.0]).streaming,
+            &format!("windows at 6 ps, {context}"),
+            at(&corrected, context, [0.0, 0.0, 0.0, 6.0]).streaming,
             window_low,
             2,
         );
         quoted(
-            &format!("windows at 8 ps, {context}"),
-            at(&corrected, context, [0.0, 0.0, 0.0, 8.0]).streaming,
+            &format!("windows at 17 ps, {context}"),
+            at(&corrected, context, [0.0, 0.0, 0.0, 17.0]).streaming,
             window_high,
             2,
         );
@@ -769,36 +1002,36 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
         }
     }
     // 08 §3 and SC-2: with the merge, the table round and the windows at their upper estimates,
-    // and c_a = c_c, 16.6 at 1K, 39% above that ceiling, and 38.1 at 16K, 1.18 times below it.
-    let upper = [30.0, 4.0, 8.0, 8.0];
+    // and c_a = c_c, 17.4 at 1K, 45% above that ceiling, and 38.9 at 16K, 1.16 times below it.
+    let upper = [30.0, 4.0, 8.0, 17.0];
     let (all1, all16) = (at(&corrected, k1, upper), at(&corrected, k16, upper));
-    quoted("μ(1K) at c_c, upper", all1.total, 16.6, 1);
+    quoted("μ(1K) at c_c, upper", all1.total, 17.4, 1);
     quoted(
         "1K excess at c_c, upper",
         100.0 * (all1.total / 12.0 - 1.0),
-        39.0,
+        45.0,
         0,
     );
-    quoted("μ(16K) at c_c, upper", all16.total, 38.1, 1);
-    quoted("16K headroom at c_c, upper", 45.0 / all16.total, 1.18, 2);
-    // The upper estimates alone take 1K to 14.5, the lower ones to 14.0: no c_a meets that
-    // ceiling. At 16K it holds while c_a stays below about 60 ps at the upper estimates.
+    quoted("μ(16K) at c_c, upper", all16.total, 38.9, 1);
+    quoted("16K headroom at c_c, upper", 45.0 / all16.total, 1.16, 2);
+    // The upper estimates alone take 1K to 15.3, the lower ones to 14.3: no c_a meets that
+    // ceiling. At 16K it holds while c_a stays below about 56 ps at the upper estimates.
     quoted(
         "μ(1K), upper",
-        at(&corrected, k1, [0.0, 4.0, 8.0, 8.0]).total,
-        14.5,
+        at(&corrected, k1, [0.0, 4.0, 8.0, 17.0]).total,
+        15.3,
         1,
     );
     quoted(
         "μ(1K), lower",
-        at(&corrected, k1, [0.0, 2.0, 6.0, 1.0]).total,
-        14.0,
+        at(&corrected, k1, [0.0, 2.0, 6.0, 6.0]).total,
+        14.3,
         1,
     );
     quoted(
         "c_a that meets the 16K ceiling, upper",
-        (45.0 - at(&corrected, k16, [0.0, 4.0, 8.0, 8.0]).total) / per_ps(k16),
-        60.0,
+        (45.0 - at(&corrected, k16, [0.0, 4.0, 8.0, 17.0]).total) / per_ps(k16),
+        56.0,
         0,
     );
     // 08 §3's sampling rate for 10% overhead at η = 0.3, and daily detection of 100 violations.
@@ -814,9 +1047,10 @@ fn the_corrected_projections_are_the_ones_the_documents_quote() {
 /// 00 §9 RISK-10, 08 §3 and `SPEC.md` quote beside `minimal`'s: 359,424 commitments and lookups per
 /// layer per token under RFC-0006's selection rule, with RFC-0022's two steps at both classed
 /// residual sites, over 126 layers, the two-class report's table rows at `B_max = 32` with the
-/// balanced split, RFC-0034's score block of 512, and the report's reduction stages: stage 1 is
-/// windowed, a seventh regeneration. Its window binds eight variables of `a·u`, so its folds are
-/// priced at RFC-0055's 5 or 17 ps per entry.
+/// balanced split, RFC-0034's score block of 512, and the report's reduction stages, the native
+/// relations counted (RFC-0056). Its stage 1's rounds bind up to ten own variables, so they take
+/// two windows of five, and its stage 2 takes one: a seventh, an eighth and a ninth regeneration.
+/// Windows of five or fewer own variables are priced at RFC-0056's 1 or 3.5 ps per entry.
 #[test]
 fn the_servable_projections_are_the_ones_the_documents_quote() {
     let servable = Counts {
@@ -849,15 +1083,35 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
     let (k1, k16) = (1024, 16_384);
     quoted("linear term at 1K", at(k1, free).linear, 5.3, 1);
     let (mu1, mu16) = (at(k1, free).total, at(k16, free).total);
-    assert_eq!(at(k1, free).regen, 7.0);
-    let windows = stage_plan(&servable, &MemoryModel::NODE_405B, BATCH).expect("a plan");
-    let windows: Vec<(f64, u32)> = windows
+    assert_eq!(at(k1, free).regen, 9.0);
+    let windows = stage_plan(&servable, &MemoryModel::NODE_405B, 16_384, BATCH).expect("a plan");
+    let windows: Vec<(f64, u32, u32)> = windows
         .iter()
-        .map(|w| ((w.bytes / 1e10).round() / 100.0, w.window_rounds))
+        .map(|w| ((w.bytes / 1e10).round() / 100.0, w.window_rounds, w.windows))
         .collect();
-    assert_eq!(windows, [(9.57, 8), (0.01, 0)]);
-    quoted("μ(1K)", mu1, 13.7, 1);
-    quoted("μ(16K)", mu16, 29.0, 1);
+    assert_eq!(windows, [(11.91, 15, 2), (1.11, 3, 1)]);
+    quoted("μ(1K)", mu1, 15.7, 1);
+    quoted("μ(16K)", mu16, 31.0, 1);
+    // RFC-0056 OQ-0056-2: at 2,048 tokens stage 1 takes one window and stage 2 fits, two
+    // regenerations fewer, which outweigh the weight pass shared by fewer tokens.
+    let plan = stage_plan(&servable, &MemoryModel::NODE_405B, k16, 2048).expect("a plan");
+    assert_eq!(plan.iter().map(|w| w.windows).collect::<Vec<_>>(), [1, 0]);
+    for (context, figure) in [(k1, 14.3), (k16, 29.5)] {
+        let small = mu(
+            &servable,
+            &UnitCosts::SOURCE,
+            &MemoryModel::NODE_405B,
+            context,
+            2048,
+        )
+        .expect("a projection");
+        quoted(
+            &format!("μ({context}) at 2,048 tokens"),
+            small.total,
+            figure,
+            1,
+        );
+    }
     quoted("1K table term", at(k1, free).tables, 0.055, 3);
     quoted("16K table term", at(k16, free).tables, 0.051, 3);
     quoted(
@@ -876,65 +1130,64 @@ fn the_servable_projections_are_the_ones_the_documents_quote() {
     let (full1, full16) = (at(k1, at_cc), at(k16, at_cc));
     quoted("1K column answers at c_c", full1.column_answers, 2.5, 1);
     quoted("16K column answers at c_c", full16.column_answers, 7.4, 1);
-    quoted("μ(1K) at c_c", full1.total, 16.2, 1);
-    quoted("μ(16K) at c_c", full16.total, 36.4, 1);
-    // SC-2: the 1K ceiling missed by 14% before the column answers, by 35% at c_a = c_c; 16K's
+    quoted("μ(1K) at c_c", full1.total, 18.2, 1);
+    quoted("μ(16K) at c_c", full16.total, 38.4, 1);
+    // SC-2: the 1K ceiling missed by 31% before the column answers, by 52% at c_a = c_c; 16K's
     // headroom.
-    quoted("1K excess", 100.0 * (mu1 / 12.0 - 1.0), 14.0, 0);
+    quoted("1K excess", 100.0 * (mu1 / 12.0 - 1.0), 31.0, 0);
     quoted(
         "1K excess at c_c",
         100.0 * (full1.total / 12.0 - 1.0),
-        35.0,
+        52.0,
         0,
     );
-    quoted("16K headroom", 45.0 / mu16, 1.55, 2);
-    quoted("16K headroom at c_c", 45.0 / full16.total, 1.24, 2);
-    // The window at 5 and 17 ps per entry.
+    quoted("16K headroom", 45.0 / mu16, 1.45, 2);
+    quoted("16K headroom at c_c", 45.0 / full16.total, 1.17, 2);
+    // The windows at 1 and 3.5 ps per entry.
     quoted(
-        "1K windows at 5 ps",
-        at(k1, [0.0, 0.0, 0.0, 5.0]).streaming,
-        0.265,
-        3,
-    );
-    quoted(
-        "1K windows at 17 ps",
-        at(k1, [0.0, 0.0, 0.0, 17.0]).streaming,
-        0.90,
+        "1K windows at 1 ps",
+        at(k1, [0.0, 0.0, 0.0, 1.0]).streaming,
+        0.13,
         2,
     );
     quoted(
-        "16K windows at 5 ps",
-        at(k16, [0.0, 0.0, 0.0, 5.0]).streaming,
-        0.25,
+        "1K windows at 3.5 ps",
+        at(k1, [0.0, 0.0, 0.0, 3.5]).streaming,
+        0.47,
         2,
     );
     quoted(
-        "16K windows at 17 ps",
-        at(k16, [0.0, 0.0, 0.0, 17.0]).streaming,
-        0.84,
+        "16K windows at 1 ps",
+        at(k16, [0.0, 0.0, 0.0, 1.0]).streaming,
+        0.13,
         2,
     );
-    // With the merge, the table round and the window at their upper estimates as well: 17.5 at
-    // 1K, 46% above the ceiling, and 38.9 at 16K, below it, while c_a stays below about 55 ps.
-    let upper = [30.0, 4.0, 8.0, 17.0];
+    quoted(
+        "16K windows at 3.5 ps",
+        at(k16, [0.0, 0.0, 0.0, 3.5]).streaming,
+        0.45,
+        2,
+    );
+    // With the merge, the table round and the windows at their upper estimates as well: 19.1 at
+    // 1K, 59% above the ceiling, and 40.5 at 16K, below it, while c_a stays below about 48 ps.
+    let upper = [30.0, 4.0, 8.0, 3.5];
     let (all1, all16) = (at(k1, upper), at(k16, upper));
-    quoted("μ(1K) at c_c, upper", all1.total, 17.5, 1);
+    quoted("μ(1K) at c_c, upper", all1.total, 19.1, 1);
     quoted(
         "1K excess at c_c, upper",
         100.0 * (all1.total / 12.0 - 1.0),
-        46.0,
+        59.0,
         0,
     );
-    quoted("μ(16K) at c_c, upper", all16.total, 38.9, 1);
-    quoted("16K headroom at c_c, upper", 45.0 / all16.total, 1.16, 2);
+    quoted("μ(16K) at c_c, upper", all16.total, 40.5, 1);
+    quoted("16K headroom at c_c, upper", 45.0 / all16.total, 1.11, 2);
     quoted(
         "c_a that meets the 16K ceiling, upper",
-        (45.0 - at(k16, [0.0, 4.0, 8.0, 17.0]).total)
-            / at(k16, [1.0, 0.0, 0.0, 0.0]).column_answers,
-        55.0,
+        (45.0 - at(k16, [0.0, 4.0, 8.0, 3.5]).total) / at(k16, [1.0, 0.0, 0.0, 0.0]).column_answers,
+        48.0,
         0,
     );
-    for (total, rate, detection) in [(mu1, 2.4, 91.0), (full1.total, 2.1, 87.0)] {
+    for (total, rate, detection) in [(mu1, 2.1, 88.0), (full1.total, 1.8, 84.0)] {
         let s = sampling_rate(0.1, total, 0.3).expect("a rate");
         quoted("sampling at 1K", 100.0 * s, rate, 1);
         let d = detection_probability(s, 100).expect("a probability");
@@ -997,8 +1250,14 @@ fn the_committed_scores_are_the_layouts_rows() {
 #[test]
 fn the_report_states_each_input_and_term_under_its_own_name() {
     let (counts, costs, memory) = every_term();
+    let mut stages = counts.reduction_stages.clone();
+    stages[0]
+        .tables
+        .push(class(Growth::Keys, Holding::Resident, 4, 1.0, 3.0, 16.0));
+    stages[0].residents = vec![class(Growth::Tokens, Holding::Resident, 9, 2.0, 0.0, 1.0)];
     let counts = Counts {
         lookups_per_token: 1.5 * counts.commits_per_token,
+        reduction_stages: stages,
         ..counts
     };
     let report = ModelReport::new(
@@ -1043,8 +1302,42 @@ fn the_report_states_each_input_and_term_under_its_own_name() {
         ("merge_ps", costs.merge_ps),
         ("column_answer_ps", costs.column_answer_ps),
         ("row_combination_ps", costs.row_combination_ps),
+        ("window_ps", costs.window_ps),
     ] {
         states(&json["inputs"]["unit_costs"], key, value);
+    }
+    // Each stage's classes and residents, every field under its name.
+    let names = |t: &StageTable| {
+        let growth = match t.growth {
+            Growth::Fixed => "fixed",
+            Growth::Tokens => "tokens",
+            Growth::Keys => "keys",
+            Growth::TokensAndContext => "tokens_and_context",
+        };
+        let kind = match t.kind {
+            Holding::Windowable => "windowable",
+            Holding::Resident => "resident",
+            Holding::Computed => "computed",
+        };
+        (growth, kind)
+    };
+    for (s, stage) in counts.reduction_stages.iter().enumerate() {
+        for (key, classes) in [("tables", &stage.tables), ("residents", &stage.residents)] {
+            let stated = json["inputs"]["counts"]["reduction_stages"][s][key]
+                .as_array()
+                .expect("the classes");
+            assert_eq!(stated.len(), classes.len(), "{key}");
+            for (c, t) in stated.iter().zip(classes) {
+                assert_eq!((c["growth"].as_str(), c["kind"].as_str()), {
+                    let (growth, kind) = names(t);
+                    (Some(growth), Some(kind))
+                });
+                assert_eq!(c["log2_entries"], u64::from(t.log2_entries));
+                states(c, "count", t.count);
+                states(c, "count_per_bit", t.count_per_bit);
+                states(c, "bytes", t.bytes);
+            }
+        }
     }
     assert_eq!(report.projections.len(), CONTEXTS.len());
     for (k, p) in report.projections.iter().enumerate() {
@@ -1064,6 +1357,14 @@ fn the_report_states_each_input_and_term_under_its_own_name() {
         let projection = &json["projections"][k];
         assert_eq!(projection["leaf_groups"], u64::from(p.leaf_groups));
         assert_eq!(projection["table_rounds"], u64::from(p.table_rounds));
+        assert!(p.reduction_stages.iter().any(|w| w.windows > 0));
+        for (s, w) in p.reduction_stages.iter().enumerate() {
+            let stated = &projection["reduction_stages"][s];
+            states(stated, "bytes", w.bytes);
+            assert_eq!(stated["window_rounds"], u64::from(w.window_rounds));
+            assert_eq!(stated["own_vars"], u64::from(w.own_vars));
+            assert_eq!(stated["windows"], u64::from(w.windows));
+        }
     }
 }
 

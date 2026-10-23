@@ -477,6 +477,30 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
         ),
     }
     .unwrap();
+    // RFC-0056 'Working sets': the compiler derives the same native relations from the lowering
+    // alone, a request's included, and so the same composed schedule, which its commitment report
+    // sizes.
+    {
+        use tessera_compiler::schedule::Request;
+        let request = match &runtime {
+            None => Request::None,
+            Some(r) if r.certificate().is_some() => Request::Generate,
+            Some(_) => Request::Prefill,
+        };
+        let mirror = tessera_compiler::schedule::model_natives(&p.lowering, request).unwrap();
+        assert_eq!(
+            mirror.native.as_slice(),
+            native_plan.native(),
+            "{request:?}"
+        );
+        let composed = tessera_compiler::schedule::derive_composed_schedule(
+            &p.lowering,
+            &mirror.deferred,
+            &mirror.native,
+        )
+        .unwrap();
+        assert_eq!(&composed, native_plan.schedule());
+    }
     let stage_plan = native_plan.schedule();
     let gadgets = tv_core::gadgets::Plan::derive(&graph, claims.gadget_policy).unwrap();
     let independent_native = match &tv_runtime {

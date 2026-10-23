@@ -62,9 +62,9 @@ pub use measure::{
     measure,
 };
 pub use model::{
-    Counts, LeafPlan, MAX_LEAF_GROUPS, MemoryModel, MuBreakdown, ReductionStage,
-    STAGE_BYTES_PER_ENTRY, StageTable, StageWindow, TENSOR_BYTES_PER_LEAF, UnitCosts,
-    detection_probability, leaf_plan, mu, proof_time_s, sampling_rate, shared_streaming_passes,
-    stage_plan,
+    Counts, Growth, Holding, LeafPlan, MAX_LEAF_GROUPS, MAX_WINDOW_VARS, MemoryModel, MuBreakdown,
+    ReductionStage, STAGE_BYTES_PER_ENTRY, StageTable, StageWindow, TENSOR_BYTES_PER_LEAF,
+    UnitCosts, detection_probability, leaf_plan, mu, proof_time_s, sampling_rate,
+    shared_streaming_passes, stage_plan,
 };
 pub use report::{ModelReport, Projection, SCHEMA, SOURCE_CONTEXTS, Scenario};

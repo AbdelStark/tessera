@@ -6,70 +6,165 @@
     "native_ops_lin": 811698487296.0,
     "reduction_stages": [
       {
+        "residents": [
+          {
+            "bytes": 1,
+            "count": 1,
+            "count_per_bit": 0,
+            "growth": "keys",
+            "kind": "resident",
+            "log2_entries": 17
+          },
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "resident",
+            "log2_entries": 14
+          },
+          {
+            "bytes": 1,
+            "count": 1,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "resident",
+            "log2_entries": 21
+          }
+        ],
         "tables": [
           {
-            "count": 5,
-            "log2_entries": 14,
-            "per_token": true,
-            "windowable": true
+            "bytes": 16,
+            "count": 4,
+            "count_per_bit": 0,
+            "growth": "tokens_and_context",
+            "kind": "computed",
+            "log2_entries": 14
           },
           {
-            "count": 6,
-            "log2_entries": 17,
-            "per_token": true,
-            "windowable": true
-          },
-          {
+            "bytes": 16,
             "count": 9,
-            "log2_entries": 21,
-            "per_token": true,
-            "windowable": true
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 0
           },
           {
-            "count": 2,
-            "log2_entries": 23,
-            "per_token": true,
-            "windowable": true
+            "bytes": 16,
+            "count": 18,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 7
           },
           {
-            "count": 2,
-            "log2_entries": 14,
-            "per_token": false,
-            "windowable": false
-          },
-          {
+            "bytes": 16,
             "count": 10,
-            "log2_entries": 21,
-            "per_token": false,
-            "windowable": false
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 14
           },
           {
+            "bytes": 16,
+            "count": 6,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 17
+          },
+          {
+            "bytes": 16,
+            "count": 6,
+            "count_per_bit": 2,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 17
+          },
+          {
+            "bytes": 16,
+            "count": 11,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 21
+          },
+          {
+            "bytes": 16,
             "count": 2,
-            "log2_entries": 23,
-            "per_token": false,
-            "windowable": false
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 23
+          },
+          {
+            "bytes": 16,
+            "count": 8,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 21
+          },
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 23
           }
         ]
       },
       {
+        "residents": [],
         "tables": [
           {
-            "count": 2,
-            "log2_entries": 14,
-            "per_token": true,
-            "windowable": false
+            "bytes": 16,
+            "count": 1,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 14
           },
           {
+            "bytes": 16,
             "count": 2,
-            "log2_entries": 17,
-            "per_token": false,
-            "windowable": false
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 21
           },
           {
-            "count": 4,
-            "log2_entries": 21,
-            "per_token": false,
-            "windowable": false
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "resident",
+            "log2_entries": 14
+          },
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 14
+          },
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 17
+          },
+          {
+            "bytes": 16,
+            "count": 6,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 21
           }
         ]
       }
@@ -171,118 +266,134 @@
   "projections": [
     {
       "context": 1024,
-      "detection": 0.9097670556402966,
+      "detection": 0.8777865108444783,
       "leaf_groups": 256,
       "mu": {
         "attention": 1.3404979016948364,
         "column_answers": 0.0,
         "linear": 5.576353256370848,
-        "regen": 7.0,
+        "regen": 9.0,
         "row_combination": 0.0,
         "streaming": 0.0,
         "tables": 0.08710166568130247,
-        "total": 14.025270378669155,
+        "total": 16.025270378669155,
         "weights": 0.021317554922167414
       },
-      "proof_time_s": 1.2336021676040765,
+      "proof_time_s": 1.4095135239341825,
       "reduction_stages": [
         {
-          "bytes": 9574086606848.0,
-          "window_rounds": 8
+          "bytes": 11634062131200.0,
+          "own_vars": 10,
+          "window_rounds": 11,
+          "windows": 2
         },
         {
-          "bytes": 8728346624.0,
-          "window_rounds": 0
+          "bytes": 1112602574848.0,
+          "own_vars": 3,
+          "window_rounds": 3,
+          "windows": 1
         }
       ],
-      "sampling_rate": 0.0237666244096296,
+      "sampling_rate": 0.02080048108124436,
       "table_rounds": 1
     },
     {
       "context": 4096,
-      "detection": 0.8576596445090953,
+      "detection": 0.8254194486242079,
       "leaf_groups": 512,
       "mu": {
         "attention": 4.667554008420396,
         "column_answers": 0.0,
         "linear": 5.490995726114791,
-        "regen": 7.0,
+        "regen": 9.0,
         "row_combination": 0.0,
         "streaming": 0.0,
         "tables": 0.085768395939962,
-        "total": 17.265309376471823,
+        "total": 19.265309376471823,
         "weights": 0.020991245996674724
       },
-      "proof_time_s": 6.168753410066819,
+      "proof_time_s": 6.883337003740877,
       "reduction_stages": [
         {
-          "bytes": 9574086606848.0,
-          "window_rounds": 8
+          "bytes": 11771501084672.0,
+          "own_vars": 10,
+          "window_rounds": 13,
+          "windows": 2
         },
         {
-          "bytes": 8728346624.0,
-          "window_rounds": 0
+          "bytes": 1112602574848.0,
+          "own_vars": 3,
+          "window_rounds": 3,
+          "windows": 1
         }
       ],
-      "sampling_rate": 0.019306536944399096,
+      "sampling_rate": 0.017302256964553286,
       "table_rounds": 1
     },
     {
       "context": 16384,
-      "detection": 0.6816294309845751,
+      "detection": 0.6573312475069444,
       "leaf_groups": 1024,
       "mu": {
         "attention": 17.015995779613355,
         "column_answers": 0.0,
         "linear": 5.174189378915221,
-        "regen": 7.0,
+        "regen": 9.0,
         "row_combination": 0.0,
         "streaming": 0.0,
         "tables": 0.0808199360288246,
-        "total": 29.290785237814415,
+        "total": 31.290785237814415,
         "weights": 0.019780143257011964
       },
-      "proof_time_s": 44.42452947467553,
+      "proof_time_s": 47.45787454302989,
       "reduction_stages": [
         {
-          "bytes": 9574086606848.0,
-          "window_rounds": 8
+          "bytes": 11908940038144.0,
+          "own_vars": 10,
+          "window_rounds": 15,
+          "windows": 2
         },
         {
-          "bytes": 8728346624.0,
-          "window_rounds": 0
+          "bytes": 1112602574848.0,
+          "own_vars": 3,
+          "window_rounds": 3,
+          "windows": 1
         }
       ],
-      "sampling_rate": 0.011380143298548374,
+      "sampling_rate": 0.010652763450963365,
       "table_rounds": 1
     },
     {
       "context": 131072,
-      "detection": 0.28865281666282455,
+      "detection": 0.28378420316148706,
       "leaf_groups": 8192,
       "mu": {
         "attention": 87.60625971076395,
         "column_answers": 0.0,
         "linear": 3.3631557215308536,
-        "regen": 7.0,
+        "regen": 9.0,
         "row_combination": 0.0,
         "streaming": 0.0,
         "tables": 0.05253190603666782,
-        "total": 98.034804173885,
+        "total": 100.034804173885,
         "weights": 0.012856835553527138
       },
-      "proof_time_s": 1830.02675143322,
+      "proof_time_s": 1867.360977106529,
       "reduction_stages": [
         {
-          "bytes": 9574086606848.0,
-          "window_rounds": 8
+          "bytes": 11923972423680.0,
+          "own_vars": 10,
+          "window_rounds": 18,
+          "windows": 2
         },
         {
-          "bytes": 8728346624.0,
-          "window_rounds": 0
+          "bytes": 1112602574848.0,
+          "own_vars": 3,
+          "window_rounds": 3,
+          "windows": 1
         }
       ],
-      "sampling_rate": 0.003400152998134191,
+      "sampling_rate": 0.003332173597840192,
       "table_rounds": 1
     }
   ],
@@ -293,76 +404,167 @@
   },
   "stage_tables": [
     {
+      "residents": [
+        {
+          "bytes": 1,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "keys",
+          "kind": "resident",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "resident",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 1,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "resident",
+          "log2_entries": 21
+        }
+      ],
       "stage": 1,
-      "table_entries_fixed": 37781504,
-      "table_entries_per_token": 36519936,
       "tables": [
         {
-          "count": 5,
-          "log2_entries": 14,
-          "per_token": true,
-          "windowable": true
+          "bytes": 16,
+          "count": 4,
+          "count_per_bit": 0,
+          "growth": "tokens_and_context",
+          "kind": "computed",
+          "log2_entries": 14
         },
         {
-          "count": 6,
-          "log2_entries": 17,
-          "per_token": true,
-          "windowable": true
-        },
-        {
+          "bytes": 16,
           "count": 9,
-          "log2_entries": 21,
-          "per_token": true,
-          "windowable": true
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 0
         },
         {
-          "count": 2,
-          "log2_entries": 23,
-          "per_token": true,
-          "windowable": true
+          "bytes": 16,
+          "count": 18,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 7
         },
         {
-          "count": 2,
-          "log2_entries": 14,
-          "per_token": false,
-          "windowable": false
-        },
-        {
+          "bytes": 16,
           "count": 10,
-          "log2_entries": 21,
-          "per_token": false,
-          "windowable": false
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 14
         },
         {
+          "bytes": 16,
+          "count": 6,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 6,
+          "count_per_bit": 2,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 11,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 21
+        },
+        {
+          "bytes": 16,
           "count": 2,
-          "log2_entries": 23,
-          "per_token": false,
-          "windowable": false
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 23
+        },
+        {
+          "bytes": 16,
+          "count": 8,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 21
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 23
         }
       ]
     },
     {
+      "residents": [],
       "stage": 2,
-      "table_entries_fixed": 8650752,
-      "table_entries_per_token": 32768,
       "tables": [
         {
-          "count": 2,
-          "log2_entries": 14,
-          "per_token": true,
-          "windowable": false
+          "bytes": 16,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 14
         },
         {
+          "bytes": 16,
           "count": 2,
-          "log2_entries": 17,
-          "per_token": false,
-          "windowable": false
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 21
         },
         {
-          "count": 4,
-          "log2_entries": 21,
-          "per_token": false,
-          "windowable": false
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "resident",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 6,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 21
         }
       ]
     }

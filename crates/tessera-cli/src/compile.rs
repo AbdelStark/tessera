@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 use serde_json::Value;
 use tessera_bench::{
-    Counts, MemoryModel, ModelReport, ReductionStage, Scenario, StageTable, UnitCosts,
+    Counts, Growth, Holding, MemoryModel, ModelReport, ReductionStage, Scenario, StageTable,
+    UnitCosts,
 };
 use tessera_codec::error::{ErrorCode, TesseraError};
 use tessera_codec::{Ascii, Public, envelope, schema};
@@ -62,23 +63,47 @@ pub(crate) fn counts_of(report: &CommitmentReport) -> Counts {
             .as_array()
             .map_or(&[][..], Vec::as_slice)
             .iter()
-            .map(|stage| ReductionStage {
-                tables: stage["tables"]
-                    .as_array()
-                    .map_or(&[][..], Vec::as_slice)
-                    .iter()
-                    .map(|t| StageTable {
-                        per_token: t["per_token"].as_bool().unwrap_or(true),
-                        windowable: t["windowable"].as_bool().unwrap_or(false),
-                        log2_entries: t["log2_entries"]
-                            .as_u64()
-                            .and_then(|n| u32::try_from(n).ok())
-                            .unwrap_or(u32::MAX),
-                        count: t["count"].as_f64().unwrap_or(0.0),
-                    })
-                    .collect(),
+            .map(|stage| {
+                let classes = |key: &str| {
+                    stage[key]
+                        .as_array()
+                        .map_or(&[][..], Vec::as_slice)
+                        .iter()
+                        .map(stage_table)
+                        .collect()
+                };
+                ReductionStage {
+                    tables: classes("tables"),
+                    residents: classes("residents"),
+                }
             })
             .collect(),
+    }
+}
+
+/// One class of a stage's tables, as the commitment report's counts write it. A field it lacks
+/// reads as the class that costs the most: grown with the tokens and the context, held whole,
+/// `Fp2` wide.
+fn stage_table(t: &Value) -> StageTable {
+    StageTable {
+        growth: match t["growth"].as_str() {
+            Some("fixed") => Growth::Fixed,
+            Some("tokens") => Growth::Tokens,
+            Some("keys") => Growth::Keys,
+            _ => Growth::TokensAndContext,
+        },
+        kind: match t["kind"].as_str() {
+            Some("windowable") => Holding::Windowable,
+            Some("computed") => Holding::Computed,
+            _ => Holding::Resident,
+        },
+        log2_entries: t["log2_entries"]
+            .as_u64()
+            .and_then(|n| u32::try_from(n).ok())
+            .unwrap_or(u32::MAX),
+        count: t["count"].as_f64().unwrap_or(0.0),
+        count_per_bit: t["count_per_bit"].as_f64().unwrap_or(0.0),
+        bytes: t["bytes"].as_f64().unwrap_or(16.0),
     }
 }
 

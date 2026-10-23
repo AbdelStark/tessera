@@ -78,12 +78,13 @@
               "minimum": 0
             },
             "reduction_stages": {
-              "description": "The reduction stages' sumcheck tables by size, stage 1 first (RFC-0055 'Working sets').",
+              "description": "The reduction stages' sumcheck tables by class, and their residents, stage 1 first (RFC-0055 'Working sets', RFC-0056).",
               "type": "array",
               "items": {
                 "type": "object",
                 "required": [
-                  "tables"
+                  "tables",
+                  "residents"
                 ],
                 "additionalProperties": false,
                 "properties": {
@@ -92,28 +93,105 @@
                     "items": {
                       "type": "object",
                       "required": [
-                        "per_token",
-                        "windowable",
+                        "growth",
+                        "kind",
                         "log2_entries",
-                        "count"
+                        "count",
+                        "count_per_bit",
+                        "bytes"
                       ],
                       "additionalProperties": false,
                       "properties": {
-                        "per_token": {
-                          "description": "Whether the tables grow with the batch: a batch of T tokens, padded to a power of two, gives each log2_entries + ⌈log2 T⌉ variables.",
-                          "type": "boolean"
+                        "growth": {
+                          "description": "How the entries grow with a batch of T tokens at context S, each padded to a power of two: fixed, not at all; tokens, ⌈log2 T⌉ more variables; keys, ⌈log2 max(T, S)⌉, the key positions the batch attends; tokens_and_context, ⌈log2 T⌉ + ⌈log2 S⌉, the score tensor (RFC-0055 'Working sets', RFC-0056).",
+                          "enum": [
+                            "fixed",
+                            "tokens",
+                            "keys",
+                            "tokens_and_context"
+                          ]
                         },
-                        "windowable": {
-                          "description": "Whether a window may fold them: an elementwise relation's operands; a matrix product's tables stay resident (RFC-0055 'The window').",
-                          "type": "boolean"
+                        "kind": {
+                          "description": "How the prover holds them: windowable, an elementwise operand a window may fold (RFC-0055); resident, held whole; computed, never held, a SoftmaxRow score instance RFC-0056 computes from its residents.",
+                          "enum": [
+                            "windowable",
+                            "resident",
+                            "computed"
+                          ]
                         },
                         "log2_entries": {
-                          "description": "log2 of one table's entries, per token when per_token.",
+                          "description": "log2 of one table's entries before its growth.",
                           "type": "integer",
                           "minimum": 0
                         },
                         "count": {
-                          "description": "The tables of this size.",
+                          "description": "The tables of this size, before the per-bit ones.",
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "count_per_bit": {
+                          "description": "The tables added per bit of a request's positions, ⌈log2 min(T, S)⌉: the greedy relations' evaluations (RFC-0053).",
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "bytes": {
+                          "description": "The bytes of one entry: 16, an Fp2, or 1 for an INT8 operand.",
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    "description": "The stage's instances' tables by class."
+                  },
+                  "residents": {
+                    "description": "What RFC-0056's prover holds for the stage's computed instances, whole: the INT8 queries and keys, and the score and row-maximum row tables. They set none of the stage's rounds.",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "growth",
+                        "kind",
+                        "log2_entries",
+                        "count",
+                        "count_per_bit",
+                        "bytes"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "growth": {
+                          "description": "How the entries grow with a batch of T tokens at context S, each padded to a power of two: fixed, not at all; tokens, ⌈log2 T⌉ more variables; keys, ⌈log2 max(T, S)⌉, the key positions the batch attends; tokens_and_context, ⌈log2 T⌉ + ⌈log2 S⌉, the score tensor (RFC-0055 'Working sets', RFC-0056).",
+                          "enum": [
+                            "fixed",
+                            "tokens",
+                            "keys",
+                            "tokens_and_context"
+                          ]
+                        },
+                        "kind": {
+                          "description": "How the prover holds them: windowable, an elementwise operand a window may fold (RFC-0055); resident, held whole; computed, never held, a SoftmaxRow score instance RFC-0056 computes from its residents.",
+                          "enum": [
+                            "windowable",
+                            "resident",
+                            "computed"
+                          ]
+                        },
+                        "log2_entries": {
+                          "description": "log2 of one table's entries before its growth.",
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "count": {
+                          "description": "The tables of this size, before the per-bit ones.",
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "count_per_bit": {
+                          "description": "The tables added per bit of a request's positions, ⌈log2 min(T, S)⌉: the greedy relations' evaluations (RFC-0053).",
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "bytes": {
+                          "description": "The bytes of one entry: 16, an Fp2, or 1 for an INT8 operand.",
                           "type": "number",
                           "minimum": 0
                         }
@@ -334,22 +412,35 @@
             "minimum": 0
           },
           "reduction_stages": {
-            "description": "Each reduction stage's working set at the scenario's batch and the rounds its window answers, 0 when its tables fit (RFC-0055).",
+            "description": "Each reduction stage's working set at the scenario's batch, the rounds its windows answer and the windows they take, 0 when its tables fit (RFC-0055, RFC-0056).",
             "type": "array",
             "items": {
               "type": "object",
               "required": [
                 "bytes",
-                "window_rounds"
+                "window_rounds",
+                "own_vars",
+                "windows"
               ],
               "additionalProperties": false,
               "properties": {
                 "bytes": {
-                  "description": "The stage's tables at 16 bytes per entry.",
+                  "description": "The stage's working set: the tables its prover holds, each at its width.",
                   "type": "number",
                   "minimum": 0
                 },
                 "window_rounds": {
+                  "description": "c: the rounds its windows answer, the fewest after which the folded tables fit, 0 when they fit.",
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "own_vars": {
+                  "description": "The most own variables the c rounds bind of one instance.",
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "windows": {
+                  "description": "The windows the rounds take, each binding at most 8 own variables of an instance and adding a fold pass (RFC-0056 'The windows').",
                   "type": "integer",
                   "minimum": 0
                 }

@@ -10,18 +10,19 @@
   - [RFC-0020](RFC-0020-cost-model.md#executable-cost-model) 'Executable cost model': the reduction stages' plan, their fold passes and their windows' arithmetic;
   - [RFC-0006](RFC-0006-compiler-ir.md#outputs) 'Outputs': the commitment report lists each reduction stage's tables;
   - [RFC-0010](RFC-0010-proof-schedule.md#sumcheck-messages) 'Sumcheck messages': a pointer to the windows, its messages unchanged.
+- Amended by: [RFC-0056](RFC-0056-native-working-sets.md) ('Native relations'; the 405B working sets, windows and `c_w` bands, which now count the native relations; 'The executable model': classes by growth, holding and width, the plan at a context, and a fold pass per window; Alternative 7, adopted beyond eight own variables per window)
 - Scope: the prover and the cost model. Messages, labels, the verifier and the soundness bound are RFC-0010's, in `tessera-protocol/1` and `/2`.
 - Origin: [#452](https://github.com/AbdelStark/tessera/issues/452)
 
 ## Summary
 
-A reduction stage runs one batched sumcheck over every layer and token ([RFC-0010](RFC-0010-proof-schedule.md#sumcheck-messages)). The instances of the compiler's stage schedule ([RFC-0037](RFC-0037-stage-schedule.md)) hold tables of every layer and token. A 405B batch of 16K tokens gives `minimal`'s stages 1 and 2 working sets of 4.1 and 5.5 TB, and `servable`'s stage 1 one of 9.6 TB, against about 0.2 TB of free HBM. Under RFC-0010 as written, each round whose tables do not fit streams them: one regeneration pass per round, 12 for `minimal` and 8 for `servable`.
+A reduction stage runs one batched sumcheck over every layer and token ([RFC-0010](RFC-0010-proof-schedule.md#sumcheck-messages)). The instances of the compiler's stage schedule ([RFC-0037](RFC-0037-stage-schedule.md)) hold tables of every layer and token. A 405B batch of 16K tokens gives `minimal`'s stages 1 and 2 working sets of 4.1 and 5.5 TB, and `servable`'s stage 1 one of 9.6 TB, against about 0.2 TB of free HBM. Under RFC-0010 as written, each round whose tables do not fit streams them: one regeneration pass per round, 12 for `minimal` and 8 for `servable`. With the native relations counted ([RFC-0056](RFC-0056-native-working-sets.md#at-405b)), the stages hold 6.4, 6.6 and 11.9 TB at 16K of context, and streaming would cost 18 to 25 and 14 to 21 regenerations, by context.
 
 This RFC answers a stage's first `c` rounds from a **window** instead. One pass accumulates each elementwise instance's products on a small grid. A second pass folds its tables at the window's challenges, after which they fit. The messages are RFC-0010's, so the verifier, the transcript, soundness and zero knowledge do not change.
 
-Such a stage then costs two passes instead of one, whatever its size: one more regeneration per stage, +2 on `μ` for `minimal` and +1 for `servable`. The corrected 405B projections become about 13.8 at 1K and 29.1 at 16K for `minimal`, and 13.7 and 29.0 for `servable`. SC-2's 1K ceiling of 12 no longer holds at the corrected projection for either profile.
+Such a stage then costs two passes instead of one, whatever its size: one more regeneration per stage, and one per further window where RFC-0056 splits a wide one. With the native relations RFC-0056 counts, that is +2 on `μ` for `minimal` at 405B and +3 for `servable`. The corrected 405B projections become about 13.8 at 1K and 29.1 at 16K for `minimal`, and 15.7 and 31.0 for `servable`. SC-2's 1K ceiling of 12 no longer holds at the corrected projection for either profile.
 
-The prover also composes native gadget relations into stage 1 ([RFC-0050](RFC-0050-gadget-advice-columns.md)). Among them, `SoftmaxRow`'s key and forest relations span the score tensor, which grows with context: 8.8 TB at 1K and 141 TB at 16K for the same batch. A window cannot serve them at an acceptable cost ('Native relations'). They are neither in the report nor in the projections yet. [#458](https://github.com/AbdelStark/tessera/issues/458) counts them and designs their proof.
+The prover also composes native gadget relations into stage 1 ([RFC-0050](RFC-0050-gadget-advice-columns.md)). Among them, `SoftmaxRow`'s key and forest relations span the score tensor, which grows with context: 8.8 TB at 1K and 141 TB at 16K for the same batch. A window cannot serve them at an acceptable cost ('Native relations'). [RFC-0056](RFC-0056-native-working-sets.md) proves them without the score tensor, counts every native relation, and restates the figures below.
 
 ## Motivation
 
@@ -35,7 +36,7 @@ The prover also composes native gadget relations into stage 1 ([RFC-0050](RFC-00
 | `servable`, 1 | 6.0×10^11 | 9.57 TB | 4.40 TB unpadded; 4.95 TB padded by 2; 0.21 TB padded by 6 |
 | `servable`, 2 | 5.5×10^8 | 8.7 GB | fits |
 
-These tables do not depend on context. They are the elementwise instances' operands, such as the norms' squares, `a·u`, RoPE's rotations and the one-hot checks, and the matrix products' folded operands. Each is linear in the tokens or independent of them.
+These tables do not depend on context; with the native relations, stage 1's do, a little ([RFC-0056](RFC-0056-native-working-sets.md#at-405b)). They are the elementwise instances' operands, such as the norms' squares, `a·u`, RoPE's rotations and the one-hot checks, and the matrix products' folded operands. Each is linear in the tokens or independent of them.
 
 RFC-0010 binds the lowest variable first. A smaller instance is front-padded: constant in the stage's first `p = n_max − n_i` rounds. Under RFC-0010 as written, every round whose tables do not fit streams them, regenerating the stage's tensors. A stage then streams until its tables, each folded by `2^{max(0, j − p)}` after round `j`, fit: 6 rounds for each of `minimal`'s stages and 8 for `servable`'s stage 1. That adds 12 and 8 regenerations to `μ`, which RFC-0018's estimate of at most one forward pass for all of P3 does not count.
 
@@ -49,7 +50,7 @@ RFC-0010 binds the lowest variable first. A smaller instance is front-padded: co
 
 - Fewer regenerations than one per stage. Fusing passes across stages is RFC-0018's 'Fusion', and the dependencies in 'Pass structure' below rule it out for the windows.
 - The leaf stage, which RFC-0054 proves in token groups.
-- The native gadget relations ('Native relations'), [#458](https://github.com/AbdelStark/tessera/issues/458).
+- The native gadget relations ('Native relations'), which [RFC-0056](RFC-0056-native-working-sets.md) handles ([#458](https://github.com/AbdelStark/tessera/issues/458)).
 
 ## Proposed Design
 
@@ -63,7 +64,7 @@ The `eq` factors are not stored as tables. They are kept split, `O(2^{n_i/2})` (
 - **Classification.** The compiler derives the classes from the schedules of `n` and `n/2` positions, `n` the report's sequence. A per-token instance gains one variable when the sequence doubles, and a fixed one, a weight's folded table, none. The report refuses a graph where an instance does anything else.
 - **At a batch.** A batch of `T` tokens, padded to `2^b`, gives a per-token table `log2_entries + b` variables. `tessera-bench` evaluates the classes at the batch.
 - **An odd sequence.** When `n` is not a power of two, every table counts as per token, at `2^{n_i − ⌊log2 n⌋}` entries per token: an upper bound at every larger batch.
-- **Native relations.** The classes cover the compiler's schedule, not the native relations the prover composes into it ('Native relations').
+- **Native relations.** [RFC-0056](RFC-0056-native-working-sets.md) adds them from the composed schedule. It extends each class with a growth with the context, a holding (windowable, resident or computed) and a width, and lists the score instances' residents.
 
 ### The window
 
@@ -126,12 +127,13 @@ Neither pass fuses with another:
 - **The next pass.** Its fold pass needs its own window's challenges, which follow the grid pass.
 - **Across stages.** The next stage's grid pass needs this stage's final point, which follows its fold pass.
 
-Each windowed stage therefore adds one regeneration. The pass counter labels it `p3b` ([05 §4](../spec/05-observability.md#4-metrics)).
+Each windowed stage therefore adds one regeneration, and each further window RFC-0056 splits off one more. The pass counter labels it `p3b` ([05 §4](../spec/05-observability.md#4-metrics)).
 
-At 405B, 16K tokens and 0.2 TB:
-- **`minimal`.** Stages 1 and 2 take windows of 6 rounds each, +2 regenerations.
-- **`servable`.** Stage 1 takes a window of 8, +1.
-- **Their own variables.** In `minimal`, the unpadded instances bind 6 own variables in the window, and the rest 4 or fewer. In `servable`, the unpadded `a·u` binds 8, the instances padded by 2 bind 6, and those padded by 6 bind 2. The matrix products stay whole: they are padded out of every window.
+At 405B, 16K tokens and 0.2 TB, with the native relations counted ([RFC-0056](RFC-0056-native-working-sets.md#at-405b)):
+- **`minimal`.** Stages 1 and 2 take windows of 15 and 7 rounds at 16K context, +2 regenerations.
+- **`servable`.** Stage 1's 15 rounds take two windows, and stage 2 a window of 3 rounds, +3.
+- **Their own variables.** In `minimal`, stage 1's window binds eight own variables on 78% of its entries and stage 2's seven on 67%, the rest five or fewer. In `servable`, stage 1's `a·u` binds ten, and the instances padded by two bind eight, so RFC-0056 splits its rounds into two windows of five ('The windows'). The matrix products stay whole.
+- **Without the native relations.** This RFC first counted the compiler's graph schedule alone: windows of 6 and 6 rounds for `minimal`, and 8 for `servable`'s stage 1, +2 and +1.
 
 ### Native relations
 
@@ -139,18 +141,15 @@ The prover composes native gadget relations into stage 1 (RFC-0050; [RFC-0010](R
 - each root's coefficient products, of degree 4, and its padding checks;
 - `SoftmaxRow`'s key and forest relations, its reciprocal and its padding checks.
 
-The compiler's schedule does not hold them, and neither does the report.
+`SoftmaxRow`'s key and forest relations span the score tensor: two tables of `h·S²` entries per sequence and layer, about 8.8 TB at 1K context and 141 TB at 16K for a 405B batch of 16K tokens.
+- **Their window.** It would bind 9 to 13 own variables, at 115 to 584 `Fp` multiplications per index against about 40 for the rounds it answers.
+- **Several windows.** They would cost a regeneration each, three at 16K.
 
-**The score instances.** `SoftmaxRow`'s key and forest relations span the score tensor: two tables, the scores and their row maxima broadcast, of `h·S²` entries per sequence and layer. A batch of `T` tokens at context `S` holds `T·h·S·L` entries per table. At 405B and 16K tokens:
-- **Their size.** About 8.8 TB at 1K context and 141 TB at 16K, above every other table of stage 1.
-- **Their window.** It would need 9 to 13 own variables, whose grid costs about 115 to 584 `Fp` multiplications per index against about 40 for the rounds it answers.
-- **Why not more windows.** Several windows of at most six own variables each cost one regeneration per window, three at 16K, and each window's grid about once more the rounds it answers. Over the score tensor, those rounds are already about 4 on `μ(16K)`.
-
-These instances read the same scores as the leaf stage's forests, whose token groups fit by construction (RFC-0054). Proving them inside the groups would cost no pass at all, but it changes RFC-0054's messages and the stage schedule. [#458](https://github.com/AbdelStark/tessera/issues/458) counts every native relation in the report and the model, and designs the score instances' proof. Until it lands, the projections below leave out the native relations' memory, passes and arithmetic.
+[RFC-0056](RFC-0056-native-working-sets.md) proves them without the score tensor, from the INT8 queries and keys and the causal mask's closed form, in memory linear in the tokens. It also counts every native relation in the report and the model. The windows above serve the instances that stay elementwise.
 
 ### Cost
 
-**Passes.** One regeneration per windowed stage: `p_w` in [RFC-0020](RFC-0020-cost-model.md#executable-cost-model)'s `μ`. Like the merge's pass, it counts when the model counts regenerations.
+**Passes.** One regeneration per windowed stage, one per window under RFC-0056: `p_w` in [RFC-0020](RFC-0020-cost-model.md#executable-cost-model)'s `μ`. Like the merge's pass, it counts when the model counts regenerations.
 
 **Arithmetic.** For a window of `v` own variables, `δ = 2` and `eq` factored out:
 - **The grid, counted.** It costs `1.5^v` products of small values and `1.5^v` scalings by an `Fp2` weight per index, `3 · 1.5^v` `Fp` multiplications: 15, 23, 34, 51 and 77 at `v` = 4 to 8. The per-round prover over the same rounds costs about 33 to 38 ([SUR-0007](../../research/surveys/SUR-0007-sumcheck.md), E0). By this count, the grid costs no more than the rounds it replaces up to six own variables.
@@ -163,11 +162,10 @@ These instances read the same scores as the leaf stage's forests, whose token gr
 **The unit cost.** The model's `c_w` (`window_ps`) is the cost per entry of a windowed table: the fold, plus the grid beyond the rounds it answers.
 - **The fold.** RFC-0054 prices the merge's two folds, four `Fp` multiplications per element, at 2 to 4 ps, so 0.5 to 1 ps per multiplication. The fold then costs 1 to 2 ps per entry.
 - **The grid's excess.** `c_π = 12` ps prices a product-tree leaf over all its levels, about 12 ps per pair at the leaf level. Read at that rate, the measured excess is about 6 to 7 ps per entry at six own variables and 18 to 25 at eight.
-- **`minimal`.** Its windows bind six own variables on 86% of its windowed entries, and four or fewer on the rest. `c_w` is 1 to 2 ps by the count and 6 to 8 by the measurement, so 1 to 8 ps. That adds 0.05 to 0.42 to `μ` at 1K and 0.05 to 0.39 at 16K.
-- **`servable`.** Its `a·u` binds eight own variables on 46% of its windowed entries, and the instances padded by two bind six on 52%.
-  - **The count.** About 20 more multiplications per entry of `a·u`, 5 to 11 ps over the stage.
-  - **The measurement.** 12 to 17 ps.
-  - **Together.** 5 to 17 ps, which adds 0.27 to 0.90 at 1K and 0.25 to 0.84 at 16K.
+- **Per own variable.** [RFC-0056](RFC-0056-native-working-sets.md#the-windows) tabulates both estimates for windows of up to ten own variables, and caps a window at eight.
+- **`minimal`.** Its windows bind eight and seven own variables on most of their entries ([RFC-0056](RFC-0056-native-working-sets.md#at-405b)). `c_w` is about 6 to 12 ps by the count and 12 to 17 by the measurement, so 6 to 17 ps. That adds 0.42 to 1.20 to `μ` at 1K and 0.40 to 1.14 at 16K.
+- **`servable`.** Its stage 1's rounds bind ten own variables, in two windows of five. `c_w` is 1 to 3.5 ps per window, which adds 0.13 to 0.47 at 1K and 0.13 to 0.45 at 16K.
+- **Without the native relations.** This RFC first gave 1 to 8 ps and 5 to 17 ps, for windows of six and eight own variables.
 - **Measurement.** v0.5 measures the grid on H100 (OQ-0055-1).
 
 ### Soundness and zero knowledge
@@ -180,7 +178,7 @@ These instances read the same scores as the leaf stage's forests, whose token gr
 
 ### The executable model
 
-`tessera-bench` reads the report's classes into `Counts::reduction_stages`, one `ReductionStage { tables: Vec<StageTable> }` per stage.
+`tessera-bench` reads the report's classes into `Counts::reduction_stages`, one `ReductionStage { tables: Vec<StageTable> }` per stage. [RFC-0056](RFC-0056-native-working-sets.md#the-executable-model) adds the classes' growth, holding and width, the residents, the context, and a window per eight own variables.
 
 `stage_plan(counts, memory, batch_tokens)` sizes each stage at the batch:
 - **Its working set.** Its tables at `STAGE_BYTES_PER_ENTRY` = 16.
@@ -199,25 +197,25 @@ Each projection lists the stages' working sets and windows.
 1. **RFC-0010 as written: stream every round that does not fit.** One regeneration per round, 12 for `minimal` and 8 for `servable` at 405B and 16K tokens, against 2 and 1. Rejected.
 2. **Token groups and a merge per stage** (#452's first direction, RFC-0054 applied to a stage). It costs the same one more pass per oversized stage, the merge's, and changes the protocol for it: per-group messages and challenges, merge rounds, a rejection, a union bound, and OQ-0054-1's zero-knowledge gap in every stage. Rejected for the schedule's instances: the same passes, more protocol. The score instances may still need groups, since their windows cost more (#458).
 3. **Groups carried through the stages** (#452's second direction). Each stage still needs one pass over all groups, since its shared challenges follow the stage before. A shared tensor's claims, a weight's above all, land at `G` points, each a pass over the resident weights, unless the matrix products batch across groups with shared challenges for the weights' variables. And each committed tensor's `G` claim groups cost a combined row each. RFC-0054 Alternative 6 rejected the same for the leaf stage. Rejected.
-4. **A smaller batch.** 512 tokens fit `minimal`'s stages: 0.13 and 0.17 TB. But the weight pass and the table side, shared by 32 times fewer tokens, cost what the windows save: `μ` is 13.9 at 1K and 29.1 at 16K, against 13.8 and 29.1 at 16K tokens. `servable` needs 256 tokens or fewer, and pays 17.5 and 32.5 there. Rejected as a rule. The planner chooses the batch, and the model prices either.
+4. **A smaller batch.** 256 tokens fit `minimal`'s stages, 0.10 TB each, and the native relations counted. But the weight pass and the table side, shared by 64 times fewer tokens, cost more than the windows save: `μ` is 16.1 at 1K and 31.2 at 16K, and 14.2 and 29.6 at 2,048 tokens, against 13.8 and 29.1 at 16K tokens. `servable` is the exception: at 2,048 tokens its stage 1 takes one window and its stage 2 fits, for 14.3 and 29.5 against 15.7 and 31.0 (RFC-0056 OQ-0056-2). Rejected as a rule. The planner chooses the batch, and the model prices either.
 5. **Tables in host memory.** At 8 bytes per base-field entry, a stage holds 2.0 to 4.8 TB, beyond 1 TiB of host RAM. Each round would also cross PCIe, slower than a regeneration. Rejected.
 6. **Multi-variable rounds or the univariate skip.** Both change the messages, the verifier and the soundness bound for what a window gets without them ([RFC-0018](RFC-0018-gpu-prover-runtime.md#alternatives-considered) Alternative 3, SUR-0007). Rejected.
-7. **Two windows per stage, to keep each at four own variables.** A second window's grid can ride the first's fold pass, but it needs a second fold pass: another regeneration, about 1 on `μ`. It would save at most about 0.4 of `minimal`'s grid and 0.8 of `servable`'s. Rejected, unless OQ-0055-1 measures the grid above these estimates.
+7. **Two windows per stage, to keep each at five own variables or fewer.** A second window's grid can ride the first's fold pass, but it needs a second fold pass: another regeneration, about 1 on `μ`. Adopted by [RFC-0056](RFC-0056-native-working-sets.md#the-windows) beyond eight own variables: for `servable`'s stage 1, whose rounds bind ten, it saves 0.01 to 1.3. For `minimal`'s windows of eight and seven it costs 0.4 to 1.0. Rejected for windows of eight or fewer.
 
 ## Drawbacks
 
-- **One more regeneration per stage larger than memory.** At 405B and 16K tokens that is +2 on `minimal`'s `μ`, about 14% of its `μ(1K)` and 7% of its `μ(16K)`, and +1 on `servable`'s. SC-2's 1K ceiling fails at the corrected projection for both profiles: 15% and 14% above it before the column answers.
-- **The grid's arithmetic.** It grows by 1.5 to 1.64 per own variable. EXP-0012 measured it above the in-memory rounds from five own variables on, and these windows bind six and eight. It adds up to 0.4 to `minimal`'s `μ` and up to 0.9 to `servable`'s.
+- **One more regeneration per stage larger than memory.** At 405B and 16K tokens, with the native relations counted, that is +2 on `minimal`'s `μ`, about 14% of its `μ(1K)` and 7% of its `μ(16K)`, and +3 on `servable`'s. SC-2's 1K ceiling fails at the corrected projection for both profiles: 15% and 31% above it before the column answers.
+- **The grid's arithmetic.** It grows by 1.5 to 1.64 per own variable. EXP-0012 measured it above the in-memory rounds from five own variables on, and `minimal`'s windows bind seven and eight. It adds up to 1.2 to `minimal`'s `μ(1K)` and up to 0.47 to `servable`'s.
 - **A second prover path.** Windowed and resident rounds must produce byte-identical messages, which the equivalence tests below hold.
 - **The model's charge.** It counts one forward pass per fold pass. A fold regenerates only the stage's tensors, but they span every layer, so the charge is an upper estimate.
-- **Native relations are outside it.** The score instances above all, which grow with context ([#458](https://github.com/AbdelStark/tessera/issues/458)).
+- **Native relations.** Counted, and the score instances proven without the score tensor, by RFC-0056.
 
 ## Migration / Rollout
 
 - **v0.3.**
   - **The report and the model** (this RFC's change): the commitment report's `stage_tables`, `tessera-bench`'s `stage_plan`, the fold passes in `μ` and the projections, and the pass counter's `p3b` label.
   - **The CPU prover.** It keeps every stage resident: the conformance models' stages fit, and its pass plan ([#132](https://github.com/AbdelStark/tessera/issues/132)) refuses one that does not.
-  - **The native relations.** They follow with [#458](https://github.com/AbdelStark/tessera/issues/458).
+  - **The native relations.** [RFC-0056](RFC-0056-native-working-sets.md) counts them ([#458](https://github.com/AbdelStark/tessera/issues/458)).
 - **v0.5.**
   - **The windowed rounds.** They land in `tessera-sumcheck` as a prover path with the equivalence tests below ([#459](https://github.com/AbdelStark/tessera/issues/459)).
   - **The GPU backend.** It windows the stages that exceed its budget, and the planner chooses `c`.
@@ -246,7 +244,7 @@ Each projection lists the stages' working sets and windows.
 
 - **OQ-0055-1: the grid on H100.** The window's arithmetic at six and eight own variables, and whether its scalings are bound by bandwidth or by multiplications, decide `c_w`.
   - **The disagreement.** EXP-0012's CPU measurement and SUR-0007's count disagree by about twice.
-  - **The switch.** A measured excess above about 20 ps per entry would favor two windows (Alternative 7).
+  - **The cap.** The measurement also settles RFC-0056's cap of eight own variables per window (OQ-0056-1).
   - **Owner and deadline.** @AbdelStark; resolve with v0.5's measurements.
 - **OQ-0054-2** stays open. The windows do not share the merge's pass: stage 1's grid pass needs the claim points the merge leaves.
 

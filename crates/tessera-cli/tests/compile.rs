@@ -188,32 +188,44 @@ fn bench_model_reads_compiled_plan_and_refuses_tampered_plan() {
     assert_eq!(bench_report["schema"], "tessera.cost-model/1");
     assert_eq!(bench_report["inputs"]["source_defaults"], false);
     assert_eq!(bench_report["projections"], commit_report["projections"]);
-    // RFC-0055: every projection sizes each reduction stage the report lists, from its tables at
-    // the scenario's batch of 2^14 tokens, 16 bytes per entry.
+    // RFC-0055, RFC-0056: every projection sizes each reduction stage the report lists, from the
+    // tables its prover holds at the scenario's batch of 2^14 tokens and at the projection's
+    // context: every class but the computed ones, its residents included, each at its width.
     let stages = commit_report["stage_tables"]
         .as_array()
         .expect("stage tables");
     assert!(!stages.is_empty());
-    let bytes: Vec<f64> = stages
-        .iter()
-        .map(|stage| {
-            stage["tables"]
-                .as_array()
-                .expect("tables")
-                .iter()
-                .map(|t| {
-                    let per_token = t["per_token"].as_bool().expect("a flag");
-                    let log2 = t["log2_entries"].as_u64().expect("a size") as i32;
-                    let count = t["count"].as_u64().expect("a count") as f64;
-                    count * 2f64.powi(log2 + if per_token { 14 } else { 0 }) * 16.0
-                })
-                .sum()
-        })
-        .collect();
     for p in commit_report["projections"]
         .as_array()
         .expect("projections")
     {
+        let context = p["context"].as_u64().expect("a context");
+        let context_bits = context.next_power_of_two().trailing_zeros() as i32;
+        let bytes: Vec<f64> = stages
+            .iter()
+            .map(|stage| {
+                ["tables", "residents"]
+                    .iter()
+                    .flat_map(|key| stage[*key].as_array().expect("tables"))
+                    .filter(|t| t["kind"] != "computed")
+                    .map(|t| {
+                        let log2 = t["log2_entries"].as_u64().expect("a size") as i32;
+                        let count = t["count"].as_u64().expect("a count") as f64;
+                        let per_bit = t["count_per_bit"].as_u64().expect("a count") as f64;
+                        let width = t["bytes"].as_u64().expect("a width") as f64;
+                        let growth = match t["growth"].as_str().expect("a growth") {
+                            "fixed" => 0,
+                            "tokens" => 14,
+                            "keys" => context_bits.max(14),
+                            "tokens_and_context" => 14 + context_bits,
+                            other => panic!("no growth {other}"),
+                        };
+                        let count = count + per_bit * f64::from(context_bits.min(14));
+                        count * 2f64.powi(log2 + growth) * width
+                    })
+                    .sum()
+            })
+            .collect();
         let planned: Vec<f64> = p["reduction_stages"]
             .as_array()
             .expect("the stages' plan")
