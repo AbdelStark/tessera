@@ -26,6 +26,14 @@
 //!   `v(2)`, and `s` becomes `s·ℓ(c)`. The caller gives the level's claims: a tree level has
 //!   them, from the root values or from the level above.
 //!
+//! - **Delayed reduction** (#391, EXP-0013). Every product whose result feeds only a node sum, a
+//!   terminal product, is added unreduced into a wide sum (`PolyField::Wide`): in
+//!   `GoldilocksExt2`, its four schoolbook partial products in 192-bit words, reduced once per
+//!   `x_hi` block. A fraction tree's relation is weighted as `w·A + (w·λ·D(0))·D(1)`, with
+//!   `A = N(0)·D(1) + N(1)·D(0)` and `w·λ` from a per-call table, so that both of its outer
+//!   products are terminal. A block of more pairs than one wide sum's bound admits is reduced
+//!   per partition. The sums are equal in the field, so the messages are the same.
+//!
 //! A padding round adds `γ^i·2^{n_max − n_i − j − 1}·c_i` at every node, as the batch prover does
 //! with `c_i` summed from the tables. The first own round reads the tables unbound, in the prime
 //! subfield where they are, and binds them; later rounds bind in place.
@@ -37,7 +45,6 @@
 use core::ops::{Add, Mul, Sub};
 
 use tessera_codec::{SecretBuf, Zeroize};
-use tessera_field::Field;
 use tessera_poly::PolyField;
 
 use crate::contract::eq_weights;
@@ -90,17 +97,43 @@ fn line<E: Copy + Add<Output = E> + Sub<Output = E>>(a: E, b: E) -> [E; 3] {
     [a, b, b + (b - a)]
 }
 
+/// The most pairs a block's inner sum takes into one wide sum before reducing it. A pair adds at
+/// most two products to a node's sum, a fraction node's `w·A` and `(w·λ·D(0))·D(1)`, and a sum
+/// holds `2^F::WIDE_LOG_TERMS` products, so a partition holds `2^(F::WIDE_LOG_TERMS − 1)` pairs:
+/// `2^62` for `GoldilocksExt2`, whose `c_1` then sums `2^64` partial products, the most
+/// [`tessera_field::Wide192`] holds. Larger blocks are partitioned; no level comes near.
+fn pairs_per_sum<F: PolyField>() -> usize {
+    1usize
+        .checked_shl(F::WIDE_LOG_TERMS.saturating_sub(1))
+        .unwrap_or(usize::MAX)
+}
+
+/// Adds each wide sum, reduced, to its node's inner sum, and clears it: the sums derive from the
+/// tables (05 §3 OBS-6).
+#[inline(always)]
+fn fold<F: PolyField, const ONE: bool>(inner: &mut [F; 3], wide: &mut [F::Wide; 3]) {
+    for (z, (part, sum)) in inner.iter_mut().zip(wide.iter_mut()).enumerate() {
+        if z != 1 || ONE {
+            *part += F::wide_reduce(sum);
+        }
+        sum.zeroize();
+    }
+}
+
 /// `Σ_hi eq_hi[hi]·Σ_lo eq_lo[lo]·P(pair)` at the nodes `0, 2`, and `1` when `ONE`, over the pairs
-/// of a product's two tables, in their field `E`; `lift(w, x)` is `w·x` for a weight `w ∈ F`.
+/// of a product's two tables, in their field `E`. `add(wide, w, x)` adds the terminal product
+/// `w·x`, for a weight `w ∈ F`, unreduced; each block's inner sum is reduced once per partition of
+/// `step` pairs, [`pairs_per_sum`] in production (#391).
 fn product_sums<F, E, const ONE: bool>(
     even: &[E],
     odd: &[E],
     eq_lo: &[F],
     eq_hi: &[F],
-    lift: impl Fn(F, E) -> F,
+    step: usize,
+    add: impl Fn(&mut F::Wide, F, E),
 ) -> [F; 3]
 where
-    F: Field,
+    F: PolyField,
     E: Copy + Add<Output = E> + Sub<Output = E> + Mul<Output = E>,
 {
     let block = 2 * eq_lo.len();
@@ -111,13 +144,20 @@ where
         .zip(eq_hi)
     {
         let mut inner = [F::ZERO; 3];
-        for ((e, o), &w_lo) in even.chunks_exact(2).zip(odd.chunks_exact(2)).zip(eq_lo) {
-            let (e, o) = (line(e[0], e[1]), line(o[0], o[1]));
-            inner[0] += lift(w_lo, e[0] * o[0]);
-            if ONE {
-                inner[1] += lift(w_lo, e[1] * o[1]);
+        let parts = even
+            .chunks(step.saturating_mul(2))
+            .zip(odd.chunks(step.saturating_mul(2)));
+        for ((even, odd), eq_lo) in parts.zip(eq_lo.chunks(step)) {
+            let mut wide = [F::Wide::default(); 3];
+            for ((e, o), &w_lo) in even.chunks_exact(2).zip(odd.chunks_exact(2)).zip(eq_lo) {
+                let (e, o) = (line(e[0], e[1]), line(o[0], o[1]));
+                add(&mut wide[0], w_lo, e[0] * o[0]);
+                if ONE {
+                    add(&mut wide[1], w_lo, e[1] * o[1]);
+                }
+                add(&mut wide[2], w_lo, e[2] * o[2]);
             }
-            inner[2] += lift(w_lo, e[2] * o[2]);
+            fold::<F, ONE>(&mut inner, &mut wide);
         }
         for (sum, part) in sums.iter_mut().zip(inner) {
             *sum += w_hi * part;
@@ -126,45 +166,49 @@ where
     sums
 }
 
-/// A fraction tree's `N(0)·D(1) + N(1)·D(0) + λ·D(0)·D(1)` at one node, from its numerators'
-/// values `n` and its denominators' `d`, with `num(d, n) = d·n`.
-#[inline(always)]
-fn fraction_at<F: Field, N: Copy>(n: [N; 2], d: [F; 2], lambda: F, num: impl Fn(F, N) -> F) -> F {
-    num(d[1], n[0]) + num(d[0], n[1]) + lambda * d[0] * d[1]
-}
-
 /// As [`product_sums`] for a fraction tree, whose numerators are in `N` (`num(d, n) = d·n`), or
-/// all 1 when `numerators` is `None`.
+/// all 1 when `numerators` is `None`. With `A = N(0)·D(1) + N(1)·D(0)`, `D(0) + D(1)` for unit
+/// numerators, the weighted relation is `w·A + (w·λ)·D(0)·D(1)`: `w·λ` comes from a table built
+/// once per call, and `w·A` and `(w·λ·D(0))·D(1)` are terminal products, added unreduced.
 fn fraction_sums<F, N, const ONE: bool>(
     numerators: Option<(&[N], &[N])>,
-    d_even: &[F],
-    d_odd: &[F],
+    (d_even, d_odd): (&[F], &[F]),
     lambda: F,
     eq_lo: &[F],
     eq_hi: &[F],
+    step: usize,
     num: impl Fn(F, N) -> F,
 ) -> [F; 3]
 where
-    F: Field,
+    F: PolyField,
     N: Copy + Add<Output = N> + Sub<Output = N>,
 {
     let block = 2 * eq_lo.len();
+    // Public: the weights come from the point and λ from the transcript.
+    let scaled: Vec<F> = eq_lo.iter().map(|&w| w * lambda).collect();
+    let weights = || eq_lo.chunks(step).zip(scaled.chunks(step));
+    let step2 = step.saturating_mul(2);
     let mut sums = [F::ZERO; 3];
     let rows = d_even.chunks_exact(block).zip(d_odd.chunks_exact(block));
     match numerators {
         None => {
             for ((d_even, d_odd), &w_hi) in rows.zip(eq_hi) {
                 let mut inner = [F::ZERO; 3];
-                for ((d0, d1), &w_lo) in
-                    d_even.chunks_exact(2).zip(d_odd.chunks_exact(2)).zip(eq_lo)
-                {
-                    let (d0, d1) = (line(d0[0], d0[1]), line(d1[0], d1[1]));
-                    for z in [0, 1, 2] {
-                        if z != 1 || ONE {
-                            // N = 1: D(1) + D(0) + λ·D(0)·D(1).
-                            inner[z] += w_lo * (d1[z] + d0[z] + lambda * d0[z] * d1[z]);
+                let parts = d_even.chunks(step2).zip(d_odd.chunks(step2)).zip(weights());
+                for ((d_even, d_odd), (eq_lo, scaled)) in parts {
+                    let mut wide = [F::Wide::default(); 3];
+                    let pairs = d_even.chunks_exact(2).zip(d_odd.chunks_exact(2));
+                    for ((d0, d1), (&w, &wl)) in pairs.zip(eq_lo.iter().zip(scaled)) {
+                        let (d0, d1) = (line(d0[0], d0[1]), line(d1[0], d1[1]));
+                        for z in [0, 1, 2] {
+                            if z != 1 || ONE {
+                                // N = 1: w·(D(0) + D(1)) + (w·λ·D(0))·D(1).
+                                F::wide_add_product(&mut wide[z], w, d0[z] + d1[z]);
+                                F::wide_add_product(&mut wide[z], wl * d0[z], d1[z]);
+                            }
                         }
                     }
+                    fold::<F, ONE>(&mut inner, &mut wide);
                 }
                 for (sum, part) in sums.iter_mut().zip(inner) {
                     *sum += w_hi * part;
@@ -175,19 +219,29 @@ where
             let numerators = n_even.chunks_exact(block).zip(n_odd.chunks_exact(block));
             for (((n_even, n_odd), (d_even, d_odd)), &w_hi) in numerators.zip(rows).zip(eq_hi) {
                 let mut inner = [F::ZERO; 3];
-                let pairs = n_even
-                    .chunks_exact(2)
-                    .zip(n_odd.chunks_exact(2))
-                    .zip(d_even.chunks_exact(2).zip(d_odd.chunks_exact(2)));
-                for (((n0, n1), (d0, d1)), &w_lo) in pairs.zip(eq_lo) {
-                    let (n0, n1) = (line(n0[0], n0[1]), line(n1[0], n1[1]));
-                    let (d0, d1) = (line(d0[0], d0[1]), line(d1[0], d1[1]));
-                    for z in [0, 1, 2] {
-                        if z != 1 || ONE {
-                            let value = fraction_at([n0[z], n1[z]], [d0[z], d1[z]], lambda, &num);
-                            inner[z] += w_lo * value;
+                let parts = n_even
+                    .chunks(step2)
+                    .zip(n_odd.chunks(step2))
+                    .zip(d_even.chunks(step2).zip(d_odd.chunks(step2)))
+                    .zip(weights());
+                for (((n_even, n_odd), (d_even, d_odd)), (eq_lo, scaled)) in parts {
+                    let mut wide = [F::Wide::default(); 3];
+                    let pairs = n_even
+                        .chunks_exact(2)
+                        .zip(n_odd.chunks_exact(2))
+                        .zip(d_even.chunks_exact(2).zip(d_odd.chunks_exact(2)));
+                    for (((n0, n1), (d0, d1)), (&w, &wl)) in pairs.zip(eq_lo.iter().zip(scaled)) {
+                        let (n0, n1) = (line(n0[0], n0[1]), line(n1[0], n1[1]));
+                        let (d0, d1) = (line(d0[0], d0[1]), line(d1[0], d1[1]));
+                        for z in [0, 1, 2] {
+                            if z != 1 || ONE {
+                                let a = num(d1[z], n0[z]) + num(d0[z], n1[z]);
+                                F::wide_add_product(&mut wide[z], w, a);
+                                F::wide_add_product(&mut wide[z], wl * d0[z], d1[z]);
+                            }
                         }
                     }
+                    fold::<F, ONE>(&mut inner, &mut wide);
                 }
                 for (sum, part) in sums.iter_mut().zip(inner) {
                     *sum += w_hi * part;
@@ -297,11 +351,14 @@ impl<'a, F: PolyField> Split<'a, F> {
     fn node_sums<const ONE: bool>(&self, k: usize, eq_lo: &[F], eq_hi: &[F]) -> [F; 3] {
         let base = |w: F, b: F::Base| w.mul_by_base(b);
         let ext = |w: F, x: F| w * x;
+        let wide_base = |wide: &mut F::Wide, w: F, b: F::Base| F::wide_add_base_product(wide, w, b);
+        let wide_ext = |wide: &mut F::Wide, w: F, x: F| F::wide_add_product(wide, w, x);
+        let step = pairs_per_sum::<F>();
         if k > 0 {
             let b = &self.bound;
             return match self.tables {
                 LevelTables::Product { .. } => {
-                    product_sums::<F, F, ONE>(&b[0], &b[1], eq_lo, eq_hi, ext)
+                    product_sums::<F, F, ONE>(&b[0], &b[1], eq_lo, eq_hi, step, wide_ext)
                 }
                 LevelTables::Fraction {
                     numerators, lambda, ..
@@ -310,13 +367,13 @@ impl<'a, F: PolyField> Split<'a, F> {
                         LevelNumerators::Unit => None,
                         _ => Some((&b[0][..], &b[1][..])),
                     };
-                    fraction_sums::<F, F, ONE>(n, &b[2], &b[3], *lambda, eq_lo, eq_hi, ext)
+                    fraction_sums::<F, F, ONE>(n, (&b[2], &b[3]), *lambda, eq_lo, eq_hi, step, ext)
                 }
             };
         }
         match self.tables {
             LevelTables::Product { even, odd } => {
-                product_sums::<F, F::Base, ONE>(even, odd, eq_lo, eq_hi, base)
+                product_sums::<F, F::Base, ONE>(even, odd, eq_lo, eq_hi, step, wide_base)
             }
             LevelTables::Fraction {
                 numerators,
@@ -324,25 +381,31 @@ impl<'a, F: PolyField> Split<'a, F> {
                 d_odd,
                 lambda,
             } => match numerators {
-                LevelNumerators::Unit => {
-                    fraction_sums::<F, F, ONE>(None, d_even, d_odd, *lambda, eq_lo, eq_hi, ext)
-                }
-                LevelNumerators::Base { even, odd } => fraction_sums::<F, F::Base, ONE>(
-                    Some((even, odd)),
-                    d_even,
-                    d_odd,
+                LevelNumerators::Unit => fraction_sums::<F, F, ONE>(
+                    None,
+                    (d_even, d_odd),
                     *lambda,
                     eq_lo,
                     eq_hi,
+                    step,
+                    ext,
+                ),
+                LevelNumerators::Base { even, odd } => fraction_sums::<F, F::Base, ONE>(
+                    Some((even, odd)),
+                    (d_even, d_odd),
+                    *lambda,
+                    eq_lo,
+                    eq_hi,
+                    step,
                     base,
                 ),
                 LevelNumerators::Ext { even, odd } => fraction_sums::<F, F, ONE>(
                     Some((even, odd)),
-                    d_even,
-                    d_odd,
+                    (d_even, d_odd),
                     *lambda,
                     eq_lo,
                     eq_hi,
+                    step,
                     ext,
                 ),
             },
@@ -533,6 +596,128 @@ where
         vars,
         evals,
     )
+}
+
+/// The kernels as they were before #391, every product reduced: the test oracle of the delayed
+/// ones, kept apart from production.
+#[cfg(test)]
+mod reference {
+    use super::*;
+    use tessera_field::Field;
+
+    /// `Σ_hi eq_hi[hi]·Σ_lo eq_lo[lo]·P(pair)` at the nodes `0, 2`, and `1` when `ONE`, over the pairs
+    /// of a product's two tables, in their field `E`; `lift(w, x)` is `w·x` for a weight `w ∈ F`.
+    pub(super) fn product_sums<F, E, const ONE: bool>(
+        even: &[E],
+        odd: &[E],
+        eq_lo: &[F],
+        eq_hi: &[F],
+        lift: impl Fn(F, E) -> F,
+    ) -> [F; 3]
+    where
+        F: Field,
+        E: Copy + Add<Output = E> + Sub<Output = E> + Mul<Output = E>,
+    {
+        let block = 2 * eq_lo.len();
+        let mut sums = [F::ZERO; 3];
+        for ((even, odd), &w_hi) in even
+            .chunks_exact(block)
+            .zip(odd.chunks_exact(block))
+            .zip(eq_hi)
+        {
+            let mut inner = [F::ZERO; 3];
+            for ((e, o), &w_lo) in even.chunks_exact(2).zip(odd.chunks_exact(2)).zip(eq_lo) {
+                let (e, o) = (line(e[0], e[1]), line(o[0], o[1]));
+                inner[0] += lift(w_lo, e[0] * o[0]);
+                if ONE {
+                    inner[1] += lift(w_lo, e[1] * o[1]);
+                }
+                inner[2] += lift(w_lo, e[2] * o[2]);
+            }
+            for (sum, part) in sums.iter_mut().zip(inner) {
+                *sum += w_hi * part;
+            }
+        }
+        sums
+    }
+
+    /// A fraction tree's `N(0)·D(1) + N(1)·D(0) + λ·D(0)·D(1)` at one node, from its numerators'
+    /// values `n` and its denominators' `d`, with `num(d, n) = d·n`.
+    #[inline(always)]
+    pub(super) fn fraction_at<F: Field, N: Copy>(
+        n: [N; 2],
+        d: [F; 2],
+        lambda: F,
+        num: impl Fn(F, N) -> F,
+    ) -> F {
+        num(d[1], n[0]) + num(d[0], n[1]) + lambda * d[0] * d[1]
+    }
+
+    /// As [`product_sums`] for a fraction tree, whose numerators are in `N` (`num(d, n) = d·n`), or
+    /// all 1 when `numerators` is `None`.
+    pub(super) fn fraction_sums<F, N, const ONE: bool>(
+        numerators: Option<(&[N], &[N])>,
+        d_even: &[F],
+        d_odd: &[F],
+        lambda: F,
+        eq_lo: &[F],
+        eq_hi: &[F],
+        num: impl Fn(F, N) -> F,
+    ) -> [F; 3]
+    where
+        F: Field,
+        N: Copy + Add<Output = N> + Sub<Output = N>,
+    {
+        let block = 2 * eq_lo.len();
+        let mut sums = [F::ZERO; 3];
+        let rows = d_even.chunks_exact(block).zip(d_odd.chunks_exact(block));
+        match numerators {
+            None => {
+                for ((d_even, d_odd), &w_hi) in rows.zip(eq_hi) {
+                    let mut inner = [F::ZERO; 3];
+                    for ((d0, d1), &w_lo) in
+                        d_even.chunks_exact(2).zip(d_odd.chunks_exact(2)).zip(eq_lo)
+                    {
+                        let (d0, d1) = (line(d0[0], d0[1]), line(d1[0], d1[1]));
+                        for z in [0, 1, 2] {
+                            if z != 1 || ONE {
+                                // N = 1: D(1) + D(0) + λ·D(0)·D(1).
+                                inner[z] += w_lo * (d1[z] + d0[z] + lambda * d0[z] * d1[z]);
+                            }
+                        }
+                    }
+                    for (sum, part) in sums.iter_mut().zip(inner) {
+                        *sum += w_hi * part;
+                    }
+                }
+            }
+            Some((n_even, n_odd)) => {
+                let numerators = n_even.chunks_exact(block).zip(n_odd.chunks_exact(block));
+                for (((n_even, n_odd), (d_even, d_odd)), &w_hi) in numerators.zip(rows).zip(eq_hi) {
+                    let mut inner = [F::ZERO; 3];
+                    let pairs = n_even
+                        .chunks_exact(2)
+                        .zip(n_odd.chunks_exact(2))
+                        .zip(d_even.chunks_exact(2).zip(d_odd.chunks_exact(2)));
+                    for (((n0, n1), (d0, d1)), &w_lo) in pairs.zip(eq_lo) {
+                        let (n0, n1) = (line(n0[0], n0[1]), line(n1[0], n1[1]));
+                        let (d0, d1) = (line(d0[0], d0[1]), line(d1[0], d1[1]));
+                        for z in [0, 1, 2] {
+                            if z != 1 || ONE {
+                                let value =
+                                    fraction_at([n0[z], n1[z]], [d0[z], d1[z]], lambda, &num);
+                                inner[z] += w_lo * value;
+                            }
+                        }
+                    }
+                    for (sum, part) in sums.iter_mut().zip(inner) {
+                        *sum += w_hi * part;
+                    }
+                }
+            }
+        }
+        sums
+    }
 }
 
 #[cfg(test)]
@@ -875,6 +1060,58 @@ mod tests {
         same_as_the_batch_prover(&cases, script);
     }
 
+    /// Tables of boundary elements only, `0`, `1`, `P − 1` and `P − 2^32`, which carry out of
+    /// every word of the delayed sums (#391), in a front-padded batch of every kind.
+    #[test]
+    fn boundary_tables_match_the_batch_prover() {
+        let edge = |x: Fp| {
+            let edges = [0, 1, Fp::ORDER - 1, Fp::ORDER - (1 << 32)];
+            Fp::from_u64_reduced(edges[(x.to_canonical_u64() % 4) as usize])
+        };
+        let edge2 = |x: Fp2| Fp2::new(edge(x.coeffs()[0]), edge(x.coeffs()[1]));
+        let fps = |v: &mut [Fp]| v.iter_mut().for_each(|x| *x = edge(*x));
+        let fp2s = |v: &mut [Fp2]| v.iter_mut().for_each(|x| *x = edge2(*x));
+        let mut rng = Rng(0x2580_0008);
+        let mut cases = Vec::new();
+        for (n, kind) in [
+            (6, None),
+            (5, Some(0)),
+            (4, Some(1)),
+            (6, Some(2)),
+            (2, None),
+        ] {
+            let point = rng.fp2s(n);
+            cases.push(match kind {
+                Some(kind) => Case::fraction(&mut rng, point, kind),
+                None => Case::product(&mut rng, point),
+            });
+        }
+        for case in &mut cases {
+            match &mut case.tables {
+                Owned::Product(e, o) => {
+                    fps(e);
+                    fps(o);
+                }
+                Owned::Unit(d0, d1) => {
+                    fp2s(d0);
+                    fp2s(d1);
+                }
+                Owned::Base(n0, n1, d0, d1) => {
+                    fps(n0);
+                    fps(n1);
+                    fp2s(d0);
+                    fp2s(d1);
+                }
+                Owned::Ext(n0, n1, d0, d1) => {
+                    for table in [n0, n1, d0, d1] {
+                        fp2s(table);
+                    }
+                }
+            }
+        }
+        same_as_the_batch_prover(&cases, Vec::new());
+    }
+
     /// The root claim of a forest, from its level 1's halves, is the sum its first level proves.
     #[test]
     fn a_forests_root_claim_is_its_first_levels_sum() {
@@ -887,6 +1124,202 @@ mod tests {
                 .map(|y| eq[y].mul_by_base(even[y] * odd[y]))
                 .fold(Fp2::ZERO, |a, b| a + b);
             assert_eq!(product_claim(&point, &even, &odd), expected, "{s}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod delayed {
+    //! The delayed-reduction kernels (#391) against the reduced ones they replace, node sum by
+    //! node sum: random and boundary tables, both `ONE` arms, every table and numerator kind,
+    //! blocks of 1 to 16 pairs in 1 to 3 rows, and partitions of 1, 2 and 3 pairs as well as the
+    //! production one, so that a partition boundary inside a block reduces exactly.
+    use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension, WideExt2};
+    use tessera_poly::PolyField;
+
+    use super::{fraction_sums, pairs_per_sum, product_sums, reference};
+
+    type GoldilocksExt2Wide = WideExt2<Goldilocks>;
+
+    type Fp = Goldilocks;
+    type Fp2 = GoldilocksExt2;
+
+    struct Rng(u64);
+
+    impl Rng {
+        fn u64(&mut self) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            self.0
+        }
+        /// Every fourth draw is a boundary element: 0, 1, `P − 1` or `P − 2^32`.
+        fn fp(&mut self) -> Fp {
+            let x = self.u64();
+            let edges = [0, 1, Fp::ORDER - 1, Fp::ORDER - (1 << 32)];
+            match x % 4 {
+                0 => Fp::from_u64_reduced(edges[(x >> 2) as usize % 4]),
+                _ => Fp::from_u64_reduced(x),
+            }
+        }
+        fn fp2(&mut self) -> Fp2 {
+            Fp2::new(self.fp(), self.fp())
+        }
+        fn fps(&mut self, n: usize) -> Vec<Fp> {
+            (0..n).map(|_| self.fp()).collect()
+        }
+        fn fp2s(&mut self, n: usize) -> Vec<Fp2> {
+            (0..n).map(|_| self.fp2()).collect()
+        }
+    }
+
+    fn steps() -> [usize; 4] {
+        [1, 2, 3, pairs_per_sum::<Fp2>()]
+    }
+
+    fn check<const ONE: bool>(rng: &mut Rng, lo: usize, rows: usize) {
+        let pairs = 1usize << lo;
+        let n = 2 * pairs * rows;
+        let (eq_lo, eq_hi) = (rng.fp2s(pairs), rng.fp2s(rows));
+        let (base_e, base_o, ext_e, ext_o) = (rng.fps(n), rng.fps(n), rng.fp2s(n), rng.fp2s(n));
+        let (d_e, d_o, lambda) = (rng.fp2s(n), rng.fp2s(n), rng.fp2());
+        let lift = |w: Fp2, b: Fp| w.mul_by_base(b);
+        let mul = |w: Fp2, x: Fp2| w * x;
+        let wide_base =
+            |s: &mut <Fp2 as PolyField>::Wide, w: Fp2, b: Fp| Fp2::wide_add_base_product(s, w, b);
+        let wide_ext =
+            |s: &mut <Fp2 as PolyField>::Wide, w: Fp2, x: Fp2| Fp2::wide_add_product(s, w, x);
+        let want = [
+            reference::product_sums::<Fp2, Fp, ONE>(&base_e, &base_o, &eq_lo, &eq_hi, lift),
+            reference::product_sums::<Fp2, Fp2, ONE>(&ext_e, &ext_o, &eq_lo, &eq_hi, mul),
+            reference::fraction_sums::<Fp2, Fp2, ONE>(
+                None, &d_e, &d_o, lambda, &eq_lo, &eq_hi, mul,
+            ),
+            reference::fraction_sums::<Fp2, Fp, ONE>(
+                Some((&base_e, &base_o)),
+                &d_e,
+                &d_o,
+                lambda,
+                &eq_lo,
+                &eq_hi,
+                lift,
+            ),
+            reference::fraction_sums::<Fp2, Fp2, ONE>(
+                Some((&ext_e, &ext_o)),
+                &d_e,
+                &d_o,
+                lambda,
+                &eq_lo,
+                &eq_hi,
+                mul,
+            ),
+        ];
+        for step in steps() {
+            let got = [
+                product_sums::<Fp2, Fp, ONE>(&base_e, &base_o, &eq_lo, &eq_hi, step, wide_base),
+                product_sums::<Fp2, Fp2, ONE>(&ext_e, &ext_o, &eq_lo, &eq_hi, step, wide_ext),
+                fraction_sums::<Fp2, Fp2, ONE>(
+                    None,
+                    (&d_e, &d_o),
+                    lambda,
+                    &eq_lo,
+                    &eq_hi,
+                    step,
+                    mul,
+                ),
+                fraction_sums::<Fp2, Fp, ONE>(
+                    Some((&base_e, &base_o)),
+                    (&d_e, &d_o),
+                    lambda,
+                    &eq_lo,
+                    &eq_hi,
+                    step,
+                    lift,
+                ),
+                fraction_sums::<Fp2, Fp2, ONE>(
+                    Some((&ext_e, &ext_o)),
+                    (&d_e, &d_o),
+                    lambda,
+                    &eq_lo,
+                    &eq_hi,
+                    step,
+                    mul,
+                ),
+            ];
+            for (kind, (got, want)) in got.iter().zip(&want).enumerate() {
+                for z in [0, 1, 2] {
+                    if z != 1 || ONE {
+                        assert_eq!(
+                            got[z], want[z],
+                            "kind {kind}, node {z}, lo {lo}, rows {rows}, step {step}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn delayed_node_sums_equal_the_reduced_ones() {
+        let mut rng = Rng(0x7E55_E7A0_0391_0003);
+        for lo in 0..=4 {
+            for rows in 1..=3 {
+                check::<false>(&mut rng, lo, rows);
+                check::<true>(&mut rng, lo, rows);
+            }
+        }
+    }
+
+    /// The largest admitted partition, at its bound: `2^62` pairs of two products each put
+    /// `2^64` partial products into `c_1`, the sum `the_largest_admitted_sum_fits_and_reduces`
+    /// checks, and no more.
+    #[test]
+    fn the_largest_partition_fills_the_wide_sum_exactly() {
+        let pairs = pairs_per_sum::<Fp2>() as u128;
+        assert_eq!(pairs, 1 << 62);
+        let products = 2 * pairs;
+        assert_eq!(products, 1 << GoldilocksExt2Wide::LOG_TERMS);
+        assert_eq!(2 * products, 1 << tessera_field::Wide192::LOG_TERMS);
+    }
+
+    /// The greatest operands everywhere: every product is `(P − 1)²`'s, the most a wide sum takes.
+    #[test]
+    fn the_greatest_elements_sum_exactly() {
+        let top = Fp::from_u64_reduced(Fp::ORDER - 1);
+        let top2 = Fp2::new(top, top);
+        let pairs = 64;
+        let (eq_lo, eq_hi) = (vec![top2; pairs], vec![top2; 2]);
+        let (base, ext) = (vec![top; 4 * pairs], vec![top2; 4 * pairs]);
+        let lift = |w: Fp2, b: Fp| w.mul_by_base(b);
+        let mul = |w: Fp2, x: Fp2| w * x;
+        let wide_ext =
+            |s: &mut <Fp2 as PolyField>::Wide, w: Fp2, x: Fp2| Fp2::wide_add_product(s, w, x);
+        for step in steps() {
+            assert_eq!(
+                product_sums::<Fp2, Fp2, true>(&ext, &ext, &eq_lo, &eq_hi, step, wide_ext),
+                reference::product_sums::<Fp2, Fp2, true>(&ext, &ext, &eq_lo, &eq_hi, mul)
+            );
+            assert_eq!(
+                fraction_sums::<Fp2, Fp, true>(
+                    Some((&base, &base)),
+                    (&ext, &ext),
+                    top2,
+                    &eq_lo,
+                    &eq_hi,
+                    step,
+                    lift
+                ),
+                reference::fraction_sums::<Fp2, Fp, true>(
+                    Some((&base, &base)),
+                    &ext,
+                    &ext,
+                    top2,
+                    &eq_lo,
+                    &eq_hi,
+                    lift
+                )
+            );
         }
     }
 }

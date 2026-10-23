@@ -2,8 +2,10 @@
 
 //! The fields the crate computes in, each with the prime field it contains (RFC-0002 'Traits').
 
+use tessera_codec::Zeroize;
 use tessera_field::{
     ExtensionBase, F65537, Field, Goldilocks, PrimeField, QuadraticExt, QuadraticExtension,
+    WideExt2,
 };
 
 /// A field together with its prime subfield [`Base`](PolyField::Base): `GoldilocksExt2` over
@@ -27,6 +29,22 @@ pub trait PolyField: Field + From<Self::Base> {
 
     /// `self + b` for `b` in the prime subfield: in a quadratic extension, one base addition.
     fn add_base(&self, b: Self::Base) -> Self;
+
+    /// A sum of products reduced once, when it is read (#391): in `GoldilocksExt2`, the schoolbook
+    /// partial products in 192-bit words; in a prime field, the element itself.
+    type Wide: Copy + Default + Zeroize;
+
+    /// `log2` of the most products one [`Self::Wide`] holds.
+    const WIDE_LOG_TERMS: u32;
+
+    /// Adds `a·b` to `wide`.
+    fn wide_add_product(wide: &mut Self::Wide, a: Self, b: Self);
+
+    /// Adds `a·b` to `wide`, for `b` in the prime subfield.
+    fn wide_add_base_product(wide: &mut Self::Wide, a: Self, b: Self::Base);
+
+    /// The sum `wide` holds, reduced.
+    fn wide_reduce(wide: &Self::Wide) -> Self;
 }
 
 macro_rules! prime_fields {
@@ -42,6 +60,25 @@ macro_rules! prime_fields {
             #[inline]
             fn add_base(&self, b: Self) -> Self {
                 *self + b
+            }
+
+            type Wide = Self;
+
+            const WIDE_LOG_TERMS: u32 = 64;
+
+            #[inline]
+            fn wide_add_product(wide: &mut Self, a: Self, b: Self) {
+                *wide += a * b;
+            }
+
+            #[inline]
+            fn wide_add_base_product(wide: &mut Self, a: Self, b: Self) {
+                *wide += a * b;
+            }
+
+            #[inline]
+            fn wide_reduce(wide: &Self) -> Self {
+                *wide
             }
         }
     )*};
@@ -61,5 +98,24 @@ impl<B: ExtensionBase> PolyField for QuadraticExt<B> {
     fn add_base(&self, b: B) -> Self {
         let [c0, c1] = self.coeffs();
         Self::new(c0 + b, c1)
+    }
+
+    type Wide = WideExt2<B>;
+
+    const WIDE_LOG_TERMS: u32 = WideExt2::<B>::LOG_TERMS;
+
+    #[inline(always)]
+    fn wide_add_product(wide: &mut WideExt2<B>, a: Self, b: Self) {
+        wide.add_product(a, b);
+    }
+
+    #[inline(always)]
+    fn wide_add_base_product(wide: &mut WideExt2<B>, a: Self, b: B) {
+        wide.add_base_product(a, b);
+    }
+
+    #[inline(always)]
+    fn wide_reduce(wide: &WideExt2<B>) -> Self {
+        wide.reduce()
     }
 }

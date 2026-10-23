@@ -25,7 +25,7 @@ use std::process::Command;
 const TARGET: &str = "x86_64-unknown-linux-gnu";
 
 /// The probes of `tessera-field`'s `codegen-probe` feature, each a loop over one operation.
-pub(crate) const PROBES: [&str; 13] = [
+pub(crate) const PROBES: [&str; 15] = [
     "fp_add",
     "fp_sub",
     "fp_mul",
@@ -39,6 +39,8 @@ pub(crate) const PROBES: [&str; 13] = [
     "fp2_sub",
     "fp2_mul",
     "fp2_dot",
+    "wide_dot",
+    "wide_fp2_dot",
 ];
 
 /// The conditional jumps a loop needs of its own: the empty-input check and the back-edge.

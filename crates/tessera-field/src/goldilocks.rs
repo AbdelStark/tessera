@@ -149,7 +149,7 @@ mod compile_time {
     arithmetic!(const);
 }
 
-use run_time::{add, canonicalize, mul, mul_small, pow, square_n, sub};
+use run_time::{add, canonicalize, mul, mul_small, pow, reduce128, square_n, sub};
 
 // The arithmetic's edge cases, checked by the compiler on the compile-time instance, which shares
 // its source with the run-time one: wrapping sums, borrowing differences, the largest product,
@@ -203,6 +203,62 @@ impl Goldilocks {
     #[inline]
     pub fn mul_small(self, c: u32) -> Self {
         Self(mul_small(self.0, c))
+    }
+}
+
+/// A sum of products of elements, unreduced (#391): the 192-bit integer
+/// `lo + 2^64·mid + 2^128·hi`, reduced once. Each product of canonical elements is below
+/// `P² < 2^128`, so a sum of `2^64` of them stays below `2^192` and the words never overflow.
+///
+/// Additions and the reduction are branch-free on the values (INV-ARCH-2); a sum of secret-class
+/// products is cleared where it is held (05 §3 OBS-6).
+#[derive(Clone, Copy, Default)]
+pub struct Wide192 {
+    lo: u64,
+    mid: u64,
+    hi: u64,
+}
+
+impl Wide192 {
+    /// `log2` of the most products one sum holds: `2^64·(P − 1)² < 2^192`.
+    pub const LOG_TERMS: u32 = 64;
+
+    /// Adds `a·b`, all 128 bits of it.
+    #[inline(always)]
+    pub fn add_product(&mut self, a: Goldilocks, b: Goldilocks) {
+        let p = u128::from(a.0) * u128::from(b.0);
+        let (lo, carry) = self.lo.overflowing_add(p as u64);
+        // mid + (p >> 64) + carry: at most one of the two additions carries.
+        let (mid, carry_a) = self.mid.overflowing_add((p >> 64) as u64);
+        let (mid, carry_b) = mid.overflowing_add(u64::from(carry));
+        self.lo = lo;
+        self.mid = mid;
+        self.hi = self
+            .hi
+            .wrapping_add(u64::from(carry_a) + u64::from(carry_b));
+    }
+
+    /// The sum modulo `P`: `2^128 ≡ −2^32`, so it is `(lo + 2^64·mid) − 2^32·hi`, each part a
+    /// 128-bit value that one Goldilocks reduction takes.
+    #[inline(always)]
+    pub fn reduce(&self) -> Goldilocks {
+        let low = reduce128(u128::from(self.lo) | (u128::from(self.mid) << 64));
+        let high = reduce128(u128::from(self.hi) << 32);
+        Goldilocks(sub(low, high))
+    }
+}
+
+impl Zeroize for Wide192 {
+    fn zeroize(&mut self) {
+        self.lo.zeroize();
+        self.mid.zeroize();
+        self.hi.zeroize();
+    }
+}
+
+impl fmt::Debug for Wide192 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Wide192")
     }
 }
 
@@ -344,5 +400,131 @@ impl PrimeField for Goldilocks {
             "Goldilocks has no element of order 2^{log_n}; the two-adicity is 32"
         );
         Self(ROOTS[log_n as usize])
+    }
+}
+
+#[cfg(test)]
+mod wide_tests {
+    //! The wide sum against an independent big-integer reduction (#391).
+    use super::*;
+
+    /// `(hi·2^128 + mid·2^64 + lo) mod P` by Horner's rule in 128-bit integers, sharing nothing
+    /// with the field's reduction.
+    fn oracle(lo: u64, mid: u64, hi: u64) -> u64 {
+        let p = u128::from(P);
+        let two64 = (1u128 << 64) % p;
+        let mut v = u128::from(hi) % p;
+        v = (v * two64 + u128::from(mid) % p) % p;
+        (((v * two64) % p + u128::from(lo) % p) % p) as u64
+    }
+
+    fn words(w: &Wide192) -> (u64, u64, u64) {
+        (w.lo, w.mid, w.hi)
+    }
+
+    /// Adds `x` to the 192-bit `(lo, mid, hi)` with 128-bit arithmetic.
+    fn add192((lo, mid, hi): (u64, u64, u64), x: u128) -> (u64, u64, u64) {
+        let (low, carry) = (u128::from(lo) | (u128::from(mid) << 64)).overflowing_add(x);
+        (low as u64, (low >> 64) as u64, hi + u64::from(carry))
+    }
+
+    const EDGES: [u64; 10] = [
+        0,
+        1,
+        2,
+        EPSILON,
+        1 << 32,
+        1 << 63,
+        P - 1,
+        P,
+        u64::MAX - 1,
+        u64::MAX,
+    ];
+
+    #[test]
+    fn any_three_words_reduce_as_the_integer_they_hold() {
+        for &lo in &EDGES {
+            for &mid in &EDGES {
+                for &hi in &EDGES {
+                    let w = Wide192 { lo, mid, hi };
+                    assert_eq!(
+                        w.reduce().0,
+                        oracle(lo, mid, hi),
+                        "{lo:#x} {mid:#x} {hi:#x}"
+                    );
+                }
+            }
+        }
+        let mut x = 0x9E37_79B9_7F4A_7C15u64;
+        for _ in 0..10_000 {
+            let mut next = || {
+                x = x
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                x
+            };
+            let (lo, mid, hi) = (next(), next(), next());
+            assert_eq!(Wide192 { lo, mid, hi }.reduce().0, oracle(lo, mid, hi));
+        }
+    }
+
+    /// The bound: `2^64` products of the greatest element, `(P − 1)² < 2^128` each, hold
+    /// `(P − 1)²·2^64 < 2^192`, and that sum reduces to `2^64 mod P`.
+    #[test]
+    fn the_largest_admitted_sum_fits_and_reduces() {
+        let square = u128::from(P - 1) * u128::from(P - 1);
+        let (mid, hi) = (square as u64, (square >> 64) as u64);
+        assert!(hi < u64::MAX, "the high word holds the sum");
+        assert_eq!(Wide192::LOG_TERMS, 64);
+        let w = Wide192 { lo: 0, mid, hi };
+        assert_eq!(w.reduce().0, EPSILON);
+        assert_eq!(oracle(0, mid, hi), EPSILON);
+    }
+
+    #[test]
+    fn additions_carry_across_every_word() {
+        let top = Goldilocks(P - 1);
+        // Start one below a carry out of each word in turn.
+        for start in [
+            (u64::MAX, 0, 0),
+            (u64::MAX, u64::MAX, 0),
+            (0, u64::MAX, 7),
+            (u64::MAX, u64::MAX, 1 << 40),
+        ] {
+            let mut w = Wide192 {
+                lo: start.0,
+                mid: start.1,
+                hi: start.2,
+            };
+            let mut expected = start;
+            for _ in 0..3 {
+                w.add_product(top, top);
+                expected = add192(expected, u128::from(P - 1) * u128::from(P - 1));
+                assert_eq!(words(&w), expected, "from {start:?}");
+            }
+            assert_eq!(w.reduce().0, oracle(expected.0, expected.1, expected.2));
+        }
+    }
+
+    #[test]
+    fn a_sum_of_products_equals_the_sum_of_reduced_products() {
+        let mut x = 0x7E55_E7A0_0391_0007u64;
+        let mut w = Wide192::default();
+        let mut sum = Goldilocks(0);
+        for i in 0..4096u64 {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let edge = EDGES[(i % EDGES.len() as u64) as usize];
+            let (a, b) = (
+                Goldilocks(canonicalize(x)),
+                Goldilocks(canonicalize(edge ^ (x >> 7))),
+            );
+            w.add_product(a, b);
+            sum += a * b;
+        }
+        assert_eq!(w.reduce(), sum);
+        w.zeroize();
+        assert_eq!(words(&w), (0, 0, 0));
     }
 }

@@ -30,6 +30,11 @@ tv-hash = { path = "../../verifier/crates/tv-hash" }
 name = "throughput"
 harness = false
 
+# RFC-0020's measurement protocol over the tree levels' public entry points (#391).
+[[bench]]
+name = "levels"
+harness = false
+
 [[bench]]
 name = "matmul"
 harness = false

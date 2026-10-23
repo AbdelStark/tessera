@@ -1,0 +1,13 @@
+{
+  "utc": "2026-10-23T11:26:45.080766+00:00",
+  "platform": "macOS-26.6.2-arm64 (Darwin 25.6.0)",
+  "cpu": "Apple M4 Max",
+  "memory_bytes": "51539607552",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+  "baseline": "698bdce (main before #391), with crates/tessera-sumcheck/benches/levels.rs and its [[bench]] entry copied in unchanged",
+  "candidate": "branch perf/delayed-node-sums (#391), its final kernels",
+  "program": "cargo bench --locked -p tessera-sumcheck --bench levels -- OUT.json, release profile, one thread",
+  "order": "ABBA: baseline-1, candidate-1, candidate-2, baseline-2, one process at a time",
+  "scheduling": "no affinity; no other build or test ran during the slot"
+}

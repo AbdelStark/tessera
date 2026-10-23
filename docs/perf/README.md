@@ -49,3 +49,14 @@ Every number is finite.
 | [`baselines/github-ubuntu-24.04.json`](baselines/github-ubuntu-24.04.json) | GitHub-hosted `ubuntu-24.04` (x86_64) | The `bench` workflow ([`.github/workflows/bench.yml`](../../.github/workflows/bench.yml)) runs the benchmark when `crates/tessera-bench/` changes, or on demand, and uploads the report as an artifact. |
 
 The regression gate of 08 §6 compares each benchmark's median with its baseline on the same runner class, and a regression above 5% fails. That gate runs on a runner with locked clocks (#167). GitHub-hosted runners share their hosts, so their baseline records where the primitives stand, not a threshold to gate on.
+
+## Tree-level kernels
+
+`tessera-sumcheck`'s `levels` benchmark times the tree levels through the public `prove_forests` and `prove_trees`, single-threaded over Goldilocks, with the same protocol: 3 warm-ups, 10 samples of at least 20 ms each, and one rerun when the coefficient of variation exceeds 3%. It prints each case's proof digest; two revisions that print the same digests prove the same. The cases are product forests of `2^22` leaves (2^8 trees of 2^14 leaves, 2^10 of 2^12, one of 2^22) and fraction trees of `2^21` leaves (lookup numerators 1, table numerators in `Fp`).
+
+```sh
+cargo bench -p tessera-sumcheck --bench levels -- OUT.json          # every raw sample into OUT.json
+cargo bench -p tessera-sumcheck --bench levels -- --small           # small sizes, a quick check
+```
+
+The level kernel sums its terminal products unreduced, in 192-bit words, and reduces them once per block ([#391](https://github.com/AbdelStark/tessera/issues/391)). On one Apple M4 Max core that made the forests' levels 20–21% faster per leaf and the fraction trees' 25–31% faster, with identical proofs. The measurement and its raw samples are recorded in [EXP-0013's production amendment](../../research/experiments/EXP-0013-delayed-reduction-node-sums/README.md#amendment-2026-10-23-the-production-port-391).
