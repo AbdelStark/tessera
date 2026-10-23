@@ -882,6 +882,13 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- The CPU prover plans its passes before P1 and counts them as they run ([#132](https://github.com/AbdelStark/tessera/issues/132), RFC-0018 'Pass structure', 'Memory scheduler'):
+  - **The plan.** `Prover::plan` returns a `PassPlan`: the passes in order (P1, P2, one P3 per reduction stage, P4, P5), the resident cells, and the resident bytes.
+  - **The charge.** 64 bytes per cell and the weight commitment's own bytes, replacing a stand-in that charged 4,096 bytes per cell. That stand-in was about 120 times the measured peak, so a host had to budget about 12 GB for a 100 MB proof. A counting-allocator test holds each conformance proof's measured peak within the plan and above a quarter of it.
+  - **The refusal.** A budget below the plan fails with `ERR-RES-MEMORY` before P1.
+  - **The counters.** `tessera_passes_total{pass}` and `tessera_pass_seconds{pass}` (05 §4) count and time every pass, and the run manifest records them.
+  - **Not yet.** Proof units of several layer ranges remain unspecified (#456).
+
 - RFC-0054, accepted, proves a leaf stage larger than the memory budget in token groups ([#329](https://github.com/AbdelStark/tessera/issues/329)):
   - **The accounting it replaces.** RFC-0018 streamed every level of every tree in one batch with shared challenges. Counted for every tree and every level, that is 36 to 55 regeneration passes for a 405B 16K-token batch, +53 to +235 on `μ`. RISK-10 had counted the attention trees' leaf level alone.
   - **The design.** Each group's lookup trees and product forests are proven in memory with challenges of their own. The table trees stream in a batch of their own and regenerate nothing. One merge sumcheck brings the groups' leaf claims back to one point per tensor, so the reduction stages and openings are unchanged. The stage costs two regenerations at any size. `g = 0` is the current leaf stage.

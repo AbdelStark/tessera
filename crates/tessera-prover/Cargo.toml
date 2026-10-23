@@ -27,6 +27,7 @@ tessera-tables = { path = "../tessera-tables" }
 tessera-witness = { path = "../tessera-witness" }
 
 [dev-dependencies]
+allocation-counter = "0.8"
 tessera-scoring = { path = "../tessera-scoring" }
 serde_json = "1"
 xtask = { path = "../../xtask" }

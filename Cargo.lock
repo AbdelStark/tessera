@@ -770,6 +770,7 @@ dependencies = [
 name = "tessera-prover"
 version = "0.1.0"
 dependencies = [
+ "allocation-counter",
  "blake3",
  "getrandom 0.4.3",
  "serde_json",

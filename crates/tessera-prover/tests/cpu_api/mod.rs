@@ -494,3 +494,58 @@ fn public_cpu_api_test_seed_produces_identical_messages_across_thread_counts() {
     }
     assert_eq!(proofs[0], proofs[1]);
 }
+
+/// The pass plan bounds what a proof keeps resident (RFC-0018 'Memory scheduler', #132). A
+/// counting allocator measures the whole of `Prover::new` and a non-interactive proof on one
+/// thread, the only thread the CPU backend then uses: the peak lies between a quarter of the plan
+/// and the plan, on every conformance model and length. A budget one byte short of the plan fails
+/// with `ERR-RES-MEMORY` before P1 commits anything, and the plan itself suffices.
+#[test]
+fn the_pass_plan_bounds_the_measured_peak_and_the_budget_refuses_before_p1() {
+    use tessera_codec::error::ErrorCode;
+    use tessera_prover::{Pass, PassPlan};
+    for name in ["tiny-2-servable", "tiny-2-minimal", "tiny-2-affine"] {
+        let model = bounded_model_named(name);
+        for (n, prompt) in [(3, 1), (5, 4), (8, 4)] {
+            let (plan, batch, weights) = fixture(&model, n, prompt);
+            let mut state = WeightCommitmentState::new(weights).unwrap();
+            let passes = Prover::new(&plan, &model, &mut state, cfg(Mode::NonInteractive))
+                .unwrap()
+                .plan(&batch)
+                .unwrap();
+            assert_eq!(passes.passes()[..2], [Pass::P1, Pass::P2]);
+            assert_eq!(
+                passes.passes()[passes.passes().len() - 2..],
+                [Pass::P4, Pass::P5]
+            );
+            let bytes = passes.resident_bytes().unwrap();
+            let info = allocation_counter::measure(|| {
+                Prover::new(&plan, &model, &mut state, cfg(Mode::NonInteractive))
+                    .unwrap()
+                    .prove_non_interactive(&batch)
+                    .unwrap();
+            });
+            let peak = info.bytes_max;
+            assert!(
+                peak <= bytes && bytes <= 4 * peak,
+                "{name}, n = {n}: measured {peak} bytes against a plan of {bytes}"
+            );
+            let cells = passes.cells().total().unwrap();
+            assert!(bytes >= cells * PassPlan::BYTES_PER_CELL);
+            for (budget, fits) in [(bytes - 1, false), (bytes, true)] {
+                let mut c = cfg(Mode::NonInteractive);
+                c.memory_budget.host = budget;
+                let result = Prover::new(&plan, &model, &mut state, c)
+                    .unwrap()
+                    .prove_non_interactive(&batch);
+                match fits {
+                    true => assert!(result.is_ok(), "{name}, n = {n}: the plan's own budget"),
+                    false => assert!(
+                        matches!(result, Err(ProverError::Resource(ErrorCode::ResMemory))),
+                        "{name}, n = {n}: one byte short"
+                    ),
+                }
+            }
+        }
+    }
+}

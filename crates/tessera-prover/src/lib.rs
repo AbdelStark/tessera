@@ -48,8 +48,8 @@ mod release;
 pub mod stages;
 
 pub use cpu::{
-    Backend, MaskRng, MemoryBudget, Mode, ParamSet, ProofBatch, Prover, ProverBackend,
-    ProverConfig, ProverError, ReleaseConfig,
+    Backend, Cells, MaskRng, MemoryBudget, Mode, ParamSet, Pass, PassPlan, ProofBatch, Prover,
+    ProverBackend, ProverConfig, ProverError, ReleaseConfig,
 };
 pub use leaf::{LeafError, LeafLayout, PreparedLeaf, ProvenLeaf, prepare_leaf, prove_leaf};
 pub use model::{ModelSchedule, derive_model_schedule, derive_runtime_schedule};
