@@ -22,6 +22,7 @@ use tv_core::leaf::{self as tv, split};
 use tv_field::{Fp as V, Fp2 as E};
 
 mod cpu_api;
+mod model_groups;
 mod model_openings;
 mod model_stages;
 
@@ -1128,6 +1129,7 @@ fn per_request_domains_determine_blocks_and_duplicate_sources_require_one_point(
     let request = |column: u8, domain: Vec<u32>, axes: Vec<usize>| SiteLookup {
         domain,
         axes: vec![(column, axes)],
+        token: None,
         lookup: Lookup {
             table: tessera_tables::TableId(0),
             key: Affine {
@@ -1354,6 +1356,7 @@ fn inconsistent_catalogs_uncovered_sources_and_wrong_tile_tables_are_refused() {
         lookups: vec![SiteLookup {
             domain: vec![1],
             axes: vec![],
+            token: None,
             lookup: Lookup {
                 table: p.selection.tables[0].id,
                 key: Affine {

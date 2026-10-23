@@ -1177,6 +1177,7 @@ fn offsets_are_aligned_and_the_padding_is_the_tail() {
                                 value: None,
                             },
                             axes: Vec::new(),
+                            token: None,
                         })
                         .collect();
                     SiteGadget { lookups }
@@ -1379,7 +1380,7 @@ fn synthetic() -> Leaf {
             }
             per_layer.push(terms);
         }
-        let gadgets = vec![SiteGadget::requant(gadget, shape); layers];
+        let gadgets = vec![SiteGadget::requant(gadget, shape, None); layers];
         (
             Site {
                 node,
@@ -1491,6 +1492,7 @@ fn a_tensor_read_over_an_outer_axis_lies_at_its_coordinates() {
     // The key `x + 4·c_row` over `[4, 8]`, `c` read over the rows, axis 0.
     let lookup = SiteLookup {
         domain: vec![4, 8],
+        token: None,
         lookup: tessera_gadgets::Lookup {
             table: TableId(0),
             key: Affine {
@@ -1561,8 +1563,8 @@ fn a_site_whose_layers_read_different_tensors_is_refused() {
     let mixed = Site {
         node: NodeRef::Position(1),
         layers: vec![
-            SiteGadget::requant(&small.requant1, &[3, 5]),
-            SiteGadget::requant(&small.split, &[3, 5]),
+            SiteGadget::requant(&small.requant1, &[3, 5], None),
+            SiteGadget::requant(&small.split, &[3, 5], None),
         ],
     };
     let refused = LeafLayout::new(layers, vec![mixed]).expect_err("different tensors");

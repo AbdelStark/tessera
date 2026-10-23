@@ -6,6 +6,15 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- `tessera-prover` lays out a grouped leaf stage's groups, from public data ([#134](https://github.com/AbdelStark/tessera/issues/134)):
+  - **Token axes.** Each `SiteLookup` carries its domain's token axis, `token`, its lookup tensor's from `token_axes`. `LeafLayout::new` refuses one outside the domain.
+  - **The groups.** `GroupedLayout::new(stage, layers, LeafGroups)` derives every group's layout.
+    - **Its blocks.** Group `h` holds the blocks at its layer subset's layers, the prologue's and the epilogue's in subset 0. Each is restricted to its token subset: `2^{k − g_T}` entries, the block's index order kept (`GroupedLayout::source`). A block without a token axis is in token subset 0, whole.
+    - **Its instances.** One per table it holds a block of, laid out by RFC-0045 'The column'.
+    - **Its split.** One value per tensor its blocks read, site by site and layer by layer. Each is a claim on a merged polynomial, one per value of the ungrouped split (`MergePolynomial`): its coordinates in the group's leaf point, and the group's token bits on its group variables.
+  - **RFC-0054.** 'What a group holds' and 'Group variables' now state a restricted block's index order, which tensors a group's split sends, its claim's point, and the agreement its lookups owe.
+  - **Tests.** Every entry of every stage block in exactly one group, the group of its layer and its token's low bits, decoded independently. Each group block's extension equals its forms at the group's claims. Hand-derived group variables and coordinates. Unlike and empty groups, and each refusal at its rule.
+
 - RFC-0054 defines the token axis every tensor's groups split, and `tessera_compiler::schedule::token_axes` derives it ([#134](https://github.com/AbdelStark/tessera/issues/134)):
   - **The gap.** RFC-0054 split blocks and tensors by "the token axis" but said nowhere how to find it. The IR has no axis semantics, and lengths cannot tell it: a head or channel axis can be as long as the sequence.
   - **The rule.** Structural, from the graph alone, input to output, so that the verifier's lowering derives the same:

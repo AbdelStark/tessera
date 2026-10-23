@@ -102,15 +102,20 @@ A group fixes `g_T` bits of the token index and `g_L` bits of the layer index, `
   - Each layer's weights are then read once per token subset, `2^{g_T}` times in all.
   - At 405B every plan above takes 64 token subsets of 256 tokens: about 1 s of weight reads per GPU, under the pass's 1.4 to 1.5 s of compute.
 - **What a group holds.** Group `h` holds the blocks of [RFC-0045](RFC-0045-leaf-layout.md#blocks) at its layer subset's layers, restricted to its token subset's tokens.
-  - **No token axis.** A block whose domain has no token axis belongs to token subset 0.
+  - **A restricted block** keeps its block's index order. Its entries are the block's whose token index has low bits `s`. Its variables are the block's others, in order, so it holds `2^{k − g_T}` entries.
+  - **No token axis.** A block whose domain has no token axis belongs to token subset 0, whole.
   - **Lookup trees.** For each LogUp instance, the group's lookups form one lookup tree, laid out by RFC-0045 over the group's blocks: the column, the leaf order, the leaf point and the split. A group that holds no block of an instance has no tree for it and sends no root.
+  - **The split.** For each site in node order and each of its layers the group holds, one value per tensor the group's blocks read, in RFC-0045's order. A tensor read only by blocks without a token axis is therefore sent by token subset 0's groups alone.
   - **The forest.** The group's `SoftmaxRow` forest is the trees of its layers' heads and its tokens' query rows, `2^{s−g}` trees with their public root values.
   - **Shapes.** Groups differ in shape where their blocks differ: prologue, epilogue and padded layers, and blocks without a token axis. The verifier derives every group's layout from public data, as it derives the stage's.
 - **Table trees** are not grouped: one per table, as RFC-0008 states, in the table batch.
 - **Group variables.** In a tensor read by a group's lookups, or in a forest's leaf table, the group fixes some of its variables: its group variables `S`.
   - These are the token axis's low `g_T` bits.
+  - A tensor read without its block's token axis, such as a channel's class read over the channels, has none.
   - For a table stacked over layers, as the forest's leaf table is, they also include the layer index's low `g_L` bits.
-  - A per-layer tensor is read by the `2^{g_T}` groups whose layer subset holds its layer, and group `h`'s block of it is the tensor with `S` set to `h`'s token bits.
+  - A per-layer tensor is read by the groups whose layer subset holds its layer and that hold a block reading it: `2^{g_T}` of them when its blocks have a token axis. Group `h`'s block of it is the tensor with `S` set to `h`'s token bits.
+  - **The group's claim.** Group `h`'s split value for a tensor is its evaluation at `P_h`, the group's leaf point, on the variables outside `S`, and at `h`'s token bits on `S`. The variables outside `S` take the coordinates RFC-0045 gives them in the group's block.
+  - **Agreement.** Every block of a group that reads one tensor gives it the same `S` and the same coordinates, as RFC-0045 'One claim per input' requires of the stage. The schedule refuses, with `ERR-INTERNAL`, a gadget whose lookups would give one tensor different ones: one with its block's token axis among its variables and one without, for example.
 
 ### The leaf stage with groups
 
