@@ -375,12 +375,12 @@ pub use merge::{
     prove_merge_two_pass,
 };
 pub use proof::SumcheckProof;
-pub use prover::{Instance, Prefix, ProvenBatch, Table, prove_batch};
+pub use prover::{Instance, Prefix, ProvenBatch, Table, TreeScope, prove_batch};
 pub use rotate::{Rotate, RotateTables};
 pub use terms::Term;
 pub use tessera_poly::MAX_DEGREE;
 pub use transcript::SumcheckTranscript;
 pub use trees::{
     FractionClaim, FractionTree, LeafNumerators, LevelClaim, ProvenTreeLevel, ProvenTrees, Tree,
-    prove_trees,
+    prove_trees, prove_trees_in,
 };

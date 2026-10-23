@@ -22,8 +22,37 @@ pub enum Prefix {
     Stage(u32),
     /// Level `ℓ` of the leaf stage's trees, counted from 0 at the roots: labels `tree/{ℓ}/…`.
     Tree(u32),
+    /// Level `ℓ` of token group `h`'s trees in a grouped leaf stage (RFC-0054): labels
+    /// `group/{h}/tree/{ℓ}/…`.
+    GroupTree(u32, u32),
+    /// Level `ℓ` of a grouped leaf stage's table batch (RFC-0054 'The table batch'): labels
+    /// `tables/tree/{ℓ}/…`.
+    TableTree(u32),
     /// The merge of a grouped leaf stage's claims (RFC-0054 'The merge'): labels `merge/…`.
     Merge,
+}
+
+/// Where a leaf stage's tree levels run (RFC-0014 'Transcript schedule', row 5; RFC-0054): the
+/// stage's one batch, a token group's batch, or a grouped stage's table batch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum TreeScope {
+    /// The leaf stage in one batch: `tree/{ℓ}/…`.
+    Stage,
+    /// Token group `h`: `group/{h}/tree/{ℓ}/…`.
+    Group(u32),
+    /// The table batch: `tables/tree/{ℓ}/…`.
+    Tables,
+}
+
+impl TreeScope {
+    /// The prefix of level `ℓ`'s labels.
+    pub fn level(self, level: u32) -> Prefix {
+        match self {
+            Self::Stage => Prefix::Tree(level),
+            Self::Group(h) => Prefix::GroupTree(h, level),
+            Self::Tables => Prefix::TableTree(level),
+        }
+    }
 }
 
 /// `stage/{k}` or `tree/{ℓ}`.
@@ -32,6 +61,8 @@ impl fmt::Display for Prefix {
         match self {
             Self::Stage(k) => write!(f, "stage/{k}"),
             Self::Tree(level) => write!(f, "tree/{level}"),
+            Self::GroupTree(h, level) => write!(f, "group/{h}/tree/{level}"),
+            Self::TableTree(level) => write!(f, "tables/tree/{level}"),
             Self::Merge => write!(f, "merge"),
         }
     }

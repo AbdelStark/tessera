@@ -100,7 +100,9 @@ pub fn tv_prefix(prefix: Prefix) -> tv::Prefix {
     match prefix {
         Prefix::Stage(k) => tv::Prefix::Stage(k),
         Prefix::Tree(level) => tv::Prefix::Tree(level),
-        Prefix::Merge => panic!("tv-core verifies no merge yet (#454)"),
+        Prefix::GroupTree(..) | Prefix::TableTree(_) | Prefix::Merge => {
+            panic!("tv-core verifies no grouped leaf stage yet (#454)")
+        }
     }
 }
 

@@ -6,6 +6,14 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- A grouped leaf stage's trees, in `tessera-sumcheck` and `tessera-logup` ([#134](https://github.com/AbdelStark/tessera/issues/134)):
+  - **Scoped labels.** `TreeScope` (`Stage`, `Group(h)`, `Tables`) and `prove_trees_in` run the tree levels under `tree/{ℓ}/…`, `group/{h}/tree/{ℓ}/…` or `tables/tree/{ℓ}/…`, through the new `Prefix::GroupTree` and `Prefix::TableTree`. `prove_trees` is `TreeScope::Stage`, its labels and messages unchanged.
+  - **The groups.** `begin_groups` squeezes `logup/alpha` and `logup/beta`, then absorbs `logup/roots` and `logup/values` empty.
+    - **One group.** `prove_group` proves a group's lookup trees beside its forests: the roots `(n, d)` in schedule order under `group/{h}/logup/roots`, its levels, and its value evaluations in schedule order under `group/{h}/logup/values`. It returns each instance's key and value claims (`LookupClaims`) and each forest's leaf claim.
+    - **The table batch.** `prove_table_batch` proves every table tree under `tables/…`, its multiplicity claims included.
+  - **The RFCs.** RFC-0014 and RFC-0054 now state the order of the empty `logup/roots` and `logup/values`, and that a group's values follow its roots' schedule order.
+  - **Tests.** Every label in RFC-0014's grouped order; each instance's group fractions and table root summing to RFC-0008's identity; every claim its column's evaluation; a group's levels equal to the ungrouped ones under renamed labels; and the group schedule's refusals.
+
 - `tessera-sumcheck` proves RFC-0054's merge ([#134](https://github.com/AbdelStark/tessera/issues/134)):
   - **The relation.** `Merge` holds the merged polynomials (`MergePolynomial`, with their group variables), each group's claims (`MergeClaim`), `γ_h` and `β`. It checks their shapes, and gives the first claim and each `W_i`, as a table and at a point.
   - **In memory.** `prove_merge` runs the batch engine over `W_i·P̃_i` at weight 1, under the new `Prefix::Merge`: degree 2, rounds under `merge/round/{j}` and `merge/r/{j}`, and every `P̃_i(r_i)` under `merge/evals`. Each polynomial binds its free variables first, then its group variables.

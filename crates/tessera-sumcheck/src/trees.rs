@@ -11,7 +11,8 @@ use tessera_poly::PolyField;
 
 use crate::forest::{Halves, build_levels, label, leaf_level, shape};
 use crate::level::{LevelInstance, LevelNumerators, LevelTables, product_claim, prove_level};
-use crate::{Claim, Forest, Prefix, SumcheckError, SumcheckProof, SumcheckTranscript};
+use crate::prover::TreeScope;
+use crate::{Claim, Forest, SumcheckError, SumcheckProof, SumcheckTranscript};
 
 /// The numerators of a fraction tree's leaves.
 pub enum LeafNumerators<'a, B> {
@@ -708,6 +709,25 @@ where
     F: PolyField,
     T: SumcheckTranscript<F> + ?Sized,
 {
+    prove_trees_in(transcript, TreeScope::Stage, trees)
+}
+
+/// [`prove_trees`] under `scope`'s labels: a token group's batch under `group/{h}/tree/{ℓ}/…`,
+/// or a grouped stage's table batch under `tables/tree/{ℓ}/…` (RFC-0054; RFC-0014 'Transcript
+/// schedule', row 5). [`TreeScope::Stage`] is [`prove_trees`].
+///
+/// # Errors
+///
+/// As [`prove_trees`].
+pub fn prove_trees_in<F, T>(
+    transcript: &mut T,
+    scope: TreeScope,
+    trees: Vec<Tree<'_, F>>,
+) -> Result<ProvenTrees<F>, SumcheckError>
+where
+    F: PolyField,
+    T: SumcheckTranscript<F> + ?Sized,
+{
     let mut trees_logs = Vec::with_capacity(trees.len());
     for (i, tree) in trees.iter().enumerate() {
         trees_logs.push(match tree {
@@ -757,7 +777,7 @@ where
 
     let mut levels = Vec::with_capacity(tallest);
     for level in 0..tallest {
-        let tag = level as u32;
+        let prefix = scope.level(level as u32);
         let s_max = states
             .iter()
             .filter(|state| state.join == level)
@@ -765,7 +785,7 @@ where
             .max()
             .unwrap_or(0);
         let root_challenges: Vec<F> = (0..s_max)
-            .map(|c| transcript.challenge(&label(tag, format_args!("root/{c}"))))
+            .map(|c| transcript.challenge(&label(prefix, format_args!("root/{c}"))))
             .collect();
         for state in states.iter_mut().filter(|state| state.join == level) {
             state.point = root_challenges[s_max - state.trees_log()..].to_vec();
@@ -774,11 +794,12 @@ where
         let active: Vec<usize> = (0..states.len())
             .filter(|&i| states[i].join <= level)
             .collect();
-        let gamma = transcript.challenge(&label(tag, format_args!("gamma")));
+        let gamma = transcript.challenge(&label(prefix, format_args!("gamma")));
         let fractions = active
             .iter()
             .any(|&i| matches!(states[i].kind, Kind::Fraction(_)));
-        let lambda = fractions.then(|| transcript.challenge(&label(tag, format_args!("lambda"))));
+        let lambda =
+            fractions.then(|| transcript.challenge(&label(prefix, format_args!("lambda"))));
 
         let lambda_value = lambda.unwrap_or(F::ZERO);
         let instances: Vec<LevelInstance<'_, F>> = active
@@ -789,9 +810,9 @@ where
                 state.level_instance(t, state.level_claim(t, lambda_value), lambda_value)
             })
             .collect();
-        let proven = prove_level(transcript, Prefix::Tree(tag), &instances, gamma);
+        let proven = prove_level(transcript, prefix, &instances, gamma);
         drop(instances);
-        let rho = transcript.challenge(&label(tag, format_args!("line")));
+        let rho = transcript.challenge(&label(prefix, format_args!("line")));
 
         let mut next_claims = Vec::with_capacity(active.len());
         for (k, &i) in active.iter().enumerate() {
