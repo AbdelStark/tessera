@@ -204,3 +204,24 @@ Threats to validity: M4 CPU results do not establish Hopper performance; a high-
 ## Follow-ups
 
 Promote the arithmetic-preserving implementation as a draft issue/RFC artifact against the current production split kernels, retaining secret buffers and adding the accumulator bounds and equivalence gates; no production code changed here. On H100, inspect PTX/SASS for carry instructions and spills, measure both fraction orderings and forest shapes under RFC-0020, and determine whether post-split kernels are compute- or memory-bound. Those E2 results settle the four/five/eight-operation accumulation assumption and true c_ℓ/c_π. A production port then needs F65537 calibration, binary branchlessness/clearing checks and full end-to-end masked-proof equivalence before any E3 or deployment claim.
+
+## Amendment (2026-10-23): the production port, #391
+
+The delayed reduction is now production's level kernel (`tessera-sumcheck/src/level.rs`), with the old reduced kernels kept as its test oracle. This amendment records what the port changed from the harness and what it measured; nothing above is edited.
+
+- **Accumulator.** `tessera_field::Wide192` holds `lo + 2^64·mid + 2^128·hi` and adds each `64 × 64 → 128`-bit product with `overflowing_add` carries, branch-free in the emitted x86_64 code (`cargo xtask check-branchless` probes `wide_dot` and `wide_fp2_dot`). It reduces as `reduce128(lo ‖ mid) − reduce128(2^32·hi)`, from `2^128 ≡ −2^32`, with no multiplication. `WideExt2` is the harness's `AccExt2`: four schoolbook partial products, reduced as `(c_0 + W·c_W, c_1)`. `PolyField::Wide` gives every prime field (including F65537) a reduced sum, so the calibration field runs the same kernels.
+- **Bound.** The harness asserted a block of at most 2^20 pairs. Production partitions instead: a wide sum takes at most `2^(WIDE_LOG_TERMS − 1)` pairs, `2^62` for `GoldilocksExt2`, whose `c_1` then holds `2^64` products `(P − 1)²`, the largest sum the field's tests check. A larger block is reduced once per partition. Tests force partitions of 1, 2 and 3 pairs against the reference.
+- **Fraction ordering.** Production's fraction relation is `N(0)·D(1) + N(1)·D(0) + λ·D(0)·D(1)`, not the harness's γ-batched proxy. It is weighted as `w·A + (w·λ·D(0))·D(1)`, with `A = N(0)·D(1) + N(1)·D(0)` and `w·λ` read from a public per-call table: two terminal products per node, the same number of multiplications as before. With unit numerators `A = D(0) + D(1)`, so one product is reduced and two are deferred.
+- **Clearing.** Each wide sum is cleared once it is reduced (05 §3 OBS-6).
+
+**Measurement.** RFC-0020's protocol on one M4 Max performance core: 3 warm-ups, 10 samples of at least 20 ms, one rerun if CV > 3% (none was needed). The program is `cargo bench -p tessera-sumcheck --bench levels`. It times the public `prove_forests` and `prove_trees`, so each figure is the whole level proof, transcript and binding included, not the kernel alone. The baseline is `698bdce` with the same benchmark file. The runs alternate ABBA: baseline, candidate, candidate, baseline. The raw samples and environment are in [results/production-391/](results/production-391/). Every case's proof digest is identical in all four runs.
+
+| Case (ns per leaf) | Baseline 1 / 2 | Candidate 1 / 2 | Saving, pair 1 / 2 | Largest CV |
+|---|---:|---:|---:|---:|
+| forest 2^8 × 2^14 | 18.86 / 18.88 | 14.96 / 14.92 | 20.6% / 21.0% | 2.84% |
+| forest 2^10 × 2^12 | 18.78 / 18.93 | 14.91 / 15.13 | 20.6% / 20.1% | 1.99% |
+| forest 2^0 × 2^22 | 18.95 / 18.89 | 14.96 / 14.95 | 21.1% / 20.8% | 1.86% |
+| fraction lookup tree 2^21 (unit numerators) | 54.92 / 54.91 | 37.83 / 38.32 | 31.1% / 30.2% | 1.88% |
+| fraction table tree 2^21 (`Fp` numerators) | 62.70 / 62.90 | 46.38 / 47.05 | 26.0% / 25.2% | 2.14% |
+
+These are E1 CPU figures against current production, smaller than the harness's ratios because the whole level proof is timed. They say nothing about H100, where the follow-ups above still apply.

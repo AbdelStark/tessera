@@ -107,3 +107,24 @@ pub fn fp2_dot(a: &[GoldilocksExt2], b: &[GoldilocksExt2]) -> GoldilocksExt2 {
         .zip(b)
         .fold(GoldilocksExt2::default(), |acc, (&x, &y)| acc + x * y)
 }
+
+/// An `Fp` inner product summed unreduced and reduced once, the delayed reduction of a tree
+/// level's node sums (#391): its carries are the secret values' own.
+#[inline(never)]
+pub fn wide_dot(a: &[Goldilocks], b: &[Goldilocks]) -> Goldilocks {
+    let mut sum = crate::Wide192::default();
+    for (&x, &y) in a.iter().zip(b) {
+        sum.add_product(x, y);
+    }
+    sum.reduce()
+}
+
+/// An `Fp2` inner product summed unreduced and reduced once, as [`wide_dot`].
+#[inline(never)]
+pub fn wide_fp2_dot(a: &[GoldilocksExt2], b: &[GoldilocksExt2]) -> GoldilocksExt2 {
+    let mut sum = crate::WideExt2::default();
+    for (&x, &y) in a.iter().zip(b) {
+        sum.add_product(x, y);
+    }
+    sum.reduce()
+}

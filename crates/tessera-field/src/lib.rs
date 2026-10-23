@@ -27,7 +27,9 @@ mod goldilocks;
 pub mod probe;
 mod traits;
 
-pub use ext2::{ExtensionBase, F65537Ext2, GoldilocksExt2, QuadraticExt, QuadraticExtension};
+pub use ext2::{
+    ExtensionBase, F65537Ext2, GoldilocksExt2, QuadraticExt, QuadraticExtension, WideExt2,
+};
 pub use f65537::F65537;
-pub use goldilocks::Goldilocks;
+pub use goldilocks::{Goldilocks, Wide192};
 pub use traits::{Field, PrimeField, ZeroElement, batch_inverse};

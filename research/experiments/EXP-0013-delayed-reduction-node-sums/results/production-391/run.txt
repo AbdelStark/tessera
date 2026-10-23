@@ -1,0 +1,25 @@
+== baseline 1
+forest 2^8 x 2^14                     18.857 ns/leaf (min 18.641, max 19.532, CV 1.4333%) digest f8136b1cb3af3a1a
+forest 2^10 x 2^12                    18.783 ns/leaf (min 18.590, max 19.800, CV 1.8060%) digest 6eb82c4ae0abc231
+forest 2^0 x 2^22                     18.955 ns/leaf (min 18.616, max 19.479, CV 1.5489%) digest c938c936418d40ce
+fraction lookup tree 2^21             54.923 ns/leaf (min 54.267, max 57.613, CV 1.8424%) digest a07522b3048041e6
+fraction table tree 2^21              62.699 ns/leaf (min 61.896, max 64.187, CV 1.2310%) digest 28f4effbfba80468
+== candidate 1
+forest 2^8 x 2^14                     14.965 ns/leaf (min 14.775, max 15.873, CV 2.2863%) digest f8136b1cb3af3a1a
+forest 2^10 x 2^12                    14.908 ns/leaf (min 14.800, max 15.804, CV 1.9905%) digest 6eb82c4ae0abc231
+forest 2^0 x 2^22                     14.960 ns/leaf (min 14.812, max 15.650, CV 1.6643%) digest c938c936418d40ce
+fraction lookup tree 2^21             37.834 ns/leaf (min 37.288, max 38.630, CV 1.0028%) digest a07522b3048041e6
+fraction table tree 2^21              46.381 ns/leaf (min 45.889, max 48.744, CV 2.1445%) digest 28f4effbfba80468
+== candidate 2
+forest 2^8 x 2^14                     14.915 ns/leaf (min 14.762, max 16.172, CV 2.8391%) digest f8136b1cb3af3a1a
+forest 2^10 x 2^12                    15.132 ns/leaf (min 14.836, max 15.668, CV 1.8685%) digest 6eb82c4ae0abc231
+forest 2^0 x 2^22                     14.953 ns/leaf (min 14.725, max 15.632, CV 1.6265%) digest c938c936418d40ce
+fraction lookup tree 2^21             38.321 ns/leaf (min 37.652, max 39.506, CV 1.8776%) digest a07522b3048041e6
+fraction table tree 2^21              47.055 ns/leaf (min 46.058, max 48.463, CV 1.8243%) digest 28f4effbfba80468
+== baseline 2
+forest 2^8 x 2^14                     18.877 ns/leaf (min 18.455, max 19.972, CV 2.1489%) digest f8136b1cb3af3a1a
+forest 2^10 x 2^12                    18.930 ns/leaf (min 18.700, max 19.706, CV 1.9470%) digest 6eb82c4ae0abc231
+forest 2^0 x 2^22                     18.886 ns/leaf (min 18.798, max 19.944, CV 1.8550%) digest c938c936418d40ce
+fraction lookup tree 2^21             54.914 ns/leaf (min 54.112, max 56.763, CV 1.4896%) digest a07522b3048041e6
+fraction table tree 2^21              62.904 ns/leaf (min 62.375, max 65.342, CV 1.6781%) digest 28f4effbfba80468
+

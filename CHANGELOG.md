@@ -882,6 +882,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- Tree levels sum their terminal products unreduced and reduce once per block (EXP-0013; [#391](https://github.com/AbdelStark/tessera/issues/391)). `tessera_field::Wide192` holds a 192-bit sum of Goldilocks products, `WideExt2` the four schoolbook partial products of an extension product, and `PolyField::Wide` chooses the sum per field; prime fields, the calibration field included, keep reduced sums. A fraction node is weighted as `w·A + (w·λ·D(0))·D(1)`, so both of its outer products are deferred. A block larger than a wide sum's bound (`2^62` pairs) is reduced per partition. Proofs are byte-identical. On one Apple M4 Max core, RFC-0020's protocol measured `prove_forests` 20–21% faster per leaf on the three 2^22-leaf shapes and `prove_trees` 25–31% faster on 2^21-leaf fraction trees. The old kernels stay as the test oracle. `cargo xtask check-branchless` probes the wide sums too, and `tessera-sumcheck` has a `levels` benchmark.
+
 - RFC-0023, accepted, chooses the norms' precision `κ` per model rather than fixing it at 16 ([#287](https://github.com/AbdelStark/tessera/issues/287)):
   - `κ` is the largest value, at most 31, with `⌊d · 2^{2κ} / e⌋ < 2^64`: RFC-0022's range check on the root stays one 32-bit lookup.
   - The root `ρ ≈ 2^κ / rms` keeps about `κ − log2(rms)` bits. At `κ = 16`, a row of `rms = 2^{12}` had a 6% scale error and a saturated row a root of 0. At 8B's `κ = 30`, every row INT20 allows keeps at least 11 bits.
