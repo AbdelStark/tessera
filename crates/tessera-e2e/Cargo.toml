@@ -47,6 +47,8 @@ tessera-prover = { path = "../tessera-prover" }
 tessera-sumcheck = { path = "../tessera-sumcheck" }
 tessera-tables = { path = "../tessera-tables" }
 tessera-witness = { path = "../tessera-witness" }
+# The callsite registry of a test subscriber (tests/telemetry.rs).
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 
 # Diagnostic differential checks consume the verifier only as dev-dependencies (DEP-2).
 tv-codec = { path = "../../verifier/crates/tv-codec" }

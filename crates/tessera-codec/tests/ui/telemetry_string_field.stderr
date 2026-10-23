@@ -1,0 +1,28 @@
+error[E0277]: the trait bound `String: tessera_codec::telemetry::Field` is not satisfied
+ --> tests/ui/telemetry_string_field.rs:6:5
+  |
+6 |     tessera_codec::event!(INFO, "codec.leak", text = text; "{text}");
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |     |
+  |     the trait `tessera_codec::telemetry::Field` is not implemented for `String`
+  |     required by a bound introduced by this call
+  |
+help: the trait `tessera_codec::telemetry::Field` is implemented for `&str`
+ --> src/telemetry.rs
+  |
+  | impl Field for &'static str {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = note: this error originates in the macro `tessera_codec::event` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `String: tessera_codec::telemetry::Field` is not satisfied
+ --> tests/ui/telemetry_string_field.rs:6:5
+  |
+6 |     tessera_codec::event!(INFO, "codec.leak", text = text; "{text}");
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `tessera_codec::telemetry::Field` is not implemented for `String`
+  |
+help: the trait `tessera_codec::telemetry::Field` is implemented for `&str`
+ --> src/telemetry.rs
+  |
+  | impl Field for &'static str {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = note: this error originates in the macro `tessera_codec::event` (in Nightly builds, run with -Z macro-backtrace for more info)

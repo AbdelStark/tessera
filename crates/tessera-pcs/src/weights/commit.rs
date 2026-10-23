@@ -64,6 +64,7 @@ impl WeightCommitment {
         epoch: u32,
         weights: &ModelWeights<'_>,
     ) -> Result<Self, PcsError> {
+        let _commit = tessera_codec::span!(INFO, "commit_weights", epoch = epoch).entered();
         let checked = layout.check(weights)?;
         let block = usize::try_from(row_block.get())
             .ok()
@@ -113,6 +114,13 @@ impl WeightCommitment {
             roots[matrix.index()] = commitment.root();
             matrices.push(commitment);
         }
+        tessera_codec::event!(
+            DEBUG,
+            "pcs.weights_committed",
+            matrices = matrices.len(),
+            epoch = epoch;
+            "{matrices} weight matrices committed at epoch {epoch}"
+        );
         Ok(Self {
             public: WeightCommitmentPublic {
                 layout: params,

@@ -9,6 +9,9 @@
 //! - A `Secret` has no `Debug`, `Display`, `Clone` or `Encode`, so a secret-class value cannot be
 //!   printed, copied or encoded by accident (05 §3), and neither has a `SecretBuf` of values
 //!   derived from one (OBS-6).
+//! - Telemetry takes public data only (OBS-1): neither a `Secret`, a `SecretBuf` nor a `String`
+//!   built at run time is an event or span field, and an event's message is a literal template,
+//!   never formatting arguments.
 
 #[test]
 fn misuses_do_not_compile() {

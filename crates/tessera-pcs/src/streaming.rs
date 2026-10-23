@@ -212,6 +212,13 @@ impl<'layout, 'work, M: MaskSource + ?Sized> StreamingCommitter<'layout, 'work, 
         self.chains
             .absorb_block_no_alloc(&self.buffer[..used])
             .expect("a full block, or the one short final block, of whole codewords");
+        tessera_codec::event!(
+            TRACE,
+            "pcs.row_block_committed",
+            segment = self.segment,
+            rows = self.buffered;
+            "{rows} rows of segment {segment} committed"
+        );
         // A live buffer holds no previous block while the next row is regenerated (RFC-0011).
         self.buffer.iter_mut().for_each(Zeroize::zeroize);
         self.buffered = 0;

@@ -15,6 +15,8 @@ blake3 = { version = "1.8", features = ["zeroize"] }
 # already; `std` converts its error into `io::Error`.
 getrandom = { version = "0.3", features = ["std"] }
 tessera-codec-derive = { path = "../tessera-codec-derive" }
+# Events and spans of public data (05 §2, §5). `trace` events are compiled out of release builds.
+tracing = { version = "0.1.44", default-features = false, features = ["std", "release_max_level_debug"] }
 # 1.9 for `optimization_barrier`, which keeps the zeros a `SecretBuf` writes as it frees.
 zeroize = "1.9"
 

@@ -7,7 +7,7 @@ use std::path::Path;
 
 use crate::{
     agent_context, conflicts, deny_policy, licenses, links, no_float, repo, reports, secret_access,
-    spdx, unsafe_policy, versions,
+    spdx, telemetry, unsafe_policy, versions,
 };
 
 /// The policies checked by `lint`, each with its violations.
@@ -25,6 +25,10 @@ pub(crate) fn checks(repo: &Path) -> io::Result<Vec<(&'static str, Vec<String>)>
         (
             "secret access only in listed modules (05 §3 OBS-1)",
             secret_access::check(repo, &files)?,
+        ),
+        (
+            "telemetry through the public-data helpers only (05 §2, §3 OBS-1, §5)",
+            telemetry::check(repo, &files)?,
         ),
         (
             "committed reports match their JSON Schemas (03 §5)",

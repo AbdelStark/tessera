@@ -1,0 +1,11 @@
+error: no rules expected `,`
+ --> tests/ui/telemetry_formatted_message.rs:6:53
+  |
+6 |     tessera_codec::event!(INFO, "codec.leak"; "{:?}", secret_bytes);
+  |                                                     ^ no rules expected this token in macro call
+  |
+note: while trying to match meta-variable `$template:literal`
+ --> src/telemetry.rs
+  |
+  |     ($level:ident, $name:literal $(, $key:ident = $value:expr)* $(,)? ; $template:literal) => {{
+  |                                                                         ^^^^^^^^^^^^^^^^^

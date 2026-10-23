@@ -9,10 +9,12 @@
 - `reference` runs `D`'s integer reference on a `TokenFile` and writes the logits of every
   position of every sequence, in order, as a `LogitsFile`.
 
-Every command prints its progress to stderr and, with `--json`, one JSON object to stdout: its
-result, or its error's code and message. The exit status is the error code's (04 §3): 0 on
-success, 64 for usage, 65 for a malformed input, 20 for a calibration or I/O failure, 70 for a
-bug. Messages hold public data only (05 §3); an unexpected error is reported by its type alone.
+Every command prints its progress to stderr, readable or, with `--log-format json`, as
+`tessera.log-event/1` JSON lines (05 §2, `tessera_quant.log`), and, with `--json`, one JSON
+object to stdout: its result, or its error's code and message. The exit status is the error
+code's (04 §3): 0 on success, 64 for usage, 65 for a malformed input, 20 for a calibration or
+I/O failure, 70 for a bug. Messages hold public data only (05 §3); an unexpected error is
+reported by its type alone.
 
 A specification is a JSON file, `tessera.calibration-spec/1` or `tessera.eval-spec/1`
 (`spec/schemas/`), whose paths are relative to it. A dataset source is `"c4"`, the pinned C4
@@ -27,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
+from tessera_quant import log
 from tessera_quant.assemble import check_options, checkpoint_digests, export, quantize
 from tessera_quant.calibration import (
     C4_DATASET,
@@ -259,7 +262,14 @@ def read_eval_spec(path: Path) -> EvalDataSpec:
 
 
 def _say(args: argparse.Namespace, message: str) -> None:
-    print(f"tessera-quant {args.command}: {message}", file=sys.stderr, flush=True)
+    log.event(
+        "info",
+        "progress",
+        "tessera-quant {command}: {detail}",
+        target=__name__,
+        command=args.command,
+        detail=message,
+    )
 
 
 def _compile(args: argparse.Namespace) -> dict[str, Any]:
@@ -457,6 +467,9 @@ def parser() -> argparse.ArgumentParser:
     def command(name: str, summary: str) -> argparse.ArgumentParser:
         sub = commands.add_parser(name, help=summary, description=summary)
         sub.add_argument("--json", action="store_true", help="print the result as JSON to stdout")
+        sub.add_argument(
+            "--log-format", choices=log.FORMATS, default="human", help="stderr's line format"
+        )
         return sub
 
     compile_ = command("compile", "quantize a checkpoint into the integer model D")
@@ -489,6 +502,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     command = next((a for a in arguments if a in _COMMANDS), None)
     as_json = "--json" in arguments
+    # Read before parsing, so that a usage error is logged in the format asked for.
+    log.configure("json" if _log_format(arguments) == "json" else "human")
     try:
         args = parser().parse_args(arguments)
         result = {"command": args.command} | _COMMANDS[args.command](args)
@@ -508,8 +523,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
+def _log_format(arguments: list[str]) -> str | None:
+    for i, argument in enumerate(arguments):
+        if argument == "--log-format" and i + 1 < len(arguments):
+            return arguments[i + 1]
+        if argument.startswith("--log-format="):
+            return argument.partition("=")[2]
+    return None
+
+
 def _fail(command: str | None, as_json: bool, code: str, message: str) -> int:
-    print(f"tessera-quant: {code}: {message}", file=sys.stderr, flush=True)
+    log.event(
+        "error",
+        "command_failed",
+        "tessera-quant: {code}: {detail}",
+        target=__name__,
+        code=code,
+        detail=message,
+    )
     if as_json:
         print(json.dumps({"command": command, "error": {"code": code, "message": message}}))
     return EXIT_CODES.get(code, 70)

@@ -284,6 +284,7 @@ impl<'a> CpuBackend<'a> {
             .collect::<Result<_, _>>()?;
         let tensors = actual.tensors();
         let forests = actual.forests();
+        let leaf_stage = span!(DEBUG, "stage", id = 0u16).entered();
         let lookup = prepare_leaf(tr, &u.leaf, &tables, &tensors, &forests)?;
         let mut stages = crate::StageProver::new(&u.lowering, u.native.schedule(), &d.witness);
         let points: Vec<_> = u.native.schedule().stages[0]
@@ -293,11 +294,27 @@ impl<'a> CpuBackend<'a> {
             .collect();
         let _graph_leaf = stages.leaf(&points)?;
         let leaf = lookup.finish(&stages.leaf_split_values()?)?;
+        event!(
+            DEBUG,
+            "prover.stage_proved",
+            id = 0u16,
+            rounds = leaf.logup().levels().len();
+            "stage {id}: {rounds} tree levels"
+        );
+        drop(leaf_stage);
         let mut native =
             ModelNativeProver::new(&u.native, &u.lowering, &actual, &d.witness, &leaf)?;
         let mut proofs = Vec::new();
         for k in 1..u.native.schedule().stages.len() {
+            let _stage = span!(DEBUG, "stage", id = k as u16).entered();
             let result = stages.prove_stage_composed(tr, k as u16, &mut native)?;
+            event!(
+                DEBUG,
+                "prover.stage_proved",
+                id = result.stage,
+                rounds = result.sumcheck.rounds.len();
+                "stage {id}: {rounds} rounds"
+            );
             proofs.push(protocol::StageProof {
                 stage: StageId(result.stage),
                 sumcheck: result.sumcheck,
@@ -324,6 +341,7 @@ impl<'a> CpuBackend<'a> {
             }
         }
         let encoder = encoder(c)?;
+        let advice_opening = span!(DEBUG, "opening", commitment = "advice").entered();
         let prepared = d.p1.prepare(targets.advice(), gamma, &av)?;
         let mut masks = d.seed.masks();
         let mut pass = prepared.begin(&encoder, &mut masks)?;
@@ -335,6 +353,13 @@ impl<'a> CpuBackend<'a> {
         let (combined, permit) = pass.finish()?.into_parts();
         let advice_combined: Vec<_> = combined.into_iter().map(wire).collect();
         tr.absorb("pcs/advice/combined", &advice_combined);
+        event!(
+            DEBUG,
+            "prover.opening_combined",
+            rows = advice_combined.len();
+            "{rows} combined rows"
+        );
+        drop(advice_opening);
         let weights = model_weights(p.model, &u.lowering)?;
         let mut weight_combined = Vec::new();
         let mut matrices = Vec::new();
@@ -342,6 +367,7 @@ impl<'a> CpuBackend<'a> {
             let Some(theta) = theta[m.index()] else {
                 continue;
             };
+            let _opening = span!(DEBUG, "opening", commitment = Public(format!("{m:?}"))).entered();
             let full = targets.weight_points(m);
             let matrix = p.layout.matrix(m);
             let mut reader = p.layout.rows(m, &weights)?;
@@ -378,6 +404,12 @@ impl<'a> CpuBackend<'a> {
                 proximity: wire(combined.proximity),
             };
             tr.absorb(&format!("pcs/weights/{m:?}/combined"), &packet);
+            event!(
+                DEBUG,
+                "prover.opening_combined",
+                rows = packet.evaluations.len() + 1;
+                "{rows} combined rows"
+            );
             weight_combined.push(packet);
             matrices.push(protocol::MatrixCodeword {
                 matrix: m.index() as u8,
@@ -420,10 +452,23 @@ impl<'a> CpuBackend<'a> {
 
 impl CpuBackend<'_> {
     fn commit_batch(&mut self, batch: &ProofBatch) -> Result<(), ProverError> {
+        let _round1 = span!(DEBUG, "round1").entered();
         let unit = self.unit(batch)?;
         let c = &self.prepared.plan.claims;
         let engine = Engine::new(&unit.lowering)?.threads(self.prepared.threads);
-        let witness = engine.run(self.prepared.model, &batch.tokens)?;
+        // The resident CPU backend runs one tile of every layer; streamed tiles are #132's.
+        let tile = Public(format!("0..{}", c.arch.n_layers));
+        let witness = {
+            let _pass = span!(DEBUG, "witness_pass", layer_tile = tile).entered();
+            let witness = engine.run(self.prepared.model, &batch.tokens)?;
+            event!(
+                DEBUG,
+                "prover.witness_computed",
+                layers = c.arch.n_layers;
+                "witness of {layers} layers computed"
+            );
+            witness
+        };
         let source = Resident::runtime(&engine, &unit.runtime, self.prepared.model, &witness)?;
         let advice = ModelAdviceLayout::runtime(&unit.lowering, &unit.runtime, c)?;
         let id = pcs::CommitmentDescriptor::Advice {
@@ -460,6 +505,13 @@ impl CpuBackend<'_> {
             parts.push(pass.finish()?);
         }
         let p1 = pcs::AdviceOpening::new(&parts)?.into_owned();
+        event!(
+            DEBUG,
+            "prover.round1_committed",
+            rows = advice.layout().rows(),
+            segments = a.segments;
+            "advice committed: {rows} rows in {segments} segments"
+        );
         self.data = Some(Data {
             statement: batch.statement.clone(),
             unit,
@@ -511,6 +563,7 @@ impl ProverEngine for CpuBackend<'_> {
         &mut self,
         queries: &protocol::ColumnQueries,
     ) -> Result<protocol::Round3Response, ProverError> {
+        let _round3 = span!(DEBUG, "round3").entered();
         // Taking Data clears every per-proof allocation on both success and error.
         let mut d = self
             .data
@@ -562,6 +615,13 @@ impl ProverEngine for CpuBackend<'_> {
                 },
             });
         }
+        event!(
+            DEBUG,
+            "prover.round3_answered",
+            advice = indices.len(),
+            matrices = weight_columns.len();
+            "{advice} advice columns, {matrices} matrices answered"
+        );
         Ok(protocol::Round3Response {
             advice_columns: answer.columns,
             advice_proof: protocol::MultiProof {
