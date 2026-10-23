@@ -6,6 +6,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Added
 
+- `tv-core` judges the SC-4 tamper corpus: every NI and recorded-Live case in `spec/vectors/tamper/protocol-1.json` must yield its predeclared verdict exactly, and the producer's lookup metadata must match the verifier's own derivation. An ignored sweep changes every value of the recorded Live session in turn and requires that none is accepted ([#135](https://github.com/AbdelStark/tessera/issues/135)).
+
 - `tessera-verify live` now authenticates caller-owned whole-statement/request metadata before a one-shot RFC-0014 directory exchange. Bounded packet readers, no-overwrite publication, role reuse refusal and challenge causality are covered by independent vectors and actual CLI tamper tests. Full authenticated network transport remains separate work ([#133](https://github.com/AbdelStark/tessera/issues/133)).
 
 - Independent protocol/1 `tessera-verify verify` CLI with caller-owned whole-statement and weight-root pins, exact fixed-point bounds, bounded regular-file loading, atomic input-preserving report output, typed exit codes and schema-checked measured phase context. `tables` independently regenerates the bounded catalog. Real CPU proofs and tampering run through the library and separately built verifier binary in required CI. Live transport, anchor, ledger and audit operations remain explicit future capabilities; test-small proofs certify nothing ([#131](https://github.com/AbdelStark/tessera/issues/131)).

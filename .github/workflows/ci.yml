@@ -164,25 +164,65 @@ jobs:
         if: matrix.workspace == 'verifier'
         run: cargo nextest run -p tv-core --features test-params --lib --test claims_validation --locked
 
+  # SC-4 (07 §4): every mutation of a valid tiny proof yields its predeclared verdict.
+  tamper:
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
+    name: tamper corpus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --component clippy --no-self-update
+          echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
+          # rust-cache fingerprints every installed toolchain, including the runner image stable.
+          rustup default "$channel"
+          rustup toolchain uninstall stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            . -> target
+            verifier -> target
+          key: tamper
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: The independent oracle reproduces the corpus
+        run: python3 -I -B spec/vectors/tamper/generate.py --check
+      # The workspace Clippy step builds no test-only features, so these targets are linted here.
+      - name: Clippy, with the test-only features the corpus needs
+        run: |
+          cargo clippy --locked -p tessera-e2e --features tamper --all-targets -- -D warnings
+          (cd verifier && cargo clippy --locked -p tv-core --features test-params --all-targets -- -D warnings)
+      - name: The base proofs regenerate byte for byte; NI cases through the public verifier API
+        run: cargo test --locked -p tessera-e2e --features tamper --test tamper_corpus --example tamper-base
+      - name: Every case, NI and recorded Live, against the independent verifier
+        working-directory: verifier
+        run: cargo test --locked -p tv-core --features test-params --lib driver::corpus
+
   test:
     name: test
-    needs: [scope, rust]
+    needs: [scope, rust, tamper]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 1
     steps:
-      - name: Both workspaces passed, or only documentation changed
+      - name: Both workspaces and the tamper corpus passed, or only documentation changed
         env:
           SCOPE_RESULT: ${{ needs.scope.result }}
           CODE: ${{ needs.scope.outputs.code }}
           RESULT: ${{ needs.rust.result }}
+          TAMPER: ${{ needs.tamper.result }}
         run: |
           test "$SCOPE_RESULT" = success
           if [ "$CODE" = true ]; then
             test "$RESULT" = success
+            test "$TAMPER" = success
           else
             test "$CODE" = false
             test "$RESULT" = skipped
+            test "$TAMPER" = skipped
           fi
 
   python:

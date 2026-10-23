@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- SC-4 tamper corpus in `spec/vectors/tamper/`: 412 mutations of a valid tiny NI proof and a recorded Live session, one per verifier check from decoding to scoring, each with the verdict an independent Python oracle predicts from RFC-0019's check order. The `tessera-e2e` example `tamper-base` regenerates the base proofs byte for byte, and its `tamper_corpus` test runs every NI case through the independent verifier's public API. Required CI runs the corpus in its own job ([#135](https://github.com/AbdelStark/tessera/issues/135)).
+
 - Exact-mode CLI suite now compiles a synthetic three-layer model, commits weights, produces NI and directory Live proofs, and obtains independent `Û = 0` verdicts for five-token sequences. `tessera prove --reference-tokens` uses clearing input buffers and exact public request metadata; optional compile policy flags retain their defaults. Required CI runs both separately built binaries, exact mismatch and per-round tamper regressions ([#133](https://github.com/AbdelStark/tessera/issues/133)).
 
 - Real CPU proofs now exercise the independent verifier CLI, caller-pin failures, proof tampering, table regeneration, report schemas and output safety. Required CI runs the separately built verifier binary using its own workspace and lockfile ([#131](https://github.com/AbdelStark/tessera/issues/131)).

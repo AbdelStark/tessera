@@ -378,6 +378,8 @@ mod live;
 pub use live::LiveVerifier;
 
 #[cfg(all(test, feature = "test-params"))]
+mod corpus;
+#[cfg(all(test, feature = "test-params"))]
 mod tests;
 
 #[derive(Clone, Copy)]

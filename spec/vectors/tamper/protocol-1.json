@@ -1,0 +1,9748 @@
+{
+ "schema": "tessera.tamper-corpus/1",
+ "protocol": "tessera-protocol/1",
+ "base": {
+  "format": "tessera-tamper-base/1",
+  "layers": 3,
+  "lookup_tables": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18
+  ],
+  "model": "../exact-cli/tiny-3-reference.d",
+  "params": "test-small/1",
+  "positions": 5,
+  "pow": {
+   "bits": 20,
+   "cases": [
+    {
+     "invalid": 321622,
+     "phase": "seed",
+     "valid": 321621
+    },
+    {
+     "invalid": 669770,
+     "phase": "queries",
+     "valid": 669769
+    }
+   ],
+   "params": "ni-100/1",
+   "session_id": "09090909090909090909090909090909",
+   "statement_digest": "0707070707070707070707070707070707070707070707070707070707070707"
+  },
+  "protocol": 1,
+  "request": {
+   "manifest_digest": "1313131313131313131313131313131313131313131313131313131313131313",
+   "output_len": 3,
+   "prompt_len": 2,
+   "request_id": 23,
+   "session_id": "11111111111111111111111111111111"
+  },
+  "statement_digest": "f6890727557faf079f50ddc94f93ab235c1c0a914321bd2241aa7ffa4bd70612",
+  "synthetic_public_data": true
+ },
+ "base_sha256": {
+  "live-round1.tce": "89893ddab7353aaa7591ed7ed7e850172902b961653cf7367a00fd1c1aec167f",
+  "live-round2.tce": "b23a0233a26b32ce741c8aa7fb80eddee657be7e8924c707a6778fc899990410",
+  "live-round3.tce": "7693f5dee99f572a2e7dc4eb2e9fa413abc2769d80a865d86c0f5cfc0b27d4e5",
+  "ni.tnp": "817aeae2be14fff1412e8390f8c33535f59a4c9843ddefaece7650324b1b7d27"
+ },
+ "coverage": {
+  "lookup_instances": 18,
+  "tree_levels": 18,
+  "stages": [
+   1,
+   2
+  ],
+  "advice_groups": 39,
+  "weight_matrices": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8
+  ],
+  "families": {
+   "check-order": 12,
+   "combined-row": 96,
+   "decode": 4,
+   "fiat-shamir": 1,
+   "leaf-split": 22,
+   "logup-root": 108,
+   "merkle-path": 20,
+   "proximity": 10,
+   "scoring": 1,
+   "stage-coefficient": 4,
+   "stage-evaluation": 4,
+   "stage-round-length": 4,
+   "statement": 20,
+   "tree-coefficient": 34,
+   "tree-evaluation": 36,
+   "tree-round-length": 36
+  },
+  "cases": 412
+ },
+ "mutations": [
+  {
+   "id": "ni-decode-noncanonical-field",
+   "step": "1",
+   "family": "decode",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 242,
+     "before": "66cee04e3c503b63",
+     "after": "01000000ffffffff"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-MALFORMED",
+     "artifact": 1312,
+     "error": "ERR-CODEC-NONCANONICAL"
+    }
+   }
+  },
+  {
+   "id": "ni-decode-trailing-byte",
+   "step": "1",
+   "family": "decode",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 847608,
+     "before": "",
+     "after": "00"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-MALFORMED",
+     "artifact": 1312,
+     "error": "ERR-CODEC-NONCANONICAL"
+    }
+   }
+  },
+  {
+   "id": "ni-decode-truncated",
+   "step": "1",
+   "family": "decode",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 847607,
+     "before": "1d",
+     "after": ""
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-MALFORMED",
+     "artifact": 1312,
+     "error": "ERR-CODEC-TRUNCATED"
+    }
+   }
+  },
+  {
+   "id": "ni-envelope-digest",
+   "step": "1",
+   "family": "decode",
+   "reseal": false,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 847628,
+     "before": "27",
+     "after": "26"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-MALFORMED",
+     "artifact": 1312,
+     "error": "ERR-CODEC-DIGEST"
+    }
+   }
+  },
+  {
+   "id": "ni-statement-claim_digest",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 18,
+     "before": "13a4dc14b22e68c2350b4e5371180bca86f05cb50700ffd707c42ece29f4c32b",
+     "after": "12a4dc14b22e68c2350b4e5371180bca86f05cb50700ffd707c42ece29f4c32b"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "ClaimListDigest"
+    }
+   }
+  },
+  {
+   "id": "ni-statement-weights_root",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 50,
+     "before": "37da2353035026a72f5fb791cb63c1d15ba67e67dfd3de4466145e657171aff9",
+     "after": "36da2353035026a72f5fb791cb63c1d15ba67e67dfd3de4466145e657171aff9"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "WeightsRoot"
+    }
+   }
+  },
+  {
+   "id": "ni-statement-epoch",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 82,
+     "before": "00000000",
+     "after": "01000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "WeightsEpoch"
+    }
+   }
+  },
+  {
+   "id": "ni-statement-manifest",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 86,
+     "before": "1313131313131313131313131313131313131313131313131313131313131313",
+     "after": "1213131313131313131313131313131313131313131313131313131313131313"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "ManifestDigest"
+    }
+   }
+  },
+  {
+   "id": "ni-statement-layout_digest",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 194,
+     "before": "7eab06470cdf1458f3b925216c69d9983beb52d5eda4279d092d404fa6b61621",
+     "after": "7fab06470cdf1458f3b925216c69d9983beb52d5eda4279d092d404fa6b61621"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "LayoutDigest"
+    }
+   }
+  },
+  {
+   "id": "ni-request-id",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 126,
+     "before": "1700000000000000",
+     "after": "1800000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "Batch"
+    }
+   }
+  },
+  {
+   "id": "ni-request-session",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 134,
+     "before": "11111111111111111111111111111111",
+     "after": "10111111111111111111111111111111"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "Batch"
+    }
+   }
+  },
+  {
+   "id": "ni-request-prompt",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 150,
+     "before": "02000000",
+     "after": "03000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "Batch"
+    }
+   }
+  },
+  {
+   "id": "ni-request-outputs",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 154,
+     "before": "03000000",
+     "after": "04000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "Batch"
+    }
+   }
+  },
+  {
+   "id": "ni-predictor",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 158,
+     "before": "00000000",
+     "after": "0100000001"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "Predictor"
+    }
+   }
+  },
+  {
+   "id": "live-statement-claim_digest",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 18,
+     "before": "13a4dc14b22e68c2350b4e5371180bca86f05cb50700ffd707c42ece29f4c32b",
+     "after": "12a4dc14b22e68c2350b4e5371180bca86f05cb50700ffd707c42ece29f4c32b"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "ClaimListDigest"
+    }
+   }
+  },
+  {
+   "id": "live-statement-weights_root",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 50,
+     "before": "37da2353035026a72f5fb791cb63c1d15ba67e67dfd3de4466145e657171aff9",
+     "after": "36da2353035026a72f5fb791cb63c1d15ba67e67dfd3de4466145e657171aff9"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "WeightsRoot"
+    }
+   }
+  },
+  {
+   "id": "live-statement-epoch",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 82,
+     "before": "00000000",
+     "after": "01000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "WeightsEpoch"
+    }
+   }
+  },
+  {
+   "id": "live-statement-manifest",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 86,
+     "before": "1313131313131313131313131313131313131313131313131313131313131313",
+     "after": "1213131313131313131313131313131313131313131313131313131313131313"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "ManifestDigest"
+    }
+   }
+  },
+  {
+   "id": "live-statement-layout_digest",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 194,
+     "before": "7eab06470cdf1458f3b925216c69d9983beb52d5eda4279d092d404fa6b61621",
+     "after": "7fab06470cdf1458f3b925216c69d9983beb52d5eda4279d092d404fa6b61621"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "LayoutDigest"
+    }
+   }
+  },
+  {
+   "id": "live-request-id",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 126,
+     "before": "1700000000000000",
+     "after": "1800000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "Batch"
+    }
+   }
+  },
+  {
+   "id": "live-request-session",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 134,
+     "before": "11111111111111111111111111111111",
+     "after": "10111111111111111111111111111111"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "Batch"
+    }
+   }
+  },
+  {
+   "id": "live-request-prompt",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 150,
+     "before": "02000000",
+     "after": "03000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "Batch"
+    }
+   }
+  },
+  {
+   "id": "live-request-outputs",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 154,
+     "before": "03000000",
+     "after": "04000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "Batch"
+    }
+   }
+  },
+  {
+   "id": "live-predictor",
+   "step": "4",
+   "family": "statement",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 158,
+     "before": "00000000",
+     "after": "0100000001"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "Predictor"
+    }
+   }
+  },
+  {
+   "id": "ni-seed-nonce-bound",
+   "step": "6",
+   "family": "fiat-shamir",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 226,
+     "before": "0000000000000000",
+     "after": "0100000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 1,
+     "round": 1
+    }
+   }
+  },
+  {
+   "id": "ni-logup-0-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 242,
+     "before": "66cee04e3c503b63a48582fbcbd0e9e75ac083cd58160f2d30d34ecd7a58ca87",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 1
+    }
+   }
+  },
+  {
+   "id": "ni-logup-0-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 274,
+     "before": "fd07bfb37b1a74e2d4b58a826b63b59674dd26a8f37adf74ed7cdc7be3ba6fab",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 1
+    }
+   }
+  },
+  {
+   "id": "ni-logup-0-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 242,
+     "before": "66cee04e3c503b63a48582fbcbd0e9e7",
+     "after": "67cee04e3c503b63a48582fbcbd0e9e7"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 1
+    }
+   }
+  },
+  {
+   "id": "ni-logup-1-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 306,
+     "before": "ac2ce12145e5b78ee81dd29c697cf497d899f7fa5928aad4053dacd708e81b4a",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 2
+    }
+   }
+  },
+  {
+   "id": "ni-logup-1-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 338,
+     "before": "d5171d2f06c254fb7684ad58aa1d1f4844576e274a57c71dd86baf74b17ca89b",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 2
+    }
+   }
+  },
+  {
+   "id": "ni-logup-1-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 306,
+     "before": "ac2ce12145e5b78ee81dd29c697cf497",
+     "after": "ad2ce12145e5b78ee81dd29c697cf497"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 2
+    }
+   }
+  },
+  {
+   "id": "ni-logup-2-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 370,
+     "before": "59e2f164e6609b204a82e24f24153e1012034363991b6a72f875416afcea714c",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 3
+    }
+   }
+  },
+  {
+   "id": "ni-logup-2-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 402,
+     "before": "ece54b613bf8762438b49a24aee74f7010e80223de6dee92ee3f33ae8d68adc2",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 3
+    }
+   }
+  },
+  {
+   "id": "ni-logup-2-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 370,
+     "before": "59e2f164e6609b204a82e24f24153e10",
+     "after": "5ae2f164e6609b204a82e24f24153e10"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 3
+    }
+   }
+  },
+  {
+   "id": "ni-logup-3-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 434,
+     "before": "8757fb063c1832f0e20f506a4d622a5952b1363fe31fd0fe48814dd3151c0208",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 4
+    }
+   }
+  },
+  {
+   "id": "ni-logup-3-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 466,
+     "before": "4e73f49e2e23fac2163172cd69cdf334a12aa8140b149846b398f5b1f8869482",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 4
+    }
+   }
+  },
+  {
+   "id": "ni-logup-3-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 434,
+     "before": "8757fb063c1832f0e20f506a4d622a59",
+     "after": "8857fb063c1832f0e20f506a4d622a59"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 4
+    }
+   }
+  },
+  {
+   "id": "ni-logup-4-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 498,
+     "before": "380433c97f50dc715106924f2a5f70aad75ebedad67d6949911cfd33923c0a3f",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 5
+    }
+   }
+  },
+  {
+   "id": "ni-logup-4-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 530,
+     "before": "1e111321a8272679bd342ed8378441c5d3eace1e0dea13fe8c09a3e3215587e2",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 5
+    }
+   }
+  },
+  {
+   "id": "ni-logup-4-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 498,
+     "before": "380433c97f50dc715106924f2a5f70aa",
+     "after": "390433c97f50dc715106924f2a5f70aa"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 5
+    }
+   }
+  },
+  {
+   "id": "ni-logup-5-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 562,
+     "before": "3270de41b7a250858f5652a65abdf79aa0b773045b3c23686d07212e8aee40b0",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 6
+    }
+   }
+  },
+  {
+   "id": "ni-logup-5-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 594,
+     "before": "9a2a968246a9ced9e66bb179f4baca23558bb3e7ef8f9965dcab3716b1a30daa",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 6
+    }
+   }
+  },
+  {
+   "id": "ni-logup-5-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 562,
+     "before": "3270de41b7a250858f5652a65abdf79a",
+     "after": "3370de41b7a250858f5652a65abdf79a"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 6
+    }
+   }
+  },
+  {
+   "id": "ni-logup-6-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 626,
+     "before": "cabc077da65540385299e806913f69b6856fb653e945ea36b7888df305b84c64",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 7
+    }
+   }
+  },
+  {
+   "id": "ni-logup-6-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 658,
+     "before": "87cb8a37c08498e212c0810ccb4c58380a3031e248ef46f14a5609b2de68227b",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 7
+    }
+   }
+  },
+  {
+   "id": "ni-logup-6-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 626,
+     "before": "cabc077da65540385299e806913f69b6",
+     "after": "cbbc077da65540385299e806913f69b6"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 7
+    }
+   }
+  },
+  {
+   "id": "ni-logup-7-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 690,
+     "before": "2f8b6004f535a92e99b3f0224bcf33288db57b237d22c7e59ea04e00f80d4070",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 8
+    }
+   }
+  },
+  {
+   "id": "ni-logup-7-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 722,
+     "before": "7ed5c99d5b38bcaccb3d114db1304550c8c01e4e2a803be4540c47c3989a6ca1",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 8
+    }
+   }
+  },
+  {
+   "id": "ni-logup-7-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 690,
+     "before": "2f8b6004f535a92e99b3f0224bcf3328",
+     "after": "308b6004f535a92e99b3f0224bcf3328"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 8
+    }
+   }
+  },
+  {
+   "id": "ni-logup-8-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 754,
+     "before": "0746e4eae02c6486b0b245d1acefa02c943cd516d7f94a1a7370a089baf4d46c",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 9
+    }
+   }
+  },
+  {
+   "id": "ni-logup-8-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 786,
+     "before": "636b30cd17277367a46e92db43f94ed06e64f2e28e4dd8a22ec89e8a87d15ea9",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 9
+    }
+   }
+  },
+  {
+   "id": "ni-logup-8-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 754,
+     "before": "0746e4eae02c6486b0b245d1acefa02c",
+     "after": "0846e4eae02c6486b0b245d1acefa02c"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 9
+    }
+   }
+  },
+  {
+   "id": "ni-logup-9-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 818,
+     "before": "9800d2ede6bc6d86749a4ba1852219461e49d19576230a788e864c1f381dc407",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 10
+    }
+   }
+  },
+  {
+   "id": "ni-logup-9-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 850,
+     "before": "68b0034071477e0644c5138ba85bb47d352c9aaa2875a86989eec94f1444d824",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 10
+    }
+   }
+  },
+  {
+   "id": "ni-logup-9-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 818,
+     "before": "9800d2ede6bc6d86749a4ba185221946",
+     "after": "9900d2ede6bc6d86749a4ba185221946"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 10
+    }
+   }
+  },
+  {
+   "id": "ni-logup-10-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 882,
+     "before": "26f3dccef55b1f0e2433f515ad60f966731a40f6de8c125cc738b0b105ec596e",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 11
+    }
+   }
+  },
+  {
+   "id": "ni-logup-10-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 914,
+     "before": "f55d069672543a28208472d5994facdcdaf2ff96c68da181452fac093e7c4d7a",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 11
+    }
+   }
+  },
+  {
+   "id": "ni-logup-10-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 882,
+     "before": "26f3dccef55b1f0e2433f515ad60f966",
+     "after": "27f3dccef55b1f0e2433f515ad60f966"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 11
+    }
+   }
+  },
+  {
+   "id": "ni-logup-11-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 946,
+     "before": "5ae7459b0cc8c4812b42bde7d5329f183e29e24b0d4cc28555bea27a1d6410fc",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 12
+    }
+   }
+  },
+  {
+   "id": "ni-logup-11-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 978,
+     "before": "39056f9e29fd5c82c2407d4d3bf5972833e1410048388cbd43215de180afe376",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 12
+    }
+   }
+  },
+  {
+   "id": "ni-logup-11-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 946,
+     "before": "5ae7459b0cc8c4812b42bde7d5329f18",
+     "after": "5be7459b0cc8c4812b42bde7d5329f18"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 12
+    }
+   }
+  },
+  {
+   "id": "ni-logup-12-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1010,
+     "before": "ff6bf4592a4042401c2c9fde4f017fb0a4241c0e0050b17d789da55be53e8589",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 13
+    }
+   }
+  },
+  {
+   "id": "ni-logup-12-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1042,
+     "before": "abd0728ea5c8a3e30c5a090eba68edf4f2e438d166e1cfb3471b9752f7655bfe",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 13
+    }
+   }
+  },
+  {
+   "id": "ni-logup-12-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1010,
+     "before": "ff6bf4592a4042401c2c9fde4f017fb0",
+     "after": "006cf4592a4042401c2c9fde4f017fb0"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 13
+    }
+   }
+  },
+  {
+   "id": "ni-logup-13-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1074,
+     "before": "15acfe72970480b5fcce67bb25b3cc44acb17efde5bdf3d986c778d87cb6c951",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 14
+    }
+   }
+  },
+  {
+   "id": "ni-logup-13-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1106,
+     "before": "051737976efe076e9cb32091f88e73f5fef1b457422e093f741fe0d41f98ba4f",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 14
+    }
+   }
+  },
+  {
+   "id": "ni-logup-13-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1074,
+     "before": "15acfe72970480b5fcce67bb25b3cc44",
+     "after": "16acfe72970480b5fcce67bb25b3cc44"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 14
+    }
+   }
+  },
+  {
+   "id": "ni-logup-14-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1138,
+     "before": "419268c75344cf6a7c2c485f241935b23766d0bd6d2b827ed86d2f58da3aff8a",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 15
+    }
+   }
+  },
+  {
+   "id": "ni-logup-14-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1170,
+     "before": "ea463f9883bd54a393d557b1b196530c1890ac20a72d7d38108e4e75433a62c7",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 15
+    }
+   }
+  },
+  {
+   "id": "ni-logup-14-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1138,
+     "before": "419268c75344cf6a7c2c485f241935b2",
+     "after": "429268c75344cf6a7c2c485f241935b2"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 15
+    }
+   }
+  },
+  {
+   "id": "ni-logup-15-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1202,
+     "before": "e8546e4e6d02b65f8ee43ba5629cf083cca20db659ff750706283564155e9d01",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 16
+    }
+   }
+  },
+  {
+   "id": "ni-logup-15-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1234,
+     "before": "031c7e080e5e47c09e71fc209a0a18b5eb782b7861ed2f45820608512aaf9929",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 16
+    }
+   }
+  },
+  {
+   "id": "ni-logup-15-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1202,
+     "before": "e8546e4e6d02b65f8ee43ba5629cf083",
+     "after": "e9546e4e6d02b65f8ee43ba5629cf083"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 16
+    }
+   }
+  },
+  {
+   "id": "ni-logup-16-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1266,
+     "before": "3fd2f6161575766fbdda7ae8509bbe4aa1e7d2e054a2ba0d1375247a7b0a26a1",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 17
+    }
+   }
+  },
+  {
+   "id": "ni-logup-16-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1298,
+     "before": "bcac5a33667fb52ea143b57183a2d469a3dc2975ea8b1032d4bcb3ba35118d9b",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 17
+    }
+   }
+  },
+  {
+   "id": "ni-logup-16-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1266,
+     "before": "3fd2f6161575766fbdda7ae8509bbe4a",
+     "after": "40d2f6161575766fbdda7ae8509bbe4a"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 17
+    }
+   }
+  },
+  {
+   "id": "ni-logup-17-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1330,
+     "before": "56145d0bc54cab5f81090d5630182506377ba61c4b001751ad991ae052b2f220",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 18
+    }
+   }
+  },
+  {
+   "id": "ni-logup-17-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1362,
+     "before": "6a75a4f7b284de92e5d583b29b968ac69912cd7bdb14f1ae432ab10d382fdee7",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 18
+    }
+   }
+  },
+  {
+   "id": "ni-logup-17-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1330,
+     "before": "56145d0bc54cab5f81090d5630182506",
+     "after": "57145d0bc54cab5f81090d5630182506"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 18
+    }
+   }
+  },
+  {
+   "id": "ni-tree-0-extra-round",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1554,
+     "before": "0000000000000000",
+     "after": "01000000000000000300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-tree-0-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1602,
+     "before": "b891985899355a57c357c6a5c2d1a826",
+     "after": "b991985899355a57c357c6a5c2d1a826"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-tree-1-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1714,
+     "before": "00113928cbc61a76d391dec3beb41f10",
+     "after": "01113928cbc61a76d391dec3beb41f10"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 1,
+     "round": 1
+    }
+   }
+  },
+  {
+   "id": "ni-tree-1-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1746,
+     "before": "005c3b78733d09aca45ae1aab4d525a1",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 1706,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 1,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-tree-1-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1802,
+     "before": "e27f85050360122d672a2154aac294a4",
+     "after": "e37f85050360122d672a2154aac294a4"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 1,
+     "round": 1
+    }
+   }
+  },
+  {
+   "id": "ni-tree-2-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1914,
+     "before": "5babcf11a750b7cb32658eeacafa4684",
+     "after": "5cabcf11a750b7cb32658eeacafa4684"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 2,
+     "round": 2
+    }
+   }
+  },
+  {
+   "id": "ni-tree-2-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 2002,
+     "before": "ec22f1a85ce31493797fa37504065672",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 1962,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 2,
+     "round": 1
+    }
+   }
+  },
+  {
+   "id": "ni-tree-2-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 2058,
+     "before": "4f91dee3d53b7271f0cd0c27e89d92d9",
+     "after": "5091dee3d53b7271f0cd0c27e89d92d9"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 2,
+     "round": 2
+    }
+   }
+  },
+  {
+   "id": "ni-tree-3-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 2490,
+     "before": "c1323fa6c660fbb5b6f5e684dd3a4645",
+     "after": "c2323fa6c660fbb5b6f5e684dd3a4645"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 3,
+     "round": 3
+    }
+   }
+  },
+  {
+   "id": "ni-tree-3-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 2634,
+     "before": "bae9f36b6c09ec7306d0096f61b2536d",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 2594,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 3,
+     "round": 2
+    }
+   }
+  },
+  {
+   "id": "ni-tree-3-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 2690,
+     "before": "3d30e525c4cdcfb1147a2302c0d8f765",
+     "after": "3e30e525c4cdcfb1147a2302c0d8f765"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 3,
+     "round": 3
+    }
+   }
+  },
+  {
+   "id": "ni-tree-4-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 3250,
+     "before": "12f4308642bd7810b11735e0a154a7e6",
+     "after": "13f4308642bd7810b11735e0a154a7e6"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 4,
+     "round": 4
+    }
+   }
+  },
+  {
+   "id": "ni-tree-4-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 3450,
+     "before": "eddb8110945304a25d654644a0607fd0",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 3410,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 4,
+     "round": 3
+    }
+   }
+  },
+  {
+   "id": "ni-tree-4-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 3506,
+     "before": "acefb98bac933f2af01726830331daa5",
+     "after": "adefb98bac933f2af01726830331daa5"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 4,
+     "round": 4
+    }
+   }
+  },
+  {
+   "id": "ni-tree-5-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 4130,
+     "before": "eb2db8e71452c18c2f41d56380301766",
+     "after": "ec2db8e71452c18c2f41d56380301766"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 5,
+     "round": 5
+    }
+   }
+  },
+  {
+   "id": "ni-tree-5-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 4386,
+     "before": "0888bc13788e5f30de9f82cb04ce6875",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 4346,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 5,
+     "round": 4
+    }
+   }
+  },
+  {
+   "id": "ni-tree-5-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 4442,
+     "before": "484f25de8bd4ffea763cb9d56a3d0e46",
+     "after": "494f25de8bd4ffea763cb9d56a3d0e46"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 5,
+     "round": 5
+    }
+   }
+  },
+  {
+   "id": "ni-tree-6-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 5130,
+     "before": "68f56b2e35cf87e09bea3ae4004671a3",
+     "after": "69f56b2e35cf87e09bea3ae4004671a3"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 6,
+     "round": 6
+    }
+   }
+  },
+  {
+   "id": "ni-tree-6-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 5442,
+     "before": "ae0902413fe95735f2415bc11697f7cf",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 5402,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 6,
+     "round": 5
+    }
+   }
+  },
+  {
+   "id": "ni-tree-6-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 5498,
+     "before": "106b12d035a4c582ac2e136a17904e41",
+     "after": "116b12d035a4c582ac2e136a17904e41"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 6,
+     "round": 6
+    }
+   }
+  },
+  {
+   "id": "ni-tree-7-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 6314,
+     "before": "a196e66a65cd2e899254b4f2f3f60320",
+     "after": "a296e66a65cd2e899254b4f2f3f60320"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 7,
+     "round": 7
+    }
+   }
+  },
+  {
+   "id": "ni-tree-7-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 6682,
+     "before": "e1fabe1fa7a5f3ee75103c4e1cb32f71",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 6642,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 7,
+     "round": 6
+    }
+   }
+  },
+  {
+   "id": "ni-tree-7-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 6738,
+     "before": "a5131cbee24de7f771845a859c39798a",
+     "after": "a6131cbee24de7f771845a859c39798a"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 7,
+     "round": 7
+    }
+   }
+  },
+  {
+   "id": "ni-tree-8-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 7554,
+     "before": "12532c9c0991f8fab4bfe0d618864b78",
+     "after": "13532c9c0991f8fab4bfe0d618864b78"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 8,
+     "round": 8
+    }
+   }
+  },
+  {
+   "id": "ni-tree-8-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 7978,
+     "before": "fd94b9300e32f8a1c41da31541609ae7",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 7938,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 8,
+     "round": 7
+    }
+   }
+  },
+  {
+   "id": "ni-tree-8-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 8034,
+     "before": "7fc588509f29f7f2c954c382039de24d",
+     "after": "80c588509f29f7f2c954c382039de24d"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 8,
+     "round": 8
+    }
+   }
+  },
+  {
+   "id": "ni-tree-9-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 8914,
+     "before": "ac4734fd9515b60b98854a6a2f9f12ee",
+     "after": "ad4734fd9515b60b98854a6a2f9f12ee"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 9,
+     "round": 9
+    }
+   }
+  },
+  {
+   "id": "ni-tree-9-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 9394,
+     "before": "4e138588f26c13747aed51aea6ee6d6f",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 9354,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 9,
+     "round": 8
+    }
+   }
+  },
+  {
+   "id": "ni-tree-9-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 9450,
+     "before": "2ff2abd8372dee9ad87f01ef5bf812ac",
+     "after": "30f2abd8372dee9ad87f01ef5bf812ac"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 9,
+     "round": 9
+    }
+   }
+  },
+  {
+   "id": "ni-tree-10-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 10650,
+     "before": "f700396f2e127e9347e4bca91829f24f",
+     "after": "f800396f2e127e9347e4bca91829f24f"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 10,
+     "round": 10
+    }
+   }
+  },
+  {
+   "id": "ni-tree-10-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 11186,
+     "before": "02921cc8b405a67b75d72fa2c666bf67",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 11146,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 10,
+     "round": 9
+    }
+   }
+  },
+  {
+   "id": "ni-tree-10-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 11242,
+     "before": "36dadfc9c10338ecdb0f1b689b639230",
+     "after": "37dadfc9c10338ecdb0f1b689b639230"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 10,
+     "round": 10
+    }
+   }
+  },
+  {
+   "id": "ni-tree-11-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 12698,
+     "before": "0856b0067b6e24bb0b497b8c3d65b163",
+     "after": "0956b0067b6e24bb0b497b8c3d65b163"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 11,
+     "round": 11
+    }
+   }
+  },
+  {
+   "id": "ni-tree-11-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 13290,
+     "before": "92619ba959b0e67d9243cea213417f70",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 13250,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 11,
+     "round": 10
+    }
+   }
+  },
+  {
+   "id": "ni-tree-11-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 13346,
+     "before": "d60479824162011a8bb136897ce3f665",
+     "after": "d70479824162011a8bb136897ce3f665"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 11,
+     "round": 11
+    }
+   }
+  },
+  {
+   "id": "ni-tree-12-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 14994,
+     "before": "f2f932e582f5210e1ea1a3b8ed3efab5",
+     "after": "f3f932e582f5210e1ea1a3b8ed3efab5"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 12,
+     "round": 12
+    }
+   }
+  },
+  {
+   "id": "ni-tree-12-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 15642,
+     "before": "21e3f2b26514b22adaf28aee11b2de12",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 15602,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 12,
+     "round": 11
+    }
+   }
+  },
+  {
+   "id": "ni-tree-12-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 15698,
+     "before": "279062b5a1f43757dcbc63cc6e86a8dd",
+     "after": "289062b5a1f43757dcbc63cc6e86a8dd"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 12,
+     "round": 12
+    }
+   }
+  },
+  {
+   "id": "ni-tree-13-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 17730,
+     "before": "36f997f19cac7f960ed0cd8d3dc199d7",
+     "after": "37f997f19cac7f960ed0cd8d3dc199d7"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 13,
+     "round": 13
+    }
+   }
+  },
+  {
+   "id": "ni-tree-13-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 18434,
+     "before": "c04a480e2cb7ca3f6744104517e71672",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 18394,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 13,
+     "round": 12
+    }
+   }
+  },
+  {
+   "id": "ni-tree-13-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 18490,
+     "before": "da8819bcdfa32f97900f5a217094f574",
+     "after": "db8819bcdfa32f97900f5a217094f574"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 13,
+     "round": 13
+    }
+   }
+  },
+  {
+   "id": "ni-tree-14-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 20650,
+     "before": "1cce3a01bbdb75da3a046fc02f01b301",
+     "after": "1dce3a01bbdb75da3a046fc02f01b301"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 14,
+     "round": 14
+    }
+   }
+  },
+  {
+   "id": "ni-tree-14-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 21410,
+     "before": "2b68e9e280877ab2d176029671c7f893",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 21370,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 14,
+     "round": 13
+    }
+   }
+  },
+  {
+   "id": "ni-tree-14-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 21466,
+     "before": "29ac23788d8722b252aedeffbf118145",
+     "after": "2aac23788d8722b252aedeffbf118145"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 14,
+     "round": 14
+    }
+   }
+  },
+  {
+   "id": "ni-tree-15-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 23690,
+     "before": "1cf13bd06b4e1ad347271a2b85fee988",
+     "after": "1df13bd06b4e1ad347271a2b85fee988"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 15,
+     "round": 15
+    }
+   }
+  },
+  {
+   "id": "ni-tree-15-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 24506,
+     "before": "7f680c6c27385b1d7f29754c837314b8",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 24466,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 15,
+     "round": 14
+    }
+   }
+  },
+  {
+   "id": "ni-tree-15-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 24562,
+     "before": "527e7d5ba708b598923c5bafbe7e2543",
+     "after": "537e7d5ba708b598923c5bafbe7e2543"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 15,
+     "round": 15
+    }
+   }
+  },
+  {
+   "id": "ni-tree-16-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 26818,
+     "before": "129a64cec4506bbdb59cecfe96c2b249",
+     "after": "139a64cec4506bbdb59cecfe96c2b249"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 16,
+     "round": 16
+    }
+   }
+  },
+  {
+   "id": "ni-tree-16-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 27690,
+     "before": "f181c6729cfef2281ce964048784d952",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 27650,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 16,
+     "round": 15
+    }
+   }
+  },
+  {
+   "id": "ni-tree-16-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 27746,
+     "before": "abcf2bb3c688fe90f3e4ca9caffd6ce1",
+     "after": "accf2bb3c688fe90f3e4ca9caffd6ce1"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 16,
+     "round": 16
+    }
+   }
+  },
+  {
+   "id": "ni-tree-17-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 30002,
+     "before": "ddc0fc5807802ae0f8ee90ce489b49cf",
+     "after": "dec0fc5807802ae0f8ee90ce489b49cf"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 17,
+     "round": 17
+    }
+   }
+  },
+  {
+   "id": "ni-tree-17-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 30930,
+     "before": "231c006b07a169eb5869c7d11d0ef5ba",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 30890,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 17,
+     "round": 16
+    }
+   }
+  },
+  {
+   "id": "ni-tree-17-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 30986,
+     "before": "e10ee314ff2fb3f787c17a0ff5894784",
+     "after": "e20ee314ff2fb3f787c17a0ff5894784"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 17,
+     "round": 17
+    }
+   }
+  },
+  {
+   "id": "ni-logup-value-0",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1402,
+     "before": "4dcc7581a8e85d09fdda162b030b40b9",
+     "after": "4ecc7581a8e85d09fdda162b030b40b9"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-logup-value-1",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1418,
+     "before": "81890fcc33f3b2fdf0356a07c244cbec",
+     "after": "82890fcc33f3b2fdf0356a07c244cbec"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-logup-value-2",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1434,
+     "before": "87e743543ea5cf5acfa921b6eb25b12d",
+     "after": "88e743543ea5cf5acfa921b6eb25b12d"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-logup-value-3",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1450,
+     "before": "e4e575170ccf7b427b2bda9d5184d0e5",
+     "after": "e5e575170ccf7b427b2bda9d5184d0e5"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-logup-value-4",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1466,
+     "before": "9ad140725c44b02afeef33ab818d9311",
+     "after": "9bd140725c44b02afeef33ab818d9311"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-logup-value-5",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1482,
+     "before": "d5789f73981521b3b933b14a75832c81",
+     "after": "d6789f73981521b3b933b14a75832c81"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-logup-value-6",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1498,
+     "before": "70920ab6d9be04f479168b2deb3fc1b8",
+     "after": "71920ab6d9be04f479168b2deb3fc1b8"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-logup-value-7",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1514,
+     "before": "87adcc4ffb37a32221570cfbe199c4dc",
+     "after": "88adcc4ffb37a32221570cfbe199c4dc"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-logup-value-8",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 1530,
+     "before": "8e72decc520c3d776d6b6eca0885bc62",
+     "after": "8f72decc520c3d776d6b6eca0885bc62"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-leaf-split-first",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 33298,
+     "before": "c3adbc411c0846e28dd0fa331825f8fd",
+     "after": "c4adbc411c0846e28dd0fa331825f8fd"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-leaf-split-last",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 47666,
+     "before": "abc80239ca6fcc0c8cf0f0e45b1ad52c",
+     "after": "acc80239ca6fcc0c8cf0f0e45b1ad52c"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "ni-stage-1-coefficient",
+   "step": "8",
+   "family": "stage-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 47708,
+     "before": "06734715930f28ee6da21a0cdfd8c9a4",
+     "after": "07734715930f28ee6da21a0cdfd8c9a4"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 1,
+     "round": 8
+    }
+   }
+  },
+  {
+   "id": "ni-stage-1-round-length",
+   "step": "8",
+   "family": "stage-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 48260,
+     "before": "693ee754100ce34296c8de6d6820f8be",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 48204,
+     "before": "0400000000000000",
+     "after": "0300000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 1,
+     "round": 7
+    }
+   }
+  },
+  {
+   "id": "ni-stage-1-evaluation",
+   "step": "8",
+   "family": "stage-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 48284,
+     "before": "8858cc1c6d2c28cb2a2149207675d468",
+     "after": "8958cc1c6d2c28cb2a2149207675d468"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 1,
+     "round": 8
+    }
+   }
+  },
+  {
+   "id": "ni-stage-2-coefficient",
+   "step": "8",
+   "family": "stage-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 53558,
+     "before": "594a48ddf5dd5c07dd7634e2676fb99f",
+     "after": "5a4a48ddf5dd5c07dd7634e2676fb99f"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 2,
+     "round": 6
+    }
+   }
+  },
+  {
+   "id": "ni-stage-2-round-length",
+   "step": "8",
+   "family": "stage-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 53870,
+     "before": "3736772dc4d17b21d641c774cae57e4c",
+     "after": ""
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 53830,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 2,
+     "round": 5
+    }
+   }
+  },
+  {
+   "id": "ni-stage-2-evaluation",
+   "step": "8",
+   "family": "stage-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 53894,
+     "before": "6175c06f1a0fce745bfeff8fe8e9a564",
+     "after": "6275c06f1a0fce745bfeff8fe8e9a564"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 2,
+     "round": 6
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 55038,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-1-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 71694,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-2-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 88350,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-3-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 105006,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-4-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 121662,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-5-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 138318,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-6-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 154974,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-7-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 171630,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-8-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 188286,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-9-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 204942,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-10-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 221598,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-11-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 238254,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-12-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 254910,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-13-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 271566,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-14-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 288222,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-15-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 304878,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-16-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 321534,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-17-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 338190,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-18-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 354846,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-19-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 371502,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-20-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 388158,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-21-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 404814,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-22-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 421470,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-23-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 438126,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-24-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 454782,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-25-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 471438,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-26-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 488094,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-27-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 504750,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-28-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 521406,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-29-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 538062,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-30-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 554718,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-31-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 571374,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-32-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 588030,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-33-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 604686,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-34-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 621342,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-35-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 637998,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-36-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 654654,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-37-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 671310,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-advice-group-38-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 687966,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "ni-weight-0-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 721295,
+     "shift_fp2": {
+      "count": 16,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "ni-weight-1-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 721848,
+     "shift_fp2": {
+      "count": 4,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "ni-weight-2-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 722017,
+     "shift_fp2": {
+      "count": 4,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "ni-weight-3-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 722186,
+     "shift_fp2": {
+      "count": 4,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "ni-weight-4-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 722355,
+     "shift_fp2": {
+      "count": 4,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "ni-weight-5-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 722524,
+     "shift_fp2": {
+      "count": 16,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "ni-weight-6-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 723077,
+     "shift_fp2": {
+      "count": 16,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "ni-weight-7-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 723630,
+     "shift_fp2": {
+      "count": 16,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "ni-weight-8-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 724183,
+     "shift_fp2": {
+      "count": 16,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "live-logup-0-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 8,
+     "before": "3f5a0aced59abfc1633d204c2fb41cfc74ff08a518e8bce18a1188398a561b8e",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 1
+    }
+   }
+  },
+  {
+   "id": "live-logup-0-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 40,
+     "before": "34fe9a35dac8d65cb7fb15a83be5d90e83b861a029b313b1e4b46ee6c14e50b1",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 1
+    }
+   }
+  },
+  {
+   "id": "live-logup-0-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 8,
+     "before": "3f5a0aced59abfc1633d204c2fb41cfc",
+     "after": "405a0aced59abfc1633d204c2fb41cfc"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 1
+    }
+   }
+  },
+  {
+   "id": "live-logup-1-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 72,
+     "before": "1caeb8d12381c36394b183b8e678389e38f44d4cb3318427e6077282dd696725",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 2
+    }
+   }
+  },
+  {
+   "id": "live-logup-1-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 104,
+     "before": "c06fee00123c845ebe08ca4ca20053b19840e2b95c926084cb6eabef7b3ed363",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 2
+    }
+   }
+  },
+  {
+   "id": "live-logup-1-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 72,
+     "before": "1caeb8d12381c36394b183b8e678389e",
+     "after": "1daeb8d12381c36394b183b8e678389e"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 2
+    }
+   }
+  },
+  {
+   "id": "live-logup-2-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 136,
+     "before": "cb5c8445b2fe076ad532e8e2f60d6eb251e6251d295cee4531f05fa471dcb894",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 3
+    }
+   }
+  },
+  {
+   "id": "live-logup-2-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 168,
+     "before": "d74e901c9400cd4b27dcdfb7d372843996aa3dd3f830017e670092a0973bf08c",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 3
+    }
+   }
+  },
+  {
+   "id": "live-logup-2-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 136,
+     "before": "cb5c8445b2fe076ad532e8e2f60d6eb2",
+     "after": "cc5c8445b2fe076ad532e8e2f60d6eb2"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 3
+    }
+   }
+  },
+  {
+   "id": "live-logup-3-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 200,
+     "before": "af0b20d756f64a0a6c61f082f9693f77d0743d060341a9c0c7000f572f2d3843",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 4
+    }
+   }
+  },
+  {
+   "id": "live-logup-3-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 232,
+     "before": "f7944cab67fcfa9bde7ab746dcba78c293a03babe42a076949ee172b652cdac8",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 4
+    }
+   }
+  },
+  {
+   "id": "live-logup-3-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 200,
+     "before": "af0b20d756f64a0a6c61f082f9693f77",
+     "after": "b00b20d756f64a0a6c61f082f9693f77"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 4
+    }
+   }
+  },
+  {
+   "id": "live-logup-4-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 264,
+     "before": "4f1688432e05f143fda99a69be518820f12a607f7be8614deb6e2ef4e498c143",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 5
+    }
+   }
+  },
+  {
+   "id": "live-logup-4-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 296,
+     "before": "fcfff1a574c9b2c5515bd2fdde0f9bead2da568a3db6300cc58f765211e4fb57",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 5
+    }
+   }
+  },
+  {
+   "id": "live-logup-4-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 264,
+     "before": "4f1688432e05f143fda99a69be518820",
+     "after": "501688432e05f143fda99a69be518820"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 5
+    }
+   }
+  },
+  {
+   "id": "live-logup-5-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 328,
+     "before": "d49ff6973f7d8b85f9d76020ede506bd93a00407be3056bef00748afd2926015",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 6
+    }
+   }
+  },
+  {
+   "id": "live-logup-5-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 360,
+     "before": "34ae6c33a315f38627231a7d2b3c130174764192254eca7cceec01950fc44ba4",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 6
+    }
+   }
+  },
+  {
+   "id": "live-logup-5-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 328,
+     "before": "d49ff6973f7d8b85f9d76020ede506bd",
+     "after": "d59ff6973f7d8b85f9d76020ede506bd"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 6
+    }
+   }
+  },
+  {
+   "id": "live-logup-6-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 392,
+     "before": "d6175fbac64ff7e8879433e9e0c4ca5a8cbe84b27f8ad9a58771c651056552c3",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 7
+    }
+   }
+  },
+  {
+   "id": "live-logup-6-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 424,
+     "before": "bb05d6315a3bb963d845f0b38c0cf1217819c3e55244d2868b1e240dd547495c",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 7
+    }
+   }
+  },
+  {
+   "id": "live-logup-6-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 392,
+     "before": "d6175fbac64ff7e8879433e9e0c4ca5a",
+     "after": "d7175fbac64ff7e8879433e9e0c4ca5a"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 7
+    }
+   }
+  },
+  {
+   "id": "live-logup-7-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 456,
+     "before": "83ceac48e5b3ec29cf48f4b54e6ff99d4544788840d8ca93025e8f09aad8b007",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 8
+    }
+   }
+  },
+  {
+   "id": "live-logup-7-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 488,
+     "before": "f08360d32adce3789ce9bc83b7da49fdcdfa645c39b2a0044877b5cdb07bd01f",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 8
+    }
+   }
+  },
+  {
+   "id": "live-logup-7-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 456,
+     "before": "83ceac48e5b3ec29cf48f4b54e6ff99d",
+     "after": "84ceac48e5b3ec29cf48f4b54e6ff99d"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 8
+    }
+   }
+  },
+  {
+   "id": "live-logup-8-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 520,
+     "before": "3a94425928528c0e9a5bf8b20037638fd283d4724086b5a795ca215006986205",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 9
+    }
+   }
+  },
+  {
+   "id": "live-logup-8-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 552,
+     "before": "c13d85454def692766249eb42b25837fd5be75375a7e1ab4443191c957f0f84b",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 9
+    }
+   }
+  },
+  {
+   "id": "live-logup-8-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 520,
+     "before": "3a94425928528c0e9a5bf8b20037638f",
+     "after": "3b94425928528c0e9a5bf8b20037638f"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 9
+    }
+   }
+  },
+  {
+   "id": "live-logup-9-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 584,
+     "before": "7cdec1a78c658ac16df142d2b50a7440e8c52d56480dca9891a82ec9e5c48c44",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 10
+    }
+   }
+  },
+  {
+   "id": "live-logup-9-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 616,
+     "before": "4cb5254f0262292a0a37a8baa6f01c62b0a6f134ed3d31674b7398b70fac63ed",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 10
+    }
+   }
+  },
+  {
+   "id": "live-logup-9-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 584,
+     "before": "7cdec1a78c658ac16df142d2b50a7440",
+     "after": "7ddec1a78c658ac16df142d2b50a7440"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 10
+    }
+   }
+  },
+  {
+   "id": "live-logup-10-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 648,
+     "before": "5f7107d1c0f9d7e81fa106b5610a1a8c6337aa0a079071ecdee877c5ddf558c1",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 11
+    }
+   }
+  },
+  {
+   "id": "live-logup-10-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 680,
+     "before": "ca7adeb3e7ad75e659c2c4c805fde000473d8b2cc901a73f56239cac397f3bb9",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 11
+    }
+   }
+  },
+  {
+   "id": "live-logup-10-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 648,
+     "before": "5f7107d1c0f9d7e81fa106b5610a1a8c",
+     "after": "607107d1c0f9d7e81fa106b5610a1a8c"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 11
+    }
+   }
+  },
+  {
+   "id": "live-logup-11-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 712,
+     "before": "40bfa441618a87c79e563182aad0822516d2ac0e5c61b3f19986b1c7b1e627f9",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 12
+    }
+   }
+  },
+  {
+   "id": "live-logup-11-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 744,
+     "before": "53ec307798ba26b122afda452f35c52409315496ff1ecc4349832bf9f7273d7c",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 12
+    }
+   }
+  },
+  {
+   "id": "live-logup-11-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 712,
+     "before": "40bfa441618a87c79e563182aad08225",
+     "after": "41bfa441618a87c79e563182aad08225"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 12
+    }
+   }
+  },
+  {
+   "id": "live-logup-12-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 776,
+     "before": "8e678c656d4a6858e747b2e05a94d0fa65a4e2fba912b46f5ad73eb40271d09e",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 13
+    }
+   }
+  },
+  {
+   "id": "live-logup-12-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 808,
+     "before": "625b29248283783c76ed7ee9b715ebb4563fd6d075ae32e8ecfbe1edc7ea8062",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 13
+    }
+   }
+  },
+  {
+   "id": "live-logup-12-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 776,
+     "before": "8e678c656d4a6858e747b2e05a94d0fa",
+     "after": "8f678c656d4a6858e747b2e05a94d0fa"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 13
+    }
+   }
+  },
+  {
+   "id": "live-logup-13-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 840,
+     "before": "95b28a9f13e9a53b17bd81e9b333e8d1c70640bee7c07418dd631049e92ef47e",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 14
+    }
+   }
+  },
+  {
+   "id": "live-logup-13-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 872,
+     "before": "4d8e9b7ffc88df5ac9781c44fa54f5a2aae02b70661a17bd58c05efd2e81f67b",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 14
+    }
+   }
+  },
+  {
+   "id": "live-logup-13-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 840,
+     "before": "95b28a9f13e9a53b17bd81e9b333e8d1",
+     "after": "96b28a9f13e9a53b17bd81e9b333e8d1"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 14
+    }
+   }
+  },
+  {
+   "id": "live-logup-14-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 904,
+     "before": "b37ff8c1a5ba0e12d84654c64e3b041f1e3bdc2dd8221a0ba5f9b9958fc7ee59",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 15
+    }
+   }
+  },
+  {
+   "id": "live-logup-14-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 936,
+     "before": "5700de2a09b636a818177816b71378457f760d43f808e6032d001e161ac38adc",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 15
+    }
+   }
+  },
+  {
+   "id": "live-logup-14-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 904,
+     "before": "b37ff8c1a5ba0e12d84654c64e3b041f",
+     "after": "b47ff8c1a5ba0e12d84654c64e3b041f"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 15
+    }
+   }
+  },
+  {
+   "id": "live-logup-15-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 968,
+     "before": "82fba60763768613331f338489c7cdf3bbd087aaa0e215f55d3fcf3e6322e376",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 16
+    }
+   }
+  },
+  {
+   "id": "live-logup-15-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1000,
+     "before": "7484b445f353898ec1d8e2a10519258e35e3de48a50d54b68016cf7825990654",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 16
+    }
+   }
+  },
+  {
+   "id": "live-logup-15-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 968,
+     "before": "82fba60763768613331f338489c7cdf3",
+     "after": "83fba60763768613331f338489c7cdf3"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 16
+    }
+   }
+  },
+  {
+   "id": "live-logup-16-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1032,
+     "before": "213c3504e57a007799bba990f26bf96d14443056f8a062396b44734717979e81",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 17
+    }
+   }
+  },
+  {
+   "id": "live-logup-16-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1064,
+     "before": "0d336f3211f314fd8214a87b2d6dfedf076df42301186e88dcd37ee7ae6e2afd",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 17
+    }
+   }
+  },
+  {
+   "id": "live-logup-16-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1032,
+     "before": "213c3504e57a007799bba990f26bf96d",
+     "after": "223c3504e57a007799bba990f26bf96d"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 17
+    }
+   }
+  },
+  {
+   "id": "live-logup-17-lookup-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1096,
+     "before": "1de25e10a0870b0912bfd85956d260f8c34af579dcdd7097b42ef672983ace83",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 18
+    }
+   }
+  },
+  {
+   "id": "live-logup-17-table-root-zero",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1128,
+     "before": "a2ee6c59b2649b90a394ab5d33998aadb4d1009c6d44f3ba016bcdd14cbfd05a",
+     "after": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 18
+    }
+   }
+  },
+  {
+   "id": "live-logup-17-identity",
+   "step": "7.1",
+   "family": "logup-root",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1096,
+     "before": "1de25e10a0870b0912bfd85956d260f8",
+     "after": "1ee25e10a0870b0912bfd85956d260f8"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 18
+    }
+   }
+  },
+  {
+   "id": "live-tree-0-extra-round",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1320,
+     "before": "0000000000000000",
+     "after": "01000000000000000300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-tree-0-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1368,
+     "before": "6da674ba78aa784f20f046b1be4e4212",
+     "after": "6ea674ba78aa784f20f046b1be4e4212"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-tree-1-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1480,
+     "before": "c9d8fe15f63394975fd246adbef07e08",
+     "after": "cad8fe15f63394975fd246adbef07e08"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 1,
+     "round": 1
+    }
+   }
+  },
+  {
+   "id": "live-tree-1-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1512,
+     "before": "b4727a5ad8b5682f48c14ac003213792",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 1472,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 1,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-tree-1-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1568,
+     "before": "1bc1e4ef57dc8432da39168cf27191b1",
+     "after": "1cc1e4ef57dc8432da39168cf27191b1"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 1,
+     "round": 1
+    }
+   }
+  },
+  {
+   "id": "live-tree-2-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1680,
+     "before": "6b56aacf5cf6296ce7927b3a7c6c4013",
+     "after": "6c56aacf5cf6296ce7927b3a7c6c4013"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 2,
+     "round": 2
+    }
+   }
+  },
+  {
+   "id": "live-tree-2-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1768,
+     "before": "d63d20f740c556ab60864225f227644f",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 1728,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 2,
+     "round": 1
+    }
+   }
+  },
+  {
+   "id": "live-tree-2-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1824,
+     "before": "6acac64c10015ae8c3edf7888e905127",
+     "after": "6bcac64c10015ae8c3edf7888e905127"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 2,
+     "round": 2
+    }
+   }
+  },
+  {
+   "id": "live-tree-3-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 2256,
+     "before": "bfd99a5db91591426ad1fb021b1d85e8",
+     "after": "c0d99a5db91591426ad1fb021b1d85e8"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 3,
+     "round": 3
+    }
+   }
+  },
+  {
+   "id": "live-tree-3-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 2400,
+     "before": "2db5c667caa7c1bdf0d145692bc86fad",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 2360,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 3,
+     "round": 2
+    }
+   }
+  },
+  {
+   "id": "live-tree-3-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 2456,
+     "before": "d052e67af13d2818fbe3a19498e60f76",
+     "after": "d152e67af13d2818fbe3a19498e60f76"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 3,
+     "round": 3
+    }
+   }
+  },
+  {
+   "id": "live-tree-4-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 3016,
+     "before": "5c59bc20400de00e977743e7abbc1276",
+     "after": "5d59bc20400de00e977743e7abbc1276"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 4,
+     "round": 4
+    }
+   }
+  },
+  {
+   "id": "live-tree-4-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 3216,
+     "before": "077474d8225404b0567d65f12578c8ad",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 3176,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 4,
+     "round": 3
+    }
+   }
+  },
+  {
+   "id": "live-tree-4-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 3272,
+     "before": "1cd65b2d34bf0d0d87f0a30ad74e8d11",
+     "after": "1dd65b2d34bf0d0d87f0a30ad74e8d11"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 4,
+     "round": 4
+    }
+   }
+  },
+  {
+   "id": "live-tree-5-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 3896,
+     "before": "2958702934a4caa8ea40c9b0091b73cf",
+     "after": "2a58702934a4caa8ea40c9b0091b73cf"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 5,
+     "round": 5
+    }
+   }
+  },
+  {
+   "id": "live-tree-5-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 4152,
+     "before": "bf22e6929bb8fdcedf5241e8692c3619",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 4112,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 5,
+     "round": 4
+    }
+   }
+  },
+  {
+   "id": "live-tree-5-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 4208,
+     "before": "50221768ef413685d38e2369a719a41e",
+     "after": "51221768ef413685d38e2369a719a41e"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 5,
+     "round": 5
+    }
+   }
+  },
+  {
+   "id": "live-tree-6-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 4896,
+     "before": "f82052afed4557ee09f86c29887d0312",
+     "after": "f92052afed4557ee09f86c29887d0312"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 6,
+     "round": 6
+    }
+   }
+  },
+  {
+   "id": "live-tree-6-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 5208,
+     "before": "7d1552f1fc25b7747c73e4aedda10322",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 5168,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 6,
+     "round": 5
+    }
+   }
+  },
+  {
+   "id": "live-tree-6-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 5264,
+     "before": "dbe2be3b89a290c1203e6f28c6cf7412",
+     "after": "dce2be3b89a290c1203e6f28c6cf7412"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 6,
+     "round": 6
+    }
+   }
+  },
+  {
+   "id": "live-tree-7-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 6080,
+     "before": "bf4167af2950dda009c4c099973dd23c",
+     "after": "c04167af2950dda009c4c099973dd23c"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 7,
+     "round": 7
+    }
+   }
+  },
+  {
+   "id": "live-tree-7-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 6448,
+     "before": "bfdfd49575f4ed8340bdf52be0caf814",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 6408,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 7,
+     "round": 6
+    }
+   }
+  },
+  {
+   "id": "live-tree-7-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 6504,
+     "before": "f3f8d095e2ba676590f0c3c959950717",
+     "after": "f4f8d095e2ba676590f0c3c959950717"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 7,
+     "round": 7
+    }
+   }
+  },
+  {
+   "id": "live-tree-8-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 7320,
+     "before": "08f1a39f8228d45599e0fef9ed12fd27",
+     "after": "09f1a39f8228d45599e0fef9ed12fd27"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 8,
+     "round": 8
+    }
+   }
+  },
+  {
+   "id": "live-tree-8-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 7744,
+     "before": "c0183aaa3ff9c266785343877adcfa1e",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 7704,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 8,
+     "round": 7
+    }
+   }
+  },
+  {
+   "id": "live-tree-8-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 7800,
+     "before": "5cc491463e1125839cb5102580f121bc",
+     "after": "5dc491463e1125839cb5102580f121bc"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 8,
+     "round": 8
+    }
+   }
+  },
+  {
+   "id": "live-tree-9-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 8680,
+     "before": "f114865bdf1f3fce84d8c23da3a93f1f",
+     "after": "f214865bdf1f3fce84d8c23da3a93f1f"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 9,
+     "round": 9
+    }
+   }
+  },
+  {
+   "id": "live-tree-9-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 9160,
+     "before": "69b6dde25745cc2e10c57edd5b8fe038",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 9120,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 9,
+     "round": 8
+    }
+   }
+  },
+  {
+   "id": "live-tree-9-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 9216,
+     "before": "313b9714f2381fae20d85c676cf436a1",
+     "after": "323b9714f2381fae20d85c676cf436a1"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 9,
+     "round": 9
+    }
+   }
+  },
+  {
+   "id": "live-tree-10-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 10416,
+     "before": "02149d52328f9ee944d7524b41d6c863",
+     "after": "03149d52328f9ee944d7524b41d6c863"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 10,
+     "round": 10
+    }
+   }
+  },
+  {
+   "id": "live-tree-10-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 10952,
+     "before": "2e80fc5b952595ef46efa01876bd9eab",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 10912,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 10,
+     "round": 9
+    }
+   }
+  },
+  {
+   "id": "live-tree-10-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 11008,
+     "before": "978aa00c9be2512ff02e901c1d4f6f74",
+     "after": "988aa00c9be2512ff02e901c1d4f6f74"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 10,
+     "round": 10
+    }
+   }
+  },
+  {
+   "id": "live-tree-11-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 12464,
+     "before": "bc587b007c95f1016fe0d8577773d69c",
+     "after": "bd587b007c95f1016fe0d8577773d69c"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 11,
+     "round": 11
+    }
+   }
+  },
+  {
+   "id": "live-tree-11-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 13056,
+     "before": "61eb956b542b1f0d979a11ad72249193",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 13016,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 11,
+     "round": 10
+    }
+   }
+  },
+  {
+   "id": "live-tree-11-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 13112,
+     "before": "715f73e48b0ff160463d48392c61be11",
+     "after": "725f73e48b0ff160463d48392c61be11"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 11,
+     "round": 11
+    }
+   }
+  },
+  {
+   "id": "live-tree-12-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 14760,
+     "before": "d520ab3f23f178692b32fdb84d502a47",
+     "after": "d620ab3f23f178692b32fdb84d502a47"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 12,
+     "round": 12
+    }
+   }
+  },
+  {
+   "id": "live-tree-12-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 15408,
+     "before": "750196eac91a6ff7291c2daf6f8c0f79",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 15368,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 12,
+     "round": 11
+    }
+   }
+  },
+  {
+   "id": "live-tree-12-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 15464,
+     "before": "80e41a3c91aded1f18d59da577ae5ed9",
+     "after": "81e41a3c91aded1f18d59da577ae5ed9"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 12,
+     "round": 12
+    }
+   }
+  },
+  {
+   "id": "live-tree-13-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 17496,
+     "before": "a7087f1439fe3861b0f880b1c42d0696",
+     "after": "a8087f1439fe3861b0f880b1c42d0696"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 13,
+     "round": 13
+    }
+   }
+  },
+  {
+   "id": "live-tree-13-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 18200,
+     "before": "58c294e82795bb57d63d333a0b5e6316",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 18160,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 13,
+     "round": 12
+    }
+   }
+  },
+  {
+   "id": "live-tree-13-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 18256,
+     "before": "2a6276a8f79d421514685f313e94fb18",
+     "after": "2b6276a8f79d421514685f313e94fb18"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 13,
+     "round": 13
+    }
+   }
+  },
+  {
+   "id": "live-tree-14-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 20416,
+     "before": "cc3598e65ca26389fdc70600844acb02",
+     "after": "cd3598e65ca26389fdc70600844acb02"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 14,
+     "round": 14
+    }
+   }
+  },
+  {
+   "id": "live-tree-14-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 21176,
+     "before": "362e23f5c83a96bc48d2669892a2e7be",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 21136,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 14,
+     "round": 13
+    }
+   }
+  },
+  {
+   "id": "live-tree-14-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 21232,
+     "before": "3c48b84026e2cb27c358af144c471e61",
+     "after": "3d48b84026e2cb27c358af144c471e61"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 14,
+     "round": 14
+    }
+   }
+  },
+  {
+   "id": "live-tree-15-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 23456,
+     "before": "bd8d7fa62ee2d1f843449ade817c2237",
+     "after": "be8d7fa62ee2d1f843449ade817c2237"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 15,
+     "round": 15
+    }
+   }
+  },
+  {
+   "id": "live-tree-15-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 24272,
+     "before": "d210cabecb247fafee8970a654696eac",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 24232,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 15,
+     "round": 14
+    }
+   }
+  },
+  {
+   "id": "live-tree-15-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 24328,
+     "before": "e228877143d94bf11ae9723e8f6d2e7e",
+     "after": "e328877143d94bf11ae9723e8f6d2e7e"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 15,
+     "round": 15
+    }
+   }
+  },
+  {
+   "id": "live-tree-16-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 26584,
+     "before": "6752f2bbe9351936d3a3133f6093742a",
+     "after": "6852f2bbe9351936d3a3133f6093742a"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 16,
+     "round": 16
+    }
+   }
+  },
+  {
+   "id": "live-tree-16-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 27456,
+     "before": "cd1badb7c6fe0587c5c2d64f04ab54c6",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 27416,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 16,
+     "round": 15
+    }
+   }
+  },
+  {
+   "id": "live-tree-16-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 27512,
+     "before": "a482076c4ec25b23ed0c51f35478f718",
+     "after": "a582076c4ec25b23ed0c51f35478f718"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 16,
+     "round": 16
+    }
+   }
+  },
+  {
+   "id": "live-tree-17-coefficient",
+   "step": "7.2",
+   "family": "tree-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 29768,
+     "before": "8ac4ce1f4599506b1bbad73f4899df70",
+     "after": "8bc4ce1f4599506b1bbad73f4899df70"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 17,
+     "round": 17
+    }
+   }
+  },
+  {
+   "id": "live-tree-17-round-length",
+   "step": "7.2",
+   "family": "tree-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 30696,
+     "before": "5d493b6bd089551c1d90c136d1fa5cbd",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 30656,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 17,
+     "round": 16
+    }
+   }
+  },
+  {
+   "id": "live-tree-17-evaluation",
+   "step": "7.2",
+   "family": "tree-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 30752,
+     "before": "8104823048b6dc0470ddd7956f5e3e67",
+     "after": "8204823048b6dc0470ddd7956f5e3e67"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 17,
+     "round": 17
+    }
+   }
+  },
+  {
+   "id": "live-logup-value-0",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1168,
+     "before": "31fb40e303efe83abfb84eef2dccac68",
+     "after": "32fb40e303efe83abfb84eef2dccac68"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-logup-value-1",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1184,
+     "before": "805e7cdc1d0fc5d51045a868ca65ab39",
+     "after": "815e7cdc1d0fc5d51045a868ca65ab39"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-logup-value-2",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1200,
+     "before": "c1455cad7018bb4de3597c18910f0206",
+     "after": "c2455cad7018bb4de3597c18910f0206"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-logup-value-3",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1216,
+     "before": "7ee7b0f356c04c689e89220986ec94a5",
+     "after": "7fe7b0f356c04c689e89220986ec94a5"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-logup-value-4",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1232,
+     "before": "96bf63502679f65605c226bea427a92f",
+     "after": "97bf63502679f65605c226bea427a92f"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-logup-value-5",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1248,
+     "before": "d2d84a01e115dc0c53bd85a31a1a6560",
+     "after": "d3d84a01e115dc0c53bd85a31a1a6560"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-logup-value-6",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1264,
+     "before": "ad222548665747a94607de460835ab43",
+     "after": "ae222548665747a94607de460835ab43"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-logup-value-7",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1280,
+     "before": "a74da1f73fb79a68c5760a95abe1b399",
+     "after": "a84da1f73fb79a68c5760a95abe1b399"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-logup-value-8",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1296,
+     "before": "b7e02888cb8c9577008ee35143f54017",
+     "after": "b8e02888cb8c9577008ee35143f54017"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-leaf-split-first",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 33064,
+     "before": "dc7ce38b96c865a875de9444fe25d50e",
+     "after": "dd7ce38b96c865a875de9444fe25d50e"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-leaf-split-last",
+   "step": "7.3",
+   "family": "leaf-split",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 47432,
+     "before": "5022afba7078f8c499ace87980f154be",
+     "after": "5122afba7078f8c499ace87980f154be"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-stage-1-coefficient",
+   "step": "8",
+   "family": "stage-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 47474,
+     "before": "f71c75d72ddeb5f7dea469625108bde9",
+     "after": "f81c75d72ddeb5f7dea469625108bde9"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 1,
+     "round": 8
+    }
+   }
+  },
+  {
+   "id": "live-stage-1-round-length",
+   "step": "8",
+   "family": "stage-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 48026,
+     "before": "50221fcc310cab741ae392b7978ce2f4",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 47970,
+     "before": "0400000000000000",
+     "after": "0300000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 1,
+     "round": 7
+    }
+   }
+  },
+  {
+   "id": "live-stage-1-evaluation",
+   "step": "8",
+   "family": "stage-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 48050,
+     "before": "f72d92102667af058017a1075bb7bfe6",
+     "after": "f82d92102667af058017a1075bb7bfe6"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 1,
+     "round": 8
+    }
+   }
+  },
+  {
+   "id": "live-stage-2-coefficient",
+   "step": "8",
+   "family": "stage-coefficient",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 53324,
+     "before": "a95b0cd03c6ae03c535e121d2839ba28",
+     "after": "aa5b0cd03c6ae03c535e121d2839ba28"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 2,
+     "round": 6
+    }
+   }
+  },
+  {
+   "id": "live-stage-2-round-length",
+   "step": "8",
+   "family": "stage-round-length",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 53636,
+     "before": "b44d13239e67de331de6ea77ad26b2ba",
+     "after": ""
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 53596,
+     "before": "0300000000000000",
+     "after": "0200000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 2,
+     "round": 5
+    }
+   }
+  },
+  {
+   "id": "live-stage-2-evaluation",
+   "step": "8",
+   "family": "stage-evaluation",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 53660,
+     "before": "6bd7050a7188e6fa4eccac03d42fcf81",
+     "after": "6cd7050a7188e6fa4eccac03d42fcf81"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 2,
+     "round": 6
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 54804,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-1-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 71460,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-2-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 88116,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-3-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 104772,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-4-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 121428,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-5-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 138084,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-6-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 154740,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-7-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 171396,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-8-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 188052,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-9-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 204708,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-10-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 221364,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-11-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 238020,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-12-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 254676,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-13-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 271332,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-14-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 287988,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-15-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 304644,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-16-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 321300,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-17-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 337956,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-18-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 354612,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-19-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 371268,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-20-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 387924,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-21-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 404580,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-22-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 421236,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-23-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 437892,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-24-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 454548,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-25-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 471204,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-26-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 487860,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-27-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 504516,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-28-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 521172,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-29-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 537828,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-30-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 554484,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-31-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 571140,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-32-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 587796,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-33-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 604452,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-34-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 621108,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-35-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 637764,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-36-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 654420,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-37-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 671076,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-advice-group-38-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 687732,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-weight-0-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 721061,
+     "shift_fp2": {
+      "count": 16,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "live-weight-1-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 721614,
+     "shift_fp2": {
+      "count": 4,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "live-weight-2-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 721783,
+     "shift_fp2": {
+      "count": 4,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "live-weight-3-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 721952,
+     "shift_fp2": {
+      "count": 4,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "live-weight-4-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 722121,
+     "shift_fp2": {
+      "count": 4,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "live-weight-5-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 722290,
+     "shift_fp2": {
+      "count": 16,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "live-weight-6-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 722843,
+     "shift_fp2": {
+      "count": 16,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "live-weight-7-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 723396,
+     "shift_fp2": {
+      "count": 16,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "live-weight-8-group-0-combined",
+   "step": "9",
+   "family": "combined-row",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 723949,
+     "shift_fp2": {
+      "count": 16,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "live-advice-column-sibling",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 100872,
+     "before": "b4ade9c1ae19c6a27c1ecaea5decae6158537e0e3086fdfe33ed15854a0371e8",
+     "after": "b5ade9c1ae19c6a27c1ecaea5decae6158537e0e3086fdfe33ed15854a0371e8"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Advice",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-advice-column-symbol",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 16,
+     "before": "4d0808ba8639eb42",
+     "after": "4e0808ba8639eb42"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Advice",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-0-column-sibling",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 101649,
+     "before": "cc341280983b5bc314f76789866f0ac260c187b7b50a64c799dacfed8b4ecc98",
+     "after": "cd341280983b5bc314f76789866f0ac260c187b7b50a64c799dacfed8b4ecc98"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-0-column-symbol",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 101537,
+     "before": "d1829be0535cb1da",
+     "after": "d2829be0535cb1da"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-1-column-sibling",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 102306,
+     "before": "4fe1cee7105c97b53870a083b077f848a592bdbd861dd08fa829a14dab5ac71c",
+     "after": "4ee1cee7105c97b53870a083b077f848a592bdbd861dd08fa829a14dab5ac71c"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-1-column-symbol",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 102146,
+     "before": "fb0700000000280b",
+     "after": "fc0700000000280b"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-2-column-sibling",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 102675,
+     "before": "d267383be4e9e8f39e07a0ce6d46f860335f1ece3635c26a377d01934b5dfdce",
+     "after": "d367383be4e9e8f39e07a0ce6d46f860335f1ece3635c26a377d01934b5dfdce"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-2-column-symbol",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 102515,
+     "before": "930c000000003408",
+     "after": "940c000000003408"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-3-column-sibling",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 103044,
+     "before": "c87cd845c39964cb8b46a1d87025ae6fb6f18bfc2f4068145804ffcaf2d56736",
+     "after": "c97cd845c39964cb8b46a1d87025ae6fb6f18bfc2f4068145804ffcaf2d56736"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-3-column-symbol",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 102884,
+     "before": "b409000000005016",
+     "after": "b509000000005016"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-4-column-sibling",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 103413,
+     "before": "22d1947bb8107bb9656b3bb5307133dcb803e22b0376ae57a81adc91462b0458",
+     "after": "23d1947bb8107bb9656b3bb5307133dcb803e22b0376ae57a81adc91462b0458"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-4-column-symbol",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 103253,
+     "before": "1e210000ffff77f7",
+     "after": "1f210000ffff77f7"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-5-column-sibling",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 103846,
+     "before": "76a34a2c2515a6ec4d48c3d1dd9542453540e4eba63d008e9baa67af9ee06615",
+     "after": "77a34a2c2515a6ec4d48c3d1dd9542453540e4eba63d008e9baa67af9ee06615"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-5-column-symbol",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 103622,
+     "before": "a0c63193f3b2bcbd",
+     "after": "a1c63193f3b2bcbd"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-6-column-sibling",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 104567,
+     "before": "2f85959614f9c1ed738fe658edd7fabbf994901731b51bf856a8f540c1117811",
+     "after": "2e85959614f9c1ed738fe658edd7fabbf994901731b51bf856a8f540c1117811"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-6-column-symbol",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 104343,
+     "before": "45eb914f755beea5",
+     "after": "46eb914f755beea5"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-7-column-sibling",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 105288,
+     "before": "17aaede74aa7bbb99eac131a15c002576ec6ece52b80e0cddfd70d5a0812fc2a",
+     "after": "16aaede74aa7bbb99eac131a15c002576ec6ece52b80e0cddfd70d5a0812fc2a"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-7-column-symbol",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 105064,
+     "before": "1237142412ba4a91",
+     "after": "1337142412ba4a91"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-8-column-sibling",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 105897,
+     "before": "a35ec7e5fae930a6812ff374d0f15178b2928dc59d1f347409e02e3ab02d5020",
+     "after": "a25ec7e5fae930a6812ff374d0f15178b2928dc59d1f347409e02e3ab02d5020"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-8-column-symbol",
+   "step": "11",
+   "family": "merkle-path",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round3.tce",
+     "offset": 105785,
+     "before": "d8c97754e1e76661",
+     "after": "d9c97754e1e76661"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-advice-proximity-row",
+   "step": "11",
+   "family": "proximity",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 704388,
+     "before": "e13b2d013a67e25da41483b5af0bfc54",
+     "after": "e23b2d013a67e25da41483b5af0bfc54"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-PROXIMITY",
+     "commitment": "Advice",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-0-proximity-row",
+   "step": "11",
+   "family": "proximity",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 721333,
+     "before": "b4fffffffeffffff0000000000000000",
+     "after": "b5fffffffeffffff0000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-PROXIMITY",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-1-proximity-row",
+   "step": "11",
+   "family": "proximity",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 721694,
+     "before": "e86d6ac1b8619208073e43b6395c2e5f",
+     "after": "e96d6ac1b8619208073e43b6395c2e5f"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-PROXIMITY",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-2-proximity-row",
+   "step": "11",
+   "family": "proximity",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 721863,
+     "before": "67d3a7f2905d321a6d74ee4013b475bc",
+     "after": "68d3a7f2905d321a6d74ee4013b475bc"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-PROXIMITY",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-3-proximity-row",
+   "step": "11",
+   "family": "proximity",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 722032,
+     "before": "c6ed5be5575ecff28e3fc0336f998193",
+     "after": "c7ed5be5575ecff28e3fc0336f998193"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-PROXIMITY",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-4-proximity-row",
+   "step": "11",
+   "family": "proximity",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 722201,
+     "before": "2c464f4d1e4084a01ee0fda0ec89d75c",
+     "after": "2d464f4d1e4084a01ee0fda0ec89d75c"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-PROXIMITY",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-5-proximity-row",
+   "step": "11",
+   "family": "proximity",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 722562,
+     "before": "1e0fea4dd9a3874706a48a2379b475a2",
+     "after": "1f0fea4dd9a3874706a48a2379b475a2"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-PROXIMITY",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-6-proximity-row",
+   "step": "11",
+   "family": "proximity",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 723115,
+     "before": "2c3a4a78c8be785641356147f1ff7902",
+     "after": "2d3a4a78c8be785641356147f1ff7902"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-PROXIMITY",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-7-proximity-row",
+   "step": "11",
+   "family": "proximity",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 723668,
+     "before": "0a6944ceb3d696add8f748220c9d8e38",
+     "after": "0b6944ceb3d696add8f748220c9d8e38"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-PROXIMITY",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-weight-8-proximity-row",
+   "step": "11",
+   "family": "proximity",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 724221,
+     "before": "2c000000000000000000000000000000",
+     "after": "2d000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-PROXIMITY",
+     "commitment": "Weight",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-exact-nonzero-uhat",
+   "step": "12",
+   "family": "scoring",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 724493,
+     "before": "0000000000000000",
+     "after": "0100000000000000"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-UHAT",
+     "request_id": 23,
+     "uhat_fixed": 1,
+     "bound_fixed": 0
+    }
+   }
+  },
+  {
+   "id": "live-order-statement-before-logup",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 86,
+     "before": "1313131313131313131313131313131313131313131313131313131313131313",
+     "after": "1213131313131313131313131313131313131313131313131313131313131313"
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 24,
+     "before": "74ff08a518e8bce18a1188398a561b8e",
+     "after": "75ff08a518e8bce18a1188398a561b8e"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "ManifestDigest"
+    }
+   }
+  },
+  {
+   "id": "live-order-logup-before-tree",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1568,
+     "before": "1bc1e4ef57dc8432da39168cf27191b1",
+     "after": "1cc1e4ef57dc8432da39168cf27191b1"
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 24,
+     "before": "74ff08a518e8bce18a1188398a561b8e",
+     "after": "75ff08a518e8bce18a1188398a561b8e"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-LOOKUP",
+     "table": 1
+    }
+   }
+  },
+  {
+   "id": "live-order-tree-from-the-root",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 1824,
+     "before": "6acac64c10015ae8c3edf7888e905127",
+     "after": "6bcac64c10015ae8c3edf7888e905127"
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 1568,
+     "before": "1bc1e4ef57dc8432da39168cf27191b1",
+     "after": "1cc1e4ef57dc8432da39168cf27191b1"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 1,
+     "round": 1
+    }
+   }
+  },
+  {
+   "id": "live-order-tree-before-split",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 33064,
+     "before": "dc7ce38b96c865a875de9444fe25d50e",
+     "after": "dd7ce38b96c865a875de9444fe25d50e"
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 30752,
+     "before": "8104823048b6dc0470ddd7956f5e3e67",
+     "after": "8204823048b6dc0470ddd7956f5e3e67"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-TREE",
+     "level": 17,
+     "round": 17
+    }
+   }
+  },
+  {
+   "id": "live-order-split-before-stages",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 48050,
+     "before": "f72d92102667af058017a1075bb7bfe6",
+     "after": "f82d92102667af058017a1075bb7bfe6"
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 33064,
+     "before": "dc7ce38b96c865a875de9444fe25d50e",
+     "after": "dd7ce38b96c865a875de9444fe25d50e"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 0,
+     "round": 0
+    }
+   }
+  },
+  {
+   "id": "live-order-stages-in-order",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 53660,
+     "before": "6bd7050a7188e6fa4eccac03d42fcf81",
+     "after": "6cd7050a7188e6fa4eccac03d42fcf81"
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 48050,
+     "before": "f72d92102667af058017a1075bb7bfe6",
+     "after": "f82d92102667af058017a1075bb7bfe6"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 1,
+     "round": 8
+    }
+   }
+  },
+  {
+   "id": "live-order-stages-before-openings",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 54804,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 53660,
+     "before": "6bd7050a7188e6fa4eccac03d42fcf81",
+     "after": "6cd7050a7188e6fa4eccac03d42fcf81"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-SUMCHECK",
+     "stage": 2,
+     "round": 6
+    }
+   }
+  },
+  {
+   "id": "live-order-advice-before-weight-groups",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 721061,
+     "shift_fp2": {
+      "count": 16,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 54804,
+     "shift_fp2": {
+      "count": 1024,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Advice"
+    }
+   }
+  },
+  {
+   "id": "live-order-evaluations-before-columns",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 721061,
+     "shift_fp2": {
+      "count": 16,
+      "delta": [
+       1,
+       0
+      ]
+     }
+    },
+    {
+     "target": "live-round3.tce",
+     "offset": 100872,
+     "before": "b4ade9c1ae19c6a27c1ecaea5decae6158537e0e3086fdfe33ed15854a0371e8",
+     "after": "b5ade9c1ae19c6a27c1ecaea5decae6158537e0e3086fdfe33ed15854a0371e8"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-EVAL",
+     "commitment": "Weight"
+    }
+   }
+  },
+  {
+   "id": "live-order-merkle-before-proximity",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 704388,
+     "before": "e13b2d013a67e25da41483b5af0bfc54",
+     "after": "e23b2d013a67e25da41483b5af0bfc54"
+    },
+    {
+     "target": "live-round3.tce",
+     "offset": 16,
+     "before": "4d0808ba8639eb42",
+     "after": "4e0808ba8639eb42"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-MERKLE",
+     "commitment": "Advice",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "live-order-proximity-before-scoring",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round2.tce",
+     "offset": 724493,
+     "before": "0000000000000000",
+     "after": "0100000000000000"
+    },
+    {
+     "target": "live-round2.tce",
+     "offset": 704388,
+     "before": "e13b2d013a67e25da41483b5af0bfc54",
+     "after": "e23b2d013a67e25da41483b5af0bfc54"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-PCS-PROXIMITY",
+     "commitment": "Advice",
+     "column": 0
+    }
+   }
+  },
+  {
+   "id": "ni-order-statement-before-logup",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 258,
+     "before": "5ac083cd58160f2d30d34ecd7a58ca87",
+     "after": "5bc083cd58160f2d30d34ecd7a58ca87"
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 86,
+     "before": "1313131313131313131313131313131313131313131313131313131313131313",
+     "after": "1213131313131313131313131313131313131313131313131313131313131313"
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 18,
+     "before": "13a4dc14b22e68c2350b4e5371180bca86f05cb50700ffd707c42ece29f4c32b",
+     "after": "12a4dc14b22e68c2350b4e5371180bca86f05cb50700ffd707c42ece29f4c32b"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "ClaimListDigest"
+    }
+   }
+  }
+ ]
+}
