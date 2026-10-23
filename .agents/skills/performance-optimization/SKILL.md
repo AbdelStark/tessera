@@ -40,6 +40,7 @@ Done when you have recorded the baseline throughput (`ns/op` or `GiB/s`), the ar
 1. Keep the clean, portable scalar implementation intact (as a reference function or behind the default scalar path).
 2. Write a differential test that compares the optimized path against the scalar reference on:
    - Boundary values: `0`, `1`, `p - 1`, `2^32 - 1`, `2^32`, `p - 2^32`, and all combinations of limbs near `2^64 - 1`.
+   - For a multi-word accumulator, one start per carry path: each word filled to exactly its rollover point for the addend it receives (`u64::MAX − high` for a middle word that takes a product's high half), so that a carry from the word below ripples through it. All-`MAX` starts and random sums skip that path: dropping `Wide192`'s ripple carry survived every test until such a start was added (#391).
    - Tail lengths not divisible by SIMD lane widths (`1, 2, 3, 4, 7, 8, 15, 16, 31, 33` elements).
    - Random `proptest` inputs across multiple buffer alignments.
 3. Run the test and confirm it passes against the current code.
