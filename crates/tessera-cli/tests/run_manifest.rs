@@ -292,6 +292,21 @@ fn identical_runs_write_identical_manifests() {
         labels("tessera_unit_cost_ps", "kind"),
         set(&["commit", "lookup", "product_leaf"])
     );
+    // RFC-0018 'Pass structure': every pass counted and timed, P3 once per reduction stage.
+    let passes = labels("tessera_passes_total", "pass");
+    assert_eq!(passes, set(&["p1", "p2", "p3", "p4", "p5"]));
+    assert_eq!(labels("tessera_pass_seconds", "pass"), passes);
+    let count = |pass: &str| {
+        a["metrics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["name"] == "tessera_passes_total" && m["labels"]["pass"] == pass)
+            .map(|m| m["value"].as_u64().unwrap())
+    };
+    for (pass, n) in [("p1", 1), ("p2", 1), ("p3", 2), ("p4", 1), ("p5", 1)] {
+        assert_eq!(count(pass), Some(n), "{pass}");
+    }
     let commit = a["tool"]["git_commit"]
         .as_str()
         .expect("a build inside a git checkout");
@@ -315,6 +330,8 @@ fn identical_runs_write_identical_manifests() {
         "tessera_proof_bytes",
         "tessera_unit_cost_ps",
         "tessera_glue_fraction",
+        "tessera_passes_total",
+        "tessera_pass_seconds",
     ] {
         assert!(names.contains(&name), "{name}: {names:?}");
     }

@@ -11,7 +11,9 @@ use tessera_sumcheck::SumcheckTranscript;
 use tessera_tables::{GeneratedTable, Table as _};
 use tessera_witness::{Engine, Resident, Witness};
 
-struct Unit {
+use super::plan::{Cells, Pass, PassPlan};
+
+pub(super) struct Unit {
     lowering: Lowering,
     layers: LayerMap,
     runtime: RuntimePlan,
@@ -45,7 +47,9 @@ fn reserve(budget: MemoryBudget, bytes: Option<u64>) -> Result<(), ProverError> 
     Ok(())
 }
 
-// shortcut: conservative resident estimates; replace with tile/pass accounting in issue #132.
+/// The weight commitment's bytes must fit before it is computed: a conservative 256 bytes per
+/// padded weight entry, for its encoding, Merkle levels and folding scratch. The proof's own
+/// plan adds them to its resident bytes ([`PassPlan`]).
 pub(super) fn check_weight_memory(c: &ClaimList, budget: MemoryBudget) -> Result<(), ProverError> {
     reserve(budget, Some(weight_memory(c)?))
 }
@@ -150,13 +154,18 @@ impl<'a> CpuBackend<'a> {
             .seed
             .session())
     }
-    fn unit(&self, batch: &ProofBatch) -> Result<Unit, ProverError> {
-        let c = &self.prepared.plan.claims;
+    /// The proof's unit and its pass plan, from public data alone: the plan is checked before
+    /// any table or secret witness data is loaded.
+    pub(super) fn unit(
+        prepared: &Prepared<'_>,
+        batch: &ProofBatch,
+    ) -> Result<(Unit, PassPlan), ProverError> {
+        let c = &prepared.plan.claims;
         let s = &batch.statement;
         if s.claim_list_digest
             != tessera_hash::hash(tessera_hash::Domain::ClaimList, &tessera_codec::encode(c))
-            || s.weights_root != self.prepared.weights.weights_root()
-            || s.weights_epoch != self.prepared.weights.public().epoch
+            || s.weights_root != prepared.weights.weights_root()
+            || s.weights_epoch != prepared.weights.public().epoch
             || s.predictor
                 != (protocol::PredictorSpec::Exact {
                     decoding: protocol::Decoding::Greedy,
@@ -177,7 +186,7 @@ impl<'a> CpuBackend<'a> {
                 "request requires a nonempty prompt and continuation within max_context",
             ));
         }
-        let lowering = compiler::lower(PublicModel::of(self.prepared.model), n)?;
+        let lowering = compiler::lower(PublicModel::of(prepared.model), n)?;
         let ranges = compiler::analyze(&lowering.graph, &lowering.tables)?;
         let selected =
             compiler::select(&lowering.graph, &ranges, &lowering.tables, &c.gadget_policy)?;
@@ -185,14 +194,15 @@ impl<'a> CpuBackend<'a> {
         let layers = LayerMap::new(&lowering)?;
         let leaf = LeafLayout::runtime(&lowering, &layers, &runtime, c)?;
         let native = ModelNativePlan::derive_runtime(&lowering, &runtime, c, &leaf)?;
-        // Bound the dense reference implementation before loading tables or secret witness data.
-        let mut cells = 0u64;
+        // The resident cells, at their padded sizes (cpu::plan).
+        let mut cells = Cells::default();
         for t in &lowering.graph.tensors {
             let padded = t
                 .shape
                 .iter()
                 .try_fold(1u64, |p, &d| p.checked_mul(power(u64::from(d)).ok()?));
-            cells = cells
+            cells.tensors = cells
+                .tensors
                 .checked_add(padded.ok_or_else(memory)?)
                 .ok_or_else(memory)?;
         }
@@ -203,35 +213,35 @@ impl<'a> CpuBackend<'a> {
                 .iter()
                 .find(|t| t.id == i.table)
                 .ok_or_else(|| internal("leaf table is selected"))?;
-            cells = cells
+            cells.lookups = cells
+                .lookups
                 .checked_add(power(i.entries)?)
-                .and_then(|n| n.checked_add(1u64.checked_shl(u32::from(table.log2_rows))?))
+                .ok_or_else(memory)?;
+            cells.table_rows = cells
+                .table_rows
+                .checked_add(
+                    1u64.checked_shl(u32::from(table.log2_rows))
+                        .ok_or_else(memory)?,
+                )
                 .ok_or_else(memory)?;
         }
         let advice = ModelAdviceLayout::runtime(&lowering, &runtime, c)?;
-        cells = cells
-            .checked_add(
-                advice
-                    .layout()
-                    .rows()
-                    .checked_mul(1u64 << c.layout.advice.log2_k)
-                    .ok_or_else(memory)?,
-            )
+        cells.advice = advice
+            .layout()
+            .rows()
+            .checked_mul(1u64 << c.layout.advice.log2_k)
             .ok_or_else(memory)?;
-        // Multiple live column/forest/relation representations and proof-message slack.
-        reserve(
-            self.prepared.cfg.memory_budget,
-            cells
-                .checked_mul(4096)
-                .and_then(|n| n.checked_add(weight_memory(c).ok()?)),
-        )?;
-        Ok(Unit {
-            lowering,
-            layers,
-            runtime,
-            leaf,
-            native,
-        })
+        let plan = PassPlan::new(native.schedule().stages.len(), cells, weight_memory(c)?);
+        Ok((
+            Unit {
+                lowering,
+                layers,
+                runtime,
+                leaf,
+                native,
+            },
+            plan,
+        ))
     }
     pub(super) fn round2(
         &mut self,
@@ -307,6 +317,7 @@ impl<'a> CpuBackend<'a> {
         );
         metrics::stage(0, leaf_started.elapsed());
         metrics::phase(metrics::Phase::Stage, leaf_started.elapsed());
+        metrics::pass(Pass::P2, leaf_started.elapsed());
         drop(leaf_stage);
         let mut native =
             ModelNativeProver::new(&u.native, &u.lowering, &actual, &d.witness, &leaf)?;
@@ -317,6 +328,7 @@ impl<'a> CpuBackend<'a> {
             let result = stages.prove_stage_composed(tr, k as u16, &mut native)?;
             metrics::stage(k as u16, started.elapsed());
             metrics::phase(metrics::Phase::Stage, started.elapsed());
+            metrics::pass(Pass::P3, started.elapsed());
             event!(
                 DEBUG,
                 "prover.stage_proved",
@@ -427,6 +439,7 @@ impl<'a> CpuBackend<'a> {
             });
         }
         metrics::phase(metrics::Phase::Opening, opening.elapsed());
+        metrics::pass(Pass::P4, opening.elapsed());
         let scoring = protocol::ScoringClaims {
             requests: vec![protocol::FixedBits(0)],
         };
@@ -476,7 +489,9 @@ impl<'a> CpuBackend<'a> {
 impl CpuBackend<'_> {
     fn commit_batch(&mut self, batch: &ProofBatch) -> Result<(), ProverError> {
         let _round1 = span!(DEBUG, "round1").entered();
-        let unit = self.unit(batch)?;
+        let p1 = Instant::now();
+        let (unit, plan) = Self::unit(&self.prepared, batch)?;
+        plan.check(self.prepared.cfg.memory_budget)?;
         let c = &self.prepared.plan.claims;
         let engine = Engine::new(&unit.lowering)?.threads(self.prepared.threads);
         // The resident CPU backend runs one tile of every layer; streamed tiles are #132's.
@@ -530,8 +545,9 @@ impl CpuBackend<'_> {
             })?;
             parts.push(pass.finish()?);
         }
-        let p1 = pcs::AdviceOpening::new(&parts)?.into_owned();
+        let opening = pcs::AdviceOpening::new(&parts)?.into_owned();
         metrics::phase(metrics::Phase::Round1, committing.elapsed());
+        metrics::pass(Pass::P1, p1.elapsed());
         let rows = advice.layout().rows();
         metrics::committed(metrics::Committed::Advice, rows << a.log2_k);
         metrics::committed(metrics::Committed::Mask, rows * u64::from(a.mask_coeffs));
@@ -547,7 +563,7 @@ impl CpuBackend<'_> {
             unit,
             witness,
             seed,
-            p1,
+            p1: opening,
             permit: None,
             transcript: None,
         });
@@ -661,6 +677,7 @@ impl ProverEngine for CpuBackend<'_> {
             weight_columns,
         };
         metrics::phase(metrics::Phase::Round3, answering.elapsed());
+        metrics::pass(Pass::P5, answering.elapsed());
         metrics::proof_bytes(
             metrics::ProofPart::Columns,
             tessera_codec::encode(&round3).len() as u64,

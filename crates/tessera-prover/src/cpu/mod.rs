@@ -13,8 +13,10 @@ use tessera_protocol::{self as protocol, ProverEngine};
 
 mod backend;
 mod error;
+mod plan;
 mod random;
 pub use error::ProverError;
+pub use plan::{Cells, Pass, PassPlan};
 pub use tessera_hash::Mode;
 pub use tessera_protocol::ParamSet;
 
@@ -225,6 +227,18 @@ impl<'a> Prover<'a> {
             }),
             session: None,
         })
+    }
+
+    /// The pass plan of a proof of `batch`, from public data alone: its passes, its resident
+    /// cells and bytes (RFC-0018 'Pass structure', 'Memory scheduler'). Proving fails with
+    /// `ERR-RES-MEMORY` before P1 when the bytes exceed `ProverConfig.memory_budget`. The plan is
+    /// available until the session starts.
+    pub fn plan(&self, batch: &ProofBatch) -> Result<PassPlan, ProverError> {
+        let prepared = self
+            .prepared
+            .as_ref()
+            .ok_or_else(|| order(protocol::MessageKind::SeedCommit))?;
+        backend::CpuBackend::unit(prepared, batch).map(|(_, plan)| plan)
     }
 
     /// Commit P1 and return the public first round and the per-proof coin-toss share.

@@ -26,6 +26,24 @@ pub enum Phase {
     Round3,
 }
 
+/// A pass of RFC-0018 'Pass structure' over the witness (`tessera_passes_total`,
+/// `tessera_pass_seconds`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Pass {
+    /// The witness pass and the advice commitment.
+    P1,
+    /// The leaf stage: its group pass when it is in token groups (RFC-0054).
+    P2,
+    /// A grouped leaf stage's merge pass (RFC-0054).
+    P2b,
+    /// One reduction stage's pass.
+    P3,
+    /// The opening pass: the combined rows.
+    P4,
+    /// The column answers.
+    P5,
+}
+
 /// A class of committed elements (`tessera_committed_elements_total`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Committed {
@@ -171,6 +189,13 @@ pub fn phase(phase: Phase, elapsed: Duration) {
     );
 }
 
+/// `tessera_passes_total{pass}` and `tessera_pass_seconds{pass}`: one more pass, and its time
+/// (RFC-0018 'Pass structure': the run manifest records every pass and its time).
+pub fn pass(pass: Pass, elapsed: Duration) {
+    add("tessera_passes_total", vec![("pass", name(pass))], 1);
+    observe("tessera_pass_seconds", vec![("pass", name(pass))], elapsed);
+}
+
 /// `tessera_stage_seconds{stage}`.
 pub fn stage(stage: u16, elapsed: Duration) {
     observe(
@@ -276,6 +301,9 @@ mod tests {
         stage(1, Duration::from_millis(250));
         unit_cost(UnitCost::ProductLeaf, 2.5);
         unit_cost(UnitCost::ProductLeaf, 3.5);
+        pass(Pass::P3, Duration::from_millis(500));
+        pass(Pass::P3, Duration::from_millis(250));
+        pass(Pass::P2b, Duration::from_millis(125));
         let samples = snapshot();
         let get = |n: &str, l: &[(&str, &str)]| {
             samples
@@ -314,7 +342,25 @@ mod tests {
             get("tessera_unit_cost_ps", &[("kind", "product_leaf")]),
             Some(Value::Gauge(3.5))
         );
-        assert_eq!(samples.len(), 5);
+        // A pass counts once per call and keeps its times, by 05 §4's label.
+        assert_eq!(
+            get("tessera_passes_total", &[("pass", "p3")]),
+            Some(Value::Counter(2))
+        );
+        assert_eq!(
+            get("tessera_pass_seconds", &[("pass", "p3")]),
+            Some(Value::Histogram {
+                count: 2,
+                sum: 0.75,
+                min: 0.25,
+                max: 0.5
+            })
+        );
+        assert_eq!(
+            get("tessera_passes_total", &[("pass", "p2b")]),
+            Some(Value::Counter(1))
+        );
+        assert_eq!(samples.len(), 9);
         reset();
         assert!(snapshot().is_empty());
     }
