@@ -14,11 +14,13 @@ use tv_core::claims::ClaimList;
 use tv_core::gadgets::{GadgetError, model, runtime};
 use tv_core::leaf::grouped::{self, Stage, TableTree};
 use tv_core::leaf::groups::Grouped;
-use tv_core::leaf::split::{Bound, LeafPoint};
+use tv_core::leaf::split::{self, Bound, LeafPoint};
 use tv_core::leaf::{ModelSchedule, Tree};
 use tv_core::lowering::{self, Graph};
 use tv_core::params::ParamSet;
 use tv_core::protocol::{FixedBits, LeafGroups, NiProof, ProverSeedShare, PublicStatement};
+use tv_core::runtime::Geometry;
+use tv_core::soundness::{GroupSizes, RoundGroup, SoundnessReport, StatementSizes};
 use tv_core::verdict::ArtifactKind;
 use tv_core::{
     ErrorCode, RejectReason as R, ResourceLimits, Verdict, VerifierConfig, validation,
@@ -40,9 +42,13 @@ struct Fixture {
 }
 impl Fixture {
     fn new(name: &str) -> Self {
+        Self::at(&Path::new("grouped").join(name))
+    }
+    /// The recorded proof under `tests/fixtures/{dir}`.
+    fn at(dir: &Path) -> Self {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/grouped")
-            .join(name);
+            .join("tests/fixtures")
+            .join(dir);
         let read = |file: &str| std::fs::read(dir.join(file)).unwrap();
         let limits = DecodeLimits::MESSAGE;
         let weights = tv_codec::decode(
@@ -155,6 +161,106 @@ fn the_recorded_grouped_proofs_are_accepted_identically_from_bytes() {
             "{name}"
         );
     }
+}
+
+/// RFC-0054 'A proof's budget': the driver holds each recorded proof to the bound at its own
+/// grouping, `G` = 2, 4 and 8, not at the statement's largest, `2^{min(14, 3 + 2)} = 32`. `P` and
+/// `n_max` are the verifier's own layouts' (the merge's polynomials, the split's values and the
+/// forests), and `level_rounds` the ungrouped stage's levels by degree. `test-small` has no
+/// targets: these are the sizes and the rows they give, not a pass or a fail.
+#[test]
+fn each_recorded_proof_is_budgeted_at_its_own_grouping() {
+    for (name, count) in [("g1", 2u64), ("g2", 4), ("g3", 8)] {
+        let f = Fixture::new(name);
+        let report = match f.verify(&f.proof) {
+            Verdict::Accept(report) => report,
+            other => panic!("{name}: {other:?}"),
+        };
+        let budget = report.budget.report();
+        let statement = &budget.statement;
+        let graph = f.graph();
+        let layouts = Layouts::new(&f, &graph);
+        let runtime = layouts.runtime(f.expected().batch.requests[0].prompt_len);
+        let grouped =
+            Grouped::derive_runtime(&graph, &runtime, f.proof.round1.leaf_groups).unwrap();
+        let schedule = runtime.leaf_schedule().unwrap();
+        let values = split::Layout::new(&runtime.split_sites().unwrap())
+            .unwrap()
+            .values();
+        let forests = schedule.forests().count();
+        let stage = Stage::new(&grouped, &table_trees(&schedule)).unwrap();
+        let levels = Geometry::derive(&f.claims, &runtime, None)
+            .unwrap()
+            .levels()
+            .to_vec();
+
+        let groups = &statement.groups;
+        assert_eq!(groups.count, count, "{name}");
+        assert_eq!(u64::from(stage.groups()), count, "{name}");
+        assert_eq!(groups.merge_claims, (values + forests) as u64, "{name}");
+        assert_eq!(groups.merge_claims, grouped.polynomials().len() as u64);
+        assert_eq!(groups.merge_rounds, u64::from(stage.rounds()), "{name}");
+        assert!(groups.merge_rounds > 0);
+        let by_degree: Vec<RoundGroup> = levels
+            .iter()
+            .map(|l| RoundGroup {
+                count: l.rounds as u64,
+                degree: l.degree as u64,
+            })
+            .collect();
+        assert_eq!(groups.level_rounds, by_degree, "{name}");
+        // `rounds` counts the levels once, first; the tree levels are the ungrouped stage's.
+        assert_eq!(statement.rounds[..levels.len()], by_degree[..], "{name}");
+        let instances: Vec<u64> = levels.iter().map(|l| l.instances as u64).collect();
+        assert_eq!(statement.tree_levels, instances, "{name}");
+
+        // The rows: the ungrouped statement's, plus P + G in D, and G copies of the leaf stage's
+        // level terms and the merge's in U (RFC-0014 'Rows').
+        let ungrouped = SoundnessReport::evaluate(
+            budget.params.clone(),
+            StatementSizes {
+                groups: GroupSizes::NONE,
+                ..statement.clone()
+            },
+        )
+        .unwrap();
+        let numerator = |r: &SoundnessReport, i: usize| r.rows[i].numerator.unwrap();
+        let level_terms: u128 = by_degree
+            .iter()
+            .map(|r| u128::from(r.count * r.degree))
+            .chain(instances.iter().map(|&m| u128::from(m + 1)))
+            .sum();
+        let (g, p, n_max) = (
+            u128::from(count),
+            u128::from(groups.merge_claims),
+            u128::from(groups.merge_rounds),
+        );
+        assert_eq!(
+            numerator(budget, 1),
+            numerator(&ungrouped, 1) + g * level_terms + 2 * n_max + p + g,
+            "{name}"
+        );
+        assert_eq!(
+            numerator(budget, 0),
+            numerator(&ungrouped, 0).max(p + g),
+            "{name}"
+        );
+        assert_eq!(budget.meets_targets, None);
+    }
+}
+
+/// An ungrouped proof's budget keeps `groups.count = 1` and no grouped size: the recorded
+/// ungrouped CPU proof of `fixtures/driver/` (RFC-0054 'A proof's budget': "An ungrouped
+/// proof's bound is the ungrouped statement's").
+#[test]
+fn an_ungrouped_proof_is_budgeted_without_groups() {
+    let f = Fixture::at(Path::new("driver"));
+    assert_eq!(f.proof.round1.leaf_groups, LeafGroups::NONE);
+    let report = match f.verify(&f.proof) {
+        Verdict::Accept(report) => report,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(report.budget.report().statement.groups, GroupSizes::NONE);
 }
 
 /// RFC-0054 'Messages': the base's `n = 5` tokens give `t = 3`, its 3 layers `n_ℓ = 2`. A

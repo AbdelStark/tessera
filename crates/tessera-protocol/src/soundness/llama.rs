@@ -6,7 +6,7 @@
 
 use crate::WeightMatrix;
 
-use super::{LookupSizes, MatrixSizes, Rounds, StatementSizes};
+use super::{LeafGroupSizes, LookupSizes, MatrixSizes, Rounds, StatementSizes};
 
 /// The batch's tokens, and its context: 16K.
 const TOKENS: u64 = 1 << 14;
@@ -48,6 +48,13 @@ const TABLES: [(u64, u64, u64); 26] = [
 /// `2^7` layers, `2^7` heads, `2^14` queries and `2^14` keys, `2^42` lookups.
 const EXP: usize = 1;
 const EXP_LOOKUPS: u64 = 1 << 42;
+
+/// The leaf stage's levels: the tallest tree's height, the `Exp` lookup tree's.
+const LEVELS: u64 = 42;
+
+/// The lowering's ungrouped split values (RFC-0045): `crates/tessera-bench/tests/
+/// commitment_report.rs` counts them in both workspaces.
+const SPLIT_VALUES: u64 = 53_489;
 
 /// Llama-3.1-405B's weight matrices at `k_W = 2^20` (RFC-0040 'The matrices'): `k_T =
 /// max(in_pad, min(2^20, out_pad·in_pad)) = 2^20` for each, `m_T = L·⌈out/2^{a_T}⌉` committed
@@ -95,6 +102,11 @@ impl StatementSizes {
     ///   Both public layouts derive that allocation with RFC-0050's complete columns.
     /// - **Matrices:** the ten of RFC-0040 at `k_W = 2^20`, the width of `live-64/1` and
     ///   `ni-100/1`; under another width they would differ.
+    /// - **Groups:** `G = 2^14`, the most RFC-0054 admits, since `t + n_ℓ = 14 + 7`. Level `ℓ` of
+    ///   the `Exp` tree has `ℓ` rounds of degree 3 (RFC-0010 'Tree levels'), and the `SoftmaxRow`
+    ///   forest, whose trees of height 14 join at level 28, as many: 861 in all. The merge has
+    ///   `n_max = 42` rounds, the forest leaf table's `28 + 14` variables, and `P = 53,490`
+    ///   claims, the 53,489 split values and the forest.
     pub fn llama_405b_16k() -> Self {
         let lookups = TABLES
             .iter()
@@ -132,6 +144,15 @@ impl StatementSizes {
                     variables,
                 })
                 .collect(),
+            groups: LeafGroupSizes {
+                count: LeafGroupSizes::MAX_COUNT,
+                level_rounds: vec![Rounds {
+                    count: LEVELS * (LEVELS - 1) / 2,
+                    degree: 3,
+                }],
+                merge_rounds: 42,
+                merge_claims: SPLIT_VALUES + 1,
+            },
         }
     }
 }

@@ -661,7 +661,7 @@ impl<'a> Committed<'a> {
         let av = es(&av);
         let bound = binding.prepare(&original, e(gamma), &av).unwrap();
         if let Some(runtime) = &runtime {
-            let g = tv_core::runtime::Geometry::derive(self.claims, runtime).unwrap();
+            let g = tv_core::runtime::Geometry::derive(self.claims, runtime, None).unwrap();
             let rounds: Vec<_> = g
                 .levels()
                 .iter()

@@ -11,7 +11,8 @@
 //!
 //! The sizes are the 405B 16K-token, 16K-context statement,
 //! `StatementSizes::llama_405b_16k`. `--lookups` and `--table-rows` replace its LogUp
-//! instances with one instance of `N` lookups and `T` rows.
+//! instances with one instance of `N` lookups and `T` rows; the leaf stage's levels then follow
+//! the tallest tree, `⌈log2 max(N, T)⌉` levels when above the default's 42 (RFC-0014).
 
 use std::io::{self, Write as _};
 use std::process::ExitCode;
@@ -20,8 +21,8 @@ use clap::Args;
 use serde_json::{Map, Value, json};
 use tessera_codec::error::{ErrorCode, TesseraError};
 use tessera_protocol::{
-    Commitment, ErrorBound, FixedBits, LookupSizes, ParamMode, ParamSet, ProofOfWork, RowKind,
-    SoundnessReport, SoundnessRow, StatementSizes,
+    Commitment, ErrorBound, FixedBits, LookupSizes, ParamMode, ParamSet, ProofOfWork, Rounds,
+    RowKind, SoundnessReport, SoundnessRow, StatementSizes,
 };
 
 use crate::{PARAM_SETS, io_error};
@@ -89,10 +90,26 @@ pub(crate) fn check(args: &CheckArgs, json: bool) -> Result<ExitCode, TesseraErr
                 lookups: 1,
                 rows: 1,
             });
-        sizes.lookups = vec![LookupSizes {
+        let instance = LookupSizes {
             lookups: args.lookups.unwrap_or(largest.lookups),
             rows: args.table_rows.unwrap_or(largest.rows),
-        }];
+        };
+        sizes.lookups = vec![instance];
+        // RFC-0014: the leaf stage's levels follow the tallest tree, ⌈log2 max(N, T)⌉ when above
+        // the default's, with their rounds and the merge's n_max (RFC-0054 'Soundness').
+        let tallest = instance.lookups.max(instance.rows);
+        let levels = u64::BITS - (tallest - 1).leading_zeros();
+        if levels as usize > sizes.tree_levels.len() {
+            let instances = sizes.tree_levels.iter().copied().max().unwrap_or(0);
+            sizes.tree_levels = vec![instances; levels as usize];
+            if sizes.groups.grouped() {
+                sizes.groups.level_rounds = vec![Rounds {
+                    count: u64::from(levels) * u64::from(levels - 1) / 2,
+                    degree: 3,
+                }];
+                sizes.groups.merge_rounds = sizes.groups.merge_rounds.max(levels);
+            }
+        }
     }
     let report = SoundnessReport::new(params, &sizes)
         .map_err(|error| TesseraError::from(error).with_source(error))?;
@@ -197,6 +214,14 @@ fn report_json(report: &SoundnessReport) -> Value {
                     "variables": m.variables,
                 }))
                 .collect::<Vec<_>>(),
+            "groups": {
+                "count": s.groups.count,
+                "level_rounds": s.groups.level_rounds.iter()
+                    .map(|r| json!({"count": r.count, "degree": r.degree}))
+                    .collect::<Vec<_>>(),
+                "merge_rounds": s.groups.merge_rounds,
+                "merge_claims": s.groups.merge_claims,
+            },
         },
         "rows": report.rows.iter().map(row_json).collect::<Vec<_>>(),
         "minimum": report.minimum(),

@@ -123,6 +123,23 @@ fn lookups_and_table_rows_replace_the_logup_instances() {
     // the report in both JSON and table modes.
     let report = checked_with_code(&["--params", "ni-100", "--lookups", "1125899906842624"], 10);
     assert_eq!(report["meets_targets"], false);
+    // RFC-0014: the leaf stage's levels follow the tallest tree, 50 for N = 2^50, with their
+    // Σ_{ℓ<50} ℓ = 1,225 rounds and the merge's 50 (RFC-0054 'Soundness'). The union is the
+    // ungrouped 72,732 + 8·54, plus 2^14·(1,225·3 + 50·54) + 2·50 + 53,490 + 2^14.
+    let statement = &report["statement"];
+    assert_eq!(
+        statement["tree_levels"].as_array().expect("levels").len(),
+        50
+    );
+    assert_eq!(
+        statement["groups"]["level_rounds"],
+        serde_json::json!([{"count": 1225, "degree": 3}])
+    );
+    assert_eq!(statement["groups"]["merge_rounds"], 50);
+    let union = &rows(&report)[1];
+    assert_eq!(union["row"], "union");
+    assert_eq!(union["numerator"], "104591138");
+    assert_eq!(union["pass"], true);
     let table_out = tessera(&[
         "params",
         "check",

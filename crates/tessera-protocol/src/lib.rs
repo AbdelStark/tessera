@@ -149,7 +149,7 @@ pub use schedule::{
 };
 pub use seed::{ProverSeedShare, SeedCommit, SeedReveal, coin_commitment, coin_toss};
 pub use soundness::{
-    Commitment, ErrorBound, LookupSizes, MatrixSizes, ProofOfWork, Rounds, RowKind,
+    Commitment, ErrorBound, LeafGroupSizes, LookupSizes, MatrixSizes, ProofOfWork, Rounds, RowKind,
     SoundnessReport, SoundnessRow, StatementSizes,
 };
 /// The protocol version `Round1` carries and both sessions check, the claim list's: 0 until

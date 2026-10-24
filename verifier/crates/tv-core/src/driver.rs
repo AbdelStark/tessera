@@ -749,7 +749,6 @@ fn verify_unit(
             internal()
         }
     })?;
-    let meta = runtime::Geometry::derive(claims, &runtime).map_err(|e| runtime_error(e, claims))?;
     let leaf_plan = runtime.leaf_schedule().map_err(claims_error)?;
     let native = gadgets::model::Plan::derive_runtime(&runtime).map_err(gadget_error)?;
     let splits = leaf::split::Layout::new(&runtime.split_sites().map_err(claims_error)?)
@@ -764,6 +763,10 @@ fn verify_unit(
                 .map_err(|e| layout_error(&e, session.round1_artifact()))?,
         )
     };
+    // RFC-0054 'A proof's budget': the budget statement carries the proof's own grouping, its
+    // sizes from these layouts alone.
+    let meta = runtime::Geometry::derive(claims, &runtime, grouped.as_ref())
+        .map_err(|e| runtime_error(e, claims))?;
     let mut tables = reserve(leaf_plan.lookups().len())?;
     for tree in leaf_plan.schedule().trees() {
         if let leaf::Tree::Table { instance, height } = *tree {

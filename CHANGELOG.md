@@ -35,6 +35,19 @@ All notable changes to the prover release train are recorded here: the crates un
     - **The witness pass.** Under four groupings it counts exactly the prover's grouped multiplicities, and at `g = 0` the stage's own column.
     - **Memory.** For three profiles and three requests, a grouped proof's measured peak stays within its grouped plan.
 
+- The soundness calculator counts the leaf stage in token groups at the most groups a verifier accepts (RFC-0054 'Soundness', RFC-0014 'Soundness calculator', [#454](https://github.com/AbdelStark/tessera/issues/454)):
+  - **`StatementSizes.groups`** (`LeafGroupSizes`): `G = 2^{min(14, t + n_ℓ)}`, or 1 for none; the leaf stage's level rounds; the merge's `n_max` rounds; and its `P` claims, the merged polynomials' count.
+  - **The rows.** The union row adds `G` more copies of the leaf stage's level terms and the merge's `2·n_max + P + G`. The rounds row takes the merge's degree 2 and its batching `P + G`. Each group's levels, and the table batch's, cost at most the ungrouped stage's, whatever the split of `g` between tokens and layers.
+  - **The refusals** (`ERR-USAGE`): `G` not a power of two up to `2^14`; `G > 1` in `tessera-protocol/2`; no grouping with grouped sizes.
+  - **The 405B default.** `G = 2^{14}`, 861 level rounds of degree 3, `n_max = 42` and `P = 53,490`. The union row falls from 111.84 to 101.75 bits, and the rounds row from 121.99 to 111.90; both sets still meet every target. `tessera params check --json` prints `groups`, and the committed examples follow.
+  - **`--lookups` and `--table-rows`.** The leaf stage's levels now follow the tallest tree: `⌈log2 max(N, T)⌉` levels when above the default's 42, with their rounds and the merge's `n_max`. `N = 2^50` gives 50 levels and a union of 101.36 bits, where the fixed 42 levels gave 101.75.
+  - **The figures' source.** `tessera-bench`'s `the_default_statements_merge_sizes_are_the_405b_lowerings` counts the 405B lowering's 53,489 split values and its forest in both workspaces' layouts.
+  - **The oracle.** `spec/vectors/soundness/generate.py` states the grouped sizes, their rows and refusals; 89 cases, among them a grouping whose union alone misses 100 bits. The report schema gains `statement.groups`.
+  - **Across the workspaces** (DEP-2). The two default statements are equal field for field, and the 1,000-profile differential draws random groupings.
+  - **RFC-0054's forest cases.** `StageForest::with_leaves` keeps a forest's shape over other leaves, so a test can plant a cheating prover's leaves. `tv-core` then checks two zeros planted in group 1's share of the forest:
+    - **in a real row's tree,** whose root is already 0, the leaf stage cannot see it and carries it to the merged forest claim, which stage 1 rejects;
+    - **in a padded row's tree,** of ones, it is rejected at the level where the forest joins, at that level's final check.
+
 - The stages and the openings read the leaf stage's claims where a grouped stage leaves them ([#134](https://github.com/AbdelStark/tessera/issues/134)):
   - **RFC-0054 'The stage's outputs'.** A claim the ungrouped stage leaves at `P[0..n]` on a tensor of `n` variables lies, in a grouped stage, at the merged point `r(n, S)`. `S` is the low `g_T` variables of the tensor's token axis. The same holds for the graph's claims on each gadget input and on the logits, for each tensor's value, for the native relations' points and for the openings'. The forests' leaf claims are their merged claims, the multiplicities' the table batch's, and the merge's rounds bound every such claim.
   - **`LeafClaims`.** The interface the native relations (`ModelNativeProver::new`) and the openings (`ModelOpenings::derive`) now read: a tensor's point from its shape and token axis, a split value's point, the forest and multiplicity claims.

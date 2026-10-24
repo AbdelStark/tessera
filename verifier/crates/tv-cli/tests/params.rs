@@ -161,6 +161,76 @@ fn lookups_and_table_rows_override_logup_instances() {
     assert_eq!(report.get("meets_targets"), Some(&Json::Bool(true)));
 }
 
+/// RFC-0014: with `--lookups` or `--table-rows`, the leaf stage's levels follow the tallest
+/// tree. Past the default's 42 levels, `L = ⌈log2 max(N, T)⌉` levels of 53 instances,
+/// `Σ_{ℓ<L} ℓ` level rounds of degree 3 and `L` merge rounds, at the default's `G` and `P`.
+#[test]
+fn the_leaf_levels_follow_the_tallest_instance() {
+    let default = oracle("405b/ni-100/1");
+    let default = default.get("statement").unwrap();
+    let groups = |report: &Json| {
+        report
+            .get("statement")
+            .unwrap()
+            .get("groups")
+            .unwrap()
+            .clone()
+    };
+    let levels = |report: &Json| {
+        report
+            .get("statement")
+            .unwrap()
+            .get("tree_levels")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m.as_u64().unwrap())
+            .collect::<Vec<_>>()
+    };
+    for args in [
+        &["--table-rows", "1"][..],
+        &["--lookups", "4398046511104"],
+        &["--lookups", "1", "--table-rows", "4398046511104"],
+    ] {
+        let mut all = vec!["--params", "ni-100"];
+        all.extend_from_slice(args);
+        let report = checked(&all);
+        assert_eq!(
+            canonical_json(&groups(&report)),
+            canonical_json(default.get("groups").unwrap()),
+            "{args:?}"
+        );
+        assert_eq!(levels(&report), vec![53; 42], "{args:?}");
+    }
+    for (args, l) in [
+        (&["--lookups", "4398046511105"][..], 43u64),
+        (&["--lookups", "1125899902648320"], 50),
+        (&["--lookups", "1", "--table-rows", "1125899906842624"], 50),
+    ] {
+        let mut all = vec!["--params", "ni-100"];
+        all.extend_from_slice(args);
+        // N or T = 2^50 also fails the LogUp row.
+        let code = if l == 50 { 10 } else { 0 };
+        let report = checked_with_code(&all, code);
+        assert_eq!(levels(&report), vec![53; l as usize], "{args:?}");
+        let g = groups(&report);
+        assert_eq!(g.get("count").unwrap().as_u64(), Some(16_384));
+        assert_eq!(g.get("merge_claims").unwrap().as_u64(), Some(53_490));
+        assert_eq!(g.get("merge_rounds").unwrap().as_u64(), Some(l));
+        let rounds = g.get("level_rounds").unwrap().as_array().unwrap();
+        assert_eq!(rounds.len(), 1);
+        assert_eq!(
+            rounds[0].get("count").unwrap().as_u64(),
+            Some(l * (l - 1) / 2)
+        );
+        assert_eq!(rounds[0].get("degree").unwrap().as_u64(), Some(3));
+        let rows = report.get("rows").unwrap().as_array().unwrap();
+        assert_eq!(rows[1].get("row").unwrap().as_str(), Some("union"));
+        assert_eq!(rows[1].get("pass"), Some(&Json::Bool(true)), "{args:?}");
+    }
+}
+
 #[test]
 fn human_readable_table_lists_every_row_and_minimum() {
     let output = tessera_verify(&["params", "--params", "live-64"]);
@@ -183,6 +253,7 @@ fn human_readable_table_lists_every_row_and_minimum() {
         assert!(line.contains(&shown), "{line}: {shown}");
         assert!(line.ends_with("yes"), "{line}");
     }
+    assert!(text.contains("leaf groups: G = 16384"), "{text}");
     assert!(table[0].starts_with("sumcheck and tree rounds"));
     assert!(table[5].starts_with("proximity queries, advice"));
     assert!(text.contains("minimum: proximity queries, advice: 64.32 bits, target 64"));

@@ -11,8 +11,8 @@
 //!
 //! | Row | Error bound `ε` | Grinding | Target |
 //! |---|---|---|---|
-//! | [`Rounds`](RowKind::Rounds) | `D/q`, `D` the largest challenge error of the stages and tree levels | — | `bits` |
-//! | [`Union`](RowKind::Union) | `U/q`, `U` the sum of them all | — | `bits` |
+//! | [`Rounds`](RowKind::Rounds) | `D/q`, `D` the largest challenge error of the stages, the tree levels and, with token groups, the merge | — | `bits` |
+//! | [`Union`](RowKind::Union) | `U/q`, `U` the sum of them all, with token groups `G` more copies of the leaf stage's levels and the merge ([`LeafGroupSizes`]) | — | `bits` |
 //! | [`Forests`](RowKind::Forests) | `s/q` for the largest forest of `2^s` trees | — | `bits` |
 //! | [`LogUp`](RowKind::LogUp) | `(N + T)/q`, `2(N + T)/q` in `tessera-protocol/2`, the largest instance | `g_seed` | `one_shot` |
 //! | [`Openings`](RowKind::Openings) | `T_g/q` for the largest claim group, `1/q` per weight matrix | — | `bits` |
@@ -107,6 +107,49 @@ pub struct StatementSizes {
     pub advice_rows: u64,
     /// The opened weight matrices, in increasing [`WeightMatrix`] order.
     pub matrices: Vec<MatrixSizes>,
+    /// The leaf stage in token groups, at the most groups the verifier accepts for the statement
+    /// (RFC-0054 'Soundness').
+    pub groups: LeafGroupSizes,
+}
+
+/// The leaf stage in token groups (RFC-0054 'Soundness'). A cheating prover chooses its grouping,
+/// so the bounds count the most groups the verifier accepts for the statement,
+/// `G = 2^{min(14, t + n_ℓ)}`, and none in `tessera-protocol/2`.
+///
+/// Each group's levels and the table batch's cost at most the ungrouped leaf stage's: the union
+/// row counts `G` more copies of them, `G·(Σ level_rounds count·d + Σ_levels (m + 1))`, and the
+/// merge's `2·n_max + P + G`. The rounds row takes the merge's degree 2 and its batching
+/// `P + G`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct LeafGroupSizes {
+    /// `G`: a power of two up to `2^14`, and 1 when the verifier accepts no grouping.
+    pub count: u64,
+    /// The ungrouped leaf stage's level rounds, by degree, which [`StatementSizes::rounds`] also
+    /// counts once; empty when `G = 1`.
+    pub level_rounds: Vec<Rounds>,
+    /// `n_max`, the merge's rounds: the most variables of a merged polynomial; 0 when `G = 1`.
+    pub merge_rounds: u32,
+    /// `P`, the merged polynomials' count, one per ungrouped split value and per forest, which
+    /// bounds every group's claims; 0 when `G = 1`.
+    pub merge_claims: u64,
+}
+
+impl LeafGroupSizes {
+    /// No grouping: the verifier accepts the leaf stage in one batch only.
+    pub const NONE: Self = Self {
+        count: 1,
+        level_rounds: Vec::new(),
+        merge_rounds: 0,
+        merge_claims: 0,
+    };
+
+    /// The most groups RFC-0054 'Messages' admits, `2^14`.
+    pub const MAX_COUNT: u64 = 1 << 14;
+
+    /// Whether the verifier accepts a grouping: `G > 1`.
+    pub fn grouped(&self) -> bool {
+        self.count > 1
+    }
 }
 
 /// The advice commitment or one weight matrix's.
@@ -239,6 +282,7 @@ impl SoundnessReport {
             targets: params.targets,
         };
         let v2 = sizes.protocol == 2;
+        let grouped = sizes.groups.grouped();
         let batched = sizes.stages.len() as u128 + sizes.tree_levels.len() as u128;
         let mut rows = Vec::with_capacity(7 + 2 * sizes.matrices.len());
 
@@ -259,6 +303,14 @@ impl SoundnessReport {
             // A tree level's line challenge, and in tessera-protocol/2 a mask's ρ: 1/q each.
             .chain((!sizes.tree_levels.is_empty()).then_some(1))
             .chain((v2 && batched > 0).then_some(1))
+            // RFC-0054 'Soundness': the groups' levels, the merge's degree 2, and its batching
+            // (P + G)/q.
+            .chain(
+                grouped
+                    .then(|| group_challenges(&sizes.groups))
+                    .into_iter()
+                    .flatten(),
+            )
             .max()
             .unwrap_or(0);
         rows.push(builder.field(RowKind::Rounds, largest, None, None));
@@ -273,6 +325,7 @@ impl SoundnessReport {
             sum(sizes.tree_levels.iter().map(|&m| u128::from(m) + 1)),
             sum(sizes.zero_checks.iter().map(|&z| u128::from(z))),
             if v2 { batched } else { 0 },
+            if grouped { group_union(sizes) } else { 0 },
         ]
         .into_iter()
         .fold(0, u128::saturating_add);
@@ -379,6 +432,43 @@ fn sum(terms: impl Iterator<Item = u128>) -> u128 {
     terms.fold(0, u128::saturating_add)
 }
 
+/// The merge's degree (RFC-0054 'The merge').
+const MERGE_DEGREE: u128 = 2;
+
+/// A grouped stage's challenge errors beyond the ungrouped statement's: each level round's degree,
+/// the merge's degree when it has a round, and its batching `P + G`.
+fn group_challenges(groups: &LeafGroupSizes) -> impl Iterator<Item = u128> + '_ {
+    groups
+        .level_rounds
+        .iter()
+        .filter(|r| r.count > 0)
+        .map(|r| u128::from(r.degree))
+        .chain((groups.merge_rounds > 0).then_some(MERGE_DEGREE))
+        .chain(Some(
+            u128::from(groups.merge_claims).saturating_add(u128::from(groups.count)),
+        ))
+}
+
+/// A grouped stage's union terms beyond the ungrouped statement's (RFC-0054 'Soundness'): `G`
+/// more copies of the leaf stage's levels, `G·(Σ count·d + Σ_levels (m + 1))`, and the merge,
+/// `2·n_max + P + G`.
+fn group_union(sizes: &StatementSizes) -> u128 {
+    let groups = &sizes.groups;
+    let levels = sum(groups
+        .level_rounds
+        .iter()
+        .map(|r| u128::from(r.count) * u128::from(r.degree)))
+    .saturating_add(sum(sizes.tree_levels.iter().map(|&m| u128::from(m) + 1)));
+    [
+        u128::from(groups.count).saturating_mul(levels),
+        MERGE_DEGREE * u128::from(groups.merge_rounds),
+        u128::from(groups.merge_claims),
+        u128::from(groups.count),
+    ]
+    .into_iter()
+    .fold(0, u128::saturating_add)
+}
+
 /// Builds rows under the parameter set's targets.
 struct Builder {
     targets: Option<Targets>,
@@ -457,6 +547,20 @@ fn validate(params: &ParamSet, sizes: &StatementSizes) -> Result<Vec<Geometry>, 
     }
     if !sizes.matrices.windows(2).all(|w| w[0].matrix < w[1].matrix) {
         return refuse("the matrices are weight matrices in increasing order");
+    }
+    // RFC-0054 'Soundness': G is a power of two up to 2^14, 1 in tessera-protocol/2, and no
+    // grouping has no grouped sizes.
+    let groups = &sizes.groups;
+    if !groups.count.is_power_of_two() || groups.count > LeafGroupSizes::MAX_COUNT {
+        return refuse("the leaf groups are a power of two up to 2^14");
+    }
+    if groups.grouped() && sizes.protocol == 2 {
+        return refuse("tessera-protocol/2 accepts no leaf groups");
+    }
+    if !groups.grouped()
+        && (!groups.level_rounds.is_empty() || groups.merge_rounds > 0 || groups.merge_claims > 0)
+    {
+        return refuse("no leaf grouping has no level rounds and no merge");
     }
     let message = 1u64 << advice.log2_k;
     let mut geometry = vec![Geometry {
