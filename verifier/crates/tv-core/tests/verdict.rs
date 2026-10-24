@@ -35,7 +35,12 @@ fn every_rejection_serializes_public_payloads_and_escapes_parameter_names() {
             field: StatementField::Batch,
         },
         R::Sumcheck { stage: 2, round: 7 },
-        R::TreeLevel { level: 3, round: 9 },
+        R::TreeLevel {
+            group: 4,
+            level: 3,
+            round: 9,
+        },
+        R::LeafMerge { round: 12 },
         R::LogUpIdentity { round: 11 },
         R::Lookup {
             table: tv_tables::TableId(5),
@@ -91,6 +96,31 @@ fn every_rejection_serializes_public_payloads_and_escapes_parameter_names() {
             assert_eq!(verdict.to_json().unwrap(), text);
         }
     }
+    // RFC-0054 'Messages': a tree level names its group, and the merge its round.
+    for (reason, fields) in [
+        (
+            R::TreeLevel {
+                group: 4,
+                level: 3,
+                round: 9,
+            },
+            &[("group", 4), ("level", 3), ("round", 9)][..],
+        ),
+        (R::LeafMerge { round: 12 }, &[("round", 12)][..]),
+    ] {
+        let code = reason.code();
+        let text = Verdict::Reject(reason).to_json().unwrap();
+        let parsed = tv_testkit::Json::parse(&text).unwrap();
+        let reason = parsed.get("verdict").unwrap().get("reason").unwrap();
+        for &(name, value) in fields {
+            assert_eq!(
+                reason.get(name).unwrap().as_u64(),
+                Some(value),
+                "{code}: {name}"
+            );
+        }
+    }
+    assert_eq!(R::LeafMerge { round: 0 }.code(), "REJ-LEAF-MERGE");
     let error = Verdict::Inconclusive(tv_core::VerifierError {
         code: ErrorCode::Memory,
     });

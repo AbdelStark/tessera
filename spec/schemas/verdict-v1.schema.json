@@ -179,6 +179,7 @@
                 "REJ-STATEMENT",
                 "REJ-SUMCHECK",
                 "REJ-TREE",
+                "REJ-LEAF-MERGE",
                 "REJ-LOGUP-IDENTITY",
                 "REJ-LOOKUP",
                 "REJ-GADGET",
@@ -207,6 +208,10 @@
               "minimum": 0
             },
             "round": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "group": {
               "type": "integer",
               "minimum": 0
             },

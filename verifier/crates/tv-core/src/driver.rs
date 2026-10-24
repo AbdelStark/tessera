@@ -250,7 +250,11 @@ fn leaf_error(
             internal()
         }
         leaf::Error::Level { level, error } => match error.rejected_round() {
-            Some(round) => reject(RejectReason::TreeLevel { level, round }),
+            Some(round) => reject(RejectReason::TreeLevel {
+                group: 0,
+                level,
+                round,
+            }),
             None => {
                 if let sumcheck::SumcheckError::Transcript(e) = error {
                     transcript(e)

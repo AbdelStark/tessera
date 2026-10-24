@@ -368,14 +368,14 @@ def round2_cases(corpus, target, prefix, r2, tables):
                 f"{prefix}-tree-{level}-coefficient",
                 "7.2",
                 "tree-coefficient",
-                reject("REJ-TREE", level=level, round=n),
+                reject("REJ-TREE", group=0, level=level, round=n),
                 [(target, rounds[0][0], changed(rounds[0][0]))],
             )
             corpus.add(
                 f"{prefix}-tree-{level}-round-length",
                 "7.2",
                 "tree-round-length",
-                reject("REJ-TREE", level=level, round=n - 1),
+                reject("REJ-TREE", group=0, level=level, round=n - 1),
                 round_length(target, proof, rounds),
             )
         else:
@@ -384,7 +384,7 @@ def round2_cases(corpus, target, prefix, r2, tables):
                 f"{prefix}-tree-{level}-extra-round",
                 "7.2",
                 "tree-round-length",
-                reject("REJ-TREE", level=level, round=0),
+                reject("REJ-TREE", group=0, level=level, round=0),
                 [(target, rounds, extra)],
             )
         # RFC-0010 order N0, N1, D0, D1: D0's partners N1 + λ·D1 are nonzero for honest trees.
@@ -392,7 +392,7 @@ def round2_cases(corpus, target, prefix, r2, tables):
             f"{prefix}-tree-{level}-evaluation",
             "7.2",
             "tree-evaluation",
-            reject("REJ-TREE", level=level, round=n),
+            reject("REJ-TREE", group=0, level=level, round=n),
             [(target, evals[2], changed(evals[2]))],
         )
     # Stage 0's split check (RFC-0045 'The check'): the lookup values enter the key and value
@@ -604,7 +604,7 @@ def render():
         "ni-seed-nonce-bound",
         "6",
         "fiat-shamir",
-        reject("REJ-TREE", level=1, round=1),
+        reject("REJ-TREE", group=0, level=1, round=1),
         [("ni.tnp", ni["seed_nonce"], u64(1))],
     )
 
@@ -672,10 +672,10 @@ def render():
          [("live-round1.tce", live1["manifest"], changed(live1["manifest"])), (t2, d_a0, changed(d_a0))]),
         ("logup-before-tree", reject("REJ-LOOKUP", table=tables[0]),
          [(t2, d_a0, changed(d_a0)), (t2, levels[1]["evals"][2], changed(levels[1]["evals"][2]))]),
-        ("tree-from-the-root", reject("REJ-TREE", level=1, round=1),
+        ("tree-from-the-root", reject("REJ-TREE", group=0, level=1, round=1),
          [(t2, levels[1]["evals"][2], changed(levels[1]["evals"][2])),
           (t2, levels[2]["evals"][2], changed(levels[2]["evals"][2]))]),
-        ("tree-before-split", reject("REJ-TREE", level=last, round=len(levels[last]["rounds"])),
+        ("tree-before-split", reject("REJ-TREE", group=0, level=last, round=len(levels[last]["rounds"])),
          [(t2, levels[last]["evals"][2], changed(levels[last]["evals"][2])), (t2, split, changed(split))]),
         ("split-before-stages", reject("REJ-SUMCHECK", stage=0, round=0),
          [(t2, split, changed(split)), (t2, stages[1]["evals"][0], changed(stages[1]["evals"][0]))]),

@@ -6,6 +6,11 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Added
 
+- `tv-core`'s verdicts name a leaf group and the merge (RFC-0054 'Messages', [#454](https://github.com/AbdelStark/tessera/issues/454)):
+  - **`TreeLevel { group, level, round }`.** `group` is `h` for group `h`'s levels, `G` for a grouped stage's table batch, and 0 for an ungrouped stage, which every proof is until grouped stages are verified. The JSON payload gains `group`.
+  - **`LeafMerge { round }`.** It is `REJ-LEAF-MERGE`, exit 10.
+  - **The documents.** 04 §2, RFC-0033's amendment line and `verdict-v1.schema.json` follow. The tamper corpus's 109 `REJ-TREE` cases now expect `group: 0`, from `generate.py`.
+
 - `tv-core::protocol` decodes RFC-0054's messages ([#454](https://github.com/AbdelStark/tessera/issues/454)):
   - **The messages.** `Round1.leaf_groups` (`LeafGroups { token_bits, layer_bits }`), and `TreeProof`'s `groups` (`GroupProof { roots, levels, values, splits }`), `table_roots` and `merge`.
   - **The bound.** More than 14 group bits is `ERR-CODEC-LIMIT` at the struct's first byte.

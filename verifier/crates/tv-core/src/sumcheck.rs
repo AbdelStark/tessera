@@ -124,7 +124,7 @@ impl Batch {
 ///
 /// `MissingRound`, `RoundLength`, `ExtraRound`, `EvaluationCount` and `FinalMismatch` judge the
 /// proof: `Reject(Sumcheck { stage, round })` in 04 §2 for a reduction stage, and
-/// `Reject(TreeLevel { level, round })` for a tree level (RFC-0033), with `round` from
+/// `Reject(TreeLevel { group, level, round })` for a tree level (RFC-0033, RFC-0054), with `round` from
 /// [`rejected_round`](Self::rejected_round). The others judge what the verifier passes in, the
 /// schedule's degree, instances and relations, or the verifier itself: from a correct verifier
 /// they never come, and they mean a fault of the verifier (`Inconclusive(ERR-INTERNAL)`), not of
@@ -187,7 +187,7 @@ pub enum SumcheckError {
 }
 
 impl SumcheckError {
-    /// The round of `Reject(Sumcheck { stage, round })` or `Reject(TreeLevel { level, round })`
+    /// The round of `Reject(Sumcheck { stage, round })` or `Reject(TreeLevel { group, level, round })`
     /// (04 §2) for a fault of the proof, or
     /// `None` for a fault of the verifier, which is `Inconclusive(ERR-INTERNAL)`.
     pub fn rejected_round(&self) -> Option<u32> {
