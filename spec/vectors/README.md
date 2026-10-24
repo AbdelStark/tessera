@@ -17,6 +17,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | `field/` | Goldilocks and its quadratic extension, RFC-0002 | its oracle |
 | `hash/` | Hash domains, Merkle multiproofs and column digests, RFC-0004; `commitment_id` of commitment descriptors, RFC-0031 | its oracle |
 | [`lowering/`](lowering/README.md) | The Llama lowering, RFC-0044: every input, node, constant, shift-class set, weight and table of the conformance models' graphs and of two variants', at several lengths | its oracle, which rebuilds the models with theirs |
+| [`manifest/`](manifest/README.md) | Log manifests, RFC-0015 with RFC-0060: a log's chain of three, each period's entries, leaves, root and inclusion proofs, signed message, Ed25519 signature, encoding, envelope and identity | independent Python: RFC 8032's reference Ed25519, `hashlib`, and the BLAKE3 of `hash/` |
 | [`model/`](model/README.md) | The encoding of `IntegerModel`, 03 §2: two one-layer models | `cargo xtask gen-vectors`, from `tessera-ir`'s types |
 | [`models/`](models/README.md) | Tiny conformance models with the residuals and logits `D` gives on their sequences, 07 §5 | its oracle |
 | [`pcs/`](pcs/README.md) | Openings of the advice commitment, RFC-0011 | its oracle |

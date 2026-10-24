@@ -56,6 +56,24 @@ pub enum DigestLogEntry {
 }
 
 impl DigestLogEntry {
+    /// The entry's position in the log.
+    pub fn seq(&self) -> u64 {
+        match self {
+            Self::SessionOpen { seq, .. }
+            | Self::Frame { seq, .. }
+            | Self::SessionClose { seq, .. } => *seq,
+        }
+    }
+
+    /// The recorder's clock at the entry, in nanoseconds.
+    pub fn t_ns(&self) -> u64 {
+        match self {
+            Self::SessionOpen { t_ns, .. }
+            | Self::Frame { t_ns, .. }
+            | Self::SessionClose { t_ns, .. } => *t_ns,
+        }
+    }
+
     /// The entry a recorder writes for `open` at position `seq` and time `t_ns`.
     pub fn session_open(seq: u64, t_ns: u64, open: &SessionOpenFrame) -> Self {
         Self::SessionOpen {

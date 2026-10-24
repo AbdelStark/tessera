@@ -12,6 +12,9 @@ publish.workspace = true
 # RFC-0015 'Frames': AES-128-CTR, constant-time in software or with AES-NI; `zeroize` clears the
 # key schedule on drop (05 §3 OBS-2).
 aes = { version = "0.8", features = ["zeroize"] }
+# RFC-0060 'Signatures': the recorder's Ed25519 manifest signatures, verified strictly, the crate
+# both workspaces use (RFC-0019 'Dependencies'); `zeroize` clears the signing key on drop.
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "zeroize"] }
 getrandom = "0.4"
 # SHA-256 for the frame digests and, through its compression function on a cleared block, the
 # key commitments.
@@ -20,6 +23,8 @@ tessera-codec = { path = "../tessera-codec" }
 
 [dev-dependencies]
 serde_json = "1"
+# The verifier's independent RFC 9162 verification, for a differential test (DEP-2).
+tv-hash = { path = "../../verifier/crates/tv-hash" }
 
 [lints]
 workspace = true
