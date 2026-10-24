@@ -5,9 +5,9 @@
 This script is the independent oracle. It parses the committed base messages with RFC-0003's
 encoding and the protocol/1 message layouts of RFC-0014, chooses every mutation, and predicts
 every verdict from RFC-0019's check order and the rejection rules of RFC-0008, RFC-0010,
-RFC-0011, RFC-0033, RFC-0037, RFC-0043 and RFC-0045. It never runs Rust and reads no verdict
-from a verifier. The base messages are synthetic producer output of the tessera-e2e `tamper-base`
-example: inputs here, not evidence. Its envelope hash and transcript are those of
+RFC-0011, RFC-0033, RFC-0037, RFC-0043, RFC-0045 and RFC-0054. It never runs Rust and reads no
+verdict from a verifier. The base messages are synthetic producer output of the tessera-e2e
+`tamper-base` example: inputs here, not evidence. Its envelope hash and transcript are those of
 ../transcript/generate.py.
 
 Usage: python3 spec/vectors/tamper/generate.py [--check]
@@ -222,6 +222,21 @@ class Reader:
                 ("round3", self.round3),
             ]
         )
+
+
+def ceil_log2(n):
+    """`⌈log2 n⌉`, 0 for n ≤ 1: the variables of an axis of n entries, per-dimension padded."""
+    return (n - 1).bit_length() if n > 1 else 0
+
+
+def claim_layers():
+    """The claim list's `n_layers` (03 §2): after `protocol_version: u16` and the architecture
+    family's `u16` tag, the `ArchSpec`'s first `u32`."""
+    data = (HERE / "claims.tcl").read_bytes()
+    require(data[:4] == b"TSRA", "claims.tcl is an envelope")
+    payload = data[20:-32]
+    require(payload[2:4] == bytes(2), "the base is a Llama 3 claim list (family tag 0)")
+    return int.from_bytes(payload[4:8], "little")
 
 
 def open_envelope(name):
@@ -553,22 +568,52 @@ def render():
         reseal=False,
     )
 
-    # Step 1 too: RFC-0054's grouping, which this verifier checks no stage of yet ('Migration /
-    # Rollout'), so any nonzero grouping is beyond its limits, as more than 14 group bits is
-    # beyond the codec's. An ungrouped stage has no groups, no table roots and an empty merge,
-    # lengths the grouping fixes ('Messages'), so a nonempty one is malformed.
-    for prefix, r1, target, kind in [
-        ("ni", ni["round1"], "ni.tnp", ni_kind),
-        ("live", live1, "live-round1.tce", BASES["live-round1.tce"]),
+    # Step 1 too: RFC-0054's grouping ('Messages'). The decoder refuses more than 14 group bits;
+    # the verifier refuses g_T > t or g_L > n_ℓ, from the caller's statement and claim list, as
+    # soon as Round1 has decoded. Each is Malformed with ERR-CODEC-LIMIT on Round1: the NiProof,
+    # or in a live session its Round1. The base's t = ⌈log2 n⌉ for its n tokens, n_ℓ = ⌈log2 L⌉
+    # for its L layers.
+    request = base["request"]
+    tokens = request["prompt_len"] + request["output_len"]
+    require(tokens == base["positions"], "one request of the base's positions")
+    layers = claim_layers()
+    require(layers == base["layers"], "the claim list's layers")
+    t, n_l = ceil_log2(tokens), ceil_log2(layers)
+    require(1 <= t and 1 <= n_l and t + n_l <= 14, "the base admits groups on both axes")
+    bounded = [
+        ("token-past-axis", t + 1, 0),
+        ("layer-past-axis", 0, n_l + 1),
+        ("past-bound", 8, 7),
+    ]
+    # A grouping within its bounds on the ungrouped base: the grouping then fixes the grouped
+    # stage's counts ('Counts'), judged before any transcript work, so after the statement
+    # binding of step 4 and before step 6. The base breaks several: LogUpProof.roots, empty in a
+    # grouped stage, holds four per instance, and TreeProof.groups holds no group of the G. Each
+    # is Malformed with ERR-CODEC-NONCANONICAL on the Round2Response, the NiProof in a
+    # non-interactive proof, so which is judged first does not change the verdict; the live
+    # session's Round1 phase passes.
+    within = [("token", 1, 0), ("layer", 0, 1), ("most", t, n_l)]
+    for prefix, r1, target, kind, counts_kind in [
+        ("ni", ni["round1"], "ni.tnp", ni_kind, ni_kind),
+        ("live", live1, "live-round1.tce", BASES["live-round1.tce"], BASES["live-round2.tce"]),
     ]:
         require(r1["token_bits"].value == r1["layer_bits"].value == 0, "the base is ungrouped")
-        for name, token, layer in [("token", 1, 0), ("layer", 0, 1), ("past-bound", 8, 7)]:
+        groups_span = (target, r1["token_bits"].lo, r1["layer_bits"].hi)
+        for name, token, layer in bounded:
             corpus.add(
                 f"{prefix}-leaf-groups-{name}",
                 "1",
                 "leaf-groups",
                 reject("REJ-MALFORMED", artifact=kind, error="ERR-CODEC-LIMIT"),
-                [(target, r1["token_bits"].lo, r1["layer_bits"].hi, bytes([token, layer]))],
+                [(*groups_span, bytes([token, layer]))],
+            )
+        for name, token, layer in within:
+            corpus.add(
+                f"{prefix}-leaf-groups-{name}",
+                "1",
+                "leaf-groups",
+                reject("REJ-MALFORMED", artifact=counts_kind, error="ERR-CODEC-NONCANONICAL"),
+                [(*groups_span, bytes([token, layer]))],
             )
     for prefix, r2, target, kind in [
         ("ni", ni["round2"], "ni.tnp", ni_kind),
@@ -642,7 +687,6 @@ def render():
             reject("REJ-PCS-PROXIMITY", commitment=commitment, column=0),
             [(t2, node, changed(node))],
         )
-    request = base["request"]
     uhat = live2["scoring"][0]
     require(uhat.value == 0, "an exact proof claims Û = 0")
     corpus.add(
@@ -663,9 +707,14 @@ def render():
     split = live2["splits"][0]
     last = len(levels) - 1
     groups_lo, groups_hi = live1["token_bits"].lo, live1["layer_bits"].hi
+    # A grouping past its bound is judged once Round1 has decoded, before the statement; one
+    # within it fixes counts judged after the statement (RFC-0054 'Messages').
     pairs = [
         ("leaf-groups-before-statement",
          reject("REJ-MALFORMED", artifact=BASES["live-round1.tce"], error="ERR-CODEC-LIMIT"),
+         [("live-round1.tce", groups_lo, groups_hi, bytes([t + 1, 0])),
+          ("live-round1.tce", live1["manifest"], changed(live1["manifest"]))]),
+        ("statement-before-leaf-counts", reject("REJ-STATEMENT", field="ManifestDigest"),
          [("live-round1.tce", groups_lo, groups_hi, bytes([1, 0])),
           ("live-round1.tce", live1["manifest"], changed(live1["manifest"]))]),
         ("statement-before-logup", reject("REJ-STATEMENT", field="ManifestDigest"),
@@ -695,23 +744,32 @@ def render():
     ]
     for name, expected, edits in pairs:
         corpus.add(f"live-order-{name}", "order", "check-order", expected, edits)
-    # The grouping is judged once the proof has decoded, and before its ungrouped fields.
-    ni_groups = (ni["round1"]["token_bits"].lo, ni["round1"]["layer_bits"].hi, bytes([1, 0]))
+    # The grouping's bounds are judged once the proof has decoded, and before its ungrouped
+    # fields; a grouping within them fixes counts judged after the statement.
+    ni_span = (ni["round1"]["token_bits"].lo, ni["round1"]["layer_bits"].hi)
+    ni_past = (*ni_span, bytes([t + 1, 0]))
     corpus.add(
         "ni-order-decode-before-leaf-groups",
         "order",
         "check-order",
         reject("REJ-MALFORMED", artifact=ni_kind, error="ERR-CODEC-NONCANONICAL"),
-        [("ni.tnp", *ni_groups), ("ni.tnp", ni.hi, ni.hi, b"\x00")],
+        [("ni.tnp", *ni_past), ("ni.tnp", ni.hi, ni.hi, b"\x00")],
     )
     corpus.add(
         "ni-order-leaf-groups-before-ungrouped",
         "order",
         "check-order",
         reject("REJ-MALFORMED", artifact=ni_kind, error="ERR-CODEC-LIMIT"),
-        [("ni.tnp", *ni_groups), ("ni.tnp", ni["round2"]["groups"], u64(1) + bytes(32))],
+        [("ni.tnp", *ni_past), ("ni.tnp", ni["round2"]["groups"], u64(1) + bytes(32))],
     )
     ni_first, ni_manifest = ni["round2"]["roots"][1], ni["round1"]["manifest"]
+    corpus.add(
+        "ni-order-statement-before-leaf-counts",
+        "order",
+        "check-order",
+        reject("REJ-STATEMENT", field="ManifestDigest"),
+        [("ni.tnp", *ni_span, bytes([1, 0])), ("ni.tnp", ni_manifest, changed(ni_manifest))],
+    )
     corpus.add(
         "ni-order-statement-before-logup",
         "order",

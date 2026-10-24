@@ -2,7 +2,9 @@
 
 //! RFC-0045 split checks against explicit column/MLE sums, without any prover implementation.
 use tv_core::advice::Auxiliary;
-use tv_core::leaf::split::{Affine, Bound, Column, Error, Layer, Layout, Lookup, Read, Site};
+use tv_core::leaf::split::{
+    Affine, Bound, Column, Error, Layer, Layout, LeafPoint, Lookup, Read, Site,
+};
 use tv_core::leaf::{self, ForestClaim};
 use tv_core::logup::{Claim, InstanceClaims, LeafClaims};
 use tv_core::lowering::NodeId;
@@ -242,7 +244,7 @@ fn aligned_blocks_broadcasts_repeated_requests_and_row0_padding_bind_in_both_mod
         let bound = bind(&c, &mut t).unwrap();
         assert_eq!(bound.atoms, [e(101), e(103)]);
         assert_eq!(bound.forests, c.leaf.forests);
-        assert_eq!(bound.point, c.leaf.point);
+        assert_eq!(bound.point, LeafPoint::Shared(c.leaf.point.clone()));
         assert_eq!(
             bound.multiplicities,
             c.leaf

@@ -507,7 +507,7 @@ fn one_mixed_batch_routes_deferred_native_graph_sources_and_all_original_pool_cl
                 multiplicities: vec![],
                 forests: vec![],
                 atoms: split.clone(),
-                point: vec![],
+                point: tv_core::leaf::split::LeafPoint::Shared(vec![]),
             };
             let mut vt = Transcript::new(&context(mode));
             let mut bytes = (split.len() as u64).to_le_bytes().to_vec();

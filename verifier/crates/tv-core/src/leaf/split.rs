@@ -12,6 +12,7 @@ use crate::lowering::NodeId;
 mod model;
 pub use model::model_sites;
 pub(crate) use model::sites as model_sites_with;
+pub(crate) use model::token as token_axis;
 
 use core::fmt;
 use tv_field::{Fp, Fp2};
@@ -79,8 +80,9 @@ pub struct Lookup {
     /// Value form; `None` exactly for a Range table.
     pub value: Option<Affine>,
     /// The domain's token axis, its lookup tensor's (RFC-0054 'The token axis'); `None` for a
-    /// domain without one, whose block a grouped stage holds whole in token subset 0. Only
-    /// [`groups`](super::groups) reads it: the ungrouped layout is RFC-0045's alone.
+    /// domain without one, whose block a grouped stage holds whole in token subset 0.
+    /// [`groups`](super::groups) lays the groups out by it, and [`LeafPoint::read`] places a
+    /// grouped stage's claims by it; an ungrouped stage's points ignore it (RFC-0045).
     pub token: Option<TokenAxis>,
 }
 
@@ -126,6 +128,8 @@ struct Instance {
 struct Inputs {
     node: NodeId,
     reads: Vec<Read>,
+    /// Each read's block token axis, its first reader's (RFC-0054 'Agreement').
+    tokens: Vec<Option<TokenAxis>>,
     start: usize,
 }
 
@@ -150,20 +154,141 @@ pub struct ColumnClaim {
     pub value: Fp2,
 }
 
+/// Where the leaf stage leaves its claims on tensors: the one rule by which the gadget
+/// reductions, the stages and the openings place every claim the stage leaves (RFC-0045 'The
+/// leaf point'; RFC-0054 'The stage's outputs').
+///
+/// A claim lies on a tensor of `n` variables, in its natural (LSB-first) variable order. Its
+/// group variables `S` are the low `g_T` variables of the tensor's token axis (the axes after it
+/// take the lower variables, RFC-0045 'Blocks'); a tensor without a token axis has none.
+///
+/// - [`Shared`](Self::Shared), an ungrouped stage: the claim lies at `P[0..n]`, and a read at
+///   its coordinates of `P`.
+/// - [`Merged`](Self::Merged), a grouped stage: it lies at `r(n, S)`, the merge's last `n`
+///   challenges assigned to the variables outside `S`, lowest first, then to those in `S`,
+///   lowest first (RFC-0054 'The merged point').
+///
+/// A site's tensors of one shape and one token axis therefore share their point in both, as
+/// RFC-0037's layer point requires.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LeafPoint {
+    /// RFC-0045's `P`: the last level's line challenge, then its round challenges from the last.
+    /// It is empty when no tree has a level.
+    Shared(Vec<Fp2>),
+    /// The merge's point (RFC-0054 'The merge').
+    Merged {
+        /// The merge's challenges, in round order: `n_max` of them.
+        challenges: Vec<Fp2>,
+        /// `g_T`, how many low variables of a token axis a group fixes.
+        token_bits: u32,
+    },
+}
+
+impl LeafPoint {
+    /// The point of the stage's claim on a tensor of `variables` variables whose token axis is
+    /// `token` (module documentation of [`LeafPoint`]). `None` when the rule has no such point:
+    /// more variables than the stage's point holds, or a token axis outside the tensor.
+    pub fn tensor(&self, variables: u32, token: Option<TokenAxis>) -> Option<Vec<Fp2>> {
+        let n = usize::try_from(variables).ok()?;
+        match self {
+            Self::Shared(p) => {
+                let mut out = Vec::new();
+                out.try_reserve_exact(n).ok()?;
+                out.extend_from_slice(p.get(..n)?);
+                Some(out)
+            }
+            Self::Merged {
+                challenges,
+                token_bits,
+            } => {
+                let mut fixed = Vec::new();
+                if let Some(axis) = token {
+                    let end = axis.low.checked_add(*token_bits)?;
+                    if *token_bits > axis.bits || axis.low.checked_add(axis.bits)? > variables {
+                        return None;
+                    }
+                    fixed
+                        .try_reserve_exact(usize::try_from(*token_bits).ok()?)
+                        .ok()?;
+                    fixed.extend(axis.low..end);
+                }
+                merged(challenges, variables, &fixed)
+            }
+        }
+    }
+
+    /// The point of a read at `coordinates` of a block whose domain's token axis is `token`: in
+    /// an ungrouped stage `P` at those coordinates; in a grouped one `r(m, S)` for its `m`
+    /// variables, `S` those whose coordinate lies among the token axis's low `g_T` (RFC-0054
+    /// 'Group variables'). `None` when the rule has no such point.
+    pub fn read(&self, coordinates: &[u32], token: Option<TokenAxis>) -> Option<Vec<Fp2>> {
+        match self {
+            Self::Shared(p) => {
+                let mut out = Vec::new();
+                out.try_reserve_exact(coordinates.len()).ok()?;
+                for &c in coordinates {
+                    out.push(*p.get(usize::try_from(c).ok()?)?);
+                }
+                Some(out)
+            }
+            Self::Merged {
+                challenges,
+                token_bits,
+            } => {
+                let mut fixed = Vec::new();
+                if let Some(axis) = token {
+                    let cut = axis.low.checked_add(*token_bits)?;
+                    for (variable, &c) in (0u32..).zip(coordinates) {
+                        if c >= axis.low && c < cut {
+                            fixed.try_reserve(1).ok()?;
+                            fixed.push(variable);
+                        }
+                    }
+                }
+                merged(challenges, u32::try_from(coordinates.len()).ok()?, &fixed)
+            }
+        }
+    }
+}
+
+/// `r(n, S)` in natural variable order: the last `n` of `challenges`, the first `n − |S|` to the
+/// variables outside `S` lowest first, the rest to those in `S` (ascending) lowest first.
+fn merged(challenges: &[Fp2], variables: u32, fixed: &[u32]) -> Option<Vec<Fp2>> {
+    let n = usize::try_from(variables).ok()?;
+    let own = challenges.get(challenges.len().checked_sub(n)?..)?;
+    let free = n.checked_sub(fixed.len())?;
+    let mut out = Vec::new();
+    out.try_reserve_exact(n).ok()?;
+    let (mut outside, mut inside) = (0usize, 0usize);
+    for variable in 0..variables {
+        let slot = if fixed.get(inside) == Some(&variable) {
+            inside = inside.checked_add(1)?;
+            free.checked_add(inside)?.checked_sub(1)?
+        } else {
+            outside = outside.checked_add(1)?;
+            outside.checked_sub(1).filter(|&s| s < free)?
+        };
+        out.push(*own.get(slot)?);
+    }
+    (inside == fixed.len()).then_some(out)
+}
+
 /// The debts after checking the lookup split; not an acceptance verdict.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[must_use = "check all source/forest reductions and multiplicity openings, and the graph atom splits"]
 pub struct Bound {
-    /// Every distinct source, in site/layer/first-read order.
+    /// Every distinct source, in site/layer/first-read order, each at its point by
+    /// [`LeafPoint::read`].
     pub columns: Vec<ColumnClaim>,
     /// Table multiplicities retain their original table-tree points and table identities.
     pub multiplicities: Vec<(TableId, Claim)>,
     /// All original product-forest leaf claims, at their own points.
     pub forests: Vec<ForestClaim>,
-    /// Graph atom split values from the tail of the same absorbed vector.
+    /// Graph atom split values: the tail of the same absorbed vector in an ungrouped stage, the
+    /// whole of `stage/0/split` in a grouped one (RFC-0054 step 5).
     pub atoms: Vec<Fp2>,
-    /// The shared lookup point from the tree transcript.
-    pub point: Vec<Fp2>,
+    /// Where the stage left its claims.
+    pub point: LeafPoint,
 }
 
 /// The first failed split check or a verifier fault.
@@ -245,6 +370,7 @@ impl Layout {
                 }
                 last_node = Some(layer.node);
                 let mut reads = Vec::new();
+                let mut tokens: Vec<Option<TokenAxis>> = Vec::new();
                 for lookup in &layer.lookups {
                     if lookup.variables > 63 {
                         return Err(Error::Internal);
@@ -272,10 +398,12 @@ impl Layout {
                                     None => {
                                         let index = reads.len();
                                         reads.try_reserve(1).map_err(|_| Error::Memory)?;
+                                        tokens.try_reserve(1).map_err(|_| Error::Memory)?;
                                         reads.push(Read {
                                             column: read.column,
                                             coordinates: copied(&read.coordinates).map_err(own)?,
                                         });
+                                        tokens.push(lookup.token);
                                         index
                                     }
                                 };
@@ -330,6 +458,7 @@ impl Layout {
                 inputs.push(Inputs {
                     node: layer.node,
                     reads,
+                    tokens,
                     start,
                 });
             }
@@ -370,20 +499,14 @@ impl Layout {
             return Err(Error::Internal);
         }
         for input in &self.inputs {
-            for (i, read) in input.reads.iter().enumerate() {
+            for (i, (read, &token)) in input.reads.iter().zip(&input.tokens).enumerate() {
                 let at = input.start.checked_add(i).ok_or(Error::Internal)?;
                 let column = bound.columns.get(at).ok_or(Error::Internal)?;
                 if column.node != input.node
                     || column.column != read.column
-                    || column.point.len() != read.coordinates.len()
+                    || bound.point.read(&read.coordinates, token).as_ref() != Some(&column.point)
                 {
                     return Err(Error::Internal);
-                }
-                for (&coordinate, value) in read.coordinates.iter().zip(&column.point) {
-                    let coordinate = usize::try_from(coordinate).map_err(|_| Error::Internal)?;
-                    if bound.point.get(coordinate) != Some(value) {
-                        return Err(Error::Internal);
-                    }
                 }
             }
         }
@@ -530,7 +653,7 @@ impl Layout {
             multiplicities,
             forests: leaf.forests,
             atoms: copied(splits.get(self.values..).ok_or(Error::Internal)?).map_err(own)?,
-            point: leaf.point,
+            point: LeafPoint::Shared(leaf.point),
         })
     }
 }
@@ -547,6 +670,7 @@ mod bound_tests {
                     column: Column::Input(0),
                     coordinates: vec![1],
                 }],
+                tokens: vec![None],
                 start: 0,
             }],
             instances: Vec::new(),
@@ -562,7 +686,7 @@ mod bound_tests {
             multiplicities: Vec::new(),
             forests: Vec::new(),
             atoms: Vec::new(),
-            point: vec![Fp2::ZERO, Fp2::ONE],
+            point: LeafPoint::Shared(vec![Fp2::ZERO, Fp2::ONE]),
         };
         assert_eq!(layout.check_bound(&bound), Ok(()));
         for fault in 0..6 {
@@ -573,12 +697,65 @@ mod bound_tests {
                 2 => bad.columns[0].column = Column::Output(0),
                 3 => bad.columns[0].point.clear(),
                 4 => bad.columns[0].point[0] = Fp2::ZERO,
-                5 => {
-                    bad.point.pop();
-                }
+                5 => bad.point = LeafPoint::Shared(vec![Fp2::ZERO]),
                 _ => unreachable!(),
             }
             assert_eq!(layout.check_bound(&bad), Err(Error::Internal));
         }
+    }
+
+    fn f(v: u64) -> Fp2 {
+        Fp2::from(Fp::reduce(v))
+    }
+
+    /// RFC-0045 'The leaf point': a tensor of `n` variables lies at `P[0..n]`, whatever its
+    /// token axis, and a read at its coordinates of `P`.
+    #[test]
+    fn an_ungrouped_stage_leaves_its_claims_on_prefixes_of_p() {
+        let p = LeafPoint::Shared(vec![f(1), f(2), f(3), f(4)]);
+        let axis = Some(TokenAxis { low: 1, bits: 2 });
+        assert_eq!(p.tensor(3, axis), Some(vec![f(1), f(2), f(3)]));
+        assert_eq!(p.tensor(0, None), Some(vec![]));
+        assert_eq!(p.tensor(5, None), None);
+        assert_eq!(p.read(&[2, 0], axis), Some(vec![f(3), f(1)]));
+        assert_eq!(p.read(&[4], None), None);
+    }
+
+    /// RFC-0054 'The merged point': `r(n, S)` is the merge's last `n` challenges, the variables
+    /// outside `S` first, lowest first, then those in `S`, lowest first.
+    #[test]
+    fn a_grouped_stage_leaves_its_claims_at_the_merged_points() {
+        // Challenges r_0 … r_5; g_T = 2.
+        let r: Vec<Fp2> = (10..16).map(f).collect();
+        let merged = LeafPoint::Merged {
+            challenges: r.clone(),
+            token_bits: 2,
+        };
+        // A tensor [n, d] of 5 variables, its token axis on variables 2..5: S = {2, 3}. The last
+        // five challenges r_1 … r_5: variables 0, 1, 4 take r_1, r_2, r_3; S takes r_4, r_5.
+        let axis = Some(TokenAxis { low: 2, bits: 3 });
+        assert_eq!(
+            merged.tensor(5, axis),
+            Some(vec![r[1], r[2], r[4], r[5], r[3]])
+        );
+        // The same tensor read at its own coordinates of a block with that token axis.
+        assert_eq!(merged.read(&[0, 1, 2, 3, 4], axis), merged.tensor(5, axis));
+        // A tensor without a token axis, such as a channel's class: the last two, in order.
+        assert_eq!(merged.tensor(2, None), Some(vec![r[4], r[5]]));
+        assert_eq!(merged.read(&[0, 1], axis), Some(vec![r[4], r[5]]));
+        // A row tensor [n] of 3 variables, its token axis lowest: S = {0, 1}.
+        let rows = Some(TokenAxis { low: 0, bits: 3 });
+        assert_eq!(merged.tensor(3, rows), Some(vec![r[4], r[5], r[3]]));
+        // Without token bits, a layer grouping alone: the last n challenges, in order.
+        let layers = LeafPoint::Merged {
+            challenges: r.clone(),
+            token_bits: 0,
+        };
+        assert_eq!(layers.tensor(3, rows), Some(vec![r[3], r[4], r[5]]));
+        // No point beyond the merge's rounds, nor for a token axis outside the tensor or
+        // shorter than g_T.
+        assert_eq!(merged.tensor(7, None), None);
+        assert_eq!(merged.tensor(4, axis), None);
+        assert_eq!(merged.tensor(3, Some(TokenAxis { low: 0, bits: 1 })), None);
     }
 }

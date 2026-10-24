@@ -43,7 +43,11 @@ fn variables(graph: &Graph, id: TensorId) -> Result<u32, ClaimsError> {
 }
 /// A domain's token axis among its block variables (RFC-0054 'The token axis'): the variables of
 /// the axes after it come first (RFC-0045 'Blocks').
-fn token(graph: &Graph, axes: &TokenAxes, id: TensorId) -> Result<Option<TokenAxis>, ClaimsError> {
+pub(crate) fn token(
+    graph: &Graph,
+    axes: &TokenAxes,
+    id: TensorId,
+) -> Result<Option<TokenAxis>, ClaimsError> {
     let Some(axis) = axes.get(id).ok_or_else(internal)? else {
         return Ok(None);
     };

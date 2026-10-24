@@ -101,7 +101,7 @@ fn runtime_callbacks_match_literal_finals_and_retain_every_original_obligation()
             multiplicities: vec![],
             forests: vec![],
             atoms: vec![],
-            point: vec![],
+            point: split::LeafPoint::Shared(vec![]),
         };
         let mut columns = vec![None; graph.nodes().len()];
         columns[node.0 as usize] = Some((0, 1));
@@ -210,7 +210,7 @@ fn empty_output_observation_still_routes_the_actual_lm_head_value() {
         multiplicities: vec![],
         forests: vec![],
         atoms: vec![],
-        point: vec![],
+        point: split::LeafPoint::Shared(vec![]),
     };
     let prepared = Prepared {
         plan: &plan,

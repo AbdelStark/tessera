@@ -33,8 +33,9 @@
 //!    sumchecks, the tallest table tree's height.
 //!
 //! A sumcheck's own rounds and evaluations are not shapes: they are the checks of its level or of
-//! the merge below (RFC-0010 'Sumcheck messages'). `TreeProof.splits`, the atom splits of step 5,
-//! is the caller's, under `stage/0/split` after this check.
+//! the merge below (RFC-0010 'Sumcheck messages'). [`Stage::check_counts`] runs checks 1 to 4
+//! alone, for a driver to judge them before any transcript work. `TreeProof.splits`, the atom
+//! splits of step 5, is [`Merged::bind`]'s, under `stage/0/split` after this check.
 //!
 //! **Step 1, the challenges** (RFC-0014 'Transcript schedule', row 4 with groups): `α` under
 //! `logup/alpha`, `β` under `logup/beta`, then `logup/roots` and `logup/values` absorbed empty.
@@ -98,6 +99,13 @@
 //! leaf table; and each table's multiplicity claim. Nothing in it is verified until the stages
 //! and openings that take it check it.
 //!
+//! **Step 5, the atom splits** ([`Merged::bind`]): `TreeProof.splits` holds RFC-0037's atom split
+//! values of the merged claims, as many as the public schedule says, else [`Error::Count`] with
+//! [`Message::Atoms`]; they are absorbed under `stage/0/split`. The result is the
+//! [`Bound`](super::split::Bound) the ungrouped stage leaves, its claims at the merged points
+//! ([`LeafPoint::Merged`]): every later consumer of a leaf claim reads its point through
+//! [`LeafPoint`] (RFC-0054 'The stage's outputs').
+//!
 //! **Memory.** A verifier holds one group's layout at a time: [`Stage::verify`] derives each
 //! group's twice, for its checks and for the merge's weights, and keeps of each group only `γ_h`,
 //! `P_h`, its shares' leaf claims and its share of the merge's claim. `W_i(r_i)` costs one `eq`
@@ -114,7 +122,7 @@ use tv_hash::transcript::{Transcript, TranscriptError};
 use tv_tables::TableId;
 
 use super::groups::{self, Group, Grouped, Polynomial, Source};
-use super::split::ColumnClaim;
+use super::split::{Bound, ColumnClaim, LeafPoint};
 use super::{ForestClaim, copied, reserved};
 use crate::fiat_shamir::{self, Failure, FiatShamir, Step};
 use crate::logup::Claim;
@@ -178,6 +186,9 @@ pub enum Message {
     TableRoots,
     /// `TreeProof.levels`, the table batch's.
     TableLevels,
+    /// `TreeProof.splits`, the atom splits of step 5 ([`Merged::bind`]): the schedule fixes
+    /// their count, not the grouping.
+    Atoms,
 }
 
 /// The first check of the module documentation that failed, or a fault of the verifier.
@@ -385,6 +396,51 @@ pub struct Merged {
     pub multiplicities: Vec<(TableId, Claim)>,
     /// The merge's challenges, in round order.
     pub point: Vec<Fp2>,
+    /// `g_T`, the token bits of the grouping: a tensor's group variables are the low `g_T` of
+    /// its token axis.
+    pub token_bits: u32,
+}
+
+impl Merged {
+    /// Step 5 (RFC-0054 'The leaf stage with groups'): RFC-0037's atom split values of the
+    /// merged claims, the whole of `TreeProof.splits`, absorbed under `stage/0/split`; then the
+    /// stage's outputs as the ungrouped stage leaves them, each at its merged point
+    /// ([`LeafPoint::Merged`], RFC-0054 'The stage's outputs'). `atom_count` comes from the
+    /// public schedule, never the proof. No atom is checked here: the reduction stages check
+    /// them against the leaf claims (RFC-0037 'Splits', `Reject(Sumcheck { stage: 0, round: 0
+    /// })`).
+    ///
+    /// # Errors
+    /// [`Error::Count`] with [`Message::Atoms`] before any transcript work, then `Memory`, or
+    /// `Internal` for a label that is not ASCII.
+    pub fn bind(
+        self,
+        transcript: &mut Transcript,
+        splits: &[Fp2],
+        atom_count: usize,
+    ) -> Result<Bound, Error> {
+        self.bind_with(transcript, splits, atom_count)
+    }
+
+    fn bind_with(
+        self,
+        transcript: &mut impl FiatShamir,
+        splits: &[Fp2],
+        atom_count: usize,
+    ) -> Result<Bound, Error> {
+        count(Message::Atoms, atom_count, splits.len())?;
+        absorb(transcript, "stage/0/split", splits)?;
+        Ok(Bound {
+            columns: self.columns,
+            multiplicities: self.multiplicities,
+            forests: self.forests,
+            atoms: copied(splits).map_err(own)?,
+            point: LeafPoint::Merged {
+                challenges: self.point,
+                token_bits: self.token_bits,
+            },
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -756,6 +812,17 @@ impl<'a> Stage<'a> {
         // Step 4.
         let (point, evaluations) = self.merge(transcript, &proof.trees.merge, &kept)?;
         self.result(point, evaluations, multiplicities)
+    }
+
+    /// Checks 1 to 4 alone, the counts the grouping fixes: a driver runs them before any
+    /// transcript work (RFC-0054 'Messages', 'Counts'). [`verify`](Self::verify) runs them first
+    /// too.
+    ///
+    /// # Errors
+    /// [`Error::Count`] for the first message of another length; [`Error::Internal`] for own
+    /// metadata that overflows.
+    pub fn check_counts(&self, proof: Proof<'_>) -> Result<(), Error> {
+        self.shapes(proof)
     }
 
     /// Checks 1 to 4.
@@ -1199,6 +1266,7 @@ impl<'a> Stage<'a> {
             forests,
             multiplicities,
             point,
+            token_bits: u32::from(self.grouped.groups().token_bits),
         })
     }
 }
