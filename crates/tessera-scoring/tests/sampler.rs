@@ -6,14 +6,14 @@
 //! The `aes` crate picks its backend per target: AES-NI on x86_64, fixsliced software on aarch64
 //! unless `--cfg aes_armv8` selects the ARMv8 instructions. The same vectors pin every backend.
 
-use tessera_codec::Secret;
+use tessera_codec::{HeapKey, Secret};
 use tessera_scoring::{Sampler, SamplerError, SamplerKey, inverse_cdf};
 
 fn key(hex: &str) -> SamplerKey {
     assert_eq!(hex.len(), 32);
     let bytes: [u8; 16] =
         core::array::from_fn(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap());
-    SamplerKey::new(Secret::new(bytes))
+    SamplerKey::new(Secret::new(HeapKey::from_box(Box::new(bytes))))
 }
 
 fn rows(text: &str) -> impl Iterator<Item = Vec<&str>> {

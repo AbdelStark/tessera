@@ -16,16 +16,25 @@
 
 use aes::Aes128;
 use aes::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
+use core::borrow::Borrow;
 use core::fmt;
-use tessera_codec::Secret;
+use tessera_codec::{HeapKey, Secret};
 
 /// A session's sampler key `K_samp`, committed in its session-open frame (RFC-0015 'Frames').
-pub struct SamplerKey(Secret<[u8; 16]>);
+/// It lives as long as its session, so its bytes are on the heap ([`HeapKey`]): moving the key
+/// moves a pointer and leaves no copy behind (OBS-2).
+pub struct SamplerKey(Secret<HeapKey>);
 
 impl SamplerKey {
     /// The key `key`.
-    pub fn new(key: Secret<[u8; 16]>) -> Self {
+    pub fn new(key: Secret<HeapKey>) -> Self {
         Self(key)
+    }
+
+    /// The key, still in its [`Secret`]: for the session-open frame's sampler commitment
+    /// (RFC-0059).
+    pub fn secret(&self) -> &Secret<HeapKey> {
+        &self.0
     }
 }
 
@@ -36,18 +45,19 @@ impl fmt::Debug for SamplerKey {
     }
 }
 
-/// RFC-0017's PRF under one sampler key: AES-128, its key schedule cleared on drop.
+/// RFC-0017's PRF under one sampler key: AES-128, its key schedule on the heap, so moving the
+/// sampler moves a pointer, and cleared on drop. AES-128's first round key is the key itself.
 pub struct Sampler {
-    cipher: Aes128,
+    cipher: Box<Aes128>,
 }
 
 impl Sampler {
     /// The sampler of `key`.
     #[allow(clippy::disallowed_methods)]
     pub fn new(key: &SamplerKey) -> Self {
-        let bytes = GenericArray::from_slice(key.0.expose_secret());
+        let bytes: &[u8; 16] = key.0.expose_secret().borrow();
         Self {
-            cipher: Aes128::new(bytes),
+            cipher: Box::new(Aes128::new(GenericArray::from_slice(bytes))),
         }
     }
 
@@ -173,7 +183,7 @@ mod tests {
 
     #[test]
     fn the_key_never_shows() {
-        let key = SamplerKey::new(Secret::new([0x5a; 16]));
+        let key = SamplerKey::new(Secret::new(HeapKey::from_box(Box::new([0x5a; 16]))));
         let sampler = Sampler::new(&key);
         assert_eq!(format!("{key:?}"), "SamplerKey(..)");
         assert_eq!(format!("{sampler:?}"), "Sampler(..)");

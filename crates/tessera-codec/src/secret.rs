@@ -66,6 +66,58 @@ impl<T: Zeroize> Drop for Secret<T> {
 
 impl<T: Zeroize> ZeroizeOnDrop for Secret<T> {}
 
+/// `N` secret bytes on the heap: an AES key or a salt (16, the default) or an Ed25519 seed (32).
+/// Moving it moves a pointer and leaves no copy of the bytes behind (OBS-2), which a key that
+/// lives as long as a session needs. Hold it in a [`Secret`]; it is also cleared when it drops
+/// outside one. It has no `Debug`, `Clone` or TCE `Encode`.
+pub struct HeapKey<const N: usize = 16>(Box<[u8; N]>);
+
+impl<const N: usize> HeapKey<N> {
+    /// `N` zero bytes, to fill in place.
+    pub fn zeroed() -> Self {
+        Self(Box::new([0; N]))
+    }
+
+    /// The key in `bytes`, already on the heap: the box moves, and no byte is copied.
+    pub fn from_box(bytes: Box<[u8; N]>) -> Self {
+        Self(bytes)
+    }
+
+    /// `N` bytes from the operating system's generator, in a [`Secret`].
+    ///
+    /// # Errors
+    /// The generator's failure, as an I/O error (`ERR-RES-IO`).
+    pub fn generate() -> Result<Secret<Self>, std::io::Error> {
+        let mut key = Secret::new(Self::zeroed());
+        getrandom::fill(&mut key.0.0[..]).map_err(std::io::Error::from)?;
+        Ok(key)
+    }
+}
+
+impl<const N: usize> Zeroize for HeapKey<N> {
+    fn zeroize(&mut self) {
+        self.0.as_mut().zeroize();
+    }
+}
+
+impl<const N: usize> Drop for HeapKey<N> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl<const N: usize> core::borrow::Borrow<[u8; N]> for HeapKey<N> {
+    fn borrow(&self) -> &[u8; N] {
+        &self.0
+    }
+}
+
+impl<const N: usize> core::borrow::BorrowMut<[u8; N]> for HeapKey<N> {
+    fn borrow_mut(&mut self) -> &mut [u8; N] {
+        &mut self.0
+    }
+}
+
 /// Values derived from secret-class data, in a vector that clears every allocation it releases
 /// (05 §3 OBS-6): a proving engine's bound tables, partial products, contractions and tree levels.
 ///

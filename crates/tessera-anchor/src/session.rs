@@ -11,63 +11,14 @@ use crate::frame::{AnchorError, FrameHeader, SealedFrame, SessionOpenFrame, Toke
 use aes::Aes128;
 use aes::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
 use core::borrow::Borrow;
+use core::borrow::BorrowMut;
 use core::fmt;
-use tessera_codec::{Secret, SecretBuf, Zeroize};
+use tessera_codec::{HeapKey, Secret, SecretBuf, Zeroize};
 
 /// The label of the key commitment (RFC-0015 'Frames').
 const KEY_LABEL: &[u8] = b"tessera-anchor-key/v1";
 /// The label of the sampler commitment (RFC-0015 'Frames').
 const SAMPLER_LABEL: &[u8] = b"tessera-sampler-key/v1";
-
-/// `N` secret bytes on the heap, 16 for an AES key or a salt and 32 for an Ed25519 seed: moving
-/// the value moves a pointer and leaves no copy of the bytes behind (OBS-2). Zeroized through its
-/// [`Secret`].
-pub struct HeapKey<const N: usize = 16>(Box<[u8; N]>);
-
-impl<const N: usize> HeapKey<N> {
-    fn zeroed() -> Self {
-        Self(Box::new([0; N]))
-    }
-
-    /// The key in `bytes`, already on the heap: the box moves, and no byte is copied.
-    pub fn from_box(bytes: Box<[u8; N]>) -> Self {
-        Self(bytes)
-    }
-
-    /// `N` bytes from the operating system's generator, in a [`Secret`].
-    ///
-    /// # Errors
-    /// [`AnchorError::Random`] when the generator fails.
-    #[allow(clippy::disallowed_methods)]
-    pub fn generate() -> Result<Secret<Self>, AnchorError> {
-        let mut key = Secret::new(Self::zeroed());
-        getrandom::fill(&mut key.expose_secret_mut().0[..]).map_err(|_| AnchorError::Random)?;
-        Ok(key)
-    }
-
-    pub(crate) fn bytes(&self) -> &[u8; N] {
-        &self.0
-    }
-}
-
-impl<const N: usize> Zeroize for HeapKey<N> {
-    fn zeroize(&mut self) {
-        self.0.as_mut().zeroize();
-    }
-}
-
-/// Cleared on drop even outside a [`Secret`] (OBS-2).
-impl<const N: usize> Drop for HeapKey<N> {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
-}
-
-impl<const N: usize> Borrow<[u8; N]> for HeapKey<N> {
-    fn borrow(&self) -> &[u8; N] {
-        &self.0
-    }
-}
 
 /// The secrets a session draws at open: `k_s`, `salt_k` and `salt_s` (RFC-0059 'The session-open
 /// frame and the commitments'). The prover keeps them for the anchor circuits. Each lives on the
@@ -135,9 +86,8 @@ impl Session {
         session_id.copy_from_slice(&bytes[..16]);
         let part = |i: usize| {
             let mut out = Secret::new(HeapKey::zeroed());
-            out.expose_secret_mut()
-                .0
-                .copy_from_slice(&bytes[16 * i..16 * (i + 1)]);
+            let key: &mut [u8; 16] = out.expose_secret_mut().borrow_mut();
+            key.copy_from_slice(&bytes[16 * i..16 * (i + 1)]);
             out
         };
         let keys = SessionKeys {
@@ -152,7 +102,7 @@ impl Session {
         };
         let session = Self {
             cipher: Box::new(Aes128::new(GenericArray::from_slice(
-                &keys.key.expose_secret().0[..],
+                Borrow::<[u8; 16]>::borrow(keys.key.expose_secret()),
             ))),
             session_id,
             next: 0,
