@@ -123,6 +123,7 @@ With `g ≥ 1`, the leaf stage runs in this order:
 
 1. **Challenges.** `logup/alpha` and `logup/beta`, as RFC-0008 states. `logup/roots`, then `logup/values`, are absorbed empty, right after `logup/beta`.
 2. **Each group `h`, in order from 0.**
+   - **Schedule.** The group's lookup trees in table order, then its forests in the stage's forest order.
    - **Roots.** The roots `(n, d)` of the group's lookup trees, in schedule order, under `group/{h}/logup/roots`. The group's value evaluations follow the same order. The verifier checks every `d ≠ 0`, else `Reject(Lookup)`.
    - **Levels.** RFC-0010 'Tree levels' for the group's instances, under `group/{h}/tree/{ℓ}/root/{c}`, `group/{h}/tree/{ℓ}/gamma`, `group/{h}/tree/{ℓ}/lambda`, `group/{h}/tree/{ℓ}/round/{j}`, `group/{h}/tree/{ℓ}/r/{j}`, `group/{h}/tree/{ℓ}/evals` and `group/{h}/tree/{ℓ}/line`. `ℓ` counts the group's levels from its root, and each lookup tree enters with its root as its claims.
    - **Values and splits.** The group's lookup trees' value evaluations under `group/{h}/logup/values`, then its split values under `group/{h}/split`. The verifier checks the leaf claims against them as RFC-0008 and RFC-0045 check the stage's.
@@ -152,6 +153,9 @@ With `g = 0`, the table trees stay in the stage's one batch, and its levels that
 ### The merge
 
 The groups end with each merged polynomial's claims at the points of the groups that read it. A merged polynomial is a tensor that a group's split values evaluate, or a forest's leaf table. Group `h` claims `P̃(z_h ‖ h_S) = v_h` on polynomial `P`.
+- **The polynomials, in order.** One per value of the ungrouped split, in its order, then each forest's leaf table, in the stage's forest order.
+- **A group's claims, in order** (`k`). Its split values in the order it sends them, then its forests' leaf claims in forest order.
+- **A forest's group variables** are its query index's low `g_T` bits, then its layer index's low `g_L` bits. Group `h`'s bits on them are `h`'s own, token bits first.
 - `z_h` assigns its point to `P`'s variables outside `S`.
 - `h_S` sets the coordinates in `S` to `h`'s bits.
 - A polynomial with `S` empty, a tensor without a token axis, has its claims at `z_h` over all of its variables, from the groups that read it.
@@ -170,7 +174,7 @@ The merge reduces every polynomial's claims to one, at one point, in one sumchec
 **Rounds.**
 - **Variable order.** The rounds bind each polynomial's variables outside `S_i` first, lowest first, then those in `S_i`, lowest first, and `P̃_i` and `W_i` are read in that order. Front-padding gives a polynomial of `n_i` variables the last `n_i` challenges. Polynomials of one size and one `S` therefore lie at one point, as RFC-0037's layer point needs a site's layers to.
 - **Messages.** The degree is 2. Round `j` sends `p_j(0)` and `p_j(2)` under `merge/round/{j − 1}` and squeezes `merge/r/{j − 1}`, as [RFC-0010](RFC-0010-proof-schedule.md#sumcheck-messages) 'Sumcheck messages' states.
-- **The final check.** The prover sends `P̃_i(r_i)` for every polynomial, in claim order, under `merge/evals`. The verifier computes every `W_i(r_i)` itself and checks `Σ_i W_i(r_i)·P̃_i(r_i)` against the last claim.
+- **The final check.** The prover sends `P̃_i(r_i)` for every polynomial, in the polynomials' order, under `merge/evals`. The verifier computes every `W_i(r_i)` itself and checks `Σ_i W_i(r_i)·P̃_i(r_i)` against the last claim.
   - A failed round, or the final check at round `n_max`, is `Reject(LeafMerge { round })`.
   - The verifier's work is one `eq` product per point class and group, and one sum per polynomial over the groups that read it: about `10^7` multiplications at 405B and 16K.
 - **The result.** `P̃_i(r_i)` is `P_i`'s claim at `r_i`. For a tensor, it is the value RFC-0037 takes from the stage for that tensor, site and layer. For a forest's leaf table, it is the leaf claim the consuming stage proves.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Resident CPU columns for the complete model leaf, borrowing canonical witness tiles.
-use super::{LeafError, LeafLayout, ModelColumn, SiteTensors, internal};
+use super::{LeafError, LeafLayout, ModelColumn, SiteTensors, StageForest, internal};
 use core::fmt;
 use tessera_codec::SecretBuf;
 use tessera_compiler::schedule::{LayerMap, NodeRef};
@@ -21,6 +21,9 @@ struct Column {
 struct Trees {
     site: NodeRef,
     height: usize,
+    /// The leaf table's lowest variable of the layer index: the heads, queries and keys of one
+    /// layer take the variables below it.
+    layers: u32,
     leaves: SecretBuf<Goldilocks>,
 }
 
@@ -445,6 +448,15 @@ impl ModelWitness {
             .map(|f| Forest::new(&f.leaves, f.height))
             .collect()
     }
+    /// The product forests as a grouped stage splits them (RFC-0054 'The forest'), in the order of
+    /// [`forests`](Self::forests): each leaf table indexed by layer, head, query and key, the
+    /// queries from the keys' height up and the layers above the heads.
+    pub fn stage_forests(&self) -> Vec<StageForest<'_>> {
+        self.forests
+            .iter()
+            .map(|f| StageForest::new(&f.leaves, f.height as u32, f.height as u32, f.layers))
+            .collect()
+    }
     /// The public sites of the product forests, in the same order as `forests`.
     pub fn forest_sites(&self) -> impl Iterator<Item = NodeRef> + '_ {
         self.forests.iter().map(|f| f.site)
@@ -492,6 +504,7 @@ impl ModelWitness {
             self.forests.push(Trees {
                 site: site.node,
                 height: height as usize,
+                layers: block.trailing_zeros(),
                 leaves,
             });
         }

@@ -43,6 +43,7 @@
 //! claim list. The tensors, the columns and the multiplicities are secret-class (05 §3): the caller
 //! lends the tensors in [`SiteTensors`], and what is computed from them lives in `SecretBuf`s.
 
+mod grouped;
 mod groups;
 mod layout;
 mod model;
@@ -57,6 +58,7 @@ use tessera_codec::error::ErrorCode;
 use tessera_gadgets::GadgetError;
 use tessera_logup::LogUpError;
 
+pub use grouped::{ProvenGroupedLeaf, StageForest, grouped_multiplicities, prove_grouped_leaf};
 pub use groups::{GroupLayout, GroupRead, GroupedLayout};
 pub use layout::{
     Block, InstanceLayout, LeafLayout, Read, Site, SiteGadget, SiteLookup, gadget_nodes, leaf_index,
