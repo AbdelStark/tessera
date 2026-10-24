@@ -485,34 +485,71 @@ fn a_policy_is_valid_by_construction() {
 fn the_prover_answers_one_commitment_per_manifest() {
     let (manifest, other_manifest) = ([1u8; 32], [2u8; 32]);
     let (c, other_c) = (coin_commitment(&[3; 32]), coin_commitment(&[4; 32]));
+    let p = policy(vec![bucket(10, "0.5")], 1, 2);
+    let other_p = policy(vec![bucket(10, "0.25")], 1, 2);
     // A first commitment gets a fresh share, never the manifest's: two fresh answers differ.
-    let first = ShareRecord::answer(None, manifest, c).expect("a fresh answer");
-    let again = ShareRecord::answer(None, manifest, c).expect("a fresh answer");
+    let first = ShareRecord::answer(None, manifest, &p, c).expect("a fresh answer");
+    let again = ShareRecord::answer(None, manifest, &p, c).expect("a fresh answer");
     assert_ne!(first.prover_share, again.prover_share);
+    assert_ne!(first.prover_share, manifest);
     assert_eq!(
         (first.manifest_digest, first.verifier_commitment),
         (manifest, c)
     );
-    // The same commitment again: the same share.
+    assert_eq!(first.policy, p);
+    // The same commitment and policy again: the same share.
     assert_eq!(
-        ShareRecord::answer(Some(&first), manifest, c),
+        ShareRecord::answer(Some(&first), manifest, &p, c),
         Ok(first.clone())
     );
-    // Another commitment for the manifest: refused, ERR-PROTO-ORDER.
-    let refused = ShareRecord::answer(Some(&first), manifest, other_c);
-    assert_eq!(refused, Err(ProtocolError::Answered));
+    // Another commitment, or another policy, for the manifest: refused, ERR-PROTO-ORDER.
+    for (policy, commitment) in [(&p, other_c), (&other_p, c)] {
+        let refused = ShareRecord::answer(Some(&first), manifest, policy, commitment);
+        assert_eq!(refused, Err(ProtocolError::Answered));
+    }
     assert_eq!(ProtocolError::Answered.code(), ErrorCode::ProtoOrder);
     // A record of another manifest is the caller's mistake.
     assert!(matches!(
-        ShareRecord::answer(Some(&first), other_manifest, c),
+        ShareRecord::answer(Some(&first), other_manifest, &p, c),
         Err(ProtocolError::Internal { .. })
     ));
-    // The record is 96 bytes of TCE, and decodes back.
-    let bytes = encode(&first);
-    assert_eq!(bytes.len(), 96);
+    // The record decodes back from its TCE.
     assert_eq!(
-        decode::<ShareRecord>(&bytes, DecodeLimits::MESSAGE),
+        decode::<ShareRecord>(&encode(&first), DecodeLimits::MESSAGE),
         Ok(first)
+    );
+}
+
+#[test]
+fn the_record_draws_the_only_sample_of_its_manifest() {
+    let mut rng = Rng(0x0016_0007);
+    let verifier_share = [5u8; 32];
+    let manifest = rng.bytes();
+    let p = policy(vec![bucket(u32::MAX, "0.5")], 1, 2);
+    let record =
+        ShareRecord::answer(None, manifest, &p, coin_commitment(&verifier_share)).expect("fresh");
+    let candidates: Vec<(RequestKey, u64)> = (0..200).map(|_| (rng.key(), 7)).collect();
+    let sample = record
+        .draw(verifier_share, candidates.iter().copied())
+        .expect("a reveal that opens");
+    // The record's manifest, policy, commitment and share, with the reveal.
+    assert_eq!(*sample.manifest_digest(), manifest);
+    assert_eq!(sample.policy(), &p);
+    assert_eq!(
+        sample.coin_toss(),
+        &CoinTossTranscript {
+            verifier_commitment: record.verifier_commitment,
+            prover_share: record.prover_share,
+            verifier_share,
+        }
+    );
+    let expected = AuditSample::draw(manifest, p, sample.coin_toss().clone(), candidates.clone())
+        .expect("the same draw");
+    assert_eq!(sample, expected);
+    // A reveal that does not open the recorded commitment draws nothing.
+    assert_eq!(
+        record.draw([6; 32], candidates),
+        Err(ProtocolError::CoinToss)
     );
 }
 

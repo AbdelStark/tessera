@@ -11,11 +11,10 @@
 //! tessera prove           --plan plan.tep --model MODEL.d --weights WEIGHTS.twc --sample SAMPLE.tas
 //!                         --transcripts DIR (--live ENDPOINT | --out PROOF.tnp)
 //!                         [--backend {cpu,gpu}] [--devices 0,1,...] [--memory-budget GIB]
-//! tessera audit share     --manifest MANIFEST.tlm --commitment HEX --state DIR
+//! tessera audit share     --manifest MANIFEST.tlm --policy POLICY.json --commitment HEX --state DIR
 //! tessera audit sample    --manifest MANIFEST.tlm --log LOG.tdl
 //!                         [--previous-manifest MANIFEST.tlm --previous-log LOG.tdl] [--between MANIFEST.tlm]...
-//!                         --policy POLICY.json --verifier-commitment HEX --prover-share HEX
-//!                         --verifier-share HEX --out SAMPLE.tas
+//!                         --state DIR --verifier-share HEX --out SAMPLE.tas
 //! tessera audit batch     --sample SAMPLE.tas --out-dir DIR
 //! tessera audit plan      --policy POLICY.json --traffic PROFILE.json --plan plan.tep
 //! tessera params check    --params PARAMSET [--lookups N] [--table-rows T]
@@ -191,6 +190,9 @@ struct ShareArgs {
     /// The manifest the coin toss is over.
     #[arg(long, value_name = "MANIFEST.tlm")]
     manifest: PathBuf,
+    /// The audit policy the parties fixed before the toss, a `tessera.audit-policy/1` file.
+    #[arg(long, value_name = "POLICY.json")]
+    policy: PathBuf,
     /// The verifier's commitment `c_V`, 64 hexadecimal digits.
     #[arg(long, value_name = "HEX", value_parser = digest)]
     commitment: [u8; 32],
@@ -218,16 +220,11 @@ struct SampleArgs {
     /// A period of zero length between the two, in order; repeated for each.
     #[arg(long, value_name = "MANIFEST.tlm")]
     between: Vec<PathBuf>,
-    /// The audit policy, a `tessera.audit-policy/1` file.
-    #[arg(long, value_name = "POLICY.json")]
-    policy: PathBuf,
-    /// The coin toss's `c_V`, 64 hexadecimal digits.
-    #[arg(long, value_name = "HEX", value_parser = digest)]
-    verifier_commitment: [u8; 32],
-    /// The coin toss's `s_P`, 64 hexadecimal digits.
-    #[arg(long, value_name = "HEX", value_parser = digest)]
-    prover_share: [u8; 32],
-    /// The coin toss's `s_V`, 64 hexadecimal digits.
+    /// Where `tessera audit share` kept its answer for the manifest: the commitment, the share
+    /// and the policy of the toss.
+    #[arg(long, value_name = "DIR")]
+    state: PathBuf,
+    /// The verifier's revealed share `s_V`, 64 hexadecimal digits.
     #[arg(long, value_name = "HEX", value_parser = digest)]
     verifier_share: [u8; 32],
     #[arg(long, value_name = "SAMPLE.tas")]
@@ -455,6 +452,7 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
             audit::share(
                 &audit::ShareOptions {
                     manifest: &a.manifest,
+                    policy: &a.policy,
                     commitment: a.commitment,
                     state: &a.state,
                 },
@@ -470,9 +468,7 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
                 previous_manifest: a.previous_manifest.as_deref(),
                 previous_log: a.previous_log.as_deref(),
                 between: &a.between,
-                policy: &a.policy,
-                verifier_commitment: a.verifier_commitment,
-                prover_share: a.prover_share,
+                state: &a.state,
                 verifier_share: a.verifier_share,
                 out: &a.out,
             })

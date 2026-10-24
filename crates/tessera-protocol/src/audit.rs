@@ -7,7 +7,9 @@
 //!   the prover answers with a fresh share `s_P`, and the verifier reveals `s_V` once the
 //!   manifest's signature has passed and it holds the period's verified log and the previous
 //!   one's. The prover answers one commitment per manifest ([`ShareRecord::answer`]), so a
-//!   verifier that aborts after seeing `s_P` draws no second sample.
+//!   verifier that aborts after seeing `s_P` draws no second sample, and draws its own sample from
+//!   its record and `s_V` alone ([`ShareRecord::draw`]), so a verifier cannot present the shares
+//!   of another toss.
 //! - **The seed.** `sample_seed = H("audit-sample", s_V ‖ s_P ‖ manifest_digest)`
 //!   ([`sample_seed`]).
 //! - **Selection.** A candidate of length `L` is selected iff its [`selection_value`] is below
@@ -293,13 +295,23 @@ impl CoinTossTranscript {
     }
 }
 
-/// What the prover keeps of its answer to the coin toss over a manifest, so that it answers one
-/// commitment per manifest (RFC-0016 'Sample derivation', step 2). TCE: the fields in order, 96
-/// bytes. Nothing in it is secret: the prover sends its share as soon as the record is kept.
+/// What the prover keeps of its answer to the coin toss over a manifest (RFC-0016 'Sample
+/// derivation', step 2): the manifest, the policy, the commitment it answered and its share. TCE:
+/// the fields in order. Nothing in it is secret: the prover sends its share once the record is
+/// kept.
+///
+/// The record binds the toss twice:
+/// - **one commitment per manifest**: [`ShareRecord::answer`] answers no other commitment and no
+///   other policy for the manifest;
+/// - **one transcript per manifest**: [`ShareRecord::draw`] builds the transcript from the record
+///   and the verifier's revealed share alone. A verifier holding shares from other tosses, of other
+///   manifests or of none, cannot present one of them for this manifest.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct ShareRecord {
     /// The identity of the manifest the toss is over.
     pub manifest_digest: Digest,
+    /// The policy, fixed before the toss.
+    pub policy: AuditPolicy,
     /// The commitment `c_V` the prover answered.
     pub verifier_commitment: Digest,
     /// The share `s_P` it answered with.
@@ -307,24 +319,25 @@ pub struct ShareRecord {
 }
 
 impl ShareRecord {
-    /// The prover's answer to the commitment `verifier_commitment` over `manifest_digest`, given
-    /// the record it kept of an earlier answer for that manifest, if any:
+    /// The prover's answer to the commitment `verifier_commitment` over `manifest_digest` under
+    /// `policy`, given the record it kept of an earlier answer for that manifest, if any:
     /// - none: a fresh `s_P` from the operating system's CSPRNG, never a function of the
     ///   manifest. The caller keeps the record durably, where every responder for this prover
     ///   finds it, before it sends the share.
-    /// - a record of the same commitment: that record, so the same share again, for a verifier
-    ///   that lost the first answer.
+    /// - a record of the same commitment and policy: that record, so the same share again, for a
+    ///   verifier that lost the first answer.
     ///
     /// # Errors
     /// - [`ProtocolError::Answered`](crate::ProtocolError::Answered) (`ERR-PROTO-ORDER`) for a
-    ///   record of another commitment: a verifier that aborted after seeing `s_P` draws no second
-    ///   sample.
+    ///   record of another commitment or another policy: a verifier that aborted after seeing
+    ///   `s_P` draws no second sample.
     /// - [`ProtocolError::Internal`](crate::ProtocolError::Internal) for a record of another
     ///   manifest, which the caller should not have given.
     /// - [`ProtocolError::Randomness`](crate::ProtocolError::Randomness) when the generator fails.
     pub fn answer(
         kept: Option<&ShareRecord>,
         manifest_digest: Digest,
+        policy: &AuditPolicy,
         verifier_commitment: Digest,
     ) -> Result<Self, crate::ProtocolError> {
         match kept {
@@ -333,18 +346,49 @@ impl ShareRecord {
                     rule: "a share record answers the manifest it is kept for",
                 })
             }
-            Some(record) if record.verifier_commitment == verifier_commitment => Ok(record.clone()),
+            Some(record)
+                if record.verifier_commitment == verifier_commitment
+                    && record.policy == *policy =>
+            {
+                Ok(record.clone())
+            }
             Some(_) => Err(crate::ProtocolError::Answered),
             None => {
                 let mut prover_share = [0u8; 32];
                 getrandom::fill(&mut prover_share).map_err(|_| crate::ProtocolError::Randomness)?;
                 Ok(Self {
                     manifest_digest,
+                    policy: policy.clone(),
                     verifier_commitment,
                     prover_share,
                 })
             }
         }
+    }
+
+    /// The sample of the record's manifest under its policy, once the verifier has revealed
+    /// `verifier_share`: the transcript is the record's commitment and share with it, and no
+    /// other.
+    ///
+    /// # Errors
+    /// [`ProtocolError::CoinToss`](crate::ProtocolError::CoinToss) (`ERR-PROTO-COINTOSS`) when
+    /// `verifier_share` does not open the record's commitment.
+    pub fn draw(
+        &self,
+        verifier_share: [u8; 32],
+        candidates: impl IntoIterator<Item = (RequestKey, u64)>,
+    ) -> Result<AuditSample, crate::ProtocolError> {
+        let coin_toss = CoinTossTranscript {
+            verifier_commitment: self.verifier_commitment,
+            prover_share: self.prover_share,
+            verifier_share,
+        };
+        AuditSample::draw(
+            self.manifest_digest,
+            self.policy.clone(),
+            coin_toss,
+            candidates,
+        )
     }
 }
 

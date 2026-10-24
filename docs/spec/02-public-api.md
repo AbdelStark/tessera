@@ -46,12 +46,11 @@ tessera weights refresh --weights WEIGHTS.twc --out WEIGHTS2.twc        # emits 
 tessera prove           --plan plan.tep --model MODEL.d --weights WEIGHTS.twc --sample SAMPLE.tas
                         --transcripts DIR (--live ENDPOINT | --out PROOF.tnp)
                         [--backend {cpu,gpu}] [--devices 0,1,...] [--memory-budget GIB]
-tessera audit share     --manifest MANIFEST.tlm --commitment HEX --state DIR
+tessera audit share     --manifest MANIFEST.tlm --policy POLICY.json --commitment HEX --state DIR
                         # the prover's share for the coin toss over a manifest, one commitment per manifest
 tessera audit sample    --manifest MANIFEST.tlm --log LOG.tdl
                         [--previous-manifest MANIFEST.tlm --previous-log LOG.tdl] [--between MANIFEST.tlm]...
-                        --policy POLICY.json --verifier-commitment HEX --prover-share HEX
-                        --verifier-share HEX --out SAMPLE.tas
+                        --state DIR --verifier-share HEX --out SAMPLE.tas
 tessera audit batch     --sample SAMPLE.tas --out-dir DIR
 tessera audit plan      --policy POLICY.json --traffic PROFILE.json --plan plan.tep   # detection and overhead
 tessera params check    --params PARAMSET [--lookups N] [--table-rows T]   # soundness report
@@ -64,14 +63,13 @@ tessera inspect         FILE                                                # re
 ```
 
 `audit share` is the prover's side of the coin toss over a manifest ([RFC-0016](../rfcs/RFC-0016-audit-sampling.md#sample-derivation) step 2):
-- **One answer.** The first commitment for a manifest gets a fresh share, kept in `--state` before it is printed, and the same commitment again gets the same share.
-- **Another commitment** for that manifest exits 20 with `ERR-PROTO-ORDER`.
+- **One answer.** The first commitment for a manifest gets a fresh share. The share is kept in `--state`, with the manifest, the `tessera.audit-policy/1` policy and the commitment, before it is printed. The same commitment and policy again get the same share.
+- **Another commitment or policy** for that manifest exits 20 with `ERR-PROTO-ORDER`.
 - **The state.** Every responder of one prover shares the `--state` directory.
 
 `audit sample` draws a period's `AuditSample` ([RFC-0016](../rfcs/RFC-0016-audit-sampling.md#sample-derivation)):
 - **The logs.** It checks each log against its manifest (RFC-0062), and the chain from the previous period through any empty zero-length `--between` periods ([RFC-0063](../rfcs/RFC-0063-request-boundaries.md#the-previous-periods-log)). A log's first period needs no previous one. A period of zero length has no candidates and is refused.
-- **The policy** is a `tessera.audit-policy/1` file ([schema](../../spec/schemas/audit-policy-v1.schema.json)), its rates decimal strings.
-- **The coin toss** is the three values both parties hold once it is done.
+- **The record.** The coin toss is the record `audit share` kept for the manifest, with the verifier's revealed share. Its policy is the `tessera.audit-policy/1` file ([schema](../../spec/schemas/audit-policy-v1.schema.json)) given there, its rates decimal strings. A manifest with no record exits 64.
 
 A log that is not its manifest's exits 65 with `ERR-CODEC-DIGEST`. A share that does not open its commitment exits 20 with `ERR-PROTO-COINTOSS`. Previous periods that do not bind, or a policy file the reader refuses, exit 64. The recorder's signatures are the verifier's to check.
 

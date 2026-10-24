@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! `tessera audit sample` end to end (RFC-0016 'Sample derivation', RFC-0063). The reference
-//! recorder's core logs three periods, the test writes them as the recorder does, and the
-//! command's sample must be the one the libraries draw from the same logs, coin toss and policy.
-//! Then each input the command must refuse, with its code:
-//! - a period with one before it, but no previous period given: `ERR-USAGE`;
-//! - a previous period that is not the one before: `ERR-USAGE`;
+//! `tessera audit share` and `tessera audit sample` end to end (RFC-0016 'Sample derivation',
+//! RFC-0063). The reference recorder's core logs three periods, which the test writes as the
+//! recorder does. The prover answers a commitment over a manifest, the verifier reveals, and the
+//! command's sample must be the one the libraries draw from the same logs and record. Then each
+//! input the commands must refuse, with its code:
+//! - a period with one before it, but no previous period given, or a previous period that is not
+//!   the one before: `ERR-USAGE`;
 //! - a log that is not its manifest's: `ERR-CODEC-DIGEST`;
-//! - a verifier share that does not open its commitment: `ERR-PROTO-COINTOSS`;
-//! - a policy file with an unknown key, a rate of another form, or buckets out of order:
-//!   `ERR-USAGE`.
+//! - a reveal that does not open the recorded commitment, the shares of another manifest's toss
+//!   among them: `ERR-PROTO-COINTOSS`;
+//! - a manifest the prover answered no commitment for: `ERR-USAGE`;
+//! - another commitment or policy for a manifest already answered: `ERR-PROTO-ORDER`;
+//! - a policy file the reader refuses: `ERR-USAGE`;
+//! - periods of zero length out of their place: `ERR-USAGE`.
 
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -20,8 +25,8 @@ use tessera_anchor::recorder::{Period, Recorder, WireFrame, encode_log};
 use tessera_anchor::{
     Direction, HeapKey, RequestEndFrame, Session, TokenFrame, VerifiedLog, candidates,
 };
-use tessera_codec::{DecodeLimits, Secret, envelope, schema};
-use tessera_protocol::{AuditSample, CoinTossTranscript, RateBucket, RequestKey, coin_commitment};
+use tessera_codec::{DecodeLimits, Secret, decode, envelope, schema};
+use tessera_protocol::{AuditSample, RateBucket, RequestKey, ShareRecord, coin_commitment};
 
 fn scratch(test: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("tessera-audit-{test}-{}", std::process::id()));
@@ -29,7 +34,7 @@ fn scratch(test: &str) -> PathBuf {
     dir
 }
 
-fn tessera(args: &[&std::ffi::OsStr]) -> Output {
+fn tessera<S: AsRef<OsStr>>(args: &[S]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_tessera"))
         .args(args)
         .output()
@@ -37,9 +42,9 @@ fn tessera(args: &[&std::ffi::OsStr]) -> Output {
 }
 
 /// The exit status and the error code of a refused run, from its `--json` error object.
-fn refused(args: &[&std::ffi::OsStr]) -> (i32, String) {
-    let mut args = args.to_vec();
-    args.push("--json".as_ref());
+fn refused<S: AsRef<OsStr>>(args: &[S]) -> (i32, String) {
+    let mut args: Vec<OsString> = args.iter().map(|a| a.as_ref().to_owned()).collect();
+    args.push("--json".into());
     let output = tessera(&args);
     let object: Value =
         serde_json::from_slice(&output.stdout).expect("one JSON error object on stdout");
@@ -127,93 +132,149 @@ const POLICY: &str = r#"{
   "params": "live-64/1"
 }"#;
 
-#[test]
-fn the_sample_is_the_one_the_logs_coin_toss_and_policy_give() {
-    let dir = scratch("sample");
-    let periods = three_periods(&dir);
-    let policy = dir.join("policy.json");
-    fs::write(&policy, POLICY).expect("the policy");
-    let verifier_share = [0x0f; 32];
-    let coin_toss = CoinTossTranscript {
-        verifier_commitment: coin_commitment(&verifier_share),
-        prover_share: [0xf0; 32],
-        verifier_share,
-    };
-    let (c, p, v) = (
-        hex(&coin_toss.verifier_commitment),
-        hex(&coin_toss.prover_share),
-        hex(&coin_toss.verifier_share),
-    );
-    let out = dir.join("sample.tas");
-    // Period 1, whose previous period is period 0.
-    let (prev_tlm, prev_tdl, prev) = &periods[0];
-    let (tlm, tdl, current) = &periods[1];
-    let base: Vec<&std::ffi::OsStr> = vec![
-        "audit".as_ref(),
-        "sample".as_ref(),
-        "--manifest".as_ref(),
-        tlm.as_os_str(),
-        "--log".as_ref(),
-        tdl.as_os_str(),
-        "--policy".as_ref(),
-        policy.as_os_str(),
-        "--verifier-commitment".as_ref(),
-        c.as_ref(),
-        "--prover-share".as_ref(),
-        p.as_ref(),
-        "--verifier-share".as_ref(),
-        v.as_ref(),
-        "--out".as_ref(),
-        out.as_os_str(),
-    ];
-    let mut args = base.clone();
-    args.extend::<[&std::ffi::OsStr; 4]>([
-        "--previous-manifest".as_ref(),
-        prev_tlm.as_os_str(),
-        "--previous-log".as_ref(),
-        prev_tdl.as_os_str(),
-    ]);
-    let output = tessera(&args);
+/// Runs a command that must succeed, and returns its stdout, trimmed.
+fn ok<S: AsRef<OsStr>>(args: &[S]) -> String {
+    let output = tessera(args);
     assert_eq!(
         output.status.code(),
         Some(0),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let written: AuditSample = envelope::open(
-        &fs::read(&out).expect("the sample"),
+    String::from_utf8(output.stdout)
+        .expect("UTF-8")
+        .trim()
+        .to_owned()
+}
+
+/// `tessera audit share`'s arguments.
+fn share_args(manifest: &Path, policy: &Path, commitment: &str, state: &Path) -> Vec<OsString> {
+    vec![
+        "audit".into(),
+        "share".into(),
+        "--manifest".into(),
+        manifest.into(),
+        "--policy".into(),
+        policy.into(),
+        "--commitment".into(),
+        commitment.into(),
+        "--state".into(),
+        state.into(),
+    ]
+}
+
+/// `tessera audit sample`'s arguments.
+fn sample_args(
+    manifest: &Path,
+    log: &Path,
+    previous: Option<(&Path, &Path)>,
+    between: &[&Path],
+    state: &Path,
+    verifier_share: &str,
+    out: &Path,
+) -> Vec<OsString> {
+    let mut args: Vec<OsString> = vec![
+        "audit".into(),
+        "sample".into(),
+        "--manifest".into(),
+        manifest.into(),
+        "--log".into(),
+        log.into(),
+        "--state".into(),
+        state.into(),
+        "--verifier-share".into(),
+        verifier_share.into(),
+        "--out".into(),
+        out.into(),
+    ];
+    if let Some((m, l)) = previous {
+        args.extend([
+            "--previous-manifest".into(),
+            m.into(),
+            "--previous-log".into(),
+            l.into(),
+        ]);
+    }
+    for b in between {
+        args.extend(["--between".into(), (*b).into()]);
+    }
+    args
+}
+
+fn read_sample(path: &Path) -> AuditSample {
+    envelope::open(
+        &fs::read(path).expect("the sample"),
         &schema::AUDIT_SAMPLE,
         DecodeLimits::MESSAGE,
     )
-    .expect("an AuditSample envelope");
+    .expect("an AuditSample envelope")
+}
 
-    // The libraries' sample from the same inputs.
-    let previous = VerifiedLog::check(&prev.manifest, prev.entries.clone()).expect("period 0");
-    let log = VerifiedLog::check(&current.manifest, current.entries.clone()).expect("period 1");
-    let found = candidates(Some(&previous), &log);
+/// The record the prover kept for a manifest.
+fn record(state: &Path, manifest: &Period) -> ShareRecord {
+    let path = state.join(format!("{}.share", hex(&manifest.manifest.identity())));
+    decode(&fs::read(path).expect("the record"), DecodeLimits::MESSAGE).expect("a share record")
+}
+
+/// The candidates of `current`, after `previous`, as `(request_id, tokens, ended)`, and as
+/// `AuditSample::draw` takes them.
+fn listed(
+    previous: Option<&Period>,
+    current: &Period,
+) -> (Vec<(u64, u64, bool)>, Vec<(RequestKey, u64)>) {
+    let verified = |p: &Period| VerifiedLog::check(&p.manifest, p.entries.clone()).expect("a log");
+    let previous = previous.map(verified);
+    let found = candidates(previous.as_ref(), &verified(current));
+    (
+        found
+            .iter()
+            .map(|c| (c.request_id, c.tokens, c.ended))
+            .collect(),
+        found
+            .iter()
+            .map(|c| {
+                (
+                    RequestKey {
+                        session_id: c.session_id,
+                        request_id: c.request_id,
+                    },
+                    c.tokens,
+                )
+            })
+            .collect(),
+    )
+}
+
+#[test]
+fn the_sample_is_the_one_the_logs_record_and_reveal_give() {
+    let dir = scratch("sample");
+    let periods = three_periods(&dir);
+    let (t0, d0, p0) = &periods[0];
+    let (t1, d1, p1) = &periods[1];
+    let (t2, d2, p2) = &periods[2];
+    let policy = dir.join("policy.json");
+    fs::write(&policy, POLICY).expect("the policy");
+    let state = dir.join("state");
+    let out = dir.join("sample.tas");
+    let verifier_share = [0x0f; 32];
+    let (c, v) = (hex(&coin_commitment(&verifier_share)), hex(&verifier_share));
+
+    // Period 1, whose previous period is period 0.
+    let s_p = ok(&share_args(t1, &policy, &c, &state));
+    ok(&sample_args(t1, d1, Some((t0, d0)), &[], &state, &v, &out));
+    let written = read_sample(&out);
+    let kept = record(&state, p1);
+    assert_eq!(hex(&kept.prover_share), s_p);
     // Request 2 ended here, over 40 + 60 tokens; request 3 is not a candidate yet; request 1
     // ended in period 0.
-    let listed: Vec<(u64, u64, bool)> = found
-        .iter()
-        .map(|c| (c.request_id, c.tokens, c.ended))
-        .collect();
-    assert_eq!(listed, [(2, 100, true)]);
-    let expected = AuditSample::draw(
-        current.manifest.identity(),
-        written.policy().clone(),
-        coin_toss.clone(),
-        found.iter().map(|c| {
-            (
-                RequestKey {
-                    session_id: c.session_id,
-                    request_id: c.request_id,
-                },
-                c.tokens,
-            )
-        }),
-    )
-    .expect("a sample");
-    assert_eq!(written, expected);
+    let (found, given) = listed(Some(p0), p1);
+    assert_eq!(found, [(2, 100, true)]);
+    assert_eq!(
+        written,
+        kept.draw(verifier_share, given)
+            .expect("the libraries' sample")
+    );
+    assert_eq!(hex(&written.coin_toss().prover_share), s_p);
     // 100 tokens is past both buckets: selected whatever the seed.
     assert_eq!(written.selected().len(), 1);
     assert_eq!(
@@ -231,60 +292,30 @@ fn the_sample_is_the_one_the_logs_coin_toss_and_policy_give() {
     );
 
     // Period 2: request 3, framed in period 1 and never ended, is an unterminated candidate.
-    let (tlm2, tdl2, p2) = &periods[2];
-    let mut args: Vec<&std::ffi::OsStr> = base.clone();
-    args[3] = tlm2.as_os_str();
-    args[5] = tdl2.as_os_str();
-    args.extend::<[&std::ffi::OsStr; 4]>([
-        "--previous-manifest".as_ref(),
-        tlm.as_os_str(),
-        "--previous-log".as_ref(),
-        tdl.as_os_str(),
-    ]);
-    let output = tessera(&args);
+    ok(&share_args(t2, &policy, &c, &state));
+    ok(&sample_args(t2, d2, Some((t1, d1)), &[], &state, &v, &out));
+    let (found, given) = listed(Some(p1), p2);
+    assert_eq!(found, [(3, 3, false), (99, 0, true)]);
     assert_eq!(
-        output.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+        read_sample(&out),
+        record(&state, p2)
+            .draw(verifier_share, given)
+            .expect("the libraries' sample")
     );
-    let log2 = VerifiedLog::check(&p2.manifest, p2.entries.clone()).expect("period 2");
-    let found = candidates(Some(&log), &log2);
-    let listed: Vec<(u64, u64, bool)> = found
-        .iter()
-        .map(|c| (c.request_id, c.tokens, c.ended))
-        .collect();
-    assert_eq!(listed, [(3, 3, false), (99, 0, true)]);
 
-    // Period 0 is the log's first: it needs no previous period. It is sampled here under the
-    // committed example policy, `docs/perf/examples/audit-policy.json`.
+    // Period 0 is the log's first: it needs no previous period. Its toss is under the committed
+    // example policy, `docs/perf/examples/audit-policy.json`.
     let example = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/perf/examples/audit-policy.json");
-    let (tlm0, tdl0, _) = &periods[0];
-    let mut args: Vec<&std::ffi::OsStr> = base.clone();
-    args[3] = tlm0.as_os_str();
-    args[5] = tdl0.as_os_str();
-    args[7] = example.as_os_str();
-    let output = tessera(&args);
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let written: AuditSample = envelope::open(
-        &fs::read(&out).expect("the sample"),
-        &schema::AUDIT_SAMPLE,
-        DecodeLimits::MESSAGE,
-    )
-    .expect("an AuditSample envelope");
-    let rates: Vec<(u32, u64)> = written
+    ok(&share_args(t0, &example, &c, &state));
+    ok(&sample_args(t0, d0, None, &[], &state, &v, &out));
+    let threshold = |rate| RateBucket::threshold_of(rate).expect("a rate");
+    let rates: Vec<(u32, u64)> = read_sample(&out)
         .policy()
         .buckets()
         .iter()
         .map(|b| (b.max_tokens, b.threshold))
         .collect();
-    let threshold = |rate| RateBucket::threshold_of(rate).expect("a rate");
     assert_eq!(
         rates,
         [
@@ -300,68 +331,88 @@ fn the_sample_is_the_one_the_logs_coin_toss_and_policy_give() {
 fn inputs_that_cannot_give_the_sample_are_refused_with_their_code() {
     let dir = scratch("refused");
     let periods = three_periods(&dir);
-    let good = dir.join("policy.json");
-    fs::write(&good, POLICY).expect("the policy");
-    let verifier_share = [0x0f; 32];
-    let c = hex(&coin_commitment(&verifier_share));
-    let v = hex(&verifier_share);
-    let wrong = hex(&[0x0e; 32]);
-    let p = hex(&[0xf0; 32]);
-    let out = dir.join("sample.tas");
     let (t0, d0, _) = &periods[0];
     let (t1, d1, _) = &periods[1];
     let (t2, d2, _) = &periods[2];
-    let run = |manifest: &Path,
-               log: &Path,
-               previous: Option<(&Path, &Path)>,
-               policy: &Path,
-               share: &str| {
-        let mut args: Vec<&std::ffi::OsStr> = vec![
-            "audit".as_ref(),
-            "sample".as_ref(),
-            "--manifest".as_ref(),
-            manifest.as_os_str(),
-            "--log".as_ref(),
-            log.as_os_str(),
-            "--policy".as_ref(),
-            policy.as_os_str(),
-            "--verifier-commitment".as_ref(),
-            c.as_ref(),
-            "--prover-share".as_ref(),
-            p.as_ref(),
-            "--verifier-share".as_ref(),
-            share.as_ref(),
-            "--out".as_ref(),
-            out.as_os_str(),
-        ];
-        if let Some((m, l)) = previous {
-            args.extend::<[&std::ffi::OsStr; 4]>([
-                "--previous-manifest".as_ref(),
-                m.as_os_str(),
-                "--previous-log".as_ref(),
-                l.as_os_str(),
-            ]);
-        }
-        refused(&args)
-    };
+    let good = dir.join("policy.json");
+    fs::write(&good, POLICY).expect("the policy");
+    let state = dir.join("state");
+    let out = dir.join("sample.tas");
+    let (v1, v0) = ([0x0f; 32], [0x1e; 32]);
+    let (c1, c0) = (hex(&coin_commitment(&v1)), hex(&coin_commitment(&v0)));
+    let (v1, v0) = (hex(&v1), hex(&v0));
+    ok(&share_args(t1, &good, &c1, &state));
     let usage = (64, "ERR-USAGE".to_owned());
     // No previous period for period 1.
-    assert_eq!(run(t1, d1, None, &good, &v), usage);
+    assert_eq!(
+        refused(&sample_args(t1, d1, None, &[], &state, &v1, &out)),
+        usage
+    );
     // Period 0 is not the period before period 2.
-    assert_eq!(run(t2, d2, Some((t0, d0)), &good, &v), usage);
+    assert_eq!(
+        refused(&sample_args(t2, d2, Some((t0, d0)), &[], &state, &v1, &out)),
+        usage
+    );
     // Period 0's log under period 1's manifest.
     assert_eq!(
-        run(t1, d0, Some((t0, d0)), &good, &v),
+        refused(&sample_args(t1, d0, Some((t0, d0)), &[], &state, &v1, &out)),
         (65, "ERR-CODEC-DIGEST".to_owned())
     );
-    // A share that does not open the commitment.
+    // A reveal that does not open the recorded commitment.
+    let cointoss = (20, "ERR-PROTO-COINTOSS".to_owned());
+    let wrong = hex(&[0x0e; 32]);
     assert_eq!(
-        run(t1, d1, Some((t0, d0)), &good, &wrong),
-        (20, "ERR-PROTO-COINTOSS".to_owned())
+        refused(&sample_args(
+            t1,
+            d1,
+            Some((t0, d0)),
+            &[],
+            &state,
+            &wrong,
+            &out
+        )),
+        cointoss
     );
-    // Policy files the reader refuses.
+    // The shares of another manifest's toss: the verifier knows `s_V` for period 0's commitment,
+    // and reveals it for period 1, whose record holds another commitment.
+    ok(&share_args(t0, &good, &c0, &state));
+    assert_eq!(
+        refused(&sample_args(t1, d1, Some((t0, d0)), &[], &state, &v0, &out)),
+        cointoss
+    );
+    // A manifest the prover answered no commitment for, and a record of another manifest kept
+    // under its name.
+    assert_eq!(
+        refused(&sample_args(t2, d2, Some((t1, d1)), &[], &state, &v1, &out)),
+        usage
+    );
+    let elsewhere = dir.join("elsewhere");
+    fs::create_dir_all(&elsewhere).expect("a state");
+    let name = |p: &Period| format!("{}.share", hex(&p.manifest.identity()));
+    fs::copy(
+        state.join(name(&periods[0].2)),
+        elsewhere.join(name(&periods[1].2)),
+    )
+    .expect("a copied record");
+    assert_eq!(
+        refused(&sample_args(
+            t1,
+            d1,
+            Some((t0, d0)),
+            &[],
+            &elsewhere,
+            &v0,
+            &out
+        )),
+        usage
+    );
+    // Policy files the reader refuses, and no record kept for them.
     for (name, text) in [
-        ("unknown-key", POLICY.replace("\"period_ns\"", "\"period\"")),
+        (
+            "unknown-key",
+            POLICY.replace("\"params\"", "\"extra\": 1, \"params\""),
+        ),
+        ("missing-key", POLICY.replace("\"period_ns\"", "\"period\"")),
         (
             "rate-form",
             POLICY.replace("\"0.5\"", "\"0.50000000000000000000\""),
@@ -377,106 +428,24 @@ fn inputs_that_cannot_give_the_sample_are_refused_with_their_code() {
     ] {
         let path = dir.join(format!("{name}.json"));
         fs::write(&path, text).expect("a policy");
-        assert_eq!(run(t1, d1, Some((t0, d0)), &path, &v), usage, "{name}");
+        assert_eq!(
+            refused(&share_args(t2, &path, &c1, &state)),
+            usage,
+            "{name}"
+        );
     }
+    assert!(
+        fs::read_dir(&state).expect("the state").count() == 2,
+        "only the two answers made are kept"
+    );
     assert!(!out.exists(), "a refused run writes no sample");
     let _ = fs::remove_dir_all(&dir);
 }
 
-#[test]
-fn a_zero_length_period_between_passes_through_and_nothing_else_does() {
-    use tessera_anchor::ManifestBody;
-    let dir = scratch("between");
-    let periods = three_periods(&dir);
-    let seed = Secret::new(HeapKey::from_box(Box::new([0x51; 32])));
-    let (t0, d0, p0) = &periods[0];
-    let (_, d1, p1) = &periods[1];
-    // A zero-length period after period 0, then period 1 re-signed to follow it: its entries,
-    // `first_seq` and start are unchanged, since the zero-length period holds no entry.
-    let zero = ManifestBody {
-        period_start_ns: p0.manifest.body.period_end_ns,
-        first_seq: p1.manifest.body.first_seq,
-        entry_count: 0,
-        entries_root: tessera_anchor::merkle::root(&[]),
-        prev_manifest: p0.manifest.identity(),
-        ..p0.manifest.body
-    }
-    .sign(&seed)
-    .expect("the zero-length period");
-    let after = ManifestBody {
-        prev_manifest: zero.identity(),
-        ..p1.manifest.body
-    }
-    .sign(&seed)
-    .expect("period 1 after it");
-    let zero_tlm = dir.join("zero.tlm");
-    let after_tlm = dir.join("after.tlm");
-    fs::write(&zero_tlm, envelope::seal(&schema::LOG_MANIFEST, &zero)).expect("written");
-    fs::write(&after_tlm, envelope::seal(&schema::LOG_MANIFEST, &after)).expect("written");
-    let policy = dir.join("policy.json");
-    fs::write(&policy, POLICY).expect("the policy");
-    let verifier_share = [0x0f; 32];
-    let (c, p, v) = (
-        hex(&coin_commitment(&verifier_share)),
-        hex(&[0xf0; 32]),
-        hex(&verifier_share),
-    );
-    let out = dir.join("sample.tas");
-    let run = |between: &Path| {
-        let args: Vec<&std::ffi::OsStr> = vec![
-            "audit".as_ref(),
-            "sample".as_ref(),
-            "--manifest".as_ref(),
-            after_tlm.as_os_str(),
-            "--log".as_ref(),
-            d1.as_os_str(),
-            "--previous-manifest".as_ref(),
-            t0.as_os_str(),
-            "--previous-log".as_ref(),
-            d0.as_os_str(),
-            "--between".as_ref(),
-            between.as_os_str(),
-            "--policy".as_ref(),
-            policy.as_os_str(),
-            "--verifier-commitment".as_ref(),
-            c.as_ref(),
-            "--prover-share".as_ref(),
-            p.as_ref(),
-            "--verifier-share".as_ref(),
-            v.as_ref(),
-            "--out".as_ref(),
-            out.as_os_str(),
-        ];
-        args.iter().map(|a| a.to_os_string()).collect::<Vec<_>>()
-    };
-    let args = run(&zero_tlm);
-    let refs: Vec<&std::ffi::OsStr> = args.iter().map(AsRef::as_ref).collect();
-    let output = tessera(&refs);
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let written: AuditSample = envelope::open(
-        &fs::read(&out).expect("the sample"),
-        &schema::AUDIT_SAMPLE,
-        DecodeLimits::MESSAGE,
-    )
-    .expect("an AuditSample envelope");
-    assert_eq!(*written.manifest_digest(), after.identity());
-    assert_eq!(written.selected().len(), 1, "request 2, past every bucket");
-    // A period of non-zero length cannot stand between: period 0 itself, which also breaks the
-    // link.
-    let args = run(t0);
-    let refs: Vec<&std::ffi::OsStr> = args.iter().map(AsRef::as_ref).collect();
-    assert_eq!(refused(&refs), (64, "ERR-USAGE".to_owned()));
-    let _ = fs::remove_dir_all(&dir);
-}
-
 /// Periods of zero length that the chain may hold, and the inputs around them the command must
-/// refuse: a zero-length previous period, one of non-zero length or with entries between, and a
-/// zero-length period to sample. Each would otherwise give another sample than RFC-0063's.
+/// refuse: a zero-length previous period, one of non-zero length or with entries between, a
+/// zero-length period to sample, and a period that is not the log's first given as though it
+/// were. Each would otherwise give another sample than RFC-0063's.
 #[test]
 fn zero_length_periods_are_passed_through_never_sampled_or_drawn_from() {
     use tessera_anchor::{LogManifest, ManifestBody};
@@ -501,209 +470,184 @@ fn zero_length_periods_are_passed_through_never_sampled_or_drawn_from() {
         entry_count: 0,
         entries_root: tessera_anchor::merkle::root(&[]),
         prev_manifest: p0.manifest.identity(),
-        ..base
+        ..base.clone()
     });
     let p1z = sign(ManifestBody {
         prev_manifest: z.identity(),
-        ..p1.manifest.body
+        ..p1.manifest.body.clone()
     });
     // X: an empty period of non-zero length after period 0; P1x: period 1 after it.
     let x = sign(ManifestBody {
         period_end_ns: base.period_end_ns + 5,
-        ..z.body
+        ..z.body.clone()
     });
     let p1x = sign(ManifestBody {
         period_start_ns: x.body.period_end_ns,
         prev_manifest: x.identity(),
-        ..p1.manifest.body
+        ..p1.manifest.body.clone()
     });
     // W: zero length but one entry; P1w: after it, its entries shifted by one.
     let w = sign(ManifestBody {
         entry_count: 1,
-        ..z.body
+        ..z.body.clone()
     });
     let p1w = sign(ManifestBody {
         first_seq: p1.manifest.body.first_seq + 1,
         prev_manifest: w.identity(),
-        ..p1.manifest.body
+        ..p1.manifest.body.clone()
     });
-    let (z_tlm, p1z_tlm) = (write("z.tlm", &z), write("p1z.tlm", &p1z));
-    let (x_tlm, p1x_tlm) = (write("x.tlm", &x), write("p1x.tlm", &p1x));
-    let (w_tlm, p1w_tlm) = (write("w.tlm", &w), write("p1w.tlm", &p1w));
-    let policy = dir.join("policy.json");
-    fs::write(&policy, POLICY).expect("the policy");
-    let verifier_share = [0x0f; 32];
-    let (c, p, v) = (
-        hex(&coin_commitment(&verifier_share)),
-        hex(&[0xf0; 32]),
-        hex(&verifier_share),
-    );
-    let out = dir.join("sample.tas");
-    let run = |manifest: &Path, log: &Path, previous: Option<(&Path, &Path)>, between: &[&Path]| {
-        let mut args: Vec<std::ffi::OsString> = [
-            "audit".into(),
-            "sample".into(),
-            "--manifest".into(),
-            manifest.as_os_str().to_owned(),
-            "--log".into(),
-            log.as_os_str().to_owned(),
-            "--policy".into(),
-            policy.as_os_str().to_owned(),
-            "--verifier-commitment".into(),
-            c.clone().into(),
-            "--prover-share".into(),
-            p.clone().into(),
-            "--verifier-share".into(),
-            v.clone().into(),
-            "--out".into(),
-            out.as_os_str().to_owned(),
-        ]
-        .into();
-        if let Some((m, l)) = previous {
-            args.extend([
-                "--previous-manifest".into(),
-                m.as_os_str().to_owned(),
-                "--previous-log".into(),
-                l.as_os_str().to_owned(),
-            ]);
-        }
-        for b in between {
-            args.extend(["--between".into(), b.as_os_str().to_owned()]);
-        }
-        let refs: Vec<&std::ffi::OsStr> = args.iter().map(AsRef::as_ref).collect();
-        let output = tessera(&refs);
-        let status = output.status.code().expect("an exit status");
-        if status == 0 {
-            return (0, String::new());
-        }
-        refused(&refs)
-    };
-    let usage = (64, "ERR-USAGE".to_owned());
-    // Through Z, period 1 draws from period 0.
-    assert_eq!(run(&p1z_tlm, d1, Some((t0, d0)), &[&z_tlm]).0, 0);
-    // Z as the previous period: it has no log to draw from, and period 0's unterminated request
-    // would escape.
-    assert_eq!(run(&p1z_tlm, d1, Some((&z_tlm, &empty_log)), &[]), usage);
-    // Z itself: no candidates, so no sample.
-    assert_eq!(run(&z_tlm, &empty_log, Some((t0, d0)), &[]), usage);
-    // X between, which links but has length: period 0 is not the previous period.
-    assert_eq!(run(&p1x_tlm, d1, Some((t0, d0)), &[&x_tlm]), usage);
-    // W between, of zero length but with an entry.
-    assert_eq!(run(&p1w_tlm, d1, Some((t0, d0)), &[&w_tlm]), usage);
-    // A period that names no previous manifest but does not start at `seq` 0 is not the log's
-    // first: it needs its previous period.
+    // Late: names no previous manifest but does not start at `seq` 0.
     let late = sign(ManifestBody {
         first_seq: 5,
         entry_count: 0,
         entries_root: tessera_anchor::merkle::root(&[]),
         ..base.clone()
     });
+    let (z_tlm, p1z_tlm) = (write("z.tlm", &z), write("p1z.tlm", &p1z));
+    let (x_tlm, p1x_tlm) = (write("x.tlm", &x), write("p1x.tlm", &p1x));
+    let (w_tlm, p1w_tlm) = (write("w.tlm", &w), write("p1w.tlm", &p1w));
     let late_tlm = write("late.tlm", &late);
-    assert_eq!(run(&late_tlm, &empty_log, None, &[]), usage);
+    let policy = dir.join("policy.json");
+    fs::write(&policy, POLICY).expect("the policy");
+    let state = dir.join("state");
+    let out = dir.join("sample.tas");
+    let verifier_share = [0x0f; 32];
+    let (c, v) = (hex(&coin_commitment(&verifier_share)), hex(&verifier_share));
+    for manifest in [&p1z_tlm, &p1x_tlm, &p1w_tlm, &z_tlm, &late_tlm] {
+        ok(&share_args(manifest, &policy, &c, &state));
+    }
+    let usage = (64, "ERR-USAGE".to_owned());
+    // Through Z, period 1 draws from period 0.
+    ok(&sample_args(
+        &p1z_tlm,
+        d1,
+        Some((t0, d0)),
+        &[&z_tlm],
+        &state,
+        &v,
+        &out,
+    ));
+    assert_eq!(*read_sample(&out).manifest_digest(), p1z.identity());
+    assert_eq!(
+        read_sample(&out).selected().len(),
+        1,
+        "request 2, past every bucket"
+    );
+    // Z as the previous period: it has no log to draw from, and period 0's unterminated request
+    // would escape.
+    assert_eq!(
+        refused(&sample_args(
+            &p1z_tlm,
+            d1,
+            Some((&z_tlm, &empty_log)),
+            &[],
+            &state,
+            &v,
+            &out
+        )),
+        usage
+    );
+    // Z itself: no candidates, so no sample.
+    assert_eq!(
+        refused(&sample_args(
+            &z_tlm,
+            &empty_log,
+            Some((t0, d0)),
+            &[],
+            &state,
+            &v,
+            &out
+        )),
+        usage
+    );
+    // X between, which links but has length: period 0 is not the previous period.
+    assert_eq!(
+        refused(&sample_args(
+            &p1x_tlm,
+            d1,
+            Some((t0, d0)),
+            &[&x_tlm],
+            &state,
+            &v,
+            &out
+        )),
+        usage
+    );
+    // W between, of zero length but with an entry.
+    assert_eq!(
+        refused(&sample_args(
+            &p1w_tlm,
+            d1,
+            Some((t0, d0)),
+            &[&w_tlm],
+            &state,
+            &v,
+            &out
+        )),
+        usage
+    );
+    // Late, given as though it were the log's first.
+    assert_eq!(
+        refused(&sample_args(
+            &late_tlm,
+            &empty_log,
+            None,
+            &[],
+            &state,
+            &v,
+            &out
+        )),
+        usage
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
-fn the_prover_answers_one_commitment_per_manifest_and_the_sample_follows() {
+fn the_prover_answers_one_commitment_and_policy_per_manifest() {
     let dir = scratch("share");
     let periods = three_periods(&dir);
-    let (t0, d0, _) = &periods[0];
-    let (t1, d1, p1) = &periods[1];
-    let state = dir.join("state");
-    let verifier_share = [0x2d; 32];
-    let c = hex(&coin_commitment(&verifier_share));
-    let other = hex(&coin_commitment(&[0x2e; 32]));
-    let share = |manifest: &Path, commitment: &str| {
-        tessera(&[
-            "audit".as_ref(),
-            "share".as_ref(),
-            "--manifest".as_ref(),
-            manifest.as_os_str(),
-            "--commitment".as_ref(),
-            commitment.as_ref(),
-            "--state".as_ref(),
-            state.as_os_str(),
-        ])
-    };
-    let first = share(t1, &c);
-    assert_eq!(
-        first.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&first.stderr)
-    );
-    let s_p = String::from_utf8(first.stdout)
-        .expect("UTF-8")
-        .trim()
-        .to_owned();
-    assert_eq!(s_p.len(), 64);
-    // Kept before it was printed, as 96 bytes under the manifest's digest.
-    let record = state.join(format!("{}.share", hex(&p1.manifest.identity())));
-    assert_eq!(fs::read(&record).expect("the record").len(), 96);
-    // The same commitment again: the same share.
-    let again = share(t1, &c);
-    assert_eq!(String::from_utf8(again.stdout).expect("UTF-8").trim(), s_p);
-    // Another commitment for the manifest: refused, and the record is unchanged.
-    let kept = fs::read(&record).expect("the record");
-    let (status, code) = refused(&[
-        "audit".as_ref(),
-        "share".as_ref(),
-        "--manifest".as_ref(),
-        t1.as_os_str(),
-        "--commitment".as_ref(),
-        other.as_ref(),
-        "--state".as_ref(),
-        state.as_os_str(),
-    ]);
-    assert_eq!((status, code.as_str()), (20, "ERR-PROTO-ORDER"));
-    assert_eq!(fs::read(&record).expect("the record"), kept);
-    // Another manifest has its own toss.
-    let elsewhere = share(t0, &other);
-    assert_eq!(elsewhere.status.code(), Some(0));
-    assert_ne!(
-        String::from_utf8(elsewhere.stdout).expect("UTF-8").trim(),
-        s_p
-    );
-
-    // The verifier reveals; the sample is drawn from the three values.
+    let (t0, _, _) = &periods[0];
+    let (t1, _, p1) = &periods[1];
     let policy = dir.join("policy.json");
     fs::write(&policy, POLICY).expect("the policy");
-    let out = dir.join("sample.tas");
-    let v = hex(&verifier_share);
-    let output = tessera(&[
-        "audit".as_ref(),
-        "sample".as_ref(),
-        "--manifest".as_ref(),
-        t1.as_os_str(),
-        "--log".as_ref(),
-        d1.as_os_str(),
-        "--previous-manifest".as_ref(),
-        t0.as_os_str(),
-        "--previous-log".as_ref(),
-        d0.as_os_str(),
-        "--policy".as_ref(),
-        policy.as_os_str(),
-        "--verifier-commitment".as_ref(),
-        c.as_ref(),
-        "--prover-share".as_ref(),
-        s_p.as_ref(),
-        "--verifier-share".as_ref(),
-        v.as_ref(),
-        "--out".as_ref(),
-        out.as_os_str(),
-    ]);
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let written: AuditSample = envelope::open(
-        &fs::read(&out).expect("the sample"),
-        &schema::AUDIT_SAMPLE,
-        DecodeLimits::MESSAGE,
-    )
-    .expect("an AuditSample envelope");
-    assert_eq!(hex(&written.coin_toss().prover_share), s_p);
+    let other_policy = dir.join("other.json");
+    fs::write(&other_policy, POLICY.replace("\"0.5\"", "\"0.25\"")).expect("a policy");
+    let state = dir.join("state");
+    let c = hex(&coin_commitment(&[0x2d; 32]));
+    let other = hex(&coin_commitment(&[0x2e; 32]));
+    let s_p = ok(&share_args(t1, &policy, &c, &state));
+    assert_eq!(s_p.len(), 64);
+    // Kept before it was printed, under the manifest's digest, with the policy.
+    let kept = record(&state, p1);
+    assert_eq!(hex(&kept.prover_share), s_p);
+    assert_eq!(hex(&kept.verifier_commitment), c);
+    let path = state.join(format!("{}.share", hex(&p1.manifest.identity())));
+    let bytes = fs::read(&path).expect("the record");
+    // The same commitment and policy again: the same share; with --json, one object.
+    assert_eq!(ok(&share_args(t1, &policy, &c, &state)), s_p);
+    let mut json = share_args(t1, &policy, &c, &state);
+    json.push("--json".into());
+    let object: Value = serde_json::from_str(&ok(&json)).expect("JSON");
+    assert_eq!(object["command"], "audit share");
+    assert_eq!(object["prover_share"], s_p.as_str());
+    assert_eq!(object["verifier_commitment"], c.as_str());
+    // Another commitment, or another policy: refused, and the record is unchanged.
+    let order = (20, "ERR-PROTO-ORDER".to_owned());
+    assert_eq!(refused(&share_args(t1, &policy, &other, &state)), order);
+    assert_eq!(refused(&share_args(t1, &other_policy, &c, &state)), order);
+    assert_eq!(fs::read(&path).expect("the record"), bytes);
+    // No temporary file is left behind.
+    let names: Vec<String> = fs::read_dir(&state)
+        .expect("the state")
+        .map(|e| {
+            e.expect("an entry")
+                .file_name()
+                .into_string()
+                .expect("a name")
+        })
+        .collect();
+    assert_eq!(names.len(), 1, "{names:?}");
+    // Another manifest has its own toss.
+    assert_ne!(ok(&share_args(t0, &policy, &other, &state)), s_p);
     let _ = fs::remove_dir_all(&dir);
 }

@@ -14,21 +14,23 @@
 //!    log'). Without a previous period, the chain must start at the log's genesis: no previous
 //!    manifest, `first_seq` 0. Anything else is `ERR-USAGE`: the previous log given is not the
 //!    period's, or the period has no candidates.
-//! 3. **The policy** is a `tessera.audit-policy/1` file, read strictly, each rate a decimal
-//!    (`tessera_protocol::RateBucket::threshold_of`).
-//! 4. **The coin toss.** `--verifier-commitment`, `--prover-share` and `--verifier-share` are its
-//!    three values, which the exchange of RFC-0016 step 2 gave both parties. A share that does
-//!    not open the commitment is `ERR-PROTO-COINTOSS`.
+//! 3. **The record.** `--state` holds the answer `tessera audit share` kept for the manifest: the
+//!    policy, the verifier's commitment and the prover's share. The sample is drawn from that
+//!    record and `--verifier-share` alone, so no other toss's shares, and no other policy, can be
+//!    presented for the manifest. A manifest with no record is `ERR-USAGE`.
+//! 4. **The reveal.** A `--verifier-share` that does not open the recorded commitment is
+//!    `ERR-PROTO-COINTOSS`.
 //! 5. **The sample**, drawn among the period's candidates (`tessera_anchor::candidates`), is
 //!    written to `--out` as an `AuditSample` envelope, through a temporary file renamed into
 //!    place.
 //!
-//! The command checks no recorder signature: the verifier does, before it derives the same
-//! sample (RFC-0062 'The check'). Everything it reads and writes is public (03 §5).
+//! Neither command checks a recorder signature: the verifier does, before it derives the same
+//! sample (RFC-0062 'The check'). Everything they read and write is public (03 §5).
 
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value};
 use tessera_anchor::recorder::decode_log;
@@ -36,9 +38,7 @@ use tessera_anchor::{LogManifest, VerifiedLog, candidates};
 use tessera_codec::error::{ErrorCode, TesseraError};
 use tessera_codec::{Ascii, DecodeLimits, Public, decode, encode, envelope, schema};
 use tessera_hash::ParamSetId;
-use tessera_protocol::{
-    AuditPolicy, AuditSample, CoinTossTranscript, RateBucket, RequestKey, ShareRecord,
-};
+use tessera_protocol::{AuditPolicy, RateBucket, RequestKey, ShareRecord};
 
 use crate::{Input, io_error, write_bytes_atomically};
 
@@ -52,9 +52,7 @@ pub(crate) struct SampleOptions<'a> {
     pub(crate) previous_manifest: Option<&'a Path>,
     pub(crate) previous_log: Option<&'a Path>,
     pub(crate) between: &'a [PathBuf],
-    pub(crate) policy: &'a Path,
-    pub(crate) verifier_commitment: [u8; 32],
-    pub(crate) prover_share: [u8; 32],
+    pub(crate) state: &'a Path,
     pub(crate) verifier_share: [u8; 32],
     pub(crate) out: &'a Path,
 }
@@ -231,30 +229,35 @@ pub(crate) fn sample(options: &SampleOptions<'_>) -> Result<(), TesseraError> {
         }
     };
     let log = verified(&current, options.log)?;
-    let policy = read_policy(options.policy)?;
-    let coin_toss = CoinTossTranscript {
-        verifier_commitment: options.verifier_commitment,
-        prover_share: options.prover_share,
-        verifier_share: options.verifier_share,
-    };
+    let digest = current.identity();
+    let path = record_path(options.state, &digest);
+    let record = kept(&path)?
+        .filter(|r| r.manifest_digest == digest)
+        .ok_or_else(|| {
+            usage(format!(
+                "{} holds no answer for this manifest: run tessera audit share first",
+                options.state.display()
+            ))
+        })?;
     let found = candidates(previous_log.as_ref(), &log);
-    let sample = AuditSample::draw(
-        current.identity(),
-        policy,
-        coin_toss,
-        found.iter().map(|c| {
-            (
-                RequestKey {
-                    session_id: c.session_id,
-                    request_id: c.request_id,
-                },
-                c.tokens,
+    let sample = record
+        .draw(
+            options.verifier_share,
+            found.iter().map(|c| {
+                (
+                    RequestKey {
+                        session_id: c.session_id,
+                        request_id: c.request_id,
+                    },
+                    c.tokens,
+                )
+            }),
+        )
+        .map_err(|e| {
+            TesseraError::new(e.code()).with_source(
+                "the verifier's share does not open the commitment the prover answered",
             )
-        }),
-    )
-    .map_err(|e| {
-        TesseraError::new(e.code()).with_source("the verifier's share does not open its commitment")
-    })?;
+        })?;
     write_bytes_atomically(options.out, &envelope::seal(&schema::AUDIT_SAMPLE, &sample))?;
     tessera_codec::event!(
         INFO,
@@ -270,8 +273,14 @@ pub(crate) fn sample(options: &SampleOptions<'_>) -> Result<(), TesseraError> {
 /// The flags of `tessera audit share`.
 pub(crate) struct ShareOptions<'a> {
     pub(crate) manifest: &'a Path,
+    pub(crate) policy: &'a Path,
     pub(crate) commitment: [u8; 32],
     pub(crate) state: &'a Path,
+}
+
+/// Where the prover keeps its answer for a manifest: `<state>/<manifest digest>.share`.
+fn record_path(state: &Path, manifest_digest: &[u8; 32]) -> PathBuf {
+    state.join(format!("{}.share", hex(manifest_digest)))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -293,59 +302,72 @@ fn kept(path: &Path) -> Result<Option<ShareRecord>, TesseraError> {
 }
 
 /// Runs `tessera audit share`: the prover's answer to a verifier's commitment over a manifest
-/// (RFC-0016 'Sample derivation', step 2), one commitment per manifest.
+/// (RFC-0016 'Sample derivation', step 2), one commitment and one policy per manifest.
 ///
-/// - **The record.** The answer is kept in `<state>/<manifest digest>.share`, the 96 bytes of
-///   `TCE(ShareRecord)`, before the share is printed. Every responder for one prover must share
-///   the directory.
-/// - **One answer.** A first commitment gets a fresh share. The same commitment again gets the
-///   same share, for a verifier that lost it. Any other commitment is refused with
-///   `ERR-PROTO-ORDER`.
-/// - **Racing responders.** The record is written under a temporary name and linked into place,
-///   which fails if a record is already there. A responder that loses the race answers from the
-///   record that won.
+/// - **The record.** The answer is kept in `<state>/<manifest digest>.share`, `TCE(ShareRecord)`,
+///   before the share is printed: the manifest, the policy (`--policy`, a
+///   `tessera.audit-policy/1` file), the commitment and the share. Every responder for one prover
+///   must share the directory.
+/// - **One answer.** A first commitment gets a fresh share. The same commitment and policy again
+///   get the same share, for a verifier that lost it. Any other commitment or policy is refused
+///   with `ERR-PROTO-ORDER`.
+/// - **One path.** Every call writes a fresh record to a temporary file of its own
+///   (`create_new`), links it into place, which fails if a record is there, and syncs the
+///   directory. It then reads the record kept and answers from it, so a repeated call and a
+///   responder that lost a race take the same path.
 ///
 /// It prints the share as 64 hexadecimal digits, or with `json` a JSON object. The share is
 /// public once sent.
 pub(crate) fn share(options: &ShareOptions<'_>, json: bool) -> Result<(), TesseraError> {
     let manifest_digest = manifest(options.manifest)?.identity();
+    let policy = read_policy(options.policy)?;
     let state = options.state;
     fs::create_dir_all(state).map_err(io_error(format!("cannot create {}", state.display())))?;
-    let path = state.join(format!("{}.share", hex(&manifest_digest)));
+    let path = record_path(state, &manifest_digest);
+    let shown = path.display().to_string();
     let protocol =
         |e: tessera_protocol::ProtocolError| TesseraError::new(e.code()).with_source(e.to_string());
-    let record = match kept(&path)? {
-        Some(record) => ShareRecord::answer(Some(&record), manifest_digest, options.commitment)
-            .map_err(protocol)?,
-        None => {
-            let record =
-                ShareRecord::answer(None, manifest_digest, options.commitment).map_err(protocol)?;
-            let mut tmp = path.as_os_str().to_owned();
-            tmp.push(format!(".tmp-{}", std::process::id()));
-            let tmp = PathBuf::from(tmp);
-            let shown = path.display().to_string();
-            let mut file =
-                fs::File::create(&tmp).map_err(io_error(format!("cannot write {shown}")))?;
-            file.write_all(&encode(&record))
-                .and_then(|()| file.sync_all())
-                .map_err(io_error(format!("cannot write {shown}")))?;
-            drop(file);
-            let linked = fs::hard_link(&tmp, &path);
-            let _ = fs::remove_file(&tmp);
-            match linked {
-                Ok(()) => record,
-                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-                    let won = kept(&path)?.ok_or_else(|| {
-                        TesseraError::new(ErrorCode::ResIo)
-                            .with_source(format!("{shown} vanished as it was written"))
-                    })?;
-                    ShareRecord::answer(Some(&won), manifest_digest, options.commitment)
-                        .map_err(protocol)?
-                }
-                Err(e) => return Err(io_error(format!("cannot write {shown}"))(e)),
-            }
-        }
-    };
+    // A fresh record, under a temporary name no other responder uses: `create_new` refuses a
+    // file that is there, and the name carries the process, the time and part of the share.
+    let fresh = ShareRecord::answer(None, manifest_digest, &policy, options.commitment)
+        .map_err(protocol)?;
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(format!(
+        ".tmp-{}-{nanos}-{}",
+        std::process::id(),
+        hex(&fresh.prover_share[..8])
+    ));
+    let tmp = PathBuf::from(tmp);
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .map_err(io_error(format!("cannot write {shown}")))?;
+    file.write_all(&encode(&fresh))
+        .and_then(|()| file.sync_all())
+        .map_err(io_error(format!("cannot write {shown}")))?;
+    drop(file);
+    // Linked into place, which fails if a record is there; then the directory is synced, so the
+    // link outlives a crash before the share is printed.
+    let linked = fs::hard_link(&tmp, &path);
+    let _ = fs::remove_file(&tmp);
+    match linked {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(io_error(format!("cannot write {shown}"))(e)),
+    }
+    fs::File::open(state)
+        .and_then(|dir| dir.sync_all())
+        .map_err(io_error(format!("cannot sync {}", state.display())))?;
+    // The answer comes from the record as kept, whichever responder kept it.
+    let kept = kept(&path)?.ok_or_else(|| {
+        TesseraError::new(ErrorCode::ResIo).with_source(format!("{shown} vanished"))
+    })?;
+    let record = ShareRecord::answer(Some(&kept), manifest_digest, &policy, options.commitment)
+        .map_err(protocol)?;
     let share = hex(&record.prover_share);
     let shown = match json {
         true => {
