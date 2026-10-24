@@ -54,7 +54,6 @@ fn nested<'a>(c: &mut Cursor<'a>, levels: usize) -> Result<Node<'a>, DecodeError
     }
 }
 
-#[test]
 fn memory_follows_what_is_decoded_not_what_is_declared() {
     // A 2^63 length with 16 bytes left, and maps of u64::MAX entries: rejected before any
     // allocation (RFC-0003 'Testing Strategy', hostile lengths).
@@ -125,4 +124,11 @@ fn memory_follows_what_is_decoded_not_what_is_declared() {
     assert!(!error.code().is_input_fault());
     let (enough, _) = within(8 << 20, read);
     assert_eq!(enough, Ok(count as usize));
+}
+
+/// Runs on the process's only thread (`harness = false`): libtest would keep a thread of its own,
+/// whose allocations the process-wide cap counts against this test's budget (#501).
+fn main() {
+    memory_follows_what_is_decoded_not_what_is_declared();
+    println!("memory_follows_what_is_decoded_not_what_is_declared: ok");
 }

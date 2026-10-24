@@ -245,6 +245,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Changed
 
+- The fuzz crate's nine memory-capping tests run as `harness = false` targets, each from its own `main` on the process's only thread ([#501](https://github.com/AbdelStark/tessera/issues/501)). The `cap` allocator counts every thread's allocations. libtest's harness thread allocates a channel context the first time it blocks, and if that fell inside a test's capped window, the process aborted: `protocol_allocation` failed so on #500's CI with "memory allocation of 148 bytes failed". The tests themselves are unchanged.
+
 - `tv-core`'s rustdoc builds with `RUSTDOCFLAGS=-D warnings` again ([#492](https://github.com/AbdelStark/tessera/issues/492)). The `runtime` module's documentation no longer links the private `levels`, and `leaf::grouped`'s no longer gives `Bound` a redundant explicit link target. Documentation only: no code changes.
 
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

@@ -35,7 +35,6 @@ fn product(_: usize, _: &[Fp2], evals: &[Fp2]) -> Option<Fp2> {
 /// A million values: far more than any honest message.
 const HOSTILE: usize = 1 << 20;
 
-#[test]
 fn hostile_proofs_allocate_no_more_than_honest_ones() {
     // A stage of degree 3: instances on 6, 2 and 0 variables, of 2, 3 and 1 tables.
     let Case::Stage(stage) = case(&[0, 2, 2, 6, 1, 2, 2, 0, 0, 5, 1, 2, 3, 4, 5, 6, 7, 8]) else {
@@ -133,4 +132,11 @@ fn hostile_proofs_allocate_no_more_than_honest_ones() {
         bytes <= honest,
         "{bytes} bytes, {honest} for the honest level"
     );
+}
+
+/// Runs on the process's only thread (`harness = false`): libtest would keep a thread of its own,
+/// whose allocations the process-wide cap counts against this test's budget (#501).
+fn main() {
+    hostile_proofs_allocate_no_more_than_honest_ones();
+    println!("hostile_proofs_allocate_no_more_than_honest_ones: ok");
 }

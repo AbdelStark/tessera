@@ -71,7 +71,6 @@ fn fraction(claim: LevelClaim) -> FractionClaim {
     }
 }
 
-#[test]
 fn hostile_logup_messages_allocate_no_more_than_honest_ones() {
     // Two instances, the second without values, and a forest of 2 trees of height 2.
     let mut rng = SplitMix64::new(0x5eed_f062_0001);
@@ -230,4 +229,11 @@ fn hostile_logup_messages_allocate_no_more_than_honest_ones() {
         bytes <= honest,
         "a million values: {bytes} bytes, {honest} for the honest"
     );
+}
+
+/// Runs on the process's only thread (`harness = false`): libtest would keep a thread of its own,
+/// whose allocations the process-wide cap counts against this test's budget (#501).
+fn main() {
+    hostile_logup_messages_allocate_no_more_than_honest_ones();
+    println!("hostile_logup_messages_allocate_no_more_than_honest_ones: ok");
 }

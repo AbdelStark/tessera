@@ -63,7 +63,6 @@ fn base() -> ClaimList {
     }
     c
 }
-#[test]
 fn million_element_gadget_inputs_reject_without_proof_sized_allocations() {
     let c = base();
     let public = validation::check_public(&c).unwrap();
@@ -226,4 +225,11 @@ fn million_element_gadget_inputs_reject_without_proof_sized_allocations() {
         ALLOCATOR.set_limit(usize::MAX).unwrap();
         assert_eq!(result, Err(GadgetError::Memory), "spare={spare}");
     }
+}
+
+/// Runs on the process's only thread (`harness = false`): libtest would keep a thread of its own,
+/// whose allocations the process-wide cap counts against this test's budget (#501).
+fn main() {
+    million_element_gadget_inputs_reject_without_proof_sized_allocations();
+    println!("million_element_gadget_inputs_reject_without_proof_sized_allocations: ok");
 }
