@@ -6,6 +6,19 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The CPU backend proves a grouped stage's merge in two passes (RFC-0054 'The prover in two passes', [#134](https://github.com/AbdelStark/tessera/issues/134)):
+  - **`MergeTables`** (`tessera-sumcheck`). It now keeps a group's tables from that group's claims and `γ_h` alone, at the end of its pass, before `β` exists: `MergeTables::new(polynomials, groups, j*)` and `add_group(h, claims, γ_h, block)`. It checks those claims as `Merge::new` does. `prove_merge_two_pass` refuses tables kept with another `γ_h` or claim count. `largest_table_rounds` gives the most rounds tables can answer.
+  - **`prove_grouped_leaf`** takes a `MergeMode`:
+    - `InMemory`, every polynomial at once;
+    - `TwoPass { j_star }`: each group's pass cuts its blocks from what the witness lends and keeps its tables, and P2b regenerates every polynomial once after the tables' rounds.
+  - **The backend.** It runs `TwoPass` at `balanced_j_star`, the `j*` that balances the tables against the folded state. The polynomials are no longer copied up front.
+  - **RFC-0054.** Its Testing Strategy now gives the boundaries the two passes can reach, and its 'Memory' paragraph gives the reference's `j*`.
+  - **Tests.**
+    - **Equivalence.** On a three-layer model, under four groupings, the two passes at every `j*` from 0 to the largest that fits, and at the balanced `j*`, send the in-memory merge's messages and leave its merged claims.
+    - **Acceptance.** `tv-core` accepts the two-pass proofs.
+    - **Determinism.** Two forced-budget proofs with one seed are byte-identical.
+    - **Pass counters.** A dedicated `tessera-e2e` binary counts one P2 and no P2b for a stage that fits, and one of each for a grouped one.
+
 - The CPU backend proves a grouped leaf stage when the memory budget calls for one ([#134](https://github.com/AbdelStark/tessera/issues/134)):
   - **The planner.** `PassPlan` takes token groups when the stage in one batch exceeds `memory_budget`: the fewest group bits whose largest group's lookup trees fit, with the merge's pass, P2b, after P2 (`PassPlan::leaf_groups`).
     - **The split.** Layers first, keeping at least 256 tokens per group; token bits only past the layer index's.

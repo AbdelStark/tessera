@@ -19,8 +19,8 @@ use tessera_codec::Secret;
 use tessera_field::{Field, PrimeField};
 use tessera_poly::evaluate_base;
 use tessera_sumcheck::{
-    Merge, MergeClaim, MergePolynomial, MergeTables, SumcheckError, prove_merge,
-    prove_merge_two_pass,
+    Merge, MergeClaim, MergePolynomial, MergeTables, SumcheckError, largest_table_rounds,
+    prove_merge, prove_merge_two_pass,
 };
 use tv_hash::transcript::Ascii;
 
@@ -311,15 +311,12 @@ fn the_two_pass_merge_sends_the_in_memory_merges_messages() {
         let tables: Vec<&Secret<Vec<Fp>>> = polys.iter().map(|p| &p.table).collect();
         let expected = prove_merge(&mut session.transcript(), &merge, &tables).expect("a proof");
         // The largest j* that fits: no polynomial's free variables end before it.
-        let n_max = merge.rounds();
-        let largest = polys
-            .iter()
-            .map(|p| n_max - p.shape.vars + p.shape.free_vars())
-            .min()
-            .expect("polynomials");
+        let largest = largest_table_rounds(merge.polynomials());
         assert!(largest >= 2, "the fixture reaches into its own rounds");
         for j_star in 0..=largest {
-            let mut kept = MergeTables::new(&merge, j_star).expect("tables");
+            // Each group's tables from its own claims and γ_h alone, before β exists.
+            let mut kept = MergeTables::new(merge.polynomials(), merge.claims().len(), j_star)
+                .expect("tables");
             for h in 0..4 {
                 let blocks: Vec<Vec<(u64, Secret<Vec<Fp>>)>> = polys
                     .iter()
@@ -329,7 +326,7 @@ fn the_two_pass_merge_sends_the_in_memory_merges_messages() {
                             .collect()
                     })
                     .collect();
-                kept.add_group(&merge, h, |i, bits| {
+                kept.add_group(h, &merge.claims()[h], merge.gammas()[h], |i, bits| {
                     blocks[i].iter().find(|(b, _)| *b == bits).map(|(_, t)| t)
                 })
                 .expect("the group's tables");
@@ -420,34 +417,65 @@ fn every_shape_rule_refuses_with_its_own_rule() {
         prove_merge(&mut session.transcript(), &merge, &tables[1..]).map(drop),
         refused("one table per polynomial")
     );
-    let n_max = merge.rounds();
-    let largest = polys
-        .iter()
-        .map(|p| n_max - p.shape.vars + p.shape.free_vars())
-        .min()
-        .expect("polynomials");
+    let largest = largest_table_rounds(merge.polynomials());
+    let groups = merge.claims().len();
     assert_eq!(
-        MergeTables::new(&merge, largest + 1).map(drop),
+        MergeTables::<Fp2>::new(merge.polynomials(), groups, largest + 1).map(drop),
         refused("table rounds end before any polynomial's free variables do")
     );
-    let mut kept = MergeTables::new(&merge, 1).expect("tables");
     assert_eq!(
-        kept.add_group(&merge, 4, |_, _| None),
+        MergeTables::<Fp2>::new(&[], groups, 0).map(drop),
+        refused("a merge has a polynomial")
+    );
+    let mut kept = MergeTables::new(merge.polynomials(), groups, 1).expect("tables");
+    let (claims_0, gamma_0) = (&merge.claims()[0], merge.gammas()[0]);
+    assert_eq!(
+        kept.add_group(4, claims_0, gamma_0, |_, _| None),
         refused("the group is one of the merge's")
     );
     assert_eq!(
-        kept.add_group(&merge, 0, |_, _| None),
+        kept.add_group(0, claims_0, gamma_0, |_, _| None),
         refused("every claim's block is given")
     );
     let wrong = Secret::new(rng.fps(2));
     assert_eq!(
-        kept.add_group(&merge, 0, |_, _| Some(&wrong)),
+        kept.add_group(0, claims_0, gamma_0, |_, _| Some(&wrong)),
         refused("a block has 2^m_i entries")
     );
+    // A group's claims are checked as the merge checks them.
+    let edited = |f: &dyn Fn(&mut MergeClaim<Fp2>)| {
+        let mut claims = claims_0.clone();
+        f(&mut claims[0]);
+        claims
+    };
+    for (claims, rule) in [
+        (
+            edited(&|c| c.polynomial = 5),
+            "a claim is on a polynomial of the merge",
+        ),
+        (
+            edited(&|c| {
+                c.point.pop();
+            }),
+            "a claim's point has one coordinate per free variable",
+        ),
+        (
+            edited(&|c| c.group_bits = 4),
+            "a claim's bits fit its polynomial's group variables",
+        ),
+    ] {
+        assert_eq!(
+            kept.add_group(0, &claims, gamma_0, |_, _| None),
+            refused(rule)
+        );
+    }
     let two_pass = prove_merge_two_pass(&mut session.transcript(), &merge, &kept, |i| {
         Secret::new(polys[i].values.clone())
     });
-    assert_eq!(two_pass.map(drop), refused("every group's tables are kept"));
+    assert_eq!(
+        two_pass.map(drop),
+        refused("every group's tables are kept, for this merge")
+    );
     // A group's tables, kept, cannot be kept again.
     let blocks: Vec<Vec<Secret<Vec<Fp>>>> = polys
         .iter()
@@ -458,10 +486,46 @@ fn every_shape_rule_refuses_with_its_own_rule() {
         })
         .collect();
     let block = |i: usize, bits: u64| blocks[i].get(bits as usize);
-    assert_eq!(kept.add_group(&merge, 0, block), Ok(()));
+    assert_eq!(kept.add_group(0, claims_0, gamma_0, block), Ok(()));
     assert_eq!(
-        kept.add_group(&merge, 0, block),
+        kept.add_group(0, claims_0, gamma_0, block),
         refused("each group's tables are kept once")
+    );
+    // Tables kept for another γ_h, or with other claims, are another merge's.
+    let mut other = MergeTables::new(merge.polynomials(), groups, 1).expect("tables");
+    for h in 0..groups {
+        let gamma = match h {
+            2 => merge.gammas()[h] + Fp2::ONE,
+            _ => merge.gammas()[h],
+        };
+        other
+            .add_group(h, &merge.claims()[h], gamma, block)
+            .expect("the group's tables");
+    }
+    assert_eq!(
+        prove_merge_two_pass(&mut session.transcript(), &merge, &other, |i| {
+            Secret::new(polys[i].values.clone())
+        })
+        .map(drop),
+        refused("every group's tables are kept, for this merge")
+    );
+    let mut fewer = MergeTables::new(merge.polynomials(), groups, 1).expect("tables");
+    for h in 0..groups {
+        let claims = &merge.claims()[h];
+        let claims = match h {
+            1 => &claims[..claims.len() - 1],
+            _ => &claims[..],
+        };
+        fewer
+            .add_group(h, claims, merge.gammas()[h], block)
+            .expect("the group's tables");
+    }
+    assert_eq!(
+        prove_merge_two_pass(&mut session.transcript(), &merge, &fewer, |i| {
+            Secret::new(polys[i].values.clone())
+        })
+        .map(drop),
+        refused("every group's tables are kept, for this merge")
     );
 }
 

@@ -371,8 +371,8 @@ pub use matmul::{
     MatMulWeightShape, MatMulWeightTables, Operand, RightLayout,
 };
 pub use merge::{
-    MAX_MERGE_VARS, Merge, MergeClaim, MergePolynomial, MergeTables, prove_merge,
-    prove_merge_two_pass,
+    MAX_MERGE_VARS, Merge, MergeClaim, MergePolynomial, MergeTables, largest_table_rounds,
+    prove_merge, prove_merge_two_pass,
 };
 pub use proof::SumcheckProof;
 pub use prover::{Instance, Prefix, ProvenBatch, Table, TreeScope, prove_batch};
