@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
+- Amended by: [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows) ('InverseCdf's padding zero-check pins its partition `Z` too)
 - Supersedes, on acceptance:
   - [RFC-0009](RFC-0009-gadgets.md) 'RsqrtRow', 'SoftmaxRow' relation 3, 'OneHot' and 'InverseCdf': the row selector `ψ`;
   - [RFC-0017](RFC-0017-scoring.md#in-circuit-scoring-mixture) 'In-circuit scoring', constraints 3 and 4: the row selector `ψ`;
@@ -26,10 +27,10 @@ This RFC keeps padded rows as they are and makes every row relation accept them:
 
 - **The row selector.** `ψ` is 1 on a real row and 0 on a padded one. It is public, and its extension is a product of `LT` predicates.
 - **The relations.** Each relation that a padded row fails multiplies its constants by `ψ`. A padded row is then the relation's instance at zero input, which the padded row's witness satisfies.
-- **Padding zero-checks.** Where that instance leaves a committed value free, a zero-check `(1 − ψ)·w = 0` pins it to 0, so every committed value upstream of the logits keeps exactly one passing witness. The values are `RsqrtRow`'s root, `SoftmaxRow`'s maximum and reciprocal, and `InverseCdf`'s vocabulary maximum.
+- **Padding zero-checks.** Where that instance leaves a committed value free, a zero-check `(1 − ψ)·w = 0` pins it to 0, so every committed value upstream of the logits keeps exactly one passing witness. The values are `RsqrtRow`'s root, `SoftmaxRow`'s maximum and reciprocal, and `InverseCdf`'s vocabulary maximum. [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows) adds `InverseCdf`'s virtual partition `Z`.
 - **Zero-check points.** Each stage draws one point for its `ZeroCheck` instances before `γ`. That also fixes where `OneHot`'s booleanity check takes its point, which no document said.
 
-No commitment or lookup is added, only four small zero-check instances.
+No commitment or lookup is added, only four small zero-check instances, and RFC-0058's fifth.
 
 ## Motivation
 
@@ -84,6 +85,7 @@ No real output reads a padded row:
   - The second comparison becomes `u·Z + ψ ≤ C_≤ · 2^{32}`.
   - On a padded row `e = 0`, `Z = 0` and `C_≤ = C_< = 0`, so both comparisons are `0 ≤ 0`.
   - The certificate's maximum `c` is left free, and the padding zero-check pins it.
+  - [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows) also pins the partition `Z`, so the gadget's witness on a padded row does not depend on the exponentials the certificate gives there.
 - **`Argmax`** needs nothing: on a padded row `h = 0`, so `Σ_v h_v·ℓ_v = m` gives `m = 0`, and every key `g_v` is 0.
 - **Scoring bound (RFC-0017).**
   - Constraint 3 takes `(e_{y_t} + ψ)·2^{I_t}·E2[f_t] ≥ ψ·(Z + V)·2^{16}`, and constraint 4 takes `b_t = ψ·(m_t·c_match + (1 − m_t)·(k + I_t + f_t/2^8))`.
@@ -99,7 +101,7 @@ For each committed value `w` that the relations above leave free on a padded row
 0 = Σ_x eq(z, x) · (1 − ψ(x)) · w̃(x)
 ```
 
-The relation has degree 3, and the verifier evaluates its public factor `1 − ψ̃` at the stage's final point. The instance's claim on `w̃` joins the opening pool. A non-zero `w` on a padded row makes the sum a non-zero multilinear polynomial in `z`, which vanishes with probability at most `n_w/|Fp2|`.
+The relation has degree 3, and the verifier evaluates its public factor `1 − ψ̃` at the stage's final point. The instance's claim on `w̃` joins the opening pool. [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows) adds the same check on `InverseCdf`'s partition `Z`, which is virtual: its claim `Z̃(r′)` is reduced by the partition's contraction `Σ_v C_v·e_v` in the next stage (RFC-0010 'Stages'), not opened. A non-zero `w` on a padded row makes the sum a non-zero multilinear polynomial in `z`, which vanishes with probability at most `n_w/|Fp2|`.
 
 ### Zero-check points
 
@@ -126,7 +128,7 @@ On a real row every relation is unchanged, and so is every lemma. A padded row's
 ## Drawbacks
 
 - Every row relation that a padded row fails names `ψ`, one more public factor for the prover and verifier to evaluate.
-- Four zero-check instances join stage 1.
+- Four zero-check instances join stage 1, and RFC-0058 adds a fifth.
 
 ## Migration / Rollout
 
@@ -135,7 +137,7 @@ v0.3: the gadgets' relations (#119, #122, #123, #126), the stage schedule's zero
 ## Testing Strategy
 
 - **Completeness.** For each row gadget, an instance whose rows include padded ones verifies, with a padded row holding the witness this RFC defines.
-- **Adversarial.** A non-zero `ρ`, `c_q`, `R_q` or `c` on a padded row is rejected by the padding zero-check. A non-zero `h` on a padded row is rejected by `OneHot`, and a non-zero `b_t` by the scoring bound.
+- **Adversarial.** A non-zero `ρ`, `c_q`, `R_q` or `c`, or `InverseCdf`'s `Z` (RFC-0058), on a padded row is rejected by the padding zero-check. A non-zero `h` on a padded row is rejected by `OneHot`, and a non-zero `b_t` by the scoring bound.
 - **End to end.** A sequence whose length is not a power of two proves and verifies, once the CPU prover exists (#133).
 
 ## Open Questions

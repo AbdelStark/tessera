@@ -2,6 +2,7 @@
 
 //! Exact multi-limb reciprocal-square-root brackets (RFC-0009 Lemma 7).
 
+use crate::compare::array_order;
 use crate::{
     Affine, BigIntCompare, Committed, CompareColumn, CompareWitness, GadgetError, Lookup, NonNeg,
     Side, Term,
@@ -230,7 +231,7 @@ impl RsqrtRow {
             let mut c = self.comparisons[idx].constraints::<F>()?;
             // RFC-0050 groups arrays, rather than interleaving digits and carries.
             c.committed
-                .sort_unstable_by_key(|&column| compare_order(column));
+                .sort_unstable_by_key(|&column| array_order(column));
             if c.lookups.iter().any(|lookup| {
                 lookup.key.constant != F::ZERO
                     || !matches!(lookup.key.terms.as_slice(), [(one, column)]
@@ -241,7 +242,7 @@ impl RsqrtRow {
                 });
             }
             c.lookups
-                .sort_unstable_by_key(|lookup| compare_order(lookup.key.terms[0].1));
+                .sort_unstable_by_key(|lookup| array_order(lookup.key.terms[0].1));
             out.committed.extend(
                 c.committed
                     .into_iter()
@@ -503,23 +504,13 @@ impl fmt::Debug for RsqrtWitness {
     }
 }
 
-fn compare_order(column: CompareColumn) -> (u8, usize) {
-    match column {
-        CompareColumn::Digit(side, index) => (2 * u8::from(side == Side::Right), index),
-        CompareColumn::Carry(side, index) => (1 + 2 * u8::from(side == Side::Right), index),
-        CompareColumn::Difference(index) => (4, index),
-        CompareColumn::Borrow(index) => (5, index),
-        CompareColumn::Input(side, index) => (32 + u8::from(side == Side::Right), index),
-    }
-}
-
 fn column_order(column: RsqrtColumn) -> (u8, usize) {
     match column {
         RsqrtColumn::Root => (0, 0),
         RsqrtColumn::InputLimb(index) => (1, usize::from(index)),
         RsqrtColumn::RootLimb(index) => (2, usize::from(index)),
         RsqrtColumn::Compare(bracket, column) => {
-            let (kind, index) = compare_order(column);
+            let (kind, index) = array_order(column);
             (3 + 6 * u8::from(bracket == Bracket::Upper) + kind, index)
         }
     }

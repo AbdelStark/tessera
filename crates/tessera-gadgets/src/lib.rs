@@ -24,6 +24,9 @@
 //! - [`OneHot`] and [`Argmax`]: the token indicator and lowest-index greedy certificate
 //!   (RFC-0009 Lemmas 8–9), with sumcheck relations and a public suffix kernel. Argmax
 //!   borrows the next token's existing indicator (teacher forcing).
+//! - [`InverseCdf`]: the temperature-sampling certificate (RFC-0009 Lemma 10) in RFC-0058's
+//!   columns: three vocabulary contractions, the radix-`2^16` limbs of the draw, the partition
+//!   and the prefix, and two exact comparisons, with a branch-free honest sampler.
 //!
 //! The scalar gadgets (`Requant` and `NonNeg`) give:
 //!
@@ -107,6 +110,7 @@ mod choice;
 mod compare;
 mod constraints;
 mod error;
+mod inverse_cdf;
 mod lookups;
 #[cfg(debug_assertions)]
 pub mod malicious;
@@ -123,6 +127,10 @@ pub use choice::{
 pub use compare::{BigIntCompare, CompareColumn, CompareConstraints, CompareWitness, Side};
 pub use constraints::{Affine, Committed, Constraints, Lookup, Term, Virtual};
 pub use error::{Column, GadgetError};
+pub use inverse_cdf::{
+    CdfColumn, CdfConstraints, CdfEvaluation, CdfRelation, CdfRelations, CdfTerm, CdfWitness, Edge,
+    InverseCdf, SampledRelations,
+};
 pub use lookups::{Group, Lookups, TableColumns};
 pub use non_neg::NonNeg;
 pub use requant::Requant;

@@ -6,6 +6,21 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- `InverseCdf`, the temperature-sampling certificate of RFC-0009 Lemma 10, in `tessera-gadgets`, with RFC-0058 fixing its columns ([#144](https://github.com/AbdelStark/tessera/issues/144)):
+  - **RFC-0058, 'InverseCdf Columns and Comparisons'.**
+    - **Three vocabulary sums.** The partition `Z`, the prefix below the token `B = C_<` and the token's exponential `S = e_ŷ` are contractions over the vocabulary; `C_≤ = B + S` is never committed.
+    - **The limbs.** The draw `u`, `Z` and `B` are decomposed in radix `2^16`, with `k = ⌈W/16⌉` limbs for `W = bit_length(vocab·2^σ)`.
+    - **The comparisons.** `B·2^32 ≤ u·Z` and `u·Z + ψ ≤ (B + S)·2^32` take `k + 2` limbs, with coefficients below `2^33`.
+    - **The order and counts.** It fixes the committed values' order, the range requests' and their exact counts: 79 values and 82 requests per output token at `σ = 32` and Llama 3's vocabulary, against RFC-0009's estimate of about 20 and 30.
+    - **What the gadget proves itself.** Bounded mode's indicator gets OneHot's booleanity, vocabulary and count relations. A padded row's partition gets a zero-check, `(1 − ψ)·Z = 0`, so its limbs stay unique whatever the vocabulary certificate leaves in the exponentials. RFC-0035 lists it.
+    - **A correction.** RFC-0009's partition bound `Z < 2^{σ+18}` becomes `Z ≤ vocab·2^σ`: a vocabulary of `2^18` equal logits reaches `2^{σ+18}`.
+  - **`InverseCdf`.**
+    - **The honest sampler**, `sample`, scans the vocabulary branch-free (INV-ARCH-2) and returns the bounded mode's indicator.
+    - **`witness`** gives the row's values in RFC-0058's order. It refuses a token that is not the inverse-CDF sample of its draw with `InverseCdf::MISMATCH`, exact mode's deviation.
+    - **`constraints`** gives the row's equalities, the padding zero-check among them, and its range requests.
+    - **`evaluate`, `relations` and `suffix_weights`** give the three contractions and the suffix's reduction. `sampled_relations` gives bounded mode's OneHot relations.
+  - **Shared code.** `Argmax` and `InverseCdf` share the suffix weights, and `RsqrtRow` and `InverseCdf` the comparison arrays' order.
+
 - `tessera-scoring`'s reference sampler, which serving engines link or port (RFC-0017 'Sampler PRF', [#136](https://github.com/AbdelStark/tessera/issues/136)):
   - **`Sampler::draw(request_id, t)`.** It returns `u_t`, the low four bytes of AES-128 under the session's `SamplerKey` of `u64_le(request_id) ‖ u32_le(t) ‖ 0^4`. The key is secret-class: it lives in a `Secret`, AES's key schedule clears itself on drop, and neither type's `Debug` shows anything. `secret-access.toml` lists the one reader.
   - **`inverse_cdf(weights, u)`.** It returns RFC-0009 Lemma 10's token, the least `v` with `C(v)·2^32 > u·Z`, in exact `u128` sums. It refuses a vocabulary outside RFC-0007's `1..=2^18` and a distribution with no mass.

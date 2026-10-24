@@ -358,6 +358,18 @@ impl fmt::Debug for CompareWitness {
     }
 }
 
+/// RFC-0050's array order of a comparison's committed columns: left digits, left carries, right
+/// digits, right carries, differences, borrows, each by limb. Inputs sort after them.
+pub(crate) fn array_order(column: CompareColumn) -> (u8, usize) {
+    match column {
+        CompareColumn::Digit(side, index) => (2 * u8::from(side == Side::Right), index),
+        CompareColumn::Carry(side, index) => (1 + 2 * u8::from(side == Side::Right), index),
+        CompareColumn::Difference(index) => (4, index),
+        CompareColumn::Borrow(index) => (5, index),
+        CompareColumn::Input(side, index) => (32 + u8::from(side == Side::Right), index),
+    }
+}
+
 fn form<F: PrimeField>(terms: Vec<(F, CompareColumn)>) -> Affine<F, CompareColumn> {
     Affine {
         constant: F::ZERO,
