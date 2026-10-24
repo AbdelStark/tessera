@@ -74,26 +74,26 @@ fn read_bounded(
 
 pub(crate) fn output_distinct(out: Option<&str>, inputs: &[&str]) -> Result<(), ErrorCode> {
     if let Some(out) = out {
-        let out = Path::new(out);
-        let normalized = fs::canonicalize(out)
-            .or_else(|_| {
-                let parent = out
-                    .parent()
-                    .filter(|p| !p.as_os_str().is_empty())
-                    .unwrap_or(Path::new("."));
-                Ok::<_, std::io::Error>(
-                    fs::canonicalize(parent)?
-                        .join(out.file_name().ok_or(std::io::ErrorKind::InvalidInput)?),
-                )
-            })
-            .map_err(|_| ErrorCode::Io)?;
+        let normalized = destination(Path::new(out)).map_err(|_| ErrorCode::Io)?;
         for input in inputs {
-            if fs::canonicalize(input).is_ok_and(|p| p == normalized) {
+            if destination(Path::new(input)).is_ok_and(|p| p == normalized) {
                 return Err(ErrorCode::Usage);
             }
         }
     }
     Ok(())
+}
+
+// Normalize an existing path or a prospective file in an existing parent directory.
+fn destination(path: &Path) -> std::io::Result<PathBuf> {
+    fs::canonicalize(path).or_else(|_| {
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        Ok(fs::canonicalize(parent)?
+            .join(path.file_name().ok_or(std::io::ErrorKind::InvalidInput)?))
+    })
 }
 
 struct Temporary {

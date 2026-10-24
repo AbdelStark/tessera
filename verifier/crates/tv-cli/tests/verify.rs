@@ -481,6 +481,15 @@ fn log_formats_preserve_base_human_stdout_and_json_is_exclusive() {
             }
             "tessera.verifier.check_finished" => {
                 assert_eq!(values.len(), 2);
+                assert_eq!(
+                    event
+                        .get("fields")
+                        .unwrap()
+                        .get("outcome")
+                        .unwrap()
+                        .as_str(),
+                    Some("completed")
+                );
                 if event
                     .get("fields")
                     .unwrap()
@@ -607,6 +616,7 @@ fn log_formats_preserve_base_human_stdout_and_json_is_exclusive() {
 fn manifests_match_schema_and_record_artifacts_and_check_histograms() {
     let dir = Dir::new();
     let mut args = fixture(&dir);
+    args.extend(["--log-format".into(), "json".into()]);
     args.extend([
         "--json".into(),
         "--out".into(),
@@ -675,7 +685,37 @@ fn manifests_match_schema_and_record_artifacts_and_check_histograms() {
         assert!((seconds.parse::<f64>().unwrap() - ns as f64 / 1_000_000_000.0).abs() < 1e-9);
     }
     let metrics = manifest.get("metrics").unwrap().as_array().unwrap();
-    assert!(metrics.len() >= 2);
+    let lines = events(&output);
+    let finished: Vec<_> = lines
+        .iter()
+        .filter(|e| e.get("event").unwrap().as_str() == Some("tessera.verifier.check_finished"))
+        .map(|e| {
+            e.get("span_path")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .last()
+                .unwrap()
+                .get("fields")
+                .unwrap()
+                .get("kind")
+                .unwrap()
+                .as_str()
+                .unwrap()
+        })
+        .collect();
+    let measured: Vec<_> = metrics
+        .iter()
+        .map(|m| {
+            m.get("labels")
+                .unwrap()
+                .get("check")
+                .unwrap()
+                .as_str()
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(measured, finished);
     for metric in metrics {
         assert_eq!(
             metric.get("name").unwrap().as_str(),
@@ -897,7 +937,19 @@ fn rejected_driver_checks_close_in_order_and_stop_before_later_checks() {
             .collect();
         assert!(kinds.contains(&kind));
         assert!(!kinds.contains(&later));
-        let failed = finished[kinds.iter().position(|k| *k == kind).unwrap()];
+        let failed_index = kinds.iter().position(|k| *k == kind).unwrap();
+        for successful in &finished[..failed_index] {
+            assert_eq!(
+                successful
+                    .get("fields")
+                    .unwrap()
+                    .get("outcome")
+                    .unwrap()
+                    .as_str(),
+                Some("completed")
+            );
+        }
+        let failed = finished[failed_index];
         assert_eq!(
             failed
                 .get("fields")
@@ -986,4 +1038,77 @@ fn oversized_verify_requests_honor_json_logging_before_option_parsing() {
     assert_eq!(output.status.code(), Some(64));
     events(&output);
     assert!(!dir.0.join("run-manifest.json").exists());
+}
+
+#[test]
+fn fresh_verdict_and_manifest_aliases_are_refused_before_either_write() {
+    let dir = Dir::new();
+    fs::create_dir(dir.0.join("nested")).unwrap();
+    for (out, manifest) in [
+        ("explicit.json", Some("explicit.json")),
+        ("run-manifest.json", None),
+        ("relative.json", Some("./relative.json")),
+        ("./reverse.json", Some("nested/../reverse.json")),
+    ] {
+        let mut args = dir.args();
+        args.extend(["--out".into(), out.into()]);
+        if let Some(manifest) = manifest {
+            args.extend(["--run-manifest".into(), manifest.into()]);
+        }
+        assert!(!dir.0.join(out).exists());
+        let output = raw(&dir, &args);
+        assert_eq!(output.status.code(), Some(64), "{out}");
+        assert_eq!(
+            error(&Json::parse(std::str::from_utf8(&output.stdout).unwrap()).unwrap()),
+            "ERR-USAGE"
+        );
+        assert!(!dir.0.join(out).exists(), "wrote colliding output {out}");
+        if let Some(manifest) = manifest {
+            assert!(!dir.0.join(manifest).exists());
+        }
+        assert_eq!(
+            fs::read(dir.0.join("input.bin")).unwrap(),
+            b"public fixture canary"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn non_utf8_arguments_preserve_json_logging_and_verdict_format_intent() {
+    use std::os::unix::ffi::OsStringExt;
+    let dir = Dir::new();
+    for json_report in [false, true] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_tessera-verify"));
+        command
+            .current_dir(&dir.0)
+            .args(["verify", "--log-format", "json"])
+            .arg(std::ffi::OsString::from_vec(vec![0xff]));
+        if json_report {
+            command.arg("--json");
+        }
+        let output = command.output().unwrap();
+        assert_eq!(output.status.code(), Some(64));
+        let lines = events(&output);
+        assert_eq!(
+            lines
+                .last()
+                .unwrap()
+                .get("fields")
+                .unwrap()
+                .get("exit_code")
+                .unwrap()
+                .as_u64(),
+            Some(64)
+        );
+        if json_report {
+            assert_eq!(
+                error(&Json::parse(std::str::from_utf8(&output.stdout).unwrap()).unwrap()),
+                "ERR-USAGE"
+            );
+        } else {
+            assert!(output.stdout.is_empty());
+        }
+        assert!(!dir.0.join("run-manifest.json").exists());
+    }
 }

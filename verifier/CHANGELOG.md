@@ -4,6 +4,10 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ## [Unreleased]
 
+### Fixed
+
+- Refuse colliding verdict/manifest destinations before writing, including new files and equivalent relative paths. Preserve JSON logging and its independent verdict format when `verify --log-format json` receives non-UTF-8 arguments.
+
 ### Added
 
 - `tessera-verify verify` supports `--log-format human|json`: unchanged human stdout and schema-valid public JSON boundary events on stderr, including nested driver check spans and failure durations. Parsed requests write an independent `tessera.run-manifest/1` beside the verdict or proof (`--run-manifest` overrides it), with artifact digests, build metadata and `tessera_verifier_seconds{check}` histograms. No verifier dependency is added.

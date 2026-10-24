@@ -94,7 +94,7 @@ The registry is `tessera_codec::metrics`: fixed names, and labels that are enum 
 
 ## 6. Run manifest
 
-Every `compile`, `commit-weights`, `prove`, `verify` and `bench` invocation writes `run-manifest.json` (`tessera.run-manifest/1`):
+Supported `compile`, `commit-weights`, `prove`, NI `verify` and `bench` requests write `run-manifest.json` (`tessera.run-manifest/1`) through their finalization lifecycle, after argument and output preflight checks and when the manifest destination is safely writable. It records:
 
 - tool name, semantic version, git commit, build profile, enabled cargo features;
 - toolchain versions (rustc, CUDA runtime and driver, Python, torch);
@@ -104,13 +104,13 @@ Every `compile`, `commit-weights`, `prove`, `verify` and `bench` invocation writ
 - per-phase timings and the metrics snapshot;
 - exit code and error code, if any.
 
-The manifest is `tessera.run-manifest/1` ([`spec/schemas/run-manifest-v1.schema.json`](../../spec/schemas/run-manifest-v1.schema.json)), written at the command's one exit point whether it succeeded or failed:
+The manifest is `tessera.run-manifest/1` ([`spec/schemas/run-manifest-v1.schema.json`](../../spec/schemas/run-manifest-v1.schema.json)), written when a supported request reaches command finalization, on success or verification failure, subject to destination and I/O checks:
 - **Where.** In a directory of the operator's own: `compile`'s output directory, which holds the private plan; beside the secret weight state for `commit-weights` and `prove`; beside the report for `bench model --out`. `verify` writes beside its verdict (`--out`), or its proof if no verdict path is given. `--run-manifest PATH` names another. Never in a Live exchange directory.
 - **Class.** A prover manifest is private-class (§3): its timings depend on secret data and stay on the prover's side of TB-1 (§4). The verifier manifest holds public metadata and artifact digests only; it contains no secret-class data.
 - **Artifacts.** Each is named by path, schema and class, and by its envelope digest, except a secret-class artifact: a digest of secret data is derived secret data (OBS-6), so the manifest names it without one. A JSON report carries its schema identifier.
 - **Seeds.** A Live session's coin-toss seed, which both transcripts absorb; the masks' seed never.
 
-The reference NI verifier writes a manifest for parsed requests, including verification and report failures. Syntax errors, unsafe output aliases and contained panics can prevent its creation. A manifest write failure is `ERR-RES-IO`, even after successful mathematical checks. Successfully loaded envelopes carry their validated digests; written JSON verdicts carry null digests, following the schema. Build metadata and OS/architecture/core count are recorded; unprobed host details are null. See the [reference CLI guide](../verifier/reference-cli.md).
+The reference NI verifier finalizes parsed requests that pass output preflight, including verification and later report-write failures. Syntax errors and contained panics can prevent finalization. Unsafe input/output or verdict/manifest aliases are `ERR-USAGE` and refuse both writes. Destination preflight failures, such as an unresolvable parent directory, are `ERR-RES-IO` and stop before verification or either output write; they are distinct from unsafe aliases. A later manifest I/O failure is also `ERR-RES-IO`, even after successful mathematical checks. Successfully loaded envelopes carry their validated digests; written JSON verdicts carry null digests, following the schema. Build metadata and OS/architecture/core count are recorded; unprobed host details are null. See the [reference CLI guide](../verifier/reference-cli.md).
 
 **OBS-5.** Two runs with identical manifests, apart from timings and host fields, must produce identical output artifact digests, given pinned masking randomness in test builds and identical seeds. CI checks this on the tiny-model end-to-end test: `tessera-cli`'s `run_manifest` test runs `compile`, `commit-weights` and an NI `prove` twice each, the last with `--test-mask-seed` (feature `test-rng`, refused by release builds).
 

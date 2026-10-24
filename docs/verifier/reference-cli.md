@@ -84,7 +84,7 @@ run. Log fields contain only public digests, fixed identifiers, timings and
 exit status. No proof messages are logged. This verifier emits the format
 independently, without tracing or serialization dependencies.
 
-A parsed `verify` request writes
+A parsed `verify` request that passes output preflight writes
 [`tessera.run-manifest/1`](../../spec/schemas/run-manifest-v1.schema.json)
 as `run-manifest.json` beside `--out`, or beside `--proof` if no verdict path
 was requested. `--run-manifest PATH` overrides that location. It records public
@@ -98,7 +98,7 @@ A written verdict is listed with a null digest, as required for JSON reports
 by the schema. NI has no public coin-toss seed. This manifest contains no
 secret-class data. It is written on verification failures too; syntax errors,
 unsafe output aliases and contained panics can prevent writing it. Input and
-verdict aliases are refused before either output is changed. Writes use the
+verdict aliases, including matching destinations that do not exist yet, are refused before either output is changed. Writes use the
 verdict writer's atomic replacement and private file permissions. An unwritable
 manifest returns `ERR-RES-IO` and changes the verdict to inconclusive.
 

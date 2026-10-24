@@ -55,3 +55,41 @@ impl Drop for Checks<'_> {
         self.finish(false);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_duration_brackets_elapsed_work() {
+        let work = Duration::from_millis(2);
+        let mut measured = None;
+        let mut observer = |event| {
+            if let CheckEvent::Finished {
+                duration,
+                completed,
+                ..
+            } = event
+            {
+                assert!(completed);
+                assert!(measured.replace(duration).is_none());
+            }
+        };
+        let before = Instant::now();
+        {
+            let mut check = Checks::new(&mut observer);
+            std::thread::sleep(work);
+            check.finish(true);
+        }
+        let bracket = before.elapsed();
+        let measured = measured.unwrap();
+        assert!(
+            measured >= work,
+            "check duration excludes elapsed work: {measured:?}"
+        );
+        assert!(
+            measured <= bracket,
+            "check duration exceeds its independent bracket"
+        );
+    }
+}
