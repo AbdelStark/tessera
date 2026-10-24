@@ -107,7 +107,7 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 | Component | Error bound | Live mode | Non-interactive mode |
 |---|---|---|---|
 | Sumcheck and tree rounds (degree `d ≤ 7`) | `d/\|Fp2\|` per round, round-by-round | ≥ 125 bits per round under Fiat–Shamir | same |
-| All rounds, union bound (405B, 16K tokens, about 10^4 rounds) | `Σ d/\|Fp2\|` | ≥ 112 bits | ≥ 112 bits |
+| All rounds, union bound (405B, 16K tokens, about 10^4 rounds, and the largest grouping's levels and merge, [RFC-0054](RFC-0054-token-groups.md#soundness)) | `Σ d/\|Fp2\|` | ≥ 100 bits: 101.75 with `G = 2^{14}`, 111.84 without groups | same |
 | Product-forest root claim (`2^s` trees, `s ≤ 32`) | `s/\|Fp2\|` per forest | ≥ 120 bits | same |
 | LogUp identity (`N + T ≤ 2^{38}` per instance) | `(N + T)/\|Fp2\|`; `2(N + T)/\|Fp2\|` in `tessera-protocol/2`, which counts zero denominators (RFC-0032) | about 90 bits, one shot: `α` derives from a seed the prover cannot retry | 90 + `g_seed` = 110 bits |
 | Tuple compression | included in the LogUp bound (joint polynomial in `α, β`) | — | — |
@@ -189,15 +189,16 @@ So that the two agree bit for bit, the rest of this section specifies the calcul
 | `claim_groups` | Each advice claim group's claims `T_g` |
 | `advice_rows` | The rows the advice row index spans, `2^{ν − log2 k}` |
 | `matrices` | Each opened weight matrix, in `WeightMatrix` order: its message width `k_T`, its committed data rows `m_T` and the variables `ν_T` of its polynomial |
+| `groups` | The leaf stage in token groups ([RFC-0054](RFC-0054-token-groups.md#soundness) 'Soundness'). `count` is `G`. For a proof's budget, it is the proof's own `2^{g_T + g_L}`: 1 for an ungrouped proof. For a statement's report, it is the most groups the verifier accepts for the statement, `2^{min(14, t + n_ℓ)}`, and 1 in `tessera-protocol/2`, which accepts none. With `G > 1`, the other three sizes are: `level_rounds`, the leaf stage's level rounds as counts and degrees, which `rounds` also counts once; `merge_rounds`, `n_max`, the most variables of a merged polynomial; and `merge_claims`, `P`, the merged polynomials' count |
 
-A calculator refuses, with `ERR-USAGE`: a `protocol` other than 1 or 2; `τ_A` or `τ_W` outside `1..=2^16`; a codeword of no symbol or of more than `2^32`, the advice's `n_A = 2^{log2 k + log2 inv_rate}` or a matrix's `n_T = k_T·2^{log2 inv_rate}`; `advice_rows = 0`; in `tessera-protocol/2`, a matrix with `m_T + B_W = 0` (in protocol/1 a matrix with no committed row has no proximity or queries row, [RFC-0049](RFC-0049-weight-proximity.md#the-calculator)); matrices not in strictly increasing `WeightMatrix` order.
+A calculator refuses, with `ERR-USAGE`: a `protocol` other than 1 or 2; `τ_A` or `τ_W` outside `1..=2^16`; a codeword of no symbol or of more than `2^32`, the advice's `n_A = 2^{log2 k + log2 inv_rate}` or a matrix's `n_T = k_T·2^{log2 inv_rate}`; `advice_rows = 0`; in `tessera-protocol/2`, a matrix with `m_T + B_W = 0` (in protocol/1 a matrix with no committed row has no proximity or queries row, [RFC-0049](RFC-0049-weight-proximity.md#the-calculator)); matrices not in strictly increasing `WeightMatrix` order; a `groups.count` that is not a power of two in `1..=2^{14}`; a `groups.count` above 1 in `tessera-protocol/2`; and a `groups.count` of 1 with a `level_rounds` entry, or a nonzero `merge_rounds` or `merge_claims`.
 
 **Rows.** `q = |Fp2| = p^2`, `p = 2^64 − 2^32 + 1`. A numerator is an exact integer that saturates at `2^128 − 1`, and a maximum over no item is 0.
 
 | Row | Error bound `ε` | Grinding | Target |
 |---|---|---|---|
-| Sumcheck and tree rounds | `D/q`, `D` the largest of: each `d` of a nonzero count; each stage's and tree level's `m`; each `n_i`; 1 when there is a tree level, its line challenge; 1 in `tessera-protocol/2` when there is a stage or a level, its mask's `ρ` | — | `bits` |
-| All rounds, union bound | `U/q`, `U = Σ count·d + Σ_stages m + Σ_levels (m + 1) + Σ n_i`, plus the number of stages and levels in `tessera-protocol/2` | — | `bits` |
+| Sumcheck and tree rounds | `D/q`, `D` the largest of: each `d` of a nonzero count; each stage's and tree level's `m`; each `n_i`; 1 when there is a tree level, its line challenge; 1 in `tessera-protocol/2` when there is a stage or a level, its mask's `ρ`; with `G > 1`, each `d` of a nonzero count in `level_rounds`, 2 when `n_max > 0`, the merge's degree, and `P + G`, its batching | — | `bits` |
+| All rounds, union bound | `U/q`, `U = Σ count·d + Σ_stages m + Σ_levels (m + 1) + Σ n_i`, plus the number of stages and levels in `tessera-protocol/2`, plus, with `G > 1`, `G·(Σ_{level_rounds} count·d + Σ_levels (m + 1)) + 2·n_max + P + G`: `G` more copies of the leaf stage's levels and the merge (RFC-0054 'Soundness') | — | `bits` |
 | Product-forest root claims | `max s/q` | — | `bits` |
 | LogUp identity | `v·max(N + T)/q`, `v = 1`, and 2 in `tessera-protocol/2` | `g_seed` | `one_shot` |
 | Opening evaluation checks | `max(max T_g, 1 when a matrix is opened)/q` | — | `bits` |
@@ -263,15 +264,16 @@ A FixedBits comparison would be sound but not exact: it fails a row up to `2^{�
 | `claim_groups` | 16, of at most 64 claims | RFC-0011's target for `G`; the compiler's pool holds 38 claims before the gadgets' join |
 | `advice_rows` | `2^{22}` | the padded row-index domain of the 2,328,576-row complete allocation, including gaps (RFC-0047/0050) |
 | `matrices` | the ten of RFC-0040 at `k_W = 2^{20}` | each `k_T = 2^{20}`; `m_T` from 'The matrices', `ChannelParams`' 882 from [RFC-0012](RFC-0012-weight-commitment.md#column-answers); `ν_T` the padded dimensions' bits |
+| `groups` | `G = 2^{14}`; `level_rounds` 861 of degree 3; `n_max = 42`; `P = 53,490` | RFC-0054 'Soundness', at `t = 14` and `n_ℓ = ⌈log2 126⌉ = 7`. Level `ℓ` of the tallest tree, the `Exp` lookup tree, has `ℓ` rounds of degree 3 (RFC-0010 'Tree levels'). The `SoftmaxRow` forest's `2^{28}` trees of height 14 join at level 28 with as many, so the 42 levels have `Σ_{ℓ<42} ℓ = 861` rounds. `n_max` is the forest leaf table's `28 + 14` variables, above the split tensors' 35. `P` counts the lowering's 53,489 split values and the forest: `crates/tessera-bench/tests/commitment_report.rs` counts both workspaces' |
 
-`--lookups N` and `--table-rows T` replace the instances with one of `N` lookups and `T` rows, a flag left out taking `Exp`'s. The CLI's other sizes are fixed until the compiler's schedule gives them.
+`--lookups N` and `--table-rows T` replace the instances with one of `N` lookups and `T` rows, a flag left out taking `Exp`'s. The leaf stage's levels then follow the tallest tree. When `L = ⌈log2 max(N, T)⌉` exceeds the default's 42, `tree_levels` holds `L` levels of 53 instances, `groups.level_rounds` `Σ_{ℓ<L} ℓ` rounds of degree 3, and `groups.merge_rounds` `L`, which bounds every merged polynomial's variables. The CLI's other sizes are fixed until the compiler's schedule gives them.
 
 **At the default statement.** The calculator's lower bounds, in bits, against this RFC's figures:
 
 | Row | `live-64` | `ni-100` | This RFC |
 |---|---|---|---|
-| Sumcheck and tree rounds | 121.99 | 121.99 | ≥ 125: the batching challenges `m/q` count too |
-| All rounds, union bound | 111.84 | 111.84 | ≥ 112: `7·10^4/q` alone gives 111.90 |
+| Sumcheck and tree rounds | 111.90 | 111.90 | ≥ 125 per round: the batching challenges count too, the largest the merge's `P + G = 69,874` (121.99 without groups) |
+| All rounds, union bound | 101.75 | 101.75 | ≥ 100 at the largest grouping, `G = 2^{14}`: `G` more copies of the leaf stage's 42 levels; 111.84 without groups, where `7·10^4/q` alone gives 111.90 |
 | LogUp identity | 85.99 | 105.99 | about 90, and 110: the `Exp` instance holds `2^{42}`, not `2^{38}` |
 | Advice queries | 64.32 | 80.09 + 20 | 64.3, and 80.1, which is 80.098 rounded to nearest |
 | Weight queries | 65.76 | 82.72 + 20 | 64.0 and 80.5 at the masked rate; protocol/1's weights are unmasked ([RFC-0049](RFC-0049-weight-proximity.md#the-calculator)) |

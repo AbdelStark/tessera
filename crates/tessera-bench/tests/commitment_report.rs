@@ -610,3 +610,84 @@ fn report_counts(r: &tessera_compiler::CommitmentReport) -> Counts {
         ..Counts::SOURCE_405B
     }
 }
+
+/// RFC-0014's default statement counts the 405B leaf stage's merge in token groups (RFC-0054
+/// 'Soundness'): `P = 53,490` merged polynomials, the lowering's split values and the
+/// `SoftmaxRow` forest, and `n_max = 42`, the forest leaf table's variables at 16K tokens. Both
+/// workspaces' layouts count the polynomials.
+#[test]
+fn the_default_statements_merge_sizes_are_the_405b_lowerings() {
+    let (arch, quant, silu) = llama_405b(Profile::Servable, 2);
+    let model = PublicModel {
+        arch: &arch,
+        profile: Profile::Servable,
+        quant: &quant,
+        silu_in_exponents: &silu,
+    };
+    let lowering = lower(model, POSITIONS).expect("405B's shape lowers");
+    let ranges = analyze(&lowering.graph, &lowering.tables).expect("ranges");
+    let policy = GadgetPolicy {
+        max_log2_rows: 32,
+        ..GadgetPolicy::default()
+    };
+    let selection = select(&lowering.graph, &ranges, &lowering.tables, &policy).expect("fits");
+    let layout = CommitmentLayout {
+        advice: AdviceLayoutParams {
+            log2_k: 22,
+            log2_inv_rate: 1,
+            mask_coeffs: 200,
+            row_block: 32,
+            segments: 8,
+        },
+        weights: WeightLayoutParams {
+            log2_k: 20,
+            log2_inv_rate: 2,
+            mask_coeffs: 65_536,
+            blinding_rows: 4096,
+        },
+    };
+    let claims = claim_list(
+        model,
+        &selection,
+        &policy,
+        layout,
+        ParamSetId(Ascii::new("ni-100/1").unwrap()),
+    )
+    .unwrap();
+    // The prover's merge polynomials at the batch's 16K positions: one per split value.
+    let full = lower(model, 1 << 14).unwrap();
+    let layers = tessera_compiler::schedule::LayerMap::new(&full).unwrap();
+    let leaf = tessera_prover::LeafLayout::model(&full, &layers, &selection, &claims).unwrap();
+    let one_layer_bit = tessera_protocol::LeafGroups {
+        token_bits: 0,
+        layer_bits: 1,
+    };
+    let grouped = tessera_prover::leaf::GroupedLayout::new(&leaf, &layers, one_layer_bit).unwrap();
+    let splits = grouped.polynomials();
+    assert_eq!(splits.len(), 53_489);
+    assert_eq!(splits.iter().map(|p| p.vars).max(), Some(35));
+    // The verifier's, from its own lowering: the split values and the one forest.
+    let bytes = envelope::seal(&schema::CLAIM_LIST, &claims);
+    let (independent, validated) =
+        tv_core::validation::load(&bytes, &tv_codec::DecodeLimits::MESSAGE).unwrap();
+    let tv_one_layer_bit = tv_core::protocol::LeafGroups {
+        token_bits: 0,
+        layer_bits: 1,
+    };
+    let verified = tv_core::leaf::groups::Grouped::derive(
+        validated.graph(),
+        independent.gadget_policy,
+        tv_one_layer_bit,
+    )
+    .unwrap();
+    let forests = verified
+        .polynomials()
+        .iter()
+        .filter(|p| matches!(p.source, tv_core::leaf::groups::Source::Forest { .. }))
+        .count();
+    assert_eq!((verified.polynomials().len(), forests), (53_490, 1));
+    // The default statement: P, and n_max the forest's 2^28 trees of 2^14 leaves.
+    let groups = tessera_protocol::StatementSizes::llama_405b_16k().groups;
+    assert_eq!(groups.merge_claims, 53_490);
+    assert_eq!(groups.merge_rounds, 28 + 14);
+}

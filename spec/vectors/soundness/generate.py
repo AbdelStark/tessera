@@ -11,10 +11,12 @@ and random statements under random parameter sets. Each report is a `tessera.sou
 This script is the independent oracle. It is written from RFC-0014 ('Soundness budget',
 'Grinding', 'Parameter sets', 'Soundness calculator'), RFC-0049 'The calculator' (a weight
 matrix's count in tessera-protocol/1), RFC-0026 'Schema' (the layouts), RFC-0040 'The matrices'
-(the 405B weight matrices), RFC-0030 'Cost' (the Exp instance) and 06 §4 (SP-1) alone. It shares
+(the 405B weight matrices), RFC-0030 'Cost' (the Exp instance), RFC-0054 'Soundness' (the leaf
+stage in token groups), RFC-0010 'Tree levels' (a level's rounds) and 06 §4 (SP-1) alone. It shares
 no code with crates/, verifier/ or python/, which check its output. It states the 405B lookups of
 docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json, the compiler's report, which RFC-0014
-'Soundness calculator' names as their source.
+'Soundness calculator' names as their source, and the lowering's 53,489 split values, which
+crates/tessera-bench/tests/commitment_report.rs counts.
 
 Every bit count is computed twice, and every decision once more:
 - by LOG2 of RFC-0014 'Soundness calculator', with Python's integers: the FixedBits both
@@ -132,6 +134,11 @@ PARAM_SETS = [LIVE_64, NI_100, TEST_SMALL]
 
 TOKENS = 16_384
 LAYERS, D_MODEL, HEADS, KV_HEADS, D_HEAD, D_FF, VOCAB = 126, 16_384, 128, 8, 128, 53_248, 128_256
+SPLIT_VALUES = 53_489  # the lowering's ungrouped split values (RFC-0045), as RFC-0014 states them
+MAX_GROUP_BITS = 14  # RFC-0054 'Messages': g_T + g_L ≤ 14
+LEVEL_DEGREE = 3  # RFC-0010 'Tree levels': eq(r, x) times two evaluations
+MERGE_DEGREE = 2  # RFC-0054 'The merge'
+NO_GROUPS = {"count": 1, "level_rounds": [], "merge_rounds": 0, "merge_claims": 0}
 
 
 def pow2_at_least(x):
@@ -238,6 +245,18 @@ def statement_405b():
     forests = [log2_exact(pow2_at_least(LAYERS) * HEADS * TOKENS)]  # SoftmaxRow: s = 28
     tallest = max(max(i["lookups"], i["rows"]) for i in lookups)
     levels = (tallest - 1).bit_length()  # the tallest tree's height: 42
+    # RFC-0054 'Soundness': the most groups the verifier accepts, 2^{min(14, t + n_ℓ)}.
+    t, n_layers = ceil_log2(TOKENS), ceil_log2(LAYERS)
+    groups = 2**min(MAX_GROUP_BITS, t + n_layers)
+    # RFC-0010 'Tree levels': level ℓ of the tallest tree, the Exp lookup tree, has ℓ rounds. The
+    # SoftmaxRow forest's 2^s trees, of height t, join at level 42 − t and have as many: their
+    # level ℓ binds ℓ − (42 − t) tree variables and s stacking variables, s = 42 − t.
+    row_height = t
+    require(forests == [levels - row_height], "the forest joins the tallest tree's levels")
+    level_rounds = sum(range(levels))  # 861
+    # The merged polynomials: one per split value and one per forest (RFC-0054 'The merge'); the
+    # most variables, the forest leaf table's s + t, above any split tensor's.
+    merge_rounds = max(s + row_height for s in forests)
     return {
         "protocol": 1,
         "rounds": [{"count": 10_000, "degree": 7}],
@@ -253,6 +272,12 @@ def statement_405b():
         # input is the padded row-index domain, hence 2^22 rows (theta=22).
         "advice_rows": pow2_at_least(2_328_576),
         "matrices": weight_matrices_405b(20),
+        "groups": {
+            "count": groups,
+            "level_rounds": [{"count": level_rounds, "degree": LEVEL_DEGREE}],
+            "merge_rounds": merge_rounds,
+            "merge_claims": SPLIT_VALUES + len(forests),
+        },
     }
 
 
@@ -403,6 +428,13 @@ def validate(params, statement):
         # tessera-protocol/1 bounds a matrix with no committed row: it has no proximity rows.
         if statement["protocol"] == 2:
             require(m["rows"] + wts["blinding_rows"] >= 1, "a matrix holds a row")
+    groups = statement["groups"]
+    g = groups["count"]
+    require(g >= 1 and g & (g - 1) == 0 and g <= 2**MAX_GROUP_BITS, "G a power of two in 1..=2^14")
+    require(g == 1 or statement["protocol"] == 1, "tessera-protocol/2 accepts no grouping")
+    if g == 1:
+        require(not groups["level_rounds"] and groups["merge_rounds"] == 0
+                and groups["merge_claims"] == 0, "no grouping has no grouped sizes")
 
 
 def report(params, statement, name, why):
@@ -457,6 +489,15 @@ def report(params, statement, name, why):
         challenges.append(1)
     if v2 and (statement["stages"] or statement["tree_levels"]):
         challenges.append(1)
+    # RFC-0054 'Soundness': the groups' and the table batch's levels are levels of the same
+    # degrees; the merge has degree 2 and batches with error (P + G)/q.
+    groups = statement["groups"]
+    grouped = groups["count"] > 1
+    if grouped:
+        challenges += [r["degree"] for r in groups["level_rounds"] if r["count"] > 0]
+        if groups["merge_rounds"] > 0:
+            challenges.append(MERGE_DEGREE)
+        challenges.append(groups["merge_claims"] + groups["count"])
     field_row("rounds", max(challenges, default=0), 0, None)
 
     # 2. All rounds, union bound: RFC-0010's (n·d + m) per stage, (n·d + m + 1) per tree level.
@@ -465,6 +506,13 @@ def report(params, statement, name, why):
              + sum(m + 1 for m in statement["tree_levels"])
              + sum(statement["zero_checks"])
              + (len(statement["stages"]) + len(statement["tree_levels"]) if v2 else 0))
+    if grouped:
+        # G more copies of the leaf stage's levels, each group's and the table batch's being no
+        # more than the stage's, and the merge: 2·n_max + P + G.
+        levels = (sum(r["count"] * r["degree"] for r in groups["level_rounds"])
+                  + sum(m + 1 for m in statement["tree_levels"]))
+        union += (groups["count"] * levels + MERGE_DEGREE * groups["merge_rounds"]
+                  + groups["merge_claims"] + groups["count"])
     field_row("union", union, 0, None)
 
     # 3. Product-forest root claims: s/q for a forest of 2^s trees.
@@ -586,7 +634,8 @@ def adversarial(base):
             ("queries/advice", params_changed(params, " (τ_A − 1)", advice_queries=tau_a - 1), base,
              "one advice query fewer than the set's τ_A"),
             ("queries/Down", params,
-             with_changes(matrix_changed(base, "Down", width=2**19), protocol=2),
+             with_changes(matrix_changed(base, "Down", width=2**19), protocol=2,
+                          groups=NO_GROUPS),
              "Down at half the message width under tessera-protocol/2, whose P_W mask "
              "coefficients count: ρ' = 0.281, 97 or 122 queries fall short"),
             ("field/advice", params, with_changes(base, advice_rows=2**33),
@@ -612,7 +661,8 @@ def edges(base):
     """The exact comparisons at their boundaries, where rounded bits would decide wrongly."""
     below = Q // 2**100  # 2^28 − 1: c·2^100 ≤ q holds, and fails for c + 1
     empty = {"protocol": 1, "rounds": [], "stages": [], "tree_levels": [], "zero_checks": [],
-             "forests": [], "lookups": [], "claim_groups": [], "advice_rows": 1, "matrices": []}
+             "forests": [], "lookups": [], "claim_groups": [], "advice_rows": 1, "matrices": [],
+             "groups": NO_GROUPS}
     cases = [
         ("edge/numerator-pass", NI_100, with_changes(base, claim_groups=[below]),
          "T_g = ⌊q/2^100⌋: 100 + 4.7·10^-9 bits, which passes"),
@@ -621,13 +671,13 @@ def edges(base):
         ("edge/logup-2^50-live", LIVE_64, with_changes(base, lookups=base["lookups"] + [
             {"lookups": 2**50 - 2**22, "rows": 2**22}]),
          "N + T = 2^50 at live-64: 78 − ε one-shot bits pass its 64-bit target"),
-        ("edge/protocol-2", NI_100, with_changes(base, protocol=2,
+        ("edge/protocol-2", NI_100, with_changes(base, protocol=2, groups=NO_GROUPS,
                                                  rounds=base["rounds"] + [{"count": 2, "degree": 4}],
                                                  stages=base["stages"] + [len(base["lookups"])]),
          "tessera-protocol/2: 2(N + T)/q, a mask per batched sumcheck, the identity sumcheck"),
         ("edge/empty", NI_100, {"protocol": 1, "rounds": [], "stages": [], "tree_levels": [],
                                 "zero_checks": [], "forests": [], "lookups": [], "claim_groups": [],
-                                "advice_rows": 1, "matrices": []},
+                                "advice_rows": 1, "matrices": [], "groups": NO_GROUPS},
          "nothing but the advice and the hash: every other row has no term, and ϑ = 0"),
         ("edge/rate-one", params_changed(LIVE_64, " (rate 1)", weights={**LIVE_64["weights"], "log2_inv_rate": 0}),
          base, "weights at rate 1: ρ' ≥ 1, so their queries give no bit"),
@@ -647,6 +697,17 @@ def edges(base):
         ("edge/empty-channel-params", LIVE_64, matrix_changed(base, "ChannelParams", rows=0),
          "no weight has channel parameters: in tessera-protocol/1 ChannelParams commits no row, "
          "so it has no queries row and no field term, and is not refused (RFC-0049)"),
+        ("edge/groups-none", NI_100, with_changes(base, groups=NO_GROUPS),
+         "the 405B statement were no grouping accepted: the ungrouped union row and rounds row "
+         "(RFC-0054 'Soundness')"),
+        ("edge/groups-union-miss", NI_100,
+         with_changes(base, groups={**base["groups"], "level_rounds": [{"count": 6_000, "degree": 3}]}),
+         "6,000 level rounds per group at G = 2^14: the union row misses 100 bits at the largest "
+         "grouping, while the statement without groups passes (RFC-0054 'Testing Strategy')"),
+        ("edge/groups-merge-only", NI_100, with_changes(empty, groups={
+            "count": 2, "level_rounds": [], "merge_rounds": 1, "merge_claims": 1}),
+         "two groups, no level, a one-round merge of one claim: the rounds row is P + G = 3, the "
+         "union 2·1 + 1 + 2 = 5"),
     ]
     return cases
 
@@ -681,7 +742,7 @@ def random_statement(rng, params):
             rows = 1
         matrices.append({"matrix": MATRICES[j], "width": width, "rows": rows,
                          "variables": rng.bits(32)})
-    return {
+    statement = {
         "protocol": 1 + rng.below(2),
         "rounds": [{"count": rng.bits(40), "degree": rng.bits(12)} for _ in range(rng.below(4))],
         "stages": [rng.bits(20) for _ in range(rng.below(4))],
@@ -692,6 +753,23 @@ def random_statement(rng, params):
         "claim_groups": [rng.bits(32) for _ in range(rng.below(4))],
         "advice_rows": max(1, rng.bits(64)),
         "matrices": matrices,
+        "groups": random_groups(rng),
+    }
+    if statement["protocol"] == 2:  # RFC-0054 'Messages': no grouping in tessera-protocol/2
+        statement["groups"] = dict(NO_GROUPS)
+    return statement
+
+
+def random_groups(rng):
+    """RFC-0054's grouped sizes, in tessera-protocol/1 only: G = 2^0..2^14."""
+    count = 2**rng.below(MAX_GROUP_BITS + 1)
+    if count == 1:
+        return dict(NO_GROUPS)
+    return {
+        "count": count,
+        "level_rounds": [{"count": rng.bits(20), "degree": rng.bits(4)} for _ in range(rng.below(3))],
+        "merge_rounds": rng.bits(7),
+        "merge_claims": rng.bits(24),
     }
 
 
@@ -739,7 +817,7 @@ def main():
         cases.append(report(params, base, f"405b/{params['id']}",
                             "the 405B 16K-token, 16K-context statement"))
     for params in PARAM_SETS:
-        cases.append(report(params, with_changes(base, protocol=2),
+        cases.append(report(params, with_changes(base, protocol=2, groups=NO_GROUPS),
                             f"405b-protocol-2/{params['id']}",
                             "the 405B statement under tessera-protocol/2: the weights count "
                             "their P_W mask coefficients and B_W blinding rows"))
@@ -805,6 +883,29 @@ def main():
     for name, numerator in [("edge/line-only", "1"), ("edge/mask-only", "1"), ("edge/zero-count", "3")]:
         rounds = by_name[name]["rows"][0]
         require(rounds["row"] == "rounds" and rounds["numerator"] == numerator, f"{name}: rounds")
+    # RFC-0054 'Soundness': the 405B statement's rounds row is the merge's batching, P + G; the
+    # union counts G more copies of the leaf stage's levels and the merge; without groups both
+    # are the ungrouped statement's.
+    groups = base["groups"]
+    for params in PARAM_SETS:
+        rows = by_name[f"405b/{params['id']}"]["rows"]
+        require(rows[0]["numerator"] == str(groups["merge_claims"] + groups["count"]),
+                "the 405B rounds row is the merge's batching")
+    plain = {row["row"]: row for row in by_name["edge/groups-none"]["rows"][:2]}
+    rows = {row["row"]: row for row in by_name["405b/ni-100/1"]["rows"][:2]}
+    levels = (sum(r["count"] * r["degree"] for r in groups["level_rounds"])
+              + sum(m + 1 for m in base["tree_levels"]))
+    require(int(rows["union"]["numerator"]) == int(plain["union"]["numerator"])
+            + groups["count"] * levels + 2 * groups["merge_rounds"] + groups["merge_claims"]
+            + groups["count"], "the grouped union adds G copies and the merge")
+    require(plain["rounds"]["numerator"] == str(max(base["stages"])), "ungrouped, a stage's m")
+    miss = by_name["edge/groups-union-miss"]
+    require([row["row"] for row in miss["rows"] if row["pass"] is False] == ["union"],
+            "a grouped union bound alone misses its target")
+    require(by_name["edge/groups-none"]["meets_targets"], "and without groups it passes")
+    merge_only = by_name["edge/groups-merge-only"]["rows"]
+    require([merge_only[0]["numerator"], merge_only[1]["numerator"]] == ["3", "5"],
+            "a merge alone: P + G and 2·n_max + P + G")
     hash_128 = by_name["edge/hash-128"]["rows"]
     require([row["row"] for row in hash_128 if row["pass"]] == ["hash"], "only the hash reaches 128")
     logup = [row for row in by_name["edge/q-below-2^128"]["rows"] if row["row"] == "logup"][0]

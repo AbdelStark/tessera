@@ -29,21 +29,21 @@
   },
   "rows": [
     {
-      "bits": 31231,
+      "bits": 28648,
       "covered_by": null,
       "grinding": 0,
-      "margin": 5631,
-      "numerator": "64",
+      "margin": 3048,
+      "numerator": "69874",
       "pass": true,
       "row": "rounds",
       "target": 100
     },
     {
-      "bits": 28633,
+      "bits": 26048,
       "covered_by": null,
       "grinding": 0,
-      "margin": 3033,
-      "numerator": "72732",
+      "margin": 448,
+      "numerator": "79621474",
       "pass": true,
       "row": "union",
       "target": 100
@@ -419,6 +419,17 @@
     "forests": [
       28
     ],
+    "groups": {
+      "count": 16384,
+      "level_rounds": [
+        {
+          "count": 861,
+          "degree": 3
+        }
+      ],
+      "merge_claims": 53490,
+      "merge_rounds": 42
+    },
     "lookups": [
       {
         "lookups": 0,

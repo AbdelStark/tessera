@@ -33,9 +33,9 @@ use tessera_codec::error::ErrorCode;
 use tessera_hash::{Mode, ParamSetId};
 use tessera_ir::{AdviceLayoutParams, CommitmentLayout, WeightLayoutParams};
 use tessera_protocol::{
-    Commitment, ErrorBound, FixedBits, LookupSizes, MatrixSizes, ParamMode, ParamSet, ProofOfWork,
-    ProtocolError, Rounds, RowKind, SoundnessReport, SoundnessRow, StatementSizes, Targets,
-    WeightMatrix,
+    Commitment, ErrorBound, FixedBits, LeafGroupSizes, LookupSizes, MatrixSizes, ParamMode,
+    ParamSet, ProofOfWork, ProtocolError, Rounds, RowKind, SoundnessReport, SoundnessRow,
+    StatementSizes, Targets, WeightMatrix,
 };
 
 fn load() -> Value {
@@ -147,6 +147,18 @@ fn sizes(value: &Value) -> StatementSizes {
                 variables: int(&m["variables"]),
             })
             .collect(),
+        groups: LeafGroupSizes {
+            count: int(&value["groups"]["count"]),
+            level_rounds: list(&value["groups"]["level_rounds"])
+                .iter()
+                .map(|r| Rounds {
+                    count: int(&r["count"]),
+                    degree: int(&r["degree"]),
+                })
+                .collect(),
+            merge_rounds: int(&value["groups"]["merge_rounds"]),
+            merge_claims: int(&value["groups"]["merge_claims"]),
+        },
     }
 }
 
@@ -411,6 +423,7 @@ fn live_64_and_ni_100_meet_their_targets_at_the_405b_statement() {
     // their targets, and live-64's tightest row is a weight matrix's queries, 64.03 bits.
     let masked = StatementSizes {
         protocol: 2,
+        groups: LeafGroupSizes::NONE,
         ..statement.clone()
     };
     for set in [&ParamSet::LIVE_64, &ParamSet::NI_100] {
@@ -526,6 +539,7 @@ fn rfc_0014s_figures_are_lower_bounds_but_80_1_which_is_rounded() {
         let set = params(&case["report"]["params"]);
         let statement = StatementSizes {
             protocol: int(&case["report"]["statement"]["protocol"]),
+            groups: sizes(&case["report"]["statement"]).groups,
             ..StatementSizes::llama_405b_16k()
         };
         let r = report(&set, &statement);
@@ -634,6 +648,7 @@ fn each_row_misses_its_target_alone() {
                 set,
                 StatementSizes {
                     protocol: 2,
+                    groups: LeafGroupSizes::NONE,
                     ..down(Some(1 << 19), None)
                 },
             ),
@@ -768,8 +783,41 @@ fn sizes_it_cannot_bound_are_refused() {
         wide.matrices[0].width = width;
         refuse(&set, &wide);
     }
+    // RFC-0054 'Soundness': G is a power of two up to 2^14, 1 in tessera-protocol/2, and no
+    // grouping has no grouped sizes.
+    for count in [0, 3, 1 << 15] {
+        let mut groups = base.clone();
+        groups.groups.count = count;
+        refuse(&set, &groups);
+    }
+    refuse(
+        &set,
+        &StatementSizes {
+            protocol: 2,
+            ..base.clone()
+        },
+    );
+    let none = |change: fn(&mut LeafGroupSizes)| {
+        let mut sizes = base.clone();
+        sizes.groups = LeafGroupSizes::NONE;
+        change(&mut sizes.groups);
+        sizes
+    };
+    assert!(SoundnessReport::new(&set, &none(|_| {})).is_ok());
+    refuse(&set, &none(|g| g.merge_claims = 1));
+    refuse(&set, &none(|g| g.merge_rounds = 1));
+    refuse(
+        &set,
+        &none(|g| {
+            g.level_rounds.push(Rounds {
+                count: 0,
+                degree: 0,
+            })
+        }),
+    );
     let mut empty = StatementSizes {
         protocol: 2,
+        groups: LeafGroupSizes::NONE,
         ..base.clone()
     };
     empty.matrices[0].rows = 0;
@@ -816,8 +864,13 @@ fn protocol_1_counts_a_matrix_by_its_committed_rows_with_no_mask() {
     for set in [ParamSet::LIVE_64, ParamSet::NI_100, ParamSet::TEST_SMALL] {
         let weights = set.layout.weights;
         for protocol in [1, 2] {
+            // RFC-0054 'Messages': tessera-protocol/2 accepts no grouping.
             let statement = StatementSizes {
                 protocol,
+                groups: match protocol {
+                    1 => base.groups.clone(),
+                    _ => LeafGroupSizes::NONE,
+                },
                 ..base.clone()
             };
             let r = report(&set, &statement);
@@ -885,6 +938,7 @@ fn protocol_1_counts_a_matrix_by_its_committed_rows_with_no_mask() {
         assert_eq!(r.meets_targets(), Some(true), "{}", set.id);
         let masked = StatementSizes {
             protocol: 2,
+            groups: LeafGroupSizes::NONE,
             ..empty.clone()
         };
         assert_eq!(
@@ -1155,6 +1209,7 @@ fn prover_and_verifier_calculators_agree_on_1000_random_profiles() {
             claim_groups: (0..rng.below(5)).map(|_| rng.bits(32)).collect(),
             advice_rows: rng.bits(64).max(1),
             matrices,
+            groups: LeafGroupSizes::NONE,
         };
 
         let prover_report = SoundnessReport::new(&p, &statement).expect("prover report");

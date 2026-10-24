@@ -23,7 +23,7 @@ The leaf stage proves every LogUp fraction tree and every product forest in one 
 
 This RFC proves such a stage in **token groups** instead. When the stage's lookup trees and product forests do not fit, the prover splits them into `G = 2^g` groups whose trees do: interleaved subsets of the batch's tokens, at least 256 tokens each so that their GEMMs stay compute-bound, and interleaved subsets of the layers. Each group's trees are proven in memory, with challenges of its own, one group after another. The table trees, whose leaves come from the tables' rows and the stored multiplicities, are proven in a batch of their own and stream without regenerating anything. A **merge** sumcheck then reduces the groups' leaf claims, their tensors' values and their forests' leaves, to one point per polynomial. The reduction stages, the claim pool and the openings are unchanged.
 
-The stage then costs two regenerations at any size: the group pass, which is RFC-0018's P2, and the merge's pass. At 405B that is one more regeneration than a stage that fits, and about 0.2 to 1.6 on `μ` for the merge's arithmetic. The price is in the transcript: `G` sets of level messages, about 120 KB each at 405B, and a union bound about 9 bits lower at the most groups a verifier accepts. With `g = 0` the leaf stage is RFC-0010's.
+The stage then costs two regenerations at any size: the group pass, which is RFC-0018's P2, and the merge's pass. At 405B that is one more regeneration than a stage that fits, and about 0.2 to 1.6 on `μ` for the merge's arithmetic. The price is in the transcript: `G` sets of level messages, about 120 KB each at 405B, and a union bound about 10 bits lower at the most groups a verifier accepts: 101.75 bits at 405B. With `g = 0` the leaf stage is RFC-0010's.
 
 ## Motivation
 
@@ -169,7 +169,10 @@ The merge reduces every polynomial's claims to one, at one point, in one sumchec
   - with group variables, `W_i(x) = Σ_h β^h·γ_h^k·eq(z_{i,h}, x_{S̄_i})·eq(h_S, x_{S_i})`;
   - with `S_i` empty, `W_i(x) = Σ_h β^h·γ_h^k·eq(z_{i,h}, x)`.
 - **Why it holds.** On the Boolean cube, `W_i` is `β^h·γ_h^k·eq(z_{i,h}, ·)` on group `h`'s block and 0 elsewhere, so `Σ_x W_i·P̃_i` is `Σ_h β^h·γ_h^k·P̃_i(z_{i,h} ‖ h_S)`.
-- **Soundness of the batching.** If any `v_{k,h}` is false, group `h`'s combination is a nonzero polynomial of degree below `P_h` in `γ_h`, which was fixed after its claims. The outer sum is then nonzero in `β` but for degree below `G`: an error of `(P + G)/|Fp2|` at most, `P` the largest group's claims.
+- **Soundness of the batching.** Suppose some `v_{k,h}` is false, and let `h*` be the first group with a false claim.
+  - Group `h*`'s combination `Σ_k γ_{h*}^k·(v_{k,h*} − P̃_{i(k)}(z_{k,h*} ‖ h*_S))` is a nonzero polynomial in `γ_{h*}` of degree below `P_{h*}`, its claims. Those claims were fixed before `γ_{h*}` was squeezed, so it vanishes with probability at most `(P_{h*} − 1)/|Fp2|`.
+  - When it does not vanish, the outer sum is a nonzero polynomial in `β` of degree below `G`, all of whose coefficients were fixed before `β`. It vanishes with probability at most `(G − 1)/|Fp2|`.
+  - **The error** is therefore at most `(P + G)/|Fp2|`, `P` the largest group's claims. It is one term, not one per group: whatever later groups send, the event that fails is group `h*`'s or `β`'s. A sum over the `G` challenges `γ_h` would be about `G·P`, about 98 bits at 405B, and is not needed.
 
 **Rounds.**
 - **Variable order.** The rounds bind each polynomial's variables outside `S_i` first, lowest first, then those in `S_i`, lowest first, and `P̃_i` and `W_i` are read in that order. Front-padding gives a polynomial of `n_i` variables the last `n_i` challenges. Polynomials of one size and one `S` therefore lie at one point, as RFC-0037's layer point needs a site's layers to.
@@ -224,12 +227,18 @@ A leaf stage that fits costs P2 alone. A grouped one costs P2 and P2b, whatever 
 
 Each check is RFC-0010's or RFC-0008's, applied per group, so RFC-0014's rows keep their form. They gain items:
 
-- **Rounds.** The groups' levels and the table batch's levels are levels. The merge is a stage of `n_max` rounds of degree 2, batching with error `(P + G)/|Fp2|` ('Batching').
-- **The union row** sums every one of them: about `G` times the leaf stage's level terms.
-  - At RFC-0014's default 405B statement, the leaf stage's levels add about 5·10^3 to the union's `7.3·10^4`.
-  - With `G = 2^10` they add about `2.4·10^6`, and the union row is about 106.7 bits.
-  - With `G = 2^14`, the most a verifier accepts, it is about 103.1 bits: about 102.2 at RFC-0014's conservative degree 7. Both are above the 100-bit target.
-- **The bound covers every accepted proof.** The prover chooses `g`, and a cheating prover chooses the largest. The soundness calculators of both workspaces therefore evaluate the union row at the largest `G` the verifier accepts for the statement, `2^{min(14, t + n_ℓ)}`. They take the merge's `n_max` and `P` as sizes.
+- **Rounds.** The groups' levels and the table batch's levels are levels. The merge is a stage of `n_max` rounds of degree 2 that batches with error `(P + G)/|Fp2|` ('Batching'), `P` the largest group's claims. Its batching term enters the rounds row too.
+- **No group's levels cost more than the stage's.** Group `h`'s trees are the stage's lookup trees restricted to its blocks, and its share of a forest of `2^s` trees holds `2^{s − g}` of them. None is taller than the stage's tree, and none stacks more trees.
+  - Align group `h`'s level `d` with the ungrouped stage's level `d + H − H_h`, where `H` and `H_h` are the stage's and the group's tallest heights. Every tree that group `h` batches there, the stage batches at its aligned level too, with no more variables. Each of the group's levels therefore has at most the instances and rounds of its aligned level.
+  - The table batch's levels are the stage's table trees' alone, aligned the same way.
+  - A grouped stage's levels therefore cost at most `G + 1` times the stage's level terms. That holds whatever the split of `g` between `g_T` and `g_L`, and whatever token subset 0 and layer subset 0 hold whole.
+- **The union row** counts, beyond the ungrouped statement's, `G` more copies of the leaf stage's level terms and the merge's: `G·Σ_levels (n·d + m + 1) + 2·n_max + P + G` ([RFC-0014](RFC-0014-interaction-and-soundness.md#soundness-calculator) 'Soundness calculator', `groups`).
+- **The bound covers every accepted proof.** The prover chooses `g` before any challenge: `Round1` carries it, absorbed first.
+  - **A proof's budget.** The verifier holds each proof to the bound at its own `G = 2^{g_T + g_L}`, and rejects one whose bound misses a target. A cheating prover can choose its `g`, but it succeeds at most with the error of the `g` it chose, and that error passed. An ungrouped proof's bound is the ungrouped statement's.
+  - **A statement's report.** `tessera params check` and `tessera-verify params` report at the largest `G` the verifier accepts for the statement: `2^{min(14, t + n_ℓ)}`, or 1 in `tessera-protocol/2`, which accepts no grouping. The bound grows with `G`, so a statement that passes there passes at every grouping. This is the bound a parameter set is certified at.
+  - **The sizes.** Both take `P` as the merged polynomials' count, which bounds every group's claims, and `n_max` as their most variables. Neither depends on `g`.
+  - **At RFC-0014's default 405B statement**, `G = 2^{14}`, `P = 53,490` and `n_max = 42`. The union row falls from 111.84 to 101.75 bits, and the rounds row's largest error becomes the merge's batching, at 111.90 bits. Both stay above the 100-bit target.
+  - **Not assumed: smaller trees per group.** Token subset 0 holds every block without a token axis whole, and layer subset 0 the prologue and the epilogue, so their trees need not shrink as `g` grows. A bound that counts `H − g` levels per group, about 103 bits at `2^{14}` groups, would rest on a layout this RFC does not guarantee.
 - **The product-forest roots** keep `s/|Fp2|`, with each group's `s − g`.
 - **The LogUp identity** keeps `v·max(N + T)/|Fp2|`: the groups' roots and the table root sum to one rational identity in `α` of the same degree. Each group's roots follow `α`, and each precedes its group's own challenges.
 - **The splits** are exact checks. A false value in any group's split is a false claim on its polynomial. The merge rejects it except within its bound, or carries it to a false merged claim, which the next stage rejects within its own.
@@ -299,7 +308,7 @@ At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` beco
 
 - **One more regeneration** than a leaf stage that fits, at every size. At 405B that is +1.0 on `μ`, which put `minimal`'s 1K projection at its ceiling and `servable`'s 6% above it before the column answers. With RFC-0055's windows, both are 14 to 15% above it.
 - **Proof size.** About 120 KB of messages per group at 405B: 32 levels of at most 32 rounds, 27 instances, and about 2,500 split values. That is about 30 MB at 1K, 120 MB at 16K and 1 GB at 128K, against 08 §5's 2 GiB target and 4 GiB gate.
-- **Soundness.** At the most groups a verifier accepts, the union row loses about 9 bits and stays above 100.
+- **Soundness.** At the most groups a verifier accepts, the union row loses about 10 bits, from 111.84 to 101.75 at 405B, and stays above 100.
 - **Verification.** It checks `G` sets of levels, about `10^5` field operations each. For the merge, it computes one `eq` product per class and group and one sum per polynomial. Milliseconds to a second.
 - **No zero knowledge yet** for grouped proofs (OQ-0054-1).
 - **The reduction stages exceed memory too.** [RFC-0055](RFC-0055-windowed-stages.md) windows them, one more regeneration each.
@@ -336,7 +345,7 @@ At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` beco
   - **Classes.** A tensor without group variables, claimed over all of its variables by the groups that read it, merges through the same tables.
 - **Memory.** Under a forced budget, the group pass and the merge pass never exceed it, and the pass counter counts P2 and P2b once each.
 - **The model.** `leaf_plan` doubles its groups per doubling of the leaves beyond the memory and counts the table batch's rounds. `shared_streaming_passes` counts `c(c + 1)/2`. The documents' figures are held by `tessera-bench`'s tests.
-- **The calculator.** It evaluates the union row at the largest `G` the verifier accepts, and a statement whose bound misses the target at that `G` fails the calculator's check.
+- **The calculator.** A statement's report evaluates the union row at the largest `G` the verifier accepts, and a statement whose bound misses the target at that `G` fails the calculator's check. The verifier holds each proof to the bound at its own `G`: an ungrouped proof keeps the ungrouped bound, and a grouped proof whose bound misses a target is rejected.
 
 ## Open Questions
 

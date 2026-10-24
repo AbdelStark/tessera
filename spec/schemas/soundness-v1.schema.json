@@ -152,7 +152,8 @@
         "lookups",
         "claim_groups",
         "advice_rows",
-        "matrices"
+        "matrices",
+        "groups"
       ],
       "additionalProperties": false,
       "properties": {
@@ -256,6 +257,49 @@
               "variables": {
                 "$ref": "#/$defs/count"
               }
+            }
+          }
+        },
+        "groups": {
+          "description": "The leaf stage in token groups (RFC-0054 'Soundness'): G, the most groups the verifier accepts for the statement, 1 for none; with G > 1, the leaf stage's level rounds, the merge's rounds n_max and its claims P, the merged polynomials' count.",
+          "type": "object",
+          "required": [
+            "count",
+            "level_rounds",
+            "merge_rounds",
+            "merge_claims"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16384
+            },
+            "level_rounds": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "count",
+                  "degree"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "count": {
+                    "$ref": "#/$defs/count"
+                  },
+                  "degree": {
+                    "$ref": "#/$defs/count"
+                  }
+                }
+              }
+            },
+            "merge_rounds": {
+              "$ref": "#/$defs/count"
+            },
+            "merge_claims": {
+              "$ref": "#/$defs/count"
             }
           }
         }

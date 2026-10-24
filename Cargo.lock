@@ -553,6 +553,8 @@ dependencies = [
  "tessera-ir",
  "tessera-logup",
  "tessera-pcs",
+ "tessera-protocol",
+ "tessera-prover",
  "tessera-sumcheck",
  "tv-codec",
  "tv-core",
