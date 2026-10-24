@@ -13,9 +13,10 @@
 //! The driver must bind these through RFC-0045's lookup split, the gadget reductions and the
 //! openings. Passing these checks alone certifies no statement.
 
+pub mod groups;
 mod model;
 pub mod split;
-pub use model::ModelSchedule;
+pub use model::{ForestShape, ModelSchedule};
 
 use core::fmt;
 use tv_field::Fp2;

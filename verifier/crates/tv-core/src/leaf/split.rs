@@ -11,6 +11,7 @@ use crate::logup::Claim;
 use crate::lowering::NodeId;
 mod model;
 pub use model::model_sites;
+pub(crate) use model::sites as model_sites_with;
 
 use core::fmt;
 use tv_field::{Fp, Fp2};
@@ -56,6 +57,16 @@ pub struct Affine {
     pub terms: Vec<(Fp, Read)>,
 }
 
+/// Where a block's token axis lies among its variables (RFC-0054 'The token axis'): the domain's
+/// axes after it take the lowest variables (RFC-0045 'Blocks', index order).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TokenAxis {
+    /// The block variable that holds the token index's lowest bit.
+    pub low: u32,
+    /// The token axis's variables, `⌈log2 n⌉` for `n` tokens.
+    pub bits: u32,
+}
+
 /// One canonical lookup request over its padded domain; repeated tables remain distinct.
 #[derive(Clone, Debug)]
 pub struct Lookup {
@@ -67,6 +78,10 @@ pub struct Lookup {
     pub key: Affine,
     /// Value form; `None` exactly for a Range table.
     pub value: Option<Affine>,
+    /// The domain's token axis, its lookup tensor's (RFC-0054 'The token axis'); `None` for a
+    /// domain without one, whose block a grouped stage holds whole in token subset 0. Only
+    /// [`groups`](super::groups) reads it: the ungrouped layout is RFC-0045's alone.
+    pub token: Option<TokenAxis>,
 }
 
 /// One site's real layer, or its only layer outside the template.

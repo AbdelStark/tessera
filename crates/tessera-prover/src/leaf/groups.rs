@@ -16,7 +16,8 @@
 //!   RFC-0045 'The column' over the group's blocks. A group holding no block of a table has no
 //!   tree for it.
 //! - **The split.** For each site in node order and each of its layers in the group, one value
-//!   per tensor the group's blocks read, in RFC-0045's order. Each is a claim on a merged
+//!   per tensor the group's blocks read, in the ungrouped split's order (RFC-0045 'What is
+//!   sent'), so every group follows one order. Each is a claim on a merged
 //!   polynomial: the tensor at that site and layer, one per value of the ungrouped split, in its
 //!   order ('The merge').
 //!   - **Group variables.** `S` is the token axis's low `g_T` bits among the tensor's variables:

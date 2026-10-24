@@ -586,6 +586,8 @@ fn split_layout(sites: &[Site]) -> tv_core::leaf::split::Layout {
                                 variables: lookup.domain.iter().map(|&d| bits(d)).sum(),
                                 key: form(&lookup.lookup.key),
                                 value: lookup.lookup.value.as_ref().map(form),
+                                // The ungrouped split reads no token axis.
+                                token: None,
                             })
                             .collect(),
                     }

@@ -48,6 +48,7 @@
 //! | [`schedule::derive()`] | the stage schedule of a lowered graph: the leaf stage's claims, each reduction stage's instances with their relations, variables and degrees, and where every claim goes (RFC-0010, RFC-0037) |
 //! | [`leaf::ModelSchedule`] / [`leaf::Schedule::verify`] | independently derived model lookup counts and Softmax forest roots; the shared tree/LogUp loop, with all leaf claims retained |
 //! | [`leaf::split::Layout`] | canonical model lookup forms, aligned blocks and first-read source order; the combined split absorption and column identities, retaining all reduction/opening debts |
+//! | [`leaf::groups::TokenAxes`] / [`leaf::groups::Grouped`] | RFC-0054's token axes, from the graph alone; a grouped leaf stage's bounds, and each group's restricted blocks, instances, split coordinates and forest shares, one group at a time, with the merge's polynomials. Derivations only: no grouped proof is checked yet |
 //! | [`stages::verify`] | the leaf stage's splits, then each reduction stage: its layer and zero-check points, its batched sumcheck with the public factors, its splits; and the claim pool |
 //! | [`selectors`] | the public factors: `LT`, the causal selector `C̃`, the row selector `ψ̃`, layer weights `w̃`, `Rotate`'s kernel, and RFC-0035's padding zero-check |
 //! | [`gadgets`] | final checks for requantization, NonNeg, BigIntCompare, OneHot, roots, causal Softmax and Argmax, with canonical source/range obligations (RFC-0009/0050) |
