@@ -1,6 +1,7 @@
 # Fuzzing of the verifier's decoders and proof checks (verifier/fuzz/README.md): every target for
-# ten minutes under AddressSanitizer, seeded from spec/vectors/, on demand. The nightly hour of
-# 07 §2 is #96. Third-party actions are pinned by commit SHA (TB-4 in docs/spec/06-security.md).
+# ten minutes under AddressSanitizer, seeded from spec/vectors/, on demand and, called by
+# nightly.yml, every night: the hour of 07 §2 across its six targets. Third-party actions are
+# pinned by commit SHA (TB-4 in docs/spec/06-security.md).
 name: fuzz
 
 on:
@@ -10,6 +11,12 @@ on:
         description: Seconds to fuzz each target
         required: true
         default: "600"
+  workflow_call:
+    inputs:
+      seconds:
+        description: Seconds to fuzz each target
+        type: string
+        required: true
 permissions:
   contents: read
 

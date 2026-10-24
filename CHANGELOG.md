@@ -6,6 +6,13 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The nightly workflow runs every night at 03:17 UTC (07 §2, [#96](https://github.com/AbdelStark/tessera/issues/96), `docs/testing/nightly.md`):
+  - **Property tests.** Every `proptest` of `tessera-field`, `tessera-codec`, `tessera-compiler` and `tessera-protocol` runs at 65,536 cases (`PROPTEST_CASES`, which proptest 1.11 applies over each test's own case count).
+  - **Fuzzing.** An hour across the verifier's six targets: `fuzz.yml`, now also a reusable workflow, ten minutes each.
+  - **Calibration.** The soundness calibration of 07 §4, which ran on demand only.
+  - **The failure report.** A scheduled run that fails opens an issue labeled `type:bug`, with the failed jobs' log tails, or comments on the one still open. `gh workflow run nightly.yml -f fail=true` checks it.
+  - **07 §2's table** says what runs nightly. The 8B CPU subset and range run wait for #93's integer model.
+
 - The CPU backend proves a grouped stage's merge in two passes (RFC-0054 'The prover in two passes', [#134](https://github.com/AbdelStark/tessera/issues/134)):
   - **`MergeTables`** (`tessera-sumcheck`). It now keeps a group's tables from that group's claims and `γ_h` alone, at the end of its pass, before `β` exists: `MergeTables::new(polynomials, groups, j*)` and `add_group(h, claims, γ_h, block)`. It checks those claims as `Merge::new` does. `prove_merge_two_pass` refuses tables kept with another `γ_h` or claim count. `largest_table_rounds` gives the most rounds tables can answer.
   - **`prove_grouped_leaf`** takes a `MergeMode`:
