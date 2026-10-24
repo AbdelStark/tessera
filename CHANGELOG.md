@@ -6,6 +6,22 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The CPU backend proves a grouped leaf stage when the memory budget calls for one ([#134](https://github.com/AbdelStark/tessera/issues/134)):
+  - **The planner.** `PassPlan` takes token groups when the stage in one batch exceeds `memory_budget`: the fewest group bits whose largest group's lookup trees fit, with the merge's pass, P2b, after P2 (`PassPlan::leaf_groups`).
+    - **The split.** Layers first, keeping at least 256 tokens per group; token bits only past the layer index's.
+    - **The refusal.** A budget no grouping fits still fails before P1 with `ERR-RES-MEMORY`.
+  - **The witness pass.** `Resident::with_grouped_columns` and `Regenerator::with_grouped_columns` count each table's row-0 multiplicity over every group's padded column (`GroupedLayout::columns`), so the advice commits the multiplicities the table batch proves.
+  - **The proof.**
+    - `Round1.leaf_groups` carries the grouping, in live sessions through `ProverEngine::leaf_groups`, which defaults to none.
+    - P2 runs `prove_grouped_leaf`, then the graph's stage-0 claims at their merged points and the atom splits under `stage/0/split`.
+    - `TreeProof` carries the groups, the table roots, the table batch's levels and the merge.
+    - The native relations and the openings read the merged claims.
+  - **RFC-0054 and RFC-0018.** They state the split policy and the plan's grouped form.
+  - **Tests.**
+    - **Forced budgets.** Budgets one byte below each plan give `g` = 1, 2 and 3. Each proof carries its grouping and the grouped messages, and the independent verifier accepts it non-interactively and in a live session (`public_cpu_api_groups_the_leaf_stage_under_a_forced_budget`, in CI's `tv-core/test-params` step).
+    - **The witness pass.** Under four groupings it counts exactly the prover's grouped multiplicities, and at `g = 0` the stage's own column.
+    - **Memory.** For three profiles and three requests, a grouped proof's measured peak stays within its grouped plan.
+
 - The stages and the openings read the leaf stage's claims where a grouped stage leaves them ([#134](https://github.com/AbdelStark/tessera/issues/134)):
   - **RFC-0054 'The stage's outputs'.** A claim the ungrouped stage leaves at `P[0..n]` on a tensor of `n` variables lies, in a grouped stage, at the merged point `r(n, S)`. `S` is the low `g_T` variables of the tensor's token axis. The same holds for the graph's claims on each gadget input and on the logits, for each tensor's value, for the native relations' points and for the openings'. The forests' leaf claims are their merged claims, the multiplicities' the table batch's, and the merge's rounds bound every such claim.
   - **`LeafClaims`.** The interface the native relations (`ModelNativeProver::new`) and the openings (`ModelOpenings::derive`) now read: a tensor's point from its shape and token axis, a split value's point, the forest and multiplicity claims.

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use super::*;
-use crate::leaf::{LeafLayout, ModelColumn, ModelWitness, prepare_leaf};
+use crate::leaf::{
+    GroupedClaims, GroupedLayout, LeafClaims, LeafLayout, ModelColumn, ModelWitness,
+    ProvenGroupedLeaf, ProvenLeaf, SPLIT_LABEL, grouped_multiplicities, prepare_leaf,
+    prove_grouped_leaf, token, tokens,
+};
 use crate::native::{ModelNativePlan, ModelNativeProver};
 use compiler::{Lowering, ModelAdviceLayout, RuntimePlan, schedule::LayerMap};
 use tessera_field::{Goldilocks as G, GoldilocksExt2 as F};
@@ -19,6 +23,79 @@ pub(super) struct Unit {
     runtime: RuntimePlan,
     leaf: LeafLayout<ModelColumn>,
     native: ModelNativePlan,
+    /// The leaf stage's token groups, and their layouts when it has any (RFC-0054).
+    groups: protocol::LeafGroups,
+    grouped: Option<GroupedLayout>,
+}
+/// A proven leaf stage: in one batch, or in token groups with its atom splits.
+enum Leaf {
+    Stage(ProvenLeaf),
+    Grouped(Box<ProvenGroupedLeaf>, Vec<F>),
+}
+impl Unit {
+    /// The source of the witness pass's tiles for this unit: a grouped stage counts every
+    /// group's padding at row 0 (RFC-0054 'When groups apply').
+    fn source<'w>(
+        &self,
+        engine: &'w Engine<'w>,
+        model: &IntegerModel,
+        witness: &'w Witness,
+    ) -> Result<Resident<'w>, ProverError> {
+        let source = Resident::runtime(engine, &self.runtime, model, witness)?;
+        Ok(match &self.grouped {
+            Some(grouped) => source.with_grouped_columns(grouped.columns()?)?,
+            None => source,
+        })
+    }
+}
+/// The leaf stage's grouping under `budget` (RFC-0054 'When groups apply'): none when `plan`,
+/// the stage in one batch, fits; otherwise the fewest group bits whose largest group's lookup
+/// trees fit. The planner keeps a token subset of at least 256 tokens and splits layers instead
+/// (RFC-0054 'Compute-bound groups'), and splits tokens further only past the layer index's
+/// bits. A plan that no grouping fits keeps `plan`, which the budget then refuses.
+fn plan_groups(
+    plan: PassPlan,
+    leaf: &LeafLayout<ModelColumn>,
+    layers: &LayerMap,
+    tokens: u32,
+    budget: MemoryBudget,
+) -> Result<(PassPlan, Option<GroupedLayout>), ProverError> {
+    if plan.check(budget).is_ok() {
+        return Ok((plan, None));
+    }
+    let token_vars = tokens.next_power_of_two().trailing_zeros();
+    for g in 1..=u32::from(protocol::MAX_LEAF_GROUP_BITS) {
+        let mut token_bits = g.min(token_vars.saturating_sub(8));
+        let mut layer_bits = g - token_bits;
+        if layer_bits > layers.vars {
+            token_bits += layer_bits - layers.vars;
+            layer_bits = layers.vars;
+        }
+        if token_bits > token_vars {
+            break;
+        }
+        let groups = protocol::LeafGroups {
+            token_bits: token_bits as u8,
+            layer_bits: layer_bits as u8,
+        };
+        let grouped = GroupedLayout::new(leaf, layers, groups)?;
+        let mut lookups = 0u64;
+        for h in 0..grouped.count() {
+            let group = grouped.group(h)?;
+            let mut held = 0u64;
+            for instance in group.instances() {
+                held = held
+                    .checked_add(1u64.checked_shl(instance.height).ok_or_else(memory)?)
+                    .ok_or_else(memory)?;
+            }
+            lookups = lookups.max(held);
+        }
+        let candidate = plan.clone().grouped(groups, lookups);
+        if candidate.check(budget).is_ok() {
+            return Ok((candidate, Some(grouped)));
+        }
+    }
+    Ok((plan, None))
 }
 struct Data {
     statement: protocol::PublicStatement,
@@ -232,6 +309,7 @@ impl<'a> CpuBackend<'a> {
             .checked_mul(1u64 << c.layout.advice.log2_k)
             .ok_or_else(memory)?;
         let plan = PassPlan::new(native.schedule().stages.len(), cells, weight_memory(c)?);
+        let (plan, grouped) = plan_groups(plan, &leaf, &layers, n, prepared.cfg.memory_budget)?;
         Ok((
             Unit {
                 lowering,
@@ -239,6 +317,8 @@ impl<'a> CpuBackend<'a> {
                 runtime,
                 leaf,
                 native,
+                groups: plan.leaf_groups(),
+                grouped,
             },
             plan,
         ))
@@ -256,7 +336,7 @@ impl<'a> CpuBackend<'a> {
         let c = &p.plan.claims;
         let advice = ModelAdviceLayout::runtime(&u.lowering, &u.runtime, c)?;
         let engine = Engine::new(&u.lowering)?.threads(p.threads);
-        let source = Resident::runtime(&engine, &u.runtime, p.model, &d.witness)?;
+        let source = u.source(&engine, p.model, &d.witness)?;
         let actual = ModelWitness::new(
             &u.leaf,
             &u.lowering,
@@ -299,28 +379,88 @@ impl<'a> CpuBackend<'a> {
         metrics::product_leaves(forests.iter().map(|f| f.len() as u64).sum());
         let leaf_stage = span!(DEBUG, "stage", id = 0u16).entered();
         let leaf_started = Instant::now();
-        let lookup = prepare_leaf(tr, &u.leaf, &tables, &tensors, &forests)?;
         let mut stages = crate::StageProver::new(&u.lowering, u.native.schedule(), &d.witness);
-        let points: Vec<_> = u.native.schedule().stages[0]
-            .claims
-            .iter()
-            .map(|c| lookup.point()[..c.point.len()].to_vec())
-            .collect();
-        let _graph_leaf = stages.leaf(&points)?;
-        let leaf = lookup.finish(&stages.leaf_split_values()?)?;
+        let schedule = u.native.schedule();
+        let leaf = match &u.grouped {
+            None => {
+                let lookup = prepare_leaf(tr, &u.leaf, &tables, &tensors, &forests)?;
+                let points: Vec<_> = schedule.stages[0]
+                    .claims
+                    .iter()
+                    .map(|c| lookup.point()[..c.point.len()].to_vec())
+                    .collect();
+                let _graph_leaf = stages.leaf(&points)?;
+                Leaf::Stage(lookup.finish(&stages.leaf_split_values()?)?)
+            }
+            Some(grouped) => {
+                let multiplicities = grouped_multiplicities(&u.leaf, grouped, &tables, &tensors)?;
+                let committed: Vec<&[G]> = multiplicities.iter().map(|m| &m[..]).collect();
+                let proven = prove_grouped_leaf(
+                    tr,
+                    &u.leaf,
+                    grouped,
+                    &tables,
+                    &tensors,
+                    &committed,
+                    &actual.stage_forests(),
+                )?;
+                // RFC-0037's claims on each gadget input and on the logits, at their tensors'
+                // merged points (RFC-0054 'The stage's outputs').
+                let claims = GroupedClaims::new(&proven, grouped);
+                let axes = tokens(&u.lowering)?;
+                let graph = &u.lowering.graph;
+                let mut points = Vec::with_capacity(schedule.sites.len());
+                for (site, claim) in schedule.sites.iter().zip(&schedule.stages[0].claims) {
+                    let tensor = match *site {
+                        compiler::schedule::Site::Gadget { node, input } => {
+                            let id = match node {
+                                compiler::schedule::NodeRef::Position(position) => {
+                                    u.layers.node(position, 0)
+                                }
+                                compiler::schedule::NodeRef::Node(id) => id,
+                            };
+                            *graph.nodes[id.0 as usize]
+                                .inputs
+                                .get(input as usize)
+                                .ok_or_else(|| internal("a leaf site's input exists"))?
+                        }
+                        compiler::schedule::Site::Logits => u.lowering.logits,
+                    };
+                    let shape = &graph.tensors[tensor.0 as usize].shape;
+                    let point = claims
+                        .tensor_point(shape, token(&axes, tensor))
+                        .filter(|p| p.len() == claim.point.len())
+                        .ok_or_else(|| internal("the merge's point holds every leaf claim"))?;
+                    points.push(point);
+                }
+                let _graph_leaf = stages.leaf(&points)?;
+                let atoms = stages.leaf_split_values()?;
+                tr.absorb_message(SPLIT_LABEL, &atoms);
+                Leaf::Grouped(Box::new(proven), atoms)
+            }
+        };
+        let grouped_claims = match (&leaf, &u.grouped) {
+            (Leaf::Grouped(proven, _), Some(grouped)) => Some(GroupedClaims::new(proven, grouped)),
+            _ => None,
+        };
+        let claims: &dyn LeafClaims = match (&leaf, &grouped_claims) {
+            (Leaf::Stage(proven), _) => proven,
+            (Leaf::Grouped(..), Some(claims)) => claims,
+            (Leaf::Grouped(..), None) => return Err(internal("a grouped stage has its layouts")),
+        };
         event!(
             DEBUG,
             "prover.stage_proved",
             id = 0u16,
-            rounds = leaf.logup().levels().len();
-            "stage {id}: {rounds} tree levels"
+            groups = u.grouped.as_ref().map_or(1, GroupedLayout::count);
+            "stage {id}: in {groups} groups"
         );
         metrics::stage(0, leaf_started.elapsed());
         metrics::phase(metrics::Phase::Stage, leaf_started.elapsed());
         metrics::pass(Pass::P2, leaf_started.elapsed());
         drop(leaf_stage);
         let mut native =
-            ModelNativeProver::new(&u.native, &u.lowering, &actual, &d.witness, &leaf)?;
+            ModelNativeProver::new(&u.native, &u.lowering, &actual, &d.witness, claims)?;
         let mut proofs = Vec::new();
         for k in 1..u.native.schedule().stages.len() {
             let _stage = span!(DEBUG, "stage", id = k as u16).entered();
@@ -345,7 +485,7 @@ impl<'a> CpuBackend<'a> {
         let targets = crate::ModelOpenings::derive(
             &u.lowering,
             &u.leaf,
-            &leaf,
+            claims,
             &u.native,
             &stages,
             &advice,
@@ -445,18 +585,49 @@ impl<'a> CpuBackend<'a> {
         };
         tr.absorb("scoring", &scoring);
         let round2 = protocol::Round2Response {
-            logup: protocol::LogUpProof {
-                roots: leaf.logup().roots().to_vec(),
-                values: leaf.logup().values().to_vec(),
+            logup: match &leaf {
+                Leaf::Stage(leaf) => protocol::LogUpProof {
+                    roots: leaf.logup().roots().to_vec(),
+                    values: leaf.logup().values().to_vec(),
+                },
+                // A grouped stage's roots and values are its groups' (RFC-0054 'Messages').
+                Leaf::Grouped(..) => protocol::LogUpProof {
+                    roots: Vec::new(),
+                    values: Vec::new(),
+                },
             },
-            trees: protocol::TreeProof::ungrouped(
-                leaf.logup()
-                    .levels()
-                    .iter()
-                    .map(|p| p.proof().clone())
-                    .collect(),
-                leaf.splits().to_vec(),
-            ),
+            trees: match &leaf {
+                Leaf::Stage(leaf) => protocol::TreeProof::ungrouped(
+                    leaf.logup()
+                        .levels()
+                        .iter()
+                        .map(|p| p.proof().clone())
+                        .collect(),
+                    leaf.splits().to_vec(),
+                ),
+                Leaf::Grouped(proven, atoms) => protocol::TreeProof {
+                    levels: proven
+                        .tables()
+                        .levels()
+                        .iter()
+                        .map(|l| l.proof().clone())
+                        .collect(),
+                    groups: proven
+                        .groups()
+                        .iter()
+                        .zip(proven.splits())
+                        .map(|(group, splits)| protocol::GroupProof {
+                            roots: group.roots().to_vec(),
+                            levels: group.levels().iter().map(|l| l.proof().clone()).collect(),
+                            values: group.values().to_vec(),
+                            splits: splits.clone(),
+                        })
+                        .collect(),
+                    table_roots: proven.tables().roots().to_vec(),
+                    merge: proven.merge().proof().clone(),
+                    splits: atoms.clone(),
+                },
+            },
             stages: proofs,
             advice_combined,
             weight_combined,
@@ -509,7 +680,7 @@ impl CpuBackend<'_> {
             witness
         };
         let committing = Instant::now();
-        let source = Resident::runtime(&engine, &unit.runtime, self.prepared.model, &witness)?;
+        let source = unit.source(&engine, self.prepared.model, &witness)?;
         let advice = ModelAdviceLayout::runtime(&unit.lowering, &unit.runtime, c)?;
         let id = pcs::CommitmentDescriptor::Advice {
             statement_digest: batch.statement.digest(),
@@ -626,7 +797,7 @@ impl ProverEngine for CpuBackend<'_> {
         let c = &p.plan.claims;
         let u = &d.unit;
         let engine = Engine::new(&u.lowering)?.threads(p.threads);
-        let source = Resident::runtime(&engine, &u.runtime, p.model, &d.witness)?;
+        let source = u.source(&engine, p.model, &d.witness)?;
         let advice = ModelAdviceLayout::runtime(&u.lowering, &u.runtime, c)?;
         let encoder = encoder(c)?;
         let permit = d
@@ -682,6 +853,11 @@ impl ProverEngine for CpuBackend<'_> {
             tessera_codec::encode(&round3).len() as u64,
         );
         Ok(round3)
+    }
+    fn leaf_groups(&self) -> protocol::LeafGroups {
+        self.data
+            .as_ref()
+            .map_or(protocol::LeafGroups::NONE, |d| d.unit.groups)
     }
     fn discard(&mut self) {
         self.data = None;

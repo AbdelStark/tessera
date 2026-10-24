@@ -517,3 +517,79 @@ fn the_stages_read_a_grouped_stages_claims_at_its_merged_points() {
         }
     });
 }
+
+/// RFC-0054 'When groups apply': the witness pass counts each table's multiplicities over every
+/// group's column, its padding at row 0, so the advice commits exactly what the table batch needs:
+/// the prover's own grouped count.
+#[test]
+fn the_witness_pass_counts_every_groups_padding() {
+    use tessera_compiler::{SequenceTile, Tile};
+    let model = layered(bounded_model());
+    let n = 5;
+    let (p, layout) = stage(&model, n);
+    let engine = Engine::new(&p.lowering).unwrap();
+    let input: Vec<_> = (0..n).map(|i| (i + 1) % model.arch.vocab).collect();
+    let witness = engine.run(&model, &Secret::new(input)).unwrap();
+    let source = Resident::new(&engine, &p.selection, &model, &witness).unwrap();
+    let advice = ModelAdviceLayout::new(&p.lowering, &p.selection, &p.claims).unwrap();
+    let actual =
+        ModelWitness::new(&layout, &p.lowering, &p.layers, &witness, &source, &advice).unwrap();
+    let tables: Vec<_> = layout
+        .instances()
+        .iter()
+        .map(|i| {
+            let spec = p.selection.tables.iter().find(|t| t.id == i.table).unwrap();
+            TableColumns::<G>::new(&GeneratedTable::from_spec(spec).unwrap()).unwrap()
+        })
+        .collect();
+    let read = |source: &Resident<'_>, table: TableId| {
+        let tile = source
+            .tile(&SequenceTile {
+                tile: Tile::Table { table: table.0 },
+                block: None,
+                shares: Vec::new(),
+            })
+            .unwrap();
+        let column = tile.multiplicities().unwrap();
+        let mut rows = tessera_codec::SecretBuf::filled(0u64, column.rows() as usize);
+        column.read_rows(0, &mut rows).unwrap();
+        rows.to_vec()
+    };
+    // Each table once.
+    let table = layout.instances()[0].table;
+    assert!(matches!(
+        Resident::new(&engine, &p.selection, &model, &witness)
+            .unwrap()
+            .with_grouped_columns(vec![(table, 8), (table, 16)]),
+        Err(tessera_witness::WitnessError::Usage { .. })
+    ));
+    for (g_t, g_l) in [(0, 0), (1, 0), (1, 1), (2, 2)] {
+        let grouped = GroupedLayout::new(&layout, &p.layers, groups(g_t, g_l)).unwrap();
+        let columns = grouped.columns().unwrap();
+        let ours = grouped_multiplicities(&layout, &grouped, &tables, &actual.tensors()).unwrap();
+        let fresh = Resident::new(&engine, &p.selection, &model, &witness)
+            .unwrap()
+            .with_grouped_columns(columns.clone())
+            .unwrap();
+        assert_eq!(columns.len(), layout.instances().len());
+        for ((instance, counted), &(table, entries)) in
+            layout.instances().iter().zip(&ours).zip(&columns)
+        {
+            assert_eq!(instance.table, table);
+            let witnessed = read(&fresh, table);
+            let ours: Vec<u64> = counted.iter().map(|m| m.to_canonical_u64()).collect();
+            assert_eq!(
+                &witnessed[..ours.len()],
+                &ours[..],
+                "{table:?}, {g_t} and {g_l} bits"
+            );
+            // Every lookup of every group's column, its padding included.
+            assert_eq!(witnessed.iter().sum::<u64>(), entries);
+            if (g_t, g_l) == (0, 0) {
+                // One group: the stage's own column.
+                assert_eq!(entries, instance.entries.next_power_of_two());
+                assert_eq!(witnessed, read(&source, table));
+            }
+        }
+    }
+}

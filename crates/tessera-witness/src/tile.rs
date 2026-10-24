@@ -431,9 +431,35 @@ pub(crate) struct Gadgets {
     pub(crate) read: Vec<TableId>,
     incomplete: Vec<TableId>,
     pub(crate) certificate: Option<GreedyCertificate>,
+    /// A grouped leaf stage's lookup columns, each table's entries over every group (RFC-0054);
+    /// empty for an ungrouped stage.
+    pub(crate) columns: Vec<(TableId, u64)>,
 }
 
 impl Gadgets {
+    /// Table `table`'s lookup column length in a grouped stage, its groups' columns summed;
+    /// `None` for an ungrouped stage, whose column pads to a power of two.
+    pub(crate) fn column(&self, table: TableId) -> Option<u64> {
+        self.columns
+            .iter()
+            .find(|&&(t, _)| t == table)
+            .map(|&(_, entries)| entries)
+    }
+
+    /// Sets a grouped leaf stage's lookup columns (RFC-0054 'When groups apply'), each table
+    /// once.
+    pub(crate) fn group(&mut self, columns: Vec<(TableId, u64)>) -> Result<(), WitnessError> {
+        let mut tables: Vec<TableId> = columns.iter().map(|&(t, _)| t).collect();
+        tables.sort_unstable();
+        if tables.windows(2).any(|w| w[0] == w[1]) {
+            return Err(WitnessError::Usage {
+                rule: "a grouped stage gives each table one column length",
+            });
+        }
+        self.columns = columns;
+        Ok(())
+    }
+
     /// The gadgets `selection` gives the nodes of `structure`'s graph.
     ///
     /// # Errors
@@ -499,6 +525,7 @@ impl Gadgets {
             read,
             incomplete,
             certificate: None,
+            columns: Vec::new(),
         })
     }
 

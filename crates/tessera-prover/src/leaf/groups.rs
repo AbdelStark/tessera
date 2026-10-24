@@ -328,6 +328,28 @@ impl GroupedLayout {
         })
     }
 
+    /// Each table's lookup column over every group, `Σ_h 2^{h_{h,t}}` entries, in table order:
+    /// the length the witness pass counts row 0's multiplicity up to, every group's column
+    /// padding with row 0 (RFC-0054 'When groups apply', RFC-0045 'The column').
+    ///
+    /// # Errors
+    ///
+    /// As [`group`](Self::group), and [`LeafError::Internal`] for a length that overflows 64 bits.
+    pub fn columns(&self) -> Result<Vec<(TableId, u64)>, LeafError> {
+        let overflow = LeafError::Internal {
+            rule: "a table's columns over every group fit 64 bits",
+        };
+        let mut totals: BTreeMap<TableId, u64> = BTreeMap::new();
+        for h in 0..self.count() {
+            for instance in self.group(h)?.instances() {
+                let entries = 1u64.checked_shl(instance.height).ok_or(overflow)?;
+                let total = totals.entry(instance.table).or_default();
+                *total = total.checked_add(entries).ok_or(overflow)?;
+            }
+        }
+        Ok(totals.into_iter().collect())
+    }
+
     /// The entry of the stage's block that entry `index` of group `group`'s share of `block`
     /// holds: `index` with the group's token bits inserted at the token axis's lowest variables,
     /// or `index` itself for a block without a token axis. `None` for a group or a block outside

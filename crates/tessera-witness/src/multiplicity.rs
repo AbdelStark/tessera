@@ -177,14 +177,27 @@ impl Multiplicities {
         Ok(())
     }
 
-    pub(crate) fn finish(mut self) -> Result<MultiplicityColumn, WitnessError> {
-        let padded = self
-            .total
-            .checked_next_power_of_two()
-            .filter(|_| self.total > 0)
-            .ok_or(WitnessError::Internal {
-                rule: "a lookup column has at least one entry and fits u64",
-            })?;
+    /// The column, row 0 counting the lookups' padding (RFC-0045 'The column'): up to the next
+    /// power of two of the entries counted, or, for a grouped stage, up to `grouped`, every
+    /// group's column summed (RFC-0054 'When groups apply').
+    pub(crate) fn finish(
+        mut self,
+        grouped: Option<u64>,
+    ) -> Result<MultiplicityColumn, WitnessError> {
+        let padded = match grouped {
+            Some(entries) => Some(entries)
+                .filter(|&entries| self.total > 0 && entries >= self.total)
+                .ok_or(WitnessError::Internal {
+                    rule: "a grouped stage's columns hold every lookup of the table",
+                })?,
+            None => self
+                .total
+                .checked_next_power_of_two()
+                .filter(|_| self.total > 0)
+                .ok_or(WitnessError::Internal {
+                    rule: "a lookup column has at least one entry and fits u64",
+                })?,
+        };
         // RFC-0045 pads the lookup column with row 0, including its table value.
         self.add(0, padded - self.total)?;
         Ok(self.column)
@@ -201,7 +214,7 @@ mod tests {
         counts.add(1, 2).unwrap();
         counts.add(2, 1).unwrap();
         assert_eq!(counts.add(3, 1), Err(WitnessError::Internal { rule: ROW }));
-        let column = counts.finish().unwrap();
+        let column = counts.finish(None).unwrap();
         assert_eq!(column.rows(), 4);
         let mut values = SecretBuf::filled(0, 4);
         column.read_rows(0, &mut values).unwrap();
@@ -225,7 +238,7 @@ mod tests {
         let mut bounded = Multiplicities::new(TableId(2), 1, 1).unwrap();
         bounded.add(0, 1).unwrap();
         assert!(matches!(
-            bounded.finish(),
+            bounded.finish(None),
             Err(WitnessError::Internal { rule: BOUND })
         ));
         let mut large = Multiplicities::new(TableId(2), 1, 3).unwrap();
@@ -242,7 +255,7 @@ mod tests {
             })
         ));
         assert!(matches!(
-            Multiplicities::new(TableId(1), 3, 1).unwrap().finish(),
+            Multiplicities::new(TableId(1), 3, 1).unwrap().finish(None),
             Err(WitnessError::Internal {
                 rule: "a lookup column has at least one entry and fits u64"
             })
@@ -261,7 +274,7 @@ mod tests {
                 .add(if distribution { u64::from(u32::MAX) } else { 0 }, 2)
                 .unwrap();
             counts.add(7, 1).unwrap();
-            let column = counts.finish().unwrap();
+            let column = counts.finish(None).unwrap();
             assert_eq!(column.bytes(), 4 * size_of::<Update>());
             let mut first = SecretBuf::filled(0, 9);
             column.read_rows(0, &mut first).unwrap();

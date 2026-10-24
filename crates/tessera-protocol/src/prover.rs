@@ -69,6 +69,12 @@ pub trait ProverEngine {
     /// each commitment once, in increasing order.
     fn answer(&mut self, queries: &ColumnQueries) -> Result<Round3Response, Self::Error>;
 
+    /// The leaf stage's token groups for the `Round1` just committed, which `Round1` carries
+    /// (RFC-0054 'Messages'): [`LeafGroups::NONE`] for a stage proven in one batch, the default.
+    fn leaf_groups(&self) -> LeafGroups {
+        LeafGroups::NONE
+    }
+
     /// Discards everything the session committed to, after an abort: its `Round1`, its advice
     /// commitment and its randomness, the per-proof secret seed included (INV-PROTO-1). A later
     /// `commit` starts afresh, from a fresh seed.
@@ -100,6 +106,10 @@ impl<E: ProverEngine + ?Sized> ProverEngine for &mut E {
 
     fn answer(&mut self, queries: &ColumnQueries) -> Result<Round3Response, Self::Error> {
         (**self).answer(queries)
+    }
+
+    fn leaf_groups(&self) -> LeafGroups {
+        (**self).leaf_groups()
     }
 
     fn discard(&mut self) {
@@ -280,9 +290,7 @@ impl<E: ProverEngine> ProverSession<E> {
             session_id: commit.session_id,
             statement,
             advice,
-            // Every engine proves its leaf stage in one batch until grouped stages land
-            // (RFC-0054 'Migration / Rollout', #134).
-            leaf_groups: LeafGroups::NONE,
+            leaf_groups: held(&mut self.engine).leaf_groups(),
         };
         let share_message = ProverSeedShare {
             session_id: commit.session_id,

@@ -514,7 +514,8 @@ where
         .collect::<Result<Vec<_>, LeafError>>()?;
     let table_batch = prove_table_batch(transcript, alpha, beta, &table_instances)?;
 
-    // The merge.
+    // The merge, the pass P2b counts (RFC-0054 'Pass structure').
+    let merge_started = std::time::Instant::now();
     let merge_beta = transcript.challenge("merge/beta");
     let merge =
         Merge::new(polynomials, claims, gammas, merge_beta).map_err(|_| LeafError::Internal {
@@ -544,6 +545,7 @@ where
             })?;
         merged.push(Claim { point, value });
     }
+    tessera_codec::metrics::pass(tessera_codec::metrics::Pass::P2b, merge_started.elapsed());
     Ok(ProvenGroupedLeaf {
         groups,
         splits,
