@@ -20,11 +20,12 @@ use crate::{CompileError, Lowering};
 ///   `MatMulWeight` it not to be the last axis, the one the weights contract.
 /// - **Moved.** `Transpose` moves it with its permutation, `Expand` past its new axis, and
 ///   `Sum`, `SumSquares` and `Slice` past an axis they remove or cut, which may not be it.
-///   `Reshape` may regroup only the axes before it: the token axis is then the output axis
-///   whose leading axes hold as many elements as the input's before it, and which is as long.
-/// - **Rows.** `MatMulAct` and `SoftmaxRow` keep their first input's, which must be the
-///   second-to-last axis, the queries' rows: the scores' token axis is the query axis, and the
-///   keys, `MatMulAct`'s second operand, are never split.
+///   `Reshape` keeps it whole, the axes before it and those after it each regrouping among
+///   themselves: the token axis is then the first output axis whose leading axes hold as many
+///   elements as the input's before it, and which is as long.
+/// - **Rows.** `MatMulAct` and `SoftmaxRow` keep their first input's, which, when it has one,
+///   must be the second-to-last axis, the queries' rows: the scores' token axis is the query
+///   axis, and the keys, `MatMulAct`'s second operand, are never split.
 ///
 /// # Errors
 ///
@@ -130,9 +131,10 @@ pub fn token_axes(lowering: &Lowering) -> Result<Vec<Option<u8>>, CompileError> 
                         let at = (0..output.len()).find(|&k| {
                             output[k] == input[a] && before(output, k) == before(input, a)
                         });
-                        Some(at.and_then(|k| u8::try_from(k).ok()).ok_or(bad(
-                            "a reshape regroups only the axes before the token axis",
-                        ))?)
+                        Some(
+                            at.and_then(|k| u8::try_from(k).ok())
+                                .ok_or(bad("a reshape keeps the token axis whole"))?,
+                        )
                     }
                     None => None,
                 }]

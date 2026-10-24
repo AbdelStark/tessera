@@ -43,7 +43,7 @@ All notable changes to the prover release train are recorded here: the crates un
   - **The rule.** Structural, from the graph alone, input to output, so that the verifier's lowering derives the same:
     - the tokens and the positions start it at axis 0;
     - elementwise operations, weight products and the one-hot vectors keep it, and `Transpose` and `Expand` move it;
-    - `Reshape` may regroup only the axes before it;
+    - `Reshape` keeps it whole, the axes on either side regrouping among themselves;
     - the scores and the attention output keep their queries' rows.
 
     A graph that breaks a rule is refused at its node.

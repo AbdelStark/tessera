@@ -91,8 +91,8 @@ A group fixes `g_T` bits of the token index and `g_L` bits of the layer index, `
       - `Mul` needs its `Trailing` operand's to be `x`'s and its `Leading` operand to have none.
       - `MatMulWeight` needs it not to be the axis the weights contract, `x`'s last.
     - **Moved.** `Transpose` moves it with its permutation, and `Expand` past its new axis. `Sum`, `SumSquares` and `Slice` move it past an axis they remove or cut, which may not be it.
-    - **Regrouped.** `Reshape` may regroup only the axes before it. The token axis is then the output axis whose leading axes hold as many elements as `x`'s before it, and which is as long.
-    - **Rows.** `MatMulAct` and `SoftmaxRow` keep `x`'s, which must be its second-to-last axis, the queries' rows. So the scores' token axis is the query axis, and `MatMulAct`'s second operand, the keys, is never split.
+    - **Regrouped.** `Reshape` keeps the token axis whole: the axes before it may regroup among themselves, and so may the axes after it, as the KV-head expansion `[k, g, n, d_h] → [h, n, d_h]` and the heads' `[n, h·d_h] → [n, h, d_h]` do. The token axis is then the output axis whose leading axes hold as many elements as `x`'s before it, and which is as long; the first such axis when several are, which only a token axis of length 1 allows.
+    - **Rows.** `MatMulAct` and `SoftmaxRow` keep `x`'s. When `x` has one, it must be its second-to-last axis, the queries' rows. So the scores' token axis is the query axis, and `MatMulAct`'s second operand, the keys, is never split.
     - **Refused.** `GatherPublic` over the token axis, and `Argmax`, `InverseCdf` and `Bitwise`, which RFC-0006's Llama lowering does not emit. A graph that breaks a rule is refused at its node, `ERR-INTERNAL`.
 
     A block's token axis is its lookup tensor's. A term read over some of a block's axes, such as a channel's class, has the token axis among them or none.
@@ -103,10 +103,10 @@ A group fixes `g_T` bits of the token index and `g_L` bits of the layer index, `
   - At 405B every plan above takes 64 token subsets of 256 tokens: about 1 s of weight reads per GPU, under the pass's 1.4 to 1.5 s of compute.
 - **What a group holds.** Group `h` holds the blocks of [RFC-0045](RFC-0045-leaf-layout.md#blocks) at its layer subset's layers, restricted to its token subset's tokens.
   - **A restricted block** keeps its block's index order. Its entries are the block's whose token index has low bits `s`. Its variables are the block's others, in order, so it holds `2^{k − g_T}` entries.
-  - **No token axis.** A block whose domain has no token axis belongs to token subset 0, whole.
+  - **No token axis.** A block whose domain has no token axis belongs to token subset 0, whole. RFC-0053's greedy key is one: it runs over the generated positions, not the batch's token index.
   - **Lookup trees.** For each LogUp instance, the group's lookups form one lookup tree, laid out by RFC-0045 over the group's blocks: the column, the leaf order, the leaf point and the split. A group that holds no block of an instance has no tree for it and sends no root.
-  - **The split.** For each site in node order and each of its layers the group holds, one value per tensor the group's blocks read, in RFC-0045's order. A tensor read only by blocks without a token axis is therefore sent by token subset 0's groups alone.
-  - **The forest.** The group's `SoftmaxRow` forest is the trees of its layers' heads and its tokens' query rows, `2^{s−g}` trees with their public root values.
+  - **The split.** For each site in node order and each of its layers the group holds, one value per tensor the group's blocks read. They come in the ungrouped split's order (RFC-0045 'What is sent'): the stage's values at that site and layer that the group's blocks read, in the stage's order, so every group follows one order. A tensor read only by blocks without a token axis is therefore sent by token subset 0's groups alone.
+  - **The forest.** The group's `SoftmaxRow` forest is the trees of its layers' heads and its tokens' query rows, `2^{s−g}` trees with their public root values. A forest outside the layers, which RFC-0006's Llama lowering does not emit, belongs to layer subset 0, its group variables its query bits alone.
   - **Shapes.** Groups differ in shape where their blocks differ: prologue, epilogue and padded layers, and blocks without a token axis. The verifier derives every group's layout from public data, as it derives the stage's.
 - **Table trees** are not grouped: one per table, as RFC-0008 states, in the table batch.
 - **Group variables.** In a tensor read by a group's lookups, or in a forest's leaf table, the group fixes some of its variables: its group variables `S`.

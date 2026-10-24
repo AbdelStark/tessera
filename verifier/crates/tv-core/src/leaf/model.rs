@@ -18,6 +18,23 @@ pub struct ModelSchedule {
     forests: Vec<Root>,
 }
 
+/// A Softmax forest's public shape (RFC-0010 'Tree levels'; RFC-0054 'The forest'): its leaf
+/// table's variables are the keys' `height`, then the queries', the heads' and the layers',
+/// each axis per-dimension padded, lowest first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ForestShape {
+    /// Its position in the schedule's trees.
+    pub tree: usize,
+    /// Each product tree's height, the key axis's variables.
+    pub height: u32,
+    /// Real queries, the token axis: the sequence's length.
+    pub queries: u32,
+    /// Real heads.
+    pub heads: u32,
+    /// Real layers stacked: the template's, or 1 for a forest outside it.
+    pub layers: u32,
+}
+
 #[derive(Debug)]
 struct Root {
     tree: usize,
@@ -201,6 +218,23 @@ impl ModelSchedule {
     /// Counts include every request's per-axis padding and only real layers (RFC-0045).
     pub fn lookups(&self) -> &[(TableId, u64)] {
         &self.lookups
+    }
+
+    /// Every Softmax forest's public shape, in schedule order: the stage's forest order.
+    pub fn forests(&self) -> impl Iterator<Item = ForestShape> + '_ {
+        self.forests
+            .iter()
+            .filter_map(|root| match self.schedule.trees().get(root.tree) {
+                Some(&Tree::Forest { height, .. }) => Some(ForestShape {
+                    tree: root.tree,
+                    height,
+                    queries: root.n,
+                    heads: root.heads,
+                    layers: root.layers,
+                }),
+                // Every root names a forest of the schedule it built.
+                _ => None,
+            })
     }
 
     /// `1 - psi` at a Softmax forest's root point, in query/head/layer coordinate order.

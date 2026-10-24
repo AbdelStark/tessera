@@ -40,6 +40,7 @@ fn specs() -> Vec<Site> {
         variables,
         key,
         value: Some(value),
+        token: None,
     };
     let repeated = || {
         lookup(
@@ -57,6 +58,7 @@ fn specs() -> Vec<Site> {
                 variables: 3,
                 key: form(0, &[(1, Column::Auxiliary(Auxiliary::RequantLow), 3)]),
                 value: None,
+                token: None,
             },
             repeated(),
         ],
@@ -83,6 +85,7 @@ fn specs() -> Vec<Site> {
                     variables: 0,
                     key: form(0, &[(1, Column::Input(0), 0)]),
                     value: None,
+                    token: None,
                 }],
             }],
         },

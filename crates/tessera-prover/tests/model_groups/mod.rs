@@ -14,6 +14,7 @@
 //!   token subset 0 alone; unlike and empty groups.
 //! - **Refusals.** Each rule of [`GroupedLayout::new`] broken, at its rule.
 
+mod differential;
 mod stage;
 
 use std::collections::BTreeMap;

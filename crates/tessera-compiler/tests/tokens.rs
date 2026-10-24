@@ -131,11 +131,7 @@ fn a_graph_the_rules_do_not_fit_is_refused_at_its_node() {
     let at = find(&|op| matches!(op, Op::Reshape));
     let out = l.graph.nodes[at].outputs[0].0 as usize;
     l.graph.tensors[out].shape.reverse();
-    refused(
-        &l,
-        at,
-        "a reshape regroups only the axes before the token axis",
-    );
+    refused(&l, at, "a reshape keeps the token axis whole");
     // A transpose that moves the queries' axis last: the scores' product refuses it.
     let mut l = base.clone();
     let at = find(&|op| matches!(op, Op::Transpose { perm } if perm.len() == 3));

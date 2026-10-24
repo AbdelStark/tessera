@@ -6,6 +6,12 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Added
 
+- `tv-core::leaf::groups` derives a grouped leaf stage's layouts from public data, written from RFC-0054 'Groups' and 'The merge' and RFC-0045 ([#454](https://github.com/AbdelStark/tessera/issues/454)):
+  - **Token axes.** `TokenAxes::derive` gives every tensor of the lowered graph at most one token axis, input to output, by RFC-0054's rules: the tokens and positions at 0, kept, moved, regrouped and rows. A graph that breaks a rule is refused at its node (`AxisError::Refused`, `ERR-INTERNAL`). Each `split::Lookup` now carries its domain's `token` axis (`TokenAxis { low, bits }`); the ungrouped layout does not read it.
+  - **The groups.** `Grouped::new` (or `derive` over a model) checks `g_T + g_L ≤ 14`, `g_T ≤ t` and `g_L ≤ n_ℓ` first, as typed rejections, then refuses a tensor that two lookups would give different group variables (`Agreement`). `Grouped::group(h)` lays out one group at a time: its restricted blocks, its instances with RFC-0045's offsets and heights, its split values in the stage split's order restricted to the tensors its blocks read, the same order in every group, each with its merged polynomial, its coordinates in `P_h` and its bits on `S`, and its share of each forest. `polynomials()` lists the merge's polynomials with their group variables and the groups that claim them; `ModelSchedule::forests()` gives the forests' shapes.
+  - **Tests.** Token axes against an element-by-element oracle on every conformance model, at lengths equal to the head count, head width and width; every rule's refusal on an edited graph; every stage block entry in exactly one group, decoded from its domain's shape; `g = 0` accepted by the stage's own split check; hand-derived coordinates for a `[4, 8]` domain; unlike, empty and token-subset-0-only groups; RFC-0045's split and column identities over the cube at random points; forest shares against the forests' public roots; and every refusal.
+  - No grouped proof is checked yet: the drivers still reject any grouping as `ERR-CODEC-LIMIT`.
+
 - `tv-core`'s verdicts name a leaf group and the merge (RFC-0054 'Messages', [#454](https://github.com/AbdelStark/tessera/issues/454)):
   - **`TreeLevel { group, level, round }`.** `group` is `h` for group `h`'s levels, `G` for a grouped stage's table batch, and 0 for an ungrouped stage, which every proof is until grouped stages are verified. The JSON payload gains `group`.
   - **`LeafMerge { round }`.** It is `REJ-LEAF-MERGE`, exit 10.

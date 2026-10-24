@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Canonical lookup forms from RFC-0009/0024/0045/0050. No proof data enters their derivation.
-use super::{Affine, Column, Layer, Layout, Lookup, Read, Site};
+use super::{Affine, Column, Layer, Layout, Lookup, Read, Site, TokenAxis};
 use crate::advice::{Auxiliary, Source};
 use crate::claims::GadgetPolicy;
 use crate::gadgets::{GadgetError, Plan, root::Root};
+use crate::leaf::groups::TokenAxes;
 use crate::lowering::{Graph, Node, NodeId, Op, TensorId};
 use crate::selection::{self, Choice, Pattern, Selection};
 use crate::validation::ClaimsError;
@@ -40,6 +41,26 @@ fn variables(graph: &Graph, id: TensorId) -> Result<u32, ClaimsError> {
             sum.checked_add(bits(d)?).ok_or_else(internal)
         })
 }
+/// A domain's token axis among its block variables (RFC-0054 'The token axis'): the variables of
+/// the axes after it come first (RFC-0045 'Blocks').
+fn token(graph: &Graph, axes: &TokenAxes, id: TensorId) -> Result<Option<TokenAxis>, ClaimsError> {
+    let Some(axis) = axes.get(id).ok_or_else(internal)? else {
+        return Ok(None);
+    };
+    let dims = graph.tensor(id).ok_or_else(internal)?.shape.dims();
+    let axis = usize::from(axis);
+    let low = dims
+        .get(axis.checked_add(1).ok_or_else(internal)?..)
+        .ok_or_else(internal)?
+        .iter()
+        .try_fold(0u32, |sum, &d| {
+            sum.checked_add(bits(d)?).ok_or_else(internal)
+        })?;
+    Ok(Some(TokenAxis {
+        low,
+        bits: bits(*dims.get(axis).ok_or_else(internal)?)?,
+    }))
+}
 fn power(n: u32) -> Result<Fp, ClaimsError> {
     Ok(Fp::reduce(1u64.checked_shl(n).ok_or_else(internal)?))
 }
@@ -64,22 +85,30 @@ fn affine(constant: Fp, terms: &[(Fp, Column, u32)]) -> Result<Affine, ClaimsErr
 fn one(column: Column, vars: u32) -> Result<Affine, ClaimsError> {
     affine(Fp::ZERO, &[(Fp::ONE, column, vars)])
 }
-fn request(table: TableId, variables: u32, key: Affine, value: Option<Affine>) -> Lookup {
+fn request(
+    table: TableId,
+    (variables, token): (u32, Option<TokenAxis>),
+    key: Affine,
+    value: Option<Affine>,
+) -> Lookup {
     Lookup {
         table,
         variables,
         key,
         value,
+        token,
     }
 }
 fn requant(
     graph: &Graph,
+    axes: &TokenAxes,
     selected: &Selection,
     choice: &Choice,
     node: &Node,
 ) -> Result<Layer, ClaimsError> {
     let input = *node.inputs().first().ok_or_else(internal)?;
     let vars = variables(graph, input)?;
+    let domain = (vars, token(graph, axes, input)?);
     let shape = graph.tensor(input).ok_or_else(internal)?.shape;
     let channels = bits(*shape.dims().last().ok_or_else(internal)?)?;
     let table = selected
@@ -122,7 +151,12 @@ fn requant(
     let mut lookups = reserve(choice.tables.len())?;
     let mut ids = choice.tables.iter();
     let mut push = |key: Affine, value: Option<Affine>| -> Result<(), ClaimsError> {
-        lookups.push(request(*ids.next().ok_or_else(internal)?, vars, key, value));
+        lookups.push(request(
+            *ids.next().ok_or_else(internal)?,
+            domain,
+            key,
+            value,
+        ));
         Ok(())
     };
     let class = |terms: &mut Vec<(Fp, Column, u32)>| -> Result<(), ClaimsError> {
@@ -202,9 +236,11 @@ fn requant(
         lookups,
     })
 }
-fn root(graph: &Graph, site: &Root<'_>) -> Result<Layer, ClaimsError> {
+fn root(graph: &Graph, axes: &TokenAxes, site: &Root<'_>) -> Result<Layer, ClaimsError> {
     let node = graph.node(site.node()).ok_or_else(internal)?;
-    let vars = variables(graph, *node.outputs().first().ok_or_else(internal)?)?;
+    let output = *node.outputs().first().ok_or_else(internal)?;
+    let vars = variables(graph, output)?;
+    let domain = (vars, token(graph, axes, output)?);
     let width = u32::from(*site.range_bits().first().ok_or_else(internal)?);
     let low = width
         .checked_sub(1)
@@ -265,7 +301,7 @@ fn root(graph: &Graph, site: &Root<'_>) -> Result<Layer, ClaimsError> {
     }
     let mut lookups = reserve(keys.len())?;
     for (&table, key) in site.tables().iter().zip(keys) {
-        lookups.push(request(table, vars, key, None));
+        lookups.push(request(table, domain, key, None));
     }
     Ok(Layer {
         node: site.node(),
@@ -274,13 +310,19 @@ fn root(graph: &Graph, site: &Root<'_>) -> Result<Layer, ClaimsError> {
 }
 fn softmax(
     graph: &Graph,
+    axes: &TokenAxes,
     policy: GadgetPolicy,
     choice: &Choice,
     node: &Node,
     sigma: u8,
 ) -> Result<Layer, ClaimsError> {
-    let score = variables(graph, *node.inputs().first().ok_or_else(internal)?)?;
-    let row = variables(graph, *node.outputs().get(1).ok_or_else(internal)?)?;
+    let scores = *node.inputs().first().ok_or_else(internal)?;
+    let rows = *node.outputs().get(1).ok_or_else(internal)?;
+    let score = variables(graph, scores)?;
+    let row = variables(graph, rows)?;
+    // The scores' token axis is their query axis, and so is the reciprocals' (RFC-0054 'Rows').
+    let scored = (score, token(graph, axes, scores)?);
+    let rowed = (row, token(graph, axes, rows)?);
     let width = u32::from(sigma).checked_add(18).ok_or_else(internal)?;
     let limb = u32::from(policy.limb_bits);
     let low = width
@@ -292,13 +334,13 @@ fn softmax(
     let mut ids = choice.tables.iter();
     lookups.push(request(
         *ids.next().ok_or_else(internal)?,
-        score,
+        scored,
         one(Column::SoftmaxKey, score)?,
         Some(one(Column::Output(0), score)?),
     ));
     lookups.push(request(
         *ids.next().ok_or_else(internal)?,
-        row,
+        rowed,
         one(Column::Output(1), row)?,
         None,
     ));
@@ -313,7 +355,7 @@ fn softmax(
         for index in 0..low {
             lookups.push(request(
                 *ids.next().ok_or_else(internal)?,
-                row,
+                rowed,
                 one(column(index), row)?,
                 None,
             ));
@@ -345,7 +387,7 @@ fn softmax(
         }
         lookups.push(request(
             *ids.next().ok_or_else(internal)?,
-            row,
+            rowed,
             affine(Fp::ZERO, &terms)?,
             None,
         ));
@@ -368,12 +410,27 @@ fn producer(graph: &Graph, tensor: TensorId) -> Result<usize, ClaimsError> {
 
 /// Canonical lookup-site descriptors of the independently lowered current model.
 /// Sites use local graph/auxiliary identities and the virtual tensors named by RFC-0009.
+/// Each request carries its lookup tensor's token axis (RFC-0054 'The token axis').
 /// This is public metadata, never a proof-supplied form or source registry.
 ///
 /// # Errors
 /// Public selection errors; `Memory` on reserve failure; `Internal` for inconsistent own
-/// template/form geometry. `Layout::new` additionally checks cross-layer read consistency.
+/// template/form geometry, or a graph the token-axis rules refuse ([`TokenAxes::derive`]).
+/// `Layout::new` additionally checks cross-layer read consistency.
 pub fn model_sites(graph: &Graph, policy: GadgetPolicy) -> Result<Vec<Site>, ClaimsError> {
+    let axes = TokenAxes::derive(graph).map_err(|e| match e {
+        crate::leaf::groups::AxisError::Memory => ClaimsError::Memory,
+        _ => internal(),
+    })?;
+    sites(graph, policy, &axes)
+}
+
+/// [`model_sites`] with the graph's token axes already derived.
+pub(crate) fn sites(
+    graph: &Graph,
+    policy: GadgetPolicy,
+    axes: &TokenAxes,
+) -> Result<Vec<Site>, ClaimsError> {
     let layer_count = crate::schedule::template_layers(graph).map_err(|e| match e {
         crate::schedule::ScheduleError::Memory => ClaimsError::Memory,
         _ => internal(),
@@ -384,15 +441,17 @@ pub fn model_sites(graph: &Graph, policy: GadgetPolicy) -> Result<Vec<Site>, Cla
     for choice in &selected.choices {
         let node = graph.node(choice.node).ok_or_else(internal)?;
         let layer = match *node.op() {
-            Op::Requant { .. } | Op::TableMap { .. } => requant(graph, &selected, choice, node)?,
-            Op::SoftmaxRow { sigma, .. } => softmax(graph, policy, choice, node, sigma)?,
+            Op::Requant { .. } | Op::TableMap { .. } => {
+                requant(graph, axes, &selected, choice, node)?
+            }
+            Op::SoftmaxRow { sigma, .. } => softmax(graph, axes, policy, choice, node, sigma)?,
             Op::RsqrtRow { .. } | Op::OneHot { .. } => continue,
             _ => return Err(internal()),
         };
         layers.push(layer);
     }
     for site in plan.roots() {
-        layers.push(root(graph, &site.map_err(gadget)?)?);
+        layers.push(root(graph, axes, &site.map_err(gadget)?)?);
     }
     let first = producer(graph, *graph.checkpoints().first().ok_or_else(internal)?)?
         .checked_add(1)

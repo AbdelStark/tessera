@@ -261,6 +261,9 @@ impl<'a> Plan<'a> {
                     terms: single((Fp::ONE, read))?,
                 },
                 value: None,
+                // Outside the lowered graph, the key has no token axis of RFC-0054's rules: a
+                // grouped stage would hold its epilogue block whole in token subset 0.
+                token: None,
             };
             sites.try_reserve(1).map_err(|_| ClaimsError::Memory)?;
             sites.push(split::Site {
