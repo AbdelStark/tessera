@@ -4,6 +4,11 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.4
+- Amended by: [RFC-0059](RFC-0059-frame-headers-and-nonces.md):
+  - 'Frames': the header carries `frame_seq` and is 41 bytes; the counter blocks, the plaintext's encoding, the commitments' inputs and a random session identity;
+  - 'Log format': `Frame` entries carry `frame_seq`;
+  - 'Circuits': public counter blocks and plaintext prefixes, and the opened sampler commitment;
+  - 'Verifier checks': a session's open precedes its frames, and its counters are distinct.
 
 ## Summary
 
@@ -46,15 +51,17 @@ pub struct TokenFrame { pub request_id: u64, pub direction: Direction /* In | Ou
 On the wire, each frame is `header ‖ ciphertext`:
 
 ```rust
-pub struct FrameHeader {                // cleartext, 40 bytes
+pub struct FrameHeader {                // cleartext, 41 bytes: its TCE encoding (RFC-0059)
     pub magic: [u8; 4],                 // b"TSFR"
     pub session_id: [u8; 16],
     pub request_id: u64, pub direction: u8, pub frame_index: u32, pub length: u32,
+    pub frame_seq: u32,
 }
-// ciphertext = AES-128-CTR(k_s, nonce = session_id[0..8] ‖ u32(frame_seq), counter from 0) XOR TCE(TokenFrame)
+// ciphertext = TCE(TokenFrame) XOR AES-128-CTR keystream under k_s, with counter blocks
+//              session_id[0..8] ‖ u32_be(frame_seq) ‖ u32_be(i), i from 0 (RFC-0059)
 ```
 
-`frame_seq` is the frame's position within the session (monotone, never reused). Request boundaries and lengths are visible to the recorder; lengths are public in the statement anyway.
+`frame_seq` is the frame's position within the session, in both directions (monotone, never reused). The header carries it, so the recorder and the verifier read it rather than infer it ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#the-session-counter)). Request boundaries and lengths are visible to the recorder; lengths are public in the statement anyway.
 
 Session open (cleartext, before any frame of the session):
 
@@ -72,7 +79,8 @@ The sampler key `K_samp` keys the decoding PRF of exact mode ([RFC-0017](RFC-001
 pub enum DigestLogEntry {                                   // schema 0x0401
     SessionOpen { seq: u64, t_ns: u64, session_id: [u8; 16], key_commitment: [u8; 32], sampler_commitment: [u8; 32] },
     Frame { seq: u64, t_ns: u64, session_id: [u8; 16], request_id: u64, direction: Direction,
-            frame_index: u32, length: u32, sha256: [u8; 32] },   // SHA-256(header ‖ ciphertext)
+            frame_index: u32, length: u32, frame_seq: u32,
+            sha256: [u8; 32] },                                // SHA-256(header ‖ ciphertext)
     SessionClose { seq: u64, t_ns: u64, session_id: [u8; 16] },
 }
 
@@ -101,11 +109,14 @@ The signed message is `"tessera-manifest/v1" ‖ TCE(manifest without signature)
 
 For each request in the batch and each direction:
 
+These steps are amended by [RFC-0059 'The circuits'](RFC-0059-frame-headers-and-nonces.md#the-circuits): the counter blocks and each plaintext's 22-byte prefix are public inputs, and the sampler commitment is opened too.
+
 1. **Token bytes.** The committed token stream feeds both the forward pass (`OneHot`, RFC-0009) and the frame plaintext: each token's four little-endian bytes are committed advice, range-checked to 8 bits, with `token = Σ_b byte_b 2^{8b}` (linear).
 2. **AES-128-CTR.** The key schedule runs once per session; each 16-byte counter block runs 10 rounds with S-box lookups (`AesSbox`), MixColumns through `Gf256Mul { 2 }`, `Gf256Mul { 3 }` and byte XORs (`Bitwise8 { xor }`). Ciphertext bytes are `plaintext ⊕ keystream`.
 3. **SHA-256.** Over `header ‖ ciphertext` per frame and over `"tessera-anchor-key/v1" ‖ k_s ‖ salt_k` per session. Words are committed as 32 bits each, with booleanity in the batched zero-check; `Ch`, `Maj`, `Σ0`, `Σ1`, `σ0`, `σ1` are low-degree polynomials in bits; additions modulo 2^32 use committed carry bits.
 4. **Binding.** The final SHA-256 state bits equal the public digest bits from the log entry, and the key-commitment digest equals the public `key_commitment`. Both are linear checks against public values.
-5. **Header fields** (session, request, direction, index, length) are public and enter the SHA-256 input as constants.
+5. **Header fields** (session, request, direction, index, length, counter) are public and enter the SHA-256 input as constants.
+6. **The sampler key.** SHA-256 over `"tessera-sampler-key/v1" ‖ K_samp ‖ salt_s` equals the public `sampler_commitment`, and the in-circuit PRF of [RFC-0017](RFC-0017-scoring.md#sampler-prf) uses that `K_samp`.
 
 Cost per token, both directions, is about 250 lookups and 1,000 committed bits, against about 1.7×10^7 commitments per token for 405B's linear layers: below 0.01%.
 
@@ -115,16 +126,16 @@ Cost per token, both directions, is about 250 lookups and 1,000 committed bits, 
 
 ### Prover pre-check
 
-Before `Round1`, the prover re-encrypts its stored transcripts, recomputes every frame digest and key commitment, and compares them with the manifest's entries; a mismatch is `ERR-WITNESS-ANCHOR` and the batch is not proven.
+Before `Round1`, the prover re-encrypts its stored transcripts, recomputes every frame digest and both commitments, and compares them with the manifest's entries ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#the-reference-cipher) says what its replay may return); a mismatch is `ERR-WITNESS-ANCHOR` and the batch is not proven.
 
 ### Verifier checks
 
 1. Manifest signature under a pinned recorder key; unknown scheme rejected.
-2. Inclusion proof of every supplied entry ([RFC 9162 §2.1.3.2](https://www.rfc-editor.org/rfc/rfc9162#section-2.1.3.2)) at leaf index `seq − first_seq`, against `entries_root` in a tree of `entry_count` leaves. The index comes from the entry, and the size and root from the signed manifest, never from the proof: one inclusion proof can verify against one root for several pairs of leaf index and tree size. Every frame of every sampled request present (`frame_index` contiguous from 0, matching the statement's lengths).
+2. Inclusion proof of every supplied entry ([RFC 9162 §2.1.3.2](https://www.rfc-editor.org/rfc/rfc9162#section-2.1.3.2)) at leaf index `seq − first_seq`, against `entries_root` in a tree of `entry_count` leaves. The index comes from the entry, and the size and root from the signed manifest, never from the proof: one inclusion proof can verify against one root for several pairs of leaf index and tree size. Every frame of every sampled request present (`frame_index` contiguous from 0, matching the statement's lengths), the `frame_seq` values of a session's frames distinct, each frame's `length` one a plaintext has, and the session's open entry before its frames ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#verifier-check-2-amended)).
 3. The batch's requests equal the audit sample's requests for this manifest ([RFC-0016](RFC-0016-audit-sampling.md#verifier-checks)).
-4. The circuits' public inputs are exactly these digests and commitments.
+4. The circuits' public inputs are exactly these digests and commitments, the frames' counter blocks and the plaintexts' prefixes ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#the-circuits)).
 
-Checks 1 and 2 fail as `Reject(Anchor { request_id, kind })`, with the kinds of [RFC-0043](RFC-0043-rejection-payloads.md#anchor) and no request for the manifest's signature. Check 3 is RFC-0016's. Check 4 cannot fail on its own: the verifier makes the entries' digests and commitments the circuits' public inputs itself.
+Checks 1 and 2 fail as `Reject(Anchor { request_id, kind })`, with the kinds of [RFC-0043](RFC-0043-rejection-payloads.md#anchor) and no request for the manifest's signature. Check 3 is RFC-0016's. Check 4 cannot fail on its own: the verifier makes the entries' digests, both commitments, the counter blocks and the plaintexts' prefixes the circuits' public inputs itself.
 
 ### Invariants
 
