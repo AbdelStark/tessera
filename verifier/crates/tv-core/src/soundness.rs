@@ -19,11 +19,28 @@
 //!   decided first by `LOG2(A, B, 48)` when outside its 2-ulp rounding band and by exact
 //!   multi-limb integer exponentiation inside the band;
 //! - hash collision row: `t <= 128`.
+//!
+//! # The leaf stage in token groups
+//!
+//! [`StatementSizes::groups`] states a grouped leaf stage (RFC-0014 'Statement sizes' `groups`,
+//! RFC-0054 'Soundness'): `G` groups, the leaf stage's level rounds by degree, the merge's
+//! `n_max` rounds and its `P` claims. With `G > 1`:
+//! - the rounds row's `D` also takes each degree of a nonzero count in `level_rounds`, the
+//!   merge's degree 2 when `n_max > 0`, and `P + G`, the merge's batching;
+//! - the union row's `U` adds `G·(Σ_{level_rounds} count·d + Σ_levels (m + 1)) + 2·n_max + P + G`:
+//!   `G` more copies of the leaf stage's levels, each group's and the table batch's costing no
+//!   more than the stage's, and the merge.
+//!
+//! A calculator refuses, with `ERR-USAGE`, a `G` that is not a power of two in `1..=2^14`, a
+//! `G > 1` in `tessera-protocol/2`, and a `G = 1` with any grouped size. A statement's report
+//! takes the largest `G` the verifier accepts ([`StatementSizes::default_405b`]); a proof's budget
+//! its own ([`runtime`](crate::runtime)).
 
 use core::fmt::{self, Write as _};
 
 use crate::claims::{AdviceLayoutParams, WeightLayoutParams};
 use crate::params::ParamSet;
+use crate::protocol::MAX_LEAF_GROUP_BITS;
 use crate::weights::Matrix;
 
 /// Goldilocks prime `p = 2^64 - 2^32 + 1` (RFC-0002).
@@ -58,6 +75,21 @@ pub const DEFAULT_EXP_LOOKUPS: u64 = 1u64 << 42;
 
 /// Default `Exp` table rows at 405B: `2^22` (RFC-0014).
 pub const DEFAULT_EXP_ROWS: u64 = 1u64 << 22;
+
+/// The most leaf groups a calculator accepts, `G = 2^{14}` (RFC-0014 'Statement sizes',
+/// RFC-0054 'Messages': `g_T + g_L ≤ 14`).
+pub const MAX_GROUPS: u64 = 1u64 << MAX_LEAF_GROUP_BITS;
+
+/// A tree level's round degree, 3: `eq(r, x)` times two evaluations (RFC-0010 'Tree levels').
+pub const LEVEL_DEGREE: u64 = 3;
+
+/// The merge's round degree, 2: `W_i·P̃_i` (RFC-0054 'The merge', 'Rounds').
+pub const MERGE_DEGREE: u64 = 2;
+
+/// The split values of the 405B lowering's ungrouped leaf stage, as RFC-0014's default
+/// statement states them (RFC-0045 'What is sent'; RFC-0014 'The 405B 16K-token, 16K-context
+/// statement', `groups`).
+pub const DEFAULT_SPLIT_VALUES: u64 = 53_489;
 
 /// Protocol modes a parameter set supports (RFC-0014 'Parameter sets').
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -321,6 +353,42 @@ pub struct StatementSizes {
     pub advice_rows: u64,
     /// Opened weight matrices in strictly increasing [`Matrix`] order.
     pub matrices: Vec<MatrixSize>,
+    /// The leaf stage in token groups; [`GroupSizes::NONE`] for an ungrouped stage.
+    pub groups: GroupSizes,
+}
+
+/// The leaf stage in token groups (RFC-0014 'Statement sizes' `groups`, RFC-0054 'Soundness').
+///
+/// For a proof's budget, `count` is the proof's own `G = 2^{g_T + g_L}`, 1 for an ungrouped
+/// proof; for a statement's report, the most groups the verifier accepts for the statement,
+/// `2^{min(14, t + n_ℓ)}`, and 1 in `tessera-protocol/2`. With `count = 1` the other three are
+/// empty and zero.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct GroupSizes {
+    /// `G`, the groups.
+    pub count: u64,
+    /// With `G > 1`, the leaf stage's level rounds by count and degree, which
+    /// [`StatementSizes::rounds`] also counts once.
+    pub level_rounds: Vec<RoundGroup>,
+    /// With `G > 1`, `n_max`: the merge's rounds, the most variables of a merged polynomial.
+    pub merge_rounds: u64,
+    /// With `G > 1`, `P`: the merged polynomials' count, which bounds every group's claims.
+    pub merge_claims: u64,
+}
+
+impl GroupSizes {
+    /// An ungrouped leaf stage: `G = 1` and no grouped size.
+    pub const NONE: Self = Self {
+        count: 1,
+        level_rounds: Vec::new(),
+        merge_rounds: 0,
+        merge_claims: 0,
+    };
+
+    /// Whether the stage runs in more than one group, `G > 1`: only then do its sizes count.
+    pub const fn grouped(&self) -> bool {
+        self.count > 1
+    }
 }
 
 /// Per-token lookup counts and table row counts of the 26 table entries in the 405B servable
@@ -366,6 +434,10 @@ impl StatementSizes {
     /// (RFC-0014 'The 405B 16K-token, 16K-context statement', RFC-0040 'The matrices').
     pub fn default_405b() -> Self {
         const TOKENS: u64 = 16_384;
+        const CONTEXT: u64 = 16_384;
+        // The most variables of the lowering's split tensors, as RFC-0014's default statement
+        // states them (`groups`: "above the split tensors' 35").
+        const DEFAULT_SPLIT_VARIABLES: u64 = 35;
         const LAYERS: u64 = 126;
         const D_MODEL: u64 = 16_384;
         const HEADS: u64 = 128;
@@ -413,11 +485,36 @@ impl StatementSizes {
             l_pad.saturating_mul(HEADS).saturating_mul(TOKENS),
         ));
         let forests = vec![softmax_forest];
-        let level_count = usize::try_from(ceil_log2_u64(tallest)).unwrap_or(0);
+        let levels = u64::from(ceil_log2_u64(tallest));
+        let level_count = usize::try_from(levels).unwrap_or(0);
         let instances_per_level = u64::try_from(lookups.len())
             .unwrap_or(0)
             .saturating_mul(2)
             .saturating_add(u64::try_from(forests.len()).unwrap_or(0));
+
+        // RFC-0054 'Soundness', 'A statement's report': the most groups the verifier accepts,
+        // 2^{min(14, t + n_ℓ)}, at t = ⌈log2 16,384⌉ = 14 token bits and n_ℓ = ⌈log2 126⌉ = 7
+        // layer bits (RFC-0054 'Messages').
+        let group_bits = ceil_log2_u64(TOKENS)
+            .saturating_add(ceil_log2_u64(LAYERS))
+            .min(u32::from(MAX_LEAF_GROUP_BITS));
+        // A SoftmaxRow tree runs over one query row's context positions: height ⌈log2 16,384⌉ =
+        // 14. Its leaf table holds the forest's s variables and those 14, the most of any merged
+        // polynomial, above the split tensors' 35 that RFC-0014 states.
+        let row_height = u64::from(ceil_log2_u64(CONTEXT));
+        let n_max = forests
+            .iter()
+            .map(|s| s.saturating_add(row_height))
+            .fold(DEFAULT_SPLIT_VARIABLES, u64::max);
+        let groups = GroupSizes {
+            count: 1u64.checked_shl(group_bits).unwrap_or(0),
+            level_rounds: vec![rounds_below(levels)],
+            merge_rounds: n_max,
+            // One merged polynomial per ungrouped split value and one per forest leaf table
+            // (RFC-0054 'The merge').
+            merge_claims: DEFAULT_SPLIT_VALUES
+                .saturating_add(u64::try_from(forests.len()).unwrap_or(u64::MAX)),
+        };
 
         Self {
             protocol: 1,
@@ -435,7 +532,40 @@ impl StatementSizes {
             matrices: weight_matrices_405b(
                 LOG2_KW, LAYERS, D_MODEL, HEADS, KV_HEADS, D_HEAD, D_FF, VOCAB,
             ),
+            groups,
         }
+    }
+
+    /// The default statement under RFC-0014's `--lookups N` and `--table-rows T`: its LogUp
+    /// instances replaced by `instance`, one of `N` lookups and `T` rows.
+    ///
+    /// The leaf stage's levels then follow the tallest tree. When `L = ⌈log2 max(N, T)⌉`
+    /// exceeds the default's 42 levels, `tree_levels` holds `L` levels of the default's 53
+    /// instances, `groups.level_rounds` `Σ_{ℓ<L} ℓ` rounds of degree 3, and `groups.merge_rounds`
+    /// `L`, which bounds every merged polynomial's variables. Every other size is the default's.
+    pub fn default_405b_with_instance(instance: LookupSize) -> Self {
+        let mut statement = Self::default_405b();
+        let levels = u64::from(ceil_log2_u64(instance.lookups.max(instance.rows)));
+        let default_levels = u64::try_from(statement.tree_levels.len()).unwrap_or(u64::MAX);
+        if levels > default_levels {
+            let per_level = statement.tree_levels.iter().copied().max().unwrap_or(0);
+            statement.tree_levels = vec![per_level; usize::try_from(levels).unwrap_or(0)];
+            if statement.groups.grouped() {
+                statement.groups.level_rounds = vec![rounds_below(levels)];
+                statement.groups.merge_rounds = levels;
+            }
+        }
+        statement.lookups = vec![instance];
+        statement
+    }
+}
+
+/// The rounds of a tallest tree's `levels` levels: level `ℓ` has `ℓ` rounds of degree 3, so
+/// `Σ_{ℓ<levels} ℓ` of them (RFC-0010 'Tree levels'; RFC-0014's default statement, `groups`).
+fn rounds_below(levels: u64) -> RoundGroup {
+    RoundGroup {
+        count: levels.saturating_mul(levels.saturating_sub(1)) / 2,
+        degree: LEVEL_DEGREE,
     }
 }
 
@@ -661,6 +791,13 @@ pub enum SoundnessError {
         /// The offending matrix.
         matrix: Matrix,
     },
+    /// `groups.count` is not a power of two in `1..=2^14`.
+    GroupCount(u64),
+    /// `groups.count` is above 1 in `tessera-protocol/2`, which accepts no grouping.
+    GroupedProtocol,
+    /// `groups.count` is 1 with a `level_rounds` entry, or a nonzero `merge_rounds` or
+    /// `merge_claims`.
+    UngroupedSizes,
 }
 
 impl SoundnessError {
@@ -693,6 +830,16 @@ impl fmt::Display for SoundnessError {
                 f,
                 "matrix {} has no committed or blinding rows in tessera-protocol/2",
                 matrix.name()
+            ),
+            Self::GroupCount(count) => write!(
+                f,
+                "groups.count must be a power of two in 1..={MAX_GROUPS}, got {count}"
+            ),
+            Self::GroupedProtocol => {
+                f.write_str("tessera-protocol/2 accepts no grouping: groups.count must be 1")
+            }
+            Self::UngroupedSizes => f.write_str(
+                "groups.count 1 takes no level_rounds and zero merge_rounds and merge_claims",
             ),
         }
     }
@@ -771,12 +918,35 @@ impl SoundnessReport {
         let line_term = u128::from(!statement.tree_levels.is_empty());
         let mask_term =
             u128::from(v2 && (!statement.stages.is_empty() || !statement.tree_levels.is_empty()));
+        // RFC-0054 'Soundness': with G > 1, the groups' and the table batch's levels are levels of
+        // `level_rounds`' degrees, and the merge is a stage of degree 2 that batches with error
+        // (P + G)/q.
+        let groups = &statement.groups;
+        let grouped_term = if groups.grouped() {
+            let level_deg = groups
+                .level_rounds
+                .iter()
+                .filter(|r| r.count > 0)
+                .map(|r| u128::from(r.degree))
+                .max()
+                .unwrap_or(0);
+            let merge_deg = if groups.merge_rounds > 0 {
+                u128::from(MERGE_DEGREE)
+            } else {
+                0
+            };
+            let batching = u128::from(groups.merge_claims).saturating_add(u128::from(groups.count));
+            level_deg.max(merge_deg).max(batching)
+        } else {
+            0
+        };
         let rounds_num = max_round_deg
             .max(max_stage)
             .max(max_level)
             .max(max_zc)
             .max(line_term)
-            .max(mask_term);
+            .max(mask_term)
+            .max(grouped_term);
         rows.push(build_field_row(
             RowKind::Rounds,
             None,
@@ -807,6 +977,26 @@ impl SoundnessReport {
                 .unwrap_or(u128::MAX)
                 .saturating_add(u128::try_from(statement.tree_levels.len()).unwrap_or(u128::MAX));
             union_num = union_num.saturating_add(masks);
+        }
+        if groups.grouped() {
+            // G more copies of the leaf stage's level terms, no group's levels and not the table
+            // batch's costing more than the stage's (RFC-0054 'Soundness'), and the merge's
+            // n_max rounds of degree 2 and its batching, P + G.
+            let mut levels = 0u128;
+            for r in &groups.level_rounds {
+                levels =
+                    levels.saturating_add(u128::from(r.count).saturating_mul(u128::from(r.degree)));
+            }
+            for &m in &statement.tree_levels {
+                levels = levels.saturating_add(u128::from(m).saturating_add(1));
+            }
+            let merge = u128::from(MERGE_DEGREE)
+                .saturating_mul(u128::from(groups.merge_rounds))
+                .saturating_add(u128::from(groups.merge_claims))
+                .saturating_add(u128::from(groups.count));
+            union_num = union_num
+                .saturating_add(u128::from(groups.count).saturating_mul(levels))
+                .saturating_add(merge);
         }
         rows.push(build_field_row(
             RowKind::Union,
@@ -1020,6 +1210,7 @@ impl SoundnessReport {
             "protocol: tessera-protocol/{}",
             self.statement.protocol
         );
+        let _ = writeln!(out, "leaf groups: G = {}", self.statement.groups.count);
         out.push('\n');
         let _ = writeln!(
             out,
@@ -1145,6 +1336,20 @@ fn validate(params: &SoundnessParams, statement: &StatementSizes) -> Result<(), 
         if statement.protocol == 2 && m.rows == 0 && params.weights.blinding_rows == 0 {
             return Err(SoundnessError::EmptyMatrix { matrix: m.matrix });
         }
+    }
+    // RFC-0014 'Statement sizes', `groups`: G = 2^g with g ≤ 14 (RFC-0054 'Messages'), none in
+    // tessera-protocol/2 (OQ-0054-1), and no grouped size without groups.
+    let groups = &statement.groups;
+    if !groups.count.is_power_of_two() || groups.count > MAX_GROUPS {
+        return Err(SoundnessError::GroupCount(groups.count));
+    }
+    if groups.grouped() && statement.protocol == 2 {
+        return Err(SoundnessError::GroupedProtocol);
+    }
+    if !groups.grouped()
+        && (!groups.level_rounds.is_empty() || groups.merge_rounds != 0 || groups.merge_claims != 0)
+    {
+        return Err(SoundnessError::UngroupedSizes);
     }
     Ok(())
 }
@@ -1682,11 +1887,37 @@ fn write_u64_array_json(out: &mut String, name: &str, items: &[u64], trailing_co
     let _ = writeln!(out, "    ]{suffix}");
 }
 
+fn write_groups_json(out: &mut String, g: &GroupSizes) {
+    out.push_str("    \"groups\": {\n");
+    let _ = writeln!(out, "      \"count\": {},", g.count);
+    if g.level_rounds.is_empty() {
+        out.push_str("      \"level_rounds\": [],\n");
+    } else {
+        out.push_str("      \"level_rounds\": [\n");
+        let count = g.level_rounds.len();
+        for (idx, r) in g.level_rounds.iter().enumerate() {
+            out.push_str("        {\n");
+            let _ = writeln!(out, "          \"count\": {},", r.count);
+            let _ = writeln!(out, "          \"degree\": {}", r.degree);
+            if idx.saturating_add(1) == count {
+                out.push_str("        }\n");
+            } else {
+                out.push_str("        },\n");
+            }
+        }
+        out.push_str("      ],\n");
+    }
+    let _ = writeln!(out, "      \"merge_claims\": {},", g.merge_claims);
+    let _ = writeln!(out, "      \"merge_rounds\": {}", g.merge_rounds);
+    out.push_str("    },\n");
+}
+
 fn write_statement_json(out: &mut String, s: &StatementSizes) {
     out.push_str("  \"statement\": {\n");
     let _ = writeln!(out, "    \"advice_rows\": {},", s.advice_rows);
     write_u64_array_json(out, "claim_groups", &s.claim_groups, true);
     write_u64_array_json(out, "forests", &s.forests, true);
+    write_groups_json(out, &s.groups);
 
     if s.lookups.is_empty() {
         out.push_str("    \"lookups\": [],\n");
@@ -1867,7 +2098,25 @@ mod tests {
                 variables: m.get("variables").unwrap().as_u64().unwrap(),
             })
             .collect();
+        let groups = j.get("groups").unwrap();
+        let groups = GroupSizes {
+            count: groups.get("count").unwrap().as_u64().unwrap(),
+            level_rounds: groups
+                .get("level_rounds")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|r| RoundGroup {
+                    count: r.get("count").unwrap().as_u64().unwrap(),
+                    degree: r.get("degree").unwrap().as_u64().unwrap(),
+                })
+                .collect(),
+            merge_rounds: groups.get("merge_rounds").unwrap().as_u64().unwrap(),
+            merge_claims: groups.get("merge_claims").unwrap().as_u64().unwrap(),
+        };
         StatementSizes {
+            groups,
             protocol: u8::try_from(j.get("protocol").unwrap().as_u64().unwrap()).unwrap(),
             rounds,
             stages: parse_u64_vec(j, "stages"),
@@ -1909,7 +2158,7 @@ mod tests {
         }
 
         let cases = vectors.get("cases").unwrap().as_array().unwrap();
-        assert_eq!(cases.len(), 86);
+        assert_eq!(cases.len(), 89);
         for case in cases {
             let name = case.get("name").unwrap().as_str().unwrap();
             let expected_report = case.get("report").unwrap();
@@ -2057,6 +2306,7 @@ mod tests {
         p.weights.blinding_rows = 0;
         let mut s = base_s;
         s.protocol = 2;
+        s.groups = GroupSizes::NONE;
         s.matrices[9].rows = 0;
         assert_eq!(
             SoundnessReport::evaluate(p, s),
@@ -2064,5 +2314,251 @@ mod tests {
                 matrix: Matrix::ChannelParams
             })
         );
+    }
+
+    fn evaluate_groups(
+        protocol: u8,
+        groups: GroupSizes,
+    ) -> Result<SoundnessReport, SoundnessError> {
+        let mut s = StatementSizes::default_405b();
+        s.protocol = protocol;
+        s.groups = groups;
+        SoundnessReport::evaluate(SoundnessParams::live_64(), s)
+    }
+
+    /// RFC-0014 'Statement sizes': each grouping refusal, alone, with its exact error, and the
+    /// groupings at their edges that are accepted.
+    #[test]
+    fn refuses_every_grouping_rfc_0014_names_with_err_usage() {
+        let grouped = |count| GroupSizes {
+            count,
+            ..StatementSizes::default_405b().groups
+        };
+        for count in [
+            0,
+            3,
+            6,
+            12_288,
+            MAX_GROUPS + 1,
+            MAX_GROUPS << 1,
+            1 << 63,
+            u64::MAX,
+        ] {
+            let err = evaluate_groups(1, grouped(count)).unwrap_err();
+            assert_eq!(err, SoundnessError::GroupCount(count), "{count}");
+            assert_eq!(err.code(), "ERR-USAGE");
+        }
+        for count in [2, 4, MAX_GROUPS >> 1, MAX_GROUPS] {
+            assert!(evaluate_groups(1, grouped(count)).is_ok(), "{count}");
+        }
+        assert!(evaluate_groups(1, GroupSizes::NONE).is_ok());
+
+        // tessera-protocol/2 accepts no grouping: two groups already refuse, and none passes.
+        for count in [2, MAX_GROUPS] {
+            let err = evaluate_groups(2, grouped(count)).unwrap_err();
+            assert_eq!(err, SoundnessError::GroupedProtocol);
+            assert_eq!(err.code(), "ERR-USAGE");
+        }
+        assert!(evaluate_groups(2, GroupSizes::NONE).is_ok());
+        // The count is judged before the protocol.
+        assert_eq!(
+            evaluate_groups(2, grouped(3)).unwrap_err(),
+            SoundnessError::GroupCount(3)
+        );
+
+        // G = 1 with any grouped size, a level entry even of no round among them.
+        for groups in [
+            GroupSizes {
+                level_rounds: vec![RoundGroup {
+                    count: 0,
+                    degree: 0,
+                }],
+                ..GroupSizes::NONE
+            },
+            GroupSizes {
+                level_rounds: vec![RoundGroup {
+                    count: 861,
+                    degree: 3,
+                }],
+                ..GroupSizes::NONE
+            },
+            GroupSizes {
+                merge_rounds: 1,
+                ..GroupSizes::NONE
+            },
+            GroupSizes {
+                merge_claims: 1,
+                ..GroupSizes::NONE
+            },
+        ] {
+            for protocol in [1, 2] {
+                let err = evaluate_groups(protocol, groups.clone()).unwrap_err();
+                assert_eq!(err, SoundnessError::UngroupedSizes, "{groups:?}");
+                assert_eq!(err.code(), "ERR-USAGE");
+            }
+        }
+    }
+
+    /// RFC-0014 'The 405B 16K-token, 16K-context statement', `groups`: G = 2^{min(14, 14 + 7)},
+    /// 861 level rounds of degree 3, n_max = 28 + 14 and P = 53,489 + 1; and the figures of 'At
+    /// the default statement' with and without them.
+    #[test]
+    fn the_default_statement_is_grouped_at_the_largest_accepted_g() {
+        let base = StatementSizes::default_405b();
+        assert_eq!(
+            base.groups,
+            GroupSizes {
+                count: 16_384,
+                level_rounds: vec![RoundGroup {
+                    count: 861,
+                    degree: 3
+                }],
+                merge_rounds: 42,
+                merge_claims: 53_490,
+            }
+        );
+        assert_eq!(base.tree_levels, vec![53; 42]);
+        let rows = |groups: GroupSizes| {
+            let mut s = base.clone();
+            s.groups = groups;
+            let report = SoundnessReport::evaluate(SoundnessParams::ni_100(), s).unwrap();
+            assert_eq!(report.meets_targets, Some(true));
+            let [rounds, union] = [0, 1].map(|i| {
+                let row = &report.rows[i];
+                (row.numerator.unwrap(), format_fixed_bits(row.bits.unwrap()))
+            });
+            (rounds, union)
+        };
+        let (rounds, union) = rows(base.groups.clone());
+        let (plain_rounds, plain_union) = rows(GroupSizes::NONE);
+        // The rounds row's largest error is the merge's batching, P + G = 69,874.
+        assert_eq!(rounds, (69_874, String::from("111.90")));
+        assert_eq!(plain_rounds, (64, String::from("121.99")));
+        // G more copies of the 42 levels, 861·3 + 42·(53 + 1), and the merge, 2·42 + P + G.
+        assert_eq!(plain_union, (72_732, String::from("111.84")));
+        assert_eq!(
+            union.0,
+            72_732 + 16_384 * (861 * 3 + 42 * 54) + 2 * 42 + 53_490 + 16_384
+        );
+        assert_eq!(union, (79_621_474, String::from("101.75")));
+    }
+
+    fn only_groups(tree_levels: Vec<u64>, groups: GroupSizes) -> [u128; 2] {
+        let s = StatementSizes {
+            protocol: 1,
+            rounds: Vec::new(),
+            stages: Vec::new(),
+            tree_levels,
+            zero_checks: Vec::new(),
+            forests: Vec::new(),
+            lookups: Vec::new(),
+            claim_groups: Vec::new(),
+            advice_rows: 1,
+            matrices: Vec::new(),
+            groups,
+        };
+        let report = SoundnessReport::evaluate(SoundnessParams::ni_100(), s).unwrap();
+        [0, 1].map(|i| report.rows[i].numerator.unwrap())
+    }
+
+    /// RFC-0014 'Rows' with `G > 1`, term by term on statements of nothing else: each degree of a
+    /// nonzero count in `level_rounds`, the merge's 2 when `n_max > 0` and `P + G` in `D`; `G`
+    /// copies of the levels' rounds and of every tree level's `m + 1`, and `2·n_max + P + G`, in
+    /// `U`.
+    #[test]
+    fn grouped_rows_count_each_term_rfc_0014_names() {
+        let groups = |count, level_rounds: &[(u64, u64)], merge_rounds, merge_claims| GroupSizes {
+            count,
+            level_rounds: level_rounds
+                .iter()
+                .map(|&(count, degree)| RoundGroup { count, degree })
+                .collect(),
+            merge_rounds,
+            merge_claims,
+        };
+        // A level degree above P + G; a zero count's degree is not a round.
+        assert_eq!(
+            only_groups(vec![], groups(2, &[(1, 9), (0, 99)], 0, 0)),
+            [9, 2 * 9 + 2]
+        );
+        // The merge's degree, 2, when it has a round; here P + G = 2 too.
+        assert_eq!(
+            only_groups(vec![], groups(2, &[(1, 1)], 1, 0)),
+            [2, 2 + 2 + 2]
+        );
+        // P + G: the merge's batching, above every degree.
+        assert_eq!(
+            only_groups(vec![], groups(4, &[(5, 3)], 3, 7)),
+            [11, 4 * 15 + 6 + 7 + 4]
+        );
+        // G copies of each tree level's m + 1, beyond the statement's own.
+        assert_eq!(
+            only_groups(vec![3, 5], groups(4, &[(2, 3)], 3, 7)),
+            [11, 4 + 6 + 4 * (6 + 4 + 6) + 6 + 7 + 4]
+        );
+        // The same statement without groups counts none of it.
+        assert_eq!(only_groups(vec![3, 5], GroupSizes::NONE), [5, 10]);
+        // A grouped numerator saturates at 2^128 − 1, and gives no bit.
+        let mut s = StatementSizes::default_405b();
+        s.groups.level_rounds = vec![RoundGroup {
+            count: u64::MAX,
+            degree: u64::MAX,
+        }];
+        let report = SoundnessReport::evaluate(SoundnessParams::ni_100(), s).unwrap();
+        assert_eq!(report.rows[0].numerator, Some(u128::from(u64::MAX)));
+        assert_eq!(report.rows[1].numerator, Some(u128::MAX));
+        assert_eq!(report.rows[1].bits, Some(0));
+        assert_eq!(report.rows[1].pass, Some(false));
+    }
+
+    /// RFC-0014: `--lookups N` and `--table-rows T` replace the instances; the leaf stage's levels
+    /// follow the tallest tree once `⌈log2 max(N, T)⌉` exceeds the default's 42.
+    #[test]
+    fn one_instance_past_the_default_height_lengthens_the_leaf_levels() {
+        let base = StatementSizes::default_405b();
+        for (lookups, rows) in [(DEFAULT_EXP_LOOKUPS, 1), (1, DEFAULT_EXP_LOOKUPS), (1, 1)] {
+            let instance = LookupSize { lookups, rows };
+            let s = StatementSizes::default_405b_with_instance(instance);
+            assert_eq!(
+                s,
+                StatementSizes {
+                    lookups: vec![instance],
+                    ..base.clone()
+                }
+            );
+        }
+        for (lookups, rows, levels) in [
+            (DEFAULT_EXP_LOOKUPS + 1, DEFAULT_EXP_ROWS, 43u64),
+            ((1 << 50) - (1 << 22), DEFAULT_EXP_ROWS, 50),
+            (1, 1 << 50, 50),
+            (u64::MAX, u64::MAX, 64),
+        ] {
+            let instance = LookupSize { lookups, rows };
+            let s = StatementSizes::default_405b_with_instance(instance);
+            let n = usize::try_from(levels).unwrap();
+            assert_eq!(s.lookups, vec![instance]);
+            assert_eq!(s.tree_levels, vec![53; n]);
+            assert_eq!(
+                s.groups,
+                GroupSizes {
+                    level_rounds: vec![RoundGroup {
+                        count: levels * (levels - 1) / 2,
+                        degree: 3
+                    }],
+                    merge_rounds: levels,
+                    ..base.groups.clone()
+                }
+            );
+            assert_eq!(
+                StatementSizes {
+                    lookups: base.lookups.clone(),
+                    tree_levels: base.tree_levels.clone(),
+                    groups: base.groups.clone(),
+                    ..s.clone()
+                },
+                base
+            );
+            assert!(SoundnessReport::evaluate(SoundnessParams::live_64(), s).is_ok());
+        }
     }
 }

@@ -566,7 +566,7 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
     for mode in [Mode::Live, Mode::NonInteractive] {
         let runtime_geometry = tv_runtime
             .as_ref()
-            .map(|r| tv_core::runtime::Geometry::derive(&claims, r).unwrap());
+            .map(|r| tv_core::runtime::Geometry::derive(&claims, r, None).unwrap());
         let (mut t, mut t2, xi, mut first) = committed.start(mode);
         let initial_transcript = first.replay.take().unwrap();
         let forests = actual.forests();

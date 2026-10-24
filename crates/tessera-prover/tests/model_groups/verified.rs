@@ -5,7 +5,9 @@
 //! roots and tables, and must accept it, its merged claims the prover's own.
 
 use super::*;
-use tessera_prover::leaf::{MergeMode, ModelWitness, grouped_multiplicities, prove_grouped_leaf};
+use tessera_prover::leaf::{
+    MergeMode, ModelWitness, ProvenGroupedLeaf, grouped_multiplicities, prove_grouped_leaf,
+};
 use tv_core::leaf::grouped::{Proof, Stage, TableTree};
 
 /// The prover's levels, as the verifier decodes them.
@@ -19,6 +21,36 @@ fn levels(
             final_evals: es(&l.proof().final_evals),
         })
         .collect()
+}
+
+/// The prover's grouped stage as the verifier decodes its `TreeProof`; no atom split.
+fn tree_proof(proven: &ProvenGroupedLeaf) -> tv_core::protocol::TreeProof {
+    tv_core::protocol::TreeProof {
+        levels: levels(proven.tables().levels()),
+        groups: proven
+            .groups()
+            .iter()
+            .zip(proven.splits())
+            .map(|(group, splits)| tv_core::protocol::GroupProof {
+                roots: es(group.roots()),
+                levels: levels(group.levels()),
+                values: es(group.values()),
+                splits: es(splits),
+            })
+            .collect(),
+        table_roots: es(proven.tables().roots()),
+        merge: tv_core::sumcheck::SumcheckProof {
+            rounds: proven
+                .merge()
+                .proof()
+                .rounds
+                .iter()
+                .map(|r| es(r))
+                .collect(),
+            final_evals: es(&proven.merge().proof().final_evals),
+        },
+        splits: Vec::new(),
+    }
 }
 
 #[test]
@@ -85,32 +117,7 @@ fn the_independent_verifier_accepts_a_grouped_stage_at_the_provers_merged_claims
             MergeMode::TwoPass { j_star: None },
         )
         .unwrap();
-        let trees_proof = tv_core::protocol::TreeProof {
-            levels: levels(proven.tables().levels()),
-            groups: proven
-                .groups()
-                .iter()
-                .zip(proven.splits())
-                .map(|(group, splits)| tv_core::protocol::GroupProof {
-                    roots: es(group.roots()),
-                    levels: levels(group.levels()),
-                    values: es(group.values()),
-                    splits: es(splits),
-                })
-                .collect(),
-            table_roots: es(proven.tables().roots()),
-            merge: tv_core::sumcheck::SumcheckProof {
-                rounds: proven
-                    .merge()
-                    .proof()
-                    .rounds
-                    .iter()
-                    .map(|r| es(r))
-                    .collect(),
-                final_evals: es(&proven.merge().proof().final_evals),
-            },
-            splits: Vec::new(),
-        };
+        let trees_proof = tree_proof(&proven);
         let logup = tv_core::protocol::LogUpProof {
             roots: Vec::new(),
             values: Vec::new(),
@@ -199,5 +206,105 @@ fn the_independent_verifier_accepts_a_grouped_stage_at_the_provers_merged_claims
             .challenge_fp2(tv_hash::transcript::Ascii::new("stage/0/next").unwrap())
             .unwrap();
         assert_eq!(e(ours), theirs, "{g_t} and {g_l} bits");
+
+        // RFC-0054 'Testing Strategy', 'The forests', at one token bit: group 1 holds the odd
+        // queries. The forest's trees are each query row's keys, 2^vars(n) leaves; a real row's
+        // tree already holds a zero, so its public root is 0, and a padded row's holds ones.
+        if (g_t, g_l) == (1, 0) {
+            let site = actual.forest_sites().next().unwrap();
+            let honest = forest_truth(&p, &witness, site);
+            let height = vars(n);
+            let query = |x: usize| (x >> height) & ((1 << height) - 1);
+            let tree = |x: usize| (x >> height) << height..((x >> height) + 1) << height;
+            let forests = actual.stage_forests();
+            let prove_over = |leaves: &[i64]| {
+                let leaves: Vec<G> = leaves.iter().map(|&v| G::from_i64(v)).collect();
+                let mut cheating = actual.stage_forests();
+                cheating[0] = forests[0].with_leaves(&leaves);
+                let mut tr = transcript(Mode::NonInteractive);
+                prove_grouped_leaf(
+                    &mut tr,
+                    &layout,
+                    &grouped,
+                    &tables,
+                    &tensors,
+                    &committed,
+                    &cheating,
+                    MergeMode::TwoPass { j_star: None },
+                )
+                .unwrap()
+            };
+            let check = |proven: &ProvenGroupedLeaf| {
+                let mut t = vt(Mode::NonInteractive);
+                stage
+                    .verify(
+                        &mut t,
+                        Proof {
+                            logup: &logup,
+                            trees: &tree_proof(proven),
+                        },
+                        |tree, point| schedule.forest_root(tree, point),
+                        |id, beta, point| vt_tables[index(id)?].eval_mle(point, beta).ok(),
+                        |id| {
+                            let table = &vt_tables[index(id)?];
+                            let (k, v) = table.row(0)?;
+                            let range =
+                                matches!(table.spec().kind, tv_tables::TableKind::Range { .. });
+                            Some((k, (!range).then_some(v)))
+                        },
+                    )
+                    .map_err(|e| Box::new(e.verdict(tv_core::verdict::ArtifactKind(0x0520))))
+            };
+            // The control: the forest rebuilt from the witness is the prover's own.
+            let control = check(&prove_over(&honest));
+            assert!(control.is_ok(), "{control:?}");
+
+            // A second zero in a real row's tree, at a valid key: its root stays 0, so the leaf
+            // stage cannot see it. It carries the cheating leaves to the merged forest claim,
+            // the false claim stage 1 rejects as it rejects the ungrouped stage's
+            // (tv-core driver_grouped: forest claims moved off their leaves fail stage 1).
+            let at = (0..honest.len())
+                .find(|&x| {
+                    query(x) % 2 == 1
+                        && (query(x) as u32) < n
+                        && honest[x] != 0
+                        && honest[tree(x)].contains(&0)
+                })
+                .expect("a nonzero leaf in an odd real row's tree");
+            let mut second = honest.clone();
+            second[at] = 0;
+            let merged = check(&prove_over(&second)).expect("the leaf stage cannot see it");
+            let claim = &merged.forests[0].claim;
+            assert_eq!(claim.value, mle(&second, &claim.point));
+            assert_ne!(claim.value, mle(&honest, &claim.point));
+
+            // A zero in a padded row's tree, all ones: its root becomes 0, not the public 1.
+            // The forest joins group 1's levels at L − height, its root claim from the public
+            // roots. Each round sends p(0) and derives p(1) from the claim (RFC-0010 'Sumcheck
+            // messages'), so the false root claim fails that level's final check, at round
+            // L − height: the tallest tree's variables there.
+            let at = (0..honest.len())
+                .find(|&x| query(x) % 2 == 1 && (query(x) as u32) >= n)
+                .expect("an odd padded row");
+            assert!(
+                honest[tree(at)].iter().all(|&v| v == 1),
+                "a padded tree holds ones"
+            );
+            let mut padded = honest.clone();
+            padded[at] = 0;
+            let joins = proven.groups()[1].levels().len() as u32 - height;
+            let refused = check(&prove_over(&padded)).map(drop).map_err(|v| *v);
+            assert!(
+                matches!(
+                    refused,
+                    Err(tv_core::Verdict::Reject(tv_core::RejectReason::TreeLevel {
+                        group: 1,
+                        level,
+                        round,
+                    })) if (level, round) == (joins, joins)
+                ),
+                "{refused:?}"
+            );
+        }
     }
 }

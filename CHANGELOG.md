@@ -43,6 +43,10 @@ All notable changes to the prover release train are recorded here: the crates un
   - **`--lookups` and `--table-rows`.** The leaf stage's levels now follow the tallest tree: `⌈log2 max(N, T)⌉` levels when above the default's 42, with their rounds and the merge's `n_max`. `N = 2^50` gives 50 levels and a union of 101.36 bits, where the fixed 42 levels gave 101.75.
   - **The figures' source.** `tessera-bench`'s `the_default_statements_merge_sizes_are_the_405b_lowerings` counts the 405B lowering's 53,489 split values and its forest in both workspaces' layouts.
   - **The oracle.** `spec/vectors/soundness/generate.py` states the grouped sizes, their rows and refusals; 89 cases, among them a grouping whose union alone misses 100 bits. The report schema gains `statement.groups`.
+  - **Across the workspaces** (DEP-2). The two default statements are equal field for field, and the 1,000-profile differential draws random groupings.
+  - **RFC-0054's forest cases.** `StageForest::with_leaves` keeps a forest's shape over other leaves, so a test can plant a cheating prover's leaves. `tv-core` then checks two zeros planted in group 1's share of the forest:
+    - **in a real row's tree,** whose root is already 0, the leaf stage cannot see it and carries it to the merged forest claim, which stage 1 rejects;
+    - **in a padded row's tree,** of ones, it is rejected at the level where the forest joins, at that level's final check.
 
 - The stages and the openings read the leaf stage's claims where a grouped stage leaves them ([#134](https://github.com/AbdelStark/tessera/issues/134)):
   - **RFC-0054 'The stage's outputs'.** A claim the ungrouped stage leaves at `P[0..n]` on a tensor of `n` variables lies, in a grouped stage, at the merged point `r(n, S)`. `S` is the low `g_T` variables of the tensor's token axis. The same holds for the graph's claims on each gadget input and on the logits, for each tensor's value, for the native relations' points and for the openings'. The forests' leaf claims are their merged claims, the multiplicities' the table batch's, and the merge's rounds bound every such claim.

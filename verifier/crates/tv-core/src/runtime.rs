@@ -1,16 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Complete protocol/1 runtime message geometry and the mandatory RFC-0053 budget.
+//!
+//! A proof's budget is evaluated at its own grouping (RFC-0054 'A proof's budget'): an ungrouped
+//! proof's statement has `groups.count = 1` and is the ungrouped statement; a grouped proof's
+//! counts `G = 2^{g_T + g_L}`, the leaf stage's level rounds by degree (the levels [`levels`]
+//! derives for the ungrouped stage, which bound every group's and the table batch's), the merge's
+//! `n_max`, the most variables of a merged polynomial, and `P`, the merged polynomials' count, one
+//! per ungrouped split value and one per forest leaf table (RFC-0054 'The merge'). Every size
+//! comes from the verifier's own layouts ([`Grouped`], [`split::Layout`]), never from the proof.
 
 use crate::advice::{self, opening::Opening};
 use crate::claims::{ClaimList, CommitmentLayout, ParamSetId};
 use crate::gadgets::{self, model};
+use crate::leaf::groups::Grouped;
 use crate::leaf::{Tree, split};
 use crate::model_openings::Claims;
 use crate::params::ParamSet;
 use crate::schedule::{RelationKind, Stage};
 use crate::soundness::{
-    LookupSize, MatrixSize, RoundGroup, SoundnessParams, SoundnessReport, StatementSizes,
+    GroupSizes, LookupSize, MatrixSize, RoundGroup, SoundnessParams, SoundnessReport,
+    StatementSizes,
 };
 use crate::weights::{self, Matrix};
 use tv_hash::transcript::Mode;
@@ -146,6 +156,45 @@ fn stage(s: &Stage) -> Result<StageFields, Error> {
         splits: s.splits,
     })
 }
+/// RFC-0054 'A proof's budget': the grouped sizes of a proof of `grouped`'s `G`, over the ungrouped
+/// stage's `levels`, whose split holds `split_values` values and whose schedule `forests` forests.
+/// With `G = 1` they are [`GroupSizes::NONE`].
+///
+/// `P` is the merge's polynomials, one per ungrouped split value and one per forest leaf table
+/// (RFC-0054 'The merge'): the grouped layout must count as many as RFC-0045's split layout and the
+/// leaf schedule, else `Internal`. `n_max` is the most variables among them.
+fn grouping(
+    levels: &[Fields],
+    grouped: &Grouped,
+    split_values: usize,
+    forests: usize,
+) -> Result<GroupSizes, Error> {
+    let count = grouped.count();
+    if count == 0 {
+        return Err(Error::Internal);
+    }
+    if count == 1 {
+        return Ok(GroupSizes::NONE);
+    }
+    let polynomials = grouped.polynomials();
+    let expected = split_values.checked_add(forests).ok_or(Error::Internal)?;
+    if grouped.values() != split_values || polynomials.len() != expected {
+        return Err(Error::Internal);
+    }
+    let mut level_rounds = reserve(levels.len())?;
+    for f in levels {
+        level_rounds.push(RoundGroup {
+            count: number(f.rounds)?,
+            degree: number(f.degree)?,
+        });
+    }
+    Ok(GroupSizes {
+        count: u64::from(count),
+        level_rounds,
+        merge_rounds: u64::from(polynomials.iter().map(|p| p.variables).max().unwrap_or(0)),
+        merge_claims: number(polynomials.len())?,
+    })
+}
 fn zero_checks_of(s: &Stage) -> impl Iterator<Item = usize> + '_ {
     s.instances
         .iter()
@@ -169,9 +218,17 @@ impl Geometry {
     /// Derive all runtime leaf/native/GKR counts from the public model and request.
     /// Claim lists retain their prerelease version; this describes protocol/1 packets.
     ///
+    /// `grouped` is the verifier's own layout of the proof's leaf groups over `runtime`
+    /// ([`Grouped::derive_runtime`] at `Round1.leaf_groups`), `None` for an ungrouped proof: the
+    /// statement's `groups` are the proof's own grouping (module documentation).
+    ///
     /// # Errors
     /// `Internal` for inconsistent own metadata; `Memory` for failed reservations.
-    pub fn derive(claims: &ClaimList, runtime: &gadgets::runtime::Plan<'_>) -> Result<Self, Error> {
+    pub fn derive(
+        claims: &ClaimList,
+        runtime: &gadgets::runtime::Plan<'_>,
+        grouped: Option<&Grouped>,
+    ) -> Result<Self, Error> {
         let leaf = runtime.leaf_schedule().map_err(claims_error)?;
         let model = model::Plan::derive_runtime(runtime).map_err(gadget_error)?;
         let splits =
@@ -229,6 +286,10 @@ impl Geometry {
                 forests.push(u64::from(*trees_log));
             }
         }
+        let groups = match grouped {
+            Some(grouped) => grouping(&levels, grouped, splits.values(), forests.len())?,
+            None => GroupSizes::NONE,
+        };
         let mut lookups = reserve(leaf.lookups().len())?;
         for &(id, entries) in leaf.lookups() {
             let rows = runtime.table(id).ok_or(Error::Internal)?.rows();
@@ -273,6 +334,7 @@ impl Geometry {
                 lookups,
                 claim_groups: Vec::new(),
                 matrices: Vec::new(),
+                groups,
                 advice_rows: power(
                     advice
                         .nu()
@@ -587,5 +649,126 @@ mod tests {
             evaluate_budget(ParamSet::Ni100, sizes),
             Err(Error::Targets { row: 3 })
         ));
+    }
+
+    /// RFC-0054 'A proof's budget': the bound at the proof's own `G`. Sizes whose grouped union
+    /// misses 100 bits at `G = 2^14` refuse with `Targets` at the union row, alone; the same
+    /// sizes at `G = 2^13` pass, and without groups they pass at the ungrouped bound.
+    #[test]
+    fn a_grouped_bound_that_misses_a_target_refuses_while_the_ungrouped_passes() {
+        for params in [ParamSet::Live64, ParamSet::Ni100] {
+            let mut sizes = StatementSizes::default_405b();
+            sizes.groups.level_rounds = vec![RoundGroup {
+                count: 6_000,
+                degree: 3,
+            }];
+            assert!(matches!(
+                evaluate_budget(params, sizes.clone()),
+                Err(Error::Targets { row: 1 })
+            ));
+            let mut fewer = sizes.clone();
+            fewer.groups.count = 1 << 13;
+            let report = evaluate_budget(params, fewer).unwrap();
+            assert_eq!(report.report().meets_targets, Some(true));
+            let mut ungrouped = sizes;
+            ungrouped.groups = GroupSizes::NONE;
+            let report = evaluate_budget(params, ungrouped).unwrap();
+            assert_eq!(report.report().meets_targets, Some(true));
+            assert_eq!(report.report().statement.groups, GroupSizes::NONE);
+        }
+    }
+
+    /// RFC-0054 'A proof's budget', 'The merge': a grouped proof's sizes from the verifier's own
+    /// layouts of the recorded `g3` proof, `(g_T, g_L) = (1, 2)`: `G = 8`, the ungrouped stage's
+    /// levels by degree, `P` the split's values and the forests, `n_max` their most variables.
+    /// A grouped layout that disagrees with the split layout or the schedule is the verifier's
+    /// fault, and one group is no grouping.
+    #[cfg(feature = "test-params")]
+    #[test]
+    fn grouped_sizes_come_from_the_layouts_and_refuse_a_disagreeing_count() {
+        use crate::protocol::{LeafGroups, NiProof};
+        let limits = tv_codec::DecodeLimits::MESSAGE;
+        let claims = ClaimList::open(
+            include_bytes!("../tests/fixtures/grouped/g3/claims.tcl"),
+            &limits,
+        )
+        .unwrap();
+        let proof = NiProof::open(
+            include_bytes!("../tests/fixtures/grouped/g3/ni.tnp"),
+            &limits,
+        )
+        .unwrap();
+        let validated = crate::validation::validate(&claims).unwrap();
+        let request = &proof.round1.statement.batch.requests[0];
+        let graph = crate::lowering::lower(
+            &crate::validation::check_public(&claims).unwrap(),
+            request.prompt_len + request.output_len,
+        )
+        .unwrap();
+        let runtime = gadgets::runtime::Plan::derive(
+            &graph,
+            claims.gadget_policy,
+            request.prompt_len,
+            0,
+            validated.tables(),
+        )
+        .unwrap();
+        let leaf = runtime.leaf_schedule().unwrap();
+        let fields = levels(leaf.schedule().trees()).unwrap();
+        let values = split::Layout::new(&runtime.split_sites().unwrap())
+            .unwrap()
+            .values();
+        let forests = leaf
+            .schedule()
+            .trees()
+            .iter()
+            .filter(|t| matches!(t, Tree::Forest { .. }))
+            .count();
+        assert_eq!(
+            proof.round1.leaf_groups,
+            LeafGroups {
+                token_bits: 1,
+                layer_bits: 2
+            }
+        );
+        let grouped = Grouped::derive_runtime(&graph, &runtime, proof.round1.leaf_groups).unwrap();
+        let sizes = grouping(&fields, &grouped, values, forests).unwrap();
+        assert_eq!(sizes.count, 8);
+        assert!(forests >= 1 && values >= 1);
+        assert_eq!(sizes.merge_claims, (values + forests) as u64);
+        assert_eq!(
+            sizes.merge_rounds,
+            u64::from(
+                grouped
+                    .polynomials()
+                    .iter()
+                    .map(|p| p.variables)
+                    .max()
+                    .unwrap()
+            )
+        );
+        assert_eq!(
+            sizes.level_rounds,
+            fields
+                .iter()
+                .map(|f| RoundGroup {
+                    count: f.rounds as u64,
+                    degree: 3,
+                })
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            grouping(&fields, &grouped, values + 1, forests),
+            Err(Error::Internal)
+        );
+        assert_eq!(
+            grouping(&fields, &grouped, values, forests + 1),
+            Err(Error::Internal)
+        );
+        let one = Grouped::derive_runtime(&graph, &runtime, LeafGroups::NONE).unwrap();
+        assert_eq!(
+            grouping(&fields, &one, values, forests),
+            Ok(GroupSizes::NONE)
+        );
     }
 }

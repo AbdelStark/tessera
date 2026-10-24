@@ -605,7 +605,7 @@ fn complete_runtime_budget_keeps_original_groups_and_checks_preset_name_mode_and
         .unwrap();
         let xi = point((layout.nu() - u32::from(a.log2_k)) as usize);
         let opening = binding.prepare(&views, f(37), &xi).unwrap();
-        let budget = Geometry::derive(&c, &runtime)
+        let budget = Geometry::derive(&c, &runtime, None)
             .unwrap()
             .check_budget(params, mode, &opening, &claims, &layouts)
             .unwrap();
@@ -631,7 +631,7 @@ fn complete_runtime_budget_keeps_original_groups_and_checks_preset_name_mode_and
             Mode::Live
         };
         assert_eq!(
-            Geometry::derive(&c, &runtime)
+            Geometry::derive(&c, &runtime, None)
                 .unwrap()
                 .check_budget(params, opposite, &opening, &claims, &layouts)
                 .err(),
@@ -640,7 +640,7 @@ fn complete_runtime_budget_keeps_original_groups_and_checks_preset_name_mode_and
         let mut renamed = c.clone();
         renamed.params = tv_core::claims::ParamSetId::new("unknown/1").unwrap();
         assert_eq!(
-            Geometry::derive(&renamed, &runtime)
+            Geometry::derive(&renamed, &runtime, None)
                 .unwrap()
                 .check_budget(params, mode, &opening, &claims, &layouts)
                 .err(),
@@ -649,7 +649,7 @@ fn complete_runtime_budget_keeps_original_groups_and_checks_preset_name_mode_and
         let mut other_layout = c.clone();
         other_layout.layout.advice.mask_coeffs += 1;
         assert_eq!(
-            Geometry::derive(&other_layout, &runtime)
+            Geometry::derive(&other_layout, &runtime, None)
                 .unwrap()
                 .check_budget(params, mode, &opening, &claims, &layouts)
                 .err(),
@@ -658,7 +658,7 @@ fn complete_runtime_budget_keeps_original_groups_and_checks_preset_name_mode_and
         let mut misplaced = layouts.clone();
         misplaced.swap(1, 2);
         assert_eq!(
-            Geometry::derive(&c, &runtime)
+            Geometry::derive(&c, &runtime, None)
                 .unwrap()
                 .check_budget(params, mode, &opening, &claims, &misplaced)
                 .err(),

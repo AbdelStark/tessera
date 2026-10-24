@@ -76,6 +76,12 @@ impl<'a> StageForest<'a> {
         }
     }
 
+    /// The same forest's shape, its trees' height and its query and layer indices, over other
+    /// `leaves`: a test plants a cheating prover's leaves with it (RFC-0054 'Testing Strategy').
+    pub fn with_leaves<'b>(&self, leaves: &'b [Goldilocks]) -> StageForest<'b> {
+        StageForest::new(leaves, self.height, self.queries, self.layers)
+    }
+
     /// The leaf table's variables.
     fn vars(&self) -> Option<u32> {
         self.leaves

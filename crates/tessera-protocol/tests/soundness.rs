@@ -1095,6 +1095,20 @@ fn to_tv_statement(s: &StatementSizes) -> tv_core::soundness::StatementSizes {
             .collect(),
         claim_groups: s.claim_groups.clone(),
         advice_rows: s.advice_rows,
+        groups: tv_core::soundness::GroupSizes {
+            count: s.groups.count,
+            level_rounds: s
+                .groups
+                .level_rounds
+                .iter()
+                .map(|r| tv_core::soundness::RoundGroup {
+                    count: r.count,
+                    degree: u64::from(r.degree),
+                })
+                .collect(),
+            merge_rounds: u64::from(s.groups.merge_rounds),
+            merge_claims: s.groups.merge_claims,
+        },
         matrices: s
             .matrices
             .iter()
@@ -1106,6 +1120,16 @@ fn to_tv_statement(s: &StatementSizes) -> tv_core::soundness::StatementSizes {
             })
             .collect(),
     }
+}
+
+/// RFC-0014 'Soundness calculator', DEP-2: both workspaces state the same default 405B
+/// statement, its grouped sizes included (RFC-0054 'Soundness'), each derived on its own.
+#[test]
+fn both_calculators_state_the_same_405b_default() {
+    assert_eq!(
+        to_tv_statement(&StatementSizes::llama_405b_16k()),
+        tv_core::soundness::StatementSizes::default_405b()
+    );
 }
 
 /// #110, RFC-0014 'Testing Strategy': both calculators agree on every row for 1,000 random
@@ -1209,7 +1233,22 @@ fn prover_and_verifier_calculators_agree_on_1000_random_profiles() {
             claim_groups: (0..rng.below(5)).map(|_| rng.bits(32)).collect(),
             advice_rows: rng.bits(64).max(1),
             matrices,
-            groups: LeafGroupSizes::NONE,
+            // RFC-0054 'Soundness': a random grouping of 2^0 to 2^14 groups, none in
+            // tessera-protocol/2.
+            groups: match 1u64 << rng.below(15) {
+                count if count > 1 && protocol == 1 => LeafGroupSizes {
+                    count,
+                    level_rounds: (0..rng.below(3))
+                        .map(|_| Rounds {
+                            count: rng.bits(20),
+                            degree: rng.bits(4) as u32,
+                        })
+                        .collect(),
+                    merge_rounds: rng.bits(7) as u32,
+                    merge_claims: rng.bits(24),
+                },
+                _ => LeafGroupSizes::NONE,
+            },
         };
 
         let prover_report = SoundnessReport::new(&p, &statement).expect("prover report");

@@ -61,7 +61,8 @@ const PARAMS_HELP: &str = "\
 tessera-verify params: independent soundness calculator (RFC-0014 'Soundness calculator')
 
 Evaluates a parameter set against the default Llama-3.1-405B 16K-token, 16K-context statement
-(Exp table default: 2^42 lookups and 2^22 rows) and prints every row of the soundness table.
+(Exp table default: 2^42 lookups and 2^22 rows), with its leaf stage in the most token groups a
+verifier accepts for it, 2^14 (RFC-0054), and prints every row of the soundness table.
 
 USAGE:
     tessera-verify params --params <PARAMSET> [--lookups <N>] [--table-rows <T>] [--json]
@@ -69,7 +70,8 @@ USAGE:
 OPTIONS:
     --params <PARAMSET>     Named parameter set: live-64, ni-100, or test-small
     --lookups <N>           Override LogUp lookups N (default when --table-rows is set: 2^42)
-    --table-rows <T>        Override LogUp table rows T (default when --lookups is set: 2^22)
+    --table-rows <T>        Override LogUp table rows T (default when --lookups is set: 2^22);
+                            past 42 levels, the leaf stage's follow ceil(log2 max(N, T))
     --json                  Print one tessera.soundness/1 JSON object to stdout
     -h, --help              Print this help information
 ";
@@ -239,13 +241,17 @@ fn run_params(args: &[String], json_flag: bool) -> CommandOutput {
         );
     };
 
-    let mut statement = StatementSizes::default_405b();
-    if lookups.is_some() || table_rows.is_some() {
-        statement.lookups = vec![LookupSize {
+    // RFC-0014 'Soundness calculator': the default statement, at the most groups the verifier
+    // accepts for it (RFC-0054 'A statement's report'); `--lookups` and `--table-rows` replace its
+    // instances, and the leaf stage's levels then follow the tallest tree.
+    let statement = if lookups.is_some() || table_rows.is_some() {
+        StatementSizes::default_405b_with_instance(LookupSize {
             lookups: lookups.unwrap_or(DEFAULT_EXP_LOOKUPS),
             rows: table_rows.unwrap_or(DEFAULT_EXP_ROWS),
-        }];
-    }
+        })
+    } else {
+        StatementSizes::default_405b()
+    };
 
     match SoundnessReport::evaluate(params, statement) {
         Ok(report) => {

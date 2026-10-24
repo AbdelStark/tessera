@@ -53,7 +53,7 @@
 //! | [`stages::verify`] | the leaf stage's splits, then each reduction stage: its layer and zero-check points, its batched sumcheck with the public factors, its splits; and the claim pool |
 //! | [`selectors`] | the public factors: `LT`, the causal selector `C̃`, the row selector `ψ̃`, layer weights `w̃`, `Rotate`'s kernel, and RFC-0035's padding zero-check |
 //! | [`gadgets`] | final checks for requantization, NonNeg, BigIntCompare, OneHot, roots, causal Softmax and Argmax, with canonical source/range obligations (RFC-0009/0050) |
-//! | [`soundness::SoundnessReport::evaluate`] | independent integer-only soundness calculator for every row of RFC-0014's table (RFC-0014, RFC-0049) |
+//! | [`soundness::SoundnessReport::evaluate`] | independent integer-only soundness calculator for every row of RFC-0014's table, a leaf stage in token groups included (RFC-0014, RFC-0049, RFC-0054 'Soundness') |
 //!
 //! [`driver`] composes one exact-greedy protocol/1 proof unit through all original source
 //! openings and the mandatory runtime budget. [`verify_non_interactive`] judges typed proofs;
