@@ -177,7 +177,6 @@ impl Case {
     }
 }
 
-#[test]
 fn opening_checks_allocate_only_what_the_parameters_and_the_draws_size() {
     let file = read_vectors("pcs/opening.json");
     let cases: Vec<Case> = list(&file, "openings")
@@ -286,4 +285,11 @@ fn opening_checks_allocate_only_what_the_parameters_and_the_draws_size() {
             "opening {index}: its own allocation suffices"
         );
     }
+}
+
+/// Runs on the process's only thread (`harness = false`): libtest would keep a thread of its own,
+/// whose allocations the process-wide cap counts against this test's budget (#501).
+fn main() {
+    opening_checks_allocate_only_what_the_parameters_and_the_draws_size();
+    println!("opening_checks_allocate_only_what_the_parameters_and_the_draws_size: ok");
 }

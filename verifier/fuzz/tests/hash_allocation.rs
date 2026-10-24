@@ -32,7 +32,6 @@ fn allocated_by<T>(f: impl FnOnce() -> T) -> (T, usize) {
     (result, ALLOCATOR.total_allocated() - before)
 }
 
-#[test]
 fn proof_checks_hashing_and_transcripts_allocate_nothing() {
     // Proofs of every shape the fuzz scripts build: honest, and changed in each way.
     for seed in 0u16..400 {
@@ -123,4 +122,11 @@ fn proof_checks_hashing_and_transcripts_allocate_nothing() {
         bytes >= tce.len() && bytes <= 2 * tce.len().next_power_of_two(),
         "{bytes}"
     );
+}
+
+/// Runs on the process's only thread (`harness = false`): libtest would keep a thread of its own,
+/// whose allocations the process-wide cap counts against this test's budget (#501).
+fn main() {
+    proof_checks_hashing_and_transcripts_allocate_nothing();
+    println!("proof_checks_hashing_and_transcripts_allocate_nothing: ok");
 }

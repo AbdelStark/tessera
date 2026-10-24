@@ -29,6 +29,44 @@ tv-tables = { path = "../crates/tv-tables" }
 # tests/*_allocation.rs.
 cap = { version = "0.1.2", features = ["stats"] }
 
+# The allocation tests cap the process-wide allocator, so each runs alone on the main thread
+# (#501): libtest's harness thread would allocate inside their capped windows.
+[[test]]
+name = "allocation"
+harness = false
+
+[[test]]
+name = "driver_allocation"
+harness = false
+
+[[test]]
+name = "gadgets_allocation"
+harness = false
+
+[[test]]
+name = "hash_allocation"
+harness = false
+
+[[test]]
+name = "logup_allocation"
+harness = false
+
+[[test]]
+name = "opening_allocation"
+harness = false
+
+[[test]]
+name = "protocol_allocation"
+harness = false
+
+[[test]]
+name = "runtime_allocation"
+harness = false
+
+[[test]]
+name = "sumcheck_allocation"
+harness = false
+
 [workspace]
 members = ["."]
 

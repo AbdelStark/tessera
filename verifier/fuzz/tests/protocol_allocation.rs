@@ -17,7 +17,6 @@ fn within<T>(budget: usize, f: impl FnOnce() -> T) -> (T, usize) {
     (result, ALLOCATOR.total_allocated() - before)
 }
 
-#[test]
 fn packets_allocate_from_decoded_bytes_and_report_memory_as_a_reader_failure() {
     let unlimited = DecodeLimits {
         max_total_bytes: u64::MAX,
@@ -64,4 +63,11 @@ fn packets_allocate_from_decoded_bytes_and_report_memory_as_a_reader_failure() {
     let (result, allocated) = within(1024, || decode(&input, &unlimited, Round3Response::decode));
     assert_eq!(result, Err(DecodeError::new(ErrorCode::Truncated, 8)));
     assert!(allocated <= 1024);
+}
+
+/// Runs on the process's only thread (`harness = false`): libtest would keep a thread of its own,
+/// whose allocations the process-wide cap counts against this test's budget (#501).
+fn main() {
+    packets_allocate_from_decoded_bytes_and_report_memory_as_a_reader_failure();
+    println!("packets_allocate_from_decoded_bytes_and_report_memory_as_a_reader_failure: ok");
 }

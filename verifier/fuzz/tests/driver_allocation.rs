@@ -20,7 +20,6 @@ fn fixture(name: &str) -> Vec<u8> {
     .unwrap()
 }
 
-#[test]
 fn predecode_policy_decode_failures_and_report_serialization_respect_allocation_failures() {
     let limits = DecodeLimits::MESSAGE;
     let bytes = fixture("ni.tnp");
@@ -87,4 +86,13 @@ fn predecode_policy_decode_failures_and_report_serialization_respect_allocation_
         })
     );
     assert!(rejected.to_json().is_ok());
+}
+
+/// Runs on the process's only thread (`harness = false`): libtest would keep a thread of its own,
+/// whose allocations the process-wide cap counts against this test's budget (#501).
+fn main() {
+    predecode_policy_decode_failures_and_report_serialization_respect_allocation_failures();
+    println!(
+        "predecode_policy_decode_failures_and_report_serialization_respect_allocation_failures: ok"
+    );
 }

@@ -43,7 +43,6 @@ fn capped<T, E: core::fmt::Debug + PartialEq>(
     }
     assert!(refused > 0);
 }
-#[test]
 fn runtime_catalog_layout_leaf_and_mixed_metadata_preserve_memory_errors() {
     capped(
         "range hash",
@@ -206,4 +205,11 @@ fn runtime_catalog_layout_leaf_and_mixed_metadata_preserve_memory_errors() {
         },
         SoundnessError::Memory,
     );
+}
+
+/// Runs on the process's only thread (`harness = false`): libtest would keep a thread of its own,
+/// whose allocations the process-wide cap counts against this test's budget (#501).
+fn main() {
+    runtime_catalog_layout_leaf_and_mixed_metadata_preserve_memory_errors();
+    println!("runtime_catalog_layout_leaf_and_mixed_metadata_preserve_memory_errors: ok");
 }
