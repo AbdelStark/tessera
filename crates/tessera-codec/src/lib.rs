@@ -30,7 +30,7 @@ mod tce;
 pub mod telemetry;
 mod types;
 
-pub use secret::{Public, Secret, SecretBuf};
+pub use secret::{HeapKey, Public, Secret, SecretBuf};
 pub use tce::{
     DEPTH_CEILING, Decode, DecodeError, DecodeLimits, Encode, Reader, Sink, decode, encode,
 };

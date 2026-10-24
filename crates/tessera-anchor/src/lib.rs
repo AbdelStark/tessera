@@ -36,4 +36,6 @@ pub use manifest::{
     ChainError, EntryError, LinkError, LogManifest, ManifestBody, ManifestError, SignatureEnvelope,
     check_chain, check_link, key_id, public_key,
 };
-pub use session::{HeapKey, Session, SessionKeys, key_commitment, sampler_commitment};
+pub use session::{Session, SessionKeys, key_commitment, sampler_commitment};
+/// The heap-held key type, from `tessera-codec`, re-exported for the anchor's callers.
+pub use tessera_codec::HeapKey;

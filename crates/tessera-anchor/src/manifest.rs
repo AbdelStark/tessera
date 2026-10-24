@@ -6,10 +6,11 @@
 
 use crate::log::DigestLogEntry;
 use crate::merkle::{self, Hash, InclusionError, MAX_PROOF_LEN};
-use crate::session::HeapKey;
+use core::borrow::Borrow;
 use core::fmt;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use sha2::{Digest, Sha256};
+use tessera_codec::HeapKey;
 use tessera_codec::{Bytes, Decode, Encode, Secret, encode, envelope, schema};
 
 /// The label that opens a manifest's signed message (RFC-0015 'Signatures').
@@ -173,7 +174,7 @@ pub fn key_id(public_key: &[u8; 32]) -> [u8; 32] {
 /// The Ed25519 public key of a recorder's 32-byte secret seed.
 #[allow(clippy::disallowed_methods)]
 pub fn public_key(seed: &Secret<HeapKey<32>>) -> [u8; 32] {
-    SigningKey::from_bytes(seed.expose_secret().bytes())
+    SigningKey::from_bytes(seed.expose_secret().borrow())
         .verifying_key()
         .to_bytes()
 }
@@ -193,7 +194,7 @@ impl ManifestBody {
     /// [`ManifestError::KeyId`] when `recorder_key_id` is not the SHA-256 of the seed's public key.
     #[allow(clippy::disallowed_methods)]
     pub fn sign(self, seed: &Secret<HeapKey<32>>) -> Result<LogManifest, ManifestError> {
-        let key = SigningKey::from_bytes(seed.expose_secret().bytes());
+        let key = SigningKey::from_bytes(seed.expose_secret().borrow());
         let public = key.verifying_key().to_bytes();
         if key_id(&public) != self.recorder_key_id {
             return Err(ManifestError::KeyId);

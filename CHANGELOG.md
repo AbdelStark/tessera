@@ -1086,6 +1086,13 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- Long-lived keys are held on the heap ([#495](https://github.com/AbdelStark/tessera/issues/495), OBS-2):
+  - **`tessera_codec::HeapKey<N>`.** `N` secret bytes in a box, cleared on drop even outside a `Secret`, with `zeroed`, `from_box`, `generate` and the `Borrow` traits. It moves from `tessera-anchor`, which re-exports it.
+  - **`tessera_scoring::SamplerKey`** holds `Secret<HeapKey>`, and its `secret()` lends the key to the session-open frame's commitment. `SamplerKey::new` now takes the key boxed.
+  - **`Sampler`** boxes its AES key schedule, whose first round key is the key itself.
+
+  A `Secret<[u8; 16]>` that moved could leave its bytes behind. OBS-2 now says which keys go on the heap.
+
 - The nightly runs the quality workflow's deferred gates every night ([#492](https://github.com/AbdelStark/tessera/issues/492)). Pull requests still skip them during the fast-build phase (07 §9). `quality.yml` is now also a reusable workflow, which `nightly.yml` calls. A failure in one of its gates opens the nightly's failure issue. The gates are:
   - the dependency policy;
   - MSRV;
