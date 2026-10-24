@@ -216,12 +216,12 @@ fn record(state: &Path, manifest: &Period) -> ShareRecord {
     decode(&fs::read(path).expect("the record"), DecodeLimits::MESSAGE).expect("a share record")
 }
 
+/// A candidate as the tests list it: its request, its tokens and whether it ended.
+type Listed = (u64, u64, bool);
+
 /// The candidates of `current`, after `previous`, as `(request_id, tokens, ended)`, and as
 /// `AuditSample::draw` takes them.
-fn listed(
-    previous: Option<&Period>,
-    current: &Period,
-) -> (Vec<(u64, u64, bool)>, Vec<(RequestKey, u64)>) {
+fn listed(previous: Option<&Period>, current: &Period) -> (Vec<Listed>, Vec<(RequestKey, u64)>) {
     let verified = |p: &Period| VerifiedLog::check(&p.manifest, p.entries.clone()).expect("a log");
     let previous = previous.map(verified);
     let found = candidates(previous.as_ref(), &verified(current));
