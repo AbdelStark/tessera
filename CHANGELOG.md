@@ -6,6 +6,32 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- `tessera-anchor`'s frames and digest-log entries ([#137](https://github.com/AbdelStark/tessera/issues/137)):
+  - **RFC-0059, 'Frame Headers, Nonces and the Session Counter'** (amends RFC-0015).
+    - **The gap.** RFC-0015's CTR nonce used the frame's position in its session, which neither the frame's header nor its log entry carried. A verifier auditing a sampled request could not rebuild its counter blocks, and a prover-chosen counter would have given `2^32` decryptions of each logged frame.
+    - **The fix.** The header now carries `frame_seq` and is its own 41-byte TCE encoding; RFC-0015 said 40 bytes, which its fields did not add up to. `DigestLogEntry::Frame` copies the counter, after `length` as in the header. The counter blocks and each plaintext's 22-byte prefix are the circuits' public inputs.
+    - **Session identity.** A session's identifier is random and drawn with its keys.
+    - **Verifier check 2.** It now specifies the refusal of a repeated counter in a session, a frame length no plaintext has, and a session open after its frames, under RFC-0043's `Frames`. #150 implements it.
+    - **The sampler commitment** is now opened in a circuit, binding the in-circuit PRF's key to it. RFC-0015 committed `K_samp` but checked nothing against the commitment. The circuit is #152's.
+    - **Left to their own issues.**
+      - What the log must show of a session: its opens, duplicate frames and periods (#498).
+      - The completeness of a request's frames (#496).
+      - The PRF's free inputs: the prompt's `request_id`, and the session that serves it, which the serving stack chooses after the prompt and a prover can grind (#497).
+    - **The encodings.** Counter blocks are SP 800-38A's, `session_id[0..8] ‖ u32_be(frame_seq) ‖ u32_be(i)`. The RFC also fixes `TokenFrame`'s encoding and its agreement with the header, and the commitments' exact inputs with 16-byte salts.
+  - **The types.** `FrameHeader`, `SealedFrame` and its digest, `SessionOpenFrame`, `TokenFrame` (its tokens in a `Secret`) and `DigestLogEntry` (schema `0x0401`), with decoders that refuse:
+    - another magic;
+    - a direction other than 0 or 1;
+    - a frame of the wrong length;
+    - a plaintext that disagrees with its header.
+  - **`Session`**, the reference cipher.
+    - **At open,** it draws the session's identifier, its key and both salts, keeping the secrets in heap `Secret`s and the key schedule boxed. It returns the session-open frame with the key and sampler commitments.
+    - **One counter, one plaintext.** It never encrypts two plaintexts under one counter, and offers no decryption, which the protocol does not need.
+    - **Sealing** uses AES-128-CTR under the counter it keeps. It takes no counter or key from its caller and is not `Clone`, so a session never reuses a nonce (INV-ANC-3), and it refuses the frame after `2^32 − 1`.
+    - **The commitments** hash one block built in a cleared buffer and passed by reference to `sha2`'s compression function, so no hasher's buffer keeps a copy of a key. The compression function's own stack copies, like every stack copy, are beyond reach (OBS-6).
+    - **The decoders** refuse a header `length` that no plaintext has, and report truncated, trailing and oversized inputs with their own codes.
+  - **`spec/vectors/anchor/`.** Five sessions and fifteen frames from an independent Python oracle: #136's FIPS-197 AES, CTR checked against SP 800-38A F.5.1, and `hashlib`'s SHA-256. Two sessions start at counters `0x01020304` and `2^32 − 1`, so every byte of the counter word is exercised. The crate's unit tests build those sessions through a test-only constructor, with no test feature.
+  - **Dependencies.** `sha2` 0.10 joins the prover side; `aes` 0.8 and `getrandom` were already there.
+
 - `InverseCdf`, the temperature-sampling certificate of RFC-0009 Lemma 10, in `tessera-gadgets`, with RFC-0058 fixing its columns ([#144](https://github.com/AbdelStark/tessera/issues/144)):
   - **RFC-0058, 'InverseCdf Columns and Comparisons'.**
     - **Three vocabulary sums.** The partition `Z`, the prefix below the token `B = C_<` and the token's exponential `S = e_ŷ` are contractions over the vocabulary; `C_≤ = B + S` is never committed.
