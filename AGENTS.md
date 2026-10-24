@@ -77,6 +77,7 @@ One issue, one branch, one pull request; the `issue-workflow` skill has the loop
 | [`harness-engineering`](.agents/skills/harness-engineering/SKILL.md) | Building or updating `xtask` gates, `spec/vectors/` oracles, fuzz targets, or running `scripts/mutate.py` fault injection |
 | [`continuous-learning`](.agents/skills/continuous-learning/SKILL.md) | Distilling bugs, review corrections, and spec ambiguities into permanent gates, tests, RFCs, or skills |
 | [`autoresearch`](.agents/skills/autoresearch/SKILL.md) | Running structured cryptographic research iterations on open protocol frontiers |
+| [`security-audit`](.agents/skills/security-audit/SKILL.md) | General security review or full audit of the codebase (trust boundaries, input surfaces, supply chain, CI); vendored from [Cloudflare](https://github.com/cloudflare/security-audit-skill), MIT, provenance in its `PROVENANCE.md`. Soundness work still goes to `soundness-review` and `soundness-audit` |
 | `autoresearch-sweep.js`, `soundness-audit-sweep.js`, `redteam-campaign.js` | Multi-agent workflows in `.agents/workflows/` for parallel research sweeps, 5-surface audits, and red-team campaigns |
 
 Changes to the design start as research. The `autoresearch` skill surveys the state of the art, scores ideas against the cost model, tests the best with a pre-registered proof of concept under [research/](research/README.md), and promotes a validated result through the RFC process; the research ledger ([research/LEDGER.md](research/LEDGER.md)) says what was tried and what comes next.
