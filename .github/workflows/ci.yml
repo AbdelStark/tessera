@@ -84,6 +84,11 @@ jobs:
       # Invoke xtask directly so reviewed repository configuration cannot rewrite the cargo alias.
       - name: Repository policies
         run: cargo run --locked --quiet -p xtask -- lint
+      # The research knowledge base's citations, ledger counters and frozen pre-registrations.
+      - name: Research knowledge base (research/README.md)
+        run: |
+          python3 -I research/tools/check_kb.py
+          python3 -I research/tools/check_preregistration.py
       - name: Verifier isolation (RFC-0001)
         run: cargo run --locked --quiet -p xtask -- check-isolation
       - name: Test-only features fail release builds (RFC-0001)
