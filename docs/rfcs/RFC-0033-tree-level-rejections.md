@@ -8,6 +8,7 @@
   - [04 §2](../spec/04-error-model.md#2-verdicts): `RejectReason` gains `TreeLevel` and `LogUpIdentity`;
   - [RFC-0019](RFC-0019-verifier.md#check-order) 'Check order', step 7: the reasons of a failed tree level and of `tessera-protocol/2`'s identity sumcheck;
   - [RFC-0010](RFC-0010-proof-schedule.md#sumcheck-messages) 'Sumcheck messages': the reason of a failed tree level.
+- Amended by: [RFC-0054](RFC-0054-token-groups.md#messages) ('Messages'): `TreeLevel` gains `group`, and `RejectReason` gains `LeafMerge`.
 - Origin: [#225](https://github.com/AbdelStark/tessera/issues/225)
 
 ## Summary

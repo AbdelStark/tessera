@@ -269,11 +269,20 @@ pub enum RejectReason {
         /// Exact round, or the final-check index.
         round: u32,
     },
-    /// `REJ-TREE`: shared leaf level and exact rejected round.
+    /// `REJ-TREE`: a leaf stage's tree level and exact rejected round (RFC-0033, RFC-0054
+    /// 'Messages').
     TreeLevel {
-        /// Shared level from the root.
+        /// Whose levels: `h` for group `h`'s, `G` for a grouped stage's table batch, 0 for an
+        /// ungrouped stage.
+        group: u32,
+        /// Level from the root of its batch.
         level: u32,
         /// Exact round, or the final-check index.
+        round: u32,
+    },
+    /// `REJ-LEAF-MERGE`: a grouped leaf stage's merge (RFC-0054 'The merge').
+    LeafMerge {
+        /// Exact round, or `n_max` for the final check.
         round: u32,
     },
     /// `REJ-LOGUP-IDENTITY`: protocol/2 only.
@@ -355,6 +364,7 @@ impl RejectReason {
             Self::StatementMismatch { .. } => "REJ-STATEMENT",
             Self::Sumcheck { .. } => "REJ-SUMCHECK",
             Self::TreeLevel { .. } => "REJ-TREE",
+            Self::LeafMerge { .. } => "REJ-LEAF-MERGE",
             Self::LogUpIdentity { .. } => "REJ-LOGUP-IDENTITY",
             Self::Lookup { .. } => "REJ-LOOKUP",
             Self::Gadget { .. } => "REJ-GADGET",
@@ -460,8 +470,14 @@ impl RejectReason {
             ),
             Self::StatementMismatch { field } => write!(out, "\"field\":\"{field}\""),
             Self::Sumcheck { stage, round } => write!(out, "\"stage\":{stage},\"round\":{round}"),
-            Self::TreeLevel { level, round } => write!(out, "\"level\":{level},\"round\":{round}"),
-            Self::LogUpIdentity { round } => write!(out, "\"round\":{round}"),
+            Self::TreeLevel {
+                group,
+                level,
+                round,
+            } => write!(out, "\"group\":{group},\"level\":{level},\"round\":{round}"),
+            Self::LeafMerge { round } | Self::LogUpIdentity { round } => {
+                write!(out, "\"round\":{round}")
+            }
             Self::Lookup { table } => write!(out, "\"table\":{}", table.0),
             Self::Gadget { gadget } => write!(out, "\"gadget\":{}", gadget.0),
             Self::MerklePath { commitment, column } | Self::Proximity { commitment, column } => {

@@ -308,7 +308,7 @@ fn every_single_element_change_of_every_forest_level_is_rejected() {
                     batch.name
                 );
                 if let ForestOutcome::Rejected { error, .. } = run.outcome {
-                    // The driver's Reject(TreeLevel { level, round }) reads the round here.
+                    // The driver's Reject(TreeLevel { group, level, round }) reads the round here.
                     assert!(error.rejected_round().is_some(), "{error}");
                 }
                 changed += 1;

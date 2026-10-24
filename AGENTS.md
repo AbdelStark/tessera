@@ -32,6 +32,7 @@ Tessera proves that a committed integer language model `D` produced a recorded t
 cargo test -p <crate>                                    # narrowest first
 cargo test --workspace --locked                          # prover workspace
 (cd verifier && cargo test --locked)                     # verifier workspace
+(cd verifier && cargo test -p tv-core --features test-params --locked)   # tv-core's drivers and tamper corpus, which the line above skips
 (cd verifier/fuzz && cargo fuzz run decode)              # fuzz targets, own nightly pin: verifier/fuzz/README.md
 cargo clippy --workspace --all-targets --locked -- -D warnings   # also inside verifier/
 cargo fmt --all --check                                  # also inside verifier/

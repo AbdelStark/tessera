@@ -37,9 +37,9 @@ The caller's expected statement comes from `claims.tcl`, `weights.twr` and `base
 | `decode` | 1 | A field element `P`, a trailing byte, a missing byte, a changed envelope digest | `REJ-MALFORMED` with the codec's code |
 | `leaf-groups` | 1 | `Round1.leaf_groups` of one token bit, one layer bit, or 15 bits; an ungrouped `TreeProof` with a group, a table root, a merge round or a merge evaluation (RFC-0054 'Messages', 'Migration / Rollout') | `REJ-MALFORMED`: `ERR-CODEC-LIMIT` for a grouping, `ERR-CODEC-NONCANONICAL` for a grouped field; `Round1` or `Round2Response` in a live session |
 | `statement` | 4 | Each statement field, each request field, the predictor, the layout digest | `REJ-STATEMENT` with the field |
-| `fiat-shamir` | 6 | The seed nonce, which test-small's zero-bit predicate accepts | `REJ-TREE` at level 1, round 1: the nonce is absorbed |
+| `fiat-shamir` | 6 | The seed nonce, which test-small's zero-bit predicate accepts | `REJ-TREE` in group 0 at level 1, round 1: the nonce is absorbed |
 | `logup-root` | 7.1 | Each instance's zero `d_a`, zero `d_t`, and a changed `n_a` | `REJ-LOOKUP` with its table |
-| `tree-coefficient`, `tree-evaluation`, `tree-round-length` | 7.2 | Per level, a round value, an evaluation, the last round one value short, or a round at level 0, which has none | `REJ-TREE` with the level and the round of RFC-0010 'Sumcheck messages' |
+| `tree-coefficient`, `tree-evaluation`, `tree-round-length` | 7.2 | Per level, a round value, an evaluation, the last round one value short, or a round at level 0, which has none | `REJ-TREE` in group 0, the ungrouped stage's, with the level and the round of RFC-0010 'Sumcheck messages' |
 | `leaf-split` | 7.3 | Each `logup/values` entry; the first and last `stage/0/split` values | `REJ-SUMCHECK` stage 0, round 0 (RFC-0045 'The check') |
 | `stage-coefficient`, `stage-evaluation`, `stage-round-length` | 8 | Per stage, as for a level | `REJ-SUMCHECK` with the stage and round |
 | `combined-row` | 9 | Every advice and weight group's row, every entry shifted by one | `REJ-PCS-EVAL` with the commitment |
