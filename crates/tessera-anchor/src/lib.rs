@@ -6,7 +6,8 @@
 //!
 //! - [`FrameHeader`], the 41-byte cleartext header, which carries the session counter
 //!   `frame_seq`; [`SealedFrame`], a header and its ciphertext, with the digest the log records;
-//!   [`SessionOpenFrame`], the 52-byte frame that commits a session's key before its frames.
+//!   [`SessionOpenFrame`], the 52-byte frame that commits a session's key before its frames;
+//!   [`RequestEndFrame`], the 28-byte frame that ends a request (RFC-0063).
 //! - [`TokenFrame`], the plaintext, whose tokens are secret-class (05 §3).
 //! - [`Session`], the reference cipher: it draws the session's identifier and secrets
 //!   ([`SessionKeys`]), sends the key's commitment, and seals frames under AES-128-CTR with the
@@ -31,7 +32,9 @@ mod session;
 #[cfg(test)]
 mod vectors;
 
-pub use frame::{AnchorError, Direction, FrameHeader, SealedFrame, SessionOpenFrame, TokenFrame};
+pub use frame::{
+    AnchorError, Direction, FrameHeader, RequestEndFrame, SealedFrame, SessionOpenFrame, TokenFrame,
+};
 pub use log::DigestLogEntry;
 pub use manifest::{
     ChainError, EntryError, LinkError, LogManifest, ManifestBody, ManifestError, SignatureEnvelope,

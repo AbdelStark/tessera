@@ -17,6 +17,10 @@
   - [RFC-0043](RFC-0043-rejection-payloads.md#anchor) 'Malformed', 'Anchor' and [04 §2](../spec/04-error-model.md#2-verdicts): `Inclusion` is retired, `Frames` covers the new frame rules, and `Session` is new;
   - [04 §3](../spec/04-error-model.md#3-error-codes): `ERR-CODEC-DIGEST` covers a period's log.
 - Origin: [#498](https://github.com/AbdelStark/tessera/issues/498)
+- Amended by: [RFC-0063](RFC-0063-request-boundaries.md#which-requests-a-period-draws-from):
+  - 'The period's log', 'Security Argument' and 'Drawbacks': a request's frames span its end's period and the one before, which settles requests that cross a boundary;
+  - 'The session rules': they hold in both periods of a request's window;
+  - 'Testing Strategy': the first unknown tag is 5.
 
 ## Summary
 
@@ -70,8 +74,8 @@ An inclusion proof shows that an entry is in the log, never that another is not;
 - **The verified log.** The check yields a `VerifiedLog`, the only form in which the verifier uses a log: the entries and the manifest's digest, which nothing but the check constructs. Selection, the anchor checks of every batch and the report all read it. RFC-0019 step 4 requires its digest to equal the manifest's identity, `statement.manifest_digest` and the sample's. A statement that names another manifest than the sample's is `StatementMismatch` (RFC-0016 check 1). A `VerifiedLog` that does not match the manifest the verifier was given is the verifier's own input, `Inconclusive(ERR-USAGE)`. A pass bit alone would let a later use read entries no check covered.
 - **The store.** The verifier keeps each `VerifiedLog` beside its manifest, as it keeps its ledger. When it loads one, it checks the manifest's signature under its pinned recorder keys and the log against the manifest again, so a store rewritten whole is refused. The store is the verifier's own state, as trusted as the ledger.
 - **Its fault.** The log is the verifier's own input, fetched before any proof exists. A log that fails to decode is `Inconclusive(ERR-CODEC-*)`. One that fails the check is `Inconclusive(ERR-CODEC-DIGEST)`. No sample is derived from it, and no proof of its period is judged until a verified copy is held.
-- **A request's entries.** A request `(session_id, request_id)` has as its frames every `Frame` entry of the verified log with that session and request. Its session's key commitment is the session's open or carry in the log. The batch supplies no entries of its own.
-- **Its lengths.** RFC-0015 check 2's "every frame present" now reads over those frames. The statement's `prompt_len` and `output_len` equal the token counts of all the request's `In` and `Out` frames in the period, so no frame inside the period can be left out. Frames in another period are #496's.
+- **A request's entries.** A request `(session_id, request_id)` has as its frames every `Frame` entry of the verified log with that session and request, and [RFC-0063](RFC-0063-request-boundaries.md#which-requests-a-period-draws-from) extends them to its window across a boundary. Its session's key commitment is the session's open or carry in the log. The batch supplies no entries of its own.
+- **Its lengths.** RFC-0015 check 2's "every frame present" now reads over those frames. The statement's `prompt_len` and `output_len` equal the token counts of all the request's `In` and `Out` frames in the period, so no frame inside the period can be left out. A request's frames in the period before are [RFC-0063](RFC-0063-request-boundaries.md#which-requests-a-period-draws-from)'s.
 - **Inclusion proofs.** RFC-0060's proofs stay defined, for parties that hold one entry, such as a client checking its own request. The audit no longer uses them.
 
 ### The carry entry
@@ -124,10 +128,7 @@ RFC-0015 'Prover pre-check' now reads the verified log as the verifier will. For
 - **No choice of frames.** Rule 2 leaves one entry per position, and the verifier reads the request's frames from the log, with the lengths over all of them. A batch cannot omit a frame of the period.
 - **The carry.** It comes from the recorder, honest by A-ANCHOR-2. A wrong or missing carry can make a session's later requests unprovable. It cannot bind a frame to a key the session did not commit, as long as the recorder copies faithfully.
 - **Fail-closed.** Every rule refuses what the prover could choose between, and none removes a frame from the log.
-- **What is left: requests that cross a boundary** (#496).
-  - **The later part.** It lacks the frames before the boundary, so contiguity from `frame_index = 0` fails, and it cannot be proven.
-  - **The earlier part.** It starts at `frame_index = 0`, and its lengths count its own frames, so it passes and can be accepted as though it were the whole request.
-  - **The residual.** The request's tokens after the boundary escape that proof. A prover can serve an honest first part and a cheated tail, and the tail fails exactly as an honest tail would.
+- **What was left: requests that cross a boundary.** A request read in each period alone had an earlier part that passed as the whole request, and a later part that refused an honest prover. [RFC-0063](RFC-0063-request-boundaries.md) settles both with a request-end entry and a window of two periods.
 - **Where a chain is needed.** With carries, each statement needs its own manifest and that manifest's log, and no chain of manifests, under A-ANCHOR-2. The audit's coverage does need one, to find a period that never arrived ('Coverage'). That answers where RFC-0060 left a chain required.
 
 ## Alternatives Considered
@@ -145,11 +146,11 @@ RFC-0015 'Prover pre-check' now reads the verified log as the verifier will. For
 - **Carry entries.** One per open session per period.
 - **Idle sessions** lapse after two periods with neither an open nor a frame, and a serving stack must open new ones.
 - **One broken session** makes every request of it in the period unprovable.
-- **Requests in flight at a boundary.** Until #496:
-  - a sampled later part of a request that spans two periods cannot be proven, and counts against an honest prover. That is about the sampling rate times the requests in flight at each boundary, for example 0.1 × 1,000 = 100 per period;
-  - its earlier part can be accepted, while its tail escapes ('Security Argument').
+- **Requests in flight at a boundary.** Before RFC-0063, two things went wrong:
+  - a sampled later part of a request that spans two periods could not be proven, and counted against an honest prover;
+  - its earlier part could be accepted while its tail escaped.
 
-  #150 should not ship before #496 settles both.
+  RFC-0063 settles both.
 
 ## Migration / Rollout
 
@@ -165,7 +166,7 @@ RFC-0015 'Prover pre-check' now reads the verified log as the verifier will. For
 
 ## Testing Strategy
 
-- **Encoding.** `SessionCarry` round trips, and its TCE matches the oracle's. Tag 4 is refused.
+- **Encoding.** `SessionCarry` round trips, and its TCE matches the oracle's. Tag 5 is refused (RFC-0063's `RequestEnd` took tag 4).
 - **The rules (#150).** Each break alone, with the request it names:
   - a session with no open or carry, with two opens, with an open and a carry, with its open after a frame;
   - two frames at one position;

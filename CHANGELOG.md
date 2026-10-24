@@ -6,6 +6,22 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Request boundaries in the log ([#496](https://github.com/AbdelStark/tessera/issues/496)):
+  - **RFC-0063, 'Request Boundaries in the Log'** (amends RFC-0015, RFC-0016, RFC-0019, RFC-0043, RFC-0061 and RFC-0062).
+    - **The gap.**
+      - **No end.** No entry recorded where a request ends. A request that crossed a period boundary was read in each period alone: its earlier part passed as the whole request while its tail escaped, and its later part refused an honest prover.
+      - **No order.** No rule ordered a request's inbound frames before its outbound ones.
+    - **The request's end.** The serving stack sends a cleartext request-end frame, `TRQE ‖ session_id ‖ request_id`, after the request's last frame. The recorder logs it as `RequestEnd`.
+    - **Candidates.**
+      - **Which requests.** Every request with an end in a period is a candidate of it, and one with a frame and no end in time is an unterminated candidate. Every logged frame therefore lies in a request the sample can draw. A first draft that asked for a frame before the end let an end placed first hide the whole request, found by an exhaustive search of small logs.
+      - **The seed.** A candidate's length counts all its frames in its two periods, and the candidates depend only on entries signed before the seed.
+    - **A window of two periods.**
+      - **Its frames.** A request's frames are all its frames in its end's period and the one before. The verifier holds the previous period's verified log through `prev_manifest`.
+      - **Its rules.** One end, every frame before it, each position once, the session's rules in both periods, and inbound frames before outbound ones. The last holds for honest requests because the recorder sequences inbound frames before the cluster reads them.
+      - **Who implements it.** The checks are #150's, and the recorder's duties #139's.
+  - **`tessera-anchor`.** `RequestEndFrame` and `DigestLogEntry::RequestEnd`, tag 4.
+  - **Vectors.** `spec/vectors/anchor/` gives each request's end. In `manifest/`, a request of the first period ends in the second.
+
 - The period log and its sessions ([#498](https://github.com/AbdelStark/tessera/issues/498)):
   - **RFC-0062, 'The Period Log and Its Sessions'** (amends RFC-0015, RFC-0016, RFC-0019, RFC-0043, RFC-0059, RFC-0060, RFC-0061 and 04 §2–3).
     - **The gap.** An inclusion proof shows that an entry is in the log, never that another is not. So no batch could show that its session had one open, that a frame had no duplicate, or where the open of a session from an earlier period was.

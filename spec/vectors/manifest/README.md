@@ -8,7 +8,7 @@
 - **The entries** are encoded by [`anchor/`](../anchor/README.md)'s oracle.
 - **RFC 9162's tree and audit paths** are written here.
 
-`manifests.json` holds one log of three manifests, signed with one recorder seed. The first period's session is still open at the second period's start: the second period begins with its `SessionCarry` (RFC-0062) and closes it. The third period is empty, so its root is `SHA-256("")`. Each manifest gives:
+`manifests.json` holds one log of three manifests, signed with one recorder seed. The first period's session is still open at the second period's start: the second period begins with its `SessionCarry` (RFC-0062). Its request 7, three inbound frames then three outbound in the first period, ends in the second (RFC-0063), and the session closes there. The third period is empty, so its root is `SHA-256("")`. Each manifest gives:
 - its entries' TCE encodings and leaves, its root, and every entry's inclusion proof;
 - its period and first `seq`, and `prev_manifest`, the previous manifest's identity or zero for the first;
 - its signed message, signature, TCE encoding, envelope and identity.
