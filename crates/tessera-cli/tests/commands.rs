@@ -119,7 +119,7 @@ fn every_command_checks_its_artifacts_then_names_its_issue() {
         dir.as_os_str(),
         out.as_os_str(),
     );
-    let cases: [(&str, Vec<&std::ffi::OsStr>, u32); 7] = [
+    let cases: [(&str, Vec<&std::ffi::OsStr>, u32); 6] = [
         (
             "weights refresh",
             vec!["--weights".as_ref(), w, "--out".as_ref(), o],
@@ -178,16 +178,6 @@ fn every_command_checks_its_artifacts_then_names_its_issue() {
             "bench unit-costs",
             vec!["--device".as_ref(), "0".as_ref(), "--out".as_ref(), o],
             49,
-        ),
-        (
-            "recorder ref",
-            vec![
-                "--listen".as_ref(),
-                "127.0.0.1:7070".as_ref(),
-                "--log-dir".as_ref(),
-                d,
-            ],
-            139,
         ),
     ];
     for (command, flags, issue) in cases {

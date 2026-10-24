@@ -6,6 +6,21 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The software reference recorder, `tessera recorder ref` ([#139](https://github.com/AbdelStark/tessera/issues/139)):
+  - **The command.** `--listen ADDR --upstream ADDR --log-dir DIR --key FILE --period SECONDS`, the flags of RFC-0015 'Reference recorder' (02 §2.2 now lists them all). It is a TCP proxy for tests and integration work; it does not by itself satisfy A-ANCHOR-2.
+  - **Forwarding.** In each direction it cuts frames out of the byte stream by their magic, logs each, then forwards it. Inbound frames are thus sequenced before the upstream reads them (RFC-0063). The bytes forwarded are the bytes received.
+  - **Sessions and periods.** When a connection ends, it logs the close of each session seen on it. At each period boundary it writes `<first_seq>.tdl` (the period's log: its entries' TCE encodings, concatenated, now defined in RFC-0062) and `<first_seq>.tlm` (the signed manifest's envelope), then carries open sessions into the next period (RFC-0062).
+  - **`tessera-anchor::recorder`.**
+    - `FrameParser` cuts frames wherever the stream is split.
+    - `Recorder` logs entries with their `seq`, closes sessions, and signs and rotates periods with their carries and lapses.
+    - `encode_log` and `decode_log` write and read a period's log, and `random_log_id` draws a log's identifier.
+    - `read_seed` reads a recorder seed into a heap `Secret`.
+  - **Tests.**
+    - The parser at every split point.
+    - Entries against an offline recomputation of their digests.
+    - Four periods forming a valid chain, with each manifest's root over its log, carries, lapses, and sessions that broke rule 1 left uncarried.
+    - End to end through the binary: bytes unchanged in both directions, digests, a chain from genesis, and the open, frames, end and close in order.
+
 - Request boundaries in the log ([#496](https://github.com/AbdelStark/tessera/issues/496)):
   - **RFC-0063, 'Request Boundaries in the Log'** (amends RFC-0015, RFC-0016, RFC-0019, RFC-0043, RFC-0061 and RFC-0062).
     - **The gap.**

@@ -17,7 +17,7 @@
 //! tessera params check    --params PARAMSET [--lookups N] [--table-rows T]
 //! tessera bench unit-costs --device INT --out UNIT_COSTS.json
 //! tessera bench model     (--plan plan.tep | --source-defaults) [--context INT,...] [--out MU.json]
-//! tessera recorder ref    --listen ADDR --log-dir DIR
+//! tessera recorder ref    --listen ADDR --upstream ADDR --log-dir DIR --key FILE --period SECONDS
 //! tessera inspect         FILE
 //! ```
 //!
@@ -55,6 +55,7 @@ mod log;
 mod manifest;
 mod params;
 mod prove;
+mod recorder;
 mod weights;
 
 use std::ffi::OsString;
@@ -230,8 +231,16 @@ struct UnitCostsArgs {
 struct RecorderArgs {
     #[arg(long, value_name = "ADDR")]
     listen: SocketAddr,
+    #[arg(long, value_name = "ADDR")]
+    upstream: SocketAddr,
     #[arg(long, value_name = "DIR")]
     log_dir: PathBuf,
+    /// The recorder's 32-byte Ed25519 seed.
+    #[arg(long, value_name = "FILE")]
+    key: PathBuf,
+    /// The length of a period, in seconds.
+    #[arg(long, value_name = "SECONDS")]
+    period: u64,
 }
 
 /// The command tree, its help ending with every command, as 02 §2.2 lists them.
@@ -426,9 +435,16 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
             "bench model",
             bench::model(a, cli.json).map(|()| ExitCode::SUCCESS),
         ),
-        Command::Recorder(Recorder::Ref(_)) => (
+        Command::Recorder(Recorder::Ref(a)) => (
             "recorder ref",
-            pending("recorder ref", &[], 139).map(|()| ExitCode::SUCCESS),
+            recorder::run(&recorder::Options {
+                listen: a.listen,
+                upstream: a.upstream,
+                log_dir: &a.log_dir,
+                key: &a.key,
+                period: std::time::Duration::from_secs(a.period),
+            })
+            .map(|()| ExitCode::SUCCESS),
         ),
         Command::Inspect(a) => (
             "inspect",

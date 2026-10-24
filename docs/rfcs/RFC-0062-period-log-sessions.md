@@ -61,6 +61,7 @@ An inclusion proof shows that an entry is in the log, never that another is not;
 ### The period's log
 
 - **What it is.** The entries of a manifest, `seq` from `first_seq` to `first_seq + entry_count − 1`, in `seq` order, each `DigestLogEntry` in its TCE. It is public (03 §5).
+- **On disk.** A period's log is the concatenation of its entries' TCE encodings, with no envelope and no length prefix. Each entry's length is fixed by its tag, so the stream cuts one way. The reference recorder writes it as `<first_seq>.tdl` (RFC-0015 'Reference recorder'). Its integrity comes from the manifest's root, not from the file.
 - **How it arrives.** The recorder delivers each period's log, with its manifest, to the verifiers on a path that does not pass through the prover (A-ANCHOR-2). A prover that could withhold the log of a period could keep that period from being audited at all.
 - **Coverage.** A statement needs no chain of manifests, but the audit's coverage does.
   - **Linking.** The verifier links each manifest it receives to its predecessor (RFC-0060 'The chain').
