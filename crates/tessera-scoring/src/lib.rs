@@ -17,13 +17,17 @@
 //!
 //! `PredictorSpec` remains the protocol crate's sibling-owned wire type. Its
 //! driver chooses this exact-greedy implementation; no scoring-to-protocol
-//! dependency or extra claim-list field is needed. Sampler PRF, temperature and
-//! mixture accounting remain with the v0.4 issues.
+//! dependency or extra claim-list field is needed.
+//!
+//! [`Sampler`] and [`inverse_cdf`] are RFC-0017's reference sampler, which serving engines link
+//! or port. Temperature and mixture accounting in the circuit remain with the v0.4 issues.
 
 #![forbid(unsafe_code)]
 
 mod exact;
+mod sampler;
 
 pub use exact::{
     ExactGreedy, ExactRequest, GreedyCertificate, GreedyInputs, GreedyRow, OutputRow, ScoringError,
 };
+pub use sampler::{Sampler, SamplerError, SamplerKey, inverse_cdf};
