@@ -132,5 +132,5 @@ fn the_certificate_selects_the_shared_vectors_tokens() {
             .unwrap();
         checked += 1;
     }
-    assert_eq!(checked, 113, "the rows that fit the vocabulary table");
+    assert_eq!(checked, 131, "the rows that fit the vocabulary table");
 }

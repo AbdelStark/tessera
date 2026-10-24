@@ -48,7 +48,7 @@ pub enum StatementField {                    // RFC-0039: one variant per check,
 
 pub struct ArtifactKind(pub SchemaId);       // RFC-0043: the prover's artifact that failed to decode, 03 §5
 pub enum PowPhase { Seed, Queries }          // RFC-0043: NiProof's seed_nonce, then its query_nonce
-pub enum AnchorFailure { ManifestSignature, Inclusion, Frames }   // RFC-0043: RFC-0015's checks 1 and 2
+pub enum AnchorFailure { ManifestSignature, Inclusion, Frames, SamplerKey }   // RFC-0043: RFC-0015's checks 1 and 2; SamplerKey from RFC-0061
 ```
 
 [RFC-0043](../rfcs/RFC-0043-rejection-payloads.md) defines the other payloads. `Malformed` names an artifact the prover sends; one of the verifier's own inputs that fails to decode is `Inconclusive(ERR-CODEC-*)`. `Anchor` names no request for a manifest-level failure. `Params` holds RFC-0014's `ParamSetId`.

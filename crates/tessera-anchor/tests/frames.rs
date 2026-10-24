@@ -13,7 +13,7 @@ use tessera_codec::error::ErrorCode;
 use tessera_codec::{DecodeLimits, Secret, decode, encode};
 
 fn session() -> Session {
-    Session::open(&Secret::new([2u8; 16])).unwrap().0
+    Session::open().unwrap().0
 }
 
 fn frame(direction: Direction, index: u32, tokens: Vec<u32>) -> TokenFrame {
@@ -42,17 +42,15 @@ fn the_session_counts_its_frames_across_both_directions() {
     assert_ne!(a.ciphertext, b.ciphertext);
 }
 
-/// Every session draws its own identifier and secrets (RFC-0059 'Session identity'): two
-/// sessions with one sampler key share neither, and their commitments differ.
+/// Every session draws its own identifier and secrets (RFC-0059 'Session identity'): two sessions
+/// share neither, and their commitments differ.
 #[test]
 fn every_session_draws_its_own_identity_and_keys() {
-    let sampler = Secret::new([2u8; 16]);
-    let (mut a, open_a, _) = Session::open(&sampler).unwrap();
-    let (mut b, open_b, _) = Session::open(&sampler).unwrap();
+    let (mut a, open_a, _) = Session::open().unwrap();
+    let (mut b, open_b, _) = Session::open().unwrap();
     assert_ne!(open_a.session_id, open_b.session_id);
     assert_eq!(a.session_id(), open_a.session_id);
     assert_ne!(open_a.key_commitment, open_b.key_commitment);
-    assert_ne!(open_a.sampler_commitment, open_b.sampler_commitment);
     let f = frame(Direction::In, 0, vec![1, 2, 3]);
     assert_ne!(
         a.seal(&f).unwrap().ciphertext,
@@ -111,15 +109,15 @@ fn malformed_headers_and_frames_are_refused() {
         Err(AnchorError::Truncated)
     );
     assert_eq!(
-        SessionOpenFrame::from_bytes(&[0u8; 84]),
+        SessionOpenFrame::from_bytes(&[0u8; 52]),
         Err(AnchorError::Magic)
     );
     assert_eq!(
-        SessionOpenFrame::from_bytes(&[0u8; 83]),
+        SessionOpenFrame::from_bytes(&[0u8; 51]),
         Err(AnchorError::Truncated)
     );
     assert_eq!(
-        SessionOpenFrame::from_bytes(&[0u8; 85]),
+        SessionOpenFrame::from_bytes(&[0u8; 53]),
         Err(AnchorError::Noncanonical)
     );
     assert_eq!(AnchorError::Direction.code(), ErrorCode::CodecNoncanonical);
@@ -161,7 +159,7 @@ fn log_entries_refuse_other_tags_and_directions() {
 
 #[test]
 fn debug_shows_no_secret() {
-    let (session, _, keys) = Session::open(&Secret::new([3u8; 16])).unwrap();
+    let (session, _, keys) = Session::open().unwrap();
     assert_eq!(format!("{keys:?}"), "SessionKeys(..)");
     assert!(!format!("{session:?}").contains("cipher"));
     let f = frame(Direction::In, 0, vec![123_456, 7]);

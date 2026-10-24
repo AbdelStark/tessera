@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3 (driver), v0.4 (zero-knowledge checks, anchor, scoring), v1.0 (hardening)
-- Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Check order', step 4: the advice commitment's `layout_digest`), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Check order', step 7, in `tessera-protocol/2`), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Check order', step 7: the reasons of the leaf stage's sumchecks)
+- Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Check order', step 4: the advice commitment's `layout_digest`), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Check order', step 7, in `tessera-protocol/2`), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Check order', step 7: the reasons of the leaf stage's sumchecks), [RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies) ('Inputs' and 'Check order', step 4: the pinned sampler keys)
 
 ## Summary
 
@@ -57,6 +57,8 @@ pub struct VerifyInputs {
     pub sample: AuditSample,
     pub anchor_entries: Vec<(DigestLogEntry, InclusionProof)>,
     pub recorder_keys: Vec<PublicKey>,        // pinned
+    pub sampler_keys: Vec<PinnedSamplerKey>,  // pinned, checked at load against the policy (RFC-0061)
+    pub sampler_policy: SamplerPolicy,        // W, G, b_max (RFC-0061)
     pub ledger: VerifierLedger,
     pub weights: WeightCommitmentPublic,      // the epoch's weight commitment, from WEIGHTS.twr (RFC-0040)
 }
@@ -66,10 +68,10 @@ pub struct VerifyInputs {
 
 Checks run in this order; the first failure determines the verdict.
 
-1. Decode every input under `ResourceLimits`: an artifact of the prover's that fails is `Reject(Malformed)`, one of the verifier's own inputs `Inconclusive(ERR-CODEC-*)` ([RFC-0043](RFC-0043-rejection-payloads.md#malformed)), and an exhausted resource `Inconclusive(ERR-RES-*)`.
+1. Decode every input under `ResourceLimits`: an artifact of the prover's that fails is `Reject(Malformed)`, one of the verifier's own inputs `Inconclusive(ERR-CODEC-*)` ([RFC-0043](RFC-0043-rejection-payloads.md#malformed)), and an exhausted resource `Inconclusive(ERR-RES-*)`. The sampler pins and policy load first, and a pin list or policy that breaks a rule of [RFC-0061](RFC-0061-sampling-randomness.md#the-sampler-key-and-its-pins) is `Inconclusive(ERR-USAGE)`.
 2. Accept the parameter set (`Reject(Params)`).
 3. Validate and lower the claim list: [RFC-0007](RFC-0007-claim-list.md#verifier-validation) steps 1–7, including table regeneration and range re-derivation (`Reject(StatementMismatch)`).
-4. Bind the statement: claim-list digest; `weights_root` and `epoch` equal to the ledger's current root for that model, which `weights` hashes to, with the claim list's weight layout ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-verifiers-weight-inputs)); manifest signature under a pinned key; sample membership and no prior acceptance of the batch's requests; each request's `prompt_len + output_len` at most the claim list's `max_context` ([RFC-0047](RFC-0047-advice-order.md#a-requests-sequence-length), `StatementMismatch { field: Batch }`); anchor entries' inclusion proofs ([RFC-0015](RFC-0015-transcript-anchor.md#verifier-checks), [RFC-0016](RFC-0016-audit-sampling.md#verifier-checks)); the advice commitment's `layout_digest` equal to the `commitment_id` the verifier derives ([RFC-0031](RFC-0031-commitment-id.md#layout_digest), `Reject(StatementMismatch)`).
+4. Bind the statement: claim-list digest; `weights_root` and `epoch` equal to the ledger's current root for that model, which `weights` hashes to, with the claim list's weight layout ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-verifiers-weight-inputs)); manifest signature under a pinned key; sample membership and no prior acceptance of the batch's requests; each request's `prompt_len + output_len` at most the claim list's `max_context` ([RFC-0047](RFC-0047-advice-order.md#a-requests-sequence-length), `StatementMismatch { field: Batch }`); anchor entries' inclusion proofs ([RFC-0015](RFC-0015-transcript-anchor.md#verifier-checks), [RFC-0016](RFC-0016-audit-sampling.md#verifier-checks)), with each temperature request's pinned sampler key ([RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies), `Reject(Anchor { kind: SamplerKey })`); the advice commitment's `layout_digest` equal to the `commitment_id` the verifier derives ([RFC-0031](RFC-0031-commitment-id.md#layout_digest), `Reject(StatementMismatch)`).
 5. Weight reservation: declared blinding rows unused in this epoch according to the ledger (`Reject(Budget)`).
 6. Transcript: rebuild `SessionContext`, absorb `Round1`, derive or check the seed (coin-toss transcript, or proof-of-work nonce in non-interactive mode; `Reject(ProofOfWork)`).
 7. Tree levels, in this order:

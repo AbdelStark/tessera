@@ -30,4 +30,6 @@ mod sampler;
 pub use exact::{
     ExactGreedy, ExactRequest, GreedyCertificate, GreedyInputs, GreedyRow, OutputRow, ScoringError,
 };
-pub use sampler::{Sampler, SamplerError, SamplerKey, inverse_cdf};
+pub use sampler::{
+    ClassBits, Sampler, SamplerBaseKey, SamplerError, SamplerKey, StreamClass, inverse_cdf,
+};

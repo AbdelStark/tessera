@@ -12,6 +12,7 @@
   - [RFC-0015](RFC-0015-transcript-anchor.md#prover-pre-check) 'Prover pre-check': it recomputes the sampler commitment too;
   - [RFC-0043](RFC-0043-rejection-payloads.md#anchor) 'Anchor': `Frames` covers a session's repeated counter and a session-open entry after its frames.
 - Origin: [#137](https://github.com/AbdelStark/tessera/issues/137)
+- Amended by: [RFC-0061](RFC-0061-sampling-randomness.md): a session commits no sampler key. The session-open frame is 52 bytes and its entry drops `sampler_commitment`; the circuits open the sampler key against the commitment the verifier pins.
 
 ## Summary
 
@@ -111,14 +112,14 @@ u64_le(request_id) ‖ u16_le(direction tag: 0 = In, 1 = Out) ‖ u32_le(frame_i
 ### The session-open frame and the commitments
 
 ```text
-SessionOpenFrame = b"TSOP" ‖ session_id ‖ key_commitment ‖ sampler_commitment     84 bytes, its TCE
-key_commitment     = SHA-256( "tessera-anchor-key/v1"   ‖ k_s    ‖ salt_k )     21 + 16 + 16 bytes hashed
-sampler_commitment = SHA-256( "tessera-sampler-key/v1" ‖ K_samp ‖ salt_s )     22 + 16 + 16 bytes hashed
+SessionOpenFrame = b"TSOP" ‖ session_id ‖ key_commitment                          52 bytes, its TCE (RFC-0061)
+key_commitment     = SHA-256( "tessera-anchor-key/v1"   ‖ k_s ‖ salt_k )     21 + 16 + 16 bytes hashed
+sampler_commitment = SHA-256( "tessera-sampler-key/v1" ‖ K_p ‖ salt   )     22 + 16 + 16 bytes hashed, pinned by the verifier (RFC-0061)
 ```
 
 - **The labels** are ASCII, without a length or a terminator. Every part has a fixed length, so the concatenation parses one way.
 - **The salts** are 16 bytes each.
-- **The secrets.** `k_s`, `salt_k` and `salt_s` are drawn from the operating system's generator at session open, fresh for every session (A-ANCHOR-3). `K_samp` is RFC-0017's sampler key.
+- **The secrets.** `k_s` and `salt_k` are drawn from the operating system's generator at session open, fresh for every session (A-ANCHOR-3). The sampler's base key `K_p` and its salt are no session's: the verifier pins their commitment ([RFC-0061](RFC-0061-sampling-randomness.md#the-sampler-key-and-its-pins)).
 - **Classes.** All four are secret-class, and the commitments are public.
 
 ### Session identity
@@ -139,9 +140,9 @@ To RFC-0015 'Circuits':
 - **The counter blocks** of step 2 are public inputs, built by the verifier from the frame's entry: `session_id[0..8] ‖ u32_be(frame_seq) ‖ u32_be(i)`.
 - **The plaintext's prefix**, its first 22 bytes, is a public input too: `request_id`, the direction tag, `frame_index` and the count `(length − 22)/4`, from the entry. Only the token bytes after it are the prover's.
 - **The header** of step 5, which enters SHA-256 as constants, includes `frame_seq`.
-- **The sampler commitment** is opened. SHA-256 over `"tessera-sampler-key/v1" ‖ K_samp ‖ salt_s`, with `K_samp` and `salt_s` committed, equals the session's public `sampler_commitment`. The key the in-circuit PRF uses (RFC-0017 'Sampler PRF', #152) is that `K_samp`.
+- **The sampler commitment** is opened. SHA-256 over `"tessera-sampler-key/v1" ‖ K_p ‖ salt`, with the base key `K_p` and the salt committed, equals the batch's pinned `sampler_commitment` ([RFC-0061](RFC-0061-sampling-randomness.md#the-circuits)). The key the in-circuit PRF uses (RFC-0017 'Sampler PRF', #152) is derived from `K_p` and the pin's nonce, class bits and start.
 
-Check 4's public inputs are, then, the entries' digests and both commitments, the counter blocks and the plaintexts' prefixes, all derived by the verifier.
+Check 4's public inputs are, then, the entries' digests, the sessions' key commitments, the pin's commitment, nonce, class bits and start, the counter blocks and the plaintexts' prefixes, all supplied by the verifier.
 
 ### The log entry
 
@@ -156,7 +157,7 @@ The fields shared with the header come in the header's order, `frame_seq` after 
 
 - **The digest.** `sha256 = SHA-256(header ‖ ciphertext)`, over the 41-byte header of 'The header'.
 - **Where the fields come from.** The recorder copies every field but `seq`, `t_ns` and `sha256` from the header.
-- **The other variants.** `SessionOpen` and `SessionClose` are unchanged.
+- **The other variants.** `SessionClose` is unchanged. `SessionOpen` loses its `sampler_commitment` ([RFC-0061](RFC-0061-sampling-randomness.md#sessions)).
 - **Encoding.** As every TCE enum, the entry is a `u16` tag, then the variant's fields in order (RFC-0003 'Composite types').
 
 ### Verifier check 2, amended
@@ -171,7 +172,7 @@ A failure is `Reject(Anchor { request_id, kind: Frames })` ([RFC-0043](RFC-0043-
 ### The reference cipher
 
 `tessera-anchor` holds the session key in a cipher that:
-- draws the session's identifier, `k_s` and both salts at session open;
+- draws the session's identifier, `k_s` and `salt_k` at session open;
 - emits the session-open frame;
 - seals frames with the next counter, which it keeps.
 
@@ -181,8 +182,8 @@ It has no operation that takes a counter, a key or an identifier from its caller
 - **No decryption.** It offers none, since the protocol needs no decryption in the clear: the circuits check the prefix. It decrypts in its own tests only.
 
 **Other code that holds the keys** must keep what it derives in clearing storage and never emit it:
-- **The pre-check** (RFC-0015 'Prover pre-check', #146) recomputes a stored session's digests and both commitments. Its replay takes the session's keys and its recorded frames, re-seals each plaintext at the frame's recorded counter, and returns only whether each digest matches, never a ciphertext or a keystream.
-- **The witness generators** of the AES-CTR circuit (#142) and of the sampler PRF (#152) evaluate AES under `k_s` and `K_samp` at public counter blocks. The keystream they compute is witness data, secret-class (05 §3, OBS-6), and leaves them only committed.
+- **The pre-check** (RFC-0015 'Prover pre-check', #146) recomputes a stored session's digests and key commitment, and the pinned sampler commitment. Its replay takes the session's keys and its recorded frames, re-seals each plaintext at the frame's recorded counter, and returns only whether each digest matches, never a ciphertext or a keystream.
+- **The witness generators** of the AES-CTR circuit (#142) and of the sampler PRF (#152) evaluate AES under `k_s` at public counter blocks and under the sampler key `K` at the blocks of RFC-0061 'The stream'. The keystream they compute is witness data, secret-class (05 §3, OBS-6), and leaves them only committed.
 
 Storing `SessionKeys` is #146's: it is a secret-class artifact.
 
@@ -190,7 +191,7 @@ Storing `SessionKeys` is #146's: it is a secret-class artifact.
 
 - **The nonce is bound.** `frame_seq` is in the header, which the frame's digest covers, and in its log entry, which the recorder signs into the manifest (RFC-0015 'Signatures'). A prover cannot claim a counter other than the one recorded for the bytes it sent.
 - **No choice of keystream.** With the counter blocks and the plaintext's prefix public, the AES circuit's keystream for a logged ciphertext is fixed by `k_s`, which `key_commitment` binds. The tokens are then `ciphertext[22..] ⊕ keystream[22..]`.
-- **The sampler key is bound to its session.** `K_samp` is opened against the session's `sampler_commitment`, in the session's open entry, which precedes its frames in the batch. That ties the PRF's key to the session once the open entry is the session's only one (#498). It does not fix the sampling randomness before the prompt. The serving stack picks the prompt's `request_id`, and the session, among as many as it opened, that serves it. Both choices come after the prompt, so a prover can grind its sampling randomness through either (#497).
+- **The sampler key, as this RFC had it, was bound to its session.** That did not fix the sampling randomness before the prompt: the serving stack picks the prompt's `request_id`, and the session that serves it, after the prompt arrives (#497). [RFC-0061](RFC-0061-sampling-randomness.md) replaces both with a keyed class of the prompt, of `b` public bits, under a key whose commitment the verifier pins.
 - **Confidentiality.**
   - Within a session, distinct counters give disjoint counter blocks: no keystream is reused, which is the property INV-ANC-3 protects.
   - A recorder that sees two frames with one counter in a session has seen a misbehaving serving stack. Check 2 refuses such a pair in a batch.
@@ -231,7 +232,7 @@ Nothing implemented RFC-0015's frames before this RFC.
   - a header `length` that is not `22 + 4n`;
   - a header and plaintext that disagree;
   - an entry with a bad tag.
-- **Identity.** Two sessions opened with one sampler key differ in identifier, keys and both commitments.
+- **Identity.** Two sessions differ in identifier, key and key commitment.
 
 ## Open Questions
 

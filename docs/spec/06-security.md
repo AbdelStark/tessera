@@ -60,7 +60,8 @@ Out of scope: an adversary that subverts the recorder itself (the recorder is a 
 | Malleable encodings to fork the transcript | ADV-P | Canonical decoding; the transcript absorbs canonical bytes only |
 | Proving a different stream than the one served | ADV-P | Transcript anchor; per-session key commitment in the signed log |
 | Choosing which requests to prove | ADV-P | Every sampled request must be proven; the sample derives from randomness drawn after the freeze; an unproven sampled request is reported as such |
-| Steering outputs to carry a covert channel | ADV-P | Exact mode: `Û = 0` with the sampler key committed at session open; bounded mode: `Û` bounds the channel capacity |
+| Steering outputs to carry a covert channel | ADV-P | Exact mode: `Û = 0`, and the sampling stream's only per-request input is a keyed class of `b` public bits, under a key whose commitment the verifier pins ahead of its window ([RFC-0061](../rfcs/RFC-0061-sampling-randomness.md)). That caps the choice of stream at `b` bits per logged request under one pin, and the verifier's default `b = 0` removes the per-request choice. The key, derived with a nonce its issuing verifier draws and used for one fixed-length window, is neither the prover's nor that verifier's to choose. The prompt, the output length, request boundaries, the temperature, which windows carry temperature traffic, the pin near a rotation and the pins a held prompt spans remain the serving stack's ([RFC-0061 'What remains the prover's'](../rfcs/RFC-0061-sampling-randomness.md#what-remains-the-provers)). Bounded mode: `Û` bounds the channel capacity |
+| Learning the sampling stream from outputs, to read which slice of `D`'s distribution each output fell in | ADV-V | At `b = 0` every request under a key shares one stream, which an observer holding `D`'s distributions or a close proxy learns from a few responses. Larger `b` spreads requests over `2^b` keyed streams, at `b` bits of choice for the prover ([RFC-0061 'Drawbacks'](../rfcs/RFC-0061-sampling-randomness.md#drawbacks)) |
 | Reseeding a `Round1` to collect two transcripts over the same commitments | ADV-V | The prover answers at most one seed per `Round1`; aborts force fresh commitments and masks (INV-PROTO-1) |
 | Adaptive column queries to reconstruct weights | ADV-V | Padding columns make any `≤ P_W` opened columns perfectly hiding; the budget state machine refuses to exceed it; refresh with a linking proof |
 | Reading weights from combined rows | ADV-V | One fresh `Fp2` blinding row, two committed rows, per revealed combination ([RFC-0013](../rfcs/RFC-0013-zero-knowledge.md#hiding-openings)) |
@@ -74,6 +75,7 @@ Out of scope: an adversary that subverts the recorder itself (the recorder is a 
 
 - BLAKE3 with 256-bit output: collision resistance at 128 bits; modeled as a random oracle for Fiat–Shamir.
 - AES-128 as a pseudorandom permutation (transcript encryption, sampler PRF); SHA-256 collision resistance (recorder digests).
+- SHA-256's compression function as a PRF keyed by its chaining value, and keyed by a message block whose other bytes are fixed (the dual-PRF assumption of HMAC's analysis): the sampler key's derivation and the stream class. A key used under several labels, or by SHA-256 and AES, is taken to be independent in each use, as it is when the compression function is modeled as ideal ([RFC-0061](../rfcs/RFC-0061-sampling-randomness.md#security-argument)).
 - Ed25519 (RFC 8032) existential unforgeability for recorder signatures.
 - Schwartz–Zippel over `Fp2` for all polynomial identity tests.
 

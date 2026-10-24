@@ -1053,6 +1053,7 @@ name = "tessera-scoring"
 version = "0.1.0"
 dependencies = [
  "aes",
+ "sha2",
  "tessera-codec",
  "tessera-compiler",
  "tessera-field",
@@ -1060,6 +1061,7 @@ dependencies = [
  "tessera-ir",
  "tessera-poly",
  "tessera-tables",
+ "zeroize",
 ]
 
 [[package]]

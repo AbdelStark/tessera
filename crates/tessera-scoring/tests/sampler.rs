@@ -1,19 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The reference sampler against `spec/vectors/scoring/`, written by an independent Python AES
-//! (RFC-0017 'Sampler PRF', RFC-0009 Lemma 10).
+//! and `hashlib` (RFC-0017 'Sampler PRF', RFC-0061 'The stream', RFC-0009 Lemma 10).
 //!
 //! The `aes` crate picks its backend per target: AES-NI on x86_64, fixsliced software on aarch64
 //! unless `--cfg aes_armv8` selects the ARMv8 instructions. The same vectors pin every backend.
 
 use tessera_codec::{HeapKey, Secret};
-use tessera_scoring::{Sampler, SamplerError, SamplerKey, inverse_cdf};
+use tessera_scoring::{ClassBits, Sampler, SamplerBaseKey, SamplerError, SamplerKey, inverse_cdf};
 
-fn key(hex: &str) -> SamplerKey {
+fn key(hex: &str, bits: ClassBits) -> SamplerKey {
     assert_eq!(hex.len(), 32);
     let bytes: [u8; 16] =
         core::array::from_fn(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap());
-    SamplerKey::new(Secret::new(HeapKey::from_box(Box::new(bytes))))
+    SamplerKey::new(Secret::new(HeapKey::from_box(Box::new(bytes))), bits)
+}
+
+/// A prompt column: comma-separated tokens, `-` for the empty prompt.
+fn prompt(column: &str) -> Secret<Vec<u32>> {
+    let tokens = match column {
+        "-" => Vec::new(),
+        list => list.split(',').map(|x| x.parse().unwrap()).collect(),
+    };
+    Secret::new(tokens)
 }
 
 fn rows(text: &str) -> impl Iterator<Item = Vec<&str>> {
@@ -26,18 +35,55 @@ fn rows(text: &str) -> impl Iterator<Item = Vec<&str>> {
 fn every_draw_matches_the_independent_aes() {
     let mut count = 0;
     for row in rows(include_str!("../../../spec/vectors/scoring/prf.txt")) {
-        let [key_hex, request_id, t, _ciphertext, u] = row[..] else {
-            panic!("a PRF row has five columns: {row:?}");
+        let [key_hex, bits, tokens, t, _class, _ciphertext, u] = row[..] else {
+            panic!("a PRF row has seven columns: {row:?}");
         };
-        let sampler = Sampler::new(&key(key_hex));
+        let bits = ClassBits::new(bits.parse().unwrap()).unwrap();
+        let sampler = Sampler::new(&key(key_hex, bits));
+        let class = sampler.class(&prompt(tokens));
         assert_eq!(
-            sampler.draw(request_id.parse().unwrap(), t.parse().unwrap()),
+            sampler.draw(class, t.parse().unwrap()),
             u.parse::<u32>().unwrap(),
-            "key {key_hex}, request {request_id}, position {t}"
+            "row {count}: key {key_hex}, b {}, position {t}",
+            bits.get()
         );
         count += 1;
     }
-    assert_eq!(count, 144);
+    assert_eq!(count, 369);
+}
+
+/// A pin's PRF key from its base key, nonce, class bits and start (RFC-0061 'The sampler key and
+/// its pins'), end to end through the public path: the derived key draws what the oracle's key
+/// draws, and the class and draw of the prompt `1, 2, 3` at `t = 0` are the oracle's.
+#[test]
+fn every_derived_key_matches_the_independent_sha_256() {
+    let mut count = 0;
+    for row in rows(include_str!("../../../spec/vectors/scoring/derive.txt")) {
+        let [base, nonce, bits, from_ns, derived, _class, u_0] = row[..] else {
+            panic!("a derivation row has seven columns: {row:?}");
+        };
+        let base: [u8; 16] =
+            core::array::from_fn(|i| u8::from_str_radix(&base[2 * i..2 * i + 2], 16).unwrap());
+        let base = SamplerBaseKey::new(Secret::new(HeapKey::from_box(Box::new(base))));
+        let nonce: [u8; 32] =
+            core::array::from_fn(|i| u8::from_str_radix(&nonce[2 * i..2 * i + 2], 16).unwrap());
+        let bits = ClassBits::new(bits.parse().unwrap()).unwrap();
+        let ours = Sampler::new(&base.derive(&nonce, bits, from_ns.parse().unwrap()));
+        let theirs = Sampler::new(&key(derived, bits));
+        let prompt = Secret::new(vec![1, 2, 3]);
+        let class = ours.class(&prompt);
+        assert_eq!(
+            ours.draw(class, 0),
+            u_0.parse::<u32>().unwrap(),
+            "row {count}"
+        );
+        let other = theirs.class(&prompt);
+        for t in [0, 1, u32::MAX] {
+            assert_eq!(ours.draw(class, t), theirs.draw(other, t), "row {count}");
+        }
+        count += 1;
+    }
+    assert_eq!(count, 46);
 }
 
 #[test]

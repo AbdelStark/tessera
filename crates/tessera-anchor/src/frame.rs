@@ -46,12 +46,12 @@ pub enum AnchorError {
     Magic,
     /// A header direction other than 0 or 1, or a plaintext direction tag other than 0 or 1.
     Direction,
-    /// Fewer bytes than the value needs: a header under 41 bytes, a session-open frame under 84,
+    /// Fewer bytes than the value needs: a header under 41 bytes, a session-open frame under 52,
     /// a ciphertext shorter than its header's `length`, or a plaintext shorter than its count's
     /// `22 + 4n`.
     Truncated,
     /// More bytes than the value holds, or a length no value has: a header over 41 bytes, a
-    /// session-open frame over 84, a ciphertext longer than its header's `length`, a plaintext
+    /// session-open frame over 52, a ciphertext longer than its header's `length`, a plaintext
     /// longer than `22 + 4n`, or a header `length` that is not `22 + 4n` for any `n`.
     Noncanonical,
     /// A plaintext of `2^32` bytes or more, which a header's `length` cannot state.
@@ -234,34 +234,33 @@ impl SealedFrame {
     }
 }
 
-/// The cleartext session-open frame (RFC-0015 'Frames'): 84 bytes, its TCE encoding.
+/// The cleartext session-open frame (RFC-0015 'Frames', RFC-0061 'Sessions'): 52 bytes, its TCE
+/// encoding. It commits the session's frame key. The sampler key is no session's: the verifier
+/// pins its commitment (RFC-0061 'The sampler key and its pins').
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SessionOpenFrame {
     /// The session's identifier.
     pub session_id: [u8; 16],
     /// `SHA-256("tessera-anchor-key/v1" ‖ k_s ‖ salt_k)`.
     pub key_commitment: [u8; 32],
-    /// `SHA-256("tessera-sampler-key/v1" ‖ K_samp ‖ salt_s)`.
-    pub sampler_commitment: [u8; 32],
 }
 
 impl SessionOpenFrame {
     /// The frame's magic, `TSOP`.
     pub const MAGIC: [u8; 4] = *b"TSOP";
     /// The frame's length in bytes.
-    pub const LEN: usize = 84;
+    pub const LEN: usize = 52;
 
-    /// The frame's 84 bytes: magic, session, key commitment, sampler commitment.
+    /// The frame's 52 bytes: magic, session, key commitment.
     pub fn to_bytes(&self) -> [u8; Self::LEN] {
         let mut out = [0u8; Self::LEN];
         out[..4].copy_from_slice(&Self::MAGIC);
         out[4..20].copy_from_slice(&self.session_id);
         out[20..52].copy_from_slice(&self.key_commitment);
-        out[52..84].copy_from_slice(&self.sampler_commitment);
         out
     }
 
-    /// The frame encoded by `bytes`, exactly 84 of them.
+    /// The frame encoded by `bytes`, exactly 52 of them.
     ///
     /// # Errors
     /// [`AnchorError::Truncated`] or [`AnchorError::Noncanonical`] for fewer or more bytes, then
@@ -276,11 +275,9 @@ impl SessionOpenFrame {
         let mut frame = Self {
             session_id: [0; 16],
             key_commitment: [0; 32],
-            sampler_commitment: [0; 32],
         };
         frame.session_id.copy_from_slice(&bytes[4..20]);
         frame.key_commitment.copy_from_slice(&bytes[20..52]);
-        frame.sampler_commitment.copy_from_slice(&bytes[52..84]);
         Ok(frame)
     }
 }
