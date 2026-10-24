@@ -9,7 +9,7 @@
 | `soundness calibration` | The cheating provers over `F65537` against the analytic rates ([soundness-calibration.md](soundness-calibration.md)) | two steps of at most 10 minutes |
 | `property tests at 65,536 cases` | Every test of the crates that use `proptest` (`tessera-field`, `tessera-codec`, `tessera-compiler`, `tessera-protocol`) with `PROPTEST_CASES=65536` | about 9 minutes on an Apple M-series laptop; 60 at most |
 | `fuzzing` | [`fuzz.yml`](../../.github/workflows/fuzz.yml): each of the verifier's six targets for ten minutes under AddressSanitizer, an hour in all ([verifier/fuzz/README.md](../../verifier/fuzz/README.md)) | an hour across six runners |
-| `report a failure` | When a scheduled run fails: opens an issue labeled `type:bug` and `area:infra`, titled "ci: the nightly run failed", or comments on the one still open. It holds the run's link and the last 120 lines of each failed job's log | a minute |
+| `report a failure` | When a scheduled run fails: opens an issue labeled `type:bug` and `area:infra`, titled "ci: the nightly run failed", or comments on the one still open. It holds the run's link and the last 120 lines of each failed job's log, or a line saying why a log could not be read | a minute |
 
 `PROPTEST_CASES` overrides every test's `ProptestConfig::with_cases`, since proptest 1.11 applies the environment to each test's own configuration (`contextualize_config`). A test that sets its cases in code therefore runs the nightly's count too.
 
@@ -20,7 +20,8 @@
 PROPTEST_CASES=65536 cargo test --locked -p tessera-field -p tessera-codec -p tessera-compiler -p tessera-protocol
 # Every nightly job, on GitHub: the Actions tab, "nightly", "Run workflow", or
 gh workflow run nightly.yml
-# The failure report, checked: a run that fails on purpose and opens (or comments on) the issue.
+# The failure report, checked alone: every other job is skipped, one fails on purpose, and the
+# report opens the issue, or comments on the open one.
 gh workflow run nightly.yml -f fail=true
 ```
 

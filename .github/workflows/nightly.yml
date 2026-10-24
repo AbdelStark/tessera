@@ -4,8 +4,8 @@
 # scheduled run that fails opens an issue labeled `type:bug`, or comments on the one still open,
 # with the failed jobs' log tails. The 8B CPU end-to-end subset and the 8B range-assertion run of
 # 07 §8 need Llama-3.1-8B's integer model, which #93 produces. Every job is available on demand;
-# `fail` checks the failure report. Third-party actions are pinned by commit SHA (TB-4 in
-# docs/spec/06-security.md).
+# `fail` checks the failure report alone, skipping every other job. Third-party actions are
+# pinned by commit SHA (TB-4 in docs/spec/06-security.md).
 name: nightly
 
 on:
@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       fail:
-        description: Fail on purpose, to check that a failure opens an issue
+        description: Fail on purpose and skip every other job, to check that a failure opens an issue
         type: boolean
         default: false
 permissions:
@@ -31,6 +31,7 @@ env:
 jobs:
   soundness-calibration:
     name: soundness calibration
+    if: ${{ !inputs.fail }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -59,6 +60,7 @@ jobs:
 
   deep-properties:
     name: property tests at 65,536 cases
+    if: ${{ !inputs.fail }}
     runs-on: ubuntu-24.04
     # About 9 minutes on an Apple M-series laptop (codec 287 s, compiler 237 s, protocol 22 s,
     # field 4 s); the timeout leaves room for a slower runner.
@@ -85,6 +87,7 @@ jobs:
 
   fuzz:
     name: fuzzing
+    if: ${{ !inputs.fail }}
     uses: ./.github/workflows/fuzz.yml
     with:
       seconds: "600"
@@ -114,6 +117,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          API: ${{ github.api_url }}
           RUN: ${{ github.run_id }}
           URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           SHA: ${{ github.sha }}
@@ -129,7 +133,15 @@ jobs:
                 echo "### $name"
                 echo
                 echo '```text'
-                gh api "repos/$REPO/actions/jobs/$id/logs" 2>/dev/null | tail -n 120 | cut -c1-300 || true
+                # The endpoint redirects to a signed storage URL, which curl follows without
+                # forwarding the token. A log that cannot be read says so.
+                if log=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Accept: application/vnd.github+json" \
+                  "$API/repos/$REPO/actions/jobs/$id/logs" 2>&1); then
+                  printf '%s\n' "$log" | tail -n 120 | cut -c1-300
+                else
+                  echo "(the job's log could not be read: $(printf '%s' "$log" | head -c 300))"
+                fi
                 echo '```'
                 echo
               done
