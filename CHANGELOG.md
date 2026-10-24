@@ -6,6 +6,17 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The stages and the openings read the leaf stage's claims where a grouped stage leaves them ([#134](https://github.com/AbdelStark/tessera/issues/134)):
+  - **RFC-0054 'The stage's outputs'.** A claim the ungrouped stage leaves at `P[0..n]` on a tensor of `n` variables lies, in a grouped stage, at the merged point `r(n, S)`. `S` is the low `g_T` variables of the tensor's token axis. The same holds for the graph's claims on each gadget input and on the logits, for each tensor's value, for the native relations' points and for the openings'. The forests' leaf claims are their merged claims, the multiplicities' the table batch's, and the merge's rounds bound every such claim.
+  - **`LeafClaims`.** The interface the native relations (`ModelNativeProver::new`) and the openings (`ModelOpenings::derive`) now read: a tensor's point from its shape and token axis, a split value's point, the forest and multiplicity claims.
+    - **`ProvenLeaf`** implements it with prefixes of `P`, so an ungrouped proof is unchanged.
+    - **`GroupedClaims`** implements it over `prove_grouped_leaf`'s result, with `ProvenGroupedLeaf::merged_point` for `r(n, S)`.
+  - **Tests.** For two groupings of a model's grouped stage:
+    - every split value's point is its merged claim's;
+    - every value read over its lookup's whole domain lies at the point its domain's shape and token axis give, which the stages derive without the group layouts;
+    - the forest claims are the merged ones;
+    - the native relations build their targets on them.
+
 - `tessera-prover` proves a grouped leaf stage up to its atom splits ([#134](https://github.com/AbdelStark/tessera/issues/134)):
   - **The prover.** `prove_grouped_leaf` runs RFC-0054's steps 1 to 4:
     - `logup/alpha` and `logup/beta`, then `logup/roots` and `logup/values` absorbed empty;

@@ -183,7 +183,7 @@ pub fn gadget_nodes(lowering: &Lowering, layers: &LayerMap) -> Vec<NodeRef> {
 
 /// Every tensor's token axis (RFC-0054 'The token axis'), by tensor id, the rule a graph breaks as
 /// [`LeafError::Internal`].
-pub(super) fn tokens(lowering: &Lowering) -> Result<Vec<Option<u8>>, LeafError> {
+pub(crate) fn tokens(lowering: &Lowering) -> Result<Vec<Option<u8>>, LeafError> {
     token_axes(lowering).map_err(|error| LeafError::Internal {
         rule: match error {
             CompileError::Schedule { rule, .. } => rule,
@@ -193,7 +193,7 @@ pub(super) fn tokens(lowering: &Lowering) -> Result<Vec<Option<u8>>, LeafError> 
 }
 
 /// `tensor`'s token axis among `tokens`.
-pub(super) fn token(tokens: &[Option<u8>], tensor: TensorId) -> Option<usize> {
+pub(crate) fn token(tokens: &[Option<u8>], tensor: TensorId) -> Option<usize> {
     tokens
         .get(tensor.0 as usize)
         .copied()

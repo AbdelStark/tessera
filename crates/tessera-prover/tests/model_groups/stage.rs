@@ -15,6 +15,7 @@
 
 use super::*;
 use tessera_field::GoldilocksExt2;
+use tessera_prover::leaf::{GroupedClaims, LeafClaims};
 use tessera_prover::leaf::{
     ModelWitness, ProvenGroupedLeaf, grouped_multiplicities, prove_grouped_leaf,
 };
@@ -440,5 +441,79 @@ fn a_grouped_stage_is_refused_before_the_transcript_moves() {
             &refs[1..],
             "one multiplicity column per instance of the stage",
         );
+    });
+}
+
+/// RFC-0054 'The stage's outputs': where the stages and the openings read a grouped stage's
+/// claims. Every split value's read point is its merged claim's, and it is also the merged point of
+/// its tensor's shape and token axis, which the stages derive without the group layouts. The
+/// forests' leaf claims are their merged claims, and the native relations build on them.
+#[test]
+fn the_stages_read_a_grouped_stages_claims_at_its_merged_points() {
+    let model = layered(bounded_model());
+    with_stage(&model, 5, |p, layout, witness, actual, tables| {
+        let native = tessera_prover::native::ModelNativePlan::derive(
+            &p.lowering,
+            &p.selection,
+            &p.claims,
+            layout,
+        )
+        .unwrap();
+        for (g_t, g_l) in [(1, 0), (2, 1)] {
+            let grouped = GroupedLayout::new(layout, &p.layers, groups(g_t, g_l)).unwrap();
+            let (proven, _) = prove(layout, &grouped, actual, tables);
+            let claims = GroupedClaims::new(&proven, &grouped);
+            assert_eq!(claims.token_bits(), u32::from(g_t));
+            let mut polynomial = 0;
+            let mut whole = 0;
+            for (s, site) in layout.sites().iter().enumerate() {
+                for l in 0..site.layers.len() {
+                    for (r, read) in layout.reads(s, l).unwrap().iter().enumerate() {
+                        let merged = &proven.merged()[polynomial];
+                        assert_eq!(
+                            claims.read_point(layout, s, l, r).as_ref(),
+                            Some(&merged.point),
+                            "site {s}, layer {l}, read {r}"
+                        );
+                        // Read over every axis of the first lookup that reads it: the domain's
+                        // shape and token axis give the same point.
+                        let lookup = site.layers[l]
+                            .lookups
+                            .iter()
+                            .find(|k| {
+                                std::iter::once(&k.lookup.key)
+                                    .chain(&k.lookup.value)
+                                    .any(|f| f.terms.iter().any(|&(_, t)| t == read.term))
+                            })
+                            .unwrap();
+                        if read.axes.len() == lookup.domain.len() {
+                            assert_eq!(
+                                claims.tensor_point(&lookup.domain, lookup.token).as_ref(),
+                                Some(&merged.point),
+                                "site {s}, layer {l}, read {r}"
+                            );
+                            whole += 1;
+                        }
+                        polynomial += 1;
+                    }
+                }
+            }
+            assert!(whole > 0);
+            assert_eq!(claims.read_point(layout, layout.sites().len(), 0, 0), None);
+            let tensors = grouped.polynomials().len();
+            for k in 0..actual.stage_forests().len() {
+                assert_eq!(claims.forest_claim(k), proven.merged().get(tensors + k));
+            }
+            assert_eq!(claims.instances(), layout.instances().len());
+            // The native relations take their targets at these points.
+            tessera_prover::native::ModelNativeProver::new(
+                &native,
+                &p.lowering,
+                actual,
+                witness,
+                &claims,
+            )
+            .unwrap();
+        }
     });
 }
