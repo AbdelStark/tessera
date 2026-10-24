@@ -2,7 +2,9 @@
 # calibration of 07 §4 (docs/testing/soundness-calibration.md), the property tests at 65,536
 # cases, and an hour of fuzzing across the verifier's targets (fuzz.yml, ten minutes each). A
 # scheduled run that fails opens an issue labeled `type:bug`, or comments on the one still open,
-# with the failed jobs' log tails. The 8B CPU end-to-end subset and the 8B range-assertion run of
+# with the failed jobs' log tails. It also runs the quality workflow (quality.yml): the gates that
+# pull requests defer during the fast-build phase (07 §9), rustdoc and the complete suites among
+# them (#492). The 8B CPU end-to-end subset and the 8B range-assertion run of
 # 07 §8 need Llama-3.1-8B's integer model, which #93 produces. Every job is available on demand;
 # `fail` checks the failure report alone, skipping every other job. Third-party actions are
 # pinned by commit SHA (TB-4 in docs/spec/06-security.md).
@@ -92,6 +94,11 @@ jobs:
     with:
       seconds: "600"
 
+  quality:
+    name: deferred quality gates
+    if: ${{ !inputs.fail }}
+    uses: ./.github/workflows/quality.yml
+
   deliberate-failure:
     name: deliberate failure
     if: ${{ inputs.fail }}
@@ -105,7 +112,7 @@ jobs:
 
   report:
     name: report a failure
-    needs: [soundness-calibration, deep-properties, fuzz, deliberate-failure]
+    needs: [soundness-calibration, deep-properties, fuzz, quality, deliberate-failure]
     if: ${{ failure() && (github.event_name == 'schedule' || inputs.fail) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10

@@ -245,4 +245,6 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Changed
 
+- `tv-core`'s rustdoc builds with `RUSTDOCFLAGS=-D warnings` again ([#492](https://github.com/AbdelStark/tessera/issues/492)). The `runtime` module's documentation no longer links the private `levels`, and `leaf::grouped`'s no longer gives `Bound` a redundant explicit link target. Documentation only: no code changes.
+
 - The minimum supported Rust version is 1.88, up from 1.85, with the prover workspace (09 §2, [#242](https://github.com/AbdelStark/tessera/issues/242)).

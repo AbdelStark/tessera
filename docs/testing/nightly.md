@@ -1,6 +1,6 @@
 # Nightly runs
 
-[07 §2](../spec/07-testing-strategy.md#2-test-pyramid) schedules work too slow for every pull request: deep property tests, an hour of fuzzing and the 8B CPU end-to-end subset. [`.github/workflows/nightly.yml`](../../.github/workflows/nightly.yml) runs it every night at 03:17 UTC, on `main`, and on demand from the Actions tab.
+[07 §2](../spec/07-testing-strategy.md#2-test-pyramid) schedules work too slow for every pull request: deep property tests, an hour of fuzzing and the 8B CPU end-to-end subset. The nightly also runs the gates that [07 §9](../spec/07-testing-strategy.md#9-ci-gates) defers from pull requests during the fast-build phase. [`.github/workflows/nightly.yml`](../../.github/workflows/nightly.yml) runs it every night at 03:17 UTC, on `main`, and on demand from the Actions tab.
 
 ## The jobs
 
@@ -9,7 +9,18 @@
 | `soundness calibration` | The cheating provers over `F65537` against the analytic rates ([soundness-calibration.md](soundness-calibration.md)) | two steps of at most 10 minutes |
 | `property tests at 65,536 cases` | Every test of the crates that use `proptest` (`tessera-field`, `tessera-codec`, `tessera-compiler`, `tessera-protocol`) with `PROPTEST_CASES=65536` | about 9 minutes on an Apple M-series laptop; 60 at most |
 | `fuzzing` | [`fuzz.yml`](../../.github/workflows/fuzz.yml): each of the verifier's six targets for ten minutes under AddressSanitizer, an hour in all ([verifier/fuzz/README.md](../../verifier/fuzz/README.md)) | an hour across six runners |
+| `deferred quality gates` | [`quality.yml`](../../.github/workflows/quality.yml), whose jobs are listed below this table | about 20 minutes, the prover's full suite the longest |
 | `report a failure` | When a scheduled run fails: opens an issue labeled `type:bug` and `area:infra`, titled "ci: the nightly run failed", or comments on the one still open. It holds the run's link and the last 120 lines of each failed job's log, or a line saying why a log could not be read | a minute |
+
+The deferred quality gates are:
+- the dependency policy (`cargo xtask check-deps`);
+- the MSRV build;
+- the macOS build;
+- the GPU host checks without CUDA;
+- each workspace's complete suite, doctests included, and the verifier's `test-params` suite;
+- rustdoc with `RUSTDOCFLAGS=-D warnings`.
+
+Before the nightly ran them, two broken intra-doc links stayed on `main` unseen (#492).
 
 `PROPTEST_CASES` overrides every test's `ProptestConfig::with_cases`, since proptest 1.11 applies the environment to each test's own configuration (`contextualize_config`). A test that sets its cases in code therefore runs the nightly's count too.
 
