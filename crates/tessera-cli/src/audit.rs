@@ -323,6 +323,12 @@ pub(crate) fn share(options: &ShareOptions<'_>, json: bool) -> Result<(), Tesser
     let policy = read_policy(options.policy)?;
     let state = options.state;
     fs::create_dir_all(state).map_err(io_error(format!("cannot create {}", state.display())))?;
+    // A directory just made outlives a crash only once its parent is synced.
+    if let Some(parent) = state.parent().filter(|p| !p.as_os_str().is_empty()) {
+        fs::File::open(parent)
+            .and_then(|dir| dir.sync_all())
+            .map_err(io_error(format!("cannot sync {}", parent.display())))?;
+    }
     let path = record_path(state, &manifest_digest);
     let shown = path.display().to_string();
     let protocol =

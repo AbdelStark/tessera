@@ -348,11 +348,6 @@ fn inputs_that_cannot_give_the_sample_are_refused_with_their_code() {
         refused(&sample_args(t1, d1, None, &[], &state, &v1, &out)),
         usage
     );
-    // Period 0 is not the period before period 2.
-    assert_eq!(
-        refused(&sample_args(t2, d2, Some((t0, d0)), &[], &state, &v1, &out)),
-        usage
-    );
     // Period 0's log under period 1's manifest.
     assert_eq!(
         refused(&sample_args(t1, d0, Some((t0, d0)), &[], &state, &v1, &out)),
@@ -386,6 +381,15 @@ fn inputs_that_cannot_give_the_sample_are_refused_with_their_code() {
         refused(&sample_args(t2, d2, Some((t1, d1)), &[], &state, &v1, &out)),
         usage
     );
+    // Period 0 is not the period before period 2, which now has a record, so only the chain
+    // refuses it.
+    ok(&share_args(t2, &good, &c1, &state));
+    assert_eq!(
+        refused(&sample_args(t2, d2, Some((t0, d0)), &[], &state, &v1, &out)),
+        usage
+    );
+    ok(&sample_args(t2, d2, Some((t1, d1)), &[], &state, &v1, &out));
+    let _ = fs::remove_file(&out);
     let elsewhere = dir.join("elsewhere");
     fs::create_dir_all(&elsewhere).expect("a state");
     let name = |p: &Period| format!("{}.share", hex(&p.manifest.identity()));
@@ -435,8 +439,8 @@ fn inputs_that_cannot_give_the_sample_are_refused_with_their_code() {
         );
     }
     assert!(
-        fs::read_dir(&state).expect("the state").count() == 2,
-        "only the two answers made are kept"
+        fs::read_dir(&state).expect("the state").count() == 3,
+        "only the three answers made are kept"
     );
     assert!(!out.exists(), "a refused run writes no sample");
     let _ = fs::remove_dir_all(&dir);
