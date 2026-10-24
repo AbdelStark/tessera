@@ -746,7 +746,10 @@ fn verify_combined(
             .map(|(i, claim)| (tv_tables::TableId(i.table.0), claim.multiplicity.clone()))
             .collect::<Vec<_>>()
     );
-    let point = bound.point;
+    // An ungrouped stage leaves its claims at prefixes of RFC-0045's `P`.
+    let tv_core::leaf::split::LeafPoint::Shared(point) = bound.point else {
+        panic!("an ungrouped stage leaves the shared point");
+    };
     let next = t
         .challenge_fp2(tv_hash::transcript::Ascii::new("stage/1/layer/0").expect("ASCII"))
         .expect("a challenge");

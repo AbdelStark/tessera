@@ -82,11 +82,11 @@
    8
   ],
   "families": {
-   "check-order": 15,
+   "check-order": 17,
    "combined-row": 96,
    "decode": 4,
    "fiat-shamir": 1,
-   "leaf-groups": 14,
+   "leaf-groups": 20,
    "leaf-split": 22,
    "logup-root": 108,
    "merkle-path": 20,
@@ -100,7 +100,7 @@
    "tree-evaluation": 36,
    "tree-round-length": 36
   },
-  "cases": 429
+  "cases": 437
  },
  "mutations": [
   {
@@ -192,7 +192,7 @@
    }
   },
   {
-   "id": "ni-leaf-groups-token",
+   "id": "ni-leaf-groups-token-past-axis",
    "step": "1",
    "family": "leaf-groups",
    "reseal": true,
@@ -201,7 +201,7 @@
      "target": "ni.tnp",
      "offset": 226,
      "before": "0000",
-     "after": "0100"
+     "after": "0400"
     }
    ],
    "expected": {
@@ -214,7 +214,7 @@
    }
   },
   {
-   "id": "ni-leaf-groups-layer",
+   "id": "ni-leaf-groups-layer-past-axis",
    "step": "1",
    "family": "leaf-groups",
    "reseal": true,
@@ -223,7 +223,7 @@
      "target": "ni.tnp",
      "offset": 226,
      "before": "0000",
-     "after": "0001"
+     "after": "0003"
     }
    ],
    "expected": {
@@ -258,7 +258,73 @@
    }
   },
   {
-   "id": "live-leaf-groups-token",
+   "id": "ni-leaf-groups-token",
+   "step": "1",
+   "family": "leaf-groups",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 226,
+     "before": "0000",
+     "after": "0100"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-MALFORMED",
+     "artifact": 1312,
+     "error": "ERR-CODEC-NONCANONICAL"
+    }
+   }
+  },
+  {
+   "id": "ni-leaf-groups-layer",
+   "step": "1",
+   "family": "leaf-groups",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 226,
+     "before": "0000",
+     "after": "0001"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-MALFORMED",
+     "artifact": 1312,
+     "error": "ERR-CODEC-NONCANONICAL"
+    }
+   }
+  },
+  {
+   "id": "ni-leaf-groups-most",
+   "step": "1",
+   "family": "leaf-groups",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 226,
+     "before": "0000",
+     "after": "0302"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-MALFORMED",
+     "artifact": 1312,
+     "error": "ERR-CODEC-NONCANONICAL"
+    }
+   }
+  },
+  {
+   "id": "live-leaf-groups-token-past-axis",
    "step": "1",
    "family": "leaf-groups",
    "reseal": true,
@@ -267,7 +333,7 @@
      "target": "live-round1.tce",
      "offset": 226,
      "before": "0000",
-     "after": "0100"
+     "after": "0400"
     }
    ],
    "expected": {
@@ -280,7 +346,7 @@
    }
   },
   {
-   "id": "live-leaf-groups-layer",
+   "id": "live-leaf-groups-layer-past-axis",
    "step": "1",
    "family": "leaf-groups",
    "reseal": true,
@@ -289,7 +355,7 @@
      "target": "live-round1.tce",
      "offset": 226,
      "before": "0000",
-     "after": "0001"
+     "after": "0003"
     }
    ],
    "expected": {
@@ -320,6 +386,72 @@
      "code": "REJ-MALFORMED",
      "artifact": 1296,
      "error": "ERR-CODEC-LIMIT"
+    }
+   }
+  },
+  {
+   "id": "live-leaf-groups-token",
+   "step": "1",
+   "family": "leaf-groups",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 226,
+     "before": "0000",
+     "after": "0100"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-MALFORMED",
+     "artifact": 1297,
+     "error": "ERR-CODEC-NONCANONICAL"
+    }
+   }
+  },
+  {
+   "id": "live-leaf-groups-layer",
+   "step": "1",
+   "family": "leaf-groups",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 226,
+     "before": "0000",
+     "after": "0001"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-MALFORMED",
+     "artifact": 1297,
+     "error": "ERR-CODEC-NONCANONICAL"
+    }
+   }
+  },
+  {
+   "id": "live-leaf-groups-most",
+   "step": "1",
+   "family": "leaf-groups",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 226,
+     "before": "0000",
+     "after": "0302"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-MALFORMED",
+     "artifact": 1297,
+     "error": "ERR-CODEC-NONCANONICAL"
     }
    }
   },
@@ -9813,7 +9945,7 @@
      "target": "live-round1.tce",
      "offset": 226,
      "before": "0000",
-     "after": "0100"
+     "after": "0400"
     },
     {
      "target": "live-round1.tce",
@@ -9828,6 +9960,33 @@
      "code": "REJ-MALFORMED",
      "artifact": 1296,
      "error": "ERR-CODEC-LIMIT"
+    }
+   }
+  },
+  {
+   "id": "live-order-statement-before-leaf-counts",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "live-round1.tce",
+     "offset": 226,
+     "before": "0000",
+     "after": "0100"
+    },
+    {
+     "target": "live-round1.tce",
+     "offset": 86,
+     "before": "1313131313131313131313131313131313131313131313131313131313131313",
+     "after": "1213131313131313131313131313131313131313131313131313131313131313"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "ManifestDigest"
     }
    }
   },
@@ -10173,7 +10332,7 @@
      "target": "ni.tnp",
      "offset": 226,
      "before": "0000",
-     "after": "0100"
+     "after": "0400"
     }
    ],
    "expected": {
@@ -10201,7 +10360,7 @@
      "target": "ni.tnp",
      "offset": 226,
      "before": "0000",
-     "after": "0100"
+     "after": "0400"
     }
    ],
    "expected": {
@@ -10210,6 +10369,33 @@
      "code": "REJ-MALFORMED",
      "artifact": 1312,
      "error": "ERR-CODEC-LIMIT"
+    }
+   }
+  },
+  {
+   "id": "ni-order-statement-before-leaf-counts",
+   "step": "order",
+   "family": "check-order",
+   "reseal": true,
+   "edits": [
+    {
+     "target": "ni.tnp",
+     "offset": 226,
+     "before": "0000",
+     "after": "0100"
+    },
+    {
+     "target": "ni.tnp",
+     "offset": 86,
+     "before": "1313131313131313131313131313131313131313131313131313131313131313",
+     "after": "1213131313131313131313131313131313131313131313131313131313131313"
+    }
+   ],
+   "expected": {
+    "status": "reject",
+    "reason": {
+     "code": "REJ-STATEMENT",
+     "field": "ManifestDigest"
     }
    }
   },

@@ -464,6 +464,17 @@ fn total(groups: LeafGroups) -> Result<(), Error> {
     Ok(())
 }
 
+/// Checks 1 to 3 of the module documentation alone, against an extent the caller derives from
+/// its trusted inputs: a driver judges them as soon as `Round1` has decoded, before anything is
+/// derived from the claim list (RFC-0054 'Messages'). [`Grouped::new`] runs them first too.
+///
+/// # Errors
+/// [`Error::Bits`], [`Error::TokenBits`], then [`Error::LayerBits`]; [`Error::Internal`] for an
+/// extent of no layers.
+pub fn check_bounds(groups: LeafGroups, extent: Extent) -> Result<(), Error> {
+    bounds(groups, extent)
+}
+
 /// Checks 1 to 3: the grouping's own bound, then the statement's.
 fn bounds(groups: LeafGroups, extent: Extent) -> Result<(), Error> {
     total(groups)?;
@@ -791,16 +802,7 @@ impl Grouped {
     /// The bounds' errors first; then [`Error::Axis`] for a graph the token-axis rules refuse,
     /// [`Error::Model`] for the model derivation's, and [`Grouped::new`]'s.
     pub fn derive(graph: &Graph, policy: GadgetPolicy, groups: LeafGroups) -> Result<Self, Error> {
-        total(groups)?;
-        let layers = crate::schedule::template_layers(graph).map_err(|e| match e {
-            crate::schedule::ScheduleError::Memory => Error::Memory,
-            _ => Error::Internal,
-        })?;
-        let extent = Extent {
-            token_bits: ceil_log2(graph.length())?,
-            layers,
-        };
-        bounds(groups, extent)?;
+        let extent = Self::extent(graph, groups)?;
         let axes = TokenAxes::derive(graph).map_err(|e| match e {
             AxisError::Refused { node } => Error::Axis { node },
             AxisError::Memory => Error::Memory,
@@ -813,6 +815,46 @@ impl Grouped {
             push(&mut forests, forest)?;
         }
         Self::new(&sites, &forests, extent, groups)
+    }
+
+    /// [`Grouped::derive`] over a verifier's runtime plan of `graph`: the stage the driver
+    /// verifies, whose sites are the model's and then the greedy key's
+    /// ([`split_sites`](crate::gadgets::runtime::Plan::split_sites)), and whose forests and
+    /// lookups are its [`leaf_schedule`](crate::gadgets::runtime::Plan::leaf_schedule)'s. With
+    /// `g = 0` its one group is the layout of [`split::Layout`] over the same sites.
+    ///
+    /// # Errors
+    /// The bounds' errors first; then [`Error::Model`] for the runtime derivation's, and
+    /// [`Grouped::new`]'s.
+    pub fn derive_runtime(
+        graph: &Graph,
+        runtime: &crate::gadgets::runtime::Plan<'_>,
+        groups: LeafGroups,
+    ) -> Result<Self, Error> {
+        let extent = Self::extent(graph, groups)?;
+        let sites = runtime.split_sites().map_err(Error::Model)?;
+        let schedule = runtime.leaf_schedule().map_err(Error::Model)?;
+        let mut forests = Vec::new();
+        for forest in schedule.forests() {
+            push(&mut forests, forest)?;
+        }
+        Self::new(&sites, &forests, extent, groups)
+    }
+
+    /// The graph's extent, `t = ⌈log2 n⌉` and the template's layers, after check 1 and before
+    /// checks 2 and 3, which it then runs.
+    fn extent(graph: &Graph, groups: LeafGroups) -> Result<Extent, Error> {
+        total(groups)?;
+        let layers = crate::schedule::template_layers(graph).map_err(|e| match e {
+            crate::schedule::ScheduleError::Memory => Error::Memory,
+            _ => Error::Internal,
+        })?;
+        let extent = Extent {
+            token_bits: ceil_log2(graph.length())?,
+            layers,
+        };
+        bounds(groups, extent)?;
+        Ok(extent)
     }
 
     /// The grouping, `(g_T, g_L)`.

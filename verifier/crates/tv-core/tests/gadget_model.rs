@@ -38,6 +38,19 @@ fn point(n: usize, seed: u64) -> Vec<Fp2> {
         })
         .collect()
 }
+/// An ungrouped stage's `P`.
+fn shared(point: &split::LeafPoint) -> &[Fp2] {
+    match point {
+        split::LeafPoint::Shared(p) => p,
+        split::LeafPoint::Merged { .. } => panic!("an ungrouped fixture"),
+    }
+}
+fn shared_mut(point: &mut split::LeafPoint) -> &mut Vec<Fp2> {
+    match point {
+        split::LeafPoint::Shared(p) => p,
+        split::LeafPoint::Merged { .. } => panic!("an ungrouped fixture"),
+    }
+}
 fn bits(n: u32) -> usize {
     n.next_power_of_two().trailing_zeros() as usize
 }
@@ -343,7 +356,7 @@ fn fixture(g: &Graph, c: &ClaimList, record: &Json) -> Fixture {
             multiplicities,
             forests,
             atoms: Vec::new(),
-            point: p,
+            point: split::LeafPoint::Shared(p),
         },
         tokens: LeafValues {
             point: point(bits(n), 41),
@@ -541,7 +554,7 @@ fn every_model_native_target_final_and_graph_source_matches_literal_integer_tabl
                 let lambda = bits(count);
                 let p = point(meta.vars, 67);
                 let local = p.len() - lambda;
-                let mut target = own.bound.point[..bits(n)].to_vec();
+                let mut target = shared(&own.bound.point)[..bits(n)].to_vec();
                 target.extend(&rho[..lambda]);
                 let (incoming, values, expected, graph) = match g.node(meta.node).unwrap().op() {
                     Op::RsqrtRow { dim, .. } => {
@@ -684,7 +697,7 @@ fn every_model_native_target_final_and_graph_source_matches_literal_integer_tabl
                             let row: Vec<_> = p[bits(n)..].to_vec();
                             let raw = vec![layered(&maxima, &row), layered(&scores, &p)];
                             let target = if index == Some(0) {
-                                let mut t = own.bound.point[..2 * bits(n)].to_vec();
+                                let mut t = shared(&own.bound.point)[..2 * bits(n)].to_vec();
                                 t.extend(&rho);
                                 t
                             } else {
@@ -693,7 +706,8 @@ fn every_model_native_target_final_and_graph_source_matches_literal_integer_tabl
                                     .first()
                                     .map(|f| f.claim.point.clone())
                                     .unwrap_or_else(|| {
-                                        let mut t = own.bound.point[..2 * bits(n)].to_vec();
+                                        let mut t =
+                                            shared(&own.bound.point)[..2 * bits(n)].to_vec();
                                         t.extend(&rho);
                                         t
                                     })
@@ -788,14 +802,14 @@ fn bound_identity_point_forest_and_fixed_gadget_failures_have_exact_errors() {
             1 => bad.columns[0].node = NodeId(u32::MAX),
             2 => bad.columns[0].column = Column::Input(255),
             3 => bad.columns[0].point.push(Fp2::ONE),
-            4 => bad.point[0] += Fp2::ONE,
+            4 => shared_mut(&mut bad.point)[0] += Fp2::ONE,
             5 => bad.multiplicities[0].0 = tv_tables::TableId(u32::MAX),
             6 => bad.forests[0].tree += 1,
             7 => {
                 bad.forests.pop();
             }
             8 => {
-                bad.point.pop();
+                shared_mut(&mut bad.point).pop();
             }
             9 => {
                 bad.multiplicities.pop();

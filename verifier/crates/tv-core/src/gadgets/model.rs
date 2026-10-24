@@ -79,8 +79,12 @@ fn variables(graph: &Graph, tensor: TensorId) -> Result<usize> {
         .iter()
         .try_fold(0usize, |a, &n| a.checked_add(bits(n)?).ok_or_else(internal))
 }
-fn prefix(p: &[Fp2], n: usize) -> Result<&[Fp2]> {
-    p.get(..n).ok_or_else(internal)
+/// The point at which the leaf stage left its claim on a tensor of `vars` variables with
+/// `token` its token axis (RFC-0045 'The leaf point', RFC-0054 'The stage's outputs').
+fn at(point: &split::LeafPoint, vars: usize, token: Option<split::TokenAxis>) -> Result<Vec<Fp2>> {
+    point
+        .tensor(u32::try_from(vars).map_err(|_| internal())?, token)
+        .ok_or_else(internal)
 }
 fn own_point(p: &[Fp2], n: usize) -> Result<&[Fp2]> {
     p.get(p.len().checked_sub(n).ok_or_else(internal)?..)
@@ -218,6 +222,8 @@ pub struct Plan<'p> {
     gadgets: &'p Gadgets<'p>,
     sites: Vec<split::Site>,
     layout: split::Layout,
+    /// Every tensor's token axis, which places a leaf claim in a grouped stage (RFC-0054).
+    axes: leaf::groups::TokenAxes,
     families: Vec<Family<'p>>,
     slots: Vec<Slot>,
     native: Vec<Native>,
@@ -249,6 +255,10 @@ impl<'p> Plan<'p> {
         }
         .map_err(claims_error)?;
         let layout = split::Layout::new(&sites).map_err(split_error)?;
+        let axes = leaf::groups::TokenAxes::derive(graph).map_err(|e| match e {
+            leaf::groups::AxisError::Memory => GadgetError::Memory,
+            _ => internal(),
+        })?;
         let leaf = match runtime {
             Some(r) => r.leaf_schedule(),
             None => leaf::ModelSchedule::derive(graph, gadgets.policy),
@@ -546,6 +556,7 @@ impl<'p> Plan<'p> {
             gadgets,
             sites,
             layout,
+            axes,
             families,
             slots,
             native,
@@ -658,7 +669,12 @@ impl<'p> Plan<'p> {
         external: Option<External<'a>>,
     ) -> Result<Prepared<'a, 'p>> {
         self.layout.check_bound(bound).map_err(split_error)?;
-        if bound.point.len() != self.leaf_height {
+        // An ungrouped stage's `P` is its tallest tree's (RFC-0045 'The leaf point'). A grouped
+        // stage's merge has its own `n_max` rounds, which every merged claim's point fits
+        // (RFC-0054 'The merge's rounds'): `LeafPoint::tensor` has no point beyond them.
+        if let split::LeafPoint::Shared(p) = &bound.point
+            && p.len() != self.leaf_height
+        {
             return Err(internal());
         }
         if bound.multiplicities.len() != self.layout.instances().count() {
@@ -729,30 +745,37 @@ impl<'p> Plan<'p> {
         for site in &self.sites {
             for layer in &site.layers {
                 let definition = graph.node(layer.node).ok_or_else(internal)?;
-                let vars = if matches!(definition.op(), Op::SoftmaxRow { .. }) {
-                    variables(graph, *definition.outputs().get(1).ok_or_else(internal)?)?
+                let first = layer.lookups.first().ok_or_else(internal)?;
+                // The site's point `r_s`: its blocks' (RFC-0045 'A site's point'); for Softmax its
+                // row tensors', whose blocks are its requests after the Exp lookup (RFC-0054
+                // 'Rows').
+                let (vars, token) = if matches!(definition.op(), Op::SoftmaxRow { .. }) {
+                    (
+                        variables(graph, *definition.outputs().get(1).ok_or_else(internal)?)?,
+                        layer.lookups.get(1).ok_or_else(internal)?.token,
+                    )
                 } else {
-                    usize::try_from(layer.lookups.first().ok_or_else(internal)?.variables)
-                        .map_err(|_| internal())?
+                    (
+                        usize::try_from(first.variables).map_err(|_| internal())?,
+                        first.token,
+                    )
                 };
                 let mut keys = reserve(layer.lookups.len())?;
                 let mut values = reserve(layer.lookups.len())?;
                 for lookup in &layer.lookups {
-                    keys.push(prepared.affine(layer.node, &lookup.key)?);
+                    keys.push(prepared.affine(layer.node, &lookup.key, lookup.token)?);
                     values.push(match &lookup.value {
-                        Some(v) => prepared.affine(layer.node, v)?,
+                        Some(v) => prepared.affine(layer.node, v, lookup.token)?,
                         None => Fp2::ZERO,
                     });
                 }
-                let score_vars =
-                    usize::try_from(layer.lookups.first().ok_or_else(internal)?.variables)
-                        .map_err(|_| internal())?;
+                let score_vars = usize::try_from(first.variables).map_err(|_| internal())?;
                 *prepared
                     .data
                     .get_mut(usize::try_from(layer.node.0).map_err(|_| internal())?)
                     .ok_or_else(internal)? = Some(Data {
-                    point: copy(prefix(&bound.point, vars)?)?,
-                    score_point: copy(prefix(&bound.point, score_vars)?)?,
+                    point: at(&bound.point, vars, token)?,
+                    score_point: at(&bound.point, score_vars, first.token)?,
                     sources: Vec::new(),
                     keys,
                     values,
@@ -792,26 +815,30 @@ impl<'a, 'p> Prepared<'a, 'p> {
             .find(|c| c.column == column)
             .ok_or_else(internal)
     }
-    fn affine(&self, node: NodeId, form: &split::Affine) -> Result<Fp2> {
+    /// A lookup form's value from its terms' split claims, each at its read's point of a block
+    /// whose token axis is `token`.
+    fn affine(
+        &self,
+        node: NodeId,
+        form: &split::Affine,
+        token: Option<split::TokenAxis>,
+    ) -> Result<Fp2> {
         form.terms
             .iter()
             .try_fold(Fp2::from(form.constant), |a, (coefficient, read)| {
                 let column = self.column(node, read.column)?;
-                if column.point.len() != read.coordinates.len() {
+                if self.bound.point.read(&read.coordinates, token).as_ref() != Some(&column.point) {
                     return Err(internal());
-                }
-                for (p, &coordinate) in column.point.iter().zip(&read.coordinates) {
-                    if self
-                        .bound
-                        .point
-                        .get(usize::try_from(coordinate).map_err(|_| internal())?)
-                        != Some(p)
-                    {
-                        return Err(internal());
-                    }
                 }
                 Ok(a + Fp2::from(*coefficient) * column.value)
             })
+    }
+    /// The point at which the leaf stage left its claim on `tensor`, by the tensor's own
+    /// variables and token axis (RFC-0054 'Where a claim lies').
+    fn tensor_point(&self, tensor: TensorId) -> Result<Vec<Fp2>> {
+        let graph = self.plan.gadgets.graph;
+        let token = split::token_axis(graph, &self.plan.axes, tensor).map_err(|_| internal())?;
+        at(&self.bound.point, variables(graph, tensor)?, token)
     }
     fn source(&self, node: NodeId, source: Source, point: &[Fp2]) -> Result<Fp2> {
         let graph = self.plan.gadgets.graph;
@@ -861,7 +888,14 @@ impl<'a, 'p> Prepared<'a, 'p> {
             let point = copy(&self.row(node)?.point)?;
             let mut sources = Vec::new();
             for input in site.inputs(&point)? {
-                push(&mut sources, self.source(node, input.source, input.point)?)?;
+                // A graph tensor's claim lies at its own point: a channel's class, read over the
+                // channels alone, has no token axis (RFC-0054 'Where a claim lies'). In an
+                // ungrouped stage that is the prefix `inputs` gives.
+                let own = match input.source {
+                    Source::Tensor(tensor) => self.tensor_point(tensor)?,
+                    _ => copy(input.point)?,
+                };
+                push(&mut sources, self.source(node, input.source, &own)?)?;
             }
             let d = self.row(node)?;
             let mut lookups = reserve(d.keys.len())?;
@@ -983,7 +1017,17 @@ impl<'a, 'p> Prepared<'a, 'p> {
                 .find(|s| s.layers.first().is_some_and(|l| l.node == leaf.site))
                 .ok_or_else(internal)?;
             let mut values = reserve(site.layers.len())?;
-            let point = prefix(&self.bound.point, leaf.claim.vars)?;
+            // The graph's claim on the gadget input, at the leaf stage's point for that tensor
+            // (RFC-0037 'The layer point'; RFC-0054 'Where a claim lies'): every layer's tensor
+            // of a template position has the same shape and token axis.
+            let first = graph
+                .node(site.layers.first().ok_or_else(internal)?.node)
+                .ok_or_else(internal)?;
+            let point = self.tensor_point(*first.inputs().get(input).ok_or_else(internal)?)?;
+            if point.len() != leaf.claim.vars {
+                return Err(internal());
+            }
+            let point = point.as_slice();
             for layer in &site.layers {
                 let definition = graph.node(layer.node).ok_or_else(internal)?;
                 let tensor = *definition.inputs().get(input).ok_or_else(internal)?;

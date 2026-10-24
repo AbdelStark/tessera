@@ -35,7 +35,7 @@ The caller's expected statement comes from `claims.tcl`, `weights.twr` and `base
 | Family | Step | Mutation | Verdict |
 |---|---|---|---|
 | `decode` | 1 | A field element `P`, a trailing byte, a missing byte, a changed envelope digest | `REJ-MALFORMED` with the codec's code |
-| `leaf-groups` | 1 | `Round1.leaf_groups` of one token bit, one layer bit, or 15 bits; an ungrouped `TreeProof` with a group, a table root, a merge round or a merge evaluation (RFC-0054 'Messages', 'Migration / Rollout') | `REJ-MALFORMED`: `ERR-CODEC-LIMIT` for a grouping, `ERR-CODEC-NONCANONICAL` for a grouped field; `Round1` or `Round2Response` in a live session |
+| `leaf-groups` | 1 | `Round1.leaf_groups` past the token axis's `t` bits, past the layer index's `n_ℓ` bits, or 15 bits in all; within them, one token bit, one layer bit, or `(t, n_ℓ)` on the ungrouped bases; an ungrouped `TreeProof` with a group, a table root, a merge round or a merge evaluation (RFC-0054 'Messages') | `REJ-MALFORMED`: `ERR-CODEC-LIMIT` past a bound, on `Round1` in a live session; `ERR-CODEC-NONCANONICAL` for the counts a grouping within its bounds fixes, judged after the statement, and for a grouped field, on `Round2Response` in a live session |
 | `statement` | 4 | Each statement field, each request field, the predictor, the layout digest | `REJ-STATEMENT` with the field |
 | `fiat-shamir` | 6 | The seed nonce, which test-small's zero-bit predicate accepts | `REJ-TREE` in group 0 at level 1, round 1: the nonce is absorbed |
 | `logup-root` | 7.1 | Each instance's zero `d_a`, zero `d_t`, and a changed `n_a` | `REJ-LOOKUP` with its table |

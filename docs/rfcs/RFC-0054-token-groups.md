@@ -250,7 +250,7 @@ pub struct GroupProof { pub roots: Vec<Fp2>, pub levels: Vec<SumcheckProof>, pub
 ```
 
 - **`leaf_groups`.** It is absorbed with `Round1`, before any challenge, so a prover cannot choose its grouping after seeing one.
-  - The verifier rejects, with `Reject(Malformed { artifact, code: ERR-CODEC-LIMIT })`, `artifact` being `Round1` in live mode and `NiProof` otherwise: `token_bits + layer_bits > 14`, `token_bits > t`, or `layer_bits > n_ℓ`. The first is a decoding failure; the others need the claim list and the statement. In `tessera-protocol/2` it also rejects any `leaf_groups` other than zero (OQ-0054-1).
+  - The verifier rejects, with `Reject(Malformed { artifact, code: ERR-CODEC-LIMIT })`, `artifact` being `Round1` in live mode and `NiProof` otherwise: `token_bits + layer_bits > 14`, `token_bits > t`, or `layer_bits > n_ℓ`. The first is a decoding failure. The others need the claim list and the statement, and are judged at RFC-0019 step 1 as soon as `Round1` has decoded, before the statement is compared. In `tessera-protocol/2` it also rejects any `leaf_groups` other than zero (OQ-0054-1).
 - **`g = 0`.** `groups` and `table_roots` are empty, `merge` has no rounds and no evaluations, nothing is absorbed for them, and `levels`, `splits` and `LogUpProof` are as now.
   - The leaf stage is RFC-0010's, but the proof is not byte-identical to today's. `Round1`'s new bytes change every challenge, and `TreeProof`'s new fields its encoding.
 - **`g ≥ 1`.**
@@ -262,7 +262,7 @@ pub struct GroupProof { pub roots: Vec<Fp2>, pub levels: Vec<SumcheckProof>, pub
   - A group's split mismatch is `TreeLevel { group: h, level: L_h, round: 0 }`, `L_h` the group's level count.
   - The merge's is the new `LeafMerge { round }` (`REJ-LEAF-MERGE`, exit 10).
   - The atom splits keep `Sumcheck { stage: 0, round: 0 }`.
-  - **Counts.** The grouping fixes how many groups `TreeProof` holds; each group's roots, levels, values and splits; and the table batch's roots and levels. Another count is `Reject(Malformed { artifact, code: ERR-CODEC-NONCANONICAL })`, `artifact` being `Round2Response` in live mode and `NiProof` otherwise, before any transcript work. The merge's rounds and evaluations are its own checks: `LeafMerge`.
+  - **Counts.** The grouping fixes how many groups `TreeProof` holds; each group's roots, levels, values and splits; and the table batch's roots and levels. Another count is `Reject(Malformed { artifact, code: ERR-CODEC-NONCANONICAL })`, `artifact` being `Round2Response` in live mode and `NiProof` otherwise, before any transcript work. The merge's rounds and evaluations are its own checks: `LeafMerge`. `splits`, the atom splits, holds as many values as the public schedule has atoms, as in an ungrouped stage. Another count is `Malformed` with `ERR-CODEC-NONCANONICAL` too, judged once the merge has passed (step 5).
   - Each reason names one check, and the first failing check in the order above is the one reported.
 
 ### Reduction stages
@@ -325,7 +325,7 @@ At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` beco
   - **Splits.** A changed split value in any group is rejected by its group's check or by the merge.
   - **The merge.** A changed merge round or evaluation, or a merged claim swapped between two tensors of one class, is rejected.
   - **`leaf_groups`.** Above 14, above `t` or `n_ℓ`, or nonzero in `tessera-protocol/2`, it is `ERR-CODEC-LIMIT`.
-  - **Reasons.** Every grouped check's failure has its own reason: `TreeLevel` with its group, the split at its group's last level, and `LeafMerge` with its round.
+  - **Reasons.** Every grouped check's failure has its own reason: `TreeLevel` with its group, the split at its group's level count `L_h`, and `LeafMerge` with its round.
 - **Layouts.**
   - **Unlike groups.** Groups whose blocks differ, such as layer subset 0 with the prologue and the padded layers, verify.
   - **Empty groups.** An instance absent from a group has no tree there and no root, and its identity sums the groups that hold it.

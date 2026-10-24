@@ -3,6 +3,15 @@
 //! Protocol/1 verification over trusted application inputs (RFC-0019).
 //! The current runtime composes one exact-greedy request; unsupported predictors/batches
 //! fail explicitly. Anchor signatures, scoring circuits and persistent ledgers are v0.4.
+//!
+//! A leaf stage in token groups (RFC-0054) runs in this order: `Round1.leaf_groups` within
+//! `t = ⌈log2 n⌉` token bits and `n_ℓ = ⌈log2 L⌉` layer bits of the trusted statement and claim
+//! list, else `Malformed { ERR-CODEC-LIMIT }` on Round1 (the `NiProof` in non-interactive mode)
+//! as soon as it has decoded; the grouped layouts from public data; the counts the grouping fixes,
+//! else `Malformed { ERR-CODEC-NONCANONICAL }` on the Round2Response (the `NiProof`), before any
+//! transcript work; then [`leaf::grouped::Stage::verify`] and its atom splits in place of
+//! RFC-0010's single batch and RFC-0045's split. Every later check reads the stage's claims
+//! through [`leaf::split::LeafPoint`], so an ungrouped stage's are unchanged.
 
 use crate::claims::ClaimList;
 use crate::protocol::{Decoding, FixedBits, NiProof, PredictorSpec, PublicStatement};
@@ -275,6 +284,45 @@ fn split_error(e: leaf::split::Error, artifact: ArtifactKind) -> Failure {
         leaf::split::Error::Internal => internal(),
     }
 }
+/// A grouped stage's failure by its own mapping (RFC-0054 'Messages', 'Rejections'), `artifact`
+/// being the one a `Malformed` count names.
+fn grouped_error(e: leaf::grouped::Error, artifact: ArtifactKind) -> Failure {
+    match e.verdict(artifact) {
+        Verdict::Reject(reason) => reject(reason),
+        Verdict::Inconclusive(error) => Failure::Inconclusive(error),
+        Verdict::Accept(_) => internal(),
+    }
+}
+/// A grouped stage's layout: a grouping beyond its bounds is the proof's, `Malformed {
+/// ERR-CODEC-LIMIT }` on `artifact`, `Round1`'s (RFC-0054 'Messages'); anything else the
+/// verifier's own.
+fn layout_error(e: &leaf::groups::Error, artifact: ArtifactKind) -> Failure {
+    if e.is_rejection() {
+        return reject(RejectReason::Malformed {
+            artifact,
+            code: ErrorCode::CodecLimit,
+        });
+    }
+    match e {
+        leaf::groups::Error::Memory
+        | leaf::groups::Error::Model(validation::ClaimsError::Memory) => memory(),
+        _ => internal(),
+    }
+}
+/// The extent `leaf_groups` must keep (RFC-0054 'Messages'), from the trusted inputs alone, so
+/// that `Round1` is judged as soon as it has decoded: `t = ⌈log2 n⌉` for the statement's `n`
+/// tokens (0 for none), and the claim list's layers (one at least: a claim list of none fails
+/// its own validation, RFC-0007).
+fn grouping_extent(claims: &ClaimList, statement: &PublicStatement) -> leaf::groups::Extent {
+    let tokens = statement.batch.requests.iter().fold(0u64, |n, r| {
+        n.saturating_add(u64::from(r.prompt_len))
+            .saturating_add(u64::from(r.output_len))
+    });
+    leaf::groups::Extent {
+        token_bits: u64::BITS.saturating_sub(tokens.saturating_sub(1).leading_zeros()),
+        layers: claims.arch.n_layers.max(1),
+    }
+}
 fn deadline(start: Instant, limits: ResourceLimits) -> Check<()> {
     if start.elapsed() >= limits.max_wall_time {
         Err(fail(ErrorCode::Time))
@@ -442,6 +490,15 @@ impl Session<'_> {
             } => 0x0513,
         })
     }
+    /// The artifact a `Round1` fault names: `Round1` in live mode, `NiProof` otherwise (RFC-0054
+    /// 'Messages').
+    fn round1_artifact(self) -> ArtifactKind {
+        ArtifactKind(if matches!(self, Self::Ni { .. }) {
+            0x0520
+        } else {
+            0x0510
+        })
+    }
 }
 struct Frame<'a> {
     round1: &'a protocol::Round1,
@@ -547,22 +604,24 @@ fn verify_unit(
     {
         return Err(malformed(artifact));
     }
-    // RFC-0054 'Migration / Rollout': this verifier checks no grouped leaf stage yet (#454), so
-    // a grouping is beyond its limits; and an ungrouped stage has no groups, no table roots and
-    // an empty merge ('Messages').
-    if proof.round1.leaf_groups != protocol::LeafGroups::NONE {
-        return Err(reject(RejectReason::Malformed {
-            artifact,
-            code: ErrorCode::CodecLimit,
-        }));
-    }
-    let trees = &proof.round2.trees;
-    if !trees.groups.is_empty()
-        || !trees.table_roots.is_empty()
-        || !trees.merge.rounds.is_empty()
-        || !trees.merge.final_evals.is_empty()
-    {
-        return Err(malformed(artifact));
+    // RFC-0054 'Messages': a grouping beyond the statement's token axis or the template's layer
+    // index is `Malformed { ERR-CODEC-LIMIT }` on Round1, judged as soon as it has decoded; the
+    // decoder judges `g_T + g_L ≤ 14` itself. This driver is `tessera-protocol/1`'s, which admits
+    // groups (`tessera-protocol/2` would refuse any). An ungrouped stage has no groups, no table
+    // roots and an empty merge: lengths the grouping fixes, judged after it.
+    let groups = proof.round1.leaf_groups;
+    if groups != protocol::LeafGroups::NONE {
+        leaf::groups::check_bounds(groups, grouping_extent(claims, expected))
+            .map_err(|e| layout_error(&e, session.round1_artifact()))?;
+    } else {
+        let trees = &proof.round2.trees;
+        if !trees.groups.is_empty()
+            || !trees.table_roots.is_empty()
+            || !trees.merge.rounds.is_empty()
+            || !trees.merge.final_evals.is_empty()
+        {
+            return Err(malformed(artifact));
+        }
     }
     // shortcut: conservative work planning; replace with complete allocation accounting in #182.
     let memory_estimate = total
@@ -695,9 +754,41 @@ fn verify_unit(
     let native = gadgets::model::Plan::derive_runtime(&runtime).map_err(gadget_error)?;
     let splits = leaf::split::Layout::new(&runtime.split_sites().map_err(claims_error)?)
         .map_err(|e| split_error(e, artifact))?;
+    // RFC-0054: a grouped stage's layouts, from public data alone, over the same sites, forests
+    // and table trees as the ungrouped stage's.
+    let grouped = if groups == protocol::LeafGroups::NONE {
+        None
+    } else {
+        Some(
+            leaf::groups::Grouped::derive_runtime(&graph, &runtime, groups)
+                .map_err(|e| layout_error(&e, session.round1_artifact()))?,
+        )
+    };
+    let mut tables = reserve(leaf_plan.lookups().len())?;
+    for tree in leaf_plan.schedule().trees() {
+        if let leaf::Tree::Table { instance, height } = *tree {
+            let &(table, _) = leaf_plan.lookups().get(instance).ok_or_else(internal)?;
+            tables.push(leaf::grouped::TableTree { table, height });
+        }
+    }
+    let stage = grouped
+        .as_ref()
+        .map(|g| leaf::grouped::Stage::new(g, &tables))
+        .transpose()
+        .map_err(|e| grouped_error(e, artifact))?;
     deadline(started, cfg.limits)?;
     if matches!(session, Session::Initial) {
         return Ok(Outcome::Ready);
+    }
+    let grouped_proof = leaf::grouped::Proof {
+        logup: &proof.round2.logup,
+        trees: &proof.round2.trees,
+    };
+    // RFC-0054 'Counts': the grouping fixes these lengths, judged before any transcript work.
+    if let Some(stage) = &stage {
+        stage
+            .check_counts(grouped_proof)
+            .map_err(|e| grouped_error(e, artifact))?;
     }
     let parameters = SoundnessParams::try_from_param_set(cfg.params).map_err(|_| memory())?;
     let mut t = Transcript::new(&SessionContext {
@@ -724,51 +815,82 @@ fn verify_unit(
         }
     }
     let mut table_error = None;
-    let checked = leaf_plan
-        .schedule()
-        .verify(
-            &mut t,
-            leaf::Proof {
-                roots: &proof.round2.logup.roots,
-                levels: &proof.round2.trees.levels,
-                values: &proof.round2.logup.values,
-            },
-            |i, p| leaf_plan.forest_root(i, p),
-            |i, b, p| {
-                let &(id, _) = leaf_plan.lookups().get(i)?;
-                let table = runtime.table(id)?;
-                match table.eval_mle(p, b) {
-                    Ok(v) => Some(v),
-                    Err(e) => {
-                        table_error = Some(e);
-                        None
-                    }
-                }
-            },
-        )
-        .map_err(|e| {
-            if table_error == Some(tv_tables::TableError::Memory) {
-                memory()
-            } else {
-                leaf_error(e, leaf_plan.lookups(), artifact)
+    let mut evaluate = |id: tv_tables::TableId, b: Fp2, p: &[Fp2]| {
+        let table = runtime.table(id)?;
+        match table.eval_mle(p, b) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                table_error = Some(e);
+                None
             }
-        })?;
-    let bound = splits
-        .bind(
-            &mut t,
-            checked,
-            &proof.round2.trees.splits,
-            native.schedule().leaf_splits(),
-            |id| {
-                let table = runtime.table(id)?;
-                let (k, v) = table.row(0)?;
-                Some((
-                    k,
-                    (!matches!(table.spec().kind, tv_tables::TableKind::Range { .. })).then_some(v),
-                ))
-            },
-        )
-        .map_err(|e| split_error(e, artifact))?;
+        }
+    };
+    let row_zero = |id| {
+        let table = runtime.table(id)?;
+        let (k, v) = table.row(0)?;
+        Some((
+            k,
+            (!matches!(table.spec().kind, tv_tables::TableKind::Range { .. })).then_some(v),
+        ))
+    };
+    // The leaf stage's claims, wherever it leaves them (`LeafPoint`): RFC-0010's single batch and
+    // RFC-0045's split, or RFC-0054's groups, table batch, merge and atom splits.
+    let bound = match &stage {
+        None => {
+            let checked = leaf_plan
+                .schedule()
+                .verify(
+                    &mut t,
+                    leaf::Proof {
+                        roots: &proof.round2.logup.roots,
+                        levels: &proof.round2.trees.levels,
+                        values: &proof.round2.logup.values,
+                    },
+                    |i, p| leaf_plan.forest_root(i, p),
+                    |i, b, p| evaluate(leaf_plan.lookups().get(i)?.0, b, p),
+                )
+                .map_err(|e| {
+                    if table_error == Some(tv_tables::TableError::Memory) {
+                        memory()
+                    } else {
+                        leaf_error(e, leaf_plan.lookups(), artifact)
+                    }
+                })?;
+            splits
+                .bind(
+                    &mut t,
+                    checked,
+                    &proof.round2.trees.splits,
+                    native.schedule().leaf_splits(),
+                    row_zero,
+                )
+                .map_err(|e| split_error(e, artifact))?
+        }
+        Some(stage) => {
+            let merged = stage
+                .verify(
+                    &mut t,
+                    grouped_proof,
+                    |i, p| leaf_plan.forest_root(i, p),
+                    &mut evaluate,
+                    row_zero,
+                )
+                .map_err(|e| {
+                    if table_error == Some(tv_tables::TableError::Memory) {
+                        memory()
+                    } else {
+                        grouped_error(e, artifact)
+                    }
+                })?;
+            merged
+                .bind(
+                    &mut t,
+                    &proof.round2.trees.splits,
+                    native.schedule().leaf_splits(),
+                )
+                .map_err(|e| grouped_error(e, artifact))?
+        }
+    };
     let prepared = native.bind_runtime(&bound).map_err(gadget_error)?;
     let rope = runtime
         .catalog()
