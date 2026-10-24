@@ -47,6 +47,9 @@ pub(crate) enum Step {
     Evals,
     /// `<prefix>/line`, a tree level's line challenge.
     Line,
+    /// `<prefix>/root/{c}`, coordinate `c` of the root point of the forests that join a tree level
+    /// (RFC-0010 'Tree levels'), under a grouped stage's level prefix (RFC-0054).
+    Root(usize),
     /// `stage/1/layer/{c}`, coordinate `c` of the layer point `ρ_1` (RFC-0037 'The layer
     /// point').
     Layer(usize),
@@ -66,6 +69,7 @@ fn label(prefix: Prefix, step: Step) -> String {
         Step::Challenge(j) => format!("{prefix}/r/{j}"),
         Step::Evals => format!("{prefix}/evals"),
         Step::Line => format!("{prefix}/line"),
+        Step::Root(c) => format!("{prefix}/root/{c}"),
         Step::Layer(c) => format!("{prefix}/layer/{c}"),
         Step::Zero(c) => format!("{prefix}/zero/{c}"),
         Step::Split => format!("{prefix}/split"),

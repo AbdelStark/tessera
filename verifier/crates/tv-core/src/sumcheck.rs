@@ -59,6 +59,19 @@ pub enum Prefix {
     Stage(u32),
     /// Level `ℓ` of the leaf stage's trees, labels `tree/{ℓ}/…`.
     Tree(u32),
+    /// Level `ℓ` of group `h`'s trees in a grouped leaf stage, labels `group/{h}/tree/{ℓ}/…`
+    /// (RFC-0054 'The leaf stage with groups', step 2).
+    GroupTree {
+        /// The group `h`.
+        group: u32,
+        /// The level `ℓ`, from the group's roots.
+        level: u32,
+    },
+    /// Level `ℓ` of a grouped leaf stage's table batch, labels `tables/tree/{ℓ}/…` (RFC-0054
+    /// 'The leaf stage with groups', step 3).
+    TableTree(u32),
+    /// A grouped leaf stage's merge, labels `merge/…` (RFC-0054 'The merge').
+    Merge,
 }
 
 impl fmt::Display for Prefix {
@@ -66,6 +79,9 @@ impl fmt::Display for Prefix {
         match self {
             Prefix::Stage(k) => write!(f, "stage/{k}"),
             Prefix::Tree(level) => write!(f, "tree/{level}"),
+            Prefix::GroupTree { group, level } => write!(f, "group/{group}/tree/{level}"),
+            Prefix::TableTree(level) => write!(f, "tables/tree/{level}"),
+            Prefix::Merge => f.write_str("merge"),
         }
     }
 }

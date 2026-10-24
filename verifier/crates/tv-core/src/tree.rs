@@ -145,7 +145,19 @@ pub(crate) fn verify_level_with(
     claims: &[LevelClaim],
     proof: &SumcheckProof,
 ) -> Result<TreeLevel, SumcheckError> {
-    let passed = level_with(transcript, level, claims, proof)?;
+    verify_level_under(transcript, Prefix::Tree(level), claims, proof)
+}
+
+/// [`verify_level`] under any level prefix: `tree/{ℓ}`, or a grouped stage's
+/// `group/{h}/tree/{ℓ}` and `tables/tree/{ℓ}` (RFC-0054 'The leaf stage with groups', whose
+/// levels are RFC-0010's under their own labels).
+pub(crate) fn verify_level_under(
+    transcript: &mut impl FiatShamir,
+    prefix: Prefix,
+    claims: &[LevelClaim],
+    proof: &SumcheckProof,
+) -> Result<TreeLevel, SumcheckError> {
+    let passed = level_with(transcript, prefix, claims, proof)?;
     Ok(TreeLevel {
         gamma: passed.gamma,
         lambda: passed.lambda,
@@ -183,7 +195,7 @@ pub(crate) fn verify_product_level_with(
     claims: &[TreeClaim],
     proof: &SumcheckProof,
 ) -> Result<ProductLevel, SumcheckError> {
-    let passed = level_with(transcript, level, claims, proof)?;
+    let passed = level_with(transcript, Prefix::Tree(level), claims, proof)?;
     Ok(ProductLevel {
         gamma: passed.gamma,
         point: passed.point,
@@ -338,14 +350,14 @@ struct Passed<C> {
     claims: Vec<C>,
 }
 
-/// The checks of 'Tree levels', steps 1 to 9, and the next claims, on instances of any kind.
+/// The checks of 'Tree levels', steps 1 to 9, and the next claims, on instances of any kind,
+/// under the level's label prefix.
 fn level_with<C: Entering>(
     transcript: &mut impl FiatShamir,
-    level: u32,
+    prefix: Prefix,
     claims: &[C],
     proof: &SumcheckProof,
 ) -> Result<Passed<C>, SumcheckError> {
-    let prefix = Prefix::Tree(level);
     // 1. The caller's instances, before the transcript moves.
     let shape = Shape::of(
         LEVEL_DEGREE,
