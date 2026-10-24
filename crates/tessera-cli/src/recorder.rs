@@ -13,12 +13,15 @@
 //! - **Sessions.** When a connection ends, the recorder logs the close of every session it saw on
 //!   it.
 //! - **Periods.** Every `--period` seconds it closes the period:
-//!   - it writes the period's entries to `<log-dir>/<first_seq>.tdl`, the concatenation of their
+//!   - it writes the period's entries to `<log-dir>/<start>.tdl`, the concatenation of their
 //!     TCE encodings in `seq` order (03 §5's `stream`);
-//!   - it writes the signed manifest's envelope to `<log-dir>/<first_seq>.tlm`;
+//!   - it writes the signed manifest's envelope to `<log-dir>/<start>.tlm`;
 //!   - it opens the next period with its carries (RFC-0062).
 //!
-//!   `<first_seq>` is twenty decimal digits, so the files sort in `seq` order.
+//!   `<start>` is the period's `period_start_ns` in twenty decimal digits. Starts strictly
+//!   increase along the chain, so every period has its own files, an empty one included, and
+//!   the files sort in chain order. Each file is written under a temporary name and renamed into
+//!   place, the log before the manifest, so a visible `.tlm` has both files complete.
 //! - **The key** is the recorder's 32-byte Ed25519 seed, the whole content of `--key`.
 //!
 //! Everything logged is public: frames are ciphertext, and the seed stays in its `Secret`.
@@ -141,13 +144,11 @@ fn rotate(state: &Mutex<State>) -> Result<(), TesseraError> {
         .recorder
         .rotate(now_ns())
         .map_err(|e| TesseraError::new(ErrorCode::Internal).with_source(e.to_string()))?;
-    let stem = format!("{:020}", manifest.body.first_seq);
+    let stem = format!("{:020}", manifest.body.period_start_ns);
     let log = state.log_dir.join(format!("{stem}.tdl"));
     let tlm = state.log_dir.join(format!("{stem}.tlm"));
-    fs::write(&log, encode_log(&entries))
-        .map_err(io_error(format!("cannot write {}", log.display())))?;
-    fs::write(&tlm, envelope::seal(&schema::LOG_MANIFEST, &manifest))
-        .map_err(io_error(format!("cannot write {}", tlm.display())))?;
+    write_whole(&log, &encode_log(&entries))?;
+    write_whole(&tlm, &envelope::seal(&schema::LOG_MANIFEST, &manifest))?;
     tessera_codec::event!(
         INFO,
         "cli.recorder_period_written",
@@ -156,6 +157,18 @@ fn rotate(state: &Mutex<State>) -> Result<(), TesseraError> {
         "tessera recorder ref: wrote {entries} entries and {manifest}"
     );
     Ok(())
+}
+
+/// Writes `bytes` to `path` whole: to `<path>.tmp` first, then renamed into place, so a reader
+/// sees the file complete or not at all. Not `write_bytes_atomically`, which also records each
+/// output in the run manifest: a recorder runs until it is stopped, and would grow that list by
+/// one entry a period.
+fn write_whole(path: &Path, bytes: &[u8]) -> Result<(), TesseraError> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    fs::write(&tmp, bytes).map_err(io_error(format!("cannot write {}", tmp.display())))?;
+    fs::rename(&tmp, path).map_err(io_error(format!("cannot write {}", path.display())))
 }
 
 /// Relays one client connection to the upstream and back, logging both directions, then logs

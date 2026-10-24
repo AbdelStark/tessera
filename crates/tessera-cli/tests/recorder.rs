@@ -4,13 +4,14 @@
 //! recorder to an upstream. Then the test checks three things:
 //! - the bytes each side received are the bytes the other sent;
 //! - the logged digests match an offline recomputation;
-//! - the periods written to `--log-dir` form a valid chain of manifests over their logs.
+//! - the periods written to `--log-dir` form a valid chain of manifests over their logs, the
+//!   empty periods after the conversation included, each in files named by its start.
 
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -33,7 +34,18 @@ fn token(request: u64, direction: Direction, index: u32, tokens: Vec<u32>) -> To
     TokenFrame::new(request, direction, index, Secret::new(tokens))
 }
 
-/// The `.tlm` and `.tdl` files of every period written so far, in `seq` order.
+/// The recorder's process, killed when the test ends, a failing one included.
+struct Running(Child);
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// The `.tlm` and `.tdl` files of every period written so far, in chain order: each period's
+/// files are named by its start.
 fn periods(dir: &Path) -> Vec<(LogManifest, Vec<DigestLogEntry>)> {
     let mut stems: Vec<String> = fs::read_dir(dir)
         .expect("the log directory")
@@ -50,6 +62,7 @@ fn periods(dir: &Path) -> Vec<(LogManifest, Vec<DigestLogEntry>)> {
             let manifest: LogManifest =
                 envelope::open(&tlm, &schema::LOG_MANIFEST, DecodeLimits::MESSAGE)
                     .expect("a manifest envelope");
+            assert_eq!(*stem, format!("{:020}", manifest.body.period_start_ns));
             let log = fs::read(dir.join(format!("{stem}.tdl"))).expect("a period's log");
             (manifest, decode_log(&log).expect("a period's entries"))
         })
@@ -102,18 +115,20 @@ fn the_recorder_forwards_logs_and_chains_its_periods() {
         received
     });
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_tessera"))
-        .args(["recorder", "ref", "--listen", "127.0.0.1:0", "--upstream"])
-        .arg(upstream_addr.to_string())
-        .arg("--log-dir")
-        .arg(&log_dir)
-        .arg("--key")
-        .arg(&key)
-        .args(["--period", "1"])
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("the recorder starts");
-    let mut stderr = child.stderr.take().expect("its stderr");
+    let mut child = Running(
+        Command::new(env!("CARGO_BIN_EXE_tessera"))
+            .args(["recorder", "ref", "--listen", "127.0.0.1:0", "--upstream"])
+            .arg(upstream_addr.to_string())
+            .arg("--log-dir")
+            .arg(&log_dir)
+            .arg("--key")
+            .arg(&key)
+            .args(["--period", "1"])
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("the recorder starts"),
+    );
+    let mut stderr = child.0.stderr.take().expect("its stderr");
     // Its first line, read a byte at a time: no read-ahead buffer (OBS-6).
     let mut line = Vec::new();
     let mut byte = [0u8; 1];
@@ -148,19 +163,27 @@ fn the_recorder_forwards_logs_and_chains_its_periods() {
     assert_eq!(upstream_received, inbound_bytes);
     assert_eq!(received, outbound_bytes);
 
-    // Wait for two periods to close after the conversation.
-    let deadline = Instant::now() + Duration::from_secs(20);
+    // Wait for the conversation's entries and two empty periods after them. Empty periods share
+    // their `first_seq` with the next, so each must keep files of its own (#512).
+    let deadline = Instant::now() + Duration::from_secs(30);
     let written = loop {
         let written = periods(&log_dir);
         let logged: usize = written.iter().map(|(_, e)| e.len()).sum();
-        if written.len() >= 2 && logged >= 5 {
+        let idle = written
+            .iter()
+            .rev()
+            .take_while(|(_, e)| e.is_empty())
+            .count();
+        if logged >= 5 && idle >= 2 {
             break written;
         }
-        assert!(Instant::now() < deadline, "no periods written");
+        assert!(
+            Instant::now() < deadline,
+            "no two idle periods with files of their own"
+        );
         thread::sleep(Duration::from_millis(100));
     };
-    child.kill().expect("the recorder stops");
-    let _ = child.wait();
+    drop(child);
 
     // A valid chain from genesis under the recorder's key, each root over its log.
     let seed = Secret::new(HeapKey::from_box(Box::new(SEED)));
