@@ -171,7 +171,7 @@ Protocol messages (`Round1`, `SeedCommit`, `ProverSeedShare`, `SeedReveal`, `Rou
 | `WeightCommitmentPublic` | `0x0301` | 1 | `.twr` | Public | RFC-0040 |
 | `WeightCommitmentState` | `0x0302` | 1 | `.twc` | Secret | RFC-0040 |
 | `WeightLinkProof` | `0x0303` | 1 | `.twl` | Public | RFC-0012 |
-| `DigestLogEntry` | `0x0401` | 1 | stream | Public | RFC-0015 |
+| `DigestLogEntry` | `0x0401` | 1 | stream; a period's log is `.tdl` ([RFC-0062](../rfcs/RFC-0062-period-log-sessions.md#the-periods-log)) | Public | RFC-0015 |
 | `LogManifest` | `0x0402` | 1 | `.tlm` | Public | RFC-0015 |
 | `AuditSample` | `0x0403` | 1 | `.tas` | Public | RFC-0016 |
 | `SeedCommit`, `ProverSeedShare`, `SeedReveal` | `0x0501`–`0x0503` | 1 | message | Public | RFC-0014 |

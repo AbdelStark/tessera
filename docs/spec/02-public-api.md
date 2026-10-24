@@ -53,7 +53,8 @@ tessera params check    --params PARAMSET [--lookups N] [--table-rows T]   # sou
 tessera bench unit-costs --device INT --out UNIT_COSTS.json
 tessera bench model     (--plan plan.tep | --source-defaults) [--context INT,...] [--out MU.json]
                         # cost-model projection
-tessera recorder ref    --listen ADDR --log-dir DIR                         # software reference recorder
+tessera recorder ref    --listen ADDR --upstream ADDR --log-dir DIR --key FILE --period SECONDS
+                        # software reference recorder (RFC-0015)
 tessera inspect         FILE                                                # renders a TCE artifact as text (RFC-0003)
 ```
 

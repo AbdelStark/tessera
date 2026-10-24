@@ -28,6 +28,7 @@ mod frame;
 mod log;
 mod manifest;
 pub mod merkle;
+pub mod recorder;
 mod session;
 #[cfg(test)]
 mod vectors;
@@ -38,7 +39,7 @@ pub use frame::{
 pub use log::DigestLogEntry;
 pub use manifest::{
     ChainError, EntryError, LinkError, LogManifest, ManifestBody, ManifestError, SignatureEnvelope,
-    check_chain, check_link, key_id, public_key,
+    check_chain, check_link, key_id, public_key, read_seed,
 };
 pub use session::{Session, SessionKeys, key_commitment, sampler_commitment};
 /// The heap-held key type, from `tessera-codec`, re-exported for the anchor's callers.

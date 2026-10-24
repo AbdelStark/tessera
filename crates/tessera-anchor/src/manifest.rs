@@ -6,7 +6,7 @@
 
 use crate::log::DigestLogEntry;
 use crate::merkle::{self, Hash, InclusionError, MAX_PROOF_LEN};
-use core::borrow::Borrow;
+use core::borrow::{Borrow, BorrowMut};
 use core::fmt;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use sha2::{Digest, Sha256};
@@ -169,6 +169,28 @@ impl std::error::Error for ChainError {}
 /// `SHA-256` of a recorder's 32-byte Ed25519 public key: the manifest's `recorder_key_id`.
 pub fn key_id(public_key: &[u8; 32]) -> [u8; 32] {
     Sha256::digest(public_key).into()
+}
+
+/// A recorder's 32-byte Ed25519 seed, read from `path`: the file holds the seed's bytes and
+/// nothing else. The bytes go straight into a heap [`Secret`], and the buffer the file was read
+/// into is cleared before it is dropped (05 §3 OBS-2).
+///
+/// # Errors
+/// The read's I/O error, or [`std::io::ErrorKind::InvalidData`] for a file that is not 32 bytes.
+#[allow(clippy::disallowed_methods)]
+pub fn read_seed(path: &std::path::Path) -> std::io::Result<Secret<HeapKey<32>>> {
+    let mut read = Secret::new(std::fs::read(path)?);
+    let bytes = read.expose_secret_mut();
+    if bytes.len() != 32 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("a recorder seed is 32 bytes, not {}", bytes.len()),
+        ));
+    }
+    let mut seed = Secret::new(HeapKey::<32>::zeroed());
+    let target: &mut [u8; 32] = seed.expose_secret_mut().borrow_mut();
+    target.copy_from_slice(bytes);
+    Ok(seed)
 }
 
 /// The Ed25519 public key of a recorder's 32-byte secret seed.
