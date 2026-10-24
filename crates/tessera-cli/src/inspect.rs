@@ -21,8 +21,8 @@ use tessera_compiler::ExecutionPlan;
 use tessera_ir::{ClaimList, IntegerModel, LogitsFile, TokenFile};
 use tessera_pcs::{WeightCommitmentPublic, WeightCommitmentState, WeightMatrix};
 use tessera_protocol::{
-    ColumnQueries, NiProof, ProverSeedShare, Round1, Round2Response, Round3Response, SeedCommit,
-    SeedReveal,
+    AuditSample, ColumnQueries, NiProof, ProverSeedShare, Round1, Round2Response, Round3Response,
+    SeedCommit, SeedReveal,
 };
 
 use crate::io_error;
@@ -218,6 +218,10 @@ fn render_payload(
                     .with_source(format!("{shown} is not a valid {} envelope", schema.name))
             })?;
             Ok(render_weight_state(&state))
+        }
+        id if id == schema::AUDIT_SAMPLE.id => {
+            let sample: AuditSample = open(schema, bytes, shown)?;
+            Ok(render_audit_sample(&sample))
         }
         id if id == schema::SEED_COMMIT.id => {
             let msg: SeedCommit = open(schema, bytes, shown)?;
@@ -523,6 +527,71 @@ fn render_weight_state(state: &WeightCommitmentState) -> (Vec<String>, Value) {
             "blinding_rows": l.blinding_rows,
         },
         "matrices": matrices_json,
+    });
+    (lines, object)
+}
+
+/// Renders `AuditSample` (`0x0403`, `Public`): the manifest, the policy, the coin toss with the
+/// seed it gives, and every selected request. All of it is public (03 §5).
+fn render_audit_sample(sample: &AuditSample) -> (Vec<String>, Value) {
+    let p = sample.policy();
+    let c = sample.coin_toss();
+    let seed = hex(&sample.seed());
+    let mut lines = vec![
+        format!("manifest_digest: {}", hex(sample.manifest_digest())),
+        format!("period_ns: {}", p.period_ns()),
+        format!("buckets: {}", p.buckets().len()),
+    ];
+    for b in p.buckets() {
+        lines.push(format!(
+            "  up to {} tokens: threshold {}",
+            b.max_tokens, b.threshold
+        ));
+    }
+    lines.extend([
+        format!(
+            "batch_tokens: {} to {}",
+            p.min_batch_tokens(),
+            p.max_batch_tokens()
+        ),
+        format!("proof_deadline_ns: {}", p.proof_deadline_ns()),
+        format!("params: {}", p.params().0),
+        format!("verifier_commitment: {}", hex(&c.verifier_commitment)),
+        format!("prover_share: {}", hex(&c.prover_share)),
+        format!("verifier_share: {}", hex(&c.verifier_share)),
+        format!("sample_seed: {seed}"),
+        format!("selected: {}", sample.selected().len()),
+    ]);
+    for k in sample.selected() {
+        lines.push(format!("  {} {}", hex(&k.session_id), k.request_id));
+    }
+    let buckets: Vec<Value> = p
+        .buckets()
+        .iter()
+        .map(|b| json!({"max_tokens": b.max_tokens, "threshold": b.threshold}))
+        .collect();
+    let selected: Vec<Value> = sample
+        .selected()
+        .iter()
+        .map(|k| json!({"session_id": hex(&k.session_id), "request_id": k.request_id}))
+        .collect();
+    let object = json!({
+        "manifest_digest": hex(sample.manifest_digest()),
+        "policy": {
+            "period_ns": p.period_ns(),
+            "buckets": buckets,
+            "min_batch_tokens": p.min_batch_tokens(),
+            "max_batch_tokens": p.max_batch_tokens(),
+            "proof_deadline_ns": p.proof_deadline_ns(),
+            "params": p.params().0.as_str(),
+        },
+        "coin_toss": {
+            "verifier_commitment": hex(&c.verifier_commitment),
+            "prover_share": hex(&c.prover_share),
+            "verifier_share": hex(&c.verifier_share),
+        },
+        "sample_seed": seed,
+        "selected": selected,
     });
     (lines, object)
 }

@@ -6,6 +6,32 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Audit sampling, RFC-0016 ([#140](https://github.com/AbdelStark/tessera/issues/140)):
+  - **`tessera-protocol`.**
+    - `AuditPolicy` with `RateBucket`, and `RateBucket::threshold_of`, which reads a decimal rate exactly as `⌊rate · 2^64⌋`. A policy is valid by construction: `AuditPolicy::new` and the decoder refuse buckets out of order and batch bounds below `2 · min_batch_tokens` (`ProtocolError::Policy`).
+    - `CoinTossTranscript` and its check, `sample_seed`, `selection_value`, and `AuditSample` (schema `0x0403`) with `AuditSample::draw`, its selected requests strictly increasing.
+    - `ShareRecord`, the prover's side of the coin toss.
+      - `ShareRecord::answer` takes one commitment and one policy per manifest. Its fresh share is kept before it is sent, and another commitment or policy is refused with `ProtocolError::Answered` (`ERR-PROTO-ORDER`).
+      - `ShareRecord::draw` draws the manifest's only sample from the record and the revealed share.
+    - `batches`, first-fit decreasing within each group.
+  - **`tessera-anchor`.**
+    - `VerifiedLog::check`, RFC-0062's check of a log against its manifest, refusing with `LogMismatch` (`ERR-CODEC-DIGEST`).
+    - `candidates`, a period's ended and unterminated requests with their lengths over two periods (RFC-0063), none for a period of zero length, and `frame_tokens`.
+  - **`tessera audit share`** answers a verifier's commitment over a manifest under a `tessera.audit-policy/1` file (a new schema, with an example in `docs/perf/examples/`). It keeps its answer under `--state` first: a temporary file of its own, linked into place, then the directory synced.
+  - **`tessera audit sample`** draws a period's sample from its log and the previous period's, bound by the chain through any empty zero-length periods, and from that record with the verifier's revealed share. Its `--seed` and floating-point `--rate` are gone, and so is `audit batch`'s `--min-tokens`, which the sample's policy holds.
+  - **`tessera inspect`** renders an `AuditSample`: its policy, coin toss, seed and selected requests.
+  - **The specification.**
+    - RFC-0016 gives the encodings of the policy, the coin toss and the sample.
+    - The coin toss.
+      - The reveal comes last and the policy first.
+      - The prover answers one commitment per manifest and keeps its answer, with the policy, before the share is sent.
+      - The share is never a function of the manifest.
+      - The transcript is the prover's record with the reveal, and no other.
+    - Selection: candidates past every bucket are selected whatever the seed, and a period of zero length has none.
+    - Detection: a prover can pad a request into a later bucket, so detection counts each bucket at the lowest rate of it and the buckets after it.
+    - It fixes batching's bounds as first-fit decreasing meets them, at most one batch of each group under the minimum.
+    - RFC-0004 gives the inputs of `audit-sample` and `audit-select`.
+  - **Conformance vectors** in `spec/vectors/audit/`, from an independent oracle: candidates, rates, seeds, selection values, samples with their encodings and refusals, and batches.
 - The software reference recorder, `tessera recorder ref` ([#139](https://github.com/AbdelStark/tessera/issues/139)):
   - **The command.** `--listen ADDR --upstream ADDR --log-dir DIR --key FILE --period SECONDS`, the flags of RFC-0015 'Reference recorder' (02 §2.2 now lists them all). It is a TCP proxy for tests and integration work; it does not by itself satisfy A-ANCHOR-2.
   - **Forwarding.** In each direction it cuts frames out of the byte stream by their magic, logs each, then forwards it. Inbound frames are thus sequenced before the upstream reads them (RFC-0063). The bytes forwarded are the bytes received.

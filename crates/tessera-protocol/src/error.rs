@@ -142,20 +142,32 @@ pub enum ProtocolError {
         /// The rule broken.
         rule: &'static str,
     },
+    /// A commitment for a manifest whose audit coin toss the prover already answered with another
+    /// commitment: one toss per manifest (RFC-0016 'Sample derivation', `ERR-PROTO-ORDER`).
+    Answered,
+    /// An audit policy RFC-0016 'Policy' rules out, such as buckets out of order (`ERR-USAGE`).
+    Policy {
+        /// The rule broken.
+        rule: &'static str,
+    },
 }
 
 impl ProtocolError {
     /// The stable code (04 §3).
     pub const fn code(&self) -> ErrorCode {
         match self {
-            Self::OutOfOrder { .. } | Self::OtherSession { .. } => ErrorCode::ProtoOrder,
+            Self::OutOfOrder { .. } | Self::OtherSession { .. } | Self::Answered => {
+                ErrorCode::ProtoOrder
+            }
             Self::Version { .. } => ErrorCode::ProtoVersion,
             Self::CoinToss => ErrorCode::ProtoCointoss,
             Self::Reuse => ErrorCode::ProtoReuse,
             Self::Queries(_) => ErrorCode::ProtoQueries,
             Self::Randomness => ErrorCode::ResIo,
             Self::Internal { .. } => ErrorCode::Internal,
-            Self::UnknownParams | Self::TestParams | Self::Sizes { .. } => ErrorCode::Usage,
+            Self::UnknownParams | Self::TestParams | Self::Sizes { .. } | Self::Policy { .. } => {
+                ErrorCode::Usage
+            }
         }
     }
 }
@@ -185,6 +197,10 @@ impl fmt::Display for ProtocolError {
             Self::Sizes { rule } => {
                 write!(f, "the soundness calculator cannot bound these sizes: {rule}")
             }
+            Self::Answered => f.write_str(
+                "the coin toss over this manifest was answered for another commitment",
+            ),
+            Self::Policy { rule } => write!(f, "the audit policy breaks a rule: {rule}"),
         }
     }
 }
@@ -205,7 +221,9 @@ impl From<ProtocolError> for TesseraError {
             | ProtocolError::Internal { .. }
             | ProtocolError::UnknownParams
             | ProtocolError::TestParams
-            | ProtocolError::Sizes { .. } => None,
+            | ProtocolError::Sizes { .. }
+            | ProtocolError::Answered
+            | ProtocolError::Policy { .. } => None,
         };
         TesseraError::new(error.code()).with_context(PublicContext {
             schema: message.map(|message| message.schema().id),

@@ -11,8 +11,11 @@
 //! tessera prove           --plan plan.tep --model MODEL.d --weights WEIGHTS.twc --sample SAMPLE.tas
 //!                         --transcripts DIR (--live ENDPOINT | --out PROOF.tnp)
 //!                         [--backend {cpu,gpu}] [--devices 0,1,...] [--memory-budget GIB]
-//! tessera audit sample    --manifest MANIFEST.tlm --seed SEED.tsd --rate FLOAT --out SAMPLE.tas
-//! tessera audit batch     --sample SAMPLE.tas [--min-tokens 16384] --out-dir DIR
+//! tessera audit share     --manifest MANIFEST.tlm --policy POLICY.json --commitment HEX --state DIR
+//! tessera audit sample    --manifest MANIFEST.tlm --log LOG.tdl
+//!                         [--previous-manifest MANIFEST.tlm --previous-log LOG.tdl] [--between MANIFEST.tlm]...
+//!                         --state DIR --verifier-share HEX --out SAMPLE.tas
+//! tessera audit batch     --sample SAMPLE.tas --out-dir DIR
 //! tessera audit plan      --policy POLICY.json --traffic PROFILE.json --plan plan.tep
 //! tessera params check    --params PARAMSET [--lookups N] [--table-rows T]
 //! tessera bench unit-costs --device INT --out UNIT_COSTS.json
@@ -23,8 +26,9 @@
 //!
 //! `tessera prove --reference-tokens` produces one exact-greedy CPU proof in NI or directory
 //! Live mode; sampled audits remain #157. `tessera compile` runs in `compile`,
-//! `tessera commit-weights` in `weights`, `tessera bench model` in `bench`,
-//! `tessera params check` in `params`, and `tessera inspect` in `inspect`. Other commands check their
+//! `tessera commit-weights` in `weights`, `tessera audit share` and `sample` in `audit`, `tessera bench model`
+//! in `bench`, `tessera params check` in `params`, `tessera recorder ref` in `recorder`, and
+//! `tessera inspect` in `inspect`. Other commands check their
 //! arguments and the envelope of each TCE artifact it reads (RFC-0003), then exits with
 //! `ERR-USAGE`, naming the issue that implements it.
 //!
@@ -48,6 +52,7 @@ compile_error!(
     "the `test-rng` feature pins masking randomness to a seed; it must not be enabled in a release build (RFC-0001 'Cargo features')"
 );
 
+mod audit;
 mod bench;
 mod compile;
 mod inspect;
@@ -140,7 +145,9 @@ enum Weights {
 
 #[derive(Debug, Subcommand)]
 enum Audit {
-    /// Draws the audit sample of a log manifest from a coin-tossed seed.
+    /// Answers a verifier's commitment over a manifest with the prover's share, once per manifest.
+    Share(ShareArgs),
+    /// Draws a period's audit sample from its log, the previous period's and the coin toss.
     Sample(SampleArgs),
     /// Groups a sample's requests into proof batches.
     Batch(BatchArgs),
@@ -177,17 +184,49 @@ struct RefreshArgs {
     out: PathBuf,
 }
 
+/// `tessera audit share`.
+#[derive(Debug, Args)]
+struct ShareArgs {
+    /// The manifest the coin toss is over.
+    #[arg(long, value_name = "MANIFEST.tlm")]
+    manifest: PathBuf,
+    /// The audit policy the parties fixed before the toss, a `tessera.audit-policy/1` file.
+    #[arg(long, value_name = "POLICY.json")]
+    policy: PathBuf,
+    /// The verifier's commitment `c_V`, 64 hexadecimal digits.
+    #[arg(long, value_name = "HEX", value_parser = digest)]
+    commitment: [u8; 32],
+    /// Where the prover keeps its answers, one file per manifest; every responder of one prover
+    /// shares it.
+    #[arg(long, value_name = "DIR")]
+    state: PathBuf,
+}
+
 /// `tessera audit sample`.
 #[derive(Debug, Args)]
 struct SampleArgs {
+    /// The period's manifest.
     #[arg(long, value_name = "MANIFEST.tlm")]
     manifest: PathBuf,
-    /// The coin-tossed seed.
-    #[arg(long, value_name = "SEED.tsd")]
-    seed: PathBuf,
-    /// The sampling rate, in (0, 1].
-    #[arg(long, value_name = "FLOAT", value_parser = rate)]
-    rate: f64,
+    /// The period's log, its entries' TCE encodings concatenated (RFC-0062 'On disk').
+    #[arg(long, value_name = "LOG.tdl")]
+    log: PathBuf,
+    /// The manifest of the last period of non-zero length before it, unless it has none.
+    #[arg(long, value_name = "MANIFEST.tlm", requires = "previous_log")]
+    previous_manifest: Option<PathBuf>,
+    /// That period's log.
+    #[arg(long, value_name = "LOG.tdl", requires = "previous_manifest")]
+    previous_log: Option<PathBuf>,
+    /// A period of zero length between the two, in order; repeated for each.
+    #[arg(long, value_name = "MANIFEST.tlm")]
+    between: Vec<PathBuf>,
+    /// Where `tessera audit share` kept its answer for the manifest: the commitment, the share
+    /// and the policy of the toss.
+    #[arg(long, value_name = "DIR")]
+    state: PathBuf,
+    /// The verifier's revealed share `s_V`, 64 hexadecimal digits.
+    #[arg(long, value_name = "HEX", value_parser = digest)]
+    verifier_share: [u8; 32],
     #[arg(long, value_name = "SAMPLE.tas")]
     out: PathBuf,
 }
@@ -195,12 +234,9 @@ struct SampleArgs {
 /// `tessera audit batch`.
 #[derive(Debug, Args)]
 struct BatchArgs {
+    /// The sample, whose policy holds the batch bounds.
     #[arg(long, value_name = "SAMPLE.tas")]
     sample: PathBuf,
-    /// The fewest tokens a batch proves.
-    #[arg(long, value_name = "TOKENS", default_value_t = 16384,
-          value_parser = clap::value_parser!(u64).range(1..))]
-    min_tokens: u64,
     #[arg(long, value_name = "DIR")]
     out_dir: PathBuf,
 }
@@ -268,13 +304,17 @@ fn command() -> clap::Command {
     tree.after_help(format!("Every command:\n{}", listing.join("\n")))
 }
 
-/// A sampling rate: a number in `(0, 1]`.
-fn rate(text: &str) -> Result<f64, String> {
-    let value: f64 = text.parse().map_err(|_| format!("not a number: {text}"))?;
-    match value > 0.0 && value <= 1.0 {
-        true => Ok(value),
-        false => Err("a rate lies in (0, 1]".to_owned()),
+/// 32 bytes as 64 hexadecimal digits.
+fn digest(text: &str) -> Result<[u8; 32], String> {
+    let mut out = [0u8; 32];
+    if text.len() != 64 || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("not 64 hexadecimal digits".to_owned());
     }
+    for (i, byte) in out.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&text[2 * i..2 * i + 2], 16)
+            .map_err(|_| "not 64 hexadecimal digits".to_owned())?;
+    }
+    Ok(out)
 }
 
 /// Runs `tessera` on `args`, the program's name first, and returns its exit status (02 §2.4).
@@ -384,7 +424,7 @@ fn fail(
 
 /// Runs the command `cli` names, and returns its name, as 02 §2.2 spells it, with its outcome.
 fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
-    use schema::{AUDIT_SAMPLE, EXECUTION_PLAN, LOG_MANIFEST, WEIGHT_COMMITMENT_STATE};
+    use schema::{AUDIT_SAMPLE, EXECUTION_PLAN, WEIGHT_COMMITMENT_STATE};
     match &cli.command {
         Command::Compile(a) => (
             "compile",
@@ -407,13 +447,31 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
             "prove",
             prove::prove(a, cli.json).map(|()| ExitCode::SUCCESS),
         ),
+        Command::Audit(Audit::Share(a)) => (
+            "audit share",
+            audit::share(
+                &audit::ShareOptions {
+                    manifest: &a.manifest,
+                    policy: &a.policy,
+                    commitment: a.commitment,
+                    state: &a.state,
+                },
+                cli.json,
+            )
+            .map(|()| ExitCode::SUCCESS),
+        ),
         Command::Audit(Audit::Sample(a)) => (
             "audit sample",
-            pending(
-                "audit sample",
-                &[Input::new(&a.manifest, &LOG_MANIFEST)],
-                157,
-            )
+            audit::sample(&audit::SampleOptions {
+                manifest: &a.manifest,
+                log: &a.log,
+                previous_manifest: a.previous_manifest.as_deref(),
+                previous_log: a.previous_log.as_deref(),
+                between: &a.between,
+                state: &a.state,
+                verifier_share: a.verifier_share,
+                out: &a.out,
+            })
             .map(|()| ExitCode::SUCCESS),
         ),
         Command::Audit(Audit::Batch(a)) => (

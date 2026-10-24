@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/audit-policy-v1.schema.json",
+  "title": "tessera.audit-policy/1",
+  "description": "An audit policy (RFC-0016 'Policy'): the recorder's period, the length buckets and their rates, the batch bounds, the proof deadline and the parameter set. `tessera audit sample` reads it strictly: no key may be missing or unknown. It becomes the sample's `AuditPolicy`, each rate its threshold over 2^64.",
+  "type": "object",
+  "required": [
+    "schema",
+    "period_ns",
+    "buckets",
+    "min_batch_tokens",
+    "max_batch_tokens",
+    "proof_deadline_ns",
+    "params"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.audit-policy/1"
+    },
+    "period_ns": {
+      "description": "The recorder's period, in nanoseconds: a 64-bit unsigned integer.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "buckets": {
+      "description": "The length buckets, `max_tokens` strictly increasing. A request of `L` tokens takes the first bucket whose `max_tokens` is at least `L`; a request longer than every bucket is selected whatever the seed.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/bucket"
+      }
+    },
+    "min_batch_tokens": {
+      "description": "The fewest tokens a batch proves, but for at most one batch of each group (RFC-0016 'Batching').",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "max_batch_tokens": {
+      "description": "The most tokens a batch proves, but for a request longer than that alone: at least 1 and at least twice `min_batch_tokens`.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "proof_deadline_ns": {
+      "description": "The time the prover has to prove the sample once it is fixed, in nanoseconds: a 64-bit unsigned integer.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "params": {
+      "description": "The parameter set's identifier, printable ASCII, for example `live-64/1`.",
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "bucket": {
+      "type": "object",
+      "required": [
+        "max_tokens",
+        "rate"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "max_tokens": {
+          "description": "The longest request the bucket holds, in total tokens over both directions and both periods (RFC-0063).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "rate": {
+          "description": "The rate as a decimal string: `0`, `1`, or `0.` or `1.` followed by one to 19 digits, at most 1. Its threshold is floor(rate * 2^64), capped at 2^64 - 1, computed exactly.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 21
+        }
+      }
+    }
+  }
+}

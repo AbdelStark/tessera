@@ -5,7 +5,7 @@
 //!
 //! This version holds the messages of `tessera-protocol/1` and the two live sessions, as
 //! RFC-0036 defines them, the parameter sets, the soundness calculator and the transcript
-//! schedule, as RFC-0014 does.
+//! schedule, as RFC-0014 does, and audit sampling, as RFC-0016 does.
 //!
 //! # Messages
 //!
@@ -98,6 +98,24 @@
 //! zero bits exactly, refusing a short one with [`PowRejected`], `Reject(ProofOfWork)`.
 //! `tessera-protocol/2`'s labels slot in at [`Protocol::Two`] (#148).
 //!
+//! # Audit sampling
+//!
+//! RFC-0016 samples a period's requests only after its manifest is signed, by a public
+//! deterministic rule:
+//! - [`AuditPolicy`] holds the length buckets with their rates as thresholds over `2^64`
+//!   ([`RateBucket::threshold_of`] reads a policy file's decimal rates exactly), the batch bounds,
+//!   the proof deadline and the parameter set;
+//! - [`CoinTossTranscript`] holds the coin toss over the manifest, and [`sample_seed`] derives the
+//!   seed from it. [`ShareRecord::answer`] is the prover's side: one commitment per manifest;
+//! - [`AuditSample::draw`] selects among the period's candidates, each `(RequestKey, L)`, by
+//!   [`selection_value`] against its bucket's threshold, every candidate past the buckets
+//!   included. The sample is the `0x0403` artifact, its selected requests strictly increasing;
+//! - [`batches`] packs the selected requests, first-fit decreasing within each group.
+//!
+//! The candidates and their lengths come from `tessera-anchor`, which reads the period's verified
+//! log and the one before it (RFC-0063): a sibling in the dependency order (01 §3), not a
+//! dependency.
+//!
 //! # Features
 //!
 //! - `test-params` accepts the `test-small` parameter set, which certifies nothing. Tests only: a
@@ -111,6 +129,7 @@ compile_error!(
     "the `test-params` feature accepts parameter sets that certify nothing; it must not be enabled in a release build (RFC-0001 'Cargo features')"
 );
 
+mod audit;
 mod error;
 mod matrix;
 mod message;
@@ -125,6 +144,10 @@ mod seed;
 mod soundness;
 mod verifier;
 
+pub use audit::{
+    AuditPolicy, AuditSample, Batch, CoinTossTranscript, RateBucket, RateError, RepeatedRequest,
+    RequestKey, ShareRecord, batches, sample_seed, selection_value,
+};
 pub use error::{ProtocolError, QueryFault};
 pub use matrix::WeightMatrix;
 pub use message::{Message, MessageKind};

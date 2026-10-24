@@ -51,6 +51,12 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 - A secret that moves or grows lives on the heap (`Secret<Box<_>>`, `Secret<Vec<_>>` sized up front), so zeroization reaches its only copy (OBS-2). A buffer of derived values is a `SecretBuf`, which also clears the allocation it leaves when it grows; a plain `Vec` of them, a copy taken out (`to_vec`), or a derived array kept in a struct and never cleared is a finding.
 - Randomness comes from `getrandom`; only the `test-rng` feature pins it, in test builds.
 
+## Anchors and audit sampling (RFC-0015, RFC-0016, RFC-0063)
+- No party chooses an item's stratum. A rate per length bucket protects a request only at the lowest rate of its bucket and every later one, since the serving stack can pad what it cheats on. A length past every bucket must select, not skip. A detection figure that uses each bucket's own rate overstates it (#140).
+- No party chooses among valid transcripts. A coin toss over a manifest is the prover's record, `(manifest, policy, c_V, s_P)`, plus the revealed `s_V`. A flag or message that brings `c_V` or `s_P` back in lets a verifier present a toss of another manifest: 1,000 such tosses force a 0.4%-rate request into the sample with probability 0.98 (#140).
+- Every "one per" rule (one commitment per manifest, one end per request, one open per session) is backed by state that every later step reads, kept durably before anything that depends on it is sent.
+- Every coverage claim ("every frame lies in a candidate") is checked by an enumeration oracle over all small logs, not argued by hand (RFC-0063).
+
 ## Verifier robustness (RFC-0019)
 - Every input path returns `Accept`, `Reject(reason)` or `Inconclusive(error)`: no panic, no allocation beyond `ResourceLimits`, no unbounded loop.
 - The check order is the fixed order of RFC-0019, so one invalid proof always yields one reason.

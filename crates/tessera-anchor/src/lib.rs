@@ -19,8 +19,11 @@
 //! - [`LogManifest`] (schema `0x0402`), with RFC-0060's identity, strict Ed25519 signatures and
 //!   chain ([`check_link`], [`check_chain`]), and [`merkle`], RFC 9162's tree over a period's
 //!   entries and its inclusion proofs.
-//!
-//! The reference recorder (#139) comes next.
+//! - [`VerifiedLog`], a period's log checked against its manifest (RFC-0062), and
+//!   [`candidates`], the requests a period draws its audit sample from, with their lengths
+//!   (RFC-0063), which `tessera-protocol`'s sampling selects among.
+//! - [`recorder`], the reference recorder's core: frames cut from a byte stream, entries logged,
+//!   periods signed and rotated with their carries (RFC-0015 'Reference recorder').
 
 #![forbid(unsafe_code)]
 
@@ -28,6 +31,7 @@ mod frame;
 mod log;
 mod manifest;
 pub mod merkle;
+mod period;
 pub mod recorder;
 mod session;
 #[cfg(test)]
@@ -41,6 +45,7 @@ pub use manifest::{
     ChainError, EntryError, LinkError, LogManifest, ManifestBody, ManifestError, SignatureEnvelope,
     check_chain, check_link, key_id, public_key, read_seed,
 };
+pub use period::{Candidate, LogMismatch, VerifiedLog, candidates, frame_tokens};
 pub use session::{Session, SessionKeys, key_commitment, sampler_commitment};
 /// The heap-held key type, from `tessera-codec`, re-exported for the anchor's callers.
 pub use tessera_codec::HeapKey;
