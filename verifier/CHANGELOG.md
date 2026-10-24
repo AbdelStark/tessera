@@ -6,6 +6,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Added
 
+- The fuzz crate's allocation tests take the grouped statement sizes and the grouped runtime geometry of [#454](https://github.com/AbdelStark/tessera/issues/454) (`StatementSizes.groups`, `Geometry::derive(.., None)`). The first nightly run found them uncompiled (#481). `ci.yml` now runs `fuzz.yml`'s check, its format, lints and tests, on every pull request that changes code, and the aggregate `test` gate requires it.
+
 - The soundness calculator and the runtime budget count a leaf stage in token groups, written from RFC-0014 'Soundness calculator' (`groups`) and RFC-0054 'Soundness' ([#454](https://github.com/AbdelStark/tessera/issues/454)):
   - **The size.** `StatementSizes` gains `groups` (`GroupSizes { count, level_rounds, merge_rounds, merge_claims }`, `GroupSizes::NONE` for none), and the report's `statement.groups` follows `soundness-v1.schema.json`. A calculator refuses, with `ERR-USAGE`, a `count` that is not a power of two in `1..=2^14` (`GroupCount`), a `count` above 1 in `tessera-protocol/2` (`GroupedProtocol`), and a `count` of 1 with any grouped size (`UngroupedSizes`).
   - **The rows.** With `G > 1`, the rounds row's `D` also takes each degree of a nonzero count in `level_rounds`, 2 when `n_max > 0`, and the merge's batching `P + G`; the union row adds `G·(Σ_{level_rounds} count·d + Σ_levels (m + 1)) + 2·n_max + P + G`.

@@ -60,7 +60,7 @@ On macOS 26, AddressSanitizer in the pinned nightly deadlocks before the first i
 
 ## In CI
 
-`.github/workflows/fuzz.yml` checks this crate's format and lints and runs its tests, then fuzzes each target of `fuzz_targets/` for 10 minutes under AddressSanitizer, seeded as above, with a limit of 10 seconds per input. It is dispatched manually with a chosen duration; automatic nightly scheduling remains #96. A new target needs only its file in `fuzz_targets/` and its `[[bin]]` entry, of the same name, in `Cargo.toml`; it runs unseeded until `seeds.py` learns its input format.
+`.github/workflows/fuzz.yml` checks this crate's format and lints and runs its tests, then fuzzes each target of `fuzz_targets/` for 10 minutes under AddressSanitizer, seeded as above, with a limit of 10 seconds per input. It runs every night from `.github/workflows/nightly.yml`, and on demand with a chosen duration. `ci.yml` runs its check alone, the format, lints and tests without fuzzing, on every pull request that changes code, since no other job compiles this crate (#481). A new target needs only its file in `fuzz_targets/` and its `[[bin]]` entry, of the same name, in `Cargo.toml`; it runs unseeded until `seeds.py` learns its input format.
 
 The greedy boundary gadget family (9) uses the independent literal
 `greedy-boundary` fixtures, dense public-coefficient sums and original carry

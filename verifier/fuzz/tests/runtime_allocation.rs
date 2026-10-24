@@ -158,11 +158,11 @@ fn runtime_catalog_layout_leaf_and_mixed_metadata_preserve_memory_errors() {
     );
     capped(
         "runtime geometry",
-        || tv_core::runtime::Geometry::derive(&c, &r),
+        || tv_core::runtime::Geometry::derive(&c, &r, None),
         tv_core::runtime::Error::Memory,
     );
     use tv_core::soundness::{
-        MatrixSize, SoundnessError, SoundnessParams, SoundnessReport, StatementSizes,
+        GroupSizes, MatrixSize, SoundnessError, SoundnessParams, SoundnessReport, StatementSizes,
     };
     let matrices = [
         MatrixSize {
@@ -200,6 +200,7 @@ fn runtime_catalog_layout_leaf_and_mixed_metadata_preserve_memory_errors() {
                     claim_groups: Vec::new(),
                     advice_rows: 1,
                     matrices: copies,
+                    groups: GroupSizes::NONE,
                 },
             )
         },
