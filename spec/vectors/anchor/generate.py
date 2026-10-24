@@ -102,6 +102,11 @@ def entry_close(seq, t_ns, session_id):
     return le(2, 2) + le(seq, 8) + le(t_ns, 8) + session_id
 
 
+def entry_carry(seq, t_ns, session_id, kc):
+    """RFC-0062's SessionCarry, tag 3: the session's key commitment, carried into a period."""
+    return le(3, 2) + le(seq, 8) + le(t_ns, 8) + session_id + kc
+
+
 SESSIONS = [
     # (seed, session_id, first counter, frames as (request, direction, index, tokens))
     (1, bytes(range(16)), 0, [
@@ -165,6 +170,10 @@ def main():
                                              frame_index, len(cipher), frame_seq, digest).hex()},
             })
             seq, t_ns = seq + 1, t_ns + 17
+        # The carry a recorder would write had the session stayed open into another period.
+        record["carry_entry"] = {"seq": seq + 1000, "t_ns": t_ns + 1000,
+                                 "tce": entry_carry(seq + 1000, t_ns + 1000, session_id,
+                                                    kc).hex()}
         record["close_entry"] = {"seq": seq, "t_ns": t_ns,
                                  "tce": entry_close(seq, t_ns, session_id).hex()}
         seq, t_ns = seq + 1, t_ns + 17

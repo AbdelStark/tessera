@@ -13,7 +13,8 @@
 Every session gives:
 - its key, its key commitment and its 52-byte session-open frame;
 - for each frame, in sealing order: its counter `frame_seq`, its 41-byte header, its plaintext `TCE(TokenFrame)`, its ciphertext and `SHA-256(header ‖ ciphertext)`;
-- the TCE encoding of every `DigestLogEntry`: the session's open, each frame and its close.
+- the TCE encoding of every `DigestLogEntry`: the session's open, each frame and its close;
+- the `SessionCarry` a recorder would write had the session stayed open into another period (RFC-0062).
 
 The frames interleave requests and directions, so a request's counters are not contiguous. They include:
 - a frame without tokens;

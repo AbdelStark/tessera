@@ -6,6 +6,19 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The period log and its sessions ([#498](https://github.com/AbdelStark/tessera/issues/498)):
+  - **RFC-0062, 'The Period Log and Its Sessions'** (amends RFC-0015, RFC-0016, RFC-0019, RFC-0043, RFC-0059, RFC-0060, RFC-0061 and 04 §2–3).
+    - **The gap.** An inclusion proof shows that an entry is in the log, never that another is not. So no batch could show that its session had one open, that a frame had no duplicate, or where the open of a session from an earlier period was.
+    - **The verified log.**
+      - **Delivery.** The recorder delivers each period's log to the verifiers by a path that does not pass through the prover. A period not verified by its deadline is reported unaudited.
+      - **The check.** The verifier checks the log against the manifest's root, count and `seq` range once, after the signature and before it derives the sample (RFC-0016 read it already). A log that fails is the verifier's input, `Inconclusive(ERR-CODEC-DIGEST)`.
+      - **The handle.** The check yields a `VerifiedLog` bound to the manifest's digest, and every later use reads that copy. A batch supplies no entries, the audit needs no inclusion proof, and `AnchorFailure::Inclusion` is retired.
+    - **A carry entry.** At the start of each period, the recorder logs a `SessionCarry` with the key commitment of every session still open and not idle for two periods, so each period holds the key of every session it uses and a statement needs no chain of manifests. The audit still links manifests, and a gap or a late log is an unaudited period. The recorder only adds entries.
+    - **The session rules.** A session used in a period has exactly one open or carry before its other entries, one frame per position and no counter used twice. A break names the first request of the batch in the session: `Session` or `Frames`. The statement's lengths count all of a request's frames in the period, so none inside it can be left out.
+    - **Implementation.** The checks are #150's, the carries #139's and the pre-check #146's.
+  - **`tessera-anchor`.** `DigestLogEntry::SessionCarry`, tag 3.
+  - **Vectors.** `spec/vectors/anchor/` gives each session's carry. `manifest/`'s second period carries the first period's session and closes it.
+
 - Sampling randomness under a pinned key ([#497](https://github.com/AbdelStark/tessera/issues/497)):
   - **RFC-0061, 'Sampling Randomness Under a Pinned Key'** (amends RFC-0015, RFC-0016, RFC-0017, RFC-0019, RFC-0043, RFC-0059, 04 §2 and 06 §5–6).
     - **The gap.** Exact mode's PRF took a `request_id` and a session's `K_samp`, and the serving stack chooses both after a prompt arrives. Grinding them is best-of-`M` selection among `D`'s samples, and a covert channel, while `Û = 0`: `k` bits of the first draw for `2^k` AES calls on average.

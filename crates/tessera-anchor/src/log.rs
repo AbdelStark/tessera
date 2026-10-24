@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The recorder's digest-log entries, schema `0x0401` (RFC-0015 'Log format', with RFC-0059's
-//! `frame_seq`). All of it is public.
+//! `frame_seq` and RFC-0062's `SessionCarry`). All of it is public.
 
 use crate::frame::{Direction, SealedFrame, SessionOpenFrame};
 use tessera_codec::{Decode, Encode};
@@ -51,6 +51,19 @@ pub enum DigestLogEntry {
         /// The session's identifier.
         session_id: [u8; 16],
     },
+    /// A session still open at a period's start, carried into it by the recorder before the
+    /// period's other entries, so that each period's log holds the key commitment of every
+    /// session it uses (RFC-0062 'The carry entry').
+    SessionCarry {
+        /// The entry's position in the log.
+        seq: u64,
+        /// The recorder's clock, in nanoseconds: the period's start.
+        t_ns: u64,
+        /// The session's identifier.
+        session_id: [u8; 16],
+        /// The commitment of the session's open entry, copied.
+        key_commitment: [u8; 32],
+    },
 }
 
 impl DigestLogEntry {
@@ -59,7 +72,8 @@ impl DigestLogEntry {
         match self {
             Self::SessionOpen { seq, .. }
             | Self::Frame { seq, .. }
-            | Self::SessionClose { seq, .. } => *seq,
+            | Self::SessionClose { seq, .. }
+            | Self::SessionCarry { seq, .. } => *seq,
         }
     }
 
@@ -68,7 +82,8 @@ impl DigestLogEntry {
         match self {
             Self::SessionOpen { t_ns, .. }
             | Self::Frame { t_ns, .. }
-            | Self::SessionClose { t_ns, .. } => *t_ns,
+            | Self::SessionClose { t_ns, .. }
+            | Self::SessionCarry { t_ns, .. } => *t_ns,
         }
     }
 

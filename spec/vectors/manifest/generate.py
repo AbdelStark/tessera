@@ -235,6 +235,11 @@ def entries_of(period, first_seq, start):
                                           22 + 4 * i, i, digest))
             seq += 1
     elif period == 1:
+        # Period 0's session is still open: the recorder carries it in first (RFC-0062), and it
+        # closes in this period.
+        carried = bytes([0x30] * 16)
+        out.append(anchor.entry_carry(seq, start, carried, bytes([1] * 32)))
+        seq += 1
         out.append(anchor.entry_open(seq, start + 4999, sid, kc))
         seq += 1
         for i in range(4):
@@ -242,6 +247,8 @@ def entries_of(period, first_seq, start):
             out.append(anchor.entry_frame(seq, start + 5000 + i, sid, 9, 1, i, 26, i, digest))
             seq += 1
         out.append(anchor.entry_close(seq, start + 5100, sid))
+        seq += 1
+        out.append(anchor.entry_close(seq, start + 5200, carried))
     return out
 
 
