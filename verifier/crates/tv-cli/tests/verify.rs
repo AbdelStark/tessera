@@ -355,8 +355,9 @@ fn symlink_output_alias_is_refused_and_inputs_are_preserved() {
     assert!(alias.is_symlink());
 }
 
-#[path = "support/schema.rs"]
-mod schema;
+mod support;
+
+use support::schema;
 
 fn fixture(dir: &Dir) -> Vec<String> {
     let mut args = dir.args();
@@ -639,9 +640,15 @@ fn manifests_match_schema_and_record_artifacts_and_check_histograms() {
             .unwrap()
             .get("rustc")
             .unwrap()
-            .as_str()
+            .is_null()
+    );
+    assert!(
+        manifest
+            .get("tool")
             .unwrap()
-            .starts_with("rustc ")
+            .get("git_commit")
+            .unwrap()
+            .is_null()
     );
     assert_eq!(
         manifest.get("exit_code").unwrap().as_u64(),

@@ -10,7 +10,7 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Added
 
-- `tessera-verify verify` supports `--log-format human|json`: unchanged human stdout and schema-valid public JSON boundary events on stderr, including nested driver check spans and failure durations. Parsed requests write an independent `tessera.run-manifest/1` beside the verdict or proof (`--run-manifest` overrides it), with artifact digests, build metadata and `tessera_verifier_seconds{check}` histograms. No verifier dependency is added.
+- `tessera-verify verify` supports `--log-format human|json`: unchanged human stdout and schema-valid public JSON boundary events on stderr, including nested driver check spans and failure durations. Parsed requests write an independent `tessera.run-manifest/1` beside the verdict or proof (`--run-manifest` overrides it), with artifact digests, build version/profile/features (commit and rustc null: verifier isolation bars build-time tool invocation) and `tessera_verifier_seconds{check}` histograms. No verifier dependency is added.
 
 - `tv-core::leaf::groups` derives a grouped leaf stage's layouts from public data, written from RFC-0054 'Groups' and 'The merge' and RFC-0045 ([#454](https://github.com/AbdelStark/tessera/issues/454)):
   - **Token axes.** `TokenAxes::derive` gives every tensor of the lowered graph at most one token axis, input to output, by RFC-0054's rules: the tokens and positions at 0, kept, moved, regrouped and rows. A graph that breaks a rule is refused at its node (`AxisError::Refused`, `ERR-INTERNAL`). Each `split::Lookup` now carries its domain's `token` axis (`TokenAxis { low, bits }`); the ungrouped layout does not read it.

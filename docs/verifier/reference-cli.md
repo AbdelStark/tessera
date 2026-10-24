@@ -93,7 +93,8 @@ parameter set, successfully loaded artifact paths and envelope digests, elapsed
 time, exit/error code and `tessera_verifier_seconds{check}` histograms.
 Each completed or failed check contributes one observation in seconds; the
 `verification` measurement includes its nested driver checks. Unavailable
-metadata is null; CPU model, memory and accelerator details are not probed.
+metadata is null; the build commit and rustc version are not captured, so they
+are always null, as are CPU model, memory and accelerator details.
 A written verdict is listed with a null digest, as required for JSON reports
 by the schema. NI has no public coin-toss seed. This manifest contains no
 secret-class data. It is written on verification failures too; syntax errors,

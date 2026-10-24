@@ -46,6 +46,8 @@ pub(crate) fn write(
     } else {
         "release"
     };
+    // Verifier isolation (RFC-0001) bars build-time tool invocation, so the build commit
+    // and rustc version are always null.
     let json = format!(
         concat!(
             "{{\"schema\":\"tessera.run-manifest/1\",",
@@ -57,7 +59,7 @@ pub(crate) fn write(
             "\"metrics\":[{}],\"exit_code\":{},\"error_code\":{}}}\n"
         ),
         quoted(env!("CARGO_PKG_VERSION")),
-        optional(option_env!("TESSERA_VERIFIER_BUILD_COMMIT")),
+        "null",
         profile,
         if tv_core::params::ParamSet::ALL
             .iter()
@@ -67,7 +69,7 @@ pub(crate) fn write(
         } else {
             String::new()
         },
-        optional(option_env!("TESSERA_VERIFIER_BUILD_RUSTC")),
+        "null",
         quoted(std::env::consts::OS),
         quoted(std::env::consts::ARCH),
         std::thread::available_parallelism().map_or("null".into(), |n| n.get().to_string()),
