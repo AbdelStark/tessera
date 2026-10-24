@@ -1,11 +1,22 @@
-# Nightly jobs (docs/spec/07-testing-strategy.md §2). For now the soundness calibration of 07 §4
-# alone (docs/testing/soundness-calibration.md); the deep property tests, end-to-end subsets and
-# fuzzing hour of 07 §2 are #96. Calibration is available on demand. Third-party actions are
-# pinned by commit SHA (TB-4 in docs/spec/06-security.md).
+# Nightly jobs (docs/spec/07-testing-strategy.md §2, docs/testing/nightly.md): the soundness
+# calibration of 07 §4 (docs/testing/soundness-calibration.md), the property tests at 65,536
+# cases, and an hour of fuzzing across the verifier's targets (fuzz.yml, ten minutes each). A
+# scheduled run that fails opens an issue labeled `type:bug`, or comments on the one still open,
+# with the failed jobs' log tails. The 8B CPU end-to-end subset and the 8B range-assertion run of
+# 07 §8 need Llama-3.1-8B's integer model, which #93 produces. Every job is available on demand;
+# `fail` checks the failure report. Third-party actions are pinned by commit SHA (TB-4 in
+# docs/spec/06-security.md).
 name: nightly
 
 on:
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
+    inputs:
+      fail:
+        description: Fail on purpose, to check that a failure opens an issue
+        type: boolean
+        default: false
 permissions:
   contents: read
 
@@ -45,3 +56,91 @@ jobs:
       - name: Random bad lookups far below the LogUp bound (RFC-0008 'Testing Strategy')
         timeout-minutes: 10
         run: cargo test --locked -p tessera-logup --test calibration -- --ignored --nocapture
+
+  deep-properties:
+    name: property tests at 65,536 cases
+    runs-on: ubuntu-24.04
+    # About 9 minutes on an Apple M-series laptop (codec 287 s, compiler 237 s, protocol 22 s,
+    # field 4 s); the timeout leaves room for a slower runner.
+    timeout-minutes: 60
+    env:
+      PROPTEST_CASES: "65536"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # PROPTEST_CASES overrides every `ProptestConfig::with_cases` (proptest 1.11
+      # `contextualize_config`): these are the crates whose tests use proptest.
+      - name: Every proptest at 65,536 cases
+        run: >-
+          cargo test --locked -p tessera-field -p tessera-codec -p tessera-compiler
+          -p tessera-protocol
+
+  fuzz:
+    name: fuzzing
+    uses: ./.github/workflows/fuzz.yml
+    with:
+      seconds: "600"
+
+  deliberate-failure:
+    name: deliberate failure
+    if: ${{ inputs.fail }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fail
+        run: |
+          echo "failing on purpose: workflow_dispatch with fail = true"
+          exit 1
+
+  report:
+    name: report a failure
+    needs: [soundness-calibration, deep-properties, fuzz, deliberate-failure]
+    if: ${{ failure() && (github.event_name == 'schedule' || inputs.fail) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      issues: write
+    steps:
+      - name: Open an issue, or comment on the open one
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.run_id }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          body="$RUNNER_TEMP/body.md"
+          {
+            echo "The nightly run of $(date -u +%F) failed on \`${SHA:0:12}\`: $URL"
+            echo
+            gh api "repos/$REPO/actions/runs/$RUN/jobs" --paginate \
+              --jq '.jobs[] | select(.conclusion == "failure") | [.id, .name] | @tsv' |
+              while IFS=$'\t' read -r id name; do
+                echo "### $name"
+                echo
+                echo '```text'
+                gh api "repos/$REPO/actions/jobs/$id/logs" 2>/dev/null | tail -n 120 | cut -c1-300 || true
+                echo '```'
+                echo
+              done
+          } > "$body"
+          # An issue body holds 65,536 characters.
+          head -c 60000 "$body" > "$body.cut"
+          open=$(gh issue list --repo "$REPO" --state open --label type:bug \
+            --search 'in:title "nightly run failed"' --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --repo "$REPO" --body-file "$body.cut"
+          else
+            gh issue create --repo "$REPO" --title "ci: the nightly run failed" \
+              --label type:bug --label area:infra --body-file "$body.cut"
+          fi

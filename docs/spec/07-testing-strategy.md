@@ -17,11 +17,11 @@
 | Level | Scope | Tooling | Runs |
 |---|---|---|---|
 | Unit | One function or type | `cargo test`, `pytest` | Fast-build CI |
-| Property | Algebraic laws and codec round-trips over random inputs | `proptest` (Rust), `hypothesis` (Python) | Fast-build CI; deeper nightly runs when enabled |
+| Property | Algebraic laws and codec round-trips over random inputs | `proptest` (Rust), `hypothesis` (Python) | Fast-build CI; every `proptest` at 65,536 cases nightly ([nightly.md](../testing/nightly.md)) |
 | Conformance | Shared vectors in `spec/vectors/` checked by prover side, verifier side and Python | Vector runners in each workspace | Fast-build CI |
 | Component | One protocol (sumcheck, LogUp, PCS, gadget) end to end, prover against independent verifier | `cargo test` with verifier crates as dev-dependencies | Fast-build CI |
-| End to end | Compile, commit, prove, verify on tiny models | CLI-driven tests | Existing tiny-model coverage in fast-build CI; 8B CPU subset when enabled |
-| Adversarial | Tamper corpus, alternative witnesses, malformed artifacts | Dedicated test crates; `cargo-fuzz` | Corpus in fast-build CI; fuzzing on demand and at release |
+| End to end | Compile, commit, prove, verify on tiny models | CLI-driven tests | Existing tiny-model coverage in fast-build CI; 8B CPU subset nightly once Llama-3.1-8B's integer model exists (#93) |
+| Adversarial | Tamper corpus, alternative witnesses, malformed artifacts | Dedicated test crates; `cargo-fuzz` | Corpus in fast-build CI; an hour of fuzzing across the targets nightly, on demand and at release |
 | GPU | Kernel correctness against CPU reference; determinism across tilings | Self-hosted H100 runner | Nightly and on `gpu`-labeled PRs |
 | Performance | Microbenchmarks and end-to-end `μ` | `cargo bench -p tessera-bench`, `tessera bench` | Nightly; regression gate ([08 §6](08-performance-budget.md#6-regression-gates)) |
 | ML fidelity | `D` versus reference float model | `tessera-quant eval` | On quantization changes; release |
