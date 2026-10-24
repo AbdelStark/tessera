@@ -15,7 +15,7 @@ The `autoresearch` skill ([.claude/skills/autoresearch/SKILL.md](../.claude/skil
 | [surveys/](surveys/) | State-of-the-art surveys, one per agenda topic | `SUR-NNNN` |
 | [ideas/](ideas/) | Candidate improvements: mechanism, expected gain, security gate, kill criterion, refutations, score | `IDEA-NNNN` |
 | [experiments/](experiments/) | Proof-of-concept experiments: a pre-registered report and its code, one directory each | `EXP-NNNN` |
-| [tools/](tools/) | Shared research tooling: the cost model, the proximity-parameter calculator, the knowledge-base checker (`check_kb.py`: citation keys, ledger rows and status words, counters, pre-registration sections; run with lint at the end of every unit of work), and `sampling_streams.py`, the measurements behind RFC-0061's choice of sampling stream | |
+| [tools/](tools/) | Shared research tooling: the cost model, the proximity-parameter calculator, the knowledge-base checker (`check_kb.py`: citation keys, ledger rows and status words, counters, pre-registration sections; run with lint at the end of every unit of work, and by CI's `checks` job), and `sampling_streams.py`, the measurements behind RFC-0061's choice of sampling stream | |
 | [templates/](templates/) | The shape of a [survey](templates/survey.md), an [idea](templates/idea.md) and an [experiment](templates/experiment.md) | |
 
 Identifiers are sequential, zero-padded and never reused; the ledger's counters assign them.
