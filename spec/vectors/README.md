@@ -5,6 +5,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | Set | What it pins | Written by |
 |---|---|---|
 | [`anchor/`](anchor/README.md) | The anchor's frames, RFC-0015 with RFC-0059: commitments, session-open frames, 41-byte headers, plaintexts, AES-128-CTR ciphertexts, frame digests and digest-log entries | independent Python AES-128 (FIPS-197), CTR checked against SP 800-38A F.5.1, and `hashlib`'s SHA-256 |
+| [`audit/`](audit/README.md) | Audit sampling, RFC-0016 with RFC-0063: a period's candidates and lengths from two periods' logs, rate thresholds, sample seeds, selection values, samples with their encodings and refusals, and first-fit decreasing batches | independent Python, its BLAKE3 `hash/`'s |
 | [`blake3/`](blake3/README.md) | BLAKE3's official test vectors | copied unmodified from the BLAKE3 repository |
 | `claims/` | The conformance models' claim lists for `test-small/1`, RFC-0007 and RFC-0026: each sealed envelope and its digest | `cargo xtask gen-vectors`, from `tessera-compiler`'s emission, after the models' oracle |
 | [`codec/`](codec/README.md) | The canonical encoding, RFC-0003: golden values, non-canonical inputs, envelopes; the conformance models' execution plans, RFC-0041; the weight commitment's artifacts, RFC-0040 | `cargo xtask gen-vectors`, from the cases of `tessera-codec` and `tessera-field`, and the plans from `tessera-compiler`'s derivation, after the models' oracle |

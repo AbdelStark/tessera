@@ -73,6 +73,13 @@ fn cases() -> Vec<(ProtocolError, ErrorCode, Option<u16>)> {
             ErrorCode::Usage,
             None,
         ),
+        // The audit coin toss over a manifest answered another commitment (RFC-0016).
+        (ProtocolError::Answered, ErrorCode::ProtoOrder, None),
+        (
+            ProtocolError::Policy { rule: "a rule" },
+            ErrorCode::Usage,
+            None,
+        ),
     ]);
     cases
 }
@@ -90,7 +97,9 @@ fn covered(error: ProtocolError) {
         | ProtocolError::Internal { .. }
         | ProtocolError::UnknownParams
         | ProtocolError::TestParams
-        | ProtocolError::Sizes { .. } => {}
+        | ProtocolError::Sizes { .. }
+        | ProtocolError::Answered
+        | ProtocolError::Policy { .. } => {}
     }
 }
 

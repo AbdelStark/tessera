@@ -203,6 +203,34 @@ fn inspects_every_artifact_type_in_codec_and_catalog_vectors() {
         assert_eq!(parsed["schema"], ty);
     }
 
+    // 6. AuditSample vectors in spec/vectors/audit/audit.json (0x0403): every selected request,
+    //    the seed and the policy, all public.
+    let audit_json: Value = serde_json::from_str(
+        &fs::read_to_string(vector_path("audit/audit.json")).expect("audit.json"),
+    )
+    .expect("JSON");
+    for case in audit_json["samples"].as_array().expect("samples") {
+        let name = case["name"].as_str().expect("name");
+        let path = dir.join(format!("{name}.tas"));
+        fs::write(&path, unhex(case["envelope"].as_str().expect("envelope"))).expect("write");
+        let (rendered, parsed) = inspect_both(&path);
+        assert!(rendered.contains("schema: AuditSample (0x0403)"), "{name}");
+        assert_eq!(parsed["schema"], "AuditSample");
+        assert_eq!(parsed["class"], "Public");
+        let artifact = &parsed["artifact"];
+        assert_eq!(
+            artifact["manifest_digest"], case["manifest_digest"],
+            "{name}"
+        );
+        assert_eq!(artifact["sample_seed"], case["sample_seed"], "{name}");
+        assert_eq!(artifact["selected"], case["selected"], "{name}");
+        assert_eq!(
+            artifact["policy"]["buckets"], case["policy"]["buckets"],
+            "{name}"
+        );
+        assert_eq!(artifact["coin_toss"], case["coin_toss"], "{name}");
+    }
+
     let _ = fs::remove_dir_all(&dir);
 }
 

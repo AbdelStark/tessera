@@ -3,11 +3,12 @@
 //! The `tessera` command tree of 02 §2.2, end to end through the built binary.
 //!
 //! - **The tree.** `tessera --help` lists every command of 02 §2.2, and each has its own help.
-//! - **Not yet.** Every command but `compile`, `commit-weights`, `bench model`, `params check`
-//!   and `inspect` checks the envelope of each TCE artifact it reads, then exits 64 (`ERR-USAGE`),
-//!   naming the issue that implements it, and writes nothing. `compile`, `commit-weights`,
-//!   `params check` and `inspect` have tests of their own (`compile.rs`, `commit_weights.rs`,
-//!   `params_check.rs`, `inspect.rs`).
+//! - **Not yet.** Every command but `compile`, `commit-weights`, `prove`'s reference path,
+//!   `audit share`, `audit sample`, `bench model`, `params check`, `recorder ref` and `inspect` checks the
+//!   envelope of each TCE artifact it reads, then exits 64 (`ERR-USAGE`), naming the issue that
+//!   implements it, and writes nothing. Those have tests of their own (`compile.rs`,
+//!   `commit_weights.rs`, `audit.rs`, `params_check.rs`, `recorder.rs`, `inspect.rs`, among
+//!   others).
 //! - **Exit statuses** (02 §2.4). A malformed artifact exits 65 with its fault's code: bytes
 //!   that are no envelope, another schema's envelope, a truncated one, a corrupted digest,
 //!   trailing bytes. An artifact that cannot be read exits 20. A malformed argument exits 64.
@@ -22,11 +23,12 @@ use tessera_codec::envelope;
 use tessera_codec::schema::{self, Schema};
 
 /// The commands of 02 §2.2.
-const COMMANDS: [&str; 12] = [
+const COMMANDS: [&str; 13] = [
     "compile",
     "commit-weights",
     "weights refresh",
     "prove",
+    "audit share",
     "audit sample",
     "audit batch",
     "audit plan",
@@ -108,18 +110,16 @@ fn every_command_checks_its_artifacts_then_names_its_issue() {
     let plan = sealed(&dir, "plan.tep", &schema::EXECUTION_PLAN);
     let weights = sealed(&dir, "weights.twc", &schema::WEIGHT_COMMITMENT_STATE);
     let sample = sealed(&dir, "sample.tas", &schema::AUDIT_SAMPLE);
-    let manifest = sealed(&dir, "manifest.tlm", &schema::LOG_MANIFEST);
     let out = dir.join("out");
-    let (m, p, w, s, l, d, o) = (
+    let (m, p, w, s, d, o) = (
         model.as_os_str(),
         plan.as_os_str(),
         weights.as_os_str(),
         sample.as_os_str(),
-        manifest.as_os_str(),
         dir.as_os_str(),
         out.as_os_str(),
     );
-    let cases: [(&str, Vec<&std::ffi::OsStr>, u32); 6] = [
+    let cases: [(&str, Vec<&std::ffi::OsStr>, u32); 5] = [
         (
             "weights refresh",
             vec!["--weights".as_ref(), w, "--out".as_ref(), o],
@@ -138,20 +138,6 @@ fn every_command_checks_its_artifacts_then_names_its_issue() {
                 s,
                 "--transcripts".as_ref(),
                 d,
-                "--out".as_ref(),
-                o,
-            ],
-            157,
-        ),
-        (
-            "audit sample",
-            vec![
-                "--manifest".as_ref(),
-                l,
-                "--seed".as_ref(),
-                o,
-                "--rate".as_ref(),
-                "0.01".as_ref(),
                 "--out".as_ref(),
                 o,
             ],
