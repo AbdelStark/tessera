@@ -13,8 +13,12 @@ on:
 permissions:
   contents: read
 
+# GitHub keeps one pending run per group and cancels the others, and a cancelled run of a
+# required check leaves a pull request BLOCKED with every check green. `gh pr create --label`
+# fires one `labeled` event per label at once, so label events take a group of their own
+# (#507). A push or a new commit still cancels the branch's run in progress.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('ci-{0}-{1}', github.ref, github.run_id) || format('ci-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}
 
 env:

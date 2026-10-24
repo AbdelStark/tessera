@@ -25,9 +25,13 @@ on:
 permissions:
   contents: read
 
+# Called from ci.yml, this group is shared with the caller's ref. Label events take a group of
+# their own, as in ci.yml, and only a new commit cancels a check in progress: otherwise the label
+# events of `gh pr create --label` cancel each other's checks, and the required `test` job fails
+# with them (#507).
 concurrency:
-  group: fuzz-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('fuzz-{0}-{1}', github.ref, github.run_id) || format('fuzz-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
 
 env:
   CARGO_TERM_COLOR: always
