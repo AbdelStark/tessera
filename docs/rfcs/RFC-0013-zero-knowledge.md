@@ -58,7 +58,7 @@ Each stage treats per-layer instances of the same tensor kind as one stacked ten
 
 For a stage proving `H = Σ_x f(x)` over `n` variables with round degree `d`:
 
-1. In Round 1, the prover commits `G_k(x) = a_0 + Σ_{j=1}^{n} g_j(x_j)` with each `g_j` a random univariate polynomial of degree `d` over `Fp2` (each coefficient, and `a_0`, two values of the advice mask block).
+1. In Round 1, the prover commits `G_k(x) = a_0 + Σ_{j=1}^{n} g_j(x_j)` with each `g_j` a random univariate polynomial over `Fp2` of round `j`'s degree `d_j`, the last round's included, which masked extensions raise to 7 ('Masked extensions'). Each coefficient, and `a_0`, is two values of the advice mask block. A lower degree would leave a coefficient of that round's message unmasked ([`docs/zk/simulator.md`](../zk/simulator.md) Lemma 4, R4).
 2. In the stage, the prover sends `Γ = Σ_x G_k(x)`; the transcript yields `ρ_k ∈ Fp2` (label `stage/{k}/zk-rho`).
 3. The parties run the sumcheck on `f + ρ_k G_k` with claim `H + ρ_k Γ`.
 4. At the end, `G_k(r)` is opened from the advice commitment as an ordinary claim.
@@ -115,7 +115,7 @@ In `tessera-protocol/2`:
 
 ### Simulator argument
 
-Before any v0.4 implementation work merges, `docs/zk/simulator.md` must give a complete simulator for one proof and its proof of statistical indistinguishability, reviewed by a second maintainer. Outline:
+Before any v0.4 implementation work merges, [`docs/zk/simulator.md`](../zk/simulator.md) must give a complete simulator for one proof and its proof of statistical indistinguishability, reviewed by a second maintainer. Its draft shows that the protocol as specified is not yet zero-knowledge, and lists the requirements its theorems need (its §9). Outline:
 
 1. The simulator plays the coin toss, programming the random oracle at `H("coin-toss", ·)` to a uniformly chosen seed.
 2. It commits to uniformly random rows in place of advice; roots are distributed identically because opened positions are uniform in both worlds and unopened leaves are random-oracle outputs of high-entropy inputs.

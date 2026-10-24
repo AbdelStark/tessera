@@ -6,6 +6,15 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- `docs/zk/simulator.md`, the draft zero-knowledge simulator argument for `tessera-protocol/2` (RFC-0013 'Simulator argument', RISK-6, [#145](https://github.com/AbdelStark/tessera/issues/145)):
+  - **The method.** A linear-view lemma, the `Fp2` mask lemma, Ligero's encoding masks, Libra's masked sumcheck, the advice and weight combinations, column answers, aborted sessions, a weight epoch against colluding verifiers, OQ-0013-1's packing, and the error bound.
+  - **The finding.** As specified, `tessera-protocol/2` is not zero-knowledge:
+    - the leaf stage's per-layer split values and `ChannelParams`' claims sit at Boolean coordinates, where the masked extension equals the tensor;
+    - the weight linking proof reveals `W̃_T(ρ_T)`;
+    - masked weights have no joint bound across an epoch under the tensor proximity generator.
+  - **What the theorems need.** Its §9 lists eleven requirements, R1 to R11, for them to hold. They include a `tessera-protocol/2` leaf layout without per-layer values (R8), masks for `ChannelParams` (R9), a rank check on the compiled schedule (R10), and an opening scheme for the masking polynomials (R11).
+  - **Review.** Two independent adversarial readings corrected the first two revisions. A second maintainer's review is still required.
+
 - The nightly workflow runs every night at 03:17 UTC (07 §2, [#96](https://github.com/AbdelStark/tessera/issues/96), `docs/testing/nightly.md`):
   - **Property tests.** Every `proptest` of `tessera-field`, `tessera-codec`, `tessera-compiler` and `tessera-protocol` runs at 65,536 cases (`PROPTEST_CASES`, which proptest 1.11 applies over each test's own case count).
   - **Fuzzing.** An hour across the verifier's six targets: `fuzz.yml`, now also a reusable workflow, ten minutes each.
