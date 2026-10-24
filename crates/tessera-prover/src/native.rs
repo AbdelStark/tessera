@@ -11,8 +11,7 @@ use tessera_ir::{ClaimList, NodeId, Op, TensorId};
 use tessera_poly::{eq_table, evaluate_base, less_than};
 use tessera_sumcheck::{Claim, Instance, Table, Term};
 
-use crate::ProvenLeaf;
-use crate::leaf::{LeafLayout, ModelColumn, ModelWitness};
+use crate::leaf::{LeafClaims, LeafLayout, ModelColumn, ModelWitness, token, tokens};
 use crate::stages::{NativeContext, NativeProver, StageError, WitnessSource};
 
 mod openings;
@@ -373,7 +372,10 @@ pub struct ModelNativeProver<'a> {
 }
 impl<'a> ModelNativeProver<'a> {
     /// Build native tables from the same original witness and canonical leaf proof.
-    /// The leaf proof fixes all incoming targets before the mixed stage draws gamma.
+    /// The leaf proof fixes all incoming targets before the mixed stage draws gamma. Each
+    /// family's targets lie where the leaf stage left its tensors' claims ([`LeafClaims`]):
+    /// prefixes of its point, or the merged points of a grouped stage (RFC-0054 'The stage's
+    /// outputs').
     ///
     /// # Errors
     /// `Internal` for inconsistent own sources/points, `Memory` for failed reservations.
@@ -382,15 +384,16 @@ impl<'a> ModelNativeProver<'a> {
         lowering: &Lowering,
         witness: &ModelWitness,
         graph: &impl WitnessSource,
-        leaf: &ProvenLeaf,
+        leaf: &dyn LeafClaims,
     ) -> Result<Self, StageError> {
         let mut out = Self {
             plan,
             tables: Vec::new(),
             data: Vec::new(),
         };
+        let axes = tokens(lowering).map_err(|_| bad())?;
         for (index, family) in plan.families.iter().enumerate() {
-            out.family(index, family, lowering, witness, graph, leaf)?;
+            out.family(index, family, lowering, witness, graph, leaf, &axes)?;
         }
         if out.data.len() != plan.slots.len() {
             return Err(bad());
@@ -495,11 +498,24 @@ impl<'a> ModelNativeProver<'a> {
         lowering: &Lowering,
         witness: &ModelWitness,
         graph: &impl WitnessSource,
-        leaf: &ProvenLeaf,
+        leaf: &dyn LeafClaims,
+        axes: &[Option<u8>],
     ) -> Result<(), StageError> {
-        let local = vars(&f.shape) as usize;
-        let p = leaf.point().get(..local).ok_or_else(bad)?;
         let node = &lowering.graph.nodes[f.nodes[0].0 as usize];
+        // The family's leaf point: its tensor's, the root's output or the softmax's scores, of
+        // the family's shape (RFC-0054 'The stage's outputs').
+        let tensor = match f.kind {
+            Kind::Root { .. } => node.outputs.first().copied(),
+            Kind::Softmax { .. } => node.inputs.first().copied(),
+            Kind::Runtime(_) => None,
+        };
+        let point = match tensor {
+            Some(t) => leaf
+                .tensor_point(&f.shape, token(axes, t))
+                .ok_or_else(bad)?,
+            None => Vec::new(),
+        };
+        let p = point.as_slice();
         match f.kind {
             Kind::Runtime(kind) => {
                 return runtime::build(self, f, kind, lowering, witness, graph, leaf);
@@ -658,7 +674,7 @@ impl<'a> ModelNativeProver<'a> {
                     false,
                 );
                 let (point, target) = if let Some(k) = forest {
-                    let c = leaf.logup().forest_claims().get(k).ok_or_else(bad)?;
+                    let c = leaf.forest_claim(k).ok_or_else(bad)?;
                     (
                         c.point.clone(),
                         c.value - F::ONE + evaluate(&mask, &c.point)?,
@@ -675,8 +691,10 @@ impl<'a> ModelNativeProver<'a> {
                     forest.is_some(),
                 );
                 let row_shape = &lowering.graph.tensors[node.outputs[1].0 as usize].shape;
-                let rowvars = vars(row_shape) as usize;
-                let rowp = leaf.point().get(..rowvars).ok_or_else(bad)?;
+                let rows = leaf
+                    .tensor_point(row_shape, token(axes, node.outputs[1]))
+                    .ok_or_else(bad)?;
+                let rowp = rows.as_slice();
                 let reciprocal = self.source(f, witness, ModelColumn::Output(1))?;
                 let exp = self.source(f, witness, ModelColumn::Output(0))?;
                 let mut average = zeros(self.tables[reciprocal].len())?;

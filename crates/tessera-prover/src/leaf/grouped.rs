@@ -139,6 +139,37 @@ impl ProvenGroupedLeaf {
     pub fn merged(&self) -> &[Claim<GoldilocksExt2>] {
         &self.merged
     }
+
+    /// The merged point `r(n, S)` of `vars` variables with group variables `group_vars`
+    /// (RFC-0054 'The stage's outputs'), where the stage leaves every claim on a tensor of that
+    /// shape. `None` past the merge's rounds, or for group variables that are not ascending
+    /// positions below `vars`.
+    pub fn merged_point(&self, vars: usize, group_vars: &[usize]) -> Option<Vec<GoldilocksExt2>> {
+        merged_point(self.merge.point(), vars, group_vars)
+    }
+}
+
+/// `r(n, S)` from the merge's challenges in round order: the last `vars` of them, assigned to
+/// the variables outside `group_vars` lowest first, then to those in it, front-padding giving a
+/// polynomial of `vars` variables the last rounds (RFC-0054 'Rounds').
+fn merged_point(
+    challenges: &[GoldilocksExt2],
+    vars: usize,
+    group_vars: &[usize],
+) -> Option<Vec<GoldilocksExt2>> {
+    let ascending = group_vars.windows(2).all(|w| w[0] < w[1]);
+    if !ascending || group_vars.last().is_some_and(|&v| v >= vars) {
+        return None;
+    }
+    let bound = challenges.get(challenges.len().checked_sub(vars)?..)?;
+    let order = (0..vars)
+        .filter(|v| group_vars.binary_search(v).is_err())
+        .chain(group_vars.iter().copied());
+    let mut point = vec![GoldilocksExt2::ZERO; vars];
+    for (var, &r) in order.zip(bound) {
+        point[var] = r;
+    }
+    Some(point)
 }
 
 /// Shows the shapes: the messages and challenges are protocol-class data (05 §3).
@@ -496,17 +527,14 @@ where
         })?;
     let mut merged = Vec::with_capacity(merge.polynomials().len());
     for (i, polynomial) in merge.polynomials().iter().enumerate() {
-        let bound = proven_merge.instance_point(i).ok_or(LeafError::Internal {
+        let point = merged_point(
+            proven_merge.point(),
+            polynomial.vars,
+            &polynomial.group_vars,
+        )
+        .ok_or(LeafError::Internal {
             rule: "the merge proves every polynomial",
         })?;
-        // The binding order: the free variables ascending, then the group variables.
-        let order = (0..polynomial.vars)
-            .filter(|v| polynomial.group_vars.binary_search(v).is_err())
-            .chain(polynomial.group_vars.iter().copied());
-        let mut point = vec![GoldilocksExt2::ZERO; polynomial.vars];
-        for (var, &r) in order.zip(bound) {
-            point[var] = r;
-        }
         let value = *proven_merge
             .proof()
             .final_evals

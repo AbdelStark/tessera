@@ -136,7 +136,7 @@ pub(super) fn build(
     lowering: &Lowering,
     witness: &ModelWitness,
     graph: &impl WitnessSource,
-    leaf: &ProvenLeaf,
+    leaf: &dyn LeafClaims,
 ) -> Result<(), StageError> {
     let &[n, v] = family.shape.as_slice() else {
         return Err(bad());
@@ -181,7 +181,9 @@ pub(super) fn build(
         }
     }
     let (point, fixed) = if let Runtime::Key(c) = kind {
-        let p = leaf.point().get(..c.variables as usize).ok_or_else(bad)?;
+        // The greedy key has no token axis (RFC-0054 'No token axis'): no group variables.
+        let point = leaf.point(c.variables as usize, &[]).ok_or_else(bad)?;
+        let p = point.as_slice();
         let keys = witness
             .values(family.site, 0, ModelColumn::GreedyKey)
             .ok_or_else(bad)?;

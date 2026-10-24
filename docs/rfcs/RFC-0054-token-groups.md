@@ -194,6 +194,22 @@ p_j(Z) = Σ_c Σ_h β^h · eq(z_{c,h,<j}, c_{<j}) · eq(z_{c,h,j}, Z) · Q̃_{c,
   - At 128K, `j* = 13` with about 64 GB of tables in host memory.
 - **Lower bound.** No merge to one point avoids a second pass. Its point must be drawn after every group's claims are fixed, and the claim at a fresh random point is a new linear combination of every entry of `Q`, which a prover that cannot store `Q` must read again.
 
+### The stage's outputs
+
+A grouped stage leaves the claims an ungrouped one leaves. They lie at the merge's points, wherever the ungrouped stage would use a prefix of its leaf point `P` (RFC-0045 'The leaf point').
+
+- **The merged point.** For `n` variables with group variables `S`, `r(n, S)` is the merge's last `n` challenges, assigned to the variables outside `S` lowest first, then to those in `S` lowest first. Merged polynomial `i` lies at `r(n_i, S_i)`.
+- **Where a claim lies.** A claim the ungrouped stage leaves at `P[0..n]` on a tensor of `n` variables lies at `r(n, S)` instead. `S` is the low `g_T` variables of the tensor's token axis: the axes after it take its block's lower variables (RFC-0045 'Blocks'), and a tensor without a token axis has none. That covers:
+  - RFC-0037 'The layer point': the graph's claims on each gadget input and on the logits, and each site's point `r_s`;
+  - RFC-0045 'The result': each tensor's value, which is its merged claim;
+  - the native relations' leaf points: a family's points on its tensors and its rows (RFC-0050, RFC-0056);
+  - the openings' points on the committed tensors the leaf stage reads.
+
+  A site's layers, and a site's tensors of one shape and one token axis, therefore share their point, as RFC-0037's stacking requires.
+- **The forests' leaf claims** are their merged claims, at `r(n_f, S_f)`: the claim RFC-0030's relation 2 consumes.
+- **The multiplicities' claims** are the table batch's, at its table trees' leaf points.
+- **The merge's rounds.** `n_max`, the most variables among the merged polynomials, bounds every such claim. The schedule refuses, with `ERR-INTERNAL`, a leaf claim of more variables.
+
 ### Pass structure
 
 - **P2, the group pass.** For each group in order, the prover regenerates the group's tokens at its layers from the layer checkpoints. It then builds and proves the group's trees in memory, sends its roots, values and splits, and keeps its merge tables.

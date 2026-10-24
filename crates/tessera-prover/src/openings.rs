@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Original CPU opening targets (RFC-0037/0045/0052/0053), derived without verifier code.
-use crate::leaf::{LeafLayout, ModelColumn};
+use crate::leaf::{LeafClaims, LeafLayout, ModelColumn};
 use crate::native::ModelNativePlan;
-use crate::{ProvenLeaf, StageError, StageProver, WitnessSource};
+use crate::{StageError, StageProver, WitnessSource};
 use core::fmt;
 use tessera_compiler::schedule::{Layers, NodeRef};
 use tessera_compiler::{AdviceSource, Lowering, ModelAdviceLayout};
@@ -45,7 +45,7 @@ impl ModelOpenings {
     pub fn derive<W: WitnessSource + ?Sized>(
         lowering: &Lowering,
         leaf_layout: &LeafLayout<ModelColumn>,
-        leaf: &ProvenLeaf,
+        leaf: &dyn LeafClaims,
         native: &ModelNativePlan,
         stages: &StageProver<'_, W>,
         advice: &ModelAdviceLayout<'_>,
@@ -146,7 +146,7 @@ impl ModelOpenings {
         fixed.sort_by_key(|&(order, _, _, _)| order);
         for (_, node, s, l) in fixed {
             let mut reads = Vec::new();
-            for read in leaf_layout.reads(s, l).ok_or_else(bad)? {
+            for (r, read) in leaf_layout.reads(s, l).ok_or_else(bad)?.iter().enumerate() {
                 let source = match read.term {
                     ModelColumn::Output(i) => AdviceSource::Tensor(
                         *lowering.graph.nodes[node.0 as usize]
@@ -157,11 +157,8 @@ impl ModelOpenings {
                     ModelColumn::Auxiliary(a) => AdviceSource::Auxiliary(node, a),
                     _ => continue,
                 };
-                let point = read
-                    .coords
-                    .iter()
-                    .map(|&c| leaf.point().get(c as usize).copied().ok_or_else(bad))
-                    .collect::<Result<Vec<_>, _>>()?;
+                // Where the leaf stage left the tensor's claim (RFC-0054 'The stage's outputs').
+                let point = leaf.read_point(leaf_layout, s, l, r).ok_or_else(bad)?;
                 reads.push((source, point));
             }
             reads.sort_by_key(|(source, _)| *source);
@@ -238,14 +235,15 @@ impl ModelOpenings {
         for original in native.source_openings(lowering, stages)? {
             out.push(advice, original)?;
         }
-        if leaf_layout.instances().len() != leaf.logup().claims().len() {
+        if leaf_layout.instances().len() != leaf.instances() {
             return Err(bad());
         }
-        for (instance, claims) in leaf_layout.instances().iter().zip(leaf.logup().claims()) {
+        for (k, instance) in leaf_layout.instances().iter().enumerate() {
+            let multiplicity = leaf.multiplicity_claim(k).ok_or_else(bad)?;
             out.push(
                 advice,
                 OriginalAdvice {
-                    point: claims.multiplicity.point.clone(),
+                    point: multiplicity.point.clone(),
                     pieces: vec![(AdviceSource::Multiplicity(instance.table), F::ONE)],
                 },
             )?;
