@@ -369,10 +369,17 @@ where
 /// `Q_{c,h} = Σ_{k∈c} γ_h^k·P_{i(k)}(·, s)` over the free variables. Own round `t` of the class
 /// reads `T_t(a, b) = Q̃_{c,h}(a, b, z_{>t})`, `2^{t+1}` entries, kept for each `t` below the
 /// class's table rounds.
+///
+/// Group `h`'s tables need only its own claims and `γ_h`, which its pass fixes while its blocks
+/// are resident ([`add_group`](Self::add_group)); `β`, squeezed after every group, weighs them
+/// in the rounds. [`prove_merge_two_pass`] checks that the tables are the merge's.
 pub struct MergeTables<F: PolyField> {
     j_star: usize,
+    polynomials: Vec<MergePolynomial>,
+    n_max: usize,
     classes: Vec<Class<F>>,
-    kept: Vec<bool>,
+    /// Each group's `γ_h` and claim count, once its tables are kept.
+    kept: Vec<Option<(F, usize)>>,
 }
 
 /// One class's tables.
@@ -383,61 +390,92 @@ struct Class<F: PolyField> {
     tables: Vec<SecretBuf<F>>,
 }
 
+/// The most rounds tables can answer for `polynomials`: up to the first round past some
+/// polynomial's free variables, where a round binds group variables whose other groups' blocks
+/// no group holds. 0 for no polynomial.
+pub fn largest_table_rounds(polynomials: &[MergePolynomial]) -> usize {
+    let n_max = polynomials.iter().map(|p| p.vars).max().unwrap_or(0);
+    polynomials
+        .iter()
+        .map(|p| n_max - p.vars + p.free_vars())
+        .min()
+        .unwrap_or(0)
+}
+
 impl<F: PolyField> MergeTables<F> {
-    /// Tables for the first `j_star` rounds.
+    /// Tables for the first `j_star` rounds of a merge of `groups` groups over `polynomials`,
+    /// before any group's claims are known.
     ///
     /// # Errors
     ///
-    /// [`SumcheckError::Merge`] when some polynomial's free variables end before round
-    /// `j_star`: past them a round binds group variables, whose other groups' blocks no group
-    /// holds.
-    pub fn new(merge: &Merge<F>, j_star: usize) -> Result<Self, SumcheckError> {
-        let fits = merge
-            .polynomials
-            .iter()
-            .all(|p| j_star <= merge.n_max - p.vars + p.free_vars());
-        match fits {
-            true => Ok(Self {
-                j_star,
-                classes: Vec::new(),
-                kept: vec![false; merge.claims.len()],
-            }),
-            false => Err(SumcheckError::Merge {
-                rule: "table rounds end before any polynomial's free variables do",
-            }),
+    /// [`SumcheckError::Merge`] for no polynomial, and when `j_star` exceeds
+    /// [`largest_table_rounds`]: some polynomial's free variables end before round `j_star`.
+    pub fn new(
+        polynomials: &[MergePolynomial],
+        groups: usize,
+        j_star: usize,
+    ) -> Result<Self, SumcheckError> {
+        if polynomials.is_empty() {
+            return Err(SumcheckError::Merge {
+                rule: "a merge has a polynomial",
+            });
         }
+        if j_star > largest_table_rounds(polynomials) {
+            return Err(SumcheckError::Merge {
+                rule: "table rounds end before any polynomial's free variables do",
+            });
+        }
+        Ok(Self {
+            j_star,
+            polynomials: polynomials.to_vec(),
+            n_max: polynomials.iter().map(|p| p.vars).max().unwrap_or(0),
+            classes: Vec::new(),
+            kept: vec![None; groups],
+        })
     }
 
-    /// Group `h`'s tables, from its blocks while they are resident: `block(i, s)` is polynomial
-    /// `i` with its group variables set to `s`, `2^{m_i}` entries over its free variables in
+    /// Group `group`'s tables, from its blocks while they are resident: `claims` are the
+    /// group's claims in its order `k`, `gamma` its `γ_h`, and `block(i, s)` is polynomial `i`
+    /// with its group variables set to `s`, `2^{m_i}` entries over its free variables in
     /// increasing position, for every claim of the group.
     ///
     /// # Errors
     ///
-    /// [`SumcheckError::Merge`] for a group the merge does not have, a block missing or of
-    /// another length than `2^{m_i}`, or a table that cannot be allocated.
+    /// [`SumcheckError::Merge`] for a group the tables do not have, or kept before; a claim that
+    /// [`Merge::new`] refuses; a block missing or of another length than `2^{m_i}`; or a table
+    /// that cannot be allocated.
     #[allow(clippy::disallowed_methods)]
     pub fn add_group<'b>(
         &mut self,
-        merge: &Merge<F>,
         group: usize,
+        claims: &[MergeClaim<F>],
+        gamma: F,
         mut block: impl FnMut(usize, u64) -> Option<&'b Secret<Vec<F::Base>>>,
     ) -> Result<(), SumcheckError> {
         let bad = |rule| SumcheckError::Merge { rule };
-        let claims = merge
-            .claims
-            .get(group)
-            .ok_or(bad("the group is one of the merge's"))?;
-        if self.kept.get(group) != Some(&false) {
-            return Err(bad("each group's tables are kept once"));
+        match self.kept.get(group) {
+            None => return Err(bad("the group is one of the merge's")),
+            Some(Some(_)) => return Err(bad("each group's tables are kept once")),
+            Some(None) => {}
         }
-        let gamma = merge.gammas[group];
+        for claim in claims {
+            let p = self
+                .polynomials
+                .get(claim.polynomial)
+                .ok_or(bad("a claim is on a polynomial of the merge"))?;
+            if claim.point.len() != p.free_vars() {
+                return Err(bad("a claim's point has one coordinate per free variable"));
+            }
+            if claim.group_bits >> p.group_vars.len() != 0 {
+                return Err(bad("a claim's bits fit its polynomial's group variables"));
+            }
+        }
         // Classes: one shape, one point, one set of bits, in the order of their first claim.
         let mut keys: Vec<(&MergePolynomial, &[F], u64)> = Vec::new();
         let mut combined: Vec<SecretBuf<F>> = Vec::new();
         let mut weight = F::ONE;
         for claim in claims {
-            let p = &merge.polynomials[claim.polynomial];
+            let p = &self.polynomials[claim.polynomial];
             let key = (p, claim.point.as_slice(), claim.group_bits);
             let at = match keys.iter().position(|k| *k == key) {
                 Some(at) => at,
@@ -459,7 +497,7 @@ impl<F: PolyField> MergeTables<F> {
             weight *= gamma;
         }
         for ((p, point, _), mut q) in keys.into_iter().zip(combined) {
-            let padding = merge.n_max - p.vars;
+            let padding = self.n_max - p.vars;
             let rounds = self.j_star.saturating_sub(padding).min(p.free_vars());
             // T_t for t < rounds: Q folded at z from its highest variable down.
             let mut tables: Vec<SecretBuf<F>> = Vec::with_capacity(rounds);
@@ -485,8 +523,20 @@ impl<F: PolyField> MergeTables<F> {
                 tables,
             });
         }
-        self.kept[group] = true;
+        self.kept[group] = Some((gamma, claims.len()));
         Ok(())
+    }
+
+    /// Whether these tables are `merge`'s: its polynomials, and every group kept with its `γ_h`
+    /// and its claim count.
+    fn of(&self, merge: &Merge<F>) -> bool {
+        self.polynomials == merge.polynomials
+            && self.kept.len() == merge.claims.len()
+            && self
+                .kept
+                .iter()
+                .zip(merge.claims.iter().zip(&merge.gammas))
+                .all(|(kept, (claims, &gamma))| *kept == Some((gamma, claims.len())))
     }
 }
 
@@ -514,9 +564,9 @@ where
     F: PolyField,
     T: SumcheckTranscript<F> + ?Sized,
 {
-    if tables.kept.len() != merge.claims.len() || tables.kept.iter().any(|&k| !k) {
+    if !tables.of(merge) {
         return Err(SumcheckError::Merge {
-            rule: "every group's tables are kept",
+            rule: "every group's tables are kept, for this merge",
         });
     }
     let n_max = merge.n_max;

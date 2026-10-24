@@ -189,7 +189,7 @@ p_j(Z) = Σ_c Σ_h β^h · eq(z_{c,h,<j}, c_{<j}) · eq(z_{c,h,j}, Z) · Q̃_{c,
 
 - **Group pass.** `γ_h` and `z_{c,h}` are known at the end of group `h`, while its tensors are still resident. The prover then keeps, for each `j ≤ j*`, the table `T_{c,h,j}(a, b) = Q̃_{c,h}(a, b, z_{c,h,>j}, h_S)` of `2^j` entries. Round `j ≤ j*` reads its share from `T_{c,h,j}` in `2^j` operations.
 - **Merge pass.** After round `j*`, one pass regenerates every merged polynomial and folds its first `j*` variables at `c_{≤j*}`. The remaining rounds run in memory, and the folded state is per polynomial, since each one's evaluation is sent.
-- **Memory.** The tables take `2^{j*+1}` entries per class and group, and the folded state at most about `N_m·32/2^{j*}` bytes for `N_m` merged elements. `j*` is chosen so that both fit.
+- **Memory.** The tables take `2^{j*+1}` entries per class and group, and the folded state at most about `N_m·32/2^{j*}` bytes for `N_m` merged elements. `j*` is chosen so that both fit. The CPU reference takes the `j*` that balances them, `2^{2j*} = N_m/(G·P)`, with at most `G·P` classes, within the rounds the tables can answer.
   - At 405B, 16K-token batch, 16K context: `N_m ≈ 4.9×10^12`, so `j* ≥ 10`, and the tables take about 1 GB for 30 classes and 1,024 groups.
   - At 128K, `j* = 13` with about 64 GB of tables in host memory.
 - **Lower bound.** No merge to one point avoids a second pass. Its point must be drawn after every group's claims are fixed, and the claim at a fresh random point is a new linear combination of every entry of `Q`, which a prover that cannot store `Q` must read again.
@@ -332,8 +332,8 @@ At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` beco
   - **Interleaving.** A causal batch's groups hold their valid scores within one per group of each other.
 - **The merge prover.**
   - **Two passes.** The table-backed rounds and the merge pass give the same messages as an in-memory merge on every class.
-  - **Boundaries.** That holds at `j*` = 0, at the largest `j*` that fits, and at `j* = m`, which needs no merge pass.
-  - **Classes.** A tensor without group variables merges in memory.
+  - **Boundaries.** That holds at `j*` = 0 and at every `j*` up to the largest that fits: the last round before some polynomial's group variables. The merge pass runs once whatever `j*`. The final evaluations are each polynomial's own `P̃_i(r_i)`, and the class tables hold only their combinations.
+  - **Classes.** A tensor without group variables, claimed over all of its variables by the groups that read it, merges through the same tables.
 - **Memory.** Under a forced budget, the group pass and the merge pass never exceed it, and the pass counter counts P2 and P2b once each.
 - **The model.** `leaf_plan` doubles its groups per doubling of the leaves beyond the memory and counts the table batch's rounds. `shared_streaming_passes` counts `c(c + 1)/2`. The documents' figures are held by `tessera-bench`'s tests.
 - **The calculator.** It evaluates the union row at the largest `G` the verifier accepts, and a statement whose bound misses the target at that `G` fails the calculator's check.

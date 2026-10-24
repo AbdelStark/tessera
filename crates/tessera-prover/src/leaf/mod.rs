@@ -60,7 +60,10 @@ use tessera_gadgets::GadgetError;
 use tessera_logup::LogUpError;
 
 pub use claims::{GroupedClaims, LeafClaims};
-pub use grouped::{ProvenGroupedLeaf, StageForest, grouped_multiplicities, prove_grouped_leaf};
+pub use grouped::{
+    MergeMode, ProvenGroupedLeaf, StageForest, balanced_j_star, grouped_multiplicities,
+    prove_grouped_leaf,
+};
 pub use groups::{GroupLayout, GroupRead, GroupedLayout};
 pub use layout::{
     Block, InstanceLayout, LeafLayout, Read, Site, SiteGadget, SiteLookup, gadget_nodes, leaf_index,

@@ -661,6 +661,24 @@ fn public_cpu_api_groups_the_leaf_stage_under_a_forced_budget() {
         assert_eq!(trees.groups.len(), 1 << bits);
         assert!(proof.round2.logup.roots.is_empty() && !trees.table_roots.is_empty());
         assert!(!trees.merge.rounds.is_empty());
+        // RFC-0054 'Testing Strategy', 'Determinism': two runs with the same seed are
+        // byte-identical, the merge's table rounds and its pass included. Seeded masks are
+        // test-rng's, which CI's test-params step enables.
+        #[cfg(feature = "test-rng")]
+        {
+            let seeded = || {
+                let mut c = budgeted(budget - 1);
+                c.mask_rng = MaskRng::Seeded(17);
+                c
+            };
+            let twice: Vec<Vec<u8>> = (0..2)
+                .map(|_| {
+                    let mut p = Prover::new(&plan, &model, &mut state, seeded()).unwrap();
+                    tessera_codec::encode(&p.prove_non_interactive(&batch).unwrap())
+                })
+                .collect();
+            assert_eq!(twice[0], twice[1], "{groups:?}");
+        }
         let decoded = tv_codec::decode(
             &tessera_codec::encode(&proof),
             &tv_codec::DecodeLimits::MESSAGE,

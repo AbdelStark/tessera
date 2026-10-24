@@ -17,8 +17,10 @@ use super::*;
 use tessera_field::GoldilocksExt2;
 use tessera_prover::leaf::{GroupedClaims, LeafClaims};
 use tessera_prover::leaf::{
-    ModelWitness, ProvenGroupedLeaf, grouped_multiplicities, prove_grouped_leaf,
+    MergeMode, ModelWitness, ProvenGroupedLeaf, balanced_j_star, grouped_multiplicities,
+    prove_grouped_leaf,
 };
+use tessera_sumcheck::largest_table_rounds;
 use tessera_witness::Witness;
 
 /// A transcript that records every label, message and challenge, in order.
@@ -92,6 +94,16 @@ fn prove(
     actual: &ModelWitness,
     tables: &[TableColumns<G>],
 ) -> (ProvenGroupedLeaf, Recording) {
+    prove_in(layout, grouped, actual, tables, MergeMode::InMemory)
+}
+
+fn prove_in(
+    layout: &LeafLayout<ModelColumn>,
+    grouped: &GroupedLayout,
+    actual: &ModelWitness,
+    tables: &[TableColumns<G>],
+    mode: MergeMode,
+) -> (ProvenGroupedLeaf, Recording) {
     let tensors = actual.tensors();
     let multiplicities = grouped_multiplicities(layout, grouped, tables, &tensors).unwrap();
     let refs: Vec<&[G]> = multiplicities.iter().map(|m| &m[..]).collect();
@@ -104,6 +116,7 @@ fn prove(
         &tensors,
         &refs,
         &actual.stage_forests(),
+        mode,
     )
     .unwrap();
     (proven, recording)
@@ -423,6 +436,7 @@ fn a_grouped_stage_is_refused_before_the_transcript_moves() {
                 &tensors,
                 m,
                 &forests,
+                MergeMode::InMemory,
             );
             assert_eq!(result.err(), Some(LeafError::Internal { rule }));
             assert!(recording.events.is_empty());
@@ -441,7 +455,100 @@ fn a_grouped_stage_is_refused_before_the_transcript_moves() {
             &refs[1..],
             "one multiplicity column per instance of the stage",
         );
+        // A j* past the merge's table rounds, before any message.
+        let multiplicities = grouped_multiplicities(layout, &one, tables, &tensors).unwrap();
+        let refs: Vec<&[G]> = multiplicities.iter().map(|m| &m[..]).collect();
+        let mut recording = Recording::new();
+        let result = prove_grouped_leaf(
+            &mut recording,
+            layout,
+            &one,
+            tables,
+            &tensors,
+            &refs,
+            &forests,
+            MergeMode::TwoPass { j_star: Some(64) },
+        );
+        assert_eq!(
+            result.err(),
+            Some(LeafError::Internal {
+                rule: "j* is at most the merge's table rounds"
+            })
+        );
+        assert!(recording.events.is_empty());
     });
+}
+
+/// RFC-0054 'Testing Strategy' ('Two passes', 'Boundaries'): the table-backed merge rounds and
+/// the merge pass send the in-memory merge's messages and leave its merged claims, on every class
+/// of a model's stage, at every `j*` from 0 to the largest that fits and at the balanced `j*` the
+/// backend takes, under four groupings.
+#[test]
+fn the_two_pass_merge_sends_the_in_memory_merges_messages() {
+    let model = layered(bounded_model());
+    with_stage(&model, 5, |p, layout, _, actual, tables| {
+        for (g_t, g_l) in [(1, 0), (0, 1), (1, 1), (2, 1)] {
+            let grouped = GroupedLayout::new(layout, &p.layers, groups(g_t, g_l)).unwrap();
+            let (expected, recorded) =
+                prove_in(layout, &grouped, actual, tables, MergeMode::InMemory);
+            let same = |mode: MergeMode| {
+                let (proven, recording) = prove_in(layout, &grouped, actual, tables, mode);
+                assert_eq!(recording.events, recorded.events, "{g_t}, {g_l}: {mode:?}");
+                assert_eq!(proven.merged(), expected.merged(), "{g_t}, {g_l}: {mode:?}");
+            };
+            same(MergeMode::TwoPass { j_star: None });
+            // Every j* the tables answer; the first refused ends them.
+            let tensors = actual.tensors();
+            let multiplicities =
+                grouped_multiplicities(layout, &grouped, tables, &tensors).unwrap();
+            let refs: Vec<&[G]> = multiplicities.iter().map(|m| &m[..]).collect();
+            let mut largest = None;
+            for j_star in 0..64 {
+                let mode = MergeMode::TwoPass {
+                    j_star: Some(j_star),
+                };
+                let fits = prove_grouped_leaf(
+                    &mut Recording::new(),
+                    layout,
+                    &grouped,
+                    tables,
+                    &tensors,
+                    &refs,
+                    &actual.stage_forests(),
+                    mode,
+                )
+                .is_ok();
+                if !fits {
+                    break;
+                }
+                same(mode);
+                largest = Some(j_star);
+            }
+            assert!(largest >= Some(2), "{g_t}, {g_l}: tables answer rounds");
+        }
+    });
+}
+
+/// The backend's `j*` balances the tables' `2^{j*+1}` entries per class and group against the
+/// folded state's `N_m/2^{j*}`, within the rounds the tables can answer (RFC-0054 'Memory').
+#[test]
+fn the_balanced_j_star_stays_within_the_table_rounds() {
+    use tessera_sumcheck::MergePolynomial;
+    let shape = |vars, group_vars: Vec<usize>| MergePolynomial { vars, group_vars };
+    // 2^21 entries over 1·2 classes: 2^{2j*} = 2^20, j* = 10; the tables answer 19 rounds, each
+    // polynomial's free variables. Over 2^10 groups, 2^{2j*} = 2^10.
+    let wide = [shape(20, vec![19]), shape(20, vec![19])];
+    assert_eq!(largest_table_rounds(&wide), 19);
+    assert_eq!(balanced_j_star(&wide, 1), 10);
+    assert_eq!(balanced_j_star(&wide, 1 << 10), 5);
+    // An odd exponent rounds up: 2^21 entries over one class, 2^{2j*} ≥ 2^21, j* = 11.
+    assert_eq!(balanced_j_star(&[shape(21, vec![20])], 1), 11);
+    // A polynomial of group variables alone, unpadded: the tables answer no round.
+    let low = [shape(3, vec![0, 1, 2]), shape(2, vec![])];
+    assert_eq!(largest_table_rounds(&low), 0);
+    assert_eq!(balanced_j_star(&low, 4), 0);
+    // More classes than entries.
+    assert_eq!(balanced_j_star(&[shape(2, vec![])], 1 << 10), 0);
 }
 
 /// RFC-0054 'The stage's outputs': where the stages and the openings read a grouped stage's

@@ -12,10 +12,15 @@
 //!    `P_h` and at the group's bits on `S`; then `γ_h` under `group/{h}/merge/gamma`.
 //! 3. **The table batch.** Every instance's table tree, its multiplicities counting every group's
 //!    lookups and padding ([`prove_table_batch`]).
-//! 4. **The merge.** `β` under `merge/beta`, then the merge of every group's claims
-//!    ([`prove_merge`]): the split values on the tensors, in the ungrouped split's order, and the
-//!    forests' leaf claims on their stacked leaf tables, in forest order. Group `h`'s claim `k`
-//!    counts its split values first, then its forests' leaf claims.
+//! 4. **The merge.** `β` under `merge/beta`, then the merge of every group's claims: the split
+//!    values on the tensors, in the ungrouped split's order, and the forests' leaf claims on their
+//!    stacked leaf tables, in forest order. Group `h`'s claim `k` counts its split values first,
+//!    then its forests' leaf claims. [`MergeMode`] chooses its prover; both send the same
+//!    messages:
+//!    - **in memory** ([`prove_merge`]), every polynomial held at once;
+//!    - **in two passes** (RFC-0054 'The prover in two passes', [`prove_merge_two_pass`]): each
+//!      group's pass keeps its merge tables while its blocks are resident, the first `j*` rounds
+//!      read them, and one pass, P2b, regenerates every polynomial for the rest.
 //!
 //! What the merge leaves, one claim per polynomial at its own point, RFC-0037's atom splits and
 //! the later stages owe; the caller absorbs the atom splits under `stage/0/split` next.
@@ -34,8 +39,8 @@ use tessera_logup::{
 };
 use tessera_poly::evaluate_base;
 use tessera_sumcheck::{
-    Claim, Forest, Merge, MergeClaim, MergePolynomial, ProvenBatch, ProvenTreeLevel,
-    SumcheckTranscript, prove_merge,
+    Claim, Forest, Merge, MergeClaim, MergePolynomial, MergeTables, ProvenBatch, ProvenTreeLevel,
+    SumcheckTranscript, largest_table_rounds, prove_merge, prove_merge_two_pass,
 };
 
 use super::layout::LeafLayout;
@@ -297,6 +302,72 @@ fn forest_share(
     Ok(share)
 }
 
+/// How [`prove_grouped_leaf`] proves the merge. Both modes send the same messages.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MergeMode {
+    /// Every merged polynomial in memory at once ([`prove_merge`]).
+    InMemory,
+    /// RFC-0054 'The prover in two passes': the first `j_star` rounds from tables each group's
+    /// pass keeps, then one pass, P2b, that regenerates every polynomial and folds the variables
+    /// those rounds bound ([`prove_merge_two_pass`]).
+    TwoPass {
+        /// `j*`, the rounds the tables answer: at most [`largest_table_rounds`] of the merge's
+        /// polynomials, or `None` for [`balanced_j_star`]'s.
+        j_star: Option<usize>,
+    },
+}
+
+/// What the witness lends for a merged polynomial (05 §3: secret-class, read where it is lent).
+#[derive(Clone, Copy)]
+enum Lent<'a> {
+    /// A stage tensor's entries, true integers.
+    Tensor(&'a [i64]),
+    /// A forest's stacked leaves.
+    Forest(&'a [Goldilocks]),
+}
+
+/// The `j*` that balances the merge's two memories (RFC-0054 'The prover in two passes',
+/// 'Memory'): the tables take `2^{j*+1}` entries per class and group, and the folded state
+/// `N_m/2^{j*}` for the `N_m` merged entries. With at most `G·P` classes, `P` the polynomials,
+/// the balance is `2^{2j*} = N_m/(G·P)`; `j*` rounds it up and stays within
+/// [`largest_table_rounds`].
+pub fn balanced_j_star(polynomials: &[MergePolynomial], groups: usize) -> usize {
+    let entries: u128 = polynomials.iter().map(|p| 1u128 << p.vars).sum();
+    let classes = (groups as u128)
+        .saturating_mul(polynomials.len() as u128)
+        .max(1);
+    let ratio = entries.div_ceil(classes);
+    // ⌈log2 ratio⌉, then halved, rounding up.
+    let bits = (u128::BITS - ratio.saturating_sub(1).leading_zeros()) as usize;
+    bits.div_ceil(2).min(largest_table_rounds(polynomials))
+}
+
+/// Polynomial `shape`'s block at group bits `bits`: its `2^{m}` entries over its free variables
+/// in increasing position, `entry(x)` giving its entry `x` in natural order.
+fn block(
+    entry: impl Fn(usize) -> Option<Goldilocks>,
+    shape: &MergePolynomial,
+    bits: u64,
+) -> Option<Vec<Goldilocks>> {
+    let free: Vec<usize> = (0..shape.vars)
+        .filter(|v| shape.group_vars.binary_search(v).is_err())
+        .collect();
+    let fixed = shape
+        .group_vars
+        .iter()
+        .enumerate()
+        .fold(0usize, |x, (u, &v)| x | ((((bits >> u) & 1) as usize) << v));
+    (0..1usize << free.len())
+        .map(|y| {
+            let x = free
+                .iter()
+                .enumerate()
+                .fold(fixed, |x, (t, &v)| x | (((y >> t) & 1) << v));
+            entry(x)
+        })
+        .collect()
+}
+
 /// Proves the grouped leaf stage of `stage` under `grouped` on `transcript`, up to its atom
 /// splits (RFC-0054 'The leaf stage with groups', steps 1 to 4; the module documentation lists
 /// the messages).
@@ -306,6 +377,7 @@ fn forest_share(
 ///   [`grouped_multiplicities`]' for an honest prover.
 /// - `forests` are the stage's product forests, in schedule order, each with its public root
 ///   values the verifier derives.
+/// - `mode` chooses the merge's prover ([`MergeMode`]).
 ///
 /// # Errors
 ///
@@ -313,9 +385,10 @@ fn forest_share(
 /// not fit the stage, an ungrouped stage (`g = 0`, which keeps RFC-0010's messages:
 /// [`prepare_leaf`](super::prepare_leaf)), a multiplicity count other than the instances', or a forest whose leaf
 /// table is not `2^n` leaves or whose query and layer indices do not hold the group's bits
-/// beneath `n`. Then, group by group, the errors of the columns ([`LeafError::Internal`],
-/// [`LeafError::Memory`]) and of the trees ([`LeafError::LogUp`]); the table batch's; and the
-/// merge's ([`LeafError::Internal`]).
+/// beneath `n`, or a `j*` past [`largest_table_rounds`]. Then, group by group, the errors of the
+/// columns ([`LeafError::Internal`], [`LeafError::Memory`]) and of the trees
+/// ([`LeafError::LogUp`]); the table batch's; and the merge's ([`LeafError::Internal`]).
+#[allow(clippy::too_many_arguments)]
 pub fn prove_grouped_leaf<S, T>(
     transcript: &mut T,
     stage: &LeafLayout<S>,
@@ -324,6 +397,7 @@ pub fn prove_grouped_leaf<S, T>(
     witness: &[Vec<SiteTensors<'_, S>>],
     multiplicities: &[&[Goldilocks]],
     forests: &[StageForest<'_>],
+    mode: MergeMode,
 ) -> Result<ProvenGroupedLeaf, LeafError>
 where
     S: Copy + Eq,
@@ -352,21 +426,20 @@ where
             );
         }
     }
-    // Every stage tensor, as the merge's table; then every forest's leaves.
+    // The merge's polynomials: every stage tensor, then every forest's leaves. `table(i)` reads
+    // polynomial `i` from what the witness lends, in natural order.
     let mut polynomials: Vec<MergePolynomial> = grouped.polynomials().to_vec();
-    let mut merge_tables: Vec<Secret<Vec<Goldilocks>>> = Vec::with_capacity(polynomials.len());
+    let mut tensor_reads: Vec<(usize, usize, usize)> = Vec::with_capacity(polynomials.len());
     for (s, layers) in witness.iter().enumerate() {
-        for (l, tensors) in layers.iter().enumerate() {
+        for l in 0..layers.len() {
             let reads = stage.reads(s, l).ok_or(LeafError::Internal {
                 rule: "the layout reads every site's tensors",
             })?;
-            for read in reads {
-                let values = tensors.of(read)?;
-                merge_tables.push(Secret::new(
-                    values.iter().map(|&v| Goldilocks::from_i64(v)).collect(),
-                ));
-            }
+            tensor_reads.extend((0..reads.len()).map(|r| (s, l, r)));
         }
+    }
+    if tensor_reads.len() != polynomials.len() {
+        return internal("one merged polynomial per value of the stage's split");
     }
     for forest in forests {
         let vars = forest.vars().unwrap_or(0) as usize;
@@ -375,8 +448,45 @@ where
             vars,
             group_vars: (q..q + g_t as usize).chain(l..l + g_l as usize).collect(),
         });
-        merge_tables.push(Secret::new(forest.leaves.to_vec()));
     }
+    // What the witness lends for polynomial `i`: a tensor's entries or a forest's leaves.
+    let lent = |i: usize| -> Result<Lent<'_>, LeafError> {
+        match tensor_reads.get(i) {
+            Some(&(s, l, r)) => {
+                let read = stage.reads(s, l).and_then(|reads| reads.get(r)).ok_or(
+                    LeafError::Internal {
+                        rule: "the layout reads every site's tensors",
+                    },
+                )?;
+                Ok(Lent::Tensor(witness[s][l].of(read)?))
+            }
+            None => forests
+                .get(i - tensor_reads.len())
+                .map(|forest| Lent::Forest(forest.leaves))
+                .ok_or(LeafError::Internal {
+                    rule: "a merged polynomial is a tensor or a forest",
+                }),
+        }
+    };
+    let table = |i: usize| -> Result<Secret<Vec<Goldilocks>>, LeafError> {
+        Ok(Secret::new(match lent(i)? {
+            Lent::Tensor(values) => values.iter().map(|&v| Goldilocks::from_i64(v)).collect(),
+            Lent::Forest(leaves) => leaves.to_vec(),
+        }))
+    };
+    let mut kept = match mode {
+        MergeMode::InMemory => None,
+        MergeMode::TwoPass { j_star } => {
+            let j_star = j_star.unwrap_or_else(|| balanced_j_star(&polynomials, grouped.count()));
+            Some(
+                MergeTables::new(&polynomials, grouped.count(), j_star).map_err(|_| {
+                    LeafError::Internal {
+                        rule: "j* is at most the merge's table rounds",
+                    }
+                })?,
+            )
+        }
+    };
 
     let (alpha, beta) = begin_groups(transcript);
     let mut groups = Vec::with_capacity(grouped.count());
@@ -493,7 +603,35 @@ where
                 value: claim.value,
             });
         }
-        gammas.push(transcript.challenge(&format!("group/{h}/merge/gamma")));
+        let gamma = transcript.challenge(&format!("group/{h}/merge/gamma"));
+        // The group's merge tables, while its blocks are resident (RFC-0054 'Group pass').
+        if let Some(kept) = kept.as_mut() {
+            let mut blocks: Vec<(usize, u64, Secret<Vec<Goldilocks>>)> =
+                Vec::with_capacity(group_claims.len());
+            for claim in &group_claims {
+                let source = lent(claim.polynomial)?;
+                let entry = |x: usize| match source {
+                    Lent::Tensor(values) => values.get(x).map(|&v| Goldilocks::from_i64(v)),
+                    Lent::Forest(leaves) => leaves.get(x).copied(),
+                };
+                let values = block(entry, &polynomials[claim.polynomial], claim.group_bits).ok_or(
+                    LeafError::Internal {
+                        rule: "a polynomial's table holds its blocks",
+                    },
+                )?;
+                blocks.push((claim.polynomial, claim.group_bits, Secret::new(values)));
+            }
+            kept.add_group(h, &group_claims, gamma, |i, bits| {
+                blocks
+                    .iter()
+                    .find(|(p, b, _)| (*p, *b) == (i, bits))
+                    .map(|(_, _, t)| t)
+            })
+            .map_err(|_| LeafError::Internal {
+                rule: "a group's merge tables take its claims and blocks",
+            })?;
+        }
+        gammas.push(gamma);
         claims.push(group_claims);
         splits.push(values);
         points.push(point);
@@ -521,11 +659,32 @@ where
         Merge::new(polynomials, claims, gammas, merge_beta).map_err(|_| LeafError::Internal {
             rule: "the groups' claims fit the merge's polynomials",
         })?;
-    let table_refs: Vec<&Secret<Vec<Goldilocks>>> = merge_tables.iter().collect();
-    let proven_merge =
-        prove_merge(transcript, &merge, &table_refs).map_err(|_| LeafError::Internal {
-            rule: "the merge takes one table per polynomial",
-        })?;
+    let proven_merge = match kept {
+        None => {
+            let tables = (0..merge.polynomials().len())
+                .map(table)
+                .collect::<Result<Vec<_>, _>>()?;
+            let table_refs: Vec<&Secret<Vec<Goldilocks>>> = tables.iter().collect();
+            prove_merge(transcript, &merge, &table_refs)
+        }
+        Some(kept) => {
+            // P2b: every polynomial regenerated once, after the tables' rounds.
+            let mut failed = None;
+            let proven = prove_merge_two_pass(transcript, &merge, &kept, |i| {
+                table(i).unwrap_or_else(|e| {
+                    failed = Some(e);
+                    Secret::new(Vec::new())
+                })
+            });
+            if let Some(e) = failed {
+                return Err(e);
+            }
+            proven
+        }
+    }
+    .map_err(|_| LeafError::Internal {
+        rule: "the merge takes one table per polynomial",
+    })?;
     let mut merged = Vec::with_capacity(merge.polynomials().len());
     for (i, polynomial) in merge.polynomials().iter().enumerate() {
         let point = merged_point(

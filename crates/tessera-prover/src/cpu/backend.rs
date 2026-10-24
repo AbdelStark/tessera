@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::leaf::{
-    GroupedClaims, GroupedLayout, LeafClaims, LeafLayout, ModelColumn, ModelWitness,
+    GroupedClaims, GroupedLayout, LeafClaims, LeafLayout, MergeMode, ModelColumn, ModelWitness,
     ProvenGroupedLeaf, ProvenLeaf, SPLIT_LABEL, grouped_multiplicities, prepare_leaf,
     prove_grouped_leaf, token, tokens,
 };
@@ -403,6 +403,8 @@ impl<'a> CpuBackend<'a> {
                     &tensors,
                     &committed,
                     &actual.stage_forests(),
+                    // RFC-0054 'Pass structure': the merge's table rounds, then P2b.
+                    MergeMode::TwoPass { j_star: None },
                 )?;
                 // RFC-0037's claims on each gadget input and on the logits, at their tensors'
                 // merged points (RFC-0054 'The stage's outputs').

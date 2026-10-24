@@ -5,7 +5,7 @@
 //! roots and tables, and must accept it, its merged claims the prover's own.
 
 use super::*;
-use tessera_prover::leaf::{ModelWitness, grouped_multiplicities, prove_grouped_leaf};
+use tessera_prover::leaf::{MergeMode, ModelWitness, grouped_multiplicities, prove_grouped_leaf};
 use tv_core::leaf::grouped::{Proof, Stage, TableTree};
 
 /// The prover's levels, as the verifier decodes them.
@@ -81,6 +81,8 @@ fn the_independent_verifier_accepts_a_grouped_stage_at_the_provers_merged_claims
             &tensors,
             &committed,
             &actual.stage_forests(),
+            // The backend's mode: the merge's table rounds, then one regeneration pass.
+            MergeMode::TwoPass { j_star: None },
         )
         .unwrap();
         let trees_proof = tv_core::protocol::TreeProof {
