@@ -9,6 +9,9 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# RFC-0017 'Sampler PRF': AES-128, constant-time in software (fixsliced) or AES-NI; `zeroize`
+# clears the key schedule on drop (05 §3 OBS-2).
+aes = { version = "0.8", features = ["zeroize"] }
 tessera-codec = { path = "../tessera-codec" }
 tessera-compiler = { path = "../tessera-compiler" }
 tessera-field = { path = "../tessera-field" }

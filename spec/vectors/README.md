@@ -24,6 +24,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | [`protocol/`](protocol/README.md) | The protocol messages of `tessera-protocol/1`, RFC-0036: encodings, envelopes, the coin toss and refused inputs | its oracle |
 | [`rfc6962/`](rfc6962/README.md) | RFC 6962 inclusion proofs, for RFC-0015's logs | copied unmodified from transparency-dev/merkle |
 | [`runtime-budget/`](runtime-budget/README.md) | Shared tree-level parent populations, raw final fields and instance counts (RFC-0010/0014/0053) | independent literal Python oracle |
+| [`scoring/`](scoring/README.md) | The sampler PRF of RFC-0017, `(key, request, position) → u_t`, and the inverse-CDF token of RFC-0009 Lemma 10 at the edges of its bracket | independent Python AES-128 from FIPS-197, checked against its examples |
 | [`schedule/`](schedule/README.md) | The stage schedules of the conformance models, RFC-0010 and RFC-0037: each stage's instances, relations, variable counts and points, the leaf stage's claims and the claim pool | `cargo xtask gen-vectors`, from `tessera-compiler`'s derivation, after the models' oracle |
 | [`sha256/`](sha256/README.md) | NIST's SHA-256 test vectors (CAVP) | copied unmodified from NIST |
 | [`soundness/`](soundness/README.md) | The soundness calculator, RFC-0014: every row's bound, bits, target and decision for the parameter sets at the 405B statement, at statements that miss one target each, and at random sizes | its oracle |

@@ -6,6 +6,11 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- `tessera-scoring`'s reference sampler, which serving engines link or port (RFC-0017 'Sampler PRF', [#136](https://github.com/AbdelStark/tessera/issues/136)):
+  - **`Sampler::draw(request_id, t)`.** It returns `u_t`, the low four bytes of AES-128 under the session's `SamplerKey` of `u64_le(request_id) ‖ u32_le(t) ‖ 0^4`. The key is secret-class: it lives in a `Secret`, AES's key schedule clears itself on drop, and neither type's `Debug` shows anything. `secret-access.toml` lists the one reader.
+  - **`inverse_cdf(weights, u)`.** It returns RFC-0009 Lemma 10's token, the least `v` with `C(v)·2^32 > u·Z`, in exact `u128` sums. It refuses a vocabulary outside RFC-0007's `1..=2^18` and a distribution with no mass.
+  - **`spec/vectors/scoring/`.** 144 PRF rows and 228 inverse-CDF rows, written by an independent Python AES-128, which is checked against FIPS-197's examples. The token satisfies the `InverseCdf` certificate's bracket on 10^5 random distributions.
+
 - `docs/zk/simulator.md`, the draft zero-knowledge simulator argument for `tessera-protocol/2` (RFC-0013 'Simulator argument', RISK-6, [#145](https://github.com/AbdelStark/tessera/issues/145)):
   - **The method.** A linear-view lemma, the `Fp2` mask lemma, Ligero's encoding masks, Libra's masked sumcheck, the advice and weight combinations, column answers, aborted sessions, a weight epoch against colluding verifiers, OQ-0013-1's packing, and the error bound.
   - **The finding.** As specified, `tessera-protocol/2` is not zero-knowledge:
