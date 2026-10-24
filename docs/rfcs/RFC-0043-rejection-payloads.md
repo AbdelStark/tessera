@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0060](RFC-0060-log-manifests.md) (the inclusion proofs' encoding; `ManifestSignature` covers a manifest's other checks alone), [RFC-0059](RFC-0059-frame-headers-and-nonces.md#verifier-check-2-amended) ('Anchor': `Frames` also covers a session's repeated counter, an impossible frame length, and a session-open entry after one of its frames), [RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies) ('Anchor': `SamplerKey`), [RFC-0062](RFC-0062-period-log-sessions.md#the-session-rules) ('Malformed': no entries come with a batch; 'Anchor': `Inclusion` is retired, `Frames` covers duplicate positions and counters in the period, and `Session` is new)
+- Amended by: [RFC-0060](RFC-0060-log-manifests.md) (the inclusion proofs' encoding; `ManifestSignature` covers a manifest's other checks alone), [RFC-0059](RFC-0059-frame-headers-and-nonces.md#verifier-check-2-amended) ('Anchor': `Frames` also covers a session's repeated counter, an impossible frame length, and a session-open entry after one of its frames), [RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies) ('Anchor': `SamplerKey`), [RFC-0062](RFC-0062-period-log-sessions.md#the-session-rules) ('Malformed': no entries come with a batch; 'Anchor': `Inclusion` is retired, `Frames` covers duplicate positions and counters in the period, and `Session` is new), [RFC-0063](RFC-0063-request-boundaries.md#the-requests-rules) ('Anchor': `Frames` covers a request's end, window and order)
 - Supersedes, on acceptance:
   - [04 §2](../spec/04-error-model.md#2-verdicts) 'Verdicts': `ArtifactKind`, `PowPhase` and `AnchorFailure` are defined here, `ParamSetName` is RFC-0014's `ParamSetId`, and `Anchor`'s request is optional;
   - [RFC-0019](RFC-0019-verifier.md#check-order) 'Check order' step 1: which decoding failures reject;
@@ -87,12 +87,15 @@ pub enum AnchorFailure {
     Frames,                  // check 2: a request's frames, not contiguous from 0 or not its lengths,
                              // or an impossible length (RFC-0059); two frames of the session in the
                              // period at one position or with one counter, or lengths short of the
-                             // request's frames in the period (RFC-0062)
+                             // request's frames in the period (RFC-0062); no end or two, an end in the
+                             // previous period, a frame after it or none before it, a late inbound
+                             // frame, or a position logged twice across the boundary (RFC-0063)
     SamplerKey,              // check 2: a request of a temperature batch that falls within no
                              // pin, or within another than the batch's first request's (RFC-0061)
-    Session,                 // check 2: the request's session has no open or carry in the period,
-                             // several, or one after another of its entries, its frames included
-                             // (RFC-0062; RFC-0059 called an open after a frame Frames)
+    Session,                 // check 2: the request's session, in a period that holds a frame of
+                             // the request, has no open or carry, several, or one after another of
+                             // its entries; or two key commitments across the request's two periods
+                             // (RFC-0062, RFC-0063; RFC-0059 called an open after a frame Frames)
 }
 ```
 

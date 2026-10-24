@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The recorder's digest-log entries, schema `0x0401` (RFC-0015 'Log format', with RFC-0059's
-//! `frame_seq` and RFC-0062's `SessionCarry`). All of it is public.
+//! `frame_seq`, RFC-0062's `SessionCarry` and RFC-0063's `RequestEnd`). All of it is public.
 
-use crate::frame::{Direction, SealedFrame, SessionOpenFrame};
+use crate::frame::{Direction, RequestEndFrame, SealedFrame, SessionOpenFrame};
 use tessera_codec::{Decode, Encode};
 
 /// One entry of the recorder's digest log (schema `0x0401`, version 1). TCE: a `u16` tag, then
@@ -64,6 +64,18 @@ pub enum DigestLogEntry {
         /// The commitment of the session's open entry, copied.
         key_commitment: [u8; 32],
     },
+    /// A request ended: the serving stack's request-end frame, after the request's last frame
+    /// in either direction (RFC-0063 'The request's end').
+    RequestEnd {
+        /// The entry's position in the log.
+        seq: u64,
+        /// The recorder's clock, in nanoseconds.
+        t_ns: u64,
+        /// The session's identifier.
+        session_id: [u8; 16],
+        /// The request that ended.
+        request_id: u64,
+    },
 }
 
 impl DigestLogEntry {
@@ -73,7 +85,8 @@ impl DigestLogEntry {
             Self::SessionOpen { seq, .. }
             | Self::Frame { seq, .. }
             | Self::SessionClose { seq, .. }
-            | Self::SessionCarry { seq, .. } => *seq,
+            | Self::SessionCarry { seq, .. }
+            | Self::RequestEnd { seq, .. } => *seq,
         }
     }
 
@@ -83,7 +96,8 @@ impl DigestLogEntry {
             Self::SessionOpen { t_ns, .. }
             | Self::Frame { t_ns, .. }
             | Self::SessionClose { t_ns, .. }
-            | Self::SessionCarry { t_ns, .. } => *t_ns,
+            | Self::SessionCarry { t_ns, .. }
+            | Self::RequestEnd { t_ns, .. } => *t_ns,
         }
     }
 
@@ -94,6 +108,16 @@ impl DigestLogEntry {
             t_ns,
             session_id: open.session_id,
             key_commitment: open.key_commitment,
+        }
+    }
+
+    /// The entry a recorder writes for `end` at position `seq` and time `t_ns`.
+    pub fn request_end(seq: u64, t_ns: u64, end: &RequestEndFrame) -> Self {
+        Self::RequestEnd {
+            seq,
+            t_ns,
+            session_id: end.session_id,
+            request_id: end.request_id,
         }
     }
 

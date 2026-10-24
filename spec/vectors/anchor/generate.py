@@ -102,6 +102,16 @@ def entry_close(seq, t_ns, session_id):
     return le(2, 2) + le(seq, 8) + le(t_ns, 8) + session_id
 
 
+def entry_request_end(seq, t_ns, session_id, request_id):
+    """RFC-0063's RequestEnd, tag 4: the request-end frame's fields."""
+    return le(4, 2) + le(seq, 8) + le(t_ns, 8) + session_id + le(request_id, 8)
+
+
+def request_end_frame(session_id, request_id):
+    """RFC-0063's cleartext request-end frame: TRQE ‖ session_id ‖ u64_le(request_id)."""
+    return b"TRQE" + session_id + le(request_id, 8)
+
+
 def entry_carry(seq, t_ns, session_id, kc):
     """RFC-0062's SessionCarry, tag 3: the session's key commitment, carried into a period."""
     return le(3, 2) + le(seq, 8) + le(t_ns, 8) + session_id + kc
@@ -168,6 +178,16 @@ def main():
                 "entry": {"seq": seq, "t_ns": t_ns,
                           "tce": entry_frame(seq, t_ns, session_id, request_id, direction,
                                              frame_index, len(cipher), frame_seq, digest).hex()},
+            })
+            seq, t_ns = seq + 1, t_ns + 17
+        # Each request's end, after the session's frames, in the order the requests first appear.
+        record["request_ends"] = []
+        for request_id in dict.fromkeys(f[0] for f in frames):
+            record["request_ends"].append({
+                "request_id": request_id,
+                "frame": request_end_frame(session_id, request_id).hex(),
+                "entry": {"seq": seq, "t_ns": t_ns,
+                          "tce": entry_request_end(seq, t_ns, session_id, request_id).hex()},
             })
             seq, t_ns = seq + 1, t_ns + 17
         # The carry a recorder would write had the session stayed open into another period.

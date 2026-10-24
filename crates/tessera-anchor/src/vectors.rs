@@ -6,8 +6,8 @@
 //! no way to choose a session's secrets.
 
 use crate::{
-    DigestLogEntry, Direction, FrameHeader, SealedFrame, Session, SessionOpenFrame, TokenFrame,
-    key_commitment,
+    DigestLogEntry, Direction, FrameHeader, RequestEndFrame, SealedFrame, Session,
+    SessionOpenFrame, TokenFrame, key_commitment,
 };
 use serde_json::Value;
 use tessera_codec::{DecodeLimits, Secret, decode, encode};
@@ -33,6 +33,7 @@ fn every_session_matches_the_independent_oracle() {
     let document: Value =
         serde_json::from_str(include_str!("../../../spec/vectors/anchor/frames.json")).unwrap();
     let mut frames = 0;
+    let mut ends = 0;
     for s in document["sessions"].as_array().unwrap() {
         let (mut session, open, keys) = Session::from_secrets(array(&s["drawn"]));
         session.set_next(number(&s["first_seq"]));
@@ -102,6 +103,23 @@ fn every_session_matches_the_independent_oracle() {
             );
             frames += 1;
         }
+        for end in s["request_ends"].as_array().unwrap() {
+            let frame = RequestEndFrame {
+                session_id: session.session_id(),
+                request_id: number(&end["request_id"]),
+            };
+            assert_eq!(frame.to_bytes().to_vec(), hex(&end["frame"]));
+            assert_eq!(RequestEndFrame::from_bytes(&hex(&end["frame"])), Ok(frame));
+            let entry = &end["entry"];
+            let logged =
+                DigestLogEntry::request_end(number(&entry["seq"]), number(&entry["t_ns"]), &frame);
+            assert_eq!(encode(&logged), hex(&entry["tce"]));
+            assert_eq!(
+                decode::<DigestLogEntry>(&hex(&entry["tce"]), DecodeLimits::MESSAGE),
+                Ok(logged)
+            );
+            ends += 1;
+        }
         let entry = &s["carry_entry"];
         let carried = DigestLogEntry::SessionCarry {
             seq: number(&entry["seq"]),
@@ -127,4 +145,5 @@ fn every_session_matches_the_independent_oracle() {
         );
     }
     assert_eq!(frames, 15);
+    assert_eq!(ends, 7);
 }

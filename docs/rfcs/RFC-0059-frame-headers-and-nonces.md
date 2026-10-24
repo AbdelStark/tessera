@@ -202,7 +202,7 @@ Storing `SessionKeys` is #146's: it is a secret-class artifact.
 
 ## Alternatives Considered
 
-1. **The recorder counts frames.** It cannot. A session's two directions reach it on separate paths, in an order unrelated to the serving stack's.
+1. **The recorder counts frames.** It cannot. A session's two directions reach it on separate paths, in an order unrelated to the serving stack's sealing. (RFC-0063 later required it to sequence inbound frames before the cluster reads them, which orders a request's inbound frames before its outbound ones but not the sealing counters.)
 2. **A private counter**, proven by the circuit. That gives `2^32` decryptions per logged ciphertext at the prover's choice, in exchange for nothing.
 3. **A nonce derived from `(request_id, direction, frame_index)`**, which the entry already holds. That is 13 bytes, more than a 96-bit CTR nonce even without `session_id[0..8]`, which per-session keys make unnecessary there. Hashing it would leave standard CTR and add SHA-256 work to the circuit.
 4. **Keeping 40 bytes, with three reserved bytes after `direction`.** That carries no counter, and adds a field whose only value is zero.

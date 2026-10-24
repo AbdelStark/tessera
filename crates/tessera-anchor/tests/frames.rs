@@ -6,8 +6,8 @@
 //! may fix a session's secrets and decrypt.
 
 use tessera_anchor::{
-    AnchorError, DigestLogEntry, Direction, FrameHeader, SealedFrame, Session, SessionOpenFrame,
-    TokenFrame,
+    AnchorError, DigestLogEntry, Direction, FrameHeader, RequestEndFrame, SealedFrame, Session,
+    SessionOpenFrame, TokenFrame,
 };
 use tessera_codec::error::ErrorCode;
 use tessera_codec::{DecodeLimits, Secret, decode, encode};
@@ -120,6 +120,29 @@ fn malformed_headers_and_frames_are_refused() {
         SessionOpenFrame::from_bytes(&[0u8; 53]),
         Err(AnchorError::Noncanonical)
     );
+    // RFC-0063's request-end frame: 28 bytes, its magic checked after its length.
+    let end = RequestEndFrame {
+        session_id: [0x33; 16],
+        request_id: u64::MAX - 1,
+    };
+    assert_eq!(RequestEndFrame::from_bytes(&end.to_bytes()), Ok(end));
+    assert_eq!(
+        RequestEndFrame::from_bytes(&[0u8; 28]),
+        Err(AnchorError::Magic)
+    );
+    assert_eq!(
+        RequestEndFrame::from_bytes(&end.to_bytes()[..27]),
+        Err(AnchorError::Truncated)
+    );
+    assert_eq!(
+        RequestEndFrame::from_bytes(&[end.to_bytes().as_slice(), &[0]].concat()),
+        Err(AnchorError::Noncanonical)
+    );
+    // A session-open frame is not a request end, whatever its length.
+    assert_eq!(
+        RequestEndFrame::from_bytes(&b"TSOP".repeat(7)),
+        Err(AnchorError::Magic)
+    );
     assert_eq!(AnchorError::Direction.code(), ErrorCode::CodecNoncanonical);
     assert_eq!(AnchorError::Truncated.code(), ErrorCode::CodecTruncated);
     assert_eq!(AnchorError::TooLong.code(), ErrorCode::CodecLimit);
@@ -144,8 +167,9 @@ fn log_entries_refuse_other_tags_and_directions() {
         decode::<DigestLogEntry>(&bytes, DecodeLimits::MESSAGE),
         Ok(entry)
     );
-    // Tag 4 is the first unknown variant; SessionCarry (RFC-0062) took tag 3.
-    bytes[0] = 4;
+    // Tag 5 is the first unknown variant: SessionCarry (RFC-0062) took tag 3, RequestEnd
+    // (RFC-0063) tag 4.
+    bytes[0] = 5;
     assert_eq!(
         decode::<DigestLogEntry>(&bytes, DecodeLimits::MESSAGE).map_err(|e| e.code),
         Err(ErrorCode::CodecNoncanonical)

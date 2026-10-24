@@ -229,16 +229,21 @@ def entries_of(period, first_seq, start):
     if period == 0:
         out.append(anchor.entry_open(seq, start + 1000, sid, kc))
         seq += 1
+        # Request 7: three inbound frames, then three outbound; it ends in the next period.
         for i in range(6):
             digest = hashlib.sha256(bytes([i])).digest()
-            out.append(anchor.entry_frame(seq, start + 1001 + i, sid, 7, i % 2, i // 2,
+            direction, index = (0, i) if i < 3 else (1, i - 3)
+            out.append(anchor.entry_frame(seq, start + 1001 + i, sid, 7, direction, index,
                                           22 + 4 * i, i, digest))
             seq += 1
     elif period == 1:
-        # Period 0's session is still open: the recorder carries it in first (RFC-0062), and it
+        # Period 0's session is still open: the recorder carries it in first (RFC-0062). Its
+        # request 7, whose frames all lie in period 0, ends here (RFC-0063), and the session
         # closes in this period.
         carried = bytes([0x30] * 16)
         out.append(anchor.entry_carry(seq, start, carried, bytes([1] * 32)))
+        seq += 1
+        out.append(anchor.entry_request_end(seq, start + 10, carried, 7))
         seq += 1
         out.append(anchor.entry_open(seq, start + 4999, sid, kc))
         seq += 1
@@ -246,6 +251,8 @@ def entries_of(period, first_seq, start):
             digest = hashlib.sha256(bytes([0x80 + i])).digest()
             out.append(anchor.entry_frame(seq, start + 5000 + i, sid, 9, 1, i, 26, i, digest))
             seq += 1
+        out.append(anchor.entry_request_end(seq, start + 5050, sid, 9))
+        seq += 1
         out.append(anchor.entry_close(seq, start + 5100, sid))
         seq += 1
         out.append(anchor.entry_close(seq, start + 5200, carried))

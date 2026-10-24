@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.4
-- Amended by: [RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies) ('Batching': a batch's temperature requests share one pinned sampler key), [RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log) ('Sample derivation': the manifest's signature first, then the sample from the period's verified log)
+- Amended by: [RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies) ('Batching': a batch's temperature requests share one pinned sampler key), [RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log) ('Sample derivation': the manifest's signature first, then the sample from the period's verified log), [RFC-0063](RFC-0063-request-boundaries.md#which-requests-a-period-draws-from) ('Sample derivation': the requests a period draws from, ended and unterminated, and their lengths)
 
 ## Summary
 
@@ -45,10 +45,10 @@ Rates are stratified by request length because proving cost rises with context (
 
 ### Sample derivation
 
-1. The recorder publishes `LogManifest` for the period ([RFC-0015](RFC-0015-transcript-anchor.md#log-format)). The verifier checks its signature under a pinned recorder key, then checks the period's log against it and keeps the verified copy, from which every later step reads the entries ([RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log)).
+1. The recorder publishes `LogManifest` for the period ([RFC-0015](RFC-0015-transcript-anchor.md#log-format)). The verifier checks its signature under a pinned recorder key, then checks the period's log against it and keeps the verified copy, from which every later step reads the entries ([RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log)). It derives no sample before the previous period's log is verified too ([RFC-0063](RFC-0063-request-boundaries.md#the-previous-periods-log)).
 2. The parties run the coin toss of [RFC-0014](RFC-0014-interaction-and-soundness.md#session-order-live-mode) over the manifest: the verifier commits to `s_V`, the prover reveals `s_P`, the verifier reveals `s_V`.
 3. `sample_seed = H("audit-sample", s_V ‖ s_P ‖ manifest_digest)`.
-4. Request `(session_id, request_id)` with total length `L` is selected iff `u64_le(H("audit-select", sample_seed ‖ session_id ‖ u64(request_id))[0..8]) < rate(bucket(L))`.
+4. Request `(session_id, request_id)`, a candidate of the period ([RFC-0063](RFC-0063-request-boundaries.md#which-requests-a-period-draws-from): it has a `RequestEnd` in the period, or a frame in the previous period and no end in either), with total length `L` over all its frames in the two periods, is selected iff `u64_le(H("audit-select", sample_seed ‖ session_id ‖ u64(request_id))[0..8]) < rate(bucket(L))`.
 5. The result is the public artifact:
 
 ```rust
@@ -100,7 +100,7 @@ The verifier side has an independent implementation used by `tessera-verify audi
 ### Invariants
 
 - **INV-AUD-1.** No sampling randomness exists before the manifest is signed.
-- **INV-AUD-2.** Selection is a deterministic function of `sample_seed`, the policy and the manifest's entries, read from the period's verified log.
+- **INV-AUD-2.** Selection is a deterministic function of `sample_seed`, the policy, and the entries of the manifest and of the period before it, read from their verified logs ([RFC-0063](RFC-0063-request-boundaries.md#which-requests-a-period-draws-from)).
 - **INV-AUD-3.** Each selected request appears in at most one accepted proof.
 
 ## Alternatives Considered

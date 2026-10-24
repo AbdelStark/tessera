@@ -282,6 +282,57 @@ impl SessionOpenFrame {
     }
 }
 
+/// The cleartext request-end frame (RFC-0063 'The request's end'): 28 bytes, its TCE encoding.
+/// The serving stack sends it on the outbound path after the request's last frame, in either
+/// direction, and the recorder logs it
+/// as [`crate::DigestLogEntry::RequestEnd`]. It marks where the request's frames stop, so a
+/// verifier can tell a whole request from a part of one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RequestEndFrame {
+    /// The session's identifier.
+    pub session_id: [u8; 16],
+    /// The request that ended.
+    pub request_id: u64,
+}
+
+impl RequestEndFrame {
+    /// The frame's magic, `TRQE`.
+    pub const MAGIC: [u8; 4] = *b"TRQE";
+    /// The frame's length in bytes.
+    pub const LEN: usize = 28;
+
+    /// The frame's 28 bytes: magic, session, `u64_le(request_id)`.
+    pub fn to_bytes(&self) -> [u8; Self::LEN] {
+        let mut out = [0u8; Self::LEN];
+        out[..4].copy_from_slice(&Self::MAGIC);
+        out[4..20].copy_from_slice(&self.session_id);
+        out[20..28].copy_from_slice(&self.request_id.to_le_bytes());
+        out
+    }
+
+    /// The frame encoded by `bytes`, exactly 28 of them.
+    ///
+    /// # Errors
+    /// [`AnchorError::Truncated`] or [`AnchorError::Noncanonical`] for fewer or more bytes, then
+    /// [`AnchorError::Magic`].
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, AnchorError> {
+        let bytes: &[u8; Self::LEN] = bytes
+            .try_into()
+            .map_err(|_| sized(bytes.len(), Self::LEN))?;
+        if bytes[..4] != Self::MAGIC {
+            return Err(AnchorError::Magic);
+        }
+        let mut session_id = [0; 16];
+        session_id.copy_from_slice(&bytes[4..20]);
+        let mut request_id = [0; 8];
+        request_id.copy_from_slice(&bytes[20..28]);
+        Ok(Self {
+            session_id,
+            request_id: u64::from_le_bytes(request_id),
+        })
+    }
+}
+
 /// A plaintext token frame (RFC-0015 'Frames'). Its tokens are secret-class (05 §3) and live in
 /// a [`Secret`]; Debug shows the identifiers and the token count only.
 pub struct TokenFrame {
