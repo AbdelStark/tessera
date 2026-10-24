@@ -16,6 +16,7 @@
 
 mod differential;
 mod stage;
+mod verified;
 
 use std::collections::BTreeMap;
 

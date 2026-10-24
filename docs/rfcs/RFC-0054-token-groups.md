@@ -262,6 +262,7 @@ pub struct GroupProof { pub roots: Vec<Fp2>, pub levels: Vec<SumcheckProof>, pub
   - A group's split mismatch is `TreeLevel { group: h, level: L_h, round: 0 }`, `L_h` the group's level count.
   - The merge's is the new `LeafMerge { round }` (`REJ-LEAF-MERGE`, exit 10).
   - The atom splits keep `Sumcheck { stage: 0, round: 0 }`.
+  - **Counts.** The grouping fixes how many groups `TreeProof` holds; each group's roots, levels, values and splits; and the table batch's roots and levels. Another count is `Reject(Malformed { artifact, code: ERR-CODEC-NONCANONICAL })`, `artifact` being `Round2Response` in live mode and `NiProof` otherwise, before any transcript work. The merge's rounds and evaluations are its own checks: `LeafMerge`.
   - Each reason names one check, and the first failing check in the order above is the one reported.
 
 ### Reduction stages

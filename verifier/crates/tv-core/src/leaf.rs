@@ -12,7 +12,11 @@
 //! message. Its result retains every outstanding key/value/multiplicity and forest claim.
 //! The driver must bind these through RFC-0045's lookup split, the gadget reductions and the
 //! openings. Passing these checks alone certifies no statement.
+//!
+//! A leaf stage in token groups (RFC-0054) runs through [`grouped::Stage`] instead, on the layouts
+//! of [`groups`].
 
+pub mod grouped;
 pub mod groups;
 mod model;
 pub mod split;
