@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
+- Amended by: [RFC-0057](RFC-0057-one-proof-unit.md) ('The descriptor': a proof is one unit, so `unit` is always 0)
 - Supersedes, on acceptance:
   - [RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests) 'Hash function and domains': the `commitment-id` domain; 'Column digests': what `commitment_id` binds;
   - [RFC-0011](RFC-0011-advice-commitment.md#column-digests-and-root) 'Column digests and root': the advice commitment's `commitment_id` and `AdviceCommitment.layout_digest`;
@@ -33,7 +34,7 @@ Two implementations that differ in `commitment_id` disagree on every column leaf
 
 The descriptor carries domain separation, not soundness. A root binds its columns through the hash's collision resistance whatever the chains start from. What `commitment_id` adds:
 
-- columns of different commitments start from different chains: advice of two proofs or of two proof units, ten weight matrices, two epochs;
+- columns of different commitments start from different chains: advice of two proofs, ten weight matrices, two epochs;
 - each chain is bound to the shape the verifier reads it with: `B`, the row count, the code;
 - both sides start from the same 32 bytes, which they compute independently.
 
@@ -45,7 +46,7 @@ The descriptor carries domain separation, not soundness. A root binds its column
 pub enum CommitmentDescriptor {          // TCE (RFC-0003): a u16 tag, then the fields in order
     Advice {
         statement_digest: Digest,        // H("statement", TCE(PublicStatement)) (RFC-0007)
-        unit: u32,                       // the proof unit, from 0 (RFC-0018 'Proof units')
+        unit: u32,                       // always 0: a proof is one unit (RFC-0057)
         layout: AdviceLayoutParams,      // the claim list's (RFC-0026)
         rows: u64,                       // the unit's non-zero rows, every segment's (RFC-0011)
     },
@@ -66,7 +67,7 @@ pub enum WeightMatrix { Embed, Q, K, V, O, Gate, Up, Down, LmHead, ChannelParams
 
 - **Advice.**
   - The statement digest binds the claim list, `R_W` and its epoch, the manifest and the batch. The layout, a function of the claim list and the batch descriptor (INV-PCS-1), follows from it.
-  - `unit` separates the advice commitments of one batch's proof units.
+  - `unit` is always 0 (RFC-0057). It keeps its place so that the descriptor's encoding, and every digest, is unchanged.
   - `layout` and `rows` state the code and the number of rows each column chain absorbs. The verifier derives the rows from the layout, never from the prover.
 - **Weights.**
   - `layout` holds the parameter set's `k_W`, rate, `P_W` and `B_W`.
@@ -112,7 +113,7 @@ A weight matrix now chains its columns over blocks of the parameter set's row bl
 ## Drawbacks
 
 - The advice descriptor depends on the statement, so the prover must fix the statement before the witness pass. It already does: the transcript starts from the statement digest, before `Round1`.
-- Proof units of a batch need their index in the descriptor. How `Round1` carries several units' commitments is [#132](https://github.com/AbdelStark/tessera/issues/132)'s.
+- A proof holds one unit (RFC-0057), so `Round1` carries one advice commitment and `unit` is 0.
 
 ## Migration / Rollout
 
@@ -125,7 +126,7 @@ v0.3, before the first commitment is computed (#102, #106, #109, #115, #116). Th
   - Both workspaces recompute each `commitment_id` from the oracle's bytes.
   - The commitments' own encodings check against the same bytes when #102 and #106 define the type.
 - **`layout_digest`.** A `Round1` whose `layout_digest` differs from the derived `commitment_id` is rejected with `Reject(StatementMismatch)` (#116, #128).
-- **Separation.** Advice commitments of two units, and weight matrices of two epochs, start their chains from different digests (#106, #102).
+- **Separation.** Advice commitments of two proofs, and weight matrices of two epochs, start their chains from different digests (#106, #102).
 
 ## Open Questions
 

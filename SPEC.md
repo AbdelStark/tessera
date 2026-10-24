@@ -97,6 +97,7 @@ Sub-10% overhead is an amortized property, reached by recording every request an
 | [RFC-0054](docs/rfcs/RFC-0054-token-groups.md) | Token groups: a leaf stage larger than memory proven group by group in memory, the table trees streamed without regeneration, and one merge sumcheck back to one point per tensor; two regenerations at any size (amends RFC-0008, RFC-0010, RFC-0014, RFC-0018, RFC-0020, RFC-0036) | v0.3 |
 | [RFC-0055](docs/rfcs/RFC-0055-windowed-stages.md) | Windowed rounds: a reduction stage larger than memory answers its first rounds from a grid accumulated in one pass and folds its tables in a second; two regenerations at any size, messages unchanged; the commitment report's stage tables and the cost model's stage plan (amends RFC-0006, RFC-0018, RFC-0020, RFC-0054) | v0.3 |
 | [RFC-0056](docs/rfcs/RFC-0056-native-working-sets.md) | Native relations in the working sets: the compiler's report counts the prover's native gadget relations; `SoftmaxRow`'s score instances proven from the INT8 queries and keys and the causal mask's closed form, never the score tensor; identical instances share their tables; a window per eight own variables; messages unchanged (amends RFC-0006, RFC-0018, RFC-0020, RFC-0055) | v0.3 |
+| [RFC-0057](docs/rfcs/RFC-0057-one-proof-unit.md) | One proof unit per proof: at the reference statement no budget needs layer-range units after token groups, windows and native working sets, and each unit only adds combined rows and a table side, a set of requests also a weight fold; a batch too large for one proof is several proofs, which nothing links; whole 405B requests fit one proof up to 64K tokens in memory at best and about 24K within the proof-size gate, longer ones and the 128K projections await #470 (amends RFC-0018, RFC-0031, RFC-0049, RFC-0054, RFC-0056, 08 §3 and §5) | v0.3 |
 
 All RFCs listed are Accepted; RFC-0021 is reserved for a draft. A decision changes only through a new RFC that supersedes it.
 
@@ -142,8 +143,8 @@ Full statements and resolution plans are in [00 §9](docs/spec/00-overview.md#9-
 | OQ-0014-1 | Live-session deadlines and retry policy | @AbdelStark | v1.0 |
 | OQ-0015-1 | Recorder placement when clients use TLS | @AbdelStark | Before the first bilateral pilot (v1.0) |
 | OQ-0017-1 | CDF-window predictor for bounded mode? | @AbdelStark | v0.4 fidelity study |
-| OQ-0018-1 | Streaming versus smaller proof units | @AbdelStark | v0.5 |
 | OQ-0019-1 | Route to mechanized verifier proofs | @AbdelStark | v1.1 planning |
+| OQ-0057-1 | Requests longer than one proof holds: chunks linked by their cached keys and values, or restated 128K targets ([#470](https://github.com/AbdelStark/tessera/issues/470)) | @AbdelStark | Before v1.0's 128K target |
 | OQ-0020-1 | B200 as reference hardware for v1.0 claims? | @AbdelStark | v0.5 |
 | OQ-SEC-1 | Post-quantum recorder signatures (ML-DSA-65)? | @AbdelStark | v1.0 |
 

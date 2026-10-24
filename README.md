@@ -9,7 +9,7 @@ for one exact-greedy request through NI and Live sessions. Tiny-model acceptance
 tests use `test-small/1`, which certifies nothing. The current protocol/1 path
 provides no zero knowledge. The [independent verifier CLI](docs/verifier/reference-cli.md)
 checks NI proofs against caller-owned statement and weight pins. Prover CLI
-orchestration and the proof-unit/pass planner remain separate milestones.
+orchestration and the pass planner remain separate milestones.
 
 ## Specification
 

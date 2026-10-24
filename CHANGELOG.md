@@ -946,6 +946,29 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- RFC-0057, accepted, proves a batch in one proof unit ([#456](https://github.com/AbdelStark/tessera/issues/456)):
+  - **The question.** RFC-0018 split a batch into proof units, sets of requests or layer ranges of one request, each with its own advice commitment, and linked a split request's boundary residuals. No document gave such a proof's messages, labels or checks. #456 asked which budgets still need units.
+  - **The answer.** None at the reference statement (405B, 16K tokens at 16K of context, `tessera-protocol/1`).
+    - **Memory.** Token groups, windows and RFC-0056's working sets meet every budget. The checkpoints, 136 GB, fit host RAM.
+    - **What units cost.** Each adds up to 1.14 GB of combined rows and a table side, and a set of requests adds a weight fold.
+    - **What units could not do.** Layer ranges small enough for 405B's largest reduction stage would number at least 33 to 60. Their combined rows alone, 38 to 68 GB, break the 4 GiB gate nine to sixteen times.
+  - **The decision.**
+    - A proof is one unit holding whole requests, as RFC-0036, RFC-0014 and RFC-0019 describe it. RFC-0031's `unit` is always 0.
+    - A batch too large for one proof is several proofs, which nothing links.
+    - The planner chooses token groups and windows, not units.
+    - No message, label, check or vector changes.
+  - **The limits it states.**
+    - **Memory.** A whole 405B request fits one proof up to 64K tokens at the cost model's 0.2 TB (`G = 2^{14}`), and about 32K if the multiplicity counters and the keys and values stay in HBM.
+    - **Proof size.** Within the gate, applied per proof, it fits up to about 24K tokens: `ModelAdviceLayout`'s rows give 2.26 GB of opened columns at 24,576 tokens.
+    - **The verifier.** Its 8 GiB message limit refuses a non-interactive proof of a whole request from about 46K tokens.
+  - **What it leaves open.** The corpus's 128K projections model a 16K-token chunk of a longer request whose earlier keys and values are cached. No document binds those to the tokens before them, so the 128K figures assume a statement that does not yet exist. [#470](https://github.com/AbdelStark/tessera/issues/470) and OQ-0057-1 own it. `tessera-protocol/2` keeps `g = 0` (OQ-0054-1), about 90 tokens per 405B proof at 1K.
+  - **The documents.**
+    - RFC-0018's sections that named units, RFC-0031, RFC-0049, RFC-0054's Alternative 3 and RFC-0056's batch form follow.
+    - 08 §3 notes the 128K assumption. 08 §5's opened columns become RFC-0011's 1.18 GB, so the proof is about 2.8 GB: within the gate, above the 2 GiB target.
+    - `SPEC.md` lists the RFC and OQ-0057-1, and drops OQ-0018-1.
+    - #132's unit criterion is withdrawn, and IDEA-0027 is killed.
+  - **Review.** An adversarial review recomputed every figure. It found the long-request and `/2` limits that a first draft's claim, that every memory budget was met, had missed.
+
 - RFC-0056, accepted, counts the prover's native relations in the reduction stages and proves `SoftmaxRow`'s score instances without the score tensor ([#458](https://github.com/AbdelStark/tessera/issues/458)):
   - **The gap.** The CPU prover composes native relations into stage 1, and the compiler's schedule held none of them, so RFC-0055 sized the stages without them:
     - the roots' coefficient products and padding checks;
