@@ -165,6 +165,17 @@ jobs:
         run: cargo nextest run -p tv-core --features test-params --lib --test claims_validation --locked
 
   # SC-4 (07 §4): every mutation of a valid tiny proof yields its predeclared verdict.
+  # The fuzz crate is its own workspace on its own toolchain: its format, lints and allocation
+  # tests, which no other job compiles (#481).
+  fuzz:
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
+    name: fuzz crate
+    uses: ./.github/workflows/fuzz.yml
+    with:
+      seconds: "1"
+      check_only: true
+
   tamper:
     needs: scope
     if: needs.scope.outputs.code == 'true'
@@ -231,27 +242,30 @@ jobs:
 
   test:
     name: test
-    needs: [scope, rust, tamper, manifest]
+    needs: [scope, rust, fuzz, tamper, manifest]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 1
     steps:
-      - name: Both workspaces, the tamper corpus and the run manifest passed, or only documentation changed
+      - name: Both workspaces, the fuzz crate, the tamper corpus and the run manifest passed, or only documentation changed
         env:
           SCOPE_RESULT: ${{ needs.scope.result }}
           CODE: ${{ needs.scope.outputs.code }}
           RESULT: ${{ needs.rust.result }}
+          FUZZ: ${{ needs.fuzz.result }}
           TAMPER: ${{ needs.tamper.result }}
           MANIFEST: ${{ needs.manifest.result }}
         run: |
           test "$SCOPE_RESULT" = success
           if [ "$CODE" = true ]; then
             test "$RESULT" = success
+            test "$FUZZ" = success
             test "$TAMPER" = success
             test "$MANIFEST" = success
           else
             test "$CODE" = false
             test "$RESULT" = skipped
+            test "$FUZZ" = skipped
             test "$TAMPER" = skipped
             test "$MANIFEST" = skipped
           fi
