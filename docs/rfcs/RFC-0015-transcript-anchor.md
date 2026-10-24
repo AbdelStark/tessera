@@ -156,7 +156,9 @@ Cost per token, both directions, is about 250 lookups and 1,000 committed bits, 
 `tessera recorder ref --listen ADDR --upstream ADDR --log-dir DIR --key FILE --period SECONDS` is a TCP proxy that forwards bytes unchanged, parses frames, appends entries, and at each period boundary writes a signed manifest.
 - **Store and forward.** In each direction it cuts frames out of the byte stream by their magic (`TSOP`, `TSFR`, `TRQE`). It forwards each frame once its entry is logged, so inbound frames are sequenced before the upstream reads them ([RFC-0063](RFC-0063-request-boundaries.md#inbound-before-outbound)). Bytes that start no frame are forwarded unlogged, and that direction is not parsed further.
 - **Sessions.** When a connection ends, it logs the close of every session seen on it.
-- **Periods.** At each boundary it writes `<first_seq>.tdl` (the period's log, [RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log)) and `<first_seq>.tlm` (the manifest's envelope) to `--log-dir`, then opens the next period with its carries. `<first_seq>` is twenty decimal digits.
+- **Periods.** At each boundary it writes `<start>.tdl` (the period's log, [RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log)) and `<start>.tlm` (the manifest's envelope) to `--log-dir`, then opens the next period with its carries.
+  - **Names.** `<start>` is the period's `period_start_ns` in twenty decimal digits. Starts strictly increase along the chain (RFC-0060), so each period has its own files, an empty one included, and they sort in chain order. A period's `first_seq` would not do: an empty period shares it with the next ([#512](https://github.com/AbdelStark/tessera/issues/512)).
+  - **Whole files.** Each file is written under a temporary name and renamed into place, the log before the manifest, so a `.tlm` that is visible has both files complete.
 - **The key.** `--key` holds the recorder's 32-byte Ed25519 seed and nothing else. Each run starts a new log, with a random `log_id`. It exists for tests, demonstrations and integration development; it is not a production recorder and does not satisfy A-ANCHOR-2 by itself.
 
 ### Prover pre-check
