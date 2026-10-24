@@ -6,6 +6,29 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- `tessera-anchor`'s log manifests, their chain and inclusion proofs ([#138](https://github.com/AbdelStark/tessera/issues/138)):
+  - **RFC-0060, 'Log Manifests, Their Chain and Inclusion Proofs'** (amends RFC-0015). It fixes what RFC-0015 left open:
+    - **A manifest's identity** is its envelope digest, which `prev_manifest` and a statement's `manifest_digest` hold.
+    - **The chain.** Consecutive manifests share their log's identifier and continue its entries and periods without gap or overlap. The first links to zero, from entry 0.
+    - **The tree** is RFC 9162's, `SHA-256("")` for an empty period, and inclusion proofs are RFC 9162's audit paths. On the wire a proof is `Vec<[u8; 32]>`, at most 64 digests, with its index and size taken from the entry and the manifest. That closes RFC-0043's deferral of the encoding.
+    - **Ed25519** is RFC 8032's, verified strictly, with a 32-byte key and a 64-byte signature. Scheme 1 and unknown schemes are refused.
+  - **`LogManifest`, `ManifestBody` and `SignatureEnvelope`** (schema `0x0402`). A manifest signs with the recorder's seed, held in a heap `Secret`, and checks itself in order:
+    - its scheme, then its key's and signature's lengths;
+    - its key identifier, then its pinning;
+    - its strict signature, then its period;
+    - its range of entries without overflow, and an empty period's root.
+
+    `verify_entry` checks an entry at its own `seq` against the manifest's root and size.
+  - **The chain checks.** `check_link` checks two consecutive manifests, and `check_chain` a log from its first, each reporting the first break.
+  - **`merkle`.** RFC 9162's root, audit paths and verification.
+  - **Tests and vectors.**
+    - The 98 RFC 6962 inclusion vectors of `spec/vectors/rfc6962/`.
+    - Proofs at random positions of random trees, checked also by the verifier's independent `tv-hash`.
+    - `spec/vectors/manifest/`, from an independent Python oracle with RFC 8032's reference Ed25519.
+    - Each strict Ed25519 rule alone: `S + L`, a small-order `R`, and a small-order key. The last two pass a lax verifier.
+    - Every refusal, alone.
+  - **Dependencies.** `ed25519-dalek` 2 joins the prover side. It is the crate the verifier's allowlist already names.
+
 - `tessera-anchor`'s frames and digest-log entries ([#137](https://github.com/AbdelStark/tessera/issues/137)):
   - **RFC-0059, 'Frame Headers, Nonces and the Session Counter'** (amends RFC-0015).
     - **The gap.** RFC-0015's CTR nonce used the frame's position in its session, which neither the frame's header nor its log entry carried. A verifier auditing a sampled request could not rebuild its counter blocks, and a prover-chosen counter would have given `2^32` decryptions of each logged frame.

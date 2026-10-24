@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0059](RFC-0059-frame-headers-and-nonces.md#verifier-check-2-amended) ('Anchor': `Frames` also covers a session's repeated counter, an impossible frame length, and a session-open entry after one of its frames)
+- Amended by: [RFC-0060](RFC-0060-log-manifests.md) (the inclusion proofs' encoding; `ManifestSignature` covers a manifest's other checks alone), [RFC-0059](RFC-0059-frame-headers-and-nonces.md#verifier-check-2-amended) ('Anchor': `Frames` also covers a session's repeated counter, an impossible frame length, and a session-open entry after one of its frames)
 - Supersedes, on acceptance:
   - [04 §2](../spec/04-error-model.md#2-verdicts) 'Verdicts': `ArtifactKind`, `PowPhase` and `AnchorFailure` are defined here, `ParamSetName` is RFC-0014's `ParamSetId`, and `Anchor`'s request is optional;
   - [RFC-0019](RFC-0019-verifier.md#check-order) 'Check order' step 1: which decoding failures reject;
@@ -35,7 +35,7 @@ RFC-0039 did the same for `StatementMismatch`.
 
 ## Non-Goals
 
-- The encoding of the anchor's inclusion proofs, which comes with the anchor's implementation.
+- The encoding of the anchor's inclusion proofs, which [RFC-0060](RFC-0060-log-manifests.md#the-tree-over-a-periods-entries) fixes: `Vec<[u8; 32]>`, at most 64 digests.
 
 ## Proposed Design
 
@@ -78,7 +78,8 @@ pub enum PowPhase { Seed, Queries }        // NiProof's seed_nonce, then its que
 
 ```rust
 pub enum AnchorFailure {
-    ManifestSignature,       // RFC-0015 check 1: the signature, its scheme or its key
+    ManifestSignature,       // RFC-0015 check 1: the signature, its scheme or its key, or the
+                             // manifest's other checks alone (RFC-0060 'The chain')
     Inclusion,               // check 2: an entry's inclusion proof against entries_root
     Frames,                  // check 2: a request's frames, not contiguous from 0 or not its lengths;
                              // a counter repeated in the session, an impossible length, or the

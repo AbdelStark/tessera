@@ -19,24 +19,52 @@ const KEY_LABEL: &[u8] = b"tessera-anchor-key/v1";
 /// The label of the sampler commitment (RFC-0015 'Frames').
 const SAMPLER_LABEL: &[u8] = b"tessera-sampler-key/v1";
 
-/// Sixteen secret bytes on the heap: moving the value moves a pointer and leaves no copy of the
-/// bytes behind (OBS-2). Zeroized through its [`Secret`].
-pub struct HeapKey(Box<[u8; 16]>);
+/// `N` secret bytes on the heap, 16 for an AES key or a salt and 32 for an Ed25519 seed: moving
+/// the value moves a pointer and leaves no copy of the bytes behind (OBS-2). Zeroized through its
+/// [`Secret`].
+pub struct HeapKey<const N: usize = 16>(Box<[u8; N]>);
 
-impl HeapKey {
+impl<const N: usize> HeapKey<N> {
     fn zeroed() -> Self {
-        Self(Box::new([0; 16]))
+        Self(Box::new([0; N]))
+    }
+
+    /// The key in `bytes`, already on the heap: the box moves, and no byte is copied.
+    pub fn from_box(bytes: Box<[u8; N]>) -> Self {
+        Self(bytes)
+    }
+
+    /// `N` bytes from the operating system's generator, in a [`Secret`].
+    ///
+    /// # Errors
+    /// [`AnchorError::Random`] when the generator fails.
+    #[allow(clippy::disallowed_methods)]
+    pub fn generate() -> Result<Secret<Self>, AnchorError> {
+        let mut key = Secret::new(Self::zeroed());
+        getrandom::fill(&mut key.expose_secret_mut().0[..]).map_err(|_| AnchorError::Random)?;
+        Ok(key)
+    }
+
+    pub(crate) fn bytes(&self) -> &[u8; N] {
+        &self.0
     }
 }
 
-impl Zeroize for HeapKey {
+impl<const N: usize> Zeroize for HeapKey<N> {
     fn zeroize(&mut self) {
         self.0.as_mut().zeroize();
     }
 }
 
-impl Borrow<[u8; 16]> for HeapKey {
-    fn borrow(&self) -> &[u8; 16] {
+/// Cleared on drop even outside a [`Secret`] (OBS-2).
+impl<const N: usize> Drop for HeapKey<N> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl<const N: usize> Borrow<[u8; N]> for HeapKey<N> {
+    fn borrow(&self) -> &[u8; N] {
         &self.0
     }
 }

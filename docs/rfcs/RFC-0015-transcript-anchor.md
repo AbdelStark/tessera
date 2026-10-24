@@ -9,6 +9,9 @@
   - 'Log format': `Frame` entries carry `frame_seq`;
   - 'Circuits': public counter blocks and plaintext prefixes, and the opened sampler commitment;
   - 'Verifier checks': a session's open precedes its frames, and its counters are distinct.
+- Amended by: [RFC-0060](RFC-0060-log-manifests.md):
+  - 'Log format': a manifest's identity, `prev_manifest` and the chain, the tree over a period's entries, and inclusion proofs;
+  - 'Signatures': the envelope's lengths, strict Ed25519 and the key identifier's check.
 
 ## Summary
 
@@ -94,7 +97,13 @@ pub struct LogManifest {                                     // schema 0x0402
 }
 ```
 
-Entry leaves are `SHA-256(0x00 ‖ TCE(entry))`; nodes are `SHA-256(0x01 ‖ left ‖ right)`. A sampled request is accompanied in the proof batch by its entries and their inclusion proofs against `entries_root`. Session-open entries are included for every session in the batch.
+Entry leaves are `SHA-256(0x00 ‖ TCE(entry))`; nodes are `SHA-256(0x01 ‖ left ‖ right)`. [RFC-0060](RFC-0060-log-manifests.md) fixes the rest:
+- a manifest's identity, its envelope digest, which `prev_manifest` and a statement's `manifest_digest` hold;
+- the chain;
+- the tree, empty periods included;
+- the inclusion proofs.
+
+A sampled request is accompanied in the proof batch by its entries and their inclusion proofs against `entries_root`. Session-open entries are included for every session in the batch.
 
 ### Signatures
 
@@ -103,7 +112,7 @@ pub struct SignatureEnvelope { pub scheme: u16 /* 0 = Ed25519 (RFC 8032); 1 = ML
                                pub public_key: Bytes, pub signature: Bytes }
 ```
 
-The signed message is `"tessera-manifest/v1" ‖ TCE(manifest without signature)`. Verifiers pin recorder public keys out of band (`--recorder-key`). Scheme 1 is reserved and rejected by v1 verifiers (OQ-SEC-1).
+The signed message is `"tessera-manifest/v1" ‖ TCE(manifest without signature)`. [RFC-0060](RFC-0060-log-manifests.md#signatures) fixes the envelope's lengths (a 32-byte key, a 64-byte signature), strict Ed25519 verification and the check of `recorder_key_id`. Verifiers pin recorder public keys out of band (`--recorder-key`). Scheme 1 is reserved and rejected by v1 verifiers (OQ-SEC-1).
 
 ### Circuits
 

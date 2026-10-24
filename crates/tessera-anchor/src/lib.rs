@@ -14,17 +14,26 @@
 //!   caller, so a session never reuses a nonce (INV-ANC-3). [`key_commitment`] and
 //!   [`sampler_commitment`] are the commitments.
 //! - [`DigestLogEntry`], the recorder's entries (schema `0x0401`).
+//! - [`LogManifest`] (schema `0x0402`), with RFC-0060's identity, strict Ed25519 signatures and
+//!   chain ([`check_link`], [`check_chain`]), and [`merkle`], RFC 9162's tree over a period's
+//!   entries and its inclusion proofs.
 //!
-//! Manifests and their signatures (#138) and the reference recorder (#139) come next.
+//! The reference recorder (#139) comes next.
 
 #![forbid(unsafe_code)]
 
 mod frame;
 mod log;
+mod manifest;
+pub mod merkle;
 mod session;
 #[cfg(test)]
 mod vectors;
 
 pub use frame::{AnchorError, Direction, FrameHeader, SealedFrame, SessionOpenFrame, TokenFrame};
 pub use log::DigestLogEntry;
+pub use manifest::{
+    ChainError, EntryError, LinkError, LogManifest, ManifestBody, ManifestError, SignatureEnvelope,
+    check_chain, check_link, key_id, public_key,
+};
 pub use session::{HeapKey, Session, SessionKeys, key_commitment, sampler_commitment};
