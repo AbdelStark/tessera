@@ -373,6 +373,7 @@ fn inputs_that_cannot_give_the_sample_are_refused_with_their_code() {
         ),
         ("batch-bounds", POLICY.replace("262144", "32767")),
         ("schema", POLICY.replace("audit-policy/1", "audit-policy/2")),
+        ("params-empty", POLICY.replace("\"live-64/1\"", "\"\"")),
     ] {
         let path = dir.join(format!("{name}.json"));
         fs::write(&path, text).expect("a policy");
@@ -589,6 +590,16 @@ fn zero_length_periods_are_passed_through_never_sampled_or_drawn_from() {
     assert_eq!(run(&p1x_tlm, d1, Some((t0, d0)), &[&x_tlm]), usage);
     // W between, of zero length but with an entry.
     assert_eq!(run(&p1w_tlm, d1, Some((t0, d0)), &[&w_tlm]), usage);
+    // A period that names no previous manifest but does not start at `seq` 0 is not the log's
+    // first: it needs its previous period.
+    let late = sign(ManifestBody {
+        first_seq: 5,
+        entry_count: 0,
+        entries_root: tessera_anchor::merkle::root(&[]),
+        ..base.clone()
+    });
+    let late_tlm = write("late.tlm", &late);
+    assert_eq!(run(&late_tlm, &empty_log, None, &[]), usage);
     let _ = fs::remove_dir_all(&dir);
 }
 
