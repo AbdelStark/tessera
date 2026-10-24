@@ -10,6 +10,7 @@
   - [RFC-0043](RFC-0043-rejection-payloads.md) 'Non-Goals' and 'Anchor': the inclusion proofs' encoding, and the rejection of a manifest's own checks.
 - Scope: what a manifest is and what makes one valid. The recorder that writes manifests is [#139](https://github.com/AbdelStark/tessera/issues/139)'s, and where the verifier requires a chain of them is [#150](https://github.com/AbdelStark/tessera/issues/150)'s and [#498](https://github.com/AbdelStark/tessera/issues/498)'s.
 - Origin: [#138](https://github.com/AbdelStark/tessera/issues/138)
+- Amended by: [RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log) ('Scope'). A statement needs no chain of manifests, since each period's log carries its open sessions. The audit's coverage does: the verifier links every manifest it receives to its predecessor and reports gaps as unaudited periods.
 
 ## Summary
 

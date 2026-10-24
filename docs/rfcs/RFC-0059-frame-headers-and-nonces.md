@@ -13,6 +13,7 @@
   - [RFC-0043](RFC-0043-rejection-payloads.md#anchor) 'Anchor': `Frames` covers a session's repeated counter and a session-open entry after its frames.
 - Origin: [#137](https://github.com/AbdelStark/tessera/issues/137)
 - Amended by: [RFC-0061](RFC-0061-sampling-randomness.md): a session commits no sampler key. The session-open frame is 52 bytes and its entry drops `sampler_commitment`; the circuits open the sampler key against the commitment the verifier pins.
+- Amended by: [RFC-0062](RFC-0062-period-log-sessions.md): 'Session identity' and 'Verifier check 2, amended': the session rules over the period's log settle what this RFC left to #498, and fix which request and kind a break names.
 
 ## Summary
 
@@ -125,14 +126,14 @@ sampler_commitment = SHA-256( "tessera-sampler-key/v1" ‖ K_p ‖ salt   )     
 ### Session identity
 
 - **The identifier.** A session's `session_id` is 16 bytes drawn from the operating system's generator at session open, with its secrets. The reference cipher takes none from its caller. Its first eight bytes, which the counter blocks carry, repeat across `N` sessions with probability below `N^2/2^65`.
-- **What the verifier checks.** A session's `SessionOpen` entry in the batch has a lower `seq` than every frame of the session in the batch (INV-ANC-2, check 2 below). This is what a batch's own entries can show.
-- **What this RFC does not settle.** The rest is #498's:
+- **What the verifier checks.** As this RFC had it, a session's `SessionOpen` entry in the batch has a lower `seq` than every frame of the session in the batch (INV-ANC-2, check 2 below), which is what a batch's own entries can show. [RFC-0062](RFC-0062-period-log-sessions.md#the-session-rules) reads it over the period's log, with carries.
+- **What this RFC did not settle,** and [RFC-0062](RFC-0062-period-log-sessions.md#the-session-rules) does, over the period's log:
   - a session with no open, or with several;
   - two frames with one `frame_index`;
   - a session whose open is in an earlier period's manifest;
   - what the recorder does with any of these.
 
-  Those need rules over the whole log, which RFC-0016's selection already gives the verifier. This RFC makes no recorder rule: a rule that dropped frames would let them be served without being logged.
+  Those need rules over the whole log, which RFC-0016's selection already gives the verifier. Neither RFC makes a recorder rule that drops anything: one that dropped frames would let them be served without being logged. RFC-0062's carry entries only add to the log.
 
 ### The circuits
 
@@ -168,6 +169,8 @@ To RFC-0015's check 2 add:
 - a session's `SessionOpen` entry has a lower `seq` than each of the session's frames in the batch.
 
 A failure is `Reject(Anchor { request_id, kind: Frames })` ([RFC-0043](RFC-0043-rejection-payloads.md#anchor)). The verifier checks requests in `statement.batch` order, as RFC-0043 says. It names the first request whose own frames break a rule, a counter counting as repeated when an earlier request of the session, or an earlier frame of this one, already used it. Of two requests sharing a counter, the later one in the batch is named. The amended check is #150's.
+
+[RFC-0062](RFC-0062-period-log-sessions.md#the-session-rules) supersedes, in this section, the third item of the list (the open before the session's frames, now its rule 1 and `Session`) and this paragraph's naming sentences. Distinct counters hold over all the session's frames in the period, and a session that breaks a rule names the first request of the batch in it.
 
 ### The reference cipher
 

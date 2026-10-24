@@ -48,7 +48,7 @@ pub enum StatementField {                    // RFC-0039: one variant per check,
 
 pub struct ArtifactKind(pub SchemaId);       // RFC-0043: the prover's artifact that failed to decode, 03 §5
 pub enum PowPhase { Seed, Queries }          // RFC-0043: NiProof's seed_nonce, then its query_nonce
-pub enum AnchorFailure { ManifestSignature, Inclusion, Frames, SamplerKey }   // RFC-0043: RFC-0015's checks 1 and 2; SamplerKey from RFC-0061
+pub enum AnchorFailure { ManifestSignature, Inclusion, Frames, SamplerKey, Session }   // RFC-0043: RFC-0015's checks 1 and 2; SamplerKey from RFC-0061; Inclusion retired and Session added by RFC-0062
 ```
 
 [RFC-0043](../rfcs/RFC-0043-rejection-payloads.md) defines the other payloads. `Malformed` names an artifact the prover sends; one of the verifier's own inputs that fails to decode is `Inconclusive(ERR-CODEC-*)`. `Anchor` names no request for a manifest-level failure. `Params` holds RFC-0014's `ParamSetId`.
@@ -70,7 +70,7 @@ Codes are stable tier-A identifiers ([02 §1](02-public-api.md#1-stability-tiers
 | `ERR-CODEC-VERSION` | Input | Unsupported schema or protocol version | Codec | 65 |
 | `ERR-CODEC-NONCANONICAL` | Input | Non-canonical field element, trailing bytes, invalid tag, non-minimal length | Codec | 65 |
 | `ERR-CODEC-TRUNCATED` | Input | Input ended inside a value | Codec | 65 |
-| `ERR-CODEC-DIGEST` | Input | Envelope digest does not match payload | Codec | 65 |
+| `ERR-CODEC-DIGEST` | Input | Envelope digest does not match payload; or a period's log does not match its manifest ([RFC-0062](../rfcs/RFC-0062-period-log-sessions.md#the-periods-log)). The checks run in order: the count, then each `seq`, then the root. The offset is in bytes of the concatenated entries: the log's end for the count or the root, the wrong entry's start for a `seq` | Codec | 65 |
 | `ERR-CODEC-LIMIT` | Input | A length exceeds the configured resource limit, or a value exceeds a bound its schema states | Codec | 65 |
 | `ERR-QUANT-ARCH` | Model | Checkpoint or integer model outside `ArchSpec` support, or inconsistent with its architecture | Front-end, compiler | 65 |
 | `ERR-QUANT-CALIB` | Model | Calibration produced non-finite or degenerate statistics, or its data failed a hygiene check: too few usable documents, a malformed file, or a document shared with evaluation data | Front-end | 20 |

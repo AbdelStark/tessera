@@ -102,6 +102,18 @@ fn every_session_matches_the_independent_oracle() {
             );
             frames += 1;
         }
+        let entry = &s["carry_entry"];
+        let carried = DigestLogEntry::SessionCarry {
+            seq: number(&entry["seq"]),
+            t_ns: number(&entry["t_ns"]),
+            session_id: session.session_id(),
+            key_commitment: open.key_commitment,
+        };
+        assert_eq!(encode(&carried), hex(&entry["tce"]));
+        assert_eq!(
+            decode::<DigestLogEntry>(&hex(&entry["tce"]), DecodeLimits::MESSAGE),
+            Ok(carried)
+        );
         let entry = &s["close_entry"];
         let closed = DigestLogEntry::SessionClose {
             seq: number(&entry["seq"]),

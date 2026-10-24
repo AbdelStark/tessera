@@ -17,6 +17,7 @@
   - [06 §5](../spec/06-security.md#5-threats-and-mitigations) (the covert-channel row, and a row for learning the stream) and 06 §6 (the hash assumptions);
   - [RFC-0015](RFC-0015-transcript-anchor.md#verifier-checks) 'Verifier checks', the note on check 4.
 - Origin: [#497](https://github.com/AbdelStark/tessera/issues/497)
+- Amended by: [RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log) ('Which pin applies': a request's frames are its frames in the period's verified log)
 
 ## Summary
 
@@ -152,7 +153,7 @@ u_t   = u32_le( AES-128_K( u64_le(class) ‖ u32_le(t) ‖ 0^4 )[0..4] )
 
 ### Which pin applies
 
-- **Per request.** Request `r`'s pin is the one whose window contains the earliest `t_ns` among `r`'s frame entries in the batch, `In` and `Out` alike. Every frame of `r` in the batch must have `t_ns < from_ns + W + G` for that pin.
+- **Per request.** Request `r`'s pin is the one whose window contains the earliest `t_ns` among `r`'s frames in the period's verified log, `In` and `Out` alike ([RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log)). Every frame of `r` there must have `t_ns < from_ns + W + G` for that pin.
 - **Why the containment.** A request that took its pin from one early frame could have that frame logged long before the prompt, in any window: an empty `In` frame 0 opened in advance, with the prompt sent later as frame 1. Requiring every frame within the window and its grace leaves such a frame no use outside the grace.
 - **Per batch.** A batch's temperature requests share one pin, since the circuit opens one key. The prover's batching (RFC-0016) packs requests by pin before it packs them by tokens.
 - **The check.** It runs in RFC-0015 check 2, after a request's frames, when the statement's predictor decodes with temperature. The result is `Reject(Anchor { request_id: Some(r), kind: SamplerKey })` when any of these holds:
@@ -162,7 +163,7 @@ u_t   = u32_le( AES-128_K( u64_le(class) ‖ u32_le(t) ‖ 0^4 )[0..4] )
 
   The verifier checks the requests in `statement.batch` order, so the first such request is named. A greedy statement needs no pin. The rejection mirrors an unpinned recorder key: the verifier never accepted the key the proof would need.
 - **A request that falls within no pin** cannot be proven. A sampled one is the prover's failure in the audit report (RFC-0016): `Rejected` with `SamplerKey` if a proof includes it, `Unproven(DeadlineMissed)` if none does. The prover sets each pin's start, so a request that straddles a rotation by more than `G`, or is served in a gap between windows, is not an excuse.
-- **Duplicates.** Containment counts the frames the batch supplies. Until #498 refuses two frames with one `frame_index`, a prover holding two copies of a frame chooses between them at proof time, within the same window and grace.
+- **Duplicates.** Containment counts the request's frames in the period's log, and RFC-0062's rule 2 refuses two frames at one position, so a prover holds no second copy to choose.
 - **RFC-0043.** `AnchorFailure` gains `SamplerKey`, tag 3.
 
 ### Sessions

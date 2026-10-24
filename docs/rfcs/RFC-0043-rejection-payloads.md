@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0060](RFC-0060-log-manifests.md) (the inclusion proofs' encoding; `ManifestSignature` covers a manifest's other checks alone), [RFC-0059](RFC-0059-frame-headers-and-nonces.md#verifier-check-2-amended) ('Anchor': `Frames` also covers a session's repeated counter, an impossible frame length, and a session-open entry after one of its frames), [RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies) ('Anchor': `SamplerKey`)
+- Amended by: [RFC-0060](RFC-0060-log-manifests.md) (the inclusion proofs' encoding; `ManifestSignature` covers a manifest's other checks alone), [RFC-0059](RFC-0059-frame-headers-and-nonces.md#verifier-check-2-amended) ('Anchor': `Frames` also covers a session's repeated counter, an impossible frame length, and a session-open entry after one of its frames), [RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies) ('Anchor': `SamplerKey`), [RFC-0062](RFC-0062-period-log-sessions.md#the-session-rules) ('Malformed': no entries come with a batch; 'Anchor': `Inclusion` is retired, `Frames` covers duplicate positions and counters in the period, and `Session` is new)
 - Supersedes, on acceptance:
   - [04 §2](../spec/04-error-model.md#2-verdicts) 'Verdicts': `ArtifactKind`, `PowPhase` and `AnchorFailure` are defined here, `ParamSetName` is RFC-0014's `ParamSetId`, and `Anchor`'s request is optional;
   - [RFC-0019](RFC-0019-verifier.md#check-order) 'Check order' step 1: which decoding failures reject;
@@ -49,10 +49,11 @@ pub struct ArtifactKind(pub SchemaId);     // the artifact's schema id, 03 §5
 
 - **The artifacts.** `Malformed` names the prover's artifacts, whose bytes the verifier decodes:
   - `ProverSeedShare`, `Round1`, `Round2Response` and `Round3Response` in live mode;
-  - `NiProof` in non-interactive mode;
-  - the `DigestLogEntry`s that come with a proof's batch ([RFC-0015](RFC-0015-transcript-anchor.md#log-format)).
+  - `NiProof` in non-interactive mode.
+
+  A batch no longer carries `DigestLogEntry`s: the verifier reads them from the period's verified log, its own input ([RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log)).
 - **The code.** It is the decoder's `ERR-CODEC-*` code (RFC-0003). A `NiProof` that fails inside its `Round2Response` is `Malformed { artifact: NiProof, … }`: the artifact is the bytes the verifier was given.
-- **The verifier's own inputs.** The claim list, the manifest, the audit sample, the ledger, the weight commitment ([RFC-0040](RFC-0040-weight-commitment-artifacts.md)) and the recorder keys are not the prover's. One that fails to decode is `Inconclusive(ERR-CODEC-*)`: the verifier could not evaluate, and no proof was judged (04 §5).
+- **The verifier's own inputs.** The claim list, the manifest, the period's log ([RFC-0062](RFC-0062-period-log-sessions.md)), the audit sample, the ledger, the weight commitment ([RFC-0040](RFC-0040-weight-commitment-artifacts.md)) and the recorder keys are not the prover's. One that fails to decode is `Inconclusive(ERR-CODEC-*)`: the verifier could not evaluate, and no proof was judged (04 §5).
 
 Its TCE encoding is the schema id, a `u16`.
 
@@ -80,16 +81,22 @@ pub enum PowPhase { Seed, Queries }        // NiProof's seed_nonce, then its que
 pub enum AnchorFailure {
     ManifestSignature,       // RFC-0015 check 1: the signature, its scheme or its key, or the
                              // manifest's other checks alone (RFC-0060 'The chain')
-    Inclusion,               // check 2: an entry's inclusion proof against entries_root
-    Frames,                  // check 2: a request's frames, not contiguous from 0 or not its lengths;
-                             // a counter repeated in the session, an impossible length, or the
-                             // session's open after one of its frames (RFC-0059)
+    Inclusion,               // retired by RFC-0062: the period's log is the verifier's input, and
+                             // a log that fails its check is Inconclusive(ERR-CODEC-DIGEST). The
+                             // tag stays reserved.
+    Frames,                  // check 2: a request's frames, not contiguous from 0 or not its lengths,
+                             // or an impossible length (RFC-0059); two frames of the session in the
+                             // period at one position or with one counter, or lengths short of the
+                             // request's frames in the period (RFC-0062)
     SamplerKey,              // check 2: a request of a temperature batch that falls within no
                              // pin, or within another than the batch's first request's (RFC-0061)
+    Session,                 // check 2: the request's session has no open or carry in the period,
+                             // several, or one after another of its entries, its frames included
+                             // (RFC-0062; RFC-0059 called an open after a frame Frames)
 }
 ```
 
-- **The request.** `request_id` is `None` for `ManifestSignature`, which concerns the manifest, and the request's id otherwise. The verifier runs checks 1 and 2 in the order of RFC-0015. It checks the requests in `statement.batch` order, a request's session-open entry before its frames and its frames before its sampler key, and the first failure is the verdict.
+- **The request.** `request_id` is `None` for `ManifestSignature`, which concerns the manifest, and the request's id otherwise. The verifier runs checks 1 and 2 in the order of RFC-0015. It checks the requests in `statement.batch` order: a request's session's rules, then its own frames, then its sampler key. The first failure is the verdict, and a session that breaks a rule names the first request of the batch in it ([RFC-0062](RFC-0062-period-log-sessions.md#the-session-rules)).
 - **RFC-0015's other checks.**
   - **Check 3**, the batch's requests against the audit sample, is RFC-0016's (below).
   - **Check 4**, the circuits' public inputs, cannot fail on its own. The verifier itself makes the entries' digests, the commitments, the counter blocks and the plaintexts' prefixes the circuits' public inputs ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#the-circuits)). A proof computed against others fails its sumchecks.
@@ -122,11 +129,11 @@ v0.3, for #353: this RFC and its amendments. `tv-core`'s verdict types and drive
 ## Testing Strategy
 
 - **Every payload.** For each rejection, an input that breaks exactly its check is rejected with that payload (#128, #135):
-  - a truncated `Round2Response`, `NiProof` and `DigestLogEntry`, each with its schema id;
+  - a truncated `Round2Response` and `NiProof`, each with its schema id;
   - each nonce one bit short;
   - an unknown parameter set;
   - a bad manifest signature, with no request;
-  - a bad inclusion proof and a missing frame, with their request;
+  - a missing frame, with its request;
   - a request outside the sample, and a replayed one, both as `Batch`.
 - **The verifier's inputs.** A claim list, manifest and ledger that fail to decode are each `Inconclusive(ERR-CODEC-*)`.
 

@@ -144,10 +144,29 @@ fn log_entries_refuse_other_tags_and_directions() {
         decode::<DigestLogEntry>(&bytes, DecodeLimits::MESSAGE),
         Ok(entry)
     );
+    // Tag 4 is the first unknown variant; SessionCarry (RFC-0062) took tag 3.
+    bytes[0] = 4;
+    assert_eq!(
+        decode::<DigestLogEntry>(&bytes, DecodeLimits::MESSAGE).map_err(|e| e.code),
+        Err(ErrorCode::CodecNoncanonical)
+    );
+    // A frame's fields read as a carry leave bytes over: refused, not a carry.
     bytes[0] = 3;
     assert_eq!(
         decode::<DigestLogEntry>(&bytes, DecodeLimits::MESSAGE).map_err(|e| e.code),
         Err(ErrorCode::CodecNoncanonical)
+    );
+    let carry = DigestLogEntry::SessionCarry {
+        seq: 9,
+        t_ns: 10,
+        session_id: [0x11; 16],
+        key_commitment: [0x22; 32],
+    };
+    let carried = encode(&carry);
+    assert_eq!(carried.len(), 2 + 8 + 8 + 16 + 32);
+    assert_eq!(
+        decode::<DigestLogEntry>(&carried, DecodeLimits::MESSAGE),
+        Ok(carry)
     );
     let mut bytes = encode(&entry);
     bytes[42] = 2; // the direction's tag, after tag, seq, t_ns, session and request
