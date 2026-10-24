@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2 (CPU witness engine), v0.3 (CPU prover), v0.5 (GPU prover), v1.0 (405B)
-- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Kernels': constant subtrees in closed form; 'Testing Strategy'); [RFC-0054](RFC-0054-token-groups.md) ('Pass structure': P2, 'Leaf levels', 'Proof units' and 'Fusion' for the leaf stage; Alternative 2; OQ-0018-1; 'Drawbacks'; 'Testing Strategy'); [RFC-0055](RFC-0055-windowed-stages.md) ('Pass structure': P3 and P3b for a reduction stage larger than memory; 'Drawbacks'); [RFC-0056](RFC-0056-native-working-sets.md) ('Pass structure': what stage 1 holds for `SoftmaxRow`'s score instances)
+- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Kernels': constant subtrees in closed form; 'Testing Strategy'); [RFC-0054](RFC-0054-token-groups.md) ('Pass structure': P2, 'Leaf levels', 'Proof units' and 'Fusion' for the leaf stage; Alternative 2; OQ-0018-1; 'Drawbacks'; 'Testing Strategy'); [RFC-0055](RFC-0055-windowed-stages.md) ('Pass structure': P3 and P3b for a reduction stage larger than memory; 'Drawbacks'); [RFC-0056](RFC-0056-native-working-sets.md) ('Pass structure': what stage 1 holds for `SoftmaxRow`'s score instances); [RFC-0057](RFC-0057-one-proof-unit.md) ('Witness engine', 'Partitioning', 'Pass structure', 'Memory scheduler', 'Release schedule', 'Drawbacks', 'Testing Strategy': one proof unit per proof, no layer-range units)
 
 ## Summary
 
@@ -55,13 +55,13 @@ BLAKE3 streams produce replayable masks, the prover coin-toss share and the NI
 session id. Every mask coefficient uses rejection sampling. Completion and
 abort clear the witness and private seed/PRG state. The CPU backend (`rayon`
 1.x) is the reference for every kernel. The current driver composes one
-exact-greedy request; proof-unit/pass planning and protocol/2 are separate work.
+exact-greedy request; pass planning and protocol/2 are separate work.
 
 ### Witness engine
 
 - **Exact integer semantics** of [RFC-0005](RFC-0005-integer-model.md#integer-semantics). INT8 × INT8 GEMMs with INT32 accumulation use cuBLASLt from CUDA ≥ 12.8; integer accumulation is exact in any order, so results do not depend on the library's tiling or split-K choices (S2 bounds every accumulator below 2^31).
 - Gadget arithmetic (requantization, RoPE rotations, softmax maxima, brackets, AES, SHA-256) runs in custom kernels with 64-bit integer intermediates.
-- **Checkpoints.** Layer-boundary residuals (INT20 stored as INT32) are kept for the proof unit's tokens, so any layer's tensors can be regenerated without rerunning earlier layers.
+- **Checkpoints.** Layer-boundary residuals (INT20 stored as INT32) are kept for the proof's tokens, so any layer's tensors can be regenerated without rerunning earlier layers.
 - The CPU engine implements the same semantics with plain `i64` arithmetic and is the oracle for differential tests ([07 §5](../spec/07-testing-strategy.md#5-differential-and-conformance-tests)).
 
 ### Kernels
@@ -79,7 +79,7 @@ exact-greedy request; proof-unit/pass planning and protocol/2 are separate work.
 
 ### Partitioning
 
-A node with `G` GPUs (8 by default) splits the proof unit's layers into `G` contiguous ranges, one per GPU, matching the advice segments of [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout). Each GPU holds its layers' weights (405 GB / 8 ≈ 51 GB for 405B) and commits its own segment.
+A node with `G` GPUs (8 by default) splits the model's layers into `G` contiguous ranges, one per GPU, matching the advice segments of [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout). Each GPU holds its layers' weights (405 GB / 8 ≈ 51 GB for 405B) and commits its own segment.
 
 - Witness pass: pipeline-parallel over micro-batches of tokens; residuals move between GPUs over NVLink.
 - Stages and tree levels: each GPU computes its layers' contribution to every round; round messages are summed by an all-reduce of at most a few hundred `Fp2` elements per round (NCCL through `cudarc` 0.x, pinned in the lockfile).
@@ -87,7 +87,7 @@ A node with `G` GPUs (8 by default) splits the proof unit's layers into `G` cont
 
 ### Pass structure
 
-Every proof unit runs these passes, each regenerating the parts of the witness it needs from checkpoints:
+Every proof runs these passes, each regenerating the parts of the witness it needs from checkpoints:
 
 | Pass | When | Regenerates | Native cost |
 |---|---|---|---|
@@ -98,19 +98,19 @@ Every proof unit runs these passes, each regenerating the parts of the witness i
 
 | P4 opening | After the last stage | Every committed row, which it combines into the opening's combined rows ('Opening pass') | 1× forward, plus `c_r` per committed element |
 | P5 column answers | After the column queries | Every committed row, whose masked codeword it evaluates at the queried columns, hashing nothing | 1× forward, plus `c_a` per committed element |
-| W weight fold | Once per proof unit | Weights of the unit's layers | 0.24 GPU-s per 405B unit (source §5) |
+| W weight fold | Once per proof | Every weight | 0.24 GPU-s per 405B proof (source §5) |
 | WA weight column answers | After the column queries, beside P5 | Nothing: the queried columns of the epoch's stored codewords ([RFC-0012 'Column answers'](RFC-0012-weight-commitment.md#column-answers)) | None: 0.35 GB of reads per 405B proof at `live-64`, overlapped with P5 |
 
 `n_regen` in the cost model ([08 §1](../spec/08-performance-budget.md#1-cost-model)) counts the forward passes of P1 to P5, five. The model adds the merge's pass P2b when the leaf stage is grouped, and a fold pass P3b per window: one per stage larger than memory, and one per eight own variables its rounds bind of an instance ([RFC-0056](RFC-0056-native-working-sets.md#the-windows)).
 
-Stage 1's P3 also keeps what `SoftmaxRow`'s score instances need, which never hold the score tensor ([RFC-0056](RFC-0056-native-working-sets.md#score-instances-without-the-score-tensor)): the INT8 queries and keys and two row tables, about 45 GB for a 405B batch of 16K tokens and 60 GB at 128K of context. The merge's folds, the table trees' streamed rounds and the windows' folds, the combination of P4, the evaluation of P5 and the weight fold are the model's streaming, row-combination, column-answer and weight terms ([RFC-0020](RFC-0020-cost-model.md#executable-cost-model)). WA costs no GPU time, so the model has no term for it. A prover without the store evaluates the weight answers instead, which adds about 1.3 GPU-s per 405B unit to the weight term. The run manifest records every pass and its time.
+Stage 1's P3 also keeps what `SoftmaxRow`'s score instances need, which never hold the score tensor ([RFC-0056](RFC-0056-native-working-sets.md#score-instances-without-the-score-tensor)): the INT8 queries and keys and two row tables, about 45 GB for a 405B batch of 16K tokens and 60 GB at 128K of context. The merge's folds, the table trees' streamed rounds and the windows' folds, the combination of P4, the evaluation of P5 and the weight fold are the model's streaming, row-combination, column-answer and weight terms ([RFC-0020](RFC-0020-cost-model.md#executable-cost-model)). WA costs no GPU time, so the model has no term for it. A prover without the store evaluates the weight answers instead, which adds about 1.3 GPU-s per 405B proof to the weight term. The run manifest records every pass and its time.
 
 **Leaf levels** ([RFC-0054](RFC-0054-token-groups.md)).
-- **When it fits.** A leaf stage whose lookup trees and product forests fit in the unit's memory budget is proven in memory after one regeneration. Its table trees' levels that do not fit beside them stream: each round recomputes the table leaves from the tables' rows and the stored multiplicities, and regenerates nothing.
+- **When it fits.** A leaf stage whose lookup trees and product forests fit in the memory budget is proven in memory after one regeneration. Its table trees' levels that do not fit beside them stream: each round recomputes the table leaves from the tables' rows and the stored multiplicities, and regenerates nothing.
 - **When it does not.** A larger stage is proven in token groups, each in memory with its own challenges. One merge sumcheck brings their leaf claims back to one point per tensor. That is two regenerations whatever its size: the group pass and the merge's pass.
 - **What this section first said.** It streamed every level of one shared-challenge batch instead: `c(c + 1)/2` regeneration passes, 36 to 55 for a 405B 16K-token batch on 0.2 TB, which add 53 to 235 to `μ` (RFC-0054 'Motivation').
 
-**Proof units.** A batch is split into proof units: sets of requests (short context), or for long requests, layer ranges of one request. The leaf stage's memory no longer chooses them: token groups do (RFC-0054). Units of one batch share the seed and the stage structure but have their own advice commitments; boundary residuals of a split request are committed in both adjacent units and linked by an equality claim at a random point, as in the weight linking proof. The planner minimizes total time subject to the proof-size budget, because every unit adds combined rows.
+**Proof units** ([RFC-0057](RFC-0057-one-proof-unit.md)). A proof is one unit: the statement's batch, under one session seed and one advice commitment. This section first split a batch into proof units, sets of requests or layer ranges of one request, each with its own advice commitment. At the reference statement no budget needs them since token groups (RFC-0054), windows (RFC-0055) and RFC-0056's working sets, and each unit only added combined rows, a table side and, for a set of requests, a weight fold. A batch too large for one proof is proven as several proofs, which nothing links. A request longer than one proof holds, about 24K tokens at 405B within the proof-size gate and at best 64K within memory, needs [#470](https://github.com/AbdelStark/tessera/issues/470).
 
 **Fusion.** P2 builds each group's trees bottom-up as it regenerates their leaves; P3 regenerations are fused into P2b or P4 when the stage's point is known before the pass begins. A windowed stage's P3 and P3b fuse with neither, since each needs challenges the pass before it fixes (RFC-0055 'Pass structure'). The pass planner's objective is the fewest full-forward equivalents; v0.5 publishes the achieved count per context length.
 
@@ -130,7 +130,7 @@ The weights' codewords are fixed for an epoch, so their rows are answered from a
 
 ### Memory scheduler
 
-Budgets per device and host come from `ProverConfig.memory_budget`. The planner assigns tiles, unit sizes and streaming decisions before P1 so that no allocation fails mid-proof; an infeasible plan fails fast with `ERR-RES-MEMORY` before `Round1`.
+Budgets per device and host come from `ProverConfig.memory_budget`. The planner assigns tiles, token groups, windows and streaming decisions before P1 (RFC-0054, RFC-0055, RFC-0057) so that no allocation fails mid-proof; an infeasible plan fails fast with `ERR-RES-MEMORY` before `Round1`.
 
 - **The CPU reference's plan** (`tessera_prover::PassPlan`, `Prover::plan`) lists its passes and keeps its whole proof resident: every graph tensor's entries, lookups, table rows and advice entries.
   - **The charge.** It charges 64 bytes per cell and the weight commitment's own bytes. A counting allocator measures 32 to 34 bytes per cell over the conformance proofs, and a test holds each measured peak within the plan and above a quarter of it.
@@ -163,7 +163,7 @@ A release time therefore reveals only the public statement and which of the `L +
 
 - **Phase records.** The prover's own records of how long its phases took stay on its side of TB-1 ([06 §3](../spec/06-security.md#3-trust-boundaries)). These are the run manifest's `tessera_phase_seconds` and the unit costs derived from it. Published, they would undo the schedule.
 - **Verifier deadline.** A verifier's session deadline (`ERR-PROTO-TIMEOUT`) must exceed each message's last slot.
-- **Cost.** The schedule costs latency, not throughput: the node works on other proof units or batches while a message waits.
+- **Cost.** The schedule costs latency, not throughput: the node works on other proofs while a message waits.
 - **`tessera-protocol/1`** promises no hiding, and releases each message when it is ready.
 
 ### Determinism
@@ -182,7 +182,7 @@ A release time therefore reveals only the public statement and which of the `L +
 
 ## Drawbacks
 
-- A leaf stage larger than memory pays the merge's regeneration (RISK-10, RFC-0054), which at 405B means a 16K-token batch at every context length. A reduction stage larger than memory pays its window's fold pass (RFC-0055): two for `minimal`, one for `servable` at 405B and 16K tokens. Proof units add combined rows.
+- A leaf stage larger than memory pays the merge's regeneration (RISK-10, RFC-0054), which at 405B means a 16K-token batch at every context length. A reduction stage larger than memory pays its window's fold pass (RFC-0055): two for `minimal`, one for `servable` at 405B and 16K tokens.
 - Openings alone cost two of the five regenerations: P4 forms the combined rows, and P5 answers the column queries that depend on them.
 - Two backends double the kernel test burden.
 - The pass planner is a new optimization component with its own failure modes.
@@ -198,8 +198,7 @@ v0.2: CPU witness engine. v0.3: CPU prover backend with the pass structure and c
 - Backends: full proofs from CPU and GPU backends are byte-identical with pinned masking randomness.
 - Token groups and the table batch: RFC-0054 'Testing Strategy'. A tiny model under forced memory budgets takes 1, 2, 4 and 8 groups and verifies. Its table trees' streamed rounds give the in-memory messages byte for byte, and the pass counter counts P2 and P2b once each.
 - Constant subtrees: the lookup and tree provers' messages equal the dense provers' byte for byte when they evaluate the masked scores' subtrees in closed form, for sequence lengths that are and are not powers of two ([RFC-0034](RFC-0034-causal-blocks.md#testing-strategy)).
-- Column answers: for every evaluation the planner can pick, P5's symbols equal those of each row's whole codeword at the queried columns, repeated and boundary indices included; the pass counter counts P5 once per proof unit.
-- Proof units: splitting one request into two layer-range units yields a proof that verifies; tampering with a boundary residual in one unit is rejected by the linking claim.
+- Column answers: for every evaluation the planner can pick, P5's symbols equal those of each row's whole codeword at the queried columns, repeated and boundary indices included; the pass counter counts P5 once per proof.
 - Crash consistency: fault injection kills the prover after each phase; the resumed prover sends byte-identical messages.
 - Release schedule:
   - work that meets its budget is released at the budget;

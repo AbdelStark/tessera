@@ -146,7 +146,7 @@ Exit criteria per milestone are in [SPEC.md](../../SPEC.md#release-plan).
 | [#129](https://github.com/AbdelStark/tessera/issues/129) | test: add alternative-witness tests for every gadget | compiler | p0 | m | RFC-0009, s07-testing |
 | [#130](https://github.com/AbdelStark/tessera/issues/130) | prover: implement the CPU prover backend and protocol driver | prover | p0 | l | RFC-0018, s02-api |
 | [#131](https://github.com/AbdelStark/tessera/issues/131) | cli: implement the tessera-verify command-line interface | cli | p0 | m | s02-api, RFC-0019 |
-| [#132](https://github.com/AbdelStark/tessera/issues/132) | prover: implement the pass planner, proof units and pass counters | prover | p0 | l | RFC-0018, RFC-0020 |
+| [#132](https://github.com/AbdelStark/tessera/issues/132) | prover: implement the pass planner and pass counters | prover | p0 | l | RFC-0018, RFC-0020 |
 | [#133](https://github.com/AbdelStark/tessera/issues/133) | test: add the exact-mode end-to-end suite on tiny models | infra | p0 | m | s07-testing |
 | [#134](https://github.com/AbdelStark/tessera/issues/134) | prover: stream tree levels that exceed the memory budget | prover | p0 | m | RFC-0018, RFC-0010 |
 | [#135](https://github.com/AbdelStark/tessera/issues/135) | test: build and maintain the tamper corpus | verifier | p0 | m | s07-testing, RFC-0019 |

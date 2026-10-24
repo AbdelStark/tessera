@@ -52,6 +52,8 @@ Projected from the source (§8) with source unit costs and source commitment cou
 | 16K | 18.8 | 28.5 s | 1.8% | 83.3% |
 | 128K (stretch) | 88.7 | 28 min | 0.38% | 31.4% |
 
+The 128K row, and every projection below at 128K, assumes a 16K-token chunk of a longer request whose earlier keys and values are cached ([RFC-0056](../rfcs/RFC-0056-native-working-sets.md) 'The batch's form'). No document yet specifies how a proof binds those to the tokens before it ([#470](https://github.com/AbdelStark/tessera/issues/470), [RFC-0057](../rfcs/RFC-0057-one-proof-unit.md)). A whole 405B request fits one proof in memory up to 64K tokens at best, and within §5's gate, applied per proof, up to about 24K.
+
 These figures exclude witness regeneration. Corrected projections, computed with the executable model:
 
 - RISK-2's decompositions raise the linear-layer term at 1K from 2.0 to 4.4 at the `minimal` profile's count, and to 5.3 at the default `servable` profile's.
@@ -100,11 +102,11 @@ Meeting SC-2 at 1K therefore needs about 1.8 off `μ(1K)` for `minimal` and 3.7 
 
 | Quantity | Budget (16K tokens, 16K context, `live-64`) | Projection |
 |---|---|---|
-| Opened advice columns | `τ_A = 155` columns × column length × 8 bytes | about 0.73 GB with message width 2^22 |
+| Opened advice columns | `τ_A = 155` columns × column length × 8 bytes | about 1.18 GB: 953,580 non-zero rows ([RFC-0011](../rfcs/RFC-0011-advice-commitment.md#sizes-at-the-default-parameters-16k-tokens-16k-context-405b)) |
 | Combined rows | at most 17 rows (one per claim group plus proximity) × 2^22 × 16 bytes | at most 1.14 GB |
 | Sumcheck messages | about 6 stages × ≤ 50 rounds × degree ≤ 4 × 16 bytes × batch factors | < 10 MB |
 | Weight openings | `τ_W = 97` columns at most per matrix × 10 matrices, each column holding every non-zero data row and the 4,096 blinding rows | about 0.35 GB |
-| **Total proof** | **≤ 4 GiB (gate), 2 GiB (target)** | about 2 GB |
+| **Total proof** | **≤ 4 GiB (gate), 2 GiB (target)** | about 2.8 GB with the token groups' 120 MB: within the gate, above the target |
 | Verification time | ≤ 300 s on 32 cores | seconds to tens of seconds: column hashing, column combinations, combined-row re-encoding, table MLEs |
 | Dense table evaluation | ≤ 20 dense tables of ≤ 2^24 rows | about 2 s single-threaded |
 

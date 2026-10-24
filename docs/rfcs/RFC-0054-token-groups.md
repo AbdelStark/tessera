@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-23
 - Target milestone: v0.3 (CPU prover and verifier), v0.5 (GPU backend)
-- Amended by: [RFC-0055](RFC-0055-windowed-stages.md) ('Reduction stages', 'The executable model', 'Drawbacks', OQ-0054-2: the reduction stages larger than memory, in windowed rounds); [RFC-0056](RFC-0056-native-working-sets.md) ('Reduction stages': stage 1's score instances without the score tensor)
+- Amended by: [RFC-0057](RFC-0057-one-proof-unit.md) (Alternative 3: no proof units; the 128K figures assume [#470](https://github.com/AbdelStark/tessera/issues/470)'s chunks); [RFC-0055](RFC-0055-windowed-stages.md) ('Reduction stages', 'The executable model', 'Drawbacks', OQ-0054-2: the reduction stages larger than memory, in windowed rounds); [RFC-0056](RFC-0056-native-working-sets.md) ('Reduction stages': stage 1's score instances without the score tensor)
 - Supersedes:
   - [RFC-0018](RFC-0018-gpu-prover-runtime.md#pass-structure) 'Pass structure', 'Leaf levels' and 'Proof units' as they bear on the leaf stage, its P2 row, Alternative 2 and OQ-0018-1;
   - [RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels' and 'Sumcheck messages' for a leaf stage that is grouped: its instances, labels and order;
@@ -75,7 +75,7 @@ The prover's planner chooses the groups before P1, from public sizes and its mem
 
 The plan runs before P1 because the witness pass counts each group's column padding in row 0's multiplicity. The verifier reads the plan from `Round1` and checks only its bounds ('Messages').
 
-At 405B on 0.2 TB, a 16K-token batch takes `G` = 256, 512, 1,024 and 8,192 groups at 1K, 4K, 16K and 128K context.
+At 405B on 0.2 TB, a 16K-token batch takes `G` = 256, 512, 1,024 and 8,192 groups at 1K, 4K, 16K and 128K context. At 128K that batch is a chunk of a longer request, a statement [#470](https://github.com/AbdelStark/tessera/issues/470) has yet to define ([RFC-0057](RFC-0057-one-proof-unit.md)).
 
 ### Groups
 
@@ -268,7 +268,7 @@ At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` beco
 
 1. **RFC-0018 as written: one batch, every level streamed.** The table in 'Motivation' gives 36 to 55 regenerations. Rejected.
 2. **Shared challenges with windowed rounds.** One pass can answer `w` rounds of a level from a `3^w`-point grid, at about `(3/2)^w` times a round's arithmetic per leaf. Later windows are cheaper, since a pass folds the bound variables first. The windows cut a level's passes to two or three, but not below one per level. The leaf stage would still pay 13 to 19 regenerations at 405B, and at 16K a window's arithmetic outweighs the passes it saves. Rejected. It remains a fallback for the table batch, which regenerates nothing.
-3. **Smaller proof units.** Each unit carries every table tree and pays the table side once, and its own advice commitment adds combined rows ('Motivation'). Rejected for the leaf stage. RFC-0018 keeps units for other reasons.
+3. **Smaller proof units.** Each unit carries every table tree and pays the table side once, and its own advice commitment adds combined rows ('Motivation'). Rejected for the leaf stage. [RFC-0057](RFC-0057-one-proof-unit.md) drops units altogether.
 4. **Store the leaves, on NVMe or in host memory.** The keys alone take about 2.5 TB per batch at 4 bytes. An NVMe pass over them is slower than regenerating, and 1 TiB of host memory holds less than half. Rejected. Host memory still helps the merge's tables and its folded state at 128K.
 5. **Committed LogUp helper columns for the linear layers' lookups.** One sumcheck instead of a tree, but it commits every helper element at `c_c`, which costs more than the trees' arithmetic. And the zero-check over them streams as a tree's level does. Rejected.
 6. **Groups whose claims stay at `G` points through the stages.** This would save the merge's pass. But a weight's claims would land at `G` points, and each costs a pass over the resident weights. And each committed tensor's `G` claim groups cost a combined row each, 64 MB at `k = 2^22`. Rejected for the leaf stage. It is one of #452's candidates for the reduction stages.

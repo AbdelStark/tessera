@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-19
 - Target milestone: v0.3
-- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Non-Goals': opening `ChannelParams` across several claims in one pass)
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Non-Goals': opening `ChannelParams` across several claims in one pass); [RFC-0057](RFC-0057-one-proof-unit.md) ('Motivation': the weight read is per proof)
 - Supersedes, on acceptance:
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule) 'Transcript schedule' rows 3 and 7: where `pcs/weights/{T}/xi` is squeezed in `tessera-protocol/1`;
   - [RFC-0012](RFC-0012-weight-commitment.md#opening-by-the-folding-pass) 'Opening by the folding pass': the proximity row's coefficients and when the fold computes it;
@@ -16,7 +16,7 @@
 RFC-0012 promises one pass over the weights per proof, producing both the sumcheck folds and the opening's combined rows (INV-WC-4). The schedule broke the promise:
 - The folds run inside the `MatMulWeight` stage, which needs `W̃(ℓ, r_o, i)` at its point.
 - The proximity row `Σ_row eq(ξ*_T, row)·W_row` needs `ξ*_T`, which row 7 squeezed after every stage.
-- So the proximity row needed a second read of every weight, about 0.24 GPU-seconds per 405B proof unit (RFC-0018).
+- So the proximity row needed a second read of every weight, about 0.24 GPU-seconds per 405B proof (RFC-0018).
 
 This RFC squeezes each matrix's `ξ*_T` right after the seed. The fold pass then computes both rows. It also fixes which rows `ξ*_T` indexes, and the calculator's count for `tessera-protocol/1`.
 
