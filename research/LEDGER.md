@@ -7,8 +7,8 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 | Kind | Next identifier |
 |---|---|
 | Survey | SUR-0016 |
-| Idea | IDEA-0039 |
-| Experiment | EXP-0026 |
+| Idea | IDEA-0040 |
+| Experiment | EXP-0027 |
 
 ## Queue
 
