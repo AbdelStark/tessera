@@ -5,14 +5,16 @@
 //! The CPU backend computes the witness once, in P1, and keeps it resident: P2 to P5 read it
 //! back, and nothing streams. Its plan is therefore the passes it runs and the bytes it keeps
 //! resident, which must fit the budget before P1 starts, or the proof fails with
-//! `ERR-RES-MEMORY` before any commitment. A leaf stage larger than the budget needs RFC-0054's
-//! token groups, which this backend does not prove yet (#134), so its plan refuses such a proof.
+//! `ERR-RES-MEMORY` before any commitment. A leaf stage larger than the budget takes RFC-0054's
+//! token groups: the plan then holds one group's lookup trees at a time, and runs the merge's
+//! pass, P2b, after the group pass.
 //!
 //! The resident bytes are charged per cell, [`PassPlan::BYTES_PER_CELL`] each, beside the weight
 //! commitment's. A counting allocator measures 32 to 34 bytes per cell over every conformance
 //! proof, and `tests/cpu_api` holds every measured peak between the plan and a quarter of it.
 
 pub use tessera_codec::metrics::Pass;
+use tessera_protocol::LeafGroups;
 
 /// The cells a CPU proof keeps resident, each counted at its padded size.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -43,6 +45,7 @@ pub struct PassPlan {
     passes: Vec<Pass>,
     cells: Cells,
     weight_bytes: u64,
+    leaf_groups: LeafGroups,
 }
 
 impl PassPlan {
@@ -60,7 +63,25 @@ impl PassPlan {
             passes,
             cells,
             weight_bytes,
+            leaf_groups: LeafGroups::NONE,
         }
+    }
+
+    /// The plan with its leaf stage in the token groups `groups` (RFC-0054): `lookups`, its
+    /// largest group's lookup trees' leaves, in place of the stage's, and the merge's pass, P2b,
+    /// after the group pass.
+    pub(crate) fn grouped(mut self, groups: LeafGroups, lookups: u64) -> Self {
+        self.cells.lookups = lookups;
+        if let Some(at) = self.passes.iter().position(|&p| p == Pass::P2) {
+            self.passes.insert(at + 1, Pass::P2b);
+        }
+        self.leaf_groups = groups;
+        self
+    }
+
+    /// The leaf stage's token groups: [`LeafGroups::NONE`] for a stage proven in one batch.
+    pub fn leaf_groups(&self) -> LeafGroups {
+        self.leaf_groups
     }
 
     /// The passes, in the order the proof runs them.

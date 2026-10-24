@@ -533,20 +533,188 @@ fn the_pass_plan_bounds_the_measured_peak_and_the_budget_refuses_before_p1() {
             );
             let cells = passes.cells().total().unwrap();
             assert!(bytes >= cells * PassPlan::BYTES_PER_CELL);
-            for (budget, fits) in [(bytes - 1, false), (bytes, true)] {
+            let budgeted = |host: u64| {
                 let mut c = cfg(Mode::NonInteractive);
-                c.memory_budget.host = budget;
-                let result = Prover::new(&plan, &model, &mut state, c)
+                c.memory_budget.host = host;
+                c
+            };
+            // The plan's own budget proves the leaf stage in one batch.
+            let own = Prover::new(&plan, &model, &mut state, budgeted(bytes))
+                .unwrap()
+                .plan(&batch)
+                .unwrap();
+            assert_eq!(own, passes);
+            assert!(
+                Prover::new(&plan, &model, &mut state, budgeted(bytes))
                     .unwrap()
-                    .prove_non_interactive(&batch);
-                match fits {
-                    true => assert!(result.is_ok(), "{name}, n = {n}: the plan's own budget"),
-                    false => assert!(
-                        matches!(result, Err(ProverError::Resource(ErrorCode::ResMemory))),
-                        "{name}, n = {n}: one byte short"
-                    ),
-                }
-            }
+                    .prove_non_interactive(&batch)
+                    .is_ok(),
+                "{name}, n = {n}: the plan's own budget"
+            );
+            // One byte short, the leaf stage takes token groups (RFC-0054): the grouped plan
+            // fits, and the grouped proof's measured peak stays within it.
+            let grouped = Prover::new(&plan, &model, &mut state, budgeted(bytes - 1))
+                .unwrap()
+                .plan(&batch)
+                .unwrap();
+            assert_ne!(grouped.leaf_groups(), protocol::LeafGroups::NONE);
+            let grouped_bytes = grouped.resident_bytes().unwrap();
+            assert!(grouped_bytes < bytes);
+            let info = allocation_counter::measure(|| {
+                Prover::new(&plan, &model, &mut state, budgeted(bytes - 1))
+                    .unwrap()
+                    .prove_non_interactive(&batch)
+                    .unwrap();
+            });
+            assert!(
+                info.bytes_max <= grouped_bytes,
+                "{name}, n = {n}: measured {} bytes against a grouped plan of {grouped_bytes}",
+                info.bytes_max
+            );
+            // A budget no grouping fits refuses before P1.
+            let result = Prover::new(&plan, &model, &mut state, budgeted(1 << 20))
+                .unwrap()
+                .prove_non_interactive(&batch);
+            assert!(
+                matches!(result, Err(ProverError::Resource(ErrorCode::ResMemory))),
+                "{name}, n = {n}: no grouping fits"
+            );
         }
+    }
+}
+
+/// One live session between `prover` and the independent live verifier: its final verdict.
+fn live_verdict(
+    prover: &mut Prover<'_>,
+    batch: &ProofBatch,
+    mut verifier: tv_core::LiveVerifier,
+    groups: protocol::LeafGroups,
+) -> tv_core::Verdict {
+    let commit = verifier.start().unwrap();
+    let (round1, share) = prover
+        .start(batch, &producer(&commit.to_tce().unwrap()))
+        .unwrap();
+    assert_eq!(round1.leaf_groups, groups);
+    let limits = tv_codec::DecodeLimits::MESSAGE;
+    let round1 = tessera_codec::encode(&round1);
+    let round1 = tv_codec::decode(&round1, &limits, tv_core::protocol::Round1::decode).unwrap();
+    let share = tv_core::protocol::ProverSeedShare {
+        session_id: share.session_id,
+        share: share.share,
+    };
+    let reveal: protocol::SeedReveal = producer(
+        &verifier
+            .on_round1(&round1, &share)
+            .unwrap()
+            .to_tce()
+            .unwrap(),
+    );
+    let round2 = tessera_codec::encode(&prover.on_seed(&reveal).unwrap());
+    let round2 =
+        tv_codec::decode(&round2, &limits, tv_core::protocol::Round2Response::decode).unwrap();
+    let queries: protocol::ColumnQueries =
+        producer(&verifier.on_round2(&round2).unwrap().to_tce().unwrap());
+    let round3 = tessera_codec::encode(&prover.on_queries(&queries).unwrap());
+    let round3 =
+        tv_codec::decode(&round3, &limits, tv_core::protocol::Round3Response::decode).unwrap();
+    verifier.on_round3(&round3)
+}
+
+/// RFC-0054 'When groups apply': a budget the leaf stage in one batch exceeds takes the fewest
+/// token groups that fit, and the proof carries them. The independent verifier accepts each
+/// grouped proof, non-interactive and live, at its merged points ('Testing Strategy').
+#[test]
+fn public_cpu_api_groups_the_leaf_stage_under_a_forced_budget() {
+    let model = layered(bounded_model());
+    let (plan, batch, weights) = fixture(&model, 5, 4);
+    let (claims, statement, vcfg) = independent(&plan, &batch, &weights);
+    let certified = tv_core::params::ParamSet::accept(&claims.params).is_some();
+    let mut state = WeightCommitmentState::new(weights).unwrap();
+    let budgeted_in = |mode: Mode, host: u64| {
+        let mut c = cfg(mode);
+        c.memory_budget.host = host;
+        c
+    };
+    let budgeted = |host: u64| budgeted_in(Mode::NonInteractive, host);
+    let ungrouped = Prover::new(&plan, &model, &mut state, budgeted(64 << 30))
+        .unwrap()
+        .plan(&batch)
+        .unwrap();
+    assert_eq!(ungrouped.leaf_groups(), protocol::LeafGroups::NONE);
+    let mut budget = ungrouped.resident_bytes().unwrap();
+    for bits in 1..=3u8 {
+        let grouped = Prover::new(&plan, &model, &mut state, budgeted(budget - 1))
+            .unwrap()
+            .plan(&batch)
+            .unwrap();
+        let groups = grouped.leaf_groups();
+        // Layers first, the layer index's two bits, then tokens (RFC-0054 'Compute-bound groups').
+        let split = [(0, 1), (0, 2), (1, 2)][usize::from(bits) - 1];
+        assert_eq!((groups.token_bits, groups.layer_bits), split, "{groups:?}");
+        assert!(grouped.passes().contains(&tessera_prover::Pass::P2b));
+        let proof = Prover::new(&plan, &model, &mut state, budgeted(budget - 1))
+            .unwrap()
+            .prove_non_interactive(&batch)
+            .unwrap();
+        assert_eq!(proof.round1.leaf_groups, groups);
+        let trees = &proof.round2.trees;
+        assert_eq!(trees.groups.len(), 1 << bits);
+        assert!(proof.round2.logup.roots.is_empty() && !trees.table_roots.is_empty());
+        assert!(!trees.merge.rounds.is_empty());
+        let decoded = tv_codec::decode(
+            &tessera_codec::encode(&proof),
+            &tv_codec::DecodeLimits::MESSAGE,
+            tv_core::protocol::NiProof::decode,
+        )
+        .unwrap();
+        let verdict = tv_core::verify_non_interactive(&claims, &statement, &decoded, &vcfg);
+        if certified {
+            assert!(
+                matches!(verdict, tv_core::Verdict::Accept(_)),
+                "{verdict:?}"
+            );
+            let mut live = Prover::new(
+                &plan,
+                &model,
+                &mut state,
+                budgeted_in(Mode::Live, budget - 1),
+            )
+            .unwrap();
+            let verifier =
+                tv_core::LiveVerifier::new(claims.clone(), statement.clone(), vcfg.clone());
+            let verdict = live_verdict(&mut live, &batch, verifier, groups);
+            assert!(
+                matches!(verdict, tv_core::Verdict::Accept(_)),
+                "{verdict:?}"
+            );
+        } else {
+            // Without `tv-core/test-params`, `test-small` certifies nothing: CI's test-params
+            // step runs this test for acceptance.
+            assert!(
+                matches!(
+                    verdict,
+                    tv_core::Verdict::Reject(tv_core::RejectReason::Params { .. })
+                ),
+                "{verdict:?}"
+            );
+        }
+        // Recorded, on request, as the verifier's grouped driver fixture: public messages only.
+        if let Some(folder) = std::env::var_os("TESSERA_CAPTURE_GROUPED_FIXTURE") {
+            use tessera_codec::{envelope, schema};
+            let folder = PathBuf::from(folder).join(format!("g{bits}"));
+            fs::create_dir_all(&folder).unwrap();
+            let write = |name: &str, bytes: Vec<u8>| {
+                let path = folder.join(name);
+                assert!(!path.exists(), "the capture refuses to overwrite {path:?}");
+                fs::write(path, bytes).unwrap();
+            };
+            write(
+                "claims.tcl",
+                envelope::seal(&schema::CLAIM_LIST, &plan.claims),
+            );
+            write("weights.tce", tessera_codec::encode(&weights));
+            write("ni.tnp", envelope::seal(&schema::NI_PROOF, &proof));
+        }
+        budget = grouped.resident_bytes().unwrap();
     }
 }

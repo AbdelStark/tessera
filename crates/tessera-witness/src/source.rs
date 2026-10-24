@@ -83,6 +83,22 @@ impl<'a> Regenerator<'a> {
         Ok(source)
     }
 
+    /// The source of a grouped leaf stage (RFC-0054 'When groups apply'): each table of
+    /// `columns` counts, at row 0, the padding of every group's column, `columns` giving the
+    /// groups' entries summed, `Σ_h 2^{h_h}`, in place of the stage's one column.
+    ///
+    /// # Errors
+    ///
+    /// [`WitnessError::Usage`] for a table given twice. A column shorter than the table's
+    /// lookups is refused when its multiplicities are counted, `ERR-INTERNAL`.
+    pub fn with_grouped_columns(
+        mut self,
+        columns: Vec<(TableId, u64)>,
+    ) -> Result<Self, WitnessError> {
+        self.gadgets.group(columns)?;
+        Ok(self)
+    }
+
     /// The regenerator of `model` on `tokens`, on `engine`, the engine of `model`'s lowering for
     /// the tokens' positions, with the gadgets `selection` gives that lowering's nodes and the
     /// store `checkpoints` holds for the same model and tokens.
@@ -224,6 +240,22 @@ impl<'a> Resident<'a> {
         let mut source = Self::new(engine, runtime.selection(), model, witness)?;
         crate::runtime::configure(&source.structure, runtime, &mut source.gadgets)?;
         Ok(source)
+    }
+
+    /// The source of a grouped leaf stage (RFC-0054 'When groups apply'): each table of
+    /// `columns` counts, at row 0, the padding of every group's column, `columns` giving the
+    /// groups' entries summed, `Σ_h 2^{h_h}`, in place of the stage's one column.
+    ///
+    /// # Errors
+    ///
+    /// [`WitnessError::Usage`] for a table given twice. A column shorter than the table's
+    /// lookups is refused when its multiplicities are counted, `ERR-INTERNAL`.
+    pub fn with_grouped_columns(
+        mut self,
+        columns: Vec<(TableId, u64)>,
+    ) -> Result<Self, WitnessError> {
+        self.gadgets.group(columns)?;
+        Ok(self)
     }
 
     /// The source of `witness`, [`Engine::run`]'s on `engine` for `model`, with the gadgets
@@ -439,7 +471,7 @@ fn multiplicities(
         }
     }
     // Add the combined tail once, after both model and certificate requests (RFC-0045).
-    counts.finish().map(TileWitness::table)
+    counts.finish(gadgets.column(table)).map(TileWitness::table)
 }
 
 /// A single table pass retains Q/K once, then one scalar certificate row at a time.

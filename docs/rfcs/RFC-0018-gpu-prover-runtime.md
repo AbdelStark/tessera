@@ -134,7 +134,7 @@ Budgets per device and host come from `ProverConfig.memory_budget`. The planner 
 
 - **The CPU reference's plan** (`tessera_prover::PassPlan`, `Prover::plan`) lists its passes and keeps its whole proof resident: every graph tensor's entries, lookups, table rows and advice entries.
   - **The charge.** It charges 64 bytes per cell and the weight commitment's own bytes. A counting allocator measures 32 to 34 bytes per cell over the conformance proofs, and a test holds each measured peak within the plan and above a quarter of it.
-  - **The limit.** A proof whose plan exceeds the budget needs token groups (RFC-0054, #134), and fails before P1 until they land.
+  - **The limit.** A proof whose plan exceeds the budget takes token groups (RFC-0054): the plan then holds its largest group's lookup trees in place of the stage's, and runs the merge's pass, P2b, after P2. The fewest group bits that fit win. A proof that no grouping fits fails before P1 with `ERR-RES-MEMORY`.
 - **Pass counters.** The run manifest records every pass and its time as `tessera_passes_total{pass}` and `tessera_pass_seconds{pass}` ([05 §4](../spec/05-observability.md#4-metrics)).
 
 ### Crash consistency
