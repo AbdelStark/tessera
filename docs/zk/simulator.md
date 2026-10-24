@@ -302,6 +302,8 @@ So `ε_W ≤ 10·C(N, 2)·p^{-4} ≤ 2^{-230}` over the ten matrices at `N = 681
 
 **A text inconsistency.** RFC-0012's linking proof reserves four blinding rows at each end of an epoch, but its 'Failure modes' says two. R3's rows must be counted once.
 
+**Met.** [RFC-0064](../rfcs/RFC-0064-weight-linking-proof.md) specifies the difference opening as above. The difference row takes a blinding pair from each epoch: rows `B_W − 4` and `B_W − 3` of epoch `e`, and 0 and 1 of `e + 1`. The proximity rows take the next pair at each end. Those are the four rows at each end, counted once, and RFC-0012 'Failure modes' now says four.
+
 ## 7. OQ-0013-1: packing small mask rows
 
 Packing several masks in one row, each in its own aligned sub-block at a public offset `o`, behaves differently by mask kind:
@@ -335,7 +337,7 @@ So `ε_1 < 2^{-105}`, given R10's rank checks. These counts are projections from
 |---|---|---|---|
 | R1 | The proximity row's blinding pair is the fixed word, with coefficients `1` and `X` and no generator coefficient. This is soundness's choice, not zero knowledge's, which holds either way (§4.4) | RFC-0011 step 3, RFC-0012, RFC-0049 for `tessera-protocol/2`, against RFC-0013 'The proximity row' | Conflicting text; #394 |
 | R2 | For masked weights, the proximity generator's coefficients on blinding rows are independent uniform `Fp2`, or those rows are excluded with their own soundness argument | RFC-0012, RFC-0049; Draft RFC-0021's free-row stream meets it | Not met by the tensor generator; #394 |
-| R3 | The linking proof opens the difference of the two commitments, with the public claim 0, each keeping its own proximity row | RFC-0012 'Refresh and linking proof' | Not met: it reveals `W̃_T(ρ_T)`; [#485](https://github.com/AbdelStark/tessera/issues/485), and [#153](https://github.com/AbdelStark/tessera/issues/153) implements it |
+| R3 | The linking proof opens the difference of the two commitments, with the public claim 0, each keeping its own proximity row | [RFC-0064](../rfcs/RFC-0064-weight-linking-proof.md), superseding RFC-0012 'Refresh and linking proof' | Met in the specification by RFC-0064 ([#485](https://github.com/AbdelStark/tessera/issues/485)); [#153](https://github.com/AbdelStark/tessera/issues/153) implements it, with R3's test |
 | R4 | Each masking polynomial's `g_j` has its round's degree, the last round's raised degree included | RFC-0013 'Masked sumcheck' | Stated by this change |
 | R5 | INV-ZK-2 reads as a rank condition. Each mask, blinding row and masking polynomial has a designated revealed combination where it enters with an invertible block, and the joint coefficient matrix over the masks has full rank. Further uses are allowed where Lemmas 5 and 7 cover them | RFC-0013 'Invariants' | Literal one-use conflicts with the proximity row; #394 |
 | R6 | The weight budget never rolls back, and an aborted session burns what it reserved | RFC-0012 'Budget state machine' | Met by RFC-0012; #156 must preserve it |

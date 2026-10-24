@@ -5,6 +5,7 @@
 - Created: 2026-10-15
 - Target milestone: v0.3 (binding), v0.4 (hiding budget and refresh)
 - Amended by: [RFC-0026](RFC-0026-claim-list-layout.md) ('Layout': the fields of `WeightLayoutParams`), [RFC-0031](RFC-0031-commitment-id.md) ('Layout': each matrix's `commitment_id` and row block), [RFC-0040](RFC-0040-weight-commitment-artifacts.md) ('Layout': wide inputs, positions, committed rows and leaves; 'Budget state machine': the state's fields), [RFC-0049](RFC-0049-weight-proximity.md) ('Opening by the folding pass': the proximity row's coefficients and when the fold computes it), [RFC-0052](RFC-0052-channel-params-claims.md) ('Opening by the folding pass': opening several claims on `ChannelParams` in one pass)
+- Superseded in part by: [RFC-0064](RFC-0064-weight-linking-proof.md) ('Refresh and linking proof': the linking proof opens the difference of the two commitments; 'Failure modes': the link's four rows; 'Budget state machine': epoch `e + 1` starts with the link's rows and columns spent)
 
 ## Summary
 
@@ -110,6 +111,8 @@ Transitions, each persisted (fsync, atomic rename) before the corresponding mess
 
 ### Refresh and linking proof
 
+[RFC-0064](RFC-0064-weight-linking-proof.md) supersedes this section. Its linking proof opens the difference of the two commitments against the public claim 0, with a blinding pair from each epoch, and keeps each commitment's proximity row. It also defines the transcript, `τ_link`, the message and the verifier's checks. The text below, which opened each commitment at `ρ_T` and revealed `W̃_T(ρ_T)`, is kept for the record.
+
 1. Commit the same weights with a fresh `masks_seed` as epoch `e + 1`, root `R_W'`.
 2. Derive a random point `ρ_T` per matrix from a transcript over `(R_W, R_W', epoch)`.
 3. Open both commitments at `ρ_T` and show equal values. Each opening is one evaluation per matrix, with an evaluation and a proximity combined row, each blinded by an `Fp2` row: the last four blinding rows of epoch `e` and the first four of epoch `e + 1`, whose proofs then start at row 4.
@@ -132,7 +135,7 @@ pub struct WeightLinkProof { pub old_root: Digest, pub new_root: Digest, pub epo
 | Failure | Response |
 |---|---|
 | Budget exhausted | `ERR-WITNESS-BUDGET`; operator refreshes |
-| State file lost or corrupted | The prover refreshes before the next proof. The linking proof uses only the two blinding rows and the column headroom reserved for linking, so it stays within the hiding budget even though the lost state's exact contents are unknown |
+| State file lost or corrupted | The prover refreshes before the next proof. The linking proof uses only the four blinding rows and the column headroom reserved for linking at each end of the epoch ([RFC-0064](RFC-0064-weight-linking-proof.md#the-budget)), so it stays within the hiding budget even though the lost state's exact contents are unknown |
 | Combined row inconsistent with columns | `Reject(Proximity)` |
 | Linking evaluations differ | Verifier rejects the refresh; the old root stays current |
 

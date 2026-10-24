@@ -113,7 +113,7 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 | Tuple compression | included in the LogUp bound (joint polynomial in `α, β`) | — | — |
 | Opening evaluation checks | `T_g/\|Fp2\|` per claim group of `T_g` claims, `1/\|Fp2\|` per weight matrix ([RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings)) | ≥ 110 bits | same |
 | Proximity per commitment | `((1 + ρ')/2)^τ + ϑ·n/\|Fp2\|` | `τ · b(ρ') ≥ 64` bits, one shot; the field term about 100 bits | `τ · b(ρ') + g_query ≥ 100` bits; the field term about 100 bits, which no proof of work covers |
-| Weight linking | `ν/\|Fp2\|` | ≥ 120 bits | ≥ 120 bits |
+| Weight linking ([RFC-0064](RFC-0064-weight-linking-proof.md#soundness)) | `(ν_T + 1)/\|Fp2\|` per matrix; each commitment's proximity, at `τ_link` queries and `g_link` bits of work | ≥ 120 bits; 100.54 for proximity | same |
 | Hash collisions | BLAKE3, 256-bit output | 128 bits | 128 bits |
 
 `b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients.

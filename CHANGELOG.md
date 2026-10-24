@@ -6,6 +6,19 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The weight linking proof, specified ([#485](https://github.com/AbdelStark/tessera/issues/485)):
+  - **RFC-0064, 'The Weight Linking Proof Opens the Difference'** (supersedes RFC-0012 'Refresh and linking proof' and 'Failure modes' in part, and RFC-0014's weight-linking row; amends RFC-0004 and 03 §5).
+    - **The leak.** RFC-0012 opened both epochs' commitments at `ρ_T` and compared the values. In `tessera-protocol/2` that reveals `W̃_T(ρ_T)`, a functional of the secret weights (`docs/zk/simulator.md` §6.4).
+    - **The difference.** One combined row per matrix over both commitments: `eq(ρ_T, ·)` on the old rows, its negative on the new, and a blinding pair from each epoch. It is checked against the public claim 0 at the same columns of both commitments. Each commitment keeps its own proximity row. Nothing about the weights is revealed, which is the simulator's R3.
+    - **What RFC-0012 left undefined.**
+      - The transcript: `weights-link` and the `link/{T}/…` labels.
+      - `τ_link = 122` and `g_link = 20` (100.54 bits of proximity).
+      - `WeightLinkProof`, which carries both public commitments.
+      - The verifier's checks and their verdicts.
+      - The four rows at each end of an epoch, counted once.
+    - **Size.** About 1.42 GB per link at 405B, 178 MB less than two openings.
+  - **The calculator.** Its weight-linking row omits `θ_T`'s `1/q`, which [#516](https://github.com/AbdelStark/tessera/issues/516) adds.
+
 - Audit sampling, RFC-0016 ([#140](https://github.com/AbdelStark/tessera/issues/140)):
   - **`tessera-protocol`.**
     - `AuditPolicy` with `RateBucket`, and `RateBucket::threshold_of`, which reads a decimal rate exactly as `⌊rate · 2^64⌋`. A policy is valid by construction: `AuditPolicy::new` and the decoder refuse buckets out of order and batch bounds below `2 · min_batch_tokens` (`ProtocolError::Policy`).
