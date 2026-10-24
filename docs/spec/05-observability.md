@@ -13,8 +13,9 @@
 
 ## 2. Logging
 
-- Rust uses the `tracing` crate (0.1.x). Python uses the standard `logging` module with a JSON formatter.
+- Prover Rust uses the `tracing` crate (0.1.x). The independent verifier writes the same JSON format directly without new dependencies (RFC-0001). Python uses the standard `logging` module with a JSON formatter.
 - Two output formats: human-readable to stderr (default) and JSON lines (`--log-format json`). One event per line, with fields `ts`, `level`, `target`, `event`, `span_path` and typed fields: `tessera.log-event/1`, [`spec/schemas/log-event-v1.schema.json`](../../spec/schemas/log-event-v1.schema.json). `--log-level` selects the most detailed level written, `info` by default.
+- `tessera-verify verify --log-format human|json` selects stderr formatting independently of the stdout verdict (`--json`). Human output retains its completion line; JSON emits only schema-valid `tessera.verifier` boundary events, buffered until completion. The verifier currently emits info/error boundaries, with no `--log-level` option.
 - Event names are `tessera.<crate>.<event>` in snake case, for example `tessera.pcs.row_block_committed`.
 - A message is a literal template, never formatted from values: a `{name}` in it stands for the field `name`, which both formats substitute. Every value an event shows is therefore a typed field.
 - Levels: `error` for a failed operation; `warn` for a degraded but valid state (for example a hiding budget below 10%); `info` for phase boundaries and results; `debug` for per-stage detail; `trace` for per-tile detail, compiled out of release builds through `tracing`'s `release_max_level_debug` feature.
@@ -82,13 +83,13 @@ Passes are [RFC-0018](../rfcs/RFC-0018-gpu-prover-runtime.md#pass-structure)'s, 
 - **The passes.** `p1` is the witness pass with its commitment, `p2` the leaf stage, `p2b` a grouped leaf stage's merge ([RFC-0054](../rfcs/RFC-0054-token-groups.md#pass-structure)), `p3` one reduction stage, `p3b` a windowed reduction stage's fold ([RFC-0055](../rfcs/RFC-0055-windowed-stages.md#pass-structure)), `p4` the opening pass and `p5` the column answers.
 - **On CPU.** The CPU backend computes the witness in P1 and reads it back for the others, so a CPU proof regenerates once and still counts every pass.
 
-The registry is `tessera_codec::metrics`: fixed names, and labels that are enum variants, table identifiers or stage numbers, so no sample carries secret-class data (OBS-1). The CPU prover records phases, stages, passes, committed elements, lookups, table rows, product leaves and proof bytes; the CLI adds the host memory peak where `/proc` reports it. Device memory needs the GPU backend, `tessera_verifier_seconds` the verifier (#446), and the weight budget and release overruns `tessera-protocol/2`, which spends the budget and releases on a schedule. `tessera_bytes_hashed_total` waits for a per-thread count: an atomic per hash would cost the Merkle and column-chain loops. Phase and stage times depend on secret data, so they and the unit costs derived from them stay on the prover's side of TB-1 ([06 §3](06-security.md#3-trust-boundaries)). A verifier sees only when messages are released, on the schedule of INV-ARCH-2 ([RFC-0018 'Release schedule'](../rfcs/RFC-0018-gpu-prover-runtime.md#release-schedule)).
+The registry is `tessera_codec::metrics`: fixed names, and labels that are enum variants, table identifiers or stage numbers, so no sample carries secret-class data (OBS-1). The CPU prover records phases, stages, passes, committed elements, lookups, table rows, product leaves and proof bytes; the CLI adds the host memory peak where `/proc` reports it. The independent verifier records `tessera_verifier_seconds{check}` in its run manifest, including failed checks and the enclosing CLI phases. Device memory needs the GPU backend, and the weight budget and release overruns `tessera-protocol/2`, which spends the budget and releases on a schedule. `tessera_bytes_hashed_total` waits for a per-thread count: an atomic per hash would cost the Merkle and column-chain loops. Phase and stage times depend on secret data, so they and the unit costs derived from them stay on the prover's side of TB-1 ([06 §3](06-security.md#3-trust-boundaries)). A verifier sees only when messages are released, on the schedule of INV-ARCH-2 ([RFC-0018 'Release schedule'](../rfcs/RFC-0018-gpu-prover-runtime.md#release-schedule)).
 
 ## 5. Tracing
 
 - Spans: `compile`, `commit_weights`, `prove{batch}`, `witness_pass{layer_tile}`, `round1`, `stage{id}`, `opening{commitment}`, `round3`, `verify{proof_digest}`, `check{kind}`.
 - Span fields are PUBLIC class only.
-- The CPU prover computes its witness as one tile of every layer, so `witness_pass` has one span per proof until token groups regenerate it group by group (#134). The verifier's `verify` and `check` spans are #446; its audit trail is §7's report.
+- The CPU prover computes its witness as one tile of every layer, so `witness_pass` has one span per proof until token groups regenerate it group by group (#134). The NI verifier records `verify{proof_digest}` and `check{kind}` boundaries independently: CLI loading, statement pinning and verification, with the driver's input, params, claims, statement, transcript, leaf, stages, evaluations, queries, columns, exact-bound and completion checks nested in verification. Early returns close the active check and omit later checks. The proof digest is absent if loading did not obtain a valid proof envelope. Its audit trail is §7's report.
 - Optional OTLP export sits behind the `otel` feature for operators who run collectors. The default build has no network telemetry.
 
 ## 6. Run manifest
@@ -104,10 +105,12 @@ Every `compile`, `commit-weights`, `prove`, `verify` and `bench` invocation writ
 - exit code and error code, if any.
 
 The manifest is `tessera.run-manifest/1` ([`spec/schemas/run-manifest-v1.schema.json`](../../spec/schemas/run-manifest-v1.schema.json)), written at the command's one exit point whether it succeeded or failed:
-- **Where.** In a directory of the operator's own: `compile`'s output directory, which holds the private plan; beside the secret weight state for `commit-weights` and `prove`; beside the report for `bench model --out`. `--run-manifest PATH` names another. Never in a Live exchange directory.
-- **Class.** It is private-class (§3): its timings depend on secret data and stay on the prover's side of TB-1 (§4).
+- **Where.** In a directory of the operator's own: `compile`'s output directory, which holds the private plan; beside the secret weight state for `commit-weights` and `prove`; beside the report for `bench model --out`. `verify` writes beside its verdict (`--out`), or its proof if no verdict path is given. `--run-manifest PATH` names another. Never in a Live exchange directory.
+- **Class.** A prover manifest is private-class (§3): its timings depend on secret data and stay on the prover's side of TB-1 (§4). The verifier manifest holds public metadata and artifact digests only; it contains no secret-class data.
 - **Artifacts.** Each is named by path, schema and class, and by its envelope digest, except a secret-class artifact: a digest of secret data is derived secret data (OBS-6), so the manifest names it without one. A JSON report carries its schema identifier.
 - **Seeds.** A Live session's coin-toss seed, which both transcripts absorb; the masks' seed never.
+
+The reference NI verifier writes a manifest for parsed requests, including verification and report failures. Syntax errors, unsafe output aliases and contained panics can prevent its creation. A manifest write failure is `ERR-RES-IO`, even after successful mathematical checks. Successfully loaded envelopes carry their validated digests; written JSON verdicts carry null digests, following the schema. Build metadata and OS/architecture/core count are recorded; unprobed host details are null. See the [reference CLI guide](../verifier/reference-cli.md).
 
 **OBS-5.** Two runs with identical manifests, apart from timings and host fields, must produce identical output artifact digests, given pinned masking randomness in test builds and identical seeds. CI checks this on the tiny-model end-to-end test: `tessera-cli`'s `run_manifest` test runs `compile`, `commit-weights` and an NI `prove` twice each, the last with `--test-mask-seed` (feature `test-rng`, refused by release builds).
 
@@ -117,8 +120,8 @@ The manifest is `tessera.run-manifest/1` ([`spec/schemas/run-manifest-v1.schema.
 
 The reference CLI's optional `execution` context records measured `load`,
 `statement_pin` and `verification` phases, the authenticated-pin flag and exit
-code. Internal per-check durations remain null; their timings are not measured
-by this interface. The overall duration ends at verdict preparation, before a
+code. Core report per-check durations remain null; the NI CLI separately measures
+driver check spans and writes their durations as manifest histograms (§4/§5). The overall duration ends at verdict preparation, before a
 successful report write. A contained panic can omit the context, and report
 allocation failure returns a nonzero status without a report. See the
 [reference CLI guide](../verifier/reference-cli.md).

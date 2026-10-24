@@ -399,7 +399,22 @@ pub fn verify_non_interactive(
     proof: &NiProof,
     cfg: &VerifierConfig,
 ) -> Verdict {
-    match verify_ni(claims, statement, proof, cfg) {
+    verify_non_interactive_observed(claims, statement, proof, cfg, &mut |_| {})
+}
+
+mod observe;
+pub use observe::CheckEvent;
+
+/// Verify an NI proof while observing fixed public check boundaries (05 §5).
+/// The callback runs synchronously; it must return normally and promptly.
+pub fn verify_non_interactive_observed(
+    claims: &ClaimList,
+    statement: &PublicStatement,
+    proof: &NiProof,
+    cfg: &VerifierConfig,
+    observer: &mut dyn FnMut(CheckEvent),
+) -> Verdict {
+    match verify_ni(claims, statement, proof, cfg, observer) {
         Ok(report) => Verdict::Accept(report),
         Err(verdict) => verdict.into(),
     }
@@ -491,8 +506,9 @@ fn verify_ni(
     expected: &PublicStatement,
     proof: &NiProof,
     cfg: &VerifierConfig,
+    observer: &mut dyn FnMut(CheckEvent),
 ) -> Check<AcceptReport> {
-    match verify_unit(
+    match verify_unit_observed(
         claims,
         expected,
         Frame {
@@ -505,6 +521,7 @@ fn verify_ni(
             seed_nonce: proof.seed_nonce,
             query_nonce: proof.query_nonce,
         },
+        observer,
     )? {
         Outcome::Accepted(report) => Ok(report),
         _ => Err(internal()),
@@ -517,7 +534,18 @@ fn verify_unit(
     cfg: &VerifierConfig,
     session: Session<'_>,
 ) -> Check<Outcome> {
+    verify_unit_observed(claims, expected, proof, cfg, session, &mut |_| {})
+}
+fn verify_unit_observed(
+    claims: &ClaimList,
+    expected: &PublicStatement,
+    proof: Frame<'_>,
+    cfg: &VerifierConfig,
+    session: Session<'_>,
+    observer: &mut dyn FnMut(CheckEvent),
+) -> Check<Outcome> {
     let started = Instant::now();
+    let mut checks = observe::Checks::new(observer);
     let artifact = session.artifact();
     let mode = session.mode();
     let first_bytes = protocol::encoded_len(proof.round1).map_err(codec)?;
@@ -579,11 +607,14 @@ fn verify_unit(
         return Err(memory());
     }
     deadline(started, cfg.limits)?;
+    checks.next("params");
     if ParamSet::accept(&claims.params) != Some(cfg.params) || !mode_allowed(cfg.params, mode) {
         return Err(params_error(claims));
     }
+    checks.next("claims");
     let validated = validation::validate(claims).map_err(claims_error)?;
     deadline(started, cfg.limits)?;
+    checks.next("statement");
     // RFC-0040: inconsistent own root/epoch is Usage before judging statement fields.
     let public = weights::check_public(
         claims,
@@ -699,6 +730,7 @@ fn verify_unit(
     if matches!(session, Session::Initial) {
         return Ok(Outcome::Ready);
     }
+    checks.next("transcript");
     let parameters = SoundnessParams::try_from_param_set(cfg.params).map_err(|_| memory())?;
     let mut t = Transcript::new(&SessionContext {
         protocol: ascii("tessera-protocol/1")?,
@@ -723,6 +755,7 @@ fn verify_unit(
             *xi.get_mut(i).ok_or_else(internal)? = point(&mut t, &label, l.proximity_vars())?;
         }
     }
+    checks.next("leaf");
     let mut table_error = None;
     let checked = leaf_plan
         .schedule()
@@ -776,6 +809,7 @@ fn verify_unit(
         .find_map(|s| runtime.table(s.id)?.rope())
         .ok_or_else(internal)?;
     deadline(started, cfg.limits)?;
+    checks.next("stages");
     let reduced = prepared
         .verify(&mut t, rope, &proof.round2.stages)
         .map_err(|e| stage_error(e, artifact))?;
@@ -785,6 +819,7 @@ fn verify_unit(
         return Err(internal());
     }
     deadline(started, cfg.limits)?;
+    checks.next("evaluations");
     let gamma = t
         .challenge_fp2(ascii("pcs/advice/gamma")?)
         .map_err(transcript)?;
@@ -874,6 +909,7 @@ fn verify_unit(
         &protocol::encode(&proof.round2.scoring).map_err(codec)?,
     );
     deadline(started, cfg.limits)?;
+    checks.next("queries");
     let generated = match session {
         Session::Ni { query_nonce, .. } => {
             t = proof_of_work(t, &parameters, PowPhase::Queries, query_nonce)?;
@@ -940,6 +976,7 @@ fn verify_unit(
         &parameters,
         claims.layout.advice.log2_k,
     )?;
+    checks.next("columns");
     let mut advice_queries = reserve(packet.advice.len())?;
     advice_queries.extend(packet.advice.iter().copied().map(u64::from));
     let mut queries: [Vec<u64>; 10] = core::array::from_fn(|_| Vec::new());
@@ -986,6 +1023,7 @@ fn verify_unit(
         }
     }
     deadline(started, cfg.limits)?;
+    checks.next("exact_bound");
     for (request, &uhat) in expected
         .batch
         .requests
@@ -1000,6 +1038,7 @@ fn verify_unit(
             }));
         }
     }
+    checks.next("complete");
     let mut requests = reserve(expected.batch.requests.len())?;
     requests.extend(
         expected
@@ -1008,7 +1047,7 @@ fn verify_unit(
             .iter()
             .map(|r| (r.request_id, FixedBits(0))),
     );
-    Ok(Outcome::Accepted(AcceptReport {
+    let report = AcceptReport {
         params: cfg.params,
         statement_digest,
         claim_list_digest: expected.claim_list_digest,
@@ -1017,7 +1056,9 @@ fn verify_unit(
         requests,
         batch_uhat: FixedBits(0),
         budget,
-    }))
+    };
+    checks.finish(true);
+    Ok(Outcome::Accepted(report))
 }
 
 fn check_queries(

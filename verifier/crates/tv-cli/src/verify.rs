@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Protocol/1 CLI policy: authenticate the entire statement with the caller's digest.
+use crate::observability::{Observation, nanos};
 use crate::{
     CommandOutput, files,
     options::{self, Options},
 };
 use std::fmt::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tv_codec::{DecodeLimits, Envelope, WeightCommitmentPublic};
+use tv_core::driver::CheckEvent;
 use tv_core::{
     ResourceLimits, VerifierConfig,
     claims::ClaimList,
@@ -26,11 +28,15 @@ USAGE:
     --weights-root HEX --statement-digest HEX --proof PROOF.tnp --bound BITS
     [--out VERDICT.json] [--json] [--max-artifact-bytes N]
     [--max-memory-bytes N] [--timeout-ms N]
+    [--log-format human|json] [--run-manifest PATH]
 
 The statement digest is a trusted caller-owned H(statement,TCE(PublicStatement));
 obtain it independently of the proof. --bound is exact bits in increments of1/256.
 Input files must be regular files. The report records real CLI phase timings;
-core per-check timings remain null. Anchor, ledger and ZK are not verified.
+core per-check timings remain null; the run manifest records check histograms.
+--log-format json writes public span events to stderr; human is the default.
+The run manifest defaults beside --out, or beside --proof when --out is absent.
+Anchor, ledger and ZK are not verified.
 Test-small builds certify nothing. --manifest belongs to future anchor support.
 ";
 
@@ -39,6 +45,8 @@ struct Config<'a> {
     weights: &'a str,
     proof: &'a str,
     out: Option<&'a str>,
+    run_manifest: Option<&'a str>,
+    log_json: bool,
     root: [u8; 32],
     statement: [u8; 32],
     bound: FixedBits,
@@ -53,6 +61,8 @@ impl<'a> Config<'a> {
                 "--weights",
                 "--proof",
                 "--out",
+                "--log-format",
+                "--run-manifest",
                 "--weights-root",
                 "--statement-digest",
                 "--bound",
@@ -67,6 +77,12 @@ impl<'a> Config<'a> {
             weights: o.required("--weights")?,
             proof: o.required("--proof")?,
             out: o.get("--out"),
+            run_manifest: o.get("--run-manifest"),
+            log_json: match o.get("--log-format") {
+                None | Some("human") => false,
+                Some("json") => true,
+                _ => return Err(ErrorCode::Usage),
+            },
             root: options::digest(o.required("--weights-root")?)?,
             statement: options::digest(o.required("--statement-digest")?)?,
             bound: FixedBits(options::bound(o.required("--bound")?)?),
@@ -84,6 +100,7 @@ pub(crate) struct Execution {
     durations: [Option<u64>; 3],
     outcomes: [&'static str; 3],
     pub(crate) pinned: bool,
+    observation: Observation,
 }
 impl Execution {
     pub(crate) fn new() -> Self {
@@ -92,6 +109,7 @@ impl Execution {
             durations: [None; 3],
             outcomes: ["error"; 3],
             pinned: false,
+            observation: Observation::new(),
         }
     }
     pub(crate) fn phase<T>(
@@ -99,9 +117,17 @@ impl Execution {
         index: usize,
         f: impl FnOnce() -> Result<T, ErrorCode>,
     ) -> Result<T, ErrorCode> {
+        let kind = ["load", "statement_pin", "verification"][index];
+        self.observation.record(CheckEvent::Started { kind });
         let at = Instant::now();
         let result = f();
-        self.durations[index] = Some(nanos(at.elapsed()));
+        let duration = at.elapsed();
+        self.observation.record(CheckEvent::Finished {
+            kind,
+            duration,
+            completed: result.is_ok(),
+        });
+        self.durations[index] = Some(nanos(duration));
         self.outcomes[index] = if result.is_ok() { "completed" } else { "error" };
         result
     }
@@ -112,9 +138,21 @@ impl Execution {
             .ok_or(ErrorCode::Time)
     }
     pub(crate) fn evaluate(&mut self, f: impl FnOnce() -> Verdict) -> Verdict {
+        self.evaluate_observed(|_| f())
+    }
+    fn evaluate_observed(&mut self, f: impl FnOnce(&mut Observation) -> Verdict) -> Verdict {
+        self.observation.record(CheckEvent::Started {
+            kind: "verification",
+        });
         let at = Instant::now();
-        let verdict = f();
-        self.durations[2] = Some(nanos(at.elapsed()));
+        let verdict = f(&mut self.observation);
+        let duration = at.elapsed();
+        self.observation.record(CheckEvent::Finished {
+            kind: "verification",
+            duration,
+            completed: matches!(verdict, Verdict::Accept(_)),
+        });
+        self.durations[2] = Some(nanos(duration));
         self.outcomes[2] = match &verdict {
             Verdict::Accept(_) => "accept",
             Verdict::Reject(_) => "reject",
@@ -122,9 +160,6 @@ impl Execution {
         };
         verdict
     }
-}
-fn nanos(duration: Duration) -> u64 {
-    u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
 }
 pub(crate) fn inconclusive(code: ErrorCode) -> Verdict {
     Verdict::Inconclusive(VerifierError { code })
@@ -168,14 +203,28 @@ fn verify(c: &Config<'_>, e: &mut Execution) -> Result<Verdict, ErrorCode> {
         max_artifact: c.limits.max_artifact_bytes,
     };
     let limits = decode_limits(c.limits);
-    let (claims, weights, proof) = e.phase(0, || {
-        let (claims, weights) = public_inputs(c.claims, c.weights, &mut input, &limits)?;
-        let proof = {
-            let bytes = input.read(Path::new(c.proof))?;
-            NiProof::open(&bytes, &limits).map_err(|e| ErrorCode::from(e.code()))?
-        };
+    let mut artifacts = Observation::new();
+    let loaded = e.phase(0, || {
+        let bytes = input.read(Path::new(c.claims))?;
+        let claims = ClaimList::open(&bytes, &limits).map_err(|e| ErrorCode::from(e.code()))?;
+        artifacts.params = Some(claims.params.as_str().into());
+        artifacts.artifact(c.claims, "ClaimList", "public", &bytes);
+        let bytes = input.read(Path::new(c.weights))?;
+        let weights = Envelope::open(&bytes, WeightCommitmentPublic::EXPECTED, &limits, |b| {
+            hash(Domain::Envelope, b)
+        })
+        .and_then(|e| e.decode_payload(|c, _| WeightCommitmentPublic::decode(c)))
+        .map_err(|e| ErrorCode::from(e.code()))?;
+        artifacts.artifact(c.weights, "WeightCommitmentPublic", "public", &bytes);
+        let bytes = input.read(Path::new(c.proof))?;
+        let proof = NiProof::open(&bytes, &limits).map_err(|e| ErrorCode::from(e.code()))?;
+        artifacts.artifact(c.proof, "NiProof", "protocol", &bytes);
         Ok((claims, weights, proof))
-    })?;
+    });
+    e.observation.inputs = artifacts.inputs;
+    e.observation.proof_digest = artifacts.proof_digest;
+    e.observation.params = artifacts.params;
+    let (claims, weights, proof) = loaded?;
     e.remaining(c.limits.max_wall_time)?;
     e.phase(1, || {
         if proof.round1.statement.digest() != c.statement
@@ -201,8 +250,14 @@ fn verify(c: &Config<'_>, e: &mut Execution) -> Result<Verdict, ErrorCode> {
         },
     };
     // Only after the external whole-statement pin matches is its content trusted.
-    let verdict = e.evaluate(|| {
-        tv_core::verify_non_interactive(&claims, &proof.round1.statement, &proof, &cfg)
+    let verdict = e.evaluate_observed(|observation| {
+        tv_core::driver::verify_non_interactive_observed(
+            &claims,
+            &proof.round1.statement,
+            &proof,
+            &cfg,
+            &mut |event| observation.record(event),
+        )
     });
     Ok(verdict)
 }
@@ -258,23 +313,73 @@ pub(crate) fn run(args: &[String], json_flag: bool) -> CommandOutput {
     let config = match Config::parse(args) {
         Ok(c) => c,
         Err(code) => {
-            return crate::command_error(
+            let mut output = crate::command_error(
                 "verify",
                 "invalid, missing or duplicate option; see verify --help",
                 json_flag,
                 code.id(),
                 code.exit_code(),
             );
+            if args
+                .windows(2)
+                .any(|a| a[0] == "--log-format" && a[1] == "json")
+            {
+                output.stderr = Observation::new().logs(output.exit_code);
+            }
+            return output;
         }
     };
     let mut execution = Execution::new();
+    let manifest_path = config.run_manifest.map_or_else(
+        || Path::new(config.out.unwrap_or(config.proof)).with_file_name("run-manifest.json"),
+        PathBuf::from,
+    );
+    let manifest_path = manifest_path.to_string_lossy();
     let checked_output =
-        files::output_distinct(config.out, &[config.claims, config.weights, config.proof]);
-    let verdict = match checked_output {
+        files::output_distinct(config.out, &[config.claims, config.weights, config.proof])
+            .and_then(|()| {
+                files::output_distinct(
+                    Some(&manifest_path),
+                    &[config.claims, config.weights, config.proof],
+                )
+            })
+            .and_then(|()| {
+                files::output_distinct(
+                    Some(&manifest_path),
+                    &config.out.into_iter().collect::<Vec<_>>(),
+                )
+            });
+    let mut verdict = match checked_output {
         Ok(()) => verify(&config, &mut execution).unwrap_or_else(inconclusive),
         Err(code) => inconclusive(code),
     };
-    finish(verdict, execution, config.out, json_flag, checked_output)
+    let (mut report, written) = finish_report(&mut verdict, &execution, config.out, checked_output);
+    if checked_output.is_ok() {
+        let error = match &verdict {
+            Verdict::Inconclusive(e) => Some(e.code.id()),
+            Verdict::Reject(r) => Some(r.code()),
+            Verdict::Accept(_) => None,
+        };
+        // Only a report successfully written by this invocation is an output artifact.
+        let written = config.out.filter(|_| written);
+        if let Err(code) = crate::manifest::write(
+            Path::new(manifest_path.as_ref()),
+            args,
+            &execution.observation,
+            execution.start.elapsed(),
+            report.exit_code,
+            error,
+            written,
+        ) {
+            verdict = inconclusive(code);
+            report = finish_report(&mut verdict, &execution, config.out, checked_output).0;
+        }
+    }
+    let mut output = render(verdict, report, &execution, json_flag);
+    if config.log_json {
+        output.stderr = execution.observation.logs(output.exit_code);
+    }
+    output
 }
 
 pub(crate) fn finish(
@@ -284,27 +389,58 @@ pub(crate) fn finish(
     json_flag: bool,
     checked_output: Result<(), ErrorCode>,
 ) -> CommandOutput {
-    let mut report = match json(&verdict, &execution) {
+    let (report, _) = finish_report(&mut verdict, &execution, out, checked_output);
+    render(verdict, report, &execution, json_flag)
+}
+
+fn finish_report(
+    verdict: &mut Verdict,
+    execution: &Execution,
+    out: Option<&str>,
+    checked_output: Result<(), ErrorCode>,
+) -> (CommandOutput, bool) {
+    let mut report = match json(verdict, execution) {
         Ok(report) => report,
-        Err(code) => return failure(code),
+        Err(code) => {
+            *verdict = inconclusive(code);
+            return (failure(code), false);
+        }
     };
-    if let (Ok(()), Some(out)) = (checked_output, out)
-        && let Err(code) = files::write(Path::new(out), report.as_bytes())
-    {
-        verdict = inconclusive(code);
-        report = match json(&verdict, &execution) {
-            Ok(report) => report,
-            Err(code) => return failure(code),
-        };
+    let mut written = false;
+    if let (Ok(()), Some(out)) = (checked_output, out) {
+        match files::write(Path::new(out), report.as_bytes()) {
+            Ok(()) => written = true,
+            Err(code) => {
+                *verdict = inconclusive(code);
+                report = match json(verdict, execution) {
+                    Ok(report) => report,
+                    Err(code) => {
+                        *verdict = inconclusive(code);
+                        return (failure(code), false);
+                    }
+                };
+            }
+        }
     }
-    let exit_code = verdict.exit_code();
-    if json_flag {
-        return CommandOutput {
-            exit_code,
+    (
+        CommandOutput {
+            exit_code: verdict.exit_code(),
             stdout: report,
             stderr: String::new(),
-        };
+        },
+        written,
+    )
+}
+fn render(
+    verdict: Verdict,
+    report: CommandOutput,
+    execution: &Execution,
+    json_flag: bool,
+) -> CommandOutput {
+    if json_flag {
+        return report;
     }
+    let exit_code = report.exit_code;
     let text = match &verdict {
         Verdict::Accept(r) if r.params.name() == "test-small/1" => {
             "Accept (test-small/1; test parameters certify nothing)\n".into()

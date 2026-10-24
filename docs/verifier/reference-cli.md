@@ -41,7 +41,7 @@ The command's process exit code is authoritative:
 | 65 | Input artifact failed canonical envelope/payload decoding |
 | 70 | Internal invariant failure or contained panic |
 
-Every nonzero status means not certified. A failed report write also returns
+Every nonzero status means not certified. A failed report or run-manifest write also returns
 a nonzero status, even if the mathematical checks passed. Report writes use a
 temporary file and atomic rename; an output path that aliases any input is
 refused before writing. Error text contains public codes, not protocol values
@@ -66,6 +66,41 @@ covers evaluation through verdict preparation, before a successful report
 write; it does not invent timings for individual internal verifier checks.
 On a contained panic the core inconclusive report may omit this context. If
 the report itself cannot be allocated, exit 20 is returned without a report.
+
+`verify --log-format human` retains the default stdout verdict and stderr
+completion line. `verify --log-format json` retains the same stdout and replaces
+stderr with JSON lines conforming to
+[`tessera.log-event/1`](../../spec/schemas/log-event-v1.schema.json).
+`--json` independently selects a JSON verdict on stdout. Events are buffered
+with their boundary timestamps and emitted at completion: `verify_started`,
+`check_started`, `check_finished` and `verify_finished`, under
+`tessera.verifier`. The outer `verify` span carries the proof's envelope digest
+when decoding obtained it; before that it has no digest field. `check{kind}`
+spans cover `load`, `statement_pin` and `verification`; the latter nests the
+driver's `input`, `params`, `claims`, `statement`, `transcript`, `leaf`, `stages`,
+`evaluations`, `queries`, `columns`, `exact_bound` and `complete` checks.
+A failed check closes with outcome `error` and a duration; later checks do not
+run. Log fields contain only public digests, fixed identifiers, timings and
+exit status. No proof messages are logged. This verifier emits the format
+independently, without tracing or serialization dependencies.
+
+A parsed `verify` request writes
+[`tessera.run-manifest/1`](../../spec/schemas/run-manifest-v1.schema.json)
+as `run-manifest.json` beside `--out`, or beside `--proof` if no verdict path
+was requested. `--run-manifest PATH` overrides that location. It records public
+build metadata, host OS/architecture/core count, the invocation, decoded
+parameter set, successfully loaded artifact paths and envelope digests, elapsed
+time, exit/error code and `tessera_verifier_seconds{check}` histograms.
+Each completed or failed check contributes one observation in seconds; the
+`verification` measurement includes its nested driver checks. Unavailable
+metadata is null; CPU model, memory and accelerator details are not probed.
+A written verdict is listed with a null digest, as required for JSON reports
+by the schema. NI has no public coin-toss seed. This manifest contains no
+secret-class data. It is written on verification failures too; syntax errors,
+unsafe output aliases and contained panics can prevent writing it. Input and
+verdict aliases are refused before either output is changed. Writes use the
+verdict writer's atomic replacement and private file permissions. An unwritable
+manifest returns `ERR-RES-IO` and changes the verdict to inconclusive.
 
 ```sh
 target/debug/tessera-verify tables --claims claims.tcl --json

@@ -10,6 +10,8 @@
 mod directory;
 mod files;
 mod live;
+mod manifest;
+mod observability;
 mod options;
 mod tables;
 mod verify;
@@ -102,11 +104,19 @@ where
         }
     }
     if oversized {
-        return usage_error(
+        let mut output = usage_error(
             "tessera-verify",
             "too many or oversized arguments",
             json_flag,
         );
+        if collected.first().is_some_and(|a| a == "verify")
+            && collected
+                .windows(2)
+                .any(|a| a[0] == "--log-format" && a[1] == "json")
+        {
+            output.stderr = observability::Observation::new().logs(output.exit_code);
+        }
+        return output;
     }
 
     let Some(first) = collected.first().map(String::as_str) else {
