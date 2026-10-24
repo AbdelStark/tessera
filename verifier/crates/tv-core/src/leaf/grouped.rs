@@ -102,7 +102,7 @@
 //! **Step 5, the atom splits** ([`Merged::bind`]): `TreeProof.splits` holds RFC-0037's atom split
 //! values of the merged claims, as many as the public schedule says, else [`Error::Count`] with
 //! [`Message::Atoms`]; they are absorbed under `stage/0/split`. The result is the
-//! [`Bound`](super::split::Bound) the ungrouped stage leaves, its claims at the merged points
+//! [`Bound`] the ungrouped stage leaves, its claims at the merged points
 //! ([`LeafPoint::Merged`]): every later consumer of a leaf claim reads its point through
 //! [`LeafPoint`] (RFC-0054 'The stage's outputs').
 //!

@@ -1022,6 +1022,16 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- The nightly runs the quality workflow's deferred gates every night ([#492](https://github.com/AbdelStark/tessera/issues/492)). Pull requests still skip them during the fast-build phase (07 §9). `quality.yml` is now also a reusable workflow, which `nightly.yml` calls. A failure in one of its gates opens the nightly's failure issue. The gates are:
+  - the dependency policy;
+  - MSRV;
+  - the macOS build;
+  - the GPU host checks;
+  - the complete suites;
+  - rustdoc.
+
+  Until now they ran only on dispatch. The first dispatch since the token-group PRs, run 40074495804, found `tv-core`'s rustdoc failing on `main`: a link to the private `levels` and a redundant explicit link target, now fixed. `docs/testing/nightly.md` and 07 §9 say what the nightly runs.
+
 - RFC-0057, accepted, proves a batch in one proof unit ([#456](https://github.com/AbdelStark/tessera/issues/456)):
   - **The question.** RFC-0018 split a batch into proof units, sets of requests or layer ranges of one request, each with its own advice commitment, and linked a split request's boundary residuals. No document gave such a proof's messages, labels or checks. #456 asked which budgets still need units.
   - **The answer.** None at the reference statement (405B, 16K tokens at 16K of context, `tessera-protocol/1`).

@@ -1,9 +1,12 @@
-# Deferred toolchain, supply-chain and tier-2 checks (09 §2/§7/§8).
-# Run explicitly from Actions during the fast-build phase (07 §9).
+# Deferred toolchain, supply-chain and tier-2 checks (09 §2/§7/§8), with the complete suites and
+# rustdoc. Pull requests skip them during the fast-build phase (07 §9); nightly.yml calls this
+# workflow every night, so that a regression in one opens the nightly's failure issue (#492). It
+# also runs on demand from Actions.
 name: quality
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

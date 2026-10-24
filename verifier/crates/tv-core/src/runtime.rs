@@ -4,7 +4,7 @@
 //!
 //! A proof's budget is evaluated at its own grouping (RFC-0054 'A proof's budget'): an ungrouped
 //! proof's statement has `groups.count = 1` and is the ungrouped statement; a grouped proof's
-//! counts `G = 2^{g_T + g_L}`, the leaf stage's level rounds by degree (the levels [`levels`]
+//! counts `G = 2^{g_T + g_L}`, the leaf stage's level rounds by degree (the levels `levels`
 //! derives for the ungrouped stage, which bound every group's and the table batch's), the merge's
 //! `n_max`, the most variables of a merged polynomial, and `P`, the merged polynomials' count, one
 //! per ungrouped split value and one per forest leaf table (RFC-0054 'The merge'). Every size
