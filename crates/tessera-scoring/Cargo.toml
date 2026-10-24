@@ -12,6 +12,11 @@ publish.workspace = true
 # RFC-0017 'Sampler PRF': AES-128, constant-time in software (fixsliced) or AES-NI; `zeroize`
 # clears the key schedule on drop (05 §3 OBS-2).
 aes = { version = "0.8", features = ["zeroize"] }
+# RFC-0061 'The stream': SHA-256's compression function alone, on a padded class input this crate
+# builds in a clearing buffer, so no hasher's buffer keeps a copy of the key or the prompt.
+sha2 = { version = "0.10", features = ["compress"] }
+# OBS-6: the hashes' state words, derived from the key, are cleared where they are held.
+zeroize = "1.9"
 tessera-codec = { path = "../tessera-codec" }
 tessera-compiler = { path = "../tessera-compiler" }
 tessera-field = { path = "../tessera-field" }

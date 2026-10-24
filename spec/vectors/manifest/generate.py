@@ -225,9 +225,9 @@ def entries_of(period, first_seq, start):
     `start`: TCE encodings from the anchor oracle. Each session opens before its frames."""
     sid = bytes([0x30 + period] * 16)
     out, seq = [], first_seq
-    kc, sc = bytes([1 + period] * 32), bytes([2 + period] * 32)
+    kc = bytes([1 + period] * 32)
     if period == 0:
-        out.append(anchor.entry_open(seq, start + 1000, sid, kc, sc))
+        out.append(anchor.entry_open(seq, start + 1000, sid, kc))
         seq += 1
         for i in range(6):
             digest = hashlib.sha256(bytes([i])).digest()
@@ -235,7 +235,7 @@ def entries_of(period, first_seq, start):
                                           22 + 4 * i, i, digest))
             seq += 1
     elif period == 1:
-        out.append(anchor.entry_open(seq, start + 4999, sid, kc, sc))
+        out.append(anchor.entry_open(seq, start + 4999, sid, kc))
         seq += 1
         for i in range(4):
             digest = hashlib.sha256(bytes([0x80 + i])).digest()

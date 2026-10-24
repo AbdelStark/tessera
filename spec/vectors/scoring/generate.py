@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0 OR MIT
-"""RFC-0017 'Sampler PRF' and RFC-0009 Lemma 10: standard-library Python, no production imports.
+"""RFC-0017 'Sampler PRF', as RFC-0061 amends it, and RFC-0009 Lemma 10: standard-library Python,
+no production imports.
 
-AES-128 is written from FIPS-197 alone: the S-box is computed from inverses in GF(2^8) and the
+The stream class's hash is hashlib's SHA-256. AES-128 is written from FIPS-197 alone: the S-box is computed from inverses in GF(2^8) and the
 affine map of §5.1.1, not copied from a table, and the cipher is checked against the standard's
 own examples (Appendix B and C.1) before any vector is written. The inverse-CDF sample is found
 by bisection over the prefix sums, where the reference sampler scans them.
 """
 from pathlib import Path
+import hashlib
 import sys
 
 sys.dont_write_bytecode = True
@@ -100,10 +102,50 @@ def check_cipher():
         assert aes128(bytes.fromhex(key), bytes.fromhex(plain)).hex() == cipher, key
 
 
-def draw(key, request_id, t):
-    """RFC-0017: u32_le(AES-128_K(u64_le(request_id) ‖ u32_le(t) ‖ 0x00000000)[0..4])."""
-    block = request_id.to_bytes(8, "little") + t.to_bytes(4, "little") + bytes(4)
-    cipher = aes128(key, block)
+def derive(base, nonce, bits, from_ns):
+    """RFC-0061: a pin's PRF key, the first 16 bytes of
+    SHA-256("tessera-sampler-derive/v1" ‖ K_p ‖ 0^23 ‖ nonce ‖ u8(b) ‖ u64_le(from_ns)); the label
+    and the base key fill the first block alone."""
+    key_block = b"tessera-sampler-derive/v1" + base
+    message = key_block + bytes(64 - len(key_block)) + nonce + bytes([bits])
+    message += from_ns.to_bytes(8, "little")
+    return hashlib.sha256(message).digest()[:16]
+
+
+# The prompt of the derivation rows' end-to-end columns: K_p, nonce, b, from_ns → K → class → u_0.
+CHAIN_PROMPT = [1, 2, 3]
+
+
+def derive_cases(rng):
+    bases = [bytes(16), bytes(range(16)), bytes([0xFF] * 16)]
+    nonces = [bytes(32), bytes(range(32)), bytes([0xFF] * 32)]
+    cases = [(base, nonce, bits, 0) for base in bases for nonce in nonces for bits in (0, 8, 64)]
+    # The start alone changes the key: its low byte, its high word and its largest value.
+    cases += [(bases[1], nonces[1], 8, f) for f in (1, 2**32, 2**64 - 1)]
+    for _ in range(16):
+        base = b"".join(next(rng).to_bytes(8, "little") for _ in range(2))
+        nonce = b"".join(next(rng).to_bytes(8, "little") for _ in range(4))
+        cases.append((base, nonce, next(rng) % 65, next(rng)))
+    return cases
+
+
+def stream_class(key, bits, prompt):
+    """RFC-0061: the top `bits` bits of u64_le(h[0..8]), 0 for bits = 0, with
+    h = SHA-256("tessera-stream-class/v1" ‖ K ‖ 0^25 ‖ u64_le(n) ‖ u32_le(x_0) ‖ … ‖ u32_le(x_{n−1})):
+    the label and the key fill the first block with zeros, then come the count and the tokens."""
+    if bits == 0:
+        return 0
+    key_block = b"tessera-stream-class/v1" + key
+    message = key_block + bytes(64 - len(key_block)) + len(prompt).to_bytes(8, "little")
+    message += b"".join(x.to_bytes(4, "little") for x in prompt)
+    head = int.from_bytes(hashlib.sha256(message).digest()[:8], "little")
+    return head >> (64 - bits)
+
+
+def draw(key, cls, t):
+    """RFC-0061: u32_le(AES-128_K(u64_le(class) ‖ u32_le(t) ‖ 0^4)[0..4]), RFC-0017's block with
+    the class in the slot of request_id."""
+    cipher = aes128(key, cls.to_bytes(8, "little") + t.to_bytes(4, "little") + bytes(4))
     return cipher, int.from_bytes(cipher[:4], "little")
 
 
@@ -129,21 +171,36 @@ def sample(weights, u):
 
 
 def prf_cases(rng):
-    u64, u32 = 2**64 - 1, 2**32 - 1
+    u32, vocab = 2**32 - 1, 2**18
     keys = [bytes(16), bytes(range(16)), bytes([0xFF] * 16),
             bytes.fromhex("2b7e151628aed2a6abf7158809cf4f3c")]
     cases = []
+    # b = 0: one stream per key, at the edges of each byte of u32_le(t). These are the rows of
+    # RFC-0017's block at request_id = 0.
     for key in keys:
-        for request_id in (0, 1, 2**32, u64):
-            for t in (0, 1, u32):
-                cases.append((key, request_id, t))
+        for t in (0, 1, 255, 256, 2**16, 2**24, u32):
+            cases.append((key, 0, [], t))
+    # Classes: the empty prompt, prompts that differ only in length ([0], [0, 0]) or in one
+    # token ([1, 2, 3], [1, 2, 4]), and the largest v1 token, at b = 0, 1, 8, 63 and 64.
+    prompts = [[], [0], [0, 0], [1, 2, 3], [1, 2, 4], [vocab - 1]]
+    for key in keys:
+        for bits in (0, 1, 8, 63, 64):
+            for prompt in prompts:
+                for t in (0, u32):
+                    cases.append((key, bits, prompt, t))
+    # SHA-256's padding after the key block: 8 + 4n bytes fill one more block up to n = 11 and
+    # spill the length field at n = 12; two more up to n = 27, three at n = 28; then a long prompt.
+    for n in (11, 12, 27, 28, 4096):
+        cases.append((keys[3], 64, [next(rng) % vocab for _ in range(n)], 0))
     for _ in range(32):
         key = b"".join(next(rng).to_bytes(8, "little") for _ in range(2))
-        cases.append((key, next(rng), next(rng) & u32))
-    # One request's stream: positions 0 to 63 under one random key.
+        bits = next(rng) % 65
+        prompt = [next(rng) % vocab for _ in range(next(rng) % 40)]
+        cases.append((key, bits, prompt, next(rng) & u32))
+    # One request's stream at b = 8: positions 0 to 63 under one random key.
     key = b"".join(next(rng).to_bytes(8, "little") for _ in range(2))
-    request_id = next(rng)
-    cases += [(key, request_id, t) for t in range(64)]
+    prompt = [next(rng) % vocab for _ in range(16)]
+    cases += [(key, 8, prompt, t) for t in range(64)]
     return cases
 
 
@@ -177,18 +234,28 @@ def cdf_cases(rng):
 
 def main():
     check_cipher()
+    # One stream per file, so that a change to one file's cases leaves the other's rows alone.
     rng = splitmix64(SEED)
-    lines = ["# key request_id t ciphertext u"]
-    for key, request_id, t in prf_cases(rng):
-        cipher, u = draw(key, request_id, t)
-        lines.append(f"{key.hex()} {request_id} {t} {cipher.hex()} {u}")
+    lines = ["# key bits prompt t class ciphertext u (prompt: comma-separated tokens, - when empty)"]
+    for key, bits, prompt, t in prf_cases(rng):
+        cls = stream_class(key, bits, prompt)
+        cipher, u = draw(key, cls, t)
+        tokens = ",".join(str(x) for x in prompt) or "-"
+        lines.append(f"{key.hex()} {bits} {tokens} {t} {cls} {cipher.hex()} {u}")
     (HERE / "prf.txt").write_text("\n".join(lines) + "\n")
     lines = ["# u token weights... (token none: every weight is zero)"]
-    for weights, u in cdf_cases(rng):
+    for weights, u in cdf_cases(splitmix64(SEED + 1)):
         token = sample(weights, u)
         words = [str(u), "none" if token is None else str(token)] + [str(w) for w in weights]
         lines.append(" ".join(words))
     (HERE / "inverse_cdf.txt").write_text("\n".join(lines) + "\n")
+    lines = ["# base_key nonce bits from_ns key class u_0 (class and u_0 of the prompt 1,2,3 at t = 0)"]
+    for base, nonce, bits, from_ns in derive_cases(splitmix64(SEED + 2)):
+        key = derive(base, nonce, bits, from_ns)
+        cls = stream_class(key, bits, CHAIN_PROMPT)
+        _, u = draw(key, cls, 0)
+        lines.append(f"{base.hex()} {nonce.hex()} {bits} {from_ns} {key.hex()} {cls} {u}")
+    (HERE / "derive.txt").write_text("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

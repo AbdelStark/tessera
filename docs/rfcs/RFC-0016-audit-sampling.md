@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.4
+- Amended by: [RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies) ('Batching': a batch's temperature requests share one pinned sampler key)
 
 ## Summary
 
@@ -62,7 +63,7 @@ The domains `audit-sample` and `audit-select` join RFC-0004's domain table.
 
 ### Batching
 
-The prover packs selected requests into batches by first-fit decreasing on total tokens, with the request order and tie-breaking fixed by `RequestKey` order, so that batch composition is reproducible. A batch has at least `min_batch_tokens` tokens unless the remaining selected requests total fewer, and at most `max_batch_tokens`. Each batch is one proof whose `PublicStatement.batch` lists its requests.
+The prover packs selected requests into batches by first-fit decreasing on total tokens, with the request order and tie-breaking fixed by `RequestKey` order, so that batch composition is reproducible. Requests that decode with temperature are first grouped by the pinned sampler key that applies to each, and each group is packed on its own ([RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies)). A batch has at least `min_batch_tokens` tokens unless the remaining selected requests total fewer, and at most `max_batch_tokens`. Each batch is one proof whose `PublicStatement.batch` lists its requests.
 
 ### Verifier checks
 

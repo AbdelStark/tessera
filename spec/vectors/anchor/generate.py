@@ -4,9 +4,9 @@ imports.
 
 AES-128 is the FIPS-197 oracle of spec/vectors/scoring/, itself checked against FIPS-197's
 examples; CTR mode is checked here against NIST SP 800-38A F.5.1; SHA-256 is hashlib's. A
-session's 64 drawn bytes, the ones the reference cipher draws from the operating system at open,
-are its identifier, then k_s, salt_k and salt_s: here a fixed identifier and a SplitMix64 stream
-written out little-endian. The cipher's tests build the session from them; the keys are only test
+session's 48 drawn bytes, the ones the reference cipher draws from the operating system at open,
+are its identifier, then k_s and salt_k: here a fixed identifier and a SplitMix64 stream written
+out little-endian. The cipher's tests build the session from them; the keys are only test
 data.
 """
 import hashlib
@@ -87,8 +87,8 @@ def commitment(label, key, salt):
     return hashlib.sha256(label + key + salt).digest()
 
 
-def entry_open(seq, t_ns, session_id, kc, sc):
-    return le(0, 2) + le(seq, 8) + le(t_ns, 8) + session_id + kc + sc
+def entry_open(seq, t_ns, session_id, kc):
+    return le(0, 2) + le(seq, 8) + le(t_ns, 8) + session_id + kc
 
 
 def entry_frame(seq, t_ns, session_id, request_id, direction, frame_index, length, frame_seq,
@@ -103,8 +103,8 @@ def entry_close(seq, t_ns, session_id):
 
 
 SESSIONS = [
-    # (seed, session_id, sampler key, first counter, frames as (request, direction, index, tokens))
-    (1, bytes(range(16)), bytes(16), 0, [
+    # (seed, session_id, first counter, frames as (request, direction, index, tokens))
+    (1, bytes(range(16)), 0, [
         (7, 0, 0, [1, 2, 3]),
         (7, 1, 0, [42]),
         (7, 1, 1, []),
@@ -112,22 +112,22 @@ SESSIONS = [
         (7, 1, 2, list(range(40))),
         (8, 1, 0, [9] * 3),
     ]),
-    (2**64 - 1, bytes([0xFF] * 16), bytes(range(16, 32)), 0, [
+    (2**64 - 1, bytes([0xFF] * 16), 0, [
         (0, 0, 0, [5]),
         (0, 1, 0, [6, 7]),
         (2**64 - 1, 0, 0, [2**31]),
         (2**64 - 1, 1, 0, list(range(1000, 1033))),
     ]),
-    (0x7E55E2A0137, bytes.fromhex("0123456789abcdeffedcba9876543210"), bytes([0x5A] * 16), 0, [
+    (0x7E55E2A0137, bytes.fromhex("0123456789abcdeffedcba9876543210"), 0, [
         (3, 1, 0, [11, 12, 13, 14, 15]),
     ]),
     # Counters past 2^16 and 2^24, in every byte of the block's counter word, and the last one.
-    (5, bytes([0x42] * 16), bytes([0x24] * 16), 0x01020304, [
+    (5, bytes([0x42] * 16), 0x01020304, [
         (1, 0, 0, list(range(10))),
         (1, 1, 0, [77]),
         (1, 1, 1, [78, 79]),
     ]),
-    (6, bytes([0x99] * 8 + [0x11] * 8), bytes([0x77] * 16), 2**32 - 1, [
+    (6, bytes([0x99] * 8 + [0x11] * 8), 2**32 - 1, [
         (4, 1, 0, [2**32 - 1] * 6),
     ]),
 ]
@@ -136,19 +136,17 @@ SESSIONS = [
 def main():
     check_ctr()
     sessions, seq, t_ns = [], 0, 1_000_000
-    for seed, session_id, sampler_key, first, frames in SESSIONS:
-        drawn = session_id + splitmix_bytes(seed, 48)
-        key, salt_k, salt_s = drawn[16:32], drawn[32:48], drawn[48:]
+    for seed, session_id, first, frames in SESSIONS:
+        drawn = session_id + splitmix_bytes(seed, 32)
+        key, salt_k = drawn[16:32], drawn[32:48]
         kc = commitment(b"tessera-anchor-key/v1", key, salt_k)
-        sc = commitment(b"tessera-sampler-key/v1", sampler_key, salt_s)
         record = {
             "drawn": drawn.hex(), "first_seq": first,
-            "session_id": session_id.hex(), "sampler_key": sampler_key.hex(),
-            "key": key.hex(), "key_salt": salt_k.hex(), "sampler_salt": salt_s.hex(),
-            "key_commitment": kc.hex(), "sampler_commitment": sc.hex(),
-            "session_open": (b"TSOP" + session_id + kc + sc).hex(),
+            "session_id": session_id.hex(),
+            "key": key.hex(), "key_salt": salt_k.hex(), "key_commitment": kc.hex(),
+            "session_open": (b"TSOP" + session_id + kc).hex(),
             "open_entry": {"seq": seq, "t_ns": t_ns,
-                           "tce": entry_open(seq, t_ns, session_id, kc, sc).hex()},
+                           "tce": entry_open(seq, t_ns, session_id, kc).hex()},
             "frames": [],
         }
         seq, t_ns = seq + 1, t_ns + 17

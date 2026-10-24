@@ -7,7 +7,7 @@
 
 use crate::{
     DigestLogEntry, Direction, FrameHeader, SealedFrame, Session, SessionOpenFrame, TokenFrame,
-    key_commitment, sampler_commitment,
+    key_commitment,
 };
 use serde_json::Value;
 use tessera_codec::{DecodeLimits, Secret, decode, encode};
@@ -34,26 +34,16 @@ fn every_session_matches_the_independent_oracle() {
         serde_json::from_str(include_str!("../../../spec/vectors/anchor/frames.json")).unwrap();
     let mut frames = 0;
     for s in document["sessions"].as_array().unwrap() {
-        let sampler = Secret::new(array::<16>(&s["sampler_key"]));
-        let (mut session, open, keys) = Session::from_secrets(array(&s["drawn"]), &sampler);
+        let (mut session, open, keys) = Session::from_secrets(array(&s["drawn"]));
         session.set_next(number(&s["first_seq"]));
         assert_eq!(session.session_id(), array(&s["session_id"]));
-        // The commitments, from the oracle's own keys and from the session's.
+        // The commitment, from the oracle's own key and from the session's.
         let key = Secret::new(array::<16>(&s["key"]));
         let key_salt = Secret::new(array::<16>(&s["key_salt"]));
-        let sampler_salt = Secret::new(array::<16>(&s["sampler_salt"]));
         assert_eq!(key_commitment(&key, &key_salt), array(&s["key_commitment"]));
         assert_eq!(
             key_commitment(&keys.key, &keys.key_salt),
             array(&s["key_commitment"])
-        );
-        assert_eq!(
-            sampler_commitment(&sampler, &sampler_salt),
-            array(&s["sampler_commitment"])
-        );
-        assert_eq!(
-            sampler_commitment(&sampler, &keys.sampler_salt),
-            array(&s["sampler_commitment"])
         );
         assert_eq!(open.to_bytes().to_vec(), hex(&s["session_open"]));
         assert_eq!(SessionOpenFrame::from_bytes(&open.to_bytes()), Ok(open));

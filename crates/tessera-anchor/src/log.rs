@@ -20,8 +20,6 @@ pub enum DigestLogEntry {
         session_id: [u8; 16],
         /// `SHA-256("tessera-anchor-key/v1" ‖ k_s ‖ salt_k)`.
         key_commitment: [u8; 32],
-        /// `SHA-256("tessera-sampler-key/v1" ‖ K_samp ‖ salt_s)`.
-        sampler_commitment: [u8; 32],
     },
     /// A token frame passed: its header's fields and its digest.
     Frame {
@@ -81,7 +79,6 @@ impl DigestLogEntry {
             t_ns,
             session_id: open.session_id,
             key_commitment: open.key_commitment,
-            sampler_commitment: open.sampler_commitment,
         }
     }
 

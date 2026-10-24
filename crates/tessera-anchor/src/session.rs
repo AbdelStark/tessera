@@ -17,19 +17,18 @@ use tessera_codec::{HeapKey, Secret, SecretBuf, Zeroize};
 
 /// The label of the key commitment (RFC-0015 'Frames').
 const KEY_LABEL: &[u8] = b"tessera-anchor-key/v1";
-/// The label of the sampler commitment (RFC-0015 'Frames').
+/// The label of the sampler key's commitment (RFC-0059, RFC-0061).
 const SAMPLER_LABEL: &[u8] = b"tessera-sampler-key/v1";
 
-/// The secrets a session draws at open: `k_s`, `salt_k` and `salt_s` (RFC-0059 'The session-open
-/// frame and the commitments'). The prover keeps them for the anchor circuits. Each lives on the
-/// heap, so moving the keys moves pointers and leaves no copy behind; Debug shows nothing.
+/// The secrets a session draws at open: `k_s` and `salt_k` (RFC-0059 'The session-open frame and
+/// the commitments'). The prover keeps them for the anchor circuits. Each lives on the heap, so
+/// moving the keys moves pointers and leaves no copy behind; Debug shows nothing. The sampler key
+/// is no session's: the verifier pins its commitment (RFC-0061).
 pub struct SessionKeys {
     /// `k_s`, the frames' AES-128 key.
     pub key: Secret<HeapKey>,
     /// `salt_k`, the key commitment's salt.
     pub key_salt: Secret<HeapKey>,
-    /// `salt_s`, the sampler commitment's salt.
-    pub sampler_salt: Secret<HeapKey>,
 }
 
 impl fmt::Debug for SessionKeys {
@@ -59,28 +58,22 @@ impl fmt::Debug for Session {
 }
 
 impl Session {
-    /// Opens a session: draws its identifier, `k_s`, `salt_k` and `salt_s` from the operating
-    /// system's generator (RFC-0059 'Session identity'), commits `k_s` and the sampler key
-    /// `K_samp` (RFC-0017), and returns the cipher, the session-open frame to send before any
-    /// token frame (INV-ANC-2), and the secrets.
+    /// Opens a session: draws its identifier, `k_s` and `salt_k` from the operating system's
+    /// generator (RFC-0059 'Session identity'), commits `k_s`, and returns the cipher, the
+    /// session-open frame to send before any token frame (INV-ANC-2), and the secrets.
     ///
     /// # Errors
     /// [`AnchorError::Random`] when the operating system's generator fails.
     #[allow(clippy::disallowed_methods)]
-    pub fn open<K: Borrow<[u8; 16]> + Zeroize>(
-        sampler_key: &Secret<K>,
-    ) -> Result<(Self, SessionOpenFrame, SessionKeys), AnchorError> {
-        let mut drawn = Secret::new(vec![0u8; 64]);
+    pub fn open() -> Result<(Self, SessionOpenFrame, SessionKeys), AnchorError> {
+        let mut drawn = Secret::new(vec![0u8; 48]);
         getrandom::fill(drawn.expose_secret_mut()).map_err(|_| AnchorError::Random)?;
-        Ok(Self::from_drawn(&drawn, sampler_key))
+        Ok(Self::from_drawn(&drawn))
     }
 
-    /// The session of 64 drawn bytes: its identifier, then `k_s`, `salt_k` and `salt_s`.
+    /// The session of 48 drawn bytes: its identifier, then `k_s` and `salt_k`.
     #[allow(clippy::disallowed_methods)]
-    fn from_drawn<K: Borrow<[u8; 16]> + Zeroize>(
-        drawn: &Secret<Vec<u8>>,
-        sampler_key: &Secret<K>,
-    ) -> (Self, SessionOpenFrame, SessionKeys) {
+    fn from_drawn(drawn: &Secret<Vec<u8>>) -> (Self, SessionOpenFrame, SessionKeys) {
         let bytes = drawn.expose_secret();
         let mut session_id = [0u8; 16];
         session_id.copy_from_slice(&bytes[..16]);
@@ -93,12 +86,10 @@ impl Session {
         let keys = SessionKeys {
             key: part(1),
             key_salt: part(2),
-            sampler_salt: part(3),
         };
         let open = SessionOpenFrame {
             session_id,
             key_commitment: key_commitment(&keys.key, &keys.key_salt),
-            sampler_commitment: sampler_commitment(sampler_key, &keys.sampler_salt),
         };
         let session = Self {
             cipher: Box::new(Aes128::new(GenericArray::from_slice(
@@ -112,11 +103,8 @@ impl Session {
 
     /// The session of given secrets, for the conformance vectors: test builds only.
     #[cfg(test)]
-    pub(crate) fn from_secrets<K: Borrow<[u8; 16]> + Zeroize>(
-        drawn: [u8; 64],
-        sampler_key: &Secret<K>,
-    ) -> (Self, SessionOpenFrame, SessionKeys) {
-        Self::from_drawn(&Secret::new(drawn.to_vec()), sampler_key)
+    pub(crate) fn from_secrets(drawn: [u8; 48]) -> (Self, SessionOpenFrame, SessionKeys) {
+        Self::from_drawn(&Secret::new(drawn.to_vec()))
     }
 
     /// Moves the counter, for tests at its edges: test builds only.
@@ -314,7 +302,8 @@ where
     commitment(KEY_LABEL, key, salt)
 }
 
-/// `SHA-256("tessera-sampler-key/v1" ‖ K_samp ‖ salt_s)` (RFC-0059).
+/// `SHA-256("tessera-sampler-key/v1" ‖ K ‖ salt)`, the sampler key's commitment, which the
+/// verifier pins (RFC-0061 'The sampler key').
 pub fn sampler_commitment<K, S>(key: &Secret<K>, salt: &Secret<S>) -> [u8; 32]
 where
     K: Borrow<[u8; 16]> + Zeroize,
@@ -409,7 +398,7 @@ mod tests {
     }
 
     fn session() -> Session {
-        Session::from_secrets([0x31; 64], &Secret::new([1u8; 16])).0
+        Session::from_secrets([0x31; 48]).0
     }
 
     /// INV-ANC-3 at its edge: the last counter seals, and the frame after it is refused without

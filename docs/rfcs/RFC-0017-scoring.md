@@ -5,10 +5,11 @@
 - Created: 2026-10-15
 - Target milestone: v0.3 (exact, greedy), v0.4 (sampling, bounded mode)
 - Amended by: [RFC-0035](RFC-0035-padded-rows.md) ('In-circuit scoring', constraints 3 and 4: the row selector `ψ`)
+- Amended by: [RFC-0061](RFC-0061-sampling-randomness.md) ('Summary', 'Sampler PRF' and 'Testing Strategy': a keyed stream class of `b` public bits in place of `request_id`, 0 by default, under a key the verifier pins; 'Semantics': what `Û` bounds)
 
 ## Summary
 
-The third conjunct of the statement scores the recorded outputs against `D`'s logits and publishes `Û`, an upper bound in bits on the information in the outputs that `D`, the prompt and the committed sampling randomness do not explain. `Û` is the code length of the outputs under a committed predictor `q`, so it is valid for any predictor by Gibbs' inequality, and a poor predictor only inflates it. Two predictors are defined: **exact** (`q` is a point mass on `D`'s own decoded token; `Û = 0` iff the outputs equal `D`'s outputs) and **mixture** (`q = (1 − ε)·δ_ŷ + ε·p̂`, for bounded mode with an unmodified floating-point deployment). Decoding is greedy or inverse-CDF temperature sampling from an AES-based PRF keyed by a sampler key committed at session open.
+The third conjunct of the statement scores the recorded outputs against `D`'s logits and publishes `Û`, an upper bound in bits on the information in the outputs that `D`, the prompt and the committed sampling randomness do not explain. `Û` is the code length of the outputs under a committed predictor `q`, so it is valid for any predictor by Gibbs' inequality, and a poor predictor only inflates it. Two predictors are defined: **exact** (`q` is a point mass on `D`'s own decoded token; `Û = 0` iff the outputs equal `D`'s outputs) and **mixture** (`q = (1 − ε)·δ_ŷ + ε·p̂`, for bounded mode with an unmodified floating-point deployment). Decoding is greedy or inverse-CDF temperature sampling from an AES-based PRF of a keyed stream class and the output position, under a sampler key whose commitment the verifier pins ahead of the window it serves ([RFC-0061](RFC-0061-sampling-randomness.md)).
 
 ## Motivation
 
@@ -30,7 +31,7 @@ The source keeps VerInf's public output: "a bound `Û` on unexplained informatio
 
 ### Semantics
 
-For request outputs `y_1 … y_n` and committed predictors `q_t` (distributions over the vocabulary that depend only on `D`, the prompt, previous outputs and the committed sampling randomness), define `Û = Σ_t b_t` with `b_t ≥ −log2 q_t(y_t)`. Arithmetic coding with the `q_t` encodes `y_1 … y_n` in at most `Û + 2` bits given everything the statement fixes. So the outputs carry at most `Û + 2` bits beyond what is determined by `(D, prompt, sampler key)`; this bounds any covert channel in the outputs. Validity needs only that each `q_t` sums to at most 1 and is fixed before `y_t` is chosen, which holds because `q_t` is a function of committed data and the sampler stream. (Gibbs' inequality gives the expected-value form; the code-length form holds per sequence.)
+For request outputs `y_1 … y_n` and committed predictors `q_t` (distributions over the vocabulary that depend only on `D`, the prompt, previous outputs and the committed sampling randomness), define `Û = Σ_t b_t` with `b_t ≥ −log2 q_t(y_t)`. Arithmetic coding with the `q_t` encodes `y_1 … y_n` in at most `Û + 2` bits given everything the statement fixes. So the outputs carry at most `Û + 2` bits beyond what is determined by `(D, prompt, sampler key)`. That bounds a covert channel in the outputs given the recorded prompt and lengths. What the serving stack puts in the prompt, and where it ends a request, are outside it ([RFC-0061 'What remains the prover's'](RFC-0061-sampling-randomness.md#what-remains-the-provers)). Validity needs only that each `q_t` sums to at most 1 and is fixed before `y_t` is chosen, which holds because `q_t` is a function of committed data and the sampler stream. (Gibbs' inequality gives the expected-value form; the code-length form holds per sequence.)
 
 ### Decoding and the sampler PRF
 
@@ -44,13 +45,15 @@ pub enum PredictorSpec {
 
 ### Sampler PRF
 
-For temperature decoding at output position `t` of request `r` in a session with sampler key `K_samp`:
+For temperature decoding at output position `t` of a request whose prompt is `x_0, …, x_{n−1}`, under the sampler key `K` with `b` class bits ([RFC-0061](RFC-0061-sampling-randomness.md#the-stream)):
 
 ```text
-u_t = u32_le( AES-128_{K_samp}( u64_le(request_id) ‖ u32_le(t) ‖ 0x00000000 )[0..4] )
+h     = SHA-256( "tessera-stream-class/v1" ‖ K ‖ 0^25 ‖ u64_le(n) ‖ u32_le(x_0) ‖ … ‖ u32_le(x_{n−1}) )
+class = u64_le(h[0..8]) >> (64 − b)      for 1 ≤ b ≤ 64;   class = 0 for b = 0
+u_t   = u32_le( AES-128_K( u64_le(class) ‖ u32_le(t) ‖ 0^4 )[0..4] )
 ```
 
-`K_samp` is committed in the session-open frame ([RFC-0015](RFC-0015-transcript-anchor.md#frames)). The serving engine's sampler must draw exactly this stream and select the inverse-CDF token under its own distribution. The reference implementation lives in `tessera-scoring` so engines can link or port it.
+The class takes the slot of `request_id`. However the serving stack varies a prompt, it reaches at most `2^b` streams. At the reference `b = 0`, the verifier's default, it reaches one. `K` is derived from the prover's committed base key, a nonce that the verifier draws when it pins the commitment, `b`, and the start of the pin's fixed-length window, so neither the prover nor its verifier chooses it ([RFC-0061 'The sampler key and its pins'](RFC-0061-sampling-randomness.md#the-sampler-key-and-its-pins)). The serving engine's sampler must draw exactly this stream and select the inverse-CDF token under its own distribution. The reference implementation lives in `tessera-scoring` so engines can link or port it.
 
 ### `D`'s decoded token
 
@@ -108,7 +111,7 @@ v0.3: exact predictor with greedy decoding. v0.4: sampler PRF, temperature decod
 
 ## Testing Strategy
 
-- Sampler PRF: test vectors (key, request, position → `u_t`) shared by `tessera-scoring`, the verifier and the circuit; the reference sampler and the `InverseCdf` certificate agree on 10^5 random distributions.
+- Sampler PRF: test vectors (key, class bits, prompt, position → class, `u_t`) shared by `tessera-scoring`, the verifier and the circuit; the reference sampler and the `InverseCdf` certificate agree on 10^5 random distributions.
 - Exact mode: honest proofs give `Û = 0`; one altered output token yields `ERR-WITNESS-EXACT-MISMATCH`.
 - Mixture: for random logits and outputs, the circuit's `Û_r` is at least the exact `Σ −log2 q_t(y_t)` computed in 256-bit arithmetic and at most that plus `n · 2^{-8} + n · c_match`-level rounding slack; a prover claiming `m_t = 1` on a mismatched token is rejected; a prover claiming an `I_t` one smaller than needed is rejected.
 - Gibbs validity smoke test: for synthetic `D` and outputs sampled from `q`, the average `Û` per token is at least the empirical entropy rate.

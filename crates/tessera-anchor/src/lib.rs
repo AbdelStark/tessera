@@ -6,13 +6,14 @@
 //!
 //! - [`FrameHeader`], the 41-byte cleartext header, which carries the session counter
 //!   `frame_seq`; [`SealedFrame`], a header and its ciphertext, with the digest the log records;
-//!   [`SessionOpenFrame`], the 84-byte frame that commits a session's keys before its frames.
+//!   [`SessionOpenFrame`], the 52-byte frame that commits a session's key before its frames.
 //! - [`TokenFrame`], the plaintext, whose tokens are secret-class (05 §3).
 //! - [`Session`], the reference cipher: it draws the session's identifier and secrets
-//!   ([`SessionKeys`]), sends their commitments, and seals frames under AES-128-CTR with the
+//!   ([`SessionKeys`]), sends the key's commitment, and seals frames under AES-128-CTR with the
 //!   counter it keeps. No operation takes a counter, a key or a session identifier from its
-//!   caller, so a session never reuses a nonce (INV-ANC-3). [`key_commitment`] and
-//!   [`sampler_commitment`] are the commitments.
+//!   caller, so a session never reuses a nonce (INV-ANC-3). [`key_commitment`] is a session's
+//!   commitment, and [`sampler_commitment`] the sampler key's, which the verifier pins
+//!   (RFC-0061).
 //! - [`DigestLogEntry`], the recorder's entries (schema `0x0401`).
 //! - [`LogManifest`] (schema `0x0402`), with RFC-0060's identity, strict Ed25519 signatures and
 //!   chain ([`check_link`], [`check_chain`]), and [`merkle`], RFC 9162's tree over a period's

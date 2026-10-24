@@ -6,6 +6,33 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Sampling randomness under a pinned key ([#497](https://github.com/AbdelStark/tessera/issues/497)):
+  - **RFC-0061, 'Sampling Randomness Under a Pinned Key'** (amends RFC-0015, RFC-0016, RFC-0017, RFC-0019, RFC-0043, RFC-0059, 04 §2 and 06 §5–6).
+    - **The gap.** Exact mode's PRF took a `request_id` and a session's `K_samp`, and the serving stack chooses both after a prompt arrives. Grinding them is best-of-`M` selection among `D`'s samples, and a covert channel, while `Û = 0`: `k` bits of the first draw for `2^k` AES calls on average.
+    - **The trade.** Without randomness from another party per request, any per-request input is the stack's choice, its prompt included, while no input makes every request share one stream. `research/tools/sampling_streams.py` measures it from fixed seeds:
+      - re-tokenizing two words reaches 256 and 253 of the 256 top bytes of `u_0`, under two keys;
+      - one stream for every request lets 10 observed outputs predict the next prompt's first token 91.7% of the time;
+      - 256 keyed classes are clustered from 4,096 responses, after which 4 tokens predict the next 92.2% of the time.
+    - **The stream.** A keyed class of `b` public bits fills RFC-0017's `request_id` slot, so the stack's choice is at most `b` bits per logged request under one pin. The reference and the verifier's default is `b = 0`, with no per-request input; a verifier allows more only through its policy's `b_max`.
+    - **The key.** The prover commits a base key, and the verifier pins the commitment with `b`, the start of a fixed-length window, and a nonce it draws on receipt. Further verifiers adopt the issuer's pins. The PRF's key is derived from all four, so the prover can neither grind it nor keep one it likes.
+    - **Pins.**
+      - **A request falls within one pin:** every frame lies in the window of its earliest frame's pin, up to a grace `G`. A batch falls within one pin, and RFC-0016 batches by pin.
+      - **Checks:** each announcement arrives over TB-1 and is checked on arrival against the policy (`W`, `G`, `b_max`). Each pin keeps its own `W` and `G`, and the list is checked again at load, `Inconclusive(ERR-USAGE)`.
+      - **Rejection:** a request outside its batch's pin is `Reject(Anchor { kind: SamplerKey })`. The pins and the check are #150's.
+      - **Clocks:** A-ANCHOR-2 gains the recorder's clock bound.
+    - **What remains the serving stack's:** the prompt, the output length, request boundaries, the temperature, which windows carry temperature traffic, the pin near a rotation and the pins a held prompt spans, each with its bound.
+  - **`tessera-anchor`.** The session-open frame is `TSOP ‖ session_id ‖ key_commitment`, 52 bytes. `DigestLogEntry::SessionOpen` drops its sampler commitment, and `Session::open` draws a session's identifier, key and salt only.
+  - **`tessera-scoring`.**
+    - `SamplerBaseKey::derive` makes a pin's `SamplerKey`, which carries its class bits. The two are separate types, so the PRF cannot run under the base key.
+    - `ClassBits` and `StreamClass`.
+    - `Sampler::new(key)` keeps the key block's SHA-256 state on the heap.
+    - `Sampler::class(prompt)` and `Sampler::draw(class, t)`. The hashes' state words are cleared where they are held.
+  - **Vectors.**
+    - `spec/vectors/scoring/prf.txt` has 369 rows, with `b = 0, 1, 8, 63, 64` and SHA-256's block boundaries. Rows whose class equals a `request_id` of #136's file draw its values.
+    - `derive.txt` has 46 derivations, each chained through to a class and `u_0`.
+    - The inverse-CDF rows now come from their own stream.
+    - `anchor/` and `manifest/` follow the 52-byte frame.
+
 - `tessera-anchor`'s log manifests, their chain and inclusion proofs ([#138](https://github.com/AbdelStark/tessera/issues/138)):
   - **RFC-0060, 'Log Manifests, Their Chain and Inclusion Proofs'** (amends RFC-0015). It fixes what RFC-0015 left open:
     - **A manifest's identity** is its envelope digest, which `prev_manifest` and a statement's `manifest_digest` hold.
