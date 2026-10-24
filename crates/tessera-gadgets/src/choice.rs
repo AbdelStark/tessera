@@ -14,7 +14,7 @@ use tessera_tables::{GeneratedTable, TableKind, TableSpec};
 fn shape(rule: &'static str) -> GadgetError {
     GadgetError::Shape { rule }
 }
-fn relation(_: SumcheckError) -> GadgetError {
+pub(crate) fn relation(_: SumcheckError) -> GadgetError {
     shape("the choice relation's public shape fits its sumcheck")
 }
 
@@ -56,8 +56,12 @@ impl<B: PrimeField> OneHot<B> {
     pub fn padded_len(&self) -> usize {
         self.indices.len()
     }
-    fn vars(&self) -> usize {
+    pub(crate) fn vars(&self) -> usize {
         self.padded_len().trailing_zeros() as usize
+    }
+    /// The public vocabulary indicator `C_v = [v < vocab]`, over the padded vocabulary.
+    pub(crate) fn valid(&self) -> &[B] {
+        &self.valid
     }
 
     /// Compute a clearing indicator. `real` is the public row selector ψ. Control flow and
@@ -113,7 +117,7 @@ impl<B: PrimeField> OneHot<B> {
         })
     }
 
-    fn check(&self, values: &[B]) -> Result<(), GadgetError> {
+    pub(crate) fn check(&self, values: &[B]) -> Result<(), GadgetError> {
         if values.len() != self.padded_len() {
             return Err(shape("a choice column has pad(vocab) entries"));
         }
@@ -320,20 +324,26 @@ impl<B: PrimeField> Argmax<B> {
     /// # Errors
     /// Shape unless rho has log2(pad(vocab)) coordinates.
     pub fn suffix_weights<F: PolyField<Base = B>>(&self, rho: &[F]) -> Result<Vec<F>, GadgetError> {
-        if rho.len() != self.domain.vars() {
-            return Err(shape("a suffix claim has log2(pad(vocab)) coordinates"));
-        }
-        let mut sum = F::ZERO;
-        Ok(eq_table(rho)
-            .map_err(|_| shape("the public suffix point fits the polynomial engine"))?
-            .into_iter()
-            .map(|w| {
-                let before = sum;
-                sum += w;
-                before
-            })
-            .collect())
+        suffix_table(rho, self.domain.vars())
     }
+}
+
+/// `w_v = Σ_{i<v} eq(rho, i)` over `2^vars` entries: the weights of a strict suffix's claim at
+/// `rho`, shared by `Argmax` and `InverseCdf`.
+pub(crate) fn suffix_table<F: PolyField>(rho: &[F], vars: usize) -> Result<Vec<F>, GadgetError> {
+    if rho.len() != vars {
+        return Err(shape("a suffix claim has log2(pad(vocab)) coordinates"));
+    }
+    let mut sum = F::ZERO;
+    Ok(eq_table(rho)
+        .map_err(|_| shape("the public suffix point fits the polynomial engine"))?
+        .into_iter()
+        .map(|w| {
+            let before = sum;
+            sum += w;
+            before
+        })
+        .collect())
 }
 
 /// The public triangular kernel `Σ_{i<v} eq(rho,i)eq(point,v)`, in O(log vocab) time.

@@ -24,7 +24,7 @@ Every committed value upstream of the logits must have exactly one passing witne
 | `RsqrtRow` | Lemma 7; `u = Σ res_i^2 + e < 2^55`, `N = d · 2^{2κ}`, two `BigIntCompare` brackets | Both `ρ^2 u ≤ N` and `N + 1 ≤ (ρ + 1)^2 u` checked over exact limb chains; `ρ ∈ [0, 2^{κ+1})` | `ρ − 1` and `ρ + 1`; corrupted `u` limb recomposition |
 | `OneHot` | Lemma 8; degree-3 booleanity `h(1 − h) = 0`, `Σ h_v = 1`, `Σ v h_v = t` | Zero-check point drawn after `h` is committed; error `3 log2(vocab)/\|Fp2\|` counted in budget | Two ones with cancelling index sum; all zeros; single one at `t' ≠ t` |
 | `Argmax` | Lemma 9; `lt_v = Σ_{w > v} h_w`, `g_v = m − ℓ_v − lt_v ∈ [0, 2^29)`, `Σ h_v ℓ_v = m` | Strict inequality `ℓ_v ≤ m − 1` for `v < y` enforces first-index tie-breaking (`min{v : ℓ_v = max ℓ}`) | Second tied index `y' > y` with `ℓ_{y'} = m`; second-highest logit |
-| `InverseCdf` | Lemma 10; `C_< · 2^32 ≤ u · Z` and `u · Z + 1 ≤ C_≤ · 2^32` | Both comparators exact; `ĥ` proven one-hot; `Z = Σ e_v < 2^{σ+18}` | `ŷ − 1` and `ŷ + 1`; boundary `u = 0` and `u = 2^32 − 1` |
+| `InverseCdf` | Lemma 10; `C_< · 2^32 ≤ u · Z` and `u · Z + 1 ≤ C_≤ · 2^32` | Both comparators exact; `ĥ` proven one-hot, in bounded mode by the gadget's own booleanity, vocabulary and count relations; `Z = Σ_{v<V} e_v ≤ V·2^σ ≤ 2^{σ+18}`, pinned to 0 on a padded row (RFC-0058) | `ŷ − 1` and `ŷ + 1`; boundary `u = 0` and `u = 2^32 − 1` |
 
 ## 3. Padding and boundary-condition audit ([RFC-0008](../../../docs/rfcs/RFC-0008-logup-and-tables.md), [RFC-0010](../../../docs/rfcs/RFC-0010-proof-schedule.md))
 

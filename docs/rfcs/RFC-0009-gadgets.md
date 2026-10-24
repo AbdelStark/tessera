@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide'), [RFC-0028](RFC-0028-balanced-split.md) ('RequantSplit': the split point), [RFC-0030](RFC-0030-masked-exponentials.md) ('SoftmaxRow': every position looked up, the leaf claims' reduction, Lemma 5), [RFC-0035](RFC-0035-padded-rows.md) ('RsqrtRow', 'SoftmaxRow', 'OneHot', 'InverseCdf': the row selector `ψ` on padded rows), [RFC-0050](RFC-0050-gadget-advice-columns.md) ('BigIntCompare' and 'RsqrtRow': canonical auxiliary columns, range requests and exact counts)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide'), [RFC-0028](RFC-0028-balanced-split.md) ('RequantSplit': the split point), [RFC-0030](RFC-0030-masked-exponentials.md) ('SoftmaxRow': every position looked up, the leaf claims' reduction, Lemma 5), [RFC-0035](RFC-0035-padded-rows.md) ('RsqrtRow', 'SoftmaxRow', 'OneHot', 'InverseCdf': the row selector `ψ` on padded rows), [RFC-0050](RFC-0050-gadget-advice-columns.md) ('BigIntCompare' and 'RsqrtRow': canonical auxiliary columns, range requests and exact counts), [RFC-0058](RFC-0058-inverse-cdf-columns.md) ('InverseCdf': the partition's bound, the integers' limbs, the committed values, range requests and exact counts)
 
 ## Summary
 
@@ -169,11 +169,11 @@ Logits `ℓ_v` (virtual true integers, `|ℓ_v| < 2^28`), output token `y` with 
 
 ### InverseCdf (temperature sampling)
 
-Vocabulary exponentials `e_v = Exp_T[c − ℓ_v]` from a `SoftmaxRow`-style max certificate over the vocabulary (temperature folded into the table scale), partition `Z = Σ_v e_v < 2^{σ+18}`, PRF output `u ∈ [0, 2^{32})` (committed, produced by the AES gadget of RFC-0017), sampled token `ŷ` with one-hot `ĥ`:
+Vocabulary exponentials `e_v = Exp_T[c − ℓ_v]` from a `SoftmaxRow`-style max certificate over the vocabulary (temperature folded into the table scale), partition `Z = Σ_v e_v ≤ vocab·2^σ ≤ 2^{σ+18}` ([RFC-0058](RFC-0058-inverse-cdf-columns.md) corrects the earlier strict bound, which a vocabulary of `2^18` equal logits reaches), PRF output `u ∈ [0, 2^{32})` (committed, produced by the AES gadget of RFC-0017), sampled token `ŷ` with one-hot `ĥ`:
 
 - Virtual: `C_≤ = Σ_v e_v Σ_{w ≥ v} ĥ_w` (prefix sum through `ŷ`), `C_< = C_≤ − Σ_v ĥ_v e_v`.
-- Relations: `BigIntCompare(C_< · 2^{32} ≤ u · Z)` and `BigIntCompare(u · Z + ψ ≤ C_≤ · 2^{32})`, with `ψ` the row selector ([RFC-0035](RFC-0035-padded-rows.md)). On a padded row the vocabulary certificate masks every position as `SoftmaxRow` masks a padded query, so `e`, `Z` and `C` are 0 and both comparisons are `0 ≤ 0`; a padding zero-check pins the certificate's maximum to 0.
-- Cost per output token: the vocabulary max certificate (`vocab` lookups, commitments and product leaves), one one-hot vector if `ŷ ≠ y` is possible (bounded mode), and two comparators.
+- Relations: `BigIntCompare(C_< · 2^{32} ≤ u · Z)` and `BigIntCompare(u · Z + ψ ≤ C_≤ · 2^{32})`, with `ψ` the row selector ([RFC-0035](RFC-0035-padded-rows.md)). On a padded row the vocabulary certificate masks every position as `SoftmaxRow` masks a padded query, so `e`, `Z` and `C` are 0 and both comparisons are `0 ≤ 0`; a padding zero-check pins the certificate's maximum to 0, and [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows)'s pins `Z`.
+- Cost per output token: the vocabulary max certificate (`vocab` lookups, commitments and product leaves), one one-hot vector if `ŷ ≠ y` is possible (bounded mode), and two comparators. [RFC-0058](RFC-0058-inverse-cdf-columns.md) fixes the comparators' limbs, the committed values, their order and their exact counts.
 - Lemma 10. Holds iff `ŷ = min{v : C(v) · 2^{32} > u · Z}`, the inverse-CDF sample. Proof: Lemma 8 fixes `ĥ`; Lemma 4 makes the comparisons exact; the prefix sums are monotone, so the bracket identifies one index.
 
 ### Summary of costs
@@ -188,7 +188,7 @@ Vocabulary exponentials `e_v = Exp_T[c − ℓ_v]` from a `SoftmaxRow`-style max
 | `RsqrtRow` | row | `4+r+12m` (RFC-0050) | `6+r+12m` (RFC-0050) | 0 |
 | `OneHot` | token | `vocab` | 0 | 0 |
 | `Argmax` | output token | 1 | `vocab` | 0 |
-| `InverseCdf` | output token | `vocab` + about 20 | `vocab` + about 30 | `vocab` |
+| `InverseCdf` | output token | the vocabulary certificate's, about `vocab`, plus `1 + 2(k − 1) + 12(k + 2)` with `k = ⌈bit_length(vocab·2^σ)/16⌉`, plus `pad(vocab)` in bounded mode ([RFC-0058](RFC-0058-inverse-cdf-columns.md)) | the certificate's `vocab`, plus `2 + 2k + 12(k + 2)` ([RFC-0058](RFC-0058-inverse-cdf-columns.md)) | `vocab` |
 
 ## Alternatives Considered
 
