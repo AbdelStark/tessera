@@ -15,7 +15,7 @@
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "version": { "type": "string", "minLength": 1 },
-        "git_commit": { "description": "The build's commit, null outside a git checkout.", "type": ["string", "null"], "minLength": 40, "maxLength": 40 },
+        "git_commit": { "description": "The build's commit; always null for verifier runs, since verifier isolation bars build-time tool invocation.", "type": ["string", "null"], "minLength": 40, "maxLength": 40 },
         "profile": { "enum": ["debug", "release"] },
         "features": { "description": "The enabled cargo features of the tool.", "type": "array", "items": { "type": "string" } }
       }
