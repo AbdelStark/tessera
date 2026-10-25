@@ -27,10 +27,14 @@
 //!   allocation, zero rows and segments. It maps whole attention claims to weighted share
 //!   openings. [`claim_list`] checks the complete allocation at `max_context` before emission
 //!   and returns an error when it cannot fit (RFC-0046/0047).
+//! - [`anchor`] lowers the transcript anchor's AES-128-CTR circuit into the IR: the key schedule,
+//!   the rounds over counter blocks and the keystream's XOR with the plaintext, each byte
+//!   operation a lookup into `AesSbox`, `Gf256Mul` or `Bitwise8` (RFC-0015 'Circuits').
 
 #![forbid(unsafe_code)]
 
 mod advice;
+pub mod anchor;
 mod claim;
 mod error;
 mod lower;
