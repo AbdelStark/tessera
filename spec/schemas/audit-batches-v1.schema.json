@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/audit-batches-v1.schema.json",
+  "title": "tessera.audit-batches/1",
+  "description": "What `tessera audit batch` writes to `<out-dir>/batches.json`, and prints with `--json` (RFC-0016 'Batching'): a sample's selected requests packed into proof batches by first-fit decreasing on their length, each with the lengths its statement carries, read from the period's log and the previous period's. Greedy only: every request is in one group until RFC-0061's pins are implemented. Informational: `tessera prove --sample` reads the batches from the sample and the logs again, never from this report.",
+  "type": "object",
+  "required": [
+    "schema",
+    "manifest_digest",
+    "sample",
+    "min_batch_tokens",
+    "max_batch_tokens",
+    "selected",
+    "batches"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.audit-batches/1"
+    },
+    "manifest_digest": {
+      "description": "The period's manifest identity (RFC-0060), the sample's and every batch statement's `manifest_digest`, as lowercase hex.",
+      "$ref": "#/$defs/digest"
+    },
+    "sample": {
+      "description": "The sample seed (RFC-0016 'Sample derivation', step 3), as lowercase hex.",
+      "$ref": "#/$defs/digest"
+    },
+    "min_batch_tokens": {
+      "description": "The policy's `min_batch_tokens`: at most one batch of each group has fewer tokens.",
+      "$ref": "#/$defs/u32"
+    },
+    "max_batch_tokens": {
+      "description": "The policy's `max_batch_tokens`: no batch has more tokens but a request longer than it, alone.",
+      "$ref": "#/$defs/u32"
+    },
+    "selected": {
+      "description": "The sample's selected requests, each in exactly one batch.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "batches": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/batch"
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "u32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "batch": {
+      "type": "object",
+      "required": [
+        "index",
+        "group",
+        "tokens",
+        "requests"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "description": "The batch's position, from 0, which `tessera prove --batch` takes: groups in order, and each group's batches in the order they were opened.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "group": {
+          "description": "The group the batch was packed in. Every request is greedy until RFC-0061's pins give temperature requests groups of their own.",
+          "const": "greedy"
+        },
+        "tokens": {
+          "description": "The batch's total `L`.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "requests": {
+          "description": "The batch's requests, in `RequestKey` order, as its statement lists them.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/request"
+          }
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "required": [
+        "session_id",
+        "request_id",
+        "tokens"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {
+          "description": "The request's session, as 32 lowercase hexadecimal digits: also the name of its stored transcript, `<session_id>.tst`.",
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "request_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens": {
+          "description": "`L`, the tokens of all its frames in the window (RFC-0063); 18446744073709551615 when a frame's length has no token count.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "prompt_len": {
+          "description": "The tokens of its `In` frames in the window, its statement's `prompt_len`. Absent, with `output_len`, when a frame has no token count or a count is past 2^32 − 1: no statement can carry the request, and `tessera prove` refuses it with `ERR-WITNESS-ANCHOR`.",
+          "$ref": "#/$defs/u32"
+        },
+        "output_len": {
+          "description": "The tokens of its `Out` frames in the window, its statement's `output_len`.",
+          "$ref": "#/$defs/u32"
+        }
+      }
+    }
+  }
+}

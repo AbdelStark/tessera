@@ -44,14 +44,14 @@ tessera commit-weights  --model MODEL.d --plan plan.tep --out WEIGHTS.twc
                         # also writes WEIGHTS.twr, the public commitment, and prints R_W (RFC-0040)
 tessera weights refresh --weights WEIGHTS.twc --out WEIGHTS2.twc        # emits linking proof
 tessera prove           --plan plan.tep --model MODEL.d --weights WEIGHTS.twc --sample SAMPLE.tas
-                        --transcripts DIR (--live ENDPOINT | --out PROOF.tnp)
+                        LOGS --transcripts DIR --batch K (--live ENDPOINT | --out PROOF.tnp)
                         [--backend {cpu,gpu}] [--devices 0,1,...] [--memory-budget GIB]
 tessera audit share     --manifest MANIFEST.tlm --policy POLICY.json --commitment HEX --state DIR
                         # the prover's share for the coin toss over a manifest, one commitment per manifest
 tessera audit sample    --manifest MANIFEST.tlm --log LOG.tdl
                         [--previous-manifest MANIFEST.tlm --previous-log LOG.tdl] [--between MANIFEST.tlm]...
                         --state DIR --verifier-share HEX --out SAMPLE.tas
-tessera audit batch     --sample SAMPLE.tas --out-dir DIR
+tessera audit batch     --sample SAMPLE.tas LOGS --out-dir DIR             # writes DIR/batches.json
 tessera audit plan      --policy POLICY.json --traffic PROFILE.json (--plan plan.tep | --source-defaults)
                         [--eta η] [--target-overhead O] [--out PLAN.json]           # detection and overhead
 tessera params check    --params PARAMSET [--lookups N] [--table-rows T]   # soundness report
@@ -73,6 +73,22 @@ tessera inspect         FILE                                                # re
 - **The record.** The coin toss is the record `audit share` kept for the manifest, with the verifier's revealed share. Its policy is the `tessera.audit-policy/1` file ([schema](../../spec/schemas/audit-policy-v1.schema.json)) given there, its rates decimal strings. A manifest with no record exits 64.
 
 A log that is not its manifest's exits 65 with `ERR-CODEC-DIGEST`. A share that does not open its commitment exits 20 with `ERR-PROTO-COINTOSS`. Previous periods that do not bind, or a policy file the reader refuses, exit 64. The recorder's signatures are the verifier's to check.
+
+`LOGS` stands for `audit sample`'s log flags, `--manifest` to `--between`, which `audit batch` and `prove --sample` read and check the same way.
+
+`audit batch` packs a sample's selected requests into proof batches ([RFC-0016](../rfcs/RFC-0016-audit-sampling.md#batching) 'Batching'):
+- **The sample** must be its logs': its manifest is `--manifest`, and its policy and coin toss select exactly its requests among the period's candidates.
+- **The lengths.** A request's `L` is its candidate's length. Its `prompt_len` and `output_len` are the tokens of its `In` and `Out` frames in both periods.
+- **One group.** Every request is packed as greedy, since a temperature request's group is a pin of [RFC-0061](../rfcs/RFC-0061-sampling-randomness.md#which-pin-applies), which no crate implements yet.
+- **The output.** `DIR/batches.json`, the `tessera.audit-batches/1` report ([schema](../../spec/schemas/audit-batches-v1.schema.json)), which `--json` prints too. Batches are numbered from 0 in packing order.
+
+`prove --sample` proves batch `--batch K` of a sample, one batch per invocation:
+- **The batch** is `audit batch`'s `K`, read again from the sample and `LOGS`, never from the report. A `K` past the last batch exits 64, and so does a batch of more than one request, until multi-request proof units exist ([#357](https://github.com/AbdelStark/tessera/issues/357)).
+- **The transcripts.** `--transcripts DIR` holds each session's stored `SessionTranscript` as `DIR/<session_id>.tst`, the identifier in 32 lowercase hexadecimal digits.
+- **The pre-check** ([RFC-0015](../rfcs/RFC-0015-transcript-anchor.md#prover-pre-check)) runs before the prover commits anything. A session with no transcript, a stored frame that does not re-seal to its logged digest, or a request whose frames give no lengths, exits 20 with `ERR-WITNESS-ANCHOR`, and no packet is sent.
+- **The proof.** The request's tokens are its `In` frames', then its `Out` frames', from the stored frames the log names. Its statement is built as the reference path's below, with the sample's `manifest_digest`.
+
+Both commands refuse `LOGS` with `audit sample`'s codes. A sample of another period, or one that its logs and coin toss do not give, exits 64, and a malformed sample or transcript exits 65.
 
 `audit plan` reports a policy's detection probability and amortized overhead at a traffic profile ([RFC-0016](../rfcs/RFC-0016-audit-sampling.md#calculators) 'Calculators'):
 - **The inputs.** The `tessera.audit-policy/1` policy, and a `tessera.audit-traffic/1` profile ([schema](../../spec/schemas/audit-traffic-v1.schema.json)) with one entry per bucket: its requests, their mean length and the violating ones. Each bucket's `μ` is the cost model's at its mean length, from the plan's counts or, with `--source-defaults`, the source's, at `bench model`'s scenario (`--gpus`, `--batch-tokens`).
@@ -96,8 +112,9 @@ The optional compile flags select the existing gadget policy; their defaults
 remain unchanged. `--live DIR` uses RFC-0014's one-shot directory transport.
 A completed producer emits an informational `tessera.proof-run/1` receipt;
 only the independent verifier supplies acceptance. A changed recorded output
-returns `ERR-WITNESS-EXACT-MISMATCH`. The sampled-audit route remains
-[#157](https://github.com/AbdelStark/tessera/issues/157). See the
+returns `ERR-WITNESS-EXACT-MISMATCH`. The sampled-audit route, `--sample` in
+place of `--reference-tokens` and its four flags, proves a batch of one request
+the same way, on the CPU, with `--live DIR` for Live. See the
 [exact CLI suite](../testing/exact-cli.md) for reproducible commands and limits.
 
 ### 2.3 `tessera-verify` (Rust, verifier side, independent build)

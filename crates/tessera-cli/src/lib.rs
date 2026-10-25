@@ -9,13 +9,13 @@
 //! tessera commit-weights  --model MODEL.d --plan plan.tep --out WEIGHTS.twc
 //! tessera weights refresh --weights WEIGHTS.twc --out WEIGHTS2.twc
 //! tessera prove           --plan plan.tep --model MODEL.d --weights WEIGHTS.twc --sample SAMPLE.tas
-//!                         --transcripts DIR (--live ENDPOINT | --out PROOF.tnp)
+//!                         LOGS --transcripts DIR --batch K (--live ENDPOINT | --out PROOF.tnp)
 //!                         [--backend {cpu,gpu}] [--devices 0,1,...] [--memory-budget GIB]
 //! tessera audit share     --manifest MANIFEST.tlm --policy POLICY.json --commitment HEX --state DIR
 //! tessera audit sample    --manifest MANIFEST.tlm --log LOG.tdl
 //!                         [--previous-manifest MANIFEST.tlm --previous-log LOG.tdl] [--between MANIFEST.tlm]...
 //!                         --state DIR --verifier-share HEX --out SAMPLE.tas
-//! tessera audit batch     --sample SAMPLE.tas --out-dir DIR
+//! tessera audit batch     --sample SAMPLE.tas LOGS --out-dir DIR
 //! tessera audit plan      --policy POLICY.json --traffic PROFILE.json (--plan plan.tep | --source-defaults)
 //!                         [--eta η] [--target-overhead O] [--out PLAN.json]
 //! tessera params check    --params PARAMSET [--lookups N] [--table-rows T]
@@ -25,9 +25,11 @@
 //! tessera inspect         FILE
 //! ```
 //!
-//! `tessera prove --reference-tokens` produces one exact-greedy CPU proof in NI or directory
-//! Live mode; sampled audits remain #157. `tessera compile` runs in `compile`,
-//! `tessera commit-weights` in `weights`, `tessera audit share`, `sample` and `plan` in `audit`, `tessera bench model`
+//! `LOGS` is `audit sample`'s `--manifest` … `--between` flags. `tessera prove` produces one
+//! exact-greedy CPU proof in NI or directory Live mode, of a TokenFile (`--reference-tokens`) or
+//! of a sample's batch of one request (`--sample`); batches of several requests wait on #357.
+//! `tessera compile` runs in `compile`, `tessera commit-weights` in `weights`, `tessera audit
+//! share`, `sample`, `batch` and `plan` in `audit`, `tessera bench model`
 //! in `bench`, `tessera params check` in `params`, `tessera recorder ref` in `recorder`, and
 //! `tessera inspect` in `inspect`. Other commands check their
 //! arguments and the envelope of each TCE artifact it reads (RFC-0003), then exits with
@@ -203,9 +205,9 @@ struct ShareArgs {
     state: PathBuf,
 }
 
-/// `tessera audit sample`.
+/// The period's logs, as `tessera audit sample` and `audit batch` read them.
 #[derive(Debug, Args)]
-struct SampleArgs {
+struct LogArgs {
     /// The period's manifest.
     #[arg(long, value_name = "MANIFEST.tlm")]
     manifest: PathBuf,
@@ -221,6 +223,25 @@ struct SampleArgs {
     /// A period of zero length between the two, in order; repeated for each.
     #[arg(long, value_name = "MANIFEST.tlm")]
     between: Vec<PathBuf>,
+}
+
+impl LogArgs {
+    fn logs(&self) -> audit::Logs<'_> {
+        audit::Logs {
+            manifest: &self.manifest,
+            log: &self.log,
+            previous_manifest: self.previous_manifest.as_deref(),
+            previous_log: self.previous_log.as_deref(),
+            between: &self.between,
+        }
+    }
+}
+
+/// `tessera audit sample`.
+#[derive(Debug, Args)]
+struct SampleArgs {
+    #[command(flatten)]
+    logs: LogArgs,
     /// Where `tessera audit share` kept its answer for the manifest: the commitment, the share
     /// and the policy of the toss.
     #[arg(long, value_name = "DIR")]
@@ -238,6 +259,9 @@ struct BatchArgs {
     /// The sample, whose policy holds the batch bounds.
     #[arg(long, value_name = "SAMPLE.tas")]
     sample: PathBuf,
+    #[command(flatten)]
+    logs: LogArgs,
+    /// Where the tessera.audit-batches/1 report goes, as batches.json.
     #[arg(long, value_name = "DIR")]
     out_dir: PathBuf,
 }
@@ -448,7 +472,7 @@ fn fail(
 
 /// Runs the command `cli` names, and returns its name, as 02 §2.2 spells it, with its outcome.
 fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
-    use schema::{AUDIT_SAMPLE, WEIGHT_COMMITMENT_STATE};
+    use schema::WEIGHT_COMMITMENT_STATE;
     match &cli.command {
         Command::Compile(a) => (
             "compile",
@@ -487,11 +511,7 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
         Command::Audit(Audit::Sample(a)) => (
             "audit sample",
             audit::sample(&audit::SampleOptions {
-                manifest: &a.manifest,
-                log: &a.log,
-                previous_manifest: a.previous_manifest.as_deref(),
-                previous_log: a.previous_log.as_deref(),
-                between: &a.between,
+                logs: a.logs.logs(),
                 state: &a.state,
                 verifier_share: a.verifier_share,
                 out: &a.out,
@@ -500,8 +520,15 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
         ),
         Command::Audit(Audit::Batch(a)) => (
             "audit batch",
-            pending("audit batch", &[Input::new(&a.sample, &AUDIT_SAMPLE)], 157)
-                .map(|()| ExitCode::SUCCESS),
+            audit::batch(
+                &audit::BatchOptions {
+                    sample: &a.sample,
+                    logs: a.logs.logs(),
+                    out_dir: &a.out_dir,
+                },
+                cli.json,
+            )
+            .map(|()| ExitCode::SUCCESS),
         ),
         Command::Audit(Audit::Plan(a)) => (
             "audit plan",

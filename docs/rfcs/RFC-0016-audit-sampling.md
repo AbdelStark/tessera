@@ -98,6 +98,7 @@ The prover packs selected requests into batches by first-fit decreasing on total
 - **A request longer than `max_batch_tokens`** is a batch on its own, which takes no other request.
 - **The minimum.** At most one batch of each group has fewer than `min_batch_tokens` tokens. Two such batches would total under `2 · min_batch_tokens ≤ max_batch_tokens`, so the later one's first request would have fit in the earlier one.
 - **A batch's statement** lists its requests in `RequestKey` order.
+- **The CLI.** `tessera audit batch` writes a sample's batches as the `tessera.audit-batches/1` report, each request with the `prompt_len` and `output_len` its statement carries, and `tessera prove --sample --batch K` proves the `K`-th, reading the batches again from the sample and the logs (02 §2.2). Until RFC-0061's pins are implemented, both pack every request in the greedy group.
 
 ### Verifier checks
 

@@ -2,7 +2,8 @@
 
 //! The prover's pre-check (RFC-0015 'Prover pre-check', RFC-0062, RFC-0063) and the stored
 //! transcript it replays (`SessionTranscript`, 0x0404), through the public API:
-//! - an honest batch passes, a request read across a period boundary included;
+//! - an honest batch passes, a request read across a period boundary included, at the lengths
+//!   `lengths` reads from the log, and not at those lengths swapped;
 //! - each check alone, broken: the session's rules, the request's rules, the lengths, a missing
 //!   transcript, other keys, and a stored frame tampered with or missing, each with its kind and
 //!   `ERR-WITNESS-ANCHOR`;
@@ -12,8 +13,8 @@
 
 use tessera_anchor::{
     BatchRequest, DigestLogEntry, Direction, HeapKey, LogManifest, ManifestBody, PrecheckFailure,
-    PrecheckKind, RequestEndFrame, SealedFrame, Session, SessionOpenFrame, SessionTranscript,
-    TokenFrame, VerifiedLog, key_id, merkle, precheck, public_key,
+    PrecheckKind, RequestEndFrame, RequestLengths, SealedFrame, Session, SessionOpenFrame,
+    SessionTranscript, TokenFrame, VerifiedLog, key_id, lengths, merkle, precheck, public_key,
 };
 use tessera_codec::error::ErrorCode;
 use tessera_codec::{DecodeLimits, Secret, decode, encode, envelope, schema};
@@ -151,6 +152,24 @@ fn an_honest_batch_passes_across_a_period_boundary() {
     assert_eq!(
         precheck(&[r2], &transcripts, &current, Some(&previous)),
         Ok(())
+    );
+    // The lengths the log gives are the ones the pre-check accepts; by direction, so not swapped.
+    let read = lengths(Some(&previous), &current, &[(r2.session_id, 2)]);
+    assert_eq!(
+        read,
+        [Some(RequestLengths {
+            prompt_len: 40,
+            output_len: 63
+        })]
+    );
+    let swapped = BatchRequest {
+        prompt_len: 63,
+        output_len: 40,
+        ..r2
+    };
+    assert_eq!(
+        precheck(&[swapped], &transcripts, &current, Some(&previous)),
+        failure(2, PrecheckKind::Lengths)
     );
     // The window counts the prompt logged in the previous period: a statement without it fails.
     let short = BatchRequest {

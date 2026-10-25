@@ -1,0 +1,43 @@
+{
+  "schema": "tessera.audit-batches/1",
+  "manifest_digest": "8c1f3e5a7b9d0c2e4f6a8b0d2c4e6f8a1b3d5f7092e4c6a8b0d2f4e6a8c0b2d4",
+  "sample": "e25a9c7b3f1d0e8c6a4b2d0f9e7c5a3b1d0f8e6c4a2b0d9f7e5c3a1b0d8f6e4c",
+  "min_batch_tokens": 16384,
+  "max_batch_tokens": 262144,
+  "selected": 3,
+  "batches": [
+    {
+      "index": 0,
+      "group": "greedy",
+      "tokens": 18446744073709551615,
+      "requests": [
+        {
+          "session_id": "0a5e2c9b7d4f81e3a6c0b2d9f4e7a183",
+          "request_id": 12,
+          "tokens": 18446744073709551615
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "group": "greedy",
+      "tokens": 240000,
+      "requests": [
+        {
+          "session_id": "5b7e019c3d2fa8e46b1c0d9e2f3a4b5c",
+          "request_id": 3,
+          "tokens": 200000,
+          "prompt_len": 199000,
+          "output_len": 1000
+        },
+        {
+          "session_id": "5b7e019c3d2fa8e46b1c0d9e2f3a4b5c",
+          "request_id": 8,
+          "tokens": 40000,
+          "prompt_len": 39500,
+          "output_len": 500
+        }
+      ]
+    }
+  ]
+}

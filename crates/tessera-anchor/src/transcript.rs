@@ -7,7 +7,9 @@
 //! It holds the session's identifier, its secrets `k_s` and `salt_k` (RFC-0059 'Storing the
 //! keys'), and every frame it sealed: the counter it took and its plaintext. Keys and tokens stay
 //! in their [`Secret`]s; the encoding reads them only to write the artifact, which
-//! `envelope::write_file` writes with mode 0600 through a clearing buffer (06 §7).
+//! `envelope::write_file` writes with mode 0600 through a clearing buffer (06 §7), and
+//! [`SessionTranscript::request_tokens`] only to copy a request's tokens into one new [`Secret`]
+//! for its proof.
 //!
 //! TCE, in order:
 //! - `session_id: [u8; 16]`, `key: [u8; 16]`, `key_salt: [u8; 16]`;
@@ -23,6 +25,8 @@ use core::fmt;
 use tessera_codec::{Decode, DecodeError, Encode, HeapKey, Reader, Secret, Sink};
 
 use crate::frame::{AnchorError, Direction, SealedFrame, TokenFrame};
+use crate::log::DigestLogEntry;
+use crate::period::VerifiedLog;
 use crate::session::SessionKeys;
 
 /// One frame a session sealed: its counter and its plaintext.
@@ -117,6 +121,75 @@ impl SessionTranscript {
             .ok()
             .and_then(|i| self.frames.get(i))
     }
+
+    /// The tokens of request `request_id` of this session, as its proof takes them: the stored
+    /// plaintexts of the frames the window logs for it, its `In` frames' tokens and then its
+    /// `Out` frames', each direction in `frame_index` order. The window is `current`'s log and
+    /// `previous`'s, as [`precheck`](crate::precheck()) reads it, which the caller runs first: the
+    /// tokens are then those whose re-sealed digests the log holds, and their count is the
+    /// statement's `prompt_len + output_len`. A stored frame the log does not name is left out.
+    ///
+    /// `None` when the logged frames break RFC-0063's rule 5 (in each direction, the indices
+    /// `0, …, n − 1`, each once), or when one has no stored frame at its counter with the
+    /// entry's request, direction, index and length.
+    ///
+    /// The tokens are copied into one new vector, sized before the first copy, so no buffer of
+    /// them is freed uncleared (05 §3 OBS-6).
+    #[allow(clippy::disallowed_methods)]
+    pub fn request_tokens(
+        &self,
+        previous: Option<&VerifiedLog>,
+        current: &VerifiedLog,
+        request_id: u64,
+    ) -> Option<Secret<Vec<u32>>> {
+        // The logged frames: (direction, index, counter, length), in proof order once sorted.
+        let before = previous.map_or(&[][..], VerifiedLog::entries);
+        let mut logged: Vec<(u8, u32, u32, u32)> = before
+            .iter()
+            .chain(current.entries())
+            .filter_map(|entry| match *entry {
+                DigestLogEntry::Frame {
+                    session_id,
+                    request_id: r,
+                    direction,
+                    frame_index,
+                    length,
+                    frame_seq,
+                    ..
+                } if session_id == self.session_id && r == request_id => {
+                    Some((direction.byte(), frame_index, frame_seq, length))
+                }
+                _ => None,
+            })
+            .collect();
+        logged.sort_unstable();
+        let mut stored = Vec::with_capacity(logged.len());
+        let mut total = 0usize;
+        for (i, &(direction, frame_index, frame_seq, length)) in logged.iter().enumerate() {
+            // Rule 5: each direction's indices run 0, 1, … with no gap or repeat.
+            let expected = match i.checked_sub(1).and_then(|p| logged.get(p)) {
+                Some(&(d, index, _, _)) if d == direction => index.checked_add(1)?,
+                _ => 0,
+            };
+            if frame_index != expected {
+                return None;
+            }
+            let frame = &self.frame(frame_seq)?.frame;
+            if (frame.request_id, frame.direction.byte(), frame.frame_index)
+                != (request_id, direction, frame_index)
+                || frame.plaintext_len() != u64::from(length)
+            {
+                return None;
+            }
+            total = total.checked_add(frame.tokens().expose_secret().len())?;
+            stored.push(frame);
+        }
+        let mut tokens = Vec::with_capacity(total);
+        for frame in stored {
+            tokens.extend_from_slice(frame.tokens().expose_secret());
+        }
+        Some(Secret::new(tokens))
+    }
 }
 
 /// The frame's encoding, after its counter.
@@ -203,5 +276,135 @@ impl Decode for SessionTranscript {
             keys: SessionKeys { key, key_salt },
             frames,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::manifest::{ManifestBody, key_id, public_key};
+    use crate::{Session, merkle};
+
+    /// The verified log of `entries`, numbered from `first_seq`.
+    fn log(entries: Vec<DigestLogEntry>, first_seq: u64) -> VerifiedLog {
+        let seed = Secret::new(HeapKey::<32>::from_box(Box::new([0x29; 32])));
+        let leaves: Vec<_> = entries.iter().map(merkle::leaf_hash).collect();
+        let manifest = ManifestBody {
+            recorder_key_id: key_id(&public_key(&seed)),
+            log_id: [6; 16],
+            period_start_ns: 0,
+            period_end_ns: 100,
+            first_seq,
+            entry_count: entries.len() as u64,
+            entries_root: merkle::root(&leaves),
+            prev_manifest: [0; 32],
+        }
+        .sign(&seed)
+        .expect("a signature");
+        VerifiedLog::check(&manifest, entries).expect("its log")
+    }
+
+    #[allow(clippy::disallowed_methods)]
+    fn read(tokens: Option<Secret<Vec<u32>>>) -> Option<Vec<u32>> {
+        tokens.map(|t| t.expose_secret().clone())
+    }
+
+    /// Request 5's `Out` frames sealed out of index order, request 6 between them, and a frame of
+    /// request 5 stored but never logged: the tokens are the logged frames', `In` first, each
+    /// direction by index, across the period boundary.
+    #[test]
+    fn a_requests_tokens_are_its_logged_frames_in_and_then_out_by_index() {
+        let (mut session, _, keys) = Session::open().expect("a session");
+        let mut transcript = SessionTranscript::new(session.session_id(), keys);
+        let mut seal = |request: u64, direction: Direction, index: u32, tokens: &[u32]| {
+            let frame =
+                |t: &[u32]| TokenFrame::new(request, direction, index, Secret::new(t.to_vec()));
+            let sealed = session.seal(&frame(tokens)).expect("sealed");
+            transcript.record(&sealed, frame(tokens)).expect("recorded");
+            sealed
+        };
+        let prompt = seal(5, Direction::In, 0, &[1, 2]);
+        let other = seal(6, Direction::In, 0, &[9]);
+        let second = seal(5, Direction::Out, 1, &[0]);
+        let first = seal(5, Direction::Out, 0, &[2, 6]);
+        let _unlogged = seal(5, Direction::Out, 2, &[7, 7]);
+        let previous = log(
+            vec![
+                DigestLogEntry::frame(0, 1, &prompt),
+                DigestLogEntry::frame(1, 1, &other),
+            ],
+            0,
+        );
+        let current = log(
+            vec![
+                DigestLogEntry::frame(2, 2, &second),
+                DigestLogEntry::frame(3, 2, &first),
+            ],
+            2,
+        );
+        assert_eq!(
+            read(transcript.request_tokens(Some(&previous), &current, 5)),
+            Some(vec![1, 2, 2, 6, 0])
+        );
+        assert_eq!(
+            read(transcript.request_tokens(Some(&previous), &current, 6)),
+            Some(vec![9])
+        );
+        // Outside the window, the prompt is not the request's.
+        assert_eq!(
+            read(transcript.request_tokens(None, &current, 5)),
+            Some(vec![2, 6, 0])
+        );
+        // A gap in the indices: request 5's `Out` frame 0 not logged.
+        let gap = log(vec![DigestLogEntry::frame(2, 2, &second)], 2);
+        assert_eq!(
+            read(transcript.request_tokens(Some(&previous), &gap, 5)),
+            None
+        );
+        // An index logged twice.
+        let twice = log(
+            vec![
+                DigestLogEntry::frame(2, 2, &first),
+                DigestLogEntry::frame(3, 2, &first),
+                DigestLogEntry::frame(4, 2, &second),
+            ],
+            2,
+        );
+        assert_eq!(
+            read(transcript.request_tokens(Some(&previous), &twice, 5)),
+            None
+        );
+        // An entry the stored frame at its counter does not match: `Out` frame 0 pointing at the
+        // prompt's counter, a frame of the same length in the other direction; or at its own,
+        // with another length.
+        assert_eq!(first.header.length, prompt.header.length);
+        let mut elsewhere = DigestLogEntry::frame(3, 2, &first);
+        let mut resized = elsewhere;
+        if let DigestLogEntry::Frame { frame_seq, .. } = &mut elsewhere {
+            *frame_seq = prompt.header.frame_seq;
+        }
+        if let DigestLogEntry::Frame { length, .. } = &mut resized {
+            *length = second.header.length;
+        }
+        for moved in [elsewhere, resized] {
+            let pointed = log(vec![DigestLogEntry::frame(2, 2, &second), moved], 2);
+            assert_eq!(
+                read(transcript.request_tokens(Some(&previous), &pointed, 5)),
+                None,
+                "{moved:?}"
+            );
+        }
+        // A logged frame with no stored frame at its counter.
+        let (_, _, keys) = Session::open().expect("a session");
+        let empty = SessionTranscript::new(transcript.session_id(), keys);
+        assert_eq!(
+            read(empty.request_tokens(Some(&previous), &current, 5)),
+            None
+        );
+        // No frame of the request in the window: no tokens, not a refusal.
+        assert_eq!(
+            read(transcript.request_tokens(Some(&previous), &current, 99)),
+            Some(Vec::new())
+        );
     }
 }

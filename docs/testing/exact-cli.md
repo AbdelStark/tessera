@@ -67,6 +67,13 @@ and request metadata **before** either proof is used. The producer's
 informational and cannot supply an independent trust pin.
 
 The reference path handles one exact-greedy request on CPU and is non-hiding
-protocol/1. It provides directory exchange; authenticated TLS (#181), sampled
-audits (#157), anchors and ledger integration (#137/#163), complete resource
-hardening (#182), GPU and zero knowledge remain separate work.
+protocol/1. It provides directory exchange; authenticated TLS (#181), anchors
+and ledger integration (#137/#163), complete resource hardening (#182), GPU
+and zero knowledge remain separate work.
+
+The sampled route, `tessera prove --sample`, has its own suite:
+`cargo test -p tessera-cli --test prove_sample --locked` plays one session
+through `tessera recorder ref`, draws and batches its sample, proves the batch
+in NI and directory Live mode and checks `tessera-verify`'s verdicts, then the
+refusals of 02 §2.2. It reads `TESSERA_VERIFY_BIN` too, or builds the verifier
+into the same directory.

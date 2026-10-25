@@ -3,12 +3,12 @@
 //! The `tessera` command tree of 02 §2.2, end to end through the built binary.
 //!
 //! - **The tree.** `tessera --help` lists every command of 02 §2.2, and each has its own help.
-//! - **Not yet.** Every command but `compile`, `commit-weights`, `prove`'s reference path,
-//!   `audit share`, `audit sample`, `audit plan`, `bench model`, `params check`, `recorder ref` and `inspect` checks the
-//!   envelope of each TCE artifact it reads, then exits 64 (`ERR-USAGE`), naming the issue that
-//!   implements it, and writes nothing. Those have tests of their own (`compile.rs`,
-//!   `commit_weights.rs`, `audit.rs`, `audit_plan.rs`, `params_check.rs`, `recorder.rs`, `inspect.rs`, among
-//!   others).
+//! - **Not yet.** Every command but `compile`, `commit-weights`, `prove`, `audit share`,
+//!   `audit sample`, `audit batch`, `audit plan`, `bench model`, `params check`, `recorder ref`
+//!   and `inspect` checks the envelope of each TCE artifact it reads, then exits 64
+//!   (`ERR-USAGE`), naming the issue that implements it, and writes nothing. Those have tests of
+//!   their own (`compile.rs`, `commit_weights.rs`, `audit.rs`, `audit_plan.rs`,
+//!   `prove_sample.rs`, `params_check.rs`, `recorder.rs`, `inspect.rs`, among others).
 //! - **Exit statuses** (02 §2.4). A malformed artifact exits 65 with its fault's code: bytes
 //!   that are no envelope, another schema's envelope, a truncated one, a corrupted digest,
 //!   trailing bytes. An artifact that cannot be read exits 20. A malformed argument exits 64.
@@ -106,47 +106,14 @@ fn the_help_lists_every_command_of_02_2() {
 #[test]
 fn every_command_checks_its_artifacts_then_names_its_issue() {
     let dir = scratch("pending");
-    let model = model();
-    let plan = sealed(&dir, "plan.tep", &schema::EXECUTION_PLAN);
     let weights = sealed(&dir, "weights.twc", &schema::WEIGHT_COMMITMENT_STATE);
-    let sample = sealed(&dir, "sample.tas", &schema::AUDIT_SAMPLE);
     let out = dir.join("out");
-    let (m, p, w, s, d, o) = (
-        model.as_os_str(),
-        plan.as_os_str(),
-        weights.as_os_str(),
-        sample.as_os_str(),
-        dir.as_os_str(),
-        out.as_os_str(),
-    );
-    let cases: [(&str, Vec<&std::ffi::OsStr>, u32); 4] = [
+    let (w, o) = (weights.as_os_str(), out.as_os_str());
+    let cases: [(&str, Vec<&std::ffi::OsStr>, u32); 2] = [
         (
             "weights refresh",
             vec!["--weights".as_ref(), w, "--out".as_ref(), o],
             153,
-        ),
-        (
-            "prove",
-            vec![
-                "--plan".as_ref(),
-                p,
-                "--model".as_ref(),
-                m,
-                "--weights".as_ref(),
-                w,
-                "--sample".as_ref(),
-                s,
-                "--transcripts".as_ref(),
-                d,
-                "--out".as_ref(),
-                o,
-            ],
-            157,
-        ),
-        (
-            "audit batch",
-            vec!["--sample".as_ref(), s, "--out-dir".as_ref(), o],
-            157,
         ),
         (
             "bench unit-costs",

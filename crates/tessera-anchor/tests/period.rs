@@ -6,12 +6,14 @@
 //!   that order, each with `ERR-CODEC-DIGEST`;
 //! - a frame's tokens are `n` for `22 + 4n` bytes and nothing else;
 //! - the candidates and their lengths match `spec/vectors/audit/audit.json`, from an independent
-//!   oracle, over random logs of two periods.
+//!   oracle, over random logs of two periods;
+//! - a request's statement lengths split its candidate's length by direction, over the same
+//!   frames, and there are none for a frame with no token count or a count past `u32`.
 
 use serde_json::Value;
 use tessera_anchor::{
     Candidate, DigestLogEntry, Direction, HeapKey, LogManifest, LogMismatch, ManifestBody,
-    VerifiedLog, candidates, frame_tokens, key_id, merkle, public_key,
+    RequestLengths, VerifiedLog, candidates, frame_tokens, key_id, lengths, merkle, public_key,
 };
 use tessera_codec::Secret;
 use tessera_codec::error::ErrorCode;
@@ -232,4 +234,109 @@ fn a_period_of_zero_length_has_no_candidates() {
     .expect("a signature");
     let zero = VerifiedLog::check(&zero, Vec::new()).expect("an empty log");
     assert_eq!(candidates(Some(&previous), &zero), []);
+}
+
+/// The oracle's cases, as verified logs: the previous period's, if any, and the period's.
+fn oracle_windows() -> Vec<(Option<VerifiedLog>, VerifiedLog)> {
+    let v: Value = serde_json::from_str(include_str!("../../../spec/vectors/audit/audit.json"))
+        .expect("the vectors");
+    v["candidates"]
+        .as_array()
+        .expect("candidate cases")
+        .iter()
+        .map(|case| {
+            let previous = (!case["previous"].is_null()).then(|| {
+                let log = entries(&case["previous"], 0);
+                VerifiedLog::check(&manifest_over(&log, 0), log).expect("the previous log")
+            });
+            let first = previous.as_ref().map_or(0, |p| p.entries().len() as u64);
+            let log = entries(&case["current"], first);
+            let current = VerifiedLog::check(&manifest_over(&log, first), log).expect("the log");
+            (previous, current)
+        })
+        .collect()
+}
+
+/// Over the oracle's logs, each candidate's statement lengths add up to its length, which the
+/// oracle computed: the same frames, split by direction. A candidate of length `2^64 − 1`, a
+/// frame with no token count among them, has none.
+#[test]
+fn the_lengths_split_each_candidates_length_by_direction() {
+    let (mut stated, mut unstated, mut both) = (0, 0, 0);
+    for (i, (previous, current)) in oracle_windows().iter().enumerate() {
+        let found = candidates(previous.as_ref(), current);
+        let keys: Vec<([u8; 16], u64)> =
+            found.iter().map(|c| (c.session_id, c.request_id)).collect();
+        for (c, l) in found.iter().zip(lengths(previous.as_ref(), current, &keys)) {
+            match l {
+                Some(l) => {
+                    assert_eq!(
+                        u64::from(l.prompt_len) + u64::from(l.output_len),
+                        c.tokens,
+                        "case {i}"
+                    );
+                    stated += 1;
+                    both += usize::from(l.prompt_len > 0 && l.output_len > 0);
+                }
+                None => {
+                    assert_eq!(c.tokens, u64::MAX, "case {i}");
+                    unstated += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        stated > 20 && both > 0 && unstated > 2,
+        "{stated} {both} {unstated}"
+    );
+}
+
+#[test]
+fn the_lengths_count_each_direction_over_both_periods() {
+    let entry = |seq: u64, request: u64, direction: Direction, index: u32, length: u32| {
+        DigestLogEntry::Frame {
+            seq,
+            t_ns: 1_500,
+            session_id: [1; 16],
+            request_id: request,
+            direction,
+            frame_index: index,
+            length,
+            frame_seq: seq as u32,
+            sha256: [0; 32],
+        }
+    };
+    // Request 1: 3 tokens in before the boundary, 2 + 5 out after it. Request 2: a frame of no
+    // token count. Request 3: five frames of 10^9 tokens out, past `u32` together.
+    let before = vec![
+        entry(0, 1, Direction::In, 0, 22 + 4 * 3),
+        entry(1, 2, Direction::In, 0, 22 + 4 * 2),
+    ];
+    let mut after = vec![
+        entry(2, 1, Direction::Out, 0, 22 + 4 * 2),
+        entry(3, 1, Direction::Out, 1, 22 + 4 * 5),
+        entry(4, 2, Direction::Out, 0, 23),
+    ];
+    after.extend((0..5).map(|i| entry(5 + i, 3, Direction::Out, i as u32, 22 + 4_000_000_000)));
+    let previous = VerifiedLog::check(&manifest_over(&before, 0), before).expect("its log");
+    let current = VerifiedLog::check(&manifest_over(&after, 2), after).expect("its log");
+    let keys = [
+        ([1; 16], 1),
+        ([1; 16], 2),
+        ([1; 16], 3),
+        ([1; 16], 9),
+        ([2; 16], 1),
+    ];
+    let stated = |prompt_len, output_len| {
+        Some(RequestLengths {
+            prompt_len,
+            output_len,
+        })
+    };
+    assert_eq!(
+        lengths(Some(&previous), &current, &keys),
+        [stated(3, 7), None, None, stated(0, 0), stated(0, 0)]
+    );
+    // Without the previous period, request 1's prompt is outside the window.
+    assert_eq!(lengths(None, &current, &keys[..1]), [stated(0, 7)]);
 }

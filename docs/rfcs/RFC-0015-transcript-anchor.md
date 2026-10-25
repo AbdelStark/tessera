@@ -193,6 +193,7 @@ Before `Round1`, the prover re-encrypts its stored transcripts, checks the sessi
 
   The first failure names its request.
 - **What the caller binds.** The pre-check reads the window from the period's verified log and the previous period's. The caller binds the two by the chain, as the verifier does (RFC-0063 'The previous period's log').
+- **Where it runs.** `tessera prove --sample` runs it on the batch it proves, with the stored transcripts of `--transcripts DIR` (`<session_id>.tst`), before the prover commits anything: a failure sends no `Round1`. The tokens it proves are then the stored plaintexts of the frames the log names (02 §2.2).
 - **The sampler key.** Its commitment and containment are checked with the sampler PRF's inputs (#152). A greedy batch has no pin.
 
 ### Verifier checks
