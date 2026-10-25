@@ -142,7 +142,7 @@ over every variable but the lowest.
 - **Where the claims go.** The claims on `κ'` and `e'` enter the leaf stage's layer sumcheck, which reduces them to claims on the tensors the columns read and on the column masks ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#the-layer-sumcheck)). Those on `m'` go to the openings, as RFC-0013 says.
 - **Degree.** The tree index is the leaf level's highest variable, so it takes the last level's last round. The `Z` of `κ'`, `e'` and `m'` spares it, and does not vanish at that level's summation points from the round before the last on. The fraction forests' leaves therefore raise that round's degree, to at most 7, and not the last round's (RFC-0068).
 
-**Product forests.** `C̃·k'` would raise the leaf level's degree past 7, so a `SoftmaxRow` forest's leaf level takes its own mask row, like a level above it. RFC-0030's reduction folds it: `Σ_x eq(p, x)·(C(x)·k(x) + Z_h(q)·R_h[x_col]) = L'_h(p) − 1 + C̃(p)`. The instance exists already, so no stage is added.
+**Product forests.** `C̃·k'` would raise the leaf level's degree past 7, so a `SoftmaxRow` forest's leaf level takes its own mask row, like a level above it. RFC-0030's reduction folds it: `Σ_x eq(p, x)·(C(x)·k(x) + Z_h(q)·R_h[x_col]) = L'_h(p) − 1 + C̃(p)`. The instance exists already, so no stage is added. Its stage sends `R̃_h` at the instance's point last among that instance's final evaluations, and [RFC-0070](RFC-0070-mask-batching.md) makes `R_h` a block of the masks' block, its value a mask claim.
 
 ### What the verifier sees
 
@@ -177,7 +177,7 @@ These rows replace RFC-0013's row for LogUp roots and add the tree levels:
 | Item | Cost |
 |---|---|
 | Masked sumcheck | `2(n(d + 1) + 1)` committed elements per level: about 700 at `n = 45`, `d = 7`, so a few times 10^4 per proof |
-| Mask rows | One `Fp2` mask per level of a product forest, two per level of a fraction forest, packed as blocks of [RFC-0070](RFC-0070-mask-batching.md)'s masks' block `M`: at 405B, 2,621 masks and the masking polynomials' coefficients fit in 779 `Fp2` rows |
+| Mask rows | One `Fp2` mask per level of a product forest, two per level of a fraction forest, packed as blocks of [RFC-0070](RFC-0070-mask-batching.md)'s masks' block `M`: at 405B, 2,621 masks, the `SoftmaxRow` leaf mask and the masking polynomials' coefficients fit in 780 `Fp2` rows |
 | Padding trees | Constant, computed in closed form; one more round per level |
 | Identity sumcheck | Two rounds |
 
@@ -237,7 +237,7 @@ The design and its labels are settled now, before `tessera-protocol/1` freezes t
 
 ## Open Questions
 
-None. The mask-row packing of OQ-0013-1 applies to tree levels unchanged.
+None. The mask-row packing of OQ-0013-1 applies to tree levels unchanged, and [RFC-0070](RFC-0070-mask-batching.md) packs them in its masks' block.
 
 ## References
 

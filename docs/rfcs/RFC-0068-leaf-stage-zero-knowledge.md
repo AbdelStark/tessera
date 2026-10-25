@@ -161,7 +161,7 @@ In `tessera-protocol/2` the leaf stage ends as follows, after `logup/values`.
 | | `Γ`, then `ρ_zk` | `stage/0/layer/zk-sum`, `stage/0/layer/zk-rho` |
 | | `γ` | `stage/0/layer/gamma` |
 | per round `j < n` | its polynomial, then `ρ'_j` | `stage/0/layer/round/{j}`, `stage/0/layer/r/{j}` |
-| | the `v_{s,t}`, then the `u_i` | `stage/0/layer/evals` |
+| | the `v_{s,t}`, then the `u_i`, then `G(ρ')` (RFC-0070) | `stage/0/layer/evals` |
 | | the atom values of split stacked claims | `stage/0/layer/split` |
 | stage 1 | as RFC-0014 row 6, with no `stage/1/layer/{c}` | |
 

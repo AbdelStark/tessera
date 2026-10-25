@@ -40,7 +40,7 @@ The verifier is a counterparty state; weights, prompts, outputs and activations 
 | Final evaluations of each stage | Masked extensions | One `Fp2` mask row `R_V` per stacked tensor kind, and in `tessera-protocol/2` one per kind and layer claimed at one layer ([RFC-0069](RFC-0069-one-layer-claims.md)) |
 | Tree-level and LogUp-identity round messages | Masked sumcheck ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)) | `G_ℓ` per tree level, and the identity's |
 | Tree-level evaluations at the pair bit, and their mask values | Masked extensions that spare the pair bit ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)) | One `Fp2` mask per level and polynomial, a block of [RFC-0070](RFC-0070-mask-batching.md)'s masks' block |
-| LogUp roots | Not sent: the identity sumcheck's final evaluations, masked ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)) | The root levels' mask rows |
+| LogUp roots | Not sent: the identity sumcheck's final evaluations, masked ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)) | The root levels' masks |
 | Combined rows `u_g` | Blinding rows | One fresh `Fp2` blinding row per revealed combination |
 | Opened columns | Vanishing encoding masks | `P_A` (advice) or `P_W` (weights) coefficients per row |
 | `Û`, lengths, digests | Public by design | — |
@@ -142,10 +142,10 @@ Before any v0.4 implementation work merges, [`docs/zk/simulator.md`](../zk/simul
 
 | Item | 405B, 16K tokens |
 |---|---|
-| Mask rows `R_V` (about 2,000 stacked tensors and tree levels, two rows each, a projection; the tree levels' 2,621 masks are packed in RFC-0070's masks' block, 779 `Fp2` rows with the masking polynomials) | about 1.6×10^10 elements, 0.6% of advice |
+| Mask rows `R_V` (about 2,000 stacked tensors, two rows each, a projection; the tree levels' 2,621 masks and the `SoftmaxRow` leaf's are packed in RFC-0070's masks' block, 780 `Fp2` rows with the masking polynomials) | about 1.6×10^10 elements, 0.6% of advice |
 | Stage masking polynomials | < 2×10^4 elements |
 | Blinding rows for advice combined rows (`G + 1 ≤ 17`, two rows each; in `tessera-protocol/2`, `G + 1 ≤ 21` with RFC-0068's column masks' group, the two reduction stages' fold groups and RFC-0070's batching group) | 34 rows; 42 |
-| The masks' batching ([RFC-0070](RFC-0070-mask-batching.md)) | the pad `S`: 779 `Fp2` rows, 1,558 committed, 0.163% of the advice's non-zero rows; one sumcheck of 32 rounds of degree 2; one opening group. It opens the 46 masked sumchecks' `G(r)` and the 2,621 tree-level mask claims |
+| The masks' batching ([RFC-0070](RFC-0070-mask-batching.md)) | the pad `S`: 780 `Fp2` rows, 1,560 committed, 0.164% of the advice's non-zero rows; one sumcheck of 32 rounds of degree 2; one opening group. It opens the 46 masked sumchecks' `G(r)`, the 2,621 tree-level mask claims and the `SoftmaxRow` leaf mask's |
 | Weight budget per proof | 6 blinding rows per weight matrix (two each for evaluation, proximity and mask), and `2e + 4` for `ChannelParams`' `e` claims, 18 at `e = 7`: one evaluation pair for the matrix and a mask row per claim ([RFC-0065](RFC-0065-masked-channel-params.md)) |
 | Extra sumcheck work | from the round that binds the last of `Z`'s variables: the last round, or a LogUp leaf level's round before it |
 
@@ -199,7 +199,7 @@ v0.3 ships a sound, non-hiding protocol. v0.4 adds the four mechanisms behind th
 
 ## Open Questions
 
-- **OQ-0013-1.** Can mask rows for small tensors (tree levels below 2^12 entries) be packed into shared rows without breaking the independence condition, to cut the mask-row count? Owner: @AbdelStark. Resolve during v0.4 with the simulator argument; adopt only if the argument covers it.
+- **OQ-0013-1.** Can mask rows for small tensors (tree levels below 2^12 entries) be packed into shared rows without breaking the independence condition, to cut the mask-row count? Owner: @AbdelStark. Resolve during v0.4 with the simulator argument; adopt only if the argument covers it. Answered for tree levels' masks: [RFC-0070](RFC-0070-mask-batching.md) packs them in aligned blocks of its masks' block, which its batching opens.
 - **OQ-0013-2** (resolved by [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md): masked tree levels, masked extensions that spare the pair bit in forests of two trees at least, and an identity sumcheck in place of revealed LogUp roots). A tree level reveals `Ṽ_{ℓ+1}(0 ‖ r'_i)` and `Ṽ_{ℓ+1}(1 ‖ r'_i)` ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels'), and fraction-tree levels reveal their numerators and denominators at the same points. These points have a Boolean coordinate, where `Z` vanishes, so masked extensions do not hide them. At the level where a single tree joins, they are exactly the two entries of its level 1: for a SoftmaxRow tree, the products of each half of the row's keys. A forest reveals its trees' level-1 entries combined at the level's random point. The round messages of tree levels are not masked either: RFC-0014's schedule has no `zk-sum` or `zk-rho` for them. How are tree levels made zero-knowledge, or why is what they reveal acceptable? Owner: @AbdelStark. Resolve before the label table freezes at `tessera-protocol/1` (v0.3), since the answer may add labels.
 
 ## References

@@ -316,8 +316,10 @@ pub enum RejectReason {
     /// `REJ-MASK-BATCH`: protocol/2 only; the batching of every mask claim, `masks/round/{j}`
     /// (RFC-0070 'The batching sumcheck', 'Rejections').
     MaskBatch {
-        /// Exact round from 0, as the labels count, or `m`, the number of variables, for the
-        /// end: a round past the last, a missing `y` or a false final check.
+        /// Round from 0, as the labels count: a missing round, or one of another length than its
+        /// 2 values `p_j(0)` and `p_j(2)`, fails at its own index `j − 1`. Or `m`, the number of
+        /// variables, for the end: a further round after the `m` rounds, evaluations other than
+        /// one value, or a false final check.
         round: u32,
     },
     /// `REJ-LOOKUP`: verifier-derived table identity.

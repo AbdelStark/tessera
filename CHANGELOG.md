@@ -8,11 +8,11 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - The openings of `tessera-protocol/2`'s mask claims, specified ([#489](https://github.com/AbdelStark/tessera/issues/489)):
   - **RFC-0070, 'Opening Every Mask Claim in One Batching Sumcheck in `tessera-protocol/2`'.**
-    - **The gap.** No opening covered a masked sumcheck's `G(r)`, whose functional is not an `eq` vector, or a tree level's mask claim, each at its level's own point. The compiler's 405B schedule has 2,667 such claims: one group per column point would add 38.25 GiB.
+    - **The gap.** No opening covered a masked sumcheck's `G(r)`, whose functional is not an `eq` vector, or a tree level's mask claim, each at its level's own point. The compiler's 405B schedule has 2,668 such claims: one group per column point would add 38.25 GiB.
     - **The batching.** The claims are linear functionals of one masks' block `M`, which holds the masking polynomials' coefficients and the tree levels' mask rows in aligned blocks. `α` combines them, and one sumcheck of degree 2 on `M + ρ·S` reduces them to one value `y`, in one more opening group. The pad `S`, laid out like `M`, is committed in Round 1.
     - **Zero knowledge.** Lemma 4a needs `S` to cover `M`'s layout, not a rank condition. `M̃(r*)` and `S̃(r*)` are never sent apart, and `M` holds only claimed masks.
     - **Soundness.** `(N − 1 + 2m + 1)/q`, about `2^{−116.6}` at 405B, which the calculator counts as one more stage.
-    - **Cost at 405B.** +65.85 MiB of proof (the proof about 2.94 GB), `S`'s 1,558 committed rows (0.163% of the advice), 32 rounds.
+    - **Cost at 405B.** +65.85 MiB of proof (the proof about 2.94 GB), `S`'s 1,560 committed rows (0.164% of the advice), 32 rounds.
     - **Labels.** Each masked sumcheck's `G(r)` is sent last in its evaluations. `masks/…` follows the last stage, before the blinding claims. `Reject(MaskBatch { round })` joins 04 §2.
     - It amends RFC-0010, RFC-0011, RFC-0013, RFC-0014, RFC-0019, RFC-0032, RFC-0036, RFC-0037, RFC-0057, RFC-0068, 04 §2, 08 §5 and `docs/zk/simulator.md`, where Lemma 4a joins §4.3a and R11 is met.
 
