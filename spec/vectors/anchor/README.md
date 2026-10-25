@@ -24,3 +24,5 @@ The frames interleave requests and directions, so a request's counters are not c
 - request `2^64 − 1`.
 
 `crates/tessera-anchor/tests/frames.rs` checks the reference cipher, the encoders and the decoders on every value.
+
+`verifier/crates/tv-core/tests/anchor_vectors.rs` decodes every entry with the verifier's own decoder and checks the sessions, laid end to end as one period, against the verifier's anchor checks.

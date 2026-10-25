@@ -14,3 +14,5 @@
 - its signed message, signature, TCE encoding, envelope and identity.
 
 `crates/tessera-anchor/tests/manifest.rs` rebuilds the chain from the seed and checks every value.
+
+`verifier/crates/tv-core/tests/anchor_vectors.rs` opens every manifest with the verifier's own decoder, checks its fields, identity, signed message, log, inclusion paths and links, and the window and candidates of its second period.

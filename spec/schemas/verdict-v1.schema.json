@@ -251,10 +251,12 @@
               "minimum": 0
             },
             "kind": {
+              "$comment": "RFC-0043 'Anchor': the AnchorFailure kinds. Inclusion, tag 1, is retired by RFC-0062 and no verifier reports it.",
               "enum": [
                 "ManifestSignature",
-                "Inclusion",
-                "Frames"
+                "Frames",
+                "SamplerKey",
+                "Session"
               ]
             },
             "uhat_fixed": {
