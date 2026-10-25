@@ -1,0 +1,133 @@
+{
+ "environment": {
+  "python": "3.15.0",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "processor": "arm",
+  "utc": "2026-10-25T19:34:05Z",
+  "finished_utc": "2026-10-25T19:34:38Z",
+  "seconds": 32.3,
+  "workers": 8
+ },
+ "result": {
+  "REAL/cheat": {
+   "name": "REAL",
+   "mode": "cheat",
+   "n_claims": 9,
+   "m": 8,
+   "accepted": 366,
+   "alpha": 114,
+   "rho": 10,
+   "round": [
+    37,
+    35,
+    26,
+    27,
+    31,
+    27,
+    31,
+    28
+   ],
+   "trials": 1000000,
+   "predicted_rate": 0.00038140244609807805,
+   "predicted_count": 381.40244609807803,
+   "band": 78.10321153675446,
+   "bound_rate": 0.00039672246212063415,
+   "bound_count_4sigma": 476.39403417698395,
+   "in_band": true,
+   "under_bound": true,
+   "predicted_alpha": 122.06844988327204,
+   "predicted_rho": 15.256693647101892,
+   "predicted_round_each": 30.51711247081801
+  },
+  "TIGHT/cheat": {
+   "name": "TIGHT",
+   "mode": "cheat",
+   "n_claims": 6,
+   "m": 4,
+   "accepted": 421,
+   "alpha": 142,
+   "rho": 31,
+   "round": [
+    65,
+    62,
+    60,
+    61
+   ],
+   "trials": 2000000,
+   "predicted_rate": 0.00021360186065066955,
+   "predicted_count": 427.2037213013391,
+   "band": 82.66679815176995,
+   "bound_rate": 0.00022887834353113508,
+   "bound_count_4sigma": 543.337683743755,
+   "in_band": true,
+   "under_bound": true,
+   "predicted_alpha": 152.58556235409006,
+   "predicted_rho": 30.51478423543412,
+   "predicted_round_each": 61.03422494163602
+  },
+  "REAL/honest": {
+   "name": "REAL",
+   "mode": "honest",
+   "n_claims": 9,
+   "m": 8,
+   "accepted": 10000,
+   "alpha": 0,
+   "rho": 0,
+   "round": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "trials": 10000,
+   "rate": 1.0
+  },
+  "REAL/nc1": {
+   "name": "REAL",
+   "mode": "nc1",
+   "n_claims": 9,
+   "m": 8,
+   "accepted": 9999,
+   "alpha": 1,
+   "rho": 9998,
+   "round": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "trials": 10000,
+   "rate": 0.9999
+  },
+  "REAL/nc2": {
+   "name": "REAL",
+   "mode": "nc2",
+   "n_claims": 9,
+   "m": 8,
+   "accepted": 10000,
+   "alpha": 10000,
+   "rho": 0,
+   "round": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "trials": 10000,
+   "rate": 1.0
+  }
+ }
+}

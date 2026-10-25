@@ -173,3 +173,16 @@ IDEA-0038 / EXP-0025 (2026-10-21): pre-registered E0 original-source greedy boun
 EXP-0025 / IDEA-0038 (2026-10-21), E0 primary exact arithmetic: 324 domains, 5,184 kernel and 5,184 shift equalities, 15,552 native-final and 15,552 Boolean-cube equalities, 2,592 honest zero checks, 1,704 finite degree checks, 129,885 exhaustive integer cases, 207 wide/negative-key boundaries. Eighteen actual experiment-source faults caught with two controls. Candidate native per-variable degrees 2/3/2. These are finite conformance results and an analytic degree derivation, not full G-4/ZK, source opening, runtime, timing, memory or GPU evidence.
 
 EXP-0025 post-registration implementation checks (E1): 32 independent literal fixtures and 32 CPU mixed-sumcheck/original-OneHot PCS cases across NI/Live transcript contexts. Compensating raw values preserve the local polynomial but fail actual original-source PCS evaluation. Forty-two Rust arithmetic/source faults and four resource/check-order faults fail runtime tests; four controls pass. These component checks do not establish canonical runtime layout, full model/session integration, complete budget, hiding or performance.
+
+## Batched mask opening (2026-10-25)
+
+IDEA-0040 / [EXP-0027](experiments/EXP-0027-batched-mask-opening/README.md), from [TesseraMask26]. Tessera's own figures, E0, projections until RFC-0020 measures them.
+
+| Quantity | Value | Evidence |
+|---|---|---|
+| Mask claims of `tessera-protocol/2` at 405B (16K tokens, 16K context, `servable`, two classes) | 2,667: 46 masked sumchecks (1,004 rounds) and 2,621 tree-level mask claims, against about 200 projected | E0, primary: the compiler's report (`tessera-compiler`), checked against `docs/perf/v0.2` |
+| Opening them one group per claim, or one per column point | 2,667 groups, 166.7 GiB of combined rows (`live-64`); 612 groups, 38.25 GiB | E0 |
+| One masked batching sumcheck | 1 group: 65.85 MiB added, with a pad `S` of 1,558 `Fp` rows (0.163% of advice rows), 32 rounds of degree 2 and about 1 KiB of messages; soundness `+2^-116.6` | E0 |
+| Zero knowledge of the batching view, toy protocol over F65537 | candidate 0 of 300 draws distinguishable; bare batching distinguishable on 100 of 100 protocol-like draws | E0, exact linear algebra |
+| Cheating acceptance, F65537 | 366 of 10^6 (predicted 381.4) and 421 of 2·10^6 (427.2), under `(N + 2m + 1)/q` | E0, Monte Carlo |
+| The revealed functionals' rank | `2m`, the structural maximum, for protocol-like `C` on every draw over F65537 and Goldilocks; `2m − j` on sub-cube supports, `m + 1` on single `eq` claims | E0, exact |
