@@ -30,18 +30,28 @@ use crate::verdict::{AnchorFailure, ErrorCode, RejectReason, VerifierError};
 /// 2. **Its frames**, each `Frames`: exactly one `RequestEnd` of `r` in `P − 1` and `P`, and it
 ///    lies in `P` (rule 1); at least one frame, every one before the end (rule 2); every inbound
 ///    frame before the first outbound one (rule 3); in each direction the indices exactly
-///    `0, …, n − 1`, each once (rule 5); every `length` `22 + 4n` (RFC-0059); at the first
-///    request of its session in the batch, no counter used both in `P − 1` and in `P` by the
-///    frames of the batch's requests of the session (RFC-0059's distinct counters of a session's
-///    frames in the batch, across the boundary); and `prompt_len` and `output_len` the token
-///    counts of its inbound and outbound frames (RFC-0062 'Its lengths').
+///    `0, …, n − 1`, each once (rule 5); every `length` `22 + 4n` (RFC-0059); `prompt_len` and
+///    `output_len` the token counts of its inbound and outbound frames (RFC-0062 'Its lengths');
+///    and, at the first request of its session in the batch, no two frames of the batch's
+///    requests of the session with one `frame_seq`, in `P − 1` and `P` together (RFC-0063 'One
+///    counter across the window').
 /// 3. **Its sampler key**, when the predictor decodes with temperature, each `SamplerKey`: a pin
 ///    the policy admits has a window containing the earliest `t_ns` of `r`'s frames; every frame
 ///    of `r` has `t_ns < from_ns + W + G` for it; and it is the batch's first request's pin.
 ///
 /// Each failure is `Reject(Anchor { request_id: Some(r), kind })`, naming the request being
-/// checked: a session that breaks a rule is named by the first request of the batch that reads
-/// it, which is the first of the session's requests with a frame in that period.
+/// checked (RFC-0063 'Who is named'): a session's break in one period is named by the first
+/// request of the batch with a frame in that period, which may follow other requests of the
+/// session; a counter shared across the window by the session's first request in the batch.
+///
+/// Every rule reads a request's frames as a set: their order in the window is not an input.
+///
+/// # Precondition
+///
+/// The batch names no request twice. RFC-0016's check 2 (`StatementMismatch { field: Batch }`,
+/// RFC-0019 step 4) and its 'Batching', which lists a batch in `RequestKey` order, exclude it
+/// before these checks run. A repeated request would be checked once for each time it is named,
+/// against the same frames, and counted once for the counter rule.
 ///
 /// # Errors
 ///
@@ -124,9 +134,9 @@ fn decodes_with_temperature(predictor: &PredictorSpec) -> bool {
 }
 
 /// A request's rules other than its session's, all `Frames` (RFC-0063 rules 1, 2, 3 and 5,
-/// RFC-0059's lengths, RFC-0062 'Its lengths'). `frames` are the request's frames in `P − 1` then
-/// `P`, in `seq` order; `ends_before` counts its ends in `P − 1`, and `ends_here` lists its ends'
-/// `seq` in `P`.
+/// RFC-0059's lengths, RFC-0062 'Its lengths'). `frames` are the request's frames in `P − 1` and
+/// `P`, in no particular order; `ends_before` counts its ends in `P − 1`, and `ends_here` lists
+/// its ends' `seq` in `P`.
 fn request_rules(
     request: &RequestRef,
     frames: &[&FrameEntry],
@@ -145,15 +155,20 @@ fn request_rules(
     if frames.is_empty() || frames.iter().any(|frame| frame.seq >= end) {
         return frames_broken;
     }
-    // Rule 3: every inbound frame before the first outbound one; the frames are in seq order.
+    // Rule 3: every inbound frame before the first outbound one, by `seq`, whatever order the
+    // frames come in. The window's `seq`s are distinct (RFC-0060's links).
+    let last_in = frames
+        .iter()
+        .filter(|frame| frame.direction == Direction::In)
+        .map(|frame| frame.seq)
+        .max();
     let first_out = frames
         .iter()
-        .position(|frame| frame.direction == Direction::Out);
-    if let Some(first_out) = first_out
-        && frames
-            .iter()
-            .skip(first_out)
-            .any(|frame| frame.direction == Direction::In)
+        .filter(|frame| frame.direction == Direction::Out)
+        .map(|frame| frame.seq)
+        .min();
+    if let (Some(last_in), Some(first_out)) = (last_in, first_out)
+        && last_in > first_out
     {
         return frames_broken;
     }
@@ -223,7 +238,7 @@ struct Session<'a> {
 struct Period<'a> {
     /// Every entry of the session, in `seq` order.
     entries: Vec<&'a DigestLogEntry>,
-    /// Its frames and request ends, sorted by request and then by `seq`.
+    /// Its frames and request ends, grouped by request, in no particular order within one.
     by_request: Vec<&'a DigestLogEntry>,
     /// The session rules in this period: the key of its one open or carry, or the first rule it
     /// breaks.
@@ -274,8 +289,10 @@ impl<'a> Index<'a> {
             session.requests.sort_unstable();
             session.requests.dedup();
             for period in &mut session.periods {
-                // A stable sort keeps each request's entries in seq order.
-                period.by_request.sort_by_key(|entry| request_of(entry));
+                // Grouped by request only: no rule reads the order within a group.
+                period
+                    .by_request
+                    .sort_unstable_by_key(|entry| request_of(entry));
                 period.rules = session_rules(&period.entries)?;
             }
         }
@@ -298,7 +315,7 @@ impl<'a> Period<'a> {
         }
     }
 
-    /// The request's frames in this period, in `seq` order, and its ends' `seq`.
+    /// The request's frames in this period, in no particular order, and its ends' `seq`.
     #[allow(
         clippy::type_complexity,
         reason = "a pair of the two lists one search yields"
@@ -325,28 +342,27 @@ impl<'a> Period<'a> {
 }
 
 impl Session<'_> {
-    /// Whether a counter is used both in `P − 1` and in `P` by frames of the session's requests
-    /// in the batch. A counter repeated within one period is that period's rule 3.
+    /// Whether two frames of the session's requests in the batch share a `frame_seq`, in `P − 1`
+    /// and `P` together (RFC-0063 'One counter across the window', RFC-0059's batch rule). Two in
+    /// one period also break that period's rule 3, which names the first request with a frame
+    /// there; this rule names the session's first request in the batch.
     fn counter_reused(&self) -> Result<bool, Failure> {
         let [before, here] = &self.periods;
-        let counters = |period: &Period<'_>| -> Result<Vec<u32>, Failure> {
-            let mut counters = vec_with(period.by_request.len())?;
-            for entry in &period.by_request {
-                if let DigestLogEntry::Frame(frame) = entry
-                    && self.requests.binary_search(&frame.request_id).is_ok()
-                {
-                    counters.push(frame.frame_seq);
-                }
+        let mut counters = vec_with(
+            before
+                .by_request
+                .len()
+                .saturating_add(here.by_request.len()),
+        )?;
+        for entry in before.by_request.iter().chain(&here.by_request) {
+            if let DigestLogEntry::Frame(frame) = entry
+                && self.requests.binary_search(&frame.request_id).is_ok()
+            {
+                counters.push(frame.frame_seq);
             }
-            counters.sort_unstable();
-            counters.dedup();
-            Ok(counters)
-        };
-        let before = counters(before)?;
-        let here = counters(here)?;
-        Ok(here
-            .iter()
-            .any(|counter| before.binary_search(counter).is_ok()))
+        }
+        counters.sort_unstable();
+        Ok(counters.windows(2).any(|pair| pair.first() == pair.last()))
     }
 }
 

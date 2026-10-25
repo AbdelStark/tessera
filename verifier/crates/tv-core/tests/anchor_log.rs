@@ -328,6 +328,20 @@ fn a_log_that_is_not_its_manifests_is_refused() {
     ));
 }
 
+/// A signed count beyond what the bytes can hold reserves only what they can (RFC-0003
+/// 'Limits'): `2^60` entries over a one-entry log is the count's `ERR-CODEC-DIGEST` at the
+/// stream's end, not a failed reservation at its start.
+#[test]
+fn a_huge_count_reserves_only_what_the_bytes_hold() {
+    let built = chain(&[(GENESIS_NS, GENESIS_NS + PERIOD_NS, vec![open(1)])]).remove(0);
+    assert_eq!(built.tdl.len(), 66);
+    let manifest = manifest_over(&built.fields, &built.entries, |f| f.count = 1 << 60);
+    assert_eq!(
+        check(&manifest, &built.tdl).unwrap_err(),
+        (ErrorCode::Digest, 66)
+    );
+}
+
 #[test]
 fn a_log_that_fails_to_decode_is_inconclusive_with_its_code() {
     let built = period();
@@ -723,6 +737,31 @@ fn a_zero_length_period_with_entries_is_refused_between() {
     );
     // Its log itself verifies: the recorder's rule, not the manifest's own checks.
     assert_eq!(logs[1].entries().len(), 1);
+}
+
+/// A period of non-zero length with no entries is not a zero-length one. Offered between, with
+/// the period before it as `P − 1`, it is refused: it is itself `P − 1`, the last period of
+/// non-zero length before `P` (RFC-0063 'The previous period's log').
+#[test]
+fn an_empty_period_of_non_zero_length_is_not_between() {
+    let p = PERIOD_NS;
+    let g = GENESIS_NS;
+    let built = chain(&[
+        (g, g + p, vec![open(1)]),
+        (g + p, g + 2 * p, vec![]),
+        (g + 2 * p, g + 3 * p, vec![open(2)]),
+    ]);
+    let logs: Vec<VerifiedLog> = built.iter().map(Built::verified).collect();
+    assert_eq!(logs[1].entries().len(), 0);
+    assert_eq!(
+        Window::bind(&logs[2], &[built[1].checked()], Some(&logs[0])).map(|_| ()),
+        Err(usage())
+    );
+    // Bound as P − 1 itself, with nothing between, it is accepted.
+    assert_eq!(
+        Window::bind(&logs[2], &[], Some(&logs[1])).map(|_| ()),
+        Ok(())
+    );
 }
 
 /// RFC-0060 'Testing Strategy', the chain: a first manifest that is not a genesis, and a

@@ -35,6 +35,15 @@ impl VerifiedLog {
     /// check runs after the signature, as RFC-0062 'When' orders. Each entry's leaf hashes the
     /// bytes it was decoded from, which are its canonical encoding (INV-TCE-2).
     ///
+    /// # Memory
+    ///
+    /// Before decoding, the check reserves room for `min(entry_count, log.len() / 34)` entries,
+    /// `size_of::<DigestLogEntry>()` bytes each: never more than the bytes can hold, 34 being the
+    /// smallest entry's size, whatever count the manifest signs. A log of more entries than its
+    /// manifest counts grows the vector by doubling, to about twice `log.len() / 34` entries at
+    /// most. `log.len()` is checked against `limits.max_total_bytes` first, so both bounds
+    /// follow the caller's limit. The tree hash runs in constant memory.
+    ///
     /// # Errors
     ///
     /// A decoding error, at its offset in the stream, or `ERR-CODEC-DIGEST` for checks 2 to 4, in

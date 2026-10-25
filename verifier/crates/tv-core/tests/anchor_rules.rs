@@ -171,6 +171,35 @@ fn duplicate_positions_and_counters_are_frames() {
         one.greedy(vec![req(1, 8, 1, 1), req(1, 7, 3, 3)]),
         rejected(8, Frames)
     );
+    // RFC-0062 rule 3 is the session's, over all its frames in the period: a counter shared with
+    // request 9's frame, which is not in the batch, and one shared by two of request 9's frames.
+    let items = vec![
+        open(1),
+        inbound(1, 7, 0, 3).counter(4),
+        inbound(1, 9, 0, 1).counter(4),
+        outbound(1, 7, 0, 2).item(),
+        outbound(1, 7, 1, 1).item(),
+        end(1, 7),
+    ];
+    assert_eq!(
+        Scenario::one(items).greedy(vec![req(1, 7, 3, 3)]),
+        rejected(7, Frames)
+    );
+    let items = with_open(
+        1,
+        [
+            vec![
+                inbound(1, 9, 0, 1).counter(20),
+                inbound(1, 9, 1, 1).counter(20),
+            ],
+            honest(1, 7),
+        ]
+        .concat(),
+    );
+    assert_eq!(
+        Scenario::one(items).greedy(vec![req(1, 7, 3, 3)]),
+        rejected(7, Frames)
+    );
     // Another session's request before them in the batch passes and is not named.
     let items = [
         vec![open(2)],
@@ -322,6 +351,72 @@ fn each_request_rule_break_is_refused() {
     }
 }
 
+/// RFC-0063 rule 3 reads `seq`, whatever order a request's entries reach the checks in: three
+/// requests of one session, interleaved fifty ways over 31 entries, pass; a late inbound frame of
+/// one of them, interleaved the same ways, is still refused.
+#[test]
+fn interleaved_requests_of_one_session_pass_rule_3() {
+    // Request r: `ins` inbound frames, then `outs` outbound ones, then its end; a token each.
+    let request = |r: u64, ins: u32, outs: u32| -> Vec<Item> {
+        (0..ins)
+            .map(|i| inbound(1, r, i, 1).item())
+            .chain((0..outs).map(|i| outbound(1, r, i, 1).item()))
+            .chain([end(1, r)])
+            .collect()
+    };
+    // The session's open, then the requests' entries merged by a seeded choice, each request's
+    // in its own order.
+    let merge = |parts: Vec<Vec<Item>>, seed: u64| -> Vec<Item> {
+        let mut parts: Vec<std::collections::VecDeque<Item>> =
+            parts.into_iter().map(Into::into).collect();
+        let mut state = seed;
+        let mut out = vec![open(1)];
+        loop {
+            let live: Vec<usize> = (0..parts.len()).filter(|&i| !parts[i].is_empty()).collect();
+            if live.is_empty() {
+                return out;
+            }
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            let pick = live[(state >> 33) as usize % live.len()];
+            out.push(parts[pick].pop_front().unwrap());
+        }
+    };
+    let batch = vec![req(1, 7, 4, 5), req(1, 8, 3, 6), req(1, 9, 5, 4)];
+    for seed in 0..50 {
+        let items = merge(
+            vec![request(7, 4, 5), request(8, 3, 6), request(9, 5, 4)],
+            seed,
+        );
+        assert_eq!(items.len(), 31);
+        assert_eq!(
+            Scenario::one(items).greedy(batch.clone()),
+            Ok(()),
+            "seed {seed}"
+        );
+    }
+    // Request 8 with an inbound frame after its first outbound one.
+    let late = vec![
+        inbound(1, 8, 0, 1).item(),
+        outbound(1, 8, 0, 1).item(),
+        inbound(1, 8, 1, 1).item(),
+        outbound(1, 8, 1, 1).item(),
+        outbound(1, 8, 2, 1).item(),
+        outbound(1, 8, 3, 1).item(),
+        end(1, 8),
+    ];
+    let batch = vec![req(1, 7, 4, 5), req(1, 8, 2, 4), req(1, 9, 5, 4)];
+    for seed in 0..50 {
+        let items = merge(vec![request(7, 4, 5), late.clone(), request(9, 5, 4)], seed);
+        assert_eq!(
+            Scenario::one(items).greedy(batch.clone()),
+            rejected(8, Frames),
+            "seed {seed}"
+        );
+    }
+}
+
 /// RFC-0063 'The rules' across the boundary: an end in `P − 1`, two key commitments across it,
 /// two opens in `P − 1`, one position logged in both periods, and a counter used in both.
 #[test]
@@ -401,6 +496,39 @@ fn each_window_rule_break_is_refused() {
         ],
     );
     assert_eq!(two.greedy(vec![req(1, 7, 3, 3)]), Ok(()));
+}
+
+/// RFC-0063 'One counter across the window': two frames of the batch's requests of one session
+/// with one `frame_seq`, in one period or across both, name the session's first request in the
+/// batch, even when that request's own frames lie elsewhere.
+#[test]
+fn one_counter_across_the_window_names_the_sessions_first_request() {
+    // Request 8's two frames in P − 1 share counter 4; request 7's frames are all in P.
+    let two = Scenario::two(
+        vec![
+            open(1),
+            inbound(1, 8, 0, 1).counter(4),
+            outbound(1, 8, 0, 1).counter(4),
+        ],
+        vec![
+            carry(1),
+            inbound(1, 7, 0, 1).item(),
+            outbound(1, 7, 0, 1).item(),
+            end(1, 7),
+            end(1, 8),
+        ],
+    );
+    assert_eq!(
+        two.greedy(vec![req(1, 7, 1, 1), req(1, 8, 1, 1)]),
+        rejected(7, Frames)
+    );
+    assert_eq!(
+        two.greedy(vec![req(1, 8, 1, 1), req(1, 7, 1, 1)]),
+        rejected(8, Frames)
+    );
+    // Request 8 outside the batch: its counters are not the batch's, and request 7 reads no
+    // rule of P − 1, where it has no frame.
+    assert_eq!(two.greedy(vec![req(1, 7, 1, 1)]), Ok(()));
 }
 
 /// RFC-0063 'The window': a request whose frames lie in `P − 1` and `P`, its end in `P`, is
@@ -494,6 +622,47 @@ fn the_first_failure_in_order_is_the_verdict() {
         one.sampled(vec![req(1, 7, 3, 3)], &no_pins()),
         rejected(7, Frames)
     );
+}
+
+/// RFC-0063 'The order': the session's rules in `P − 1`, then in `P`, then the key commitment
+/// across both; the first that fails is the verdict.
+#[test]
+fn the_session_rules_run_in_p_minus_1_then_p_then_the_key() {
+    // P − 1 holds one position twice (RFC-0062 rule 2, Frames); P has no carry (rule 1, Session).
+    let two = Scenario::two(
+        vec![
+            open(1),
+            inbound(1, 7, 0, 3).item(),
+            inbound(1, 7, 0, 3).item(),
+        ],
+        vec![outbound(1, 7, 0, 3).item(), end(1, 7)],
+    );
+    assert_eq!(two.greedy(vec![req(1, 7, 6, 3)]), rejected(7, Frames));
+    // P − 1 has two opens (rule 1, Session); P holds one position twice (rule 2, Frames).
+    let two = Scenario::two(
+        vec![open(1), open(1), inbound(1, 7, 0, 3).item()],
+        vec![
+            carry(1),
+            outbound(1, 7, 0, 3).item(),
+            outbound(1, 7, 0, 3).item(),
+            end(1, 7),
+        ],
+    );
+    assert_eq!(two.greedy(vec![req(1, 7, 3, 6)]), rejected(7, Session));
+    // P holds one position twice, and its carry has another key: P's rules before the key.
+    let two = Scenario::two(
+        vec![open(1), inbound(1, 7, 0, 3).item()],
+        vec![
+            Item::Carry {
+                s: 1,
+                key: [0xEE; 32],
+            },
+            outbound(1, 7, 0, 3).item(),
+            outbound(1, 7, 0, 3).item(),
+            end(1, 7),
+        ],
+    );
+    assert_eq!(two.greedy(vec![req(1, 7, 3, 6)]), rejected(7, Frames));
 }
 
 #[test]
@@ -674,6 +843,30 @@ fn a_request_across_the_boundary_takes_its_earliest_frames_pin() {
         two.sampled(vec![req(1, 7, 1, 1)], &late),
         rejected(7, SamplerKey)
     );
+}
+
+/// RFC-0061 'Which pin applies': the pin is the one whose window holds the request's earliest
+/// `t_ns`, which need not be its first frame logged.
+#[test]
+fn the_pin_is_the_earliest_frames_not_the_first_logged() {
+    let pins = three_pins();
+    let a = P_START;
+    let check = |first_logged: u64, earliest: u64| {
+        let scenario = Scenario::one(with_open(
+            1,
+            vec![
+                inbound(1, 7, 0, 1).at(first_logged),
+                outbound(1, 7, 0, 1).at(earliest),
+                end(1, 7),
+            ],
+        ));
+        scenario.sampled(vec![req(1, 7, 1, 1)], &pins)
+    };
+    // The first logged in the first window, the earliest before every pin: no pin.
+    assert_eq!(check(a + 10, a - 1), rejected(7, SamplerKey));
+    // The first logged after the second window, within its grace, in no window; the earliest in
+    // the second window: the second pin.
+    assert_eq!(check(a + 800_500, a + 799_990), Ok(()));
 }
 
 /// RFC-0061 'The policy applies to every verifier': a pin whose `b` or `G` exceeds the policy's
