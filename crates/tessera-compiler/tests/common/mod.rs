@@ -10,7 +10,7 @@
 pub mod public_vectors;
 
 use tessera_codec::Rational;
-use tessera_compiler::{Range, Ranges, analyze};
+use tessera_compiler::{Range, Ranges, analyze_fragment};
 use tessera_ir::{
     ArchFamily, ArchSpec, BoolFn, Broadcast, CommitmentClass, Graph, GraphBuilder, IntRange,
     IntType, Node, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, RopeSpec, Site, TableId,
@@ -520,7 +520,7 @@ pub fn check_run(
     specs: &[TableSpec],
     inputs: Vec<(TensorId, Vec<i128>)>,
 ) -> (Ranges, Vec<Vec<i128>>) {
-    let ranges = analyze(graph, specs).expect("the graph analyzes");
+    let ranges = analyze_fragment(graph, specs).expect("the graph analyzes");
     let values = evaluate(graph, tables, inputs);
     check_ranges(ranges.all(), &values);
     (ranges, values)

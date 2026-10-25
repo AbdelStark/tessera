@@ -6,7 +6,8 @@
 //!   (Appendix B, C.1), and NIST SP 800-38A's CTR-AES128 vector (F.5.1), four blocks.
 //! - **A reference.** 64 random keys with up to 9 counter blocks each, against the `aes` crate.
 //! - **Ranges.** The range analysis bounds every tensor of the circuit, so every lookup's key is
-//!   a true integer its table accepts (RFC-0006 'Range analysis').
+//!   a true integer its table accepts (RFC-0006 'Range analysis'). Alone, the circuit is a
+//!   fragment: its key and plaintext are bytes only once the graph that holds it proves them.
 //! - **Uniqueness.** Every lookup of the honest witness is a row of its table. A ciphertext with
 //!   one bit flipped, or a key with one bit flipped under the ciphertext the log pins, leaves a
 //!   lookup that is no row. LogUp rejects such a lookup at its roots (`tessera-logup`'s
@@ -17,10 +18,10 @@
 use aes::Aes128;
 use aes::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
 use tessera_codec::SecretBuf;
-use tessera_compiler::analyze;
 use tessera_compiler::anchor::{
     AesCtr, AesTables, LOOKUPS_PER_BLOCK, LOOKUPS_PER_KEY, RCON, aes128_ctr, aes128_ctr_inputs,
 };
+use tessera_compiler::{analyze, analyze_fragment};
 use tessera_ir::{Graph, GraphBuilder, Op, TableId, TensorId};
 use tessera_tables::{BitOp, GeneratedTable, Table, TableKind, TableSpec};
 use tessera_witness::{Engine, Witness};
@@ -252,7 +253,13 @@ fn random_keys_and_blocks_agree_with_the_aes_crate() {
 fn the_range_analysis_bounds_every_tensor_of_the_circuit() {
     for b in [1, 3, 16] {
         let (graph, _, _) = circuit(b);
-        analyze(&graph, &specs()).expect("every lookup key in its table's domain");
+        // Alone, the circuit is a fragment: nothing in it proves its key and plaintext bytes,
+        // which the anchor's graph must (RFC-0006 'Committed graph inputs').
+        analyze_fragment(&graph, &specs()).expect("every lookup key in its table's domain");
+        assert!(matches!(
+            analyze(&graph, &specs()),
+            Err(tessera_compiler::CompileError::Unproven { .. })
+        ));
     }
 }
 

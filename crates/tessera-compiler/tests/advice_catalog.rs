@@ -4,7 +4,7 @@
 mod common;
 use common::{ADVICE, decl, one, out};
 use serde_json::Value;
-use tessera_compiler::{analyze, select};
+use tessera_compiler::{analyze_fragment, select};
 use tessera_ir::{GadgetPolicy, GraphBuilder, NodeId, Op};
 use tessera_tables::TableKind;
 
@@ -36,7 +36,7 @@ fn all_root_widths_retain_every_request_in_canonical_order() {
     for case in roots {
         let width = case["width"].as_u64().unwrap() as u8;
         let graph = root((width - 1).min(30), if width == 32 { 4 } else { 1 }, 1);
-        let ranges = analyze(&graph, &[]).unwrap();
+        let ranges = analyze_fragment(&graph, &[]).unwrap();
         let selection = select(&graph, &ranges, &[], &GadgetPolicy::default()).unwrap();
         let found: Vec<_> = selection
             .reads(NodeId(0))
@@ -62,7 +62,7 @@ fn all_root_widths_retain_every_request_in_canonical_order() {
 #[test]
 fn a_zero_maximum_root_uses_one_bit_and_requires_the_fixed_input_ranges() {
     let graph = root(0, 1, 2);
-    let ranges = analyze(&graph, &[]).unwrap();
+    let ranges = analyze_fragment(&graph, &[]).unwrap();
     let output = graph.nodes[0].outputs[0];
     assert_eq!(ranges.of(output).unwrap().bounded().unwrap().hi, 1);
     let selected = select(&graph, &ranges, &[], &GadgetPolicy::default()).unwrap();
@@ -107,7 +107,7 @@ fn a_zero_maximum_root_uses_one_bit_and_requires_the_fixed_input_ranges() {
 fn constants_above_goldilocks_keep_their_whole_integer_root_bound() {
     // N = 4 * 2^62 = 2^64; reducing N modulo Goldilocks would shrink the root to 16 bits.
     let graph = root(31, 4, 2);
-    let ranges = analyze(&graph, &[]).unwrap();
+    let ranges = analyze_fragment(&graph, &[]).unwrap();
     let output = graph.nodes[0].outputs[0];
     assert_eq!(
         ranges.of(output).unwrap().bounded().unwrap().hi,

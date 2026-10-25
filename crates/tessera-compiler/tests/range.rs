@@ -25,7 +25,9 @@ use tessera_codec::error::ErrorCode;
 use tessera_compiler::anchor::{
     SHA256_IV, SHA256_MASKS, Sha256Layout, sha256, sha256_bits, sha256_inputs, sha256_pad,
 };
-use tessera_compiler::{CompileError, HALF_FIELD, Range, analyze, check_profile, select};
+use tessera_compiler::{
+    CompileError, HALF_FIELD, Range, analyze, analyze_fragment, check_profile, select,
+};
 use tessera_ir::{
     BoolFn, Broadcast, GadgetPolicy, Graph, GraphBuilder, NodeId, NodeKind, Op, Profile, TableId,
     TensorId, WeightRef, WeightType,
@@ -501,7 +503,7 @@ fn a_layer_keeps_every_tensor_in_range_on_random_and_adversarial_inputs() {
     let layer = layer(n);
     // Every tensor of the layer has a bound, so every value below is checked, and the attention
     // output's is the softmax fact's.
-    let ranges = analyze(&layer.graph, &specs).expect("analyzes");
+    let ranges = analyze_fragment(&layer.graph, &specs).expect("analyzes");
     assert!(ranges.all().iter().all(|r| matches!(r, Range::Bounded(_))));
     assert_eq!(
         ranges.of(layer.attention),
@@ -615,7 +617,7 @@ fn the_softmax_fact_bounds_the_attention_output_as_rfc_0005_states() {
     let (tables, specs) = layer_tables();
     let n = 32;
     let (graph, scores, v, y) = attention(n, true);
-    let ranges = analyze(&graph, &specs).expect("analyzes");
+    let ranges = analyze_fragment(&graph, &specs).expect("analyzes");
     // 2^{2σ} · [−128, 127] = [−2^39, 127 · 2^32].
     assert_eq!(ranges.of(y), Some(Range::new(-(1 << 39), 127 << 32)));
 
@@ -639,7 +641,7 @@ fn the_softmax_fact_bounds_the_attention_output_as_rfc_0005_states() {
     // With R from another softmax, only the operands' bounds apply: R ≤ 2^{σ+1} − 1, and PV is
     // n terms of e ≤ 2^σ times v in [−128, 127].
     let (unrelated, ..) = attention(n, false);
-    let product = analyze(&unrelated, &specs).expect("analyzes");
+    let product = analyze_fragment(&unrelated, &specs).expect("analyzes");
     let r_max: i128 = (1 << (SIGMA + 1)) - 1;
     let pv = (
         i128::from(n) * (1 << SIGMA) * -128,
@@ -657,7 +659,7 @@ fn the_softmax_fact_bounds_the_attention_output_as_rfc_0005_states() {
 // ----- True integers ----------------------------------------------------------------------------
 
 fn refused(graph: &Graph, specs: &[TableSpec]) -> CompileError {
-    analyze(graph, specs).expect_err("refused")
+    analyze_fragment(graph, specs).expect_err("refused")
 }
 
 #[test]
@@ -690,7 +692,7 @@ fn a_gadget_input_without_a_bound_is_refused_as_a_possible_wrap() {
         out(&[2, 2], ADVICE),
     );
     let graph = g.finish();
-    let ranges = analyze(&graph, &[]);
+    let ranges = analyze_fragment(&graph, &[]);
     let error = ranges.expect_err("refused");
     assert_eq!(
         error,
@@ -917,7 +919,7 @@ fn each_bit_rule_refuses_a_graph_that_breaks_only_it() {
         }
         g.node(Op::BitDecompose { low, high }, &[x], outputs)
             .expect("a decomposition");
-        let result = analyze(&g.finish(), &[]);
+        let result = analyze_fragment(&g.finish(), &[]);
         match refused_at {
             Some(node) => assert_eq!(result.expect_err("refused"), range(node, 0, width)),
             None => {
@@ -970,7 +972,7 @@ fn each_bit_rule_refuses_a_graph_that_breaks_only_it() {
             vec![out(&[2, 8], ADVICE)],
         )
         .expect("a decomposition");
-        let result = analyze(&g.finish(), &[]);
+        let result = analyze_fragment(&g.finish(), &[]);
         assert_eq!(result.is_err(), refused_here, "{kind:?}");
         if refused_here {
             assert_eq!(result.expect_err("refused"), range(0, 0, width));
@@ -994,7 +996,7 @@ fn each_bit_rule_refuses_a_graph_that_breaks_only_it() {
         }
         g.node(Op::BitDecompose { low, high }, &[x], outputs)
             .expect("a decomposition");
-        let result = analyze(&g.finish(), &[]);
+        let result = analyze_fragment(&g.finish(), &[]);
         if refused_here {
             assert_eq!(
                 result.expect_err("refused"),
@@ -1032,7 +1034,7 @@ fn each_bit_rule_refuses_a_graph_that_breaks_only_it() {
         let mut g = GraphBuilder::new();
         let b = g.input(decl(&[2], NodeKind::Public, 0, 1)).expect("a bit");
         let y = one(&mut g, Op::BitFn { f }, &vec![b; f.arity()], virt(&[2]));
-        let ranges = analyze(&g.finish(), &[]).expect("bits");
+        let ranges = analyze_fragment(&g.finish(), &[]).expect("bits");
         assert_eq!(ranges.of(y), Some(Range::new(0, 1)));
         let mut g = GraphBuilder::new();
         let byte = g.input(decl(&[2], ADVICE, 0, 255)).expect("a byte");
@@ -1049,7 +1051,7 @@ fn each_bit_rule_refuses_a_graph_that_breaks_only_it() {
             &vec![bits; f.arity()],
             virt(&[2, 8]),
         );
-        analyze(&g.finish(), &[]).expect("proven bits");
+        analyze_fragment(&g.finish(), &[]).expect("proven bits");
     }
     // A committed input declared [0, 1], read directly or moved by any of the five moves, is no
     // proven bit; and a byte declared [0, 255], read or moved the same ways, under nine bits is
@@ -1073,7 +1075,7 @@ fn each_bit_rule_refuses_a_graph_that_breaks_only_it() {
                         &[p, moved],
                         virt(&shape),
                     );
-                    analyze(&g.finish(), &[])
+                    analyze_fragment(&g.finish(), &[])
                         .map(|_| ())
                         .map_err(|e| (e, range(node, 1, proven)))
                 }
@@ -1089,7 +1091,7 @@ fn each_bit_rule_refuses_a_graph_that_breaks_only_it() {
                     }
                     g.node(Op::BitDecompose { low: 8, high }, &[moved], outputs)
                         .expect("a decomposition");
-                    let result = analyze(&g.finish(), &[]);
+                    let result = analyze_fragment(&g.finish(), &[]);
                     if high == 0 {
                         result.expect("eight bits prove the declared byte");
                         continue;
@@ -1157,6 +1159,9 @@ fn the_sha256_circuit_keeps_every_tensor_in_range() {
         (inputs[4], wide(layout.place())),
     ];
     let (ranges, values) = check_run(&graph, &[], &[], values);
+    // `BitDecompose { 8, 0 }` reads the committed bytes directly, so it proves them: the circuit
+    // is a proof's graph, not a fragment (RFC-0006 'Committed graph inputs').
+    analyze(&graph, &[]).expect("the bytes' decomposition proves them");
     // Until the anchor's relations are scheduled (#526), the compiler takes the circuit to no
     // proof, and it is no part of a model.
     assert_eq!(
@@ -1413,6 +1418,315 @@ fn the_root_range_is_the_bit_length_of_the_largest_honest_root() {
             assert_eq!(range.lo, 0);
             let w = 128 - largest.leading_zeros();
             assert_eq!(range.hi, (1 << w) - 1, "d = {dim}, e = {eps}");
+        }
+    }
+}
+
+// ----- Committed graph inputs (RFC-0006 'Committed graph inputs', #527) -------------------------
+
+fn unproven(tensor: u32) -> CompileError {
+    CompileError::Unproven {
+        tensor: TensorId(tensor),
+        rule: "every element of a committed graph input is read by an operation that proves its \
+               declared range",
+    }
+}
+
+/// `BitDecompose { 8, 0 }` of `x`, of `shape`.
+fn bytes_of(g: &mut GraphBuilder, x: TensorId, shape: &[u32]) {
+    let mut bits = shape.to_vec();
+    bits.push(8);
+    g.node(
+        Op::BitDecompose { low: 8, high: 0 },
+        &[x],
+        vec![out(&bits, ADVICE)],
+    )
+    .expect("a decomposition");
+}
+
+#[test]
+fn a_committed_input_that_no_operation_proves_is_refused() {
+    // A committed byte under `ConstAdd(0)`, then `BitDecompose { 8, 1 }`: the sum's [0, 255] is
+    // inside nine bits, but those prove only x < 512, so the byte's [0, 255] is unproven.
+    let mut g = GraphBuilder::new();
+    let x = g.input(decl(&[2], ADVICE, 0, 255)).expect("a byte");
+    let zero = g.constant(vec![0]).expect("0");
+    let y = one(&mut g, Op::ConstAdd { c: zero }, &[x], virt(&[2]));
+    g.node(
+        Op::BitDecompose { low: 8, high: 1 },
+        &[y],
+        vec![out(&[2, 8], ADVICE), out(&[2, 1], ADVICE)],
+    )
+    .expect("bits");
+    let graph = g.finish();
+    let error = analyze(&graph, &[]).expect_err("refused");
+    assert_eq!(error, unproven(0));
+    assert_eq!(error.code(), ErrorCode::CompileRange);
+    analyze_fragment(&graph, &[]).expect("a fragment takes its committed inputs as given");
+
+    // A committed input no operation reads proves nothing, whatever its declared range; a weight
+    // input takes the domain its publisher vouches for (RFC-0048), and a public one is known.
+    for (kind, refused_here) in [(ADVICE, true), (WEIGHT, false), (NodeKind::Public, false)] {
+        let mut g = GraphBuilder::new();
+        let p = g.input(decl(&[2], NodeKind::Public, 0, 255)).expect("p");
+        let x = g.input(decl(&[2], kind, 0, 255)).expect("x");
+        bytes_of(&mut g, p, &[2]);
+        let _ = x;
+        let result = analyze(&g.finish(), &[]);
+        if refused_here {
+            assert_eq!(result.expect_err("refused"), unproven(1), "{kind:?}");
+        } else {
+            result.expect("needs no reader");
+        }
+    }
+
+    // A `Bitwise8` lookup proves neither operand alone: its key a + 2^8·b binds a only once b is
+    // a byte. A decomposed operand is proven, and the other is not.
+    let specs = [GeneratedTable::new(
+        TableId(0),
+        TableKind::Bitwise8 {
+            op: tessera_tables::BitOp::Xor,
+        },
+    )
+    .expect("a table")
+    .spec()
+    .clone()];
+    let mut g = GraphBuilder::new();
+    let a = g.input(decl(&[2], ADVICE, 0, 255)).expect("a");
+    let b = g.input(decl(&[2], ADVICE, 0, 255)).expect("b");
+    one(
+        &mut g,
+        Op::Bitwise { table: TableId(0) },
+        &[a, b],
+        out(&[2], NodeKind::LookupOutput { table: TableId(0) }),
+    );
+    bytes_of(&mut g, b, &[2]);
+    assert_eq!(
+        analyze(&g.finish(), &specs).expect_err("refused"),
+        unproven(0)
+    );
+}
+
+#[test]
+fn a_one_hot_proves_a_declared_range_that_holds_its_vocabulary() {
+    // `OneHot { vocab }`'s relations prove [0, vocab): tokens declared [0, vocab − 1] are proven.
+    // Declared narrower at either end, some other reader would trust what they do not prove.
+    // (Wider is `ERR-COMPILE-RANGE` at the node.) Through a move the tokens are not proven: the
+    // row selector pins the moved tensor's padded rows, not the input's.
+    for (lo, hi, moved, proven) in [
+        (0, 9, false, true),
+        (0, 8, false, false),
+        (1, 9, false, false),
+        (0, 9, true, false),
+    ] {
+        let mut g = GraphBuilder::new();
+        let shape: &[u32] = if moved { &[2, 3] } else { &[6] };
+        let tokens = g.input(decl(shape, ADVICE, lo, hi)).expect("tokens");
+        let read = if moved {
+            one(&mut g, Op::Reshape, &[tokens], virt(&[6]))
+        } else {
+            tokens
+        };
+        one(
+            &mut g,
+            Op::OneHot { vocab: 10 },
+            &[read],
+            out(&[6, 10], ADVICE),
+        );
+        let result = analyze(&g.finish(), &[]);
+        if proven {
+            result.expect("the relations prove the tokens");
+        } else {
+            assert_eq!(
+                result.expect_err("refused"),
+                unproven(0),
+                "[{lo}, {hi}], {moved}"
+            );
+        }
+    }
+}
+
+#[test]
+fn each_move_carries_the_proof_to_the_elements_it_keeps() {
+    // Read through one move, by `moved_by`'s numbering: directly, Reshape, Slice of column 1,
+    // Transpose, GatherPublic of rows [1, 0], Expand. All but the slice keep every element.
+    for mover in 0..6 {
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(&[2, 2], ADVICE, 0, 255)).expect("bytes");
+        let (moved, shape) = moved_by(&mut g, x, mover);
+        bytes_of(&mut g, moved, &shape);
+        let result = analyze(&g.finish(), &[]);
+        if mover == 2 {
+            assert_eq!(result.expect_err("column 0 is unproven"), unproven(0));
+        } else {
+            result.expect("every element proven");
+        }
+    }
+    // Two slices that keep both columns between them prove the input; two that keep column 1
+    // twice do not. A gather of row 1 twice leaves row 0 unproven.
+    for (starts, proven) in [([0, 1], true), ([1, 1], false)] {
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(&[2, 2], ADVICE, 0, 255)).expect("bytes");
+        for start in starts {
+            let column = one(
+                &mut g,
+                Op::Slice {
+                    axis: 1,
+                    start,
+                    len: 1,
+                },
+                &[x],
+                virt(&[2, 1]),
+            );
+            bytes_of(&mut g, column, &[2, 1]);
+        }
+        assert_eq!(analyze(&g.finish(), &[]).is_ok(), proven, "{starts:?}");
+    }
+    let mut g = GraphBuilder::new();
+    let x = g.input(decl(&[2, 2], ADVICE, 0, 255)).expect("bytes");
+    let index = g.constant(vec![1, 1]).expect("rows");
+    let rows = one(&mut g, Op::GatherPublic { index }, &[x], virt(&[2, 2]));
+    bytes_of(&mut g, rows, &[2, 2]);
+    assert_eq!(analyze(&g.finish(), &[]).expect_err("row 0"), unproven(0));
+}
+
+/// A random move of a tensor of `shape`: its op and output shape.
+fn random_move(g: &mut GraphBuilder, rng: &mut common::Seeded, shape: &[u32]) -> (Op, Vec<u32>) {
+    let rank = shape.len();
+    loop {
+        match rng.next() % 5 {
+            0 => return (Op::Reshape, vec![shape.iter().product()]),
+            1 if rank >= 2 => {
+                let mut perm: Vec<u8> = (0..rank as u8).collect();
+                for i in (1..rank).rev() {
+                    perm.swap(i, (rng.next() % (i as u64 + 1)) as usize);
+                }
+                let to = perm.iter().map(|&p| shape[usize::from(p)]).collect();
+                return (Op::Transpose { perm }, to);
+            }
+            2 => {
+                let axis = (rng.next() % rank as u64) as usize;
+                let start = (rng.next() % u64::from(shape[axis])) as u32;
+                let len = 1 + (rng.next() % u64::from(shape[axis] - start)) as u32;
+                let mut to = shape.to_vec();
+                to[axis] = len;
+                let axis = axis as u8;
+                return (Op::Slice { axis, start, len }, to);
+            }
+            3 => {
+                let rows = 1 + rng.next() % 3;
+                let index = (0..rows)
+                    .map(|_| (rng.next() % u64::from(shape[0])) as i64)
+                    .collect();
+                let mut to = shape.to_vec();
+                to[0] = rows as u32;
+                let index = g.constant(index).expect("rows");
+                return (Op::GatherPublic { index }, to);
+            }
+            4 if rank < 4 => {
+                let axis = (rng.next() % (rank as u64 + 1)) as u8;
+                let len = 1 + (rng.next() % 2) as u32;
+                let mut to = shape.to_vec();
+                to.insert(usize::from(axis), len);
+                return (Op::Expand { axis, len }, to);
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn the_analysis_accepts_exactly_the_graphs_whose_readers_reach_every_element() {
+    // Random chains of moves from a committed [2, 3] input to one or two decompositions. The
+    // interpreter, run on six distinct bytes, shows which elements reach a decomposition: the
+    // analysis must accept exactly when all six do.
+    let (mut accepted, mut refused) = (0, 0);
+    for seed in 0..3000u64 {
+        let mut rng = common::Seeded(seed);
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(&[2, 3], ADVICE, 0, 255)).expect("bytes");
+        let mut readers = Vec::new();
+        for _ in 0..1 + rng.next() % 2 {
+            let (mut tensor, mut shape) = (x, vec![2u32, 3]);
+            for _ in 0..rng.next() % 5 {
+                let (op, to) = random_move(&mut g, &mut rng, &shape);
+                tensor = one(&mut g, op, &[tensor], virt(&to));
+                shape = to;
+            }
+            bytes_of(&mut g, tensor, &shape);
+            readers.push(tensor);
+        }
+        let graph = g.finish();
+        let values = evaluate(&graph, &[], vec![(x, (10..16).collect())]);
+        let reached: std::collections::BTreeSet<i128> = readers
+            .iter()
+            .flat_map(|r| values[r.0 as usize].iter().copied())
+            .collect();
+        let every = reached.len() == 6;
+        let result = analyze(&graph, &[]);
+        assert_eq!(result.is_ok(), every, "seed {seed}: {result:?}");
+        if every {
+            accepted += 1;
+        } else {
+            assert_eq!(result.expect_err("refused"), unproven(0), "seed {seed}");
+            refused += 1;
+        }
+    }
+    // Both outcomes are exercised.
+    assert!(
+        accepted > 300 && refused > 300,
+        "{accepted} accepted, {refused} refused"
+    );
+}
+
+#[test]
+fn the_aes_circuit_needs_its_key_and_plaintext_proven() {
+    use tessera_compiler::anchor::{AesTables, aes128_ctr, aes128_ctr_inputs};
+    let tables = AesTables {
+        sbox: TableId(0),
+        mul2: TableId(1),
+        mul3: TableId(2),
+        xor: TableId(3),
+    };
+    let specs: Vec<TableSpec> = [
+        (tables.sbox, TableKind::AesSbox),
+        (tables.mul2, TableKind::Gf256Mul { c: 2 }),
+        (tables.mul3, TableKind::Gf256Mul { c: 3 }),
+        (
+            tables.xor,
+            TableKind::Bitwise8 {
+                op: tessera_tables::BitOp::Xor,
+            },
+        ),
+    ]
+    .into_iter()
+    .map(|(id, kind)| {
+        GeneratedTable::new(id, kind)
+            .expect("a table")
+            .spec()
+            .clone()
+    })
+    .collect();
+    // Alone, the key (input 0) and the plaintext (input 3) are `Bitwise` operands that nothing
+    // proves bytes: a fragment. Decomposing them, as the SHA-256 key commitment does the key's,
+    // proves them.
+    for decomposed in [vec![], vec![0], vec![0, 3]] {
+        let mut g = GraphBuilder::new();
+        let inputs = aes128_ctr_inputs(2).map(|d| g.input(d).expect("an input"));
+        aes128_ctr(&mut g, &tables, inputs, 2).expect("the circuit");
+        for &k in &decomposed {
+            let shape = if k == 0 { vec![16] } else { vec![16, 2] };
+            bytes_of(&mut g, inputs[k], &shape);
+        }
+        let graph = g.finish();
+        analyze_fragment(&graph, &specs).expect("the circuit's lookups take bytes");
+        let result = analyze(&graph, &specs);
+        match decomposed.len() {
+            0 => assert_eq!(result.expect_err("the key"), unproven(inputs[0].0)),
+            1 => assert_eq!(result.expect_err("the plaintext"), unproven(inputs[3].0)),
+            _ => {
+                result.expect("both proven");
+            }
         }
     }
 }

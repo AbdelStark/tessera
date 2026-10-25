@@ -21,7 +21,9 @@ use common::{ADVICE, WEIGHT, decl, llama, lookup, one, out, virt};
 use proptest::prelude::*;
 use tessera_codec::Rational;
 use tessera_codec::error::ErrorCode;
-use tessera_compiler::{CompileError, Gadget, PublicModel, Selection, analyze, lower, select};
+use tessera_compiler::{
+    CompileError, Gadget, PublicModel, Selection, analyze, analyze_fragment, lower, select,
+};
 use tessera_ir::{
     GadgetId, GadgetPolicy, Graph, GraphBuilder, NodeId, Op, Profile, TableId, TensorId,
 };
@@ -65,7 +67,7 @@ fn selected(
     specs: &[TableSpec],
     policy: &GadgetPolicy,
 ) -> Result<Selection, CompileError> {
-    let ranges = analyze(graph, specs).expect("the graph analyzes");
+    let ranges = analyze_fragment(graph, specs).expect("the graph analyzes");
     select(graph, &ranges, specs, policy)
 }
 
@@ -912,7 +914,7 @@ fn argmax_registers_its_range_and_requires_true_bounded_logits() {
         Err(refused("a lookup's table has at most 2^{B_max} rows"))
     );
     for (lo, hi) in [(-(1 << 28), 0), (0, 1 << 28)] {
-        let error = analyze(&graph(lo, hi), &[]).unwrap_err();
+        let error = analyze_fragment(&graph(lo, hi), &[]).unwrap_err();
         assert_eq!(
             error,
             refused("Argmax logits have |ℓ| < 2^28 (RFC-0009 Lemma 9)")

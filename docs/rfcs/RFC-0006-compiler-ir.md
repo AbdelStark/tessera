@@ -127,6 +127,19 @@ The integrality-requiring inputs, each with the domain it must lie in (every dom
 
 Violations: an integrality-requiring input with an unbounded range raises `ERR-COMPILE-WRAP`; one whose range leaves its domain raises `ERR-COMPILE-RANGE`, and so does a key outside every feasible gadget's bound (gadget selection).
 
+**Committed graph inputs.** A graph input committed in the advice holds whatever the prover commits. Its declared range is an assumption its readers trust, so an operation of the graph must prove it, for every element ([#527](https://github.com/AbdelStark/tessera/issues/527)).
+- **The operations that prove it,** whose relations bind each element they read to a range inside the declared one and pin the input's padded positions:
+  - `BitDecompose { low, high }`, whose bits prove `[0, 2^{low + high})` ([RFC-0066](RFC-0066-bits-and-sha256.md) Lemma 1's converse), which the declared range must hold by the table above. It reads the input directly, or moved by `Reshape`, `Transpose` or `Expand`, which keep every element, or by `Slice` or `GatherPublic`, which keep the elements they select. RFC-0066's padding check pins the input's padded positions either way;
+  - `OneHot { vocab }`, whose relations prove `[0, vocab)` (RFC-0009 Lemma 8), when the declared range holds `[0, vocab − 1]`. With the domain above, it is then exactly that. It reads the input directly: its row selector pins its own input's padded rows, and through a move those are not the input's.
+- **No other operation is recognized.**
+  - A `Bitwise` key `a + 2^8·b` binds `a` only once `b` is a byte.
+  - An operation that computes on the input, such as `ConstAdd`, proves a range of its output, not of the input.
+  - A `TableMap` of one class binds the elements it reads to its table's keys, but nothing pins a committed input's padded positions that it reads. With RFC-0066's padding check it could join the list.
+- **The rule.** Every element of every graph input committed in the advice is read by a proving operation. Range analysis refuses a graph that breaks it with `ERR-COMPILE-RANGE`, a committed input that no operation reads included.
+- **Other inputs.** An input committed in the weight commitment, a weight, a class or a multiplier, takes the domain `R_W`'s publisher vouches for ([RFC-0048](RFC-0048-weight-trust.md#the-assumption)) and needs no reader. A public input is known to the verifier.
+- **Fragments.** A circuit whose committed inputs a larger graph proves, such as AES-128-CTR, whose key and plaintext it does not prove bytes, is analyzed as a fragment, with its committed inputs' declared ranges taken as given. It is not a proof's graph.
+- **The Llama lowering** has one committed advice input, the tokens, declared `[0, vocab − 1]` and read by `OneHot`. Its classes and multipliers are weight-committed.
+
 ### Gadget selection
 
 [RFC-0050](RFC-0050-gadget-advice-columns.md) specifies the complete auxiliary range requests, including virtual tops and normalization carries. Preserve the existing base-table order, then walk gadgets in node order: reuse the lowest id of an equal table kind or append on first use. The representation is fixed by that RFC, not changed to fit a narrower table policy.

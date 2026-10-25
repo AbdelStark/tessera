@@ -57,7 +57,7 @@ BitDecompose { low: u8, high: u8 },   // x → b [.., low], h [.., high]; high m
   - **A committed graph input** may hold any value of `Fp`, and the relations below prove it lies in `[0, 2^{low + high})` (Lemma 1's converse). That holds when `BitDecompose` reads it directly, or moved unchanged by `Reshape`, `Slice`, `Transpose`, `GatherPublic` or `Expand`, at the positions it reads.
     - Its other readers trust its declared range, so that range must hold all of `[0, 2^{low + high})`; otherwise `ERR-COMPILE-RANGE`.
     - Without that rule, a key byte declared `[0, 255]` under `BitDecompose { 8, 1 }` could hold `256 + k'`, and a `Bitwise8` lookup that takes it as the low operand of `a + 2^8·b` would admit two witnesses.
-  - **Elsewhere**, range analysis takes a committed input's declared range as given: through any other operation, and at the positions a `Slice` or a gather leaves out, that range is a precondition another operation of the graph must prove. Specifying and enforcing which operations prove it is #527.
+  - **Elsewhere**, range analysis takes a committed advice input's declared range as given: through any other operation, and at the positions a `Slice` or a gather leaves out, that range is a precondition another operation of the graph must prove. RFC-0006 'Committed graph inputs' states which operations prove it, and range analysis refuses a graph that leaves an element of a committed input unproven (#527).
 - **Relations** (RFC-0010 'Relations'):
   - **Booleanity**, one `ZeroCheck` per output: `0 = Σ_x eq(z, x)·b̃(x)·(1 − b̃(x))`, as `OneHot`'s, and the same for `h`.
   - **Recomposition**, one `ZeroCheck`: `0 = Σ_y eq(z, y)·x̃(y) − Σ_{(y, i)} eq(z, y)·w(i)·b̃(y ‖ i) − Σ_{(y, j)} eq(z, y)·2^{low}·w(j)·h̃(y ‖ j)`, with `w(i) = 2^i` on real bits and 0 on padded ones. Its first sum is `x̃(z)`, a claim on `x`. The others are sumchecks of degree 2, `w` public: the verifier evaluates `w̃(r) = Σ_{i < n} 2^i·eq(r, i)`, at most 62 terms, or `Π_k (1 − r_k + r_k·2^{2^k})` when the axis's `n` bits are a power of two.
@@ -205,7 +205,7 @@ Bit axes pad to powers of two, 4 for the round carries, so the commitment holds 
 - **The key commitment** hashes `"tessera-anchor-key/v1" ‖ k_s ‖ salt_k`, 53 bytes, in one block.
   - `k_s`'s 16 bytes and `salt_k`'s are committed, and their `BitDecompose { 8, 0 }` proves them bytes (Lemma 1).
   - Those `k_s` bytes are the AES circuit's key input, so the precondition #142 states, that its key be bytes by its producer, is met here.
-  - The anchor's graph (#146) must range-check every committed byte its lookups read this way, or by another proof: a committed input's declared range is otherwise a claim nothing proves.
+  - The anchor's graph (#146) must range-check every committed byte its lookups read this way, or by another operation RFC-0006 'Committed graph inputs' recognizes: a committed input's declared range is otherwise a claim nothing proves, and range analysis refuses the graph.
   - The digest is bound to the session's public `key_commitment`.
 - **The sampler key** (RFC-0061) is hashed the same way, from `"tessera-sampler-key/v1"`.
 

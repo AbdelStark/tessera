@@ -20,6 +20,12 @@
 //!   position up at its table's last key, which the table maps to 0 (RFC-0030). `OneHot` emits that its vectors have exactly one 1
 //!   (RFC-0009 Lemma 8), so `MatMulWeight` on them selects a column of the weight and keeps the
 //!   weight's range: the embedding rows stay INT8 rather than growing with the vocabulary.
+//! - **Committed graph inputs.** A graph input committed in the advice holds whatever the prover
+//!   commits, so every element of it must be read by an operation that proves its declared range:
+//!   `OneHot` (`[0, vocab)`), reading it directly, or `BitDecompose` (`[0, 2^{low + high})`),
+//!   directly or through moves. [`analyze`] refuses a graph that leaves one unproven;
+//!   [`analyze_fragment`] does not, for a circuit whose committed inputs a larger graph proves
+//!   (RFC-0006 'Committed graph inputs').
 //! - **True integers.** Every gadget input that must be an integer needs a bounded range inside
 //!   `(−(P−1)/2, (P−1)/2)`, and inside what its gadget or table accepts. Without a bound it is
 //!   `ERR-COMPILE-WRAP`, outside one `ERR-COMPILE-RANGE`. Inside the gadgets the field value of
@@ -29,10 +35,88 @@
 //! The analysis reads the graph and the tables' specifications, never a weight, so ranges cannot
 //! depend on weight values (INV-CL-1), and two runs on the same inputs agree (INV-IR-4).
 
-use tessera_ir::{Graph, IntRange, Node, NodeId, NodeKind, Op, TableId, TensorId};
+use tessera_ir::{CommitmentClass, Graph, IntRange, Node, NodeId, NodeKind, Op, TableId, TensorId};
 use tessera_tables::{TableKind, TableSpec};
 
 use crate::CompileError;
+
+/// The elements of a tensor that an operation reads: every one, or those whose flat index,
+/// outermost axis first, is set.
+#[derive(Clone, Debug)]
+enum Reached {
+    All,
+    Some(Vec<bool>),
+}
+
+impl Reached {
+    fn complete(&self) -> bool {
+        match self {
+            Self::All => true,
+            Self::Some(bits) => bits.iter().all(|&b| b),
+        }
+    }
+
+    fn merge(into: &mut Option<Self>, other: Self) {
+        *into = Some(match (into.take(), other) {
+            (None, x) => x,
+            (Some(Self::All), _) | (Some(_), Self::All) => Self::All,
+            (Some(Self::Some(mut a)), Self::Some(b)) => {
+                a.iter_mut().zip(b).for_each(|(a, b)| *a |= b);
+                Self::Some(a)
+            }
+        });
+    }
+
+    /// The elements of a move's input, of shape `from`, that its output's elements in `self`, of
+    /// shape `to`, hold. `source(o, i)` writes into `i` the input index whose value output index
+    /// `o` holds. When `onto`, the move reads every input element, so all of its output holds all
+    /// of its input. `None`, read as nothing proven, when an index cannot be formed.
+    fn back(
+        self,
+        from: &[u32],
+        to: &[u32],
+        onto: bool,
+        source: impl Fn(&[usize], &mut [usize]) -> Option<()>,
+    ) -> Option<Self> {
+        if onto && matches!(self, Self::All) {
+            return Some(Self::All);
+        }
+        let (n_from, n_to) = (elements(from)?, elements(to)?);
+        let mut bits = vec![false; n_from];
+        let (mut o, mut i) = (vec![0usize; to.len()], vec![0usize; from.len()]);
+        for flat in 0..n_to {
+            if matches!(&self, Self::Some(read) if !read[flat]) {
+                advance(&mut o, to);
+                continue;
+            }
+            source(&o, &mut i)?;
+            let at = i.iter().zip(from).try_fold(0usize, |at, (&k, &d)| {
+                at.checked_mul(d as usize)?.checked_add(k)
+            })?;
+            *bits.get_mut(at)? = true;
+            advance(&mut o, to);
+        }
+        Some(Self::Some(bits))
+    }
+}
+
+/// The number of elements of a tensor of `shape`, if it fits a `usize`.
+fn elements(shape: &[u32]) -> Option<usize> {
+    shape
+        .iter()
+        .try_fold(1usize, |n, &d| n.checked_mul(d as usize))
+}
+
+/// The next index of a tensor of `shape` in row-major order, the last axis fastest.
+fn advance(index: &mut [usize], shape: &[u32]) {
+    for (k, &d) in index.iter_mut().zip(shape).rev() {
+        *k += 1;
+        if *k < d as usize {
+            return;
+        }
+        *k = 0;
+    }
+}
 
 /// `(P − 1)/2` for the Goldilocks prime `P = 2^64 − 2^32 + 1`: a true integer lies strictly
 /// within it on either side (RFC-0006 'True-integer rule').
@@ -96,27 +180,28 @@ impl Ranges {
 /// - [`CompileError::Range`] for one whose bound leaves the centered field range or what its
 ///   gadget or table accepts;
 /// - [`CompileError::Table`] for a table missing from `tables` or of the wrong kind;
-/// - [`CompileError::Graph`] for a graph that breaks a rule of RFC-0006.
+/// - [`CompileError::Graph`] for a graph that breaks a rule of RFC-0006;
+///
+/// then, after every node, [`CompileError::Unproven`] for the first graph input committed in the
+/// advice with an element no operation proves in its declared range.
 pub fn analyze(graph: &Graph, tables: &[TableSpec]) -> Result<Ranges, CompileError> {
-    graph.validate()?;
-    let mut analysis = Analysis {
-        graph,
-        tables,
-        ranges: graph
-            .tensors
-            .iter()
-            .map(|t| Range::Bounded(t.range))
-            .collect(),
-        producers: vec![None; graph.tensors.len()],
-    };
-    for node in &graph.nodes {
-        let outputs = analysis.node(node)?;
-        for (&tensor, range) in node.outputs.iter().zip(outputs) {
-            analysis.ranges[index(tensor)] = range;
-            analysis.producers[index(tensor)] = Some(node.id);
-        }
-    }
+    let analysis = Analysis::run(graph, tables)?;
+    analysis.prove_inputs()?;
     Ok(Ranges(analysis.ranges))
+}
+
+/// The ranges of a fragment: a circuit whose committed inputs a larger graph proves, such as
+/// AES-128-CTR alone, whose key and plaintext it does not prove bytes (RFC-0006 'Committed graph
+/// inputs').
+///
+/// It checks what [`analyze`] checks but that rule: a committed input's declared range is taken
+/// as given. A proof's graph goes through [`analyze`].
+///
+/// # Errors
+///
+/// As [`analyze`], but never [`CompileError::Unproven`].
+pub fn analyze_fragment(graph: &Graph, tables: &[TableSpec]) -> Result<Ranges, CompileError> {
+    Ok(Ranges(Analysis::run(graph, tables)?.ranges))
 }
 
 struct Analysis<'a> {
@@ -128,7 +213,144 @@ struct Analysis<'a> {
     producers: Vec<Option<NodeId>>,
 }
 
-impl Analysis<'_> {
+impl<'a> Analysis<'a> {
+    /// Every node's ranges, in node order.
+    fn run(graph: &'a Graph, tables: &'a [TableSpec]) -> Result<Self, CompileError> {
+        graph.validate()?;
+        let mut analysis = Self {
+            graph,
+            tables,
+            ranges: graph
+                .tensors
+                .iter()
+                .map(|t| Range::Bounded(t.range))
+                .collect(),
+            producers: vec![None; graph.tensors.len()],
+        };
+        for node in &graph.nodes {
+            let outputs = analysis.node(node)?;
+            for (&tensor, range) in node.outputs.iter().zip(outputs) {
+                analysis.ranges[index(tensor)] = range;
+                analysis.producers[index(tensor)] = Some(node.id);
+            }
+        }
+        Ok(analysis)
+    }
+
+    /// RFC-0006 'Committed graph inputs': every element of each graph input committed in the
+    /// advice is read by an operation whose relations prove it lies in the input's declared
+    /// range, and pin its padded positions.
+    ///
+    /// - `BitDecompose { low, high }` proves `[0, 2^{low + high})` (RFC-0066 Lemma 1's converse),
+    ///   when the declared range holds it, read directly or moved by `Reshape`, `Slice`,
+    ///   `Transpose`, `GatherPublic` or `Expand`: RFC-0066's padding check pins the input's padded
+    ///   positions. [`Self::node`] refuses a declared range that does not hold it; the condition
+    ///   is checked again here, so that no reader proves more than it does.
+    /// - `OneHot { vocab }` proves `[0, vocab)` (RFC-0009 Lemma 8), when the declared range holds
+    ///   `[0, vocab − 1]`, read directly: its row selector pins its own input's padded rows, which
+    ///   through a move are not the input's.
+    ///
+    /// No other operation is recognized: a `Bitwise` key `a + 2^8·b` binds neither operand
+    /// without the other's range, and a `TableMap` would need RFC-0066's padding check on what it
+    /// reads. An input committed in the weight commitment takes the domain `R_W`'s publisher
+    /// vouches for (RFC-0048) and needs no reader.
+    fn prove_inputs(&self) -> Result<(), CompileError> {
+        let mut proven = vec![None; self.graph.tensors.len()];
+        for node in &self.graph.nodes {
+            let Some(&input) = node.inputs.first() else {
+                continue;
+            };
+            // The walk the node's own checks take, before any element is counted.
+            let Some(source) = self.committed_source(input) else {
+                continue;
+            };
+            let declared = self.range(source).bounded();
+            let holds = |top: i128| declared.is_some_and(|r| r.lo <= 0 && top <= r.hi);
+            let proves = match node.op {
+                Op::BitDecompose { low, high } => {
+                    holds((1i128 << (u32::from(low) + u32::from(high))) - 1)
+                }
+                Op::OneHot { vocab } => input == source && holds(i128::from(vocab) - 1),
+                _ => false,
+            };
+            if let Some((reached_source, reached)) = proves.then(|| self.reached(input)).flatten() {
+                // Both walks take the same moves, so they end at the same input.
+                if reached_source == source {
+                    Reached::merge(&mut proven[index(source)], reached);
+                }
+            }
+        }
+        let advice = NodeKind::Committed {
+            commitment: CommitmentClass::Advice,
+        };
+        for spec in &self.graph.tensors {
+            let input = spec.kind == advice && self.producer(spec.id).is_none();
+            if input
+                && !proven[index(spec.id)]
+                    .as_ref()
+                    .is_some_and(Reached::complete)
+            {
+                return Err(CompileError::Unproven {
+                    tensor: spec.id,
+                    rule: "every element of a committed graph input is read by an operation that \
+                           proves its declared range",
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// The committed graph input whose values `tensor` holds, moved by `Reshape`, `Slice`,
+    /// `Transpose`, `GatherPublic` or `Expand`, with the elements of it that `tensor` holds. `None`
+    /// when `tensor` holds no committed input's values unchanged, or when the elements cannot be
+    /// counted in a `usize`.
+    fn reached(&self, mut tensor: TensorId) -> Option<(TensorId, Reached)> {
+        let mut reached = Reached::All;
+        while let Some(node) = self.producer(tensor) {
+            let input = node.inputs[0];
+            let (from, to) = (self.shape(input), self.shape(tensor));
+            reached = match &node.op {
+                Op::Reshape => reached,
+                // Each moves an element of the output's index `o` from the input's index below,
+                // and the first two read every input element.
+                Op::Transpose { perm } => reached.back(from, to, true, |o, i| {
+                    for (axis, &p) in perm.iter().enumerate() {
+                        *i.get_mut(usize::from(p))? = o[axis];
+                    }
+                    Some(())
+                })?,
+                Op::Expand { axis, .. } => {
+                    let axis = usize::from(*axis);
+                    reached.back(from, to, true, |o, i| {
+                        i[..axis].copy_from_slice(o.get(..axis)?);
+                        i[axis..].copy_from_slice(o.get(axis + 1..)?);
+                        Some(())
+                    })?
+                }
+                Op::Slice { axis, start, .. } => {
+                    let (axis, start) = (usize::from(*axis), *start as usize);
+                    reached.back(from, to, false, |o, i| {
+                        i.copy_from_slice(o);
+                        *i.get_mut(axis)? = o.get(axis)?.checked_add(start)?;
+                        Some(())
+                    })?
+                }
+                Op::GatherPublic { index } => {
+                    let rows = self.graph.constants.get(index.0 as usize)?;
+                    reached.back(from, to, false, |o, i| {
+                        i.copy_from_slice(o);
+                        i[0] = usize::try_from(*rows.get(o[0])?).ok()?;
+                        Some(())
+                    })?
+                }
+                _ => return None,
+            };
+            tensor = input;
+        }
+        let kind = self.graph.tensors.get(index(tensor)).map(|t| t.kind);
+        matches!(kind, Some(NodeKind::Committed { .. })).then_some((tensor, reached))
+    }
+
     fn range(&self, tensor: TensorId) -> Range {
         self.ranges[index(tensor)]
     }

@@ -6,7 +6,7 @@
 use core::fmt;
 
 use tessera_codec::error::ErrorCode;
-use tessera_ir::{IrError, NodeId, TableId};
+use tessera_ir::{IrError, NodeId, TableId, TensorId};
 use tessera_tables::TableError;
 
 /// Why a graph cannot be compiled.
@@ -20,6 +20,15 @@ pub enum CompileError {
         /// The input, counted from 0.
         input: usize,
         /// What the range breaks.
+        rule: &'static str,
+    },
+    /// A graph input committed in the advice has an element that no operation proves in its
+    /// declared range, which its readers trust (`ERR-COMPILE-RANGE`, RFC-0006 'Committed graph
+    /// inputs').
+    Unproven {
+        /// The input.
+        tensor: TensorId,
+        /// What the graph lacks.
         rule: &'static str,
     },
     /// A gadget input that must be a true integer has no bound, so it may have wrapped modulo
@@ -83,7 +92,7 @@ impl CompileError {
     /// The stable code of 04 §3.
     pub fn code(&self) -> ErrorCode {
         match self {
-            Self::Range { .. } => ErrorCode::CompileRange,
+            Self::Range { .. } | Self::Unproven { .. } => ErrorCode::CompileRange,
             Self::Wrap { .. } => ErrorCode::CompileWrap,
             Self::Profile { .. } => ErrorCode::CompileProfile,
             Self::Model { .. } | Self::ModelTable { .. } => ErrorCode::QuantArch,
@@ -100,6 +109,7 @@ impl fmt::Display for CompileError {
             Self::Range { node, input, rule } => {
                 write!(f, "node {}, input {input}: {rule}", node.0)
             }
+            Self::Unproven { tensor, rule } => write!(f, "tensor {}: {rule}", tensor.0),
             Self::Wrap { node, input } => write!(
                 f,
                 "node {}, input {input}: no bound proves the value a true integer",

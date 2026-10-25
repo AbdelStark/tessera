@@ -1606,6 +1606,21 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Security
 
+- Range analysis refuses a committed graph input whose declared range no operation proves (RFC-0006 'Committed graph inputs', [#527](https://github.com/AbdelStark/tessera/issues/527)):
+  - **The gap.** A graph input committed in the advice holds whatever the prover commits, and its readers trust its declared range. Nothing checked that an operation proves it. A committed byte under `ConstAdd(0)` then `BitDecompose { 8, 1 }` was proven below 512 only, and a `Bitwise8` lookup taking it as the low operand of `a + 2^8·b` admitted two witnesses. The AES circuit's key and plaintext were bytes only if the graph around it proved them.
+  - **The rule.** Every element of every advice-committed graph input is read by an operation that proves its declared range and pins its padded positions. Two operations count:
+    - `OneHot`, which proves `[0, vocab)` when the declared range holds it, read directly;
+    - `BitDecompose`, read directly or moved by `Reshape`, `Transpose`, `Expand`, or by `Slice` and `GatherPublic` at the elements they keep.
+
+    Weight-committed inputs take the domain their publisher vouches for (RFC-0048).
+  - **`analyze`** refuses a graph that breaks it, with the new `CompileError::Unproven { tensor, rule }` (`ERR-COMPILE-RANGE`): a breaking change for code that matches every variant. **`analyze_fragment`** analyzes a circuit whose committed inputs a larger graph proves, such as AES-128-CTR alone, and is what the range tests of synthetic graphs now call.
+  - **The Llama lowering** passes: its one committed advice input, the tokens, is `OneHot`'s. So does the SHA-256 circuit, whose committed bytes its `BitDecompose { 8, 0 }` reads. AES-128-CTR alone is refused until its key and plaintext are decomposed.
+  - **Tests.**
+    - The issue's refusals.
+    - `OneHot`'s condition at both ends of the vocabulary, and through a move.
+    - Each move's coverage.
+    - 3,000 random chains of moves against the interpreter: the analysis accepts exactly the graphs whose decompositions reach every element.
+
 - A sampled audit's proofs use the parameter set its policy names (RFC-0016 'The parameter set', [#530](https://github.com/AbdelStark/tessera/issues/530)):
   - **The gap.** Neither `tessera prove --sample` nor the verifier's accounting compared the proof's parameter set with the sample policy's. A proof under a weaker set, `live-64/1` under a policy of `ni-100/1`, could count toward the audit.
   - **The rule.** RFC-0019 step 2 accepts, for a proof of an audit sample, only the set its policy names: another is `Reject(Params { name })`, naming the claim list's. RFC-0043's payload and RFC-0067's accounting, which runs it first, say so.

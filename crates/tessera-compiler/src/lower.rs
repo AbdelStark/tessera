@@ -198,7 +198,8 @@ pub fn validate(model: &IntegerModel) -> Result<(), CompileError> {
 ///   lowering', RFC-0007 'Verifier validation' or RFC-0025; [`CompileError::ModelTable`] when a
 ///   table it defines is one RFC-0008 refuses;
 /// - [`CompileError::Usage`] for no position, or more than `max_context`;
-/// - [`CompileError::Range`] and [`CompileError::Wrap`] when range analysis refuses the graph;
+/// - [`CompileError::Range`], [`CompileError::Wrap`] and [`CompileError::Unproven`] when range
+///   analysis refuses the graph;
 /// - [`CompileError::Profile`] when it breaks a constraint of its profile.
 pub fn lower(model: PublicModel<'_>, positions: u32) -> Result<Lowering, CompileError> {
     check_public(model)?;

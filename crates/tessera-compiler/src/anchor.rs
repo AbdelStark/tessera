@@ -110,6 +110,11 @@ fn decl(shape: &[u32], kind: NodeKind) -> TensorDecl {
 /// The declarations of the circuit's inputs, for `blocks` counter blocks: the key, committed
 /// advice, `[16]`; the round constants, public, `[10, 4]`, holding [`RCON`]; the counter blocks,
 /// public, `[16, B]`; and the plaintext, committed advice, `[16, B]`.
+///
+/// The key and the plaintext are declared bytes, but the circuit's `Bitwise` lookups do not
+/// prove them so: alone, the circuit is a fragment ([`crate::analyze_fragment`]). The graph that
+/// holds it proves them, the key by the SHA-256 key commitment's `BitDecompose { 8, 0 }`
+/// (RFC-0006 'Committed graph inputs').
 pub fn aes128_ctr_inputs(blocks: u32) -> [TensorDecl; 4] {
     let advice = NodeKind::Committed {
         commitment: CommitmentClass::Advice,
