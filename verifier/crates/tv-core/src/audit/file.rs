@@ -1,35 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The ledger's file (RFC-0067 'Updates', 'One writer'): one regular file of one name, held by
-//! one writer under a lock file, read without following a link, and written atomically, its
-//! directory synced as part of every write.
+//! one writer under the kernel's lock on its directory, read without following a link, and
+//! written atomically, its directory synced as part of every write.
 //!
 //! - **The path.** The ledger is a regular file, neither a symbolic link nor a file of several
-//!   hard links, else `ERR-USAGE`: two names for one ledger would give two locks, and two writers.
+//!   hard links, else `ERR-USAGE`: two names for one ledger could be written as two ledgers.
 //!   Its metadata is read without following a link, so a FIFO or a device is refused before it
 //!   is opened; the file is then opened without following a link and without blocking, where the
 //!   host has the flags for it, and compared, by device and inode, with the one checked. Its
 //!   directory is resolved once, when the ledger is opened, and every later name is built in it.
-//! - **One writer.** `<name>.lock`, created exclusively in that directory, holds a token naming
-//!   its writer and keeps a second writer out while the first holds the ledger. A lock left by a
-//!   crash refuses later writers with `ERR-RES-IO` until the operator, having checked that no
-//!   verifier runs, removes it. A writer removes only a lock that still holds its token.
-//! - **Two windows remain**, each a few instructions wide, until the kernel holds the lock for
-//!   the writer (#534, `std` from Rust 1.89, above the MSRV): between the token's check and the
-//!   lock's removal ([`Held::remove`]), and between a write's check and its rename
-//!   ([`write_atomic`]). A writer that stalls in either while an operator clears its lock and
-//!   another writer runs can remove the other's lock, or rename over the other's record.
+//! - **One writer.** A writer opens that directory and holds an exclusive lock on it, the
+//!   system's advisory lock, `flock(LOCK_EX | LOCK_NB)` on Unix through
+//!   [`std::fs::File::try_lock`], from the open until the [`LedgerFile`] is dropped or its
+//!   process ends, a crash included, when the system releases it: no operator step clears it.
+//!   A second writer's `try_lock` fails at once, and it is refused with `ERR-RES-IO`, without
+//!   waiting. The lock belongs to the directory, not to a name in it: no file holds it, so
+//!   removing or renaming files in the directory, or renaming the directory, which keeps its
+//!   inode, neither releases it nor lets a second writer in; two paths to one directory, a
+//!   symbolic link or a second mount, give one lock; and a directory holds one ledger's writer at
+//!   a time. A `flock` lock belongs to an open file description, so a second writer in the same
+//!   process is refused as one in another process is. A reader of a snapshot ([`read_ledger`])
+//!   takes no lock. The lock is advisory and local: a network file system may not honour it, and
+//!   a process that writes the ledger without taking it is not kept out (RFC-0067 'Drawbacks').
 //! - **A write.** The new ledger goes to a fresh temporary file beside the old one, which is
 //!   synced and renamed over it, and then the directory is synced. A failed directory sync fails
 //!   the write with `ERR-RES-IO`: after a power loss the old ledger could come back, and with it
-//!   a request accepted again (INV-AUD-3). Before the rename, the lock must still hold this
-//!   writer's token and the ledger must still be the file this writer last read or wrote, by
-//!   device and inode, else `ERR-RES-IO` and nothing is written: a writer that stalled while an
-//!   operator cleared its lock could otherwise rename a stale ledger over another writer's
-//!   record. A device and inode can be reused once a file is removed, so the lock's token, unique
-//!   to its writer, carries the lock's half of the check. The ledger must also still be one regular file of one name. The ledger in memory
-//!   changes only once the write has succeeded, so a failed write leaves the caller's verdict
-//!   short of `Accept`.
+//!   a request accepted again (INV-AUD-3). Before the rename, the ledger must still be the file
+//!   this writer last read or wrote, by device and inode, else `ERR-RES-IO` and nothing is
+//!   written: an operator who replaced it meanwhile left a ledger this writer has not read. The
+//!   directory's path must also still lead to the directory this writer locked, by device and
+//!   inode, else `ERR-RES-IO`: a directory put in its place, with the ledger moved into it, is
+//!   one a second writer can lock, and this writer's names would be built outside its lock. The
+//!   ledger must also still be one regular file of one name. The lock, held throughout, keeps
+//!   every other writer out, so the check and the rename leave no window for one. The ledger in
+//!   memory changes only once the write has succeeded, so a failed write leaves the caller's
+//!   verdict short of `Accept`.
+//! - **Off Unix**, where `std` gives no handle on a directory, no directory is locked, as none
+//!   is synced: the guarantees above are Unix's (RFC-0067 'Off Unix'). On a Unix host whose `std`
+//!   cannot lock a directory, `try_lock` fails, and every writer is refused with `ERR-RES-IO`.
 //! - **One limit.** Every reader and writer of the ledger uses [`LEDGER_LIMITS`], `tv-codec`'s
 //!   message limits, so a ledger a writer accepts is one every reader opens (RFC-0067 'One
 //!   limit').
@@ -305,16 +314,17 @@ impl Place {
 
 // ----- The writer ------------------------------------------------------------------------------
 
-/// The verifier's ledger file, held for writing (RFC-0067 'The file', 'One writer'): a lock file
-/// beside it, `<name>.lock`, created exclusively and holding this writer's token, keeps a second
-/// writer out until this value is dropped, so that two sessions cannot both accept one request
-/// (INV-AUD-3). Every update is written atomically, the directory synced, and only while the lock
-/// still holds the token and the ledger is still the file this writer last read or wrote; the
-/// ledger in memory changes only once the write succeeds.
+/// The verifier's ledger file, held for writing (RFC-0067 'The file', 'One writer'): the
+/// kernel's exclusive lock on its directory keeps every other writer out, in this process or
+/// another, until this value is dropped or its process ends, so that two sessions cannot both
+/// accept one request (INV-AUD-3). Every update is written atomically, the directory synced, and
+/// only while the ledger is still the file this writer last read or wrote, in the directory it
+/// locked; the ledger in memory changes only once the write succeeds.
 #[derive(Debug)]
 pub struct LedgerFile {
     place: Place,
-    lock: Held,
+    /// Held from the open to the drop: dropping it releases the lock.
+    lock: DirLock,
     ledger: VerifierLedger,
     limits: DecodeLimits,
     /// The ledger file this writer last read or wrote.
@@ -327,8 +337,8 @@ impl LedgerFile {
     /// # Errors
     ///
     /// `ERR-USAGE` when anything exists at `path`, whose ledger would be lost; `ERR-RES-IO` when
-    /// the lock is held or lost, the directory cannot be resolved or a file cannot be written or
-    /// synced; `ERR-RES-MEMORY`.
+    /// another writer holds the directory, the directory cannot be resolved, opened or locked, or
+    /// a file cannot be written or synced; `ERR-RES-MEMORY`.
     pub fn create(path: &Path) -> Result<Self, VerifierError> {
         Self::create_with(path, &LEDGER_LIMITS, &REAL)
     }
@@ -339,41 +349,42 @@ impl LedgerFile {
         hooks: &Hooks<'_>,
     ) -> Result<Self, VerifierError> {
         let place = Place::resolve(path)?;
-        let lock = Lock::take(&place)?;
+        let lock = DirLock::take(&place.dir)?;
         // The hard link that names the new ledger fails if anything is there, a link that leads
         // nowhere included: the check and the creation are one step.
         let ledger = VerifierLedger::new();
         let bytes = ledger.seal()?;
         reopenable(&bytes, limits)?;
-        let file = write_new(&place, &bytes, &lock.held, hooks)?;
+        let file = write_new(&place, &bytes, hooks)?;
         Ok(Self {
             place,
-            lock: lock.release(),
+            lock,
             ledger,
             limits: *limits,
             file,
         })
     }
 
-    /// Opens the ledger file at `path` and holds it: the lock in the directory resolved now,
+    /// Opens the ledger file at `path` and holds it: the lock on the directory resolved now,
     /// then the file, read as [`read_ledger`] reads it, the path's rules first. A refusal
     /// releases the lock.
     ///
     /// # Errors
     ///
-    /// `ERR-RES-IO` when the lock is held or the file cannot be read; and the errors of
-    /// [`read_ledger`], `ERR-USAGE` for a path the rules refuse among them.
+    /// `ERR-RES-IO` when another writer holds the directory, the directory cannot be opened or
+    /// locked, or the file cannot be read; and the errors of [`read_ledger`], `ERR-USAGE` for a
+    /// path the rules refuse among them.
     pub fn open(path: &Path) -> Result<Self, VerifierError> {
         Self::open_with(path, &LEDGER_LIMITS)
     }
 
     fn open_with(path: &Path, limits: &DecodeLimits) -> Result<Self, VerifierError> {
         let place = Place::resolve(path)?;
-        let lock = Lock::take(&place)?;
+        let lock = DirLock::take(&place.dir)?;
         let (ledger, file) = read_ledger_under(&place.file(), limits)?;
         Ok(Self {
             place,
-            lock: lock.release(),
+            lock,
             ledger,
             limits: *limits,
             file,
@@ -398,8 +409,9 @@ impl LedgerFile {
     /// # Errors
     ///
     /// Those of [`VerifierLedger::record_accepted`]; `Inconclusive(ERR-RES-IO)` when the file or
-    /// its directory cannot be written or synced, when the lock no longer holds this writer's
-    /// token, or when the ledger is no longer the file this writer last read or wrote;
+    /// its directory cannot be written or synced, when the ledger is no longer the file this
+    /// writer last read or wrote, or when its directory's path no longer leads to the directory
+    /// this writer locked;
     /// `Inconclusive(ERR-USAGE)` when the ledger is no longer one regular file of one name;
     /// `Inconclusive(ERR-CODEC-LIMIT)` when the new ledger would not reopen under
     /// [`LEDGER_LIMITS`]. A batch of no request writes nothing.
@@ -488,138 +500,71 @@ fn reopenable(bytes: &[u8], limits: &DecodeLimits) -> Result<(), VerifierError> 
     }
 }
 
-impl Drop for LedgerFile {
-    fn drop(&mut self) {
-        self.lock.remove();
-    }
-}
+// ----- The lock --------------------------------------------------------------------------------
 
-/// The most bytes a lock file may hold: a token is far shorter.
-const LOCK_MAX: u64 = 4096;
-
-/// A lock this writer created: its path, the token it wrote there, and the lock file's identity.
+/// The kernel's exclusive lock on a ledger's directory (RFC-0067 'One writer'), held until this
+/// value is dropped, which closes the directory and so releases the lock, or until the process
+/// ends, when the system releases it. No file names it: nothing in the directory can be removed
+/// or renamed to release it, and there is no stale lock for an operator to clear.
+///
+/// The lock lasts as long as any descriptor of its open file description. `std` opens the
+/// directory close-on-exec, so a child process, which starts with a copy of every descriptor,
+/// holds the lock only until it executes its program: a lock dropped while another thread spawns
+/// a process can outlast its drop by that long, and the next writer is refused meanwhile.
 #[derive(Debug)]
-struct Held {
-    path: PathBuf,
-    token: String,
+struct DirLock {
+    /// The directory, open and locked. Off Unix there is none.
+    #[cfg(unix)]
+    _held: File,
+    /// The locked directory's identity, read from the open directory itself.
     id: FileId,
 }
 
-impl Held {
-    /// Whether the lock is still this writer's: the file this writer created, a regular file
-    /// read without following a link or blocking, that holds its token. A file's device and inode
-    /// can be reused once it is removed, so a lock cleared and created again may have this lock's
-    /// identity: the token, unique to this writer, is the half of the check that carries it. The file is checked
-    /// twice, by metadata that does not follow a link before it is opened, and by the open file's
-    /// own metadata after, so that a lock swapped between the two is not taken for this writer's.
-    fn holds(&self) -> bool {
-        self.holds_with(&|| ())
-    }
-
-    /// [`holds`](Self::holds), with `between` run after the first check and before the open,
-    /// where a test swaps the lock.
-    fn holds_with(&self, between: &dyn Fn()) -> bool {
-        let Ok(meta) = fs::symlink_metadata(&self.path) else {
-            return false;
-        };
-        if !meta.file_type().is_file() || meta.len() > LOCK_MAX || file_id(&meta) != self.id {
-            return false;
-        }
-        between();
-        let Ok(mut file) = open_quietly(&self.path) else {
-            return false;
-        };
-        if file
-            .metadata()
-            .map_or(true, |m| !m.is_file() || file_id(&m) != self.id)
-        {
-            return false;
-        }
-        let mut bytes = Vec::new();
-        Read::by_ref(&mut file)
-            .take(LOCK_MAX)
-            .read_to_end(&mut bytes)
-            .is_ok_and(|_| bytes == self.token.as_bytes())
-    }
-
-    /// Removes the lock if it still holds this writer's token (RFC-0067 'One writer'): after an
-    /// operator cleared a stale lock, the lock at the path may be another writer's, and it stays.
+impl DirLock {
+    /// Opens the directory `dir`, the ledger's as resolved once, and locks it exclusively,
+    /// without waiting: `File::try_lock`, `flock(LOCK_EX | LOCK_NB)`. The lock belongs to the
+    /// open file description, so another open of the directory conflicts with it, in this process
+    /// or another; the directory is checked as the ledger is, so that nothing but a directory is
+    /// opened, and nothing blocks the open where the host has the flags for it
+    /// ([`NO_FOLLOW_NO_BLOCK`]).
     ///
-    /// The check and the removal are two steps: if, between them, an operator cleared this lock
-    /// and another writer took a new one at the path, this writer would remove the new lock. The
-    /// window is the few instructions between the read and the unlink; `std` offers no unlink
-    /// that names a file by what it holds.
-    fn remove(&self) {
-        if self.holds() {
-            let _ = fs::remove_file(&self.path);
-        }
-    }
-}
-
-/// The lock file of a ledger while it is being taken: removed if dropped armed.
-struct Lock {
-    held: Held,
-    armed: bool,
-}
-
-impl Lock {
-    /// Creates `<name>.lock` exclusively and writes this writer's token in it: the process, the
-    /// time and a counter, which no other writer's lock repeats. A token that cannot be written
-    /// would leave a lock no one could prove theirs, so the take then fails and removes the lock,
-    /// if the file at the path is still the one this call created.
-    fn take(place: &Place) -> Result<Self, VerifierError> {
-        let path = place.beside("", ".lock");
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .map_err(|_| io())?;
-        let Ok(id) = file.metadata().map(|m| file_id(&m)) else {
-            // The file was created by this call an instant ago and holds no token: it is removed,
-            // as nothing could later prove it this writer's.
-            drop(file);
-            let _ = fs::remove_file(&path);
-            return Err(io());
-        };
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos());
-        let token = format!(
-            "tessera-verify ledger lock: process {}, {nanos} ns, {}\n",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        );
-        let written = file
-            .write_all(token.as_bytes())
-            .and_then(|()| file.sync_all());
-        drop(file);
-        if written.is_err() {
-            if fs::symlink_metadata(&path).is_ok_and(|m| file_id(&m) == id) {
-                let _ = fs::remove_file(&path);
-            }
+    /// # Errors
+    ///
+    /// `ERR-RES-IO` when `dir` is not a directory, or was replaced between its check and its
+    /// open; when it cannot be opened; and when it cannot be locked: another writer holds it, or
+    /// the host cannot lock a directory.
+    #[cfg(unix)]
+    fn take(dir: &Path) -> Result<Self, VerifierError> {
+        let before = fs::symlink_metadata(dir).map_err(|_| io())?;
+        if !before.is_dir() {
             return Err(io());
         }
+        let held = open_quietly(dir).map_err(|_| io())?;
+        let after = held.metadata().map_err(|_| io())?;
+        if !after.is_dir() || file_id(&after) != file_id(&before) {
+            return Err(io());
+        }
+        // A second writer does not wait: its `try_lock` fails, and it is refused (RFC-0067 'The
+        // lock').
+        held.try_lock().map_err(|_| io())?;
         Ok(Self {
-            held: Held { path, token, id },
-            armed: true,
+            _held: held,
+            id: file_id(&after),
         })
     }
 
-    fn release(mut self) -> Held {
-        self.armed = false;
-        Held {
-            path: core::mem::take(&mut self.held.path),
-            token: core::mem::take(&mut self.held.token),
-            id: self.held.id,
-        }
+    /// Off Unix `std` gives no handle on a directory: no lock is taken, as no directory is
+    /// synced, and the guarantees are Unix's (RFC-0067 'Off Unix').
+    #[cfg(not(unix))]
+    fn take(dir: &Path) -> Result<Self, VerifierError> {
+        let _ = dir;
+        Ok(Self { id: (0, 0) })
     }
-}
 
-impl Drop for Lock {
-    fn drop(&mut self) {
-        if self.armed {
-            self.held.remove();
-        }
+    /// Whether `dir`, the path every name of the ledger is built in, still leads to the locked
+    /// directory, by device and inode: a directory put in its place is outside the lock.
+    fn covers(&self, dir: &Path) -> bool {
+        fs::metadata(dir).is_ok_and(|m| m.is_dir() && file_id(&m) == self.id)
     }
 }
 
@@ -638,8 +583,8 @@ enum Step {
     Synced,
 }
 
-/// The points of a write where a test acts, as another process would: just before the check
-/// that this writer still holds the ledger, and just after it, before the rename.
+/// The points of a write where a test acts, as an operator or another process would: just before
+/// the check that the ledger is still this writer's, and just after it, before the rename.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Point {
     /// The temporary file is written and synced; the check comes next.
@@ -685,10 +630,10 @@ fn sync_dir(dir: &Path) -> io::Result<()> {
     }
 }
 
-/// What a writer must still hold before it renames: its lock, and the ledger file it last read
-/// or wrote.
+/// What must still hold before a writer renames: its directory's path leads to the directory it
+/// locked, and the ledger is the file it last read or wrote.
 struct Guard<'a> {
-    lock: &'a Held,
+    lock: &'a DirLock,
     file: FileId,
 }
 
@@ -741,18 +686,22 @@ fn temporary(place: &Place) -> Result<(File, Temporary), VerifierError> {
 }
 
 /// Writes `bytes` over the ledger atomically: a temporary file in its directory, written and
-/// synced; then, before the rename, the checks that this writer still holds the ledger (its lock
-/// still holds its token, the ledger is still the file it last read or wrote, by device and
-/// inode, else `ERR-RES-IO`) and that the ledger is still one regular file of one name (else
-/// `ERR-USAGE`); then the rename and the directory's sync. A failure at any step fails the write,
-/// and before the rename it writes nothing. Returns the new ledger file's identity.
+/// synced; then, before the rename, the checks that the ledger is still this writer's (its
+/// directory's path leads to the directory it locked, and the ledger is the file it last read or
+/// wrote, each by device and inode, else `ERR-RES-IO`) and that the ledger is still one regular
+/// file of one name (else `ERR-USAGE`); then the rename and the directory's sync. A failure at
+/// any step fails the write, and before the rename it writes nothing. Returns the new ledger
+/// file's identity.
 ///
-/// The check and the rename are two steps (RFC-0067 'Before each rename'): a writer that passes
-/// its check and stalls before the rename, while an operator clears its lock and another writer
-/// runs, still renames, over the other writer's record. The window is the few instructions
-/// between the check and the rename; closing it needs a lock the kernel holds for the writer,
-/// which `std` gives from Rust 1.89, above this workspace's MSRV (#534). The check sits as late
-/// as it can, after the temporary file is written and synced.
+/// The check and the rename are two steps (RFC-0067 'Before each rename'), but no other writer
+/// can run between them: the directory's lock, held from the open, keeps every other writer out
+/// of the directory, whatever files an operator removes or renames there meanwhile, and when the
+/// directory itself is renamed. A second writer reaches the ledger only through another
+/// directory: one put at the directory's path, with the ledger moved into it, which the check
+/// refuses before the rename; or, between the check and the rename, with this writer's
+/// temporary file moved into it too, the one case the check cannot see. The check sits as late
+/// as it can, after the temporary file is written and synced, so that it sees a ledger the
+/// operator replaced while the temporary file was written.
 fn write_atomic(
     place: &Place,
     bytes: &[u8],
@@ -783,14 +732,15 @@ fn write_atomic(
     if (hooks.stop)(Step::Synced) {
         return crash(&mut temp);
     }
-    // Still this writer's: a writer that stalled while an operator cleared its lock, and another
-    // writer took the ledger over, would otherwise rename a stale ledger over the other's record.
+    // Still this writer's: the names below are built in the directory it locked, which another
+    // directory put at its path, with the ledger moved into it, is not.
     (hooks.at)(Point::Check);
-    if !guard.lock.holds() {
+    if !guard.lock.covers(&place.dir) {
         return Err(io());
     }
     // A name the ledger gained since it was opened would be a second ledger after the rename.
     let current = checked(&place.file())?;
+    // A ledger the operator replaced is one this writer has not read: its records would be lost.
     if file_id(&current) != guard.file {
         return Err(io());
     }
@@ -801,25 +751,17 @@ fn write_atomic(
     Ok(written)
 }
 
-/// Writes `bytes` as a new ledger, where nothing may exist: a synced temporary file,
-/// hard-linked to the ledger's name, which fails if anything is there, while the lock still holds
-/// this writer's token; then the temporary name removed and the directory synced. Returns the
-/// new ledger file's identity.
-fn write_new(
-    place: &Place,
-    bytes: &[u8],
-    lock: &Held,
-    hooks: &Hooks<'_>,
-) -> Result<FileId, VerifierError> {
+/// Writes `bytes` as a new ledger, where nothing may exist, under the directory's lock its caller
+/// holds: a synced temporary file, hard-linked to the ledger's name, which fails if anything is
+/// there; then the temporary name removed and the directory synced. Returns the new ledger file's
+/// identity.
+fn write_new(place: &Place, bytes: &[u8], hooks: &Hooks<'_>) -> Result<FileId, VerifierError> {
     let (mut file, mut temp) = temporary(place)?;
     file.write_all(bytes)
         .and_then(|()| file.sync_all())
         .map_err(|_| io())?;
     let written = file.metadata().map(|m| file_id(&m)).map_err(|_| io())?;
     drop(file);
-    if !lock.holds() {
-        return Err(io());
-    }
     fs::hard_link(&temp.path, place.file()).map_err(|e| {
         if e.kind() == io::ErrorKind::AlreadyExists {
             misuse()
@@ -836,8 +778,13 @@ fn write_new(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-    use std::sync::mpsc;
+    //! No test here spawns a process. A child holds a copy of every open file description of
+    //! its parent until it executes its program, a directory's lock among them, so that a writer
+    //! one test drops would hold its lock a while longer, against the next writer of that test.
+    //! The tests that spawn a process, a FIFO's maker or a writer of its own, are in
+    //! `tests/ledger_processes.rs`, a test binary of their own, one at a time.
+
+    use std::cell::{Cell, RefCell};
     use std::time::Duration;
 
     use super::*;
@@ -1031,6 +978,9 @@ mod tests {
         fs::remove_dir(&dir).unwrap();
     }
 
+    /// RFC-0067 'One writer per directory': two paths to one directory, here a symbolic link to
+    /// it and a path through `..`, give one lock, held by whichever writer opened first, by
+    /// either path.
     #[cfg(unix)]
     #[test]
     fn the_directory_is_resolved_once_so_two_spellings_share_one_lock() {
@@ -1039,43 +989,29 @@ mod tests {
         std::os::unix::fs::symlink(&dir, &alias).unwrap();
         let path = dir.join("ledger.tvl");
         let file = LedgerFile::create(&path).unwrap();
-        // The same ledger through a linked directory: the same lock, held.
+        // The same ledger through a linked directory, or through `..`: the same lock, held, while
+        // a reader still reads the ledger by those paths.
         let through = alias.join("ledger.tvl");
-        assert_eq!(LedgerFile::open(&through).err(), Some(io()));
+        let dotted = dir
+            .join("..")
+            .join(dir.file_name().unwrap())
+            .join("ledger.tvl");
+        for spelling in [&through, &dotted] {
+            assert!(read_ledger(spelling).is_ok());
+            assert_eq!(LedgerFile::open(spelling).err(), Some(io()));
+            let other = spelling.with_file_name("other.tvl");
+            assert_eq!(LedgerFile::create(&other).err(), Some(io()));
+            assert!(!other.exists());
+        }
         assert_eq!(file.path(), path);
         drop(file);
+        // Taken through the link, the lock keeps out a writer by the directory's own path.
         let file = LedgerFile::open(&through).unwrap();
         assert_eq!(file.path(), path, "the directory as resolved");
+        assert_eq!(LedgerFile::open(&path).err(), Some(io()));
         drop(file);
         fs::remove_file(&path).unwrap();
         fs::remove_file(&alias).unwrap();
-        fs::remove_dir(&dir).unwrap();
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_fifo_is_refused_before_it_is_opened() {
-        let dir = scratch("fifo");
-        let fifo = dir.join("ledger.tvl");
-        let made = std::process::Command::new("mkfifo")
-            .arg(&fifo)
-            .status()
-            .unwrap();
-        assert!(made.success());
-        // Opening a FIFO for reading blocks until a writer comes: the reader must not open it.
-        let (send, receive) = mpsc::channel();
-        let path = fifo.clone();
-        std::thread::spawn(move || {
-            let read = read_ledger(&path).err();
-            let open = LedgerFile::open(&path).err();
-            let _ = send.send((read, open));
-        });
-        let (read, open) = receive
-            .recv_timeout(Duration::from_secs(20))
-            .expect("the FIFO was opened and blocked");
-        assert_eq!((read, open), (Some(misuse()), Some(misuse())));
-        assert!(!dir.join("ledger.tvl.lock").exists());
-        fs::remove_file(&fifo).unwrap();
         fs::remove_dir(&dir).unwrap();
     }
 
@@ -1100,27 +1036,57 @@ mod tests {
         fs::remove_dir(&dir).unwrap();
     }
 
+    /// RFC-0067 'The lock', 'One writer per directory', 'No stale lock': while a writer holds a
+    /// directory, a second `LedgerFile` in this process, whose open of the directory is an open
+    /// file description of its own, is refused with `ERR-RES-IO` at once, for the same ledger and
+    /// for another in the directory, while a reader still reads; a ledger in another directory is
+    /// not. The directory holds no file but the ledger, so there is nothing for an operator to
+    /// clear, and the holder's drop lets the next writer in.
+    #[cfg(unix)]
     #[test]
-    fn a_lock_taken_over_after_an_operator_cleared_it_survives_the_first_writer() {
-        let dir = scratch("takeover");
+    fn one_writer_holds_a_directory_until_it_is_dropped() {
+        let dir = scratch("one-writer");
         let path = dir.join("ledger.tvl");
-        let lock = dir.join("ledger.tvl.lock");
-        let first = LedgerFile::create(&path).unwrap();
-        let token = fs::read(&lock).unwrap();
-        assert!(String::from_utf8_lossy(&token).contains(&std::process::id().to_string()));
-        // The operator clears what it takes for a stale lock, and a second writer takes over.
-        fs::remove_file(&lock).unwrap();
-        let second = LedgerFile::open(&path).unwrap();
-        let theirs = fs::read(&lock).unwrap();
-        assert_ne!(theirs, token, "each writer names itself");
-        // The first writer's exit leaves the second's lock; the second's removes it.
+        let other = dir.join("other.tvl");
+        drop(LedgerFile::create(&other).unwrap());
+        let mut first = LedgerFile::create(&path).unwrap();
+        first.record_derived(&derived_sample(1)).unwrap();
+        let names = || {
+            let mut names: Vec<OsString> = fs::read_dir(&dir)
+                .unwrap()
+                .map(|e| e.unwrap().file_name())
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(names(), ["ledger.tvl", "other.tvl"], "no lock file");
+        let started = std::time::Instant::now();
+        for _ in 0..3 {
+            assert_eq!(LedgerFile::open(&path).err(), Some(io()));
+            assert_eq!(LedgerFile::open(&other).err(), Some(io()));
+            assert_eq!(LedgerFile::create(&dir.join("third.tvl")).err(), Some(io()));
+        }
+        assert!(started.elapsed() < Duration::from_secs(10), "no waiting");
+        assert!(!dir.join("third.tvl").exists());
+        assert_eq!(read_ledger(&path).unwrap(), *first.ledger());
+        assert!(read_ledger(&other).is_ok());
+        // Another directory has a lock of its own.
+        let elsewhere = scratch("one-writer-elsewhere");
+        let apart = LedgerFile::create(&elsewhere.join("ledger.tvl")).unwrap();
+        // Dropped, the holder lets the next writer in, with no operator step.
         drop(first);
-        assert_eq!(fs::read(&lock).unwrap(), theirs);
-        assert_eq!(LedgerFile::open(&path).err(), Some(io()));
+        assert_eq!(names(), ["ledger.tvl", "other.tvl"]);
+        let mut second = LedgerFile::open(&path).unwrap();
+        second.record_derived(&derived_sample(2)).unwrap();
+        assert_eq!(read_ledger(&path).unwrap().derived().len(), 2);
         drop(second);
-        assert!(!lock.exists());
-        fs::remove_file(&path).unwrap();
+        drop(LedgerFile::open(&other).unwrap());
+        drop(apart);
+        for p in [&path, &other, &elsewhere.join("ledger.tvl")] {
+            fs::remove_file(p).unwrap();
+        }
         fs::remove_dir(&dir).unwrap();
+        fs::remove_dir(&elsewhere).unwrap();
     }
 
     #[test]
@@ -1246,46 +1212,207 @@ mod tests {
         fs::remove_dir(&dir).unwrap();
     }
 
-    /// RFC-0067 'Before each rename', the review's probe: writer A stalls; the operator clears
-    /// its lock; writer B opens the ledger and accepts request R; A, whose memory lacks R, accepts
-    /// R again. A's rename would wipe B's record and accept R twice (INV-AUD-3). A finds the lock
-    /// is not its own, and the ledger not the file it read, and writes nothing.
+    /// RFC-0067 'One writer', the window of #534. Writer A passes its check and stalls before
+    /// its rename. Meanwhile the operator looks for a lock file to delete, and finds none; renames
+    /// the ledger; renames the directory; and removes the ledger. After each, a second writer B
+    /// tries to open the ledger by every name it then has, and to create one at a name nothing
+    /// holds in the directory: B is refused with `ERR-RES-IO` every time, while a reader still
+    /// reads the ledger, so that only the lock refuses B. A resumes, and its record is in the
+    /// ledger; once A is dropped, B opens the ledger with no operator step and finds it there.
+    #[cfg(unix)]
     #[test]
-    fn a_stalled_writer_whose_lock_was_cleared_renames_nothing() {
-        let dir = scratch("stalled");
+    fn a_writer_stalled_before_its_rename_loses_no_record() {
+        let dir = scratch("window");
         let path = dir.join("ledger.tvl");
-        let lock = dir.join("ledger.tvl.lock");
         let sample = derived_sample(9);
         {
             let mut setup = LedgerFile::create(&path).unwrap();
             setup.record_derived(&sample).unwrap();
         }
-        let r = statement_of(&sample, &[1]);
         let mut a = LedgerFile::open(&path).unwrap();
-        // The operator takes A's lock for a stale one, and B takes over and accepts R.
-        fs::remove_file(&lock).unwrap();
-        let mut b = LedgerFile::open(&path).unwrap();
-        b.record_accepted(&sample, sample.policy().params(), &r, &[FixedBits(4)])
-            .unwrap();
-        let after_b = fs::read(&path).unwrap();
-        // A accepts R again from its stale memory: refused, nothing written or left behind.
+        // B, refused at `at`, which a reader still reads, and at `free`, which holds nothing.
+        let refused = |at: Option<&Path>, free: &Path| {
+            if let Some(at) = at {
+                assert!(read_ledger(at).is_ok(), "{}", at.display());
+                assert_eq!(LedgerFile::open(at).err(), Some(io()), "{}", at.display());
+            }
+            assert!(!free.exists());
+            assert_eq!(
+                LedgerFile::create(free).err(),
+                Some(io()),
+                "{}",
+                free.display()
+            );
+            assert!(!free.exists());
+        };
+        let stalled = Cell::new(0);
+        let operator = |p: Point| {
+            if p != Point::Rename {
+                return;
+            }
+            stalled.set(stalled.get() + 1);
+            // Nothing in the directory but the ledger and A's temporary file: no lock file.
+            let mut names: Vec<OsString> = fs::read_dir(&dir)
+                .unwrap()
+                .map(|e| e.unwrap().file_name())
+                .collect();
+            names.retain(|n| n != "ledger.tvl" && !n.to_string_lossy().ends_with(".tmp"));
+            assert!(names.is_empty(), "{names:?}");
+            assert_eq!(leftovers(&dir).len(), 1, "A's temporary file");
+            refused(Some(&path), &dir.join("other.tvl"));
+            // The ledger renamed: B is refused by its new name, and at its old one.
+            let moved = dir.join("moved.tvl");
+            fs::rename(&path, &moved).unwrap();
+            refused(Some(&moved), &path);
+            fs::rename(&moved, &path).unwrap();
+            // The directory renamed: the lock is the directory's, not its name's.
+            let renamed = dir.with_extension("renamed");
+            fs::rename(&dir, &renamed).unwrap();
+            refused(
+                Some(&renamed.join("ledger.tvl")),
+                &renamed.join("other.tvl"),
+            );
+            fs::rename(&renamed, &dir).unwrap();
+            // The ledger removed: B cannot create one in its place.
+            fs::remove_file(&path).unwrap();
+            refused(None, &path);
+        };
+        let hooks = Hooks {
+            stop: &never,
+            at: &operator,
+            sync_dir: &sync_dir,
+        };
         assert!(a.ledger().proven(sample.identity()).is_none());
-        assert_eq!(
-            a.record_accepted(&sample, sample.policy().params(), &r, &[FixedBits(4)]),
-            Err(Failure::Inconclusive(io()))
-        );
-        assert_eq!(fs::read(&path).unwrap(), after_b);
-        assert!(leftovers(&dir).is_empty());
-        // B's record stands, B still writes, and B's lock outlives A.
-        drop(a);
-        assert!(lock.exists());
-        b.record_accepted(
+        a.record_accepted_with(
+            &sample,
+            sample.policy().params(),
+            &statement_of(&sample, &[1]),
+            &[FixedBits(4)],
+            &hooks,
+        )
+        .unwrap();
+        assert_eq!(stalled.get(), 1);
+        let record = |ledger: &VerifierLedger| -> Vec<(u64, FixedBits)> {
+            ledger
+                .proven(sample.identity())
+                .map(|r| r.iter().collect())
+                .unwrap_or_default()
+        };
+        // A's record is in the ledger, with the sample it derived, and A still writes.
+        let on_disk = read_ledger(&path).unwrap();
+        assert_eq!(record(&on_disk), [(1, FixedBits(4))]);
+        assert!(on_disk.is_derived(&sample));
+        a.record_accepted(
             &sample,
             sample.policy().params(),
             &statement_of(&sample, &[2]),
             &[FixedBits(5)],
         )
         .unwrap();
+        drop(a);
+        // B gets in now, with no operator step, and finds both records; its replay is refused.
+        let mut b = LedgerFile::open(&path).unwrap();
+        assert_eq!(record(b.ledger()), [(1, FixedBits(4)), (2, FixedBits(5))]);
+        assert_eq!(
+            b.record_accepted(
+                &sample,
+                sample.policy().params(),
+                &statement_of(&sample, &[1]),
+                &[FixedBits(4)]
+            ),
+            Err(Failure::Rejected(
+                crate::verdict::RejectReason::StatementMismatch {
+                    field: crate::validation::StatementField::Batch
+                }
+            ))
+        );
+        drop(b);
+        assert!(leftovers(&dir).is_empty());
+        fs::remove_file(&path).unwrap();
+        fs::remove_dir(&dir).unwrap();
+    }
+
+    /// RFC-0067 'Before each rename': a ledger the operator replaced while the writer held it,
+    /// a copy of another inode with the same bytes, is one the writer has not read, and the write
+    /// is refused, `ERR-RES-IO`, nothing renamed or left behind.
+    #[cfg(unix)]
+    #[test]
+    fn a_replaced_ledger_is_not_written_over() {
+        let dir = scratch("replaced");
+        let path = dir.join("ledger.tvl");
+        let mut file = LedgerFile::create(&path).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        let copy = dir.join("copy.tvl");
+        fs::write(&copy, &bytes).unwrap();
+        fs::rename(&copy, &path).unwrap();
+        let replaced = file_id(&fs::metadata(&path).unwrap());
+        for _ in 0..2 {
+            assert_eq!(
+                file.record_derived(&derived_sample(1)),
+                Err(Failure::Inconclusive(io()))
+            );
+        }
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert_eq!(file_id(&fs::metadata(&path).unwrap()), replaced);
+        assert_eq!(file.ledger(), &VerifierLedger::new());
+        assert!(leftovers(&dir).is_empty());
+        drop(file);
+        // Reopened, the writer reads the replacement, and writes it.
+        let mut file = LedgerFile::open(&path).unwrap();
+        file.record_derived(&derived_sample(1)).unwrap();
+        drop(file);
+        fs::remove_file(&path).unwrap();
+        fs::remove_dir(&dir).unwrap();
+    }
+
+    /// The directory replaced while writer A holds it: renamed away, a new directory put at its
+    /// path and the ledger moved into it, its inode kept, so that the ledger is still the file A
+    /// read. Writer B locks the new directory. A's names would now be built outside its lock, and
+    /// A, interleaved with B, could rename over B's record: A's writes are refused,
+    /// `ERR-RES-IO`, and B is the one writer of the ledger.
+    #[cfg(unix)]
+    #[test]
+    fn a_writer_whose_directory_was_replaced_writes_nothing() {
+        let dir = scratch("swapped");
+        let path = dir.join("ledger.tvl");
+        let sample = derived_sample(9);
+        {
+            let mut setup = LedgerFile::create(&path).unwrap();
+            setup.record_derived(&sample).unwrap();
+        }
+        let mut a = LedgerFile::open(&path).unwrap();
+        let read = file_id(&fs::metadata(&path).unwrap());
+        let old = dir.with_extension("old");
+        fs::rename(&dir, &old).unwrap();
+        fs::create_dir(&dir).unwrap();
+        fs::rename(old.join("ledger.tvl"), &path).unwrap();
+        assert_eq!(
+            file_id(&fs::metadata(&path).unwrap()),
+            read,
+            "the file A read"
+        );
+        let mut b = LedgerFile::open(&path).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        let r = statement_of(&sample, &[1]);
+        assert_eq!(
+            a.record_accepted(&sample, sample.policy().params(), &r, &[FixedBits(4)]),
+            Err(Failure::Inconclusive(io()))
+        );
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert!(leftovers(&dir).is_empty() && leftovers(&old).is_empty());
+        b.record_accepted(&sample, sample.policy().params(), &r, &[FixedBits(4)])
+            .unwrap();
+        // A's later writes are refused too, and B's record stands.
+        assert_eq!(
+            a.record_accepted(
+                &sample,
+                sample.policy().params(),
+                &statement_of(&sample, &[2]),
+                &[FixedBits(5)]
+            ),
+            Err(Failure::Inconclusive(io()))
+        );
+        drop(a);
         drop(b);
         let ledger = read_ledger(&path).unwrap();
         assert_eq!(
@@ -1294,61 +1421,11 @@ mod tests {
                 .unwrap()
                 .iter()
                 .collect::<Vec<_>>(),
-            [(1, FixedBits(4)), (2, FixedBits(5))]
+            [(1, FixedBits(4))]
         );
         fs::remove_file(&path).unwrap();
         fs::remove_dir(&dir).unwrap();
-    }
-
-    /// Each half of the check alone: a lock cleared and not taken again, and a ledger replaced
-    /// under a lock that still holds the token, each refuse the write.
-    #[test]
-    fn a_writer_without_its_lock_or_its_file_writes_nothing() {
-        let dir = scratch("halves");
-        let path = dir.join("ledger.tvl");
-        let lock = dir.join("ledger.tvl.lock");
-        let mut file = LedgerFile::create(&path).unwrap();
-        // The lock cleared, nobody holding it.
-        fs::remove_file(&lock).unwrap();
-        let bytes = fs::read(&path).unwrap();
-        assert_eq!(
-            file.record_derived(&derived_sample(1)),
-            Err(Failure::Inconclusive(io()))
-        );
-        assert_eq!(fs::read(&path).unwrap(), bytes);
-        drop(file);
-        // The lock this writer's, the ledger replaced by a copy (another inode, same bytes).
-        let mut file = LedgerFile::open(&path).unwrap();
-        let copy = dir.join("copy.tvl");
-        fs::write(&copy, &bytes).unwrap();
-        fs::rename(&copy, &path).unwrap();
-        assert_eq!(
-            file.record_derived(&derived_sample(1)),
-            Err(Failure::Inconclusive(io()))
-        );
-        assert_eq!(fs::read(&path).unwrap(), bytes);
-        assert!(lock.exists());
-        drop(file);
-        assert!(!lock.exists());
-        // A lock whose file was swapped for a link to a copy of the token is not this writer's.
-        #[cfg(unix)]
-        {
-            let mut file = LedgerFile::open(&path).unwrap();
-            let token = dir.join("token");
-            fs::copy(&lock, &token).unwrap();
-            fs::remove_file(&lock).unwrap();
-            std::os::unix::fs::symlink(&token, &lock).unwrap();
-            assert_eq!(
-                file.record_derived(&derived_sample(1)),
-                Err(Failure::Inconclusive(io()))
-            );
-            drop(file);
-            assert!(fs::symlink_metadata(&lock).is_ok(), "a link is not removed");
-            fs::remove_file(&lock).unwrap();
-            fs::remove_file(&token).unwrap();
-        }
-        fs::remove_file(&path).unwrap();
-        fs::remove_dir(&dir).unwrap();
+        fs::remove_dir(&old).unwrap();
     }
 
     #[test]
@@ -1372,170 +1449,37 @@ mod tests {
         fs::remove_dir(&dir).unwrap();
     }
 
-    /// A lock is this writer's only while it is the file the writer created and holds its token:
-    /// a copy of the token in another file, another token in the same file, and a link to the
-    /// moved lock each refuse the write.
-    #[test]
-    fn a_lock_is_the_writers_only_by_its_file_and_its_token() {
-        let dir = scratch("token");
-        let path = dir.join("ledger.tvl");
-        let lock = dir.join("ledger.tvl.lock");
-        let mut file = LedgerFile::create(&path).unwrap();
-        let token = fs::read(&lock).unwrap();
-        let refused = |file: &mut LedgerFile| {
-            assert_eq!(
-                file.record_derived(&derived_sample(1)),
-                Err(Failure::Inconclusive(io()))
-            );
-        };
-        // The token copied into another file, renamed over the lock.
-        let copy = dir.join("copy.lock");
-        fs::write(&copy, &token).unwrap();
-        fs::rename(&copy, &lock).unwrap();
-        refused(&mut file);
-        drop(file);
-        assert!(lock.exists(), "a lock not the writer's file stays");
-        fs::remove_file(&lock).unwrap();
-        // Another token written into the writer's own lock file.
-        let mut file = LedgerFile::open(&path).unwrap();
-        fs::write(&lock, b"another writer").unwrap();
-        refused(&mut file);
-        drop(file);
-        assert_eq!(fs::read(&lock).unwrap(), b"another writer");
-        fs::remove_file(&lock).unwrap();
-        // The lock moved aside and a link to it put in its place.
-        #[cfg(unix)]
-        {
-            let mut file = LedgerFile::open(&path).unwrap();
-            let aside = dir.join("aside.lock");
-            fs::rename(&lock, &aside).unwrap();
-            std::os::unix::fs::symlink(&aside, &lock).unwrap();
-            refused(&mut file);
-            drop(file);
-            assert!(fs::symlink_metadata(&lock).is_ok() && aside.exists());
-            fs::remove_file(&lock).unwrap();
-            fs::remove_file(&aside).unwrap();
-        }
-        // With its lock intact, the writer writes.
-        let mut file = LedgerFile::open(&path).unwrap();
-        file.record_derived(&derived_sample(1)).unwrap();
-        drop(file);
-        fs::remove_file(&path).unwrap();
-        fs::remove_dir(&dir).unwrap();
-    }
-
-    /// A new ledger is linked only while the lock still holds the creator's token.
-    #[test]
-    fn a_ledger_is_created_only_under_its_creators_lock() {
-        let dir = scratch("create-lock");
-        let path = dir.join("ledger.tvl");
-        let place = Place::resolve(&path).unwrap();
-        let lock = Lock::take(&place).unwrap();
-        fs::write(dir.join("ledger.tvl.lock"), b"another writer").unwrap();
-        let bytes = VerifierLedger::new().seal().unwrap();
-        assert_eq!(write_new(&place, &bytes, &lock.held, &REAL), Err(io()));
-        assert!(!path.exists());
-        assert!(leftovers(&dir).is_empty());
-        drop(lock);
-        assert!(
-            dir.join("ledger.tvl.lock").exists(),
-            "not this writer's lock"
-        );
-        fs::remove_file(dir.join("ledger.tvl.lock")).unwrap();
-        fs::remove_dir(&dir).unwrap();
-    }
-
-    /// The lock checked twice, around its open: a lock swapped between the two checks, either
-    /// way, is not this writer's, whichever check sees the swap.
-    #[cfg(unix)]
-    #[test]
-    fn a_lock_swapped_between_its_checks_is_not_the_writers() {
-        let dir = scratch("swap");
-        let path = dir.join("ledger.tvl");
-        let lock = dir.join("ledger.tvl.lock");
-        let aside = dir.join("aside.lock");
-        let copy = dir.join("copy.lock");
-        let file = LedgerFile::create(&path).unwrap();
-        let held = &file.lock;
-        let token = fs::read(&lock).unwrap();
-        assert!(held.holds());
-        // Genuine at the first check, a copy of the token at the open: the open's check sees it.
-        let to_copy = || {
-            fs::rename(&lock, &aside).unwrap();
-            fs::write(&copy, &token).unwrap();
-            fs::rename(&copy, &lock).unwrap();
-        };
-        assert!(!held.holds_with(&to_copy));
-        // A copy at the first check, genuine again at the open: the first check sees it, and
-        // returns before the swap, which is then made by hand.
-        let back = || fs::rename(&aside, &lock).unwrap();
-        assert!(!held.holds_with(&back));
-        if aside.exists() {
-            back();
-        }
-        assert!(held.holds(), "the genuine lock is back");
-        // Genuine at the first check, a link to it at the open: the open refuses the link.
-        if HAS_NO_FOLLOW {
-            let to_link = || {
-                fs::rename(&lock, &aside).unwrap();
-                std::os::unix::fs::symlink(&aside, &lock).unwrap();
-            };
-            assert!(!held.holds_with(&to_link));
-            // A link at the first check, genuine at the open: the first check refuses the link,
-            // before the swap, which is then made by hand.
-            let unlink = || {
-                fs::remove_file(&lock).unwrap();
-                fs::rename(&aside, &lock).unwrap();
-            };
-            assert!(!held.holds_with(&unlink));
-            if aside.exists() {
-                unlink();
-            }
-            assert!(held.holds());
-        }
-        drop(file);
-        assert!(!lock.exists());
-        fs::remove_file(&path).unwrap();
-        fs::remove_dir(&dir).unwrap();
-    }
-
     /// RFC-0067 'Before each rename': the check sits after the temporary file is written and
-    /// synced, just before the rename. Another writer that takes the ledger over just before the
-    /// check is seen by it, and the write renames nothing; one that takes it over between the
-    /// check and the rename is the residual window (#534), and the stale rename happens. The two
-    /// cases together pin the check between the two points.
+    /// synced, just before the rename. A ledger the operator replaces just before the check, a
+    /// copy of another inode with the same bytes, is seen by it, and the write renames nothing;
+    /// one replaced between the check and the rename is renamed over, the writer's record with
+    /// it, which loses nothing, since the lock kept every other writer out and the copy holds
+    /// what the writer read. The two cases together pin the check between the two points.
+    #[cfg(unix)]
     #[test]
     fn the_check_sits_just_before_the_rename() {
         for (point, refused) in [(Point::Check, true), (Point::Rename, false)] {
             let dir = scratch("check-point");
             let path = dir.join("ledger.tvl");
-            let lock = dir.join("ledger.tvl.lock");
             let sample = derived_sample(9);
             {
                 let mut setup = LedgerFile::create(&path).unwrap();
                 setup.record_derived(&sample).unwrap();
             }
+            let bytes = fs::read(&path).unwrap();
             let mut a = LedgerFile::open(&path).unwrap();
-            let b_slot: RefCell<Option<LedgerFile>> = RefCell::new(None);
-            // At `point` in A's write, the operator clears A's lock, and B takes over and accepts
-            // request 2.
-            let take_over = |p: Point| {
-                if p == point && b_slot.borrow().is_none() {
-                    fs::remove_file(&lock).unwrap();
-                    let mut b = LedgerFile::open(&path).unwrap();
-                    b.record_accepted(
-                        &sample,
-                        sample.policy().params(),
-                        &statement_of(&sample, &[2]),
-                        &[FixedBits(5)],
-                    )
-                    .unwrap();
-                    *b_slot.borrow_mut() = Some(b);
+            let replaced = Cell::new(false);
+            let replace = |p: Point| {
+                if p == point && !replaced.get() {
+                    let copy = dir.join("copy.tvl");
+                    fs::write(&copy, &bytes).unwrap();
+                    fs::rename(&copy, &path).unwrap();
+                    replaced.set(true);
                 }
             };
             let hooks = Hooks {
                 stop: &never,
-                at: &take_over,
+                at: &replace,
                 sync_dir: &sync_dir,
             };
             let result = a.record_accepted_with(
@@ -1545,27 +1489,25 @@ mod tests {
                 &[FixedBits(4)],
                 &hooks,
             );
-            let b = b_slot.borrow_mut().take().expect("B took over");
-            let on_disk = read_ledger(&path).unwrap();
-            let record: Vec<u64> = on_disk
+            assert!(replaced.get(), "{point:?}");
+            let record: Vec<u64> = read_ledger(&path)
+                .unwrap()
                 .proven(sample.identity())
                 .map(|r| r.iter().map(|(i, _)| i).collect())
                 .unwrap_or_default();
             if refused {
-                // Seen by the check: nothing renamed, B's record stands.
+                // Seen by the check: nothing renamed, the copy stands.
                 assert_eq!(result, Err(Failure::Inconclusive(io())), "{point:?}");
-                assert_eq!(record, [2], "{point:?}");
+                assert_eq!(fs::read(&path).unwrap(), bytes, "{point:?}");
+                assert!(record.is_empty(), "{point:?}");
+                assert!(a.ledger().proven(sample.identity()).is_none());
             } else {
-                // The residual window: A's check passed before B ran, and A's stale ledger,
-                // without B's record, is renamed over it.
+                // After the check: the rename replaces the copy with the writer's ledger.
                 assert_eq!(result, Ok(()), "{point:?}");
                 assert_eq!(record, [1], "{point:?}");
             }
+            assert!(leftovers(&dir).is_empty(), "{point:?}");
             drop(a);
-            drop(b);
-            for leftover in leftovers(&dir) {
-                fs::remove_file(leftover).unwrap();
-            }
             fs::remove_file(&path).unwrap();
             fs::remove_dir(&dir).unwrap();
         }
@@ -1605,7 +1547,7 @@ mod tests {
     #[test]
     fn a_read_never_reserves_past_the_limit() {
         let limit = 4096u64;
-        let most = std::cell::Cell::new(0usize);
+        let most = Cell::new(0usize);
         let seen = |c: usize| most.set(most.get().max(c));
         let content = vec![7u8; 10_000];
         // A size of a tebibyte, as a sparse file's metadata gives it, and more bytes than the

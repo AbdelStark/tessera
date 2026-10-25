@@ -31,7 +31,7 @@ The layout and the verifier-independence rules it enforces are fixed by [RFC-000
 
 ## Building and testing
 
-The toolchain is pinned in `rust-toolchain.toml`; `rustup` installs it on first use. The minimum supported Rust version is 1.88.
+The toolchain is pinned in `rust-toolchain.toml`; `rustup` installs it on first use. The minimum supported Rust version is 1.89.
 
 ```sh
 cargo build --workspace --locked

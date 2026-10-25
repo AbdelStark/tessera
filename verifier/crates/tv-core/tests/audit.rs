@@ -1255,7 +1255,9 @@ fn the_ledger_file_is_held_by_one_writer_and_written_atomically() {
     {
         let mut file = LedgerFile::create(&path).unwrap();
         assert_eq!(file.ledger(), &VerifierLedger::new());
-        // A second writer is kept out while the first holds the file.
+        // A second writer is kept out while the first holds the file, by the directory's lock,
+        // which only Unix takes (RFC-0067 'Off Unix').
+        #[cfg(unix)]
         assert_eq!(
             LedgerFile::open(&path).err(),
             Some(VerifierError { code: Code::Io })
@@ -1986,8 +1988,11 @@ fn one_toss_reveals_one_sample_and_one_manifest_takes_one() {
     // The first share again gives the same sample.
     assert_eq!(toss.reveal(&window, share, &mut file).unwrap(), sample);
     // One ledger per verifier: the toss records in no second ledger, even its first share's
-    // sample (RFC-0067 'One ledger per verifier').
-    let other_path = dir.join("other.tvl");
+    // sample (RFC-0067 'One ledger per verifier'). The second ledger is in a directory of its
+    // own, since the first writer's lock keeps any other writer out of the first's (RFC-0067
+    // 'One writer per directory').
+    let other_dir = scratch("one-sample-other");
+    let other_path = other_dir.join("other.tvl");
     let mut other_file = LedgerFile::create(&other_path).unwrap();
     for s_p in [share, ground] {
         assert_eq!(
@@ -1998,6 +2003,7 @@ fn one_toss_reveals_one_sample_and_one_manifest_takes_one() {
     assert!(other_file.ledger().derived().is_empty());
     drop(other_file);
     fs::remove_file(&other_path).unwrap();
+    fs::remove_dir(&other_dir).unwrap();
     // A second toss over the manifest: the ledger takes no other sample for it.
     let mut again = AuditToss::commit(scenario.period.manifest(), rate.clone()).unwrap();
     assert_eq!(again.reveal(&window, ground, &mut file).err(), Some(order));

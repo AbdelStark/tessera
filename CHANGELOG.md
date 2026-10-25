@@ -1386,6 +1386,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- The minimum supported Rust version is 1.89, for both workspaces (09 §2, [#534](https://github.com/AbdelStark/tessera/issues/534)): the verifier holds its ledger's directory with `std::fs::File::try_lock`, stable since 1.89. The quality workflow's MSRV job checks 1.89.
+
 - RFC-0013 'Virtual tensors' specifies the mask fold of a virtual tensor in a reduction stage ([#538](https://github.com/AbdelStark/tessera/issues/538)):
   - **An instance of its own.** The relation's instance may not run over the mask's variables, as `MatMulWeight`, `MatMulAct` and `SumSquares` do not. The fold takes its relation's power of `γ`, and its summand is scaled by `2^{log2 k − n_i}`, so that the two instances contribute RFC-0010's scaled claim of the `V'(p)` the verifier knows.
   - **Over `log2 k` variables,** reading the row at `(p_col ‖ 0)`, whatever the mask's width. So every fold of a stage ends at one point, and adds at most one opening group per reduction stage: two at 405B. The stage's rounds count the fold's variables.
