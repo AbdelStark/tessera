@@ -10,8 +10,8 @@ All notable changes to the prover release train are recorded here: the crates un
   - **RFC-0071, 'A Batch of Requests in One Proof Unit: Request Slots on One Token Axis'.**
     - **The gap.** Every document and both workspaces assumed one sequence per proof, so a statement's batch could hold one request only.
     - **Slots.** Each request of a batch of two or more takes a slot of `S = 2^{⌈log2 max n_r⌉}` rows of one token axis, positions first. The rows past a request's end are RFC-0035's padded rows.
-    - **What changes.** The graph's nodes, the claim list and the plan do not. Attention reads keys and values within the query's slot. The row selector, the causal selector, `SoftmaxRow`'s root claim and RoPE's positions become sums over the requests. One greedy maximum serves the batch, with a key column and key relation per request, and `Û_r` sums each request's window.
-    - **Statement checks.** The statement refuses a request named twice, a request without a prompt, and a batch whose layout exceeds the maximum.
+    - **What changes.** The graph's nodes, the claim list and the plan do not. Attention reads keys and values within the query's slot. The row selector, the causal selector, `SoftmaxRow`'s root claim and RoPE's positions become sums over the requests. One greedy maximum serves the batch, with a key column and key relation per request with outputs, and `Û_r` sums each request's window.
+    - **Statement checks.** The statement refuses an empty batch, a request named twice, a request without a prompt, a temperature batch of several requests, and a batch whose layout exceeds the maximum.
     - **The audit's packing** runs per slot class `⌈log2 n⌉`, so that a batch's slots are its requests' own powers of two.
     - **One request is today's proof,** bit for bit.
     - **Cost at 405B,** computed from the compiler's layout: a 16K-token batch of 16 requests of 1K is about 2.07 GB of `tessera-protocol/1` proof, against 25.4 GB as 16 proofs.

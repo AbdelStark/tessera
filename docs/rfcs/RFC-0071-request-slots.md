@@ -7,10 +7,10 @@
 - Amends, in both protocols where they apply:
   - [RFC-0006](RFC-0006-compiler-ir.md#llama-lowering) 'Operations' (`MatMulAct`, `SoftmaxRow`) and 'Llama lowering': one graph covers one batch, and attention reads within a slot;
   - [RFC-0044](RFC-0044-lowering-nodes.md#graph-inputs) 'Graph inputs': a batch's token axis and positions;
-  - [RFC-0010](RFC-0010-proof-schedule.md#multilinear-extensions) 'Multilinear extensions' and 'Tree levels', [RFC-0030](RFC-0030-masked-exponentials.md#the-causal-selector) 'The causal selector' and its root claim, [RFC-0035](RFC-0035-padded-rows.md#the-row-selector) 'The row selector': sums over the requests;
+  - [RFC-0010](RFC-0010-proof-schedule.md#multilinear-extensions) 'Relations', 'Multilinear extensions' and 'Tree levels', [RFC-0030](RFC-0030-masked-exponentials.md#the-causal-selector) 'The causal selector' and its root claim, [RFC-0035](RFC-0035-padded-rows.md#the-row-selector) 'The row selector': sums over the requests;
   - [RFC-0034](RFC-0034-causal-blocks.md#zero-rows) 'Causal layout' and 'Zero rows', [RFC-0046](RFC-0046-advice-segments.md#short-query-blocks) 'Short query blocks', [RFC-0041](RFC-0041-execution-plan.md) 'Non-Goals', 'Tiles' and 'The plan': a slot's keys and query blocks;
   - [RFC-0037](RFC-0037-stage-schedule.md#rotate) '`Rotate`': a row's position is its place in its request;
-  - [RFC-0047](RFC-0047-advice-order.md#the-maximum-layout) 'The maximum layout' and 'A request's sequence length';
+  - [RFC-0047](RFC-0047-advice-order.md#the-maximum-layout) 'The maximum layout' and 'A request's sequence length', and [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) rule 4: the padded rows between slots;
   - [RFC-0053](RFC-0053-greedy-runtime-boundary.md#public-request-and-sources) 'Public request and sources': one maximum for the batch, a key column and key relation per request;
   - [RFC-0017](RFC-0017-scoring.md#in-circuit-scoring-mixture) 'In-circuit scoring': each request's window;
   - [RFC-0016](RFC-0016-audit-sampling.md#batching) 'Batching': packing by slot class;
@@ -51,7 +51,7 @@ At 405B, a 16K-token batch of 16 requests of 1K takes about 2.07 GB of `tessera-
 
 - **A request longer than one proof holds**: chunks and their linking (#470). A batch holds whole requests from their first token (RFC-0057).
 - **Temperature batches.** The sampler PRF's counter and stream class are per request (RFC-0017, RFC-0061), and RFC-0053's certificate is greedy only. A batch of temperature requests keeps one request until the sampling work (#144) states them per slot. `PublicStatement` keeps one `PredictorSpec` per batch (OQ-0036-1).
-- **Several requests in one slot** ('Alternatives Considered' 4).
+- **Several requests in one slot.** A slot holds one request, and a batch's slots one length ('Alternatives Considered' 4).
 
 ## Proposed Design
 
@@ -60,9 +60,15 @@ At 405B, a 16K-token batch of 16 requests of 1K takes about 2.07 GB of `tessera-
 A batch is `statement.batch.requests`, `R ≥ 1` requests in that order, with `n_r = prompt_len_r + output_len_r` positions each (RFC-0047).
 - **The slot length** is `S = 2^{b}`, with `b = ⌈log2 max_r n_r⌉`. Write `n_max = max_r n_r`, and `n_r = 0` for the empty slots `R ≤ r < 2^{⌈log2 R⌉}`.
 - **One request.** With `R = 1` the token axis is today's, of `n` rows, and `S = 2^{⌈log2 n⌉}` is its padded length: every rule below reduces to today's, since `⌊τ/S⌋ = 0`.
-- **The token axis.** Request `r`'s position `p < n_r` is row `τ = r·S + p`. The axis has `N = (R − 1)·S + n_{R−1}` rows, and is padded, as every axis is, to `2^{b + ⌈log2 R⌉}` rows.
+- **The token axis.** Request `r`'s position `p < n_r` is row `τ = r·S + p`. For `R ≥ 2` the graph's token axis has `N = R·S` rows, every slot whole, so that a slot's reads stay inside the axis. It is padded, as every axis is, to `2^{b + ⌈log2 R⌉}` rows. With `R = 1`, `N = n`.
   - A point of it is `(r_p, r_b)`: `r_p` the `b` variables of the position within a slot, lowest, and `r_b` the `⌈log2 R⌉` variables of the request.
-- **Real and padded rows.** A row is **real** when its position is below its request's length: `τ mod S < n_{⌊τ/S⌋}`, with `⌊τ/S⌋ < R`. Every other row of the padded axis is a **padded row**, with RFC-0035's values: the token 0, the activations 0, and a lookup's table value at key 0. These are the rows between `r·S + n_r` and `(r + 1)·S`, and the axis's own padding. No real output reads a padded row.
+- **Real and padded rows.** A row is **real** when its position is below its request's length: `τ mod S < n_{⌊τ/S⌋}`, with `⌊τ/S⌋ < R`. Every other row of the padded axis is a **padded row**: the rows between `r·S + n_r` and `(r + 1)·S`, and the axis's own padding.
+- **A padded row's values** are RFC-0035's at every node, whatever the node computes on a real row:
+  - the token 0, and `OneHot`'s output the zero vector, since `Σ_v h_v = ψ = 0` there;
+  - every activation 0, and a lookup output its table's value at key 0;
+  - in `SoftmaxRow`, every key masked, so that `e` is 0 on the row.
+
+  No real output reads a padded row. Inside the graph these rows lie between two requests, where with one request they lay past `n`, outside it.
 
 The notation is this RFC's own: `S` here is the slot length, not RFC-0034's sequence length or RFC-0037's sine, and `N` is unpadded, where RFC-0041's is padded.
 
@@ -70,7 +76,7 @@ The notation is this RFC's own: `S` here is the slot length, not RFC-0034's sequ
 
 One graph covers one batch (RFC-0006 'Llama lowering'). `lower(model, lengths)` takes the batch's lengths in order; `lower(model, n)` is its case `R = 1`. The graph's nodes and ids are RFC-0044's for every batch. Only shapes and two operations' reads depend on it.
 - **Inputs.** The tokens `[N]`, committed advice, and the positions `[N]`, public: position `τ mod S` at a real row, 0 at a padded one. Their values lie in `[0, n_max − 1]`, which fixes the input's type.
-- **Per-token nodes.** These are the activations `[N, channels]` and every node RFC-0054 'Groups' lists as keeping the token axis: matmuls by weights, norms, requantizations, SiLU and the residual. Each applies to each row as before, and its padded rows hold RFC-0035's values.
+- **Per-token nodes.** These are the activations `[N, channels]` and every node RFC-0054 'Groups' lists as keeping the token axis: matmuls by weights, norms, requantizations, SiLU and the residual. Each applies to each real row as before, and holds a padded row's values at a padded row.
 - **Attention reads within a slot.** RFC-0044's head layouts are unchanged: `Transpose`, `Expand`, `Reshape`, whose token axis stays whole. Q, K and V reach the scores as `[n_heads, N, d_head]`. Two operations then read rows of one slot, by the graph's slot length `S`. A batch's graph carries it, a public parameter the batch descriptor fixes, and a graph of one request carries none (RFC-0006). With `R = 1`, `⌊τ/S⌋ = 0`, and both are RFC-0006's operations unchanged:
   - **The scores.** `MatMulAct(q, k)` gives `[n_heads, N, n_max]`, whose entry `(h, τ, j)` is `Σ_d q[h, τ, d]·k[h, ⌊τ/S⌋·S + j, d]`: query row `τ` against key `j` of `τ`'s own request.
   - **The weighted values.** `MatMulAct(e, v)` contracts the key axis the same way: `Σ_j e[h, τ, j]·v[h, ⌊τ/S⌋·S + j, d]`.
@@ -80,7 +86,7 @@ One graph covers one batch (RFC-0006 'Llama lowering'). `lower(model, lengths)` 
     Z̃(r_h, r_p, r_b, r_j) = Σ_{h, β, d} eq((r_b, r_h), (β, h)) · Q̃(h, (r_p, β), d) · K̃(h, (r_j, β), d)
     ```
 
-    `r_j` is the key's `b` variables. This is RFC-0010's stacked `MatMulAct`, `Σ_{b, j} eq(ρ, b)·Ã(b, r_a, j)·B̃(b, j, r_c)`, its stacking variables `b = (β, h)`, the request's lowest, as they lie in the operands' token and head axes, and its sumcheck over `(j, b)` with `j` low. The weighted values are the same with `e` and `v`.
+    `r_j` is the key's `b` variables. This is RFC-0010's stacked `MatMulAct`, `Σ_{s, j} eq(ρ, s)·Ã(s, r_a, j)·B̃(s, j, r_c)`, its stacking variables `s = (β, h)`, the request's lowest, as they lie in the operands' token and head axes, and its sumcheck over `(j, b)` with `j` low. The weighted values are the same with `e` and `v`.
   - **`SoftmaxRow`** reduces each row `(h, τ)` over its `n_max` keys under the causal selector below. A row's keys past its request's length, and every key of a padded row, are masked.
 - **RoPE.** It rotates each real row by its position `τ mod S`. Its constants are zero on every padded row, as they are today on the rows past `n` ('The public selectors').
 - **Logits** are `[N, vocab]`. The next token at a real row `τ` is row `τ + 1`'s, in the same request, since a window ends at `n_r − 2` ('The greedy certificate and scoring').
@@ -104,13 +110,14 @@ The verifier evaluates `ψ̃`, the causal selector and the root claim in `O(R·l
 ### The greedy certificate and scoring
 
 **Greedy** (RFC-0053), one certificate for the batch:
-- **One maximum.** `M` is one tensor on the padded token axis, real on every request's window, positions `prompt_len_r − 1 ≤ p < n_r − 1` of slot `r`, and zero elsewhere. It is one source, in one `GreedyMaximum` tile, with RFC-0053's certificate id of ordinal 0, the graph's node count.
+- **One maximum.** `M` is one tensor on the padded token axis, real on every request's window, positions `prompt_len_r − 1 ≤ p < n_r − 1` of slot `r`, and zero elsewhere. It is one source, in one `GreedyMaximum` tile, with RFC-0053's certificate id of ordinal 0, the graph's node count. When no request of the batch has an output, there is no `M`: no tile, no key column, no `Selected`, only the observation below.
 - **A key column and a key relation per request with outputs,** in batch order: request `r`'s logical key column, named by its ordinal `r`, follows the model's lookup columns and the earlier requests' key columns. A request without outputs has neither, as RFC-0053 omits them. The key relation reads `M`, `L` and `Hplus` with the time coefficient `Σ_{u < output_len_r} eq(P_row, u)·eq(r_time, (prompt_len_r − 1 + u, r))`, the time point `(r_p, r_b)` of row `r·S + p`.
 - **The registration order** (RFC-0053 'Schedule, transcript and budget'): token binding, then the key relations in batch order, then `Selected`; or, when no request has an output, token binding then the logit observation.
 - **Selected,** once over the whole token axis, with `M`. Its `active(τ)` is 1 exactly on the windows.
 - **Token binding,** once over every row of the token axis, real or padded, as RFC-0053 binds every row. With `OneHot`'s `Σ_v h_v = ψ`, which puts a padded row's one-hot at zero (RFC-0035), it keeps a padded row's token at 0.
 - **The increment.** `Hplus` and its carries run over the whole token axis's `b + ⌈log2 R⌉` time variables. It is read only at active rows, where `τ + 1` is the same request's next position, since a window ends at position `n_r − 2`.
 - **The observation instance** of a zero-output request is added once, when no request of the batch has an output. Otherwise a key relation already reads `L`.
+- **Scoring's sums** (below) are registered after the greedy relations, one per request, in batch order.
 
 One `M`, which every key relation reads within its own window and `Selected` pins on every window, leaves no entry of the certificate outside a relation.
 
@@ -124,12 +131,13 @@ One `M`, which every key relation reads within its own window and `Selected` pin
   - **Zero rows.** RFC-0034's rule applies to the query block's request, with its length `n_r`.
 - **The advice layout** is a function of the claim list and the batch descriptor (INV-PCS-1), in the plan's production order, so a batch's rows follow the token axis. RFC-0011 rule 4 applies to the padded rows between slots as to the axis's end: a row is skipped when every position it holds is a padded row's public zero. A row of a lookup output whose padded value is not 0 (RFC-0035) is committed.
 - **The maximum layout.** A batch's layout must fit in at most `2^{32}` rows (RFC-0047). The claim list's check at `n = max_context` (RFC-0007 step 6) does not cover a batch, whose token axis can be longer than `max_context`. So the verifier computes the batch's row count from the claim list and the batch descriptor, before it allocates anything, and refuses one past the bound at statement binding.
-- **Token groups** (RFC-0054 'Groups'). The batch's token index is the padded token axis's row. Interleaving by the low bits spreads each slot's rows over every group when `g_T ≤ b`, and each group holds whole slots when `g_T > b`.
+- **Token groups** (RFC-0054 'Groups'). The batch's token index is the padded token axis's row. A prover groups a batch with `g_T ≤ b` token bits, so that each group fixes low position bits only and holds every slot's positions alike, as RFC-0054's equal load needs. With `g_T > b` a group would hold one position of some slots, and the positions' keys differ in number.
 
 ### The statement and the batching
 
 **The statement.** RFC-0019 step 4 checks the batch, each check a `Reject(StatementMismatch { field: Batch })`:
-- at least one request, and no request named twice (03 §4);
+- at least one request, and no request named twice: no two with an equal `RequestKey`, `(session_id, request_id)` (03 §4, RFC-0063);
+- for `R ≥ 2`, a predictor of exact greedy: until the sampling work (#144) states the sampler per slot, a temperature batch holds one request;
 - each request's `prompt_len_r ≥ 1` and `n_r ≤ max_context`. A request without a prompt would start its window at position −1, in the slot before it;
 - the batch's advice layout, as computed above, within the maximum layout.
 
@@ -170,7 +178,7 @@ The requests' order in `statement.batch` is the slots' order, `RequestKey` order
 | 16,384 | 512 | 953,580 | 725,760 |
 | 16,384 | 256 | 1,163,244 | 935,424 |
 
-**The proof.** It is `tessera-protocol/1`'s combined rows, at most `17 × 2^{22} × 16` bytes, plus the advice columns at `τ_A = 155` and 8 bytes a row, plus about 0.35 GB of weight openings. Sumcheck messages (under 10 MB) and the token groups' level messages (about 120 MB at 16K, 08 §5) are left out of both columns.
+**The proof.** It is `tessera-protocol/1`'s combined rows, at most `17 × 2^{22} × 16` bytes, plus the advice columns at `live-64`'s `τ_A = 155` and 8 bytes a row, plus about 0.35 GB of weight openings. Sumcheck messages (under 10 MB) and the token groups' level messages (about 120 MB at 16K, 08 §5) are left out of both columns.
 
 | Batch of 16,384 tokens | One proof (rows, bytes) | One proof per request |
 |---|---|---|
@@ -206,13 +214,14 @@ At 64 × 256, `Q' = 256` doubles the attention tiles, whose rows are mostly per 
 ## Drawbacks
 
 - **Batches per class.** Packing by class makes more batches than first-fit decreasing across classes: at most one undersized batch per class rather than per group.
+- **Temperature audits.** Until #144, a temperature request is a proof of its own, so RFC-0016's overhead calculator, which assumes batches of `min_batch_tokens`, understates their cost.
 - **Empty slots.** A batch of `R` requests pads its slots to `2^{⌈log2 R⌉}`. Their rows are padded rows, skipped when public zeros, but the relations' rounds count them.
 - **More to keep in step.** The lowering, the selectors, the greedy certificate, scoring and the packing each read the slots in both workspaces. A differential test must keep them equal ('Testing Strategy').
 
 ## Migration / Rollout
 
 1. **This RFC** amends the documents in its header. A batch of one request is unchanged, so no artifact, vector or proof of a proof unit changes. The audit's packing changes ('The statement and the batching').
-2. **Implementation** ([#551](https://github.com/AbdelStark/tessera/issues/551)). Both workspaces lower, select, certify, score and pack per slot. Then the verifier's driver and the CLI's `prove --sample` lift their one-request refusal. Until then a proof unit covers one request, and both refuse a batch of two with `ERR-USAGE`, as today. The packing's vectors (`spec/vectors/audit/`) change with it.
+2. **Implementation** ([#551](https://github.com/AbdelStark/tessera/issues/551)). Both workspaces lower, select, certify, score and pack per slot. Then the verifier's driver and the CLI's `prove --sample` lift their one-request refusal. Until then a proof unit covers one request, and both refuse a batch of two with `ERR-USAGE`, as today. The packing's vectors (`spec/vectors/audit/`), the `tessera.audit-batches/1` schema's descriptions and its example report change with it.
 
 ## Testing Strategy
 
@@ -226,7 +235,7 @@ At 64 × 256, `Q' = 256` doubles the attention tiles, whose rows are mostly per 
   - a key read across a slot;
   - a split maximum, raised in one window and compensated outside another;
   - request 1's token bound to request 0's frames;
-  - a request with `prompt_len = 0`, a request named twice, and a batch whose layout exceeds the maximum.
+  - a request with `prompt_len = 0`, a request named twice, a temperature batch of two requests, and a batch whose layout exceeds the maximum.
 - **End to end.** A batch of two requests of different lengths proves and verifies through the CLI, NI and Live. An exact mismatch in the second request is refused.
 
 ## Open Questions

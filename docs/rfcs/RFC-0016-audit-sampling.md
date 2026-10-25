@@ -92,13 +92,14 @@ The domains `audit-sample` and `audit-select` join RFC-0004's domain table.
 
 ### Batching
 
-The prover packs selected requests into batches by first-fit decreasing on total tokens, with the request order and tie-breaking fixed by `RequestKey` order, so that batch composition is reproducible. Requests that decode with temperature are first grouped by the pinned sampler key that applies to each, and each group is packed on its own ([RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies)). A batch has at most `max_batch_tokens` tokens, but for a request longer than that alone, and at most one batch of each group has fewer than `min_batch_tokens`. Each batch is one proof whose `PublicStatement.batch` lists its requests.
+The prover packs selected requests into batches by slot class, then first-fit decreasing, with the request order and tie-breaking fixed by `RequestKey` order, so that batch composition is reproducible. A batch of several requests puts each in a slot of its longest request's power of two ([RFC-0071](RFC-0071-request-slots.md#the-statement-and-the-batching)), so a batch holds requests of one class.
 
-- **Groups.** The greedy requests form one group, and each pinned sampler key's temperature requests another. Until the sampling work (#144) states the sampler per slot, each temperature request is a batch on its own ([RFC-0071](RFC-0071-request-slots.md)).
-- **First-fit decreasing.** Within a group, requests go in decreasing `L`, ties in `RequestKey` order. Each goes into the first batch, in the order the batches were opened, whose total stays at most `max_batch_tokens` with it, else into a new batch.
-- **By slot class** ([RFC-0071](RFC-0071-request-slots.md#the-statement-and-the-batching)), replacing first-fit decreasing across a group's lengths. A batch of several requests puts each in a slot of its longest request's power of two. So within a group, requests are packed per class `c = ⌈log2 max(L, 1)⌉`, the classes in decreasing order, by first-fit decreasing within each class. A batch of `R` requests of class `c` counts `2^{c + ⌈log2 R⌉}` tokens against `max_batch_tokens`, and a request whose `2^c` alone exceeds it is a batch on its own.
-- **A request longer than `max_batch_tokens`** is a batch on its own, which takes no other request.
-- **The minimum.** At most one batch of each group has fewer than `min_batch_tokens` tokens. Two such batches would total under `2 · min_batch_tokens ≤ max_batch_tokens`, so the later one's first request would have fit in the earlier one. Packed by slot class, the bound holds per class and in counted tokens ([RFC-0071](RFC-0071-request-slots.md)).
+- **Groups.** The greedy requests form one group. Until the sampling work (#144) states the sampler per slot, each temperature request is a batch on its own; RFC-0061's sampler keys will then group them.
+- **Classes.** A request of `L` tokens has class `c = ⌈log2 max(L, 1)⌉`. Within the greedy group, the classes are packed one after another, in decreasing order.
+- **Counted tokens.** A batch of `R` requests of class `c` counts `2^{c + ⌈log2 R⌉}` tokens, the rows its token axis spans.
+- **First-fit decreasing.** Within a class, requests go in decreasing `L`, ties in `RequestKey` order. Each goes into the first batch, in the order the batches were opened, whose counted tokens stay at most `max_batch_tokens` with it, else into a new batch.
+- **A request whose `2^c` exceeds `max_batch_tokens`** is a batch on its own, which takes no other request.
+- **The minimum.** In counted tokens, at most one batch of each class has fewer than `min_batch_tokens`. Two such batches would count under `2 · min_batch_tokens ≤ max_batch_tokens` together, so the later one's first request would have fit in the earlier one. In real tokens a class's batches can fall below it.
 - **A batch's statement** lists its requests in `RequestKey` order.
 - **The CLI.** `tessera audit batch` writes a sample's batches as the `tessera.audit-batches/1` report, each request with the `prompt_len` and `output_len` its statement carries, and `tessera prove --sample --batch K` proves the `K`-th, reading the batches again from the sample and the logs (02 §2.2). Until RFC-0061's pins are implemented, both pack every request in the greedy group.
 
@@ -201,7 +202,7 @@ v0.4 delivers the policy, selection, batching, report and calculators, exercised
 - Rate accuracy: over 10^6 synthetic requests, each bucket's selected fraction lies within a 99.9% binomial interval of its rate.
 - Conformance vectors ([`spec/vectors/audit/`](../../spec/vectors/audit/README.md)), from an independent oracle: candidates and lengths from two periods' logs, rate thresholds, seeds, selection values, samples with their encodings and refusals, and batches.
 - Unpredictability: changing one byte of `s_P` or `s_V` changes about half of the selection decisions (avalanche test).
-- Batching: first-fit decreasing output is reproducible and respects both bounds.
+- Batching: the packing by class is reproducible and respects both bounds, in counted tokens.
 - Accounting: a proof containing an unselected request is rejected; a request in two batches is rejected the second time; a missing proof yields `Unproven(DeadlineMissed)`.
 - Calculators: closed-form detection matches a Monte Carlo simulation within 0.5 percentage points; the source's table (§8) is reproduced from its `μ` values and `η = 0.3`.
 

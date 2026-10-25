@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Zero rows': in a batch, a query block's own request's length)
+- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Causal layout' and 'Zero rows': in a batch, a slot's keys and a query block's own request's length)
 - Supersedes, on acceptance:
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout', rules 1, 3 and 4: a causal tensor's variable order, and its masked blocks as zero rows;
   - [RFC-0006](RFC-0006-compiler-ir.md#tiling-and-the-execution-plan) 'Tiling and the execution plan': the order of `e`'s variables within an attention tile;

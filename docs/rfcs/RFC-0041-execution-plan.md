@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0050](RFC-0050-gadget-advice-columns.md) ('Production order': canonical gadget auxiliary order), [RFC-0071](RFC-0071-request-slots.md) ('Non-Goals' and 'The plan': a batch's tiles, query blocks within one request)
+- Amended by: [RFC-0050](RFC-0050-gadget-advice-columns.md) ('Production order': canonical gadget auxiliary order), [RFC-0071](RFC-0071-request-slots.md) ('Non-Goals', 'Tiles', 'The plan' and 'Drawbacks': a batch's tiles, query blocks within one request)
 - Supersedes, on acceptance:
   - [RFC-0006](RFC-0006-compiler-ir.md#tiling-and-the-execution-plan) 'Tiling and the execution plan': what a tile holds, the production order, and the plan's contents. The plan carries the claim list and one sequence's tiles. It holds neither row ranges, nor stage membership, nor devices.
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout' rule 2: tensors are allocated tile by tile, in this RFC's production order;

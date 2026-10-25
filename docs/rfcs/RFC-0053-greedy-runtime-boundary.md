@@ -61,8 +61,8 @@ Real inactive maximum positions remain committed and are proved zero by the
 selected relation; model-time padding follows the existing implicit-zero rule.
 Append `GreedyMaximum { gadget: u32 }` as private `Tile` tag 4. Existing tags
 0 through 3 retain their encodings. The compiler's model-only execution plan
-remains unchanged; a per-request runtime expansion inserts this separate tile
-before all used table tiles. This tile has no graph shares or query block.
+remains unchanged; the runtime expansion inserts this separate tile, one per batch
+(RFC-0071), before all used table tiles. This tile has no graph shares or query block.
 
 ### Public range and catalog
 
