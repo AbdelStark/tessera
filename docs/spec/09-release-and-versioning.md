@@ -20,7 +20,7 @@ The two release trains are separate so the verifier can ship on its own schedule
 
 - Before 1.0: a minor bump (`0.Y`) may break tier-B interfaces; patch bumps do not. Each milestone in the roadmap is a minor release (`v0.1.0` … `v0.5.0`).
 - From 1.0: standard SemVer for tier B. Tier-A changes follow §3 regardless of SemVer.
-- The minimum supported Rust version (MSRV) is 1.88 (edition 2024): the field marks its selects with `core::hint::select_unpredictable`, stable since 1.88, so that they stay conditional moves in the binary (INV-ARCH-2). An MSRV increase is a minor bump and is noted in the changelog.
+- The minimum supported Rust version (MSRV) is 1.89 (edition 2024). The field marks its selects with `core::hint::select_unpredictable`, stable since 1.88, so that they stay conditional moves in the binary (INV-ARCH-2). The verifier holds its ledger's directory with `std::fs::File::try_lock`, stable since 1.89 ([RFC-0067](../rfcs/RFC-0067-verifier-ledger-encoding.md) 'One writer', #534). An MSRV increase is a minor bump and is noted in the changelog.
 
 ## 3. Protocol and schema versions
 

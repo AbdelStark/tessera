@@ -1,6 +1,6 @@
 [toolchain]
 # Exact pin for reproducible builds (09 §9). verifier/rust-toolchain.toml must pin the same
-# channel (RFC-0001, checked by `cargo xtask check-isolation`). MSRV is 1.88 (09 §2).
+# channel (RFC-0001, checked by `cargo xtask check-isolation`). MSRV is 1.89 (09 §2).
 channel = "1.95.0"
 components = ["clippy", "rustfmt"]
 profile = "minimal"

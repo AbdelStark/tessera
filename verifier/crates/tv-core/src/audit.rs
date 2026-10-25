@@ -27,7 +27,7 @@
 //! | [`pack`] | first-fit decreasing batches of a sample's requests |
 //! | [`VerifierLedger::check_accounting`] | the verifier's own sample, the claim list's parameter set against the policy's, then RFC-0016 checks 1 and 2 for a proof's statement |
 //! | [`VerifierLedger::record_accepted`] | an accepted proof's requests and their `Û`, the accounting checks repeated first |
-//! | [`VerifierLedger::open`], [`LedgerFile`], [`read_ledger`] | a `.tvl` artifact, schema `0x0701`, and its file: one regular file of one name, locked, written atomically with its directory synced |
+//! | [`VerifierLedger::open`], [`LedgerFile`], [`read_ledger`] | a `.tvl` artifact, schema `0x0701`, and its file: one regular file of one name, its directory locked by the kernel for one writer, written atomically with its directory synced |
 //! | [`AuditReport::from_ledger`] | the report at the deadline, `tessera.audit-report/1` |
 //!
 //! # Specification
@@ -124,11 +124,16 @@
 //!
 //! The file ([`LedgerFile`], [`read_ledger`]) is a regular file, not a symbolic link and of one
 //! hard link, else `ERR-USAGE`, checked without opening it, so a FIFO never blocks; its
-//! directory is resolved once at open. A write goes to a synced temporary file renamed over the
-//! old one, then syncs the directory, a failure of which is `ERR-RES-IO`, under a lock file that
-//! keeps a second writer out and that its writer removes only while it still holds its token.
-//! Before each rename the lock must still hold the writer's token and the ledger must still be
-//! the file it last read or wrote, by device and inode, else `ERR-RES-IO` and nothing is written.
+//! directory is resolved once at open. A writer holds the kernel's exclusive lock on that
+//! directory (`File::try_lock`, `flock` on Unix) from the open until it is dropped or its process
+//! ends, a crash included, so a second writer, in this process or another, is refused with
+//! `ERR-RES-IO` at once, and no stale lock is left: removing or renaming files in the directory,
+//! or renaming the directory, lets none in. A reader of a snapshot takes no lock. A write goes to
+//! a synced temporary file renamed over the
+//! old one, then syncs the directory, a failure of which is `ERR-RES-IO`. Before each rename the
+//! directory's path must still lead to the locked directory and the ledger must still be the
+//! file the writer last read or wrote, each by device and inode, else `ERR-RES-IO` and nothing is
+//! written.
 //! A ledger that does not change is not written, and one that would not reopen under
 //! [`LEDGER_LIMITS`], `tv-codec`'s message limits, which every reader uses too, is refused,
 //! `ERR-CODEC-LIMIT`, before anything is written. A toss records in one ledger, the first it is

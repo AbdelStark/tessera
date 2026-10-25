@@ -82,18 +82,24 @@ A sample is the verifier's when it derived it itself, with its own share. One wh
 - **The accounting checks run again** before the change, so no request is recorded twice. A batch of no request records nothing.
 - **The file.** The verifier writes the new ledger to a temporary file beside the old one, syncs it, renames it over the old one, and syncs the directory. The file then holds the old ledger or the new one whenever the writer stops. The ledger in memory changes only once the file holds the new one, and a failed write means the verdict is not `Accept`.
   - **The directory's sync** is part of the write. If it fails, the write fails with `ERR-RES-IO`: after a power loss the old ledger could return, and with it a request accepted again (INV-AUD-3).
-  - **The path.** The ledger is a regular file, neither a symbolic link nor a file of several hard links, else `ERR-USAGE`. Two names for one ledger would give two locks.
+  - **The path.** The ledger is a regular file, neither a symbolic link nor a file of several hard links, else `ERR-USAGE`. Two names for one ledger could be written as two ledgers.
     - Its directory is resolved once when the ledger is opened.
     - A path that is not a regular file, such as a FIFO, is refused before it is opened, by metadata that does not follow links. The file opened must then be the one checked, by device and inode.
     - The rules hold at open and again before every write, since a hard link added later would make a second ledger, and for a reader of a snapshot, which takes no lock.
     - A missing ledger is `ERR-RES-IO`.
-  - **Off Unix**, where the standard library offers neither a directory sync nor a link count, a writer has no durable rename to rely on. The guarantees above are Unix's.
-- **One writer.** A lock file, `<name>.lock`, created exclusively, keeps a second writer out while the first holds the ledger.
-  - A lock left by a crash refuses later writers with `ERR-RES-IO`. Only the operator removes it, after checking that no verifier runs.
-  - A reader of a snapshot takes no lock.
-  - The lock is per canonical path: two mount points of one directory give two locks, so an operator opens a ledger by one path only.
-  - A writer removes only the lock it created, which names it, so a lock taken over after an operator cleared a stale one survives the first writer's exit.
-  - **Before each rename** a writer checks that the lock still holds its token and that the ledger is still the file it last read or wrote, by device and inode. Otherwise it writes nothing, `ERR-RES-IO`, and the verdict is not `Accept`. A writer whose lock was cleared while it stalled could otherwise rename a stale ledger over another writer's record, and accept one request twice. The check and the rename are two steps: a writer that stalls between them, while an operator clears its lock and another writer runs, can still do so. Only a kernel lock that the system releases with the process closes that window (#534).
+  - **Off Unix**, where the standard library offers neither a directory sync nor a link count, a writer has no durable rename to rely on, and takes no lock. The guarantees above are Unix's (09 §8 supports no other host). On a Unix where `std` cannot lock a directory, every writer is refused.
+- **One writer.** A writer holds an exclusive kernel lock on the ledger's directory, resolved once when the ledger is opened, for as long as it holds the ledger (#534).
+  - **The lock** is the operating system's advisory file lock on the directory itself, taken through `std::fs::File::try_lock` (Rust 1.89): `flock` on Linux and macOS. A second writer does not wait: its `try_lock` fails, and it is refused with `ERR-RES-IO`, whether it opens the held ledger or creates another in the held directory.
+  - **No stale lock.** The system releases the lock when its process ends, a crash included, so no operator step clears it. A child process the host is spawning at that moment holds a copy of its open files until its program starts, so a lock can outlive its holder by that instant; a writer then refused with `ERR-RES-IO` tries again.
+  - **What an operator cannot do.** Removing or renaming a file in the directory does not release the lock, and neither does renaming the directory, which keeps its inode. A second writer is refused by every name the ledger has.
+  - **What it can.** An operator who moves the ledger into another directory makes a second ledger there, which another writer can hold: one ledger per verifier ('One ledger per verifier') is the operator's to keep, as it is for a copy. A writer stalled past its checks recreates nothing there.
+  - **One writer per directory.** The lock covers the directory, so a directory holds one ledger's writer at a time, the verifier's one ledger. Two paths to one directory, mount points included, give one lock.
+  - **A reader of a snapshot** takes no lock.
+  - **Before each rename** a writer checks that the ledger is still the file it last read or wrote, and that the directory's path still names the directory it locked, each by device and inode. Otherwise it writes nothing, `ERR-RES-IO`, and the verdict is not `Accept`.
+    - An operator who replaced the file meanwhile left a ledger the writer has not read.
+    - An operator who put a new directory at the path, and moved the ledger into it, would let a second writer lock the new one while this writer's file checks still passed.
+    - The lock, held throughout, keeps every other writer of the locked directory out, so the check and the rename leave no window for one. One case remains: an operator who replaces the directory between the check and the rename, and moves the writer's temporary file into the new one. Closing it needs a rename relative to the locked directory's handle, which `std` does not offer.
+  - **Local file systems.** A network file system may not honour `flock`. The ledger lives on a local one.
   - **One ledger per verifier.** A toss and its sample belong to the verifier's one ledger. A second ledger file would hold its own `derived` and `proven`, and could accept a request the first holds. So a toss records its sample only in the first ledger it is revealed into, by canonical path, and is refused by any other (`ERR-USAGE`). The operator keeps one ledger, opened by one path.
   - **A failed directory sync after the rename** leaves a file that may hold the new record while the verdict is not `Accept`. A report from the ledger then counts the request as accepted. A report built from kept verdicts disagrees with that ledger, and is refused (`ERR-USAGE`) until the operator reconciles the two.
   - **One limit.** The ledger is written and read under the same decode limits, `tv-codec`'s message limits, so a ledger a writer accepts is one every reader opens.
@@ -134,8 +140,9 @@ Every failure of check 2 gives one reason, so its checks need no order among the
 ## Drawbacks
 
 - A report from the ledger alone cannot tell a rejected proof from a missing one.
-- A stale lock needs an operator, and so does a temporary file left by a crash.
-- An operator who clears a live writer's lock can still, in the window between that writer's check and its rename, lose a record (#534).
+- A temporary file left by a crash needs an operator. The lock does not: the system releases it with the process.
+- The lock is advisory and local: a network file system may not honour it, and a process that writes the ledger without taking it is not kept out.
+- One ledger writer per directory, since the lock covers the directory.
 - A verifier that restarts between a toss's commitment and its reveal loses that period's audit (#529).
 
 ## Migration / Rollout
@@ -146,7 +153,7 @@ Every failure of check 2 gives one reason, so its checks need no order among the
 
 - **Encoding.** Every rule above, refused at its offset; round trips of seeded ledgers.
 - **Writes.** A write interrupted at each of its four steps leaves the old ledger byte for byte; a second writer is refused; creating over an existing file is refused.
-- **Accounting.** A request outside the sample, one in two accepted batches, and one named twice in a batch are each refused, as is another manifest. A batch of 2,000,000 requests is checked within a time bound. A sample whose toss opens but which the verifier did not derive is refused, by the accounting and by the report. A second prover share for one toss, and a second toss over one manifest, are refused. A claim list of another parameter set than the policy's is `Reject(Params)` and records nothing, ahead of every check of the statement and after the sample's own (#530).
+- **Accounting.** A request outside the sample, one in two accepted batches, and one named twice in a batch are each refused, as is another manifest. A batch of 2,000,000 requests is checked within a time bound. A sample whose toss opens but which the verifier did not derive is refused, by the accounting and by the report. A second prover share for one toss, and a second toss over one manifest, are refused. A second writer is refused while the first holds the directory, from the same process and from another, by every name of the ledger and after the directory is renamed; a writer stalled before its rename loses no record; a killed holder's lock is released with no operator step; a replaced ledger or directory is not written over (#534). A claim list of another parameter set than the policy's is `Reject(Params)` and records nothing, ahead of every check of the statement and after the sample's own (#530).
 - **The file.** A failed directory sync, a symbolic link, a second hard link and a FIFO are each refused.
 - **Report.** A missing proof is `Unproven(DeadlineMissed)`.
 - **Sampling.** The prover's and the verifier's samples agree over 1,000 seeds, with keys that share sessions and ids whose numeric and byte orders differ (`tessera-protocol`'s `audit_verifier.rs`, DEP-2). Their audit plans agree within `10^{-12}` relative over random profiles.
