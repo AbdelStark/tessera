@@ -123,7 +123,7 @@ The integrality-requiring inputs, each with the domain it must lie in (every dom
 | `AssertEqual` | both inputs | the centered field range |
 | `SoftmaxRow` | scores | `[−2^21, 2^21]`, with a spread `x_hi − x_lo` below `2^{key_bits}` of its `Exp` table, since each key is the row maximum less a score. INT8 heads of width 128 reach `2^21` at `q = k = −128`. `key_bits` is the narrowest width from `bits(128 · 255 · d_head)` up whose last key maps to 0, the key every masked position looks up ([RFC-0030](RFC-0030-masked-exponentials.md#relation-1-every-position-looked-up)). |
 | `RsqrtRow` | sums of squares | `u ≥ 0` and `u + e < 2^55`; the node needs `e ≥ 1`, and `w ≤ 32` for its range check to be one lookup |
-| `Argmax`, `InverseCdf` | logits; one-hot entries | the centered field range; `[0, 1]` |
+| `Argmax`, `InverseCdf` | logits; one-hot entries | the centered field range; `[0, 1]`, and the output of a `OneHot`, read directly or by a `Slice` or `GatherPublic` that keeps each vocabulary row whole: Lemma 9's argument needs Lemma 8's exactly one 1 per row, which bits from any other operation do not give ([RFC-0009](RFC-0009-gadgets.md), [#540](https://github.com/AbdelStark/tessera/issues/540)) |
 
 Violations: an integrality-requiring input with an unbounded range raises `ERR-COMPILE-WRAP`; one whose range leaves its domain raises `ERR-COMPILE-RANGE`, and so does a key outside every feasible gadget's bound (gadget selection).
 

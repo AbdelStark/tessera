@@ -1623,6 +1623,11 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Security
 
+- `Argmax` and `InverseCdf` take their one-hot input from a `OneHot` ([#540](https://github.com/AbdelStark/tessera/issues/540), RFC-0006 'Range analysis', RFC-0009 Lemmas 8 and 9):
+  - **The gap.** Range analysis checked only that each entry of the one-hot input lies in `[0, 1]`. Lemma 9's uniqueness argument needs Lemma 8's "exactly one 1", which `OneHot`'s relations prove and bits from `BitDecompose` or a committed input's declared range do not. Greedy decoding is native today (RFC-0053), and the Llama lowering emits neither operation, so no proof was exposed.
+  - **The rule.** The input is a `OneHot`'s output, read directly or by a `Slice` of a position axis or a `GatherPublic` of rows, which keep each vocabulary row whole. Anything else is `ERR-COMPILE-RANGE`.
+  - **Tests.** Each source, for both operations: a direct read, the next token's slice and a gather pass; a slice of the vocabulary axis, decomposed bits and a committed input are refused.
+
 - Range analysis refuses a committed graph input whose declared range no operation proves (RFC-0006 'Committed graph inputs', [#527](https://github.com/AbdelStark/tessera/issues/527)):
   - **The gap.** A graph input committed in the advice holds whatever the prover commits, and its readers trust its declared range. Nothing checked that an operation proves it. A committed byte under `ConstAdd(0)` then `BitDecompose { 8, 1 }` was proven below 512 only, and a `Bitwise8` lookup taking it as the low operand of `a + 2^8·b` admitted two witnesses. The AES circuit's key and plaintext were bytes only if the graph around it proved them.
   - **The rule.** Every element of every advice-committed graph input is read by an operation that proves its declared range and pins its padded positions. Two operations count:
