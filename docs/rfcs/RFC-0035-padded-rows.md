@@ -60,7 +60,7 @@ A gadget's rows are indexed by layer, by head where its instances are per head, 
 
 with the head factor only for per-head rows. `LT` has an `O(n)` closed form ([RFC-0010](RFC-0010-proof-schedule.md#multilinear-extensions)), so the verifier evaluates `ψ̃` at any point in `O(log)` time. For the output gadgets, `Argmax` and `InverseCdf`, and for the scoring bound, `t` runs over the positions whose next token the statement records. On a real row `ψ = 1`, and every relation is the one RFC-0009 or RFC-0017 states.
 
-**A batch of several requests** ([RFC-0071](RFC-0071-request-slots.md#the-public-selectors)). Each request `r` takes a slot of `S` rows of one token axis, with its `n_r` positions first. The token factor becomes `Σ_{r<R} eq(r_b, r)·LT(r_p, n_r)`, with `r_p` the position's variables within the slot and `r_b` the request's, `O(R·log S)` for the verifier. For the output gadgets and the scoring bound, the rows are each request's positions `prompt_len_r − 1` to `n_r − 2`. With one request this is the formula above.
+**A batch of several requests** ([RFC-0071](RFC-0071-request-slots.md#the-public-selectors)). Each request `r` takes a slot of `S` rows of one token axis, with its `n_r` positions first. The token factor becomes `Σ_{r<R} eq(r_β, r)·LT(r_p, n_r)`, with `r_p` the position's variables within the slot and `r_β` the request's, `O(R·log S)` for the verifier. For the output gadgets and the scoring bound, the rows are each request's positions `prompt_len_r − 1` to `n_r − 2`. With one request this is the formula above.
 
 ### What a padded row holds
 

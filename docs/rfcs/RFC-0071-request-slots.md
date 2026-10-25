@@ -5,17 +5,18 @@
 - Created: 2026-10-25
 - Target milestone: v0.4
 - Amends, in both protocols where they apply:
-  - [RFC-0006](RFC-0006-compiler-ir.md#llama-lowering) 'Operations' (`MatMulAct`, `SoftmaxRow`) and 'Llama lowering': one graph covers one batch, and attention reads within a slot;
-  - [RFC-0044](RFC-0044-lowering-nodes.md#graph-inputs) 'Graph inputs': a batch's token axis and positions;
+  - [RFC-0006](RFC-0006-compiler-ir.md#llama-lowering) 'Operation set' (`MatMulAct`, `SoftmaxRow`), 'Range analysis' and 'Llama lowering': one graph covers one batch, which carries its slot length and its requests' lengths, and attention reads within a slot;
+  - [RFC-0044](RFC-0044-lowering-nodes.md#graph-inputs) 'Graph inputs' and 'A layer': a batch's token axis, positions and scores;
   - [RFC-0010](RFC-0010-proof-schedule.md#multilinear-extensions) 'Relations', 'Multilinear extensions' and 'Tree levels', [RFC-0030](RFC-0030-masked-exponentials.md#the-causal-selector) 'The causal selector' and its root claim, [RFC-0035](RFC-0035-padded-rows.md#the-row-selector) 'The row selector': sums over the requests;
-  - [RFC-0034](RFC-0034-causal-blocks.md#zero-rows) 'Causal layout' and 'Zero rows', [RFC-0046](RFC-0046-advice-segments.md#short-query-blocks) 'Short query blocks', [RFC-0041](RFC-0041-execution-plan.md) 'Non-Goals', 'Tiles' and 'The plan': a slot's keys and query blocks;
+  - [RFC-0034](RFC-0034-causal-blocks.md#zero-rows) 'Causal layout' and 'Zero rows', [RFC-0046](RFC-0046-advice-segments.md#short-query-blocks) 'Short query blocks', [RFC-0041](RFC-0041-execution-plan.md) 'Non-Goals', 'Tiles', 'The plan' and 'Drawbacks': a slot's keys and query blocks;
   - [RFC-0037](RFC-0037-stage-schedule.md#rotate) '`Rotate`': a row's position is its place in its request;
   - [RFC-0047](RFC-0047-advice-order.md#the-maximum-layout) 'The maximum layout' and 'A request's sequence length', and [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) rule 4: the padded rows between slots;
-  - [RFC-0053](RFC-0053-greedy-runtime-boundary.md#public-request-and-sources) 'Public request and sources': one maximum for the batch, a key column and key relation per request;
+  - [RFC-0053](RFC-0053-greedy-runtime-boundary.md#public-request-and-sources) 'Public request and sources', the native relations and 'Schedule, transcript and budget': one maximum for the batch, a key column and key relation per request with outputs, one observation when none has, and their registration order;
   - [RFC-0017](RFC-0017-scoring.md#in-circuit-scoring-mixture) 'In-circuit scoring': each request's window;
-  - [RFC-0016](RFC-0016-audit-sampling.md#batching) 'Batching': packing by slot class;
+  - [RFC-0016](RFC-0016-audit-sampling.md#batching) 'Motivation' and 'Batching': packing by slot class;
+  - [RFC-0057](RFC-0057-one-proof-unit.md) 'Non-Goals': several requests in one unit are RFC-0071's;
   - [RFC-0015](RFC-0015-transcript-anchor.md#circuits) 'Circuits': a request's frames bind its own rows;
-  - [RFC-0054](RFC-0054-token-groups.md#groups) 'Groups' and [RFC-0056](RFC-0056-native-working-sets.md#open-questions) OQ-0056-2: the batch's token index;
+  - [RFC-0054](RFC-0054-token-groups.md#groups) 'Groups', and [RFC-0056](RFC-0056-native-working-sets.md#open-questions) 'Working sets with the native relations', 'Score instances without the score tensor' and OQ-0056-2: the batch's token index and form;
   - [RFC-0019](RFC-0019-verifier.md#check-order) 'Check order' step 4, [03 §4](../spec/03-data-model.md#4-statement-and-protocol-types) and [02 §2.2](../spec/02-public-api.md): the batch's rules and its tokens.
 - Origin: [#357](https://github.com/AbdelStark/tessera/issues/357)
 
@@ -34,7 +35,7 @@ At 405B, a 16K-token batch of 16 requests of 1K takes about 2.07 GB of `tessera-
 
 ## Motivation
 
-- **Audits batch requests.** RFC-0016 packs a sample's requests by first-fit decreasing up to `max_batch_tokens`, a memory bound, so that at most one batch falls below `min_batch_tokens` (16,384 by default). Each batch is one statement. Requests are typically far shorter than a batch.
+- **Audits batch requests.** RFC-0016 packed a sample's requests by first-fit decreasing up to `max_batch_tokens`, a memory bound, so that at most one batch fell below `min_batch_tokens` (16,384 by default). Each batch is one statement. Requests are typically far shorter than a batch.
 - **What a proof costs regardless of its size.** The advice opening's combined rows are at most `17 × 2^{22}` `Fp2` values, 1.14 GB, in every `tessera-protocol/1` proof, and 21 rows in `tessera-protocol/2`. The weights' openings add about 0.35 GB (08 §5). A proof per request pays both each time.
 - **The cost model already assumes batches.** RFC-0056 prices `T` tokens at `S` positions of context as `T/S` whole sequences of `S`. RFC-0054 and RFC-0055 index one padded token axis of the batch.
 - **What follows one sequence.** The lowering, the selectors, the layout and both workspaces' code. The verifier's driver refuses a batch of two (`let [request] = …`), and so does the CLI's `prove --sample` (#357).
@@ -50,7 +51,7 @@ At 405B, a 16K-token batch of 16 requests of 1K takes about 2.07 GB of `tessera-
 ## Non-Goals
 
 - **A request longer than one proof holds**: chunks and their linking (#470). A batch holds whole requests from their first token (RFC-0057).
-- **Temperature batches.** The sampler PRF's counter and stream class are per request (RFC-0017, RFC-0061), and RFC-0053's certificate is greedy only. A batch of temperature requests keeps one request until the sampling work (#144) states them per slot. `PublicStatement` keeps one `PredictorSpec` per batch (OQ-0036-1).
+- **Batches of other predictors.** A batch of several requests uses exact greedy (`Exact { Greedy }`), the predictor RFC-0053's certificate covers. The sampler PRF's counter and stream class are per request (RFC-0017, RFC-0061), and the mixture's scoring is not yet implemented. Every other request is a batch of its own until the sampling work (#144) states them per slot. `PublicStatement` keeps one `PredictorSpec` per batch (OQ-0036-1).
 - **Several requests in one slot.** A slot holds one request, and a batch's slots one length ('Alternatives Considered' 4).
 
 ## Proposed Design
@@ -61,7 +62,7 @@ A batch is `statement.batch.requests`, `R ≥ 1` requests in that order, with `n
 - **The slot length** is `S = 2^{b}`, with `b = ⌈log2 max_r n_r⌉`. Write `n_max = max_r n_r`, and `n_r = 0` for the empty slots `R ≤ r < 2^{⌈log2 R⌉}`.
 - **One request.** With `R = 1` the token axis is today's, of `n` rows, and `S = 2^{⌈log2 n⌉}` is its padded length: every rule below reduces to today's, since `⌊τ/S⌋ = 0`.
 - **The token axis.** Request `r`'s position `p < n_r` is row `τ = r·S + p`. For `R ≥ 2` the graph's token axis has `N = R·S` rows, every slot whole, so that a slot's reads stay inside the axis. It is padded, as every axis is, to `2^{b + ⌈log2 R⌉}` rows. With `R = 1`, `N = n`.
-  - A point of it is `(r_p, r_b)`: `r_p` the `b` variables of the position within a slot, lowest, and `r_b` the `⌈log2 R⌉` variables of the request.
+  - A point of it is `(r_p, r_β)`: `r_p` the `b` variables of the position within a slot, lowest, and `r_β` the `⌈log2 R⌉` variables of the request.
 - **Real and padded rows.** A row is **real** when its position is below its request's length: `τ mod S < n_{⌊τ/S⌋}`, with `⌊τ/S⌋ < R`. Every other row of the padded axis is a **padded row**: the rows between `r·S + n_r` and `(r + 1)·S`, and the axis's own padding.
 - **A padded row's values** are RFC-0035's at every node, whatever the node computes on a real row:
   - the token 0, and `OneHot`'s output the zero vector, since `Σ_v h_v = ψ = 0` there;
@@ -80,10 +81,10 @@ One graph covers one batch (RFC-0006 'Llama lowering'). `lower(model, lengths)` 
 - **Attention reads within a slot.** RFC-0044's head layouts are unchanged: `Transpose`, `Expand`, `Reshape`, whose token axis stays whole. Q, K and V reach the scores as `[n_heads, N, d_head]`. Two operations then read rows of one slot, by the graph's slot length `S`. A batch's graph carries it, a public parameter the batch descriptor fixes, and a graph of one request carries none (RFC-0006). With `R = 1`, `⌊τ/S⌋ = 0`, and both are RFC-0006's operations unchanged:
   - **The scores.** `MatMulAct(q, k)` gives `[n_heads, N, n_max]`, whose entry `(h, τ, j)` is `Σ_d q[h, τ, d]·k[h, ⌊τ/S⌋·S + j, d]`: query row `τ` against key `j` of `τ`'s own request.
   - **The weighted values.** `MatMulAct(e, v)` contracts the key axis the same way: `Σ_j e[h, τ, j]·v[h, ⌊τ/S⌋·S + j, d]`.
-  - **On the padded cube.** Each is a matmul batched over the head and the request variables `r_b`, which the query and the key share:
+  - **On the padded cube.** Each is a matmul batched over the head and the request variables `r_β`, which the query and the key share:
 
     ```text
-    Z̃(r_h, r_p, r_b, r_j) = Σ_{h, β, d} eq((r_b, r_h), (β, h)) · Q̃(h, (r_p, β), d) · K̃(h, (r_j, β), d)
+    Z̃(r_h, r_p, r_β, r_j) = Σ_{h, β, d} eq((r_β, r_h), (β, h)) · Q̃(h, (r_p, β), d) · K̃(h, (r_j, β), d)
     ```
 
     `r_j` is the key's `b` variables. This is RFC-0010's stacked `MatMulAct`, `Σ_{s, j} eq(ρ, s)·Ã(s, r_a, j)·B̃(s, j, r_c)`, its stacking variables `s = (β, h)`, the request's lowest, as they lie in the operands' token and head axes, and its sumcheck over `(j, b)` with `j` low. The weighted values are the same with `e` and `v`.
@@ -97,13 +98,13 @@ Each public predicate that names a length becomes a sum over the requests. Each 
 - **The row selector** (RFC-0035):
 
   ```text
-  ψ̃ = LT(r_ℓ, n_layers) · LT(r_h, n_heads) · Σ_{r < R} eq(r_b, r) · LT(r_p, n_r)
+  ψ̃ = LT(r_ℓ, n_layers) · LT(r_h, n_heads) · Σ_{r < R} eq(r_β, r) · LT(r_p, n_r)
   ```
 
   For the output gadgets and the scoring bound, a request's rows are its positions `prompt_len_r − 1` to `n_r − 2`, those whose next token the statement records.
-- **The causal selector** (RFC-0030, RFC-0010 'Multilinear extensions'). It is `C(τ, j) = [j ≤ τ mod S < n_{⌊τ/S⌋}]`, keys counted within the query's request. Its extension over a score instance's query variables `(r_p, r_b)` and key variables `r_j` is `Σ_{r<R} eq(r_b, r)·C_r(r_p, r_j)`, with `C_r` RFC-0030's selector for one sequence of `n_r`.
-- **`SoftmaxRow`'s root claim** (RFC-0030, RFC-0010 'Tree levels'). It is `1 − LT(r_ℓ, n_layers)·LT(r_h, n_heads)·Σ_{r<R} eq(r_b, r)·LT(r_p, n_r)`. A real row's tree has root 0, and every other tree root 1.
-- **RoPE's kernel** (RFC-0037 '`Rotate`'). It reads each real row's position and is zero on padded rows. The verifier's inner products run over the real rows, `Σ_r eq(r_b, r)·eq(r'_b, r)·Σ_{p<n_r}(…)`: `O(Σ_r n_r·d_head/2)` operations, as one sequence's `O(n·d_head/2)`.
+- **The causal selector** (RFC-0030, RFC-0010 'Multilinear extensions'). It is `C(τ, j) = [j ≤ τ mod S < n_{⌊τ/S⌋}]`, keys counted within the query's request. Its extension over a score instance's query variables `(r_p, r_β)` and key variables `r_j` is `Σ_{r<R} eq(r_β, r)·C_r(r_p, r_j)`, with `C_r` RFC-0030's selector for one sequence of `n_r`.
+- **`SoftmaxRow`'s root claim** (RFC-0030, RFC-0010 'Tree levels'). It is `1 − LT(r_ℓ, n_layers)·LT(r_h, n_heads)·Σ_{r<R} eq(r_β, r)·LT(r_p, n_r)`. A real row's tree has root 0, and every other tree root 1.
+- **RoPE's kernel** (RFC-0037 '`Rotate`'). It reads each real row's position and is zero on padded rows. The verifier's inner products run over the real rows, `Σ_r eq(r_β, r)·eq(r'_β, r)·Σ_{p<n_r}(…)`: `O(Σ_r n_r·d_head/2)` operations, as one sequence's `O(n·d_head/2)`.
 
 The verifier evaluates `ψ̃`, the causal selector and the root claim in `O(R·log S)` each.
 
@@ -111,7 +112,7 @@ The verifier evaluates `ψ̃`, the causal selector and the root claim in `O(R·l
 
 **Greedy** (RFC-0053), one certificate for the batch:
 - **One maximum.** `M` is one tensor on the padded token axis, real on every request's window, positions `prompt_len_r − 1 ≤ p < n_r − 1` of slot `r`, and zero elsewhere. It is one source, in one `GreedyMaximum` tile, with RFC-0053's certificate id of ordinal 0, the graph's node count. When no request of the batch has an output, there is no `M`: no tile, no key column, no `Selected`, only the observation below.
-- **A key column and a key relation per request with outputs,** in batch order: request `r`'s logical key column, named by its ordinal `r`, follows the model's lookup columns and the earlier requests' key columns. A request without outputs has neither, as RFC-0053 omits them. The key relation reads `M`, `L` and `Hplus` with the time coefficient `Σ_{u < output_len_r} eq(P_row, u)·eq(r_time, (prompt_len_r − 1 + u, r))`, the time point `(r_p, r_b)` of row `r·S + p`.
+- **A key column and a key relation per request with outputs,** in batch order: request `r`'s logical key column, named by its ordinal `r`, follows the model's lookup columns and the earlier requests' key columns. A request without outputs has neither, as RFC-0053 omits them. The key relation reads `M`, `L` and `Hplus` with the time coefficient `Σ_{u < output_len_r} eq(P_row, u)·eq(r_time, (prompt_len_r − 1 + u, r))`, the time point `(r_p, r_β)` of row `r·S + p`.
 - **The registration order** (RFC-0053 'Schedule, transcript and budget'): token binding, then the key relations in batch order, then `Selected`; or, when no request has an output, token binding then the logit observation.
 - **Selected,** once over the whole token axis, with `M`. Its `active(τ)` is 1 exactly on the windows.
 - **Token binding,** once over every row of the token axis, real or padded, as RFC-0053 binds every row. With `OneHot`'s `Σ_v h_v = ψ`, which puts a padded row's one-hot at zero (RFC-0035), it keeps a padded row's token at 0.
@@ -121,7 +122,7 @@ The verifier evaluates `ψ̃`, the causal selector and the root claim in `O(R·l
 
 One `M`, which every key relation reads within its own window and `Selected` pins on every window, leaves no entry of the certificate outside a relation.
 
-**Scoring** (RFC-0017). Request `r`'s `Û_r` sums its window's rows, positions `prompt_len_r − 1` to `n_r − 2` of its slot. Its sum runs over the whole token axis with the public factor `eq(x_b, r)·[prompt_len_r − 1 ≤ x_p ≤ n_r − 2]`, so its claim on the per-token bounds is at a random point, never at Boolean request coordinates (R8). The batch's `Û` is the sum of the `Û_r`.
+**Scoring** (RFC-0017), for a predictor that scores, once its batches are admitted (#144). Request `r`'s `Û_r` sums its window's rows, positions `prompt_len_r − 1` to `n_r − 2` of its slot. Its sum runs over the whole token axis with the public factor `eq(x_b, r)·[prompt_len_r − 1 ≤ x_p ≤ n_r − 2]`, so its claim on the per-token bounds is at a random point, never at Boolean request coordinates (R8). The batch's `Û` is the sum of the `Û_r`.
 
 ### The plan and the layout
 
@@ -131,13 +132,13 @@ One `M`, which every key relation reads within its own window and `Selected` pin
   - **Zero rows.** RFC-0034's rule applies to the query block's request, with its length `n_r`.
 - **The advice layout** is a function of the claim list and the batch descriptor (INV-PCS-1), in the plan's production order, so a batch's rows follow the token axis. RFC-0011 rule 4 applies to the padded rows between slots as to the axis's end: a row is skipped when every position it holds is a padded row's public zero. A row of a lookup output whose padded value is not 0 (RFC-0035) is committed.
 - **The maximum layout.** A batch's layout must fit in at most `2^{32}` rows (RFC-0047). The claim list's check at `n = max_context` (RFC-0007 step 6) does not cover a batch, whose token axis can be longer than `max_context`. So the verifier computes the batch's row count from the claim list and the batch descriptor, before it allocates anything, and refuses one past the bound at statement binding.
-- **Token groups** (RFC-0054 'Groups'). The batch's token index is the padded token axis's row. A prover groups a batch with `g_T ≤ b` token bits, so that each group fixes low position bits only and holds every slot's positions alike, as RFC-0054's equal load needs. With `g_T > b` a group would hold one position of some slots, and the positions' keys differ in number.
+- **Token groups** (RFC-0054 'Groups'). The batch's token index is the padded token axis's row. A prover's planner groups a batch with `g_T ≤ b` token bits, so that each group fixes low position bits only and holds every slot's positions alike, as RFC-0054's equal load needs. With `g_T > b` a group would hold one position of some slots, and the positions' keys differ in number. The rule is the planner's, and changes no verdict: the verifier checks only RFC-0054's bounds. A planner that cannot meet its memory budget within it fails with `ERR-RES-MEMORY`.
 
 ### The statement and the batching
 
 **The statement.** RFC-0019 step 4 checks the batch, each check a `Reject(StatementMismatch { field: Batch })`:
 - at least one request, and no request named twice: no two with an equal `RequestKey`, `(session_id, request_id)` (03 §4, RFC-0063);
-- for `R ≥ 2`, a predictor of exact greedy: until the sampling work (#144) states the sampler per slot, a temperature batch holds one request;
+- for `R ≥ 2`, the predictor `Exact { Greedy }`: a batch of any other predictor holds one request, until the sampling work (#144) states the sampler and the scoring per slot;
 - each request's `prompt_len_r ≥ 1` and `n_r ≤ max_context`. A request without a prompt would start its window at position −1, in the slot before it;
 - the batch's advice layout, as computed above, within the maximum layout.
 
@@ -149,8 +150,9 @@ The requests' order in `statement.batch` is the slots' order, `RequestKey` order
 - **A class.** Request `r`'s class is `c_r = ⌈log2 max(L_r, 1)⌉`, with `L_r` its tokens. Within each of RFC-0016's groups, the requests of one class are packed together, the classes in decreasing order.
 - **Counted tokens.** A batch of `R` requests of class `c` counts `2^{c + ⌈log2 R⌉}` tokens, the rows its token axis spans, against `max_batch_tokens`, which then bounds its memory.
 - **The packing** is first-fit decreasing within a class, the requests in RFC-0016's order: each goes into the first batch whose counted tokens stay at most `max_batch_tokens` with it, else into a new batch. A request whose class alone, `2^c`, exceeds `max_batch_tokens` is a batch on its own.
-- **The minimum.** In counted tokens, at most one batch per class has fewer than `min_batch_tokens`. In real tokens, a class's batches can fall below it.
-- **Temperature requests.** Until the sampling work (#144) states the sampler per slot, each request that does not decode greedily is a batch on its own.
+- **The minimum.** In counted tokens, at most one batch per class has fewer than `min_batch_tokens`. Adding one request to a batch at most doubles its counted tokens, so a later batch under the minimum would have had its first request fit in an earlier one, under `2·min_batch_tokens ≤ max_batch_tokens`. In real tokens, a class's batches can fall below it.
+- **The order.** The exact-greedy group's batches come first, class by class in decreasing order, each class's in the order they were opened. The other requests' single batches follow, in `RequestKey` order. This is the order `prove --sample --batch K` numbers (02 §2.2).
+- **Other predictors.** Each request not proven under exact greedy is a batch on its own, until #144.
 - **The cost.** A batch's slots are then its requests' own power of two, at most twice each request's length, as a proof of one request pads today.
 - **What changes with it.** The audit's batches, so `spec/vectors/audit/`'s packing cases, `tessera.audit-batches/1` reports and the batch indices of `prove --sample --batch K`. Both workspaces' packers change with #551. Until then a proof unit holds one request, so every provable batch is a single request either way.
 
@@ -214,14 +216,14 @@ At 64 × 256, `Q' = 256` doubles the attention tiles, whose rows are mostly per 
 ## Drawbacks
 
 - **Batches per class.** Packing by class makes more batches than first-fit decreasing across classes: at most one undersized batch per class rather than per group.
-- **Temperature audits.** Until #144, a temperature request is a proof of its own, so RFC-0016's overhead calculator, which assumes batches of `min_batch_tokens`, understates their cost.
+- **Other predictors' audits.** Until #144, each request not proven under exact greedy is a proof of its own, so RFC-0016's overhead calculator, which assumes batches of `min_batch_tokens`, understates their cost.
 - **Empty slots.** A batch of `R` requests pads its slots to `2^{⌈log2 R⌉}`. Their rows are padded rows, skipped when public zeros, but the relations' rounds count them.
 - **More to keep in step.** The lowering, the selectors, the greedy certificate, scoring and the packing each read the slots in both workspaces. A differential test must keep them equal ('Testing Strategy').
 
 ## Migration / Rollout
 
 1. **This RFC** amends the documents in its header. A batch of one request is unchanged, so no artifact, vector or proof of a proof unit changes. The audit's packing changes ('The statement and the batching').
-2. **Implementation** ([#551](https://github.com/AbdelStark/tessera/issues/551)). Both workspaces lower, select, certify, score and pack per slot. Then the verifier's driver and the CLI's `prove --sample` lift their one-request refusal. Until then a proof unit covers one request, and both refuse a batch of two with `ERR-USAGE`, as today. The packing's vectors (`spec/vectors/audit/`), the `tessera.audit-batches/1` schema's descriptions and its example report change with it.
+2. **Implementation** ([#551](https://github.com/AbdelStark/tessera/issues/551)). Both workspaces lower, select, certify, score and pack per slot. Then the verifier's driver and the CLI's `prove --sample` lift their one-request refusal. Until then a proof unit covers one request, and both refuse a batch of two with `ERR-USAGE`, as today. An empty batch's verdict moves from `Inconclusive(ERR-USAGE)` to `Reject(StatementMismatch { field: Batch })`. The packing's vectors (`spec/vectors/audit/`), the `tessera.audit-batches/1` schema's descriptions and its example report change with it.
 
 ## Testing Strategy
 
@@ -235,7 +237,7 @@ At 64 × 256, `Q' = 256` doubles the attention tiles, whose rows are mostly per 
   - a key read across a slot;
   - a split maximum, raised in one window and compensated outside another;
   - request 1's token bound to request 0's frames;
-  - a request with `prompt_len = 0`, a request named twice, a temperature batch of two requests, and a batch whose layout exceeds the maximum.
+  - a request with `prompt_len = 0`, a request named twice, a batch of two requests under another predictor than exact greedy, and a batch whose layout exceeds the maximum.
 - **End to end.** A batch of two requests of different lengths proves and verifies through the CLI, NI and Live. An exact mismatch in the second request is refused.
 
 ## Open Questions

@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-21
 - Target milestone: v0.3
-- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Public request and sources': in a batch, each request's certificate, key column and time coefficient on its own slot)
+- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Public request and sources', the native relations and 'Schedule, transcript and budget': in a batch, one maximum for the batch, a key column, key relation and time coefficient per request with outputs, one observation only when none has, and their registration order)
 - Origin: #128 and #130; IDEA-0038 / EXP-0025
 - Supersedes: RFC-0009 Argmax's physical range/maximum representation; RFC-0037's native boundary and source schedule; RFC-0045's runtime lookup columns; RFC-0047/0050's complete advice order and RFC-0041's private tile enum, extended below. It adds no protocol-message field or parameter preset and preserves RFC-0011's per-group evaluation checks.
 
@@ -142,7 +142,8 @@ arbitrary product of public MLEs on overlapping axes.
    from outside the proof's canonical token commitment.
 
 For zero-output requests, append a degree-one, zero-valued observation instance
-whose raw final vector contains `L(r)` at the model vocabulary/time point. Its
+whose raw final vector contains `L(r)` at the model vocabulary/time point; in a
+batch, one, and only when no request has an output (RFC-0071). Its
 local relation is identically zero; it asserts no greedy predicate. It sends the
 actual LM-head observation into the ordinary GKR reduction, which still owes
 all graph checks and canonical source openings. Supplying an arbitrary logit
@@ -159,7 +160,9 @@ their canonical locations. A local native check never discharges those debts.
 The verifier derives native tags, owners, projections, lookup counts and field
 counts. Preserve the model's existing native slots in their original order, then
 append token binding, then key and selected for nonempty outputs, or the logit
-observation for empty outputs. Use the actual OneHot node as token-binding owner
+observation for empty outputs. In a batch (RFC-0071): token binding, then each
+request with outputs' key relation in batch order, then one selected; or, when
+no request has an output, token binding then one observation. Use the actual OneHot node as token-binding owner
 and the actual LM-head node as the greedy/observation owner. Native tags follow
 this registration order; a source id never changes the graph's node count. The graph's LM-head boundary and weighted OneHot input boundary may be
 deferred only to these replacements; absence/mismatch is an internal error.

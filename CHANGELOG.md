@@ -11,11 +11,11 @@ All notable changes to the prover release train are recorded here: the crates un
     - **The gap.** Every document and both workspaces assumed one sequence per proof, so a statement's batch could hold one request only.
     - **Slots.** Each request of a batch of two or more takes a slot of `S = 2^{⌈log2 max n_r⌉}` rows of one token axis, positions first. The rows past a request's end are RFC-0035's padded rows.
     - **What changes.** The graph's nodes, the claim list and the plan do not. Attention reads keys and values within the query's slot. The row selector, the causal selector, `SoftmaxRow`'s root claim and RoPE's positions become sums over the requests. One greedy maximum serves the batch, with a key column and key relation per request with outputs, and `Û_r` sums each request's window.
-    - **Statement checks.** The statement refuses an empty batch, a request named twice, a request without a prompt, a temperature batch of several requests, and a batch whose layout exceeds the maximum.
+    - **Statement checks.** The statement refuses an empty batch, a request named twice, a request without a prompt, a batch of several requests under another predictor than exact greedy, and a batch whose layout exceeds the maximum.
     - **The audit's packing** runs per slot class `⌈log2 n⌉`, so that a batch's slots are its requests' own powers of two.
     - **One request is today's proof,** bit for bit.
     - **Cost at 405B,** computed from the compiler's layout: a 16K-token batch of 16 requests of 1K is about 2.07 GB of `tessera-protocol/1` proof, against 25.4 GB as 16 proofs.
-    - It amends RFC-0006, RFC-0010, RFC-0015, RFC-0016, RFC-0017, RFC-0019, RFC-0030, RFC-0034, RFC-0035, RFC-0037, RFC-0041, RFC-0044, RFC-0046, RFC-0047, RFC-0053, RFC-0054, RFC-0056, 02 §2.2 and 03 §4.
+    - It amends RFC-0006, RFC-0010, RFC-0011, RFC-0015, RFC-0016, RFC-0017, RFC-0019, RFC-0030, RFC-0034, RFC-0035, RFC-0037, RFC-0041, RFC-0044, RFC-0046, RFC-0047, RFC-0053, RFC-0054, RFC-0056, RFC-0057, 02 §2.2 and 03 §4.
 
 - The openings of `tessera-protocol/2`'s mask claims, specified ([#489](https://github.com/AbdelStark/tessera/issues/489)):
   - **RFC-0070, 'Opening Every Mask Claim in One Batching Sumcheck in `tessera-protocol/2`'.**

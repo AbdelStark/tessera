@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-24
 - Target milestone: v0.3
-- Amended by: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('What a unit costs': 18 combined rows in `tessera-protocol/2`), [RFC-0013](RFC-0013-zero-knowledge.md) ('What a unit costs': the fold groups' combined rows, #538), [RFC-0070](RFC-0070-mask-batching.md) ('What a unit costs': the masks' batching group)
+- Amended by: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('What a unit costs': 18 combined rows in `tessera-protocol/2`), [RFC-0013](RFC-0013-zero-knowledge.md) ('What a unit costs': the fold groups' combined rows, #538), [RFC-0070](RFC-0070-mask-batching.md) ('What a unit costs': the masks' batching group), [RFC-0071](RFC-0071-request-slots.md) ('Non-Goals': several requests in one unit, in slots of one token axis)
 - Supersedes:
   - [RFC-0018](RFC-0018-gpu-prover-runtime.md) 'Witness engine' (the checkpoints), 'Partitioning', 'Pass structure' (its 'Proof units' paragraph and the passes' count), 'Memory scheduler', 'Release schedule', 'Drawbacks' and 'Testing Strategy', wherever they name proof units: a batch is not split into units, and a request's layers are never split into layer-range units;
   - [RFC-0031](RFC-0031-commitment-id.md#the-descriptor) 'The descriptor': its `unit` is always 0;
@@ -88,7 +88,7 @@ So at the reference statement no budget needs units. They could not replace a me
 ## Non-Goals
 
 - **Chunked requests.** A request longer than one proof holds, and the 128K targets: [#470](https://github.com/AbdelStark/tessera/issues/470) (OQ-0057-1).
-- **Several requests in one proof.** That is one unit holding several requests, [#357](https://github.com/AbdelStark/tessera/issues/357) (v0.4).
+- **Several requests in one proof.** That is one unit holding several requests, [RFC-0071](RFC-0071-request-slots.md) ([#357](https://github.com/AbdelStark/tessera/issues/357)).
 - **Multi-node proving.** As in RFC-0054.
 - **Layer-range partitioning across one node's GPUs** ([RFC-0018](RFC-0018-gpu-prover-runtime.md#partitioning) 'Partitioning', #172). It splits one advice commitment into segments, one per GPU (RFC-0011), and is not a unit. It is unchanged.
 

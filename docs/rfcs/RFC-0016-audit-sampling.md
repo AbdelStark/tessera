@@ -15,7 +15,7 @@
 
 ## Summary
 
-Proving every request is not affordable; proving an unpredictable sample of committed requests is. Production traffic is recorded continuously. At the end of each period the recorder freezes and signs the log. Only then do the parties toss a coin for a sampling seed, from which a public, deterministic rule selects requests at per-length-bucket rates. Every selected request must be proven in full, in batches of at least 16K tokens. The verifier checks that each proof covers only sampled requests and that every sampled request is accounted for. This RFC fixes the policy, the selection rule, batching, the audit report and the detection and overhead calculators.
+Proving every request is not affordable; proving an unpredictable sample of committed requests is. Production traffic is recorded continuously. At the end of each period the recorder freezes and signs the log. Only then do the parties toss a coin for a sampling seed, from which a public, deterministic rule selects requests at per-length-bucket rates. Every selected request must be proven in full, in batches of at least 16K tokens, save at most one per slot class ('Batching', [RFC-0071](RFC-0071-request-slots.md)). The verifier checks that each proof covers only sampled requests and that every sampled request is accounted for. This RFC fixes the policy, the selection rule, batching, the audit report and the detection and overhead calculators.
 
 ## Motivation
 
@@ -94,14 +94,14 @@ The domains `audit-sample` and `audit-select` join RFC-0004's domain table.
 
 The prover packs selected requests into batches by slot class, then first-fit decreasing, with the request order and tie-breaking fixed by `RequestKey` order, so that batch composition is reproducible. A batch of several requests puts each in a slot of its longest request's power of two ([RFC-0071](RFC-0071-request-slots.md#the-statement-and-the-batching)), so a batch holds requests of one class.
 
-- **Groups.** The greedy requests form one group. Until the sampling work (#144) states the sampler per slot, each temperature request is a batch on its own; RFC-0061's sampler keys will then group them.
+- **Groups.** The requests proven under exact greedy form one group. Until the sampling work (#144) states the sampler and the scoring per slot, every other request is a batch on its own; RFC-0061's sampler keys will then group the temperature requests.
 - **Classes.** A request of `L` tokens has class `c = ⌈log2 max(L, 1)⌉`. Within the greedy group, the classes are packed one after another, in decreasing order.
 - **Counted tokens.** A batch of `R` requests of class `c` counts `2^{c + ⌈log2 R⌉}` tokens, the rows its token axis spans.
 - **First-fit decreasing.** Within a class, requests go in decreasing `L`, ties in `RequestKey` order. Each goes into the first batch, in the order the batches were opened, whose counted tokens stay at most `max_batch_tokens` with it, else into a new batch.
 - **A request whose `2^c` exceeds `max_batch_tokens`** is a batch on its own, which takes no other request.
 - **The minimum.** In counted tokens, at most one batch of each class has fewer than `min_batch_tokens`. Two such batches would count under `2 · min_batch_tokens ≤ max_batch_tokens` together, so the later one's first request would have fit in the earlier one. In real tokens a class's batches can fall below it.
 - **A batch's statement** lists its requests in `RequestKey` order.
-- **The CLI.** `tessera audit batch` writes a sample's batches as the `tessera.audit-batches/1` report, each request with the `prompt_len` and `output_len` its statement carries, and `tessera prove --sample --batch K` proves the `K`-th, reading the batches again from the sample and the logs (02 §2.2). Until RFC-0061's pins are implemented, both pack every request in the greedy group.
+- **The CLI.** `tessera audit batch` writes a sample's batches as the `tessera.audit-batches/1` report, each request with the `prompt_len` and `output_len` its statement carries, and `tessera prove --sample --batch K` proves the `K`-th, reading the batches again from the sample and the logs (02 §2.2). Until RFC-0061's pins are implemented, both pack every exact-greedy request in one group, and every other request alone.
 
 ### Verifier checks
 
