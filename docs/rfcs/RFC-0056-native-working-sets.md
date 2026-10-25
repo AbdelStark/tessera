@@ -76,7 +76,7 @@ Composing the native relations also showed duplicated work. Each root's `2·⌈(
 
 ### Score instances without the score tensor
 
-Write the key and forest sums as `Σ_x eq(z, x)·M(x)·(c(ℓ, h, q) − s(x))`, with `s = Q_{ℓ,h,q}·K_{ℓ,g(h),i}` and `M` the causal mask `i ≤ q < n` on real heads and layers. RFC-0010 binds the key index `i` first, its lowest variable.
+Write the key and forest sums as `Σ_x eq(z, x)·M(x)·(c(ℓ, h, q) − s(x))`, with `s = Q_{ℓ,h,q}·K_{ℓ,g(h),i}` and `M` the causal mask `i ≤ q < n` on real heads and layers. RFC-0010 binds the key index `i` first, its lowest variable. In a batch of several requests ([RFC-0071](RFC-0071-request-slots.md#the-lowering)), `q` is a row of the token axis, `i` a key of its slot, `K` is read at `(i, q's request variables)`, and the mask is `i ≤ q mod S < n_r` for `q`'s request `r`.
 
 **Rounds over the key bits**, `j = 1, …, log2 n_pad`.
 - **The split.** Split `i` and `q` at bit `j`, the low parts the first `j` bits.

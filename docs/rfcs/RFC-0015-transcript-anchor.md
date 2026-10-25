@@ -139,7 +139,7 @@ The signed message is `"tessera-manifest/v1" ‖ TCE(manifest without signature)
 
 ### Circuits
 
-For each request in the batch and each direction. In a batch of several requests, request `r`'s tokens are its slot's rows `r·S + p`, prompt then outputs ([RFC-0071](RFC-0071-request-slots.md#the-statement-and-the-batching)):
+For each request in the batch and each direction, the following hold. In a batch of several requests, request `r`'s tokens are its slot's rows `r·S + p`, prompt then outputs ([RFC-0071](RFC-0071-request-slots.md#the-statement-and-the-batching)).
 
 These steps are amended by [RFC-0059 'The circuits'](RFC-0059-frame-headers-and-nonces.md#the-circuits): the counter blocks and each plaintext's 22-byte prefix are public inputs, and the sampler commitment is opened too.
 

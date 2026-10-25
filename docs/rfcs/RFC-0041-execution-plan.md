@@ -71,7 +71,7 @@ The tiles of a sequence of `n` tokens are the following. `N = 2^{⌈log2 n⌉}` 
   - the exponentials `e[h, q, i]` and the reciprocals `R[h, q]`;
   - the gadget's maxima `c[h, q]` and the limbs of its two `NonNeg` instances.
 
-  They are split into one tile per KV head `g` and query block `b`. The tile holds the query heads `h` with `⌊h / (n_heads / n_kv_heads)⌋ = g`, and the queries `q` from `b·Q'` to `(b + 1)·Q' − 1`, every key `i` with them. Here `Q' = min(Q, N)` with `Q = GadgetPolicy.query_block`, and `b` runs from 0 to `N / Q' − 1`.
+  They are split into one tile per KV head `g` and query block `b`. The tile holds the query heads `h` with `⌊h / (n_heads / n_kv_heads)⌋ = g`, and the queries `q` from `b·Q'` to `(b + 1)·Q' − 1`, every key `i` with them. Here `Q' = min(Q, N)` with `Q = GadgetPolicy.query_block`, and `b` runs from 0 to `N / Q' − 1`. In a batch of several requests, `Q' = min(Q, S)` with `S` its slot length, and every key `i` is one of the query block's slot ([RFC-0071](RFC-0071-request-slots.md#the-plan-and-the-layout)).
 - **`Table { table }`.** A lookup table's multiplicities.
 
 Every committed value lies in exactly one tile. A node that commits nothing has no tile.

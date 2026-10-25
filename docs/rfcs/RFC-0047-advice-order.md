@@ -78,7 +78,7 @@ A layout fits when it allocates at most `2^{32}` rows: a row index of at most 32
 A request of `prompt_len` prompt tokens and `output_len` output tokens is a sequence of `n = prompt_len + output_len` positions.
 - **Every committed token is a position.** The anchor commits every token (RFC-0015), and each feeds `OneHot`.
 - **Scoring.** It reads the logits at positions `prompt_len − 1` to `n − 2`, one per output token (RFC-0017). The last position's logits are computed and unused.
-- **The bound.** `n ≤ max_context`, as the context window holds every token. RFC-0019 step 4 refuses a batch holding a request with `n > max_context` (`StatementMismatch { field: Batch }`). The bounds of RFC-0009 Lemma 6 and the advice layout's maximum assume it.
+- **The bound.** `n ≤ max_context`, as the context window holds every token. In a batch each request's `n_r` meets it, and the request takes a slot of the batch's token axis ([RFC-0071](RFC-0071-request-slots.md#the-slots)). RFC-0019 step 4 refuses a batch holding a request with `n > max_context` (`StatementMismatch { field: Batch }`). The bounds of RFC-0009 Lemma 6 and the advice layout's maximum assume it.
 
 ### RFC-0034's zero rows
 

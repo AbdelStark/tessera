@@ -53,7 +53,7 @@ segment j holds layers  j·⌊L/S⌋ + min(j, L mod S)  to  (j+1)·⌊L/S⌋ + m
 
 ### Short query blocks
 
-An attention tile holds the `Q' = min(Q, N)` queries of its block (RFC-0041), with `Q = GadgetPolicy.query_block`. In a batch of several requests, `Q' = min(Q, S)` with `S` its slot length, and `n` below is the slot's `b` bits, the keys being the slot's ([RFC-0071](RFC-0071-request-slots.md#the-plan-and-the-layout)). RFC-0034's layout reads `Q'` for `Q`:
+An attention tile holds the `Q' = min(Q, N)` queries of its block (RFC-0041), with `Q = GadgetPolicy.query_block`. In a batch of several requests, `Q' = min(Q, 2^b)` with `2^b` RFC-0071's slot length, `n` below is the slot's `b` bits and `N` the slot's `2^b` keys ([RFC-0071](RFC-0071-request-slots.md#the-plan-and-the-layout)). RFC-0034's layout reads `Q'` for `Q`:
 
 - `w = min(n, log2 k − log2 Q' − log2 g)`, and a row holds `g·Q'·2^w` entries;
 - a tile of `g·Q'·N ≤ k` entries fits in one row, as RFC-0011 rule 2 places any tensor smaller than a row.
