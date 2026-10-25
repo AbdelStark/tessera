@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.4
-- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('What the verifier sees': tree levels and LogUp roots; 'Masked extensions': `Z` spares the lowest variable; 'LogUp and product-tree roots'; OQ-0013-2), [RFC-0065](RFC-0065-masked-channel-params.md) ('Masked extensions': each `ChannelParams` claim's own mask row, with `Z` over its type tensor's coordinates; 'Hiding openings', 'Simulator argument' step 4 and INV-ZK-2: the pair a matrix's evaluation rows share), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Masked extensions': `Z` vanishes until the round that binds the last of its variables; 'Masked sumcheck': the raised round's `g_j`; 'Cost': the column masks' opening group), [RFC-0069](RFC-0069-one-layer-claims.md) ('Masked extensions' and 'What the verifier sees': a claim at one layer of a stacked committed kind is on the layer's tensor, with its own mask row)
+- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('What the verifier sees': tree levels and LogUp roots; 'Masked extensions': `Z` spares the lowest variable; 'LogUp and product-tree roots'; OQ-0013-2), [RFC-0065](RFC-0065-masked-channel-params.md) ('Masked extensions': each `ChannelParams` claim's own mask row, with `Z` over its type tensor's coordinates; 'Hiding openings', 'Simulator argument' step 4 and INV-ZK-2: the pair a matrix's evaluation rows share), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Masked extensions': `Z` vanishes until the round that binds the last of its variables; 'Masked sumcheck': the raised round's `g_j`; 'Cost': the column masks' opening group), [RFC-0069](RFC-0069-one-layer-claims.md) ('Masked extensions' and 'What the verifier sees': a claim at one layer of a stacked committed kind is on the layer's tensor, with its own mask row), [RFC-0070](RFC-0070-mask-batching.md) ('Masked sumcheck' step 4: no `G_k(r)` is opened alone, the masks' batching opens every one; 'Cost': its group and its pad; INV-ZK-2: the pad's use)
 - Superseded in part by: [RFC-0065](RFC-0065-masked-channel-params.md) ('Cost': the weight budget per proof, `2e + 4` rows for a matrix of `e` claims)
 
 ## Summary
@@ -62,7 +62,7 @@ For a stage proving `H = Σ_x f(x)` over `n` variables with round degree `d`:
 1. In Round 1, the prover commits `G_k(x) = a_0 + Σ_{j=1}^{n} g_j(x_j)` with each `g_j` a random univariate polynomial over `Fp2` of round `j`'s degree `d_j`, the round whose degree masked extensions raise included, up to 7 ('Masked extensions'). Each coefficient, and `a_0`, is two values of the advice mask block. A lower degree would leave a coefficient of that round's message unmasked ([`docs/zk/simulator.md`](../zk/simulator.md) Lemma 4, R4).
 2. In the stage, the prover sends `Γ = Σ_x G_k(x)`; the transcript yields `ρ_k ∈ Fp2` (label `stage/{k}/zk-rho`).
 3. The parties run the sumcheck on `f + ρ_k G_k` with claim `H + ρ_k Γ`.
-4. At the end, `G_k(r)` is opened from the advice commitment as an ordinary claim.
+4. At the end, the prover sends `G_k(r)` last among the stage's final evaluations, and the final check reads it. In `tessera-protocol/2` it is a claim on the masks' block, which [RFC-0070](RFC-0070-mask-batching.md)'s batching sumcheck opens with every other mask claim: `G_k(r)`'s column functional is not an `eq` vector, so no RFC-0011 group opens it alone.
 
 The round messages are then simulatable from `H`, `Γ` and the final evaluation (Chiesa, Forbes, Spooner 2017; Libra, Xie et al. 2019), because each of their non-constant coefficients is masked by a uniform `Fp2` value. Cost: `2(n(d + 1) + 1)` committed elements per stage.
 
@@ -144,7 +144,8 @@ Before any v0.4 implementation work merges, [`docs/zk/simulator.md`](../zk/simul
 |---|---|
 | Mask rows `R_V` (about 2,000 stacked tensors and tree levels, two rows each) | about 1.6×10^10 elements, 0.6% of advice |
 | Stage masking polynomials | < 2×10^4 elements |
-| Blinding rows for advice combined rows (`G + 1 ≤ 17`, two rows each; in `tessera-protocol/2`, `G + 1 ≤ 20` with RFC-0068's column masks' group and the two reduction stages' fold groups) | 34 rows; 40 |
+| Blinding rows for advice combined rows (`G + 1 ≤ 17`, two rows each; in `tessera-protocol/2`, `G + 1 ≤ 21` with RFC-0068's column masks' group, the two reduction stages' fold groups and RFC-0070's batching group) | 34 rows; 42 |
+| The masks' batching ([RFC-0070](RFC-0070-mask-batching.md)) | the pad `S`: 779 `Fp2` rows, 1,558 committed, 0.163% of the advice's non-zero rows; one sumcheck of 32 rounds of degree 2; one opening group. It opens the 46 masked sumchecks' `G(r)` and the 2,621 tree-level mask claims |
 | Weight budget per proof | 6 blinding rows per weight matrix (two each for evaluation, proximity and mask), and `2e + 4` for `ChannelParams`' `e` claims, 18 at `e = 7`: one evaluation pair for the matrix and a mask row per claim ([RFC-0065](RFC-0065-masked-channel-params.md)) |
 | Extra sumcheck work | from the round that binds the last of `Z`'s variables: the last round, or a LogUp leaf level's round before it |
 
@@ -153,7 +154,7 @@ The weight budget per proof is six rows, and the linking proofs take four at eac
 ### Invariants
 
 - **INV-ZK-1.** Every value sent to the verifier is public, uniformly masked, or determined by previously sent values and public data.
-- **INV-ZK-2.** Every mask row, blinding row and masking polynomial is used in exactly one revealed combination or evaluation set, within its degrees of freedom. A matrix's shared pair `β_T` (RFC-0065) is one evaluation set: it enters all of the matrix's evaluation rows, each with its own designated mask row, the rank reading of R5 (`docs/zk/simulator.md`).
+- **INV-ZK-2.** Every mask row, blinding row and masking polynomial is used in exactly one revealed combination or evaluation set, within its degrees of freedom. A matrix's shared pair `β_T` (RFC-0065) is one evaluation set: it enters all of the matrix's evaluation rows, each with its own designated mask row, the rank reading of R5 (`docs/zk/simulator.md`). The masks' pad `S` ([RFC-0070](RFC-0070-mask-batching.md)) is the masks' batching's: the masking polynomials and the tree levels' mask rows enter that batching only through `M + ρ·S`, which `S` covers (Lemma 4a), and every later use is under a block of its own.
 - **INV-ZK-3.** Masking randomness is drawn from the per-proof secret seed's PRG (advice) or from the epoch's mask seed (weights), never from the transcript.
 
 ## Alternatives Considered

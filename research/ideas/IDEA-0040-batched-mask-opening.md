@@ -151,4 +151,4 @@ Nothing here needs an H100. The batching prover's cost is an operation count.
 
 ## Decision and links
 
-Experiments: [EXP-0027](../experiments/EXP-0027-batched-mask-opening/README.md) (`done: validated`). Issue: [#489](https://github.com/AbdelStark/tessera/issues/489), whose RFC is the next step. Ledger line updated on: 2026-10-25.
+Experiments: [EXP-0027](../experiments/EXP-0027-batched-mask-opening/README.md) (`done: validated`). Issue: [#489](https://github.com/AbdelStark/tessera/issues/489). Promoted to [RFC-0070](../../docs/rfcs/RFC-0070-mask-batching.md). Ledger line updated on: 2026-10-25.

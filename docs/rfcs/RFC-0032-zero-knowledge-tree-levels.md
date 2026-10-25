@@ -9,7 +9,7 @@
   - [RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree) 'Fraction tree': the roots and the leaf checks;
   - [RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels': forests of one tree, and the levels' sumchecks;
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule) 'Transcript schedule', rows 4 and 5.
-- Amended by: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Leaf checks': each LogUp instance's key and value columns take a mask row of their own, and the leaf level's raised degree falls in the round before the last)
+- Amended by: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Leaf checks': each LogUp instance's key and value columns take a mask row of their own, and the leaf level's raised degree falls in the round before the last), [RFC-0070](RFC-0070-mask-batching.md) ('Masked tree levels', 'Masked extensions that spare the pair bit' and 'Labels': `G_ℓ(r)` is sent with the level's evaluations, and it and the mask values `R̃_t` are claims on the masks' block, which RFC-0070's batching opens)
 - Origin: [#224](https://github.com/AbdelStark/tessera/issues/224)
 
 ## Summary
@@ -50,7 +50,7 @@ Each batched tree level `ℓ` runs RFC-0013's masked sumcheck ([RFC-0013](RFC-00
 
 - the prover commits a masking polynomial `G_ℓ` in Round 1;
 - at the level, it sends `Γ_ℓ = Σ_x G_ℓ(x)` under `tree/{ℓ}/zk-sum`, and `ρ_ℓ` is squeezed under `tree/{ℓ}/zk-rho`, before `γ_ℓ`;
-- the level's sumcheck runs on its combination plus `ρ_ℓ·G_ℓ`, and `G_ℓ` is opened at the level's final point.
+- the level's sumcheck runs on its combination plus `ρ_ℓ·G_ℓ`; the prover sends `G_ℓ(r)` at the level's final point, last under `tree/{ℓ}/evals`, and [RFC-0070](RFC-0070-mask-batching.md)'s batching sumcheck opens it with every other mask claim.
 
 The LogUp identity sumcheck below is masked the same way.
 
@@ -83,7 +83,7 @@ V'_t(b ‖ x) = Ṽ_t(b ‖ x) + Z_t(x)·R̃_t((b ‖ x)_col),        Z_t(x) = �
   ```
 
   - `g(x)` is the level's combination of the next level, `V'_{t+1}(0 ‖ x)·V'_{t+1}(1 ‖ x)`, or the fraction combination of RFC-0010.
-  - The prover sends `R̃_t` at the level's final point `r'` beside the next level's evaluations. That value is a claim on the advice.
+  - The prover sends `R̃_t` at the level's final point `r'` beside the next level's evaluations. That value is a claim on the masks' block, which [RFC-0070](RFC-0070-mask-batching.md)'s batching sumcheck opens: each level's point is its own, so no RFC-0011 group could share it.
   - The verifier never sees `R̃_t(p)` (RFC-0013 'Masked extensions', virtual tensors).
 - **Degree.** `Z_{t+1}` vanishes at every summation point but the last round's, so only the last round's degree rises, to 7 for a product or fraction combination. RFC-0014's bound already allows `d ≤ 7`.
 - **Masks per level.** One mask row per level of a product forest, and two per level of a fraction forest, for `N` and `D`, its leaf level excepted ('Leaf checks'). The leaf level's key and value columns take column masks of their own ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks)).
@@ -163,7 +163,7 @@ These rows replace RFC-0013's row for LogUp roots and add the tree levels:
 | 4 | squeeze `α`, `β`; then the identity sumcheck: absorb masked sum, squeeze `ρ`, squeeze `γ`, rounds, final evaluations | `logup/alpha`, `logup/beta`, `logup/identity/zk-sum`, `logup/identity/zk-rho`, `logup/identity/gamma`, `logup/identity/round/{j}`, `logup/identity/r/{j}`, `logup/identity/evals` |
 | 5 | per tree level `ℓ`: squeeze the root point of the product forests that join at `ℓ`, absorb masked sum, squeeze `ρ_ℓ`, `γ_ℓ`, and `λ_ℓ` at a level with fraction forests, rounds, evaluations, line | `tree/{ℓ}/root/{c}`, `tree/{ℓ}/zk-sum`, `tree/{ℓ}/zk-rho`, `tree/{ℓ}/gamma`, `tree/{ℓ}/lambda`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line` |
 
-`logup/roots` has no use in `tessera-protocol/2`. `logup/values` stays, after the last level, as in row 5 of `tessera-protocol/1`. `tree/{ℓ}/evals` carries each instance's evaluations, then the mask values `R̃_t`.
+`logup/roots` has no use in `tessera-protocol/2`. `logup/values` stays, after the last level, as in row 5 of `tessera-protocol/1`. `tree/{ℓ}/evals` carries each instance's evaluations, then the mask values `R̃_t`, then `G_ℓ(r)` ([RFC-0070](RFC-0070-mask-batching.md)).
 
 ### Soundness
 

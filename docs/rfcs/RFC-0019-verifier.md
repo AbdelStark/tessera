@@ -5,7 +5,7 @@
 - Created: 2026-10-15
 - Target milestone: v0.3 (driver), v0.4 (zero-knowledge checks, anchor, scoring), v1.0 (hardening)
 - Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Check order', step 4: the advice commitment's `layout_digest`), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Check order', step 7, in `tessera-protocol/2`), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Check order', step 7: the reasons of the leaf stage's sumchecks), [RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies) ('Inputs' and 'Check order', step 4: the pinned sampler keys), [RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log) ('Inputs' and 'Check order', step 4: the period's log in place of the batch's entries and their inclusion proofs), [RFC-0065](RFC-0065-masked-channel-params.md) ('Check order', step 5: the reservation's ranges)
-- Amended by: [RFC-0067](RFC-0067-verifier-ledger-encoding.md) ('Ledger': the encoding of `VerifierLedger`, each accepted request's `Û`, and its atomic, locked writes), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Performance': `G + 1 ≤ 18` combined rows in `tessera-protocol/2`), [RFC-0013](RFC-0013-zero-knowledge.md) ('Performance': the fold groups' combined rows, #538)
+- Amended by: [RFC-0067](RFC-0067-verifier-ledger-encoding.md) ('Ledger': the encoding of `VerifierLedger`, each accepted request's `Û`, and its atomic, locked writes), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Performance': `G + 1 ≤ 18` combined rows in `tessera-protocol/2`), [RFC-0013](RFC-0013-zero-knowledge.md) ('Performance': the fold groups' combined rows, #538), [RFC-0070](RFC-0070-mask-batching.md) ('Check order' step 8 and 'Performance', in `tessera-protocol/2`: the masks' batching and its group)
 
 ## Summary
 
@@ -83,7 +83,7 @@ Checks run in this order; the first failure determines the verdict.
    3. Each LogUp instance's leaf checks: the lookup tree's numerator claim is 1, and the table tree's denominator claim is `α − t̃(ρ)` (`Reject(Lookup)`).
 
    In `tessera-protocol/2` ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)), step 7.1 is the LogUp identity sumcheck, with its final check (`Reject(LogUpIdentity { round })`, [RFC-0033](RFC-0033-tree-level-rejections.md)). Step 7.2 runs masked, and step 7.3 reads the padding trees' coordinate and the masked extensions of keys, values and multiplicities.
-8. Stages in schedule order, including masked-sumcheck terms and gadget final checks (`Reject(Sumcheck)`, `Reject(Gadget)`).
+8. Stages in schedule order, including masked-sumcheck terms and gadget final checks (`Reject(Sumcheck)`, `Reject(Gadget)`). In `tessera-protocol/2` the masks' batching follows ([RFC-0070](RFC-0070-mask-batching.md#the-batching-sumcheck)): its rounds and its final check (`Reject(MaskBatch { round })`).
 9. Opening groups for advice and every weight matrix: `Σ γ v = ⟨u'_g, eq⟩` per group (`Reject(Evaluation)`).
 10. Column queries: live, the verifier draws them now from its CSPRNG; non-interactive, from the transcript after the query proof-of-work.
 11. Columns: leaf recomputation, multiproofs against each matrix's root in `weights.roots` for the weights, consistency of every combined row with every opened column (`Reject(MerklePath)`, `Reject(Proximity)`).
@@ -144,7 +144,7 @@ pub struct VerifierLedger {                   // schema 0x0701, persisted, verif
 |---|---|---|
 | Decode and hash columns | about 1.18 GB advice + 0.3 GB weights (complete RFC-0050 layout) | recalibrate at the complete row count |
 | Column consistency | `(G + 1) · τ` inner products over 953,580 rows | recalibrate at the complete row count |
-| Re-encode combined rows | `G + 1 ≤ 17` coset NTTs of size 2^23 over `Fp2`, `≤ 20` in `tessera-protocol/2` (RFC-0068, RFC-0013 'Virtual tensors'), plus weights | about 5 s |
+| Re-encode combined rows | `G + 1 ≤ 17` coset NTTs of size 2^23 over `Fp2`, `≤ 21` in `tessera-protocol/2` (RFC-0068, RFC-0013 'Virtual tensors', RFC-0070), plus weights | about 5 s |
 | Tables | ≤ 20 dense cores of ≤ 2^24 values | about 2 s |
 | Lowering and range re-derivation | 405B claim list | about 5 s |
 | Stages and trees | about 10^4 rounds | < 1 s |
