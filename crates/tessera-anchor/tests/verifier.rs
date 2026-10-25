@@ -7,14 +7,13 @@
 //! - on whether each period's log is its manifest's, a byte changed in it included;
 //! - on the period's candidates and their lengths, every field.
 //!
-//! `tv-core` takes the strict Ed25519 equation through a function; this test gives it
-//! `ed25519-dalek`'s `verify_strict`, the acceptance set RFC-0060 'Signatures' defines.
+//! `tv-core` checks each manifest's signature with `tv-hash`'s strict Ed25519 (RFC-0060
+//! 'Signatures'), which `tests/ed25519.rs` compares with `ed25519-dalek`'s `verify_strict`.
 
-use ed25519_dalek::{Signature, VerifyingKey};
 use tessera_anchor::recorder::encode_log;
 use tessera_anchor::{
-    DigestLogEntry, Direction, HeapKey, LogManifest, ManifestBody, VerifiedLog, candidates,
-    key_id, merkle, public_key,
+    DigestLogEntry, Direction, HeapKey, LogManifest, ManifestBody, VerifiedLog, candidates, key_id,
+    merkle, public_key,
 };
 use tessera_codec::{Secret, envelope, schema};
 use tv_codec::DecodeLimits;
@@ -124,19 +123,12 @@ fn manifest(entries: &[DigestLogEntry], first_seq: u64, prev: Option<&LogManifes
     .expect("a signature")
 }
 
-/// `ed25519-dalek`'s strict verification, as `tv-core`'s seam takes it.
-fn verify_strict(key: &[u8; 32], message: &[u8], signature: &[u8; 64]) -> bool {
-    VerifyingKey::from_bytes(key)
-        .and_then(|k| k.verify_strict(message, &Signature::from_bytes(signature)))
-        .is_ok()
-}
-
 /// The verifier's checked manifest of `m`.
 fn checked(m: &LogManifest) -> tv::CheckedManifest {
     let sealed = envelope::seal(&schema::LOG_MANIFEST, m);
     tv::LogManifest::open(&sealed, &DecodeLimits::MESSAGE)
         .expect("a manifest envelope")
-        .check(&tv::RecorderKeys::new(vec![public_key(&seed())]), verify_strict)
+        .check(&tv::RecorderKeys::new(vec![public_key(&seed())]))
         .expect("a valid manifest")
 }
 
