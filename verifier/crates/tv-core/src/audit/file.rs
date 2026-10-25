@@ -14,6 +14,11 @@
 //!   its writer and keeps a second writer out while the first holds the ledger. A lock left by a
 //!   crash refuses later writers with `ERR-RES-IO` until the operator, having checked that no
 //!   verifier runs, removes it. A writer removes only a lock that still holds its token.
+//! - **Two windows remain**, each a few instructions wide, until the kernel holds the lock for
+//!   the writer (#534, `std` from Rust 1.89, above the MSRV): between the token's check and the
+//!   lock's removal ([`Held::remove`]), and between a write's check and its rename
+//!   ([`write_atomic`]). A writer that stalls in either while an operator clears its lock and
+//!   another writer runs can remove the other's lock, or rename over the other's record.
 //! - **A write.** The new ledger goes to a fresh temporary file beside the old one, which is
 //!   synced and renamed over it, and then the directory is synced. A failed directory sync fails
 //!   the write with `ERR-RES-IO`: after a power loss the old ledger could come back, and with it
@@ -21,7 +26,8 @@
 //!   writer's token and the ledger must still be the file this writer last read or wrote, by
 //!   device and inode, else `ERR-RES-IO` and nothing is written: a writer that stalled while an
 //!   operator cleared its lock could otherwise rename a stale ledger over another writer's
-//!   record. The ledger must also still be one regular file of one name. The ledger in memory
+//!   record. A device and inode can be reused once a file is removed, so the lock's token, unique
+//!   to its writer, carries the lock's half of the check. The ledger must also still be one regular file of one name. The ledger in memory
 //!   changes only once the write has succeeded, so a failed write leaves the caller's verdict
 //!   short of `Accept`.
 //! - **One limit.** Every reader and writer of the ledger uses [`LEDGER_LIMITS`], `tv-codec`'s
@@ -82,21 +88,27 @@ fn one_name(_: &fs::Metadata) -> bool {
     true
 }
 
-/// `O_NOFOLLOW | O_NONBLOCK` where `std` lets the host's flags be named, so that a path swapped
-/// for a link or a FIFO after its check fails to open, or opens without blocking, rather than
-/// being followed or waited on: the values of Linux's common architectures and of Apple's
-/// systems. Elsewhere none, and the check before the open is the only guard.
+/// `O_NOFOLLOW | O_NONBLOCK` on the targets whose values can be cited, so that a path swapped for
+/// a link or a FIFO after its check fails to open, or opens without blocking, rather than being
+/// followed or waited on:
+///
+/// - Linux's generic layout, `include/uapi/asm-generic/fcntl.h`, which x86, x86_64 and riscv64
+///   use: `O_NOFOLLOW` `0o400000`, `O_NONBLOCK` `0o4000`;
+/// - Linux on arm and aarch64, `arch/arm/include/uapi/asm/fcntl.h` and
+///   `arch/arm64/include/uapi/asm/fcntl.h`: `O_NOFOLLOW` `0o100000`, where `0o400000` is
+///   `O_LARGEFILE`, and `O_NONBLOCK` `0o4000`;
+/// - Apple's systems, `sys/fcntl.h`: `O_NOFOLLOW` `0x0100`, `O_NONBLOCK` `0x0004`.
+///
+/// Every other target opens with no flag, as a host without them would: the check by metadata
+/// that does not follow a link, before the open, and the comparison of the opened file's device
+/// and inode with it after, are then the only guards against a swap between the two.
 #[cfg(all(
     target_os = "linux",
-    any(
-        target_arch = "x86_64",
-        target_arch = "x86",
-        target_arch = "aarch64",
-        target_arch = "arm",
-        target_arch = "riscv64"
-    )
+    any(target_arch = "x86_64", target_arch = "x86", target_arch = "riscv64")
 ))]
 const NO_FOLLOW_NO_BLOCK: i32 = 0o400_000 | 0o4_000;
+#[cfg(all(target_os = "linux", any(target_arch = "aarch64", target_arch = "arm")))]
+const NO_FOLLOW_NO_BLOCK: i32 = 0o100_000 | 0o4_000;
 #[cfg(target_vendor = "apple")]
 const NO_FOLLOW_NO_BLOCK: i32 = 0x0100 | 0x0004;
 #[cfg(not(any(
@@ -105,9 +117,9 @@ const NO_FOLLOW_NO_BLOCK: i32 = 0x0100 | 0x0004;
         any(
             target_arch = "x86_64",
             target_arch = "x86",
+            target_arch = "riscv64",
             target_arch = "aarch64",
-            target_arch = "arm",
-            target_arch = "riscv64"
+            target_arch = "arm"
         )
     ),
     target_vendor = "apple"
@@ -450,7 +462,9 @@ struct Held {
 
 impl Held {
     /// Whether the lock is still this writer's: the file this writer created, a regular file
-    /// read without following a link or blocking, that holds its token. The file is checked
+    /// read without following a link or blocking, that holds its token. A file's device and inode
+    /// can be reused once it is removed, so a lock cleared and created again may have this lock's
+    /// identity: the token, unique to this writer, is the half of the check that carries it. The file is checked
     /// twice, by metadata that does not follow a link before it is opened, and by the open file's
     /// own metadata after, so that a lock swapped between the two is not taken for this writer's.
     fn holds(&self) -> bool {
@@ -515,7 +529,13 @@ impl Lock {
             .create_new(true)
             .open(&path)
             .map_err(|_| io())?;
-        let id = file.metadata().map(|m| file_id(&m));
+        let Ok(id) = file.metadata().map(|m| file_id(&m)) else {
+            // The file was created by this call an instant ago and holds no token: it is removed,
+            // as nothing could later prove it this writer's.
+            drop(file);
+            let _ = fs::remove_file(&path);
+            return Err(io());
+        };
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos());
@@ -528,20 +548,16 @@ impl Lock {
             .write_all(token.as_bytes())
             .and_then(|()| file.sync_all());
         drop(file);
-        match (id, written) {
-            (Ok(id), Ok(())) => Ok(Self {
-                held: Held { path, token, id },
-                armed: true,
-            }),
-            (id, _) => {
-                let ours =
-                    id.is_ok_and(|id| fs::symlink_metadata(&path).is_ok_and(|m| file_id(&m) == id));
-                if ours {
-                    let _ = fs::remove_file(&path);
-                }
-                Err(io())
+        if written.is_err() {
+            if fs::symlink_metadata(&path).is_ok_and(|m| file_id(&m) == id) {
+                let _ = fs::remove_file(&path);
             }
+            return Err(io());
         }
+        Ok(Self {
+            held: Held { path, token, id },
+            armed: true,
+        })
     }
 
     fn release(mut self) -> Held {
@@ -577,21 +593,37 @@ enum Step {
     Synced,
 }
 
-/// What a test may change in a write: where it stops, and how the directory is synced.
+/// The points of a write where a test acts, as another process would: just before the check
+/// that this writer still holds the ledger, and just after it, before the rename.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Point {
+    /// The temporary file is written and synced; the check comes next.
+    Check,
+    /// The check has passed; the rename comes next.
+    Rename,
+}
+
+/// What a test may change in a write: where it stops, what happens around the check, and how
+/// the directory is synced.
 struct Hooks<'a> {
     stop: &'a dyn Fn(Step) -> bool,
+    at: &'a dyn Fn(Point),
     sync_dir: &'a dyn Fn(&Path) -> io::Result<()>,
 }
 
-/// The production write: it never stops, and syncs the directory for real.
+/// The production write: it never stops, nothing happens around the check, and the directory
+/// is synced for real.
 const REAL: Hooks<'static> = Hooks {
     stop: &never,
+    at: &nothing,
     sync_dir: &sync_dir,
 };
 
 fn never(_: Step) -> bool {
     false
 }
+
+fn nothing(_: Point) {}
 
 /// Syncs a directory, so that a rename or a link in it survives a power loss. On Unix this is
 /// `fsync` of the directory; other hosts give `std` no handle on a directory, and have nothing
@@ -663,15 +695,19 @@ fn temporary(place: &Place) -> Result<(File, Temporary), VerifierError> {
     Err(io())
 }
 
-/// Writes `bytes` over the ledger atomically: a temporary file in its directory, written,
-/// synced, renamed over the ledger once the ledger is checked to be one regular file of one
-/// name, then the directory synced. A failure at any step fails the write.
 /// Writes `bytes` over the ledger atomically: a temporary file in its directory, written and
 /// synced; then, before the rename, the checks that this writer still holds the ledger (its lock
 /// still holds its token, the ledger is still the file it last read or wrote, by device and
 /// inode, else `ERR-RES-IO`) and that the ledger is still one regular file of one name (else
 /// `ERR-USAGE`); then the rename and the directory's sync. A failure at any step fails the write,
 /// and before the rename it writes nothing. Returns the new ledger file's identity.
+///
+/// The check and the rename are two steps (RFC-0067 'Before each rename'): a writer that passes
+/// its check and stalls before the rename, while an operator clears its lock and another writer
+/// runs, still renames, over the other writer's record. The window is the few instructions
+/// between the check and the rename; closing it needs a lock the kernel holds for the writer,
+/// which `std` gives from Rust 1.89, above this workspace's MSRV (#534). The check sits as late
+/// as it can, after the temporary file is written and synced.
 fn write_atomic(
     place: &Place,
     bytes: &[u8],
@@ -704,6 +740,7 @@ fn write_atomic(
     }
     // Still this writer's: a writer that stalled while an operator cleared its lock, and another
     // writer took the ledger over, would otherwise rename a stale ledger over the other's record.
+    (hooks.at)(Point::Check);
     if !guard.lock.holds() {
         return Err(io());
     }
@@ -712,6 +749,7 @@ fn write_atomic(
     if file_id(&current) != guard.file {
         return Err(io());
     }
+    (hooks.at)(Point::Rename);
     fs::rename(&temp.path, place.file()).map_err(|_| io())?;
     temp.armed = false;
     (hooks.sync_dir)(&place.dir).map_err(|_| io())?;
@@ -790,6 +828,7 @@ mod tests {
             let stop = move |s: Step| s == step;
             let hooks = Hooks {
                 stop: &stop,
+                at: &nothing,
                 sync_dir: &sync_dir,
             };
             assert_eq!(
@@ -842,6 +881,7 @@ mod tests {
         };
         let hooks = Hooks {
             stop: &never,
+            at: &nothing,
             sync_dir: &failing,
         };
         // Creating: the link is made, the directory's sync fails, and so does the creation.
@@ -1041,6 +1081,7 @@ mod tests {
         };
         let hooks = Hooks {
             stop: &never,
+            at: &nothing,
             sync_dir: &counting,
         };
         let id = |p: &Path| file_id(&fs::metadata(p).unwrap());
@@ -1385,5 +1426,99 @@ mod tests {
         assert!(!lock.exists());
         fs::remove_file(&path).unwrap();
         fs::remove_dir(&dir).unwrap();
+    }
+
+    /// RFC-0067 'Before each rename': the check sits after the temporary file is written and
+    /// synced, just before the rename. Another writer that takes the ledger over just before the
+    /// check is seen by it, and the write renames nothing; one that takes it over between the
+    /// check and the rename is the residual window (#534), and the stale rename happens. The two
+    /// cases together pin the check between the two points.
+    #[test]
+    fn the_check_sits_just_before_the_rename() {
+        for (point, refused) in [(Point::Check, true), (Point::Rename, false)] {
+            let dir = scratch("check-point");
+            let path = dir.join("ledger.tvl");
+            let lock = dir.join("ledger.tvl.lock");
+            let sample = derived_sample(9);
+            {
+                let mut setup = LedgerFile::create(&path).unwrap();
+                setup.record_derived(&sample).unwrap();
+            }
+            let mut a = LedgerFile::open(&path).unwrap();
+            let b_slot: RefCell<Option<LedgerFile>> = RefCell::new(None);
+            // At `point` in A's write, the operator clears A's lock, and B takes over and accepts
+            // request 2.
+            let take_over = |p: Point| {
+                if p == point && b_slot.borrow().is_none() {
+                    fs::remove_file(&lock).unwrap();
+                    let mut b = LedgerFile::open(&path).unwrap();
+                    b.record_accepted(&sample, &statement_of(&sample, &[2]), &[FixedBits(5)])
+                        .unwrap();
+                    *b_slot.borrow_mut() = Some(b);
+                }
+            };
+            let hooks = Hooks {
+                stop: &never,
+                at: &take_over,
+                sync_dir: &sync_dir,
+            };
+            let result = a.record_accepted_with(
+                &sample,
+                &statement_of(&sample, &[1]),
+                &[FixedBits(4)],
+                &hooks,
+            );
+            let b = b_slot.borrow_mut().take().expect("B took over");
+            let on_disk = read_ledger(&path).unwrap();
+            let record: Vec<u64> = on_disk
+                .proven(sample.identity())
+                .map(|r| r.iter().map(|(i, _)| i).collect())
+                .unwrap_or_default();
+            if refused {
+                // Seen by the check: nothing renamed, B's record stands.
+                assert_eq!(result, Err(Failure::Inconclusive(io())), "{point:?}");
+                assert_eq!(record, [2], "{point:?}");
+            } else {
+                // The residual window: A's check passed before B ran, and A's stale ledger,
+                // without B's record, is renamed over it.
+                assert_eq!(result, Ok(()), "{point:?}");
+                assert_eq!(record, [1], "{point:?}");
+            }
+            drop(a);
+            drop(b);
+            for leftover in leftovers(&dir) {
+                fs::remove_file(leftover).unwrap();
+            }
+            fs::remove_file(&path).unwrap();
+            fs::remove_dir(&dir).unwrap();
+        }
+    }
+
+    /// Each target's flags, as its headers give them (see [`NO_FOLLOW_NO_BLOCK`]).
+    #[test]
+    fn the_open_flags_are_the_targets_own() {
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "x86", target_arch = "riscv64")
+        ))]
+        assert_eq!(NO_FOLLOW_NO_BLOCK, 0o400_000 | 0o4_000);
+        #[cfg(all(target_os = "linux", any(target_arch = "aarch64", target_arch = "arm")))]
+        assert_eq!(NO_FOLLOW_NO_BLOCK, 0o100_000 | 0o4_000);
+        #[cfg(target_vendor = "apple")]
+        assert_eq!(NO_FOLLOW_NO_BLOCK, 0x0100 | 0x0004);
+        // Where the flags are named, the open refuses a final link.
+        if HAS_NO_FOLLOW {
+            let dir = scratch("flags");
+            let target = dir.join("target");
+            fs::write(&target, b"x").unwrap();
+            let link = dir.join("link");
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&target, &link).unwrap();
+            assert!(open_quietly(&target).is_ok());
+            assert!(open_quietly(&link).is_err());
+            fs::remove_file(&link).unwrap();
+            fs::remove_file(&target).unwrap();
+            fs::remove_dir(&dir).unwrap();
+        }
     }
 }
