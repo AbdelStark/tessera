@@ -110,8 +110,10 @@ accounting and deadlines inside arithmetic loops remain #182. The reference CLI
 authenticates an externally supplied digest of the whole `PublicStatement`
 before using the decoded statement as its expected input. Its measured load,
 pin and verification trace is optional execution context; deterministic core
-JSON retains null internal check durations. Anchor, ledger, audit commands and
-live transport remain later work, as the target milestones below require.
+JSON retains null internal check durations. `tv-core::audit` holds the audit's
+accounting, the ledger and the audit report, and `tessera-verify audit plan` and
+`audit report` use it (#151); the drivers' use of the anchor and the ledger, and
+live transport, remain later work, as the target milestones below require.
 
 ### Ledger
 

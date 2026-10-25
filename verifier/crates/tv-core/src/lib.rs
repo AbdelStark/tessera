@@ -55,13 +55,15 @@
 //! | [`gadgets`] | final checks for requantization, NonNeg, BigIntCompare, OneHot, roots, causal Softmax and Argmax, with canonical source/range obligations (RFC-0009/0050) |
 //! | [`soundness::SoundnessReport::evaluate`] | independent integer-only soundness calculator for every row of RFC-0014's table, a leaf stage in token groups included (RFC-0014, RFC-0049, RFC-0054 'Soundness') |
 //! | [`anchor`] | the transcript anchor's log checks: the recorder's manifest and its signature under pinned keys, the period's verified log, the previous period's log, the candidates, the sampler pins at load, and each request's session, frame and sampler-key rules (RFC-0015, RFC-0059 to RFC-0063) |
+//! | [`audit`] | the audit's accounting: the policy and its exact thresholds, the verifier's coin toss, the sample derived from the verified logs (schema `0x0403`), batching, the ledger (schema `0x0701`) with its membership and replay checks and atomic file, and the audit report (RFC-0016, RFC-0019 'Ledger') |
+//! | [`audit_plan::AuditPlan`] | the verifier's audit plan: detection from the policy and traffic alone, overhead and target rates from the cost model's `μ` (RFC-0016 'Calculators'), binary64 |
 //!
 //! [`driver`] composes one exact-greedy protocol/1 proof unit through all original source
 //! openings and the mandatory runtime budget. [`verify_non_interactive`] judges typed proofs;
 //! [`verify_non_interactive_bytes`] also checks the canonical envelope. [`LiveVerifier`] owns
 //! fresh coin-toss/query entropy and one-shot state. [`Verdict`] distinguishes proof rejection
-//! from inability to judge. Masking, anchors, persistent ledgers, broader batching and full
-//! resource hardening remain their roadmap work. A component result alone is not a verdict.
+//! from inability to judge. Masking, the drivers' use of the anchor and of the ledger, broader
+//! batching and full resource hardening remain their roadmap work. A component result alone is not a verdict.
 //!
 //! # Claim lists
 //!
@@ -553,6 +555,8 @@ compile_error!(
 
 pub mod advice;
 pub mod anchor;
+pub mod audit;
+pub mod audit_plan;
 pub mod claims;
 mod fiat_shamir;
 pub mod gadgets;

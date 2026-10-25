@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! No floating point in the table generators (RFC-0008 'Generators and digests') or the soundness
-//! calculator (RFC-0014 'Soundness calculator'): a table's values are the exact integers its
-//! generator defines, and the calculator's bits and decisions are integers that both calculators
-//! must agree on bit for bit, so their sources name no `f32` or `f64` and write no
-//! floating-point literal. Comments and strings are not code: the sources are lexed, not
-//! searched.
+//! No floating point in the table generators (RFC-0008 'Generators and digests'), the soundness
+//! calculator (RFC-0014 'Soundness calculator') or the verifier's audit sampling and accounting
+//! (RFC-0016, INV-DM-6): a table's values are the exact integers its generator defines, the
+//! calculator's bits and decisions are integers that both calculators must agree on bit for bit,
+//! and a sample's thresholds and selections are exact integers, so their sources name no `f32` or
+//! `f64` and write no floating-point literal. The audit's planning figures, which are binary64,
+//! live apart, in `tv_core::audit_plan`. Comments and strings are not code: the sources are
+//! lexed, not searched.
 
 use std::fs;
 use std::io;
@@ -15,12 +17,14 @@ use std::str::FromStr;
 use proc_macro2::{TokenStream, TokenTree};
 
 /// The directories and files that compute with integers only: the table generators, prover and
-/// verifier side, and both soundness calculators.
-pub(crate) const INTEGER_ONLY: [&str; 4] = [
+/// verifier side, both soundness calculators, and the verifier's audit accounting.
+pub(crate) const INTEGER_ONLY: [&str; 6] = [
     "crates/tessera-tables/src",
     "verifier/crates/tv-tables/src",
     "crates/tessera-protocol/src/soundness",
     "verifier/crates/tv-core/src/soundness.rs",
+    "verifier/crates/tv-core/src/audit.rs",
+    "verifier/crates/tv-core/src/audit",
 ];
 
 /// The integer suffixes, which a float test must not mistake for exponents (`usize` holds an

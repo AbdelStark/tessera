@@ -24,6 +24,9 @@ libFuzzer names corpus files:
 - sumcheck: the shape of every stage and tree batch of sumcheck/sumcheck.json that the target's
   limits admit, with a seed for its tables or leaves; alone, and followed by each change;
   GDG-prefixed gadget cases cover each family, model variant, affine change and nonlinear final.
+- audit: every sample of audit/audit.json, as a payload (selector 0) and as an envelope
+  (selector 2), its accepted and refused payloads, and an empty ledger, payload (1) and envelope
+  (3), each under both of the target's limits (src/audit.rs).
 
 The selectors are the indices of `TYPES` in src/lib.rs, read from the source so that the seeds
 follow any change to the list. The proof targets' input formats are those of `multiproof_case`
@@ -41,6 +44,7 @@ VECTORS = HERE.parent.parent / "spec" / "vectors" / "codec"
 HASH_VECTORS = HERE.parent.parent / "spec" / "vectors" / "hash" / "hash.json"
 INCLUSION_VECTORS = HERE.parent.parent / "spec" / "vectors" / "rfc6962" / "inclusion"
 SUMCHECK_VECTORS = HERE.parent.parent / "spec" / "vectors" / "sumcheck" / "sumcheck.json"
+AUDIT_VECTORS = HERE.parent.parent / "spec" / "vectors" / "audit" / "audit.json"
 WEIGHT_VECTORS = HERE.parent.parent / "spec" / "vectors" / "weights"
 
 # The decode target's limits, selected by its second byte.
@@ -297,7 +301,20 @@ def main():
     for seed in gadget_seeds():
         write("sumcheck", seed)
 
-    for target in ("decode", "envelope", "protocol", "multiproof", "inclusion", "sumcheck"):
+    audit = json.loads(AUDIT_VECTORS.read_text())
+    samples = [(0, bytes.fromhex(case["payload"])) for key in ("samples", "refused", "accepted")
+               for case in audit[key]]
+    samples += [(2, bytes.fromhex(case["envelope"])) for case in audit["samples"]]
+    # The empty ledger: four empty sequences, and its envelope (schema 0x0701, version 1) with
+    # a zero digest, which the target refuses at the digest and the fuzzer can repair.
+    empty = bytes(32)
+    header = b"TSRA" + u16(1) + u16(0x0701) + u16(1) + u16(0) + len(empty).to_bytes(8, "little")
+    samples += [(1, empty), (3, header + empty + bytes(DIGEST_LEN))]
+    for selector, data in samples:
+        for limits in range(2):
+            write("audit", bytes([selector, limits]) + data)
+
+    for target in ("decode", "envelope", "protocol", "multiproof", "inclusion", "sumcheck", "audit"):
         print(f"{target}: {sum(1 for _ in (out / target).iterdir())} seeds")
 
 

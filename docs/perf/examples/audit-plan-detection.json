@@ -1,0 +1,51 @@
+{
+  "schema": "tessera.audit-plan/1",
+  "source_defaults": null,
+  "eta": null,
+  "target_overhead": null,
+  "buckets": [
+    {
+      "max_tokens": 1024,
+      "rate": 0.1,
+      "lowest_later_rate": 0.004,
+      "requests": 800000,
+      "tokens": 700,
+      "violations": 50,
+      "mu": null,
+      "expected_selected": 80000.0,
+      "target_rate": null,
+      "detection": 0.1815975493239001,
+      "detection_in_place": 0.9948462247926799
+    },
+    {
+      "max_tokens": 16384,
+      "rate": 0.02,
+      "lowest_later_rate": 0.004,
+      "requests": 180000,
+      "tokens": 6000,
+      "violations": 30,
+      "mu": null,
+      "expected_selected": 3600.0,
+      "target_rate": null,
+      "detection": 0.11329296784701628,
+      "detection_in_place": 0.4545156806175628
+    },
+    {
+      "max_tokens": 131072,
+      "rate": 0.004,
+      "lowest_later_rate": 0.004,
+      "requests": 20000,
+      "tokens": 60000,
+      "violations": 20,
+      "mu": null,
+      "expected_selected": 80.0,
+      "target_rate": null,
+      "detection": 0.07703173539859691,
+      "detection_in_place": 0.07703173539859691
+    }
+  ],
+  "detection": 0.3302174287273539,
+  "detection_in_place": 0.9974052560308375,
+  "overhead": null,
+  "expected_selected": 83680.0
+}

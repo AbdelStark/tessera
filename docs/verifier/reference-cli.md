@@ -70,7 +70,20 @@ the report itself cannot be allocated, exit 20 is returned without a report.
 ```sh
 target/debug/tessera-verify tables --claims claims.tcl --json
 target/debug/tessera-verify params --params ni-100 --json
+target/debug/tessera-verify audit plan --policy docs/perf/examples/audit-policy.json \
+  --traffic docs/perf/examples/audit-traffic.json --mu MU.json --json
+target/debug/tessera-verify audit report --ledger LEDGER.tvl --sample SAMPLE.tas \
+  --out report.json --json
 ```
+
+`audit plan` computes a policy's detection from the policy and the traffic alone, and the
+amortized overhead and target rates from a `tessera.cost-model/1` report at the traffic's mean
+lengths (`--mu`), with its own binary64 arithmetic (`tv_core::audit_plan`); without `--mu` the
+overhead figures of `tessera.audit-plan/1` are `null`
+([example](../perf/examples/audit-plan-detection.json)). `audit report` reads the ledger and the
+sample, at most 1 GiB together, and writes `tessera.audit-report/1` atomically: requests the
+ledger records accepted, with their `Û`, and the others `DeadlineMissed`. It exits 0 only when
+every selected request is accepted.
 
 `tables` independently regenerates every declared table and compares its
 canonical digest and row count, in catalog order. Its JSON is
@@ -80,11 +93,9 @@ The default total work allowance is 16,777,216 padded rows; a larger catalog
 returns `ERR-RES-TIME` before generation. `--max-table-rows N` explicitly
 selects another allowance. The input file limit is 1 GiB.
 
-`weights link` and `audit plan/report` are recognized reserved surfaces
-and fail explicitly without accessing or changing a ledger. Their implementations
-remain with [#181](https://github.com/AbdelStark/tessera/issues/181),
-[#158](https://github.com/AbdelStark/tessera/issues/158) and
-[#151](https://github.com/AbdelStark/tessera/issues/151). The future `--manifest`
+`weights link` is a recognized reserved surface and fails explicitly without
+accessing or changing a ledger; its implementation remains with
+[#158](https://github.com/AbdelStark/tessera/issues/158). The future `--manifest`
 anchor interface is not substituted with a different file format. Current
 reports explicitly say `anchor_verified`, `ledger_updated` and `zero_knowledge`
 are false. These boundaries preserve the v0.4 work rather than claiming it from
