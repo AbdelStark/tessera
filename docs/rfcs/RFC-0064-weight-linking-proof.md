@@ -54,6 +54,7 @@ The RFC also gives what RFC-0012 left undefined: the transcript, the query count
 - **The seeds are derived.** Each epoch's `masks_seed_e = H("weights-refresh", K ‖ u32(e))`, a new domain of RFC-0004 ('One link per epoch' says why).
   - **`K`** is the model's refresh key, 32 bytes drawn from the operating system's CSPRNG when epoch 0 is committed.
   - **Kept apart.** `K` is secret-class and kept apart from every epoch's state file, in the operator's key store, so that a state file alone gives its own epoch's seed and no other.
+  - **One model, one key.** `K` is never shared between model entries. Two models under one `K` would take the same masks in each epoch, and at a column both open, the difference of their symbols would reveal the difference of their weights.
 - **The expansion is fixed.** The map from `masks_seed` to an epoch's masks and blinding rows is RFC-0040's, versioned and with a conformance vector. #147, which commits the masks, specifies it. Until it does, a link may be remade only by the build that made it.
 - **The claim list.** The matrices' shapes, which matrices have committed rows, and each matrix's `commitment_id_T` (its row block `B` included, RFC-0031) come from a claim list whose weights the commitment holds. The prover has it, and the verifier takes it as an input.
 - **The matrices.** Every `WeightMatrix` `T` with committed rows, `m_T > 0`, in RFC-0040's order. A matrix with no committed rows is not linked, as it has no proximity row in a proof either ([RFC-0049](RFC-0049-weight-proximity.md#the-schedule)).
