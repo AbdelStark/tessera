@@ -70,9 +70,9 @@ A statement's `manifest_digest` is `identity(m)` for the manifest its batch is a
 
 - **Scheme 0, Ed25519.** RFC 8032's pure Ed25519, without a context.
   - **The lengths.** `public_key` is exactly 32 bytes, the encoded point `A`; `signature` is exactly 64, `R ‖ S`.
-  - **Strict verification.** This is `ed25519-dalek` 2's `verify_strict` (2.2.0, without `legacy_compatibility`), the crate RFC-0019's allowlist names for the verifier. #150 locks the same version and features in the verifier's lockfile. The signature verifies when:
+  - **Strict verification.** This is `ed25519-dalek` 2's `verify_strict` (2.2.0, without `legacy_compatibility`), which the prover uses. The verifier implements the same set itself, in `tv-hash`, from the rules below ([RFC-0019 'Dependencies'](RFC-0019-verifier.md#dependencies)). The signature verifies when:
     - `S < L`;
-    - `R` and `A` decode to points, and neither is of small order. `curve25519-dalek` 4 decodes as RFC 8032 §5.1.3 does, except that it also accepts the non-canonical encodings `y ∈ [p, 2^255)`, which that section refuses;
+    - `R` and `A` decode to points, and neither is of small order. `curve25519-dalek` 4 decodes as RFC 8032 §5.1.3 does, except that it also accepts the non-canonical encodings `y ∈ [p, 2^255)`, which that section refuses. An encoding with `x = 0` and the sign bit set does not decode, as §5.1.3 says, and the verifier refuses it as not a point. `curve25519-dalek` 4 decodes it to `(0, ±1)`, which is of small order, so `ed25519-dalek` refuses it as small order: the reason differs, the verdict does not;
     - `R`'s 32 bytes equal the encoding of `[S]B − [k]A`, with `k = SHA-512(R ‖ A ‖ message)` reduced modulo `L`. That is the cofactorless equation, and it leaves `R` only its canonical encoding.
 
     `k` hashes the key's 32 bytes as they are. A key is compared with the pinned keys byte for byte before it is decoded, so only a pinned encoding is ever decoded.
@@ -108,12 +108,12 @@ A chain check over a sequence of manifests reports the first break:
 - **One name per manifest.** The envelope digest covers the whole manifest, its signature and its schema included. Two manifests share an identity only through a BLAKE3 collision.
 - **A chain cannot fork silently.** A second manifest for a period has another identity, so its successor links to one of the two. A monitor holding both sees the fork: two signed manifests by the log's keys with one `prev_manifest`.
 - **A chain cannot drop or repeat entries.** Contiguous `seq` ranges leave no entry outside some manifest and none in two. The manifests' periods tile the recorder's time without gap or overlap. That an entry's `t_ns` lies in its own manifest's period is the recorder's rule, not a check.
-- **One set of valid signatures.** Under strict verification, a signature is valid for one message and key exactly when the shared crate says so. No implementation accepts a malleated signature, with `S` replaced by `S + L`, that another refuses.
+- **One set of valid signatures.** Under strict verification, a signature is valid for one message and key exactly when the rules of 'Signatures' say so, in the prover's crate and in the verifier's own implementation alike. No implementation accepts a malleated signature, with `S` replaced by `S + L`, that another refuses.
 
 ## Alternatives Considered
 
 1. **`prev_manifest` as SHA-256 of the previous manifest's TCE**, to keep the recorder to one hash function. The recorder computes envelope digests anyway, to write `.tlm` artifacts, and two identities per manifest would invite a mismatch between the statement and the chain. Rejected.
-2. **Cofactored verification (ZIP-215)**, for batch verification. One manifest per statement needs no batching, and the shared crate's strict rule gives one acceptance set. Rejected.
+2. **Cofactored verification (ZIP-215)**, for batch verification. One manifest per statement needs no batching, and the strict rule gives one acceptance set. Rejected.
 3. **Leaving the empty period undefined** and requiring `entry_count ≥ 1`. A quiet period would then break the chain's continuity. Rejected.
 
 ## Drawbacks
@@ -137,6 +137,7 @@ A chain check over a sequence of manifests reports the first break:
   - RFC 8032's test vectors: in the oracle, and the Rust public key of test 1.
   - Each strict rule alone, refused: `S + L`; a small-order `R` under the honest key; a small-order key. The last two satisfy the cofactorless equation, which a lax verifier accepts.
   - A pinned key that is not a point, refused.
+  - The verifier's implementation: RFC 8032's vectors, the manifests' signatures, and the crafted cases of `spec/vectors/ed25519/` for every rule, small-order, mixed-order and non-canonical points among them; and a differential test against `ed25519-dalek`'s `verify_strict` in a prover crate (DEP-2), on random and crafted inputs.
   - A wrong key identifier, an unpinned key, scheme 1, an unknown scheme, and wrong key and signature lengths, each refused.
 - **A manifest's other checks.** An overflowing range and a wrong empty root, each refused.
 - **The chain.** An honest chain of three passes. Each break is reported alone:

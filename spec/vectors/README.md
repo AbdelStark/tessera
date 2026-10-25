@@ -11,6 +11,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | [`codec/`](codec/README.md) | The canonical encoding, RFC-0003: golden values, non-canonical inputs, envelopes; the conformance models' execution plans, RFC-0041; the weight commitment's artifacts, RFC-0040 | `cargo xtask gen-vectors`, from the cases of `tessera-codec` and `tessera-field`, and the plans from `tessera-compiler`'s derivation, after the models' oracle |
 | [`constraint-digest/`](constraint-digest/README.md) | CI-only constraint tree framing, exact byte lengths, scalar types and diagnostic hashes (RFC-0007) | independent Python framing and BLAKE3 oracles |
 | [`cost-model/`](cost-model/README.md) | The source's `μ` projections and the cost model on them, RFC-0020 | its oracle |
+| [`ed25519/`](ed25519/README.md) | Strict Ed25519, RFC 8032 with RFC-0060: crafted keys and signatures for each rule, small-order, mixed-order and non-canonical points among them, each with the first rule it fails; and RFC 8032's Section 7.1 | independent Python from RFC 8032 and RFC-0060, `hashlib`'s SHA-512; the section copied unmodified from the RFC |
 | [`encoding/`](encoding/README.md) | The advice commitment's encoding conventions, RFC-0011: its transforms, coset and mask | its oracle |
 | `errors/` | The error codes of 04 §3, with their classes and exit codes | kept by hand; a test keeps it, the specification's table and the error enum equal |
 | [`gadget-finals/`](gadget-finals/README.md) | Gadget final relations and full comparison arrays, including constants beyond Goldilocks (RFC-0009/0050) | independent integer and direct-cube oracle |
@@ -30,6 +31,7 @@ Data that the prover workspace, the independent verifier and the Python package 
 | [`scoring/`](scoring/README.md) | The sampler PRF of RFC-0017, `(key, request, position) → u_t`, and the inverse-CDF token of RFC-0009 Lemma 10 at the edges of its bracket | independent Python AES-128 from FIPS-197, checked against its examples |
 | [`schedule/`](schedule/README.md) | The stage schedules of the conformance models, RFC-0010 and RFC-0037: each stage's instances, relations, variable counts and points, the leaf stage's claims and the claim pool | `cargo xtask gen-vectors`, from `tessera-compiler`'s derivation, after the models' oracle |
 | [`sha256/`](sha256/README.md) | NIST's SHA-256 test vectors (CAVP) | copied unmodified from NIST |
+| [`sha512/`](sha512/README.md) | NIST's SHA-512 test vectors (CAVP), for Ed25519 | copied unmodified from NIST |
 | [`soundness/`](soundness/README.md) | The soundness calculator, RFC-0014: every row's bound, bits, target and decision for the parameter sets at the 405B statement, at statements that miss one target each, and at random sizes | its oracle |
 | [`sumcheck/`](sumcheck/README.md) | Honest sumcheck proofs, RFC-0010 | its oracle |
 | [`tamper/`](tamper/README.md) | The SC-4 tamper corpus of `tessera-protocol/1`, 07 §4: mutations of a valid tiny NI proof and recorded live session, one per verifier check, each with its RFC-0019 verdict | its oracle, on base proofs from the `tessera-e2e` example `tamper-base` |

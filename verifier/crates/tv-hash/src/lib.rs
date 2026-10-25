@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! BLAKE3 domains, chained column digests, Merkle multiproofs, transcript replay and proof-of-work
-//! checks, and the SHA-256 Merkle tree of recorder logs (RFC-0004, RFC-0015), written from the
-//! specifications without reference to the prover's hashing crate, so that the two agree only
-//! because both follow the specification (SP-6, RFC-0001).
+//! checks, the SHA-256 Merkle tree of recorder logs and the strict Ed25519 verification of their
+//! manifests (RFC-0004, RFC-0015, RFC-0060), written from the specifications without reference to
+//! the prover's hashing crate, so that the two agree only because both follow the specification
+//! (SP-6, RFC-0001).
 //!
 //! The crate takes no third-party code (RFC-0019 'Dependencies'): BLAKE3 is written from its
-//! specification (O'Connor, Aumasson, Neves and Wilcox-O'Hearn, 2020) and SHA-256 from FIPS 180-4,
-//! in safe Rust. Longer BLAKE3 inputs are hashed several chunks at a time, in a layout the
-//! compiler turns into vector instructions.
+//! specification (O'Connor, Aumasson, Neves and Wilcox-O'Hearn, 2020), SHA-256 and SHA-512 from
+//! FIPS 180-4 and Ed25519 from RFC 8032 with RFC-0060's acceptance set, in safe Rust. Longer
+//! BLAKE3 inputs are hashed several chunks at a time, in a layout the compiler turns into vector
+//! instructions.
 //!
 //! | Item | What it computes or checks |
 //! |---|---|
@@ -17,6 +19,8 @@
 //! | [`merkle::node`], [`merkle::verify_multiproof`] | a commitment tree's nodes and canonical multiproofs |
 //! | [`transcript::Transcript`] | the Fiat–Shamir transcript, its challenges and proof-of-work checks |
 //! | [`sha256::sha256`], [`sha256::Sha256`] | SHA-256 |
+//! | [`sha512::sha512`], [`sha512::Sha512`] | SHA-512 |
+//! | [`ed25519::verify_strict`] | a recorder manifest's Ed25519 signature, strictly |
 //! | [`rfc6962::leaf_hash`], [`rfc6962::node_hash`], [`rfc6962::verify_inclusion`] | the recorder log's tree and inclusion proofs |
 //!
 //! # Specification
@@ -40,6 +44,7 @@
 //!   `audit-sample`, `audit-select`, `claim-list` and `statement`. Each context key is derived
 //!   once, by the compiler. Inputs of every length hash; nothing fails.
 //! - SHA-256 of FIPS 180-4, for messages shorter than `2^61` bytes, its domain; nothing fails.
+//! - SHA-512 of FIPS 180-4, for messages shorter than `2^64` bytes; nothing fails.
 //!
 //! ## Column digests
 //!
@@ -101,6 +106,15 @@
 //! `RootMismatch`. The tree size and the root come together from the signed manifest, and the
 //! leaf index from the entry: a proof can verify against one root for several pairs of a leaf
 //! index and a size whose paths have the same shape.
+//!
+//! ## Ed25519
+//!
+//! [`ed25519::verify_strict`]`(A, M, R ‖ S)` accepts RFC-0060's set and rejects with
+//! [`ed25519::Ed25519Error`], first failure in this order: `S ≥ L` (`ScalarOutOfRange`); `R`, then
+//! `A`, not a point (`RNotAPoint`, `KeyNotAPoint`), decoding by RFC 8032 §5.1.3 with `y ∈ [p,
+//! 2^255)` reduced instead of refused; `R`, then `A`, of small order (`RSmallOrder`,
+//! `KeySmallOrder`); `R`'s bytes not the encoding of `[S]B − [k]A`, `k = SHA-512(R ‖ A ‖ M) mod L`
+//! (`Equation`). The [module](ed25519) cites RFC-0060 for each rule.
 
 #![forbid(unsafe_code)]
 // Proofs come from a hostile prover and must be rejected with typed errors, never by panicking
@@ -131,9 +145,11 @@
 mod blake3;
 pub mod column;
 mod domain;
+pub mod ed25519;
 pub mod merkle;
 pub mod rfc6962;
 pub mod sha256;
+pub mod sha512;
 pub mod transcript;
 
 pub use domain::{Domain, DomainHasher, hash};
