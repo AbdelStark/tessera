@@ -65,7 +65,7 @@ pub struct ProvenSample {
 ### The verifier's own sample
 
 A sample is the verifier's when it derived it itself, with its own share. One whose coin toss merely opens could be anyone's: a prover can choose `s_V'`, set `c_V' = H(s_V')`, and attach a policy of rate 0.
-- **Derivation.** The verifier derives a sample only by revealing its own toss over the period's verified window. The toss holds the share it committed after the policy was fixed, and that policy (RFC-0016 'The policy comes first'). The derivation adds the sample's identity to `derived` and writes the ledger before the sample leaves the verifier.
+- **Derivation.** The verifier derives a sample only by revealing its own toss over the period's verified window. The toss holds the share it committed after the policy was fixed, and that policy (RFC-0016 'The policy comes first'). The derivation adds the sample's identity to `derived` and writes the ledger before the sample leaves the verifier. Revealing the same toss again changes nothing.
 - **Accounting.** The checks below refuse a sample whose identity is not in `derived` with `Inconclusive(ERR-USAGE)`, since the verifier's own input is wrong, before any check of the statement.
 - **The report** refuses such a sample too (`ERR-USAGE`, exit 64). The ledger therefore tells "my sample, nothing proven" from "not my sample".
 - **A lost toss.** A share kept only in memory dies with its process. Since the prover answers one commitment per manifest, a verifier that restarts between commitment and reveal loses that period's audit. Keeping the share across restarts is open (#529).
@@ -76,7 +76,12 @@ A sample is the verifier's when it derived it itself, with its own share. One wh
 - **The accounting checks run again** before the change, so no request is recorded twice. A batch of no request records nothing.
 - **The file.** The verifier writes the new ledger to a temporary file beside the old one, syncs it, renames it over the old one, and syncs the directory. The file then holds the old ledger or the new one whenever the writer stops. The ledger in memory changes only once the file holds the new one, and a failed write means the verdict is not `Accept`.
   - **The directory's sync** is part of the write. If it fails, the write fails with `ERR-RES-IO`: after a power loss the old ledger could return, and with it a request accepted again (INV-AUD-3).
-  - **The path.** The ledger is a regular file, neither a symbolic link nor a file of several hard links, else `ERR-USAGE`. Two names for one ledger would give two locks. Its directory is resolved once when the ledger is opened. A path that is not a regular file, such as a FIFO, is refused before it is opened.
+  - **The path.** The ledger is a regular file, neither a symbolic link nor a file of several hard links, else `ERR-USAGE`. Two names for one ledger would give two locks.
+    - Its directory is resolved once when the ledger is opened.
+    - A path that is not a regular file, such as a FIFO, is refused before it is opened, by metadata that does not follow links. The file opened must then be the one checked, by device and inode.
+    - The rules hold at open and again before every write, since a hard link added later would make a second ledger, and for a reader of a snapshot, which takes no lock.
+    - A missing ledger is `ERR-RES-IO`.
+  - **Off Unix**, where the standard library offers neither a directory sync nor a link count, a writer has no durable rename to rely on. The guarantees above are Unix's.
 - **One writer.** A lock file, `<name>.lock`, created exclusively, keeps a second writer out while the first holds the ledger.
   - A lock left by a crash refuses later writers with `ERR-RES-IO`. Only the operator removes it, after checking that no verifier runs.
   - A reader of a snapshot takes no lock.
