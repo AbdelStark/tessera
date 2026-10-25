@@ -448,7 +448,7 @@ impl Verdict {
 }
 
 // Fallible formatting keeps report allocation failure out of the process-abort path.
-struct Json(String);
+pub(crate) struct Json(pub(crate) String);
 impl core::fmt::Write for Json {
     fn write_str(&mut self, text: &str) -> core::fmt::Result {
         self.0
@@ -459,7 +459,7 @@ impl core::fmt::Write for Json {
     }
 }
 impl Json {
-    fn quoted(&mut self, text: &str) -> core::fmt::Result {
+    pub(crate) fn quoted(&mut self, text: &str) -> core::fmt::Result {
         use core::fmt::Write;
         self.write_char('"')?;
         for ch in text.chars() {
@@ -472,7 +472,7 @@ impl Json {
         }
         self.write_char('"')
     }
-    fn digest(&mut self, digest: &Digest) -> core::fmt::Result {
+    pub(crate) fn digest(&mut self, digest: &Digest) -> core::fmt::Result {
         use core::fmt::Write;
         self.write_char('"')?;
         for b in digest {
@@ -482,7 +482,7 @@ impl Json {
     }
 }
 impl RejectReason {
-    fn payload(&self, out: &mut Json) -> core::fmt::Result {
+    pub(crate) fn payload(&self, out: &mut Json) -> core::fmt::Result {
         use core::fmt::Write;
         match self {
             Self::Malformed { artifact, code } => write!(

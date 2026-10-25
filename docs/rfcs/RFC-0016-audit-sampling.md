@@ -11,6 +11,7 @@
   - which candidates are selected: lengths past every bucket, and none for a period of zero length;
   - detection at the lowest rate of a bucket and the buckets after it;
   - the batch bounds, as first-fit decreasing meets them
+- Amended by: [RFC-0067](RFC-0067-verifier-ledger-encoding.md) ('Audit report': a report from the ledger alone and its exit code; 'Calculators': the verifier's plan without a cost model)
 
 ## Summary
 

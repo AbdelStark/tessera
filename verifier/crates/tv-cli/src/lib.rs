@@ -7,8 +7,10 @@
 
 #![forbid(unsafe_code)]
 
+mod audit;
 mod directory;
 mod files;
+mod json;
 mod live;
 mod options;
 mod tables;
@@ -54,7 +56,8 @@ COMMANDS:
     tables    Regenerate the claim list's table catalog and print digests
     params    Compute the independent soundness table for a parameter set (RFC-0014)
     live      Verify one caller-pinned Live session through a directory
-    weights link, audit plan/report    Reserved; require later ledger/anchor work
+    audit     plan: a policy's detection and overhead; report: a sample's audit report (RFC-0016)
+    weights link    Reserved; requires the ledger's weight epochs (#158)
 ";
 
 const PARAMS_HELP: &str = "\
@@ -125,9 +128,10 @@ where
         "verify" => verify::run(&collected[1..], json_flag),
         "tables" => tables::run(&collected[1..], json_flag),
         "live" => live::run(&collected[1..], json_flag),
-        "weights" | "audit" => usage_error(
+        "audit" => audit::run(&collected[1..], json_flag),
+        "weights" => usage_error(
             first,
-            "this operation requires unfinished live transport, anchor or ledger support",
+            "this operation requires the ledger's weight epochs (#158)",
             json_flag,
         ),
         other => usage_error(
@@ -287,7 +291,7 @@ fn run_params(args: &[String], json_flag: bool) -> CommandOutput {
 fn usage_error(command: &str, message: &str, json_flag: bool) -> CommandOutput {
     command_error(command, message, json_flag, "ERR-USAGE", EXIT_USAGE)
 }
-fn command_error(
+pub(crate) fn command_error(
     command: &str,
     message: &str,
     json_flag: bool,

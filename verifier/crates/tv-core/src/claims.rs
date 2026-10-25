@@ -440,7 +440,7 @@ impl ParamSetId {
 
     /// Decodes the identifier, an `Ascii` copied out of the input into memory reserved
     /// fallibly: memory that cannot be reserved is `ERR-RES-MEMORY` at the name.
-    fn decode(c: &mut Cursor<'_>) -> Result<Self, DecodeError> {
+    pub(crate) fn decode(c: &mut Cursor<'_>) -> Result<Self, DecodeError> {
         let at = c.offset();
         let text = c.ascii()?;
         let mut copy = String::new();

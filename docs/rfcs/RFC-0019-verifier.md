@@ -5,6 +5,7 @@
 - Created: 2026-10-15
 - Target milestone: v0.3 (driver), v0.4 (zero-knowledge checks, anchor, scoring), v1.0 (hardening)
 - Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Check order', step 4: the advice commitment's `layout_digest`), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Check order', step 7, in `tessera-protocol/2`), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Check order', step 7: the reasons of the leaf stage's sumchecks), [RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies) ('Inputs' and 'Check order', step 4: the pinned sampler keys), [RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log) ('Inputs' and 'Check order', step 4: the period's log in place of the batch's entries and their inclusion proofs), [RFC-0065](RFC-0065-masked-channel-params.md) ('Check order', step 5: the reservation's ranges)
+- Amended by: [RFC-0067](RFC-0067-verifier-ledger-encoding.md) ('Ledger': the encoding of `VerifierLedger`, each accepted request's `Û`, and its atomic, locked writes)
 
 ## Summary
 
@@ -110,8 +111,10 @@ accounting and deadlines inside arithmetic loops remain #182. The reference CLI
 authenticates an externally supplied digest of the whole `PublicStatement`
 before using the decoded statement as its expected input. Its measured load,
 pin and verification trace is optional execution context; deterministic core
-JSON retains null internal check durations. Anchor, ledger, audit commands and
-live transport remain later work, as the target milestones below require.
+JSON retains null internal check durations. `tv-core::audit` holds the audit's
+accounting, the ledger and the audit report, and `tessera-verify audit plan` and
+`audit report` use it (#151); the drivers' use of the anchor and the ledger, and
+live transport, remain later work, as the target milestones below require.
 
 ### Ledger
 
@@ -120,11 +123,12 @@ pub struct VerifierLedger {                   // schema 0x0701, persisted, verif
     pub weight_roots: Vec<(Digest /*claim list*/, Vec<(u32 /*epoch*/, Digest /*root*/)>)>,  // linked by WeightLinkProofs
     pub successors: Vec<(Digest /*root*/, Digest /*its successor*/)>,  // one per root (RFC-0064)
     pub used_blinding_rows: Vec<(Digest, u32, u8, BitSet)>,  // (root, epoch, matrix, rows)
-    pub proven: Vec<(Digest /*sample*/, BitSet /*selected index*/)>,
+    pub derived: Vec<(Digest /*manifest*/, Digest /*sample*/)>,  // RFC-0067: one sample per manifest
+    pub proven: Vec<ProvenSample>,  // RFC-0067: accepted indices and their Û, per sample
 }
 ```
 
-The ledger is updated only after `Accept` and is written atomically. `tessera-verify weights link` checks a `WeightLinkProof` against a claim list's entry, records the root's one successor and appends the new epoch ([RFC-0064](RFC-0064-weight-linking-proof.md#the-verifiers-checks)).
+[RFC-0067](RFC-0067-verifier-ledger-encoding.md) gives its encoding: `BitSet` is canonical `Bytes`, and each record of `proven` keeps its accepted requests' `Û`. The ledger is updated only after `Accept` and is written atomically. `tessera-verify weights link` checks a `WeightLinkProof` against a claim list's entry, records the root's one successor and appends the new epoch ([RFC-0064](RFC-0064-weight-linking-proof.md#the-verifiers-checks)).
 
 ### Robustness
 

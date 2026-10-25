@@ -1023,6 +1023,7 @@ dependencies = [
  "tessera-ir",
  "tessera-pcs",
  "tessera-sumcheck",
+ "tv-codec",
  "tv-core",
 ]
 

@@ -6,6 +6,17 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The verifier's audit accounting, its ledger and its audit report ([#151](https://github.com/AbdelStark/tessera/issues/151); the verifier's own changelog has the code):
+  - **RFC-0067, 'The Verifier Ledger's Encoding and the Audit Report'.**
+    - The ledger's canonical encoding (schema `0x0701`): a `BitSet` is `Bytes`, and each record of `proven` keeps its accepted requests' `Û`, the records sorted by sample.
+    - Writes are atomic and locked.
+    - What a report from the ledger alone states: `Accepted` or `Unproven(DeadlineMissed)`, exit 10 unless every request is accepted.
+    - The verifier's audit plan without a cost model.
+
+    It amends RFC-0019 'Ledger' and RFC-0016 'Audit report' and 'Calculators'.
+  - **Prover and verifier select the same sample** over 1,000 seeds (`tessera-protocol`'s `audit_verifier.rs`, DEP-2). The two agree on the seed, every candidate's selection value and the selection, and the verifier decodes the prover's sample and re-encodes it to the same bytes. `tessera-protocol` dev-depends on `tv-codec` for it.
+  - **`audit-plan-v1`** admits `null` for the figures that need the cost model.
+
 - A sampled audit driven from the command line: `tessera audit batch` and `tessera prove --sample` ([#157](https://github.com/AbdelStark/tessera/issues/157)):
   - **`tessera audit batch --sample SAMPLE.tas LOGS --out-dir DIR`** packs a sample's selected requests into RFC-0016's batches. `LOGS` is `audit sample`'s log flags, read and checked the same way.
     - **The sample** must be its logs': its manifest is `--manifest`, and its selection is redrawn from its policy and coin toss over the period's candidates. A sample of another period, or one that selects a request the draw does not, exits 64.

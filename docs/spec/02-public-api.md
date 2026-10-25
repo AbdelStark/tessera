@@ -141,11 +141,12 @@ tessera-verify params --params PARAMSET [--lookups N] [--table-rows T] [--json]
 using the proof's own digest supplies no trust anchor. `--bound` is exact bits
 in increments of 1/256. [The reference CLI guide](../verifier/reference-cli.md)
 describes resource allowances, atomic report output and the measured CLI trace.
-The commands below are the full target interface: anchor integration, the ledger,
-audit commands and authenticated network transport remain with
+The commands below are the full target interface. `audit plan` and `audit report` are
+implemented ([#151](https://github.com/AbdelStark/tessera/issues/151)); anchor integration
+in `verify` and `live`, the ledger's weight epochs and `weights link`, and authenticated
+network transport remain with
 [#137](https://github.com/AbdelStark/tessera/issues/137),
-[#158](https://github.com/AbdelStark/tessera/issues/158),
-[#151](https://github.com/AbdelStark/tessera/issues/151) and
+[#158](https://github.com/AbdelStark/tessera/issues/158) and
 [#181](https://github.com/AbdelStark/tessera/issues/181).
 Reserved commands fail explicitly; they never certify a statement or update a ledger.
 
@@ -160,6 +161,26 @@ tessera-verify weights link --ledger LEDGER.tvl --claims claims.tcl --link LINK.
 tessera-verify audit plan  --policy POLICY.json --traffic PROFILE.json [--mu MU.json]   # detection; overhead with μ
 tessera-verify audit report --ledger LEDGER.tvl --sample SAMPLE.tas --out REPORT.json
 ```
+
+`audit plan` reads the policy and the profile as `tessera audit plan` does, and, with `--mu`, a
+`tessera.cost-model/1` report whose projections' contexts are the profile's mean lengths, in
+order: each bucket's `μ` is its projection's `mu.total`, and `η` and the target overhead are the
+report's scenario's ([RFC-0016](../rfcs/RFC-0016-audit-sampling.md#calculators)). Without
+`--mu` it reports detection only, and `tessera.audit-plan/1`'s overhead figures are `null`. A
+profile, policy or cost model it refuses exits 64.
+
+`audit report` writes the sample's `tessera.audit-report/1` report from the verifier's ledger
+([RFC-0016](../rfcs/RFC-0016-audit-sampling.md#audit-report)): a selected request the ledger
+records accepted for the sample is `accepted` with its `Û`, and every other one `unproven`,
+`DeadlineMissed`. The sample must be the verifier's own derivation, the one sample the ledger's
+`derived` records for its manifest when the verifier reveals its toss; any other sample exits 64
+with `ERR-USAGE`, however its coin toss opens
+([RFC-0067](../rfcs/RFC-0067-verifier-ledger-encoding.md#the-verifiers-own-sample)). A reveal
+derives only from a toss that opens, so a sample whose toss does not open can be the ledger's only
+if the ledger was edited by hand; such a sample exits 20 with `ERR-PROTO-COINTOSS`. The ledger
+must be a regular file of one name, else exit 64, and is read under `tv-codec`'s message limits,
+which its writers keep it within. It exits 0 when every selected request is accepted and 10
+otherwise.
 
 ### 2.4 Exit codes
 

@@ -1,0 +1,103 @@
+{
+  "inputs": {
+    "counts": {
+      "commits_per_token": 17289216.0,
+      "lookups_per_token": 17289216.0,
+      "native_ops_att_per_ctx": 4128768.0,
+      "native_ops_lin": 811706777600.0,
+      "reduction_stages": [],
+      "regen_full_equivalents": 0.0,
+      "score_block": 0.0,
+      "scores_per_token_per_ctx": 8064.0,
+      "table_rows": 0.0
+    },
+    "memory": {
+      "bytes_per_leaf": 32.0,
+      "free_bytes": 200000000000.0
+    },
+    "scenario": {
+      "batch_tokens": 16384,
+      "eta": 0.3,
+      "gpus": 8,
+      "target_overhead": 0.1,
+      "violations": 100
+    },
+    "source_defaults": true,
+    "unit_costs": {
+      "column_answer_ps": 0.0,
+      "commit_ps": 30.0,
+      "glue_fraction": 0.15,
+      "lookup_ps": 40.0,
+      "merge_ps": 0.0,
+      "native_ops_per_s": 1187400000000000.0,
+      "product_leaf_ps": 12.0,
+      "row_combination_ps": 0.0,
+      "streaming_pass_ps": 0.0,
+      "weight_pass_gpu_s": 0.24,
+      "window_ps": 0.0
+    }
+  },
+  "projections": [
+    {
+      "context": 700,
+      "detection": 0.9999964582943314,
+      "leaf_groups": 128,
+      "mu": {
+        "attention": 0.775915692463452,
+        "column_answers": 0.0,
+        "linear": 2.0287356641971237,
+        "regen": 0.0,
+        "row_combination": 0.0,
+        "streaming": 0.0,
+        "tables": 0.0,
+        "total": 2.826003702051215,
+        "weights": 0.02135234539063965
+      },
+      "proof_time_s": 0.16963930948124997,
+      "reduction_stages": [],
+      "sampling_rate": 0.11795219273470452,
+      "table_rounds": 0
+    },
+    {
+      "context": 6000,
+      "detection": 0.9819291312260982,
+      "leaf_groups": 512,
+      "mu": {
+        "attention": 6.47672211909199,
+        "column_answers": 0.0,
+        "linear": 1.9756635277100127,
+        "regen": 0.0,
+        "row_combination": 0.0,
+        "streaming": 0.0,
+        "tables": 0.0,
+        "total": 8.473179410506082,
+        "weights": 0.020793763704079496
+      },
+      "proof_time_s": 4.476781144124999,
+      "reduction_stages": [],
+      "sampling_rate": 0.03933981769818611,
+      "table_rounds": 0
+    },
+    {
+      "context": 60000,
+      "detection": 0.46972342655639665,
+      "leaf_groups": 4096,
+      "mu": {
+        "attention": 51.137214595674614,
+        "column_answers": 0.0,
+        "linear": 1.5598929200241562,
+        "regen": 0.0,
+        "row_combination": 0.0,
+        "streaming": 0.0,
+        "tables": 0.0,
+        "total": 52.71352531373356,
+        "weights": 0.01641779803479261
+      },
+      "proof_time_s": 352.7440674412499,
+      "reduction_stages": [],
+      "sampling_rate": 0.006323487783248094,
+      "table_rounds": 0
+    }
+  ],
+  "schema": "tessera.cost-model/1"
+}
