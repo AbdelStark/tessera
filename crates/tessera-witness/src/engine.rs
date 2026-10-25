@@ -182,7 +182,9 @@ impl<'a> Engine<'a> {
     /// # Errors
     ///
     /// - [`WitnessError::Usage`] for an input missing, given twice, of another size or outside its
-    ///   range, or a tensor that is not an input;
+    ///   range, or a tensor that is not an input; and for an integer outside its `BitDecompose`'s
+    ///   width or a `BitFn` input that is not a bit, which range analysis rules out (RFC-0066);
+    /// - [`WitnessError::Unequal`] for an `AssertEqual` whose two tensors differ;
     /// - as [`Engine::run`] otherwise.
     pub fn evaluate(
         &self,
@@ -791,6 +793,58 @@ impl<'a> Engine<'a> {
             }
             // The scoring certificates commit nothing a later node reads (RFC-0017).
             Op::Argmax | Op::InverseCdf { .. } => Vec::new(),
+            Op::BitDecompose { low, high } => {
+                let x = input(0)?;
+                let (low, high) = (usize::from(*low), usize::from(*high));
+                let top = 1i64 << (low + high);
+                if x.iter().any(|&v| !(0..top).contains(&v)) {
+                    // Only a malformed input can fail, as a committed byte of value 256 would.
+                    return Err(WitnessError::Usage {
+                        rule: "a decomposed integer lies in [0, 2^{low + high})",
+                    });
+                }
+                let mut b = zeros(out(0), x.len() * low)?;
+                for (bits, &v) in b.chunks_exact_mut(low).zip(x) {
+                    for (i, bit) in bits.iter_mut().enumerate() {
+                        *bit = (v >> i) & 1;
+                    }
+                }
+                let mut outputs = vec![b];
+                if high > 0 {
+                    let mut h = zeros(out(1), x.len() * high)?;
+                    for (bits, &v) in h.chunks_exact_mut(high).zip(x) {
+                        for (j, bit) in bits.iter_mut().enumerate() {
+                            *bit = (v >> (low + j)) & 1;
+                        }
+                    }
+                    outputs.push(h);
+                }
+                outputs
+            }
+            Op::BitFn { f } => {
+                let ins: Vec<&[i64]> = (0..f.arity()).map(input).collect::<Result<_, _>>()?;
+                // Range analysis puts them in [0, 1]; an unanalyzed graph could overflow `eval`.
+                if ins.iter().any(|v| v.iter().any(|&b| b != 0 && b != 1)) {
+                    return Err(WitnessError::Usage {
+                        rule: "a Boolean function's inputs are bits",
+                    });
+                }
+                let mut y = zeros(out(0), ins[0].len())?;
+                let mut at = [0i64; 3];
+                for (k, slot) in y.iter_mut().enumerate() {
+                    for (a, values) in at.iter_mut().zip(&ins) {
+                        *a = values[k];
+                    }
+                    *slot = f.eval(&at[..f.arity()]);
+                }
+                vec![y]
+            }
+            Op::AssertEqual => {
+                if input(0)? != input(1)? {
+                    return Err(WitnessError::Unequal { node: node.id });
+                }
+                Vec::new()
+            }
         };
         Ok(output)
     }

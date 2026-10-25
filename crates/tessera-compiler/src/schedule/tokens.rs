@@ -153,7 +153,12 @@ pub fn token_axes(lowering: &Lowering) -> Result<Vec<Option<u8>>, CompileError> 
                 }
                 vec![x]
             }
-            Op::Argmax | Op::InverseCdf { .. } | Op::Bitwise { .. } => {
+            Op::Argmax
+            | Op::InverseCdf { .. }
+            | Op::Bitwise { .. }
+            | Op::BitDecompose { .. }
+            | Op::BitFn { .. }
+            | Op::AssertEqual => {
                 return Err(bad("the Llama lowering emits no such operation"));
             }
         };

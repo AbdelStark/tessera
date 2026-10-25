@@ -29,7 +29,7 @@
 //! The analysis reads the graph and the tables' specifications, never a weight, so ranges cannot
 //! depend on weight values (INV-CL-1), and two runs on the same inputs agree (INV-IR-4).
 
-use tessera_ir::{Graph, IntRange, Node, NodeId, Op, TableId, TensorId};
+use tessera_ir::{Graph, IntRange, Node, NodeId, NodeKind, Op, TableId, TensorId};
 use tessera_tables::{TableKind, TableSpec};
 
 use crate::CompileError;
@@ -338,6 +338,44 @@ impl Analysis<'_> {
             Op::InverseCdf { .. } => {
                 self.integer(node, 0)?;
                 self.within(node, 1, 0, 1, "a one-hot entry is 0 or 1")?;
+                Ok(Vec::new())
+            }
+            Op::BitDecompose { low, high } => {
+                // A committed graph input may hold any value: its bits range-check it (RFC-0066
+                // Lemma 1's converse), so its declared range, which its other readers trust,
+                // must hold all of [0, 2^{low + high}). Any other input is a true integer there.
+                let x = node.inputs[0];
+                let committed = self.producer(x).is_none()
+                    && matches!(
+                        self.graph.tensors.get(x.0 as usize).map(|t| t.kind),
+                        Some(NodeKind::Committed { .. })
+                    );
+                let top = (1i128 << (u32::from(*low) + u32::from(*high))) - 1;
+                if committed {
+                    let declared = input(0).bounded();
+                    if !declared.is_some_and(|r| r.lo <= 0 && top <= r.hi) {
+                        return Err(CompileError::Range {
+                            node: node.id,
+                            input: 0,
+                            rule: "a committed integer's declared range holds [0, 2^{low + high})",
+                        });
+                    }
+                } else {
+                    self.within(node, 0, 0, top, "the integer lies in [0, 2^{low + high})")?;
+                }
+                let outputs = if *high == 0 { 1 } else { 2 };
+                Ok(vec![Range::new(0, 1); outputs])
+            }
+            Op::BitFn { f } => {
+                for k in 0..f.arity() {
+                    self.within(node, k, 0, 1, "a Boolean function's input is a bit")?;
+                }
+                Ok(vec![Range::new(0, 1)])
+            }
+            Op::AssertEqual => {
+                for k in 0..2 {
+                    self.integer(node, k)?;
+                }
                 Ok(Vec::new())
             }
         }

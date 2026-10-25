@@ -61,6 +61,13 @@ pub enum WitnessError {
     /// selection and range analysis rule out (`ERR-INTERNAL`). Like every variant, it carries
     /// rules, identifiers and lengths, never a value.
     Gadget(GadgetError),
+    /// An `AssertEqual` node's two tensors differ: the prover's data is not the statement's, such
+    /// as a frame whose stored plaintext does not hash to its logged digest
+    /// (`ERR-WITNESS-ANCHOR`). Like every variant, it names the node, never a value.
+    Unequal {
+        /// The node.
+        node: tessera_ir::NodeId,
+    },
 }
 
 impl WitnessError {
@@ -74,6 +81,7 @@ impl WitnessError {
                 ErrorCode::Internal
             }
             Self::Memory { .. } | Self::MemoryTable { .. } => ErrorCode::ResMemory,
+            Self::Unequal { .. } => ErrorCode::WitnessAnchor,
         }
     }
 }
@@ -96,6 +104,9 @@ impl fmt::Display for WitnessError {
                 write!(f, "multiplicities of table {} cannot be allocated", table.0)
             }
             Self::Gadget(error) => write!(f, "a gadget refuses its witness: {error}"),
+            Self::Unequal { node } => {
+                write!(f, "node {} asserts two unequal tensors equal", node.0)
+            }
         }
     }
 }

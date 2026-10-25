@@ -32,6 +32,12 @@
 //! 67 per plaintext byte and 268 per four-byte token. Each lookup commits its output, one byte.
 //! The key schedule costs 72 lookups per round, 720 per key, once per session.
 
+mod sha256;
+
+pub use sha256::{
+    SHA256_BITS_PER_BLOCK, SHA256_IV, SHA256_K, SHA256_MASKS, Sha256, Sha256Layout, sha256,
+    sha256_bind, sha256_bits, sha256_blocks, sha256_digest_input, sha256_inputs, sha256_pad,
+};
 use tessera_ir::{
     CommitmentClass, GraphBuilder, IntRange, IntType, IrError, NodeKind, Op, TableId, TensorDecl,
     TensorId,

@@ -24,8 +24,8 @@ use tessera_codec::error::ErrorCode;
 use tessera_codec::{DecodeLimits, Secret, SecretBuf, envelope, schema};
 use tessera_compiler::{Lowering, PublicModel, lower, validate};
 use tessera_ir::{
-    CommitmentClass, Graph, GraphBuilder, IntRange, IntType, IntegerModel, LogitsFile, NodeKind,
-    Op, QuantPoint, Site, TableId, TensorDecl, TensorId, WeightType,
+    BoolFn, CommitmentClass, Graph, GraphBuilder, IntRange, IntType, IntegerModel, LogitsFile,
+    NodeKind, Op, QuantPoint, Site, TableId, TensorDecl, TensorId, WeightType,
 };
 use tessera_tables::{BitOp, GeneratedTable, Table, TableKind};
 use tessera_witness::{Engine, WitnessError};
@@ -564,4 +564,82 @@ fn a_zero_residual_row_takes_its_root_from_epsilon_alone() {
         }
     }
     assert!(zero_rows >= 1);
+}
+
+#[test]
+fn the_bit_operations_follow_rfc_0066() {
+    // BitDecompose { 3, 2 } of a committed integer, a Boolean function of bits, and an equality.
+    let mut g = GraphBuilder::new();
+    let x = g.input(decl(&[4], ADVICE, -1, 40)).expect("x");
+    let p = g.input(decl(&[4], ADVICE, 0, 2)).expect("p");
+    let q = g.input(decl(&[4], ADVICE, 0, 2)).expect("q");
+    let r = g.input(decl(&[4], ADVICE, 0, 2)).expect("r");
+    let bits = g
+        .node(
+            Op::BitDecompose { low: 3, high: 2 },
+            &[x],
+            vec![decl(&[4, 3], ADVICE, 0, 1), decl(&[4, 2], ADVICE, 0, 1)],
+        )
+        .expect("bits");
+    let virt = || decl(&[4], NodeKind::Virtual, 0, 1);
+    let functions = [
+        BoolFn::Xor,
+        BoolFn::Xor3,
+        BoolFn::And,
+        BoolFn::Ch,
+        BoolFn::Maj,
+    ];
+    let outputs: Vec<TensorId> = functions
+        .iter()
+        .map(|&f| {
+            let inputs = [p, q, r];
+            g.node(Op::BitFn { f }, &inputs[..f.arity()], vec![virt()])
+                .expect("a function")[0]
+        })
+        .collect();
+    g.node(Op::AssertEqual, &[p, q], Vec::new())
+        .expect("an equality");
+    let graph = g.finish();
+    let engine = Engine::for_graph(&graph, &[]).expect("no tables");
+    let run = |xs: [i64; 4], ps: [i64; 4], qs: [i64; 4], rs: [i64; 4]| {
+        engine.evaluate(vec![
+            (x, buffer(&xs)),
+            (p, buffer(&ps)),
+            (q, buffer(&qs)),
+            (r, buffer(&rs)),
+        ])
+    };
+    let witness = run([0, 5, 31, 18], [0, 1, 0, 1], [0, 1, 0, 1], [1, 0, 1, 1]).expect("a witness");
+    // 5 = 101, 31 = 11 111 and 18 = 10 010, low bits first.
+    assert_eq!(
+        values(&witness, bits[0]),
+        [0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0]
+    );
+    assert_eq!(values(&witness, bits[1]), [0, 0, 0, 0, 1, 1, 0, 1]);
+    // (p, q, r) = (0, 0, 1), (1, 1, 0), (0, 0, 1), (1, 1, 1).
+    let expected: [[i64; 4]; 5] = [
+        [0, 0, 0, 0],
+        [1, 0, 1, 1],
+        [0, 1, 0, 1],
+        [1, 1, 1, 1],
+        [0, 1, 0, 1],
+    ];
+    for ((f, &y), want) in functions.iter().zip(&outputs).zip(expected) {
+        assert_eq!(values(&witness, y), want, "{f:?}");
+    }
+    // An integer outside [0, 2^5), either side; a function's input that is not a bit; and two
+    // tensors asserted equal that differ.
+    let width = WitnessError::Usage {
+        rule: "a decomposed integer lies in [0, 2^{low + high})",
+    };
+    let ok = [0, 1, 0, 1];
+    assert_eq!(run([0, 32, 0, 0], ok, ok, ok).err(), Some(width));
+    assert_eq!(run([0, -1, 0, 0], ok, ok, ok).err(), Some(width));
+    let not_a_bit = WitnessError::Usage {
+        rule: "a Boolean function's inputs are bits",
+    };
+    assert_eq!(run([0; 4], ok, ok, [0, 2, 0, 0]).err(), Some(not_a_bit));
+    let unequal = run([0; 4], ok, [0, 1, 1, 1], ok).expect_err("p ≠ q");
+    assert!(matches!(unequal, WitnessError::Unequal { .. }), "{unequal}");
+    assert_eq!(unequal.code(), ErrorCode::WitnessAnchor);
 }

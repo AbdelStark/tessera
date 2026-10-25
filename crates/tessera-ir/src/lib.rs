@@ -35,7 +35,7 @@ pub use model::{
     ArchFamily, ArchSpec, CalibrationIdentity, ChannelParams, Digest, IntegerModel, Profile,
     Provenance, PublicQuantSpec, QuantPoint, QuantSpec, RopeSpec, Site, WeightTensor,
 };
-pub use op::{Broadcast, Op, OpClass};
+pub use op::{BoolFn, Broadcast, Op, OpClass};
 pub use tessera_hash::ParamSetId;
 // The claim list's commitment layouts are the commitment crate's, field for field (RFC-0040
 // 'Migration / Rollout').

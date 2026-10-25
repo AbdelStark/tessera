@@ -23,6 +23,12 @@ tessera-codec = { path = "../tessera-codec" }
 
 [dev-dependencies]
 serde_json = "1"
+# The SHA-256 circuit (RFC-0066), built and run against the recorder's own key commitments and
+# NIST's vectors (#143).
+tessera-compiler = { path = "../tessera-compiler" }
+tessera-field = { path = "../tessera-field" }
+tessera-ir = { path = "../tessera-ir" }
+tessera-witness = { path = "../tessera-witness" }
 # The verifier's independent RFC 9162 and strict Ed25519 verification, and its log checks and
 # candidates, for differential tests (DEP-2).
 tv-codec = { path = "../../verifier/crates/tv-codec" }

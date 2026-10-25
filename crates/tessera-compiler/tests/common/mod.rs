@@ -12,9 +12,9 @@ pub mod public_vectors;
 use tessera_codec::Rational;
 use tessera_compiler::{Range, Ranges, analyze};
 use tessera_ir::{
-    ArchFamily, ArchSpec, Broadcast, CommitmentClass, Graph, GraphBuilder, IntRange, IntType, Node,
-    NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, RopeSpec, Site, TableId, TensorDecl,
-    TensorId,
+    ArchFamily, ArchSpec, BoolFn, Broadcast, CommitmentClass, Graph, GraphBuilder, IntRange,
+    IntType, Node, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, RopeSpec, Site, TableId,
+    TensorDecl, TensorId,
 };
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableKind, TableSpec};
 
@@ -451,6 +451,44 @@ impl Run<'_> {
                 ]
             }
             Op::Argmax | Op::InverseCdf { .. } => Vec::new(),
+            Op::BitDecompose { low, high } => {
+                // Little-endian digits of base 2: `low` of them, then `high` more (RFC-0066).
+                let digits = |from: u8, count: u8| -> Vec<i128> {
+                    x(0).iter()
+                        .flat_map(|&v| (from..from + count).map(move |i| (v >> i) & 1))
+                        .collect()
+                };
+                let mut y = vec![digits(0, *low)];
+                if *high > 0 {
+                    y.push(digits(*low, *high));
+                }
+                y
+            }
+            Op::BitFn { f } => {
+                // By Boolean logic on the bits, not by the op's polynomials.
+                let bit = |v: i128| match v {
+                    0 => false,
+                    1 => true,
+                    _ => panic!("{v} is not a bit"),
+                };
+                let n = elements(shape(0));
+                let y = (0..n).map(|i| {
+                    let (a, b) = (bit(x(0)[i]), bit(x(1)[i]));
+                    let c = || bit(x(2)[i]);
+                    i128::from(match f {
+                        BoolFn::Xor => a ^ b,
+                        BoolFn::Xor3 => a ^ b ^ c(),
+                        BoolFn::And => a & b,
+                        BoolFn::Ch => (a & b) | (!a & c()),
+                        BoolFn::Maj => (a & b) | (a & c()) | (b & c()),
+                    })
+                });
+                vec![y.collect()]
+            }
+            Op::AssertEqual => {
+                assert_eq!(x(0), x(1), "an AssertEqual node's tensors differ");
+                Vec::new()
+            }
         }
     }
 }

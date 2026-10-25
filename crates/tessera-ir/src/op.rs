@@ -138,11 +138,71 @@ pub enum Op {
         /// The sampler PRF.
         prf: PrfRef,
     },
-    /// A byte operation of the anchor circuits by lookup, elementwise (RFC-0015).
+    /// A byte operation of the anchor circuits by lookup, elementwise (RFC-0015): AES's.
     Bitwise {
         /// The table.
         table: TableId,
     },
+    /// The bits of a true integer `x ∈ [0, 2^{low + high})`, in two committed outputs: `b`, the
+    /// `low` bits of weight `2^0` to `2^{low−1}`, and `h`, the `high` bits above them, none when
+    /// `high` is 0. Each output is `x`'s shape with the bit index as a new innermost axis. Its
+    /// zero-checks are booleanity and recomposition, which make the bits `x`'s binary digits and
+    /// range-check a committed `x` (RFC-0066 Lemma 1).
+    BitDecompose {
+        /// The result bits, at least 1.
+        low: u8,
+        /// The bits above them, the carry of a sum; `low + high ≤ 62`.
+        high: u8,
+    },
+    /// A Boolean function of two or three bit tensors, elementwise, as its multilinear polynomial
+    /// (RFC-0066): virtual, its range `[0, 1]`.
+    BitFn {
+        /// The function.
+        f: BoolFn,
+    },
+    /// `a = b`, elementwise: a relation with no output, checked at a zero-check point
+    /// (RFC-0066).
+    AssertEqual,
+}
+
+/// The Boolean functions of [`Op::BitFn`], each the multilinear polynomial that agrees with it on
+/// `{0, 1}` (RFC-0066 'BitFn').
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BoolFn {
+    /// `a ⊕ b = a + b − 2ab`.
+    Xor,
+    /// `a ⊕ b ⊕ c = a + b + c − 2ab − 2ac − 2bc + 4abc`.
+    Xor3,
+    /// `a ∧ b = ab`.
+    And,
+    /// FIPS 180-4's `Ch(e, f, g) = (e ∧ f) ⊕ (¬e ∧ g) = ef + g − eg`.
+    Ch,
+    /// FIPS 180-4's `Maj(a, b, c) = ab + ac + bc − 2abc`.
+    Maj,
+}
+
+impl BoolFn {
+    /// The number of inputs: 2 for `Xor` and `And`, 3 for the others.
+    pub fn arity(self) -> usize {
+        match self {
+            Self::Xor | Self::And => 2,
+            Self::Xor3 | Self::Ch | Self::Maj => 3,
+        }
+    }
+
+    /// The function's value on bits, each 0 or 1. On integers outside `{0, 1}` it is the
+    /// polynomial's value.
+    pub fn eval(self, x: &[i64]) -> i64 {
+        let at = |i: usize| x.get(i).copied().unwrap_or(0);
+        let (a, b, c) = (at(0), at(1), at(2));
+        match self {
+            Self::Xor => a + b - 2 * a * b,
+            Self::Xor3 => a + b + c - 2 * a * b - 2 * a * c - 2 * b * c + 4 * a * b * c,
+            Self::And => a * b,
+            Self::Ch => a * b + c - a * c,
+            Self::Maj => a * b + a * c + b * c - 2 * a * b * c,
+        }
+    }
 }
 
 /// How `Mul`'s second operand `b` meets its first `a` (RFC-0006 'Operation set'). Shapes alone
@@ -166,6 +226,8 @@ pub enum OpClass {
     Linear,
     /// Of degree 2 in its inputs.
     Degree2,
+    /// Of degree at most 3 in its inputs: [`Op::BitFn`]'s polynomials.
+    Degree3,
     /// Backed by a gadget of RFC-0009, which commits its outputs and internal advice.
     Gadget,
 }
@@ -197,6 +259,9 @@ impl Op {
             Self::Argmax => "Argmax",
             Self::InverseCdf { .. } => "InverseCdf",
             Self::Bitwise { .. } => "Bitwise",
+            Self::BitDecompose { .. } => "BitDecompose",
+            Self::BitFn { .. } => "BitFn",
+            Self::AssertEqual => "AssertEqual",
         }
     }
 
@@ -216,6 +281,7 @@ impl Op {
             | Self::Transpose { .. }
             | Self::Expand { .. } => OpClass::Linear,
             Self::MatMulAct { .. } | Self::Mul { .. } | Self::SumSquares { .. } => OpClass::Degree2,
+            Self::BitFn { .. } => OpClass::Degree3,
             Self::OneHot { .. }
             | Self::Requant { .. }
             | Self::TableMap { .. }
@@ -223,7 +289,9 @@ impl Op {
             | Self::RsqrtRow { .. }
             | Self::Argmax
             | Self::InverseCdf { .. }
-            | Self::Bitwise { .. } => OpClass::Gadget,
+            | Self::Bitwise { .. }
+            | Self::BitDecompose { .. }
+            | Self::AssertEqual => OpClass::Gadget,
         }
     }
 }

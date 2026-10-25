@@ -22,9 +22,13 @@ use common::{ADVICE, Lookup, WEIGHT, check_run, decl, elements, evaluate, lookup
 use proptest::prelude::*;
 use tessera_codec::Rational;
 use tessera_codec::error::ErrorCode;
-use tessera_compiler::{CompileError, HALF_FIELD, Range, analyze};
+use tessera_compiler::anchor::{
+    SHA256_IV, SHA256_MASKS, Sha256Layout, sha256, sha256_bits, sha256_inputs, sha256_pad,
+};
+use tessera_compiler::{CompileError, HALF_FIELD, Range, analyze, check_profile, select};
 use tessera_ir::{
-    Broadcast, Graph, GraphBuilder, NodeId, NodeKind, Op, TableId, TensorId, WeightRef, WeightType,
+    BoolFn, Broadcast, GadgetPolicy, Graph, GraphBuilder, NodeId, NodeKind, Op, Profile, TableId,
+    TensorId, WeightRef, WeightType,
 };
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableKind, TableSpec};
 
@@ -845,6 +849,238 @@ fn each_true_integer_rule_refuses_a_graph_that_breaks_only_it() {
     );
     let error = refused(&g.finish(), &specs);
     assert_eq!(error.code(), ErrorCode::Internal);
+}
+
+// ----- Bits (RFC-0066) ----------------------------------------------------------------------------
+
+/// `x + y` of two advice inputs declared `[lo, hi]` each, `[2]`.
+fn sum_of(g: &mut GraphBuilder, lo: i128, hi: i128) -> TensorId {
+    let x = g.input(decl(&[2], ADVICE, lo, hi)).expect("x");
+    let y = g.input(decl(&[2], ADVICE, lo, hi)).expect("y");
+    one(g, Op::Add, &[x, y], virt(&[2]))
+}
+
+#[test]
+fn each_bit_rule_refuses_a_graph_that_breaks_only_it() {
+    let range = |node: u32, input: usize, rule: &'static str| CompileError::Range {
+        node: NodeId(node),
+        input,
+        rule,
+    };
+    let width = "the integer lies in [0, 2^{low + high})";
+    // BitDecompose: a virtual integer one past its width, or one below 0, against one inside.
+    for (lo, hi, low, high, refused_at) in [
+        (0, 128, 8, 0, Some(1)),
+        (0, 127, 8, 0, None),
+        (-1, 127, 8, 0, Some(1)),
+        (0, 1 << 34, 32, 3, Some(1)),
+        (0, (1 << 34) - 1, 32, 3, None),
+        (0, 1 << 61, 61, 1, Some(1)),
+        (0, (1 << 61) - 1, 32, 30, None),
+    ] {
+        let mut g = GraphBuilder::new();
+        let x = sum_of(&mut g, lo, hi);
+        let mut outputs = vec![out(&[2, u32::from(low)], ADVICE)];
+        if high > 0 {
+            outputs.push(out(&[2, u32::from(high)], ADVICE));
+        }
+        g.node(Op::BitDecompose { low, high }, &[x], outputs)
+            .expect("a decomposition");
+        let result = analyze(&g.finish(), &[]);
+        match refused_at {
+            Some(node) => assert_eq!(result.expect_err("refused"), range(node, 0, width)),
+            None => {
+                let ranges = result.expect("inside the width");
+                assert!(ranges.all()[3..].iter().all(|r| *r == Range::new(0, 1)));
+            }
+        }
+    }
+    // A virtual integer with no bound is a possible wrap; a committed input of any range is its
+    // own bits' to check (Lemma 1's converse), but a public one is not.
+    let mut g = GraphBuilder::new();
+    let x = g
+        .input(decl(&[2], ADVICE, -(1 << 100), 1 << 100))
+        .expect("x");
+    let square = one(
+        &mut g,
+        Op::Mul {
+            broadcast: Broadcast::Trailing,
+        },
+        &[x, x],
+        virt(&[2]),
+    );
+    let cube = one(
+        &mut g,
+        Op::Mul {
+            broadcast: Broadcast::Trailing,
+        },
+        &[square, x],
+        virt(&[2]),
+    );
+    g.node(
+        Op::BitDecompose { low: 8, high: 0 },
+        &[cube],
+        vec![out(&[2, 8], ADVICE)],
+    )
+    .expect("a decomposition");
+    assert_eq!(
+        refused(&g.finish(), &[]),
+        CompileError::Wrap {
+            node: NodeId(2),
+            input: 0
+        }
+    );
+    for (kind, refused_here) in [(ADVICE, false), (WEIGHT, false), (NodeKind::Public, true)] {
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(&[2], kind, -(1 << 40), 1 << 40)).expect("x");
+        g.node(
+            Op::BitDecompose { low: 8, high: 0 },
+            &[x],
+            vec![out(&[2, 8], ADVICE)],
+        )
+        .expect("a decomposition");
+        let result = analyze(&g.finish(), &[]);
+        assert_eq!(result.is_err(), refused_here, "{kind:?}");
+        if refused_here {
+            assert_eq!(result.expect_err("refused"), range(0, 0, width));
+        }
+    }
+    // A committed byte declared [0, 255] that nine bits would admit up to 511, past what its
+    // other readers trust: a key 256 + k' would pass as a Bitwise8 operand's low byte.
+    let declared = "a committed integer's declared range holds [0, 2^{low + high})";
+    for (lo, low, high, refused_here) in [
+        (0, 8, 1, true),
+        (0, 9, 0, true),
+        (1, 8, 0, true),
+        (0, 8, 0, false),
+        (-3, 8, 0, false),
+    ] {
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(&[2], ADVICE, lo, 255)).expect("a byte");
+        let mut outputs = vec![out(&[2, u32::from(low)], ADVICE)];
+        if high > 0 {
+            outputs.push(out(&[2, u32::from(high)], ADVICE));
+        }
+        g.node(Op::BitDecompose { low, high }, &[x], outputs)
+            .expect("a decomposition");
+        let result = analyze(&g.finish(), &[]);
+        if refused_here {
+            assert_eq!(
+                result.expect_err("refused"),
+                range(0, 0, declared),
+                "{low}+{high}"
+            );
+        } else {
+            result.expect("the bits prove the declared range");
+        }
+    }
+    // BitFn: each input, alone, a sum of two bits, [0, 2].
+    let bit = "a Boolean function's input is a bit";
+    for f in [
+        BoolFn::Xor,
+        BoolFn::Xor3,
+        BoolFn::And,
+        BoolFn::Ch,
+        BoolFn::Maj,
+    ] {
+        for k in 0..f.arity() {
+            let mut g = GraphBuilder::new();
+            let b = g.input(decl(&[2], ADVICE, 0, 1)).expect("a bit");
+            let wide = sum_of(&mut g, 0, 1);
+            let inputs: Vec<TensorId> = (0..f.arity())
+                .map(|i| if i == k { wide } else { b })
+                .collect();
+            one(&mut g, Op::BitFn { f }, &inputs, virt(&[2]));
+            assert_eq!(
+                refused(&g.finish(), &[]),
+                range(1, k, bit),
+                "{f:?} input {k}"
+            );
+        }
+        let mut g = GraphBuilder::new();
+        let b = g.input(decl(&[2], ADVICE, 0, 1)).expect("a bit");
+        let y = one(&mut g, Op::BitFn { f }, &vec![b; f.arity()], virt(&[2]));
+        let ranges = analyze(&g.finish(), &[]).expect("bits");
+        assert_eq!(ranges.of(y), Some(Range::new(0, 1)));
+    }
+    // AssertEqual: an input outside the centered field range, or with no bound.
+    let integer = "a true integer lies in (−(P−1)/2, (P−1)/2)";
+    for k in 0..2 {
+        let mut g = GraphBuilder::new();
+        let fine = g.input(decl(&[2], ADVICE, 0, 1)).expect("a bit");
+        let wide = g.input(decl(&[2], ADVICE, 0, HALF_FIELD)).expect("wide");
+        let inputs = if k == 0 { [wide, fine] } else { [fine, wide] };
+        g.node(Op::AssertEqual, &inputs, Vec::new())
+            .expect("an equality");
+        assert_eq!(refused(&g.finish(), &[]), range(0, k, integer));
+    }
+}
+
+#[test]
+fn the_sha256_circuit_keeps_every_tensor_in_range() {
+    // FIPS 180-4's "abc" (Appendix B.1), its first two bytes committed: every value the exact
+    // interpreter computes lies in the range the analysis gives it, and the chaining value is
+    // the digest.
+    let layout = Sha256Layout {
+        blocks: 1,
+        messages: 2,
+        committed: vec![0, 1],
+    };
+    let mut g = GraphBuilder::new();
+    let inputs: Vec<TensorId> = sha256_inputs(&layout)
+        .into_iter()
+        .map(|d| g.input(d).expect("an input"))
+        .collect();
+    let sha = sha256(&mut g, &layout, &inputs).expect("the circuit");
+    let graph = g.finish();
+    let padded = [sha256_pad(b"abc"), sha256_pad(b"abd")];
+    let rows: Vec<&[u8]> = padded.iter().map(Vec::as_slice).collect();
+    let iv: Vec<u8> = SHA256_IV.iter().flat_map(|w| w.to_be_bytes()).collect();
+    let wide = |v: Vec<i64>| v.into_iter().map(i128::from).collect::<Vec<_>>();
+    let values = vec![
+        (inputs[0], wide(layout.public_bits(&rows))),
+        (inputs[1], wide(sha256_bits(&[&iv, &iv]))),
+        (
+            inputs[2],
+            wide(SHA256_MASKS.iter().flatten().copied().collect()),
+        ),
+        (inputs[3], wide(layout.committed_bytes(&rows))),
+        (inputs[4], wide(layout.place())),
+    ];
+    let (ranges, values) = check_run(&graph, &[], &[], values);
+    // Until the anchor's relations are scheduled (#146), the compiler takes the circuit to no
+    // proof, and it is no part of a model.
+    assert_eq!(
+        select(&graph, &ranges, &[], &GadgetPolicy::default()).err(),
+        Some(CompileError::Model {
+            rule: "RFC-0066's bit operations have no proof schedule yet"
+        })
+    );
+    let profile = check_profile(&graph, &ranges, &[], Profile::Minimal).expect_err("not a model");
+    let CompileError::Profile { node, rule } = profile else {
+        panic!("{profile:?}");
+    };
+    assert_eq!(rule, "S3: a forward pass holds only RFC-0005's operations");
+    assert!(matches!(
+        graph.nodes[node.0 as usize].op,
+        Op::BitDecompose { .. } | Op::BitFn { .. } | Op::AssertEqual
+    ));
+    let digest: Vec<u8> = sha.chaining[0]
+        .iter()
+        .flat_map(|w| {
+            let bits = &values[w.0 as usize];
+            let word = (0..32).fold(0u32, |acc, i| {
+                acc | (u32::try_from(bits[2 * i]).expect("a bit") << i)
+            });
+            word.to_be_bytes()
+        })
+        .collect();
+    let expected = [
+        0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d, 0xae, 0x22,
+        0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61, 0xf2, 0x00,
+        0x15, 0xad,
+    ];
+    assert_eq!(digest, expected);
 }
 
 // ----- Classed tables, the one-hot fact, and the bounds at their edges --------------------------

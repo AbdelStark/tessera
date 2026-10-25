@@ -6,6 +6,42 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Bits in the IR and the anchor's SHA-256 circuit ([#143](https://github.com/AbdelStark/tessera/issues/143)):
+  - **RFC-0066, 'Bits in the IR, and the SHA-256 Circuit'.** It amends RFC-0006, RFC-0010, RFC-0015 and RFC-0035, and 04's `ERR-COMPILE-RANGE`.
+  - **Three operations** in `tessera-ir`, with their shape and kind rules:
+    - `BitDecompose { low, high }`, a gadget whose outputs are committed bits: `low` result bits and `high` carry bits of a true integer. Booleanity, recomposition and a check that pins padded bit slots make them its unique digits (Lemma 1).
+    - `BitFn { f }`, virtual: `Xor`, `Xor3`, `And`, `Ch` and `Maj`, each its multilinear polynomial, `BoolFn::eval`.
+    - `AssertEqual`, an equality with no output.
+  - **Range analysis.**
+    - A decomposed integer lies in `[0, 2^{low + high})`.
+    - A committed graph input may be decomposed instead, its bits being its range check, but only when its declared range, which its other readers trust, holds that interval. A byte declared `[0, 255]` under nine bits is refused: it could hold `256 + k'`.
+    - A `BitFn` input is a bit, and `AssertEqual`'s inputs are true integers.
+  - **The CPU engine** evaluates the three operations. It refuses an integer outside its width and a non-bit `BitFn` input (`ERR-USAGE`), and unequal tensors (`WitnessError::Unequal`, `ERR-WITNESS-ANCHOR`).
+  - **No proof yet.** Gadget selection refuses the operations (`ERR-QUANT-ARCH`) until their relations are scheduled (#146, RFC-0066 OQ-0066-1). The profile check refuses them in a model (S3).
+  - **`tessera_compiler::anchor`.**
+    - `sha256` over `M` padded messages of `N` blocks (FIPS 180-4 §6.2), on bit-major words `[32, M]`. It returns the chaining value after every block; `sha256_bind` binds the last to a public digest.
+    - Committed bytes, such as a key and its salt, enter through `BitDecompose { 8, 0 }` at the offsets a `Sha256Layout` names, and the public bytes as public bits.
+    - A sum's value is a five-level tree of exact intervals, because `Sum` of bits times `2^i` would bound a word by `2^{36}` and fail every carry's width. The carries are 2, 3, 3 and 1 bits.
+    - Helpers: `sha256_inputs`, `sha256_pad`, `sha256_blocks`, `sha256_bits`, `SHA256_IV`, `SHA256_K`, `SHA256_MASKS`.
+  - **`tessera_compiler::settle`**, public: it gives a built circuit's tensors their analyzed ranges, as the Llama lowering's are.
+  - **Cost.** 6,376 committed bits per block (`SHA256_BITS_PER_BLOCK`) and 8 per committed byte, in 6,032 nodes per block. A frame of `n` tokens commits 12,928 bits at `n = 0`, below 1,000 per token from `n = 20`, and about 430 per token at long frames. RFC-0015 now gives these figures in place of "about 1,000".
+  - **Tests.**
+    - NIST CAVP's 65 short and 64 long messages, the long ones block by block through the initial-value input, and a three-block graph that binds its digest.
+    - The key and sampler commitments against `tessera_anchor`'s.
+    - A digest one bit off failing its `AssertEqual`.
+    - Lemma 1 on every decomposition of a witness, and four tampers that each break booleanity or recomposition.
+    - The range rules, one test per rule.
+    - The compiler's independent interpreter on FIPS 180-4's `"abc"`.
+  - **Review.** An adversarial read of RFC-0066 found the following, all fixed here:
+    - the committed-input exemption above;
+    - the word sum's interval;
+    - padded carry slots with two witnesses;
+    - `AssertEqual` failing on padded messages, now restricted to real positions;
+    - a stage rule that contradicted RFC-0010;
+    - the short-frame cost.
+
+    It confirmed the circuit against all 129 vectors from the RFC's text alone. The zero-checks' messages and `GatherPublic`'s relation are open questions for #146.
+
 - The anchor's AES-128-CTR circuit, lowered into the IR ([#142](https://github.com/AbdelStark/tessera/issues/142)):
   - **`tessera_compiler::anchor`.**
     - `aes128_key_schedule` (FIPS-197 §5.2), `aes128_encrypt` over `B` blocks (§5.1) and `aes128_ctr` (SP 800-38A §6.5), with `aes128_ctr_inputs` for the input declarations and `RCON`.

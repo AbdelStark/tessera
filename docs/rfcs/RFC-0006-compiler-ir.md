@@ -94,7 +94,7 @@ A graph's nodes are in topological order. Every input is a graph input, a tensor
 | `RsqrtRow` | `u` → `ρ` | `ρ = u` | `ρ` is advice; `dim ≥ 1`, and `κ ≤ 31`, so that `N = dim · 2^{2κ}` stays below `2^{94}` |
 | `Argmax`, `InverseCdf` | `ℓ`, `h` → none | `h = ℓ`: one one-hot entry per logit | certificates: every value they commit is internal advice |
 | `Bitwise` | `a`, `b` → `y` | all equal | `y` is `LookupOutput { table }` |
-| `BitDecompose` | `x` → `b`, `h` | `b` is `x` with an axis of `low` added, `h` with one of `high`; no `h` when `high = 0` | both committed advice; `1 ≤ low`, `low + high ≤ 62` ([RFC-0066](RFC-0066-bits-and-sha256.md#bitdecompose--low-high-)) |
+| `BitDecompose` | `x` → `b`, `h` | `b` is `x` with an innermost axis of `low` added, `h` with one of `high`; no `h` when `high = 0` | both committed advice; `1 ≤ low`, `low + high ≤ 62` ([RFC-0066](RFC-0066-bits-and-sha256.md#bitdecompose--low-high-)) |
 | `BitFn` | two or three bit tensors → `y` | all equal | `y` virtual: `Xor`, `And` take two inputs; `Xor3`, `Ch`, `Maj` three |
 | `AssertEqual` | `a`, `b` → none | equal | a relation: `a = b` |
 
@@ -118,7 +118,7 @@ The integrality-requiring inputs, each with the domain it must lie in (every dom
 | `Requant` | key; channel classes | the centered field range; `[0, classes)` |
 | `TableMap` | key; channel classes | the table's keys: `[−2^{b−1}, 2^{b−1})` for `Silu`, `[0, 2^{key_bits})` for `Exp`; `[0, classes)`, given exactly when the table has several classes (otherwise `ERR-INTERNAL`) |
 | `Bitwise` | both operands | `[0, 256)` |
-| `BitDecompose` | the integer | `[0, 2^{low + high})`, or any value for a committed input, which its bits range-check ([RFC-0066](RFC-0066-bits-and-sha256.md) Lemma 1) |
+| `BitDecompose` | the integer | `[0, 2^{low + high})`; or, for a committed graph input, which its bits range-check ([RFC-0066](RFC-0066-bits-and-sha256.md) Lemma 1), a declared range that holds `[0, 2^{low + high})` |
 | `BitFn` | each input | `[0, 1]` |
 | `AssertEqual` | both inputs | the centered field range |
 | `SoftmaxRow` | scores | `[−2^21, 2^21]`, with a spread `x_hi − x_lo` below `2^{key_bits}` of its `Exp` table, since each key is the row maximum less a score. INT8 heads of width 128 reach `2^21` at `q = k = −128`. `key_bits` is the narrowest width from `bits(128 · 255 · d_head)` up whose last key maps to 0, the key every masked position looks up ([RFC-0030](RFC-0030-masked-exponentials.md#relation-1-every-position-looked-up)). |

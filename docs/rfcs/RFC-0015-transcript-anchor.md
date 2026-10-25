@@ -27,7 +27,7 @@
   - 'Goals' and 'Deployment assumptions', A-ANCHOR-1 and A-ANCHOR-2: the period's log, who sends on the recorded path, and the recorder's carries;
   - 'Log format': `SessionCarry`, and a batch's entries read from its period's log;
   - 'Prover pre-check', 'Verifier checks' 2 and INV-ANC-2: the session rules over the period's log.
-- Amended by: [RFC-0066](RFC-0066-bits-and-sha256.md) ('Circuits' step 3: the SHA-256 circuit's construction)
+- Amended by: [RFC-0066](RFC-0066-bits-and-sha256.md) ('Circuits' step 3: the SHA-256 circuit's construction, and its cost)
 
 ## Summary
 
@@ -163,7 +163,7 @@ These steps are amended by [RFC-0059 'The circuits'](RFC-0059-frame-headers-and-
 
 Cost per token, both directions, against about 1.7×10^7 commitments per token for 405B's linear layers, is below 0.01%:
 - **AES-128-CTR**, counted from the lowering, is 1,072 lookups per 16-byte block, each committing its output byte: 16 for the first AddRoundKey, 112 for each of rounds 1 to 9, 32 for round 10 and 16 for the ciphertext. That is 268 per four-byte token, plus 720 per session for the key schedule. An earlier estimate gave about 250.
-- **SHA-256's** committed bits are #143's to count; this RFC estimated about 1,000 per token.
+- **SHA-256's** committed bits: 6,376 per block and 8 per committed byte ([RFC-0066](RFC-0066-bits-and-sha256.md#the-sha-256-circuit)). A frame of `n` tokens commits `6,376·⌈(72 + 4n)/64⌉ + 8·(22 + 4n)`: 12,928 at `n = 0`, below the estimate of about 1,000 per token from `n = 20`, about 430 per token at long frames.
 
 ### Reference recorder
 

@@ -241,7 +241,7 @@ pub fn lower(model: PublicModel<'_>, positions: u32) -> Result<Lowering, Compile
 /// - **S2**, `servable` only: every weight matmul's accumulator fits INT32;
 /// - **S3**: every nonlinearity is a lookup into a `Silu` or `Exp` table or a gadget of RFC-0005's
 ///   semantics: `TableMap` takes only `Silu` tables, and neither the scoring certificates nor the
-///   anchors' byte operations are part of `D`.
+///   anchors' byte and bit operations (RFC-0066) are part of `D`.
 ///
 /// The attention products are outside S1 and S2: `PV` multiplies 17-bit exponentials, in both
 /// profiles.
@@ -288,7 +288,12 @@ pub fn check_profile(
                     return fail("S3: an elementwise nonlinearity is the SiLU table");
                 }
             }
-            Op::Bitwise { .. } | Op::Argmax | Op::InverseCdf { .. } => {
+            Op::Bitwise { .. }
+            | Op::BitDecompose { .. }
+            | Op::BitFn { .. }
+            | Op::AssertEqual
+            | Op::Argmax
+            | Op::InverseCdf { .. } => {
                 return fail("S3: a forward pass holds only RFC-0005's operations");
             }
             _ => {}
@@ -1210,8 +1215,15 @@ impl<'a> Builder<'a> {
     }
 }
 
-/// Gives every tensor a node produced its analyzed range and the narrowest type holding it.
-fn settle(graph: &mut Graph, ranges: &Ranges) -> Result<(), CompileError> {
+/// Gives every tensor a node produced its analyzed range and the narrowest type holding it, as the
+/// witness engine checks values against in debug builds (INV-DM-2). [`lower`] settles its graph;
+/// a circuit's builder, such as [`crate::anchor::sha256`], leaves it to its caller.
+///
+/// # Errors
+///
+/// [`CompileError::Graph`] for a produced tensor with no bound of at most 64 bits, or one that
+/// `ranges`, the analysis of another graph, does not cover.
+pub fn settle(graph: &mut Graph, ranges: &Ranges) -> Result<(), CompileError> {
     let produced: Vec<TensorId> = graph
         .nodes
         .iter()

@@ -57,8 +57,9 @@ Every constraint in the derived constraint system is one of these relation kinds
 | `ZeroCheck` (`OneHot` booleanity) | `0 = Σ_x eq(z, x) h̃(x)(1 − h̃(x))` | 3 |
 | `ZeroCheck` (padding, [RFC-0035](RFC-0035-padded-rows.md#the-padding-zero-check)) | `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·w̃(x)`, `ψ` the public row selector | 3 |
 | `ZeroCheck` (`BitDecompose` booleanity, [RFC-0066](RFC-0066-bits-and-sha256.md#bitdecompose--low-high-)) | `0 = Σ_x eq(z, x) b̃(x)(1 − b̃(x))`, for each of its outputs | 3 |
-| `ZeroCheck` (`BitDecompose` recomposition) | `0 = x̃(z) − Σ_{(y,i)} eq(z, y)·w(i)·b̃(y ‖ i) − Σ_{(y,j)} eq(z, y)·2^{low}·w(j)·h̃(y ‖ j)`, `w(i) = 2^i` on real bits | 3 |
-| `ZeroCheck` (`AssertEqual`) | `0 = ã(z) − b̃(z)` | — |
+| `ZeroCheck` (`BitDecompose` recomposition) | `0 = x̃(z) − Σ_{(y,i)} eq(z, y)·w(i)·b̃(y ‖ i) − Σ_{(y,j)} eq(z, y)·2^{low}·w(j)·h̃(y ‖ j)`, `w(i) = 2^i` on real bits and 0 on padded ones | 2 |
+| `ZeroCheck` (`BitDecompose` bit padding) | `0 = Σ_x eq(z, x)·(1 − LT(x_bit, n))·b̃(x)`, for each output whose `n` bits are not a power of two | 2 |
+| `ZeroCheck` (`AssertEqual`) | `0 = Σ_x eq(z, x)·ψ̃(x)·(ã(x) − b̃(x))`, `ψ` 1 on the shape's real positions | 3 |
 | `Elementwise` (`BitFn`) | `Z̃(r) = Σ_x eq(r, x)·Σ_t w_t·Π_{f ∈ t} I_f(x)`, the function's multilinear polynomial | ≤ 4 |
 | `ProductTreeLevel` | `V_ℓ(r) = Σ_x eq(r, x) V_{ℓ+1}(x, 0) V_{ℓ+1}(x, 1)` | 3 |
 | `FractionTreeLevel` | LogUp-GKR level (RFC-0008) | 3 |
