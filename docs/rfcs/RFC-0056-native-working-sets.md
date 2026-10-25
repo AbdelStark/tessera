@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-23
 - Target milestone: v0.3 (working sets, plan and cost model), v0.5 (GPU backend)
-- Amended by: [RFC-0057](RFC-0057-one-proof-unit.md) ('The batch's form': a chunk needs [#470](https://github.com/AbdelStark/tessera/issues/470))
+- Amended by: [RFC-0057](RFC-0057-one-proof-unit.md) ('The batch's form': a chunk needs [#470](https://github.com/AbdelStark/tessera/issues/470)), [RFC-0071](RFC-0071-request-slots.md) (OQ-0056-2: the batch, answered)
 - Supersedes:
   - [RFC-0055](RFC-0055-windowed-stages.md) 'Native relations', which left them to [#458](https://github.com/AbdelStark/tessera/issues/458); its 405B windows and its `c_w` bands, which leave the native relations out; its one window per stage, for stages whose rounds bind more than eight own variables of an instance (Alternative 7);
   - [RFC-0020](RFC-0020-cost-model.md#executable-cost-model) 'Executable cost model': the stages' tables by growth, holding and width, the plan at a context, and the windows;
@@ -234,7 +234,7 @@ Two classes, `B_max = 32`, 16K tokens, 0.2 TB:
 ## Open Questions
 
 - **OQ-0056-1: the window cap.** Eight own variables rests on SUR-0007's count and EXP-0012's extrapolation, at 405B's stages. At those estimates a second window saves 0.01 to 1.3 on `servable`'s stage 1 and costs 0.4 to 1.0 on `minimal`'s stages. OQ-0055-1's H100 measurement of the grid settles the cap, or replaces it by a choice per stage by cost. Owner: @AbdelStark. Resolve with v0.5's measurements.
-- **OQ-0056-2: the batch.** `servable`'s corrected `μ` is lower at 2,048 tokens than at the scenario's 16K: 14.3 and 29.5 against 15.7 and 31.0. The projections keep the source's scenario. How a proof unit holds several requests, and so which batches a prover can choose, is [#357](https://github.com/AbdelStark/tessera/issues/357)'s. Owner: @AbdelStark. Resolve with #357.
+- **OQ-0056-2: the batch.** `servable`'s corrected `μ` is lower at 2,048 tokens than at the scenario's 16K: 14.3 and 29.5 against 15.7 and 31.0. The projections keep the source's scenario. How a proof unit holds several requests, and so which batches a prover can choose, is [#357](https://github.com/AbdelStark/tessera/issues/357)'s. Owner: @AbdelStark. Answered by [RFC-0071](RFC-0071-request-slots.md): a batch is `R` whole sequences in slots of `S`, packed by slot class, which this model's `T/S` sequences of `S` price.
 
 ## References
 

@@ -27,7 +27,7 @@
   - 'Goals' and 'Deployment assumptions', A-ANCHOR-1 and A-ANCHOR-2: the period's log, who sends on the recorded path, and the recorder's carries;
   - 'Log format': `SessionCarry`, and a batch's entries read from its period's log;
   - 'Prover pre-check', 'Verifier checks' 2 and INV-ANC-2: the session rules over the period's log.
-- Amended by: [RFC-0066](RFC-0066-bits-and-sha256.md) ('Circuits' steps 3 and 4: the SHA-256 circuit's construction, its cost, and the binding's zero-check)
+- Amended by: [RFC-0066](RFC-0066-bits-and-sha256.md) ('Circuits' steps 3 and 4: the SHA-256 circuit's construction, its cost, and the binding's zero-check), [RFC-0071](RFC-0071-request-slots.md) ('Circuits': in a batch, a request's frames bind its own slot's rows)
 
 ## Summary
 
@@ -139,7 +139,7 @@ The signed message is `"tessera-manifest/v1" ‖ TCE(manifest without signature)
 
 ### Circuits
 
-For each request in the batch and each direction:
+For each request in the batch and each direction. In a batch of several requests, request `r`'s tokens are its slot's rows `r·S + p`, prompt then outputs ([RFC-0071](RFC-0071-request-slots.md#the-statement-and-the-batching)):
 
 These steps are amended by [RFC-0059 'The circuits'](RFC-0059-frame-headers-and-nonces.md#the-circuits): the counter blocks and each plaintext's 22-byte prefix are public inputs, and the sampler commitment is opened too.
 

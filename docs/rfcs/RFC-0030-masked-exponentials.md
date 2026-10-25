@@ -92,7 +92,7 @@ A padded row's tree has every leaf 1, so its root is 1. The forest's public root
 - 0 for the trees of a sequence's rows, layers and heads;
 - 1 for every other tree: those of padded rows, and those of padded layers and heads, which pad the forest to a power of two.
 
-The root claim `Σ_y v_y·eq(r, y)` is the extension of a public predicate over the tree index, with an `O(log)` closed form ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels'). For one sequence stacked over layers and heads, it is `1 − LT(r_ℓ, n_layers)·LT(r_h, n_heads)·LT(r_q, n)`. For a batch of several requests ([RFC-0071](RFC-0071-request-slots.md#the-public-selectors)), `LT(r_q, n)` becomes `Σ_{r<R} eq(r_{q,hi}, r)·LT(r_{q,lo}, n_r)`, the query's slot variables low and its request's high, and the causal selector is `C(τ, i) = [i ≤ τ mod S < n_{⌊τ/S⌋}]`, keys counted within the query's request.
+The root claim `Σ_y v_y·eq(r, y)` is the extension of a public predicate over the tree index, with an `O(log)` closed form ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels'). For one sequence stacked over layers and heads, it is `1 − LT(r_ℓ, n_layers)·LT(r_h, n_heads)·LT(r_q, n)`. For a batch of several requests ([RFC-0071](RFC-0071-request-slots.md#the-public-selectors)), `LT(r_q, n)` becomes `Σ_{r<R} eq(r_b, r)·LT(r_p, n_r)`, with `r_p` the query's position variables within its slot, low, and `r_b` its request's, high, and the causal selector is `C(τ, i) = [i ≤ τ mod S < n_{⌊τ/S⌋}]`, keys counted within the query's request.
 
 ### Lemma 5, extended
 

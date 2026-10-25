@@ -240,7 +240,7 @@ impl<'a> Prover<'a> {
 
 The current protocol/1 CPU implementation exposes these types from
 `tessera_prover`. `ProofBatch` holds one expected `PublicStatement` and
-`Secret<Vec<u32>>` containing its prompt and recorded continuation. P1 borrows
+`Secret<Vec<u32>>` containing its requests' prompts and recorded continuations, concatenated in batch order: each request's prompt then outputs, which go to its slot's rows ([RFC-0071](../rfcs/RFC-0071-request-slots.md#the-statement-and-the-batching)). P1 borrows
 the tokens to compute the clearing witness; later rounds need no borrow of the
 caller's batch, which can then be dropped. The driver checks the full named parameter bundle, execution plan,
 actual model commitment and epoch; unsupported GPU targets, predictors and

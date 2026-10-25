@@ -40,7 +40,7 @@ An attention tile `(layer, kv_head, query_block)` holds `e[h, q, i]` for three r
 
 - the `g = n_heads / n_kv_heads` query heads of its KV head;
 - the `Q' = min(Q, N)` positions of its query block, with `Q = 512` the policy's `query_block` ([RFC-0046](RFC-0046-advice-segments.md#short-query-blocks));
-- the `N = 2^n` positions of the padded sequence.
+- the `N = 2^n` positions of the padded sequence; in a batch of several requests, the `S = 2^b` positions of the query block's slot, with `n = b` below ([RFC-0071](RFC-0071-request-slots.md#the-plan-and-the-layout)).
 
 Row-major, the key index takes the lowest variables ([RFC-0010](RFC-0010-proof-schedule.md#multilinear-extensions)), so each advice row of `k` entries spans its queries against every key, and no row is all masked.
 

@@ -126,7 +126,7 @@ pub enum Tile {
 ## Drawbacks
 
 - The plan repeats what it can be derived from. That is its purpose: a cache of the tiles, checked against the claim list, so that a plan and a claim list cannot disagree.
-- A batch of one request until #357.
+- A batch of several requests needs [RFC-0071](RFC-0071-request-slots.md)'s slots, which the tiles cover with query blocks of `Q' = min(Q, S)`.
 
 ## Migration / Rollout
 

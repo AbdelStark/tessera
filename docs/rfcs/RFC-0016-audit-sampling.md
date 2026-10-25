@@ -11,7 +11,7 @@
   - which candidates are selected: lengths past every bucket, and none for a period of zero length;
   - detection at the lowest rate of a bucket and the buckets after it;
   - the batch bounds, as first-fit decreasing meets them
-- Amended by: [RFC-0067](RFC-0067-verifier-ledger-encoding.md) ('Audit report': a report from the ledger alone and its exit code; 'Calculators': the verifier's plan without a cost model)
+- Amended by: [RFC-0067](RFC-0067-verifier-ledger-encoding.md) ('Audit report': a report from the ledger alone and its exit code; 'Calculators': the verifier's plan without a cost model), [RFC-0071](RFC-0071-request-slots.md) ('Batching': requests are packed by slot class, so that a batch's slots are its requests' own powers of two)
 
 ## Summary
 
@@ -96,6 +96,7 @@ The prover packs selected requests into batches by first-fit decreasing on total
 
 - **Groups.** The greedy requests form one group, and each pinned sampler key's temperature requests another.
 - **First-fit decreasing.** Within a group, requests go in decreasing `L`, ties in `RequestKey` order. Each goes into the first batch, in the order the batches were opened, whose total stays at most `max_batch_tokens` with it, else into a new batch.
+- **By slot class** ([RFC-0071](RFC-0071-request-slots.md#the-statement-and-the-batching)). A batch of several requests puts each in a slot of its longest request's power of two. So within a group, requests are packed per class `c = ⌈log2 L⌉`, the classes in decreasing order: first-fit decreasing as above within each class, each request counting `2^c` tokens against `max_batch_tokens`. At most one batch per class, not per group, then has fewer than `min_batch_tokens` tokens.
 - **A request longer than `max_batch_tokens`** is a batch on its own, which takes no other request.
 - **The minimum.** At most one batch of each group has fewer than `min_batch_tokens` tokens. Two such batches would total under `2 · min_batch_tokens ≤ max_batch_tokens`, so the later one's first request would have fit in the earlier one.
 - **A batch's statement** lists its requests in `RequestKey` order.

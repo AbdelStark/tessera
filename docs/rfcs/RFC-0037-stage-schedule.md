@@ -122,7 +122,7 @@ The extension of `M` in its row bit `y` and column bit `c` is `C·eq(y, c) + S·
 - **The sumcheck.** It has degree 2. `E_r` is its one public factor, of `2^n` entries, built from the input claim's point `r` as `eq` is.
 - **The claim.** The relation leaves one claim, on `X̃` at the instance's point `r'`.
 - **The verifier's evaluation.** `Ẽ_r(r') = eq(r_b, r'_b)·⟨C, w⟩ + (r_b − r'_b)·⟨S, w⟩`, with `w = eq(r_{−b}, ·)·eq(r'_{−b}, ·)` over `x_{−b}`.
-  - RoPE's constants depend on the position and the frequency, not the head, so the head's coordinates contribute the factor `eq(r_h, r'_h)`. In a batch of several requests a row's position is its place in its request, `τ mod S`, and 0 at a padded row ([RFC-0071](RFC-0071-request-slots.md#the-lowering)): the verifier derives it from the batch's lengths.
+  - RoPE's constants depend on the position and the frequency, not the head, so the head's coordinates contribute the factor `eq(r_h, r'_h)`. In a batch of several requests a real row's position is its place in its request, `τ mod S`, and the constants are zero on every padded row, as past `n` today ([RFC-0071](RFC-0071-request-slots.md#the-public-selectors)). The verifier derives both from the batch's lengths, and its inner products run over each request's real rows.
   - The inner products run over `n·d_head/2` entries.
 
 This replaces RFC-0010's partner form, of degree 3 with two claims, which #99 implemented.

@@ -66,7 +66,7 @@ An attention tile's score tensor takes RFC-0034's `(i_hi, h, q, i_lo)` instead.
 
 A layout fits when it allocates at most `2^{32}` rows: a row index of at most 32 bits.
 - **Column answers.** A column answer then carries at most `2^{32}` symbols, below RFC-0003's default vector limit of `2^{34}`, so every honest answer decodes.
-- **The bound** holds at `max_context`, the longest sequence a claim list admits. RFC-0007 step 6 refuses a claim list whose layout at `n = max_context` exceeds it (`Layout`). Every shorter sequence lays out within it, because rows grow with `n`. A batch of several requests can hold more tokens than `max_context` ([RFC-0071](RFC-0071-request-slots.md#the-statement)), so RFC-0019 step 4 refuses one whose own layout exceeds the bound (`StatementMismatch { field: Batch }`).
+- **The bound** holds at `max_context`, the longest sequence a claim list admits. RFC-0007 step 6 refuses a claim list whose layout at `n = max_context` exceeds it (`Layout`). Every shorter sequence lays out within it, because rows grow with `n`. A batch of several requests can hold more tokens than `max_context` ([RFC-0071](RFC-0071-request-slots.md#the-plan-and-the-layout)), so RFC-0019 step 4 refuses one whose own layout exceeds the bound (`StatementMismatch { field: Batch }`).
 - **Scale.** The complete 405B `servable`, two-class, Q=512 layout at 16K tokens allocates 2,328,576 rows and spans a 22-bit row index (RFC-0014, RFC-0050).
 
 ### Heads

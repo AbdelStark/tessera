@@ -54,7 +54,7 @@ certificate source, never an invented model node or model auxiliary.
 Allocate `M[t]` on the model's padded time domain. Real output-logit positions
 are `prompt-1 <= t < n-1`; every other entry is zero. In a proof unit, place this
 maximum after its model tensors/auxiliaries and before table multiplicities.
-Multiple requests retain their public batch order and separate source identities. In a batch ([RFC-0071](RFC-0071-request-slots.md#the-greedy-certificate-and-scoring)), request `r`'s time is its slot's rows: its maximum is real on positions `prompt_r − 1 ≤ p < n_r − 1` of slot `r`, its key's time coefficient is `Σ_{u<outputs_r} eq(P_row, u)·eq(r_time, r·S + prompt_r − 1 + u)`, and the selected and token-binding relations run once over the whole token axis.
+Multiple requests retain their public batch order and separate source identities. In a batch ([RFC-0071](RFC-0071-request-slots.md#the-greedy-certificate-and-scoring)), request `r`'s time is its slot's rows. One maximum `M` serves the batch, a single source in one `GreedyMaximum` tile, real on every request's window, positions `prompt_r − 1 ≤ p < n_r − 1` of slot `r`. Each request keeps its own key column, in batch order, and key relation, whose time coefficient is `Σ_{u<outputs_r} eq(P_row, u)·eq(r_time, r·S + prompt_r − 1 + u)`. The selected and token-binding relations run once over the whole token axis. A maximum per request would let a prover hide a compensating entry outside a window (RFC-0071 'Alternatives Considered' 5).
 Apply the existing whole-row public-zero rule and segment/maximum-size checks to
 the complete runtime layout; secret-observed zeros never remove rows.
 Real inactive maximum positions remain committed and are proved zero by the
