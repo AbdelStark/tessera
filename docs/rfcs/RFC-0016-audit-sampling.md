@@ -116,23 +116,52 @@ At the deadline, the verifier emits the audit report.
 ```rust
 pub enum RequestOutcome { Accepted { uhat: FixedBits }, Rejected(RejectReason), Unproven(UnprovenReason), Inconclusive(VerifierError) }
 pub enum UnprovenReason { DeadlineMissed, ProverReportedMismatch, ProverReportedAnchorMismatch }
-pub struct AuditReport { pub sample: Digest, pub outcomes: Vec<(RequestKey, RequestOutcome)>, pub summary: AuditSummary }
+pub struct AuditReport { pub sample: Digest, pub manifest_digest: Digest, pub outcomes: Vec<(RequestKey, RequestOutcome)>, pub summary: AuditSummary }
+pub struct AuditSummary { pub selected: u64, pub accepted: u64, pub rejected: u64, pub unproven: u64, pub inconclusive: u64, pub max_uhat: Option<FixedBits> }
 ```
 
-`tessera.audit-report/1` is the JSON rendering. A prover that returns `ERR-WITNESS-EXACT-MISMATCH` for a request has disclosed a deviation; the report records it as `ProverReportedMismatch`. Consequences of any outcome are policy, outside Tessera.
+- **Who writes it.** The verifier, at the sample's deadline: `tessera-verify audit report` (01 §2 stage 8, #151).
+- **`sample`** is the sample seed, and `manifest_digest` the period's. `outcomes` holds one entry per selected request, in `selected`'s order.
+- **`summary`** counts the outcomes. `selected` is their number and the sum of the other four counts. `max_uhat` is the largest accepted `Û`, and `None` when no request is accepted.
+- **The prover's own reports.**
+  - A prover that returns `ERR-WITNESS-EXACT-MISMATCH` for a request has disclosed a deviation. The report records it as `ProverReportedMismatch`.
+  - A prover whose pre-check fails, `ERR-WITNESS-ANCHOR` (RFC-0015 'Prover pre-check'), has disclosed that its transcripts do not match the log. The report records it as `ProverReportedAnchorMismatch`.
+- **Consequences** of any outcome are policy, outside Tessera.
+
+`tessera.audit-report/1` ([`spec/schemas/audit-report-v1.schema.json`](../../spec/schemas/audit-report-v1.schema.json)) is the JSON rendering. Digests are lowercase hex, and `Û` is FixedBits as `uhat_fixed`. A rejection is rendered as `tessera.verdict/1` renders a verdict's reason. [`docs/perf/examples/audit-report.json`](../perf/examples/audit-report.json) shows one outcome of each kind.
 
 ### Calculators
 
-`tessera audit plan` computes, from a policy and a traffic profile (request counts per bucket) and the cost model's `μ` per bucket:
+`tessera audit plan` computes, from a policy, a traffic profile and the cost model's `μ` per bucket, the figures below.
+- **The traffic profile.** `tessera.audit-traffic/1` ([`spec/schemas/audit-traffic-v1.schema.json`](../../spec/schemas/audit-traffic-v1.schema.json)) gives one entry per bucket of the policy, in its order:
+  - its requests over a period, `n_b`;
+  - their mean length, `L_b`: above the previous bucket's `max_tokens` and at most its own;
+  - the violating requests among them, `v_b ≤ n_b`.
+- **`μ_b`** is the cost model's at `L_b` (RFC-0020 'Executable cost model'), from an execution plan's counts or the source's.
 
 - **Detection probability** for `v_b` violating requests per bucket: `1 − Π_b (1 − s̲_b)^{v_b}`, where `s̲_b = min_{c ≥ b} s_c` is the lowest rate of bucket `b` and every later one.
   - **Why the minimum.** The serving stack can pad a request it cheats on into a later bucket, for instance with inbound tokens it seals itself (RFC-0063 'Inbound before outbound'). So a violation of bucket `b` is detected at `s̲_b` at best.
   - **An example.** Under rates of 10%, 2% and 0.4% for 1K, 16K and 128K tokens, 100 violations of 1K tokens left where they are would be detected with probability above 0.9999. Padded past 16K tokens, they are detected with probability 0.33.
   - **No escape past the buckets.** A request padded past the last bucket is always selected (step 4), so padding never goes below the last bucket's rate.
 - **Amortized overhead:** `Σ_b n_b L_b s_b μ_b η / Σ_b n_b L_b`, with `η` the prefill-to-serving ratio ([00 §10](../spec/00-overview.md#10-three-meanings-of-overhead)).
-- **Rates for a target overhead**, as in the source's table: for 10% overhead at uniform context, `s = 0.1 / (μ η)`.
+- **Rates for a target overhead**, as in the source's table: for 10% overhead at uniform context, `s = 0.1 / (μ η)`. Each bucket's target rate is `min(1, O/(μ_b·η))`, with `O` the target overhead.
+- **Detection in place**, `1 − Π_b (1 − s_b)^{v_b}`, is what the policy detects if no violation leaves its bucket. The plan reports it beside the detection above, labelled as the upper bound it is.
 
-The verifier side has an independent implementation used by `tessera-verify audit plan`; CI checks they agree.
+**The report.** `tessera.audit-plan/1` ([`spec/schemas/audit-plan-v1.schema.json`](../../spec/schemas/audit-plan-v1.schema.json)) holds, per bucket:
+- `s_b` and `s̲_b`;
+- the traffic and `μ_b`;
+- the expected selections `n_b·s_b`;
+- the target rate;
+- both detections over the bucket's own violations.
+
+Then it holds the totals. A profile that is not one well-formed entry per bucket, or that has no request, is `ERR-USAGE`.
+
+**The arithmetic** is IEEE 754 binary64, with `ln_1p` and `exp_m1` so that small rates keep their precision. These are planning figures. None enters the sample, whose thresholds are exact integers, or any TCE artifact (INV-DM-6).
+
+The verifier side has an independent implementation used by `tessera-verify audit plan` (#151).
+- **Detection** depends on the policy and the traffic only, so the verifier computes it from them alone.
+- **The overhead and the target rates** need `μ`, which is the prover's cost model's (RFC-0020). The verifier reads them from a `tessera.cost-model/1` report whose contexts are the traffic's mean lengths (`--mu`), and without one it reports detection only.
+- **Agreement.** CI checks that the two implementations agree within `10^{-12}`, relative, since platforms round `ln_1p` and `exp_m1` differently in the last bits.
 
 ### Invariants
 

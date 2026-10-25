@@ -4,10 +4,10 @@
 //!
 //! - **The tree.** `tessera --help` lists every command of 02 §2.2, and each has its own help.
 //! - **Not yet.** Every command but `compile`, `commit-weights`, `prove`'s reference path,
-//!   `audit share`, `audit sample`, `bench model`, `params check`, `recorder ref` and `inspect` checks the
+//!   `audit share`, `audit sample`, `audit plan`, `bench model`, `params check`, `recorder ref` and `inspect` checks the
 //!   envelope of each TCE artifact it reads, then exits 64 (`ERR-USAGE`), naming the issue that
 //!   implements it, and writes nothing. Those have tests of their own (`compile.rs`,
-//!   `commit_weights.rs`, `audit.rs`, `params_check.rs`, `recorder.rs`, `inspect.rs`, among
+//!   `commit_weights.rs`, `audit.rs`, `audit_plan.rs`, `params_check.rs`, `recorder.rs`, `inspect.rs`, among
 //!   others).
 //! - **Exit statuses** (02 §2.4). A malformed artifact exits 65 with its fault's code: bytes
 //!   that are no envelope, another schema's envelope, a truncated one, a corrupted digest,
@@ -119,7 +119,7 @@ fn every_command_checks_its_artifacts_then_names_its_issue() {
         dir.as_os_str(),
         out.as_os_str(),
     );
-    let cases: [(&str, Vec<&std::ffi::OsStr>, u32); 5] = [
+    let cases: [(&str, Vec<&std::ffi::OsStr>, u32); 4] = [
         (
             "weights refresh",
             vec!["--weights".as_ref(), w, "--out".as_ref(), o],
@@ -146,18 +146,6 @@ fn every_command_checks_its_artifacts_then_names_its_issue() {
         (
             "audit batch",
             vec!["--sample".as_ref(), s, "--out-dir".as_ref(), o],
-            157,
-        ),
-        (
-            "audit plan",
-            vec![
-                "--policy".as_ref(),
-                o,
-                "--traffic".as_ref(),
-                o,
-                "--plan".as_ref(),
-                p,
-            ],
             157,
         ),
         (

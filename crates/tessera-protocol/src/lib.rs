@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Message types, session state machines, parameter sets, the soundness calculator and audit
-//! sampling (RFC-0014, RFC-0016).
+//! sampling and its calculators (RFC-0014, RFC-0016).
 //!
 //! This version holds the messages of `tessera-protocol/1` and the two live sessions, as
 //! RFC-0036 defines them, the parameter sets, the soundness calculator and the transcript
@@ -110,7 +110,12 @@
 //! - [`AuditSample::draw`] selects among the period's candidates, each `(RequestKey, L)`, by
 //!   [`selection_value`] against its bucket's threshold, every candidate past the buckets
 //!   included. The sample is the `0x0403` artifact, its selected requests strictly increasing;
-//! - [`batches`] packs the selected requests, first-fit decreasing within each group.
+//! - [`batches`] packs the selected requests, first-fit decreasing within each group;
+//! - [`AuditPlan`] is RFC-0016's calculators: from a policy, each bucket's [`BucketTraffic`] and
+//!   the cost model's `μ`, the detection probability against a prover that pads into a later
+//!   bucket, the detection if no violation leaves its bucket, the amortized overhead and the
+//!   rates that reach a target overhead. They compute in binary64: planning figures, which no
+//!   sample or artifact reads.
 //!
 //! The candidates and their lengths come from `tessera-anchor`, which reads the period's verified
 //! log and the one before it (RFC-0063): a sibling in the dependency order (01 §3), not a
@@ -130,6 +135,7 @@ compile_error!(
 );
 
 mod audit;
+mod audit_plan;
 mod error;
 mod matrix;
 mod message;
@@ -148,6 +154,7 @@ pub use audit::{
     AuditPolicy, AuditSample, Batch, CoinTossTranscript, RateBucket, RateError, RepeatedRequest,
     RequestKey, ShareRecord, batches, sample_seed, selection_value,
 };
+pub use audit_plan::{AuditPlan, BucketPlan, BucketTraffic, PlanError, check_traffic};
 pub use error::{ProtocolError, QueryFault};
 pub use matrix::WeightMatrix;
 pub use message::{Message, MessageKind};

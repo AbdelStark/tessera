@@ -6,6 +6,27 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- RFC-0016's audit calculators and `tessera audit plan` ([#141](https://github.com/AbdelStark/tessera/issues/141)):
+  - **`tessera_protocol::AuditPlan`.** From a policy, each bucket's `BucketTraffic` (requests, mean length, violating requests) and the cost model's `μ`, it gives the plan, per bucket and in total:
+    - the detection probability against a prover that pads each violation into the later bucket of lowest rate, `1 − Π_b (1 − s̲_b)^{v_b}`;
+    - the detection if none leaves its bucket, labelled as an upper bound;
+    - the amortized overhead `Σ n_b L_b s_b μ_b η / Σ n_b L_b`;
+    - each bucket's rate for a target overhead, `min(1, O/(μ_b η))`.
+
+    `check_traffic` refuses a profile that is not one well-formed entry per bucket, or has no request. The arithmetic is binary64, with `ln_1p` and `exp_m1`, and none of it reaches a sample or an artifact.
+  - **`tessera audit plan`** reads the policy and a `tessera.audit-traffic/1` profile. It takes each bucket's `μ` from the cost model at its mean length: a plan's counts with `--plan`, or the source's with `--source-defaults`. It prints a table, or with `--json` the `tessera.audit-plan/1` report, which `--out` writes too. A refused profile exits 64. It replaces the stub that named #157.
+  - **The specification.**
+    - RFC-0016 'Calculators' defines the traffic profile, `μ_b`, the plan report and the binary64 arithmetic.
+    - RFC-0016 'Audit report' defines `AuditSummary`, `manifest_digest` and who writes the report, the verifier at the deadline (#151). It records a failed pre-check as `ProverReportedAnchorMismatch`.
+    - New schemas: `spec/schemas/audit-traffic-v1`, `audit-plan-v1` and `audit-report-v1`, with examples in `docs/perf/examples/`.
+    - 02 §2.2 documents the command.
+    - **The verifier's `audit plan` (#151)** computes detection from the policy and traffic alone. It reads `μ` for the overhead from a `tessera.cost-model/1` report (`--mu`), since the cost model is the prover's. 02 §2.3's line changes from `--claims` to `[--mu MU.json]`.
+  - **Tests.**
+    - The source's §8 table reproduced from its `μ` and `η = 0.3`: 10.4%, 5.1%, 1.8% and 0.38%, and 100 violations detected at ≈100%, 99.5%, 83.3% and 31.4%.
+    - The closed form within 0.5 points of a Monte Carlo run of `AuditPolicy::selects` over 100,000 samples, violations in place and padded.
+    - The lowest later rate behind a higher one, and every refusal.
+    - In the CLI: the committed example, `μ` and target rates equal to `bench model`'s, and each refused profile.
+
 - The weight linking proof, specified ([#485](https://github.com/AbdelStark/tessera/issues/485)):
   - **RFC-0064, 'The Weight Linking Proof Opens the Difference'.** It supersedes RFC-0012 'Refresh and linking proof' and 'Failure modes' in part, and RFC-0014's weight-linking row. It amends RFC-0004, RFC-0012, RFC-0013, RFC-0014, RFC-0019, RFC-0040, RFC-0043 and 03 §5.
     - **The leak.** RFC-0012 opened both epochs' commitments at `ρ_T` and compared the values. In `tessera-protocol/2` that reveals `W̃_T(ρ_T)`, a functional of the secret weights (`docs/zk/simulator.md` §6.4).
