@@ -107,7 +107,7 @@ In transcript order (RFC-0014 'Transcript schedule', with RFC-0032's rows 4 and 
 - **Opening `G(r)` (R11).** `G(r)` is also an advice claim, but its column functional is `(r_j^m)` over the coefficient positions, not an `eq` vector, so RFC-0011 cannot open it alone. Each tree level's mask claim `R̃_t(r'_t)` sits at its own level's point.
   - **The cost of one group each.** A blinding pair, a blinding claim and a combined row of `k` `Fp2` values, about 64 MB at `k = 2^{22}`, per claim. At 405B that is 2,667 claims, and even one group per column point would take 612 groups: 38.25 GiB.
   - **What [RFC-0070](../rfcs/RFC-0070-mask-batching.md) does.** The prover sends `G(r)` with the sumcheck's evaluations, so the final check above keeps its rejection. One masked batching sumcheck then opens every `G(r)` and every tree-level mask claim, with one more group (§4.3a, Lemma 4a).
-- **Requirement R4.** Each `g_j` has round `j`'s degree, the round whose degree the masked extensions raise included, up to 7: the last round, or at a LogUp leaf level the round before it (RFC-0032, RFC-0068).
+- **Requirement R4.** Each `g_j` has the degree `d` that the sumcheck's round messages hold in every round (RFC-0010), which is at least every round's degree, the round whose degree the masked extensions raise included, up to 7: the last round, or at a LogUp leaf level the round before it (RFC-0032, RFC-0068, RFC-0070).
 - **Degenerate event.** `ρ = 0`: `1/q` per masked sumcheck.
 
 **The identity sumcheck.** Its final evaluations `N'_L(r_L), D'_L(r_L), N'_T(r_T), D'_T(r_T)` are values of masked root levels, `Ṽ(y) + y(1 − y)·R̃(y)`.
@@ -208,7 +208,7 @@ After the last stage, [RFC-0070](../rfcs/RFC-0070-mask-batching.md) opens the ma
   - **The groups.** Each `u'_g` takes `(1, X)` on `Q_g` and no other blinding pair, so the groups' rows are triangular.
   - **The proximity row.** `u_ξ` takes generator coefficients on every non-zero row. After the groups' rows are eliminated, the rows still free for it are:
     - `Q_ξ`;
-    - each mask row `R_V` on its support, minus its `e_V` scalar functionals. A row read at as many points as its support is fully used: a root level's two-entry row at two points, for one.
+    - each tensor's mask row `R_V` on its support, minus its `e_V` scalar functionals. A row read at as many points as its support is fully used. The tree levels' masks are `M`'s, which the batching leaves no free direction (below).
 
     The groups' use of the mask rows is absorbed by the `Q_g`.
   - **Mostly not free: the masking polynomials' rows.** Each non-constant coefficient `g_{j,m}` is pinned by its revealed round coefficient `F_{j,m} + ρ·2^{n−j}·g_{j,m}`. Of the constants, only `a_0 + Σ_j g_{j,0}` is pinned, so each masking polynomial keeps `n` spare directions.
@@ -368,12 +368,12 @@ Packing several masks in one row, each in its own aligned sub-block at a public 
 `ε_1` sums, in units of `1/q`:
 - **Masked sumchecks.** One term per stage, tree level, identity sumcheck and the masks' batching: `ρ = 0`.
 - **Revealed masked points.** `2(n − 1)` per point: `Z = 0`.
-- **Mask rows.** `e_V^2` per tensor mask row, and 9 per tree-level mask row: dependent `eq` vectors.
+- **Mask rows.** `e_V^2` per tensor mask row, and 9 per tree-level mask: dependent `eq` vectors.
 - **Proximity rows.** About `p^{-2}` each, under the tensor generator (Lemma 5).
 
 **At the 405B default.** EXP-0027 counts the tree levels and the masked sumchecks from the compiler's schedule; the tensors' figures are still RFC-0013's projections.
 - **The counts.**
-  - 2,621 tree-level mask rows, each revealed at its masked points and by its claim;
+  - 2,621 tree-level masks, each revealed at its masked points and by its claim;
   - 46 masked sumchecks, and the masks' batching;
   - about 5,000 masked points of the tensors, and about 2,000 tensor mask rows with `e_V ≤ 4`.
 - **The `Z` terms.** The tree levels' masks are revealed at 5,142 masked points: two per level below a root, at most `2(n − 1) = 82` each, and one per root level, 2 each. They sum to 149,072. With the tensors' `≈ 450,000`, that gives `≈ 6.0·10^5/q ≈ 2^{-108.8}`.
@@ -391,7 +391,7 @@ So `ε_1 ≈ 6.6·10^5/q ≈ 2^{-108.7} < 2^{-105}`, given R10's rank checks. Th
 | R1 | The proximity row's blinding pair is the fixed word, with coefficients `1` and `X` and no generator coefficient. This is soundness's choice, not zero knowledge's, which holds either way (§4.4) | RFC-0011 step 3, RFC-0012, RFC-0049 for `tessera-protocol/2`, against RFC-0013 'The proximity row' | Conflicting text; #394 |
 | R2 | For masked weights, the proximity generator's coefficients on blinding rows are independent uniform `Fp2`, or those rows are excluded with their own soundness argument | RFC-0012, RFC-0049; Draft RFC-0021's free-row stream meets it | Not met by the tensor generator; #394 |
 | R3 | The linking proof opens the difference of the two commitments, with the public claim 0, each keeping its own proximity row | [RFC-0064](../rfcs/RFC-0064-weight-linking-proof.md), superseding RFC-0012 'Refresh and linking proof' | Met in the specification by RFC-0064 ([#485](https://github.com/AbdelStark/tessera/issues/485)); [#153](https://github.com/AbdelStark/tessera/issues/153) implements it, with R3's test |
-| R4 | Each masking polynomial's `g_j` has its round's degree, a raised round's included | RFC-0013 'Masked sumcheck' | Stated by this change |
+| R4 | Each masking polynomial's `g_j` has its sumcheck's message degree `d`, at least every round's, a raised round's included | RFC-0013 'Masked sumcheck' | Stated by this change |
 | R5 | INV-ZK-2 reads as a rank condition. Each mask, blinding row and masking polynomial has a designated revealed combination where it enters with an invertible block, and the joint coefficient matrix over the masks has full rank. Further uses are allowed where Lemmas 4a, 5 and 7 cover them. The masks' batching is such a use: the masking polynomials and the tree levels' mask rows enter it only through `M + ρ·S`, which the pad `S` covers, so its functionals need not have full rank (Lemma 4a) | RFC-0013 'Invariants' | Literal one-use conflicts with the proximity row; #394 |
 | R6 | The weight budget never rolls back, and an aborted session burns what it reserved | RFC-0012 'Budget state machine' | Met by RFC-0012; #156 must preserve it |
 | R7 | A scoring message that carries a secret evaluation has a masked extension | RFC-0017 | To check when its masked messages land |

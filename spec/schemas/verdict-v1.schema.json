@@ -181,6 +181,7 @@
                 "REJ-TREE",
                 "REJ-LEAF-MERGE",
                 "REJ-LOGUP-IDENTITY",
+                "REJ-MASK-BATCH",
                 "REJ-LOOKUP",
                 "REJ-GADGET",
                 "REJ-PCS-MERKLE",

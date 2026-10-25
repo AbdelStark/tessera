@@ -178,7 +178,7 @@ For a stage with `n` rounds of degree `d` and `m` batched instances, the error i
 
 - **INV-SCH-1.** The schedule is a function of the constraint system only; prover and verifier derive it independently and must agree.
 - **INV-SCH-2.** Every virtual claim is consumed by exactly one relation instance in the next stage.
-- **INV-SCH-3.** Every claim produced at a committed polynomial reaches the opening pool.
+- **INV-SCH-3.** Every claim produced at a committed polynomial reaches the opening pool. In `tessera-protocol/2`, the mask claims of [RFC-0070](RFC-0070-mask-batching.md), every masking polynomial's `G(r)` and every tree level's mask value, reach its batching instead, whose claim `y` reaches the pool.
 - **INV-SCH-4.** The number of stages does not depend on `n_layers`, sequence length or batch size.
 
 ## Alternatives Considered

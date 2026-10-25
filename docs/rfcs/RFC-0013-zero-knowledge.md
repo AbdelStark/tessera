@@ -39,7 +39,7 @@ The verifier is a counterparty state; weights, prompts, outputs and activations 
 | Sumcheck round messages | Masked sumcheck | Committed masking polynomial `G_k` over `Fp2` per stage |
 | Final evaluations of each stage | Masked extensions | One `Fp2` mask row `R_V` per stacked tensor kind, and in `tessera-protocol/2` one per kind and layer claimed at one layer ([RFC-0069](RFC-0069-one-layer-claims.md)) |
 | Tree-level and LogUp-identity round messages | Masked sumcheck ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)) | `G_ℓ` per tree level, and the identity's |
-| Tree-level evaluations at the pair bit, and their mask values | Masked extensions that spare the pair bit ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)) | One `Fp2` mask row per level and polynomial |
+| Tree-level evaluations at the pair bit, and their mask values | Masked extensions that spare the pair bit ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)) | One `Fp2` mask per level and polynomial, a block of [RFC-0070](RFC-0070-mask-batching.md)'s masks' block |
 | LogUp roots | Not sent: the identity sumcheck's final evaluations, masked ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)) | The root levels' mask rows |
 | Combined rows `u_g` | Blinding rows | One fresh `Fp2` blinding row per revealed combination |
 | Opened columns | Vanishing encoding masks | `P_A` (advice) or `P_W` (weights) coefficients per row |
@@ -59,7 +59,7 @@ Each stage treats per-layer instances of the same tensor kind as one stacked ten
 
 For a stage proving `H = Σ_x f(x)` over `n` variables with round degree `d`:
 
-1. In Round 1, the prover commits `G_k(x) = a_0 + Σ_{j=1}^{n} g_j(x_j)` with each `g_j` a random univariate polynomial over `Fp2` of round `j`'s degree `d_j`, the round whose degree masked extensions raise included, up to 7 ('Masked extensions'). Each coefficient, and `a_0`, is two values of the advice mask block. A lower degree would leave a coefficient of that round's message unmasked ([`docs/zk/simulator.md`](../zk/simulator.md) Lemma 4, R4).
+1. In Round 1, the prover commits `G_k(x) = a_0 + Σ_{j=1}^{n} g_j(x_j)` with each `g_j` a random univariate polynomial over `Fp2` of the degree `d` that the sumcheck's round messages hold in every round (RFC-0010 'Sumcheck messages'), at least every round's degree, the round whose degree masked extensions raise included, up to 7 ('Masked extensions'; [RFC-0070](RFC-0070-mask-batching.md)). Each coefficient, and `a_0`, is two values of the advice mask block. A lower degree would leave a coefficient of that round's message unmasked ([`docs/zk/simulator.md`](../zk/simulator.md) Lemma 4, R4).
 2. In the stage, the prover sends `Γ = Σ_x G_k(x)`; the transcript yields `ρ_k ∈ Fp2` (label `stage/{k}/zk-rho`).
 3. The parties run the sumcheck on `f + ρ_k G_k` with claim `H + ρ_k Γ`.
 4. At the end, the prover sends `G_k(r)` last among the stage's final evaluations, and the final check reads it. In `tessera-protocol/2` it is a claim on the masks' block, which [RFC-0070](RFC-0070-mask-batching.md)'s batching sumcheck opens with every other mask claim: `G_k(r)`'s column functional is not an `eq` vector, so no RFC-0011 group opens it alone.

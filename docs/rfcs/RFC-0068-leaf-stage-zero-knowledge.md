@@ -56,7 +56,7 @@ The split shrinks from 53,489 lookup-tensor values to 614. `tessera-protocol/1` 
 
 ## Non-Goals
 
-- **The masking polynomials' openings** (#489). The layer sumcheck adds one.
+- **The masking polynomials' openings** (#489), which [RFC-0070](RFC-0070-mask-batching.md) specifies. The layer sumcheck adds one more claim to its batching.
 - **Grouped leaf stages** (RFC-0054). `tessera-protocol/2` accepts none.
 - **Claims at Boolean layers outside the leaf stage.** The epilogue's claim on the last checkpoint, `Layers::One(L − 1)` (RFC-0037), sits at a Boolean layer where the stacked kind's mask vanishes. [RFC-0069](RFC-0069-one-layer-claims.md) masks it (#535).
 
@@ -222,7 +222,7 @@ Atom split values come in addition, in both protocols.
 
 ## Drawbacks
 
-- One more masked sumcheck, of 22 rounds at 405B, with one more masking polynomial whose opening #489 must cover.
+- One more masked sumcheck, of 22 rounds at 405B, with one more masking polynomial, opened by [RFC-0070](RFC-0070-mask-batching.md)'s batching.
 - One more advice opening group, about 64 MiB of proof, and a blinding pair. Reducing the `u_i` once more, inside stage 1 to a column sub-point stage 1 already opens, would remove it. That is left to the implementation's cost measurements.
 - #489's openings of the masking polynomials decided whether the proof stays inside 08's gate in `tessera-protocol/2`: a group per mask claim would have added 166.7 GiB. [RFC-0070](RFC-0070-mask-batching.md)'s batching adds one group, and the proof stays inside the gate, at about 2.94 GB.
 - `tessera-protocol/2`'s leaf stage differs from `tessera-protocol/1`'s, so both workspaces implement both.

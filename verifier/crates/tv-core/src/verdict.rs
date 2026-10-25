@@ -313,6 +313,13 @@ pub enum RejectReason {
         /// Exact round, or the final-check index.
         round: u32,
     },
+    /// `REJ-MASK-BATCH`: protocol/2 only; the batching of every mask claim, `masks/round/{j}`
+    /// (RFC-0070 'The batching sumcheck', 'Rejections').
+    MaskBatch {
+        /// Exact round from 0, as the labels count, or `m`, the number of variables, for the
+        /// end: a round past the last, a missing `y` or a false final check.
+        round: u32,
+    },
     /// `REJ-LOOKUP`: verifier-derived table identity.
     Lookup {
         /// Verifier-derived table id.
@@ -389,6 +396,7 @@ impl RejectReason {
             Self::TreeLevel { .. } => "REJ-TREE",
             Self::LeafMerge { .. } => "REJ-LEAF-MERGE",
             Self::LogUpIdentity { .. } => "REJ-LOGUP-IDENTITY",
+            Self::MaskBatch { .. } => "REJ-MASK-BATCH",
             Self::Lookup { .. } => "REJ-LOOKUP",
             Self::Gadget { .. } => "REJ-GADGET",
             Self::MerklePath { .. } => "REJ-PCS-MERKLE",
@@ -498,7 +506,9 @@ impl RejectReason {
                 level,
                 round,
             } => write!(out, "\"group\":{group},\"level\":{level},\"round\":{round}"),
-            Self::LeafMerge { round } | Self::LogUpIdentity { round } => {
+            Self::LeafMerge { round }
+            | Self::LogUpIdentity { round }
+            | Self::MaskBatch { round } => {
                 write!(out, "\"round\":{round}")
             }
             Self::Lookup { table } => write!(out, "\"table\":{}", table.0),

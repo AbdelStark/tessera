@@ -85,9 +85,9 @@ V'_t(b ‖ x) = Ṽ_t(b ‖ x) + Z_t(x)·R̃_t((b ‖ x)_col),        Z_t(x) = �
   - `g(x)` is the level's combination of the next level, `V'_{t+1}(0 ‖ x)·V'_{t+1}(1 ‖ x)`, or the fraction combination of RFC-0010.
   - The prover sends `R̃_t` at the level's final point `r'` beside the next level's evaluations. That value is a claim on the masks' block, which [RFC-0070](RFC-0070-mask-batching.md)'s batching sumcheck opens: each level's point is its own, so no RFC-0011 group could share it.
   - The verifier never sees `R̃_t(p)` (RFC-0013 'Masked extensions', virtual tensors).
-- **Degree.** `Z_{t+1}` vanishes at every summation point but the last round's, so only the last round's degree rises, to 7 for a product or fraction combination. RFC-0014's bound already allows `d ≤ 7`.
-- **Masks per level.** One mask row per level of a product forest, and two per level of a fraction forest, for `N` and `D`, its leaf level excepted ('Leaf checks'). The leaf level's key and value columns take column masks of their own ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks)).
-- **The root level** of a LogUp forest has one variable, the tree index `y`, and no pair bit. Its polynomials take `Z_0(y) = y·(1 − y)` and their own mask rows. The first level folds them like any other, at the identity's point `p = r_L` or `r_T`, with the factor `Z_0(p)`. A product forest's root values are public, and its root claim is computed by the verifier, as before.
+- **Degree.** `Z_{t+1}` vanishes at every summation point but the last round's, so only the last round's degree rises, to 7 for a product or fraction combination. RFC-0014's bound already allows `d ≤ 7`. The level's round messages hold RFC-0010's one degree for every round, 7, and its masking polynomial's `g_j` have that degree ([RFC-0070](RFC-0070-mask-batching.md)).
+- **Masks per level.** One mask per level of a product forest, and two per level of a fraction forest, for `N` and `D`, its leaf level excepted ('Leaf checks'). Each is a block of [RFC-0070](RFC-0070-mask-batching.md)'s masks' block. The leaf level's key and value columns take column masks of their own ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks)).
+- **The root level** of a LogUp forest has one variable, the tree index `y`, and no pair bit. Its polynomials take `Z_0(y) = y·(1 − y)` and masks of their own. The first level folds them like any other, at the identity's point `p = r_L` or `r_T`, with the factor `Z_0(p)`. A product forest's root values are public, and its root claim is computed by the verifier, as before.
 
 ### The LogUp identity sumcheck
 
@@ -151,8 +151,8 @@ These rows replace RFC-0013's row for LogUp roots and add the tree levels:
 | Revealed item | Mechanism | Randomness |
 |---|---|---|
 | Tree-level and identity round messages | Masked sumcheck | `G_ℓ`, and the identity's `G`, per level |
-| Tree-level evaluations `V'_{t+1}(b ‖ r')` and the mask values `R̃_t` | Masked extensions that spare the pair bit; at a LogUp leaf level, those of its keys, values and multiplicities | One `Fp2` mask row per level and polynomial, LogUp leaf levels excepted; there, each instance's key and value columns' own mask rows ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks)) |
-| LogUp roots | Not sent: the identity sumcheck's final evaluations, masked | The root levels' mask rows |
+| Tree-level evaluations `V'_{t+1}(b ‖ r')` and the mask values `R̃_t` | Masked extensions that spare the pair bit; at a LogUp leaf level, those of its keys, values and multiplicities | One `Fp2` mask per level and polynomial, a block of RFC-0070's masks' block, LogUp leaf levels excepted; there, each instance's key and value columns' own mask rows ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks)) |
+| LogUp roots | Not sent: the identity sumcheck's final evaluations, masked | The root levels' masks |
 
 ### Labels
 
@@ -209,7 +209,7 @@ RFC-0013's simulator ([#145](https://github.com/AbdelStark/tessera/issues/145)) 
 
 - `tessera-protocol/2`'s leaf stage differs from `tessera-protocol/1`'s: no roots, an identity sumcheck, padding trees, masked levels. The non-hiding mode under `test-params` keeps `tessera-protocol/1`'s.
 - Every LogUp tree doubles its leaf count with a constant padding tree. A prover that materializes it pays twice.
-- Fraction forests need two mask rows per level.
+- Fraction forests need two masks per level.
 
 ## Migration / Rollout
 

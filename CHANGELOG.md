@@ -14,7 +14,7 @@ All notable changes to the prover release train are recorded here: the crates un
     - **Soundness.** `(N − 1 + 2m + 1)/q`, about `2^{−116.6}` at 405B, which the calculator counts as one more stage.
     - **Cost at 405B.** +65.85 MiB of proof (the proof about 2.94 GB), `S`'s 1,558 committed rows (0.163% of the advice), 32 rounds.
     - **Labels.** Each masked sumcheck's `G(r)` is sent last in its evaluations. `masks/…` follows the last stage, before the blinding claims. `Reject(MaskBatch { round })` joins 04 §2.
-    - It amends RFC-0011, RFC-0013, RFC-0014, RFC-0019, RFC-0032, RFC-0036, RFC-0057, RFC-0068, 04 §2, 08 §5 and `docs/zk/simulator.md`, where Lemma 4a joins §4.3a and R11 is met.
+    - It amends RFC-0010, RFC-0011, RFC-0013, RFC-0014, RFC-0019, RFC-0032, RFC-0036, RFC-0037, RFC-0057, RFC-0068, 04 §2, 08 §5 and `docs/zk/simulator.md`, where Lemma 4a joins §4.3a and R11 is met.
 
 - The verifier's pending coin toss, specified ([#529](https://github.com/AbdelStark/tessera/issues/529); the verifier's own changelog has the code):
   - **RFC-0067 'The pending toss'.** The verifier keeps its share between the commitment and the reveal in a `VerifierToss` file (schema `0x0702`, `.tvt`, secret-class, verifier-local in 03 §5). It is written, synced and created exclusively before the commitment leaves. The reveal records the sample in the ledger before the sample leaves, and the file is cleared after the record. A verifier that restarts in between keeps its period's audit.
