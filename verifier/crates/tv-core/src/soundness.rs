@@ -326,7 +326,7 @@ pub struct MatrixSize {
     pub width: u64,
     /// Committed data rows `m_T`.
     pub rows: u64,
-    /// Multilinear variables `ν_T`.
+    /// Multilinear variables `ν_T`; the weight-linking row counts `ν_T + 1` (RFC-0014 'Rows').
     pub variables: u64,
 }
 
@@ -689,7 +689,8 @@ pub enum RowKind {
     Queries,
     /// `"field"`: Ligero proximity generator field term `ϑ · n / q` for one commitment.
     Field,
-    /// `"linking"`: weight-commitment linking check.
+    /// `"linking"`: weight-commitment linking check, `max (ν_T + 1)/q` over the opened matrices
+    /// (RFC-0014 'Rows', RFC-0064 'Soundness').
     Linking,
     /// `"hash"`: BLAKE3 hash collision bound.
     Hash,
@@ -1117,18 +1118,22 @@ impl SoundnessReport {
             );
         }
 
-        // 8. Weight linking (RFC-0014 'Rows' row 8).
-        let max_vars = statement
+        // 8. Weight linking (RFC-0014 'Rows' row 8): `max (ν_T + 1)/q`. Per matrix, a false link
+        // passes when two different weight polynomials agree at `ρ_T`, `ν_T/q`, or when the
+        // combining challenge `θ_T`, drawn after the blinding claim, cancels their difference,
+        // `1/q` (RFC-0014 'The link's combining challenge', RFC-0064 'Soundness'). A maximum
+        // over no matrix is 0: the row then has no term.
+        let max_link = statement
             .matrices
             .iter()
-            .map(|m| u128::from(m.variables))
+            .map(|m| u128::from(m.variables).saturating_add(1))
             .max()
             .unwrap_or(0);
         rows.push(build_field_row(
             RowKind::Linking,
             None,
             None,
-            max_vars,
+            max_link,
             0,
             None,
             targets,
@@ -2215,6 +2220,94 @@ mod tests {
                 .unwrap();
             assert_eq!(field_row.theta, Some(theta));
             assert_eq!(field_row.numerator, Some(u128::from(theta) * n_a));
+        }
+    }
+
+    /// The weight-linking row of a statement of nothing else but `matrices`, each `(T, ν_T)`.
+    fn linking_row(protocol: u8, matrices: &[(Matrix, u64)]) -> SoundnessRow {
+        let s = StatementSizes {
+            protocol,
+            rounds: Vec::new(),
+            stages: Vec::new(),
+            tree_levels: Vec::new(),
+            zero_checks: Vec::new(),
+            forests: Vec::new(),
+            lookups: Vec::new(),
+            claim_groups: Vec::new(),
+            advice_rows: 1,
+            matrices: matrices
+                .iter()
+                .map(|&(matrix, variables)| MatrixSize {
+                    matrix,
+                    width: 1,
+                    rows: 1,
+                    variables,
+                })
+                .collect(),
+            groups: GroupSizes::NONE,
+        };
+        let report = SoundnessReport::evaluate(SoundnessParams::ni_100(), s).unwrap();
+        let mut linking = report.rows.iter().filter(|r| r.row == RowKind::Linking);
+        let row = linking.next().unwrap().clone();
+        assert!(linking.next().is_none());
+        row
+    }
+
+    /// RFC-0014 'Rows', weight linking: `max (ν_T + 1)/q`, `ν_T/q` from the evaluation at `ρ_T`
+    /// and `1/q` from the combining challenge `θ_T` (RFC-0014 'The link's combining challenge',
+    /// RFC-0064 'Soundness'); the largest matrix's, not their sum; and no term without a matrix.
+    #[test]
+    fn weight_linking_counts_each_matrix_variables_and_its_combining_challenge() {
+        for protocol in [1, 2] {
+            // A maximum over no matrix is 0: the row has no term, and passes.
+            let none = linking_row(protocol, &[]);
+            assert_eq!(none.numerator, Some(0));
+            assert_eq!(none.bits, None);
+            assert_eq!(none.pass, Some(true));
+
+            for nu in [0, 1, 30, 37, 64, u64::MAX] {
+                let row = linking_row(protocol, &[(Matrix::Gate, nu)]);
+                assert_eq!(row.numerator, Some(u128::from(nu) + 1), "ν = {nu}");
+                assert_eq!(row.bits, field_bits(u128::from(nu) + 1, 0), "ν = {nu}");
+            }
+            // A matrix of no variable still has its combining challenge: 1/q, log2 q = 127.99…
+            // bits.
+            let row = linking_row(protocol, &[(Matrix::ChannelParams, 0)]);
+            let full = u64::try_from(log2_lower(EXTENSION_Q, 1, FIELD_FRACTION)).unwrap();
+            assert_eq!(row.bits, Some(full));
+            assert_eq!(format_fixed_bits(full), "127.99");
+
+            // The largest ν_T + 1, wherever it sits.
+            for nus in [[30, 37, 0], [37, 30, 0], [0, 30, 37]] {
+                let matrices: Vec<(Matrix, u64)> = [Matrix::Q, Matrix::Gate, Matrix::ChannelParams]
+                    .into_iter()
+                    .zip(nus)
+                    .collect();
+                assert_eq!(
+                    linking_row(protocol, &matrices).numerator,
+                    Some(38),
+                    "{matrices:?}"
+                );
+            }
+        }
+
+        // RFC-0064 'Soundness': at 405B the largest ν_T is 37 (Gate, Up and Down), 122.75 bits.
+        let base = StatementSizes::default_405b();
+        let gate = base.matrices.iter().find(|m| m.matrix == Matrix::Gate);
+        assert_eq!(gate.map(|m| m.variables), Some(37));
+        assert_eq!(base.matrices.iter().map(|m| m.variables).max(), Some(37));
+        for params in [SoundnessParams::live_64(), SoundnessParams::ni_100()] {
+            let report = SoundnessReport::evaluate(params, base.clone()).unwrap();
+            let row = report
+                .rows
+                .iter()
+                .find(|r| r.row == RowKind::Linking)
+                .unwrap();
+            assert_eq!(row.numerator, Some(38));
+            assert_eq!(row.bits, Some(31_424));
+            assert_eq!(format_fixed_bits(31_424), "122.75");
+            assert_eq!(row.margin, Some(31_424 - 100 * 256));
+            assert_eq!(row.pass, Some(true));
         }
     }
 

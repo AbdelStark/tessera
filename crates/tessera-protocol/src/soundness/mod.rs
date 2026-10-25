@@ -18,7 +18,7 @@
 //! | [`Openings`](RowKind::Openings) | `T_g/q` for the largest claim group, `1/q` per weight matrix | — | `bits` |
 //! | [`Queries`](RowKind::Queries) | `((n + k + P)/(2n))^τ` per commitment | `g_query` | `one_shot` |
 //! | [`Field`](RowKind::Field) | `ϑ·n/q` per commitment | — | `bits` |
-//! | [`Linking`](RowKind::Linking) | `ν/q` for the matrix of most variables | — | `bits` |
+//! | [`Linking`](RowKind::Linking) | `(ν + 1)/q` for the matrix of most variables: its evaluation, and the link's combining challenge `θ_T` | — | `bits` |
 //! | [`Hash`](RowKind::Hash) | `2^{-128}`, BLAKE3's 256-bit output | — | `bits` |
 //!
 //! Here `q = |Fp2| = p^2`, and the targets are the parameter set's ([`Targets`]).
@@ -380,7 +380,12 @@ impl SoundnessReport {
             rows.push(builder.field(RowKind::Field(c.commitment), field, Some(c.theta), None));
         }
 
-        let linking = sizes.matrices.iter().map(|m| u128::from(m.variables)).max();
+        // RFC-0014 'The link's combining challenge': ν_T for the evaluation, 1 for θ_T.
+        let linking = sizes
+            .matrices
+            .iter()
+            .map(|m| u128::from(m.variables) + 1)
+            .max();
         rows.push(builder.field(RowKind::Linking, linking.unwrap_or(0), None, None));
 
         let target = builder.target(false);
