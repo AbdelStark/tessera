@@ -27,7 +27,7 @@
   - 'Goals' and 'Deployment assumptions', A-ANCHOR-1 and A-ANCHOR-2: the period's log, who sends on the recorded path, and the recorder's carries;
   - 'Log format': `SessionCarry`, and a batch's entries read from its period's log;
   - 'Prover pre-check', 'Verifier checks' 2 and INV-ANC-2: the session rules over the period's log.
-- Amended by: [RFC-0066](RFC-0066-bits-and-sha256.md) ('Circuits' step 3: the SHA-256 circuit's construction, and its cost)
+- Amended by: [RFC-0066](RFC-0066-bits-and-sha256.md) ('Circuits' steps 3 and 4: the SHA-256 circuit's construction, its cost, and the binding's zero-check)
 
 ## Summary
 
@@ -157,7 +157,7 @@ These steps are amended by [RFC-0059 'The circuits'](RFC-0059-frame-headers-and-
 
      The counter blocks and the plaintext's 22-byte prefix are public (RFC-0059).
 3. **SHA-256.** Over `header ‖ ciphertext` per frame and over `"tessera-anchor-key/v1" ‖ k_s ‖ salt_k` per session. Words are committed as 32 bits each, with booleanity in the batched zero-check; `Ch`, `Maj`, `Σ0`, `Σ1`, `σ0`, `σ1` are low-degree polynomials in bits; additions modulo 2^32 use committed carry bits. [RFC-0066](RFC-0066-bits-and-sha256.md#the-sha-256-circuit) builds it from `BitDecompose`, `BitFn` and `AssertEqual`: 6,376 committed bits per block beside its committed bytes' bits, about 430 per token at long frames. The key commitment's `BitDecompose` of `k_s` is also the AES circuit's key range check.
-4. **Binding.** The final SHA-256 state bits equal the public digest bits from the log entry, and the key-commitment digest equals the public `key_commitment`. Both are linear checks against public values.
+4. **Binding.** The final SHA-256 state bits equal the public digest bits from the log entry, and the key-commitment digest equals the public `key_commitment`. Both are `AssertEqual` zero-checks against public values, over the digests' real positions ([RFC-0066](RFC-0066-bits-and-sha256.md#assertequal)).
 5. **Header fields** (session, request, direction, index, length, counter) are public and enter the SHA-256 input as constants.
 6. **The sampler key.** SHA-256 over `"tessera-sampler-key/v1" ‖ K_p ‖ salt`, with the base key `K_p` and the salt committed, equals the batch's pinned `sampler_commitment`. The in-circuit PRF of [RFC-0017](RFC-0017-scoring.md#sampler-prf) uses the key `K` derived from `K_p` and the pin's nonce, with each request's stream class ([RFC-0061](RFC-0061-sampling-randomness.md#the-circuits)).
 

@@ -14,10 +14,11 @@ All notable changes to the prover release train are recorded here: the crates un
     - `AssertEqual`, an equality with no output.
   - **Range analysis.**
     - A decomposed integer lies in `[0, 2^{low + high})`.
-    - A committed graph input may be decomposed instead, its bits being its range check, but only when its declared range, which its other readers trust, holds that interval. A byte declared `[0, 255]` under nine bits is refused: it could hold `256 + k'`.
-    - A `BitFn` input is a bit, and `AssertEqual`'s inputs are true integers.
-  - **The CPU engine** evaluates the three operations. It refuses an integer outside its width and a non-bit `BitFn` input (`ERR-USAGE`), and unequal tensors (`WitnessError::Unequal`, `ERR-WITNESS-ANCHOR`).
-  - **No proof yet.** Gadget selection refuses the operations (`ERR-QUANT-ARCH`) until their relations are scheduled (#146, RFC-0066 OQ-0066-1). The profile check refuses them in a model (S3).
+    - A committed graph input may be decomposed instead, its bits being its range check, read directly or moved unchanged by `Reshape`, `Slice`, `Transpose`, `GatherPublic` or `Expand`. That holds only when its declared range, which its other readers trust, holds that interval. A byte declared `[0, 255]` under nine bits is refused: it could hold `256 + k'`.
+    - A `BitFn` input is a bit that an operation proves, never a committed input's declared `[0, 1]`. `AssertEqual`'s inputs are true integers.
+    - Proving a committed input's declared range through any other operation is [#527](https://github.com/AbdelStark/tessera/issues/527)'s.
+  - **The CPU engine** evaluates the three operations. It refuses an integer outside its width and a non-bit `BitFn` input (`ERR-USAGE`), and unequal tensors (`WitnessError::Unequal`, `ERR-WITNESS-ANCHOR`). `Engine::for_graph` now validates its graph (`ERR-USAGE`), so a graph assembled past the builder cannot panic it.
+  - **No proof yet.** Gadget selection refuses the operations (`ERR-QUANT-ARCH`) until their relations are scheduled ([#526](https://github.com/AbdelStark/tessera/issues/526), RFC-0066 OQ-0066-1). The profile check refuses them in a model (S3).
   - **`tessera_compiler::anchor`.**
     - `sha256` over `M` padded messages of `N` blocks (FIPS 180-4 §6.2), on bit-major words `[32, M]`. It returns the chaining value after every block; `sha256_bind` binds the last to a public digest.
     - Committed bytes, such as a key and its salt, enter through `BitDecompose { 8, 0 }` at the offsets a `Sha256Layout` names, and the public bytes as public bits.
@@ -27,20 +28,29 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Cost.** 6,376 committed bits per block (`SHA256_BITS_PER_BLOCK`) and 8 per committed byte, in 6,032 nodes per block. A frame of `n` tokens commits 12,928 bits at `n = 0`, below 1,000 per token from `n = 20`, and about 430 per token at long frames. RFC-0015 now gives these figures in place of "about 1,000".
   - **Tests.**
     - NIST CAVP's 65 short and 64 long messages, the long ones block by block through the initial-value input, and a three-block graph that binds its digest.
-    - The key and sampler commitments against `tessera_anchor`'s.
+    - The key and sampler commitments against `tessera_anchor`'s, and three frames whose committed bytes cross into their second block against the `sha2` crate.
     - A digest one bit off failing its `AssertEqual`.
     - Lemma 1 on every decomposition of a witness, and four tampers that each break booleanity or recomposition.
     - The range rules, one test per rule.
     - The compiler's independent interpreter on FIPS 180-4's `"abc"`.
-  - **Review.** An adversarial read of RFC-0066 found the following, all fixed here:
-    - the committed-input exemption above;
-    - the word sum's interval;
-    - padded carry slots with two witnesses;
-    - `AssertEqual` failing on padded messages, now restricted to real positions;
-    - a stage rule that contradicted RFC-0010;
-    - the short-frame cost.
+  - **Review.** Two adversarial reads.
+    - **The first** found the following, all fixed here:
+      - the committed-input exemption above;
+      - the word sum's interval;
+      - padded carry slots with two witnesses;
+      - `AssertEqual` failing on padded messages, now restricted to real positions;
+      - a stage rule that contradicted RFC-0010;
+      - the short-frame cost.
 
-    It confirmed the circuit against all 129 vectors from the RFC's text alone. The zero-checks' messages and `GatherPublic`'s relation are open questions for #146.
+      It confirmed the circuit against all 129 vectors from the RFC's text alone. The zero-checks' messages and `GatherPublic`'s relation are open questions for #526.
+    - **The second** found the following, fixed here:
+      - the exemption's bypass through a `Reshape`;
+      - free padded positions of committed bytes, now pinned to 0;
+      - the bit-padding check's degree, 3 not 2;
+      - the message's assembly and the node order missing from the text, now normative;
+      - unvalidated graphs panicking the engine.
+
+      The general rule went to #527.
 
 - The anchor's AES-128-CTR circuit, lowered into the IR ([#142](https://github.com/AbdelStark/tessera/issues/142)):
   - **`tessera_compiler::anchor`.**

@@ -221,7 +221,7 @@ impl Selector<'_> {
                 }
             }
             Op::InverseCdf { .. } => Gadget::InverseCdf,
-            // RFC-0066 'Migration': their relations are scheduled with the anchor's (#146).
+            // RFC-0066 'Migration': their relations are scheduled with the anchor's (#526).
             Op::BitDecompose { .. } | Op::BitFn { .. } | Op::AssertEqual => {
                 return Err(CompileError::Model {
                     rule: "RFC-0066's bit operations have no proof schedule yet",

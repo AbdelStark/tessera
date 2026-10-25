@@ -141,6 +141,24 @@ impl Analysis<'_> {
         self.producers[index(tensor)].map(|id| &self.graph.nodes[id.0 as usize])
     }
 
+    /// The committed graph input whose values `tensor` holds, moved but unchanged by `Reshape`,
+    /// `Slice`, `Transpose`, `GatherPublic` or `Expand`, if there is one. Its range is then that
+    /// input's declared range, which nothing has proven (RFC-0066 'Ranges').
+    fn committed_source(&self, mut tensor: TensorId) -> Option<TensorId> {
+        while let Some(node) = self.producer(tensor) {
+            match node.op {
+                Op::Reshape
+                | Op::Slice { .. }
+                | Op::Transpose { .. }
+                | Op::GatherPublic { .. }
+                | Op::Expand { .. } => tensor = node.inputs[0],
+                _ => return None,
+            }
+        }
+        let kind = self.graph.tensors.get(index(tensor)).map(|t| t.kind);
+        matches!(kind, Some(NodeKind::Committed { .. })).then_some(tensor)
+    }
+
     fn table(&self, node: &Node, table: TableId) -> Result<&TableKind, CompileError> {
         self.tables
             .iter()
@@ -342,17 +360,12 @@ impl Analysis<'_> {
             }
             Op::BitDecompose { low, high } => {
                 // A committed graph input may hold any value: its bits range-check it (RFC-0066
-                // Lemma 1's converse), so its declared range, which its other readers trust,
-                // must hold all of [0, 2^{low + high}). Any other input is a true integer there.
-                let x = node.inputs[0];
-                let committed = self.producer(x).is_none()
-                    && matches!(
-                        self.graph.tensors.get(x.0 as usize).map(|t| t.kind),
-                        Some(NodeKind::Committed { .. })
-                    );
+                // Lemma 1's converse), read directly or moved unchanged. Its declared range, which
+                // its other readers trust, must then hold all of [0, 2^{low + high}). Any other
+                // input is a true integer there.
                 let top = (1i128 << (u32::from(*low) + u32::from(*high))) - 1;
-                if committed {
-                    let declared = input(0).bounded();
+                if let Some(source) = self.committed_source(node.inputs[0]) {
+                    let declared = self.range(source).bounded();
                     if !declared.is_some_and(|r| r.lo <= 0 && top <= r.hi) {
                         return Err(CompileError::Range {
                             node: node.id,
@@ -369,6 +382,14 @@ impl Analysis<'_> {
             Op::BitFn { f } => {
                 for k in 0..f.arity() {
                     self.within(node, k, 0, 1, "a Boolean function's input is a bit")?;
+                    // A committed input's declared [0, 1] proves no bit; a BitDecompose's does.
+                    if self.committed_source(node.inputs[k]).is_some() {
+                        return Err(CompileError::Range {
+                            node: node.id,
+                            input: k,
+                            rule: "a Boolean function's input is a bit some operation proves",
+                        });
+                    }
                 }
                 Ok(vec![Range::new(0, 1)])
             }

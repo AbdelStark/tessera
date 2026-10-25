@@ -642,4 +642,17 @@ fn the_bit_operations_follow_rfc_0066() {
     let unequal = run([0; 4], ok, [0, 1, 1, 1], ok).expect_err("p ≠ q");
     assert!(matches!(unequal, WitnessError::Unequal { .. }), "{unequal}");
     assert_eq!(unequal.code(), ErrorCode::WitnessAnchor);
+    // A graph assembled past the builder, with no low bit or more than 62 bits, is refused
+    // before its evaluation could divide its bits by zero or shift past 64.
+    for (low, high) in [(0, 2), (40, 30)] {
+        let mut broken = graph.clone();
+        broken.nodes[0].op = Op::BitDecompose { low, high };
+        assert_eq!(
+            Engine::for_graph(&broken, &[]).err(),
+            Some(WitnessError::Usage {
+                rule: "the graph follows RFC-0006 'Operation set'"
+            }),
+            "{low} + {high}"
+        );
+    }
 }

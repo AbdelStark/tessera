@@ -105,7 +105,7 @@ The relation has degree 3, and the verifier evaluates its public factor `1 − �
 
 ### Zero-check points
 
-`RFC-0010` lists `ZeroCheck` as a relation kind, but no document said where its point `z` comes from. Each stage `k` that holds `ZeroCheck` instances draws one point just before `γ_k`, after `ρ_k` in `tessera-protocol/2`: coordinates `z_c` for `c = 0, 1, …` under `stage/{k}/zero/{c}`, one per variable of its largest `ZeroCheck`. An instance of `n_i` variables takes the last `n_i` coordinates, as forests take their root points ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)). `OneHot`'s booleanity check runs in stage 1 with the padding zero-checks, at the same point. So do [RFC-0066](RFC-0066-bits-and-sha256.md#where-the-zero-checks-run)'s zero-checks, after these, in node order: `BitDecompose`'s booleanity, bit-padding and recomposition checks, and `AssertEqual`'s.
+`RFC-0010` lists `ZeroCheck` as a relation kind, but no document said where its point `z` comes from. Each stage `k` that holds `ZeroCheck` instances draws one point just before `γ_k`, after `ρ_k` in `tessera-protocol/2`: coordinates `z_c` for `c = 0, 1, …` under `stage/{k}/zero/{c}`, one per variable of its largest `ZeroCheck`. An instance of `n_i` variables takes the last `n_i` coordinates, as forests take their root points ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)). `OneHot`'s booleanity check runs in stage 1 with the padding zero-checks, at the same point. So do [RFC-0066](RFC-0066-bits-and-sha256.md#where-the-zero-checks-run)'s zero-checks, after these, in node order: `BitDecompose`'s padding check of a committed input, booleanity, bit-padding and recomposition checks, and `AssertEqual`'s.
 
 ### Soundness
 

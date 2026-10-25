@@ -855,8 +855,13 @@ fn each_true_integer_rule_refuses_a_graph_that_breaks_only_it() {
 
 /// `x + y` of two advice inputs declared `[lo, hi]` each, `[2]`.
 fn sum_of(g: &mut GraphBuilder, lo: i128, hi: i128) -> TensorId {
-    let x = g.input(decl(&[2], ADVICE, lo, hi)).expect("x");
-    let y = g.input(decl(&[2], ADVICE, lo, hi)).expect("y");
+    sum_of_kind(g, ADVICE, lo, hi)
+}
+
+/// `x + y` of two inputs of `kind` declared `[lo, hi]` each, `[2]`.
+fn sum_of_kind(g: &mut GraphBuilder, kind: NodeKind, lo: i128, hi: i128) -> TensorId {
+    let x = g.input(decl(&[2], kind, lo, hi)).expect("x");
+    let y = g.input(decl(&[2], kind, lo, hi)).expect("y");
     one(g, Op::Add, &[x, y], virt(&[2]))
 }
 
@@ -985,8 +990,8 @@ fn each_bit_rule_refuses_a_graph_that_breaks_only_it() {
     ] {
         for k in 0..f.arity() {
             let mut g = GraphBuilder::new();
-            let b = g.input(decl(&[2], ADVICE, 0, 1)).expect("a bit");
-            let wide = sum_of(&mut g, 0, 1);
+            let b = g.input(decl(&[2], NodeKind::Public, 0, 1)).expect("a bit");
+            let wide = sum_of_kind(&mut g, NodeKind::Public, 0, 1);
             let inputs: Vec<TensorId> = (0..f.arity())
                 .map(|i| if i == k { wide } else { b })
                 .collect();
@@ -997,11 +1002,90 @@ fn each_bit_rule_refuses_a_graph_that_breaks_only_it() {
                 "{f:?} input {k}"
             );
         }
+        // Public bits, and bits a decomposition proves, pass.
         let mut g = GraphBuilder::new();
-        let b = g.input(decl(&[2], ADVICE, 0, 1)).expect("a bit");
+        let b = g.input(decl(&[2], NodeKind::Public, 0, 1)).expect("a bit");
         let y = one(&mut g, Op::BitFn { f }, &vec![b; f.arity()], virt(&[2]));
         let ranges = analyze(&g.finish(), &[]).expect("bits");
         assert_eq!(ranges.of(y), Some(Range::new(0, 1)));
+        let mut g = GraphBuilder::new();
+        let byte = g.input(decl(&[2], ADVICE, 0, 255)).expect("a byte");
+        let bits = g
+            .node(
+                Op::BitDecompose { low: 8, high: 0 },
+                &[byte],
+                vec![out(&[2, 8], ADVICE)],
+            )
+            .expect("bits")[0];
+        one(
+            &mut g,
+            Op::BitFn { f },
+            &vec![bits; f.arity()],
+            virt(&[2, 8]),
+        );
+        analyze(&g.finish(), &[]).expect("proven bits");
+    }
+    // A committed input declared [0, 1], moved by a Reshape or an Expand, is no proven bit.
+    let proven = "a Boolean function's input is a bit some operation proves";
+    for reshape in [false, true] {
+        let mut g = GraphBuilder::new();
+        let c = g
+            .input(decl(&[2], ADVICE, 0, 1))
+            .expect("a committed 'bit'");
+        let p = g
+            .input(decl(&[1, 2], NodeKind::Public, 0, 1))
+            .expect("a bit");
+        let c = if reshape {
+            one(&mut g, Op::Reshape, &[c], virt(&[1, 2]))
+        } else {
+            one(&mut g, Op::Expand { axis: 0, len: 1 }, &[c], virt(&[1, 2]))
+        };
+        one(&mut g, Op::BitFn { f: BoolFn::Xor }, &[p, c], virt(&[1, 2]));
+        assert_eq!(
+            refused(&g.finish(), &[]),
+            range(1, 1, proven),
+            "reshape: {reshape}"
+        );
+    }
+    // Fewer bits than the declared range would prove nothing more through a move: a byte
+    // declared [0, 255], reshaped or gathered, under nine bits is refused; under eight it passes.
+    let declared = "a committed integer's declared range holds [0, 2^{low + high})";
+    for (gather, high, refused_here) in [
+        (false, 1, true),
+        (true, 1, true),
+        (false, 0, false),
+        (true, 0, false),
+    ] {
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(&[2], ADVICE, 0, 255)).expect("a byte");
+        let moved = if gather {
+            let index = g.constant(vec![1, 0]).expect("rows");
+            one(&mut g, Op::GatherPublic { index }, &[x], virt(&[2]))
+        } else {
+            one(&mut g, Op::Reshape, &[x], virt(&[1, 2]))
+        };
+        let shape = if gather { vec![2] } else { vec![1, 2] };
+        let with = |bits: u32| {
+            let mut s = shape.clone();
+            s.push(bits);
+            out(&s, ADVICE)
+        };
+        let mut outputs = vec![with(8)];
+        if high > 0 {
+            outputs.push(with(1));
+        }
+        g.node(Op::BitDecompose { low: 8, high }, &[moved], outputs)
+            .expect("a decomposition");
+        let result = analyze(&g.finish(), &[]);
+        if refused_here {
+            assert_eq!(
+                result.expect_err("refused"),
+                range(1, 0, declared),
+                "gather: {gather}"
+            );
+        } else {
+            result.expect("eight bits prove the declared byte");
+        }
     }
     // AssertEqual: an input outside the centered field range, or with no bound.
     let integer = "a true integer lies in (−(P−1)/2, (P−1)/2)";
@@ -1048,7 +1132,7 @@ fn the_sha256_circuit_keeps_every_tensor_in_range() {
         (inputs[4], wide(layout.place())),
     ];
     let (ranges, values) = check_run(&graph, &[], &[], values);
-    // Until the anchor's relations are scheduled (#146), the compiler takes the circuit to no
+    // Until the anchor's relations are scheduled (#526), the compiler takes the circuit to no
     // proof, and it is no part of a model.
     assert_eq!(
         select(&graph, &ranges, &[], &GadgetPolicy::default()).err(),

@@ -19,6 +19,8 @@
 
 use std::path::PathBuf;
 
+use sha2::Digest;
+
 use tessera_anchor::{key_commitment, sampler_commitment};
 use tessera_codec::error::ErrorCode;
 use tessera_codec::{Secret, SecretBuf};
@@ -359,6 +361,38 @@ fn key_commitments_match_the_recorders() {
             .sum();
         let per_message = SHA256_BITS_PER_BLOCK + 8 * 32;
         assert_eq!(committed as u64, per_message * keys.len() as u64);
+    }
+}
+
+#[test]
+fn a_frame_commits_bytes_across_its_blocks() {
+    // A frame of n = 3 tokens: a public 41-byte header, then 22 + 4n committed bytes, which run
+    // from block 1 into block 2 (RFC-0066 'For the anchor'), against the sha2 crate.
+    let mut seed = 0xf4a3e;
+    let frames: Vec<Vec<u8>> = (0..3)
+        .map(|_| {
+            let mut frame = Vec::new();
+            while frame.len() < 41 + 34 {
+                frame.extend_from_slice(&seeded_bytes(&mut seed));
+            }
+            frame.truncate(41 + 34);
+            frame
+        })
+        .collect();
+    assert_eq!(sha256_blocks(frames[0].len()), 2);
+    let layout = layout(2, frames.len(), (41..75).collect());
+    let c = circuit(&layout, true);
+    let padded: Vec<Vec<u8>> = frames.iter().map(|f| sha256_pad(f)).collect();
+    let direct: Vec<[u8; 32]> = frames
+        .iter()
+        .map(|f| sha2::Sha256::digest(f).into())
+        .collect();
+    let witness = c
+        .run(&layout, &refs(&padded), &iv_bits(frames.len()), &direct)
+        .expect("each frame's digest");
+    let last = c.sha.chaining.last().expect("a block");
+    for (k, d) in direct.iter().enumerate() {
+        assert_eq!(&digest_of(&witness, last, k, frames.len()), d);
     }
 }
 

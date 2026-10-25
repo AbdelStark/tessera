@@ -95,8 +95,13 @@ impl<'a> Engine<'a> {
     ///
     /// # Errors
     ///
-    /// [`WitnessError::Table`] when a table does not regenerate from its specification.
+    /// - [`WitnessError::Usage`] for a graph that breaks RFC-0006 'Operation set', which a
+    ///   [`tessera_ir::GraphBuilder`] would have refused: the evaluation relies on its shapes;
+    /// - [`WitnessError::Table`] when a table does not regenerate from its specification.
     pub fn for_graph(graph: &'a Graph, tables: &[TableSpec]) -> Result<Self, WitnessError> {
+        graph.validate().map_err(|_| WitnessError::Usage {
+            rule: "the graph follows RFC-0006 'Operation set'",
+        })?;
         let count = tables
             .iter()
             .map(|t| t.id.0 as usize + 1)
