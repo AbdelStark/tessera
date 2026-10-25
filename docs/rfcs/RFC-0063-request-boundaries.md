@@ -102,8 +102,10 @@ For a candidate `r` of `P`, over its frames in `P − 1` and `P`:
 5. **One frame per position across the boundary.** No two frames of `r` share a `(direction, frame_index)`. In each direction, the indices are exactly `0, …, n − 1`, each once.
 
 Then RFC-0015's check 2 reads over these frames: the lengths, and plaintext lengths (RFC-0059).
-- **The kinds.** Rule 4 is `Session`. Rules 1, 2, 3 and 5 are `Frames`.
-- **The order.** The verifier checks requests in `statement.batch` order. For each, it checks rule 4 with RFC-0062's session rules first, then the other rules and RFC-0059's frame checks, then the sampler key (RFC-0043's order).
+- **The kinds.** Rule 4 is `Session` where RFC-0062's rule 1 fails, or where the two periods' key commitments differ. RFC-0062's rules 2 and 3 keep their own kind under rule 4, `Frames`, as RFC-0062 'The session rules' names them. Rules 1, 2, 3 and 5 are `Frames`.
+- **The order.** The verifier checks requests in `statement.batch` order. For each, it checks rule 4 with RFC-0062's session rules first: in `P − 1`, then in `P`, then the key commitment across both. Then come the other rules and RFC-0059's frame checks, then the sampler key (RFC-0043's order).
+- **Who is named.** The first request, in batch order, whose check fails. A session's break in one period is seen only by requests whose window holds a frame in that period (rule 4), so it names the first such request of the batch, which may follow other requests of the same session.
+- **One counter across the window.** RFC-0059's batch rule holds over both periods: no two frames of the batch's requests in one session share a `frame_seq`, in `P − 1` and `P` together. A break is `Frames` and names the session's first request in the batch. An honest stack never reuses a counter (INV-ANC-3), so this refuses no honest batch; lower counters in a later period, as a carried session's reordered frames may show, are not a break.
 - **Unterminated candidates** break rule 1, and a candidate whose end comes before all its frames breaks rule 2.
 
 ### Inbound before outbound

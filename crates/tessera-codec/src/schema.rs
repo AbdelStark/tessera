@@ -72,6 +72,7 @@ catalog! {
     DIGEST_LOG_ENTRY = "DigestLogEntry", 0x0401, 1, None, Public;
     LOG_MANIFEST = "LogManifest", 0x0402, 1, Some("tlm"), Public;
     AUDIT_SAMPLE = "AuditSample", 0x0403, 1, Some("tas"), Public;
+    SESSION_TRANSCRIPT = "SessionTranscript", 0x0404, 1, Some("tst"), Secret;
     SEED_COMMIT = "SeedCommit", 0x0501, 1, None, Public;
     PROVER_SEED_SHARE = "ProverSeedShare", 0x0502, 1, None, Public;
     SEED_REVEAL = "SeedReveal", 0x0503, 1, None, Public;

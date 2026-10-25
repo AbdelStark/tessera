@@ -24,6 +24,21 @@ All notable changes to the prover release train are recorded here: the crates un
     - **Review.** Four adversarial reads, the last finding nothing substantive.
   - **The calculator.** Its weight-linking row omits `θ_T`'s `1/q`, which [#516](https://github.com/AbdelStark/tessera/issues/516) adds.
 
+- The prover's pre-check and its stored transcripts ([#146](https://github.com/AbdelStark/tessera/issues/146), in part):
+  - **`SessionTranscript`** (schema `0x0404`, `.tst`, secret-class) in `tessera-anchor`. It holds a session's identifier, `k_s`, `salt_k`, and every frame it sealed, with its counter and plaintext.
+    - `SessionTranscript::record` keeps a frame once its header matches the plaintext and its counter is above the last.
+    - The decoder refuses counters out of order and unknown direction tags. `envelope::write_file` writes the artifact with mode 0600.
+  - **`precheck`.** It reads a batch's requests from the period's verified log and the previous period's, as the verifier will. It checks, in the verifier's order:
+    - RFC-0062's session rules in each period, with one key across both;
+    - RFC-0063's request rules;
+    - the statement's lengths;
+    - no counter shared across the window by the session's requests in the batch;
+    - the replay of the stored transcript: the key commitment, and each logged frame re-sealed at its counter to its digest.
+
+    The replay returns only whether each digest matches. A failure is `ERR-WITNESS-ANCHOR`, naming the request and the check (`PrecheckKind`).
+  - **The specification.** RFC-0015 'Prover pre-check' gives the artifact's TCE and the check order, and 03 §5 lists `SessionTranscript`. RFC-0063 'The request's rules' settles the session rules' order across the two periods, who is named, the kinds under rule 4 and one counter across the window, and RFC-0062 'One verdict' points to it: the readings the verifier's checks (#150) take as well.
+  - **Not yet.** The token-byte binding to `OneHot` needs the anchor circuits (#142, #143). The sampler key's checks come with #152.
+
 - Audit sampling, RFC-0016 ([#140](https://github.com/AbdelStark/tessera/issues/140)):
   - **`tessera-protocol`.**
     - `AuditPolicy` with `RateBucket`, and `RateBucket::threshold_of`, which reads a decimal rate exactly as `⌊rate · 2^64⌋`. A policy is valid by construction: `AuditPolicy::new` and the decoder refuse buckets out of order and batch bounds below `2 · min_batch_tokens` (`ProtocolError::Policy`).
