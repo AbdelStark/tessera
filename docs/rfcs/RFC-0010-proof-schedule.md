@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site), [RFC-0030](RFC-0030-masked-exponentials.md) ('Multilinear extensions': the causal selector's sequence length; 'Tree levels': `SoftmaxRow`'s root values), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Tree levels', in `tessera-protocol/2`: forests of two trees at least, masked levels), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Sumcheck messages': a failed tree level's reason), [RFC-0035](RFC-0035-padded-rows.md) ('Relations': the padding zero-check; 'Batching within a stage': the zero-check point), [RFC-0054](RFC-0054-token-groups.md) ('Tree levels' and 'Sumcheck messages': a leaf stage larger than memory, in token groups with a merge; 'Soundness of the schedule': the union at the most groups a verifier accepts), [RFC-0055](RFC-0055-windowed-stages.md) ('Sumcheck messages': a reduction stage larger than memory, in windowed rounds with these messages)
+- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Stages': `servable` with an affine RoPE site), [RFC-0030](RFC-0030-masked-exponentials.md) ('Multilinear extensions': the causal selector's sequence length; 'Tree levels': `SoftmaxRow`'s root values), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Tree levels', in `tessera-protocol/2`: forests of two trees at least, masked levels), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Sumcheck messages': a failed tree level's reason), [RFC-0035](RFC-0035-padded-rows.md) ('Relations': the padding zero-check; 'Batching within a stage': the zero-check point), [RFC-0054](RFC-0054-token-groups.md) ('Tree levels' and 'Sumcheck messages': a leaf stage larger than memory, in token groups with a merge; 'Soundness of the schedule': the union at the most groups a verifier accepts), [RFC-0055](RFC-0055-windowed-stages.md) ('Sumcheck messages': a reduction stage larger than memory, in windowed rounds with these messages), [RFC-0066](RFC-0066-bits-and-sha256.md) ('Relations': the zero-checks of `BitDecompose` and `AssertEqual`, and `BitFn`'s products)
 
 ## Summary
 
@@ -56,6 +56,10 @@ Every constraint in the derived constraint system is one of these relation kinds
 | `Linear` (sums, adds, residual chains, selectors) | Evaluated directly from input claims at the same point; no sumcheck | — |
 | `ZeroCheck` (`OneHot` booleanity) | `0 = Σ_x eq(z, x) h̃(x)(1 − h̃(x))` | 3 |
 | `ZeroCheck` (padding, [RFC-0035](RFC-0035-padded-rows.md#the-padding-zero-check)) | `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·w̃(x)`, `ψ` the public row selector | 3 |
+| `ZeroCheck` (`BitDecompose` booleanity, [RFC-0066](RFC-0066-bits-and-sha256.md#bitdecompose--low-high-)) | `0 = Σ_x eq(z, x) b̃(x)(1 − b̃(x))`, for each of its outputs | 3 |
+| `ZeroCheck` (`BitDecompose` recomposition) | `0 = x̃(z) − Σ_{(y,i)} eq(z, y)·w(i)·b̃(y ‖ i) − Σ_{(y,j)} eq(z, y)·2^{low}·w(j)·h̃(y ‖ j)`, `w(i) = 2^i` on real bits | 3 |
+| `ZeroCheck` (`AssertEqual`) | `0 = ã(z) − b̃(z)` | — |
+| `Elementwise` (`BitFn`) | `Z̃(r) = Σ_x eq(r, x)·Σ_t w_t·Π_{f ∈ t} I_f(x)`, the function's multilinear polynomial | ≤ 4 |
 | `ProductTreeLevel` | `V_ℓ(r) = Σ_x eq(r, x) V_{ℓ+1}(x, 0) V_{ℓ+1}(x, 1)` | 3 |
 | `FractionTreeLevel` | LogUp-GKR level (RFC-0008) | 3 |
 
