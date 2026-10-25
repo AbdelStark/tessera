@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Open Questions': opening `ChannelParams` claims)
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Open Questions': opening `ChannelParams` claims), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The leaf point', `P` without the tree index's coordinate; 'The split', the values of sites in the layers sent once per site and tensor, after a layer sumcheck)
 - Supersedes, on acceptance:
   - [RFC-0008](RFC-0008-logup-and-tables.md#batching) 'Batching' and 'Fraction tree': how an instance lays out its lookups, and the order of its lookup tree's leaves;
   - [RFC-0037](RFC-0037-stage-schedule.md#the-layer-point) 'The layer point' and 'Splits': the point `r_s` of a site's tensors, and the leaf stage's split values.
@@ -38,7 +38,7 @@ Two trees of different heights agree on their lowest coordinate and on their hig
 
 - The gadgets' lookups themselves, which RFC-0009 lists.
 - The claims of the product forests, which RFC-0009 and RFC-0030 route.
-- `tessera-protocol/2`'s masked leaf checks ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#leaf-checks) 'Leaf checks'). This layout is `tessera-protocol/1`'s.
+- `tessera-protocol/2`'s masked leaf checks ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#leaf-checks) 'Leaf checks'). This layout is `tessera-protocol/1`'s, and [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) states what changes in `tessera-protocol/2`.
 
 ## Proposed Design
 
@@ -147,7 +147,7 @@ The verifier derives the sites, the blocks, their offsets and the instances' hei
 ## Drawbacks
 
 - The prover writes each lookup tree's leaves in the permuted order: one index computation per lookup.
-- The leaf stage sends one value per tensor, site and layer. At 405B that is a few thousand `Fp2` elements, against the openings' megabytes.
+- The leaf stage sends one value per tensor, site and layer. At 405B that is 53,489 `Fp2` elements, 856 KB, against the openings' gigabytes. In `tessera-protocol/2`, RFC-0068 sends 614.
 
 ## Migration / Rollout
 

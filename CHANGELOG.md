@@ -6,6 +6,17 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The leaf stage of `tessera-protocol/2`, specified ([#486](https://github.com/AbdelStark/tessera/issues/486)):
+  - **RFC-0068, 'The Leaf Stage in `tessera-protocol/2`: Column Masks and a Layer Sumcheck'.**
+    - **The leak.** RFC-0045 evaluates every looked-up tensor of a site in the layers once per real layer, at Boolean layer coordinates, where the masked extension is the tensor. Those values leave as the per-layer split values, 53,489 at 405B, and inside the LogUp columns, which the last tree level reveals unmasked (`docs/zk/simulator.md` §4.3, R8).
+    - **Column masks.** Each instance's key column, and its value column when its table has values, takes an `Fp2` mask row: `κ'_I = κ̃_I + Z·R̃_{κ,I}`. The revealed column values are masked by the instance's own rows, whatever tensors and layers it holds.
+    - **A layer sumcheck.** One masked sumcheck, after `logup/values`, reduces every instance's key and value claims to one value per site and tensor at a random layer point, where the tensors' own masks act. The column masks' terms are folded in, as a virtual tensor's are. Stage 1 stacks at its point and draws no `stage/1/layer/{c}`.
+    - **Its batching.** The instances' sums are secret, so each summand, not each claim, is scaled by `2^{−(n − n_i)}`. Its degree is 4, derived from `λ` alone: a layered tensor whose mask takes the last layer variable reaches it, as the 405B `RsqrtRow` sites' do.
+    - **`ChannelParams`.** Sites of two classes or more meet RFC-0065 'What the stages owe', and `tessera-protocol/2` admits them: RFC-0007's and RFC-0039's step 2.4 refusal is lifted.
+    - **Cost at 405B,** computed from the compiler's layout: 36 mask rows (72 committed rows), one masked sumcheck of 22 rounds, and one more advice opening group, about 64 MiB, so `G ≤ 17`. The proof is about 2.74 GB in `tessera-protocol/2`, before the masking polynomials' openings (#489). The split values fall from 53,489 to 614.
+    - It amends RFC-0007, RFC-0011, RFC-0013, RFC-0014, RFC-0032, RFC-0036, RFC-0037, RFC-0039, RFC-0045 and RFC-0065, the group counts of RFC-0019, RFC-0057 and 08 §5, and the simulator argument: R8 met for the leaf stage, R9 for every `ChannelParams` site.
+  - **Found on the way:** the epilogue's claim at a Boolean layer ([#535](https://github.com/AbdelStark/tessera/issues/535)), the calculator's missing layer-point term in `tessera-protocol/1` ([#537](https://github.com/AbdelStark/tessera/issues/537)), and RFC-0013's virtual fold over non-column variables ([#538](https://github.com/AbdelStark/tessera/issues/538)).
+
 - The verifier's audit accounting, its ledger and its audit report ([#151](https://github.com/AbdelStark/tessera/issues/151); the verifier's own changelog has the code):
   - **RFC-0067, 'The Verifier Ledger's Encoding and the Audit Report'.**
     - The ledger's canonical encoding (schema `0x0701`): a `BitSet` is `Bytes`, and each record of `proven` keeps its accepted requests' `Û`, the records sorted by sample.

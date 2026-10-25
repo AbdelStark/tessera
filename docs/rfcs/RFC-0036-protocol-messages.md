@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
-- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('`Round2Response`': `WeightCombinedRows.evaluations` as `Vec<CombinedRow>`), [RFC-0065](RFC-0065-masked-channel-params.md) ('Versions and envelopes': version 2's `WeightReservation` and `weight_blinding`), [RFC-0054](RFC-0054-token-groups.md#messages) (`Round1`'s `leaf_groups`; `LogUpProof` and `TreeProof` for a leaf stage in token groups)
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('`Round2Response`': `WeightCombinedRows.evaluations` as `Vec<CombinedRow>`), [RFC-0065](RFC-0065-masked-channel-params.md) ('Versions and envelopes': version 2's `WeightReservation` and `weight_blinding`), [RFC-0054](RFC-0054-token-groups.md#messages) (`Round1`'s `leaf_groups`; `LogUpProof` and `TreeProof` for a leaf stage in token groups), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Versions and envelopes': version 2's `TreeProof` carries the leaf stage's layer sumcheck)
 - Supersedes, on acceptance:
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#messages) 'Messages': every message's layout, for `tessera-protocol/1`;
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#session-order-live-mode) 'Session order': who chooses `session_id`, and what each seed message holds;
@@ -41,7 +41,7 @@ RFC-0014 names the protocol's eight messages, and several of the types they hold
 ### Versions and envelopes
 
 - **Schema version 1** of `SeedCommit`, `ProverSeedShare`, `SeedReveal` (`0x0501`–`0x0503`), `Round1`, `Round2Response`, `ColumnQueries`, `Round3Response` (`0x0510`–`0x0513`) and `NiProof` (`0x0520`) is `tessera-protocol/1`: sound and not hiding ([RFC-0013](RFC-0013-zero-knowledge.md#migration--rollout) 'Migration / Rollout').
-- **Schema version 2** is `tessera-protocol/2`. It adds the weight reservation, masked sums, blinding claims and the LogUp identity sumcheck of RFC-0013 and RFC-0032. Those RFCs' issues define its layouts (#148, #149, #154). [RFC-0065](RFC-0065-masked-channel-params.md#the-reservation) defines the contents of its `WeightReservation` and `weight_blinding`. A tier-A schema change is a protocol change ([03 §5](../spec/03-data-model.md#5-artifact-catalog)), so the two never mix.
+- **Schema version 2** is `tessera-protocol/2`. It adds the weight reservation, masked sums, blinding claims and the LogUp identity sumcheck of RFC-0013 and RFC-0032, and the leaf stage's layer sumcheck of [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#what-is-sent-in-tessera-protocol2), which its `TreeProof` carries. Those RFCs' issues define its layouts (#148, #149, #154). [RFC-0065](RFC-0065-masked-channel-params.md#the-reservation) defines the contents of its `WeightReservation` and `weight_blinding`. A tier-A schema change is a protocol change ([03 §5](../spec/03-data-model.md#5-artifact-catalog)), so the two never mix.
 - **Envelopes.** Each message travels in an [RFC-0003 envelope](RFC-0003-canonical-encoding.md#envelope), schema id and version in its header.
   - `NiProof` holds `Round1`, `Round2Response` and `Round3Response` as payloads, without inner envelopes, at its own version.
   - A transport or a test that writes `ProverSeedShare` beside `Round1` writes two envelopes.

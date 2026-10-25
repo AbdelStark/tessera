@@ -7,10 +7,10 @@
 
 ## 1. Result
 
-**As specified today, `tessera-protocol/2` is not zero-knowledge.** Three of its messages reveal secret values outright:
-- **The leaf stage's per-layer split values** sit at Boolean layer coordinates, where the masked extension equals the tensor (§4.3, R8).
-- **`ChannelParams`' claims** sit at Boolean coordinates too (§4.5, R9). [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md) masks them, and admits in `tessera-protocol/2` only the affine sites, whose claims come from the reduction stages. Sites of two classes or more, all of 405B's, wait for a leaf layout without per-layer split values: R8, #486.
-- **The weight linking proof** reveals `W̃_T(ρ_T)` (§6.4, R3).
+**As specified, `tessera-protocol/2` is not yet zero-knowledge.** One message still reveals a secret value outright: the epilogue's claim on the last checkpoint, at a Boolean layer ([#535](https://github.com/AbdelStark/tessera/issues/535), R8). Three others did, and the specification now masks each:
+- **The leaf stage's per-layer split values** sat at Boolean layer coordinates, where the masked extension equals the tensor (§4.3, R8). [RFC-0068](../rfcs/RFC-0068-leaf-stage-zero-knowledge.md) sends none, and gives each LogUp instance's columns mask rows of their own.
+- **`ChannelParams`' claims** sat at Boolean coordinates too (§4.5, R9). [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md) masks them. With RFC-0068's leaf stage, `tessera-protocol/2` admits every site, those of two classes or more included.
+- **The weight linking proof** revealed `W̃_T(ρ_T)` (§6.4, R3). [RFC-0064](../rfcs/RFC-0064-weight-linking-proof.md) opens the difference instead.
 
 Further gaps are missing pieces of the protocol, not leaks:
 - **Masked weights across an epoch.** Under the tensor proximity generator, they have no usable joint bound (§6.3, R2).
@@ -107,7 +107,7 @@ In transcript order (RFC-0014 'Transcript schedule', with RFC-0032's rows 4 and 
   - **What hiding needs.**
     - **One group per claim.** Lemma 5 covers it, group by group.
     - **A batching sumcheck.** It reveals new functionals of the masking polynomials' rows: its round messages and its final evaluation. Those rows keep only `n` spare directions each, so the batching sumcheck needs its own masking polynomial (Lemma 4) or a rank argument of its own.
-- **Requirement R4.** Each `g_j` has round `j`'s degree, the last round's included, which the masked extensions raise to 7.
+- **Requirement R4.** Each `g_j` has round `j`'s degree, the round whose degree the masked extensions raise included, up to 7: the last round, or at a LogUp leaf level the round before it (RFC-0032, RFC-0068).
 - **Degenerate event.** `ρ = 0`: `1/q` per masked sumcheck.
 
 **The identity sumcheck.** Its final evaluations `N'_L(r_L), D'_L(r_L), N'_T(r_T), D'_T(r_T)` are values of masked root levels, `Ṽ(y) + y(1 − y)·R̃(y)`.
@@ -132,7 +132,7 @@ Each stage is Lemma 4's masked sumcheck. Its final evaluations and its split val
 - **Today's `Z`.** It runs over every variable but the lowest, so a Boolean coordinate other than the lowest is such a point.
 - **A weighted sum.** RFC-0037's shifted layer weights `eq(ρ, ℓ + 1)` would violate R8 if revealed alone. They are revealed only inside a committed group, with `w(0)·c'_0(r)`, which masks them.
 - **What R8 does not cover.** Advice claims on the committed vector `Ã(r ‖ base_X)` have Boolean base bits, but they are not evaluations of a masked tensor in its own variables. R8 does not apply to them.
-- **The leaf stage breaks it as specified.** RFC-0045's leaf stage, with RFC-0037's splits, sends one value per tensor, site and real layer, and stacks the values at the layer point `ρ_1` afterwards (RFC-0045 'The split', RFC-0037 'Splits').
+- **The leaf stage broke it as first specified.** RFC-0045's leaf stage, with RFC-0037's splits, sends one value per tensor, site and real layer, and stacks the values at the layer point `ρ_1` afterwards (RFC-0045 'The split', RFC-0037 'Splits').
   - **Why that leaks.** Each per-layer value sits at a Boolean layer coordinate, so it is unmasked. That is up to 126 evaluations of each looked-up activation tensor, per proof.
   - **The spec gap.** RFC-0045 states its layout for `tessera-protocol/1` only, and `tessera-protocol/2`'s leaf layout is unspecified.
 - **Two remedies.**
@@ -144,13 +144,18 @@ Each stage is Lemma 4's masked sumcheck. Its final evaluations and its split val
     - the layers innermost for each site and lookup, aligned to `2^{k+λ}`;
     - a layer point per site in place of a shared `ρ_1`, which changes stage 1's stacking.
 
-  The choice is `tessera-protocol/2`'s leaf layout, to be specified. RFC-0054's OQ-0054-1 names the same failure for grouped splits.
+  RFC-0054's OQ-0054-1 names the same failure for grouped splits.
+- **What `tessera-protocol/2` does** ([RFC-0068](../rfcs/RFC-0068-leaf-stage-zero-knowledge.md)). Neither remedy: the columns take mask rows of their own, and a masked layer sumcheck replaces the per-layer values.
+  - It reduces every instance's leaf claims to one value per site and tensor at a random layer point `ρ'_y`, where the tensors' own masks act. Stage 1 stacks there.
+  - The column masks' terms are folded into it, as a virtual tensor's are, so each column mask is revealed only at the sumcheck's final point besides the column values.
+  - The two remedies above are its alternatives 1 and 2. At 405B it costs 36 mask rows, where the first would cost 53,298.
 
 **The LogUp leaf level and `logup/values`** (RFC-0032 'Leaf checks').
 - **What is revealed.** The last level reveals the leaf polynomials at `(0 ‖ r')` and `(1 ‖ r')`, through `κ'`, `e'` and `m'`. `logup/values` sends `e'(p_low)` at the level's line point `(λ ‖ r')`, which is in the span of the first two: a public, deterministic dependence.
 - **Why they are uniform.**
-  - **What masks them.** The key and value columns are concatenations of their blocks' tensors (RFC-0045), so they are masked by those tensors' own masks once R8 is met. They have no mask rows of their own.
-  - **The keys and values.** At each of the two points, the lookup denominators read the key forms and the value forms through those masks. That is four mask values when the key forms and the value forms share no masked tensor, covering three revealed combinations: the two denominators and `e'(λ ‖ r')`. The values are then uniform subject to that one public relation. A shared tensor reduces the count, and R10's check must cover it.
+  - **What masks them.** The key and value columns are concatenations of their blocks' tensors (RFC-0045). The tensors' own masks do not mask them: a block of a site in the layers sits at a Boolean layer coordinate. Each instance's key column, and its value column when its table has values, carries a mask row of its own instead (RFC-0068 'Column masks').
+  - **The keys and values.** At each of the two points, the lookup denominators read the key and value columns through their column masks: four mask values for an instance with values, covering three revealed combinations, the two denominators and `e'(λ ‖ r')`. The values are then uniform subject to that one public relation.
+  - **The column masks' third point.** Each column mask is revealed once more, at the layer sumcheck's final point. Its three `eq` vectors are independent except with probability `9/q` (Lemma 2). The masks belong to one instance each, so no rank condition over shared tensors arises.
   - **The multiplicities.** The table numerators reveal `m'` at the same two points, and `m'(p_low)` follows from them. The same argument applies through `m`'s mask.
 
 **Committed tensors.** Mask row `R_V` is revealed at `e_V` points, one per claim on `V`. The values are uniform when `Z(p) ≠ 0` at each point and the `e_V` vectors `eq(p_col)` are independent (Lemma 2).
@@ -214,7 +219,7 @@ Each stage is Lemma 4's masked sumcheck. Its final evaluations and its split val
 
   A first count gave each evaluation row its own pair as well: `4m + 2` rows per proof, 30 at `m = 7`, and 136 proofs per epoch at `B_W = 4096`. The design below needs `2m + 4`.
 
-**Met for affine sites.** [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md) gives each claim its own mask row `R_i`, with `Z` over the type tensor's `c_i + λ` coordinates, and each matrix one pair `β_T` for its evaluation rows.
+**Met by RFC-0065, with RFC-0068's leaf stage for sites of two classes or more.** [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md) gives each claim its own mask row `R_i`, with `Z` over the type tensor's `c_i + λ` coordinates, and each matrix one pair `β_T` for its evaluation rows.
 - **The cost.** A proof reserves `2e + 4` rows of a matrix with `e` claims: six for `Embed`..`LmHead`, as before, and 18 for `ChannelParams` at `e = 7`.
 - **The epoch.** `ChannelParams` has `B_CP = B_W + 2·(e_CP − 1)·⌊(B_W − 4)/6⌋` blinding rows, 12,280 at 405B, so it serves as many proofs per epoch as the other matrices.
 - **The argument.** It is Lemma 5's, with `R_i` designated for evaluation row `i`.
@@ -222,7 +227,9 @@ Each stage is Lemma 4's masked sumcheck. Its final evaluations and its split val
   - A value of `P'_{t_i}` revealed in a stage at a point `y` carries `β_T`'s functional at `y`. When it also carries a secret term, that functional must be independent of `β_T`'s others (R10, per matrix).
   - Lemma 7 covers the epoch with the `β_T` columns as its uniform block. Its singular case needs `{eq(col_i), eq(σ(col_i))}` independent, `σ` the conjugation, which fails with probability about `2^{−55}` within the singular event's `1/p`.
 - **One matrix, one fate.** The claims share `β_T`, so one unmasked row would reveal `β_T`, and with it the folds through the other claims' `q_j`. No evaluation row is opened without its mask term. A prover whose `Z(x_i)` vanishes aborts.
-- **The leaf stage.** It reveals each class tensor once per real layer, at Boolean layer coordinates, before stacking at `ρ_1` (RFC-0045, RFC-0037). Those values are unmasked whatever the openings do, and the stacked claim fails RFC-0065's evaluation check. So `tessera-protocol/2` admits only affine `ChannelParams` sites (RFC-0039 step 2.4) until #486's leaf layout reads the class tensors only at points whose coordinates other than the lowest are challenges.
+- **The leaf stage.** As first specified, it revealed each class tensor once per real layer, at Boolean layer coordinates, before stacking at `ρ_1` (RFC-0045, RFC-0037). Those values were unmasked whatever the openings do, so `tessera-protocol/2` admitted only affine `ChannelParams` sites.
+  - RFC-0068 reveals the class tensors' per-layer evaluations only inside masked column values, and their stacked claim at `(π(r_s) ‖ ρ'_y)`, every coordinate but the lowest a challenge, where RFC-0065's per-claim masks act.
+  - So every site meets RFC-0065 'What the stages owe', and `tessera-protocol/2` admits sites of two classes or more.
 
 ### 4.6 Column answers
 
@@ -338,7 +345,7 @@ Packing several masks in one row, each in its own aligned sub-block at a public 
 - The `Z` terms give `≈ 450,000/q ≈ 2^{-109}`.
 - The `eq` terms give `≈ 32,000/q ≈ 2^{-113}`.
 
-So `ε_1 < 2^{-105}`, given R10's rank checks. These counts are projections from RFC-0013's cost table. They must be recomputed from the compiler's schedule once `tessera-protocol/2`'s layout exists, R8's and R9's masks included.
+So `ε_1 < 2^{-105}`, given R10's rank checks. These counts are projections from RFC-0013's cost table. They must be recomputed from the compiler's schedule once `tessera-protocol/2`'s layout is compiled, RFC-0068's column masks and layer sumcheck included.
 
 **Outside `ε_1`.** `ε_PRG` and `ε_H` are separate. Per epoch, `ε_W ≤ 2^{-230}` adds to the proofs' terms.
 
@@ -349,12 +356,12 @@ So `ε_1 < 2^{-105}`, given R10's rank checks. These counts are projections from
 | R1 | The proximity row's blinding pair is the fixed word, with coefficients `1` and `X` and no generator coefficient. This is soundness's choice, not zero knowledge's, which holds either way (§4.4) | RFC-0011 step 3, RFC-0012, RFC-0049 for `tessera-protocol/2`, against RFC-0013 'The proximity row' | Conflicting text; #394 |
 | R2 | For masked weights, the proximity generator's coefficients on blinding rows are independent uniform `Fp2`, or those rows are excluded with their own soundness argument | RFC-0012, RFC-0049; Draft RFC-0021's free-row stream meets it | Not met by the tensor generator; #394 |
 | R3 | The linking proof opens the difference of the two commitments, with the public claim 0, each keeping its own proximity row | [RFC-0064](../rfcs/RFC-0064-weight-linking-proof.md), superseding RFC-0012 'Refresh and linking proof' | Met in the specification by RFC-0064 ([#485](https://github.com/AbdelStark/tessera/issues/485)); [#153](https://github.com/AbdelStark/tessera/issues/153) implements it, with R3's test |
-| R4 | Each masking polynomial's `g_j` has its round's degree, the last round's raised degree included | RFC-0013 'Masked sumcheck' | Stated by this change |
+| R4 | Each masking polynomial's `g_j` has its round's degree, a raised round's included | RFC-0013 'Masked sumcheck' | Stated by this change |
 | R5 | INV-ZK-2 reads as a rank condition. Each mask, blinding row and masking polynomial has a designated revealed combination where it enters with an invertible block, and the joint coefficient matrix over the masks has full rank. Further uses are allowed where Lemmas 5 and 7 cover them | RFC-0013 'Invariants' | Literal one-use conflicts with the proximity row; #394 |
 | R6 | The weight budget never rolls back, and an aborted session burns what it reserved | RFC-0012 'Budget state machine' | Met by RFC-0012; #156 must preserve it |
 | R7 | A scoring message that carries a secret evaluation has a masked extension | RFC-0017 | To check when its masked messages land |
-| R8 | No masked tensor is revealed at a point where its own `Z` vanishes, nor alone in a sum all of whose terms are such points. The leaf stage's per-layer split values violate it, so `tessera-protocol/2` needs a leaf layout, or per-layer masks, that avoid them | RFC-0045, RFC-0037 'Splits', RFC-0013 'Masked extensions' | Not met; no `tessera-protocol/2` leaf layout exists; [#486](https://github.com/AbdelStark/tessera/issues/486) |
-| R9 | `ChannelParams` claims take masks over the type tensor's own coordinates, a mask row per claim, which is its evaluation row's designated block, and one pair per matrix for the blinding claims: `2e + 4` rows per proof. `ChannelParams`' own blinding rows `B_CP` keep its epoch as long as the others' | [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md), superseding RFC-0052's `tessera-protocol/2` gap and RFC-0012's six-row `reserve` | Met in the specification by RFC-0065 for affine sites ([#487](https://github.com/AbdelStark/tessera/issues/487)). Sites of two classes or more are refused in `tessera-protocol/2` (RFC-0039 step 2.4) until [#486](https://github.com/AbdelStark/tessera/issues/486)'s leaf layout (R8). [#147](https://github.com/AbdelStark/tessera/issues/147) implements it, and [#162](https://github.com/AbdelStark/tessera/issues/162) tests it |
+| R8 | No masked tensor is revealed at a point where its own `Z` vanishes, nor alone in a sum all of whose terms are such points. RFC-0045's per-layer split values violated it, and so did the LogUp columns, sums of such terms | RFC-0045, RFC-0037 'Splits', RFC-0013 'Masked extensions', [RFC-0068](../rfcs/RFC-0068-leaf-stage-zero-knowledge.md) | Met in the specification for the leaf stage by RFC-0068 ([#486](https://github.com/AbdelStark/tessera/issues/486)): column masks and a layer sumcheck. Not met for the epilogue's claim on the last checkpoint ([#535](https://github.com/AbdelStark/tessera/issues/535)). [#148](https://github.com/AbdelStark/tessera/issues/148) and [#154](https://github.com/AbdelStark/tessera/issues/154) implement it, and [#162](https://github.com/AbdelStark/tessera/issues/162) tests it |
+| R9 | `ChannelParams` claims take masks over the type tensor's own coordinates, a mask row per claim, which is its evaluation row's designated block, and one pair per matrix for the blinding claims: `2e + 4` rows per proof. `ChannelParams`' own blinding rows `B_CP` keep its epoch as long as the others' | [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md), superseding RFC-0052's `tessera-protocol/2` gap and RFC-0012's six-row `reserve` | Met in the specification by RFC-0065 ([#487](https://github.com/AbdelStark/tessera/issues/487)), for sites of two classes or more with RFC-0068's leaf stage ([#486](https://github.com/AbdelStark/tessera/issues/486)). [#147](https://github.com/AbdelStark/tessera/issues/147) implements it, and [#162](https://github.com/AbdelStark/tessera/issues/162) tests it |
 | R10 | Every mask row's revealed points, as the compiled schedule places them, have linearly independent `eq` vectors, apart from dependencies implied by public relations among the revealed values, such as `e'(λ ‖ r')`'s. For a weight matrix whose evaluation rows share a pair `β_T` ([RFC-0065](../rfcs/RFC-0065-masked-channel-params.md)), the check runs per matrix, over every functional of `β_T` together. A value that carries a secret term (`S ≢ 0`) must lie outside the span of the others. One that carries none (`S ≡ 0`, decided symbolically) adds its functional to the span but is not refused: two claims at one column point, such as O's and Down's at stage 1's final point, give `q_O = q_Down` and are valid. The points depend on challenges, so the compiler checks the generic (symbolic) rank and Schwartz–Zippel bounds the rest. Softmax row sums at `1/2` and shared column sub-points are included | the compiler's schedule (RFC-0006, RFC-0037) and the verifier's derivation | Not checked; [#488](https://github.com/AbdelStark/tessera/issues/488) |
 | R11 | Each masked sumcheck's `G(r)` and each tree level's mask claim is opened. Either way, the budget counts it: through its own group, with a blinding pair and a combined row, or through a batching sumcheck that reduces them to shared column points | RFC-0013 'Masked sumcheck', RFC-0011 'Opening protocol', RFC-0032 | Not specified: RFC-0011 opens `eq` functionals only; [#489](https://github.com/AbdelStark/tessera/issues/489) |
 
@@ -363,7 +370,7 @@ So `ε_1 < 2^{-105}`, given R10's rank checks. These counts are projections from
 These tests check the implementation of the masks, not this argument (07 §7). Each mechanism maps to one in #162's distinguisher suite:
 - **Lemma 4.** Round messages' non-constant coefficients, and `Γ`, are uniform for two witnesses.
 - **Lemma 2.** Each revealed masked value is uniform for two witnesses. With an `Fp` mask, a distinguisher on the value's line wins.
-- **R8 and R9.** For two witnesses, every revealed evaluation has the same distribution. As the negative control, today's leaf-stage split values and `ChannelParams` claims are told apart.
+- **R8 and R9.** For two witnesses, every revealed evaluation has the same distribution. As the negative control, `tessera-protocol/1`'s per-layer split values and `ChannelParams` claims are told apart, and so are RFC-0068's column values with the column masks set to zero.
 - **Lemma 5.** Combined rows are uniform for two witnesses, under the tensor generator and under the fixed word.
 - **Lemma 6.** Opened symbols are uniform for two witnesses, up to `P` columns. At `P + 1` columns of one row they are not, which is the negative control.
 - **Lemma 7 and R2.** Over a small field, the joint combined rows of many proofs of one epoch are uniform, the relations at earlier columns included, with free coefficients. The tensor generator's rank failures are measured against them.
