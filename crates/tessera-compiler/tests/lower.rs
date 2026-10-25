@@ -26,7 +26,8 @@ use common::{Lookup, ROPE, Seeded, check_ranges, evaluate, llama, regenerate, rq
 use tessera_codec::error::ErrorCode;
 use tessera_codec::{Ascii, DecodeLimits, Map, Rational, envelope, schema};
 use tessera_compiler::{
-    CompileError, Lowering, PublicModel, Range, analyze, check_profile, lower, validate,
+    CompileError, Lowering, PublicModel, Range, analyze, analyze_fragment, check_profile, lower,
+    validate,
 };
 use tessera_ir::{
     ArchFamily, ArchSpec, CalibrationIdentity, ChannelParams, IntRange, IntegerModel, NodeKind, Op,
@@ -997,7 +998,7 @@ fn a_graph_breaking_one_profile_constraint_is_refused() {
     )
     .expect("a node");
     let graph = g.finish();
-    let ranges = analyze(&graph, &[]).expect("analyzes");
+    let ranges = analyze_fragment(&graph, &[]).expect("analyzes");
     assert!(matches!(
         check_profile(&graph, &ranges, &[], Profile::Servable),
         Err(CompileError::Profile {
@@ -1035,7 +1036,7 @@ fn a_graph_breaking_one_profile_constraint_is_refused() {
     .expect("a node");
     let graph = g.finish();
     let specs = [exp.spec().clone()];
-    let ranges = analyze(&graph, &specs).expect("analyzes");
+    let ranges = analyze_fragment(&graph, &specs).expect("analyzes");
     for profile in [Profile::Servable, Profile::Minimal] {
         assert!(matches!(
             check_profile(&graph, &ranges, &specs, profile),

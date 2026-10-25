@@ -18,7 +18,7 @@
 #![allow(dead_code)] // each test binary uses part of it
 
 use tessera_codec::{Ascii, encode};
-use tessera_compiler::{Gadget, analyze, select};
+use tessera_compiler::{Gadget, analyze_fragment, select};
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_gadgets::{Constraints, Lookups, TableColumns, Term};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
@@ -145,7 +145,9 @@ pub fn select_requant(
     )
     .expect("a Requant node");
     let graph = g.finish();
-    let ranges = analyze(&graph, &[]).expect("the graph analyzes");
+    // A fragment: the committed key stands for a value a larger graph computes and proves
+    // (RFC-0006 'Committed graph inputs').
+    let ranges = analyze_fragment(&graph, &[]).expect("the graph analyzes");
     let policy = GadgetPolicy {
         max_log2_rows: b_max,
         ..GadgetPolicy::default()

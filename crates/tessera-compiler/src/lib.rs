@@ -50,7 +50,7 @@ pub use claim::claim_list;
 pub use error::CompileError;
 pub use lower::{Lowering, PublicModel, check_profile, lower, settle, validate};
 pub use plan::{ExecutionPlan, QueryBlock, SequenceTile, Share, Tile, check_plan, plan, tiles};
-pub use range::{HALF_FIELD, Range, Ranges, analyze};
+pub use range::{HALF_FIELD, Range, Ranges, analyze, analyze_fragment};
 pub use report::{
     CommitmentReport, Growth, Holding, SCHEMA as REPORT_SCHEMA, StageTables, TableClass, TableUse,
     Tally, report, stage_count,
