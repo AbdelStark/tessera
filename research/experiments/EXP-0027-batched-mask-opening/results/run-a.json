@@ -1,0 +1,5999 @@
+{
+ "environment": {
+  "python": "3.15.0",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "processor": "arm",
+  "utc": "2026-10-25T19:33:28Z",
+  "finished_utc": "2026-10-25T19:33:54Z",
+  "seconds": 25.9,
+  "workers": 8
+ },
+ "result": {
+  "cells": [
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "PROTO",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 43,
+     "max": 43,
+     "mode": 43,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 43,
+     "max": 43,
+     "mode": 43,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "POLY",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 30,
+     "max": 30,
+     "mode": 30,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 30,
+     "max": 30,
+     "mode": 30,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "ROWS",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 62,
+     "max": 62,
+     "mode": 62,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 62,
+     "max": 62,
+     "mode": 62,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "DENSE",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "SPARSE(2)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 7,
+     "max": 12,
+     "mode": 9,
+     "mode_share": 0.385
+    },
+    "L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 7,
+     "max": 12,
+     "mode": 9,
+     "mode_share": 0.385
+    },
+    "L3": {
+     "min": 3,
+     "max": 11,
+     "mode": 8,
+     "mode_share": 0.265
+    },
+    "leak_L1": {
+     "min": 5,
+     "max": 10,
+     "mode": 7,
+     "mode_share": 0.385
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 7,
+     "mode": 0,
+     "mode_share": 0.39
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "SPARSE(3)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 8,
+     "max": 12,
+     "mode": 11,
+     "mode_share": 0.34
+    },
+    "L1": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 8,
+     "max": 12,
+     "mode": 11,
+     "mode_share": 0.34
+    },
+    "L3": {
+     "min": 3,
+     "max": 12,
+     "mode": 10,
+     "mode_share": 0.34
+    },
+    "leak_L1": {
+     "min": 5,
+     "max": 9,
+     "mode": 8,
+     "mode_share": 0.34
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 7,
+     "mode": 0,
+     "mode_share": 0.36
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "SPARSE(5)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 10,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 0.725
+    },
+    "L1": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 10,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 0.725
+    },
+    "L3": {
+     "min": 5,
+     "max": 12,
+     "mode": 11,
+     "mode_share": 0.415
+    },
+    "leak_L1": {
+     "min": 5,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 0.725
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 6,
+     "mode": 0,
+     "mode_share": 0.49
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "SPARSE(12)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 10,
+     "max": 12,
+     "mode": 11,
+     "mode_share": 0.495
+    },
+    "L2": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 11,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 0.95
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 2,
+     "mode": 1,
+     "mode_share": 0.495
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 1,
+     "mode": 0,
+     "mode_share": 0.95
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "SUBCUBE(1)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 10,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 9,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 0.86
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.86
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 32,
+     "max": 32,
+     "mode": 32,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "SUBCUBE(2)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 10,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 8,
+     "max": 8,
+     "mode": 8,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 10,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 6,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 0.745
+    },
+    "leak_L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 4,
+     "mode": 0,
+     "mode_share": 0.745
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "SUBCUBE(3)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 6,
+     "max": 6,
+     "mode": 6,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 3,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 0.58
+    },
+    "leak_L1": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 6,
+     "mode": 0,
+     "mode_share": 0.58
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 8,
+     "max": 8,
+     "mode": 8,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "SINGLE",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 3,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 0.47
+    },
+    "leak_L1": {
+     "min": 6,
+     "max": 6,
+     "mode": 6,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 4,
+     "mode": 0,
+     "mode_share": 0.47
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "EQ1",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "BOOLPT(1)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 6,
+     "max": 6,
+     "mode": 6,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 32,
+     "max": 32,
+     "mode": 32,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 6,
+    "family": "BOOLPT(2)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 4,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 0.995
+    },
+    "L2": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 5,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 0.96
+    },
+    "leak_L1": {
+     "min": 2,
+     "max": 3,
+     "mode": 2,
+     "mode_share": 0.995
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.96
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 8,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 0.995
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "PROTO",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 177,
+     "max": 177,
+     "mode": 177,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 177,
+     "max": 177,
+     "mode": 177,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "POLY",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 105,
+     "max": 105,
+     "mode": 105,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 105,
+     "max": 105,
+     "mode": 105,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "ROWS",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 254,
+     "max": 254,
+     "mode": 254,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 254,
+     "max": 254,
+     "mode": 254,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "DENSE",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "SPARSE(2)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 9,
+     "max": 16,
+     "mode": 12,
+     "mode_share": 0.305
+    },
+    "L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 9,
+     "max": 16,
+     "mode": 12,
+     "mode_share": 0.305
+    },
+    "L3": {
+     "min": 3,
+     "max": 14,
+     "mode": 10,
+     "mode_share": 0.2
+    },
+    "leak_L1": {
+     "min": 7,
+     "max": 14,
+     "mode": 10,
+     "mode_share": 0.305
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 9,
+     "mode": 0,
+     "mode_share": 0.38
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "SPARSE(3)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 16,
+     "mode": 14,
+     "mode_share": 0.36
+    },
+    "L1": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 16,
+     "mode": 14,
+     "mode_share": 0.36
+    },
+    "L3": {
+     "min": 3,
+     "max": 16,
+     "mode": 13,
+     "mode_share": 0.215
+    },
+    "leak_L1": {
+     "min": 8,
+     "max": 13,
+     "mode": 11,
+     "mode_share": 0.36
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 10,
+     "mode": 0,
+     "mode_share": 0.285
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "SPARSE(5)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 13,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 0.565
+    },
+    "L1": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 13,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 0.565
+    },
+    "L3": {
+     "min": 10,
+     "max": 16,
+     "mode": 15,
+     "mode_share": 0.28
+    },
+    "leak_L1": {
+     "min": 8,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 0.565
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 5,
+     "mode": 0,
+     "mode_share": 0.39
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "SPARSE(16)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 13,
+     "max": 16,
+     "mode": 15,
+     "mode_share": 0.45
+    },
+    "L2": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 15,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 0.99
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 3,
+     "mode": 1,
+     "mode_share": 0.45
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 1,
+     "mode": 0,
+     "mode_share": 0.99
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "SUBCUBE(1)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 15,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 14,
+     "max": 14,
+     "mode": 14,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 15,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 13,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 0.88
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.88
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 128,
+     "max": 128,
+     "mode": 128,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "SUBCUBE(2)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 14,
+     "max": 14,
+     "mode": 14,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 14,
+     "max": 14,
+     "mode": 14,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 11,
+     "max": 14,
+     "mode": 14,
+     "mode_share": 0.805
+    },
+    "leak_L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 3,
+     "mode": 0,
+     "mode_share": 0.805
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "SUBCUBE(4)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 8,
+     "max": 8,
+     "mode": 8,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 3,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 0.625
+    },
+    "leak_L1": {
+     "min": 4,
+     "max": 4,
+     "mode": 4,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 9,
+     "mode": 0,
+     "mode_share": 0.625
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "SINGLE",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 3,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 0.55
+    },
+    "leak_L1": {
+     "min": 8,
+     "max": 8,
+     "mode": 8,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 6,
+     "mode": 0,
+     "mode_share": 0.55
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "EQ1",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "BOOLPT(1)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 8,
+     "max": 8,
+     "mode": 8,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 128,
+     "max": 128,
+     "mode": 128,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 8,
+    "family": "BOOLPT(2)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 7,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 0.96
+    },
+    "leak_L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.96
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "PROTO",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 840,
+     "max": 840,
+     "mode": 840,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 840,
+     "max": 840,
+     "mode": 840,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "POLY",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 444,
+     "max": 444,
+     "mode": 444,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 444,
+     "max": 444,
+     "mode": 444,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "ROWS",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 1022,
+     "max": 1022,
+     "mode": 1022,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1022,
+     "max": 1022,
+     "mode": 1022,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "DENSE",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "SPARSE(2)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 18,
+     "mode": 15,
+     "mode_share": 0.34
+    },
+    "L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 18,
+     "mode": 15,
+     "mode_share": 0.34
+    },
+    "L3": {
+     "min": 3,
+     "max": 16,
+     "mode": 11,
+     "mode_share": 0.26
+    },
+    "leak_L1": {
+     "min": 9,
+     "max": 16,
+     "mode": 13,
+     "mode_share": 0.34
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 12,
+     "mode": 0,
+     "mode_share": 0.24
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "SPARSE(3)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 14,
+     "max": 20,
+     "mode": 17,
+     "mode_share": 0.3
+    },
+    "L1": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 14,
+     "max": 20,
+     "mode": 17,
+     "mode_share": 0.3
+    },
+    "L3": {
+     "min": 3,
+     "max": 20,
+     "mode": 15,
+     "mode_share": 0.2
+    },
+    "leak_L1": {
+     "min": 11,
+     "max": 17,
+     "mode": 14,
+     "mode_share": 0.3
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 14,
+     "mode": 0,
+     "mode_share": 0.26
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "SPARSE(5)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 17,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 0.58
+    },
+    "L1": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 17,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 0.58
+    },
+    "L3": {
+     "min": 13,
+     "max": 20,
+     "mode": 19,
+     "mode_share": 0.26
+    },
+    "leak_L1": {
+     "min": 12,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 0.58
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 6,
+     "mode": 0,
+     "mode_share": 0.4
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "SPARSE(20)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 16,
+     "max": 19,
+     "mode": 18,
+     "mode_share": 0.42
+    },
+    "L2": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 4,
+     "mode": 2,
+     "mode_share": 0.42
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "SUBCUBE(1)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 19,
+     "max": 19,
+     "mode": 19,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 18,
+     "max": 18,
+     "mode": 18,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 19,
+     "max": 19,
+     "mode": 19,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 17,
+     "max": 19,
+     "mode": 19,
+     "mode_share": 0.92
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.92
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 512,
+     "max": 512,
+     "mode": 512,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "SUBCUBE(2)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 18,
+     "max": 18,
+     "mode": 18,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 18,
+     "max": 18,
+     "mode": 18,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 15,
+     "max": 18,
+     "mode": 18,
+     "mode_share": 0.8
+    },
+    "leak_L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 3,
+     "mode": 0,
+     "mode_share": 0.8
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "SUBCUBE(5)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 15,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 10,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 15,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 3,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 0.68
+    },
+    "leak_L1": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 12,
+     "mode": 0,
+     "mode_share": 0.68
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 32,
+     "max": 32,
+     "mode": 32,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "SINGLE",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 3,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 0.48
+    },
+    "leak_L1": {
+     "min": 10,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 8,
+     "mode": 0,
+     "mode_share": 0.48
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "EQ1",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "BOOLPT(1)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 10,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 512,
+     "max": 512,
+     "mode": 512,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "F65537",
+    "m": 10,
+    "family": "BOOLPT(2)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 9,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 0.9
+    },
+    "leak_L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.9
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "PROTO",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 43,
+     "max": 43,
+     "mode": 43,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 43,
+     "max": 43,
+     "mode": 43,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "POLY",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 30,
+     "max": 30,
+     "mode": 30,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 30,
+     "max": 30,
+     "mode": 30,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "ROWS",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 62,
+     "max": 62,
+     "mode": 62,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 62,
+     "max": 62,
+     "mode": 62,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "DENSE",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "SPARSE(2)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 7,
+     "max": 12,
+     "mode": 9,
+     "mode_share": 0.315
+    },
+    "L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 7,
+     "max": 12,
+     "mode": 9,
+     "mode_share": 0.315
+    },
+    "L3": {
+     "min": 3,
+     "max": 11,
+     "mode": 8,
+     "mode_share": 0.275
+    },
+    "leak_L1": {
+     "min": 5,
+     "max": 10,
+     "mode": 7,
+     "mode_share": 0.315
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 7,
+     "mode": 0,
+     "mode_share": 0.325
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "SPARSE(3)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 8,
+     "max": 12,
+     "mode": 11,
+     "mode_share": 0.39
+    },
+    "L1": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 8,
+     "max": 12,
+     "mode": 11,
+     "mode_share": 0.39
+    },
+    "L3": {
+     "min": 3,
+     "max": 12,
+     "mode": 10,
+     "mode_share": 0.29
+    },
+    "leak_L1": {
+     "min": 5,
+     "max": 9,
+     "mode": 8,
+     "mode_share": 0.39
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 7,
+     "mode": 0,
+     "mode_share": 0.35
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "SPARSE(5)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 10,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 0.665
+    },
+    "L1": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 10,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 0.665
+    },
+    "L3": {
+     "min": 4,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 0.34
+    },
+    "leak_L1": {
+     "min": 5,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 0.665
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 7,
+     "mode": 0,
+     "mode_share": 0.495
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "SPARSE(12)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 0.995
+    },
+    "L1": {
+     "min": 10,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 0.48
+    },
+    "L2": {
+     "min": 11,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 0.995
+    },
+    "L3": {
+     "min": 10,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 0.95
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.48
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.955
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "SUBCUBE(1)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 10,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 9,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 0.845
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.845
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 32,
+     "max": 32,
+     "mode": 32,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "SUBCUBE(2)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 10,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 8,
+     "max": 8,
+     "mode": 8,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 10,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 6,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 0.71
+    },
+    "leak_L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 4,
+     "mode": 0,
+     "mode_share": 0.71
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "SUBCUBE(3)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 6,
+     "max": 6,
+     "mode": 6,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 3,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 0.625
+    },
+    "leak_L1": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 6,
+     "mode": 0,
+     "mode_share": 0.625
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 8,
+     "max": 8,
+     "mode": 8,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "SINGLE",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 3,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 0.445
+    },
+    "leak_L1": {
+     "min": 6,
+     "max": 6,
+     "mode": 6,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 4,
+     "mode": 0,
+     "mode_share": 0.445
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "EQ1",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "BOOLPT(1)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 6,
+     "max": 6,
+     "mode": 6,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 32,
+     "max": 32,
+     "mode": 32,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "BOOLPT(2)",
+    "draws": 200,
+    "count_listed": 14,
+    "count_independent": 13,
+    "correct": true,
+    "full": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 5,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 0.945
+    },
+    "leak_L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.945
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "PROTO",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 177,
+     "max": 177,
+     "mode": 177,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 177,
+     "max": 177,
+     "mode": 177,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "POLY",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 105,
+     "max": 105,
+     "mode": 105,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 105,
+     "max": 105,
+     "mode": 105,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "ROWS",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 254,
+     "max": 254,
+     "mode": 254,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 254,
+     "max": 254,
+     "mode": 254,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "DENSE",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "SPARSE(2)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 9,
+     "max": 15,
+     "mode": 12,
+     "mode_share": 0.275
+    },
+    "L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 9,
+     "max": 15,
+     "mode": 12,
+     "mode_share": 0.275
+    },
+    "L3": {
+     "min": 3,
+     "max": 15,
+     "mode": 10,
+     "mode_share": 0.235
+    },
+    "leak_L1": {
+     "min": 7,
+     "max": 13,
+     "mode": 10,
+     "mode_share": 0.275
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 10,
+     "mode": 0,
+     "mode_share": 0.325
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "SPARSE(3)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 16,
+     "mode": 14,
+     "mode_share": 0.315
+    },
+    "L1": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 16,
+     "mode": 14,
+     "mode_share": 0.315
+    },
+    "L3": {
+     "min": 4,
+     "max": 16,
+     "mode": 14,
+     "mode_share": 0.195
+    },
+    "leak_L1": {
+     "min": 8,
+     "max": 13,
+     "mode": 11,
+     "mode_share": 0.315
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 9,
+     "mode": 0,
+     "mode_share": 0.26
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "SPARSE(5)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 0.625
+    },
+    "L1": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 12,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 0.625
+    },
+    "L3": {
+     "min": 9,
+     "max": 16,
+     "mode": 15,
+     "mode_share": 0.265
+    },
+    "leak_L1": {
+     "min": 7,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 0.625
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 6,
+     "mode": 0,
+     "mode_share": 0.375
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "SPARSE(16)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 13,
+     "max": 16,
+     "mode": 15,
+     "mode_share": 0.505
+    },
+    "L2": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 15,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 0.985
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 3,
+     "mode": 1,
+     "mode_share": 0.505
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 1,
+     "mode": 0,
+     "mode_share": 0.985
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "SUBCUBE(1)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 15,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 14,
+     "max": 14,
+     "mode": 14,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 15,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 13,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 0.89
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.89
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 128,
+     "max": 128,
+     "mode": 128,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "SUBCUBE(2)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 14,
+     "max": 14,
+     "mode": 14,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 14,
+     "max": 14,
+     "mode": 14,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 10,
+     "max": 14,
+     "mode": 14,
+     "mode_share": 0.745
+    },
+    "leak_L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 4,
+     "mode": 0,
+     "mode_share": 0.745
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "SUBCUBE(4)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 8,
+     "max": 8,
+     "mode": 8,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 12,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 3,
+     "max": 12,
+     "mode": 12,
+     "mode_share": 0.65
+    },
+    "leak_L1": {
+     "min": 4,
+     "max": 4,
+     "mode": 4,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 9,
+     "mode": 0,
+     "mode_share": 0.65
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "SINGLE",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 3,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 0.54
+    },
+    "leak_L1": {
+     "min": 8,
+     "max": 8,
+     "mode": 8,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 6,
+     "mode": 0,
+     "mode_share": 0.54
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "EQ1",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "BOOLPT(1)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 8,
+     "max": 8,
+     "mode": 8,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 128,
+     "max": 128,
+     "mode": 128,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "BOOLPT(2)",
+    "draws": 200,
+    "count_listed": 18,
+    "count_independent": 17,
+    "correct": true,
+    "full": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 7,
+     "max": 7,
+     "mode": 7,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 7,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 0.955
+    },
+    "leak_L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.955
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 64,
+     "max": 64,
+     "mode": 64,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "PROTO",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 840,
+     "max": 840,
+     "mode": 840,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 840,
+     "max": 840,
+     "mode": 840,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "POLY",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 444,
+     "max": 444,
+     "mode": 444,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 444,
+     "max": 444,
+     "mode": 444,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "ROWS",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 1022,
+     "max": 1022,
+     "mode": 1022,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1022,
+     "max": 1022,
+     "mode": 1022,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "DENSE",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "SPARSE(2)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 12,
+     "max": 18,
+     "mode": 16,
+     "mode_share": 0.3
+    },
+    "L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 12,
+     "max": 18,
+     "mode": 16,
+     "mode_share": 0.3
+    },
+    "L3": {
+     "min": 3,
+     "max": 17,
+     "mode": 11,
+     "mode_share": 0.26
+    },
+    "leak_L1": {
+     "min": 10,
+     "max": 16,
+     "mode": 14,
+     "mode_share": 0.3
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 11,
+     "mode": 0,
+     "mode_share": 0.32
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "SPARSE(3)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 15,
+     "max": 20,
+     "mode": 18,
+     "mode_share": 0.28
+    },
+    "L1": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 15,
+     "max": 20,
+     "mode": 18,
+     "mode_share": 0.28
+    },
+    "L3": {
+     "min": 5,
+     "max": 19,
+     "mode": 16,
+     "mode_share": 0.18
+    },
+    "leak_L1": {
+     "min": 12,
+     "max": 17,
+     "mode": 15,
+     "mode_share": 0.28
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 12,
+     "mode": 0,
+     "mode_share": 0.3
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 3,
+     "max": 3,
+     "mode": 3,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "SPARSE(5)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 18,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 0.5
+    },
+    "L1": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 18,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 0.5
+    },
+    "L3": {
+     "min": 12,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 0.32
+    },
+    "leak_L1": {
+     "min": 13,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 0.5
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 6,
+     "mode": 0,
+     "mode_share": 0.46
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "SPARSE(20)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 16,
+     "max": 19,
+     "mode": 18,
+     "mode_share": 0.36
+    },
+    "L2": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 4,
+     "mode": 2,
+     "mode_share": 0.36
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 20,
+     "max": 20,
+     "mode": 20,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "SUBCUBE(1)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 19,
+     "max": 19,
+     "mode": 19,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 18,
+     "max": 18,
+     "mode": 18,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 19,
+     "max": 19,
+     "mode": 19,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 17,
+     "max": 19,
+     "mode": 19,
+     "mode_share": 0.92
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 2,
+     "mode": 0,
+     "mode_share": 0.92
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 512,
+     "max": 512,
+     "mode": 512,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "SUBCUBE(2)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 18,
+     "max": 18,
+     "mode": 18,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 16,
+     "max": 16,
+     "mode": 16,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 18,
+     "max": 18,
+     "mode": 18,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 15,
+     "max": 18,
+     "mode": 18,
+     "mode_share": 0.76
+    },
+    "leak_L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 3,
+     "mode": 0,
+     "mode_share": 0.76
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "SUBCUBE(5)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 15,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 10,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 15,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 3,
+     "max": 15,
+     "mode": 15,
+     "mode_share": 0.5
+    },
+    "leak_L1": {
+     "min": 5,
+     "max": 5,
+     "mode": 5,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 12,
+     "mode": 0,
+     "mode_share": 0.5
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 32,
+     "max": 32,
+     "mode": 32,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "SINGLE",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 3,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 0.58
+    },
+    "leak_L1": {
+     "min": 10,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 8,
+     "mode": 0,
+     "mode_share": 0.58
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "EQ1",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "BOOLPT(1)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 10,
+     "max": 10,
+     "mode": 10,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "leak_L1": {
+     "min": 1,
+     "max": 1,
+     "mode": 1,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 0,
+     "mode": 0,
+     "mode_share": 1.0
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 512,
+     "max": 512,
+     "mode": 512,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   },
+   {
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "BOOLPT(2)",
+    "draws": 50,
+    "count_listed": 22,
+    "count_independent": 21,
+    "correct": true,
+    "full": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L1": {
+     "min": 9,
+     "max": 9,
+     "mode": 9,
+     "mode_share": 1.0
+    },
+    "L2": {
+     "min": 11,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 1.0
+    },
+    "L3": {
+     "min": 10,
+     "max": 11,
+     "mode": 11,
+     "mode_share": 0.98
+    },
+    "leak_L1": {
+     "min": 2,
+     "max": 2,
+     "mode": 2,
+     "mode_share": 1.0
+    },
+    "leak_L2_max": 0,
+    "leak_L3": {
+     "min": 0,
+     "max": 1,
+     "mode": 0,
+     "mode_share": 0.98
+    },
+    "full_eq_count": 0.0,
+    "L1_eq_count": 0.0,
+    "L3_eq_count": 0.0,
+    "supp": {
+     "min": 256,
+     "max": 256,
+     "mode": 256,
+     "mode_share": 1.0
+    },
+    "layout": {
+     "min": 1024,
+     "max": 1024,
+     "mode": 1024,
+     "mode_share": 1.0
+    }
+   }
+  ],
+  "predictions": [
+   {
+    "id": "P-a4",
+    "field": "F65537",
+    "m": 6,
+    "family": "PROTO",
+    "share": 1.0,
+    "need": 0.98,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "F65537",
+    "m": 6,
+    "family": "POLY",
+    "share": 1.0,
+    "need": 0.98,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "F65537",
+    "m": 6,
+    "family": "ROWS",
+    "share": 1.0,
+    "need": 0.98,
+    "holds": true
+   },
+   {
+    "id": "P-a1",
+    "field": "F65537",
+    "m": 6,
+    "family": "DENSE",
+    "share": 0.0,
+    "need": 0.98,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "F65537",
+    "m": 6,
+    "family": "SUBCUBE(1)",
+    "share": 0.0,
+    "need": 0.98,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "F65537",
+    "m": 6,
+    "family": "SUBCUBE(2)",
+    "share": 0.0,
+    "need": 0.98,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "F65537",
+    "m": 6,
+    "family": "SUBCUBE(3)",
+    "share": 0.0,
+    "need": 0.98,
+    "holds": false
+   },
+   {
+    "id": "P-a2",
+    "field": "F65537",
+    "m": 6,
+    "family": "SINGLE",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a5",
+    "field": "F65537",
+    "m": 6,
+    "family": "EQ1",
+    "share": 1.0,
+    "need": 0.98,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "F65537",
+    "m": 8,
+    "family": "PROTO",
+    "share": 1.0,
+    "need": 0.98,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "F65537",
+    "m": 8,
+    "family": "POLY",
+    "share": 1.0,
+    "need": 0.98,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "F65537",
+    "m": 8,
+    "family": "ROWS",
+    "share": 1.0,
+    "need": 0.98,
+    "holds": true
+   },
+   {
+    "id": "P-a1",
+    "field": "F65537",
+    "m": 8,
+    "family": "DENSE",
+    "share": 0.0,
+    "need": 0.98,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "F65537",
+    "m": 8,
+    "family": "SUBCUBE(1)",
+    "share": 0.0,
+    "need": 0.98,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "F65537",
+    "m": 8,
+    "family": "SUBCUBE(2)",
+    "share": 0.0,
+    "need": 0.98,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "F65537",
+    "m": 8,
+    "family": "SUBCUBE(4)",
+    "share": 0.0,
+    "need": 0.98,
+    "holds": false
+   },
+   {
+    "id": "P-a2",
+    "field": "F65537",
+    "m": 8,
+    "family": "SINGLE",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a5",
+    "field": "F65537",
+    "m": 8,
+    "family": "EQ1",
+    "share": 1.0,
+    "need": 0.98,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "F65537",
+    "m": 10,
+    "family": "PROTO",
+    "share": 1.0,
+    "need": 0.98,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "F65537",
+    "m": 10,
+    "family": "POLY",
+    "share": 1.0,
+    "need": 0.98,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "F65537",
+    "m": 10,
+    "family": "ROWS",
+    "share": 1.0,
+    "need": 0.98,
+    "holds": true
+   },
+   {
+    "id": "P-a1",
+    "field": "F65537",
+    "m": 10,
+    "family": "DENSE",
+    "share": 0.0,
+    "need": 0.98,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "F65537",
+    "m": 10,
+    "family": "SUBCUBE(1)",
+    "share": 0.0,
+    "need": 0.98,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "F65537",
+    "m": 10,
+    "family": "SUBCUBE(2)",
+    "share": 0.0,
+    "need": 0.98,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "F65537",
+    "m": 10,
+    "family": "SUBCUBE(5)",
+    "share": 0.0,
+    "need": 0.98,
+    "holds": false
+   },
+   {
+    "id": "P-a2",
+    "field": "F65537",
+    "m": 10,
+    "family": "SINGLE",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a5",
+    "field": "F65537",
+    "m": 10,
+    "family": "EQ1",
+    "share": 1.0,
+    "need": 0.98,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "PROTO",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "POLY",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "ROWS",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a1",
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "DENSE",
+    "share": 0.0,
+    "need": 1.0,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "SUBCUBE(1)",
+    "share": 0.0,
+    "need": 1.0,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "SUBCUBE(2)",
+    "share": 0.0,
+    "need": 1.0,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "SUBCUBE(3)",
+    "share": 0.0,
+    "need": 1.0,
+    "holds": false
+   },
+   {
+    "id": "P-a2",
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "SINGLE",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a5",
+    "field": "Goldilocks",
+    "m": 6,
+    "family": "EQ1",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "PROTO",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "POLY",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "ROWS",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a1",
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "DENSE",
+    "share": 0.0,
+    "need": 1.0,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "SUBCUBE(1)",
+    "share": 0.0,
+    "need": 1.0,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "SUBCUBE(2)",
+    "share": 0.0,
+    "need": 1.0,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "SUBCUBE(4)",
+    "share": 0.0,
+    "need": 1.0,
+    "holds": false
+   },
+   {
+    "id": "P-a2",
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "SINGLE",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a5",
+    "field": "Goldilocks",
+    "m": 8,
+    "family": "EQ1",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "PROTO",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "POLY",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a4",
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "ROWS",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a1",
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "DENSE",
+    "share": 0.0,
+    "need": 1.0,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "SUBCUBE(1)",
+    "share": 0.0,
+    "need": 1.0,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "SUBCUBE(2)",
+    "share": 0.0,
+    "need": 1.0,
+    "holds": false
+   },
+   {
+    "id": "P-a3",
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "SUBCUBE(5)",
+    "share": 0.0,
+    "need": 1.0,
+    "holds": false
+   },
+   {
+    "id": "P-a2",
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "SINGLE",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   },
+   {
+    "id": "P-a5",
+    "field": "Goldilocks",
+    "m": 10,
+    "family": "EQ1",
+    "share": 1.0,
+    "need": 1.0,
+    "holds": true
+   }
+  ],
+  "criteria": {
+   "correct_all": true,
+   "leak_L2_all_zero": true,
+   "draws": 13500
+  }
+ }
+}

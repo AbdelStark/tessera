@@ -1,0 +1,20 @@
+[package]
+name = "exp0027-schedule"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+description = "EXP-0027: the compiler's 405B schedule counts that the batched mask opening reads (research/, a dependency of nothing)"
+
+[[bin]]
+name = "exp0027-schedule"
+path = "src/main.rs"
+
+# Its own workspace: the root workspace and its lockfile stay untouched (research/README.md rule 2).
+[workspace]
+
+[dependencies]
+serde_json = "1"
+tessera-codec = { path = "../../../../crates/tessera-codec" }
+tessera-compiler = { path = "../../../../crates/tessera-compiler" }
+tessera-ir = { path = "../../../../crates/tessera-ir" }

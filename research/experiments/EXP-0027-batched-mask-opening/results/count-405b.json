@@ -1,0 +1,1287 @@
+{
+ "checks": {
+  "tables_match_committed": true,
+  "stages_match_committed": true,
+  "stage_tables_match_committed": true,
+  "calculator_matches_compiler": true
+ },
+ "inputs": {
+  "schedule": "tessera-compiler report(), servable, 2 classes, B_max 32, 126 layers, 16 positions; advice layout at 16,384 positions",
+  "advice_rows": {
+   "allocated_rows": 2328576,
+   "rows": 953580,
+   "variables": 44
+  },
+  "instances": [
+   {
+    "id": 1,
+    "kind": "Exp",
+    "lookups": 4398046511104,
+    "rows": 4194304
+   },
+   {
+    "id": 2,
+    "kind": "Silu",
+    "lookups": 109924319232,
+    "rows": 1073741824
+   },
+   {
+    "id": 3,
+    "kind": "Range",
+    "lookups": 4145152,
+    "rows": 4294967296
+   },
+   {
+    "id": 4,
+    "kind": "Range",
+    "lookups": 1086177280,
+    "rows": 65536
+   },
+   {
+    "id": 5,
+    "kind": "Range",
+    "lookups": 12435456,
+    "rows": 128
+   },
+   {
+    "id": 6,
+    "kind": "Range",
+    "lookups": 389644288,
+    "rows": 256
+   },
+   {
+    "id": 7,
+    "kind": "Range",
+    "lookups": 8290304,
+    "rows": 16777216
+   },
+   {
+    "id": 8,
+    "kind": "Range",
+    "lookups": 16580608,
+    "rows": 33554432
+   },
+   {
+    "id": 9,
+    "kind": "Range",
+    "lookups": 67670605824,
+    "rows": 67108864
+   },
+   {
+    "id": 10,
+    "kind": "Range",
+    "lookups": 41451520,
+    "rows": 134217728
+   },
+   {
+    "id": 11,
+    "kind": "Range",
+    "lookups": 276725760,
+    "rows": 131072
+   },
+   {
+    "id": 12,
+    "kind": "Range",
+    "lookups": 8290304,
+    "rows": 32768
+   },
+   {
+    "id": 13,
+    "kind": "Range",
+    "lookups": 256999424,
+    "rows": 2
+   },
+   {
+    "id": 14,
+    "kind": "Range",
+    "lookups": 36205232128,
+    "rows": 2097152
+   },
+   {
+    "id": 15,
+    "kind": "Requant",
+    "lookups": 268435456,
+    "rows": 1048576
+   },
+   {
+    "id": 16,
+    "kind": "Requant",
+    "lookups": 35936796672,
+    "rows": 16777216
+   },
+   {
+    "id": 17,
+    "kind": "Requant",
+    "lookups": 112038248448,
+    "rows": 1073741824
+   },
+   {
+    "id": 18,
+    "kind": "Range",
+    "lookups": 536870912,
+    "rows": 4
+   },
+   {
+    "id": 19,
+    "kind": "Range",
+    "lookups": 33822867456,
+    "rows": 1048576
+   },
+   {
+    "id": 20,
+    "kind": "Requant",
+    "lookups": 33822867456,
+    "rows": 1048576
+   },
+   {
+    "id": 21,
+    "kind": "Requant",
+    "lookups": 33822867456,
+    "rows": 1073741824
+   },
+   {
+    "id": 22,
+    "kind": "Requant",
+    "lookups": 67645734912,
+    "rows": 8388608
+   },
+   {
+    "id": 23,
+    "kind": "Requant",
+    "lookups": 67645734912,
+    "rows": 67108864
+   },
+   {
+    "id": 24,
+    "kind": "Requant",
+    "lookups": 109924319232,
+    "rows": 65536
+   },
+   {
+    "id": 25,
+    "kind": "Requant",
+    "lookups": 33822867456,
+    "rows": 4294967296
+   }
+  ],
+  "tokens": 16384,
+  "context": 16384,
+  "log2_k": 22
+ },
+ "count": {
+  "height": 42,
+  "instances": 25,
+  "fraction_forests": 50,
+  "softmax_forest": {
+   "s": 28,
+   "h": 14
+  },
+  "masked_sumchecks": 46,
+  "masked_sumcheck_list": [
+   {
+    "name": "stage 1",
+    "rounds": 42
+   },
+   {
+    "name": "stage 2",
+    "rounds": 35
+   },
+   {
+    "name": "layer sumcheck (RFC-0068)",
+    "rounds": 22
+   },
+   {
+    "name": "LogUp identity (RFC-0032)",
+    "rounds": 2
+   },
+   {
+    "name": "tree level 0",
+    "rounds": 1
+   },
+   {
+    "name": "tree level 1",
+    "rounds": 2
+   },
+   {
+    "name": "tree level 2",
+    "rounds": 3
+   },
+   {
+    "name": "tree level 3",
+    "rounds": 4
+   },
+   {
+    "name": "tree level 4",
+    "rounds": 5
+   },
+   {
+    "name": "tree level 5",
+    "rounds": 6
+   },
+   {
+    "name": "tree level 6",
+    "rounds": 7
+   },
+   {
+    "name": "tree level 7",
+    "rounds": 8
+   },
+   {
+    "name": "tree level 8",
+    "rounds": 9
+   },
+   {
+    "name": "tree level 9",
+    "rounds": 10
+   },
+   {
+    "name": "tree level 10",
+    "rounds": 11
+   },
+   {
+    "name": "tree level 11",
+    "rounds": 12
+   },
+   {
+    "name": "tree level 12",
+    "rounds": 13
+   },
+   {
+    "name": "tree level 13",
+    "rounds": 14
+   },
+   {
+    "name": "tree level 14",
+    "rounds": 15
+   },
+   {
+    "name": "tree level 15",
+    "rounds": 16
+   },
+   {
+    "name": "tree level 16",
+    "rounds": 17
+   },
+   {
+    "name": "tree level 17",
+    "rounds": 18
+   },
+   {
+    "name": "tree level 18",
+    "rounds": 19
+   },
+   {
+    "name": "tree level 19",
+    "rounds": 20
+   },
+   {
+    "name": "tree level 20",
+    "rounds": 21
+   },
+   {
+    "name": "tree level 21",
+    "rounds": 22
+   },
+   {
+    "name": "tree level 22",
+    "rounds": 23
+   },
+   {
+    "name": "tree level 23",
+    "rounds": 24
+   },
+   {
+    "name": "tree level 24",
+    "rounds": 25
+   },
+   {
+    "name": "tree level 25",
+    "rounds": 26
+   },
+   {
+    "name": "tree level 26",
+    "rounds": 27
+   },
+   {
+    "name": "tree level 27",
+    "rounds": 28
+   },
+   {
+    "name": "tree level 28",
+    "rounds": 29
+   },
+   {
+    "name": "tree level 29",
+    "rounds": 30
+   },
+   {
+    "name": "tree level 30",
+    "rounds": 31
+   },
+   {
+    "name": "tree level 31",
+    "rounds": 32
+   },
+   {
+    "name": "tree level 32",
+    "rounds": 33
+   },
+   {
+    "name": "tree level 33",
+    "rounds": 34
+   },
+   {
+    "name": "tree level 34",
+    "rounds": 35
+   },
+   {
+    "name": "tree level 35",
+    "rounds": 36
+   },
+   {
+    "name": "tree level 36",
+    "rounds": 37
+   },
+   {
+    "name": "tree level 37",
+    "rounds": 38
+   },
+   {
+    "name": "tree level 38",
+    "rounds": 39
+   },
+   {
+    "name": "tree level 39",
+    "rounds": 40
+   },
+   {
+    "name": "tree level 40",
+    "rounds": 41
+   },
+   {
+    "name": "tree level 41",
+    "rounds": 42
+   }
+  ],
+  "rounds_total": 1004,
+  "masking_coefficients_fp2": 4562,
+  "coefficient_slots_fp2": 8078,
+  "tree_level_claims": 2621,
+  "tree_level_claims_full_width": 697,
+  "tree_level_entries_fp2": 3264349528,
+  "mask_claims": 2667,
+  "groups_B1": 2667,
+  "groups_B1p": 612,
+  "blinding_rows_before_B1": 5334,
+  "blinding_rows_before_B1p": 1224,
+  "blinding_rows_after": 2,
+  "C_support_fp2": 3264354090,
+  "levels": [
+   {
+    "level": 0,
+    "rounds": 1,
+    "instances": 1,
+    "claim_points": 1
+   },
+   {
+    "level": 1,
+    "rounds": 2,
+    "instances": 1,
+    "claim_points": 1
+   },
+   {
+    "level": 2,
+    "rounds": 3,
+    "instances": 1,
+    "claim_points": 1
+   },
+   {
+    "level": 3,
+    "rounds": 4,
+    "instances": 1,
+    "claim_points": 1
+   },
+   {
+    "level": 4,
+    "rounds": 5,
+    "instances": 1,
+    "claim_points": 1
+   },
+   {
+    "level": 5,
+    "rounds": 6,
+    "instances": 4,
+    "claim_points": 2
+   },
+   {
+    "level": 6,
+    "rounds": 7,
+    "instances": 9,
+    "claim_points": 3
+   },
+   {
+    "level": 7,
+    "rounds": 8,
+    "instances": 13,
+    "claim_points": 4
+   },
+   {
+    "level": 8,
+    "rounds": 9,
+    "instances": 13,
+    "claim_points": 4
+   },
+   {
+    "level": 9,
+    "rounds": 10,
+    "instances": 13,
+    "claim_points": 4
+   },
+   {
+    "level": 10,
+    "rounds": 11,
+    "instances": 15,
+    "claim_points": 5
+   },
+   {
+    "level": 11,
+    "rounds": 12,
+    "instances": 16,
+    "claim_points": 6
+   },
+   {
+    "level": 12,
+    "rounds": 13,
+    "instances": 19,
+    "claim_points": 7
+   },
+   {
+    "level": 13,
+    "rounds": 14,
+    "instances": 22,
+    "claim_points": 8
+   },
+   {
+    "level": 14,
+    "rounds": 15,
+    "instances": 24,
+    "claim_points": 9
+   },
+   {
+    "level": 15,
+    "rounds": 16,
+    "instances": 25,
+    "claim_points": 10
+   },
+   {
+    "level": 16,
+    "rounds": 17,
+    "instances": 28,
+    "claim_points": 11
+   },
+   {
+    "level": 17,
+    "rounds": 18,
+    "instances": 29,
+    "claim_points": 12
+   },
+   {
+    "level": 18,
+    "rounds": 19,
+    "instances": 33,
+    "claim_points": 13
+   },
+   {
+    "level": 19,
+    "rounds": 20,
+    "instances": 36,
+    "claim_points": 14
+   },
+   {
+    "level": 20,
+    "rounds": 21,
+    "instances": 38,
+    "claim_points": 15
+   },
+   {
+    "level": 21,
+    "rounds": 22,
+    "instances": 39,
+    "claim_points": 16
+   },
+   {
+    "level": 22,
+    "rounds": 23,
+    "instances": 42,
+    "claim_points": 17
+   },
+   {
+    "level": 23,
+    "rounds": 24,
+    "instances": 42,
+    "claim_points": 17
+   },
+   {
+    "level": 24,
+    "rounds": 25,
+    "instances": 42,
+    "claim_points": 17
+   },
+   {
+    "level": 25,
+    "rounds": 26,
+    "instances": 43,
+    "claim_points": 18
+   },
+   {
+    "level": 26,
+    "rounds": 27,
+    "instances": 45,
+    "claim_points": 19
+   },
+   {
+    "level": 27,
+    "rounds": 28,
+    "instances": 46,
+    "claim_points": 20
+   },
+   {
+    "level": 28,
+    "rounds": 29,
+    "instances": 47,
+    "claim_points": 20
+   },
+   {
+    "level": 29,
+    "rounds": 30,
+    "instances": 47,
+    "claim_points": 21
+   },
+   {
+    "level": 30,
+    "rounds": 31,
+    "instances": 47,
+    "claim_points": 21
+   },
+   {
+    "level": 31,
+    "rounds": 32,
+    "instances": 47,
+    "claim_points": 21
+   },
+   {
+    "level": 32,
+    "rounds": 33,
+    "instances": 47,
+    "claim_points": 21
+   },
+   {
+    "level": 33,
+    "rounds": 34,
+    "instances": 47,
+    "claim_points": 21
+   },
+   {
+    "level": 34,
+    "rounds": 35,
+    "instances": 48,
+    "claim_points": 22
+   },
+   {
+    "level": 35,
+    "rounds": 36,
+    "instances": 49,
+    "claim_points": 23
+   },
+   {
+    "level": 36,
+    "rounds": 37,
+    "instances": 49,
+    "claim_points": 23
+   },
+   {
+    "level": 37,
+    "rounds": 38,
+    "instances": 49,
+    "claim_points": 23
+   },
+   {
+    "level": 38,
+    "rounds": 39,
+    "instances": 49,
+    "claim_points": 23
+   },
+   {
+    "level": 39,
+    "rounds": 40,
+    "instances": 49,
+    "claim_points": 23
+   },
+   {
+    "level": 40,
+    "rounds": 41,
+    "instances": 51,
+    "claim_points": 24
+   },
+   {
+    "level": 41,
+    "rounds": 42,
+    "instances": 51,
+    "claim_points": 24
+   }
+  ],
+  "layouts": {
+   "unpacked": {
+    "fp2_rows_M": 2622,
+    "fp_rows_S": 5244,
+    "m": 34,
+    "batching_rounds": 34,
+    "S_committed_elements": 21994930176,
+    "S_share_of_advice_rows": 0.005499276410998553,
+    "soundness_added_log2": -116.58267488164827,
+    "soundness_added_terms": {
+     "alpha": 2666,
+     "rounds": 68,
+     "rho": 1
+    },
+    "verifier_c_at_r_terms": 93676,
+    "prover_batching_fp2_mults_bound": 26114832720,
+    "params": {
+     "live-64": {
+      "bytes_before_B1": 178992824640,
+      "bytes_before_B1p": 41073719040,
+      "bytes_after": 73617600,
+      "after_parts": {
+       "one_group": 67113920,
+       "batching_messages": 1120,
+       "S_opened_symbols": 6502560
+      },
+      "saving_vs_B1p": 0.9982076714327157,
+      "saving_vs_B1": 0.9995887120048077,
+      "criterion_after_le_10pct_B1p": true
+     },
+     "ni-100": {
+      "bytes_before_B1": 178996153056,
+      "bytes_before_B1p": 41074482816,
+      "bytes_after": 75213024,
+      "after_parts": {
+       "one_group": 67115168,
+       "batching_messages": 1120,
+       "S_opened_symbols": 8096736
+      },
+      "saving_vs_B1p": 0.9981688625432746,
+      "saving_vs_B1": 0.9995798064778718,
+      "criterion_after_le_10pct_B1p": true
+     }
+    }
+   },
+   "packed": {
+    "fp2_rows_M": 779,
+    "fp_rows_S": 1558,
+    "m": 32,
+    "batching_rounds": 32,
+    "S_committed_elements": 6534725632,
+    "S_share_of_advice_rows": 0.001633842991673483,
+    "soundness_added_log2": -116.5847864005629,
+    "soundness_added_terms": {
+     "alpha": 2666,
+     "rounds": 64,
+     "rho": 1
+    },
+    "verifier_c_at_r_terms": 88434,
+    "prover_batching_fp2_mults_bound": 26114832720,
+    "params": {
+     "live-64": {
+      "bytes_before_B1": 178992824640,
+      "bytes_before_B1p": 41073719040,
+      "bytes_after": 69046896,
+      "after_parts": {
+       "one_group": 67113920,
+       "batching_messages": 1056,
+       "S_opened_symbols": 1931920
+      },
+      "saving_vs_B1p": 0.9983189519329195,
+      "saving_vs_B1": 0.9996142476876441,
+      "criterion_after_le_10pct_B1p": true
+     },
+     "ni-100": {
+      "bytes_before_B1": 178996153056,
+      "bytes_before_B1p": 41074482816,
+      "bytes_after": 69521776,
+      "after_parts": {
+       "one_group": 67115168,
+       "batching_messages": 1056,
+       "S_opened_symbols": 2405552
+      },
+      "saving_vs_B1p": 0.9983074217559492,
+      "saving_vs_B1": 0.99961160184276,
+      "criterion_after_le_10pct_B1p": true
+     }
+    }
+   }
+  }
+ },
+ "sensitivity_lookup_heights_plus_1": {
+  "height": 43,
+  "instances": 25,
+  "fraction_forests": 50,
+  "softmax_forest": {
+   "s": 28,
+   "h": 14
+  },
+  "masked_sumchecks": 47,
+  "masked_sumcheck_list": [
+   {
+    "name": "stage 1",
+    "rounds": 42
+   },
+   {
+    "name": "stage 2",
+    "rounds": 35
+   },
+   {
+    "name": "layer sumcheck (RFC-0068)",
+    "rounds": 22
+   },
+   {
+    "name": "LogUp identity (RFC-0032)",
+    "rounds": 2
+   },
+   {
+    "name": "tree level 0",
+    "rounds": 1
+   },
+   {
+    "name": "tree level 1",
+    "rounds": 2
+   },
+   {
+    "name": "tree level 2",
+    "rounds": 3
+   },
+   {
+    "name": "tree level 3",
+    "rounds": 4
+   },
+   {
+    "name": "tree level 4",
+    "rounds": 5
+   },
+   {
+    "name": "tree level 5",
+    "rounds": 6
+   },
+   {
+    "name": "tree level 6",
+    "rounds": 7
+   },
+   {
+    "name": "tree level 7",
+    "rounds": 8
+   },
+   {
+    "name": "tree level 8",
+    "rounds": 9
+   },
+   {
+    "name": "tree level 9",
+    "rounds": 10
+   },
+   {
+    "name": "tree level 10",
+    "rounds": 11
+   },
+   {
+    "name": "tree level 11",
+    "rounds": 12
+   },
+   {
+    "name": "tree level 12",
+    "rounds": 13
+   },
+   {
+    "name": "tree level 13",
+    "rounds": 14
+   },
+   {
+    "name": "tree level 14",
+    "rounds": 15
+   },
+   {
+    "name": "tree level 15",
+    "rounds": 16
+   },
+   {
+    "name": "tree level 16",
+    "rounds": 17
+   },
+   {
+    "name": "tree level 17",
+    "rounds": 18
+   },
+   {
+    "name": "tree level 18",
+    "rounds": 19
+   },
+   {
+    "name": "tree level 19",
+    "rounds": 20
+   },
+   {
+    "name": "tree level 20",
+    "rounds": 21
+   },
+   {
+    "name": "tree level 21",
+    "rounds": 22
+   },
+   {
+    "name": "tree level 22",
+    "rounds": 23
+   },
+   {
+    "name": "tree level 23",
+    "rounds": 24
+   },
+   {
+    "name": "tree level 24",
+    "rounds": 25
+   },
+   {
+    "name": "tree level 25",
+    "rounds": 26
+   },
+   {
+    "name": "tree level 26",
+    "rounds": 27
+   },
+   {
+    "name": "tree level 27",
+    "rounds": 28
+   },
+   {
+    "name": "tree level 28",
+    "rounds": 29
+   },
+   {
+    "name": "tree level 29",
+    "rounds": 30
+   },
+   {
+    "name": "tree level 30",
+    "rounds": 31
+   },
+   {
+    "name": "tree level 31",
+    "rounds": 32
+   },
+   {
+    "name": "tree level 32",
+    "rounds": 33
+   },
+   {
+    "name": "tree level 33",
+    "rounds": 34
+   },
+   {
+    "name": "tree level 34",
+    "rounds": 35
+   },
+   {
+    "name": "tree level 35",
+    "rounds": 36
+   },
+   {
+    "name": "tree level 36",
+    "rounds": 37
+   },
+   {
+    "name": "tree level 37",
+    "rounds": 38
+   },
+   {
+    "name": "tree level 38",
+    "rounds": 39
+   },
+   {
+    "name": "tree level 39",
+    "rounds": 40
+   },
+   {
+    "name": "tree level 40",
+    "rounds": 41
+   },
+   {
+    "name": "tree level 41",
+    "rounds": 42
+   },
+   {
+    "name": "tree level 42",
+    "rounds": 43
+   }
+  ],
+  "rounds_total": 1047,
+  "masking_coefficients_fp2": 4739,
+  "coefficient_slots_fp2": 8423,
+  "tree_level_claims": 2671,
+  "tree_level_claims_full_width": 747,
+  "tree_level_entries_fp2": 3474064728,
+  "mask_claims": 2718,
+  "groups_B1": 2718,
+  "groups_B1p": 558,
+  "blinding_rows_before_B1": 5436,
+  "blinding_rows_before_B1p": 1116,
+  "blinding_rows_after": 2,
+  "C_support_fp2": 3474069467,
+  "levels": [
+   {
+    "level": 0,
+    "rounds": 1,
+    "instances": 1,
+    "claim_points": 1
+   },
+   {
+    "level": 1,
+    "rounds": 2,
+    "instances": 1,
+    "claim_points": 1
+   },
+   {
+    "level": 2,
+    "rounds": 3,
+    "instances": 1,
+    "claim_points": 1
+   },
+   {
+    "level": 3,
+    "rounds": 4,
+    "instances": 1,
+    "claim_points": 1
+   },
+   {
+    "level": 4,
+    "rounds": 5,
+    "instances": 1,
+    "claim_points": 1
+   },
+   {
+    "level": 5,
+    "rounds": 6,
+    "instances": 4,
+    "claim_points": 2
+   },
+   {
+    "level": 6,
+    "rounds": 7,
+    "instances": 9,
+    "claim_points": 3
+   },
+   {
+    "level": 7,
+    "rounds": 8,
+    "instances": 13,
+    "claim_points": 4
+   },
+   {
+    "level": 8,
+    "rounds": 9,
+    "instances": 13,
+    "claim_points": 4
+   },
+   {
+    "level": 9,
+    "rounds": 10,
+    "instances": 13,
+    "claim_points": 4
+   },
+   {
+    "level": 10,
+    "rounds": 11,
+    "instances": 13,
+    "claim_points": 4
+   },
+   {
+    "level": 11,
+    "rounds": 12,
+    "instances": 16,
+    "claim_points": 5
+   },
+   {
+    "level": 12,
+    "rounds": 13,
+    "instances": 16,
+    "claim_points": 5
+   },
+   {
+    "level": 13,
+    "rounds": 14,
+    "instances": 22,
+    "claim_points": 6
+   },
+   {
+    "level": 14,
+    "rounds": 15,
+    "instances": 24,
+    "claim_points": 7
+   },
+   {
+    "level": 15,
+    "rounds": 16,
+    "instances": 24,
+    "claim_points": 7
+   },
+   {
+    "level": 16,
+    "rounds": 17,
+    "instances": 26,
+    "claim_points": 8
+   },
+   {
+    "level": 17,
+    "rounds": 18,
+    "instances": 28,
+    "claim_points": 9
+   },
+   {
+    "level": 18,
+    "rounds": 19,
+    "instances": 31,
+    "claim_points": 10
+   },
+   {
+    "level": 19,
+    "rounds": 20,
+    "instances": 35,
+    "claim_points": 11
+   },
+   {
+    "level": 20,
+    "rounds": 21,
+    "instances": 37,
+    "claim_points": 12
+   },
+   {
+    "level": 21,
+    "rounds": 22,
+    "instances": 38,
+    "claim_points": 13
+   },
+   {
+    "level": 22,
+    "rounds": 23,
+    "instances": 39,
+    "claim_points": 14
+   },
+   {
+    "level": 23,
+    "rounds": 24,
+    "instances": 42,
+    "claim_points": 15
+   },
+   {
+    "level": 24,
+    "rounds": 25,
+    "instances": 42,
+    "claim_points": 15
+   },
+   {
+    "level": 25,
+    "rounds": 26,
+    "instances": 42,
+    "claim_points": 15
+   },
+   {
+    "level": 26,
+    "rounds": 27,
+    "instances": 43,
+    "claim_points": 16
+   },
+   {
+    "level": 27,
+    "rounds": 28,
+    "instances": 45,
+    "claim_points": 17
+   },
+   {
+    "level": 28,
+    "rounds": 29,
+    "instances": 46,
+    "claim_points": 18
+   },
+   {
+    "level": 29,
+    "rounds": 30,
+    "instances": 47,
+    "claim_points": 18
+   },
+   {
+    "level": 30,
+    "rounds": 31,
+    "instances": 47,
+    "claim_points": 19
+   },
+   {
+    "level": 31,
+    "rounds": 32,
+    "instances": 47,
+    "claim_points": 19
+   },
+   {
+    "level": 32,
+    "rounds": 33,
+    "instances": 47,
+    "claim_points": 19
+   },
+   {
+    "level": 33,
+    "rounds": 34,
+    "instances": 47,
+    "claim_points": 19
+   },
+   {
+    "level": 34,
+    "rounds": 35,
+    "instances": 47,
+    "claim_points": 19
+   },
+   {
+    "level": 35,
+    "rounds": 36,
+    "instances": 48,
+    "claim_points": 20
+   },
+   {
+    "level": 36,
+    "rounds": 37,
+    "instances": 49,
+    "claim_points": 21
+   },
+   {
+    "level": 37,
+    "rounds": 38,
+    "instances": 49,
+    "claim_points": 21
+   },
+   {
+    "level": 38,
+    "rounds": 39,
+    "instances": 49,
+    "claim_points": 21
+   },
+   {
+    "level": 39,
+    "rounds": 40,
+    "instances": 49,
+    "claim_points": 21
+   },
+   {
+    "level": 40,
+    "rounds": 41,
+    "instances": 49,
+    "claim_points": 21
+   },
+   {
+    "level": 41,
+    "rounds": 42,
+    "instances": 51,
+    "claim_points": 22
+   },
+   {
+    "level": 42,
+    "rounds": 43,
+    "instances": 51,
+    "claim_points": 22
+   }
+  ],
+  "layouts": {
+   "unpacked": {
+    "fp2_rows_M": 2672,
+    "fp_rows_S": 5344,
+    "m": 34,
+    "batching_rounds": 34,
+    "S_committed_elements": 22414360576,
+    "S_share_of_advice_rows": 0.005604144382222781,
+    "soundness_added_log2": -116.55602045672694,
+    "soundness_added_terms": {
+     "alpha": 2717,
+     "rounds": 68,
+     "rho": 1
+    },
+    "verifier_c_at_r_terms": 95553,
+    "prover_batching_fp2_mults_bound": 27792555736,
+    "params": {
+     "live-64": {
+      "bytes_before_B1": 182415634560,
+      "bytes_before_B1p": 37449567360,
+      "bytes_after": 73741600,
+      "after_parts": {
+       "one_group": 67113920,
+       "batching_messages": 1120,
+       "S_opened_symbols": 6626560
+      },
+      "saving_vs_B1p": 0.9980309091613495,
+      "saving_vs_B1": 0.9995957495629261,
+      "criterion_after_le_10pct_B1p": true
+     },
+     "ni-100": {
+      "bytes_before_B1": 182419026624,
+      "bytes_before_B1p": 37450263744,
+      "bytes_after": 75367424,
+      "after_parts": {
+       "one_group": 67115168,
+       "batching_messages": 1120,
+       "S_opened_symbols": 8251136
+      },
+      "saving_vs_B1p": 0.9979875328912183,
+      "saving_vs_B1": 0.9995868445008461,
+      "criterion_after_le_10pct_B1p": true
+     }
+    }
+   },
+   "packed": {
+    "fp2_rows_M": 829,
+    "fp_rows_S": 1658,
+    "m": 32,
+    "batching_rounds": 32,
+    "S_committed_elements": 6954156032,
+    "S_share_of_advice_rows": 0.0017387109628977117,
+    "soundness_added_log2": -116.55809329478595,
+    "soundness_added_terms": {
+     "alpha": 2717,
+     "rounds": 64,
+     "rho": 1
+    },
+    "verifier_c_at_r_terms": 90211,
+    "prover_batching_fp2_mults_bound": 27792555736,
+    "params": {
+     "live-64": {
+      "bytes_before_B1": 182415634560,
+      "bytes_before_B1p": 37449567360,
+      "bytes_after": 69170896,
+      "after_parts": {
+       "one_group": 67113920,
+       "batching_messages": 1056,
+       "S_opened_symbols": 2055920
+      },
+      "saving_vs_B1p": 0.9981529587422182,
+      "saving_vs_B1": 0.9996208060993957,
+      "criterion_after_le_10pct_B1p": true
+     },
+     "ni-100": {
+      "bytes_before_B1": 182419026624,
+      "bytes_before_B1p": 37450263744,
+      "bytes_after": 69676176,
+      "after_parts": {
+       "one_group": 67115168,
+       "batching_messages": 1056,
+       "S_opened_symbols": 2559952
+      },
+      "saving_vs_B1p": 0.9981395010599582,
+      "saving_vs_B1": 0.9996180432639649,
+      "criterion_after_le_10pct_B1p": true
+     }
+    }
+   }
+  }
+ }
+}

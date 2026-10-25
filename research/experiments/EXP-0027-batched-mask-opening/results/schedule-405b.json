@@ -1,0 +1,372 @@
+{
+  "advice": {
+    "allocated_rows": 2328576,
+    "rows": 953580,
+    "variables": 44
+  },
+  "positions": 16,
+  "product_tree_leaves": 4128768,
+  "scores": 2193408,
+  "shape": [
+    126,
+    16384,
+    128,
+    8,
+    128,
+    53248,
+    128256
+  ],
+  "source": "tessera-compiler report(), servable, 2 classes, B_max 32, 126 layers, 16 positions; advice layout at 16,384 positions",
+  "stage_tables": [
+    {
+      "residents": [
+        {
+          "bytes": 1,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "keys",
+          "kind": "resident",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "resident",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 1,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "resident",
+          "log2_entries": 21
+        }
+      ],
+      "stage": 1,
+      "tables": [
+        {
+          "bytes": 16,
+          "count": 4,
+          "count_per_bit": 0,
+          "growth": "tokens_and_context",
+          "kind": "computed",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 16,
+          "count": 9,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 0
+        },
+        {
+          "bytes": 16,
+          "count": 18,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 7
+        },
+        {
+          "bytes": 16,
+          "count": 10,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 16,
+          "count": 6,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 6,
+          "count_per_bit": 2,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 11,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 21
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 23
+        },
+        {
+          "bytes": 16,
+          "count": 8,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 21
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 23
+        }
+      ]
+    },
+    {
+      "residents": [],
+      "stage": 2,
+      "tables": [
+        {
+          "bytes": 16,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 21
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "resident",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 14
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 6,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 21
+        }
+      ]
+    }
+  ],
+  "stages": 3,
+  "tables": [
+    {
+      "id": 0,
+      "kind": "Rope",
+      "lookups_per_token": 0,
+      "rows": 8388608,
+      "score_lookups": 0
+    },
+    {
+      "id": 1,
+      "kind": "Exp",
+      "lookups_per_token": 0,
+      "rows": 4194304,
+      "score_lookups": 2193408
+    },
+    {
+      "id": 2,
+      "kind": "Silu",
+      "lookups_per_token": 6709248,
+      "rows": 1073741824,
+      "score_lookups": 0
+    },
+    {
+      "id": 3,
+      "kind": "Range",
+      "lookups_per_token": 253,
+      "rows": 4294967296,
+      "score_lookups": 0
+    },
+    {
+      "id": 4,
+      "kind": "Range",
+      "lookups_per_token": 65271,
+      "rows": 65536,
+      "score_lookups": 0
+    },
+    {
+      "id": 5,
+      "kind": "Range",
+      "lookups_per_token": 759,
+      "rows": 128,
+      "score_lookups": 0
+    },
+    {
+      "id": 6,
+      "kind": "Range",
+      "lookups_per_token": 23782,
+      "rows": 256,
+      "score_lookups": 0
+    },
+    {
+      "id": 7,
+      "kind": "Range",
+      "lookups_per_token": 506,
+      "rows": 16777216,
+      "score_lookups": 0
+    },
+    {
+      "id": 8,
+      "kind": "Range",
+      "lookups_per_token": 1012,
+      "rows": 33554432,
+      "score_lookups": 0
+    },
+    {
+      "id": 9,
+      "kind": "Range",
+      "lookups_per_token": 4130286,
+      "rows": 67108864,
+      "score_lookups": 0
+    },
+    {
+      "id": 10,
+      "kind": "Range",
+      "lookups_per_token": 2530,
+      "rows": 134217728,
+      "score_lookups": 0
+    },
+    {
+      "id": 11,
+      "kind": "Range",
+      "lookups_per_token": 16634,
+      "rows": 131072,
+      "score_lookups": 0
+    },
+    {
+      "id": 12,
+      "kind": "Range",
+      "lookups_per_token": 506,
+      "rows": 32768,
+      "score_lookups": 0
+    },
+    {
+      "id": 13,
+      "kind": "Range",
+      "lookups_per_token": 15686,
+      "rows": 2,
+      "score_lookups": 0
+    },
+    {
+      "id": 14,
+      "kind": "Range",
+      "lookups_per_token": 2209792,
+      "rows": 2097152,
+      "score_lookups": 0
+    },
+    {
+      "id": 15,
+      "kind": "Requant",
+      "lookups_per_token": 16384,
+      "rows": 1048576,
+      "score_lookups": 0
+    },
+    {
+      "id": 16,
+      "kind": "Requant",
+      "lookups_per_token": 2193408,
+      "rows": 16777216,
+      "score_lookups": 0
+    },
+    {
+      "id": 17,
+      "kind": "Requant",
+      "lookups_per_token": 6838272,
+      "rows": 1073741824,
+      "score_lookups": 0
+    },
+    {
+      "id": 18,
+      "kind": "Range",
+      "lookups_per_token": 32256,
+      "rows": 4,
+      "score_lookups": 0
+    },
+    {
+      "id": 19,
+      "kind": "Range",
+      "lookups_per_token": 2064384,
+      "rows": 1048576,
+      "score_lookups": 0
+    },
+    {
+      "id": 20,
+      "kind": "Requant",
+      "lookups_per_token": 2064384,
+      "rows": 1048576,
+      "score_lookups": 0
+    },
+    {
+      "id": 21,
+      "kind": "Requant",
+      "lookups_per_token": 2064384,
+      "rows": 1073741824,
+      "score_lookups": 0
+    },
+    {
+      "id": 22,
+      "kind": "Requant",
+      "lookups_per_token": 4128768,
+      "rows": 8388608,
+      "score_lookups": 0
+    },
+    {
+      "id": 23,
+      "kind": "Requant",
+      "lookups_per_token": 4128768,
+      "rows": 67108864,
+      "score_lookups": 0
+    },
+    {
+      "id": 24,
+      "kind": "Requant",
+      "lookups_per_token": 6709248,
+      "rows": 65536,
+      "score_lookups": 0
+    },
+    {
+      "id": 25,
+      "kind": "Requant",
+      "lookups_per_token": 2064384,
+      "rows": 4294967296,
+      "score_lookups": 0
+    }
+  ]
+}
