@@ -145,6 +145,7 @@ fn sizes(value: &Value) -> StatementSizes {
                 width: int(&m["width"]),
                 rows: int(&m["rows"]),
                 variables: int(&m["variables"]),
+                claims: int(&m["claims"]),
             })
             .collect(),
         groups: LeafGroupSizes {
@@ -854,6 +855,68 @@ fn sizes_it_cannot_bound_are_refused() {
 /// `k_T/n_T`, `P = 0`; a matrix with no committed row has neither row. `tessera-protocol/2` keeps
 /// RFC-0014's counts, `⌈log2(m_T + B_W)⌉` and `P_W`. Every set, both protocols, every 405B
 /// matrix, and the empty `ChannelParams` of a model whose weights have no channel parameters.
+/// RFC-0065 '`ChannelParams`' blinding rows', #521: in `tessera-protocol/2` `ChannelParams`
+/// counts its own `B_CP`, from its claims, and every other matrix has one claim.
+#[test]
+fn channel_params_counts_its_own_blinding_rows_in_protocol_2() {
+    let base = StatementSizes {
+        protocol: 2,
+        groups: LeafGroupSizes::NONE,
+        ..StatementSizes::llama_405b_16k()
+    };
+    let channels = |s: &StatementSizes| {
+        s.matrices
+            .iter()
+            .position(|m| m.matrix == WeightMatrix::ChannelParams)
+            .expect("ChannelParams")
+    };
+    let cp = channels(&base);
+    // RFC-0065's figures: 12,280 at 405B's B_W = 4096 and e_CP = 7, 80 at the test set's 32.
+    for (set, claims, b_cp, theta) in [
+        (ParamSet::LIVE_64, 1, 4_096, 13),
+        (ParamSet::LIVE_64, 7, 12_280, 14),
+        (ParamSet::NI_100, 7, 12_280, 14),
+        (ParamSet::TEST_SMALL, 7, 80, 10),
+    ] {
+        let mut statement = base.clone();
+        statement.matrices[cp].claims = claims;
+        let m = &statement.matrices[cp];
+        assert_eq!(
+            m.blinding_rows(set.layout.weights.blinding_rows),
+            b_cp,
+            "{}",
+            set.id
+        );
+        let r = report(&set, &statement);
+        let field = row(
+            &r,
+            RowKind::Field(Commitment::Weights(WeightMatrix::ChannelParams)),
+        );
+        assert_eq!(field.theta, Some(theta), "{}, e_CP = {claims}", set.id);
+    }
+    // An opened matrix has a claim, and every other matrix exactly one, in tessera-protocol/2;
+    // tessera-protocol/1 reads none.
+    for (index, claims) in [(0, 0), (0, 2), (cp, 0)] {
+        let mut statement = base.clone();
+        statement.matrices[index].claims = claims;
+        let error = SoundnessReport::new(&ParamSet::LIVE_64, &statement).expect_err("refused");
+        assert_eq!(error.code(), ErrorCode::Usage, "{claims}");
+        let v1 = StatementSizes {
+            protocol: 1,
+            ..statement
+        };
+        assert!(SoundnessReport::new(&ParamSet::LIVE_64, &v1).is_ok());
+    }
+    // The derivation itself: no claim, no blinding row; and a parameter set of fewer than four
+    // blinding rows gives N_0 = 0, so B_CP is B_W.
+    let mut channel = base.matrices[cp];
+    channel.claims = 0;
+    assert_eq!(channel.blinding_rows(4_096), 0);
+    channel.claims = 2;
+    assert_eq!(channel.blinding_rows(3), 3);
+    assert_eq!(channel.blinding_rows(10), 10 + 2);
+}
+
 #[test]
 fn protocol_1_counts_a_matrix_by_its_committed_rows_with_no_mask() {
     let base = StatementSizes::llama_405b_16k();
@@ -876,12 +939,16 @@ fn protocol_1_counts_a_matrix_by_its_committed_rows_with_no_mask() {
             let r = report(&set, &statement);
             for m in &statement.matrices {
                 let what = format!("{}, protocol {protocol}: {:?}", set.id, m.matrix);
+                // RFC-0065: B_W, or for ChannelParams B_W + 2·(e_CP − 1)·⌊(B_W − 4)/6⌋.
+                let b_w = u64::from(weights.blinding_rows);
+                let b_t = match (m.matrix, u64::from(m.claims)) {
+                    (WeightMatrix::ChannelParams, 0) => 0,
+                    (WeightMatrix::ChannelParams, e) => b_w + 2 * (e - 1) * ((b_w - 4) / 6),
+                    _ => b_w,
+                };
                 let (rows, mask) = match protocol {
                     1 => (m.rows, 0),
-                    _ => (
-                        m.rows + u64::from(weights.blinding_rows),
-                        u64::from(weights.mask_coeffs),
-                    ),
+                    _ => (m.rows + b_t, u64::from(weights.mask_coeffs)),
                 };
                 // ⌈log2 rows⌉, from its definition.
                 let theta = (0..64).find(|&t| rows <= 1 << t).expect("rows ≤ 2^63");
@@ -909,8 +976,8 @@ fn protocol_1_counts_a_matrix_by_its_committed_rows_with_no_mask() {
             }
         }
     }
-    // No ChannelParams: its matrix commits no row. Under tessera-protocol/1 it has no queries row
-    // and no field term, and is not refused; under tessera-protocol/2 its B_W blinding rows count.
+    // No ChannelParams data row. Under tessera-protocol/1 it has no queries row and no field
+    // term, and is not refused; under tessera-protocol/2 its own blinding rows B_CP count.
     let mut empty = base.clone();
     let channels = empty
         .matrices
@@ -941,10 +1008,11 @@ fn protocol_1_counts_a_matrix_by_its_committed_rows_with_no_mask() {
             groups: LeafGroupSizes::NONE,
             ..empty.clone()
         };
+        // RFC-0065: its seven claims' B_CP = 12,280 blinding rows alone, ⌈log2 12,280⌉.
         assert_eq!(
             row(&report(&set, &masked), RowKind::Field(channels)).theta,
-            Some(12),
-            "{}: ⌈log2 B_W⌉",
+            Some(14),
+            "{}: ⌈log2 B_CP⌉",
             set.id
         );
     }
@@ -1117,6 +1185,7 @@ fn to_tv_statement(s: &StatementSizes) -> tv_core::soundness::StatementSizes {
                 width: m.width,
                 rows: m.rows,
                 variables: u64::from(m.variables),
+                claims: u64::from(m.claims),
             })
             .collect(),
     }
@@ -1186,7 +1255,6 @@ fn prover_and_verifier_calculators_agree_on_1000_random_profiles() {
 
         let protocol = 1 + rng.below(2) as u8;
         let w_inv = u32::from(p.layout.weights.log2_inv_rate);
-        let blinding = u64::from(p.layout.weights.blinding_rows);
         let mut matrix_indices: Vec<usize> =
             (0..rng.below(6)).map(|_| rng.below(10) as usize).collect();
         matrix_indices.sort_unstable();
@@ -1199,16 +1267,27 @@ fn prover_and_verifier_calculators_agree_on_1000_random_profiles() {
                 } else {
                     rng.bits(32 - w_inv).max(1)
                 };
-                let mut rows = if rng.below(8) == 0 { 0 } else { rng.bits(63) };
-                if protocol == 2 && rows.saturating_add(blinding) == 0 {
-                    rows = 1;
-                }
-                MatrixSizes {
-                    matrix: WeightMatrix::ALL[idx],
+                let rows = if rng.below(8) == 0 { 0 } else { rng.bits(63) };
+                // One claim, or for ChannelParams 1 to 16, whose B_CP grows with them (RFC-0065).
+                let matrix = WeightMatrix::ALL[idx];
+                let claims = if matrix == WeightMatrix::ChannelParams {
+                    1 + rng.below(16) as u32
+                } else {
+                    1
+                };
+                let mut sizes = MatrixSizes {
+                    matrix,
                     width,
                     rows,
                     variables: rng.bits(32) as u32,
+                    claims,
+                };
+                if protocol == 2
+                    && u128::from(rows) + sizes.blinding_rows(p.layout.weights.blinding_rows) == 0
+                {
+                    sizes.rows = 1;
                 }
+                sizes
             })
             .collect();
 

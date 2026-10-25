@@ -68,11 +68,31 @@ pub struct MatrixSizes {
     pub width: u64,
     /// `m_T`, its committed data rows. In `tessera-protocol/1`, which commits no blinding row and
     /// no mask for the weights, they give `ϑ_T = ⌈log2 m_T⌉`, and a matrix with none has no
-    /// proximity rows (RFC-0049 'The calculator'); in `tessera-protocol/2`, with the parameter
-    /// set's `B_W` blinding rows, `ϑ_T = ⌈log2(m_T + B_W)⌉`.
+    /// proximity rows (RFC-0049 'The calculator'); in `tessera-protocol/2`, with its
+    /// [`blinding_rows`](Self::blinding_rows) `B_T`, `ϑ_T = ⌈log2(m_T + B_T)⌉`.
     pub rows: u64,
     /// `ν_T`, the variables of its multilinear polynomial, which the linking proof opens.
     pub variables: u32,
+    /// `e_T`, its claims in the pool (RFC-0065 'The count'): 1 for `Embed`..`LmHead`, `e_CP` for
+    /// `ChannelParams`. `tessera-protocol/1` reads it not.
+    pub claims: u32,
+}
+
+impl MatrixSizes {
+    /// `B_T`, its blinding rows in `tessera-protocol/2` under `B_W`, the parameter set's (RFC-0065
+    /// '`ChannelParams`' blinding rows'): `B_W` for `Embed`..`LmHead`, and for `ChannelParams`
+    /// `B_W + 2·(e_CP − 1)·⌊max(B_W − 4, 0)/6⌋`, 0 when `e_CP = 0`. Exact in `u128`: below
+    /// `2^{64}`.
+    pub fn blinding_rows(&self, b_w: u32) -> u128 {
+        let b_w = u128::from(b_w);
+        match (self.matrix, self.claims) {
+            (WeightMatrix::ChannelParams, 0) => 0,
+            (WeightMatrix::ChannelParams, e) => {
+                b_w + 2 * u128::from(e - 1) * (b_w.saturating_sub(4) / 6)
+            }
+            _ => b_w,
+        }
+    }
 }
 
 /// The sizes of a statement that the soundness bounds count (RFC-0014 'Soundness calculator').
@@ -273,9 +293,11 @@ impl SoundnessReport {
     ///
     /// [`ProtocolError::Sizes`] for sizes or parameters it cannot bound: a protocol other than
     /// 1 or 2; `τ_A` or `τ_W` outside `1..=2^16`; a codeword of more than `2^32` symbols or none;
-    /// no advice row, or in `tessera-protocol/2` a matrix with no data or blinding row; matrices
-    /// out of [`WeightMatrix`] order. In `tessera-protocol/1` a matrix with no committed row is
-    /// bounded: it has no queries row and no field term (RFC-0049).
+    /// no advice row, or in `tessera-protocol/2` a matrix with no data or blinding row, no claim,
+    /// or, other than `ChannelParams`, claims other than 1; matrices out of [`WeightMatrix`]
+    /// order.
+    /// In `tessera-protocol/1` a matrix with no committed row is bounded: it has no queries row
+    /// and no field term (RFC-0049).
     pub fn new(params: &ParamSet, sizes: &StatementSizes) -> Result<Self, ProtocolError> {
         let geometry = validate(params, sizes)?;
         let builder = Builder {
@@ -591,10 +613,16 @@ fn validate(params: &ParamSet, sizes: &StatementSizes) -> Result<Vec<Geometry>, 
         };
         // RFC-0049 'The calculator': tessera-protocol/1 commits no blinding row and no mask for
         // the weights, so a matrix counts its data rows alone, at the unmasked rate, and one
-        // with no committed row has no proximity row. tessera-protocol/2 counts B_W and P_W.
+        // with no committed row has no proximity row. tessera-protocol/2 counts B_T and P_W.
+        if masked && (m.claims == 0 || (m.matrix != WeightMatrix::ChannelParams && m.claims != 1)) {
+            return refuse(
+                "in tessera-protocol/2 an opened matrix has a claim, and one other than \
+                 ChannelParams exactly one",
+            );
+        }
         let (rows, mask) = match masked {
             true => (
-                u128::from(m.rows) + u128::from(weights.blinding_rows),
+                u128::from(m.rows) + m.blinding_rows(weights.blinding_rows),
                 u64::from(weights.mask_coeffs),
             ),
             false => (u128::from(m.rows), 0),

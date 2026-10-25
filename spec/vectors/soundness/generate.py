@@ -175,15 +175,29 @@ def weight_matrices_405b(log2_kw):
         rows = layers * -(-out // 2**a)
         layer_bits = log2_exact(l_pad) if layers > 1 else 0
         variables = layer_bits + log2_exact(out_pad) + log2_exact(in_pad)
-        matrices.append({"matrix": name, "width": width, "rows": rows, "variables": variables})
+        matrices.append({"matrix": name, "width": width, "rows": rows, "variables": variables,
+                         "claims": 1})
     # ChannelParams: the tensor [16, L_pad, C], C = 2^16 at 405B (RFC-0012 'Layout'), at most 882
     # committed rows (RFC-0012 'Column answers').
     c = 2**16
     width = min(kw, 16 * l_pad * c)
     variables = 4 + log2_exact(l_pad) + log2_exact(c)
+    # RFC-0065 'The count': e_CP is the number of weight types with channel parameters, 7 at 405B.
     matrices.append({"matrix": "ChannelParams", "width": width, "rows": 882,
-                     "variables": variables})
+                     "variables": variables, "claims": 7})
     return matrices
+
+
+def blinding_rows(m, b_w):
+    """RFC-0065 '`ChannelParams`' blinding rows': a matrix's blinding rows B_T in
+    tessera-protocol/2, from the layout's B_W and its claims e_T: B_W for Embed..LmHead, and
+    B_W + 2·(e_CP − 1)·⌊(B_W − 4)/6⌋ for ChannelParams, 0 when e_CP = 0."""
+    if m["matrix"] != "ChannelParams":
+        return b_w
+    if m["claims"] == 0:
+        return 0
+    # ⌊max(B_W − 4, 0)/6⌋: N_0 is a count of proofs, never negative.
+    return b_w + 2 * (m["claims"] - 1) * (max(b_w - 4, 0) // 6)
 
 
 # The tables of the compiler's 405B report, docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json
@@ -427,7 +441,10 @@ def validate(params, statement):
                 "matrix codeword in 1..=2^32")
         # tessera-protocol/1 bounds a matrix with no committed row: it has no proximity rows.
         if statement["protocol"] == 2:
-            require(m["rows"] + wts["blinding_rows"] >= 1, "a matrix holds a row")
+            require(m["claims"] >= 1, "an opened matrix has a claim")
+            require(m["matrix"] == "ChannelParams" or m["claims"] == 1,
+                    "a matrix other than ChannelParams has one claim (RFC-0065 'The count')")
+            require(m["rows"] + blinding_rows(m, wts["blinding_rows"]) >= 1, "a matrix holds a row")
     groups = statement["groups"]
     g = groups["count"]
     require(g >= 1 and g & (g - 1) == 0 and g <= 2**MAX_GROUP_BITS, "G a power of two in 1..=2^14")
@@ -532,9 +549,9 @@ def report(params, statement, name, why):
     for m in statement["matrices"]:
         # RFC-0049 'The calculator': tessera-protocol/1 commits no blinding row and no mask for
         # the weights, so a matrix counts ϑ_T = ⌈log2 m_T⌉ at the unmasked rate, and one with no
-        # committed row has no queries row and no field term. tessera-protocol/2 counts B_W and
-        # P_W.
-        count = m["rows"] + (wts["blinding_rows"] if v2 else 0)
+        # committed row has no queries row and no field term. tessera-protocol/2 counts B_T, from
+        # e_T (RFC-0065), and P_W.
+        count = m["rows"] + (blinding_rows(m, wts["blinding_rows"]) if v2 else 0)
         if count == 0:
             continue
         commitments.append((m["matrix"], m["width"], wts["log2_inv_rate"],
@@ -695,7 +712,23 @@ def edges(base):
         ("edge/q-below-2^128", LIVE_64, with_changes(base, lookups=[
             {"lookups": 2**63, "rows": 2**63 - 1}]),
          "N + T = 2^64 − 1: 64 − 6.7·10^-10 one-shot bits, which fail 64 since q < 2^128 − 1"),
-        ("edge/empty-channel-params", LIVE_64, matrix_changed(base, "ChannelParams", rows=0),
+        # RFC-0065 '`ChannelParams`' blinding rows': B_CP pinned exactly, at test-small's B_W = 32
+        # and e_CP = 7, B_CP = 80: 944 data rows reach 2^10, and 945 pass it.
+        ("edge/channel-params-at-a-power", TEST_SMALL,
+         with_changes(matrix_changed(base, "ChannelParams", rows=944), protocol=2, groups=NO_GROUPS),
+         "tessera-protocol/2, ChannelParams' 944 data rows and B_CP = 80: 1,024 rows, ϑ = 10; one "
+         "blinding row more would give 11"),
+        ("edge/channel-params-past-a-power", TEST_SMALL,
+         with_changes(matrix_changed(base, "ChannelParams", rows=945), protocol=2, groups=NO_GROUPS),
+         "tessera-protocol/2, ChannelParams' 945 data rows and B_CP = 80: 1,025 rows, ϑ = 11; one "
+         "blinding row fewer would give 10"),
+        ("edge/blinding-below-4",
+         params_changed(LIVE_64, " (B_W = 3)", weights={**LIVE_64["weights"], "blinding_rows": 3}),
+         with_changes(matrix_changed(base, "ChannelParams", rows=2, claims=2), protocol=2,
+                      groups=NO_GROUPS),
+         "B_W = 3 < 4: N_0 = ⌊max(B_W − 4, 0)/6⌋ = 0, so B_CP = B_W and ChannelParams' 2 + 3 rows "
+         "give ϑ = 3"),
+        ("edge/empty-channel-params", LIVE_64, matrix_changed(base, "ChannelParams", rows=0, claims=0),
          "no weight has channel parameters: in tessera-protocol/1 ChannelParams commits no row, "
          "so it has no queries row and no field term, and is not refused (RFC-0049)"),
         ("edge/groups-none", NI_100, with_changes(base, groups=NO_GROUPS),
@@ -739,10 +772,13 @@ def random_statement(rng, params):
         else:
             width = max(1, rng.bits(32 - w_inv))
         rows = rng.bits(63)
-        if rows + blinding == 0:
-            rows = 1
-        matrices.append({"matrix": MATRICES[j], "width": width, "rows": rows,
-                         "variables": rng.bits(32)})
+        # One claim, or for ChannelParams 1 to 16: B_CP grows with them (RFC-0065).
+        claims = 1 + rng.below(16) if MATRICES[j] == "ChannelParams" else 1
+        matrix = {"matrix": MATRICES[j], "width": width, "rows": rows,
+                  "variables": rng.bits(32), "claims": claims}
+        if rows + blinding_rows(matrix, blinding) == 0:
+            matrix["rows"] = 1
+        matrices.append(matrix)
     statement = {
         "protocol": 1 + rng.below(2),
         "rounds": [{"count": rng.bits(40), "degree": rng.bits(12)} for _ in range(rng.below(4))],
@@ -849,8 +885,17 @@ def main():
                 rows = [row for row in r["rows"] if row.get("commitment") == m["matrix"]]
                 require([row["row"] for row in rows] == ["queries", "field"], f"{prefix}: rows")
                 require(rows[0]["mask"] == (wts["mask_coeffs"] if v2 else 0), f"{prefix}: mask")
-                count = m["rows"] + (wts["blinding_rows"] if v2 else 0)
+                count = m["rows"] + (blinding_rows(m, wts["blinding_rows"]) if v2 else 0)
                 require(rows[1]["theta"] == ceil_log2(count), f"{prefix}: ϑ of {m['matrix']}")
+            # RFC-0065 'Cost at 405B': ChannelParams' 882 + 12,280 rows give ϑ = 14 at B_W = 4096.
+            # (The edge cases below pin B_CP exactly.)
+            if v2 and wts["blinding_rows"] == 4096:
+                cp = [row for row in r["rows"] if row.get("commitment") == "ChannelParams"]
+                require(cp[1]["theta"] == 14, f"{prefix}/{params['id']}: ChannelParams' ϑ is 14")
+    for name, theta in (("edge/channel-params-at-a-power", 10),
+                        ("edge/channel-params-past-a-power", 11), ("edge/blinding-below-4", 3)):
+        cp = [row for row in by_name[name]["rows"] if row.get("commitment") == "ChannelParams"]
+        require(cp[1]["theta"] == theta, f"{name}: ChannelParams' ϑ is {theta}")
     empty_rows = by_name["edge/empty-channel-params"]["rows"]
     require(all(row.get("commitment") != "ChannelParams" for row in empty_rows),
             "an empty ChannelParams has no proximity rows in tessera-protocol/1")

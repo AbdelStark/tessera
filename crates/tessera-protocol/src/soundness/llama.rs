@@ -74,6 +74,11 @@ const MATRICES: [(WeightMatrix, u64, u32); 10] = [
     (WeightMatrix::ChannelParams, 882, 27),
 ];
 
+/// `e_CP`, `ChannelParams`' claims at 405B: its seven types with channel parameters (RFC-0065
+/// 'The count', 'ChannelParams' blinding rows'), so that `B_CP = 12,280` under
+/// `tessera-protocol/2`.
+const CHANNEL_PARAMS_CLAIMS: u32 = 7;
+
 impl StatementSizes {
     /// The 405B 16K-token, 16K-context statement under `tessera-protocol/1`, the sizes
     /// `tessera params check` reports at by default (RFC-0014 'Soundness calculator').
@@ -101,7 +106,8 @@ impl StatementSizes {
     /// - **Advice rows:** the 2^22 row-index domain, from 2,328,576 allocated rows.
     ///   Both public layouts derive that allocation with RFC-0050's complete columns.
     /// - **Matrices:** the ten of RFC-0040 at `k_W = 2^20`, the width of `live-64/1` and
-    ///   `ni-100/1`; under another width they would differ.
+    ///   `ni-100/1`; under another width they would differ. Each has one claim, and
+    ///   `ChannelParams` seven.
     /// - **Groups:** `G = 2^14`, the most RFC-0054 admits, since `t + n_ℓ = 14 + 7`. Level `ℓ` of
     ///   the `Exp` tree has `ℓ` rounds of degree 3 (RFC-0010 'Tree levels'), and the `SoftmaxRow`
     ///   forest, whose trees of height 14 join at level 28, as many: 861 in all. The merge has
@@ -142,6 +148,12 @@ impl StatementSizes {
                     width: 1 << 20,
                     rows,
                     variables,
+                    // RFC-0065 'The count': one claim each, and ChannelParams' seven types.
+                    claims: if matrix == WeightMatrix::ChannelParams {
+                        CHANNEL_PARAMS_CLAIMS
+                    } else {
+                        1
+                    },
                 })
                 .collect(),
             groups: LeafGroupSizes {

@@ -538,60 +538,70 @@
     ],
     "matrices": [
       {
+        "claims": 1,
         "matrix": "Embed",
         "rows": 2048,
         "variables": 31,
         "width": 1048576
       },
       {
+        "claims": 1,
         "matrix": "Q",
         "rows": 32256,
         "variables": 35,
         "width": 1048576
       },
       {
+        "claims": 1,
         "matrix": "K",
         "rows": 2016,
         "variables": 31,
         "width": 1048576
       },
       {
+        "claims": 1,
         "matrix": "V",
         "rows": 2016,
         "variables": 31,
         "width": 1048576
       },
       {
+        "claims": 1,
         "matrix": "O",
         "rows": 32256,
         "variables": 35,
         "width": 1048576
       },
       {
+        "claims": 1,
         "matrix": "Gate",
         "rows": 104832,
         "variables": 37,
         "width": 1048576
       },
       {
+        "claims": 1,
         "matrix": "Up",
         "rows": 104832,
         "variables": 37,
         "width": 1048576
       },
       {
+        "claims": 1,
         "matrix": "Down",
         "rows": 129024,
         "variables": 37,
         "width": 1048576
       },
       {
+        "claims": 1,
         "matrix": "LmHead",
         "rows": 2004,
         "variables": 31,
         "width": 1048576
       },
       {
+        "claims": 7,
         "matrix": "ChannelParams",
         "rows": 882,
         "variables": 27,

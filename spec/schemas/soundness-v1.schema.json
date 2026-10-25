@@ -229,7 +229,8 @@
               "matrix",
               "width",
               "rows",
-              "variables"
+              "variables",
+              "claims"
             ],
             "additionalProperties": false,
             "properties": {
@@ -255,6 +256,10 @@
                 "$ref": "#/$defs/count"
               },
               "variables": {
+                "$ref": "#/$defs/count"
+              },
+              "claims": {
+                "description": "`e_T`, the matrix's claims in the pool (RFC-0065 'The count'): in `tessera-protocol/2` its blinding rows `B_T` follow from it (RFC-0014 'Soundness calculator').",
                 "$ref": "#/$defs/count"
               }
             }

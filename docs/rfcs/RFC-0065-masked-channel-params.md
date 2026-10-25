@@ -155,7 +155,7 @@ Each matrix `T` has `B_T` blinding rows after its data rows:
 
 ```text
 B_T  = B_W                                for Embed..LmHead,
-B_CP = B_W + 2·(e_CP − 1)·⌊(B_W − 4)/6⌋   when e_CP ≥ 1, and 0 when e_CP = 0.
+B_CP = B_W + 2·(e_CP − 1)·⌊max(B_W − 4, 0)/6⌋   when e_CP ≥ 1, and 0 when e_CP = 0.
 ```
 
 - **`N_0 = ⌊(B_W − 4)/6⌋`** is the number of proofs epoch 0 gives a single-claim matrix by rows: it reserves from row 0, and the link keeps the last four (RFC-0064 'The budget'). A later epoch reserves from row 4 and gives `N_1 = ⌊(B_W − 8)/6⌋`. At `B_W = 4096`, `N_0 = 682` and `N_1 = 681`.
@@ -170,7 +170,7 @@ B_CP = B_W + 2·(e_CP − 1)·⌊(B_W − 4)/6⌋   when e_CP ≥ 1, and 0 when 
   - each commitment's proximity point has `⌈log2(m_T + B_T)⌉` coordinates.
 
   Its parameter table keeps the layout's `B_W`.
-- **The calculator.** RFC-0014's field term is `ϑ_T = ⌈log2(m_T + B_T)⌉` in `tessera-protocol/2`, and its `matrices` input gives each matrix's `B_T` ([#521](https://github.com/AbdelStark/tessera/issues/521)).
+- **The calculator.** RFC-0014's field term is `ϑ_T = ⌈log2(m_T + B_T)⌉` in `tessera-protocol/2`. Its `matrices` input gives each matrix's claims `e_T`, from which it derives `B_T` ([#521](https://github.com/AbdelStark/tessera/issues/521)). `max(B_W − 4, 0)` keeps `N_0` a count for a parameter set of fewer than four blinding rows, which no set of RFC-0014 has.
 
 ### Cost at 405B
 

@@ -20,6 +20,17 @@
 //!   multi-limb integer exponentiation inside the band;
 //! - hash collision row: `t <= 128`.
 //!
+//! # Blinding rows
+//!
+//! Each matrix states its claims `e_T` in the pool ([`MatrixSize::claims`]). In
+//! `tessera-protocol/2` its field term is `ϑ_T = ⌈log2(m_T + B_T)⌉`, with `B_T` derived from
+//! `e_T` and never taken as an input ([`MatrixSize::blinding_rows`], RFC-0065 '`ChannelParams`'
+//! blinding rows'): `B_W` for `Embed`..`LmHead`, and `B_W + 2·(e_CP − 1)·⌊max(B_W − 4, 0)/6⌋`
+//! for `ChannelParams`. It refuses, with `ERR-USAGE` and in this order, a matrix with no claim,
+//! which is not opened, `ChannelParams` included; a matrix other than `ChannelParams` with
+//! `e_T ≠ 1`; and a matrix with `m_T + B_T = 0`. `tessera-protocol/1` reads no `e_T`: its field
+//! term is `⌈log2 m_T⌉`, and a matrix of no committed row has no term.
+//!
 //! # The leaf stage in token groups
 //!
 //! [`StatementSizes::groups`] states a grouped leaf stage (RFC-0014 'Statement sizes' `groups`,
@@ -90,6 +101,11 @@ pub const MERGE_DEGREE: u64 = 2;
 /// statement states them (RFC-0045 'What is sent'; RFC-0014 'The 405B 16K-token, 16K-context
 /// statement', `groups`).
 pub const DEFAULT_SPLIT_VALUES: u64 = 53_489;
+
+/// `e_CP`, the claims of `ChannelParams` at 405B: one per weight type with channel parameters,
+/// seven (RFC-0065 'The count', 'The data rows'; RFC-0014 'The 405B 16K-token, 16K-context
+/// statement', `matrices`). Each other matrix has one.
+pub const DEFAULT_CHANNEL_PARAMS_CLAIMS: u64 = 7;
 
 /// Protocol modes a parameter set supports (RFC-0014 'Parameter sets').
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -328,6 +344,49 @@ pub struct MatrixSize {
     pub rows: u64,
     /// Multilinear variables `ν_T`; the weight-linking row counts `ν_T + 1` (RFC-0014 'Rows').
     pub variables: u64,
+    /// `e_T`, the matrix's claims in the pool (RFC-0065 'The count'): 1 for `Embed`..`LmHead`,
+    /// `e_CP` for `ChannelParams`.
+    ///
+    /// In `tessera-protocol/2` the matrix's blinding rows `B_T` follow from it
+    /// ([`MatrixSize::blinding_rows`]); a matrix with no claim is refused
+    /// ([`SoundnessError::UnopenedMatrix`]), and so is one other than `ChannelParams` with
+    /// `e_T ≠ 1` ([`SoundnessError::MatrixClaims`]). `tessera-protocol/1` does not read it.
+    pub claims: u64,
+}
+
+impl MatrixSize {
+    /// `B_T`, the matrix's blinding rows in `tessera-protocol/2`, for `single` the parameter
+    /// set's `B_W` (`WeightLayoutParams::blinding_rows`), the blinding rows of a single-claim
+    /// matrix (RFC-0065 '`ChannelParams`' blinding rows', RFC-0014 'Statement sizes'):
+    ///
+    /// - `B_W` for `Embed`..`LmHead`, whatever [`claims`](Self::claims) holds: the calculator
+    ///   refuses `e_T ≠ 1` for them before it reads `B_T`;
+    /// - for `ChannelParams`, `B_W` plus two rows for each claim beyond the first in each of the
+    ///   `N_0 = ⌊max(B_W − 4, 0)/6⌋` proofs epoch 0 gives a single-claim matrix:
+    ///   `B_W + 2·(e_CP − 1)·N_0`. A set of fewer than four blinding rows gives no proof,
+    ///   `N_0 = 0`, and `B_CP = B_W`. With `e_CP = 0` it is 0: the matrix commits no row, a case
+    ///   the calculator refuses in `tessera-protocol/2` before it reads `B_T`.
+    ///
+    /// The value is exact for every `u64` count and `u32` row count: computed in `u128`, it lies
+    /// below `2^95`. The calculator derives it and never takes it as an input.
+    pub fn blinding_rows(&self, single: u32) -> u128 {
+        let b_w = u128::from(single);
+        if self.matrix != Matrix::ChannelParams {
+            return b_w;
+        }
+        let Some(extra) = self.claims.checked_sub(1) else {
+            // RFC-0065: with `e_CP = 0` the matrix commits no row and has no blinding rows. The
+            // calculator refuses a matrix of no claim in protocol/2 (`UnopenedMatrix`).
+            return 0;
+        };
+        // Each proof of epoch 0 reserves `2·e_CP + 4` rows of `ChannelParams` where a
+        // single-claim matrix reserves 6: `2·(e_CP − 1)` more, over the `N_0` proofs the link's
+        // last four rows leave (RFC-0064 'The budget'): `⌊max(B_W − 4, 0)/6⌋`.
+        let proofs = u128::from(single.saturating_sub(4) / 6);
+        let per_proof = u128::from(extra).saturating_mul(2);
+        // `per_proof < 2^65` and `proofs < 2^30`, so neither step saturates.
+        per_proof.saturating_mul(proofs).saturating_add(b_w)
+    }
 }
 
 /// Statement sizes passed to the soundness calculator (RFC-0014 'Statement sizes').
@@ -432,6 +491,10 @@ const REPORT_405B_TABLES: [(TableFamily, u64, u64); 26] = [
 impl StatementSizes {
     /// The default 405B 16K-token, 16K-context statement under `tessera-protocol/1`
     /// (RFC-0014 'The 405B 16K-token, 16K-context statement', RFC-0040 'The matrices').
+    ///
+    /// Each matrix has one claim and `ChannelParams` [`DEFAULT_CHANNEL_PARAMS_CLAIMS`], so that
+    /// under `tessera-protocol/2` its `B_CP` is 12,280 at `B_W = 4096` and its `ϑ` 14
+    /// (RFC-0065 '`ChannelParams`' blinding rows').
     pub fn default_405b() -> Self {
         const TOKENS: u64 = 16_384;
         const CONTEXT: u64 = 16_384;
@@ -617,6 +680,7 @@ fn weight_matrices_405b(
             width,
             rows: committed_rows,
             variables,
+            claims: 1,
         });
     }
     let c = 1u64 << 16;
@@ -630,6 +694,7 @@ fn weight_matrices_405b(
         width: cp_width,
         rows: 882,
         variables: cp_vars,
+        claims: DEFAULT_CHANNEL_PARAMS_CLAIMS,
     });
     out
 }
@@ -787,10 +852,25 @@ pub enum SoundnessError {
         /// The offending matrix.
         matrix: Matrix,
     },
-    /// In `tessera-protocol/2`, a matrix has `rows + blinding_rows == 0`.
+    /// In `tessera-protocol/2`, a matrix has no committed row and no blinding row,
+    /// `m_T + B_T = 0` ([`MatrixSize::blinding_rows`]).
     EmptyMatrix {
         /// The offending matrix.
         matrix: Matrix,
+    },
+    /// In `tessera-protocol/2`, a matrix has no claim, `e_T = 0`: it is not opened, and
+    /// `matrices` lists only opened ones (RFC-0014 'Statement sizes'). `ChannelParams` included.
+    UnopenedMatrix {
+        /// The offending matrix.
+        matrix: Matrix,
+    },
+    /// In `tessera-protocol/2`, a matrix other than `ChannelParams` has `e_T ≠ 1` claims, with
+    /// `e_T ≥ 2` (RFC-0065 'The count', RFC-0014 'Statement sizes').
+    MatrixClaims {
+        /// The offending matrix.
+        matrix: Matrix,
+        /// Its claims `e_T`.
+        claims: u64,
     },
     /// `groups.count` is not a power of two in `1..=2^14`.
     GroupCount(u64),
@@ -830,6 +910,16 @@ impl fmt::Display for SoundnessError {
             Self::EmptyMatrix { matrix } => write!(
                 f,
                 "matrix {} has no committed or blinding rows in tessera-protocol/2",
+                matrix.name()
+            ),
+            Self::UnopenedMatrix { matrix } => write!(
+                f,
+                "matrix {} has no claim, so it is not opened, in tessera-protocol/2",
+                matrix.name()
+            ),
+            Self::MatrixClaims { matrix, claims } => write!(
+                f,
+                "matrix {} must have exactly 1 claim in tessera-protocol/2, got {claims}",
                 matrix.name()
             ),
             Self::GroupCount(count) => write!(
@@ -1085,12 +1175,15 @@ impl SoundnessReport {
         );
 
         for m in &statement.matrices {
+            // ϑ_T = ⌈log2(m_T + B_T)⌉ in tessera-protocol/2, `B_T` from the matrix's claims
+            // (RFC-0065 '`ChannelParams`' blinding rows'), and ⌈log2 m_T⌉ in protocol/1.
+            // `m_T + B_T < 2^64 + 2^95`: the sum is exact.
             let blinding = if v2 {
-                u64::from(params.weights.blinding_rows)
+                m.blinding_rows(params.weights.blinding_rows)
             } else {
                 0
             };
-            let total_rows = u128::from(m.rows).saturating_add(u128::from(blinding));
+            let total_rows = u128::from(m.rows).saturating_add(blinding);
             if total_rows == 0 {
                 // RFC-0049: in tessera-protocol/1 a matrix with no committed row has no proximity rows.
                 continue;
@@ -1338,8 +1431,23 @@ fn validate(params: &SoundnessParams, statement: &StatementSizes) -> Result<(), 
         if n_t == 0 || n_t > MAX_CODEWORD {
             return Err(SoundnessError::MatrixCodeword { matrix: m.matrix });
         }
-        if statement.protocol == 2 && m.rows == 0 && params.weights.blinding_rows == 0 {
-            return Err(SoundnessError::EmptyMatrix { matrix: m.matrix });
+        // RFC-0014 'Statement sizes': in tessera-protocol/2 each matrix's blinding rows follow
+        // from its claims. In this order: a listed matrix is opened, so it has a claim; a
+        // single-claim matrix has exactly one (RFC-0065 'The count'); and every matrix needs a
+        // committed or a blinding row. Protocol/1 reads no `e_T`.
+        if statement.protocol == 2 {
+            if m.claims == 0 {
+                return Err(SoundnessError::UnopenedMatrix { matrix: m.matrix });
+            }
+            if m.matrix != Matrix::ChannelParams && m.claims != 1 {
+                return Err(SoundnessError::MatrixClaims {
+                    matrix: m.matrix,
+                    claims: m.claims,
+                });
+            }
+            if m.rows == 0 && m.blinding_rows(params.weights.blinding_rows) == 0 {
+                return Err(SoundnessError::EmptyMatrix { matrix: m.matrix });
+            }
         }
     }
     // RFC-0014 'Statement sizes', `groups`: G = 2^g with g ≤ 14 (RFC-0054 'Messages'), none in
@@ -1949,6 +2057,7 @@ fn write_statement_json(out: &mut String, s: &StatementSizes) {
         let m_count = s.matrices.len();
         for (idx, m) in s.matrices.iter().enumerate() {
             out.push_str("      {\n");
+            let _ = writeln!(out, "        \"claims\": {},", m.claims);
             let _ = writeln!(out, "        \"matrix\": \"{}\",", m.matrix.name());
             let _ = writeln!(out, "        \"rows\": {},", m.rows);
             let _ = writeln!(out, "        \"variables\": {},", m.variables);
@@ -2101,6 +2210,7 @@ mod tests {
                 width: m.get("width").unwrap().as_u64().unwrap(),
                 rows: m.get("rows").unwrap().as_u64().unwrap(),
                 variables: m.get("variables").unwrap().as_u64().unwrap(),
+                claims: m.get("claims").unwrap().as_u64().unwrap(),
             })
             .collect();
         let groups = j.get("groups").unwrap();
@@ -2163,7 +2273,7 @@ mod tests {
         }
 
         let cases = vectors.get("cases").unwrap().as_array().unwrap();
-        assert_eq!(cases.len(), 89);
+        assert_eq!(cases.len(), 92);
         for case in cases {
             let name = case.get("name").unwrap().as_str().unwrap();
             let expected_report = case.get("report").unwrap();
@@ -2242,6 +2352,7 @@ mod tests {
                     width: 1,
                     rows: 1,
                     variables,
+                    claims: 1,
                 })
                 .collect(),
             groups: GroupSizes::NONE,
@@ -2407,6 +2518,378 @@ mod tests {
                 matrix: Matrix::ChannelParams
             })
         );
+    }
+
+    /// The default statement under `protocol`, with `ChannelParams`' committed rows and claims
+    /// replaced.
+    fn with_channel_params(protocol: u8, rows: u64, claims: u64) -> StatementSizes {
+        let mut s = StatementSizes::default_405b();
+        s.protocol = protocol;
+        if protocol == 2 {
+            s.groups = GroupSizes::NONE;
+        }
+        let cp = s.matrices.last_mut().unwrap();
+        assert_eq!(cp.matrix, Matrix::ChannelParams);
+        cp.rows = rows;
+        cp.claims = claims;
+        s
+    }
+
+    /// The field term of `matrix` in `report`, and its queries row's codeword `n_T`.
+    fn field_term(report: &SoundnessReport, matrix: Matrix) -> (u32, u128, u64) {
+        let rows: Vec<&SoundnessRow> = report
+            .rows
+            .iter()
+            .filter(|r| r.commitment == Some(CommitmentName::Weight(matrix)))
+            .collect();
+        assert_eq!(
+            rows.iter().map(|r| r.row).collect::<Vec<_>>(),
+            [RowKind::Queries, RowKind::Field],
+            "{matrix:?}"
+        );
+        (
+            rows[1].theta.unwrap(),
+            rows[1].numerator.unwrap(),
+            rows[0].codeword.unwrap(),
+        )
+    }
+
+    /// RFC-0065 '`ChannelParams`' blinding rows': `B_T = B_W` for `Embed`..`LmHead`, and
+    /// `B_CP = B_W + 2·(e_CP − 1)·⌊max(B_W − 4, 0)/6⌋`, 0 at `e_CP = 0`. At 405B, `e_CP = 7`
+    /// gives 12,280 at `B_W = 4096`; the test set's `B_W = 32` gives 80.
+    #[test]
+    fn channel_params_blinding_rows_follow_its_claims() {
+        let cp = |claims| MatrixSize {
+            matrix: Matrix::ChannelParams,
+            width: 1,
+            rows: 0,
+            variables: 0,
+            claims,
+        };
+        for (params, b_cp) in [
+            (SoundnessParams::live_64(), [0u128, 4_096, 12_280]),
+            (SoundnessParams::ni_100(), [0, 4_096, 12_280]),
+            (SoundnessParams::test_small(), [0, 32, 80]),
+        ] {
+            let b_w = params.weights.blinding_rows;
+            for (claims, expected) in [0, 1, 7].into_iter().zip(b_cp) {
+                assert_eq!(
+                    cp(claims).blinding_rows(b_w),
+                    expected,
+                    "{} e = {claims}",
+                    params.id
+                );
+            }
+            // Every other matrix keeps the layout's B_W.
+            for matrix in Matrix::ALL {
+                if matrix != Matrix::ChannelParams {
+                    let m = MatrixSize { matrix, ..cp(1) };
+                    assert_eq!(m.blinding_rows(b_w), u128::from(b_w), "{matrix:?}");
+                }
+            }
+        }
+
+        // RFC-0065: `ChannelParams` never ends an epoch first. Epoch 0 reserves from row 0 and
+        // later epochs from row 4, the link keeping the last four rows, so with
+        // `N_0 = ⌊max(B_W − 4, 0)/6⌋` and `N_1 = ⌊(B_W − 8)/6⌋` single-claim proofs, `ChannelParams`'
+        // `2·e + 4` rows a proof fit as many times: and its rows are no more than that needs.
+        for b_w in [8u32, 9, 10, 13, 14, 32, 100, 4_096, 4_097, 65_536] {
+            let n_0 = u128::from((b_w - 4) / 6);
+            let n_1 = u128::from((b_w - 8) / 6);
+            for claims in [1u64, 2, 3, 7, 16, 1_000] {
+                let b_cp = cp(claims).blinding_rows(b_w);
+                let per_proof = 2 * u128::from(claims) + 4;
+                assert!(b_cp - 4 >= per_proof * n_0, "B_W = {b_w}, e = {claims}");
+                assert!(b_cp - 8 >= per_proof * n_1, "B_W = {b_w}, e = {claims}");
+                // B_CP − B_W rows serve exactly the further claims' masks of N_0 proofs.
+                assert_eq!(b_cp - u128::from(b_w), (per_proof - 6) * n_0);
+            }
+        }
+
+        // `⌊max(B_W − 4, 0)/6⌋`: below ten blinding rows epoch 0 gives no single-claim proof,
+        // N_0 = 0, so B_CP = B_W; below four, the `max` keeps the floor a count, never below
+        // B_W (RFC-0065 '`max(B_W − 4, 0)` keeps `N_0` a count').
+        for b_w in 0u32..10 {
+            for claims in [1u64, 2, 7, u64::MAX] {
+                assert_eq!(
+                    cp(claims).blinding_rows(b_w),
+                    u128::from(b_w),
+                    "B_W = {b_w}"
+                );
+            }
+        }
+
+        // Exact at the extremes, e_CP = 2^64 − 1 and B_W = 2^32 − 1: no step saturates.
+        assert_eq!(
+            cp(u64::MAX).blinding_rows(u32::MAX),
+            26_409_387_443_265_632_286_914_467_163
+        );
+        // In a report too: m_CP + B_CP = 2^64 − 1 + that, of 95 bits.
+        let mut s = with_channel_params(2, u64::MAX, u64::MAX);
+        s.matrices.drain(..9);
+        let mut p = SoundnessParams::ni_100();
+        p.weights.blinding_rows = u32::MAX;
+        let report = SoundnessReport::evaluate(p, s).unwrap();
+        assert_eq!(field_term(&report, Matrix::ChannelParams).0, 95);
+    }
+
+    /// RFC-0014 'Rows', the field term: `ϑ_CP = ⌈log2(m_CP + B_CP)⌉` in `tessera-protocol/2`,
+    /// with `B_CP` from `e_CP`: 14 at 405B (RFC-0065 'Cost at 405B'), where `B_W` alone would
+    /// give 13, and its numerator `ϑ·n_CP`.
+    #[test]
+    fn channel_params_field_term_counts_its_blinding_rows_in_protocol_2() {
+        // (parameter set, m_CP, [ϑ at e_CP = 1, 2, 7]): the rows are chosen so that the counts of
+        // blinding rows cross a power of two, or reach one exactly: m_CP = 944 and 945 at
+        // test-small pin B_CP = 80, as the oracle's `edge/channel-params-*` cases do.
+        for (params, rows, thetas) in [
+            (SoundnessParams::live_64(), 882u64, [13u32, 13, 14]),
+            (SoundnessParams::ni_100(), 882, [13, 13, 14]),
+            (SoundnessParams::test_small(), 944, [10, 10, 10]),
+            (SoundnessParams::test_small(), 945, [10, 10, 11]),
+            (SoundnessParams::test_small(), 985, [10, 11, 11]),
+        ] {
+            // No claim: not opened, refused before any row.
+            assert_eq!(
+                SoundnessReport::evaluate(params.clone(), with_channel_params(2, rows, 0)),
+                Err(SoundnessError::UnopenedMatrix {
+                    matrix: Matrix::ChannelParams
+                })
+            );
+            for (claims, theta) in [1u64, 2, 7].into_iter().zip(thetas) {
+                let s = with_channel_params(2, rows, claims);
+                let report = SoundnessReport::evaluate(params.clone(), s).unwrap();
+                let (t, numerator, n) = field_term(&report, Matrix::ChannelParams);
+                assert_eq!(t, theta, "{} m = {rows}, e = {claims}", params.id);
+                assert_eq!(numerator, u128::from(theta) * u128::from(n));
+                // Every other matrix's ϑ is the one of its own m_T + B_W.
+                for m in &report.statement.matrices[..9] {
+                    let total = u128::from(m.rows) + u128::from(params.weights.blinding_rows);
+                    assert_eq!(field_term(&report, m.matrix).0, ceil_log2_u128(total));
+                }
+            }
+        }
+
+        // The default statement under protocol/2: e_CP = 7, ϑ_CP = 14, 102.19 bits at live-64
+        // (RFC-0065 'Cost at 405B'), and every target met.
+        for params in [SoundnessParams::live_64(), SoundnessParams::ni_100()] {
+            let mut s = StatementSizes::default_405b();
+            assert_eq!(s.matrices[9].claims, DEFAULT_CHANNEL_PARAMS_CLAIMS);
+            assert!(s.matrices[..9].iter().all(|m| m.claims == 1));
+            s.protocol = 2;
+            s.groups = GroupSizes::NONE;
+            let report = SoundnessReport::evaluate(params, s).unwrap();
+            assert_eq!(field_term(&report, Matrix::ChannelParams).0, 14);
+            let field = report
+                .rows
+                .iter()
+                .find(|r| {
+                    r.row == RowKind::Field
+                        && r.commitment == Some(CommitmentName::Weight(Matrix::ChannelParams))
+                })
+                .unwrap();
+            assert_eq!(format_fixed_bits(field.bits.unwrap()), "102.19");
+            assert_eq!(report.meets_targets, Some(true));
+        }
+    }
+
+    /// The test parameter set the verifier accepts with `test-params` lays out `B_W = 32`, so
+    /// its `B_CP` is 80 at `e_CP = 7`, 32 at 1 and 0 at none, which protocol/2 refuses.
+    #[cfg(feature = "test-params")]
+    #[test]
+    fn the_accepted_test_set_gives_b_cp_80_at_seven_claims() {
+        let params = SoundnessParams::from_param_set(ParamSet::TestSmall);
+        assert_eq!(params.weights.blinding_rows, 32);
+        assert_eq!(ParamSet::TestSmall.layout().weights.blinding_rows, 32);
+        for (claims, b_cp) in [(0u64, 0u128), (1, 32), (7, 80)] {
+            let m = MatrixSize {
+                claims,
+                ..StatementSizes::default_405b().matrices[9]
+            };
+            assert_eq!(m.blinding_rows(params.weights.blinding_rows), b_cp);
+            if claims == 0 {
+                assert_eq!(
+                    SoundnessReport::evaluate(params.clone(), with_channel_params(2, 945, 0)),
+                    Err(SoundnessError::UnopenedMatrix {
+                        matrix: Matrix::ChannelParams
+                    })
+                );
+                continue;
+            }
+            let report =
+                SoundnessReport::evaluate(params.clone(), with_channel_params(2, 945, claims))
+                    .unwrap();
+            assert_eq!(
+                field_term(&report, Matrix::ChannelParams).0,
+                ceil_log2_u128(945 + b_cp)
+            );
+        }
+    }
+
+    /// RFC-0014 'Statement sizes': in `tessera-protocol/2` the calculator refuses, with
+    /// `ERR-USAGE` and in this order, a matrix with no claim, which is not opened, `ChannelParams`
+    /// included; a matrix other than `ChannelParams` whose `e_T` is not 1; and a matrix with
+    /// `m_T + B_T = 0`. Each matrix alone, and each refusal against the next.
+    #[test]
+    fn protocol_2_refuses_unopened_and_multi_claim_matrices() {
+        let base = with_channel_params(2, 882, 7);
+        for index in 0..10 {
+            let matrix = base.matrices[index].matrix;
+            // No claim: every matrix, ChannelParams included.
+            let mut s = base.clone();
+            s.matrices[index].claims = 0;
+            let err = SoundnessReport::evaluate(SoundnessParams::live_64(), s).unwrap_err();
+            assert_eq!(err, SoundnessError::UnopenedMatrix { matrix });
+            assert_eq!(err.code(), "ERR-USAGE");
+            assert!(err.to_string().contains(matrix.name()), "{err}");
+            if matrix == Matrix::ChannelParams {
+                continue;
+            }
+            // More than one claim on a single-claim matrix.
+            for claims in [2u64, 7, u64::MAX] {
+                let mut s = base.clone();
+                s.matrices[index].claims = claims;
+                let err = SoundnessReport::evaluate(SoundnessParams::live_64(), s).unwrap_err();
+                assert_eq!(err, SoundnessError::MatrixClaims { matrix, claims });
+                assert_eq!(err.code(), "ERR-USAGE");
+                assert!(err.to_string().contains(matrix.name()), "{err}");
+            }
+        }
+        // ChannelParams takes any count of one or more.
+        for claims in [1u64, 2, 7, 16, u64::MAX] {
+            let s = with_channel_params(2, 882, claims);
+            assert!(SoundnessReport::evaluate(SoundnessParams::live_64(), s).is_ok());
+        }
+
+        for params in [SoundnessParams::live_64(), SoundnessParams::test_small()] {
+            // No claim is judged before the rows: a ChannelParams of neither is not opened.
+            assert_eq!(
+                SoundnessReport::evaluate(params.clone(), with_channel_params(2, 0, 0)),
+                Err(SoundnessError::UnopenedMatrix {
+                    matrix: Matrix::ChannelParams
+                })
+            );
+            // A claim and no data row: B_CP blinding rows, ϑ = ⌈log2 B_CP⌉.
+            for claims in [1u64, 7] {
+                let report =
+                    SoundnessReport::evaluate(params.clone(), with_channel_params(2, 0, claims))
+                        .unwrap();
+                let cp = report.statement.matrices[9];
+                let b_cp = cp.blinding_rows(params.weights.blinding_rows);
+                assert!(b_cp > 0);
+                assert_eq!(
+                    field_term(&report, Matrix::ChannelParams).0,
+                    ceil_log2_u128(b_cp)
+                );
+            }
+        }
+
+        // m_T + B_T = 0 needs B_W = 0: then B_CP = 0 at any count, and B_T = 0.
+        let mut p = SoundnessParams::live_64();
+        p.weights.blinding_rows = 0;
+        for claims in [1u64, 7] {
+            let err = SoundnessReport::evaluate(p.clone(), with_channel_params(2, 0, claims))
+                .unwrap_err();
+            assert_eq!(
+                err,
+                SoundnessError::EmptyMatrix {
+                    matrix: Matrix::ChannelParams
+                }
+            );
+            assert_eq!(err.code(), "ERR-USAGE");
+        }
+        // A single-claim matrix of no data row has B_W rows, and is refused only without them.
+        let mut s = base.clone();
+        s.matrices[1].rows = 0;
+        assert!(SoundnessReport::evaluate(SoundnessParams::live_64(), s.clone()).is_ok());
+        assert_eq!(
+            SoundnessReport::evaluate(p.clone(), s.clone()),
+            Err(SoundnessError::EmptyMatrix { matrix: Matrix::Q })
+        );
+        // The order RFC-0014 lists: no claim, then e_T ≠ 1, then the rows.
+        s.matrices[1].claims = 2;
+        assert_eq!(
+            SoundnessReport::evaluate(p.clone(), s.clone()),
+            Err(SoundnessError::MatrixClaims {
+                matrix: Matrix::Q,
+                claims: 2
+            })
+        );
+        s.matrices[1].claims = 0;
+        assert_eq!(
+            SoundnessReport::evaluate(p, s),
+            Err(SoundnessError::UnopenedMatrix { matrix: Matrix::Q })
+        );
+    }
+
+    /// RFC-0014 'Statement sizes': protocol/1 reads no `e_T`. Any count, on any matrix, leaves
+    /// every row of the report as it is, and is not refused; the statement echoes it.
+    #[test]
+    fn protocol_1_does_not_read_the_claims() {
+        for params in [
+            SoundnessParams::live_64(),
+            SoundnessParams::ni_100(),
+            SoundnessParams::test_small(),
+        ] {
+            let base = StatementSizes::default_405b();
+            assert_eq!(base.protocol, 1);
+            let expected = SoundnessReport::evaluate(params.clone(), base.clone()).unwrap();
+            for claims in [0u64, 2, 7, u64::MAX] {
+                for index in 0..base.matrices.len() {
+                    let mut s = base.clone();
+                    s.matrices[index].claims = claims;
+                    let report = SoundnessReport::evaluate(params.clone(), s.clone()).unwrap();
+                    assert_eq!(
+                        report.rows, expected.rows,
+                        "{} {index} e = {claims}",
+                        params.id
+                    );
+                    assert_eq!(report.minimum, expected.minimum);
+                    assert_eq!(report.meets_targets, expected.meets_targets);
+                    assert_eq!(report.statement, s);
+                }
+                // Every matrix at once, ChannelParams' empty data rows included.
+                let mut s = base.clone();
+                for m in &mut s.matrices {
+                    m.claims = claims;
+                }
+                let report = SoundnessReport::evaluate(params.clone(), s).unwrap();
+                assert_eq!(report.rows, expected.rows);
+                let mut s = with_channel_params(1, 0, claims);
+                s.matrices[0].claims = claims;
+                let report = SoundnessReport::evaluate(params.clone(), s).unwrap();
+                assert!(
+                    report.rows.iter().all(
+                        |r| r.commitment != Some(CommitmentName::Weight(Matrix::ChannelParams))
+                    )
+                );
+            }
+        }
+    }
+
+    /// The report emits each matrix's `claims` (`soundness-v1.schema.json`), its keys sorted as
+    /// every object's of the report: `claims` first.
+    #[test]
+    fn the_report_states_each_matrix_claims() {
+        let report =
+            SoundnessReport::evaluate(SoundnessParams::live_64(), StatementSizes::default_405b())
+                .unwrap();
+        let json = report.to_json();
+        assert!(json.contains(
+            "      {\n        \"claims\": 7,\n        \"matrix\": \"ChannelParams\",\n        \"rows\": 882,\n        \"variables\": 27,\n        \"width\": 1048576\n      }\n"
+        ));
+        let parsed = Json::parse(&json).unwrap();
+        let matrices = parsed
+            .get("statement")
+            .unwrap()
+            .get("matrices")
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let claims: Vec<u64> = matrices
+            .iter()
+            .map(|m| m.get("claims").unwrap().as_u64().unwrap())
+            .collect();
+        assert_eq!(claims, [1, 1, 1, 1, 1, 1, 1, 1, 1, 7]);
     }
 
     fn evaluate_groups(

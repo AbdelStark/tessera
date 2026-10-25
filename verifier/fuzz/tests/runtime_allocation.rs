@@ -169,12 +169,14 @@ fn runtime_catalog_layout_leaf_and_mixed_metadata_preserve_memory_errors() {
             width: 8,
             rows: 1,
             variables: 3,
+            claims: 1,
         },
         MatrixSize {
             matrix: tv_core::weights::Matrix::LmHead,
             width: 8,
             rows: 1,
             variables: 3,
+            claims: 1,
         },
     ];
     capped(
