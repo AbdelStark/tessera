@@ -159,7 +159,9 @@ fn checked(path: &Path) -> Result<fs::Metadata, VerifierError> {
 }
 
 /// Reads the regular file `path`, at most `limit` bytes, after [`checked`], and checks that the
-/// file opened is the one checked; returns the bytes and the file's identity.
+/// file opened is the one checked; returns the bytes and the file's identity. Its size is checked
+/// against the limit before the open and after it, early exits: the read itself holds no more
+/// than `limit + 1` bytes ([`read_capped`]), whatever the size says.
 fn read_regular(path: &Path, limit: u64) -> Result<(Vec<u8>, FileId), VerifierError> {
     read_regular_with(path, limit, &|| ())
 }
@@ -184,27 +186,64 @@ fn read_regular_with(
         // Replaced between the check and the open.
         return Err(misuse());
     }
-    // The file may have grown since it was checked: its size is checked again before anything
-    // is reserved for it.
+    // The file may have grown since it was checked: its size is checked again, an early exit,
+    // since the read below holds no more than `limit + 1` bytes whatever the size says.
     if after.len() > limit {
         return Err(VerifierError {
             code: Code::CodecLimit,
         });
     }
-    let mut out = Vec::new();
-    out.try_reserve_exact(usize::try_from(after.len()).map_err(|_| io())?)
-        .map_err(|_| VerifierError { code: Code::Memory })?;
-    // One byte past the limit shows a file that grew after its size was read.
-    Read::by_ref(&mut file)
-        .take(limit.saturating_add(1))
-        .read_to_end(&mut out)
-        .map_err(|_| io())?;
+    let out = read_capped(&mut file, after.len(), limit, &|_| ())?;
+    Ok((out, file_id(&after)))
+}
+
+/// Reads `file`, whose size its metadata gave as `size`, holding at most `limit + 1` bytes:
+/// `min(size, limit + 1)` reserved first, then reads of at most `limit + 1` bytes in all, the
+/// buffer growing only within that bound. More than `limit` bytes is `ERR-CODEC-LIMIT`. So
+/// nothing ever reserves past the limit, on any platform and whatever the file does between its
+/// size and its read: the guarantee does not rest on what the host lets a process reserve, and
+/// the size checks before the read are early exits. `reserved` is told the buffer's capacity
+/// after each reservation, for a test.
+fn read_capped(
+    file: &mut impl Read,
+    size: u64,
+    limit: u64,
+    reserved: &dyn Fn(usize),
+) -> Result<Vec<u8>, VerifierError> {
+    let memory = || VerifierError { code: Code::Memory };
+    let cap = usize::try_from(limit.saturating_add(1)).unwrap_or(usize::MAX);
+    let first = usize::try_from(size).map_or(cap, |n| n.min(cap));
+    let mut out: Vec<u8> = Vec::new();
+    out.try_reserve_exact(first).map_err(|_| memory())?;
+    reserved(out.capacity());
+    let mut chunk = [0u8; 8192];
+    loop {
+        let room = cap.saturating_sub(out.len()).min(chunk.len());
+        if room == 0 {
+            break;
+        }
+        let n = match file.read(chunk.get_mut(..room).unwrap_or_default()) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(_) => return Err(io()),
+        };
+        let got = chunk.get(..n).ok_or(io())?;
+        if out.len().saturating_add(n) > out.capacity() {
+            // Grow by as much again as the buffer holds, never past the cap.
+            let grow = out.capacity().max(n).min(cap.saturating_sub(out.len()));
+            out.try_reserve_exact(grow).map_err(|_| memory())?;
+            reserved(out.capacity());
+        }
+        out.extend_from_slice(got);
+    }
+    reserved(out.capacity());
     if u64::try_from(out.len()).map_or(true, |n| n > limit) {
         return Err(VerifierError {
             code: Code::CodecLimit,
         });
     }
-    Ok((out, file_id(&after)))
+    Ok(out)
 }
 
 /// Reads the ledger at `path`, a snapshot for reading only: the file as its last atomic write
@@ -1522,5 +1561,65 @@ mod tests {
             fs::remove_file(&target).unwrap();
             fs::remove_dir(&dir).unwrap();
         }
+    }
+
+    /// The read holds at most `limit + 1` bytes on every platform, however large the size its
+    /// metadata gave, and however the file grew after it: the refusal never rests on what the
+    /// host lets a process reserve.
+    #[test]
+    fn a_read_never_reserves_past_the_limit() {
+        let limit = 4096u64;
+        let most = std::cell::Cell::new(0usize);
+        let seen = |c: usize| most.set(most.get().max(c));
+        let content = vec![7u8; 10_000];
+        // A size of a tebibyte, as a sparse file's metadata gives it, and more bytes than the
+        // limit behind it: refused, with no more than `limit + 1` reserved.
+        for size in [1u64 << 40, u64::MAX, 10_000] {
+            most.set(0);
+            assert_eq!(
+                read_capped(&mut &content[..], size, limit, &seen),
+                Err(VerifierError {
+                    code: Code::CodecLimit
+                }),
+                "{size}"
+            );
+            assert!(most.get() <= 4097, "{size}: {} reserved", most.get());
+        }
+        // A file that grew after its size was read: grown within the bound only, then refused.
+        most.set(0);
+        assert_eq!(
+            read_capped(&mut &content[..], 10, limit, &seen),
+            Err(VerifierError {
+                code: Code::CodecLimit
+            })
+        );
+        assert!(most.get() <= 4097, "{} reserved", most.get());
+        // Growth in steps, as reads of 8 KiB arrive: the buffer stops at the cap, not at the next
+        // doubling.
+        let large = vec![5u8; 20_000];
+        most.set(0);
+        assert_eq!(
+            read_capped(&mut &large[..], 3000, 10_000, &seen),
+            Err(VerifierError {
+                code: Code::CodecLimit
+            })
+        );
+        assert!(most.get() <= 10_001, "{} reserved", most.get());
+        // An honest file: read whole, with exactly its size reserved, and at the limit exactly.
+        for len in [0usize, 100, 4096] {
+            most.set(0);
+            let bytes = vec![3u8; len];
+            let read = read_capped(&mut &bytes[..], len as u64, limit, &seen).unwrap();
+            assert_eq!(read, bytes);
+            assert_eq!(most.get(), len, "{len}");
+        }
+        // One byte past the limit is refused.
+        let over = vec![1u8; 4097];
+        assert_eq!(
+            read_capped(&mut &over[..], 4097, limit, &|_| ()),
+            Err(VerifierError {
+                code: Code::CodecLimit
+            })
+        );
     }
 }
