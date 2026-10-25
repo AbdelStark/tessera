@@ -1598,6 +1598,11 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Security
 
+- A sampled audit's proofs use the parameter set its policy names (RFC-0016 'The parameter set', [#530](https://github.com/AbdelStark/tessera/issues/530)):
+  - **The gap.** Neither `tessera prove --sample` nor the verifier's accounting compared the proof's parameter set with the sample policy's. A proof under a weaker set, `live-64/1` under a policy of `ni-100/1`, could count toward the audit.
+  - **The rule.** RFC-0019 step 2 accepts, for a proof of an audit sample, only the set its policy names: another is `Reject(Params { name })`, naming the claim list's. RFC-0043's payload and RFC-0067's accounting, which runs it first, say so.
+  - **`tessera prove --sample`** refuses a plan whose claim list names another set than the sample policy's, with `ERR-USAGE`, before anything is committed. The verifier's half is in its own changelog.
+
 - Reading a secret-class envelope no longer leaves copies of its bytes in uncleared memory (05 §3 OBS-6, [#444](https://github.com/AbdelStark/tessera/issues/444)): `WeightCommitmentState::read` and `tessera inspect` pass the file straight to the envelope reader, whose buffer clears, instead of through a `BufReader`, whose 8 KiB read-ahead held the mask seed or model bytes; the envelope hasher, whose block buffer kept up to 63 payload bytes, is zeroized when dropped. Clippy now refuses `std::io::BufReader` in the prover workspace.
 
 - `RequantSplit` takes a key of `n` classes only when `n·2^b < P` (RFC-0009 Lemma 2, [#118](https://github.com/AbdelStark/tessera/issues/118)):

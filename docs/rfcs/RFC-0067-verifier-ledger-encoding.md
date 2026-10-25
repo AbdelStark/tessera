@@ -103,7 +103,8 @@ A sample is the verifier's when it derived it itself, with its own share. One wh
 
 ### The accounting
 
-RFC-0016 'Verifier checks' 1 and 2 run in RFC-0039's field order:
+RFC-0016 'Verifier checks' 1 and 2 run in RFC-0039's field order, after RFC-0016's check of the parameter set:
+0. **The parameter set.** The claim list's must be the one the sample's policy names, else `Reject(Params { name })`, naming the claim list's. It is RFC-0019 step 2's check, so it comes before the statement's fields.
 1. **The manifest.** Another manifest digest is `StatementMismatch { field: ManifestDigest }`.
 2. **Each request.** It must be in `selected`, absent from the sample's record, and named once by the batch. Any of these failures is `StatementMismatch { field: Batch }`, a replayed request included.
 
@@ -145,7 +146,7 @@ Every failure of check 2 gives one reason, so its checks need no order among the
 
 - **Encoding.** Every rule above, refused at its offset; round trips of seeded ledgers.
 - **Writes.** A write interrupted at each of its four steps leaves the old ledger byte for byte; a second writer is refused; creating over an existing file is refused.
-- **Accounting.** A request outside the sample, one in two accepted batches, and one named twice in a batch are each refused, as is another manifest. A batch of 2,000,000 requests is checked within a time bound. A sample whose toss opens but which the verifier did not derive is refused, by the accounting and by the report. A second prover share for one toss, and a second toss over one manifest, are refused.
+- **Accounting.** A request outside the sample, one in two accepted batches, and one named twice in a batch are each refused, as is another manifest. A batch of 2,000,000 requests is checked within a time bound. A sample whose toss opens but which the verifier did not derive is refused, by the accounting and by the report. A second prover share for one toss, and a second toss over one manifest, are refused. A claim list of another parameter set than the policy's is `Reject(Params)` and records nothing, ahead of every check of the statement and after the sample's own (#530).
 - **The file.** A failed directory sync, a symbolic link, a second hard link and a FIFO are each refused.
 - **Report.** A missing proof is `Unproven(DeadlineMissed)`.
 - **Sampling.** The prover's and the verifier's samples agree over 1,000 seeds, with keys that share sessions and ids whose numeric and byte orders differ (`tessera-protocol`'s `audit_verifier.rs`, DEP-2). Their audit plans agree within `10^{-12}` relative over random profiles.

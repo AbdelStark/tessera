@@ -25,8 +25,8 @@
 //! | [`AuditSample::derive`] | the sample of a window's period: seed, candidates, selection |
 //! | [`AuditSample::open`] | a `.tas` artifact, schema `0x0403`, and its identity |
 //! | [`pack`] | first-fit decreasing batches of a sample's requests |
-//! | [`VerifierLedger::check_accounting`] | the verifier's own sample, then RFC-0016 checks 1 and 2 for a proof's statement |
-//! | [`VerifierLedger::record_accepted`] | an accepted proof's requests and their `Û` |
+//! | [`VerifierLedger::check_accounting`] | the verifier's own sample, the claim list's parameter set against the policy's, then RFC-0016 checks 1 and 2 for a proof's statement |
+//! | [`VerifierLedger::record_accepted`] | an accepted proof's requests and their `Û`, the accounting checks repeated first |
 //! | [`VerifierLedger::open`], [`LedgerFile`], [`read_ledger`] | a `.tvl` artifact, schema `0x0701`, and its file: one regular file of one name, locked, written atomically with its directory synced |
 //! | [`AuditReport::from_ledger`] | the report at the deadline, `tessera.audit-report/1` |
 //!
@@ -87,12 +87,17 @@
 //!
 //! ## The accounting checks
 //!
-//! For a proof's statement, after its fields before `manifest_digest` (RFC-0039 'The checks',
-//! RFC-0043 'The audit sample's checks', RFC-0067 'The accounting'), first the sample: one not in
-//! the ledger's `derived` is `Inconclusive(ERR-USAGE)`, before any check of the statement, since
-//! a sample whose coin toss opens could still be the prover's. Then:
+//! For a proof of a sample (RFC-0016 'Verifier checks', RFC-0043 'The audit sample's checks',
+//! RFC-0067 'The accounting'), first the sample: one not in the ledger's `derived` is
+//! `Inconclusive(ERR-USAGE)`, before any check of the proof, since a sample whose coin toss
+//! opens could still be the prover's. Then, in order, the first that fails giving the verdict:
 //!
-//! 1. `statement.manifest_digest` is the sample's, else `Reject(StatementMismatch { field:
+//! 0. the claim list's parameter set is the one the sample's policy names, byte for byte, else
+//!    `Reject(Params { name })`, naming the claim list's (RFC-0016 'The parameter set'). It is
+//!    RFC-0019 'Check order' step 2 for a proof of an audit sample, so it comes before the
+//!    statement's fields: no proof of another parameter set is recorded;
+//! 1. after the statement's fields before `manifest_digest` (RFC-0039 'The checks'),
+//!    `statement.manifest_digest` is the sample's, else `Reject(StatementMismatch { field:
 //!    ManifestDigest })`;
 //! 2. in batch order, each request is in `selected`, was in no earlier accepted batch of the
 //!    sample (the ledger's `proven`), and appears once in the batch, else

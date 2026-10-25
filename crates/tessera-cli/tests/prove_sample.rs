@@ -22,6 +22,8 @@
 //! - a request not in the sample: no batch past the last, no sample that selects it (a sample
 //!   edited to add it and resealed), no reference flags beside `--sample`: `ERR-USAGE`;
 //! - a batch of two requests, under a policy that selects both: `ERR-USAGE`, naming #357;
+//! - a sample whose policy names another parameter set than the claim list's: `ERR-USAGE`, since
+//!   the verifier would refuse the proof (`Reject(Params)`, RFC-0016 'Verifier checks', #530);
 //! - malformed inputs: a corrupted sample or transcript, a log that is not its manifest's (65);
 //!   a sample of another period, flags missing or malformed (64).
 //!
@@ -236,6 +238,20 @@ const POLICY_BOTH: &str = r#"{
   "max_batch_tokens": 64,
   "proof_deadline_ns": 604800000000000,
   "params": "test-small/1"
+}"#;
+
+/// `POLICY_ONE` under `live-64/1`, where the claim list names `test-small/1`.
+const POLICY_OTHER_PARAMS: &str = r#"{
+  "schema": "tessera.audit-policy/1",
+  "period_ns": 1000000000,
+  "buckets": [
+    {"max_tokens": 4, "rate": "0"},
+    {"max_tokens": 64, "rate": "1"}
+  ],
+  "min_batch_tokens": 16,
+  "max_batch_tokens": 64,
+  "proof_deadline_ns": 604800000000000,
+  "params": "live-64/1"
 }"#;
 
 /// The serving stack's session: the recorded conversation, its transcript and the statement the
@@ -501,7 +517,11 @@ impl Fixture {
         };
         // 2. The samples: under the first policy, and under one that selects both requests,
         // each with its own state; the next period's sample too.
-        for (name, policy) in [("one", POLICY_ONE), ("both", POLICY_BOTH)] {
+        for (name, policy) in [
+            ("one", POLICY_ONE),
+            ("both", POLICY_BOTH),
+            ("other-params", POLICY_OTHER_PARAMS),
+        ] {
             f.sample(name, policy, &f.logs.clone());
         }
         f.sample("next", POLICY_ONE, &f.next_logs.clone());
@@ -790,6 +810,14 @@ fn a_sampled_batch_is_proven_from_the_cli_and_refused_when_it_must_be() {
 
     // A batch of two requests.
     usage(&replace(&out, "--sample", f.path("both.tas"))[1..], "#357");
+    // A sample of the same selection under another parameter set: refused before anything is
+    // proven, so the proof file the accepted run wrote is left as it was.
+    let before = fs::read(f.path("proof.tnp")).ok();
+    usage(
+        &replace(&out, "--sample", f.path("other-params.tas"))[1..],
+        "the claim list's parameter set test-small/1 is not the sample policy's live-64/1",
+    );
+    assert_eq!(fs::read(f.path("proof.tnp")).ok(), before);
 
     // Malformed inputs. A corrupted sample and transcript: 65.
     corrupt(&f.path("one.tas"), &f.path("corrupt.tas"), 40);

@@ -16,7 +16,9 @@ fn inputs() -> Vec<(u8, Vec<u8>)> {
         let payload = hex(case.get("payload").and_then(Json::as_str).unwrap());
         let envelope = hex(case.get("envelope").and_then(Json::as_str).unwrap());
         let sample = AuditSample::open(&envelope, &tv_codec::DecodeLimits::MESSAGE).unwrap();
-        // A ledger that derived the sample and accepted its first request, when it has one.
+        // A ledger that derived the sample and accepted its first request, when it has one, from
+        // a proof whose claim list names the policy's parameter set (RFC-0016 'The parameter
+        // set').
         let mut deriving = vec![0; 24];
         deriving.extend(1u64.to_le_bytes());
         deriving.extend(sample.manifest_digest());
@@ -43,7 +45,12 @@ fn inputs() -> Vec<(u8, Vec<u8>)> {
                 },
             };
             ledger
-                .record_accepted(&sample, &statement, &[FixedBits(3)])
+                .record_accepted(
+                    &sample,
+                    sample.policy().params(),
+                    &statement,
+                    &[FixedBits(3)],
+                )
                 .unwrap();
         }
         out.push((0, payload));

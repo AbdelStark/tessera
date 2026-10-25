@@ -111,6 +111,12 @@ For each proof:
 
 Checks 1 and 2 are statement fields of RFC-0019 step 4: `Reject(StatementMismatch { field: ManifestDigest })` and `{ field: Batch }`, a replayed request included. Check 3 fails as `Reject(Anchor)` ([RFC-0043](RFC-0043-rejection-payloads.md#the-audit-samples-checks)).
 
+**The parameter set.** Before these, the claim list's parameter set must be the one the sample's policy names ([#530](https://github.com/AbdelStark/tessera/issues/530)).
+- **Why.** The policy fixes the soundness every proof of the audit gives. A proof under a weaker set, such as `live-64/1` under a policy of `ni-100/1`, would otherwise count toward the audit.
+- **Where.** It is RFC-0019 step 2's check, which accepts only the policy's set for a proof of an audit sample. Another set is `Reject(Params { name })`, naming the claim list's. The accounting runs it first ([RFC-0067](RFC-0067-verifier-ledger-encoding.md#the-accounting)), so no proof of another set is recorded.
+- **The prover** refuses to prove a sample's batch under another set, with `ERR-USAGE` before anything is committed (`tessera prove --sample`).
+- **A set the verifier does not allow.** The step's other half refuses it, for the claim list and so for the policy that names it: no proof of such an audit is accepted, whatever its parameter set. The accounting compares names only, after acceptance.
+
 At the deadline, the verifier emits the audit report.
 
 ### Audit report
