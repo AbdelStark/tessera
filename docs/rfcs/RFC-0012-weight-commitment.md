@@ -4,8 +4,8 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3 (binding), v0.4 (hiding budget and refresh)
-- Amended by: [RFC-0026](RFC-0026-claim-list-layout.md) ('Layout': the fields of `WeightLayoutParams`), [RFC-0031](RFC-0031-commitment-id.md) ('Layout': each matrix's `commitment_id` and row block), [RFC-0040](RFC-0040-weight-commitment-artifacts.md) ('Layout': wide inputs, positions, committed rows and leaves; 'Budget state machine': the state's fields), [RFC-0049](RFC-0049-weight-proximity.md) ('Opening by the folding pass': the proximity row's coefficients and when the fold computes it), [RFC-0052](RFC-0052-channel-params-claims.md) ('Opening by the folding pass': opening several claims on `ChannelParams` in one pass)
-- Superseded in part by: [RFC-0064](RFC-0064-weight-linking-proof.md) ('Refresh and linking proof': the linking proof opens the difference of the two commitments; 'Failure modes': the link's four rows; 'Budget state machine': epoch `e + 1` starts with the link's rows and columns spent)
+- Amended by: [RFC-0026](RFC-0026-claim-list-layout.md) ('Layout': the fields of `WeightLayoutParams`), [RFC-0031](RFC-0031-commitment-id.md) ('Layout': each matrix's `commitment_id` and row block), [RFC-0040](RFC-0040-weight-commitment-artifacts.md) ('Layout': wide inputs, positions, committed rows and leaves; 'Budget state machine': the state's fields), [RFC-0049](RFC-0049-weight-proximity.md) ('Opening by the folding pass': the proximity row's coefficients and when the fold computes it), [RFC-0052](RFC-0052-channel-params-claims.md) ('Opening by the folding pass': opening several claims on `ChannelParams` in one pass), [RFC-0065](RFC-0065-masked-channel-params.md) ('Layout' and 'Column answers': `ChannelParams`' own blinding rows `B_CP`, and the six rows' order `β_T`, `R_W`, proximity pair)
+- Superseded in part by: [RFC-0064](RFC-0064-weight-linking-proof.md) ('Refresh and linking proof': the linking proof opens the difference of the two commitments; 'Failure modes': the link's four rows; 'Budget state machine': epoch `e + 1` starts with the link's rows and columns spent), [RFC-0065](RFC-0065-masked-channel-params.md) ('Budget state machine': `reserve` takes `2·e_T + 4` rows of a matrix with `e_T` claims, 18 for `ChannelParams` at `e = 7`)
 
 ## Summary
 
@@ -49,7 +49,7 @@ The source keeps VerInf's "persistent weight commitment, opened-column budget, r
   Its message width is `k_W`, as every 405B matrix's is: the low `log2 k_W` bits of the flattened index are its columns, the rest its row. A narrower message would raise its rate `(k + P_W)/n_T` above the one `τ_W` is computed for. At `k = 2^16` with `P_W = 2^16` the rate is 1/2, and `live-64`'s 97 queries would give about 40 bits instead of 64. At 405B a row holds 16 layers' values of one type. Each type that has a `ChannelParams` fills 8 rows, and the other types' rows are zero and skipped. At 8B, with `C = 2^{12}` when only `O` and `Down` have a `ChannelParams`, the tensor holds `2^{21}` entries, and a row holds all 32 layers of 8 types. A model whose tensor is smaller than `k_W` takes `k = min(k_W, types · layers · C)` after padding, as the other matrices take `min(2^20, out_pad · in_pad)`.
 - Rate 1/4: codewords of length `n_T = 4 k_T` on the coset `7·L_T`.
 - Each row's encoding carries a vanishing mask with `P_W = 2^16` random coefficients (RFC-0011 encoding), so the effective rate is `ρ' = (k_T + P_W)/n_T ≈ 0.266`.
-- Each matrix has `B_W = 4096` blinding rows: random message rows appended after the data rows, committed with them, each used at most once. RFC-0013's masks are over `Fp2`, so each blinding row it uses is two of these. A proof consumes six per matrix: two for the evaluation combined row, two for the proximity combined row, and two as the mask row of the masked extension ([RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions)).
+- Each matrix has `B_W = 4096` blinding rows: random message rows appended after the data rows, committed with them, each used at most once. RFC-0013's masks are over `Fp2`, so each blinding row it uses is two of these. A proof consumes six per matrix: two for the evaluation combined row, two for the proximity combined row, and two as the mask row of the masked extension ([RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions)), reserved in the order evaluation pair, mask row, proximity pair (RFC-0065 'The reservation'). `ChannelParams`, with `e` claims, consumes `2e + 4`: one pair for its evaluation rows, a mask row per claim and the proximity pair. It has `B_CP` blinding rows ([RFC-0065](RFC-0065-masked-channel-params.md)).
 - Each matrix chains its columns over blocks of the parameter set's row block `B` ([RFC-0014](RFC-0014-interaction-and-soundness.md#parameter-sets)), from its own `commitment_id`: the hash of its `WeightMatrix` descriptor, which holds `WeightLayoutParams`, the matrix, its message width, `B`, its rows and the epoch ([RFC-0031](RFC-0031-commitment-id.md#the-descriptor)).
 - Each column is one chain over the matrix's committed rows, `leaf_j = d_j[⌈m/B⌉]` ([RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests)): a matrix has no segments and no `column-merge`.
 - `R_W = H("weights-root", TCE(WeightLayoutParams) ‖ root_Embed ‖ … ‖ root_ChannelParams ‖ u32(epoch))`, the hash of `TCE(WeightCommitmentPublic)` ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#weightcommitmentpublic)). The first commitment is epoch 0. `WeightLayoutParams` holds `log2 k_W`, the inverse rate's `log2`, `P_W` and `B_W`, the parameter set's values; the shapes and padding follow from the architecture ([RFC-0026](RFC-0026-claim-list-layout.md)).
@@ -73,15 +73,15 @@ Proximity uses a second combined row and its own `Fp2` blinding row. In `tessera
 The weights' codewords stay fixed for an epoch: their masks and blinding rows come from `masks_seed`, not from the proof. So a proof can read its column answers from a store. An advice row cannot be answered that way, because its codewords exist only during the witness pass ([RFC-0018 'Column answers'](RFC-0018-gpu-prover-runtime.md#pass-structure)). Both methods below send the same bytes, so the verifier is unaffected.
 
 - **The codeword store, the default.** When the prover commits an epoch, it writes each matrix's codewords column-major. Each column's symbols are contiguous: the non-zero data rows in layout order, then the blinding rows. The matrix's Merkle tree is written beside them. A proof reads its distinct queried columns and their multiproof, and checks them against the matrix's root before sending them. A part that fails is recomputed, a column by evaluation, so a damaged store costs time, not a rejected proof.
-  - **Size.** At 405B the store holds 453,126 rows of `2^22` symbols, about 15.2 TB per epoch: the nine weight matrices' non-zero rows, `ChannelParams`' at most 882 at the common width, and 40,960 blinding rows.
-  - **Reads.** A proof reads 0.35 GB at `live-64` (`τ_W = 97`) and 0.44 GB at `ni-100` (122). The reads start with the queries and overlap P5, which regenerates the advice witness after the same queries, so they take no GPU time.
+  - **Size.** At 405B the store holds 453,126 rows of `2^22` symbols, about 15.2 TB per epoch: the nine weight matrices' non-zero rows, `ChannelParams`' at most 882 at the common width, and 40,960 blinding rows. In `tessera-protocol/2`, [RFC-0065](RFC-0065-masked-channel-params.md)'s `B_CP` adds 8,184 rows for `ChannelParams`' claims: 461,310 rows, 15.48 TB. `ChannelParams`' data rows are 56 at 405B, 8 for each of its seven types ('Layout'). 882 overcounts them: the layout allows at most 72, 8 for each of nine types.
+  - **Reads.** A proof reads 0.35 GB at `live-64` (`τ_W = 97`) and 0.44 GB at `ni-100` (122), and 0.36 GB and 0.45 GB with RFC-0065's rows. The reads start with the queries and overlap P5, which regenerates the advice witness after the same queries, so they take no GPU time.
   - **Secrecy.** The store is secret-class: its symbols determine the weights, the masks and the blinding rows. It is written with mode 0600, as `WeightCommitmentState` is ([06 §7](../spec/06-security.md#7-secrets-handling)). It leaves the prover only as answered columns.
   - **Refresh.** A refresh writes the next epoch's store while the old one serves the linking proof, and deletes the old one afterwards, so a refresh needs twice the space.
 - **Evaluation of the queried symbols, the fallback** for a node without the store. Symbol `j` of row `r` is `⟨A_r, w_j⟩ + Z_H(x_j) · m_r(x_j)`, the same evaluation RFC-0018 'Column answers' applies to advice rows. It is one product of the rows with the `τ'` vectors of barycentric weights `w_j`, limb-decomposed on tensor cores:
   - 8 INT8 products per element and column for a weight row;
   - 64 for a blinding row's elements and for every row's `P_W` mask coefficients.
 
-  At 405B those products come to about 1.3 GPU-s at `τ_W = 97` and 1.7 at 122, as operation counts. Unless the prover keeps the masks and blinding rows, it also regenerates them from `masks_seed`: 581 GB of PRG output per proof.
+  At 405B those products come to about 1.3 GPU-s at `τ_W = 97` and 1.7 at 122, as operation counts. Unless the prover keeps the masks and blinding rows, it also regenerates them from `masks_seed`: 581 GB of PRG output per proof, and 654 GB with RFC-0065's rows.
 
 ### Budget state machine
 
@@ -92,7 +92,7 @@ pub struct WeightCommitmentState {          // schema 0x0302, secret, persisted 
     pub budget: [TypeBudget; 10],           // in WeightMatrix order
 }
 
-pub struct TypeBudget {                      // its limits are the layout's P_W and B_W
+pub struct TypeBudget {                      // its limits are the layout's P_W and the matrix's B_T (RFC-0065)
     pub opened_columns: Vec<u32>,           // distinct column indices revealed this epoch, increasing
     pub next_blinding_row: u32,             // rows below this index are burned
 }
@@ -102,7 +102,7 @@ Transitions, each persisted (fsync, atomic rename) before the corresponding mess
 
 | Event | Precondition | Effect |
 |---|---|---|
-| `reserve` (before `Round1`) | For every matrix: `next_blinding_row + 6 ≤ B_W − 4` and `\|opened_columns\| + τ_W ≤ P_W − τ_link`. Blinding rows `B_W − 4` to `B_W − 1` and `τ_link` columns of headroom are reserved exclusively for the linking proof | Burns six blinding rows per matrix; records them in `Round1` |
+| `reserve` (before `Round1`) | For every matrix: `next_blinding_row + r_T ≤ B_T − 4` and `\|opened_columns\| + τ_W ≤ P_W − τ_link`, with `r_T = 2·e_T + 4` for the matrix's `e_T` claims and `B_T` its blinding rows ([RFC-0065](RFC-0065-masked-channel-params.md)). Blinding rows `B_T − 4` to `B_T − 1` and `τ_link` columns of headroom are reserved exclusively for the linking proof | Burns `r_T` blinding rows per matrix, six for a single-claim matrix; records them in `Round1` |
 | `record_queries` (before `Round3Response`) | Queries are those of the current session | Adds the distinct query indices to `opened_columns` |
 | `abort` | Any time | Nothing is released: burned rows and opened columns stay burned |
 | `refresh` | Any time, once per epoch; required when `reserve` fails | Produces epoch `e + 1` and a `WeightLinkProof`, through `link` |

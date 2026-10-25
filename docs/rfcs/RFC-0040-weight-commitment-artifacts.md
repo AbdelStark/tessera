@@ -13,6 +13,7 @@
   - [RFC-0039](RFC-0039-statement-fields.md#the-checks) 'The checks': the weight layout's check, at RFC-0019 step 4;
   - [02 §2](../spec/02-public-api.md#2-command-line-interface): `commit-weights` writes both artifacts, and `tessera-verify` reads the public one;
   - [03 §5](../spec/03-data-model.md#5-artifact-catalog): both artifacts are defined here.
+- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('The matrices' and 'Encoding, leaves and roots': `ChannelParams`' blinding rows `B_CP`, `rows = m_T + B_T`, and the leaves over the blinding rows)
 - Origin: [#102](https://github.com/AbdelStark/tessera/issues/102)
 
 ## Summary
@@ -71,9 +72,9 @@ Each `WeightMatrix` ([RFC-0031](RFC-0031-commitment-id.md#the-descriptor)) `T` i
   - the claim list's `WeightLayoutParams` as `layout`;
   - `matrix` `T` and `log2_k` its own `log2 k_T`;
   - `row_block` the parameter set's `B`;
-  - `rows = m_T`, plus `B_W` from the version that adds blinding rows;
+  - `rows = m_T`, plus `B_T` from the version that adds blinding rows: `B_W`, and `ChannelParams`' `B_CP` ([RFC-0065](RFC-0065-masked-channel-params.md#channelparams-blinding-rows));
   - `epoch`.
-- **Leaves.** Each column is one chain over the matrix's committed rows: `leaf_j = d_j[⌈m_T / B⌉]` ([RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests)). A weight matrix has no segments and no `column-merge`. A matrix of no committed rows has the leaves `d_j[0]`.
+- **Leaves.** Each column is one chain over the matrix's committed rows: `leaf_j = d_j[⌈m_T / B⌉]` ([RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests)), and `d_j[⌈(m_T + B_T)/B⌉]` over the blinding rows too, from the version that adds them ([RFC-0065](RFC-0065-masked-channel-params.md#channelparams-blinding-rows)). A weight matrix has no segments and no `column-merge`. A matrix of no committed rows has the leaves `d_j[0]`.
 - **Roots.** `root_T` is the root of the Merkle tree over its `n_T` leaves ([RFC-0004](RFC-0004-hashing-and-transcript.md#merkle-trees)).
 
 ### `WeightCommitmentPublic`
@@ -103,7 +104,7 @@ pub struct TypeBudget {
 }
 ```
 
-- **The budget's limits** are `WeightLayoutParams`' `P_W` and `B_W`. RFC-0012's `max_opened_columns` and `blinding_rows` are dropped, since they repeated them.
+- **The budget's limits** are `WeightLayoutParams`' `P_W` and each matrix's `B_T`: `B_W`, and `ChannelParams`' `B_CP` (RFC-0065). RFC-0012's `max_opened_columns` and `blinding_rows` are dropped, since they repeated them.
 - **`opened_columns`** is a set: its indices are strictly increasing as integers, and a decoder rejects an unsorted or repeated index (`ERR-CODEC-NONCANONICAL`). The order is numeric, not the byte order of a map's keys (RFC-0003 'Composite types').
 - **`masks_seed`.** Each epoch's is derived from the model's refresh key `K`, `H("weights-refresh", K ‖ u32(e))`. `K` is 32 bytes the committer draws from the operating system's CSPRNG for epoch 0 and keeps apart from every state file. A weight link is then the same bytes however often it is made ([RFC-0064](RFC-0064-weight-linking-proof.md#one-link-per-epoch)). The expansion of `masks_seed` into the masks and blinding rows is normative and versioned, with a conformance vector; #147 specifies it. A reader listed in `secret-access.toml` decodes it into a `Secret` that holds the 32 bytes on the heap, so that no move copies them, and encodes it back only to write the state (05 §3, OBS-2).
 - **In `tessera-protocol/1`** the seed regenerates nothing, every `opened_columns` is empty, and every `next_blinding_row` is 0. The prover recomputes the commitment from `D` and the state, as RFC-0012 'Migration / Rollout' plans for v0.3: no masks, and codewords held in memory.

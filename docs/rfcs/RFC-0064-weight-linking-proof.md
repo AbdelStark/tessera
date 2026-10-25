@@ -17,6 +17,7 @@
   - [RFC-0040](RFC-0040-weight-commitment-artifacts.md) 'masks_seed': every epoch's seed is derived from the model's refresh key, and the seed's expansion is normative;
   - [RFC-0019](RFC-0019-verifier.md#ledger) 'Ledger': one successor per root, and `weights link`'s claim list;
   - [03 §5](../spec/03-data-model.md#5-artifact-catalog): `WeightLinkProof` is defined here.
+- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('The inputs', 'The transcript', 'The difference row', 'The proximity rows', 'The verifier's checks', 'The budget' and 'One link per epoch': a matrix's own blinding rows `B_T`, `B_CP` for `ChannelParams`)
 - Origin: [#485](https://github.com/AbdelStark/tessera/issues/485), from the simulator argument ([`docs/zk/simulator.md`](../zk/simulator.md) §6.4, requirement R3)
 
 ## Summary
@@ -58,7 +59,7 @@ The RFC also gives what RFC-0012 left undefined: the transcript, the query count
 - **The expansion is fixed.** The map from `masks_seed` to an epoch's masks and blinding rows is RFC-0040's, versioned and with a conformance vector. #147, which commits the masks, specifies it. Until it does, a link may be remade only by the build that made it.
 - **The claim list.** The matrices' shapes, which matrices have committed rows, and each matrix's `commitment_id_T` (its row block `B` included, RFC-0031) come from a claim list whose weights the commitment holds. The prover has it, and the verifier takes it as an input.
 - **The matrices.** Every `WeightMatrix` `T` with committed rows, `m_T > 0`, in RFC-0040's order. A matrix with no committed rows is not linked, as it has no proximity row in a proof either ([RFC-0049](RFC-0049-weight-proximity.md#the-schedule)).
-- **Positions.** Committed row `j < m_T` is the `j`-th committed data row in RFC-0040's order, the index RFC-0049's proximity row uses. Both epochs share the layout, so row `j` holds the same weights in both. The blinding rows follow the data rows, `m_T + i` for blinding row `i < B_W`.
+- **Positions.** Committed row `j < m_T` is the `j`-th committed data row in RFC-0040's order, the index RFC-0049's proximity row uses. Both epochs share the layout, so row `j` holds the same weights in both. The blinding rows follow the data rows, `m_T + i` for blinding row `i < B_T`, the matrix's own count ([RFC-0065](RFC-0065-masked-channel-params.md#channelparams-blinding-rows)): `B_W`, and `B_CP` for `ChannelParams`.
 
 ### The transcript
 
@@ -93,7 +94,7 @@ For each linked matrix `T` in order, the transcript runs:
 | 1 | squeeze | `link/{T}/rho` | `ρ_T ∈ Fp2^{ν_T}`, `ν_T = log2 k_T + ⌈log2 m_T⌉`, in RFC-0010's variable order: the `log2 k_T` column coordinates `ρ_T^{col}` first, the low bits, then the `⌈log2 m_T⌉` row coordinates `ρ_T^{row}` |
 | 2 | absorb | `link/{T}/blinding` | `q_T ∈ Fp2` |
 | 3 | squeeze | `link/{T}/theta` | `θ_T ∈ Fp2` |
-| 4 | squeeze | `link/{T}/xi/old`, then `link/{T}/xi/new` | each commitment's proximity point, `⌈log2(m_T + B_W)⌉` coordinates |
+| 4 | squeeze | `link/{T}/xi/old`, then `link/{T}/xi/new` | each commitment's proximity point, `⌈log2(m_T + B_T)⌉` coordinates |
 | 5 | absorb | `link/{T}/combined` | `TCE((difference, proximity_old, proximity_new))`: the three `CombinedRow`s' encodings concatenated, in that order, in one absorb |
 
 Then, once:
@@ -107,7 +108,7 @@ Then, once:
 
 ### The difference row
 
-For matrix `T`, let `β^{old}_T` be epoch `e`'s blinding rows `B_W − 4` and `B_W − 3`, and `β^{new}_T` epoch `e + 1`'s rows 0 and 1. Each pair is one `Fp2` row, its two committed rows with `1` and `X`, as RFC-0013 'Hiding openings' makes every blinding pair.
+For matrix `T`, let `β^{old}_T` be epoch `e`'s blinding rows `B_T − 4` and `B_T − 3`, and `β^{new}_T` epoch `e + 1`'s rows 0 and 1. Each pair is one `Fp2` row, its two committed rows with `1` and `X`, as RFC-0013 'Hiding openings' makes every blinding pair.
 
 - **The blinding claim.** `q_T = ⟨β^{old}_T + β^{new}_T, eq(ρ_T^{col})⟩`, absorbed before `θ_T` is squeezed.
 - **The row.** The prover sends
@@ -132,7 +133,7 @@ For matrix `T`, let `β^{old}_T` be epoch `e`'s blinding rows `B_W − 4` and `B
 Each commitment keeps its own proximity row, so that each is proven close to the code within the linking proof.
 
 - **The point.** `ξ*` is `link/{T}/xi/old` for epoch `e` and `link/{T}/xi/new` for epoch `e + 1`.
-- **The designated pair.** Epoch `e`'s rows `B_W − 2` and `B_W − 1`, and epoch `e + 1`'s rows 2 and 3.
+- **The designated pair.** Epoch `e`'s rows `B_T − 2` and `B_T − 1`, and epoch `e + 1`'s rows 2 and 3.
 - **The coefficients.** The row is formed as a `tessera-protocol/2` proof's proximity row on that commitment is. That is RFC-0049 'The proximity row' over its data and blinding rows, as #394 settles its coefficients on the blinding rows, with these designated pairs as its blinding pair.
 - **The check.** At each queried column, RFC-0011 step 8.3's check against that commitment's answers.
 
@@ -176,7 +177,7 @@ pub struct MatrixLink {
 5. **The proof of work.** `query_nonce` meets `g_link`, else `Reject(ProofOfWork { phase: Queries })`.
 6. **The queries.** The verifier squeezes each matrix's `τ_link` indices.
 7. **Columns,** per matrix in order, epoch `e`'s answer before `e + 1`'s:
-   - one column per distinct index, with `m_T + B_W` symbols each, and the multiproof against that commitment's matrix root, else `Reject(MerklePath { commitment: Weight, column })` at the smallest queried index;
+   - one column per distinct index, with `m_T + B_T` symbols each, and the multiproof against that commitment's matrix root, else `Reject(MerklePath { commitment: Weight, column })` at the smallest queried index;
    - then, at each distinct index in increasing order, the difference row's column check, then the old proximity row's, then the new one's, else `Reject(Proximity { commitment: Weight, column })` at the first failing `c`.
 8. **Accept.** The ledger records `R_W'` as `R_W`'s successor, appends `(epoch e + 1, R_W')` to the claim list's entry, and records the link's rows in each epoch's used blinding rows ([RFC-0019](RFC-0019-verifier.md#ledger)).
    - **Other claim lists.** Another entry at `R_W`, of a claim list with the same commitment, is extended by checking the same link with that claim list. The successor is the one recorded, so the check accepts.
@@ -186,12 +187,12 @@ pub struct MatrixLink {
 
 | Epoch | Blinding rows | Columns |
 |---|---|---|
-| `e`, at its end | `B_W − 4`, `B_W − 3`: the difference row's pair; `B_W − 2`, `B_W − 1`: the proximity row's | the link's distinct queried columns join `opened_columns`, within the `τ_link` of headroom `reserve` keeps |
+| `e`, at its end | `B_T − 4`, `B_T − 3`: the difference row's pair; `B_T − 2`, `B_T − 1`: the proximity row's | the link's distinct queried columns join `opened_columns`, within the `τ_link` of headroom `reserve` keeps |
 | `e + 1`, at its start | 0, 1: the difference row's pair; 2, 3: the proximity row's | its state starts with the link's distinct queried columns in `opened_columns` |
 
 - **The state.** Epoch `e + 1`'s state starts with `next_blinding_row = 4`, and its first proof reserves from row 4. Epoch 0, which no link starts, reserves from row 0.
 - **Columns for proofs.** Epoch `e + 1`'s proofs share `P_W − 2τ_link` columns: the link's at its start and the next link's headroom at its end. At `live-64` that is 673 proofs (`(2^16 − 244)/97`), against RFC-0012's 674, and the rows' bound stays 681.
-- **One count.** These are RFC-0012's four rows at each end of an epoch, used once each. RFC-0012 'Failure modes' should read "the four blinding rows", and the `reserve` precondition stays `next_blinding_row + 6 ≤ B_W − 4`.
+- **One count.** These are RFC-0012's four rows at each end of an epoch, used once each. RFC-0012 'Failure modes' should read "the four blinding rows", and the `reserve` precondition is `next_blinding_row + r_T ≤ B_T − 4` ([RFC-0065](RFC-0065-masked-channel-params.md#the-reservation)): six rows of `B_W` for a single-claim matrix.
 - **The parameters.** 'The transcript' gives `τ_link` and `g_link` per layout. The production layout's are `ni-100`'s `τ_W` and `g_query`, since the link is non-interactive, and `reserve`'s headroom is `τ_link`.
 
 ### One link per epoch
@@ -214,7 +215,7 @@ RFC-0012's state machine gains a transition, for the budget's bookkeeping:
 
 | Event | Precondition | Effect |
 |---|---|---|
-| `link` (before the `WeightLinkProof` is sent) | Every reservation of epoch `e` has recorded its queries or aborted | Writes epoch `e + 1`'s state, from row 4 with the link's columns opened, and the `WeightLinkProof` beside it. Then burns rows `B_W − 4` to `B_W − 1` of epoch `e`, records the link's columns there, and closes epoch `e` to `reserve` |
+| `link` (before the `WeightLinkProof` is sent) | Every reservation of epoch `e` has recorded its queries or aborted | Writes epoch `e + 1`'s state, from row 4 with the link's columns opened, and the `WeightLinkProof` beside it. Then burns rows `B_T − 4` to `B_T − 1` of epoch `e`, records the link's columns there, and closes epoch `e` to `reserve` |
 
 - **The order.** Epoch `e + 1`'s state and the link are persisted first (fsync, atomic rename), and closing epoch `e` is the commit point.
   - **Not yet usable.** Epoch `e + 1` takes no `reserve` until epoch `e` is closed.
@@ -230,8 +231,8 @@ RFC-0012's state machine gains a transition, for the budget's bookkeeping:
   - The column checks bind `u_T` to them, so `⟨u_T, eq(ρ_T^{col})⟩ = θ_T·(D̃^{old} − D̃^{new})(ρ_T) + Q̃_T`, with `Q̃_T` the true blinding value.
   - The check passes when `θ_T·(D̃^{old} − D̃^{new})(ρ_T) + (Q̃_T − q_T) = 0`. `q_T` is absorbed before `θ_T`, so for `D̃^{old}(ρ_T) ≠ D̃^{new}(ρ_T)` that holds for at most one `θ_T`.
   - Two different multilinear polynomials over `ν_T` variables agree at `ρ_T` with probability at most `ν_T/|Fp2|` (Schwartz–Zippel). The roots fix both commitments before `ρ_T` is squeezed.
-  - Per matrix, then: `(ν_T + 1)/|Fp2|`. At 405B the largest `ν_T` is 37 (`Gate`, `Up` and `Down`), which gives 122.75 bits per matrix. The ten together, `Σ (ν_T + 1) = 345`, give 119.57 bits.
-  - RFC-0014's calculator counts this `(ν_T + 1)/q` in its weight-linking row, for the matrix of most variables ([#516](https://github.com/AbdelStark/tessera/issues/516)). This RFC's `ν_T` is `log2 k_T + ⌈log2 m_T⌉` over the committed rows: 30 for `ChannelParams`, whose 882 rows the calculator's input counts otherwise.
+  - Per matrix, then: `(ν_T + 1)/|Fp2|`. At 405B the largest `ν_T` is 37 (`Gate`, `Up` and `Down`), which gives 122.75 bits per matrix. The ten together, `Σ (ν_T + 1) = 341`, give 119.59 bits.
+  - RFC-0014's calculator counts this `(ν_T + 1)/q` in its weight-linking row, for the matrix of most variables ([#516](https://github.com/AbdelStark/tessera/issues/516)). This RFC's `ν_T` is `log2 k_T + ⌈log2 m_T⌉` over the committed rows: 26 for `ChannelParams`, whose 56 committed rows at 405B (8 for each of its seven types, RFC-0012 'Layout') the calculator's input counts by their bound, 882.
 - **Why `θ_T`.** With the claim 0 and no challenge, any `q_T` would match `u_T` for any data. `θ_T` is drawn after `q_T` and multiplies the difference, as RFC-0013 'Hiding openings' orders it for proofs.
 - **Proximity, per commitment.** `((1 + ρ')/2)^{τ_link} + ϑ_T·n_T/|Fp2|`, RFC-0014's bound.
   - At the production layout, `ρ' = 0.2656` and `b(ρ') = 0.6602`, so 122 queries give 80.54 bits, and the proof of work brings them to 100.54.
@@ -256,14 +257,14 @@ This is requirement R3 of the simulator argument, met:
 
 ### Sizes at 405B
 
-The production layout links ten matrices, each with `k_T = 2^20` and `n_T = 2^22`. The epoch holds 453,126 committed rows, 40,960 of them blinding rows (RFC-0012 'Column answers').
+The production layout links ten matrices, each with `k_T = 2^20` and `n_T = 2^22`. The epoch holds 461,310 committed rows, 49,144 of them blinding rows: RFC-0012 'Column answers' with [RFC-0065](RFC-0065-masked-channel-params.md)'s `B_CP`.
 
 | Part | Bytes |
 |---|---|
 | Combined rows: 3 per matrix, each `(2^20 + 2^16)` `Fp2` values | 534.8 MB |
-| Columns: at most 122 per matrix and commitment, each a committed row's symbol, for both commitments | 884.5 MB |
+| Columns: at most 122 per matrix and commitment, each a committed row's symbol, for both commitments | 900.5 MB |
 | Multiproofs: at most `122·(22 − log2 122)` digests per matrix and commitment | 1.2 MB |
-| Total, at most | 1.42 GB |
+| Total, at most | 1.44 GB |
 
 RFC-0012's two openings carried four combined rows per matrix, 713.0 MB: the difference saves 178.3 MB. A link is made once per epoch, which serves about 670 live proofs (535 non-interactive ones, `(2^16 − 244)/122`).
 
@@ -303,7 +304,7 @@ RFC-0012's two openings carried four combined rows per matrix, 713.0 MB: the dif
   - one symbol of either commitment changed, which the difference row's or a proximity row's column check refuses.
 - **Zero knowledge.** Two weight sets that differ at `ρ_T`, over `F65537` with the test layout and the random oracle programmed to give both the same `ρ_T`, give linking views no distinguisher of #162 tells apart. RFC-0012's openings, which reveal the two different `W̃_T(ρ_T)`, are the negative control.
 - **The budget.**
-  - The link uses rows `B_W − 4` to `B_W − 1` of epoch `e` and 0 to 3 of `e + 1`.
+  - The link uses rows `B_T − 4` to `B_T − 1` of epoch `e` and 0 to 3 of `e + 1`.
   - Epoch `e + 1`'s first `reserve` starts at row 4, with the link's columns opened.
   - A link made after the budget record is deleted, from the seed alone, uses the same rows and stays within `P_W`.
 - **Vectors.** A link between two test-layout epochs, from an independent oracle: the transcript's challenges, the rows, the columns and the verdict.

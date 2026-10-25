@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
-- Amended by: [RFC-0057](RFC-0057-one-proof-unit.md) ('The descriptor': a proof is one unit, so `unit` is always 0)
+- Amended by: [RFC-0057](RFC-0057-one-proof-unit.md) ('The descriptor': a proof is one unit, so `unit` is always 0), [RFC-0065](RFC-0065-masked-channel-params.md) ('The descriptor': a weight matrix's `rows` count its own `B_T`)
 - Supersedes, on acceptance:
   - [RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests) 'Hash function and domains': the `commitment-id` domain; 'Column digests': what `commitment_id` binds;
   - [RFC-0011](RFC-0011-advice-commitment.md#column-digests-and-root) 'Column digests and root': the advice commitment's `commitment_id` and `AdviceCommitment.layout_digest`;
@@ -55,7 +55,7 @@ pub enum CommitmentDescriptor {          // TCE (RFC-0003): a u16 tag, then the 
         matrix: WeightMatrix,
         log2_k: u8,                      // the matrix's message width, k_T = 2^log2_k (RFC-0012)
         row_block: u32,                  // B
-        rows: u64,                       // its committed rows m_T, plus B_W from the version that adds blinding rows (RFC-0040)
+        rows: u64,                       // its committed rows m_T, plus B_T from the version that adds blinding rows (RFC-0040, RFC-0065)
         epoch: u32,
     },
 }

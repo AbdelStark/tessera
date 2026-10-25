@@ -6,6 +6,36 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Masked `ChannelParams` claims, specified ([#487](https://github.com/AbdelStark/tessera/issues/487)):
+  - **RFC-0065, 'Masked `ChannelParams` Claims in `tessera-protocol/2`'.**
+    - **The leak.** Each claim sits at a point of `Ã_CP` whose padding and type coordinates are Boolean, so RFC-0013's `Z` vanishes there and the masked value is the secret's own (`docs/zk/simulator.md` §4.5). Two claims can also share a column point, and the evaluation rows shared one mask and one pair.
+    - **The masks.** Each claim gets its own mask row, with `Z` over its type tensor's `c_i + λ` coordinates, which is its evaluation row's designated block. Each matrix gets one pair `β_T` for its blinding claims.
+    - **The reservation.** A proof reserves `2·e_T + 4` rows of a matrix with `e_T` claims: six for `Embed`..`LmHead` as before, and 18 for `ChannelParams` at `e = 7`. `Round1`'s `WeightReservation` names each matrix's first row before the seed, and the verifier's step 5 checks each range.
+    - **The budget.** `ChannelParams` has `B_CP = B_W + 2·(e_CP − 1)·⌊(B_W − 4)/6⌋` blinding rows, 12,280 at 405B. It serves as many proofs per epoch as the other matrices, epoch 0's 682 included, for 1.8% more codeword store and column answers.
+    - **What the stages owe.** Every revealed value of a type tensor must sit at a point whose coordinates other than the lowest are challenges, and no evaluation row is opened without its mask term.
+      - The affine sites' claims, from the reduction stages, meet this.
+      - A site of two classes or more does not: the leaf stage sends its class tensor once per real layer before stacking. So until #486's leaf layout removes those values, `tessera-protocol/2` refuses such sites (RFC-0039 step 2.4, `Rescaling { site }`). That includes all of 405B's.
+    - **Review.** Two adversarial reads, then the fixes.
+      - **The first found:**
+        - the leaf stage's per-layer values;
+        - a symbol clash, `m_T` used for claims and for rows;
+        - `B_W` left in RFC-0064's body;
+        - missing pieces: the reservation's declaration, the blinding claims' layout, the step-5 range and the reject payloads;
+        - a cheaper design, one pair per matrix with the mask rows as designated blocks, which this text adopts.
+      - **The second confirmed** the shared pair's argument, for one proof and for the epoch. It also found:
+        - before #486 no 405B proof could pass the evaluation check, and dropping the mask term would leak whole folds through the shared pair;
+        - a misstated rank condition for values revealed in the stages, now stated per matrix;
+        - documents not yet reconciled with the shared pair: RFC-0013 'Hiding openings', the simulator's R9 text and Lemma 6;
+        - stale figures in RFC-0064.
+  - **Amended:**
+    - RFC-0012: `reserve`, the layout's blinding rows and the store's figures;
+    - RFC-0013: the masked extension and 'Cost';
+    - RFC-0014: the reservation and blinding claims in the messages, and the field term's `B_T`;
+    - RFC-0019 step 5, RFC-0026, RFC-0031, RFC-0040 (the leaves over the blinding rows), RFC-0049, RFC-0052 and RFC-0064 (`B_T` in its body, and `ChannelParams`' 56 data rows).
+
+    `docs/zk/simulator.md` marks R9 met for the reduction stages' claims.
+  - **Not yet:** the calculators count `B_T` with #521, #147 commits the masks, and #162 tests them.
+
 - RFC-0016's audit calculators and `tessera audit plan` ([#141](https://github.com/AbdelStark/tessera/issues/141)):
   - **`tessera_protocol::AuditPlan`.** From a policy, each bucket's `BucketTraffic` (requests, mean length, violating requests) and the cost model's `μ`, it gives the plan, per bucket and in total:
     - the detection probability against a prover that pads each violation into the later bucket of lowest rate, `1 − Π_b (1 − s̲_b)^{v_b}`;

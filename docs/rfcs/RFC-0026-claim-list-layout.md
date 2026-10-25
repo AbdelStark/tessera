@@ -8,7 +8,7 @@
   - [RFC-0007](RFC-0007-claim-list.md#schema) 'Schema': `ClaimList`'s `scoring` and `anchor` fields, and `CommitmentLayout`'s `WeightLayoutParams`; 'Verifier validation', step 7;
   - [RFC-0012](RFC-0012-weight-commitment.md#layout) 'Layout': the fields of `WeightLayoutParams`, which `R_W` hashes.
 - Origin: [#85](https://github.com/AbdelStark/tessera/issues/85)
-- Amended by: [RFC-0027](RFC-0027-logits-exponent.md) ('Motivation': `PublicQuantSpec` now carries the logits' scale)
+- Amended by: [RFC-0027](RFC-0027-logits-exponent.md) ('Motivation': `PublicQuantSpec` now carries the logits' scale), [RFC-0065](RFC-0065-masked-channel-params.md) ('Schema': `WeightLayoutParams.blinding_rows` is a single-claim matrix's `B_W`, and `ChannelParams`' `B_CP` follows from it)
 
 ## Summary
 
@@ -71,7 +71,7 @@ pub struct WeightLayoutParams {
     pub log2_k: u8,                          // the largest message width k_W = 2^log2_k
     pub log2_inv_rate: u8,                   // 2: rate 1/4
     pub mask_coeffs: u32,                    // P_W, each row's mask coefficients
-    pub blinding_rows: u32,                  // B_W, each matrix's blinding rows
+    pub blinding_rows: u32,                  // B_W, a single-claim matrix's blinding rows; ChannelParams' B_CP follows (RFC-0065)
 }
 ```
 
