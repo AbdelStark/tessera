@@ -19,6 +19,7 @@
   - [RFC-0026](RFC-0026-claim-list-layout.md) and [RFC-0031](RFC-0031-commitment-id.md): `blinding_rows` is a single-claim matrix's `B_W`, and a matrix's `rows` count its `B_T`;
   - [RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-matrices) 'The matrices' and 'Encoding, leaves and roots': `B_CP`, and the leaves over the blinding rows;
   - [RFC-0049](RFC-0049-weight-proximity.md#the-calculator) 'The calculator' and [RFC-0064](RFC-0064-weight-linking-proof.md): each matrix's own `B_T`.
+- Amended by: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('What the stages owe': a revealed value may also lie inside a column value that carries its own column mask; the leaf stage meets it, and `tessera-protocol/2` admits sites of two classes or more)
 - Origin: [#487](https://github.com/AbdelStark/tessera/issues/487), from the simulator argument ([`docs/zk/simulator.md`](../zk/simulator.md) §4.5, requirement R9)
 
 ## Summary
@@ -86,15 +87,15 @@ P'_{t_i}(x) = \tilde P_{t_i}(x) + Z(x) \cdot S_i(x), \qquad Z(x) = \prod_{j \ge 
 
 A masked extension hides its tensor only where it is revealed at points whose coordinates other than the lowest are off `{0, 1}` (R8). For the type tensors:
 - **Every revealed value of `P'_{t_i}`** sits at such a point. That covers the claim `v_i`, which is a direct evaluation `P'_{t_i}(x_i)`, and any value a stage reveals on the way, such as a lookup's key forms at the leaf level's pair-bit points (`docs/zk/simulator.md` §4.3).
-- **No stage reveals** `P̃_{t_i}`, a value of `P'_{t_i}` at a point with a Boolean coordinate other than the lowest, or a combination all of whose terms are such values, as RFC-0037's stack over layers is (R8's second clause).
+- **No stage reveals** `P̃_{t_i}`, a value of `P'_{t_i}` at a point with a Boolean coordinate other than the lowest, or a combination all of whose terms are such values, as RFC-0037's stack over layers is (R8's second clause). Such values may lie inside a column value that carries its own column mask ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks)), which masks them as one.
 - **The values' functionals.** Each `Z` at those points vanishes with probability at most `2(c_i + λ − 1)/|Fp2|`. The values' functionals of the matrix's pair are independent ('Zero knowledge'): R10, which #488 checks on the compiled schedule for each matrix, `β_T` included.
 - **The mask is never dropped.** No `ChannelParams` evaluation row is opened without its `Z(x_i)·R_i` term. If `Z(x_i) = 0`, the prover aborts before it sends `v_i`, and its reservation stays burned (RFC-0012 `abort`). The pair is shared, so one unmasked row would reveal `β_T`, and with it a fold through every other claim's `q_j`. Two unmasked rows would reveal the difference of their folds.
 - **The reduction stages meet this.** A claim from a `Mul(Leading)` instance, an affine site's multiplier tensor, sits at the instance's final point, all challenges.
-- **The leaf stage does not, as specified.** RFC-0045 'The split' sends one value of each class tensor per real layer, at Boolean layer coordinates, and RFC-0037 stacks them at `ρ_1`. Each per-layer value has `Z = 0`, so it is the secret's own, and their stack is `Ã_CP(point_i)` with no mask term.
+- **The leaf stage did not, as first specified.** RFC-0068 replaces it in `tessera-protocol/2`, and the leaf stage then meets this section ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#zero-knowledge) 'Zero knowledge', R9). RFC-0045 'The split' sends one value of each class tensor per real layer, at Boolean layer coordinates, and RFC-0037 stacks them at `ρ_1`. Each per-layer value has `Z = 0`, so it is the secret's own, and their stack is `Ã_CP(point_i)` with no mask term.
   - 126 such values per site and proof reveal `⟨eq(r_c), class_{t,ℓ}⟩` for each layer. Classes survive a refresh, so the proofs of every epoch add up.
   - `tessera-protocol/2`'s leaf layout ([#486](https://github.com/AbdelStark/tessera/issues/486), R8) must read each class tensor's `P'` only at points whose coordinates other than the lowest are challenges, with no per-layer value. One example is a layer point per site in place of the shared `ρ_1`.
-  - **Until it does, such sites are refused.** In `tessera-protocol/2`, every site with a `ChannelParams` must be affine. A site of two classes or more is refused. The compiler refuses to emit such a claim list, with `ERR-USAGE`. The verifier rejects one at claim-list validation, `Reject(StatementMismatch { field: Rescaling { site } })` (RFC-0007 step 2.4, RFC-0039 step 2.4). The honest prover's `v_i`, the stack, would fail step 9 anyway.
-  - **At 405B** all seven claims come from two-class sites, so its `tessera-protocol/2` proofs wait for #486.
+  - **Until RFC-0068, such sites were refused.** That refusal is lifted. It read: in `tessera-protocol/2`, every site with a `ChannelParams` must be affine. A site of two classes or more is refused. The compiler refuses to emit such a claim list, with `ERR-USAGE`. The verifier rejects one at claim-list validation, `Reject(StatementMismatch { field: Rescaling { site } })` (RFC-0007 step 2.4, RFC-0039 step 2.4). The honest prover's `v_i`, the stack, would fail step 9 anyway.
+  - **At 405B** all seven claims come from two-class sites, so its `tessera-protocol/2` proofs needed RFC-0068's leaf stage.
 
 ### The evaluation rows
 
@@ -227,7 +228,7 @@ B_CP = B_W + 2·(e_CP − 1)·⌊max(B_W − 4, 0)/6⌋   when e_CP ≥ 1, and 0
 - **What that costs.** The independence fails with probability about `2e_T·log2 k/p ≈ 2^{−55}`, within the singular event's `1/p`.
 - **For `ChannelParams` only.** The one-claim matrices keep §6.2's reading, with `β` designated and `U` on `R_W`; it is equally valid for them.
 
-R9 is met for every matrix all of whose claims meet 'What the stages owe': today every model whose `ChannelParams` sites are all affine. Models with sites of two classes or more follow with #486.
+R9 is met for every matrix all of whose claims meet 'What the stages owe'. With RFC-0068's leaf stage, that is every model's.
 
 ### The verifier
 
@@ -249,7 +250,7 @@ R9 is met for every matrix all of whose claims meet 'What the stages owe': today
 
 - `ChannelParams` holds three times as many blinding rows as the other matrices. Its 8,184 extra rows add 1.8% to the store and to every column answer.
 - `B_CP` depends on the claim list as well as the layout, so a model's `ChannelParams` row count follows from both.
-- Until #486, `tessera-protocol/2` admits only affine `ChannelParams` sites, so 405B's two-class sites wait for it. The refusal reaches further:
+- Until RFC-0068, `tessera-protocol/2` admitted only affine `ChannelParams` sites. RFC-0068 lifts the refusal, which reached further:
   - The Silu site can never be affine: an affine site follows the Q, K, V, O, up or down projection (RFC-0007 step 2.2, RFC-0025). So every `tessera-protocol/2` model needs a one-class Silu, one scale for all of Gate's channels.
   - The `minimal` profile's O and Down refuse `affine` (RFC-0025 'The quantizer'), so those two need one class too.
   - `tessera-quant` will need a `tessera-protocol/2` mode.
@@ -257,11 +258,11 @@ R9 is met for every matrix all of whose claims meet 'What the stages owe': today
 ## Migration / Rollout
 
 - **#147** commits the masks and blinding rows, `B_CP` included, and implements the reservation and the budget.
-- **#486** specifies the `tessera-protocol/2` leaf stage, reading the class tensors as 'What the stages owe' requires, and lifts the refusal of sites of two classes or more.
+- **#486** specifies the `tessera-protocol/2` leaf stage, reading the class tensors as 'What the stages owe' requires, and lifts the refusal of sites of two classes or more: RFC-0068.
 - **#154** builds the masked extensions of the type tensors in the stages that read them, and **#159** verifies them.
 - **#162** distinguishes two witnesses that differ in `ChannelParams`, at the openings and at the leaf stage's split values. The current text is the negative control.
 - **#521** makes both calculators and the soundness oracle count `B_T`.
-- **`docs/zk/simulator.md`** marks R9 met for models whose `ChannelParams` sites are all affine, and for the others with #486.
+- **`docs/zk/simulator.md`** marks R9 met for models whose `ChannelParams` sites are all affine, and for the others with RFC-0068.
 
 ## Testing Strategy
 
@@ -269,7 +270,7 @@ R9 is met for every matrix all of whose claims meet 'What the stages owe': today
 - **Adversarial (#147, #159).**
   - A false `v_i` gives `Reject(Evaluation { commitment: Weight })`.
   - A row that swaps `β_T` for some `R_i` gives `Reject(Proximity { commitment: Weight, column })`.
-  - A `tessera-protocol/2` claim list with a site of two classes or more gives `Reject(StatementMismatch { field: Rescaling { site } })` until #486.
+  - A `tessera-protocol/2` claim list with a site of two classes or more is accepted at claim-list validation (RFC-0068).
   - The reservation gives `Reject(Budget)` when:
     - it reuses a burned row;
     - it reaches past `B_T − 4`;

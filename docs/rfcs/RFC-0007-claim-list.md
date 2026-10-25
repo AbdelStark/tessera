@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Schema': `PublicQuantSpec`'s affine sites; 'Public and hidden quantization data'; 'Verifier validation', step 5), [RFC-0026](RFC-0026-claim-list-layout.md) ('Schema': `scoring` and `anchor` join with their circuits, and `WeightLayoutParams`' fields; 'Verifier validation', step 7), [RFC-0027](RFC-0027-logits-exponent.md) ('Schema': `PublicQuantSpec`'s `logits_exponent`), [RFC-0030](RFC-0030-masked-exponentials.md) ('Verifier validation', step 5: `SoftmaxRow`'s table), [RFC-0065](RFC-0065-masked-channel-params.md) ('Verifier validation' step 2.4: in `tessera-protocol/2`, no site of two classes or more until #486)
+- Amended by: [RFC-0025](RFC-0025-affine-sites.md) ('Schema': `PublicQuantSpec`'s affine sites; 'Public and hidden quantization data'; 'Verifier validation', step 5), [RFC-0026](RFC-0026-claim-list-layout.md) ('Schema': `scoring` and `anchor` join with their circuits, and `WeightLayoutParams`' fields; 'Verifier validation', step 7), [RFC-0027](RFC-0027-logits-exponent.md) ('Schema': `PublicQuantSpec`'s `logits_exponent`), [RFC-0030](RFC-0030-masked-exponentials.md) ('Verifier validation', step 5: `SoftmaxRow`'s table), [RFC-0065](RFC-0065-masked-channel-params.md) ('Verifier validation' step 2.4: in `tessera-protocol/2`, no site of two classes or more until #486), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Verifier validation' step 2.4: lifted)
 
 ## Summary
 
@@ -121,7 +121,7 @@ Before reading any proof message, the verifier runs these checks in order. The f
       - the embedding's shift `s_e` into the residual is non-negative, `s_e ≥ 0` ([RFC-0005](RFC-0005-integer-model.md#scale-policy)), and keeps `127 · 2^{s_e} < 2^{residual_bits − 1}`;
       - `rms_eps_int ≥ 1` and `rsqrt_kappa ≤ 31`.
    3. Every layer's sites are rescaled alike ([RFC-0038](RFC-0038-uniform-layers.md)): each site is affine in every layer or in none, and a `pot` site has one class in every layer or several in every layer (`Rescaling { site }`, the first site in 03 §2's declaration order that breaks it).
-   4. In `tessera-protocol/2`, until [#486](https://github.com/AbdelStark/tessera/issues/486), no site has two classes or more: a site with a `ChannelParams` is affine ([RFC-0065](RFC-0065-masked-channel-params.md) 'What the stages owe'; `Rescaling { site }`, the first such site in 03 §2's declaration order).
+   4. No check. RFC-0065 refused, in `tessera-protocol/2`, a site of two classes or more, until [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) lifted it: its leaf stage reads the class tensors as RFC-0065 'What the stages owe' requires.
 3. Profile constraints hold for the derived graph (S1–S3 of [RFC-0005](RFC-0005-integer-model.md#profiles)) when the profile claims them (`Profile`).
 4. Tables: each `TableSpec` is regenerated from its definition by the verifier's own generator; the digest must match (`Table { table }`, in `TableId` order).
 5. Ranges, in this order:

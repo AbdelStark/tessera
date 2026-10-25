@@ -9,6 +9,7 @@
   - [RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree) 'Fraction tree': the roots and the leaf checks;
   - [RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels': forests of one tree, and the levels' sumchecks;
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule) 'Transcript schedule', rows 4 and 5.
+- Amended by: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Leaf checks': each LogUp instance's key and value columns take a mask row of their own, and the leaf level's raised degree falls in the round before the last)
 - Origin: [#224](https://github.com/AbdelStark/tessera/issues/224)
 
 ## Summary
@@ -123,7 +124,7 @@ over every variable but the lowest.
 - It also masks a point whose lowest coordinate is Boolean.
 - A LogUp leaf level's pair bit is the lowest bit of the lookup index, or of the table row's, and so the lowest variable of the keys, the values and the multiplicities. A LogUp tree has height 2 at least, padded with neutral leaves, so that they have two variables.
 
-**Fraction forests.** The leaf level has no mask row of its own. With `pt` the padding tree's coordinate and `x_low` the leaf index within a tree, its polynomials are RFC-0008's leaves read through the masked extensions `κ'`, `e'` and `m'`:
+**Fraction forests.** The leaf level has no mask row of its own. Each instance's `κ'` and `e'` carry its column mask rows ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks) 'Column masks'). With `pt` the padding tree's coordinate and `x_low` the leaf index within a tree, its polynomials are RFC-0008's leaves read through the masked extensions `κ'`, `e'` and `m'`:
 
 | Polynomial | Leaf level |
 |---|---|
@@ -139,7 +140,7 @@ over every variable but the lowest.
   - the prover sends `e'(p_low)` under `logup/values`, from which the verifier derives the claim on `κ'(p_low)`;
   - the table numerators' claim gives `m'(p_low)`.
 - **Where the claims go.** The claims on `κ'` go to the stage that produces the keys, and those on `e'` and `m'` to the openings, as RFC-0013 says.
-- **Degree.** The last round's degree is at most 7.
+- **Degree.** The tree index is the leaf level's highest variable, so it takes the last level's last round. The `Z` of `κ'`, `e'` and `m'` spares it, and does not vanish at that level's summation points from the round before the last on. The fraction forests' leaves therefore raise that round's degree, to at most 7, and not the last round's (RFC-0068).
 
 **Product forests.** `C̃·k'` would raise the leaf level's degree past 7, so a `SoftmaxRow` forest's leaf level takes its own mask row, like a level above it. RFC-0030's reduction folds it: `Σ_x eq(p, x)·(C(x)·k(x) + Z_h(q)·R_h[x_col]) = L'_h(p) − 1 + C̃(p)`. The instance exists already, so no stage is added.
 

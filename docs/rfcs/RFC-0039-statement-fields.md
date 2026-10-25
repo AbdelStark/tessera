@@ -7,7 +7,7 @@
 - Supersedes, on acceptance:
   - [04 §2](../spec/04-error-model.md#2-verdicts) 'Verdicts': `StatementField`, the payload of `Reject(StatementMismatch)`, is defined here;
   - [RFC-0007](RFC-0007-claim-list.md#verifier-validation) 'Verifier validation': every step names the field it rejects with. Step 1 defers to RFC-0019's order. Step 2 states every architecture and quantization rule. Step 5 checks the gadget policy first and the table set last.
-- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('The checks', step 2.4: in `tessera-protocol/2`, affine `ChannelParams` sites only, until #486)
+- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('The checks', step 2.4: in `tessera-protocol/2`, affine `ChannelParams` sites only, until #486), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('The checks', step 2.4: lifted)
 - Origin: [#346](https://github.com/AbdelStark/tessera/issues/346)
 
 ## Summary
@@ -74,7 +74,7 @@ Its TCE encoding is RFC-0003's: a `u16` tag, the variant's declaration index, th
 | 2.1 | the architecture's consistency | `Architecture` |
 | 2.2 | the public quantization data's rules | `Quantization` |
 | 2.3 | every layer's sites rescaled alike ([RFC-0038](RFC-0038-uniform-layers.md#the-rule)) | `Rescaling { site }`, the first site in 03 §2's declaration order that breaks it |
-| 2.4 | in `tessera-protocol/2`, every site with a `ChannelParams` is affine, until [#486](https://github.com/AbdelStark/tessera/issues/486) ([RFC-0065](RFC-0065-masked-channel-params.md) 'What the stages owe') | `Rescaling { site }`, the first site in 03 §2's declaration order that breaks it |
+| 2.4 | none: RFC-0065's refusal, in `tessera-protocol/2`, of a site with a `ChannelParams` that is not affine, is lifted by [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) | none |
 | 3 | the profile's constraints S1–S3 | `Profile` |
 | 4 | each table's regeneration | `Table { table }`, the first in `TableId` order |
 | 5.1 | `max_log2_rows` from 1 to 32 | `GadgetPolicy` |

@@ -9,7 +9,9 @@
   - [RFC-0045](RFC-0045-leaf-layout.md#the-split) 'The split': the values of sites in the layers are sent once per site and tensor, at a random layer point, after a layer sumcheck;
   - [RFC-0037](RFC-0037-stage-schedule.md#the-layer-point) 'The layer point' and 'Splits': stage 1's layer point is the layer sumcheck's, and the leaf stage's atom splits are taken there;
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule) 'Transcript schedule' rows 5 and 6, and 'Soundness calculator': the layer sumcheck's labels and terms;
-  - [RFC-0065](RFC-0065-masked-channel-params.md#what-the-stages-owe) 'What the stages owe', [RFC-0007](RFC-0007-claim-list.md) 'Verifier validation' step 4 and [RFC-0039](RFC-0039-statement-fields.md) step 2.4: `ChannelParams` sites of two classes or more are admitted.
+  - [RFC-0036](RFC-0036-protocol-messages.md) schema version 2: the leaf stage's proof carries the layer sumcheck;
+  - [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#leaf-checks) 'Leaf checks', 'Degree': the tree index takes a forest's last round, so the round of raised degree is the one before it;
+  - [RFC-0065](RFC-0065-masked-channel-params.md#what-the-stages-owe) 'What the stages owe', [RFC-0007](RFC-0007-claim-list.md) 'Verifier validation' step 2.4 and [RFC-0039](RFC-0039-statement-fields.md) step 2.4: `ChannelParams` sites of two classes or more are admitted.
 - Origin: [#486](https://github.com/AbdelStark/tessera/issues/486)
 
 ## Summary
@@ -20,10 +22,15 @@
 
 This RFC changes three things:
 - **Column masks.** Each instance's key column, and its value column when its table has values, takes one `Fp2` mask row: `κ'_I = κ̃_I + Z·R̃_{κ,I}`. The revealed column values are then masked by the instance's own rows, whatever tensors and layers the instance holds.
-- **A layer sumcheck.** In place of the per-layer split values, one masked sumcheck reduces every instance's leaf claims to one value per site and tensor at a random layer point `ρ'`, where the tensors' own masks act. The column masks' terms are folded into it, so they are revealed only at its final point. Stage 1 stacks at `ρ_1 = ρ'`.
+- **A layer sumcheck.** In place of the per-layer split values, one masked sumcheck reduces every instance's leaf claims to one value per site and tensor at a random layer point `ρ'`, where the tensors' own masks act. The column masks' terms are folded into it, so they are revealed only at its final point. Stage 1 stacks at `ρ_1 = ρ'_y`, the point's layer coordinates.
 - **Admission.** `ChannelParams` sites of two classes or more, refused in `tessera-protocol/2` until this RFC, are admitted. Their class tensor is no longer revealed per layer.
 
-At 405B this costs 36 column mask rows, 72 committed rows on 2,328,576, and one masked sumcheck of 22 rounds. The split shrinks from 53,489 values to 614. `tessera-protocol/1` is unchanged.
+At 405B this costs:
+- 36 column mask rows, 72 committed rows, against 953,580 committed advice rows;
+- one masked sumcheck of 22 rounds;
+- one more advice opening group, about 64 MiB, which takes the proof from about 2.8 GB to 2.87 GB, inside 08's 4 GiB gate.
+
+The split shrinks from 53,489 values to 614. `tessera-protocol/1` is unchanged.
 
 ## Motivation
 
@@ -33,7 +40,7 @@ At 405B this costs 36 column mask rows, 72 committed rows on 2,328,576, and one 
   - RFC-0032 reads the columns through the tensors' masked extensions, which vanish at Boolean layers. So the column values that the last tree level reveals at `(b ‖ r')` are unmasked combinations.
   - `simulator.md` §4.3's "masked by those tensors' own masks once R8 is met" holds only once the per-layer terms are masked, and as specified they are not.
 - **What #486 weighed, and a third option.**
-  - **One mask row per tensor and layer (R1).** It masks every per-layer evaluation. At 405B that is 53,298 `Fp2` rows, 106,596 committed rows, 4.6% of the advice. It keeps 53,489 split values.
+  - **One mask row per tensor and layer (R1).** It masks every per-layer evaluation. At 405B that is 53,298 `Fp2` rows, 106,596 committed rows, 11.2% more than the 953,580 committed advice rows. It keeps 53,489 split values.
   - **A layout whose leaf point gives random layer coordinates (R2).** It needs blocks for padded layers, 81,746,788,352 more lookups at 405B (1.59%). Its layer point per site, `P[k_s..k_s+λ]`, depends on the site's block size, so stage 1 would stack sites at different layer points, against RFC-0037's one.
   - **Masking tensors.** Masking the tensors more cleverly is fragile. Tables differ by layer (requantization tables by shift, `Silu` tables by input exponent), so an instance can hold a site's later layers but not its first. A mask keyed to one layer then misses that instance, as an adversarial read of this RFC's first draft showed with valid claim lists.
   - **Masking the columns.** The columns are what is revealed, so masking them directly does not depend on how instances and layers interleave.
@@ -48,7 +55,7 @@ At 405B this costs 36 column mask rows, 72 committed rows on 2,328,576, and one 
 
 - **The masking polynomials' openings** (#489). The layer sumcheck adds one.
 - **Grouped leaf stages** (RFC-0054). `tessera-protocol/2` accepts none.
-- **Claims at Boolean layers outside the leaf stage.** The epilogue's claim on the last checkpoint, `Layers::One(L − 1)` (RFC-0037), sits at a Boolean layer where no mask acts. That is filed with this RFC as its own issue.
+- **Claims at Boolean layers outside the leaf stage.** The epilogue's claim on the last checkpoint, `Layers::One(L − 1)` (RFC-0037), sits at a Boolean layer where no mask acts. It is #535.
 
 ## Proposed Design
 
@@ -57,6 +64,10 @@ At 405B this costs 36 column mask rows, 72 committed rows on 2,328,576, and one 
 - A tensor of a site in the layers is stacked over `2^λ` layer slots, the layer variables `y` highest (RFC-0037). Its other variables are `x`.
 - `r_s = P[0..k_s]` is site `s`'s point (RFC-0045 'The leaf point'), and `π_t(r_s)` is tensor `t`'s coordinates in it.
 - Instance `I` has a column of `2^{h_I}` entries, its leaf claims at `P[0..h_I]`.
+- **`P` in `tessera-protocol/2`.** RFC-0045 'The leaf point' defines `P` for `tessera-protocol/1`.
+  - In `tessera-protocol/2` every LogUp tree is a forest with a padding tree (RFC-0032 'Forests of two trees at least'). The tree index is the forest leaf level's highest variable, so it takes the last tree level's last round challenge `r_{N−1}`, with `N` that level's round count and `H` the tallest forest's height.
+  - A tree of height `h` then has its leaves at `(ρ_{H−1}, r_{N−h}, …, r_{N−2})`, and its columns' claims are RFC-0032's at `p_low`.
+  - So `P = (ρ_{H−1}, r_{N−2}, r_{N−3}, …, r_0)`: RFC-0045's point without `r_{N−1}`. RFC-0045's identities hold at it as written, and `N` and `H` appear nowhere else in this RFC.
 
 ### Column masks
 
@@ -75,7 +86,7 @@ For each LogUp instance `I`:
 
 In `tessera-protocol/2` the leaf stage ends as follows, after `logup/values`.
 
-1. **The values outside the layers.** For each site outside the layers, in node order, the prover sends its tensors' values at their points, as RFC-0045 says, under `stage/0/split`. Their points' coordinates are all challenges, so the tensors' masks act there.
+1. **The values outside the layers.** For each site outside the layers, in node order, the prover sends its tensors' values at their points, as RFC-0045 says, under `stage/0/split`. An outside claim that RFC-0037 splits into atoms has its atom values follow, as RFC-0037 'Splits' orders them. Their points' coordinates are all challenges, so the tensors' masks act there.
 2. **The claims.** Each instance has its key claim `κ'_I(P[0..h_I])`, and its value claim when its table has values: that of RFC-0032, derived from the last level and `logup/values`. By RFC-0045's identity and the column mask,
    ```text
    κ'_I(P[0..h_I]) = Σ_{(s,t) layered} Σ_ℓ C^κ_{I,s,t}(ℓ)·X̃_t(π_t(r_s) ‖ ℓ)  +  out^κ_I  +  pub^κ_I  +  Z(P[0..h_I])·R̃_{κ,I}(P[0..c_I])
@@ -91,7 +102,10 @@ In `tessera-protocol/2` the leaf stage ends as follows, after `logup/values`.
    ```text
    W_{s,t}(ℓ) = Σ_i γ^i·C_{i,s,t}(ℓ),     H = Σ_i γ^i·(claim_i − out_i − pub_i)
    ```
-4. **The sumcheck** proves `H` as the sum of two kinds of instances, batched by RFC-0010 'Batching within a stage' over `n = max(λ, max_I c_I)` variables. Each instance takes the last of the `n` challenges its variables need, scaled by `2^{n − n_i}`.
+4. **The sumcheck** proves `H` as the sum of two kinds of instances over `n = max(λ, max_I c_I)` variables. Each instance takes the last `n_i` of the `n` challenges, as RFC-0010 'Batching within a stage' front-pads.
+   - **Scaling.** RFC-0010's batching enters each instance's claim scaled by `2^{n − n_i}`. That needs each instance's own claim, which the verifier does not know here: the folds' sums are secret.
+   - So each instance's summand is multiplied instead by `2^{−(n − n_i)}`, and the sumcheck starts from `H` itself. Summing a summand that ignores its first `n − n_i` variables over all `n` counts it `2^{n − n_i}` times, so the scaled sum is the instance's own.
+   - The same factor multiplies each instance's final value in the last check.
    - **The layer instance,** over the `λ` layer variables:
      ```text
      Σ_{y ∈ {0,1}^λ} Σ_{(s,t) layered} W̃_{s,t}(y)·X'_t(π_t(r_s) ‖ y)
@@ -104,7 +118,13 @@ In `tessera-protocol/2` the leaf stage ends as follows, after `logup/values`.
      The verifier never learns `R̃(p_i[0..c_i])`, which would unmask the column; this is RFC-0013's fold for a virtual tensor's mask.
    - **Masking.** RFC-0013's masked sumcheck masks it, its masking polynomial `G` committed in Round 1.
    - **Rounds.** Round `j` sends its polynomial under `stage/0/layer/round/{j}`, then draws `ρ'_j` under `stage/0/layer/r/{j}`.
-   - **Degrees.** A fold has degree 2 in each variable. The layer instance has degree 2 except in its last round, which has degree 3: until then its remaining layer variables are Boolean, so `Z`'s layer factors vanish. At 405B, `n = 22`: 21 rounds of degree 2, then 1 of degree 3.
+   - **Degrees.**
+     - A fold has degree 2 in each variable.
+     - The layer instance has degree 2 in every round but its last. Until then its remaining layer variables are Boolean, so `Z`'s layer factors vanish.
+     - In its last round, `W̃·X'_t` has degree 3: `Z`'s factor `y(1 − y)` times `W̃`. It has degree 4 when the tensor's own mask `R_t` takes `y_{λ−1}` among its column variables, as RFC-0013 gives a stacked tensor of `n_V ≤ log2 k` variables.
+     - At 405B, 381 of the 423 layered pairs, the two `RsqrtRow` sites' 376 among them, read tensors of at most 14 non-layer variables, so `n_V ≤ 21 ≤ 22`. The last round therefore has degree 4.
+     - So `n = 22`: 21 rounds of degree 2, then 1 of degree `d_n = 4`. In general `d_n` is 3, or 4 when some layered tensor's mask variables include `y_{λ−1}`.
+     - The verifier derives every round's degree from the schedule and refuses a round message of another length (`Reject(Malformed)`).
 5. **The final values.** The prover sends, under `stage/0/layer/evals`, in this order:
    1. `v_{s,t} = X'_t(π_t(r_s) ‖ ρ'_y)` for every layered site and tensor, in RFC-0045's order of sites and tensors. `ρ'_y` is the layer instance's point, the last `λ` challenges.
    2. `u_i = R̃_{·,I(i)}(ρ'_{w_i})` for every column mask, in claim order. `ρ'_{w_i}` is fold `i`'s point, the last `c_i` challenges.
@@ -114,24 +134,24 @@ In `tessera-protocol/2` the leaf stage ends as follows, after `logup/values`.
 7. **The result.**
    - **Each `v_{s,t}`** is the stacked claim `X'_t(π_t(r_s) ‖ ρ'_y)` of RFC-0037 'The layer point', and stage 1's layer point is `ρ_1 = ρ'_y`. `tessera-protocol/2` draws no `stage/1/layer/{c}`.
    - **A stacked claim that RFC-0037 splits into atoms** is split at that point. Its atom values follow, under `stage/0/layer/split`, in RFC-0037's order.
-   - **Each `u_i`** is a claim on its mask row at `ρ'_{w_i}`, which joins the advice pool. Its column functional is `eq(ρ'_{w_i}, ·)`.
+   - **Each `u_i`** is a claim on its mask row at `ρ'_{w_i}`, which joins the advice pool. Its column functional is `eq(ρ'_{w_i}, ·)`. At 405B every column has `h_I ≥ 22`, table 3's the shortest at 22, so every `c_I = 22` and all the `u_i` share `ρ'` as their column sub-point: one more opening group of RFC-0011.
    - **Stage 1** is otherwise unchanged.
 
 **Soundness.**
 - A false `claim_i` survives batching with probability at most `n_claims/|Fp2|` over `γ`.
-- The sumcheck adds at most `Σ_j d_j/|Fp2|` over `ρ'`, where `Σ_j d_j = 2(n − 1) + 3`.
+- The sumcheck adds at most `Σ_j d_j/|Fp2|` over `ρ'`, where `Σ_j d_j = 2(n − 1) + d_n`.
 - The masked sumcheck's `ρ_zk` adds `1/|Fp2|` (RFC-0013).
-- These replace `tessera-protocol/1`'s stacking error of `λ/|Fp2|` over `ρ_1`. At 405B, with `n = 22` and 36 claims, the total is `(36 + 45 + 1)/|Fp2| < 2^{-121}`.
-- **The calculator** (RFC-0014) counts, in `tessera-protocol/2`:
-  - `n − 1` rounds of degree 2 and one of degree 3;
-  - one more stage of `m = n_claims` instances, with its `ρ` term;
-  - no stacking term at stage 1.
+- These replace `tessera-protocol/1`'s stacking error of `λ/|Fp2|` over `ρ_1`. At 405B, with `n = 22`, `d_n = 4` and 36 claims, the total is `(36 + 46 + 1)/|Fp2| < 2^{-121}`.
+- **The calculator** (RFC-0014) counts the layer sumcheck as one more reduction stage of `tessera-protocol/2`:
+  - its `n − 1` rounds of degree 2 and one of degree `d_n`, in `rounds`;
+  - its `m = n_claims` instances, in `stages`, which brings its `ρ` term.
+  - The layer point it replaces has no term in RFC-0014's calculator. #537 adds one for `tessera-protocol/1`.
 
 ### What is sent, in `tessera-protocol/2`
 
 | Order | Item | Label |
 |---|---|---|
-| after `logup/values` | the outside sites' values | `stage/0/split` |
+| after `logup/values` | the outside sites' values, then their atom values | `stage/0/split` |
 | | `Γ`, then `ρ_zk` | `stage/0/layer/zk-sum`, `stage/0/layer/zk-rho` |
 | | `γ` | `stage/0/layer/gamma` |
 | per round `j < n` | its polynomial, then `ρ'_j` | `stage/0/layer/round/{j}`, `stage/0/layer/r/{j}` |
@@ -159,7 +179,12 @@ This section covers what the verifier sees of the leaf stage (`simulator.md` §4
   - `R_t` is then revealed at that point and at stage 1's final point, as in every stacked claim. R10's check (#488) covers those points as before.
 - **The outside values** sit at points of challenges and are masked by their tensors' own masks.
 - **R8.** No tensor or column of the leaf stage is revealed alone at a point where its mask vanishes, and every revealed sum of such terms carries a column mask. R8 is met for the leaf stage.
-- **R9.** `ChannelParams`' class tensors are read at the leaf per layer, but those evaluations are now revealed only inside masked columns. Their stacked claim sits at `(π(r_s) ‖ ρ'_y)`, with random coordinates, where RFC-0065's per-claim masks act. So sites of two classes or more meet RFC-0065 'What the stages owe', and `tessera-protocol/2` admits them.
+- **R9.** `ChannelParams`' class tensors are read at the leaf per layer, but those evaluations are now revealed only inside masked columns.
+  - Their stacked claim sits at RFC-0065's `x_i = π(r_s) ‖ ρ'_y`, with random coordinates, where the per-claim masks act.
+  - Their Boolean-layer terms carry no `R_i` and no `β_T` functional.
+  - So sites of two classes or more meet RFC-0065 'What the stages owe', amended to read: "every revealed value of a type tensor sits at a point whose coordinates other than the lowest are challenges, or inside a column value that carries its own column mask (RFC-0068)".
+  - RFC-0065's rule that the prover aborts when `Z(x_i) = 0` applies to these claims before `stage/0/layer/evals`.
+  - `tessera-protocol/2` admits them, and RFC-0007's and RFC-0039's step 2.4 refusal is lifted.
 
 ### Cost at 405B
 
@@ -170,11 +195,13 @@ The figures are computed from the compiler's layout: `LeafLayout::model` on the 
 | Sites, of them in the layers; instances | 18, 16; 25 | the same |
 | Split values | 53,489: 423 layered pairs × 126 layers, plus 191 outside | 614: 423 at `ρ'` and 191 outside, plus 36 `u_i` |
 | Split bytes | 856 KB | 10.4 KB |
-| Column mask rows | — | 36 `Fp2` rows (25 key and 11 value columns): 72 committed rows on 2,328,576 |
-| Layer sumcheck | — | 22 rounds, 21 of degree 2 and 1 of degree 3; masking polynomial `2(21·3 + 4 + 1) = 136` committed elements |
+| Column mask rows | — | 36 `Fp2` rows (25 key and 11 value columns): 72 committed rows on 953,580 |
+| Layer sumcheck | — | 22 rounds, 21 of degree 2 and 1 of degree 4; masking polynomial `2(21·3 + 5 + 1) = 138` committed elements |
+| Advice opening groups | RFC-0011's | one more, at `ρ'`: a blinding pair, a blinding claim and a combined row of `k = 2^{22}` `Fp2` values, about 64 MiB |
+| Proof | about 2.8 GB (08 §5) | about 2.87 GB, inside the 4 GiB gate |
 
 **For comparison:**
-- R1 would add 53,298 `Fp2` rows (106,596 committed, 4.6%) and keep 856 KB of split values;
+- R1 would add 53,298 `Fp2` rows, 106,596 committed (11.2%), with no new opening group, and keep 856 KB of split values;
 - R2 would add 81,746,788,352 lookups (1.59%) and give each site its own layer point.
 
 ## Alternatives Considered
@@ -188,11 +215,12 @@ The figures are computed from the compiler's layout: `LeafLayout::model` on the 
 ## Drawbacks
 
 - One more masked sumcheck, of 22 rounds at 405B, with one more masking polynomial whose opening #489 must cover.
+- One more advice opening group, about 64 MiB of proof. Reducing the `u_i` once more, inside stage 1 to a column sub-point stage 1 already opens, would remove it. That is left to the implementation's cost measurements.
 - `tessera-protocol/2`'s leaf stage differs from `tessera-protocol/1`'s, so both workspaces implement both.
 
 ## Migration / Rollout
 
-1. **This RFC.** It amends RFC-0032, RFC-0045, RFC-0037, RFC-0014, RFC-0065, RFC-0007 and RFC-0039. It updates `simulator.md` §4.3, and marks R8 met for the leaf stage and R9 met for every `ChannelParams` site.
+1. **This RFC.** It amends RFC-0032, RFC-0045, RFC-0037, RFC-0014, RFC-0036, RFC-0065, RFC-0007 and RFC-0039. It updates `simulator.md` §4.3, and marks R8 met for the leaf stage and R9 met for every `ChannelParams` site.
 2. **The prover:** column masks, the layer sumcheck, `ρ_1 = ρ'_y` (#148, #154), and `ChannelParams`' multi-class sites (#147).
 3. **The verifier** (#159): the same, written independently.
 4. **The distinguisher suite** (#162). As the negative control, it tells two witnesses apart through `tessera-protocol/1`'s per-layer split values, and through its column values with the column masks set to zero. It tells neither apart through this RFC's messages.
@@ -204,7 +232,7 @@ The figures are computed from the compiler's layout: `LeafLayout::model` on the 
     - a false key or value claim;
     - a false outside value;
     - a false `v_{s,t}`;
-    - a false `u_i`;
+    - a false `u_i`, at the opening;
     - a round polynomial off by one.
   - Soundness calibration over F65537 measures the layer sumcheck against its bound.
 - **Zero knowledge.**
@@ -216,8 +244,8 @@ The figures are computed from the compiler's layout: `LeafLayout::model` on the 
   - A `ChannelParams` site of two classes is accepted.
 - **Costs.** A test counts, on the 405B layout:
   - the layered pairs and outside values, 423 and 191;
-  - the instances and their columns, 25 key and 11 value;
-  - `n = 22`.
+  - the instances and their columns, 25 key and 11 value, the shortest of height 22;
+  - `n = 22` and `d_n = 4`.
 
 ## Open Questions
 
