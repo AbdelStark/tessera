@@ -7,7 +7,7 @@ use std::path::Path;
 
 use tv_codec::DecodeLimits;
 use tv_core::anchor::Failure;
-use tv_core::audit::{AuditPolicy, AuditReport, AuditSample, RateBucket, VerifierLedger};
+use tv_core::audit::{AuditPolicy, AuditReport, AuditSample, RateBucket, read_ledger};
 use tv_core::audit_plan::{AuditPlan, CostModel, TrafficBucket};
 use tv_core::claims::ParamSetId;
 use tv_core::verdict::ErrorCode;
@@ -30,14 +30,15 @@ plan    Detection probability of a tessera.audit-policy/1 policy at a tessera.au
         tessera.audit-plan/1; without --mu its overhead figures are null.
 report  The tessera.audit-report/1 report of a sample at its deadline, from the verifier's
         ledger: each selected request the ledger records accepted is accepted, with its U-hat,
-        and every other one unproven (DeadlineMissed). The sample must be the verifier's own
-        derivation. Exit 0 when every selected request is accepted, 10 otherwise.
+        and every other one unproven (DeadlineMissed). The sample must be one the ledger records
+        as the verifier's own derivation, else exit 64. Exit 0 when every selected request is
+        accepted, 10 otherwise.
 ";
 
 /// The most bytes a JSON input of `audit plan` may hold: a policy, a profile and a cost model
 /// take kilobytes, and the parsed tree takes a small multiple of its text.
 const JSON_LIMIT: u64 = 1 << 20;
-/// The most bytes the sample and the ledger may hold together.
+/// The most bytes the sample, and the ledger, may each hold.
 const ARTIFACT_LIMIT: u64 = 1 << 30;
 
 pub(crate) fn run(args: &[String], json_flag: bool) -> CommandOutput {
@@ -307,18 +308,20 @@ fn report(args: &[String], json_flag: bool) -> CommandOutput {
         Ok(sample) => sample,
         Err(code) => return fail(COMMAND, "cannot open the sample", json_flag, code),
     };
-    let ledger = match input.read(Path::new(ledger)).and_then(|bytes| {
-        VerifierLedger::open(&bytes, &limits).map_err(|e| ErrorCode::from(e.code()))
-    }) {
+    // The ledger's own reader: a regular file of one name, refused before it is opened
+    // otherwise (RFC-0067 'The path').
+    let ledger = match read_ledger(Path::new(ledger), &limits) {
         Ok(ledger) => ledger,
-        Err(code) => return fail(COMMAND, "cannot open the ledger", json_flag, code),
+        Err(e) => return fail(COMMAND, "cannot open the ledger", json_flag, e.code),
     };
     let report = match AuditReport::from_ledger(&sample, &ledger) {
         Ok(report) => report,
         Err(Failure::Inconclusive(e)) => {
             let message = match e.code {
                 ErrorCode::ProtocolCoinToss => "the sample's coin toss does not open",
-                ErrorCode::Usage => "the ledger's record does not fit the sample",
+                ErrorCode::Usage => {
+                    "the sample is not one this ledger derived, or its record does not fit it"
+                }
                 _ => "cannot build the report",
             };
             return fail(COMMAND, message, json_flag, e.code);

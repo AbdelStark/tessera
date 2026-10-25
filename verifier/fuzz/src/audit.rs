@@ -9,10 +9,12 @@
 //! it. An accepted input must be its value's one encoding: the payload re-encodes, and the
 //! envelope reseals, to the input byte for byte (INV-TCE-2), and each proper prefix of a payload
 //! is cut short. The value must keep the rules, read here from its accessors: the policy's
-//! buckets strictly increasing and its batch bounds; `selected` strictly increasing; each ledger
-//! record of a non-empty set whose last byte is not zero, with one `Û` per index, by strictly
-//! increasing sample. An accepted sample's report with an empty ledger must have every request
-//! unproven, or refuse a coin toss that does not open.
+//! buckets strictly increasing and its batch bounds; `selected` strictly increasing; `derived`
+//! strictly increasing, and each ledger record of a derived sample, of a non-empty set whose
+//! last byte is not zero, with one `Û` per index, by strictly increasing sample (RFC-0067). A
+//! report on an accepted sample from an empty ledger, which did not derive it, is refused; from
+//! a ledger that derived it, it has every request unproven, or refuses a coin toss that does not
+//! open.
 
 use tv_codec::{DecodeLimits, ErrorCode};
 use tv_core::anchor::Failure;
@@ -98,7 +100,11 @@ fn sample_rules(sample: &AuditSample) {
     for pair in sample.selected().windows(2) {
         assert!(pair[0] < pair[1], "selected not increasing");
     }
-    match AuditReport::from_ledger(sample, &VerifierLedger::new()) {
+    assert!(matches!(
+        AuditReport::from_ledger(sample, &VerifierLedger::new()),
+        Err(Failure::Inconclusive(e)) if e.code == Code::Usage
+    ));
+    match AuditReport::from_ledger(sample, &deriving(sample)) {
         Ok(report) => {
             assert_eq!(report.summary().unproven, sample.selected().len() as u64);
             assert_eq!(report.outcomes().len(), sample.selected().len());
@@ -109,6 +115,15 @@ fn sample_rules(sample: &AuditSample) {
 }
 
 fn ledger_rules(ledger: &VerifierLedger) {
+    for pair in ledger.derived().windows(2) {
+        assert!(pair[0] < pair[1], "derived not increasing");
+    }
+    for record in ledger.proven_samples() {
+        assert!(
+            ledger.derived().contains(record.sample()),
+            "a record of a sample not derived"
+        );
+    }
     for pair in ledger.proven_samples().windows(2) {
         assert!(
             pair[0].sample() < pair[1].sample(),
@@ -128,4 +143,13 @@ fn ledger_rules(ledger: &VerifierLedger) {
             "a trailing zero byte"
         );
     }
+}
+
+/// A ledger that derived `sample` and nothing else, decoded from its bytes.
+fn deriving(sample: &AuditSample) -> VerifierLedger {
+    let mut payload = vec![0; 24];
+    payload.extend(1u64.to_le_bytes());
+    payload.extend(sample.identity());
+    payload.extend(0u64.to_le_bytes());
+    VerifierLedger::decode_payload(&payload, &DecodeLimits::MESSAGE).unwrap()
 }

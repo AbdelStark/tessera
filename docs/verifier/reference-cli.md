@@ -81,9 +81,12 @@ amortized overhead and target rates from a `tessera.cost-model/1` report at the 
 lengths (`--mu`), with its own binary64 arithmetic (`tv_core::audit_plan`); without `--mu` the
 overhead figures of `tessera.audit-plan/1` are `null`
 ([example](../perf/examples/audit-plan-detection.json)). `audit report` reads the ledger and the
-sample, at most 1 GiB together, and writes `tessera.audit-report/1` atomically: requests the
-ledger records accepted, with their `Û`, and the others `DeadlineMissed`. It exits 0 only when
-every selected request is accepted.
+sample, at most 1 GiB each, and writes `tessera.audit-report/1` atomically: requests the ledger
+records accepted, with their `Û`, and the others `DeadlineMissed`. The sample must be one the
+ledger's `derived` records as the verifier's own, and the ledger a regular file of one name,
+neither a symbolic link nor a file of several hard links, which is refused before it is opened
+(exit 64, [RFC-0067](../rfcs/RFC-0067-verifier-ledger-encoding.md)). It exits 0 only when every
+selected request is accepted.
 
 `tables` independently regenerates every declared table and compares its
 canonical digest and row count, in catalog order. Its JSON is

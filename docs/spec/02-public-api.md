@@ -172,9 +172,13 @@ profile, policy or cost model it refuses exits 64.
 `audit report` writes the sample's `tessera.audit-report/1` report from the verifier's ledger
 ([RFC-0016](../rfcs/RFC-0016-audit-sampling.md#audit-report)): a selected request the ledger
 records accepted for the sample is `accepted` with its `Û`, and every other one `unproven`,
-`DeadlineMissed`. The sample is the verifier's own derivation, named in the ledger by its
-envelope's digest. It exits 0 when every selected request is accepted and 10 otherwise; a
-sample whose coin toss does not open exits 20 with `ERR-PROTO-COINTOSS`.
+`DeadlineMissed`. The sample must be the verifier's own derivation, which the ledger records by
+its envelope's digest in `derived` when the verifier reveals its toss; any other sample exits 64
+with `ERR-USAGE`, however its coin toss opens
+([RFC-0067](../rfcs/RFC-0067-verifier-ledger-encoding.md#the-verifiers-own-sample)). The ledger
+must be a regular file of one name, else exit 64. It exits 0 when every selected request is
+accepted and 10 otherwise; a sample whose coin toss does not open exits 20 with
+`ERR-PROTO-COINTOSS`.
 
 ### 2.4 Exit codes
 

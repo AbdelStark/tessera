@@ -183,12 +183,14 @@ impl AuditSample {
             .map_err(Failure::Inconclusive)
     }
 
-    /// Checks that this sample is the one `window`'s period draws: its manifest is the period's,
-    /// its coin toss opens, and its selection is the verifier's own (INV-AUD-2). It judges the
-    /// selection that the sample's own policy and coin toss give; whether those are the policy
-    /// and the toss the verifier fixed is a comparison with its [`AuditToss`](super::AuditToss)
-    /// ([`AuditToss::policy`](super::AuditToss::policy), its commitment), or with the sample
-    /// the toss revealed.
+    /// Checks that this sample is consistent with `window`'s period: its manifest is the
+    /// period's, its coin toss opens, and its policy and toss select what it lists (INV-AUD-2).
+    ///
+    /// It does not make the sample the verifier's: a prover can choose `s_V'`, set `c_V' =
+    /// H(s_V')` and attach a policy of rate 0, and its sample is consistent. Only the reveal of
+    /// the verifier's own toss ([`AuditToss::reveal`](super::AuditToss::reveal)) makes a sample
+    /// the verifier's, by recording it in the ledger's `derived`, which the accounting and the
+    /// report require (RFC-0067 'The verifier's own sample').
     ///
     /// # Errors
     ///

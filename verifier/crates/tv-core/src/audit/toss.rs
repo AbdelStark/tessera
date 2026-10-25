@@ -7,6 +7,7 @@
 use tv_hash::{Digest, Domain, hash};
 use zeroize::Zeroizing;
 
+use super::file::LedgerFile;
 use super::policy::AuditPolicy;
 use super::sample::{AuditSample, CoinTossTranscript};
 use crate::anchor::{CheckedManifest, Failure, Window, usage};
@@ -72,18 +73,25 @@ impl AuditToss {
     /// log and the previous period's, bound by the chain, and its period must be the toss's
     /// manifest. The returned sample's transcript carries `s_V`, which the verifier then sends.
     ///
+    /// This is the only way a sample becomes the verifier's own (RFC-0067 'The verifier's own
+    /// sample'): the sample's identity joins `ledger`'s `derived`, and the ledger is written,
+    /// before the sample is returned. The accounting and the report refuse every other sample,
+    /// however well its coin toss opens.
+    ///
     /// The toss stays usable after a failure, so that a verifier whose inputs disagreed can
     /// reveal once they agree: the prover answers one commitment per manifest, and a share lost
     /// would leave the period without a sample.
     ///
     /// # Errors
     ///
-    /// `Inconclusive(ERR-USAGE)` for a window over another manifest, and the errors of
-    /// [`AuditSample::derive`].
+    /// `Inconclusive(ERR-USAGE)` for a window over another manifest, the errors of
+    /// [`AuditSample::derive`], and those of the ledger's write, after which the sample is not
+    /// returned.
     pub fn reveal(
         &self,
         window: &Window<'_>,
         prover_share: [u8; 32],
+        ledger: &mut LedgerFile,
     ) -> Result<AuditSample, Failure> {
         if window.period().manifest_digest() != &self.manifest_digest {
             return Err(usage());
@@ -98,7 +106,9 @@ impl AuditToss {
             prover_share,
             verifier_share,
         };
-        AuditSample::derive(window, self.policy.clone(), toss)
+        let sample = AuditSample::derive(window, self.policy.clone(), toss)?;
+        ledger.record_derived(&sample)?;
+        Ok(sample)
     }
 }
 

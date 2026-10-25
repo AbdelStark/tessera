@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The verifier's ledger (RFC-0019 'Ledger', schema `0x0701`, `.tvl`): its encoding, the audit's
-//! accounting checks (RFC-0016 'Verifier checks' 1 and 2), the record of accepted requests, and
-//! the file, written atomically.
-
-use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+//! The verifier's ledger (RFC-0019 'Ledger', RFC-0067, schema `0x0701`, `.tvl`): its encoding,
+//! the samples the verifier derived, the audit's accounting checks (RFC-0016 'Verifier checks' 1
+//! and 2) and the record of accepted requests. Its file is [`super::file`]'s.
 
 use tv_codec::{Cursor, DecodeError, DecodeLimits, Envelope, ErrorCode, Expected, decode, size};
 use tv_hash::{Digest, Domain, hash};
@@ -173,11 +168,16 @@ impl ProvenSample {
         self.accepted.iter().zip(self.uhat.iter().copied())
     }
 
-    fn decode(c: &mut Cursor<'_>, previous: Option<&Digest>) -> Result<Self, DecodeError> {
+    fn decode(
+        c: &mut Cursor<'_>,
+        previous: Option<&Digest>,
+        derived: &[Digest],
+    ) -> Result<Self, DecodeError> {
         c.nested(|c| {
             let at = c.offset();
             let sample = c.digest()?;
-            if previous.is_some_and(|p| &sample <= p) {
+            // Both rules read the sample alone, and both refuse at the record's first byte.
+            if previous.is_some_and(|p| &sample <= p) || derived.binary_search(&sample).is_err() {
                 return Err(DecodeError::new(ErrorCode::Noncanonical, at));
             }
             let set_at = c.offset();
@@ -244,24 +244,28 @@ pub struct BlindingRows {
 
 // ----- The ledger ------------------------------------------------------------------------------
 
-/// The verifier's persistent state across sessions (RFC-0019 'Ledger', schema `0x0701`, version
-/// 1, `.tvl`, private to the verifier), TCE in field order:
+/// The verifier's persistent state across sessions (RFC-0019 'Ledger', RFC-0067 'The encoding',
+/// schema `0x0701`, version 1, `.tvl`, private to the verifier), TCE in field order:
 ///
 /// ```text
 /// weight_roots:       Vec<(Digest, Vec<(u32, Digest)>)>
 /// successors:         Vec<(Digest, Digest)>
 /// used_blinding_rows: Vec<(Digest, u32, u8, BitSet)>
+/// derived:            Vec<Digest>                     // strictly increasing
 /// proven:             Vec<(Digest /*sample*/, BitSet /*selected index*/, Vec<FixedBits> /*Û*/)>
 /// ```
 ///
-/// `proven` is the audit's accounting: one record per sample with an accepted request, by
-/// increasing sample identity. The first three fields are the weight epochs' (#158), kept as they
-/// decode.
+/// `derived` names the samples this verifier derived itself, by revealing its own toss
+/// ([`AuditToss::reveal`](super::AuditToss::reveal)): only those are its samples (RFC-0067 'The
+/// verifier's own sample'). `proven` is the audit's accounting: one record per derived sample
+/// with an accepted request, by increasing sample identity. The first three fields are the
+/// weight epochs' (#158), kept as they decode.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct VerifierLedger {
     weight_roots: Vec<WeightRoots>,
     successors: Vec<(Digest, Digest)>,
     used_blinding_rows: Vec<BlindingRows>,
+    derived: Vec<Digest>,
     proven: Vec<ProvenSample>,
 }
 
@@ -292,6 +296,27 @@ impl VerifierLedger {
         &self.used_blinding_rows
     }
 
+    /// The identities of the samples this verifier derived, increasing.
+    pub fn derived(&self) -> &[Digest] {
+        &self.derived
+    }
+
+    /// Whether this verifier derived the sample whose identity is `sample`.
+    pub fn is_derived(&self, sample: &Digest) -> bool {
+        self.derived.binary_search(sample).is_ok()
+    }
+
+    /// Adds a sample the verifier derived to `derived`, in order; nothing when it is there.
+    /// Only the reveal of the verifier's own toss calls it ([`super::file::LedgerFile`]), so
+    /// that no other sample becomes the verifier's.
+    pub(crate) fn add_derived(&mut self, sample: Digest) -> Result<(), Failure> {
+        if let Err(at) = self.derived.binary_search(&sample) {
+            self.derived.try_reserve(1).map_err(|_| memory())?;
+            self.derived.insert(at, sample);
+        }
+        Ok(())
+    }
+
     /// The samples with an accepted request, by increasing identity.
     pub fn proven_samples(&self) -> &[ProvenSample] {
         &self.proven
@@ -307,7 +332,10 @@ impl VerifierLedger {
     }
 
     /// RFC-0016 'Verifier checks' 1 and 2, for a proof's statement against the sample and this
-    /// ledger, in RFC-0039's field order (RFC-0043 'The audit sample's checks'):
+    /// ledger, in RFC-0039's field order (RFC-0043 'The audit sample's checks', RFC-0067 'The
+    /// accounting'). First, before any check of the statement, the sample must be the
+    /// verifier's own, in `derived`, else `Inconclusive(ERR-USAGE)`: a sample whose coin toss
+    /// merely opens could be the prover's (RFC-0067 'The verifier's own sample'). Then:
     ///
     /// 1. `statement.manifest_digest` is the sample's, else `StatementMismatch { field:
     ///    ManifestDigest }`;
@@ -322,13 +350,17 @@ impl VerifierLedger {
     ///
     /// # Errors
     ///
-    /// `Failure::Rejected` with the reason above, and `Inconclusive(ERR-RES-MEMORY)` when the
-    /// indices cannot be reserved.
+    /// `Inconclusive(ERR-USAGE)` for a sample the verifier did not derive, `Failure::Rejected`
+    /// with the reasons above, and `Inconclusive(ERR-RES-MEMORY)` when the indices cannot be
+    /// reserved.
     pub fn check_accounting(
         &self,
         sample: &AuditSample,
         statement: &PublicStatement,
     ) -> Result<Vec<u64>, Failure> {
+        if !self.is_derived(sample.identity()) {
+            return Err(usage());
+        }
         if &statement.manifest_digest != sample.manifest_digest() {
             return Err(rejected(StatementField::ManifestDigest));
         }
@@ -452,10 +484,14 @@ impl VerifierLedger {
             .decode_payload(|c, _| Self::fields(c))
     }
 
-    /// Decodes a payload alone, its fields in order. Beyond RFC-0003's checks, a `BitSet` whose
-    /// last byte is zero is `ERR-CODEC-NONCANONICAL` at that byte; and in `proven`, a sample not
-    /// above the one before it is `ERR-CODEC-NONCANONICAL` at its first byte, an empty set at its
-    /// length, and a `Û` list of another length than the set at the list's length.
+    /// Decodes a payload alone, its fields in order (RFC-0067 'The encoding'). Beyond RFC-0003's
+    /// checks, each `ERR-CODEC-NONCANONICAL`:
+    ///
+    /// - a `BitSet` whose last byte is zero, at that byte, as the set is read;
+    /// - in `derived`, a digest not above the one before it, at that digest;
+    /// - in `proven`, a record whose sample is not above the one before it, or is not in
+    ///   `derived`, at the record's first byte; an empty set, at its length; and a `Û` list of
+    ///   another length than the set, at the list's length.
     ///
     /// # Errors
     ///
@@ -485,9 +521,19 @@ impl VerifierLedger {
                     })
                 })
             })?;
+            let mut last: Option<Digest> = None;
+            let derived = c.vec(size::DIGEST, |c| {
+                let at = c.offset();
+                let digest = c.digest()?;
+                if last.is_some_and(|l| digest <= l) {
+                    return Err(DecodeError::new(ErrorCode::Noncanonical, at));
+                }
+                last = Some(digest);
+                Ok(digest)
+            })?;
             let mut previous: Option<Digest> = None;
             let proven = c.vec(ProvenSample::MIN_LEN, |c| {
-                let record = ProvenSample::decode(c, previous.as_ref())?;
+                let record = ProvenSample::decode(c, previous.as_ref(), &derived)?;
                 previous = Some(record.sample);
                 Ok(record)
             })?;
@@ -495,6 +541,7 @@ impl VerifierLedger {
                 weight_roots,
                 successors,
                 used_blinding_rows,
+                derived,
                 proven,
             })
         })
@@ -534,6 +581,10 @@ impl VerifierLedger {
             out.push(r.matrix);
             r.rows.encode(&mut out);
         }
+        put_len(&mut out, self.derived.len());
+        for d in &self.derived {
+            out.extend_from_slice(d);
+        }
         put_len(&mut out, self.proven.len());
         for p in &self.proven {
             p.encode(&mut out);
@@ -542,7 +593,7 @@ impl VerifierLedger {
     }
 
     fn encoded_len(&self) -> Option<u64> {
-        let mut n = size::SEQUENCE.checked_mul(4)?;
+        let mut n = size::SEQUENCE.checked_mul(5)?;
         for w in &self.weight_roots {
             let epochs = u64::try_from(w.epochs.len()).ok()?.checked_mul(36)?;
             n = n.checked_add(40)?.checked_add(epochs)?;
@@ -551,6 +602,11 @@ impl VerifierLedger {
         for r in &self.used_blinding_rows {
             n = n.checked_add(37)?.checked_add(r.rows.encoded_len()?)?;
         }
+        n = n.checked_add(
+            u64::try_from(self.derived.len())
+                .ok()?
+                .checked_mul(size::DIGEST)?,
+        )?;
         for p in &self.proven {
             n = n.checked_add(p.encoded_len()?)?;
         }
@@ -575,397 +631,116 @@ const fn memory() -> Failure {
     Failure::Inconclusive(VerifierError { code: Code::Memory })
 }
 
-const fn io() -> VerifierError {
-    VerifierError { code: Code::Io }
-}
-
-// ----- The file --------------------------------------------------------------------------------
-
-/// Reads the ledger at `path`, a snapshot for reading only: the file as its last atomic write
-/// left it, decoded under `limits`. It takes no lock, since a write replaces the file whole.
-///
-/// # Errors
-///
-/// `ERR-RES-IO` for a file that cannot be read or is not a regular file, `ERR-CODEC-LIMIT` for a
-/// file larger than `limits.max_total_bytes`, and the decoder's errors.
-pub fn read_ledger(path: &Path, limits: &DecodeLimits) -> Result<VerifierLedger, VerifierError> {
-    let bytes = read_bounded(path, limits.max_total_bytes)?;
-    VerifierLedger::open(&bytes, limits).map_err(|e| VerifierError {
-        code: e.code().into(),
-    })
-}
-
-fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, VerifierError> {
-    let mut file = File::open(path).map_err(|_| io())?;
-    let meta = file.metadata().map_err(|_| io())?;
-    if !meta.is_file() {
-        return Err(io());
-    }
-    if meta.len() > limit {
-        return Err(VerifierError {
-            code: Code::CodecLimit,
-        });
-    }
-    let mut out = Vec::new();
-    out.try_reserve_exact(usize::try_from(meta.len()).map_err(|_| io())?)
-        .map_err(|_| VerifierError { code: Code::Memory })?;
-    // One byte past the limit shows a file that grew after its size was read.
-    Read::by_ref(&mut file)
-        .take(limit.saturating_add(1))
-        .read_to_end(&mut out)
-        .map_err(|_| io())?;
-    if u64::try_from(out.len()).map_or(true, |n| n > limit) {
-        return Err(VerifierError {
-            code: Code::CodecLimit,
-        });
-    }
-    Ok(out)
-}
-
-/// The verifier's ledger file, held for writing: a lock file beside it, `<name>.lock`, created
-/// exclusively, keeps a second writer out until this value is dropped, so that two sessions
-/// cannot both accept one request from the same file (INV-AUD-3).
-///
-/// Every update is written atomically ([`record_accepted`](Self::record_accepted)): the new
-/// ledger goes to a temporary file beside it, which is synced and then renamed over the old one,
-/// so the file holds the old ledger or the new one, never part of either, whenever the writer
-/// stops.
-///
-/// A lock file left by a writer that stopped without dropping its value, a crash, refuses later
-/// writers with `ERR-RES-IO` until the operator, having checked that no verifier runs, removes it.
-#[derive(Debug)]
-pub struct LedgerFile {
-    path: PathBuf,
-    lock: PathBuf,
-    ledger: VerifierLedger,
-}
-
-impl LedgerFile {
-    /// Creates a ledger file at `path`, holding an empty ledger, and holds it.
-    ///
-    /// # Errors
-    ///
-    /// `ERR-USAGE` when a file exists at `path`, whose ledger would be lost; `ERR-RES-IO` when
-    /// the lock is held or a file cannot be written; `ERR-RES-MEMORY`.
-    pub fn create(path: &Path) -> Result<Self, VerifierError> {
-        let lock = Lock::take(path)?;
-        let ledger = VerifierLedger::new();
-        let bytes = ledger.seal()?;
-        write_new(path, &bytes)?;
-        Ok(Self {
-            path: path.to_path_buf(),
-            lock: lock.release(),
-            ledger,
-        })
-    }
-
-    /// Opens the ledger file at `path` and holds it.
-    ///
-    /// # Errors
-    ///
-    /// `ERR-RES-IO` when the lock is held or the file cannot be read, and the errors of
-    /// [`read_ledger`].
-    pub fn open(path: &Path, limits: &DecodeLimits) -> Result<Self, VerifierError> {
-        let lock = Lock::take(path)?;
-        let ledger = read_ledger(path, limits)?;
-        Ok(Self {
-            path: path.to_path_buf(),
-            lock: lock.release(),
-            ledger,
-        })
-    }
-
-    /// The ledger as last written.
-    pub fn ledger(&self) -> &VerifierLedger {
-        &self.ledger
-    }
-
-    /// Records an accepted proof ([`VerifierLedger::record_accepted`]) and writes the ledger
-    /// atomically. The ledger in memory changes only once the file holds the new one, so a
-    /// failed write leaves both as they were, and the caller's verdict is not `Accept`.
-    ///
-    /// # Errors
-    ///
-    /// Those of [`VerifierLedger::record_accepted`], and `Inconclusive(ERR-RES-IO)` when the
-    /// file cannot be written.
-    pub fn record_accepted(
-        &mut self,
-        sample: &AuditSample,
-        statement: &PublicStatement,
-        uhat: &[FixedBits],
-    ) -> Result<(), Failure> {
-        let mut next = self.ledger.clone();
-        next.record_accepted(sample, statement, uhat)?;
-        let bytes = next.seal().map_err(Failure::Inconclusive)?;
-        write_atomic(&self.path, &bytes, &|_| false).map_err(Failure::Inconclusive)?;
-        self.ledger = next;
-        Ok(())
-    }
-}
-
-impl Drop for LedgerFile {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.lock);
-    }
-}
-
-/// The lock file of a ledger at `path` while it is being taken: removed if dropped armed.
-struct Lock {
-    path: PathBuf,
-    armed: bool,
-}
-
-impl Lock {
-    fn take(ledger: &Path) -> Result<Self, VerifierError> {
-        let mut name = ledger.file_name().ok_or(io())?.to_os_string();
-        name.push(".lock");
-        let path = ledger.with_file_name(name);
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .map_err(|_| io())?;
-        let lock = Self { path, armed: true };
-        // The holder's process, for the operator; the lock is the file's existence.
-        let _ = writeln!(file, "{}", std::process::id());
-        Ok(lock)
-    }
-
-    fn release(mut self) -> PathBuf {
-        self.armed = false;
-        core::mem::take(&mut self.path)
-    }
-}
-
-impl Drop for Lock {
-    fn drop(&mut self) {
-        if self.armed {
-            let _ = fs::remove_file(&self.path);
-        }
-    }
-}
-
-/// The steps of an atomic write, at which a test stops it as a crash would.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Step {
-    /// The temporary file exists, empty.
-    Created,
-    /// Half the bytes are written.
-    Partial,
-    /// Every byte is written, not yet synced.
-    Written,
-    /// The temporary file is synced, not yet renamed.
-    Synced,
-}
-
-static NEXT: AtomicU64 = AtomicU64::new(0);
-
-/// A temporary file beside `path`: removed when dropped armed.
-struct Temporary {
-    path: PathBuf,
-    armed: bool,
-}
-
-impl Drop for Temporary {
-    fn drop(&mut self) {
-        if self.armed {
-            let _ = fs::remove_file(&self.path);
-        }
-    }
-}
-
-/// Creates a fresh temporary file in `path`'s directory, readable by its owner only.
-fn temporary(path: &Path) -> Result<(File, Temporary), VerifierError> {
-    let dir = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    let name = path.file_name().ok_or(io())?.to_string_lossy();
-    for _ in 0..64 {
-        let temp = dir.join(format!(
-            ".{name}.{}.{}.tmp",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        match options.open(&temp) {
-            Ok(file) => {
-                return Ok((
-                    file,
-                    Temporary {
-                        path: temp,
-                        armed: true,
-                    },
-                ));
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(_) => return Err(io()),
-        }
-    }
-    Err(io())
-}
-
-/// Writes `bytes` over `path` atomically: a temporary file in the same directory, written,
-/// synced, then renamed over `path`, and the directory synced, as far as the host allows.
-/// `stop` returns true at the step where a test stops the write as a crash would, leaving the
-/// temporary file where it is.
-fn write_atomic(
-    path: &Path,
-    bytes: &[u8],
-    stop: &dyn Fn(Step) -> bool,
-) -> Result<(), VerifierError> {
-    let (mut file, mut temp) = temporary(path)?;
-    let crash = |temp: &mut Temporary| {
-        temp.armed = false;
-        Err(io())
-    };
-    if stop(Step::Created) {
-        return crash(&mut temp);
-    }
-    let half = bytes.len().checked_div(2).unwrap_or(0);
-    let (first, second) = bytes.split_at_checked(half).ok_or(io())?;
-    file.write_all(first).map_err(|_| io())?;
-    if stop(Step::Partial) {
-        return crash(&mut temp);
-    }
-    file.write_all(second).map_err(|_| io())?;
-    if stop(Step::Written) {
-        return crash(&mut temp);
-    }
-    file.sync_all().map_err(|_| io())?;
-    drop(file);
-    if stop(Step::Synced) {
-        return crash(&mut temp);
-    }
-    fs::rename(&temp.path, path).map_err(|_| io())?;
-    temp.armed = false;
-    sync_directory(path);
-    Ok(())
-}
-
-/// Writes `bytes` to `path`, which must not exist: a synced temporary file, hard-linked to
-/// `path`, which fails if anything is there, then removed.
-fn write_new(path: &Path, bytes: &[u8]) -> Result<(), VerifierError> {
-    let (mut file, temp) = temporary(path)?;
-    file.write_all(bytes)
-        .and_then(|()| file.sync_all())
-        .map_err(|_| io())?;
-    drop(file);
-    fs::hard_link(&temp.path, path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::AlreadyExists {
-            VerifierError { code: Code::Usage }
-        } else {
-            io()
-        }
-    })?;
-    drop(temp);
-    sync_directory(path);
-    Ok(())
-}
-
-/// Syncs `path`'s directory, so that a rename survives a power loss, where the host supports it;
-/// a failure leaves the rename done, which is what atomicity needs.
-fn sync_directory(path: &Path) {
-    #[cfg(unix)]
-    {
-        let dir = path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or(Path::new("."));
-        if let Ok(d) = File::open(dir) {
-            let _ = d.sync_all();
-        }
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-}
-
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    use crate::protocol::{BatchDescriptor, Decoding, PredictorSpec, RequestRef};
+    use tv_codec::DecodeLimits;
 
-    fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "tessera-ledger-{name}-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir(&dir).unwrap();
-        dir
-    }
-
-    fn leftovers(dir: &Path) -> Vec<PathBuf> {
-        fs::read_dir(dir)
-            .unwrap()
-            .map(|e| e.unwrap().path())
-            .filter(|p| p.to_string_lossy().ends_with(".tmp"))
-            .collect()
-    }
-
-    fn ledger_with(sample: u8) -> VerifierLedger {
+    /// A ledger whose `derived` holds `samples`, in order, and nothing else.
+    pub(crate) fn ledger_of(samples: &[Digest]) -> VerifierLedger {
         let mut ledger = VerifierLedger::new();
-        let mut accepted = BitSet::new();
-        accepted.insert(3).unwrap();
-        ledger.proven.push(ProvenSample {
-            sample: [sample; 32],
-            accepted,
-            uhat: vec![FixedBits(7)],
-        });
+        for s in samples {
+            ledger.add_derived(*s).unwrap();
+        }
         ledger
     }
 
-    #[test]
-    fn an_interrupted_write_leaves_the_old_ledger_at_every_step() {
-        for step in [Step::Created, Step::Partial, Step::Written, Step::Synced] {
-            let dir = scratch("interrupt");
-            let path = dir.join("ledger.tvl");
-            let old = ledger_with(1);
-            let old_bytes = old.seal().unwrap();
-            write_atomic(&path, &old_bytes, &|_| false).unwrap();
-            let new_bytes = ledger_with(2).seal().unwrap();
-            assert_eq!(
-                write_atomic(&path, &new_bytes, &|s| s == step),
-                Err(io()),
-                "{step:?}"
-            );
-            // The file is the old ledger, byte for byte, and still reads as it.
-            assert_eq!(fs::read(&path).unwrap(), old_bytes, "{step:?}");
-            assert_eq!(
-                read_ledger(&path, &DecodeLimits::MESSAGE).unwrap(),
-                old,
-                "{step:?}"
-            );
-            // The crash left its temporary file, which no reader takes for the ledger.
-            assert_eq!(leftovers(&dir).len(), 1, "{step:?}");
-            // A later write succeeds beside it.
-            write_atomic(&path, &new_bytes, &|_| false).unwrap();
-            assert_eq!(fs::read(&path).unwrap(), new_bytes);
-            for leftover in leftovers(&dir) {
-                fs::remove_file(leftover).unwrap();
-            }
-            fs::remove_file(&path).unwrap();
-            fs::remove_dir(&dir).unwrap();
+    /// A sample over the manifest `[7; 32]` selecting `keys`, decoded from a payload built here,
+    /// its policy selecting everything and its toss opening; `seed` varies the toss.
+    pub(crate) fn sample_of(keys: &[RequestKey], seed: u8) -> AuditSample {
+        let mut payload = vec![7; 32];
+        payload.extend(86_400u64.to_le_bytes());
+        payload.extend(1u64.to_le_bytes());
+        payload.extend(u32::MAX.to_le_bytes());
+        payload.extend(u64::MAX.to_le_bytes());
+        payload.extend(16_384u32.to_le_bytes());
+        payload.extend(262_144u32.to_le_bytes());
+        payload.extend(604_800u64.to_le_bytes());
+        payload.extend(9u64.to_le_bytes());
+        payload.extend(b"live-64/1");
+        let share = [seed; 32];
+        payload.extend(hash(Domain::CoinCommit, &share));
+        payload.extend([4; 32]);
+        payload.extend(share);
+        payload.extend(u64::try_from(keys.len()).unwrap().to_le_bytes());
+        for k in keys {
+            payload.extend(k.session_id);
+            payload.extend(k.request_id.to_le_bytes());
+        }
+        AuditSample::decode_payload(&payload, &DecodeLimits::MESSAGE).unwrap()
+    }
+
+    /// A sample of session 1's requests 1 to 3; `seed` varies its identity.
+    pub(crate) fn derived_sample(seed: u8) -> AuditSample {
+        let keys: Vec<RequestKey> = (1..=3)
+            .map(|r| RequestKey {
+                session_id: [1; 16],
+                request_id: r,
+            })
+            .collect();
+        sample_of(&keys, seed)
+    }
+
+    /// The statement of a batch of the sample's selected requests at `indices`.
+    pub(crate) fn statement_of(sample: &AuditSample, indices: &[usize]) -> PublicStatement {
+        PublicStatement {
+            claim_list_digest: [0; 32],
+            weights_root: [0; 32],
+            weights_epoch: 0,
+            manifest_digest: *sample.manifest_digest(),
+            batch: BatchDescriptor {
+                requests: indices
+                    .iter()
+                    .map(|&i| {
+                        let k = sample.selected()[i];
+                        RequestRef {
+                            request_id: k.request_id,
+                            session_id: k.session_id,
+                            prompt_len: 1,
+                            output_len: 1,
+                        }
+                    })
+                    .collect(),
+            },
+            predictor: PredictorSpec::Exact {
+                decoding: Decoding::Greedy,
+            },
         }
     }
 
     #[test]
-    fn a_failed_write_removes_its_temporary_file() {
-        let dir = scratch("failed");
-        // A directory where the ledger should be: the rename fails, and nothing is left.
-        let path = dir.join("ledger.tvl");
-        fs::create_dir(&path).unwrap();
-        fs::write(path.join("keep"), b"x").unwrap();
-        let bytes = ledger_with(1).seal().unwrap();
-        assert_eq!(write_atomic(&path, &bytes, &|_| false), Err(io()));
-        assert!(leftovers(&dir).is_empty());
-        fs::remove_file(path.join("keep")).unwrap();
-        fs::remove_dir(&path).unwrap();
-        fs::remove_dir(&dir).unwrap();
+    fn derived_samples_stay_sorted_and_unique() {
+        let mut ledger = ledger_of(&[[5; 32], [1; 32], [9; 32], [5; 32]]);
+        assert_eq!(ledger.derived(), [[1; 32], [5; 32], [9; 32]]);
+        ledger.add_derived([0; 32]).unwrap();
+        assert_eq!(ledger.derived().first(), Some(&[0; 32]));
+        assert!(ledger.is_derived(&[9; 32]) && !ledger.is_derived(&[8; 32]));
+        let bytes = ledger.encode_payload().unwrap();
+        assert_eq!(
+            VerifierLedger::decode_payload(&bytes, &DecodeLimits::MESSAGE).unwrap(),
+            ledger
+        );
+    }
+
+    #[test]
+    fn a_sample_the_verifier_did_not_derive_is_refused_before_the_statement() {
+        let sample = derived_sample(1);
+        let mut ledger = ledger_of(&[*derived_sample(2).identity()]);
+        // The statement is broken too, in its manifest: the sample's check comes first.
+        let mut wrong = statement_of(&sample, &[0]);
+        wrong.manifest_digest = [0; 32];
+        for s in [statement_of(&sample, &[0]), wrong] {
+            assert_eq!(ledger.check_accounting(&sample, &s), Err(usage()));
+            assert_eq!(
+                ledger.record_accepted(&sample, &s, &[FixedBits(0)]),
+                Err(usage())
+            );
+        }
+        ledger.add_derived(*sample.identity()).unwrap();
+        assert_eq!(
+            ledger.check_accounting(&sample, &statement_of(&sample, &[2, 0])),
+            Ok(vec![2, 0])
+        );
     }
 }

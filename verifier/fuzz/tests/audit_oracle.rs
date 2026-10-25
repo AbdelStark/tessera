@@ -16,8 +16,13 @@ fn inputs() -> Vec<(u8, Vec<u8>)> {
         let payload = hex(case.get("payload").and_then(Json::as_str).unwrap());
         let envelope = hex(case.get("envelope").and_then(Json::as_str).unwrap());
         let sample = AuditSample::open(&envelope, &tv_codec::DecodeLimits::MESSAGE).unwrap();
-        // A ledger accepting the sample's first request, when it has one.
-        let mut ledger = VerifierLedger::new();
+        // A ledger that derived the sample and accepted its first request, when it has one.
+        let mut deriving = vec![0; 24];
+        deriving.extend(1u64.to_le_bytes());
+        deriving.extend(sample.identity());
+        deriving.extend(0u64.to_le_bytes());
+        let mut ledger =
+            VerifierLedger::decode_payload(&deriving, &tv_codec::DecodeLimits::MESSAGE).unwrap();
         if let Some(first) = sample.selected().first() {
             let statement = PublicStatement {
                 claim_list_digest: [0; 32],

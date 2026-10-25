@@ -40,6 +40,73 @@ struct Open {
     requests: Vec<RequestKey>,
 }
 
+/// The room of a group's batches, leaves in opening order, under a tree of maxima, so that the
+/// first batch with room for a request is found in `O(log n)` steps rather than by a scan of
+/// every batch opened. A batch's room is `max − total + 1`: a request of `t ≤ max` tokens fits
+/// iff the room is at least `t + 1`. A batch past the maximum, and a leaf of no batch yet, have
+/// room 0, where nothing fits.
+struct Rooms {
+    leaves: usize,
+    tree: Vec<u64>,
+}
+
+impl Rooms {
+    /// Room for `batches` batches, all leaves 0.
+    fn new(batches: usize) -> Result<Self, Failure> {
+        let leaves = batches.max(1).checked_next_power_of_two().ok_or(memory())?;
+        let len = leaves.checked_mul(2).ok_or(memory())?;
+        let mut tree = Vec::new();
+        tree.try_reserve_exact(len).map_err(|_| memory())?;
+        tree.resize(len, 0);
+        Ok(Self { leaves, tree })
+    }
+
+    fn at(&self, node: usize) -> u64 {
+        self.tree.get(node).copied().unwrap_or(0)
+    }
+
+    /// Sets batch `batch`'s room, then the maxima on its path to the root.
+    fn set(&mut self, batch: usize, room: u64) {
+        let Some(mut node) = self.leaves.checked_add(batch) else {
+            return;
+        };
+        if let Some(leaf) = self.tree.get_mut(node) {
+            *leaf = room;
+        }
+        while let Some(parent) = node.checked_div(2).filter(|&p| p >= 1) {
+            let left = parent.saturating_mul(2);
+            let most = self.at(left).max(self.at(left.saturating_add(1)));
+            if let Some(slot) = self.tree.get_mut(parent) {
+                *slot = most;
+            }
+            node = parent;
+        }
+    }
+
+    /// The first batch, in opening order, whose room is at least `need`: down from the root,
+    /// to the left child whenever its maximum suffices.
+    fn first(&self, need: u64) -> Option<usize> {
+        if self.at(1) < need {
+            return None;
+        }
+        let mut node = 1usize;
+        while node < self.leaves {
+            let left = node.checked_mul(2)?;
+            node = if self.at(left) >= need {
+                left
+            } else {
+                left.checked_add(1)?
+            };
+        }
+        node.checked_sub(self.leaves)
+    }
+}
+
+/// A batch's room under `max`: `max − tokens + 1`, or 0 past `max`.
+fn room(max: u64, tokens: u64) -> u64 {
+    max.checked_sub(tokens).map_or(0, |r| r.saturating_add(1))
+}
+
 /// Packs `requests` as RFC-0016 'Batching' fixes, group by group in increasing order of `G`:
 ///
 /// - within a group, requests go in decreasing `L`, ties in `RequestKey` order;
@@ -48,7 +115,8 @@ struct Open {
 /// - a request longer than `max_batch_tokens` is a batch on its own, which takes no other.
 ///
 /// The batches of a group follow in the order they were opened, each listing its requests in
-/// `RequestKey` order. Under a policy's bounds, `max_batch_tokens ≥ 2 · min_batch_tokens`, at
+/// `RequestKey` order. The first batch with room is found through a tree of maxima over the
+/// batches' room, so `n` requests cost `O(n log n)` however many batches they open. Under a policy's bounds, `max_batch_tokens ≥ 2 · min_batch_tokens`, at
 /// most one batch of each group has fewer than `min_batch_tokens` tokens: two such batches would
 /// total under `max_batch_tokens`, so the later one's first request would have fit in the
 /// earlier one.
@@ -88,24 +156,30 @@ pub fn pack<G: Ord + Copy>(
             continue;
         };
         let mut opened: Vec<Open> = Vec::new();
+        let mut rooms = Rooms::new(group.len())?;
         for request in group {
             // A request longer than the maximum fits in no batch, and opens its own.
-            let target = opened.iter_mut().find(|b| {
-                b.tokens
-                    .checked_add(request.tokens)
-                    .is_some_and(|total| total <= max)
-            });
-            match target {
-                Some(batch) => {
+            let fit = if request.tokens <= max {
+                request
+                    .tokens
+                    .checked_add(1)
+                    .and_then(|need| rooms.first(need))
+            } else {
+                None
+            };
+            match fit.and_then(|i| opened.get_mut(i).map(|batch| (i, batch))) {
+                Some((i, batch)) => {
                     batch.tokens = batch.tokens.saturating_add(request.tokens);
                     batch.requests.try_reserve(1).map_err(|_| memory())?;
                     batch.requests.push(request.key);
+                    rooms.set(i, room(max, batch.tokens));
                 }
                 None => {
                     opened.try_reserve(1).map_err(|_| memory())?;
                     let mut keys = Vec::new();
                     keys.try_reserve(1).map_err(|_| memory())?;
                     keys.push(request.key);
+                    rooms.set(opened.len(), room(max, request.tokens));
                     opened.push(Open {
                         tokens: request.tokens,
                         requests: keys,

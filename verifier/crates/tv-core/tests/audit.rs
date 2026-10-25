@@ -326,8 +326,13 @@ fn a_coin_toss_reveal_that_does_not_open_is_refused() {
     let commitment_at = payload.len() - 8 - 24 - 96;
     payload[commitment_at] ^= 1;
     let broken = AuditSample::decode_payload(&payload, &DecodeLimits::MESSAGE).unwrap();
+    // Not the verifier's: refused first. Recorded as its own, as only a hand-made ledger can.
     assert_eq!(
         AuditReport::from_ledger(&broken, &VerifierLedger::new()),
+        Err(inconclusive(Code::Usage))
+    );
+    assert_eq!(
+        AuditReport::from_ledger(&broken, &owning(&[&broken])),
         Err(inconclusive(Code::ProtocolCoinToss))
     );
 }
@@ -380,19 +385,153 @@ fn the_verifiers_toss_commits_a_fresh_share_and_reveals_only_over_its_manifest()
     let b = AuditToss::commit(&built[1].checked(), everything()).unwrap();
     assert_ne!(a.commitment(), b.commitment(), "a fresh share per toss");
     assert_eq!(a.manifest_digest(), &built[1].identity);
+    let dir = scratch("reveal");
+    let path = dir.join("ledger.tvl");
+    let mut file = LedgerFile::create(&path).unwrap();
     // The reveal over the other period's window is the verifier's own inputs disagreeing, and
-    // leaves the toss usable.
+    // leaves the toss usable and the ledger as it was.
     assert_eq!(
-        a.reveal(&first, [9; 32]).err(),
+        a.reveal(&first, [9; 32], &mut file).err(),
         Some(inconclusive(Code::Usage))
     );
-    let sample = a.reveal(&second, [9; 32]).unwrap();
+    assert!(file.ledger().derived().is_empty());
+    let sample = a.reveal(&second, [9; 32], &mut file).unwrap();
     let t = sample.coin_toss();
     assert_eq!(&t.verifier_commitment, a.commitment());
     assert_eq!(hash(Domain::CoinCommit, &t.verifier_share), *a.commitment());
     assert_eq!(t.prover_share, [9; 32]);
     assert_eq!(sample.selected(), [key(1, 2)]);
     sample.check_derivation(&second).unwrap();
+    // The sample is the verifier's, in memory and on disk, before it was returned.
+    assert_eq!(file.ledger().derived(), [*sample.identity()]);
+    drop(file);
+    let ledger = read_ledger(&path, &DecodeLimits::MESSAGE).unwrap();
+    assert!(ledger.is_derived(sample.identity()));
+    let s = statement(*sample.manifest_digest(), vec![req(1, 2)]);
+    assert_eq!(ledger.check_accounting(&sample, &s), Ok(vec![0]));
+    fs::remove_file(&path).unwrap();
+    fs::remove_dir(&dir).unwrap();
+}
+
+/// RFC-0067 'The verifier's own sample': a prover that picks `s_V'`, sets `c_V' = H(s_V')` and
+/// attaches a policy of rate 0 writes a sample whose toss opens and whose selection its own
+/// policy confirms. Only the ledger's `derived` tells it from the verifier's.
+#[test]
+fn a_sample_the_prover_wrote_is_not_the_verifiers() {
+    let scenario = five_requests();
+    let window = scenario.window();
+    let forged =
+        AuditSample::derive(&window, policy(&[(u32::MAX, 0)]), toss([6; 32], [7; 32])).unwrap();
+    assert!(forged.selected().is_empty());
+    forged.coin_toss().check().unwrap();
+    forged.check_derivation(&window).unwrap();
+    // The verifier's own sample of the same period, recorded by its reveal.
+    let dir = scratch("forged");
+    let path = dir.join("ledger.tvl");
+    let mut file = LedgerFile::create(&path).unwrap();
+    let mine = AuditToss::commit(scenario.period.manifest(), everything())
+        .unwrap()
+        .reveal(&window, [8; 32], &mut file)
+        .unwrap();
+    assert_eq!(mine.selected().len(), 5);
+    let ledger = file.ledger().clone();
+    let empty = statement(*forged.manifest_digest(), Vec::new());
+    // The accounting, the record and the report refuse the forged sample, before any check of
+    // the statement, whose batch is empty and would pass.
+    assert_eq!(
+        ledger.check_accounting(&forged, &empty),
+        Err(inconclusive(Code::Usage))
+    );
+    assert_eq!(
+        file.record_accepted(&forged, &empty, &[]),
+        Err(inconclusive(Code::Usage))
+    );
+    assert_eq!(
+        AuditReport::from_ledger(&forged, &ledger),
+        Err(inconclusive(Code::Usage))
+    );
+    assert_eq!(
+        AuditReport::new(&forged, &ledger, Vec::new()),
+        Err(inconclusive(Code::Usage))
+    );
+    // The verifier's own passes, and its report has every request.
+    assert_eq!(
+        ledger.check_accounting(&mine, &statement(*mine.manifest_digest(), Vec::new())),
+        Ok(Vec::new())
+    );
+    assert_eq!(
+        AuditReport::from_ledger(&mine, &ledger)
+            .unwrap()
+            .summary()
+            .unproven,
+        5
+    );
+    drop(file);
+    fs::remove_file(&path).unwrap();
+    fs::remove_dir(&dir).unwrap();
+}
+
+/// RFC-0067 'Request order': by `session_id` as bytes, then `request_id` as a number, so that
+/// ids 1 and 256, whose little-endian encodings sort the other way, keep their numeric order.
+#[test]
+fn requests_sort_by_session_then_by_number() {
+    let (one, big) = (key(1, 1), key(1, 256));
+    assert!(one < big);
+    assert!(
+        1u64.to_le_bytes() > 256u64.to_le_bytes(),
+        "the encodings sort the other way"
+    );
+    assert!(key(1, 256) < key(2, 1), "the session first");
+    // A sample lists them 1, 256; the other order does not decode, at the second key.
+    let sample = sample_with(&[one, big]);
+    assert_eq!(sample.selected(), [one, big]);
+    let payload = sample.encode_payload().unwrap();
+    let mut swapped = payload.clone();
+    let keys_at = payload.len() - 48;
+    swapped[keys_at..keys_at + 24].copy_from_slice(&payload[keys_at + 24..]);
+    swapped[keys_at + 24..].copy_from_slice(&payload[keys_at..keys_at + 24]);
+    let e = AuditSample::decode_payload(&swapped, &DecodeLimits::MESSAGE).unwrap_err();
+    assert_eq!(
+        (e.code(), e.offset()),
+        (ErrorCode::Noncanonical, (keys_at + 24) as u64)
+    );
+    // The selection and the batches list them so.
+    let seed = toss([1; 32], [2; 32]).sample_seed(&[3; 32]);
+    let candidates: Vec<Candidate> = [big, one]
+        .iter()
+        .map(|k| Candidate {
+            session_id: k.session_id,
+            request_id: k.request_id,
+            ended: true,
+            tokens: 1,
+        })
+        .collect();
+    assert_eq!(
+        select(&everything(), &seed, &candidates).unwrap(),
+        [one, big]
+    );
+    use tv_core::audit::{BatchRequest, pack};
+    let tied: Vec<BatchRequest<u8>> = [big, one]
+        .iter()
+        .map(|&k| BatchRequest {
+            key: k,
+            group: 0,
+            tokens: 7,
+        })
+        .collect();
+    // Equal lengths go in key order: 1 opens the first batch, 256 the second.
+    let packed = pack(10, &tied).unwrap();
+    assert_eq!(packed[0].requests, [one]);
+    assert_eq!(packed[1].requests, [big]);
+    let both = pack(14, &tied).unwrap();
+    assert_eq!(both[0].requests, [one, big]);
+    // The accounting finds each by number, and the report lists them in order.
+    let ledger = owning(&[&sample]);
+    let s = statement([7; 32], vec![req(1, 256), req(1, 1)]);
+    assert_eq!(ledger.check_accounting(&sample, &s), Ok(vec![1, 0]));
+    let report = AuditReport::from_ledger(&sample, &ledger).unwrap();
+    let order: Vec<RequestKey> = report.outcomes().iter().map(|(k, _)| *k).collect();
+    assert_eq!(order, [one, big]);
 }
 
 // ----- The accounting checks -------------------------------------------------------------------
@@ -401,7 +540,7 @@ fn the_verifiers_toss_commits_a_fresh_share_and_reveals_only_over_its_manifest()
 fn a_batch_of_selected_requests_passes_and_is_recorded_with_its_uhat() {
     let (scenario, sample) = sample_of_five();
     let manifest = *scenario.period.manifest_digest();
-    let mut ledger = VerifierLedger::new();
+    let mut ledger = owning(&[&sample]);
     let s = statement(manifest, vec![req(1, 4), req(1, 2)]);
     assert_eq!(ledger.check_accounting(&sample, &s), Ok(vec![3, 1]));
     ledger
@@ -439,7 +578,7 @@ fn a_batch_of_selected_requests_passes_and_is_recorded_with_its_uhat() {
 fn a_request_not_in_the_sample_is_rejected() {
     let (scenario, sample) = sample_of_five();
     let manifest = *scenario.period.manifest_digest();
-    let ledger = VerifierLedger::new();
+    let ledger = owning(&[&sample]);
     // Another request id, another session, and a selected request beside an unselected one.
     for requests in [vec![req(1, 6)], vec![req(2, 1)], vec![req(1, 1), req(1, 0)]] {
         assert_eq!(
@@ -453,7 +592,8 @@ fn a_request_not_in_the_sample_is_rejected() {
 fn a_request_in_two_accepted_batches_is_rejected_the_second_time() {
     let (scenario, sample) = sample_of_five();
     let manifest = *scenario.period.manifest_digest();
-    let mut ledger = VerifierLedger::new();
+    let other = sample_with(sample.selected());
+    let mut ledger = owning(&[&sample, &other]);
     let first = statement(manifest, vec![req(1, 1), req(1, 2)]);
     ledger
         .record_accepted(&sample, &first, &[FixedBits(0), FixedBits(0)])
@@ -480,7 +620,6 @@ fn a_request_in_two_accepted_batches_is_rejected_the_second_time() {
         );
     }
     // Another sample's record does not count against this one.
-    let other = sample_with(sample.selected());
     let s = statement([7; 32], vec![req(1, 1)]);
     assert_eq!(ledger.check_accounting(&other, &s), Ok(vec![0]));
 }
@@ -488,7 +627,7 @@ fn a_request_in_two_accepted_batches_is_rejected_the_second_time() {
 #[test]
 fn another_manifest_is_rejected_before_the_batch() {
     let (scenario, sample) = sample_of_five();
-    let ledger = VerifierLedger::new();
+    let ledger = owning(&[&sample]);
     let mut manifest = *scenario.period.manifest_digest();
     manifest[0] ^= 1;
     // The batch is broken too; the manifest's field comes first (RFC-0039 'The checks').
@@ -506,24 +645,29 @@ fn another_manifest_is_rejected_before_the_batch() {
 fn a_record_whose_uhat_does_not_fit_the_batch_changes_nothing() {
     let (scenario, sample) = sample_of_five();
     let manifest = *scenario.period.manifest_digest();
-    let mut ledger = VerifierLedger::new();
+    let mut ledger = owning(&[&sample]);
     let s = statement(manifest, vec![req(1, 1), req(1, 2)]);
     for uhat in [&[][..], &[FixedBits(1)], &[FixedBits(1); 3]] {
         assert_eq!(
             ledger.record_accepted(&sample, &s, uhat),
             Err(inconclusive(Code::Usage))
         );
-        assert_eq!(ledger, VerifierLedger::new());
+        assert_eq!(ledger, owning(&[&sample]));
     }
 }
 
 // ----- The ledger's encoding -------------------------------------------------------------------
 
-/// A ledger payload with no weight entries and the `proven` records given as raw bytes.
-fn ledger_payload(proven: &[Vec<u8>]) -> Vec<u8> {
+/// A ledger payload with no weight entries, `derived` the samples `[d; 32]` for each `d` in
+/// order, and the `proven` records given as raw bytes.
+fn ledger_payload(derived: &[u8], proven: &[Vec<u8>]) -> Vec<u8> {
     let mut out = Vec::new();
     for _ in 0..3 {
         out.extend(0u64.to_le_bytes());
+    }
+    out.extend((derived.len() as u64).to_le_bytes());
+    for &d in derived {
+        out.extend([d; 32]);
     }
     out.extend((proven.len() as u64).to_le_bytes());
     for p in proven {
@@ -532,7 +676,7 @@ fn ledger_payload(proven: &[Vec<u8>]) -> Vec<u8> {
     out
 }
 
-/// One `proven` record: the sample, the set's bytes and the `Û` list.
+/// One `proven` record: the sample `[sample; 32]`, the set's bytes and the `Û` list.
 fn record(sample: u8, set: &[u8], uhat: &[u64]) -> Vec<u8> {
     let mut out = vec![sample; 32];
     out.extend((set.len() as u64).to_le_bytes());
@@ -549,13 +693,33 @@ fn refusal(payload: &[u8]) -> (ErrorCode, u64) {
     (e.code(), e.offset())
 }
 
+/// A ledger in which the verifier derived `samples`, and nothing else: the ledger a verifier
+/// holds after revealing its tosses, decoded from its bytes.
+fn owning(samples: &[&AuditSample]) -> VerifierLedger {
+    let mut ids: Vec<[u8; 32]> = samples.iter().map(|s| *s.identity()).collect();
+    ids.sort();
+    ids.dedup();
+    let mut payload = Vec::new();
+    for _ in 0..3 {
+        payload.extend(0u64.to_le_bytes());
+    }
+    payload.extend((ids.len() as u64).to_le_bytes());
+    for id in &ids {
+        payload.extend(id);
+    }
+    payload.extend(0u64.to_le_bytes());
+    VerifierLedger::decode_payload(&payload, &DecodeLimits::MESSAGE).unwrap()
+}
+
 #[test]
 fn a_ledger_that_breaks_an_encoding_rule_does_not_decode() {
-    // `proven`'s length is at 24, after three empty sequences.
-    let first = 24;
+    // `derived`'s length is at 24, after three empty sequences; with one sample derived,
+    // `proven`'s length is at 64 and its first record at 72.
+    let first = 24 + 8 + 32;
     // A record decodes; its set holds indices 0 and 9.
-    let good = ledger_payload(&[record(1, &[0x01, 0x02], &[5, 6])]);
+    let good = ledger_payload(&[1], &[record(1, &[0x01, 0x02], &[5, 6])]);
     let ledger = VerifierLedger::decode_payload(&good, &DecodeLimits::MESSAGE).unwrap();
+    assert_eq!(ledger.derived(), [[1; 32]]);
     let r = &ledger.proven_samples()[0];
     assert_eq!(
         r.iter().collect::<Vec<_>>(),
@@ -565,19 +729,24 @@ fn a_ledger_that_breaks_an_encoding_rule_does_not_decode() {
     // A set whose last byte is zero, at that byte.
     let set_at = first + 8 + 32;
     assert_eq!(
-        refusal(&ledger_payload(&[record(1, &[0x01, 0x00], &[5])])),
+        refusal(&ledger_payload(&[1], &[record(1, &[0x01, 0x00], &[5])])),
         (ErrorCode::Noncanonical, set_at as u64 + 8 + 1)
+    );
+    // `[0x00]` at its byte, as the set is read, not as an empty set (RFC-0067).
+    assert_eq!(
+        refusal(&ledger_payload(&[1], &[record(1, &[0x00], &[])])),
+        (ErrorCode::Noncanonical, set_at as u64 + 8)
     );
     // An empty set, at its length.
     assert_eq!(
-        refusal(&ledger_payload(&[record(1, &[], &[])])),
+        refusal(&ledger_payload(&[1], &[record(1, &[], &[])])),
         (ErrorCode::Noncanonical, set_at as u64)
     );
     // A Û list of another length than the set, at the list's length.
     let uhat_at = set_at + 8 + 2;
     for uhat in [&[5][..], &[5, 6, 7]] {
         assert_eq!(
-            refusal(&ledger_payload(&[record(1, &[0x01, 0x02], uhat)])),
+            refusal(&ledger_payload(&[1], &[record(1, &[0x01, 0x02], uhat)])),
             (ErrorCode::Noncanonical, uhat_at as u64)
         );
     }
@@ -586,14 +755,39 @@ fn a_ledger_that_breaks_an_encoding_rule_does_not_decode() {
     let second_at = first + 8 + one.len();
     for later in [2, 1] {
         assert_eq!(
-            refusal(&ledger_payload(&[
-                one.clone(),
-                record(later, &[0x01], &[0])
-            ])),
-            (ErrorCode::Noncanonical, second_at as u64),
+            refusal(&ledger_payload(
+                &[1, 2],
+                &[one.clone(), record(later, &[0x01], &[0])]
+            )),
+            (ErrorCode::Noncanonical, second_at as u64 + 32),
             "{later}"
         );
     }
+    // A record of a sample the verifier did not derive, at the record's first byte, before
+    // anything later in it.
+    for set in [&[0x01][..], &[0x00]] {
+        assert_eq!(
+            refusal(&ledger_payload(&[1], &[record(3, set, &[0])])),
+            (ErrorCode::Noncanonical, first as u64 + 8),
+            "{set:?}"
+        );
+    }
+    assert_eq!(
+        refusal(&ledger_payload(&[], &[record(1, &[0x01], &[0])])),
+        (ErrorCode::Noncanonical, 24 + 8 + 8)
+    );
+    // `derived` not strictly increasing, at the first digest out of order.
+    for later in [5, 4] {
+        assert_eq!(
+            refusal(&ledger_payload(&[5, later], &[])),
+            (ErrorCode::Noncanonical, 24 + 8 + 32),
+            "{later}"
+        );
+    }
+    assert!(
+        VerifierLedger::decode_payload(&ledger_payload(&[4, 5], &[]), &DecodeLimits::MESSAGE)
+            .is_ok()
+    );
     // A blinding-row set whose last byte is zero.
     let mut rows = Vec::new();
     rows.extend(0u64.to_le_bytes());
@@ -604,6 +798,7 @@ fn a_ledger_that_breaks_an_encoding_rule_does_not_decode() {
     rows.push(2);
     rows.extend(1u64.to_le_bytes());
     rows.push(0);
+    rows.extend(0u64.to_le_bytes());
     rows.extend(0u64.to_le_bytes());
     assert_eq!(refusal(&rows), (ErrorCode::Noncanonical, 16 + 8 + 37 + 8));
     // Every proper prefix is cut short; a byte past the value is left over.
@@ -621,7 +816,7 @@ fn a_ledger_that_breaks_an_encoding_rule_does_not_decode() {
 #[test]
 fn a_ledger_envelope_is_opened_in_rfc_0003_order() {
     let ledger = VerifierLedger::decode_payload(
-        &ledger_payload(&[record(1, &[0x01], &[5])]),
+        &ledger_payload(&[1], &[record(1, &[0x01], &[5])]),
         &DecodeLimits::MESSAGE,
     )
     .unwrap();
@@ -684,8 +879,9 @@ fn a_bit_set_has_one_encoding_per_set() {
 fn the_ledger_file_is_held_by_one_writer_and_written_atomically() {
     let dir = scratch("file");
     let path = dir.join("ledger.tvl");
-    let (scenario, sample) = sample_of_five();
+    let scenario = five_requests();
     let manifest = *scenario.period.manifest_digest();
+    let sample;
     {
         let mut file = LedgerFile::create(&path).unwrap();
         assert_eq!(file.ledger(), &VerifierLedger::new());
@@ -694,6 +890,10 @@ fn the_ledger_file_is_held_by_one_writer_and_written_atomically() {
             LedgerFile::open(&path, &DecodeLimits::MESSAGE).err(),
             Some(VerifierError { code: Code::Io })
         );
+        sample = AuditToss::commit(scenario.period.manifest(), everything())
+            .unwrap()
+            .reveal(&scenario.window(), [2; 32], &mut file)
+            .unwrap();
         file.record_accepted(
             &sample,
             &statement(manifest, vec![req(1, 3)]),
@@ -758,7 +958,7 @@ fn the_ledger_file_is_held_by_one_writer_and_written_atomically() {
 fn a_missing_proof_is_unproven_at_the_deadline() {
     let (scenario, sample) = sample_of_five();
     let manifest = *scenario.period.manifest_digest();
-    let mut ledger = VerifierLedger::new();
+    let mut ledger = owning(&[&sample]);
     // Nothing proven: every request is unproven, and nothing has a Û.
     let report = AuditReport::from_ledger(&sample, &ledger).unwrap();
     assert!(
@@ -831,14 +1031,18 @@ fn a_missing_proof_is_unproven_at_the_deadline() {
 #[test]
 fn a_ledger_record_past_the_sample_is_refused() {
     let sample = sample_with(&[key(1, 1), key(1, 2)]);
-    // A record of this sample naming index 8.
-    let mut proven = sample.identity().to_vec();
-    proven.extend(2u64.to_le_bytes());
-    proven.extend([0x00, 0x01]);
-    proven.extend(1u64.to_le_bytes());
-    proven.extend(5u64.to_le_bytes());
-    let ledger =
-        VerifierLedger::decode_payload(&ledger_payload(&[proven]), &DecodeLimits::MESSAGE).unwrap();
+    // The verifier's sample, with a record naming index 8.
+    let own = owning(&[&sample]);
+    assert!(AuditReport::from_ledger(&sample, &own).is_ok());
+    let mut payload = own.encode_payload().unwrap();
+    payload.truncate(payload.len() - 8);
+    payload.extend(1u64.to_le_bytes());
+    payload.extend(sample.identity());
+    payload.extend(2u64.to_le_bytes());
+    payload.extend([0x00, 0x01]);
+    payload.extend(1u64.to_le_bytes());
+    payload.extend(5u64.to_le_bytes());
+    let ledger = VerifierLedger::decode_payload(&payload, &DecodeLimits::MESSAGE).unwrap();
     assert_eq!(
         AuditReport::from_ledger(&sample, &ledger),
         Err(inconclusive(Code::Usage))
@@ -847,7 +1051,7 @@ fn a_ledger_record_past_the_sample_is_refused() {
     let accepted = RequestOutcome::Accepted { uhat: FixedBits(0) };
     for n in [0, 1, 3] {
         assert_eq!(
-            AuditReport::new(&sample, vec![accepted.clone(); n]),
+            AuditReport::new(&sample, &ledger, vec![accepted.clone(); n]),
             Err(inconclusive(Code::Usage))
         );
     }
@@ -874,6 +1078,7 @@ fn the_report_renders_each_outcome_as_the_example_does() {
     let sample = sample_with(&keys);
     let report = AuditReport::new(
         &sample,
+        &owning(&[&sample]),
         vec![
             RequestOutcome::Accepted { uhat: FixedBits(0) },
             RequestOutcome::Rejected(RejectReason::Anchor {
@@ -1093,7 +1298,7 @@ fn seeded_samples_and_ledgers_round_trip_and_every_prefix_is_cut_short() {
             sample
         );
         // A ledger with a record for some of the sample's requests.
-        let mut ledger = VerifierLedger::new();
+        let mut ledger = owning(&[&sample]);
         let some: Vec<RequestRef> = keys
             .iter()
             .filter(|_| rng.next_u64().is_multiple_of(2))
@@ -1128,12 +1333,16 @@ fn seeded_samples_and_ledgers_round_trip_and_every_prefix_is_cut_short() {
 }
 
 #[test]
-fn the_vectors_samples_report_every_request_unproven_with_an_empty_ledger() {
+fn the_vectors_samples_report_every_request_unproven_with_no_record() {
     let doc = read_vectors("audit/audit.json");
     for case in doc.get("samples").and_then(Json::as_array).unwrap() {
         let envelope = tv_testkit::hex(case.get("envelope").and_then(Json::as_str).unwrap());
         let sample = AuditSample::open(&envelope, &DecodeLimits::MESSAGE).unwrap();
-        let report = AuditReport::from_ledger(&sample, &VerifierLedger::new()).unwrap();
+        assert_eq!(
+            AuditReport::from_ledger(&sample, &VerifierLedger::new()),
+            Err(inconclusive(Code::Usage))
+        );
+        let report = AuditReport::from_ledger(&sample, &owning(&[&sample])).unwrap();
         assert_eq!(report.summary().unproven, sample.selected().len() as u64);
         assert_eq!(report.summary().accepted, 0);
     }
@@ -1170,11 +1379,11 @@ fn a_request_listed_twice_for_batching_is_refused_and_bounds_hold() {
 #[test]
 fn an_accepted_batch_of_no_request_changes_nothing() {
     let (scenario, sample) = sample_of_five();
-    let mut ledger = VerifierLedger::new();
+    let mut ledger = owning(&[&sample]);
     let empty = statement(*scenario.period.manifest_digest(), Vec::new());
     assert_eq!(ledger.check_accounting(&sample, &empty), Ok(Vec::new()));
     ledger.record_accepted(&sample, &empty, &[]).unwrap();
-    assert_eq!(ledger, VerifierLedger::new());
+    assert_eq!(ledger, owning(&[&sample]));
     assert!(ledger.proven(sample.identity()).is_none());
 }
 
@@ -1192,7 +1401,7 @@ fn a_large_batch_is_checked_in_quasi_linear_time() {
         })
         .collect();
     let sample = sample_with(&keys);
-    let ledger = VerifierLedger::new();
+    let ledger = owning(&[&sample]);
     let mut requests: Vec<RequestRef> = keys.iter().map(|k| req(1, k.request_id)).collect();
     requests.reverse();
     let honest = statement([7; 32], requests.clone());
@@ -1249,4 +1458,99 @@ fn a_selection_value_equal_to_its_threshold_is_not_selected() {
     );
     assert!(!policy(&[(1, value)]).selects(value, 1));
     assert!(policy(&[(1, value + 1)]).selects(value, 1));
+}
+
+/// First-fit decreasing as RFC-0016 'Batching' states it, by a scan of every batch opened: the
+/// reference `pack`'s tree of maxima must agree with.
+fn reference_pack(
+    max: u64,
+    requests: &[tv_core::audit::BatchRequest<u8>],
+) -> Vec<(u8, Vec<RequestKey>, u64)> {
+    let mut order: Vec<_> = requests.to_vec();
+    order.sort_by(|a, b| {
+        a.group
+            .cmp(&b.group)
+            .then(b.tokens.cmp(&a.tokens))
+            .then(a.key.cmp(&b.key))
+    });
+    let mut out = Vec::new();
+    let mut start = 0;
+    while start < order.len() {
+        let group = order[start].group;
+        let end = start
+            + order[start..]
+                .iter()
+                .take_while(|r| r.group == group)
+                .count();
+        let mut opened: Vec<(u64, Vec<RequestKey>)> = Vec::new();
+        for r in &order[start..end] {
+            match opened
+                .iter_mut()
+                .find(|(t, _)| t.checked_add(r.tokens).is_some_and(|x| x <= max))
+            {
+                Some((t, keys)) => {
+                    *t += r.tokens;
+                    keys.push(r.key);
+                }
+                None => opened.push((r.tokens, vec![r.key])),
+            }
+        }
+        for (t, mut keys) in opened {
+            keys.sort();
+            out.push((group, keys, t));
+        }
+        start = end;
+    }
+    out
+}
+
+#[test]
+fn packing_with_the_tree_agrees_with_the_scan_on_seeded_sets() {
+    use tv_core::audit::{BatchRequest, pack};
+    let mut rng = SplitMix64::new(0x0151_ba7c_0016);
+    let mut opened_many = false;
+    for case in 0..400 {
+        let max = [1u64, 10, 100, 1000, 65_536][(rng.next_u64() % 5) as usize];
+        let n = (rng.next_u64() % 120) as usize;
+        let requests: Vec<BatchRequest<u8>> = (0..n)
+            .map(|i| BatchRequest {
+                key: RequestKey {
+                    session_id: [(rng.next_u64() % 3) as u8; 16],
+                    request_id: i as u64 * 7 + rng.next_u64() % 7,
+                },
+                group: (rng.next_u64() % 3) as u8,
+                tokens: match rng.next_u64() % 8 {
+                    0 => 0,
+                    1 => max,
+                    2 => max + 1 + rng.next_u64() % max,
+                    3 => u64::MAX,
+                    4 => max / 2,
+                    _ => rng.next_u64() % (max + 1),
+                },
+            })
+            .collect();
+        let got: Vec<(u8, Vec<RequestKey>, u64)> = pack(max as u32, &requests)
+            .unwrap()
+            .into_iter()
+            .map(|b| (b.group, b.requests, b.tokens))
+            .collect();
+        opened_many |= got.len() > 40;
+        assert_eq!(got, reference_pack(max, &requests), "case {case}");
+    }
+    assert!(opened_many);
+    // Every request in a batch of its own: the case a scan makes quadratic, about 1.25·10^11
+    // steps for 500,000 requests, against well under a second for the tree.
+    let n = 500_000u64;
+    let alone: Vec<BatchRequest<u8>> = (0..n)
+        .map(|i| BatchRequest {
+            key: key(1, i),
+            group: 0,
+            tokens: 6,
+        })
+        .collect();
+    let start = std::time::Instant::now();
+    let packed = pack(10, &alone).unwrap();
+    let elapsed = start.elapsed();
+    assert_eq!(packed.len() as u64, n);
+    assert!(elapsed < std::time::Duration::from_secs(30), "{elapsed:?}");
 }

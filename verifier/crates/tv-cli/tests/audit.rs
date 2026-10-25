@@ -13,7 +13,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use tv_codec::DecodeLimits;
-use tv_core::audit::{AuditSample, CoinTossTranscript, LedgerFile, RequestKey};
+use tv_core::audit::{AuditSample, CoinTossTranscript, RequestKey, VerifierLedger};
 use tv_core::protocol::{BatchDescriptor, FixedBits, PublicStatement, RequestRef};
 use tv_hash::{Domain, hash};
 use tv_testkit::Json;
@@ -437,7 +437,25 @@ fn statement(requests: &[u64]) -> PublicStatement {
     }
 }
 
-/// Writes the sample and a ledger accepting `accepted` with `Û` 5 each, and returns the paths.
+/// The ledger of a verifier that derived the samples `ids` (sorted here), with nothing proven:
+/// decoded from its bytes, as a verifier's ledger file holds it after its reveals.
+fn deriving(ids: &[[u8; 32]]) -> VerifierLedger {
+    let mut ids = ids.to_vec();
+    ids.sort();
+    let mut payload = Vec::new();
+    for _ in 0..3 {
+        payload.extend(0u64.to_le_bytes());
+    }
+    payload.extend((ids.len() as u64).to_le_bytes());
+    for id in &ids {
+        payload.extend(id);
+    }
+    payload.extend(0u64.to_le_bytes());
+    VerifierLedger::decode_payload(&payload, &DecodeLimits::MESSAGE).unwrap()
+}
+
+/// Writes the sample and a ledger deriving it and accepting `accepted` with `Û` 5 each, and
+/// returns the paths.
 fn report_inputs(dir: &Path, accepted: &[u64]) -> (PathBuf, PathBuf) {
     let sample =
         AuditSample::decode_payload(&sample_payload(&keys(), toss()), &DecodeLimits::MESSAGE)
@@ -445,7 +463,7 @@ fn report_inputs(dir: &Path, accepted: &[u64]) -> (PathBuf, PathBuf) {
     let tas = dir.join("sample.tas");
     fs::write(&tas, sample.seal().unwrap()).unwrap();
     let tvl = dir.join("ledger.tvl");
-    let mut ledger = LedgerFile::create(&tvl).unwrap();
+    let mut ledger = deriving(&[*sample.identity()]);
     if !accepted.is_empty() {
         ledger
             .record_accepted(
@@ -455,6 +473,7 @@ fn report_inputs(dir: &Path, accepted: &[u64]) -> (PathBuf, PathBuf) {
             )
             .unwrap();
     }
+    fs::write(&tvl, ledger.seal().unwrap()).unwrap();
     (tvl, tas)
 }
 
@@ -564,11 +583,55 @@ fn every_report_input_failure_exits_with_its_code() {
             .unwrap();
     let bad_toss = dir.join("bad.tas");
     fs::write(&bad_toss, sample.seal().unwrap()).unwrap();
+    // Not the verifier's own: the ledger does not derive it (RFC-0067), exit 64.
     let r = report(&tvl, &bad_toss, &out);
+    assert_eq!(
+        (r.exit_code, error_code(&r.stdout).as_str()),
+        (64, "ERR-USAGE")
+    );
+    // Recorded as derived, as only a hand-made ledger can: its toss is refused.
+    let owned = dir.join("owned.tvl");
+    fs::write(&owned, deriving(&[*sample.identity()]).seal().unwrap()).unwrap();
+    let r = report(&owned, &bad_toss, &out);
     assert_eq!(
         (r.exit_code, error_code(&r.stdout).as_str()),
         (20, "ERR-PROTO-COINTOSS")
     );
+    // A sample whose toss opens, written by the prover: its own s_V and a policy of rate 0.
+    let forged_toss = CoinTossTranscript {
+        verifier_commitment: hash(Domain::CoinCommit, &[9; 32]),
+        prover_share: [4; 32],
+        verifier_share: [9; 32],
+    };
+    let forged =
+        AuditSample::decode_payload(&sample_payload(&[], forged_toss), &DecodeLimits::MESSAGE)
+            .unwrap();
+    let forged_tas = dir.join("forged.tas");
+    fs::write(&forged_tas, forged.seal().unwrap()).unwrap();
+    let r = report(&tvl, &forged_tas, &out);
+    assert_eq!(
+        (r.exit_code, error_code(&r.stdout).as_str()),
+        (64, "ERR-USAGE")
+    );
+    // The ledger as a symbolic link, or under a second hard link: refused, exit 64.
+    #[cfg(unix)]
+    {
+        let link = dir.join("link.tvl");
+        std::os::unix::fs::symlink(&tvl, &link).unwrap();
+        let r = report(&link, &tas, &out);
+        assert_eq!(
+            (r.exit_code, error_code(&r.stdout).as_str()),
+            (64, "ERR-USAGE")
+        );
+        let hard = dir.join("hard.tvl");
+        fs::hard_link(&tvl, &hard).unwrap();
+        let r = report(&tvl, &tas, &out);
+        assert_eq!(
+            (r.exit_code, error_code(&r.stdout).as_str()),
+            (64, "ERR-USAGE")
+        );
+        fs::remove_file(&hard).unwrap();
+    }
     // The output naming an input, and missing options.
     let r = report(&tvl, &tas, &tvl);
     assert_eq!(

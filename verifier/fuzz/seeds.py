@@ -25,8 +25,9 @@ libFuzzer names corpus files:
   limits admit, with a seed for its tables or leaves; alone, and followed by each change;
   GDG-prefixed gadget cases cover each family, model variant, affine change and nonlinear final.
 - audit: every sample of audit/audit.json, as a payload (selector 0) and as an envelope
-  (selector 2), its accepted and refused payloads, and an empty ledger, payload (1) and envelope
-  (3), each under both of the target's limits (src/audit.rs).
+  (selector 2), its accepted and refused payloads, an empty ledger, payload (1) and envelope
+  (3), and a ledger payload deriving each sample, each under both of the target's limits
+  (src/audit.rs).
 
 The selectors are the indices of `TYPES` in src/lib.rs, read from the source so that the seeds
 follow any change to the list. The proof targets' input formats are those of `multiproof_case`
@@ -305,9 +306,13 @@ def main():
     samples = [(0, bytes.fromhex(case["payload"])) for key in ("samples", "refused", "accepted")
                for case in audit[key]]
     samples += [(2, bytes.fromhex(case["envelope"])) for case in audit["samples"]]
-    # The empty ledger: four empty sequences, and its envelope (schema 0x0701, version 1) with
-    # a zero digest, which the target refuses at the digest and the fuzzer can repair.
-    empty = bytes(32)
+    # The empty ledger: five empty sequences (RFC-0067), and its envelope (schema 0x0701,
+    # version 1) with a zero digest, which the target refuses at the digest. Then a ledger that
+    # derived each sample: three empty sequences, the sample's identity, and no record.
+    empty = bytes(40)
+    for case in audit["samples"]:
+        identity = bytes.fromhex(case["envelope"])[-DIGEST_LEN:]
+        samples.append((1, bytes(24) + (1).to_bytes(8, "little") + identity + bytes(8)))
     header = b"TSRA" + u16(1) + u16(0x0701) + u16(1) + u16(0) + len(empty).to_bytes(8, "little")
     samples += [(1, empty), (3, header + empty + bytes(DIGEST_LEN))]
     for selector, data in samples:

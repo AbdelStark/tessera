@@ -3,7 +3,7 @@
 //! A strict reader of the JSON documents `tessera-verify` takes as input: the audit policy, the
 //! traffic profile and the cost model (RFC-0016 'Calculators'). It is the CLI's own, so that no
 //! parsing crate joins the trusted base: RFC 8259's grammar, one document per input, at most 64
-//! levels deep, and no object with a key twice. Numbers keep their text, so integers are read
+//! levels deep, and no object with a key twice, found by sorting the keys. Numbers keep their text, so integers are read
 //! exactly and binary64 values are rounded once, by the standard library.
 
 /// A JSON value.
@@ -96,6 +96,14 @@ impl Value {
     }
 }
 
+/// Whether no key repeats among `members`: the keys sorted, then neighbours compared, so an
+/// object of `n` keys costs `O(n log n)` comparisons, not the `n²` of a scan per key.
+fn unique(members: &[(String, Value)]) -> bool {
+    let mut keys: Vec<&str> = members.iter().map(|(k, _)| k.as_str()).collect();
+    keys.sort_unstable();
+    !keys.windows(2).any(|w| matches!(w, [a, b] if a == b))
+}
+
 struct Parser<'a> {
     bytes: &'a [u8],
     pos: usize,
@@ -181,9 +189,6 @@ impl Parser<'_> {
                 return None;
             }
             let key = self.string()?;
-            if members.iter().any(|(k, _)| *k == key) {
-                return None;
-            }
             self.whitespace();
             if self.bump()? != b':' {
                 return None;
@@ -193,7 +198,7 @@ impl Parser<'_> {
             self.whitespace();
             match self.bump()? {
                 b',' => continue,
-                b'}' => return Some(Value::Object(members)),
+                b'}' => return unique(&members).then_some(Value::Object(members)),
                 _ => return None,
             }
         }
@@ -363,5 +368,29 @@ mod tests {
         assert_eq!((x.as_u64(), y.as_u64()), (Some(1), Some(2)));
         assert!(object.exactly(["x"]).is_none());
         assert!(object.exactly(["x", "z"]).is_none());
+    }
+
+    #[test]
+    fn an_object_of_many_keys_is_read_in_quasi_linear_time() {
+        // 500,000 distinct keys, then the same with the first repeated at the end. A scan per
+        // key would make about 1.25·10^11 string comparisons; the sort takes a fraction of a
+        // second, and the bound leaves a wide margin for a loaded host.
+        let n = 500_000;
+        let mut text = String::from("{");
+        for i in 0..n {
+            if i != 0 {
+                text.push(',');
+            }
+            text.push_str(&format!("\"k{i}\":{i}"));
+        }
+        let repeated = format!("{text},\"k0\":1}}");
+        text.push('}');
+        let start = std::time::Instant::now();
+        let parsed = Value::parse(&text).unwrap();
+        let elapsed = start.elapsed();
+        assert!(matches!(&parsed, Value::Object(m) if m.len() == n));
+        assert_eq!(parsed.get("k499999").and_then(Value::as_u64), Some(499_999));
+        assert_eq!(Value::parse(&repeated), None);
+        assert!(elapsed < std::time::Duration::from_secs(30), "{elapsed:?}");
     }
 }

@@ -82,14 +82,24 @@ pub struct AuditReport {
 }
 
 impl AuditReport {
-    /// The report of `sample` with `outcomes`, one per selected request in `selected`'s order.
-    /// The seed is recomputed from the sample's coin toss, which must open.
+    /// The report of `sample` with `outcomes`, one per selected request in `selected`'s order,
+    /// for a verifier that keeps its verdicts (RFC-0067 'The report from the ledger'). The sample
+    /// must be the verifier's own, in `ledger`'s `derived`; the seed is recomputed from its coin
+    /// toss, which must open.
     ///
     /// # Errors
     ///
-    /// `Inconclusive(ERR-PROTO-COINTOSS)` for a coin toss that does not open, and
-    /// `Inconclusive(ERR-USAGE)` for another number of outcomes than of selected requests.
-    pub fn new(sample: &AuditSample, outcomes: Vec<RequestOutcome>) -> Result<Self, Failure> {
+    /// `Inconclusive(ERR-USAGE)` for a sample the verifier did not derive or another number of
+    /// outcomes than of selected requests, and `Inconclusive(ERR-PROTO-COINTOSS)` for a coin toss
+    /// that does not open.
+    pub fn new(
+        sample: &AuditSample,
+        ledger: &VerifierLedger,
+        outcomes: Vec<RequestOutcome>,
+    ) -> Result<Self, Failure> {
+        if !ledger.is_derived(sample.identity()) {
+            return Err(usage());
+        }
         sample.coin_toss().check().map_err(Failure::Inconclusive)?;
         if outcomes.len() != sample.selected().len() {
             return Err(usage());
@@ -139,8 +149,10 @@ impl AuditReport {
     ///
     /// # Errors
     ///
-    /// Those of [`new`](Self::new), and `Inconclusive(ERR-USAGE)` for a record of the sample that
-    /// names an index past its `selected`: the ledger is not this sample's.
+    /// `Inconclusive(ERR-USAGE)` for a record of the sample that names an index past its
+    /// `selected`, and the errors of [`new`](Self::new), which refuses a sample the verifier did
+    /// not derive (RFC-0067 'The verifier's own sample'). The ledger holds records of derived
+    /// samples only, so such a sample has none, and is refused there.
     pub fn from_ledger(sample: &AuditSample, ledger: &VerifierLedger) -> Result<Self, Failure> {
         let count = sample.selected().len();
         let mut outcomes = Vec::new();
@@ -162,7 +174,7 @@ impl AuditReport {
                 *slot = RequestOutcome::Accepted { uhat };
             }
         }
-        Self::new(sample, outcomes)
+        Self::new(sample, ledger, outcomes)
     }
 
     /// The sample seed.
