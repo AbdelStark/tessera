@@ -2,12 +2,33 @@
 
 //! The `audit` target's oracle on seeded inputs, so that `cargo test` runs it without the
 //! fuzzer: the samples of `spec/vectors/audit/`, their envelopes and the refused payloads, as
-//! they are and with bytes changed, cut or added, and ledgers built from the samples.
+//! they are and with bytes changed, cut or added, ledgers built from the samples, and pending
+//! tosses over the samples' manifests and policies, whose shares open their commitments under
+//! the test kit's BLAKE3, payload and envelope.
 
-use tv_core::audit::{AuditSample, VerifierLedger};
+use tv_core::audit::{AuditSample, VerifierLedger, VerifierToss};
 use tv_core::protocol::{BatchDescriptor, FixedBits, PublicStatement, RequestRef};
 use tv_fuzz::audit::check;
+use tv_testkit::blake3::derive_key;
 use tv_testkit::{Json, SplitMix64, hex, read_vectors};
+
+/// RFC-0003's envelope of schema `0x0702` version 1 around a toss's `payload`, with the test
+/// kit's BLAKE3.
+fn seal_toss(payload: &[u8]) -> Vec<u8> {
+    let mut out = [
+        &b"TSRA"[..],
+        &1u16.to_le_bytes(),
+        &0x0702u16.to_le_bytes(),
+        &1u16.to_le_bytes(),
+        &0u16.to_le_bytes(),
+        &(payload.len() as u64).to_le_bytes(),
+        payload,
+    ]
+    .concat();
+    let digest = derive_key("tessera/v1/envelope", &out);
+    out.extend_from_slice(&digest);
+    out
+}
 
 fn inputs() -> Vec<(u8, Vec<u8>)> {
     let doc = read_vectors("audit/audit.json");
@@ -53,6 +74,21 @@ fn inputs() -> Vec<(u8, Vec<u8>)> {
                 )
                 .unwrap();
         }
+        // A pending toss over the sample's manifest and policy (RFC-0067 'The pending toss'):
+        // the payload's manifest and policy, the bytes before the coin toss and `selected`.
+        let policy_end = payload.len() - 96 - 8 - 24 * sample.selected().len();
+        let share = [payload.len() as u8; 32];
+        let mut toss = payload[..policy_end].to_vec();
+        toss.extend(derive_key("tessera/v1/coin-commit", &share));
+        toss.extend(share);
+        // Both readers accept it, so that the seeds reach the accepted path.
+        let limits = tv_codec::DecodeLimits::MESSAGE;
+        let opened = VerifierToss::open(&seal_toss(&toss), &limits).unwrap();
+        assert_eq!(opened.manifest_digest(), sample.manifest_digest());
+        assert_eq!(opened.policy(), sample.policy());
+        VerifierToss::decode_payload(&toss, &limits).unwrap();
+        out.push((4, toss.clone()));
+        out.push((5, seal_toss(&toss)));
         out.push((0, payload));
         out.push((2, envelope));
         out.push((1, ledger.encode_payload().unwrap()));

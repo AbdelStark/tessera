@@ -74,7 +74,14 @@ A sample is the verifier's when it derived it itself, with its own share. One wh
   Without the rule, one period could have two samples, and `proven`, keyed by sample, would accept a request under each.
 - **Accounting.** The checks below refuse a sample that `derived` does not list under its own manifest with `Inconclusive(ERR-USAGE)`, since the verifier's own input is wrong, before any check of the statement.
 - **The report** refuses such a sample too (`ERR-USAGE`, exit 64). The ledger therefore tells "my sample, nothing proven" from "not my sample". A report built from outcomes the caller supplies must agree with the ledger, else `ERR-USAGE`: `Accepted` exactly for the requests the ledger records accepted, with their `Û`.
-- **A lost toss.** A share kept only in memory dies with its process. Since the prover answers one commitment per manifest, a verifier that restarts between commitment and reveal loses that period's audit. Keeping the share across restarts is open (#529).
+- **The pending toss** ([#529](https://github.com/AbdelStark/tessera/issues/529)). The prover answers one commitment per manifest, so a share kept only in memory would die with its process, and with it the period's audit. The verifier keeps it in a file of its own, `VerifierToss` (schema `0x0702`, `.tvt`), between the commitment and the reveal.
+  - **The encoding.** TCE: `manifest_digest`, `policy`, `commitment`, then `share`, 32 bytes. The share is secret-class until the reveal (05 §3). A decoder refuses a commitment that is not `H("coin-commit", share)` with `ERR-PROTO-COINTOSS`.
+  - **Before the commitment leaves.** The verifier writes the file as it writes the ledger: a synced temporary file, renamed into place, the directory synced. It holds mode 0600 and is created exclusively. Only then is the commitment sent. A file already at the path is refused with `ERR-USAGE`: a toss is never silently replaced, and a second commitment over one manifest would be the prover's to refuse anyway.
+  - **The reveal.** It reads the file without following a link, and refuses one whose manifest is not the window's (`ERR-USAGE`). It derives the sample and records it in the ledger's `derived`, as 'Derivation' says, before the sample leaves the verifier.
+  - **Cleared after the record.** Only once the ledger is written is the file overwritten with zeros, synced and removed. A verifier that stops between the record and the removal reveals again over the same prover share, which changes nothing, then removes the file.
+  - **What is refused, not repaired.** A lost file loses the period's audit, as before: nothing can recreate its share. A file that fails its envelope's digest is `ERR-CODEC-DIGEST`, and one that does not open its commitment is `ERR-PROTO-COINTOSS`. Neither is replaced.
+  - **What the file does not bind.** The commitment binds the share alone, and the envelope's digest is no MAC. A file whose manifest or policy is edited and resealed derives another sample, which is not the prover's, so nothing is accepted under it, and the period's audit is lost. Whoever can write the verifier's files can do as much to the ledger.
+  - **A second ledger.** A file kept past its record, after a stop, reveals the same sample into any ledger it is given. One ledger per verifier ('One ledger per verifier') stays the operator's to keep. Before the record, a new share after a restart is harmless: `s_V` has not left the verifier.
 
 ### Updates
 
@@ -143,7 +150,7 @@ Every failure of check 2 gives one reason, so its checks need no order among the
 - A temporary file left by a crash needs an operator. The lock does not: the system releases it with the process.
 - The lock is advisory and local: a network file system may not honour it, and a process that writes the ledger without taking it is not kept out.
 - One ledger writer per directory, since the lock covers the directory.
-- A verifier that restarts between a toss's commitment and its reveal loses that period's audit (#529).
+- A verifier that loses its pending toss file between the commitment and the reveal loses that period's audit: the share exists nowhere else.
 
 ## Migration / Rollout
 

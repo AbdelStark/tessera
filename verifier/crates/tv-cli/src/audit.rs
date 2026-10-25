@@ -1,27 +1,53 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! `tessera-verify audit plan` and `audit report` (02 §2.3, RFC-0016 'Calculators' and 'Audit
-//! report').
+//! `tessera-verify audit plan`, `audit report`, `audit commit` and `audit reveal` (02 §2.3,
+//! RFC-0016 'Calculators', 'Sample derivation' and 'Audit report', RFC-0067 'The pending toss').
 
 use std::path::Path;
 
 use tv_codec::DecodeLimits;
-use tv_core::anchor::Failure;
-use tv_core::audit::{AuditPolicy, AuditReport, AuditSample, RateBucket, read_ledger};
+use tv_core::anchor::{CheckedManifest, Failure, LogManifest, RecorderKeys, VerifiedLog, Window};
+use tv_core::audit::{
+    AuditPolicy, AuditReport, AuditSample, LedgerFile, RateBucket, TossFile, read_ledger,
+};
 use tv_core::audit_plan::{AuditPlan, CostModel, TrafficBucket};
 use tv_core::claims::ParamSetId;
-use tv_core::verdict::ErrorCode;
+use tv_core::verdict::{ErrorCode, VerifierError};
 
 use crate::json::Value;
-use crate::options::Options;
+use crate::options::{self, Options};
 use crate::{CommandOutput, EXIT_REJECT, EXIT_SUCCESS, command_error, files};
 
 const HELP: &str = "\
-tessera-verify audit: the audit's calculators and accounting (RFC-0016)
+tessera-verify audit: the audit's calculators, coin toss and accounting (RFC-0016, RFC-0067)
 
 USAGE:
   tessera-verify audit plan --policy POLICY.json --traffic PROFILE.json [--mu MU.json] [--json]
   tessera-verify audit report --ledger LEDGER.tvl --sample SAMPLE.tas --out REPORT.json [--json]
+  tessera-verify audit commit --manifest MANIFEST.tlm --recorder-key KEY --policy POLICY.json
+                              --toss TOSS.tvt [--json]
+  tessera-verify audit reveal --toss TOSS.tvt --prover-share HEX --manifest MANIFEST.tlm
+                              --recorder-key KEY --log LOG.tdl
+                              [--previous-manifest M.tlm --previous-log L.tdl]
+                              [--between MANIFEST.tlm]... --ledger LEDGER.tvl [--new-ledger]
+                              --out SAMPLE.tas [--json]
+
+commit  The verifier's commitment c_V for the coin toss over a manifest whose signature passes
+        under the pinned recorder key KEY, 64 hexadecimal digits of its Ed25519 public key. A
+        fresh share and the tessera.audit-policy/1 policy are kept in TOSS.tvt, created with
+        mode 0600 and synced, before c_V is printed. An existing TOSS.tvt exits 64 and is never
+        replaced. The share is secret until the reveal and is never printed.
+reveal  The period's sample. The period's log is checked against its manifest, and the
+        previous period's when it is named; each --between manifest, a period of zero length
+        between the two, in chain order, is checked under the pinned key, and the chain must
+        bind them (else exit 64). The toss, read from TOSS.tvt, must be over the period's
+        manifest (else exit 64) and must open its commitment (a broken envelope exits 65, a
+        commitment the share does not open 20). It is revealed against the prover's share HEX,
+        the sample is recorded in the ledger, then written to SAMPLE.tas, and TOSS.tvt is
+        overwritten with zeros and removed. The ledger must exist (a missing one exits 20),
+        unless --new-ledger creates it, which an existing file at its path refuses (exit 64).
+        A reveal interrupted after the record is run again with the same prover share, without
+        --new-ledger.
 
 plan    Detection probability of a tessera.audit-policy/1 policy at a tessera.audit-traffic/1
         profile, against a prover that pads violations into a later bucket and in place. With
@@ -38,9 +64,12 @@ report  The tessera.audit-report/1 report of a sample at its deadline, from the 
 /// The most bytes a JSON input of `audit plan` may hold: a policy, a profile and a cost model
 /// take kilobytes, and the parsed tree takes a small multiple of its text.
 const JSON_LIMIT: u64 = 1 << 20;
-/// The most bytes the sample may hold. The ledger is read under `tv_core::audit::LEDGER_LIMITS`,
-/// as its writers keep it.
+/// The most bytes the sample, or a period's log, may hold. The ledger is read under
+/// `tv_core::audit::LEDGER_LIMITS`, as its writers keep it, and the toss under `TOSS_LIMITS`.
 const ARTIFACT_LIMIT: u64 = 1 << 30;
+/// The most bytes a manifest may hold: an honest one is 310, and its signature's fields are
+/// checked for their lengths once it decodes.
+const MANIFEST_LIMIT: u64 = 1 << 16;
 
 pub(crate) fn run(args: &[String], json_flag: bool) -> CommandOutput {
     match args.first().map(String::as_str) {
@@ -58,6 +87,8 @@ pub(crate) fn run(args: &[String], json_flag: bool) -> CommandOutput {
         }
         Some("plan") => plan(&args[1..], json_flag),
         Some("report") => report(&args[1..], json_flag),
+        Some("commit") => commit(&args[1..], json_flag).unwrap_or_else(|refused| refused),
+        Some("reveal") => reveal(&args[1..], json_flag).unwrap_or_else(|refused| refused),
         Some(other) => command_error(
             "audit",
             &format!("unknown audit command `{other}`"),
@@ -363,4 +394,398 @@ fn report(args: &[String], json_flag: bool) -> CommandOutput {
         stdout,
         stderr: String::new(),
     }
+}
+
+// ----- audit commit and audit reveal -----------------------------------------------------------
+
+/// A refusal, already rendered as the command's output.
+type Refused = CommandOutput;
+
+/// `bytes` as lowercase hexadecimal.
+fn hex_of(bytes: &[u8]) -> String {
+    use core::fmt::Write as _;
+    let mut out = String::with_capacity(bytes.len().saturating_mul(2));
+    for b in bytes {
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}
+
+/// A failure of the core as the command's output: an error exits with its code, a rejection
+/// with 10.
+fn failure(command: &str, message: &str, json_flag: bool, failure: Failure) -> Refused {
+    match failure {
+        Failure::Inconclusive(e) => fail(command, message, json_flag, e.code),
+        Failure::Rejected(reason) => {
+            command_error(command, message, json_flag, reason.code(), EXIT_REJECT)
+        }
+    }
+}
+
+/// Reads `path`, at most `limit` bytes.
+fn read_input(path: &str, limit: u64) -> Result<Vec<u8>, ErrorCode> {
+    files::Inputs {
+        remaining: limit,
+        max_artifact: limit,
+    }
+    .read(Path::new(path))
+}
+
+/// The recorder key the verifier pins (`--recorder-key`, RFC-0015 'Signatures'): the 32 bytes of
+/// its Ed25519 public key, as 64 hexadecimal digits.
+fn recorder_keys(command: &str, key: &str, json_flag: bool) -> Result<RecorderKeys, Refused> {
+    options::hex::<32>(key)
+        .map(|key| RecorderKeys::new(vec![key]))
+        .map_err(|code| {
+            fail(
+                command,
+                "--recorder-key is not 64 hexadecimal digits",
+                json_flag,
+                code,
+            )
+        })
+}
+
+/// The manifest at `path`, decoded and checked under `keys`, its signature first (RFC-0060
+/// 'Signatures'). A manifest that fails its own checks is the anchor's rejection, exit 10.
+fn checked_manifest(
+    command: &str,
+    path: &str,
+    keys: &RecorderKeys,
+    json_flag: bool,
+    what: &str,
+) -> Result<CheckedManifest, Refused> {
+    let bytes = read_input(path, MANIFEST_LIMIT)
+        .map_err(|code| fail(command, &format!("cannot read {what}"), json_flag, code))?;
+    let limits = DecodeLimits {
+        max_total_bytes: MANIFEST_LIMIT,
+        ..DecodeLimits::MESSAGE
+    };
+    let sealed = LogManifest::open(&bytes, &limits).map_err(|e| {
+        fail(
+            command,
+            &format!("{what} does not decode"),
+            json_flag,
+            e.code().into(),
+        )
+    })?;
+    sealed.check(keys).map_err(|e| {
+        command_error(
+            command,
+            &format!("{what} is refused: {e}"),
+            json_flag,
+            e.reason().code(),
+            EXIT_REJECT,
+        )
+    })
+}
+
+/// The period's log at `path`, checked against `manifest` (RFC-0062 'The check'). A log that is
+/// not its manifest's exits 65, `ERR-CODEC-DIGEST`.
+fn verified_log(
+    command: &str,
+    manifest: &CheckedManifest,
+    path: &str,
+    json_flag: bool,
+    what: &str,
+) -> Result<VerifiedLog, Refused> {
+    let bytes = read_input(path, ARTIFACT_LIMIT)
+        .map_err(|code| fail(command, &format!("cannot read {what}"), json_flag, code))?;
+    let limits = DecodeLimits {
+        max_total_bytes: ARTIFACT_LIMIT,
+        ..DecodeLimits::MESSAGE
+    };
+    VerifiedLog::check(manifest, &bytes, &limits).map_err(|e| {
+        fail(
+            command,
+            &format!("{what} is not its manifest's"),
+            json_flag,
+            e.code().into(),
+        )
+    })
+}
+
+/// `audit commit` (02 §2.3, RFC-0067 'Before the commitment leaves'): the manifest's signature,
+/// the policy, then the toss written to its file, and only then the commitment printed.
+fn commit(args: &[String], json_flag: bool) -> Result<CommandOutput, Refused> {
+    const COMMAND: &str = "audit commit";
+    let options = Options::parse(
+        args,
+        &["--manifest", "--recorder-key", "--policy", "--toss"],
+    )
+    .map_err(|code| {
+        fail(
+            COMMAND,
+            "invalid, missing or duplicate option",
+            json_flag,
+            code,
+        )
+    })?;
+    let (Ok(manifest), Ok(key), Ok(policy), Ok(toss)) = (
+        options.required("--manifest"),
+        options.required("--recorder-key"),
+        options.required("--policy"),
+        options.required("--toss"),
+    ) else {
+        return Err(fail(
+            COMMAND,
+            "missing --manifest, --recorder-key, --policy or --toss",
+            json_flag,
+            ErrorCode::Usage,
+        ));
+    };
+    let keys = recorder_keys(COMMAND, key, json_flag)?;
+    let manifest = checked_manifest(COMMAND, manifest, &keys, json_flag, "the manifest")?;
+    let mut input = files::Inputs {
+        remaining: JSON_LIMIT,
+        max_artifact: JSON_LIMIT,
+    };
+    let policy = match read_json(policy, &mut input).map(|v| read_policy(&v)) {
+        Ok(Ok(policy)) => policy,
+        Ok(Err(message)) => return Err(fail(COMMAND, &message, json_flag, ErrorCode::Usage)),
+        Err(code) => return Err(fail(COMMAND, "cannot read the policy", json_flag, code)),
+    };
+    // The toss is in its file, synced, before the commitment exists outside this process.
+    let pending = TossFile::commit(Path::new(toss), &manifest, policy).map_err(|e| {
+        let message = match e.code {
+            ErrorCode::Usage => {
+                "--toss names an existing file or no file: a pending toss is never replaced"
+            }
+            ErrorCode::CodecLimit => "the policy makes the toss larger than its limit",
+            ErrorCode::Io => "cannot draw the share, or write and sync the toss",
+            _ => "cannot keep the toss",
+        };
+        fail(COMMAND, message, json_flag, e.code)
+    })?;
+    let commitment = hex_of(pending.commitment());
+    let stdout = if json_flag {
+        format!(
+            "{{\"command\":\"{COMMAND}\",\"manifest_digest\":\"{}\",\"commitment\":\"{commitment}\"}}\n",
+            hex_of(pending.manifest_digest())
+        )
+    } else {
+        format!("{commitment}\n")
+    };
+    Ok(CommandOutput {
+        exit_code: EXIT_SUCCESS,
+        stdout,
+        stderr: String::new(),
+    })
+}
+
+/// The ledger at `path`, held by this writer. With `new`, it is created, exclusively: anything
+/// at the path, a dangling link included, is `ERR-USAGE` and is left as it is. Without it, the
+/// ledger must exist, and a missing one is `ERR-RES-IO` (RFC-0067 'The path'), so that a
+/// mistyped path never makes a second ledger.
+fn open_ledger(path: &Path, new: bool) -> Result<LedgerFile, VerifierError> {
+    if new {
+        LedgerFile::create(path)
+    } else {
+        LedgerFile::open(path)
+    }
+}
+
+/// `audit reveal` (02 §2.3, RFC-0016 'Sample derivation', RFC-0063 'The previous period's log',
+/// RFC-0067 'The pending toss'): both periods' logs checked and bound through the zero-length
+/// periods between them, the toss read and revealed, the sample recorded in the ledger, then
+/// written, then the toss cleared.
+fn reveal(args: &[String], json_flag: bool) -> Result<CommandOutput, Refused> {
+    const COMMAND: &str = "audit reveal";
+    let options = Options::parse_with(
+        args,
+        &[
+            "--toss",
+            "--prover-share",
+            "--manifest",
+            "--recorder-key",
+            "--log",
+            "--previous-manifest",
+            "--previous-log",
+            "--ledger",
+            "--out",
+        ],
+        &["--between"],
+        &["--new-ledger"],
+    )
+    .map_err(|code| {
+        fail(
+            COMMAND,
+            "invalid, missing or duplicate option",
+            json_flag,
+            code,
+        )
+    })?;
+    let (Ok(toss), Ok(share), Ok(manifest), Ok(key), Ok(log), Ok(ledger), Ok(out)) = (
+        options.required("--toss"),
+        options.required("--prover-share"),
+        options.required("--manifest"),
+        options.required("--recorder-key"),
+        options.required("--log"),
+        options.required("--ledger"),
+        options.required("--out"),
+    ) else {
+        return Err(fail(
+            COMMAND,
+            "missing --toss, --prover-share, --manifest, --recorder-key, --log, --ledger or --out",
+            json_flag,
+            ErrorCode::Usage,
+        ));
+    };
+    let previous = match (
+        options.get("--previous-manifest"),
+        options.get("--previous-log"),
+    ) {
+        (Some(manifest), Some(log)) => Some((manifest, log)),
+        (None, None) => None,
+        _ => {
+            return Err(fail(
+                COMMAND,
+                "--previous-manifest and --previous-log are named together",
+                json_flag,
+                ErrorCode::Usage,
+            ));
+        }
+    };
+    let between = options.all("--between");
+    let new_ledger = options.switch("--new-ledger");
+    let mut inputs = vec![toss, manifest, log, ledger];
+    if let Some((manifest, log)) = previous {
+        inputs.extend([manifest, log]);
+    }
+    inputs.extend(&between);
+    files::output_distinct(Some(out), &inputs)
+        .map_err(|code| fail(COMMAND, "--out names an input", json_flag, code))?;
+    let prover_share = options::hex::<32>(share).map_err(|code| {
+        fail(
+            COMMAND,
+            "--prover-share is not 64 hexadecimal digits",
+            json_flag,
+            code,
+        )
+    })?;
+    let keys = recorder_keys(COMMAND, key, json_flag)?;
+    // 'The reveal comes last': the period's manifest and log, and the previous period's, are
+    // checked before the toss is read (RFC-0016 'Sample derivation' step 1).
+    let manifest = checked_manifest(COMMAND, manifest, &keys, json_flag, "the period's manifest")?;
+    let period = verified_log(COMMAND, &manifest, log, json_flag, "the period's log")?;
+    let before = match previous {
+        Some((manifest, log)) => {
+            let manifest = checked_manifest(
+                COMMAND,
+                manifest,
+                &keys,
+                json_flag,
+                "the previous period's manifest",
+            )?;
+            Some(verified_log(
+                COMMAND,
+                &manifest,
+                log,
+                json_flag,
+                "the previous period's log",
+            )?)
+        }
+        None => None,
+    };
+    // The periods of zero length between the two, in chain order, each signed under the pinned
+    // key (RFC-0063 'The previous period's log').
+    let between = between
+        .iter()
+        .map(|path| checked_manifest(COMMAND, path, &keys, json_flag, "a --between manifest"))
+        .collect::<Result<Vec<CheckedManifest>, Refused>>()?;
+    let window = Window::bind(&period, &between, before.as_ref()).map_err(|f| {
+        failure(
+            COMMAND,
+            "the previous period and the --between manifests do not bind to the period through the chain",
+            json_flag,
+            f,
+        )
+    })?;
+    let mut pending = TossFile::open(Path::new(toss)).map_err(|e| {
+        let message = match e.code {
+            ErrorCode::Io => "cannot read the toss; a lost toss cannot be recreated",
+            ErrorCode::Usage => "the toss is not a regular file of one name",
+            ErrorCode::ProtocolCoinToss => "the toss's share does not open its commitment",
+            ErrorCode::CodecDigest => "the toss's envelope digest does not match",
+            _ => "the toss does not decode",
+        };
+        fail(COMMAND, message, json_flag, e.code)
+    })?;
+    // Another manifest's toss is refused before the ledger is opened or created; the reveal
+    // checks it again.
+    if pending.manifest_digest() != window.period().manifest_digest() {
+        return Err(fail(
+            COMMAND,
+            "the toss is over another manifest",
+            json_flag,
+            ErrorCode::Usage,
+        ));
+    }
+    let mut ledger = open_ledger(Path::new(ledger), new_ledger).map_err(|e| {
+        let message = match (new_ledger, e.code) {
+            (true, ErrorCode::Usage) => {
+                "--new-ledger names an existing file: a ledger is never replaced"
+            }
+            (false, ErrorCode::Io) => {
+                "cannot hold the ledger: it is missing, or another writer holds its directory; --new-ledger creates one"
+            }
+            _ => "cannot hold the ledger as its one writer",
+        };
+        fail(COMMAND, message, json_flag, e.code)
+    })?;
+    let created = new_ledger;
+    let sample = pending
+        .reveal(&window, prover_share, &mut ledger)
+        .map_err(|f| {
+            let message = match &f {
+                Failure::Inconclusive(VerifierError {
+                    code: ErrorCode::ProtocolOrder,
+                }) => "the ledger holds another sample for this manifest",
+                Failure::Inconclusive(VerifierError {
+                    code: ErrorCode::Usage,
+                }) => "the toss is over another manifest",
+                _ => "cannot reveal the toss and record its sample",
+            };
+            failure(COMMAND, message, json_flag, f)
+        })?;
+    drop(ledger);
+    // The sample leaves only now that the ledger holds it, and the toss is cleared only once
+    // the sample is written and its directory synced: a stop before either is followed by the
+    // same reveal again, which changes nothing.
+    let sealed = sample
+        .seal()
+        .map_err(|e| fail(COMMAND, "cannot seal the sample", json_flag, e.code))?;
+    files::write(Path::new(out), &sealed)
+        .and_then(|()| files::sync_parent(Path::new(out)))
+        .map_err(|code| {
+            fail(
+                COMMAND,
+                "the ledger records the sample, which cannot be written: reveal again with the same prover share",
+                json_flag,
+                code,
+            )
+        })?;
+    pending.clear().map_err(|e| {
+        fail(
+            COMMAND,
+            "the sample is written, but the toss cannot be cleared: reveal again with the same prover share",
+            json_flag,
+            e.code,
+        )
+    })?;
+    let identity = hex_of(sample.identity());
+    let selected = sample.selected().len();
+    let stdout = if json_flag {
+        format!(
+            "{{\"command\":\"{COMMAND}\",\"manifest_digest\":\"{}\",\"sample\":\"{identity}\",\"selected\":{selected},\"ledger_created\":{created}}}\n",
+            hex_of(sample.manifest_digest())
+        )
+    } else {
+        format!("sample {identity}: {selected} requests selected\n")
+    };
+    Ok(CommandOutput {
+        exit_code: EXIT_SUCCESS,
+        stdout,
+        stderr: String::new(),
+    })
 }

@@ -2,10 +2,28 @@
 
 use tv_core::verdict::ErrorCode;
 
-pub(crate) struct Options<'a>(Vec<(&'a str, &'a str)>);
+pub(crate) struct Options<'a> {
+    /// Each option with its value, in the order given.
+    pairs: Vec<(&'a str, &'a str)>,
+    /// The switches given, each once.
+    switches: Vec<&'a str>,
+}
 impl<'a> Options<'a> {
+    /// `args` as options of `allowed`, each with one value and given once, and `--json` at most
+    /// once; anything else is `ERR-USAGE`.
     pub(crate) fn parse(args: &'a [String], allowed: &[&str]) -> Result<Self, ErrorCode> {
+        Self::parse_with(args, allowed, &[], &[])
+    }
+    /// [`parse`](Self::parse), where the options of `repeated` may be given several times, kept
+    /// in their order, and those of `switches` take no value and are given at most once.
+    pub(crate) fn parse_with(
+        args: &'a [String],
+        allowed: &[&str],
+        repeated: &[&str],
+        switches: &[&str],
+    ) -> Result<Self, ErrorCode> {
         let mut pairs = Vec::new();
+        let mut on = Vec::new();
         let mut i = 0;
         let mut json = false;
         while let Some(arg) = args.get(i).map(String::as_str) {
@@ -17,7 +35,18 @@ impl<'a> Options<'a> {
                 i += 1;
                 continue;
             }
-            if !allowed.contains(&arg) || pairs.iter().any(|&(key, _)| key == arg) {
+            if switches.contains(&arg) {
+                if on.contains(&arg) {
+                    return Err(ErrorCode::Usage);
+                }
+                on.push(arg);
+                i += 1;
+                continue;
+            }
+            let once = allowed.contains(&arg);
+            if !(once || repeated.contains(&arg))
+                || (once && pairs.iter().any(|&(key, _)| key == arg))
+            {
                 return Err(ErrorCode::Usage);
             }
             let value = args
@@ -28,10 +57,26 @@ impl<'a> Options<'a> {
             pairs.push((arg, value));
             i += 2;
         }
-        Ok(Self(pairs))
+        Ok(Self {
+            pairs,
+            switches: on,
+        })
     }
     pub(crate) fn get(&self, key: &str) -> Option<&'a str> {
-        self.0.iter().find_map(|&(k, v)| (k == key).then_some(v))
+        self.pairs
+            .iter()
+            .find_map(|&(k, v)| (k == key).then_some(v))
+    }
+    /// Every value of a repeated option, in the order given.
+    pub(crate) fn all(&self, key: &str) -> Vec<&'a str> {
+        self.pairs
+            .iter()
+            .filter_map(|&(k, v)| (k == key).then_some(v))
+            .collect()
+    }
+    /// Whether the switch `key` was given.
+    pub(crate) fn switch(&self, key: &str) -> bool {
+        self.switches.contains(&key)
     }
     pub(crate) fn required(&self, key: &str) -> Result<&'a str, ErrorCode> {
         self.get(key).ok_or(ErrorCode::Usage)
@@ -103,6 +148,44 @@ pub(crate) fn bound(text: &str) -> Result<u64, ErrorCode> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A repeated option keeps its values in order, an option of `allowed` is still refused a
+    /// second time, and a switch takes no value and is refused a second time.
+    #[test]
+    fn repeated_options_keep_their_order_and_switches_take_no_value() {
+        let args: Vec<String> = ["--b", "z1", "--a", "x", "--s", "--b", "z2"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let o = Options::parse_with(&args, &["--a"], &["--b"], &["--s"]).unwrap();
+        assert_eq!(o.all("--b"), ["z1", "z2"]);
+        assert_eq!(o.get("--a"), Some("x"));
+        assert!(o.switch("--s") && !o.switch("--t"));
+        assert!(o.all("--a") == ["x"] && o.all("--c").is_empty());
+        let none = Options::parse_with(&args[..4], &["--a"], &["--b"], &["--s"]).unwrap();
+        assert!(!none.switch("--s"));
+        for bad in [
+            &["--a", "x", "--a", "y"][..],
+            &["--s", "--s"],
+            &["--b"],
+            &["--b", "--a"],
+            &["--s", "value"],
+            &["--c", "x"],
+        ] {
+            let args: Vec<String> = bad.iter().map(|s| s.to_string()).collect();
+            assert_eq!(
+                Options::parse_with(&args, &["--a"], &["--b"], &["--s"]).err(),
+                Some(ErrorCode::Usage),
+                "{bad:?}"
+            );
+        }
+        // Without repeats or switches, as before.
+        let args: Vec<String> = ["--b", "x"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            Options::parse(&args, &["--a"]).err(),
+            Some(ErrorCode::Usage)
+        );
+    }
     #[test]
     fn policy_numbers_are_exact_and_cannot_wrap() {
         for (text, value) in [
