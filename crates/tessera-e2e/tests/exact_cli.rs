@@ -16,6 +16,8 @@ use tv_codec::{DecodeLimits, Envelope, WeightCommitmentPublic};
 use tv_core::{claims::ClaimList, protocol::*};
 use tv_hash::{Domain, hash};
 
+mod canary;
+
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
@@ -147,8 +149,34 @@ fn set(args: &mut [String], key: &str, value: impl ToString) {
     let i = args.iter().position(|x| x == key).unwrap();
     args[i + 1] = value.to_string();
 }
+/// A CLI fixture of `spec/vectors/`: its model, recorded tokens and the request they make.
+struct Set {
+    dir: &'static str,
+    model: &'static str,
+    layers: u64,
+    prompt_len: u32,
+    output_len: u32,
+}
+const EXACT: Set = Set {
+    dir: "exact-cli",
+    model: "tiny-3-reference.d",
+    layers: 3,
+    prompt_len: 2,
+    output_len: 3,
+};
+/// OBS-3's canary model (`spec/vectors/canary/`).
+const CANARY: Set = Set {
+    dir: "canary",
+    model: "canary-reference.d",
+    layers: 2,
+    prompt_len: 3,
+    output_len: 3,
+};
 struct Fixture {
     dir: Dir,
+    set: &'static Set,
+    /// Logging flags given to every producer command.
+    log: &'static [&'static str],
     model: String,
     tokens: String,
     pin: String,
@@ -156,16 +184,16 @@ struct Fixture {
 }
 impl Fixture {
     fn new() -> Self {
+        Self::with(&EXACT, &[])
+    }
+    fn with(set: &'static Set, log: &'static [&'static str]) -> Self {
+        let vectors = root().join("spec/vectors").join(set.dir);
         let mut f = Self {
             dir: Dir::new(),
-            model: root()
-                .join("spec/vectors/exact-cli/tiny-3-reference.d")
-                .display()
-                .to_string(),
-            tokens: root()
-                .join("spec/vectors/exact-cli/recorded.ttk")
-                .display()
-                .to_string(),
+            set,
+            log,
+            model: vectors.join(set.model).display().to_string(),
+            tokens: vectors.join("recorded.ttk").display().to_string(),
             pin: String::new(),
             weights_root: String::new(),
         };
@@ -188,7 +216,7 @@ impl Fixture {
             0,
         );
         let compile = report(&compile, "commitment-report");
-        assert_eq!(compile["model"]["n_layers"], 3);
+        assert_eq!(compile["model"]["n_layers"], set.layers);
         f.run(
             false,
             &[
@@ -224,8 +252,8 @@ impl Fixture {
                 requests: vec![RequestRef {
                     request_id: 23,
                     session_id: [0x11; 16],
-                    prompt_len: 2,
-                    output_len: 3,
+                    prompt_len: set.prompt_len,
+                    output_len: set.output_len,
                 }],
             },
             predictor: PredictorSpec::Exact {
@@ -240,20 +268,20 @@ impl Fixture {
         self.dir.0.join(s).display().to_string()
     }
     fn process(&self, verifier: bool, args: &[String]) -> Process {
-        Process::start(
-            Command::new(if verifier {
-                &binaries().1
-            } else {
-                &binaries().0
-            })
-            .args(args),
-            &self.dir.0,
-        )
+        let mut command = if verifier {
+            Command::new(&binaries().1)
+        } else {
+            let mut command = Command::new(&binaries().0);
+            command.args(self.log);
+            command
+        };
+        Process::start(command.args(args), &self.dir.0)
     }
     fn run(&self, verifier: bool, args: &[String], expected: i32) -> String {
         self.process(verifier, args).wait(expected)
     }
     fn prove(&self, live: bool) -> Vec<String> {
+        let prompt = self.set.prompt_len.to_string();
         [
             "--json",
             "prove",
@@ -266,7 +294,7 @@ impl Fixture {
             "--reference-tokens",
             &self.tokens,
             "--prompt-len",
-            "2",
+            &prompt,
             "--request-id",
             "23",
             "--request-session",
@@ -281,6 +309,10 @@ impl Fixture {
         .collect()
     }
     fn verify(&self, live: bool) -> Vec<String> {
+        let (prompt, output) = (
+            self.set.prompt_len.to_string(),
+            self.set.output_len.to_string(),
+        );
         let mut args: Vec<String> = [
             if live { "live" } else { "verify" },
             "--json",
@@ -310,9 +342,9 @@ impl Fixture {
                     "--request-session",
                     &"11".repeat(16),
                     "--prompt-len",
-                    "2",
+                    &prompt,
                     "--output-len",
-                    "3",
+                    &output,
                     "--manifest-digest",
                     &"13".repeat(32),
                     "--timeout-ms",
@@ -323,6 +355,37 @@ impl Fixture {
             );
         }
         args
+    }
+    /// Proves the request, non-interactively then verified or in a directory Live session, and
+    /// returns the producer's and the verifier's reports.
+    fn proved(&self, live: bool) -> (String, String) {
+        if live {
+            fs::create_dir(self.path("live")).unwrap();
+        }
+        let verifier = live.then(|| self.process(true, &self.verify(true)));
+        let mut producer = self.process(false, &self.prove(live));
+        match verifier {
+            Some(mut verifier) => {
+                let start = Instant::now();
+                loop {
+                    let p = producer.child.try_wait().unwrap();
+                    let v = verifier.child.try_wait().unwrap();
+                    for status in [p, v].into_iter().flatten() {
+                        assert!(status.success(), "Live peer failed: {status}");
+                    }
+                    if p.is_some() && v.is_some() {
+                        break;
+                    }
+                    assert!(
+                        start.elapsed() < Duration::from_secs(60),
+                        "Live pair watchdog expired"
+                    );
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                (producer.wait(0), verifier.wait(0))
+            }
+            None => (producer.wait(0), self.run(true, &self.verify(false), 0)),
+        }
     }
     fn accepted(&self, text: &str) {
         let v = report(text, "verdict");
@@ -485,33 +548,7 @@ fn e2e_exact_tiny_ni_and_live_ragged() {
             .any(|v| v.as_i64().unwrap() != 0)
     );
     for live in [false, true] {
-        if live {
-            fs::create_dir(f.path("live")).unwrap();
-        }
-        let verifier = live.then(|| f.process(true, &f.verify(true)));
-        let mut producer = f.process(false, &f.prove(live));
-        let (produced, verdict) = match verifier {
-            Some(mut verifier) => {
-                let start = Instant::now();
-                loop {
-                    let p = producer.child.try_wait().unwrap();
-                    let v = verifier.child.try_wait().unwrap();
-                    for status in [p, v].into_iter().flatten() {
-                        assert!(status.success(), "Live peer failed: {status}");
-                    }
-                    if p.is_some() && v.is_some() {
-                        break;
-                    }
-                    assert!(
-                        start.elapsed() < Duration::from_secs(60),
-                        "Live pair watchdog expired"
-                    );
-                    std::thread::sleep(Duration::from_millis(5));
-                }
-                (producer.wait(0), verifier.wait(0))
-            }
-            None => (producer.wait(0), f.run(true, &f.verify(false), 0)),
-        };
+        let (produced, verdict) = f.proved(live);
         let producer = report(&produced, "proof-run");
         assert_eq!(producer["statement_digest"], f.pin);
         assert_eq!(producer["weights_root"], f.weights_root);
@@ -728,5 +765,208 @@ fn e2e_live_rejects_each_round_before_releasing_the_next_challenge() {
         } else {
             drop(producer);
         }
+    }
+}
+
+const JSON_TRACE: &[&str] = &["--log-format", "json", "--log-level", "trace"];
+const HUMAN_TRACE: &[&str] = &["--log-format", "human", "--log-level", "trace"];
+/// The extensions of the secret-class artifacts of 03 §5.
+const SECRET: [&str; 5] = ["d", "twc", "tst", "ttk", "tlg"];
+
+/// Every canary form found under the fixture's directory, outside the secret-class artifacts,
+/// and the files scanned, by path relative to it.
+fn scan(f: &Fixture, canaries: &canary::Canaries) -> (Vec<String>, Vec<String>) {
+    // The paths the test passes are public, and a directory's name can spell a token id.
+    let mut public: Vec<String> = [f.dir.0.clone(), root(), std::env::temp_dir()]
+        .iter()
+        .flat_map(|p| [p.clone(), p.canonicalize().unwrap()])
+        .map(|p| p.display().to_string())
+        .collect();
+    public.sort_by_key(|p| std::cmp::Reverse(p.len()));
+    let (mut findings, mut scanned) = (Vec::new(), Vec::new());
+    let mut pending = vec![f.dir.0.clone()];
+    while let Some(dir) = pending.pop() {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            let name = path.strip_prefix(&f.dir.0).unwrap().display().to_string();
+            if path
+                .extension()
+                .is_some_and(|e| SECRET.iter().any(|s| e == *s))
+            {
+                continue;
+            }
+            let mut bytes = fs::read(&path).unwrap();
+            if let Ok(text) = std::str::from_utf8(&bytes) {
+                let mut text = text.to_owned();
+                for p in &public {
+                    text = text.replace(p.as_str(), "<path>");
+                }
+                bytes = text.into_bytes();
+            }
+            findings.extend(
+                canaries
+                    .find(&bytes)
+                    .into_iter()
+                    .map(|form| format!("{name}: {form}")),
+            );
+            scanned.push(name);
+        }
+    }
+    scanned.sort();
+    (findings, scanned)
+}
+
+/// OBS-3 (05 §3), 07 §6's `e2e_redaction`: a full cycle of the canary model, each producer
+/// command logged at `trace` in both formats, leaves no canary in a log line, report, protocol
+/// artifact or error message, while the secret-class files it reads carry every one; and the scan
+/// finds a canary injected into those artifacts.
+#[test]
+fn e2e_redaction_canary_scan() {
+    let vectors = root().join("spec/vectors/canary");
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(vectors.join("canaries.json")).unwrap()).unwrap();
+    let canaries = canary::Canaries::new(&manifest);
+    let model = canaries.find(&fs::read(vectors.join(CANARY.model)).unwrap());
+    let runs = manifest["weight_runs"].as_array().unwrap().len();
+    assert_eq!(
+        model
+            .iter()
+            .filter(|f| f.ends_with(" little-endian bytes"))
+            .count(),
+        runs,
+        "{model:?}"
+    );
+    for (file, sequences) in [
+        ("recorded.ttk", ["prompt", "continuation"]),
+        ("mismatch.ttk", ["prompt", "altered continuation"]),
+    ] {
+        let found = canaries.find(&fs::read(vectors.join(file)).unwrap());
+        for s in sequences {
+            assert!(
+                found.iter().any(|f| f.starts_with(&format!("{s} ["))),
+                "{file}: {found:?}"
+            );
+        }
+    }
+    for log in [JSON_TRACE, HUMAN_TRACE] {
+        let f = Fixture::with(&CANARY, log);
+        for live in [false, true] {
+            let (produced, verdict) = f.proved(live);
+            report(&produced, "proof-run");
+            f.accepted(&verdict);
+        }
+        // The errors the canary's inputs can raise: an exact mismatch, a usage error, a corrupt
+        // proof and a wrong pin.
+        let mut args = f.prove(false);
+        set(
+            &mut args,
+            "--reference-tokens",
+            vectors.join("mismatch.ttk").display(),
+        );
+        set(&mut args, "--out", f.path("mismatch.tnp"));
+        let bad: Value = serde_json::from_str(&f.run(false, &args, 20)).unwrap();
+        assert_eq!(bad["error"]["code"], "ERR-WITNESS-EXACT-MISMATCH");
+        set(
+            &mut args,
+            "--prompt-len",
+            CANARY.prompt_len + CANARY.output_len,
+        );
+        let bad: Value = serde_json::from_str(&f.run(false, &args, 64)).unwrap();
+        assert_eq!(bad["error"]["code"], "ERR-USAGE");
+        let mut corrupt = fs::read(f.path("proof.tnp")).unwrap();
+        corrupt[1000] ^= 1;
+        fs::write(f.path("corrupt.tnp"), corrupt).unwrap();
+        let mut args = f.verify(false);
+        set(&mut args, "--proof", f.path("corrupt.tnp"));
+        set(&mut args, "--out", f.path("corrupt.json"));
+        let bad = report(&f.run(true, &args, 65), "verdict");
+        assert_eq!(bad["verdict"]["error"]["code"], "ERR-CODEC-DIGEST");
+        let mut args = f.verify(false);
+        set(&mut args, "--statement-digest", "ab".repeat(32));
+        set(&mut args, "--out", f.path("pin.json"));
+        report(&f.run(true, &args, 64), "verdict");
+        // Every artifact rendered, the secret-class ones included: a rendering is a report.
+        let mut artifacts = vec![
+            f.model.clone(),
+            f.tokens.clone(),
+            f.path("compiled/claims.tcl"),
+            f.path("compiled/plan.tep"),
+            f.path("weights.twr"),
+            f.path("weights.twc"),
+            f.path("proof.tnp"),
+        ];
+        for entry in fs::read_dir(f.path("live")).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_some_and(|e| e == "tce") {
+                artifacts.push(path.display().to_string());
+            }
+        }
+        for artifact in artifacts {
+            f.run(false, &["--json".into(), "inspect".into(), artifact], 0);
+        }
+        let (findings, scanned) = scan(&f, &canaries);
+        assert!(findings.is_empty(), "{findings:#?}");
+        for name in [
+            "proof.tnp",
+            "live/05-Round3Response.tce",
+            "compiled/plan.tep",
+            "verdict.json",
+        ] {
+            assert!(scanned.iter().any(|s| s == name), "{name}: {scanned:?}");
+        }
+        assert!(!scanned.iter().any(|s| s == "weights.twc"));
+        // Each producer command logged at `trace`.
+        let traced = scanned.iter().filter(|s| s.ends_with(".stderr")).any(|s| {
+            fs::read_to_string(f.dir.0.join(s))
+                .unwrap()
+                .lines()
+                .any(|l| l.starts_with("trace ") || l.contains(r#""level":"trace""#))
+        });
+        assert!(traced, "{log:?}");
+        // Every secret-class input and output, and the proof, rendered.
+        let rendered: Vec<String> = scanned
+            .iter()
+            .filter(|s| s.ends_with(".stdout"))
+            .map(|s| fs::read_to_string(f.dir.0.join(s)).unwrap())
+            .collect();
+        for schema in [
+            "IntegerModel",
+            "TokenFile",
+            "WeightCommitmentState",
+            "NiProof",
+        ] {
+            let field = format!(r#""schema": "{schema}""#);
+            assert!(rendered.iter().any(|r| r.contains(&field)), "{schema}");
+        }
+        // A canary injected into a copy of the proof and of a log is found where it was put.
+        let mut proof = fs::read(f.path("proof.tnp")).unwrap();
+        let run: Vec<u8> = manifest["weight_runs"][0]["weights"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w.as_i64().unwrap() as u8)
+            .collect();
+        proof.splice(4096..4096, run);
+        let stderr = scanned.iter().find(|s| s.ends_with(".stderr")).unwrap();
+        let mut text = fs::read_to_string(f.dir.0.join(stderr)).unwrap();
+        let token = &manifest["token_ids"][0];
+        text.push_str(&format!("token {token}\n"));
+        fs::create_dir(f.path("injected")).unwrap();
+        fs::write(f.path("injected/proof.tnp"), proof).unwrap();
+        fs::write(f.path("injected/log.stderr"), text).unwrap();
+        let (mut findings, _) = scan(&f, &canaries);
+        findings.sort();
+        let value = manifest["weight_runs"][0]["value"].as_str().unwrap();
+        assert_eq!(
+            findings,
+            [
+                format!("injected/log.stderr: token {token} decimal"),
+                format!("injected/proof.tnp: Embed 0 weights {value} little-endian bytes"),
+            ]
+        );
     }
 }

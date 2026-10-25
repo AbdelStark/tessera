@@ -6,6 +6,11 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The OBS-3 canary scan, over the exact CLI cycle ([#164](https://github.com/AbdelStark/tessera/issues/164)):
+  - **The canary model**, `spec/vectors/canary/`, from the independent Python oracle: two layers, vocabulary 4,096, three runs of eight INT8 weights whose bytes are distinctive 64-bit values, a prompt of distinctive token ids, the model's greedy continuation and an altered copy of it.
+  - **`e2e_redaction_canary_scan`** (`tessera-e2e`, `exact_cli`) runs compile, weight commitment, NI and Live proofs, both verifications, four failures and `inspect` of every artifact, each producer command logged at `trace` in JSON and readable form. It scans every file the run leaves except the secret-class artifacts, and fails on any canary in decimal, hex or little-endian byte form. The same run finds the canaries in the model and token files, and finds one injected into a scanned proof and log.
+  - **05 §3 OBS-3** now says how a token id is looked for: as a whole word of text, and in binary artifacts as each recorded sequence of ids. A lone 12-bit id matches public integers there, such as the proof's column indices.
+
 - Claims at one layer in `tessera-protocol/2`, specified ([#535](https://github.com/AbdelStark/tessera/issues/535)):
   - **RFC-0069, 'Claims at One Layer in `tessera-protocol/2`'.**
     - **The leak.** The epilogue reads the last checkpoint at layer `L − 1` alone. At 405B the composed schedule has 33 such claims, on the last position's committed output at the Boolean layer 125, where the stacked kind's mask vanishes. Stage 1 has three: the final norm's sum of squares, its product and RFC-0050's residual padding zero-check. Stage 2 has thirty: the final evaluations of its `SumSquares` instances, which the root's 30 coefficient products start. They sit at two points.

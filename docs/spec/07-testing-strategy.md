@@ -66,7 +66,7 @@ Required properties, each a named test:
 - `e2e_anchor_mismatch`: transcript altered after recording; assert `Reject(Anchor)`.
 - `e2e_budget`: run proofs until the weight hiding budget is exhausted; assert `ERR-WITNESS-BUDGET`, refresh, verify the linking proof, continue.
 - `e2e_reproducible`: two runs with pinned randomness give identical artifact digests (OBS-5).
-- `e2e_redaction`: canary scan (OBS-3).
+- `e2e_redaction`: canary scan (OBS-3), `e2e_redaction_canary_scan` in the exact-CLI suite.
 
 ## 7. Zero-knowledge tests
 
