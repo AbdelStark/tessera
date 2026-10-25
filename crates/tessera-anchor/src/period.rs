@@ -10,6 +10,8 @@
 //!   previous period's: every request with an end in the period, and every one with a frame in
 //!   the previous period and no end in either. A candidate's length counts all its frames in
 //!   both periods, wherever they lie against its end.
+//! - [`lengths`] gives the lengths a request's statement carries over the same frames: the
+//!   tokens of its `In` frames, then of its `Out` frames (RFC-0015 check 2).
 //!
 //! Everything here is public: the entries are digests and identifiers (03 §5).
 
@@ -17,6 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use tessera_codec::error::ErrorCode;
 
+use crate::frame::Direction;
 use crate::log::DigestLogEntry;
 use crate::manifest::LogManifest;
 use crate::merkle;
@@ -200,6 +203,62 @@ pub fn candidates(previous: Option<&VerifiedLog>, current: &VerifiedLog) -> Vec<
             request_id: key.1,
             tokens: tokens.get(&key).copied().unwrap_or(0),
             ended: ended.contains(&key),
+        })
+        .collect()
+}
+
+/// The lengths a request's statement carries (03 §4 `RequestRef`), over its frames in the
+/// window: all its `Frame` entries in the period and the previous one, as a candidate's length
+/// counts them (RFC-0063 'Which requests a period draws from').
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RequestLengths {
+    /// `prompt_len`: the tokens of its `In` frames.
+    pub prompt_len: u32,
+    /// `output_len`: the tokens of its `Out` frames.
+    pub output_len: u32,
+}
+
+/// The lengths of `requests`, each a `(session_id, request_id)`, over the window of `current`,
+/// `previous` as [`candidates`] takes it; in the order of `requests`. A request with no frame in
+/// the window has lengths 0 and 0.
+///
+/// `None` for a request with a frame whose `length` has no token count ([`frame_tokens`]), or a
+/// count past `u32::MAX`: no statement can carry its lengths. Such a candidate is selected
+/// whatever the seed (RFC-0016 'Sample derivation', step 4), and the pre-check refuses it
+/// ([`PrecheckKind::Lengths`](crate::PrecheckKind::Lengths)).
+pub fn lengths(
+    previous: Option<&VerifiedLog>,
+    current: &VerifiedLog,
+    requests: &[([u8; 16], u64)],
+) -> Vec<Option<RequestLengths>> {
+    // Each request's tokens in and out; `None` once a frame has no count or a sum overflows.
+    let mut counts: BTreeMap<([u8; 16], u64), [Option<u64>; 2]> = requests
+        .iter()
+        .map(|key| (*key, [Some(0), Some(0)]))
+        .collect();
+    let before = previous.map_or(&[][..], VerifiedLog::entries);
+    for entry in before.iter().chain(current.entries()) {
+        if let DigestLogEntry::Frame {
+            session_id,
+            request_id,
+            direction,
+            length,
+            ..
+        } = *entry
+            && let Some(count) = counts.get_mut(&(session_id, request_id))
+        {
+            let slot = &mut count[usize::from(direction == Direction::Out)];
+            *slot = slot.and_then(|total| total.checked_add(frame_tokens(length)?));
+        }
+    }
+    requests
+        .iter()
+        .map(|key| {
+            let [prompt, output] = counts.get(key).copied()?;
+            Some(RequestLengths {
+                prompt_len: u32::try_from(prompt?).ok()?,
+                output_len: u32::try_from(output?).ok()?,
+            })
         })
         .collect()
 }

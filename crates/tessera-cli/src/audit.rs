@@ -24,13 +24,19 @@
 //!    written to `--out` as an `AuditSample` envelope, through a temporary file renamed into
 //!    place.
 //!
+//! `tessera audit batch` packs a sample's selected requests into proof batches, read from the
+//! same logs ([`batch`], RFC-0016 'Batching'). [`sampled`] gives the batches, and `tessera prove
+//! --sample` calls it too, so the batch a proof's `--batch` names is the one the report lists.
+//!
 //! `tessera audit plan` reports a policy's detection probability and amortized overhead at a
 //! traffic profile, a `tessera.audit-traffic/1` file, with the cost model's `μ` at each bucket's
 //! mean length ([`plan`], RFC-0016 'Calculators').
 //!
-//! Neither sampling command checks a recorder signature: the verifier does, before it derives the same
-//! sample (RFC-0062 'The check'). Everything they read and write is public (03 §5).
+//! No sampling or batching command checks a recorder signature: the verifier does, before it
+//! derives the same sample (RFC-0062 'The check'). Everything they read and write is public
+//! (03 §5).
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -38,14 +44,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value};
 use tessera_anchor::recorder::decode_log;
-use tessera_anchor::{LogManifest, VerifiedLog, candidates};
+use tessera_anchor::{LogManifest, RequestLengths, VerifiedLog, candidates, lengths};
 use tessera_bench::{Counts, MemoryModel, ModelReport, Scenario, UnitCosts};
 use tessera_codec::error::{ErrorCode, TesseraError};
 use tessera_codec::{Ascii, DecodeLimits, Public, decode, encode, envelope, schema};
 use tessera_hash::ParamSetId;
 use tessera_protocol::{
-    AuditPlan, AuditPolicy, BucketTraffic, PlanError, RateBucket, RequestKey, ShareRecord,
-    check_traffic,
+    AuditPlan, AuditPolicy, AuditSample, BucketTraffic, PlanError, RateBucket, RequestKey,
+    ShareRecord, batches, check_traffic,
 };
 
 use crate::{Input, io_error, write_atomically, write_bytes_atomically};
@@ -53,13 +59,38 @@ use crate::{Input, io_error, write_atomically, write_bytes_atomically};
 /// The policy file's identifier (RFC-0016 'Policy', `spec/schemas/audit-policy-v1.schema.json`).
 pub(crate) const POLICY_SCHEMA: &str = "tessera.audit-policy/1";
 
-/// The flags of `tessera audit sample`.
-pub(crate) struct SampleOptions<'a> {
+/// The log flags of `tessera audit sample`, `audit batch` and `prove --sample`: the period's
+/// manifest and log, and the chain before it.
+pub(crate) struct Logs<'a> {
     pub(crate) manifest: &'a Path,
     pub(crate) log: &'a Path,
     pub(crate) previous_manifest: Option<&'a Path>,
     pub(crate) previous_log: Option<&'a Path>,
     pub(crate) between: &'a [PathBuf],
+}
+
+impl Logs<'_> {
+    /// Every file the flags name.
+    pub(crate) fn paths(&self) -> Vec<&Path> {
+        [Some(self.manifest), Some(self.log)]
+            .into_iter()
+            .chain([self.previous_manifest, self.previous_log])
+            .flatten()
+            .chain(self.between.iter().map(PathBuf::as_path))
+            .collect()
+    }
+}
+
+/// A period's verified log and the previous period's, bound by the chain (RFC-0063 'The
+/// previous period's log'): the window a sample is drawn from and its batches are read in.
+pub(crate) struct Window {
+    pub(crate) current: VerifiedLog,
+    pub(crate) previous: Option<VerifiedLog>,
+}
+
+/// The flags of `tessera audit sample`.
+pub(crate) struct SampleOptions<'a> {
+    pub(crate) logs: Logs<'a>,
     pub(crate) state: &'a Path,
     pub(crate) verifier_share: [u8; 32],
     pub(crate) out: &'a Path,
@@ -217,17 +248,17 @@ pub(crate) fn read_policy(path: &Path) -> Result<AuditPolicy, TesseraError> {
     .map_err(|e| TesseraError::new(e.code()).with_source(format!("{shown}: {e}")))
 }
 
-/// Runs `tessera audit sample`.
-pub(crate) fn sample(options: &SampleOptions<'_>) -> Result<(), TesseraError> {
-    let current = manifest(options.manifest)?;
-    let previous = options.previous_manifest.map(manifest).transpose()?;
-    let between = options
+/// Reads the window the log flags give, as `audit sample`'s steps 1 and 2 check it.
+pub(crate) fn window(logs: &Logs<'_>) -> Result<Window, TesseraError> {
+    let current = manifest(logs.manifest)?;
+    let previous = logs.previous_manifest.map(manifest).transpose()?;
+    let between = logs
         .between
         .iter()
         .map(|p| manifest(p))
         .collect::<Result<Vec<_>, _>>()?;
     check_previous(previous.as_ref(), &between, &current)?;
-    let previous_log = match (&previous, options.previous_log) {
+    let previous = match (&previous, logs.previous_log) {
         (Some(m), Some(path)) => Some(verified(m, path)?),
         (None, None) => None,
         _ => {
@@ -236,7 +267,17 @@ pub(crate) fn sample(options: &SampleOptions<'_>) -> Result<(), TesseraError> {
             ));
         }
     };
-    let log = verified(&current, options.log)?;
+    let current = verified(&current, logs.log)?;
+    Ok(Window { current, previous })
+}
+
+/// Runs `tessera audit sample`.
+pub(crate) fn sample(options: &SampleOptions<'_>) -> Result<(), TesseraError> {
+    let Window {
+        current: log,
+        previous: previous_log,
+    } = window(&options.logs)?;
+    let current = log.manifest();
     let digest = current.identity();
     let path = record_path(options.state, &digest);
     let record = kept(&path)?
@@ -276,6 +317,217 @@ pub(crate) fn sample(options: &SampleOptions<'_>) -> Result<(), TesseraError> {
         "tessera audit sample: selected {selected} of {candidates} candidates into {sample}"
     );
     Ok(())
+}
+
+/// The report of `tessera audit batch` (RFC-0016 'Batching',
+/// `spec/schemas/audit-batches-v1.schema.json`).
+pub(crate) const BATCHES_SCHEMA: &str = "tessera.audit-batches/1";
+
+/// The file `tessera audit batch` writes its report to, in `--out-dir`.
+pub(crate) const BATCHES_FILE: &str = "batches.json";
+
+/// A request of a batch: its key, its length `L` (RFC-0063), and the lengths its statement
+/// carries, or `None` when its frames give none (`tessera_anchor::lengths`).
+pub(crate) struct Batched {
+    pub(crate) key: RequestKey,
+    pub(crate) tokens: u64,
+    pub(crate) lengths: Option<RequestLengths>,
+}
+
+/// One batch: its requests in `RequestKey` order, and their total `L`.
+pub(crate) struct SampledBatch {
+    pub(crate) tokens: u64,
+    pub(crate) requests: Vec<Batched>,
+}
+
+/// A sample's batches, with the sample and the window they were read in.
+pub(crate) struct Sampled {
+    pub(crate) sample: AuditSample,
+    pub(crate) window: Window,
+    pub(crate) batches: Vec<SampledBatch>,
+}
+
+fn internal(what: &str) -> TesseraError {
+    TesseraError::new(ErrorCode::Internal).with_source(what.to_owned())
+}
+
+/// The batches of the sample at `path`, from its period's logs (RFC-0016 'Batching'): what
+/// `tessera audit batch` reports and `tessera prove --sample` proves, which both call this.
+///
+/// 1. **The window**, read and checked as `tessera audit sample` reads it ([`window`]).
+/// 2. **The sample** must be the window's. Its `manifest_digest` is `--manifest`'s identity,
+///    and its selection is the one its policy and coin toss give over the window's candidates,
+///    redrawn here: a sample of another period, or one that selects a request the draw does not
+///    or leaves one out, is `ERR-USAGE`. A coin toss that does not open is
+///    `ERR-PROTO-COINTOSS`.
+/// 3. **The lengths.** A selected request's `L` is its candidate's length, and its statement's
+///    `prompt_len` and `output_len` are its `In` and `Out` frames' tokens in the window
+///    (`tessera_anchor::lengths`).
+/// 4. **The batches**: first-fit decreasing on `L`, in one group (`tessera_protocol::batches`).
+///    Greedy only: a temperature request's group is the pinned sampler key that applies to it
+///    (RFC-0061 'Which pin applies'), and no crate implements the pins yet.
+pub(crate) fn sampled(path: &Path, logs: &Logs<'_>) -> Result<Sampled, TesseraError> {
+    let sample: AuditSample = Input::new(path, &schema::AUDIT_SAMPLE).open()?;
+    let window = window(logs)?;
+    let shown = path.display();
+    if *sample.manifest_digest() != window.current.manifest().identity() {
+        return Err(usage(format!(
+            "{shown} is not a sample of --manifest's period"
+        )));
+    }
+    let found = candidates(window.previous.as_ref(), &window.current);
+    let key = |c: &tessera_anchor::Candidate| RequestKey {
+        session_id: c.session_id,
+        request_id: c.request_id,
+    };
+    let redrawn = AuditSample::draw(
+        *sample.manifest_digest(),
+        sample.policy().clone(),
+        sample.coin_toss().clone(),
+        found.iter().map(|c| (key(c), c.tokens)),
+    )
+    .map_err(|e| {
+        TesseraError::new(e.code()).with_source(format!(
+            "{shown}: the verifier's share does not open its commitment"
+        ))
+    })?;
+    if redrawn != sample {
+        return Err(usage(format!(
+            "{shown} does not select what its period's logs and coin toss select"
+        )));
+    }
+    let tokens: BTreeMap<RequestKey, u64> = found.iter().map(|c| (key(c), c.tokens)).collect();
+    let keys: Vec<([u8; 16], u64)> = sample
+        .selected()
+        .iter()
+        .map(|k| (k.session_id, k.request_id))
+        .collect();
+    let lengths: BTreeMap<RequestKey, Option<RequestLengths>> = sample
+        .selected()
+        .iter()
+        .copied()
+        .zip(lengths(window.previous.as_ref(), &window.current, &keys))
+        .collect();
+    let requests = sample
+        .selected()
+        .iter()
+        .map(|k| {
+            let l = tokens
+                .get(k)
+                .ok_or_else(|| internal("a selected request is not a candidate"))?;
+            Ok((*k, (), *l))
+        })
+        .collect::<Result<Vec<_>, TesseraError>>()?;
+    let batches = batches(sample.policy(), &requests)
+        .map_err(|e| internal(&e.to_string()))?
+        .into_iter()
+        .map(|b| SampledBatch {
+            tokens: b.tokens,
+            requests: b
+                .requests
+                .iter()
+                .map(|k| Batched {
+                    key: *k,
+                    tokens: tokens.get(k).copied().unwrap_or(u64::MAX),
+                    lengths: lengths.get(k).copied().flatten(),
+                })
+                .collect(),
+        })
+        .collect();
+    Ok(Sampled {
+        sample,
+        window,
+        batches,
+    })
+}
+
+/// The flags of `tessera audit batch`.
+pub(crate) struct BatchOptions<'a> {
+    pub(crate) sample: &'a Path,
+    pub(crate) logs: Logs<'a>,
+    pub(crate) out_dir: &'a Path,
+}
+
+/// The batches as `tessera.audit-batches/1`.
+fn batches_json(sampled: &Sampled) -> Value {
+    let sample = &sampled.sample;
+    let batches: Vec<Value> = (0u64..)
+        .zip(&sampled.batches)
+        .map(|(index, b)| {
+            let requests: Vec<Value> = b
+                .requests
+                .iter()
+                .map(|r| {
+                    let mut request = serde_json::json!({
+                        "session_id": hex(&r.key.session_id),
+                        "request_id": r.key.request_id,
+                        "tokens": r.tokens,
+                    });
+                    if let (Some(l), Some(object)) = (r.lengths, request.as_object_mut()) {
+                        object.insert("prompt_len".to_owned(), l.prompt_len.into());
+                        object.insert("output_len".to_owned(), l.output_len.into());
+                    }
+                    request
+                })
+                .collect();
+            serde_json::json!({
+                "index": index,
+                "group": "greedy",
+                "tokens": b.tokens,
+                "requests": requests,
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "schema": BATCHES_SCHEMA,
+        "manifest_digest": hex(sample.manifest_digest()),
+        "sample": hex(&sample.seed()),
+        "min_batch_tokens": sample.policy().min_batch_tokens(),
+        "max_batch_tokens": sample.policy().max_batch_tokens(),
+        "selected": sample.selected().len(),
+        "batches": batches,
+    })
+}
+
+/// Runs `tessera audit batch`: the sample's batches ([`sampled`]), written to
+/// `<out-dir>/batches.json` as `tessera.audit-batches/1` through a temporary file renamed into
+/// place. With `json` the report is printed too; otherwise one line per batch. The report is
+/// informational: `tessera prove --sample` reads the batches from the sample and the logs again,
+/// never from it.
+pub(crate) fn batch(options: &BatchOptions<'_>, json: bool) -> Result<(), TesseraError> {
+    let sampled = sampled(options.sample, &options.logs)?;
+    let text = serde_json::to_string_pretty(&batches_json(&sampled))
+        .map(|text| format!("{text}\n"))
+        .map_err(|e| internal(&e.to_string()))?;
+    let dir = options.out_dir;
+    fs::create_dir_all(dir).map_err(io_error(format!("cannot create {}", dir.display())))?;
+    let path = dir.join(BATCHES_FILE);
+    write_atomically(&path, &text)?;
+    tessera_codec::event!(
+        INFO,
+        "cli.audit_batched",
+        selected = sampled.sample.selected().len(),
+        batches = sampled.batches.len(),
+        report = Public(path.display());
+        "tessera audit batch: {selected} selected requests in {batches} batches, reported in {report}"
+    );
+    let shown = match json {
+        true => text,
+        false => (0..)
+            .zip(&sampled.batches)
+            .map(|(index, b): (u64, _)| {
+                format!(
+                    "batch {index}: {} requests, {} tokens\n",
+                    b.requests.len(),
+                    b.tokens
+                )
+            })
+            .collect(),
+    };
+    io::stdout()
+        .lock()
+        .write_all(shown.as_bytes())
+        .map_err(io_error("cannot write to stdout".to_owned()))
 }
 
 /// The flags of `tessera audit share`.

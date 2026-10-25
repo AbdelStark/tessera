@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Protocol/1 reference proving for one recorded exact-greedy TokenFile sequence.
+//! Protocol/1 proving of one exact-greedy request, on the CPU, non-interactively (`--out`) or
+//! live over an RFC-0014 directory (`--live`). The request comes from one of two sources:
+//!
+//! - **`--reference-tokens`**: one recorded TokenFile sequence, prompt then continuation, with
+//!   the request's identifiers and manifest digest given as flags;
+//! - **`--sample`**: one batch of a sampled audit (`sample`), its request read from the period's
+//!   logs and its tokens from the stored transcripts, pre-checked before anything is committed.
+//!
+//! Both build the `PublicStatement` the same way, in [`produce`].
 use crate::{Input, io_error};
 use clap::{ArgGroup, Args};
 use std::{
@@ -10,7 +18,7 @@ use std::{
     time::Duration,
 };
 use tessera_codec::{
-    envelope,
+    Secret, envelope,
     error::{ErrorCode, TesseraError},
     schema,
 };
@@ -22,6 +30,7 @@ use tessera_prover::{
     Backend, MaskRng, MemoryBudget, Mode, ProofBatch, Prover, ProverConfig, ReleaseConfig,
 };
 mod directory;
+mod sample;
 mod tokens;
 
 #[derive(Debug, Args)]
@@ -34,11 +43,31 @@ pub(crate) struct ProveArgs {
     model: PathBuf,
     #[arg(long)]
     weights: PathBuf,
-    /// Future sampled-audit path (#157).
-    #[arg(long, requires = "transcripts")]
+    /// One batch of a sampled audit: the sample its requests were drawn in (RFC-0016).
+    #[arg(long, value_name = "SAMPLE.tas", requires_all = ["transcripts", "batch", "manifest", "log"])]
     sample: Option<PathBuf>,
-    #[arg(long, requires = "sample")]
+    /// The stored transcripts, one per session: `<session_id>.tst`, the identifier in 32
+    /// lowercase hexadecimal digits.
+    #[arg(long, value_name = "DIR", requires = "sample")]
     transcripts: Option<PathBuf>,
+    /// The batch to prove: its index in `tessera audit batch`'s report, from 0.
+    #[arg(long, value_name = "K", requires = "sample")]
+    batch: Option<u32>,
+    /// The sample's period's manifest.
+    #[arg(long, value_name = "MANIFEST.tlm", requires = "sample")]
+    manifest: Option<PathBuf>,
+    /// The period's log.
+    #[arg(long, value_name = "LOG.tdl", requires = "sample")]
+    log: Option<PathBuf>,
+    /// The manifest of the last period of non-zero length before it, unless it has none.
+    #[arg(long, value_name = "MANIFEST.tlm", requires_all = ["sample", "previous_log"])]
+    previous_manifest: Option<PathBuf>,
+    /// That period's log.
+    #[arg(long, value_name = "LOG.tdl", requires_all = ["sample", "previous_manifest"])]
+    previous_log: Option<PathBuf>,
+    /// A period of zero length between the two, in order; repeated for each.
+    #[arg(long, value_name = "MANIFEST.tlm", requires = "sample")]
+    between: Vec<PathBuf>,
     /// One existing TokenFile sequence: prompt followed by recorded continuation.
     #[arg(long,requires_all=["prompt_len","request_id","request_session","manifest_digest"])]
     reference_tokens: Option<PathBuf>,
@@ -77,8 +106,8 @@ fn mask_rng(a: &ProveArgs) -> MaskRng {
     a.test_mask_seed.map_or(MaskRng::OsRng, MaskRng::Seeded)
 }
 
-fn usage(message: &'static str) -> TesseraError {
-    TesseraError::new(ErrorCode::Usage).with_source(message)
+fn usage(message: impl Into<String>) -> TesseraError {
+    TesseraError::new(ErrorCode::Usage).with_source(message.into())
 }
 fn prover_error(e: tessera_prover::ProverError) -> TesseraError {
     TesseraError::new(e.code()).with_source(e)
@@ -124,27 +153,24 @@ fn distinct(path: &Path, inputs: &[&Path]) -> Result<(), TesseraError> {
     Ok(())
 }
 pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
-    if let Some(sample) = &a.sample {
-        return crate::pending(
-            "prove",
-            &[
-                Input::new(&a.plan, &schema::EXECUTION_PLAN),
-                Input::new(&a.model, &schema::INTEGER_MODEL),
-                Input::new(&a.weights, &schema::WEIGHT_COMMITMENT_STATE),
-                Input::new(sample, &schema::AUDIT_SAMPLE),
-            ],
-            157,
-        );
-    }
     // Beside the secret weight state: the operator's own, never the exchange directory (05 §6).
     crate::manifest::beside(&a.weights);
+    if a.backend != "cpu" || !a.devices.is_empty() {
+        return Err(usage("the reference prover supports CPU only"));
+    }
+    if let Some(path) = &a.sample {
+        // Everything the sample route reads is checked, and the batch pre-checked, here.
+        let sampled = sample::request(a, path)?;
+        let mut inputs: Vec<&Path> = vec![path];
+        inputs.extend(sampled.inputs.iter().map(PathBuf::as_path));
+        return produce(a, json, &inputs, sampled.manifest_digest, || {
+            Ok((sampled.request, sampled.tokens))
+        });
+    }
     let input = a
         .reference_tokens
         .as_deref()
         .ok_or_else(|| usage("reference tokens required"))?;
-    if a.backend != "cpu" || !a.devices.is_empty() {
-        return Err(usage("the reference prover supports CPU only"));
-    }
     let prompt = a
         .prompt_len
         .ok_or_else(|| usage("prompt length required"))?;
@@ -162,8 +188,38 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
             .as_deref()
             .ok_or_else(|| usage("manifest digest required"))?,
     )?;
+    produce(a, json, &[input], manifest_digest, || {
+        let data: tokens::Tokens = Input::new(input, &schema::TOKEN_FILE).open()?;
+        let output_len = data
+            .len
+            .checked_sub(prompt)
+            .filter(|n| *n > 0)
+            .ok_or_else(|| usage("recorded continuation is nonempty"))?;
+        let request = protocol::RequestRef {
+            request_id,
+            session_id,
+            prompt_len: prompt,
+            output_len,
+        };
+        Ok((request, data.values))
+    })
+}
+
+/// Proves one request: reads the model, the plan and the weight state, then `request` its
+/// reference and tokens, builds the `PublicStatement` of the request alone with
+/// `manifest_digest`, proves it in the mode the flags give, and prints the `tessera.proof-run/1`
+/// receipt. `inputs` are the files besides those three that the output must not alias.
+fn produce(
+    a: &ProveArgs,
+    json: bool,
+    inputs: &[&Path],
+    manifest_digest: [u8; 32],
+    request: impl FnOnce() -> Result<(protocol::RequestRef, Secret<Vec<u32>>), TesseraError>,
+) -> Result<(), TesseraError> {
     if let Some(out) = &a.out {
-        distinct(out, &[&a.model, &a.plan, &a.weights, input])?;
+        let mut all: Vec<&Path> = vec![&a.model, &a.plan, &a.weights];
+        all.extend_from_slice(inputs);
+        distinct(out, &all)?;
     }
     let model: IntegerModel = Input::new(&a.model, &schema::INTEGER_MODEL).open()?;
     let plan: ExecutionPlan = Input::new(&a.plan, &schema::EXECUTION_PLAN).open()?;
@@ -178,12 +234,7 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
         envelope::ReadError::Io(_) => TesseraError::new(ErrorCode::ResIo),
     })?;
     crate::manifest::input(&a.weights, &schema::WEIGHT_COMMITMENT_STATE);
-    let data: tokens::Tokens = Input::new(input, &schema::TOKEN_FILE).open()?;
-    let output_len = data
-        .len
-        .checked_sub(prompt)
-        .filter(|n| *n > 0)
-        .ok_or_else(|| usage("recorded continuation is nonempty"))?;
+    let (request, tokens) = request()?;
     let params = ParamSet::defined(&plan.claims.params)
         .ok_or_else(|| usage("undefined claim-list parameter set"))?;
     crate::manifest::params(params.id, Some("tessera-protocol/1"));
@@ -206,12 +257,7 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
         weights_epoch: weights.public.epoch,
         manifest_digest,
         batch: protocol::BatchDescriptor {
-            requests: vec![protocol::RequestRef {
-                request_id,
-                session_id,
-                prompt_len: prompt,
-                output_len,
-            }],
+            requests: vec![request],
         },
         predictor: protocol::PredictorSpec::Exact {
             decoding: protocol::Decoding::Greedy,
@@ -219,10 +265,7 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
     };
     let statement_digest = digest(statement.digest());
     let root = digest(statement.weights_root);
-    let batch = ProofBatch {
-        statement,
-        tokens: data.values,
-    };
+    let batch = ProofBatch { statement, tokens };
     let cfg = ProverConfig {
         backend: Backend::Cpu { threads: 1 },
         params: *params,

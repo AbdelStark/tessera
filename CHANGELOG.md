@@ -6,6 +6,28 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- A sampled audit driven from the command line: `tessera audit batch` and `tessera prove --sample` ([#157](https://github.com/AbdelStark/tessera/issues/157)):
+  - **`tessera audit batch --sample SAMPLE.tas LOGS --out-dir DIR`** packs a sample's selected requests into RFC-0016's batches. `LOGS` is `audit sample`'s log flags, read and checked the same way.
+    - **The sample** must be its logs': its manifest is `--manifest`, and its selection is redrawn from its policy and coin toss over the period's candidates. A sample of another period, or one that selects a request the draw does not, exits 64.
+    - **The lengths.** A request's `L` is its candidate's length, and its `prompt_len` and `output_len` the tokens of its `In` and `Out` frames over both periods (`tessera_anchor::lengths`).
+    - **Greedy only.** Every request is in one group: temperature requests are grouped by RFC-0061's pins, which no crate implements yet.
+    - **The output** is `DIR/batches.json`, the new `tessera.audit-batches/1` report, which `--json` prints too. A request whose frames give no lengths is listed without them.
+  - **`tessera prove --sample SAMPLE.tas LOGS --transcripts DIR --batch K`** proves batch `K` of that report, in NI (`--out`) or directory Live (`--live DIR`) mode, and replaces the stub that named #157.
+    - **One batch per invocation.** `K` is the report's index, from 0, and the batches are read again from the sample and the logs by the same function, never from the report. A `K` past the last batch exits 64. So does a batch of more than one request, naming #357, until multi-request proof units exist.
+    - **The transcripts.** `DIR` holds one `SessionTranscript` per session, named `<session_id>.tst` in 32 lowercase hexadecimal digits.
+    - **The pre-check** (`tessera_anchor::precheck`) runs before the prover commits anything. A missing or tampered transcript, or a request whose frames give no lengths, exits 20 with `ERR-WITNESS-ANCHOR`, and no `Round1` is sent.
+    - **The tokens** are the request's `In` frames' tokens, then its `Out` frames', from the stored frames the log names (`SessionTranscript::request_tokens`). The `PublicStatement` is the reference path's, with the sample's `manifest_digest`.
+  - **The specification.**
+    - 02 §2.2 gives both command lines, the transcript convention and the exit codes.
+    - RFC-0016 'Batching' names the report and the greedy-only grouping.
+    - RFC-0015 'Prover pre-check' says where the CLI runs the check.
+    - 03 §5 and `spec/schemas/` list `tessera.audit-batches/1`, with an example in `docs/perf/examples/`.
+  - **Tests.**
+    - `tessera-cli`'s `prove_sample` runs one session through `tessera recorder ref`, then `audit share`, `sample` and `batch`, proves the batch in NI and Live mode, and checks `tessera-verify`'s `Accept` against a statement the test builds with the verifier's own decoders. Required CI runs it.
+    - Its refusals: a tampered or missing transcript (`ERR-WITNESS-ANCHOR`, with nothing sent); a batch past the last, and a sample edited to select an unsampled request; a batch of two; malformed samples, transcripts and logs (65); a sample of another period and missing flags (64).
+    - A request whose frame has no token count, which the reference recorder refuses to log, so the recorder's core writes the period: `audit batch` lists it alone, first and without lengths, and `prove` refuses its batch with `ERR-WITNESS-ANCHOR`.
+    - In `tessera-anchor`: `lengths` against the oracle's candidate lengths and the pre-check, and `request_tokens`' order, window and refusals.
+
 - Bits in the IR and the anchor's SHA-256 circuit ([#143](https://github.com/AbdelStark/tessera/issues/143)):
   - **RFC-0066, 'Bits in the IR, and the SHA-256 Circuit'.** It amends RFC-0006, RFC-0010, RFC-0015 and RFC-0035, and 04's `ERR-COMPILE-RANGE`.
   - **Three operations** in `tessera-ir`, with their shape and kind rules:

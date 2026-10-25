@@ -35,7 +35,12 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 test-rng = ["tessera-prover/test-rng"]
 
 [dev-dependencies]
-# The JSON Schema validator of `spec/schemas/` (tests/run_manifest.rs).
+# The independent verifier's decoders and statement digest, so that `tests/prove_sample.rs`
+# builds the expected statement apart from the prover (DEP-2).
+tv-codec = { path = "../../verifier/crates/tv-codec" }
+tv-core = { path = "../../verifier/crates/tv-core" }
+tv-hash = { path = "../../verifier/crates/tv-hash" }
+# The JSON Schema validator of `spec/schemas/` (tests/run_manifest.rs, tests/prove_sample.rs).
 xtask = { path = "../../xtask" }
 
 [[test]]

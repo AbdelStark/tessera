@@ -21,10 +21,13 @@
 //!   entries and its inclusion proofs.
 //! - [`VerifiedLog`], a period's log checked against its manifest (RFC-0062), and
 //!   [`candidates`], the requests a period draws its audit sample from, with their lengths
-//!   (RFC-0063), which `tessera-protocol`'s sampling selects among.
+//!   (RFC-0063), which `tessera-protocol`'s sampling selects among, and [`lengths`], the
+//!   `prompt_len` and `output_len` a request's statement carries.
 //! - [`SessionTranscript`] (schema `0x0404`), a session's stored keys and plaintexts, and
 //!   [`precheck`], which replays them against the verified logs before `Round1`, as the verifier
 //!   will read them (RFC-0015 'Prover pre-check'): `ERR-WITNESS-ANCHOR` on any mismatch.
+//!   [`SessionTranscript::request_tokens`] then rebuilds a request's tokens from its stored
+//!   frames, the ones the log names.
 //! - [`recorder`], the reference recorder's core: frames cut from a byte stream, entries logged,
 //!   periods signed and rotated with their carries (RFC-0015 'Reference recorder').
 
@@ -50,7 +53,9 @@ pub use manifest::{
     ChainError, EntryError, LinkError, LogManifest, ManifestBody, ManifestError, SignatureEnvelope,
     check_chain, check_link, key_id, public_key, read_seed,
 };
-pub use period::{Candidate, LogMismatch, VerifiedLog, candidates, frame_tokens};
+pub use period::{
+    Candidate, LogMismatch, RequestLengths, VerifiedLog, candidates, frame_tokens, lengths,
+};
 pub use precheck::{BatchRequest, PrecheckFailure, PrecheckKind, precheck};
 pub use session::{Session, SessionKeys, key_commitment, sampler_commitment};
 /// The heap-held key type, from `tessera-codec`, re-exported for the anchor's callers.

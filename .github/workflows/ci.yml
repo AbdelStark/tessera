@@ -157,6 +157,9 @@ jobs:
           cargo nextest run --locked --tests -E 'kind(test)'
           -p tessera-codec -p tessera-field -p tessera-hash
           -p tessera-protocol -p tessera-prover -p tessera-e2e
+      - name: A sampled audit from the recorder's logs to the verifier's verdict (02 §2.2)
+        if: matrix.workspace == 'prover'
+        run: cargo nextest run --locked -p tessera-cli --test prove_sample
       - name: Accept real CPU proofs in NI and fresh Live sessions
         if: matrix.workspace == 'prover'
         run: >-

@@ -831,6 +831,9 @@ dependencies = [
  "tessera-prover",
  "tracing",
  "tracing-subscriber",
+ "tv-codec",
+ "tv-core",
+ "tv-hash",
  "xtask",
 ]
 
