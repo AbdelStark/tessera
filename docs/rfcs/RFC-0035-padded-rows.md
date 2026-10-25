@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows) ('InverseCdf's padding zero-check pins its partition `Z` too)
+- Amended by: [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows) ('InverseCdf's padding zero-check pins its partition `Z` too), [RFC-0066](RFC-0066-bits-and-sha256.md) ('Zero-check points': its zero-checks run in stage 1)
 - Supersedes, on acceptance:
   - [RFC-0009](RFC-0009-gadgets.md) 'RsqrtRow', 'SoftmaxRow' relation 3, 'OneHot' and 'InverseCdf': the row selector `ψ`;
   - [RFC-0017](RFC-0017-scoring.md#in-circuit-scoring-mixture) 'In-circuit scoring', constraints 3 and 4: the row selector `ψ`;
@@ -62,7 +62,7 @@ with the head factor only for per-head rows. `LT` has an `O(n)` closed form ([RF
 
 ### What a padded row holds
 
-On a padded row, every gadget computes its witness from the row's inputs as on a real row, with `ψ = 0` in the relations below. The token is 0 and the activations are 0. A lookup at key 0 returns its table's value there, which is 0 for every table but three: the scoring bound's `Exp2Frac` and `Pow2`, and the AES S-box. The AES and SHA-256 gadgets of RFC-0017 also add their own constants. RFC-0011 rule 4 skips a row only when every entry of it is 0, so a padded row that holds one of these values is committed. A padded row's witness is therefore determined, as a real row's is.
+On a padded row, every gadget computes its witness from the row's inputs as on a real row, with `ψ = 0` in the relations below. The token is 0 and the activations are 0. A lookup at key 0 returns its table's value there, which is 0 for every table but three: the scoring bound's `Exp2Frac` and `Pow2`, and the AES S-box. The AES and SHA-256 circuits of RFC-0015 also add their own constants. RFC-0011 rule 4 skips a row only when every entry of it is 0, so a padded row that holds one of these values is committed. A padded row's witness is therefore determined, as a real row's is.
 
 No real output reads a padded row:
 
@@ -105,7 +105,7 @@ The relation has degree 3, and the verifier evaluates its public factor `1 − �
 
 ### Zero-check points
 
-`RFC-0010` lists `ZeroCheck` as a relation kind, but no document said where its point `z` comes from. Each stage `k` that holds `ZeroCheck` instances draws one point just before `γ_k`, after `ρ_k` in `tessera-protocol/2`: coordinates `z_c` for `c = 0, 1, …` under `stage/{k}/zero/{c}`, one per variable of its largest `ZeroCheck`. An instance of `n_i` variables takes the last `n_i` coordinates, as forests take their root points ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)). `OneHot`'s booleanity check runs in stage 1 with the padding zero-checks, at the same point.
+`RFC-0010` lists `ZeroCheck` as a relation kind, but no document said where its point `z` comes from. Each stage `k` that holds `ZeroCheck` instances draws one point just before `γ_k`, after `ρ_k` in `tessera-protocol/2`: coordinates `z_c` for `c = 0, 1, …` under `stage/{k}/zero/{c}`, one per variable of its largest `ZeroCheck`. An instance of `n_i` variables takes the last `n_i` coordinates, as forests take their root points ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)). `OneHot`'s booleanity check runs in stage 1 with the padding zero-checks, at the same point. So do [RFC-0066](RFC-0066-bits-and-sha256.md#where-the-zero-checks-run)'s zero-checks, after these, in node order: `BitDecompose`'s padding check of a committed input, booleanity, bit-padding and recomposition checks, and `AssertEqual`'s.
 
 ### Soundness
 

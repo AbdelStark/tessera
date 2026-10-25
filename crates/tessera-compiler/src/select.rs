@@ -140,7 +140,8 @@ impl Selection {
 /// - [`CompileError::Usage`] for a `B_max` outside `[1, 32]`;
 /// - [`CompileError::Range`] for a requantization key no gadget takes, or a table of more than
 ///   `2^{B_max}` rows;
-/// - [`CompileError::Table`] for a table the specifications lack (`ERR-INTERNAL`).
+/// - [`CompileError::Table`] for a table the specifications lack (`ERR-INTERNAL`);
+/// - [`CompileError::Model`] for an operation of RFC-0066, which has no proof schedule yet.
 pub fn select(
     graph: &Graph,
     ranges: &Ranges,
@@ -220,6 +221,12 @@ impl Selector<'_> {
                 }
             }
             Op::InverseCdf { .. } => Gadget::InverseCdf,
+            // RFC-0066 'Migration': their relations are scheduled with the anchor's (#526).
+            Op::BitDecompose { .. } | Op::BitFn { .. } | Op::AssertEqual => {
+                return Err(CompileError::Model {
+                    rule: "RFC-0066's bit operations have no proof schedule yet",
+                });
+            }
             _ => return Ok(None),
         }))
     }

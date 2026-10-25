@@ -103,6 +103,9 @@ fn operation(op: &Op) -> (&'static str, Value) {
         Op::Argmax => ("Argmax", json!({})),
         Op::InverseCdf { prf } => ("InverseCdf", json!({ "prf": prf.0 })),
         Op::Bitwise { table } => ("Bitwise", json!({ "table": table.0 })),
+        Op::BitDecompose { low, high } => ("BitDecompose", json!({ "low": low, "high": high })),
+        Op::BitFn { f } => ("BitFn", json!({ "f": format!("{f:?}") })),
+        Op::AssertEqual => ("AssertEqual", json!({})),
     }
 }
 

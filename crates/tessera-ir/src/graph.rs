@@ -183,6 +183,9 @@ impl Graph {
                  it is not a matmul",
             );
         }
+        if matches!(op, Op::BitFn { .. }) && outputs.iter().any(|o| o.kind != NodeKind::Virtual) {
+            return fail("a Boolean function's value is virtual");
+        }
         match op {
             Op::MatMulWeight { weight } => {
                 arity(
@@ -482,6 +485,42 @@ impl Graph {
                 )?;
                 if inputs[1].shape != inputs[0].shape {
                     return fail("one one-hot entry per logit");
+                }
+            }
+            Op::BitDecompose { low, high } => {
+                let outs = if *high == 0 { 1 } else { 2 };
+                arity(
+                    1,
+                    outs,
+                    "takes the integer and produces its low bits, then its high bits",
+                )?;
+                if *low == 0 || u16::from(*low) + u16::from(*high) > 62 {
+                    return fail("1 ≤ low and low + high ≤ 62");
+                }
+                let x = inputs[0].shape;
+                for (output, bits) in outputs.iter().zip([*low, *high]) {
+                    let mut expected = x.to_vec();
+                    expected.push(u32::from(bits));
+                    if output.shape != expected {
+                        return fail("each output is the input with an innermost axis of its bits");
+                    }
+                    if output.kind != advice() {
+                        return fail("the bits are committed advice");
+                    }
+                }
+            }
+            Op::BitFn { f } => {
+                arity(f.arity(), 1, "takes its bits and produces one tensor")?;
+                if inputs.iter().any(|i| i.shape != inputs[0].shape)
+                    || outputs[0].shape != inputs[0].shape
+                {
+                    return fail("the inputs and the output have one shape");
+                }
+            }
+            Op::AssertEqual => {
+                arity(2, 0, "takes two tensors and produces nothing")?;
+                if inputs[1].shape != inputs[0].shape {
+                    return fail("the two tensors have one shape");
                 }
             }
         }

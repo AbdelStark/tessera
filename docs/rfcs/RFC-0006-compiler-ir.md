@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual), [RFC-0024](RFC-0024-wide-requantization.md) ('Gadget selection': `RequantWide`), [RFC-0025](RFC-0025-affine-sites.md) ('Operation set': `Mul`'s broadcast; 'Llama lowering': affine sites), [RFC-0028](RFC-0028-balanced-split.md) ('Gadget selection': the split point), [RFC-0029](RFC-0029-table-set.md) ('Outputs': the claim list is the table set), [RFC-0030](RFC-0030-masked-exponentials.md) ('Range analysis': `SoftmaxRow`'s table width and the softmax fact's ground), [RFC-0034](RFC-0034-causal-blocks.md) ('Tiling and the execution plan': `e`'s order within an attention tile), [RFC-0050](RFC-0050-gadget-advice-columns.md) ('Gadget selection': complete auxiliary range requests; 'Range analysis': minimum root width), [RFC-0055](RFC-0055-windowed-stages.md#working-sets) ('Outputs': each reduction stage's tables), [RFC-0056](RFC-0056-native-working-sets.md) ('Outputs': the native relations and their residents in those tables)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('Range analysis': `RsqrtRow`'s range and domain; 'Llama lowering': the residual), [RFC-0024](RFC-0024-wide-requantization.md) ('Gadget selection': `RequantWide`), [RFC-0025](RFC-0025-affine-sites.md) ('Operation set': `Mul`'s broadcast; 'Llama lowering': affine sites), [RFC-0028](RFC-0028-balanced-split.md) ('Gadget selection': the split point), [RFC-0029](RFC-0029-table-set.md) ('Outputs': the claim list is the table set), [RFC-0030](RFC-0030-masked-exponentials.md) ('Range analysis': `SoftmaxRow`'s table width and the softmax fact's ground), [RFC-0034](RFC-0034-causal-blocks.md) ('Tiling and the execution plan': `e`'s order within an attention tile), [RFC-0050](RFC-0050-gadget-advice-columns.md) ('Gadget selection': complete auxiliary range requests; 'Range analysis': minimum root width), [RFC-0055](RFC-0055-windowed-stages.md#working-sets) ('Outputs': each reduction stage's tables), [RFC-0056](RFC-0056-native-working-sets.md) ('Outputs': the native relations and their residents in those tables), [RFC-0066](RFC-0066-bits-and-sha256.md) ('Operation set': `BitDecompose`, `BitFn` and `AssertEqual`; `Bitwise` is AES's alone; 'Range analysis': their ranges and domains)
 
 ## Summary
 
@@ -52,7 +52,12 @@ pub enum Op {
     SoftmaxRow { exp_table: TableId, sigma: u8 },// max certificate + reciprocal bracket
     RsqrtRow { kappa: u8, eps_int: u64, dim: u32 }, // multi-limb bracket over rows of dim
     Argmax, InverseCdf { prf: PrfRef },          // scoring certificates (RFC-0017)
-    Bitwise { table: TableId },                  // AES and SHA-256 sub-operations (RFC-0015)
+    Bitwise { table: TableId },                  // AES's byte operations (RFC-0015)
+    BitDecompose { low: u8, high: u8 },          // committed bits of a true integer (RFC-0066)
+    // Virtual, degree up to 3 in bits
+    BitFn { f: BoolFn },                         // Xor, Xor3, And, Ch, Maj on bits (RFC-0066)
+    // A relation with no output
+    AssertEqual,                                 // a = b elementwise (RFC-0066)
 }
 
 pub struct Node { pub id: NodeId, pub op: Op, pub inputs: Vec<TensorId>, pub outputs: Vec<TensorId> }
@@ -89,6 +94,9 @@ A graph's nodes are in topological order. Every input is a graph input, a tensor
 | `RsqrtRow` | `u` → `ρ` | `ρ = u` | `ρ` is advice; `dim ≥ 1`, and `κ ≤ 31`, so that `N = dim · 2^{2κ}` stays below `2^{94}` |
 | `Argmax`, `InverseCdf` | `ℓ`, `h` → none | `h = ℓ`: one one-hot entry per logit | certificates: every value they commit is internal advice |
 | `Bitwise` | `a`, `b` → `y` | all equal | `y` is `LookupOutput { table }` |
+| `BitDecompose` | `x` → `b`, `h` | `b` is `x` with an innermost axis of `low` added, `h` with one of `high`; no `h` when `high = 0` | both committed advice; `1 ≤ low`, `low + high ≤ 62` ([RFC-0066](RFC-0066-bits-and-sha256.md#bitdecompose--low-high-)) |
+| `BitFn` | two or three bit tensors → `y` | all equal | `y` virtual: `Xor`, `And` take two inputs; `Xor3`, `Ch`, `Maj` three |
+| `AssertEqual` | `a`, `b` → none | equal | a relation: `a = b` |
 
 The IR is the prover's (tier C). The verifier re-derives what it checks from the claim list with a representation of its own (Alternative 2), so range analysis, gadget selection and the lowering may refine these rules before the protocol version is fixed.
 
@@ -110,6 +118,9 @@ The integrality-requiring inputs, each with the domain it must lie in (every dom
 | `Requant` | key; channel classes | the centered field range; `[0, classes)` |
 | `TableMap` | key; channel classes | the table's keys: `[−2^{b−1}, 2^{b−1})` for `Silu`, `[0, 2^{key_bits})` for `Exp`; `[0, classes)`, given exactly when the table has several classes (otherwise `ERR-INTERNAL`) |
 | `Bitwise` | both operands | `[0, 256)` |
+| `BitDecompose` | the integer | `[0, 2^{low + high})`; or, for a committed graph input, which its bits range-check ([RFC-0066](RFC-0066-bits-and-sha256.md) Lemma 1), a declared range that holds `[0, 2^{low + high})` |
+| `BitFn` | each input | `[0, 1]`, and not a committed graph input, read directly or moved unchanged: its declared range proves no bit ([RFC-0066](RFC-0066-bits-and-sha256.md#bitfn--f-)) |
+| `AssertEqual` | both inputs | the centered field range |
 | `SoftmaxRow` | scores | `[−2^21, 2^21]`, with a spread `x_hi − x_lo` below `2^{key_bits}` of its `Exp` table, since each key is the row maximum less a score. INT8 heads of width 128 reach `2^21` at `q = k = −128`. `key_bits` is the narrowest width from `bits(128 · 255 · d_head)` up whose last key maps to 0, the key every masked position looks up ([RFC-0030](RFC-0030-masked-exponentials.md#relation-1-every-position-looked-up)). |
 | `RsqrtRow` | sums of squares | `u ≥ 0` and `u + e < 2^55`; the node needs `e ≥ 1`, and `w ≤ 32` for its range check to be one lookup |
 | `Argmax`, `InverseCdf` | logits; one-hot entries | the centered field range; `[0, 1]` |

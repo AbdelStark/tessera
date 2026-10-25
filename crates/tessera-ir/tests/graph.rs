@@ -6,8 +6,8 @@
 //! builder as it was.
 
 use tessera_ir::{
-    Broadcast, CommitmentClass, Graph, GraphBuilder, IntRange, IntType, IrError, Node, NodeId,
-    NodeKind, Op, OpClass, PrfRef, TableId, TensorDecl, TensorId, WeightRef, WeightType,
+    BoolFn, Broadcast, CommitmentClass, Graph, GraphBuilder, IntRange, IntType, IrError, Node,
+    NodeId, NodeKind, Op, OpClass, PrfRef, TableId, TensorDecl, TensorId, WeightRef, WeightType,
 };
 
 const T: u32 = 4; // tokens
@@ -304,6 +304,21 @@ fn block() -> Graph {
         &[byte, byte],
         lookup(&[VOCAB], 4),
     );
+    // RFC-0066: a byte's bits and two of carry, a Boolean function of them, and an equality.
+    let bits = b
+        .node(
+            Op::BitDecompose { low: 8, high: 2 },
+            &[byte],
+            vec![advice(&[VOCAB, 8]), advice(&[VOCAB, 2])],
+        )
+        .expect("bits");
+    let maj = one(
+        &mut b,
+        Op::BitFn { f: BoolFn::Maj },
+        &[bits[0], bits[0], bits[0]],
+        virt(&[VOCAB, 8]),
+    );
+    assert_eq!(b.node(Op::AssertEqual, &[maj, bits[0]], vec![]), Ok(vec![]));
     b.finish()
 }
 
@@ -317,7 +332,7 @@ fn a_block_with_every_operation_builds_identically_and_validates() {
     );
     assert_eq!(graph.validate(), Ok(()));
     let names: std::collections::BTreeSet<&str> = graph.nodes.iter().map(|n| n.op.name()).collect();
-    assert_eq!(names.len(), 23, "every operation of RFC-0006: {names:?}");
+    assert_eq!(names.len(), 26, "every operation of RFC-0006: {names:?}");
     for (position, tensor) in (0u32..).zip(&graph.tensors) {
         assert_eq!(tensor.id, TensorId(position));
     }
@@ -1093,7 +1108,91 @@ fn each_operation_rule_broken_alone_is_refused() {
             ),
         ),
     ];
-    for (op, inputs, outputs, expected) in cases {
+    let bit_cases: Vec<Case> = vec![
+        // BitDecompose, BitFn and AssertEqual (RFC-0066).
+        (
+            Op::BitDecompose { low: 8, high: 2 },
+            vec![a],
+            vec![advice(&[T, D, 8])],
+            op_error(
+                "BitDecompose",
+                "takes the integer and produces its low bits, then its high bits",
+            ),
+        ),
+        (
+            Op::BitDecompose { low: 0, high: 2 },
+            vec![a],
+            vec![advice(&[T, D, 1]), advice(&[T, D, 2])],
+            op_error("BitDecompose", "1 ≤ low and low + high ≤ 62"),
+        ),
+        (
+            Op::BitDecompose { low: 32, high: 31 },
+            vec![a],
+            vec![advice(&[T, D, 32]), advice(&[T, D, 31])],
+            op_error("BitDecompose", "1 ≤ low and low + high ≤ 62"),
+        ),
+        (
+            Op::BitDecompose { low: 8, high: 0 },
+            vec![a],
+            vec![advice(&[T, D])],
+            op_error(
+                "BitDecompose",
+                "each output is the input with an innermost axis of its bits",
+            ),
+        ),
+        (
+            Op::BitDecompose { low: 8, high: 2 },
+            vec![a],
+            vec![advice(&[T, D, 8]), advice(&[T, D, 3])],
+            op_error(
+                "BitDecompose",
+                "each output is the input with an innermost axis of its bits",
+            ),
+        ),
+        (
+            Op::BitDecompose { low: 8, high: 0 },
+            vec![a],
+            vec![virt(&[T, D, 8])],
+            op_error("BitDecompose", "the bits are committed advice"),
+        ),
+        (
+            Op::BitFn { f: BoolFn::Xor3 },
+            vec![a, c],
+            vec![virt(&[T, D])],
+            op_error("BitFn", "takes its bits and produces one tensor"),
+        ),
+        (
+            Op::BitFn { f: BoolFn::And },
+            vec![a, odd],
+            vec![virt(&[T, D])],
+            op_error("BitFn", "the inputs and the output have one shape"),
+        ),
+        (
+            Op::BitFn { f: BoolFn::Xor },
+            vec![a, c],
+            vec![virt(&[T, 3])],
+            op_error("BitFn", "the inputs and the output have one shape"),
+        ),
+        (
+            Op::BitFn { f: BoolFn::Ch },
+            vec![a, c, a],
+            vec![advice(&[T, D])],
+            op_error("BitFn", "a Boolean function's value is virtual"),
+        ),
+        (
+            Op::AssertEqual,
+            vec![a, c],
+            vec![virt(&[T, D])],
+            op_error("AssertEqual", "takes two tensors and produces nothing"),
+        ),
+        (
+            Op::AssertEqual,
+            vec![a, odd],
+            vec![],
+            op_error("AssertEqual", "the two tensors have one shape"),
+        ),
+    ];
+    for (op, inputs, outputs, expected) in cases.into_iter().chain(bit_cases) {
         let mut b = base_builder.clone();
         let before = b.clone().finish();
         let name = op.name();
@@ -1293,4 +1392,36 @@ fn op_error_at(node: u32, op: &'static str, rule: &'static str) -> IrError {
         op,
         rule,
     }
+}
+
+#[test]
+fn each_boolean_function_is_its_truth_table_on_bits() {
+    // RFC-0066 'BitFn': the polynomial agrees with the function on {0, 1}, by FIPS 180-4 §4.1.2
+    // for Ch and Maj; and the classes the schedule places them by.
+    type Truth = fn(bool, bool, bool) -> bool;
+    let functions: [(BoolFn, usize, Truth); 5] = [
+        (BoolFn::Xor, 2, |a, b, _| a != b),
+        (BoolFn::Xor3, 3, |a, b, c| (a != b) != c),
+        (BoolFn::And, 2, |a, b, _| a && b),
+        (BoolFn::Ch, 3, |e, f, g| (e && f) != (!e && g)),
+        (BoolFn::Maj, 3, |a, b, c| ((a && b) != (a && c)) != (b && c)),
+    ];
+    for (f, arity, truth) in functions {
+        assert_eq!(f.arity(), arity, "{f:?}");
+        for x in 0..1i64 << arity {
+            let bits: Vec<i64> = (0..arity).map(|i| (x >> i) & 1).collect();
+            let bit = |i: usize| bits.get(i).is_some_and(|&b| b == 1);
+            assert_eq!(
+                f.eval(&bits),
+                i64::from(truth(bit(0), bit(1), bit(2))),
+                "{f:?} at {bits:?}"
+            );
+        }
+        assert_eq!(Op::BitFn { f }.class(), OpClass::Degree3);
+    }
+    assert_eq!(
+        Op::BitDecompose { low: 8, high: 0 }.class(),
+        OpClass::Gadget
+    );
+    assert_eq!(Op::AssertEqual.class(), OpClass::Gadget);
 }
