@@ -376,11 +376,11 @@
       "theta": 10
     },
     {
-      "bits": 31434,
+      "bits": 31424,
       "covered_by": null,
       "grinding": 0,
-      "margin": 5834,
-      "numerator": "37",
+      "margin": 5824,
+      "numerator": "38",
       "pass": true,
       "row": "linking",
       "target": 100

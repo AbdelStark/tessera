@@ -231,7 +231,7 @@ RFC-0012's state machine gains a transition, for the budget's bookkeeping:
   - The check passes when `θ_T·(D̃^{old} − D̃^{new})(ρ_T) + (Q̃_T − q_T) = 0`. `q_T` is absorbed before `θ_T`, so for `D̃^{old}(ρ_T) ≠ D̃^{new}(ρ_T)` that holds for at most one `θ_T`.
   - Two different multilinear polynomials over `ν_T` variables agree at `ρ_T` with probability at most `ν_T/|Fp2|` (Schwartz–Zippel). The roots fix both commitments before `ρ_T` is squeezed.
   - Per matrix, then: `(ν_T + 1)/|Fp2|`. At 405B the largest `ν_T` is 37 (`Gate`, `Up` and `Down`), which gives 122.75 bits per matrix. The ten together, `Σ (ν_T + 1) = 345`, give 119.57 bits.
-  - RFC-0014's calculator still counts `ν_T/q` for its weight-linking row; [#516](https://github.com/AbdelStark/tessera/issues/516) adds the `1/q`. This RFC's `ν_T` is `log2 k_T + ⌈log2 m_T⌉` over the committed rows: 30 for `ChannelParams`, whose 882 rows the calculator's input counts otherwise.
+  - RFC-0014's calculator counts this `(ν_T + 1)/q` in its weight-linking row, for the matrix of most variables ([#516](https://github.com/AbdelStark/tessera/issues/516)). This RFC's `ν_T` is `log2 k_T + ⌈log2 m_T⌉` over the committed rows: 30 for `ChannelParams`, whose 882 rows the calculator's input counts otherwise.
 - **Why `θ_T`.** With the claim 0 and no challenge, any `q_T` would match `u_T` for any data. `θ_T` is drawn after `q_T` and multiplies the difference, as RFC-0013 'Hiding openings' orders it for proofs.
 - **Proximity, per commitment.** `((1 + ρ')/2)^{τ_link} + ϑ_T·n_T/|Fp2|`, RFC-0014's bound.
   - At the production layout, `ρ' = 0.2656` and `b(ρ') = 0.6602`, so 122 queries give 80.54 bits, and the proof of work brings them to 100.54.

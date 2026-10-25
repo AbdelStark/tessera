@@ -559,8 +559,9 @@ def report(params, statement, name, why):
         rows.append(entry)
         field_row("field", theta * n, 0, None, {"commitment": commitment, "theta": theta})
 
-    # 8. Weight linking: ν/q for the largest matrix.
-    field_row("linking", max((m["variables"] for m in statement["matrices"]), default=0), 0, None)
+    # 8. Weight linking: (ν + 1)/q for the largest matrix, its evaluation and the link's θ_T.
+    field_row("linking", max((m["variables"] + 1 for m in statement["matrices"]), default=0), 0,
+              None)
 
     # 9. Hash collisions: BLAKE3's 256-bit output, 128 bits.
     t = target(None)
@@ -644,7 +645,7 @@ def adversarial(base):
              "Down at 2^24 columns: 17·2^26/q, ϑ = ⌈log2 m_T⌉ in tessera-protocol/1, while its "
              "queries still pass"),
             ("linking", params, matrix_changed(base, "Down", variables=2**29),
-             "a matrix of 2^29 variables"),
+             "a matrix of 2^29 variables: (2^29 + 1)/q"),
         ]
         if params is NI_100:
             cases.append(("logup", params, with_changes(base, lookups=base["lookups"] + [

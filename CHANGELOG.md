@@ -1201,6 +1201,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- The soundness calculator's weight-linking row counts the link's combining challenge ([#516](https://github.com/AbdelStark/tessera/issues/516)). RFC-0014's row is now `max (ν_T + 1)/q`, the bound RFC-0064 'Soundness' states: `ν_T/q` for two weight polynomials that agree at `ρ_T`, and `1/q` for `θ_T`, which is drawn after the blinding claim. `tessera-protocol`'s calculator and the soundness oracle follow it, and `spec/vectors/soundness/` and `docs/perf/examples/soundness-*.json` are regenerated. At 405B the row goes from 37 to 38 over `q`, 122.75 bits instead of 122.78.
+
 - Long-lived keys are held on the heap ([#495](https://github.com/AbdelStark/tessera/issues/495), OBS-2):
   - **`tessera_codec::HeapKey<N>`.** `N` secret bytes in a box, cleared on drop even outside a `Secret`, with `zeroed`, `from_box`, `generate` and the `Borrow` traits. It moves from `tessera-anchor`, which re-exports it.
   - **`tessera_scoring::SamplerKey`** holds `Secret<HeapKey>`, and its `secret()` lends the key to the session-open frame's commitment. `SamplerKey::new` now takes the key boxed.

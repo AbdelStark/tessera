@@ -205,7 +205,7 @@ A calculator refuses, with `ERR-USAGE`: a `protocol` other than 1 or 2; `τ_A` o
 | Opening evaluation checks | `max(max T_g, 1 when a matrix is opened)/q` | — | `bits` |
 | Proximity queries, per commitment | `((n + k + P)/(2n))^τ`, `((1 + ρ')/2)^τ`: the advice's `n_A`, `k_A = 2^{log2 k}`, `P_A`, `τ_A`; each matrix's `n_T`, `k_T`, `P_W`, `τ_W` | `g_query` | `one_shot` |
 | Proximity field term, per commitment | `ϑ·n/q`, `ϑ_A = ⌈log2 advice_rows⌉`, `ϑ_T = ⌈log2(m_T + B_W)⌉`, `⌈log2 m_T⌉` in protocol/1 | — | `bits` |
-| Weight linking | `max ν_T/q` | — | `bits` |
+| Weight linking | `max (ν_T + 1)/q` | — | `bits` |
 | Hash collisions | `2^{−128}` | — | `bits` |
 
 A report lists the rows in this order, the two proximity rows for the advice first and then for each matrix in order. A row's bits are `λ = g + max(0, −log2 ε)` for the grinding `g` that covers it: an error above 1 counts as 1. A row of `ε = 0` has no term: it has no bits, and it passes.
@@ -213,6 +213,7 @@ A report lists the rows in this order, the two proximity rows for the advice fir
 - **Per item, the largest.** A row over several items, instances, forests or groups, takes the largest item's error, not their sum. The items are fixed before their challenge, and the verifier accepts only if every false one passes: the probability is at most the bound of any one of them. The union row is the exception, the sum RFC-0010 'Soundness of the schedule' states.
 - **Batching and lines.** A stage of `n` rounds of degree `d` batching `m` instances errs with probability at most `(n·d + m)/q`, as RFC-0010 states. A tree level adds its line challenge: `(n·d + m + 1)/q`, since with fraction trees `γ` and `λ` are a polynomial of total degree `m`, not `m − 1`, and the line challenge errs with probability `1/q` of its own.
 - **The union row counts every term of the rounds row**, so the rounds row never fails alone.
+- **The link's combining challenge.** A false link passes when two different weight polynomials agree at `ρ_T`, with probability at most `ν_T/q`, or when `θ_T`, drawn after the blinding claim, cancels the difference, with probability `1/q`: `(ν_T + 1)/q` per matrix ([RFC-0064](RFC-0064-weight-linking-proof.md#soundness) 'Soundness').
 
 **Targets.** SP-1 (06 §4). Each parameter set states two targets. `bits` is 100, for every row a prover can retry by varying its messages. `one_shot` is for the rows a proof of work covers, the LogUp identity and the column queries:
 
