@@ -71,6 +71,14 @@ protocol/1. It provides directory exchange; authenticated TLS (#181), anchors
 and ledger integration (#137/#163), complete resource hardening (#182), GPU
 and zero knowledge remain separate work.
 
+## The canary scan
+
+`e2e_redaction_canary_scan` is OBS-3 ([05 §3](../spec/05-observability.md#3-data-classification-and-redaction)). It runs the cycle on the [canary model](../../spec/vectors/canary/README.md): compile, weight commitment, an NI proof and its verification, a directory Live session, and four failures. The failures are an exact mismatch, a usage error, a corrupt proof and a wrong pin. Then `inspect` renders every artifact, the secret-class ones included. Each producer command logs at `trace`, once in JSON and once in readable form. The scan then reads every file the run leaves: each command's stdout and stderr, the reports, run manifests, claim list, plan, public weight commitment, proofs and Live packets. It skips only the secret-class artifacts of [03 §5](../spec/03-data-model.md#5-artifact-catalog). It fails on any canary in decimal, hex or little-endian byte form.
+
+The scan proves its own reach on the same run. It finds every canary in the model and token files. It also finds one injected into a scanned proof and into a log. The paths the test passes are public, so they are removed from text before the scan, since a directory's name can spell a token id. `cargo test -p tessera-e2e --test exact_cli canary` runs the scan and the scanner's own tests.
+
+## The sampled route
+
 The sampled route, `tessera prove --sample`, has its own suite:
 `cargo test -p tessera-cli --test prove_sample --locked` plays one session
 through `tessera recorder ref`, draws and batches its sample, proves the batch

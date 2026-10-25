@@ -1,0 +1,80 @@
+{
+  "description": "OBS-3 canaries of a synthetic public model: 64-bit weight runs and token ids, from the independent Python oracle.",
+  "model": "canary-reference.d",
+  "tokens": "recorded.ttk",
+  "layers": 2,
+  "vocab": 4096,
+  "prompt_len": 3,
+  "output_len": 3,
+  "weight_runs": [
+    {
+      "tensor": "Embed",
+      "layer": 0,
+      "offset": 1024,
+      "weights": [
+        90,
+        -61,
+        110,
+        -105,
+        47,
+        -88,
+        101,
+        -77
+      ],
+      "value": "b365a82f976ec35a"
+    },
+    {
+      "tensor": "Gate",
+      "layer": 1,
+      "offset": 2,
+      "weights": [
+        -99,
+        83,
+        -52,
+        117,
+        -41,
+        66,
+        -114,
+        29
+      ],
+      "value": "1d8e42d775cc539d"
+    },
+    {
+      "tensor": "LmHead",
+      "layer": 0,
+      "offset": 5240,
+      "weights": [
+        117,
+        109,
+        103,
+        -98,
+        -111,
+        95,
+        -106,
+        -121
+      ],
+      "value": "87965f919e676d75"
+    }
+  ],
+  "token_ids": [
+    2211,
+    4085,
+    3079,
+    2621,
+    2621,
+    2621
+  ],
+  "mismatch": {
+    "tokens": "mismatch.ttk",
+    "token_ids": [
+      2211,
+      4085,
+      3079,
+      2621,
+      2621,
+      2620
+    ]
+  },
+  "model_sha256": "74a86354ef77e9723b922e7243a94bb155b7d3716c82fbcd47104751cf8fe0cd",
+  "tokens_sha256": "a8d9c294f63c7c5e77ce5a7ea583e867f5f7f5942accdf39a80118fa6e1af6de"
+}
