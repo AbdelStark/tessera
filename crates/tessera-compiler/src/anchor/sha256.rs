@@ -145,8 +145,8 @@ pub const fn sha256_blocks(len: usize) -> usize {
 /// bits as a big-endian 64-bit integer.
 ///
 /// It copies `message` into a plain buffer, so it takes public bytes only: for a message with
-/// committed bytes, pass it with those bytes zeroed, which is all [`Sha256Layout::public_bits`]
-/// reads (05 §3: a key or salt lives in `Secret<T>`).
+/// committed bytes, pass it with those bytes zeroed. [`Sha256Layout::public_bits`]'s value does
+/// not depend on them (05 §3: a key or salt lives in `Secret<T>`).
 #[must_use]
 pub fn sha256_pad(message: &[u8]) -> Vec<u8> {
     let mut padded = Vec::with_capacity(64 * sha256_blocks(message.len()));
@@ -212,10 +212,14 @@ impl Sha256Layout {
 
     /// The public value of `message`: the padded messages' bits, zero at committed bytes.
     ///
-    /// It reads only the public bytes of `padded`. A caller holding committed bytes that are
-    /// secret, such as `k_s` and `salt_k`, passes the messages with those bytes zeroed, never the
-    /// secrets: the `committed` input's values come from the prover's secret-class buffers, which
-    /// this crate does not read (05 §3).
+    /// Its value depends only on the public bytes of `padded`: it converts every byte, then
+    /// zeroes the committed bytes' bits. A caller holding committed bytes that are secret, such as
+    /// `k_s` and `salt_k`, passes the messages with those bytes zeroed, never the secrets.
+    ///
+    /// The `committed` input's values come from the prover's secret-class buffers, which this
+    /// crate does not read (05 §3). The prover builds that `[K, M]` buffer as a `SecretBuf`
+    /// inside a reader that `secret-access.toml` lists, such as `tessera-anchor`'s session
+    /// module, row `k` the byte at the layout's `k`-th offset (#146).
     ///
     /// # Panics
     ///

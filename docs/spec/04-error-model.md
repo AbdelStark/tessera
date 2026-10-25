@@ -74,7 +74,7 @@ Codes are stable tier-A identifiers ([02 §1](02-public-api.md#1-stability-tiers
 | `ERR-CODEC-LIMIT` | Input | A length exceeds the configured resource limit, or a value exceeds a bound its schema states | Codec | 65 |
 | `ERR-QUANT-ARCH` | Model | Checkpoint or integer model outside `ArchSpec` support, or inconsistent with its architecture | Front-end, compiler | 65 |
 | `ERR-QUANT-CALIB` | Model | Calibration produced non-finite or degenerate statistics, or its data failed a hygiene check: too few usable documents, a malformed file, or a document shared with evaluation data | Front-end | 20 |
-| `ERR-COMPILE-RANGE` | Model | A gadget input's range is not one its gadget takes: a lookup key past any table bound, a bit operation's input that may not be a bit, an integer past its decomposition's width, or a committed input whose declared range is narrower than its decomposition proves ([RFC-0066](../rfcs/RFC-0066-bits-and-sha256.md)) | Compiler | 20 |
+| `ERR-COMPILE-RANGE` | Model | A gadget input's range is not one its gadget takes: a lookup key past any table bound, a bit operation's input that may not be a bit, an integer past its decomposition's width, or a committed input whose declared range does not hold the range its decomposition proves ([RFC-0066](../rfcs/RFC-0066-bits-and-sha256.md)) | Compiler | 20 |
 | `ERR-COMPILE-WRAP` | Model | A lookup key cannot be proven a true integer | Compiler | 20 |
 | `ERR-COMPILE-PROFILE` | Model | `servable` profile constraints unsatisfiable | Compiler | 20 |
 | `ERR-WITNESS-EXACT-MISMATCH` | Completeness | Exact mode: a recorded output token differs from `D`'s output | Prover | 20 |

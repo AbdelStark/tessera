@@ -52,7 +52,7 @@ All notable changes to the prover release train are recorded here: the crates un
 
       The general rule went to #527.
     - **The third** found no soundness defect. It found:
-      - the circuit's helpers handling the key and salt in plain buffers: they now read public bytes only, and the committed bytes come from the prover's secret-class buffers;
+      - the circuit's helpers handling the key and salt in plain buffers: their output now depends on public bytes only, a caller passes the committed bytes zeroed, and the committed input's values come from the prover's secret-class buffers;
       - the graph's text leaving the gather's row, the inputs' declarations and the binding's operand order open;
       - three untested moves.
 

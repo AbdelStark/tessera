@@ -64,14 +64,14 @@ BitDecompose { low: u8, high: u8 },   // x → b [.., low], h [.., high]; high m
   - **Padding.** A bit axis pads to the next power of two, 4 for a carry of 3. A padded slot has weight 0 in recomposition, so booleanity alone leaves it 0 or 1, two witnesses. One `ZeroCheck` per output whose `n` bits are not a power of two pins those slots to 0, as `OneHot`'s vocabulary check pins its padded entries (RFC-0009 'OneHot'): `0 = Σ_x eq(z, x)·(1 − LT(x_bit, n))·b̃(x)`, over the bit axis's coordinates `x_bit`, `LT` public.
   - **Padded rows.** The other axes' padded positions hold what the operation computes from their padded inputs, as every gadget's do (RFC-0035 'What a padded row holds').
   - **Completeness there is the graph's.** Range analysis bounds real positions only, so a graph must compute values in `[0, 2^{low + high})` at padded positions too. `BitDecompose(ConstAdd(−1)(p))`, with `p` declared `[1, 256]`, gives `−1` there, which no bits recompose. The SHA-256 circuit's padded inputs are zero bits and zero bytes, and its sums of bits and constants stay within their carries, so its padded positions decompose.
-  - **A committed input's padding.** A committed graph input pads to powers of two like every tensor. Nothing computes its padded positions, and booleanity and recomposition hold for any byte there. So each committed graph input that a `BitDecompose` reads, directly or moved, has one padding check when its shape has padded positions, on the input itself: `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·x̃(x)`, RFC-0035's form, `ψ` 1 on its real positions. Everything the circuit computes from them is then determined.
+  - **A committed input's padding.** A committed graph input pads to powers of two like every tensor. Nothing computes its padded positions, and booleanity and recomposition hold for any byte there. So each `BitDecompose` that reads a committed graph input, directly or moved, has one padding check on that input when its shape has padded positions, two decompositions of one input two checks: `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·x̃(x)`, RFC-0035's form, `ψ` 1 on its real positions. Everything the circuit computes from them is then determined.
 
 **Lemma 1 (unique bits).** If `x` is an integer in `[0, 2^{low + high})`, exactly one pair `(b, h)` with entries in `Fp` passes booleanity, recomposition and the bit-padding check: `x`'s binary digits, and 0 at padded slots.
 - **Proof.**
   - Booleanity makes each entry 0 or 1, as integers.
   - The recomposition `Σ_i 2^i b_i + 2^{low}·Σ_j 2^j h_j` is then an integer below `2^{low + high} ≤ 2^{62} < P`, and equals `x` modulo `P`.
   - Both sides lie in `[0, P)`, so they are equal as integers, and binary representation is unique.
-  - The bound is the field's. Over F65537, which RFC-0014's calibration uses, it is `low + high ≤ 16`.
+  - The bound is the field's. Over F65537, the test field of calibration (RFC-0002, 07 §4), it is `low + high ≤ 16`, which a calibration circuit must keep, since the IR's rule is Goldilocks's 62.
 - **The converse.** For a committed `x` of any value in `Fp`, a passing `(b, h)` forces `x` to equal that integer in `[0, 2^{low + high})`. So `BitDecompose` is its input's range check.
 
 ### `BitFn { f }`
@@ -125,7 +125,7 @@ FIPS 180-4 §6.2 over `M` messages of one block count, in the IR. It is the circ
 - **A word** of the `M` messages is a bit tensor `[32, M]`: row `i` is the word's bit of weight `2^i`.
 - **`ROTR^r`** is `GatherPublic` with row `i` taken from row `(i + r) mod 32`.
 - **`SHR^r`** is the same gather, times a public `[32]` mask that is 1 on rows `i < 32 − r`, through `Mul { broadcast: Trailing }`. The masks of `SHR^3` and `SHR^{10}` are the rows of one public `[2, 32]` input.
-- **The integer value of rows** `r_i`, a `[32, M]` tensor, is `Σ_i 2^i·r_i`, built in five levels. Each level gathers the even and the odd rows and adds the even ones to `2^{2^ℓ}` times the odd ones (`ConstMul`, `Add`), halving the rows. Rows in `[0, k]` reach `[0, (2^{2^{ℓ+1}} − 1)·k]` at level `ℓ`, and `[0, (2^{32} − 1)·k]` at the last, exactly.
+- **The integer value of rows** `r_i`, a `[32, M]` tensor, is `Σ_i 2^i·r_i`, built in five levels. Each level gathers the even and the odd rows and adds `2^{2^ℓ}` times the odd ones to the even ones, `Add(even, ConstMul(odd))`, halving the rows. Rows in `[0, k]` reach `[0, (2^{2^{ℓ+1}} − 1)·k]` at level `ℓ`, and `[0, (2^{32} − 1)·k]` at the last, exactly.
   - Range analysis bounds a tensor by one interval. `Sum { axis: 0 }` of the rows times the weights `2^i` would get `[0, 32·2^{31}·k]`, 16 times too wide, and fail `BitDecompose`'s width.
 
 **The functions.**
@@ -163,10 +163,10 @@ The two round sums share their first rows, `h + Σ1(e) + Ch(e, f, g) + W_t`. The
 **The graph.** Its inputs are, in this order:
 - `message`, public bits `[512·N, M]`;
 - `start`, public bits `[256, M]`;
-- `masks`, public `[2, 32]`, the masks of `SHR^3` and `SHR^{10}`;
-- when bytes are committed, `committed`, advice declared `u8` in `[0, 255]`, `[K, M]`, and `place`, public `[512·N]`.
+- `masks`, public bits `[2, 32]`, the masks of `SHR^3` and `SHR^{10}`;
+- when bytes are committed, `committed`, advice declared `u8` in `[0, 255]`, `[K, M]`, and `place`, public bits `[512·N]`.
 
-Each bit input is declared `u1` in `[0, 1]`. The digest, public bits `[256, M]`, is declared after the circuit's nodes, before its binding's. The nodes are in this order, which fixes the zero-checks' order:
+Each bit input is declared `u1` in `[0, 1]`. Every `GatherPublic`, `ConstMul` and `ConstAdd` has a constant of its own, declared just before its node and never shared, so the constant table holds them in node order. The digest, public bits `[256, M]`, is declared after the circuit's nodes, before its binding's. The nodes are in this order, which fixes the zero-checks' order:
 1. each `SHR` mask: a `GatherPublic` of its row of `masks`, then a `Reshape` to `[32]`;
 2. when bytes are committed, the message's bits: the bytes' `BitDecompose { 8, 0 }`, a `Transpose` to `[K, 8, M]`, a `Reshape` to `[8K, M]`, the gather, the `Mul` and the `Xor`;
 3. the eight initial words, each a `Slice` of `start`;
@@ -179,7 +179,7 @@ Each bit input is declared `u1` in `[0, 1]`. The digest, public bits `[256, M]`,
 
 A function is its rotations' gathers, each `SHR` a gather and a `Mul`, in its definition's order, then its `BitFn`. A sum is:
 - its rows' `Add`s, left to right;
-- the value's five levels, each an even gather, an odd gather, a `ConstMul` and an `Add`, then a `Reshape` to `[M]`;
+- the value's five levels, each an even gather, an odd gather, the odd rows' `ConstMul` and the `Add` of the even rows and that product, then a `Reshape` to `[M]`;
 - its `ConstAdd` when the constant is not 0;
 - the `BitDecompose`, then the `Transpose` of its result bits.
 
@@ -221,7 +221,7 @@ Bit axes pad to powers of two, 4 for the round carries, so the commitment holds 
 
 RFC-0006 'Range analysis' adds:
 - `BitDecompose`'s outputs are `[0, 1]`, and its input must lie in `[0, 2^{low + high})`, or be a committed graph input whose declared range holds that interval;
-- `BitFn`'s output is `[0, 1]`, and its inputs must lie in `[0, 1]`;
+- `BitFn`'s output is `[0, 1]`, and its inputs must lie in `[0, 1]` and not be committed graph inputs, read directly or moved;
 - `AssertEqual` has no output, and its inputs must lie in the centered field range.
 
 ## Alternatives Considered
