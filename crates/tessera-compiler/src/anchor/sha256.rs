@@ -143,9 +143,14 @@ pub const fn sha256_blocks(len: usize) -> usize {
 
 /// The message padded to whole blocks (FIPS 180-4 §5.1.1): a 1 bit, zeros, and its length in
 /// bits as a big-endian 64-bit integer.
+///
+/// It copies `message` into a plain buffer, so it takes public bytes only: for a message with
+/// committed bytes, pass it with those bytes zeroed, which is all [`Sha256Layout::public_bits`]
+/// reads (05 §3: a key or salt lives in `Secret<T>`).
 #[must_use]
 pub fn sha256_pad(message: &[u8]) -> Vec<u8> {
-    let mut padded = message.to_vec();
+    let mut padded = Vec::with_capacity(64 * sha256_blocks(message.len()));
+    padded.extend_from_slice(message);
     padded.push(0x80);
     padded.resize(64 * sha256_blocks(message.len()) - 8, 0);
     let bits = (message.len() as u64).wrapping_mul(8);
@@ -184,8 +189,8 @@ pub fn sha256_bits(rows: &[&[u8]]) -> Vec<i64> {
     bits
 }
 
-/// Which bytes of the padded message the prover commits, at most a few per block, and the block
-/// count: every message of a circuit shares them.
+/// Which bytes of the padded message the prover commits, and the block count: every message of
+/// a circuit shares them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Sha256Layout {
     /// The padded message's blocks `N`.
@@ -207,6 +212,11 @@ impl Sha256Layout {
 
     /// The public value of `message`: the padded messages' bits, zero at committed bytes.
     ///
+    /// It reads only the public bytes of `padded`. A caller holding committed bytes that are
+    /// secret, such as `k_s` and `salt_k`, passes the messages with those bytes zeroed, never the
+    /// secrets: the `committed` input's values come from the prover's secret-class buffers, which
+    /// this crate does not read (05 §3).
+    ///
     /// # Panics
     ///
     /// If there are not `M` messages of `64·N` bytes.
@@ -225,15 +235,6 @@ impl Sha256Layout {
             }
         }
         bits
-    }
-
-    /// The committed bytes of each padded message, `[K, M]`, in the layout's order.
-    #[must_use]
-    pub fn committed_bytes(&self, padded: &[&[u8]]) -> Vec<i64> {
-        self.committed
-            .iter()
-            .flat_map(|&p| padded.iter().map(move |m| i64::from(m[p as usize])))
-            .collect()
     }
 
     /// The index among committed bytes of the byte at `offset`, if committed.
@@ -286,8 +287,9 @@ const ADVICE: NodeKind = NodeKind::Committed {
 /// - `start`: public bits `[256, M]`, the chaining value before the first block, eight words of
 ///   32 rows: [`SHA256_IV`] through [`sha256_bits`];
 /// - `masks`: public `[2, 32]`, [`SHA256_MASKS`];
-/// - when bytes are committed, `committed`: advice bytes `[K, M]`,
-///   [`Sha256Layout::committed_bytes`], and `place`: public `[512·N]`, [`Sha256Layout::place`].
+/// - when bytes are committed, `committed`: advice bytes `[K, M]`, declared `u8` in `[0, 255]`,
+///   row `k` the byte at the layout's `k`-th offset, and `place`: public `[512·N]`,
+///   [`Sha256Layout::place`].
 #[must_use]
 pub fn sha256_inputs(layout: &Sha256Layout) -> Vec<TensorDecl> {
     let (n, m) = (layout.blocks, layout.messages);

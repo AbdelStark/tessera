@@ -54,22 +54,24 @@ BitDecompose { low: u8, high: u8 },   // x → b [.., low], h [.., high]; high m
 - **Semantics.** For a true integer `x ∈ [0, 2^{low + high})`, `b_i = ⌊x / 2^i⌋ mod 2` for `i < low`, and `h_j = ⌊x / 2^{low + j}⌋ mod 2` for `j < high`. The outputs have `x`'s shape with one more axis, the bit index, innermost.
 - **Kind.** Gadget-backed: both outputs are committed advice, of range `[0, 1]`.
 - **Integrality.** `x` is a true integer with range inside `[0, 2^{low + high})`, and `low + high ≤ 62`, so that every sum below stays under `2^{62}`.
-  - **A committed graph input** may hold any value of `Fp`, and the relations below prove it lies in `[0, 2^{low + high})` (Lemma 1's converse). That holds when `BitDecompose` reads it directly, or moved unchanged by `Reshape`, `Slice`, `Transpose`, `GatherPublic` or `Expand`.
+  - **A committed graph input** may hold any value of `Fp`, and the relations below prove it lies in `[0, 2^{low + high})` (Lemma 1's converse). That holds when `BitDecompose` reads it directly, or moved unchanged by `Reshape`, `Slice`, `Transpose`, `GatherPublic` or `Expand`, at the positions it reads.
     - Its other readers trust its declared range, so that range must hold all of `[0, 2^{low + high})`; otherwise `ERR-COMPILE-RANGE`.
     - Without that rule, a key byte declared `[0, 255]` under `BitDecompose { 8, 1 }` could hold `256 + k'`, and a `Bitwise8` lookup that takes it as the low operand of `a + 2^8·b` would admit two witnesses.
-  - **Through any other operation**, a committed input's declared range is a precondition, as it is for every reader of a committed input (RFC-0006 'Range analysis'). Another operation of the graph must prove it. Specifying and enforcing which operations prove it is #527.
+  - **Elsewhere**, range analysis takes a committed input's declared range as given: through any other operation, and at the positions a `Slice` or a gather leaves out, that range is a precondition another operation of the graph must prove. Specifying and enforcing which operations prove it is #527.
 - **Relations** (RFC-0010 'Relations'):
   - **Booleanity**, one `ZeroCheck` per output: `0 = Σ_x eq(z, x)·b̃(x)·(1 − b̃(x))`, as `OneHot`'s, and the same for `h`.
   - **Recomposition**, one `ZeroCheck`: `0 = Σ_y eq(z, y)·x̃(y) − Σ_{(y, i)} eq(z, y)·w(i)·b̃(y ‖ i) − Σ_{(y, j)} eq(z, y)·2^{low}·w(j)·h̃(y ‖ j)`, with `w(i) = 2^i` on real bits and 0 on padded ones. Its first sum is `x̃(z)`, a claim on `x`. The others are sumchecks of degree 2, `w` public: the verifier evaluates `w̃(r) = Σ_{i < n} 2^i·eq(r, i)`, at most 62 terms, or `Π_k (1 − r_k + r_k·2^{2^k})` when the axis's `n` bits are a power of two.
   - **Padding.** A bit axis pads to the next power of two, 4 for a carry of 3. A padded slot has weight 0 in recomposition, so booleanity alone leaves it 0 or 1, two witnesses. One `ZeroCheck` per output whose `n` bits are not a power of two pins those slots to 0, as `OneHot`'s vocabulary check pins its padded entries (RFC-0009 'OneHot'): `0 = Σ_x eq(z, x)·(1 − LT(x_bit, n))·b̃(x)`, over the bit axis's coordinates `x_bit`, `LT` public.
-  - **Padded rows.** The other axes' padded positions hold what the operation computes from their padded inputs, as every gadget's do (RFC-0035 'What a padded row holds'). They pass booleanity and recomposition as real positions do.
-  - **A committed input's padding.** A committed graph input pads to powers of two like every tensor. Nothing computes its padded positions, and booleanity and recomposition hold for any byte there, so a `BitDecompose` of one pins them to 0 with RFC-0035's form: `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·x̃(x)`, `ψ` 1 on its real positions. Everything the circuit computes from them is then determined.
+  - **Padded rows.** The other axes' padded positions hold what the operation computes from their padded inputs, as every gadget's do (RFC-0035 'What a padded row holds').
+  - **Completeness there is the graph's.** Range analysis bounds real positions only, so a graph must compute values in `[0, 2^{low + high})` at padded positions too. `BitDecompose(ConstAdd(−1)(p))`, with `p` declared `[1, 256]`, gives `−1` there, which no bits recompose. The SHA-256 circuit's padded inputs are zero bits and zero bytes, and its sums of bits and constants stay within their carries, so its padded positions decompose.
+  - **A committed input's padding.** A committed graph input pads to powers of two like every tensor. Nothing computes its padded positions, and booleanity and recomposition hold for any byte there. So each committed graph input that a `BitDecompose` reads, directly or moved, has one padding check when its shape has padded positions, on the input itself: `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·x̃(x)`, RFC-0035's form, `ψ` 1 on its real positions. Everything the circuit computes from them is then determined.
 
 **Lemma 1 (unique bits).** If `x` is an integer in `[0, 2^{low + high})`, exactly one pair `(b, h)` with entries in `Fp` passes booleanity, recomposition and the bit-padding check: `x`'s binary digits, and 0 at padded slots.
 - **Proof.**
   - Booleanity makes each entry 0 or 1, as integers.
   - The recomposition `Σ_i 2^i b_i + 2^{low}·Σ_j 2^j h_j` is then an integer below `2^{low + high} ≤ 2^{62} < P`, and equals `x` modulo `P`.
   - Both sides lie in `[0, P)`, so they are equal as integers, and binary representation is unique.
+  - The bound is the field's. Over F65537, which RFC-0014's calibration uses, it is `low + high ≤ 16`.
 - **The converse.** For a committed `x` of any value in `Fp`, a passing `(b, h)` forces `x` to equal that integer in `[0, 2^{low + high})`. So `BitDecompose` is its input's range check.
 
 ### `BitFn { f }`
@@ -107,12 +109,12 @@ AssertEqual,   // a, b → none: a = b elementwise
 
 Every `ZeroCheck` runs in stage 1 (RFC-0010 'Batching within a stage'), at the point RFC-0035 'Zero-check points' draws before `γ_1`.
 - **Order.** The new instances follow stage 1's existing zero-checks, in node order. Each `BitDecompose` contributes:
-  1. the padding check of its committed input, if any;
+  1. the padding check of the committed graph input it reads, directly or moved, when that input has padded positions;
   2. its booleanity checks;
   3. its bit-padding checks;
   4. its recomposition.
 - **Virtual claims.** A claim one leaves on a virtual tensor, such as recomposition's `x̃(z)` or `AssertEqual`'s `ã(z)`, is a stage-1 claim. RFC-0037 reduces it through the tensor's producer in later stages, as it does any other.
-- **The calculator.** Each instance is one entry `n_i` of RFC-0014's `zero_checks`: the variables of its point `z`, `x`'s for recomposition and the output's for booleanity and padding.
+- **The calculator.** Each instance is one entry `n_i` of RFC-0014's `zero_checks`, the variables of its point `z`: `x`'s for recomposition, the output's for booleanity and bit padding, the committed input's for its padding check, and the two tensors' for `AssertEqual`.
 - **Messages.** Their messages, labels and batching are open (OQ-0066-1).
 
 ### The SHA-256 circuit
@@ -147,7 +149,7 @@ The two round sums share their first rows, `h + Σ1(e) + Ch(e, f, g) + W_t`. The
 - **A committed byte** enters through `BitDecompose { low: 8, high: 0 }` of that byte. The circuit takes its committed bytes as one `[K, M]` tensor, `K` per message, in offset order. Over several frames, the anchor gathers that tensor from the AES circuit's `[16, B]` ciphertext with `Transpose`, `Reshape` and `GatherPublic` (#146).
 - **The message's bits** are `Xor(message, Mul(gather(c), place))`, a `[512·N, M]` tensor of words, 16 per block:
   - `message` is the public bits of the padded messages, and **0 at every committed byte's bits**. The verifier builds it so, from the public bytes alone.
-  - `c` is the committed bits, row `8k + i` holding bit `i` of committed byte `k`. The gather puts each one at its word position, and any row at the others.
+  - `c` is the committed bits, row `8k + i` holding bit `i` of committed byte `k`. The gather puts each one at its word position, and row 0 at the others.
   - `place` is a public `[512·N]` mask, 1 on the committed bytes' rows. `Mul { broadcast: Trailing }` zeroes the gathered rows elsewhere.
 
   The supports are disjoint, so XOR is the sum, and the range stays `[0, 1]`.
@@ -158,7 +160,13 @@ The two round sums share their first rows, `h + Σ1(e) + Ch(e, f, g) + W_t`. The
 - **Later blocks** start from the previous block's chaining words. The builder returns the chaining words after every block.
 - **The digest.** The last block's chaining words, as bits, are bound by `AssertEqual` to the public digest's bits, 256 per message. The digest is one public `[256, M]` tensor, word `j` on rows `32j` to `32j + 31`, and each word's `AssertEqual` reads its rows through a `Slice`.
 
-**The graph.** Its inputs are `message`, `start`, `masks` (`[2, 32]`, the masks of `SHR^3` and `SHR^{10}`), then, when bytes are committed, `committed` and `place`. Its nodes are in this order, which fixes the zero-checks' order:
+**The graph.** Its inputs are, in this order:
+- `message`, public bits `[512·N, M]`;
+- `start`, public bits `[256, M]`;
+- `masks`, public `[2, 32]`, the masks of `SHR^3` and `SHR^{10}`;
+- when bytes are committed, `committed`, advice declared `u8` in `[0, 255]`, `[K, M]`, and `place`, public `[512·N]`.
+
+Each bit input is declared `u1` in `[0, 1]`. The digest, public bits `[256, M]`, is declared after the circuit's nodes, before its binding's. The nodes are in this order, which fixes the zero-checks' order:
 1. each `SHR` mask: a `GatherPublic` of its row of `masks`, then a `Reshape` to `[32]`;
 2. when bytes are committed, the message's bits: the bytes' `BitDecompose { 8, 0 }`, a `Transpose` to `[K, 8, M]`, a `Reshape` to `[8K, M]`, the gather, the `Mul` and the `Xor`;
 3. the eight initial words, each a `Slice` of `start`;
@@ -167,7 +175,7 @@ The two round sums share their first rows, `h + Σ1(e) + Ch(e, f, g) + W_t`. The
    - for `t = 16, …, 63`: `σ1(W_{t−2})`, `σ0(W_{t−15})`, then the sum;
    - for each round: `Σ1(e)`, `Ch`, `Σ0(a)`, `Maj`, the shared rows, `e`'s sum, `a`'s sum;
    - the eight chaining sums, `a` to `h`;
-5. per digest word, its `Slice` and `AssertEqual`.
+5. per digest word, its `Slice` and `AssertEqual` of the computed word, then the digest's rows.
 
 A function is its rotations' gathers, each `SHR` a gather and a `Mul`, in its definition's order, then its `BitFn`. A sum is:
 - its rows' `Add`s, left to right;
@@ -203,7 +211,7 @@ Bit axes pad to powers of two, 4 for the round carries, so the commitment holds 
 
 ### Soundness
 
-- **Every committed bit is unique.** By Lemma 1, given its input. Its input is a true integer the range analysis bounds, or a committed byte the lemma ranges.
+- **Every committed bit is unique.** By Lemma 1, given its input. Its input is a true integer the range analysis bounds, or a committed byte the lemma ranges, whose padded positions its padding check pins.
 - **Every `BitFn` value** is a function of its inputs, virtual and never committed.
 - **The computation.** With every committed bit unique and every function exact on Boolean inputs, the circuit's chaining words are FIPS 180-4's. `AssertEqual` makes them the public digest's, except with the zero-checks' error.
 - **The zero-checks** err each with probability at most `n_i/|Fp2|`, the calculator's `zero_checks` row.

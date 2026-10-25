@@ -190,8 +190,9 @@ impl BoolFn {
         }
     }
 
-    /// The function's value on bits, each 0 or 1. On integers outside `{0, 1}` it is the
-    /// polynomial's value.
+    /// The function's value on its [`arity`](Self::arity) bits, each 0 or 1, in `x`'s first
+    /// entries. Callers pass bits: on other integers the polynomial's `i64` arithmetic can
+    /// overflow, and a missing input reads as 0.
     pub fn eval(self, x: &[i64]) -> i64 {
         let at = |i: usize| x.get(i).copied().unwrap_or(0);
         let (a, b, c) = (at(0), at(1), at(2));

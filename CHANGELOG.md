@@ -17,7 +17,7 @@ All notable changes to the prover release train are recorded here: the crates un
     - A committed graph input may be decomposed instead, its bits being its range check, read directly or moved unchanged by `Reshape`, `Slice`, `Transpose`, `GatherPublic` or `Expand`. That holds only when its declared range, which its other readers trust, holds that interval. A byte declared `[0, 255]` under nine bits is refused: it could hold `256 + k'`.
     - A `BitFn` input is a bit that an operation proves, never a committed input's declared `[0, 1]`. `AssertEqual`'s inputs are true integers.
     - Proving a committed input's declared range through any other operation is [#527](https://github.com/AbdelStark/tessera/issues/527)'s.
-  - **The CPU engine** evaluates the three operations. It refuses an integer outside its width and a non-bit `BitFn` input (`ERR-USAGE`), and unequal tensors (`WitnessError::Unequal`, `ERR-WITNESS-ANCHOR`). `Engine::for_graph` now validates its graph (`ERR-USAGE`), so a graph assembled past the builder cannot panic it.
+  - **The CPU engine** evaluates the three operations. It refuses an integer outside its width and a non-bit `BitFn` input (`ERR-USAGE`), and unequal tensors (`WitnessError::Unequal`, `ERR-WITNESS-ANCHOR`). `Engine::for_graph` now validates its graph (`ERR-USAGE`), so a graph assembled past the builder cannot panic the new operations through its shapes.
   - **No proof yet.** Gadget selection refuses the operations (`ERR-QUANT-ARCH`) until their relations are scheduled ([#526](https://github.com/AbdelStark/tessera/issues/526), RFC-0066 OQ-0066-1). The profile check refuses them in a model (S3).
   - **`tessera_compiler::anchor`.**
     - `sha256` over `M` padded messages of `N` blocks (FIPS 180-4 §6.2), on bit-major words `[32, M]`. It returns the chaining value after every block; `sha256_bind` binds the last to a public digest.
@@ -51,6 +51,12 @@ All notable changes to the prover release train are recorded here: the crates un
       - unvalidated graphs panicking the engine.
 
       The general rule went to #527.
+    - **The third** found no soundness defect. It found:
+      - the circuit's helpers handling the key and salt in plain buffers: they now read public bytes only, and the committed bytes come from the prover's secret-class buffers;
+      - the graph's text leaving the gather's row, the inputs' declarations and the binding's operand order open;
+      - three untested moves.
+
+      Each is fixed here, and the text no longer claims more than the code proves: completeness at padded positions is the graph's.
 
 - The anchor's AES-128-CTR circuit, lowered into the IR ([#142](https://github.com/AbdelStark/tessera/issues/142)):
   - **`tessera_compiler::anchor`.**

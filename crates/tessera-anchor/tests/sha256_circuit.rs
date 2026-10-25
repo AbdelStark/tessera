@@ -91,6 +91,16 @@ fn masks() -> Vec<i64> {
     SHA256_MASKS.iter().flatten().copied().collect()
 }
 
+/// The committed bytes of each padded message, `[K, M]`, in the layout's order: test data, so
+/// plain values (a prover reads them from its secret-class buffers).
+fn committed_bytes(layout: &Sha256Layout, padded: &[&[u8]]) -> Vec<i64> {
+    layout
+        .committed
+        .iter()
+        .flat_map(|&p| padded.iter().map(move |m| i64::from(m[p as usize])))
+        .collect()
+}
+
 /// A circuit, its inputs, and, when `bind`, its digest input bound to the last block's words.
 struct Circuit {
     graph: Graph,
@@ -140,7 +150,7 @@ impl Circuit {
             (self.inputs[2], buffer(&masks())),
         ];
         if !layout.committed.is_empty() {
-            values.push((self.inputs[3], buffer(&layout.committed_bytes(padded))));
+            values.push((self.inputs[3], buffer(&committed_bytes(layout, padded))));
             values.push((self.inputs[4], buffer(&layout.place())));
         }
         if let Some(digest) = self.digest {
@@ -511,7 +521,7 @@ fn a_committed_byte_of_256_has_no_bits() {
         (c.inputs[1], buffer(&iv_bits(1))),
         (c.inputs[2], buffer(&masks())),
     ];
-    let mut bytes = layout.committed_bytes(&refs(&padded));
+    let mut bytes = committed_bytes(&layout, &refs(&padded));
     bytes[3] = 256;
     values.push((c.inputs[3], buffer(&bytes)));
     values.push((c.inputs[4], buffer(&layout.place())));

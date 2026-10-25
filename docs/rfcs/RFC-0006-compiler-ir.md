@@ -119,7 +119,7 @@ The integrality-requiring inputs, each with the domain it must lie in (every dom
 | `TableMap` | key; channel classes | the table's keys: `[−2^{b−1}, 2^{b−1})` for `Silu`, `[0, 2^{key_bits})` for `Exp`; `[0, classes)`, given exactly when the table has several classes (otherwise `ERR-INTERNAL`) |
 | `Bitwise` | both operands | `[0, 256)` |
 | `BitDecompose` | the integer | `[0, 2^{low + high})`; or, for a committed graph input, which its bits range-check ([RFC-0066](RFC-0066-bits-and-sha256.md) Lemma 1), a declared range that holds `[0, 2^{low + high})` |
-| `BitFn` | each input | `[0, 1]` |
+| `BitFn` | each input | `[0, 1]`, and not a committed graph input, read directly or moved unchanged: its declared range proves no bit ([RFC-0066](RFC-0066-bits-and-sha256.md#bitfn--f-)) |
 | `AssertEqual` | both inputs | the centered field range |
 | `SoftmaxRow` | scores | `[−2^21, 2^21]`, with a spread `x_hi − x_lo` below `2^{key_bits}` of its `Exp` table, since each key is the row maximum less a score. INT8 heads of width 128 reach `2^21` at `q = k = −128`. `key_bits` is the narrowest width from `bits(128 · 255 · d_head)` up whose last key maps to 0, the key every masked position looks up ([RFC-0030](RFC-0030-masked-exponentials.md#relation-1-every-position-looked-up)). |
 | `RsqrtRow` | sums of squares | `u ≥ 0` and `u + e < 2^55`; the node needs `e ≥ 1`, and `w ≤ 32` for its range check to be one lookup |

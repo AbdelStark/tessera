@@ -853,6 +853,32 @@ fn each_true_integer_rule_refuses_a_graph_that_breaks_only_it() {
 
 // ----- Bits (RFC-0066) ----------------------------------------------------------------------------
 
+/// `x`, `[2, 2]`, read directly (`mover` 0) or moved unchanged by `Reshape`, `Slice`,
+/// `Transpose`, `GatherPublic` or `Expand` (1 to 5), with the moved shape.
+fn moved_by(g: &mut GraphBuilder, x: TensorId, mover: u8) -> (TensorId, Vec<u32>) {
+    let (op, shape) = match mover {
+        0 => return (x, vec![2, 2]),
+        1 => (Op::Reshape, vec![4]),
+        2 => (
+            Op::Slice {
+                axis: 1,
+                start: 1,
+                len: 1,
+            },
+            vec![2, 1],
+        ),
+        3 => (Op::Transpose { perm: vec![1, 0] }, vec![2, 2]),
+        4 => (
+            Op::GatherPublic {
+                index: g.constant(vec![1, 0]).expect("rows"),
+            },
+            vec![2, 2],
+        ),
+        _ => (Op::Expand { axis: 0, len: 1 }, vec![1, 2, 2]),
+    };
+    (one(g, op, &[x], virt(&shape)), shape)
+}
+
 /// `x + y` of two advice inputs declared `[lo, hi]` each, `[2]`.
 fn sum_of(g: &mut GraphBuilder, lo: i128, hi: i128) -> TensorId {
     sum_of_kind(g, ADVICE, lo, hi)
@@ -1025,66 +1051,56 @@ fn each_bit_rule_refuses_a_graph_that_breaks_only_it() {
         );
         analyze(&g.finish(), &[]).expect("proven bits");
     }
-    // A committed input declared [0, 1], moved by a Reshape or an Expand, is no proven bit.
+    // A committed input declared [0, 1], read directly or moved by any of the five moves, is no
+    // proven bit; and a byte declared [0, 255], read or moved the same ways, under nine bits is
+    // refused, while eight bits prove it.
     let proven = "a Boolean function's input is a bit some operation proves";
-    for reshape in [false, true] {
-        let mut g = GraphBuilder::new();
-        let c = g
-            .input(decl(&[2], ADVICE, 0, 1))
-            .expect("a committed 'bit'");
-        let p = g
-            .input(decl(&[1, 2], NodeKind::Public, 0, 1))
-            .expect("a bit");
-        let c = if reshape {
-            one(&mut g, Op::Reshape, &[c], virt(&[1, 2]))
-        } else {
-            one(&mut g, Op::Expand { axis: 0, len: 1 }, &[c], virt(&[1, 2]))
-        };
-        one(&mut g, Op::BitFn { f: BoolFn::Xor }, &[p, c], virt(&[1, 2]));
-        assert_eq!(
-            refused(&g.finish(), &[]),
-            range(1, 1, proven),
-            "reshape: {reshape}"
-        );
-    }
-    // Fewer bits than the declared range would prove nothing more through a move: a byte
-    // declared [0, 255], reshaped or gathered, under nine bits is refused; under eight it passes.
     let declared = "a committed integer's declared range holds [0, 2^{low + high})";
-    for (gather, high, refused_here) in [
-        (false, 1, true),
-        (true, 1, true),
-        (false, 0, false),
-        (true, 0, false),
-    ] {
-        let mut g = GraphBuilder::new();
-        let x = g.input(decl(&[2], ADVICE, 0, 255)).expect("a byte");
-        let moved = if gather {
-            let index = g.constant(vec![1, 0]).expect("rows");
-            one(&mut g, Op::GatherPublic { index }, &[x], virt(&[2]))
-        } else {
-            one(&mut g, Op::Reshape, &[x], virt(&[1, 2]))
-        };
-        let shape = if gather { vec![2] } else { vec![1, 2] };
-        let with = |bits: u32| {
-            let mut s = shape.clone();
-            s.push(bits);
-            out(&s, ADVICE)
-        };
-        let mut outputs = vec![with(8)];
-        if high > 0 {
-            outputs.push(with(1));
-        }
-        g.node(Op::BitDecompose { low: 8, high }, &[moved], outputs)
-            .expect("a decomposition");
-        let result = analyze(&g.finish(), &[]);
-        if refused_here {
-            assert_eq!(
-                result.expect_err("refused"),
-                range(1, 0, declared),
-                "gather: {gather}"
-            );
-        } else {
-            result.expect("eight bits prove the declared byte");
+    for mover in 0..6 {
+        for (lo, hi, op) in [(0, 1, None), (0, 255, Some(1u8)), (0, 255, Some(0))] {
+            let mut g = GraphBuilder::new();
+            let c = g.input(decl(&[2, 2], ADVICE, lo, hi)).expect("committed");
+            let (moved, shape) = moved_by(&mut g, c, mover);
+            let node = u32::from(mover > 0);
+            let result = match op {
+                None => {
+                    let p = g
+                        .input(decl(&shape, NodeKind::Public, 0, 1))
+                        .expect("a bit");
+                    one(
+                        &mut g,
+                        Op::BitFn { f: BoolFn::Xor },
+                        &[p, moved],
+                        virt(&shape),
+                    );
+                    analyze(&g.finish(), &[])
+                        .map(|_| ())
+                        .map_err(|e| (e, range(node, 1, proven)))
+                }
+                Some(high) => {
+                    let with = |bits: u32| {
+                        let mut s = shape.clone();
+                        s.push(bits);
+                        out(&s, ADVICE)
+                    };
+                    let mut outputs = vec![with(8)];
+                    if high > 0 {
+                        outputs.push(with(1));
+                    }
+                    g.node(Op::BitDecompose { low: 8, high }, &[moved], outputs)
+                        .expect("a decomposition");
+                    let result = analyze(&g.finish(), &[]);
+                    if high == 0 {
+                        result.expect("eight bits prove the declared byte");
+                        continue;
+                    }
+                    result
+                        .map(|_| ())
+                        .map_err(|e| (e, range(node, 0, declared)))
+                }
+            };
+            let (error, expected) = result.expect_err("refused");
+            assert_eq!(error, expected, "mover {mover}, {op:?}");
         }
     }
     // AssertEqual: an input outside the centered field range, or with no bound.
@@ -1128,7 +1144,16 @@ fn the_sha256_circuit_keeps_every_tensor_in_range() {
             inputs[2],
             wide(SHA256_MASKS.iter().flatten().copied().collect()),
         ),
-        (inputs[3], wide(layout.committed_bytes(&rows))),
+        (
+            inputs[3],
+            wide(
+                layout
+                    .committed
+                    .iter()
+                    .flat_map(|&p| rows.iter().map(move |m| i64::from(m[p as usize])))
+                    .collect(),
+            ),
+        ),
         (inputs[4], wide(layout.place())),
     ];
     let (ranges, values) = check_run(&graph, &[], &[], values);
