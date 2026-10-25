@@ -5,6 +5,7 @@
 - Created: 2026-10-15
 - Target milestone: v0.3 (binding), v0.4 (hiding budget and refresh)
 - Amended by: [RFC-0026](RFC-0026-claim-list-layout.md) ('Layout': the fields of `WeightLayoutParams`), [RFC-0031](RFC-0031-commitment-id.md) ('Layout': each matrix's `commitment_id` and row block), [RFC-0040](RFC-0040-weight-commitment-artifacts.md) ('Layout': wide inputs, positions, committed rows and leaves; 'Budget state machine': the state's fields), [RFC-0049](RFC-0049-weight-proximity.md) ('Opening by the folding pass': the proximity row's coefficients and when the fold computes it), [RFC-0052](RFC-0052-channel-params-claims.md) ('Opening by the folding pass': opening several claims on `ChannelParams` in one pass)
+- Superseded in part by: [RFC-0064](RFC-0064-weight-linking-proof.md) ('Refresh and linking proof': the linking proof opens the difference of the two commitments; 'Failure modes': the link's four rows; 'Budget state machine': epoch `e + 1` starts with the link's rows and columns spent)
 
 ## Summary
 
@@ -104,11 +105,14 @@ Transitions, each persisted (fsync, atomic rename) before the corresponding mess
 | `reserve` (before `Round1`) | For every matrix: `next_blinding_row + 6 ≤ B_W − 4` and `\|opened_columns\| + τ_W ≤ P_W − τ_link`. Blinding rows `B_W − 4` to `B_W − 1` and `τ_link` columns of headroom are reserved exclusively for the linking proof | Burns six blinding rows per matrix; records them in `Round1` |
 | `record_queries` (before `Round3Response`) | Queries are those of the current session | Adds the distinct query indices to `opened_columns` |
 | `abort` | Any time | Nothing is released: burned rows and opened columns stay burned |
-| `refresh` | Any time; required when `reserve` fails | Produces epoch `e + 1` and a `WeightLinkProof` |
+| `refresh` | Any time, once per epoch; required when `reserve` fails | Produces epoch `e + 1` and a `WeightLinkProof`, through `link` |
+| `link` | Epoch `e` has no link; see [RFC-0064](RFC-0064-weight-linking-proof.md#one-link-per-epoch) | Burns epoch `e`'s last four rows, records the link's columns, closes epoch `e`, and writes epoch `e + 1`'s state from row 4 |
 
-`reserve` failing yields `ERR-WITNESS-BUDGET`. At the defaults, an epoch supports about 670 live proofs: `(B_W − 8)/6 = 681` by blinding rows, since the linking proofs take four rows at each end of an epoch, and `(P_W − τ_link)/τ_W ≈ 674` by columns. The verifier tracks the blinding-row indices declared per epoch and rejects reuse with `Reject(Budget)`; reuse would only hurt the prover, but rejecting it makes prover bugs visible.
+`reserve` failing yields `ERR-WITNESS-BUDGET`. At the defaults, an epoch supports about 670 live proofs: `(B_W − 8)/6 = 681` by blinding rows, since the linking proofs take four rows at each end of an epoch, and `(P_W − τ_link)/τ_W ≈ 674` by columns in epoch 0. A later epoch also spends `τ_link` columns at its start on its link, which leaves 673 ([RFC-0064](RFC-0064-weight-linking-proof.md#the-budget)). The verifier tracks the blinding-row indices declared per epoch and rejects reuse with `Reject(Budget)`; reuse would only hurt the prover, but rejecting it makes prover bugs visible.
 
 ### Refresh and linking proof
+
+[RFC-0064](RFC-0064-weight-linking-proof.md) supersedes this section. Its linking proof opens the difference of the two commitments against the public claim 0, with a blinding pair from each epoch, and keeps each commitment's proximity row. It also defines the transcript, `τ_link`, the message and the verifier's checks. The text below, which opened each commitment at `ρ_T` and revealed `W̃_T(ρ_T)`, is kept for the record.
 
 1. Commit the same weights with a fresh `masks_seed` as epoch `e + 1`, root `R_W'`.
 2. Derive a random point `ρ_T` per matrix from a transcript over `(R_W, R_W', epoch)`.
@@ -132,9 +136,9 @@ pub struct WeightLinkProof { pub old_root: Digest, pub new_root: Digest, pub epo
 | Failure | Response |
 |---|---|
 | Budget exhausted | `ERR-WITNESS-BUDGET`; operator refreshes |
-| State file lost or corrupted | The prover refreshes before the next proof. The linking proof uses only the two blinding rows and the column headroom reserved for linking, so it stays within the hiding budget even though the lost state's exact contents are unknown |
+| State file lost or corrupted | The prover refreshes before the next proof, from the model's refresh key `K`, which gives every epoch's `masks_seed`; without it, it starts a new model entry ([RFC-0064](RFC-0064-weight-linking-proof.md#one-link-per-epoch)). Remade, the link is the same bytes. The linking proof uses only the four blinding rows and the column headroom reserved for linking at each end of the epoch ([RFC-0064](RFC-0064-weight-linking-proof.md#the-budget)), so it stays within the hiding budget even though the lost state's exact contents are unknown |
 | Combined row inconsistent with columns | `Reject(Proximity)` |
-| Linking evaluations differ | Verifier rejects the refresh; the old root stays current |
+| The linking proof fails ([RFC-0064](RFC-0064-weight-linking-proof.md#the-verifiers-checks)) | Verifier rejects the refresh; the old root stays current |
 
 ## Alternatives Considered
 

@@ -42,6 +42,8 @@ The source sets 30 ps per committed 64-bit element, including rate-1/2 encoding 
 | `merkle-node` | `left: Digest ‖ right: Digest` | Merkle trees |
 | `column-merge` | `segment digests of one column, in segment order` | Advice leaves (RFC-0011) |
 | `weights-root` | `TCE(WeightLayoutParams) ‖ matrix roots ‖ epoch` | Weight root (RFC-0012) |
+| `weights-link` | `old_root: Digest ‖ new_root: Digest` | The linking proof's statement digest (RFC-0064) |
+| `weights-refresh` | `refresh_key: [u8; 32] ‖ epoch: u32`, secret-class | An epoch's `masks_seed`, from the model's refresh key (RFC-0064) |
 | `transcript-init` | `TCE(SessionContext)` | Transcript |
 | `transcript-absorb` | `state ‖ Ascii(label) ‖ TCE(value)` | Transcript |
 | `transcript-squeeze` | `state ‖ Ascii(label) ‖ counter: u64` | Transcript |

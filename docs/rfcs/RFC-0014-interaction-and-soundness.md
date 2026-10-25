@@ -90,7 +90,7 @@ Tier-A label patterns, in order; `{k}`, `{j}`, `{ℓ}`, `{c}`, `{T}` are decimal
 | 9 | absorb scoring claims | `scoring` |
 | 10 | live: absorb `ColumnQueries`; NI: grind `query-pow`, then squeeze indices | `queries`, `pcs/advice/queries`, `pcs/weights/{T}/queries` |
 
-Both sides construct labels from these patterns only; the full expanded list for a claim list is part of the derived constraint system and covered by transcript vectors. What each label absorbs, the spelling of `{T}` as a matrix's name, and the labels `tessera-protocol/1` leaves out (`zk-sum`, `zk-rho` and the blinding claims) are [RFC-0036](RFC-0036-protocol-messages.md#what-the-transcript-absorbs)'s. In `tessera-protocol/2`, rows 4 and 5 are [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)'s: a masked LogUp identity sumcheck in place of `logup/roots`, and masked tree levels.
+Both sides construct labels from these patterns only; the full expanded list for a claim list is part of the derived constraint system and covered by transcript vectors. What each label absorbs, the spelling of `{T}` as a matrix's name, and the labels `tessera-protocol/1` leaves out (`zk-sum`, `zk-rho` and the blinding claims) are [RFC-0036](RFC-0036-protocol-messages.md#what-the-transcript-absorbs)'s. In `tessera-protocol/2`, rows 4 and 5 are [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)'s: a masked LogUp identity sumcheck in place of `logup/roots`, and masked tree levels. The weight linking proof has a transcript of its own, outside any proof unit: its `link/{T}/…` labels and `link/query-pow` are [RFC-0064](RFC-0064-weight-linking-proof.md#the-transcript)'s, tier A like these.
 
 A leaf stage in token groups ([RFC-0054](RFC-0054-token-groups.md#the-leaf-stage-with-groups)) changes rows 4 and 5:
 - **Row 4.** `logup/roots`, then `logup/values`, are absorbed empty, right after `logup/beta`.
@@ -113,7 +113,7 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 | Tuple compression | included in the LogUp bound (joint polynomial in `α, β`) | — | — |
 | Opening evaluation checks | `T_g/\|Fp2\|` per claim group of `T_g` claims, `1/\|Fp2\|` per weight matrix ([RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings)) | ≥ 110 bits | same |
 | Proximity per commitment | `((1 + ρ')/2)^τ + ϑ·n/\|Fp2\|` | `τ · b(ρ') ≥ 64` bits, one shot; the field term about 100 bits | `τ · b(ρ') + g_query ≥ 100` bits; the field term about 100 bits, which no proof of work covers |
-| Weight linking | `ν/\|Fp2\|` | ≥ 120 bits | ≥ 120 bits |
+| Weight linking ([RFC-0064](RFC-0064-weight-linking-proof.md#soundness)) | `(ν_T + 1)/\|Fp2\|` per matrix; each commitment's proximity, at `τ_link` queries and `g_link` bits of work | ≥ 120 bits; proximity ≥ 100 bits | same |
 | Hash collisions | BLAKE3, 256-bit output | 128 bits | 128 bits |
 
 `b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients.
@@ -131,6 +131,7 @@ In non-interactive mode the seed is squeezed only after a nonce whose `H("pow", 
 
 - **`seed-pow`** to the LogUp identity (RISK-5): `α` and `β` are squeezed right after the seed, so a new pair costs a new nonce.
 - **`query-pow`** to each commitment's column queries, `((1 + ρ')/2)^τ`: the indices are squeezed right after its nonce.
+- **`link/query-pow`**, in the weight linking proof's own transcript ([RFC-0064](RFC-0064-weight-linking-proof.md#the-transcript)), to its queries: `g_link` bits, 20 at the production layout.
 
 No proof of work covers any other bound. Their challenges follow prover messages that a cheating prover can vary without redoing a proof of work: the tree levels' and stages' challenges follow their own round messages, and the opening challenges of row 7 (`pcs/advice/gamma`, `pcs/advice/xi`, `pcs/weights/{T}/xi`) the stages' final evaluations. Each of those bounds meets its target alone, in the `2^{t − λ}` sense of 'Soundness budget'; the soundness calculator gives them no grinding bits.
 
@@ -148,7 +149,7 @@ No proof of work covers any other bound. Their challenges follow prover messages
 | Row block `B`, segments `S` | 32, 8 | 32, 8 | 4, 1 |
 | Accepted by release verifier | Yes | Yes | No (`test-params` feature only) |
 
-A parameter set is identified by its name and version as the table's header writes them, `live-64/1`, `ni-100/1` or `test-small/1`: `pub struct ParamSetId(pub Ascii)`. The identifier is bound into every transcript through `SessionContext` ([RFC-0004](RFC-0004-hashing-and-transcript.md#transcript)) and into every claim list ([RFC-0007](RFC-0007-claim-list.md)); a new version of a set is a new identifier.
+`weights-link/1` is reserved: it names the weight linking proof's transcript ([RFC-0064](RFC-0064-weight-linking-proof.md#the-transcript)) and no parameter set. A parameter set is identified by its name and version as the table's header writes them, `live-64/1`, `ni-100/1` or `test-small/1`: `pub struct ParamSetId(pub Ascii)`. The identifier is bound into every transcript through `SessionContext` ([RFC-0004](RFC-0004-hashing-and-transcript.md#transcript)) and into every claim list ([RFC-0007](RFC-0007-claim-list.md)); a new version of a set is a new identifier.
 
 The source's `τ = 100` at rate 1/2 gives 41.5 bits under unique decoding; `live-64` uses 155 to meet the 64-bit target, at about 1.55× the source's column bytes (RISK-4). Non-interactive proofs need 193 advice columns with grinding instead of the source's "roughly 2.5×" (250) without it.
 

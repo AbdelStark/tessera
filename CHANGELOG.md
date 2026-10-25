@@ -6,6 +6,24 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The weight linking proof, specified ([#485](https://github.com/AbdelStark/tessera/issues/485)):
+  - **RFC-0064, 'The Weight Linking Proof Opens the Difference'.** It supersedes RFC-0012 'Refresh and linking proof' and 'Failure modes' in part, and RFC-0014's weight-linking row. It amends RFC-0004, RFC-0012, RFC-0013, RFC-0014, RFC-0019, RFC-0040, RFC-0043 and 03 §5.
+    - **The leak.** RFC-0012 opened both epochs' commitments at `ρ_T` and compared the values. In `tessera-protocol/2` that reveals `W̃_T(ρ_T)`, a functional of the secret weights (`docs/zk/simulator.md` §6.4).
+    - **The difference.** One combined row per matrix covers both commitments: `eq(ρ_T, ·)` on the old rows, its negative on the new, and a blinding pair from each epoch. It is checked against the public claim 0 at the same columns of both commitments. Each commitment keeps its own proximity row. Nothing about the weights is revealed, which is the simulator's R3.
+    - **One link per epoch.** A second link would open more than `P_W` columns of an epoch and reuse its proximity pair.
+      - Each epoch's `masks_seed` is derived from the model's refresh key `K`, kept apart from the state files. The proof of work takes the least nonce.
+      - So every link from an epoch is the same bytes, whether remade after a crash, from a lost or restored record, or on a second node.
+      - A `link` transition commits by closing the old epoch.
+    - **What RFC-0012 left undefined.**
+      - The transcript: `weights-link/1`, the `link/{T}/…` labels and `link/query-pow`.
+      - `τ_link = 122` and `g_link = 20`, taken from the weights' layout: 100.54 bits of proximity.
+      - `WeightLinkProof`, which carries both public commitments.
+      - The verifier's checks, with the claim list as an input. The ledger keeps one successor per root.
+      - The four rows at each end of an epoch, counted once.
+    - **Size.** About 1.42 GB per link at 405B, 178 MB less than two openings.
+    - **Review.** Four adversarial reads, the last finding nothing substantive.
+  - **The calculator.** Its weight-linking row omits `θ_T`'s `1/q`, which [#516](https://github.com/AbdelStark/tessera/issues/516) adds.
+
 - Audit sampling, RFC-0016 ([#140](https://github.com/AbdelStark/tessera/issues/140)):
   - **`tessera-protocol`.**
     - `AuditPolicy` with `RateBucket`, and `RateBucket::threshold_of`, which reads a decimal rate exactly as `⌊rate · 2^64⌋`. A policy is valid by construction: `AuditPolicy::new` and the decoder refuse buckets out of order and batch bounds below `2 · min_batch_tokens` (`ProtocolError::Policy`).

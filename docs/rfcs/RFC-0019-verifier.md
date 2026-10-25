@@ -118,12 +118,13 @@ live transport remain later work, as the target milestones below require.
 ```rust
 pub struct VerifierLedger {                   // schema 0x0701, persisted, verifier-local
     pub weight_roots: Vec<(Digest /*claim list*/, Vec<(u32 /*epoch*/, Digest /*root*/)>)>,  // linked by WeightLinkProofs
+    pub successors: Vec<(Digest /*root*/, Digest /*its successor*/)>,  // one per root (RFC-0064)
     pub used_blinding_rows: Vec<(Digest, u32, u8, BitSet)>,  // (root, epoch, matrix, rows)
     pub proven: Vec<(Digest /*sample*/, BitSet /*selected index*/)>,
 }
 ```
 
-The ledger is updated only after `Accept` and is written atomically. `tessera-verify weights link` checks a `WeightLinkProof` and appends the new epoch.
+The ledger is updated only after `Accept` and is written atomically. `tessera-verify weights link` checks a `WeightLinkProof` against a claim list's entry, records the root's one successor and appends the new epoch ([RFC-0064](RFC-0064-weight-linking-proof.md#the-verifiers-checks)).
 
 ### Robustness
 

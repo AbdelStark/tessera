@@ -133,7 +133,7 @@ tessera-verify live     --claims claims.tcl --weights-root ROOT --weights WEIGHT
                         --connect ENDPOINT --bound UHAT [--out VERDICT.json]
 tessera-verify tables   --claims claims.tcl     # regenerates and prints table digests
 tessera-verify params   --params PARAMSET       # independent soundness report
-tessera-verify weights link --ledger LEDGER.tvl --link LINK.twl   # accept a refreshed weight root
+tessera-verify weights link --ledger LEDGER.tvl --claims claims.tcl --link LINK.twl   # accept a refreshed weight root (RFC-0064)
 tessera-verify audit plan  --policy POLICY.json --traffic PROFILE.json --claims claims.tcl
 tessera-verify audit report --ledger LEDGER.tvl --sample SAMPLE.tas --out REPORT.json
 ```
