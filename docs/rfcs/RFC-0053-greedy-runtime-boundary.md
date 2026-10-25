@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-21
 - Target milestone: v0.3
+- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Public request and sources': in a batch, each request's certificate, key column and time coefficient on its own slot)
 - Origin: #128 and #130; IDEA-0038 / EXP-0025
 - Supersedes: RFC-0009 Argmax's physical range/maximum representation; RFC-0037's native boundary and source schedule; RFC-0045's runtime lookup columns; RFC-0047/0050's complete advice order and RFC-0041's private tile enum, extended below. It adds no protocol-message field or parameter preset and preserves RFC-0011's per-group evaluation checks.
 
@@ -53,7 +54,7 @@ certificate source, never an invented model node or model auxiliary.
 Allocate `M[t]` on the model's padded time domain. Real output-logit positions
 are `prompt-1 <= t < n-1`; every other entry is zero. In a proof unit, place this
 maximum after its model tensors/auxiliaries and before table multiplicities.
-Multiple requests retain their public batch order and separate source identities.
+Multiple requests retain their public batch order and separate source identities. In a batch ([RFC-0071](RFC-0071-request-slots.md#the-greedy-certificate-and-scoring)), request `r`'s time is its slot's rows: its maximum is real on positions `prompt_r − 1 ≤ p < n_r − 1` of slot `r`, its key's time coefficient is `Σ_{u<outputs_r} eq(P_row, u)·eq(r_time, r·S + prompt_r − 1 + u)`, and the selected and token-binding relations run once over the whole token axis.
 Apply the existing whole-row public-zero rule and segment/maximum-size checks to
 the complete runtime layout; secret-observed zeros never remove rows.
 Real inactive maximum positions remain committed and are proved zero by the

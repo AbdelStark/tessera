@@ -6,6 +6,15 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- A batch of several requests in one proof unit, specified ([#357](https://github.com/AbdelStark/tessera/issues/357); implementation [#551](https://github.com/AbdelStark/tessera/issues/551)):
+  - **RFC-0071, 'A Batch of Requests in One Proof Unit: Request Slots on One Token Axis'.**
+    - **The gap.** Every document and both workspaces assumed one sequence per proof, so a statement's batch could hold one request only.
+    - **Slots.** Each request takes a slot of `S = 2^{⌈log2 max n_r⌉}` rows of one token axis, positions first. The rows past a request's end are RFC-0035's padded rows.
+    - **What changes.** Per-token relations are unchanged. Attention reads keys within the slot. The row selector, the causal selector, `SoftmaxRow`'s root claim, RoPE's positions, the greedy windows and `Û_r` become sums over the requests, `O(R·log S)` for the verifier. No challenge, message or opening group is added.
+    - **One request is today's proof,** bit for bit.
+    - **Cost at 405B,** projected from the compiler's layout: a 16K-token batch of 16 requests of 1K is about 2.06 GB of proof, against 25.4 GB as 16 proofs.
+    - It amends RFC-0006, RFC-0017, RFC-0019, RFC-0030, RFC-0034, RFC-0035, RFC-0037, RFC-0041, RFC-0044, RFC-0047, RFC-0053 and 03 §4.
+
 - The openings of `tessera-protocol/2`'s mask claims, specified ([#489](https://github.com/AbdelStark/tessera/issues/489)):
   - **RFC-0070, 'Opening Every Mask Claim in One Batching Sumcheck in `tessera-protocol/2`'.**
     - **The gap.** No opening covered a masked sumcheck's `G(r)`, whose functional is not an `eq` vector, a tree level's mask claim, each at its level's own point, or the `SoftmaxRow` leaf mask's. The compiler's 405B schedule has 2,668 such claims: one group per column point would add 38.25 GiB.

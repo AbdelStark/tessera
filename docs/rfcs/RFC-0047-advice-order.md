@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-19
 - Target milestone: v0.3
+- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('The maximum layout': a batch's own layout is checked at statement binding)
 - Supersedes, on acceptance:
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout' rules 1 and 3: the order of a tensor's variables, and `ν`;
   - [RFC-0007](RFC-0007-claim-list.md#verifier-validation) 'Verifier validation' steps 2 and 6: heads grouped by a power of two, and the protocol's maximum layout;
@@ -65,7 +66,7 @@ An attention tile's score tensor takes RFC-0034's `(i_hi, h, q, i_lo)` instead.
 
 A layout fits when it allocates at most `2^{32}` rows: a row index of at most 32 bits.
 - **Column answers.** A column answer then carries at most `2^{32}` symbols, below RFC-0003's default vector limit of `2^{34}`, so every honest answer decodes.
-- **The bound** holds at `max_context`, the longest sequence a claim list admits. RFC-0007 step 6 refuses a claim list whose layout at `n = max_context` exceeds it (`Layout`). Every shorter sequence lays out within it, because rows grow with `n`.
+- **The bound** holds at `max_context`, the longest sequence a claim list admits. RFC-0007 step 6 refuses a claim list whose layout at `n = max_context` exceeds it (`Layout`). Every shorter sequence lays out within it, because rows grow with `n`. A batch of several requests can hold more tokens than `max_context` ([RFC-0071](RFC-0071-request-slots.md#the-statement)), so RFC-0019 step 4 refuses one whose own layout exceeds the bound (`StatementMismatch { field: Batch }`).
 - **Scale.** The complete 405B `servable`, two-class, Q=512 layout at 16K tokens allocates 2,328,576 rows and spans a 22-bit row index (RFC-0014, RFC-0050).
 
 ### Heads
