@@ -155,7 +155,7 @@ pub struct PublicStatement {
     pub batch: BatchDescriptor,                // request ids, prompt and output lengths
     pub predictor: PredictorSpec,              // RFC-0017
 }
-pub struct BatchDescriptor { pub requests: Vec<RequestRef> }   // in slot order (RFC-0071); at least one, none twice
+pub struct BatchDescriptor { pub requests: Vec<RequestRef> }   // in slot order (RFC-0071); at least one, none twice: RFC-0019 step 4's checks, not the decoder's
 pub struct RequestRef { pub request_id: u64, pub session_id: [u8; 16], pub prompt_len: u32, pub output_len: u32 }  // n = prompt_len + output_len positions (RFC-0047)
 ```
 

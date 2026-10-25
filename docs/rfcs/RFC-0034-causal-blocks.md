@@ -56,7 +56,7 @@ The tile's layout splits the key index into `i = i_hi·2^w + i_lo`, with `w = mi
 Row `i_hi` of the tile of query block `qb` holds only masked positions in either of two cases:
 
 - every key of the row follows every query of the block: `i_hi·2^w > (qb + 1)·Q' − 1`;
-- its keys or its queries are all padding: `i_hi·2^w ≥ S` or `qb·Q' ≥ S`, for a sequence of `S` positions. In a batch of several requests, `S` is the length `n_r` of the query block's request, which holds the whole block, and `qb` counts within its slot ([RFC-0071](RFC-0071-request-slots.md#the-public-selectors)).
+- its keys or its queries are all padding: `i_hi·2^w ≥ S` or `qb·Q' ≥ S`, for a sequence of `S` positions. In a batch of several requests, in both conditions, `S` is the length `n_r` of the query block's request, which holds the whole block, and `qb` counts the block within its slot ([RFC-0071](RFC-0071-request-slots.md#the-public-selectors)).
 
 RFC-0030 pins `e` to 0 at every masked position, so such a row holds the honest values, zeros. RFC-0011 rule 4 skips it like padding: it is not encoded, hashed or opened, and the verifier computes it from the public sequence lengths. A cheating prover gains nothing. A skipped row is zero by definition, and the masked positions of committed rows are still pinned by their lookups (RFC-0030 relation 1).
 

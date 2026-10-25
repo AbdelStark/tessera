@@ -16,6 +16,7 @@
   - [RFC-0016](RFC-0016-audit-sampling.md#batching) 'Motivation' and 'Batching': packing by slot class;
   - [RFC-0057](RFC-0057-one-proof-unit.md) 'Non-Goals': several requests in one unit are RFC-0071's;
   - [RFC-0015](RFC-0015-transcript-anchor.md#circuits) 'Circuits': a request's frames bind its own rows;
+  - [RFC-0009](RFC-0009-gadgets.md#softmaxrow) '`SoftmaxRow`' and [RFC-0061](RFC-0061-sampling-randomness.md) 'Per batch': a batch's causal mask, and the packing by pin it awaits;
   - [RFC-0054](RFC-0054-token-groups.md#groups) 'Groups', and [RFC-0056](RFC-0056-native-working-sets.md#open-questions) 'Working sets with the native relations', 'Score instances without the score tensor' and OQ-0056-2: the batch's token index and form;
   - [RFC-0019](RFC-0019-verifier.md#check-order) 'Check order' step 4, [03 §4](../spec/03-data-model.md#4-statement-and-protocol-types) and [02 §2.2](../spec/02-public-api.md): the batch's rules and its tokens.
 - Origin: [#357](https://github.com/AbdelStark/tessera/issues/357)
@@ -87,7 +88,7 @@ One graph covers one batch (RFC-0006 'Llama lowering'). `lower(model, lengths)` 
     Z̃(r_h, r_p, r_β, r_j) = Σ_{h, β, d} eq((r_β, r_h), (β, h)) · Q̃(h, (r_p, β), d) · K̃(h, (r_j, β), d)
     ```
 
-    `r_j` is the key's `b` variables. This is RFC-0010's stacked `MatMulAct`, `Σ_{s, j} eq(ρ, s)·Ã(s, r_a, j)·B̃(s, j, r_c)`, its stacking variables `s = (β, h)`, the request's lowest, as they lie in the operands' token and head axes, and its sumcheck over `(j, b)` with `j` low. The weighted values are the same with `e` and `v`.
+    `r_j` is the key's `b` variables. This is RFC-0010's stacked `MatMulAct`, `Σ_{s, j} eq(ρ, s)·Ã(s, r_a, j)·B̃(s, j, r_c)`, its stacking variables `s = (β, h)`, the request's lowest, as they lie in the operands' token and head axes. Its rounds bind the contracted index first, then `β`, then `h`: `(d, β, h)` for the scores and `(j, β, h)` for the weighted values. The weighted values are the same with `e` and `v`.
   - **`SoftmaxRow`** reduces each row `(h, τ)` over its `n_max` keys under the causal selector below. A row's keys past its request's length, and every key of a padded row, are masked.
 - **RoPE.** It rotates each real row by its position `τ mod S`. Its constants are zero on every padded row, as they are today on the rows past `n` ('The public selectors').
 - **Logits** are `[N, vocab]`. The next token at a real row `τ` is row `τ + 1`'s, in the same request, since a window ends at `n_r − 2` ('The greedy certificate and scoring').
@@ -122,7 +123,7 @@ The verifier evaluates `ψ̃`, the causal selector and the root claim in `O(R·l
 
 One `M`, which every key relation reads within its own window and `Selected` pins on every window, leaves no entry of the certificate outside a relation.
 
-**Scoring** (RFC-0017), for a predictor that scores, once its batches are admitted (#144). Request `r`'s `Û_r` sums its window's rows, positions `prompt_len_r − 1` to `n_r − 2` of its slot. Its sum runs over the whole token axis with the public factor `eq(x_b, r)·[prompt_len_r − 1 ≤ x_p ≤ n_r − 2]`, so its claim on the per-token bounds is at a random point, never at Boolean request coordinates (R8). The batch's `Û` is the sum of the `Û_r`.
+**Scoring** (RFC-0017), for a predictor that scores, once its batches are admitted (#144). Request `r`'s `Û_r` sums its window's rows, positions `prompt_len_r − 1` to `n_r − 2` of its slot. Its sum runs over the whole token axis with the public factor `eq(x_β, r)·[prompt_len_r − 1 ≤ x_p ≤ n_r − 2]`, so its claim on the per-token bounds is at a random point, never at Boolean request coordinates (R8). The batch's `Û` is the sum of the `Û_r`.
 
 ### The plan and the layout
 
@@ -130,8 +131,8 @@ One `M`, which every key relation reads within its own window and `Selected` pin
   - **Query blocks.** An `Attention` tile stands for its query blocks of `Q' = min(Q, S)` rows. The batch's padded token axis expands it into `2^{b + ⌈log2 R⌉}/Q'` tiles in row order: slot by slot, and within a slot by position. `Q'` divides `S`, so every query block lies within one request.
   - **Keys.** A tile's keys are its slot's `S` positions: RFC-0034's causal layout takes the slot's `b` variables for the key index, `w = min(b, log2 k − log2 Q' − log2 g)` (RFC-0046 'Short query blocks').
   - **Zero rows.** RFC-0034's rule applies to the query block's request, with its length `n_r`.
-- **The advice layout** is a function of the claim list and the batch descriptor (INV-PCS-1), in the plan's production order, so a batch's rows follow the token axis. RFC-0011 rule 4 applies to the padded rows between slots as to the axis's end: a row is skipped when every position it holds is a padded row's public zero. A row of a lookup output whose padded value is not 0 (RFC-0035) is committed.
-- **The maximum layout.** A batch's layout must fit in at most `2^{32}` rows (RFC-0047). The claim list's check at `n = max_context` (RFC-0007 step 6) does not cover a batch, whose token axis can be longer than `max_context`. So the verifier computes the batch's row count from the claim list and the batch descriptor, before it allocates anything, and refuses one past the bound at statement binding.
+- **The advice layout** is a function of the claim list and the batch descriptor (INV-PCS-1), in the plan's production order, so a batch's rows follow the token axis. RFC-0011 rule 4 applies to the padded rows between slots as to the axis's end: a row is skipped when every position it holds is a padded row's public zero. A row of a lookup output whose padded value is not 0 (RFC-0035) is committed. RFC-0047's order puts a padded axis outermost, and with `R` a power of two the token axis is not one: another padded axis, such as `d_ff`, then goes outermost, and a slot's padding lies inside its rows and is committed.
+- **The maximum layout.** A batch's layout must fit in at most `2^{32}` rows (RFC-0047). The claim list's check at `n = max_context` (RFC-0007 step 6) does not cover a batch, whose token axis can be longer than `max_context`. So the verifier computes the row count of the batch's complete runtime layout, RFC-0053's maximum and key columns included, from the claim list and the batch descriptor, before it allocates anything, and refuses one past the bound at statement binding.
 - **Token groups** (RFC-0054 'Groups'). The batch's token index is the padded token axis's row. A prover's planner groups a batch with `g_T ≤ b` token bits, so that each group fixes low position bits only and holds every slot's positions alike, as RFC-0054's equal load needs. With `g_T > b` a group would hold one position of some slots, and the positions' keys differ in number. The rule is the planner's, and changes no verdict: the verifier checks only RFC-0054's bounds. A planner that cannot meet its memory budget within it fails with `ERR-RES-MEMORY`.
 
 ### The statement and the batching
@@ -144,16 +145,17 @@ One `M`, which every key relation reads within its own window and `Selected` pin
 
 The requests' order in `statement.batch` is the slots' order, `RequestKey` order for an audit's batch (RFC-0016). The statement digest and the advice commitment's `layout_digest` bind it (RFC-0031).
 
-**The tokens.** A prover proves its requests' tokens concatenated in batch order (02 §2.2 `ProofBatch`), each request's prompt then outputs. They go to its slot's real rows. The anchor binds request `r`'s frames to its rows `r·S + p` (RFC-0015 'Circuits', INV-ANC-1).
+**The tokens.** A prover proves its requests' tokens concatenated in batch order (02 §2.2 `ProofBatch`), each request's prompt then outputs. They go to its slot's real rows. The anchor binds request `r`'s frames to its rows `r·S + p` (RFC-0015 'Circuits', INV-ANC-1). A per-request read, the anchor's as `Û_r`'s, is a sum over the whole token axis with public coefficients that select its slot, never a slice at a Boolean request coordinate, where `tessera-protocol/2`'s `Z` vanishes (R8).
 
 **The batching** (RFC-0016). First-fit decreasing on total tokens puts a later, shorter request into the first batch it fits, so a batch can mix a request of 16,400 tokens with 16 of 1,000. Its 17 slots, padded to 32, would hold 32,768 rows each, 32 times its tokens. RFC-0016's packing therefore runs per **slot class**:
 - **A class.** Request `r`'s class is `c_r = ⌈log2 max(L_r, 1)⌉`, with `L_r` its tokens. Within each of RFC-0016's groups, the requests of one class are packed together, the classes in decreasing order.
 - **Counted tokens.** A batch of `R` requests of class `c` counts `2^{c + ⌈log2 R⌉}` tokens, the rows its token axis spans, against `max_batch_tokens`, which then bounds its memory.
-- **The packing** is first-fit decreasing within a class, the requests in RFC-0016's order: each goes into the first batch whose counted tokens stay at most `max_batch_tokens` with it, else into a new batch. A request whose class alone, `2^c`, exceeds `max_batch_tokens` is a batch on its own.
+- **The packing** is first-fit decreasing within a class, the requests in RFC-0016's order: each goes into the first batch whose counted tokens stay at most `max_batch_tokens` with it, else into a new batch. A request of class `c > ⌊log2 max_batch_tokens⌋` is a batch on its own, a test that cannot overflow.
 - **The minimum.** In counted tokens, at most one batch per class has fewer than `min_batch_tokens`. Adding one request to a batch at most doubles its counted tokens, so a later batch under the minimum would have had its first request fit in an earlier one, under `2·min_batch_tokens ≤ max_batch_tokens`. In real tokens, a class's batches can fall below it.
-- **The order.** The exact-greedy group's batches come first, class by class in decreasing order, each class's in the order they were opened. The other requests' single batches follow, in `RequestKey` order. This is the order `prove --sample --batch K` numbers (02 §2.2).
-- **Other predictors.** Each request not proven under exact greedy is a batch on its own, until #144.
-- **The cost.** A batch's slots are then its requests' own power of two, at most twice each request's length, as a proof of one request pads today.
+- **The order.** Batches are numbered class by class in decreasing order, each class's in the order they were opened. This is the order `prove --sample --batch K` numbers (02 §2.2).
+- **One group.** The packer has no per-request predictor, so until #144 every request is packed in one group as exact greedy, as 02 §2.2 states; a request the prover proves under another predictor is proven alone, in a batch of its own, since the statement admits no other predictor for two or more.
+- **The cost.** A batch's slots are then its requests' own power of two, under twice each request's length, and its slots' count under twice its requests'. So its real tokens are more than a quarter of its counted tokens: 9 requests of 513 count 16,384 and hold 4,617.
+- **An unprovable request.** A request the prover cannot prove, one whose pre-check fails or whose recorded outputs are not exact greedy, is left out of its batch, which is proven without it. RFC-0016's report names it as unproven. The verifier's accounting checks only that each proven request was sampled and not proven before, so the rest of the batch is accepted.
 - **What changes with it.** The audit's batches, so `spec/vectors/audit/`'s packing cases, `tessera.audit-batches/1` reports and the batch indices of `prove --sample --batch K`. Both workspaces' packers change with #551. Until then a proof unit holds one request, so every provable batch is a single request either way.
 
 ### Soundness and zero knowledge
@@ -216,7 +218,7 @@ At 64 × 256, `Q' = 256` doubles the attention tiles, whose rows are mostly per 
 ## Drawbacks
 
 - **Batches per class.** Packing by class makes more batches than first-fit decreasing across classes: at most one undersized batch per class rather than per group.
-- **Other predictors' audits.** Until #144, each request not proven under exact greedy is a proof of its own, so RFC-0016's overhead calculator, which assumes batches of `min_batch_tokens`, understates their cost.
+- **The overhead calculator.** RFC-0016's calculator assumes batches of `min_batch_tokens` real tokens. Packed by class, a batch holds more than a quarter of its counted tokens, and a request proven under another predictor than exact greedy is a proof of its own, so it understates both.
 - **Empty slots.** A batch of `R` requests pads its slots to `2^{⌈log2 R⌉}`. Their rows are padded rows, skipped when public zeros, but the relations' rounds count them.
 - **More to keep in step.** The lowering, the selectors, the greedy certificate, scoring and the packing each read the slots in both workspaces. A differential test must keep them equal ('Testing Strategy').
 
@@ -237,7 +239,8 @@ At 64 × 256, `Q' = 256` doubles the attention tiles, whose rows are mostly per 
   - a key read across a slot;
   - a split maximum, raised in one window and compensated outside another;
   - request 1's token bound to request 0's frames;
-  - a request with `prompt_len = 0`, a request named twice, a batch of two requests under another predictor than exact greedy, and a batch whose layout exceeds the maximum.
+  - an empty batch, a request with `prompt_len = 0`, a request named twice, a batch of two requests under another predictor than exact greedy, and a batch whose layout exceeds the maximum;
+  - in `tessera-protocol/2`, a per-request read at a Boolean request coordinate, told apart by #162's distinguisher (R8).
 - **End to end.** A batch of two requests of different lengths proves and verifies through the CLI, NI and Live. An exact mismatch in the second request is refused.
 
 ## Open Questions

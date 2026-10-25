@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-19
 - Target milestone: v0.3
-- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('The maximum layout' and 'A request's sequence length': a batch's own layout is checked at statement binding, each request in a slot)
+- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('The maximum layout', 'A request's sequence length' and 'RFC-0034's zero rows': a batch's own layout is checked at statement binding, each request in a slot)
 - Supersedes, on acceptance:
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout' rules 1 and 3: the order of a tensor's variables, and `ν`;
   - [RFC-0007](RFC-0007-claim-list.md#verifier-validation) 'Verifier validation' steps 2 and 6: heads grouped by a power of two, and the protocol's maximum layout;
@@ -82,7 +82,7 @@ A request of `prompt_len` prompt tokens and `output_len` output tokens is a sequ
 
 ### RFC-0034's zero rows
 
-Its two masked-row conditions read `Q'` for `Q`, as RFC-0046 made its layout do: `i_hi·2^w > (qb + 1)·Q' − 1`, and `qb·Q' ≥ S`.
+Its two masked-row conditions read `Q'` for `Q`, as RFC-0046 made its layout do: `i_hi·2^w > (qb + 1)·Q' − 1`, and `qb·Q' ≥ S`. In a batch of several requests, `qb` counts the block within its slot and `S` is its request's length in both ([RFC-0071](RFC-0071-request-slots.md#the-plan-and-the-layout)).
 
 ## Alternatives Considered
 

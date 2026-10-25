@@ -78,7 +78,7 @@ A graph's nodes are in topological order. Every input is a graph input, a tensor
 | `MatMulWeight` | `x`, `W` → `y` | `W [out, in]`, `x […, in]`, `y […, out]` | `W` is the weight tensor its `WeightRef` declares |
 | `Add`, `Sub` | `a`, `b` → `y` | all equal | |
 | `ConstMul`, `ConstAdd` | `x` → `y` | `y = x`; the constant has 1 value or `x`'s last axis | |
-| `Rotate` | `x`, `pos` → `y` | `x [n, …, 2m]`, `pos [n]`, `y = x` | `pos` is `Public`; the pair `(x_i, x_{i+m})` of each last-axis vector turns by its row's position at frequency `i`, Llama's `rotate_half` layout |
+| `Rotate` | `x`, `pos` → `y` | `x [n, …, 2m]`, `pos [n]`, `y = x` | `pos` is `Public`; the pair `(x_i, x_{i+m})` of each last-axis vector turns by its row's position at frequency `i`, Llama's `rotate_half` layout. In a batch's graph a padded row's constants are 0 ([RFC-0071](RFC-0071-request-slots.md)) |
 | `Sum`, `SumSquares` | `x` → `y` | `y` is `x` without the axis | |
 | `Reshape` | `x` → `y` | equal element counts | |
 | `Slice` | `x` → `y` | `start + len` within the axis, `len ≥ 1`; `y` is `x` with that axis of length `len` | |

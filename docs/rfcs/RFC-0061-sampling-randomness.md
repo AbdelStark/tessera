@@ -18,7 +18,7 @@
   - [RFC-0015](RFC-0015-transcript-anchor.md#verifier-checks) 'Verifier checks', the note on check 4.
 - Origin: [#497](https://github.com/AbdelStark/tessera/issues/497)
 - Amended by: [RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log) ('Which pin applies': a request's frames are its frames in the period's verified log)
-- Amended by: [RFC-0063](RFC-0063-request-boundaries.md#which-requests-a-period-draws-from) ('Which pin applies': containment over the request's frames in its two periods)
+- Amended by: [RFC-0063](RFC-0063-request-boundaries.md#which-requests-a-period-draws-from) ('Which pin applies': containment over the request's frames in its two periods), [RFC-0071](RFC-0071-request-slots.md) ('Per batch': packing by pin awaits the pins)
 
 ## Summary
 
@@ -156,7 +156,7 @@ u_t   = u32_le( AES-128_K( u64_le(class) ‖ u32_le(t) ‖ 0^4 )[0..4] )
 
 - **Per request.** Request `r`'s pin is the one whose window contains the earliest `t_ns` among `r`'s frames, `In` and `Out` alike: all its frames in its end's period and the one before ([RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log), [RFC-0063](RFC-0063-request-boundaries.md#which-requests-a-period-draws-from)). Every one of them must have `t_ns < from_ns + W + G` for that pin.
 - **Why the containment.** A request that took its pin from one early frame could have that frame logged long before the prompt, in any window: an empty `In` frame 0 opened in advance, with the prompt sent later as frame 1. Requiring every frame within the window and its grace leaves such a frame no use outside the grace.
-- **Per batch.** A batch's temperature requests share one pin, since the circuit opens one key. The prover's batching (RFC-0016) packs requests by pin before it packs them by tokens.
+- **Per batch.** A batch's temperature requests share one pin, since the circuit opens one key. The prover's batching (RFC-0016) will pack requests by pin, once pins are implemented, before it packs them by tokens.
 - **The check.** It runs in RFC-0015 check 2, after a request's frames, when the statement's predictor decodes with temperature. The result is `Reject(Anchor { request_id: Some(r), kind: SamplerKey })` when any of these holds:
   - no pin's window contains `r`'s earliest frame;
   - a frame of `r` has `t_ns ≥ from_ns + W + G`;
