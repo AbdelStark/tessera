@@ -151,7 +151,7 @@ These rows replace RFC-0013's row for LogUp roots and add the tree levels:
 | Revealed item | Mechanism | Randomness |
 |---|---|---|
 | Tree-level and identity round messages | Masked sumcheck | `G_ℓ`, and the identity's `G`, per level |
-| Tree-level evaluations `V'_{t+1}(b ‖ r')` and the mask values `R̃_t` | Masked extensions that spare the pair bit; at a LogUp leaf level, those of its keys, values and multiplicities | One `Fp2` mask row per level and polynomial, LogUp leaf levels excepted |
+| Tree-level evaluations `V'_{t+1}(b ‖ r')` and the mask values `R̃_t` | Masked extensions that spare the pair bit; at a LogUp leaf level, those of its keys, values and multiplicities | One `Fp2` mask row per level and polynomial, LogUp leaf levels excepted; there, each instance's key and value columns' own mask rows ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks)) |
 | LogUp roots | Not sent: the identity sumcheck's final evaluations, masked | The root levels' mask rows |
 
 ### Labels

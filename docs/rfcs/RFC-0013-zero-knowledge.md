@@ -134,7 +134,7 @@ Before any v0.4 implementation work merges, [`docs/zk/simulator.md`](../zk/simul
 | Stage masking polynomials | < 2×10^4 elements |
 | Blinding rows for advice combined rows (`G + 1 ≤ 17`, two rows each; `G + 1 ≤ 18` with RFC-0068's column masks' group) | 34 rows; 36 |
 | Weight budget per proof | 6 blinding rows per weight matrix (two each for evaluation, proximity and mask), and `2e + 4` for `ChannelParams`' `e` claims, 18 at `e = 7`: one evaluation pair for the matrix and a mask row per claim ([RFC-0065](RFC-0065-masked-channel-params.md)) |
-| Extra sumcheck work | last round only |
+| Extra sumcheck work | from the round that binds the last of `Z`'s variables: the last round, or a LogUp leaf level's round before it |
 
 The weight budget per proof is six rows, and the linking proofs take four at each end of an epoch, so `B_W = 4096` gives `(4096 − 8)/6 = 681` proofs per epoch, and `ChannelParams`' `B_CP` gives as many ([RFC-0065](RFC-0065-masked-channel-params.md)), matching the column budget of about 674 in epoch 0 and 673 after it ([RFC-0012](RFC-0012-weight-commitment.md#budget-state-machine), [RFC-0064](RFC-0064-weight-linking-proof.md#the-budget)).
 
