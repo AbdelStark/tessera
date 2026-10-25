@@ -100,8 +100,9 @@ impl MatrixSizes {
 /// A schedule's stages and tree levels are batched sumchecks. Each stage of `n` rounds of degree
 /// `d` batching `m` instances errs with probability at most `(n·d + m)/q`, a tree level at most
 /// `(n·d + m + 1)/q` with its line challenge, each `ZeroCheck` of `n_i` variables adds `n_i/q`,
-/// and in `tessera-protocol/2` each masked sumcheck adds `1/q` for its `ρ` (RFC-0010 'Soundness
-/// of the schedule', RFC-0013, RFC-0035).
+/// stage 1's layer point of `λ` coordinates adds `λ/q`, and in `tessera-protocol/2` each masked
+/// sumcheck adds `1/q` for its `ρ` (RFC-0010 'Soundness of the schedule', RFC-0013, RFC-0035,
+/// RFC-0037 'The layer point').
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StatementSizes {
     /// The `n` of `tessera-protocol/n`, whose bounds apply: 1, or 2 with the zero-knowledge items.
@@ -116,6 +117,10 @@ pub struct StatementSizes {
     pub tree_levels: Vec<u64>,
     /// The variables `n_i` of each `ZeroCheck` (RFC-0035 'Zero-check points').
     pub zero_checks: Vec<u32>,
+    /// The coordinates `λ` of stage 1's layer point (RFC-0037 'The layer point'): a false
+    /// per-layer value survives its stacking with probability at most `λ/q`. 0 when the schedule
+    /// has none, as in `tessera-protocol/2`, whose layer sumcheck is a stage (RFC-0068).
+    pub layer_vars: u32,
     /// Each product forest's `s`: it holds `2^s` trees (RFC-0010 'Tree levels').
     pub forests: Vec<u32>,
     /// Each LogUp instance.
@@ -322,6 +327,8 @@ impl SoundnessReport {
                     .map(|&m| u128::from(m)),
             )
             .chain(sizes.zero_checks.iter().map(|&z| u128::from(z)))
+            // Stage 1's layer point, λ/q (RFC-0037 'The layer point', #537).
+            .chain((sizes.layer_vars > 0).then_some(u128::from(sizes.layer_vars)))
             // A tree level's line challenge, and in tessera-protocol/2 a mask's ρ: 1/q each.
             .chain((!sizes.tree_levels.is_empty()).then_some(1))
             .chain((v2 && batched > 0).then_some(1))
@@ -346,6 +353,7 @@ impl SoundnessReport {
             sum(sizes.stages.iter().map(|&m| u128::from(m))),
             sum(sizes.tree_levels.iter().map(|&m| u128::from(m) + 1)),
             sum(sizes.zero_checks.iter().map(|&z| u128::from(z))),
+            u128::from(sizes.layer_vars),
             if v2 { batched } else { 0 },
             if grouped { group_union(sizes) } else { 0 },
         ]
@@ -583,6 +591,12 @@ fn validate(params: &ParamSet, sizes: &StatementSizes) -> Result<Vec<Geometry>, 
     }
     if groups.grouped() && sizes.protocol == 2 {
         return refuse("tessera-protocol/2 accepts no leaf groups");
+    }
+    if sizes.layer_vars > 0 && sizes.protocol == 2 {
+        return refuse("tessera-protocol/2 has no layer point: its layer sumcheck is a stage");
+    }
+    if sizes.layer_vars > 32 {
+        return refuse("a layer point has at most 32 coordinates");
     }
     if !groups.grouped()
         && (!groups.level_rounds.is_empty() || groups.merge_rounds > 0 || groups.merge_claims > 0)

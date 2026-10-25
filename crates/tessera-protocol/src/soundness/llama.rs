@@ -137,6 +137,8 @@ impl StatementSizes {
             stages: vec![64, 64],
             tree_levels: vec![2 * TABLES.len() as u64 + 1; 42],
             zero_checks: vec![42; 8],
+            // λ = ⌈log2 126⌉ (RFC-0037 'The layer point').
+            layer_vars: 7,
             forests: vec![28],
             lookups,
             claim_groups: vec![64; 16],

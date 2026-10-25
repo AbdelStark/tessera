@@ -148,6 +148,7 @@
         "stages",
         "tree_levels",
         "zero_checks",
+        "layer_vars",
         "forests",
         "lookups",
         "claim_groups",
@@ -191,6 +192,12 @@
         },
         "zero_checks": {
           "$ref": "#/$defs/counts"
+        },
+        "layer_vars": {
+          "description": "The coordinates of stage 1's layer point, 0 when there is none (RFC-0014, #537).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32
         },
         "forests": {
           "$ref": "#/$defs/counts"

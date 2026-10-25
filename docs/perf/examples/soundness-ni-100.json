@@ -43,7 +43,7 @@
       "covered_by": null,
       "grinding": 0,
       "margin": 448,
-      "numerator": "79621474",
+      "numerator": "79621481",
       "pass": true,
       "row": "union",
       "target": 100
@@ -430,6 +430,7 @@
       "merge_claims": 53490,
       "merge_rounds": 42
     },
+    "layer_vars": 7,
     "lookups": [
       {
         "lookups": 0,

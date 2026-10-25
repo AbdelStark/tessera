@@ -128,6 +128,7 @@ fn sizes(value: &Value) -> StatementSizes {
         stages: ints("stages"),
         tree_levels: ints("tree_levels"),
         zero_checks: small("zero_checks"),
+        layer_vars: int(&value["layer_vars"]),
         forests: small("forests"),
         lookups: list(&value["lookups"])
             .iter()
@@ -424,6 +425,7 @@ fn live_64_and_ni_100_meet_their_targets_at_the_405b_statement() {
     // their targets, and live-64's tightest row is a weight matrix's queries, 64.03 bits.
     let masked = StatementSizes {
         protocol: 2,
+        layer_vars: 0,
         groups: LeafGroupSizes::NONE,
         ..statement.clone()
     };
@@ -541,6 +543,7 @@ fn rfc_0014s_figures_are_lower_bounds_but_80_1_which_is_rounded() {
         let statement = StatementSizes {
             protocol: int(&case["report"]["statement"]["protocol"]),
             groups: sizes(&case["report"]["statement"]).groups,
+            layer_vars: sizes(&case["report"]["statement"]).layer_vars,
             ..StatementSizes::llama_405b_16k()
         };
         let r = report(&set, &statement);
@@ -649,6 +652,7 @@ fn each_row_misses_its_target_alone() {
                 set,
                 StatementSizes {
                     protocol: 2,
+                    layer_vars: 0,
                     groups: LeafGroupSizes::NONE,
                     ..down(Some(1 << 19), None)
                 },
@@ -784,6 +788,26 @@ fn sizes_it_cannot_bound_are_refused() {
         wide.matrices[0].width = width;
         refuse(&set, &wide);
     }
+    // #537: stage 1's layer point has at most 32 coordinates, and tessera-protocol/2 has none
+    // (RFC-0068's layer sumcheck is a stage). Each refusal beside the sizes that pass.
+    let ungrouped = StatementSizes {
+        groups: LeafGroupSizes::NONE,
+        ..base.clone()
+    };
+    for (protocol, layer_vars, refused) in
+        [(1, 33, true), (1, 32, false), (2, 1, true), (2, 0, false)]
+    {
+        let sizes = StatementSizes {
+            protocol,
+            layer_vars,
+            ..ungrouped.clone()
+        };
+        if refused {
+            refuse(&set, &sizes);
+        } else {
+            SoundnessReport::new(&set, &sizes).expect("a layer point it bounds");
+        }
+    }
     // RFC-0054 'Soundness': G is a power of two up to 2^14, 1 in tessera-protocol/2, and no
     // grouping has no grouped sizes.
     for count in [0, 3, 1 << 15] {
@@ -818,6 +842,7 @@ fn sizes_it_cannot_bound_are_refused() {
     );
     let mut empty = StatementSizes {
         protocol: 2,
+        layer_vars: 0,
         groups: LeafGroupSizes::NONE,
         ..base.clone()
     };
@@ -861,6 +886,7 @@ fn sizes_it_cannot_bound_are_refused() {
 fn channel_params_counts_its_own_blinding_rows_in_protocol_2() {
     let base = StatementSizes {
         protocol: 2,
+        layer_vars: 0,
         groups: LeafGroupSizes::NONE,
         ..StatementSizes::llama_405b_16k()
     };
@@ -934,6 +960,8 @@ fn protocol_1_counts_a_matrix_by_its_committed_rows_with_no_mask() {
                     1 => base.groups.clone(),
                     _ => LeafGroupSizes::NONE,
                 },
+                // RFC-0068: tessera-protocol/2 has no layer point.
+                layer_vars: if protocol == 1 { base.layer_vars } else { 0 },
                 ..base.clone()
             };
             let r = report(&set, &statement);
@@ -1005,6 +1033,7 @@ fn protocol_1_counts_a_matrix_by_its_committed_rows_with_no_mask() {
         assert_eq!(r.meets_targets(), Some(true), "{}", set.id);
         let masked = StatementSizes {
             protocol: 2,
+            layer_vars: 0,
             groups: LeafGroupSizes::NONE,
             ..empty.clone()
         };
@@ -1152,6 +1181,7 @@ fn to_tv_statement(s: &StatementSizes) -> tv_core::soundness::StatementSizes {
         stages: s.stages.clone(),
         tree_levels: s.tree_levels.clone(),
         zero_checks: s.zero_checks.iter().copied().map(u64::from).collect(),
+        layer_vars: u64::from(s.layer_vars),
         forests: s.forests.iter().copied().map(u64::from).collect(),
         lookups: s
             .lookups
@@ -1302,6 +1332,12 @@ fn prover_and_verifier_calculators_agree_on_1000_random_profiles() {
             stages: (0..rng.below(5)).map(|_| rng.bits(20)).collect(),
             tree_levels: (0..rng.below(7)).map(|_| rng.bits(16)).collect(),
             zero_checks: (0..rng.below(5)).map(|_| rng.bits(7) as u32).collect(),
+            // Stage 1's layer point in tessera-protocol/1; none in protocol/2 (#537).
+            layer_vars: if protocol == 1 {
+                rng.below(33) as u32
+            } else {
+                0
+            },
             forests: (0..rng.below(4)).map(|_| rng.bits(8) as u32).collect(),
             lookups: (0..rng.below(5))
                 .map(|_| LookupSizes {

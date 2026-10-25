@@ -29,7 +29,7 @@ Before it writes anything, the script checks that every FixedBits `r` satisfies 
 | `log2` | LOG2's `precision` `W` and its two output fractions | one |
 | `log2_cases` | `a`, `b`, `fraction` and `result`, decimal strings | its edges; `q` against `2^128 − 1`; 24 random 128-bit inputs; and 12 pairs at a boundary, below |
 | `parameter_sets` | a parameter set, as a report's `params` states it | RFC-0014's three sets |
-| `cases` | `name`, `why`, `report` (a `tessera.soundness/1` report) and `true` (per row, `⌊256·λ·10^30⌋` as `bits`, and for a queries row `⌊256·b(ρ')·10^30⌋` as `per_query`) | 92, below |
+| `cases` | `name`, `why`, `report` (a `tessera.soundness/1` report) and `true` (per row, `⌊256·λ·10^30⌋` as `bits`, and for a queries row `⌊256·b(ρ')·10^30⌋` as `per_query`) | 93, below |
 
 The cases:
 
@@ -44,6 +44,7 @@ The cases:
 | `edge/empty` | no sumcheck, forest, instance, group or matrix: only the advice and the hash have terms |
 | `edge/rate-one` | weights at rate 1, `ρ' ≥ 1`: their queries give no bit |
 | `edge/line-only`, `edge/mask-only`, `edge/zero-count` | one term of the rounds row alone: a tree level's line challenge, a stage's mask in `tessera-protocol/2`, and rounds of count 0, which count nothing |
+| `edge/layer-point` | stage 1's layer point alone, `λ = 7`: `7/q` in the rounds row and the union (#537) |
 | `edge/hash-128` | targets of 128 bits, which only the hash row reaches |
 | `edge/q-below-2^128` | `N + T = 2^64 − 1` at `live-64/1`: `64 − 6.7·10^-10` bits fail 64, where `2^128 − 1` in place of `q` would pass them |
 | `edge/channel-params-at-a-power`, `edge/channel-params-past-a-power` | `ChannelParams` under `tessera-protocol/2` at test-small's `B_W = 32` and `e_CP = 7`, `B_CP = 80`: 944 data rows reach `2^{10}` (`ϑ = 10`), and 945 pass it (`ϑ = 11`), so a `B_CP` one row off either way changes a `ϑ` |

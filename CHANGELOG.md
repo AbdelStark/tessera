@@ -1386,6 +1386,14 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- The soundness calculator counts stage 1's layer point ([#537](https://github.com/AbdelStark/tessera/issues/537), RFC-0014):
+  - **The gap.** RFC-0037 'The layer point': a false per-layer value survives its stacking at `ρ_1` with probability at most `λ/|Fp2|`. Neither the rounds row nor the union row counted it, so an exact statement's report left out `λ/q`.
+  - **The input.** `StatementSizes.layer_vars`, the layer point's `λ` coordinates. The rounds row's `D` takes it as an item and the union row adds it. A calculator refuses, with `ERR-USAGE`, a `layer_vars` other than 0 in `tessera-protocol/2`, whose layer sumcheck is a stage (RFC-0068), or above 32.
+  - **A proof's budget** (`tv-core`'s runtime) takes `λ` from the coordinates its own schedule's stage 1 squeezes.
+  - **The 405B statement** gives `λ = 7`. Its union numerator grows from 79,621,474 to 79,621,481, and its bits stay the same.
+  - **`tessera.soundness/1`** requires `layer_vars` in its statement: a breaking change for readers of the report. The two example reports are regenerated.
+  - **The oracle** draws `layer_vars` last in its random statements and adds `edge/layer-point`, whose rows are `7/q` alone. Both calculators reproduce all 93 vectors.
+
 - The soundness calculator counts each weight matrix's own blinding rows in `tessera-protocol/2` ([#521](https://github.com/AbdelStark/tessera/issues/521), RFC-0065):
   - **The input.** RFC-0014's `matrices` gives each matrix's claims `e_T`, and the calculator derives `B_T` from them: `B_W` for `Embed`..`LmHead`, and for `ChannelParams` `B_W + 2·(e_CP − 1)·⌊max(B_W − 4, 0)/6⌋`. It never takes `B_T` as an input.
   - **The refusals** (`ERR-USAGE`, protocol/2): a matrix with no claim, which is not opened, and a matrix other than `ChannelParams` with `e_T ≠ 1`.

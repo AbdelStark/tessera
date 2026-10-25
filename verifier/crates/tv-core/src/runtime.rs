@@ -268,7 +268,14 @@ impl Geometry {
             n.checked_add(s.instances.len()).ok_or(Error::Internal)
         })?;
         let mut zero_checks = reserve(checks)?;
+        // Stage 1's layer point, the λ coordinates it squeezes under `stage/1/layer/{c}`; every
+        // other stage squeezes none (RFC-0014 'Statement sizes' `layer_vars`, RFC-0037 'The
+        // layer point', #537).
+        let mut layer_vars = 0u64;
         for s in model.schedule().stages() {
+            layer_vars = layer_vars
+                .checked_add(number(s.layer_vars)?)
+                .ok_or(Error::Internal)?;
             let f = stage(s)?;
             rounds.push(RoundGroup {
                 count: number(f.sumcheck.rounds)?,
@@ -330,6 +337,7 @@ impl Geometry {
                 stages: stage_counts,
                 tree_levels,
                 zero_checks,
+                layer_vars,
                 forests,
                 lookups,
                 claim_groups: Vec::new(),
