@@ -5,7 +5,7 @@
 - Created: 2026-10-15
 - Target milestone: v0.3 (driver), v0.4 (zero-knowledge checks, anchor, scoring), v1.0 (hardening)
 - Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Check order', step 4: the advice commitment's `layout_digest`), [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Check order', step 7, in `tessera-protocol/2`), [RFC-0033](RFC-0033-tree-level-rejections.md) ('Check order', step 7: the reasons of the leaf stage's sumchecks), [RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies) ('Inputs' and 'Check order', step 4: the pinned sampler keys), [RFC-0062](RFC-0062-period-log-sessions.md#the-periods-log) ('Inputs' and 'Check order', step 4: the period's log in place of the batch's entries and their inclusion proofs), [RFC-0065](RFC-0065-masked-channel-params.md) ('Check order', step 5: the reservation's ranges)
-- Amended by: [RFC-0067](RFC-0067-verifier-ledger-encoding.md) ('Ledger': the encoding of `VerifierLedger`, each accepted request's `Û`, and its atomic, locked writes), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Performance': `G + 1 ≤ 18` combined rows in `tessera-protocol/2`)
+- Amended by: [RFC-0067](RFC-0067-verifier-ledger-encoding.md) ('Ledger': the encoding of `VerifierLedger`, each accepted request's `Û`, and its atomic, locked writes), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Performance': `G + 1 ≤ 18` combined rows in `tessera-protocol/2`), [RFC-0013](RFC-0013-zero-knowledge.md) ('Performance': the fold groups' combined rows, #538)
 
 ## Summary
 
@@ -144,7 +144,7 @@ pub struct VerifierLedger {                   // schema 0x0701, persisted, verif
 |---|---|---|
 | Decode and hash columns | about 1.18 GB advice + 0.3 GB weights (complete RFC-0050 layout) | recalibrate at the complete row count |
 | Column consistency | `(G + 1) · τ` inner products over 953,580 rows | recalibrate at the complete row count |
-| Re-encode combined rows | `G + 1 ≤ 17` coset NTTs of size 2^23 over `Fp2`, `≤ 18` in `tessera-protocol/2` (RFC-0068), plus weights | about 5 s |
+| Re-encode combined rows | `G + 1 ≤ 17` coset NTTs of size 2^23 over `Fp2`, `≤ 20` in `tessera-protocol/2` (RFC-0068, RFC-0013 'Virtual tensors'), plus weights | about 5 s |
 | Tables | ≤ 20 dense cores of ≤ 2^24 values | about 2 s |
 | Lowering and range re-derivation | 405B claim list | about 5 s |
 | Stages and trees | about 10^4 rounds | < 1 s |

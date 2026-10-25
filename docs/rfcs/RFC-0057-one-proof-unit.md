@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-24
 - Target milestone: v0.3
-- Amended by: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('What a unit costs': 18 combined rows in `tessera-protocol/2`)
+- Amended by: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('What a unit costs': 18 combined rows in `tessera-protocol/2`), [RFC-0013](RFC-0013-zero-knowledge.md) ('What a unit costs': the fold groups' combined rows, #538)
 - Supersedes:
   - [RFC-0018](RFC-0018-gpu-prover-runtime.md) 'Witness engine' (the checkpoints), 'Partitioning', 'Pass structure' (its 'Proof units' paragraph and the passes' count), 'Memory scheduler', 'Release schedule', 'Drawbacks' and 'Testing Strategy', wherever they name proof units: a batch is not split into units, and a request's layers are never split into layer-range units;
   - [RFC-0031](RFC-0031-commitment-id.md#the-descriptor) 'The descriptor': its `unit` is always 0;
@@ -45,7 +45,7 @@ At 08's reference statement: Llama-3.1-405B, a batch of 16K tokens at 16K of con
 ### What a unit costs
 
 Each unit adds, whatever its size:
-- **Proof size.** Its advice opening's combined rows, at most 17 × `2^{22}` × 16 bytes = 1.14 GB, and 18, 1.21 GB, in `tessera-protocol/2` with RFC-0068's column masks' group. The row length is the parameter set's message width, not the unit's. Its opened columns are its share of the batch's, so splitting adds nothing there.
+- **Proof size.** Its advice opening's combined rows, at most 17 × `2^{22}` × 16 bytes = 1.14 GB, and 20, 1.34 GB, in `tessera-protocol/2` with RFC-0068's column masks' group and RFC-0013's fold groups. The row length is the parameter set's message width, not the unit's. Its opened columns are its share of the batch's, so splitting adds nothing there.
 - **Time.**
   - Its table side: its own multiplicities and table trees, `6.7×10^9` rows at 405B, about 0.5 GPU-s (RFC-0054 'Motivation').
   - For a set of requests, its weight fold, 0.24 GPU-s, since it reads every weight. A layer range reads only its layers', so its folds add nothing in total.

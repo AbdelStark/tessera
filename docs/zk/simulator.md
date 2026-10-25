@@ -329,9 +329,10 @@ So `ε_W ≤ 10·C(N, 2)·p^{-4} ≤ 2^{-230}` over the ten matrices at `N = 681
 ## 7. OQ-0013-1: packing small mask rows
 
 Packing several masks in one row, each in its own aligned sub-block at a public offset `o`, behaves differently by mask kind:
-- **Virtual tensors' masks: admissible.** These include the tree levels', which OQ-0013-1 asks about. Their only scalar claim is `R̃_t(r'_t)`, which stands alone.
+- **Tree levels' masks: admissible.** These are the virtual masks OQ-0013-1 asks about. Their only scalar claim is `R̃_t(r'_t)`, which stands alone.
   - **Independence.** Each block's functionals are supported on its own block. Within a block, Lemma 2 applies to its own points.
   - **The cost.** The opening functional is `eq(offset ‖ p_col)`, a column sub-point of its own, so it needs its own opening group. A tree level's mask claim `R̃_t(r'_t)` needs one anyway, even unpacked, since each level's `r'_t` is distinct (R11), so packing adds no group. It saves mask rows where they would be mostly empty.
+- **Reduction stages' virtual masks: not admissible.** A reduction stage's fold reads its mask's whole row (RFC-0013 'Virtual tensors', #538), every block of a packed row included, and the row must be random in all its entries, so these masks are not packed.
 - **Committed tensors' masks: not admissible, unless the tensor's data sits at the mask's column offset.**
   - **Why.** `V'(p)` can be opened as one claim only because both terms have column part `eq(p_col)` (RFC-0013 'Masked extensions', committed tensors; RFC-0011 step 1 requires a combination's pieces to share one column sub-point). A mask packed at `o ≠ 0` has column part `eq(o ‖ p_col)`.
   - **The leak.** The claim then splits across two groups, and the two revealed values give `Ṽ(p)`.

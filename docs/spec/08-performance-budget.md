@@ -103,10 +103,10 @@ Meeting SC-2 at 1K therefore needs about 1.8 off `μ(1K)` for `minimal` and 3.7 
 | Quantity | Budget (16K tokens, 16K context, `live-64`) | Projection |
 |---|---|---|
 | Opened advice columns | `τ_A = 155` columns × column length × 8 bytes | about 1.18 GB: 953,580 non-zero rows ([RFC-0011](../rfcs/RFC-0011-advice-commitment.md#sizes-at-the-default-parameters-16k-tokens-16k-context-405b)) |
-| Combined rows | at most 17 rows (one per claim group plus proximity) × 2^22 × 16 bytes; 18 in `tessera-protocol/2`, with [RFC-0068](../rfcs/RFC-0068-leaf-stage-zero-knowledge.md)'s group for the column masks | at most 1.14 GB; 1.21 GB |
+| Combined rows | at most 17 rows (one per claim group plus proximity) × 2^22 × 16 bytes; 20 in `tessera-protocol/2`, with [RFC-0068](../rfcs/RFC-0068-leaf-stage-zero-knowledge.md)'s group for the column masks and [RFC-0013](../rfcs/RFC-0013-zero-knowledge.md#masked-extensions)'s fold groups of the two reduction stages | at most 1.14 GB; 1.34 GB |
 | Sumcheck messages | about 6 stages × ≤ 50 rounds × degree ≤ 4 × 16 bytes × batch factors | < 10 MB |
 | Weight openings | `τ_W = 97` columns at most per matrix × 10 matrices, each column holding every non-zero data row and the 4,096 blinding rows | about 0.35 GB |
-| **Total proof** | **≤ 4 GiB (gate), 2 GiB (target)** | about 2.8 GB with the token groups' 120 MB: within the gate, above the target. `tessera-protocol/2` has no token groups: about 2.74 GB with RFC-0068's group, before the masking polynomials' openings ([#489](https://github.com/AbdelStark/tessera/issues/489)) |
+| **Total proof** | **≤ 4 GiB (gate), 2 GiB (target)** | about 2.8 GB with the token groups' 120 MB: within the gate, above the target. `tessera-protocol/2` has no token groups: about 2.87 GB with RFC-0068's group and the fold groups, before the masking polynomials' openings ([#489](https://github.com/AbdelStark/tessera/issues/489)) |
 | Verification time | ≤ 300 s on 32 cores | seconds to tens of seconds: column hashing, column combinations, combined-row re-encoding, table MLEs |
 | Dense table evaluation | ≤ 20 dense tables of ≤ 2^24 rows | about 2 s single-threaded |
 

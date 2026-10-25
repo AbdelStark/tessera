@@ -31,7 +31,7 @@ This RFC changes three things:
 At 405B this costs:
 - 36 column mask rows, 72 committed rows, against 953,580 committed advice rows;
 - one masked sumcheck of 22 rounds;
-- one more advice opening group, about 64 MiB. The proof, about 2.67 GB in `tessera-protocol/2`, which has no token groups, becomes about 2.74 GB, before #489 opens the masking polynomials.
+- one more advice opening group, about 64 MiB. The proof, about 2.67 GB in `tessera-protocol/2`, which has no token groups, becomes about 2.74 GB, before #489 opens the masking polynomials. RFC-0013's fold groups (#538) add two more, about 2.87 GB in all.
 
 The split shrinks from 53,489 lookup-tensor values to 614. `tessera-protocol/1` is unchanged.
 

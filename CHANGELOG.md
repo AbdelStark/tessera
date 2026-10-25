@@ -1386,6 +1386,13 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- RFC-0013 'Virtual tensors' specifies the mask fold of a virtual tensor in a reduction stage ([#538](https://github.com/AbdelStark/tessera/issues/538)):
+  - **An instance of its own.** The relation's instance may not run over the mask's variables, as `MatMulWeight`, `MatMulAct` and `SumSquares` do not. The fold takes its relation's power of `γ`, and its summand is scaled by `2^{log2 k − n_i}`, so that the two instances contribute RFC-0010's scaled claim of the `V'(p)` the verifier knows.
+  - **Over `log2 k` variables,** reading the row at `(p_col ‖ 0)`, whatever the mask's width. So every fold of a stage ends at one point, and adds at most one opening group per reduction stage: two at 405B. The stage's rounds count the fold's variables.
+  - **Its final value** `u` is sent after the instances' evaluations, and is a claim on the mask row in the advice pool. The opening is what binds the fold.
+  - **The whole row is random.** A virtual tensor's mask row holds fresh mask-stream values in all `k` entries, past `2^c` too, so the full-width `u` stays independent of the mask's values at points of fewer coordinates: a new requirement on the prover's mask stream.
+  - The protocol/2 figures of RFC-0011, RFC-0013, RFC-0019, RFC-0057 and 08 §5 count the fold groups: `G + 1 ≤ 20` combined rows, about 2.87 GB of proof before #489.
+
 - The soundness calculator counts stage 1's layer point ([#537](https://github.com/AbdelStark/tessera/issues/537), RFC-0014):
   - **The gap.** RFC-0037 'The layer point': a false per-layer value survives its stacking at `ρ_1` with probability at most `λ/|Fp2|`. Neither the rounds row nor the union row counted it, so an exact statement's report left out `λ/q`.
   - **The input.** `StatementSizes.layer_vars`, the layer point's `λ` coordinates. The rounds row's `D` takes it as an item and the union row adds it. A calculator refuses, with `ERR-USAGE`, a `layer_vars` other than 0 in `tessera-protocol/2`, whose layer sumcheck is a stage (RFC-0068), or above 32.
