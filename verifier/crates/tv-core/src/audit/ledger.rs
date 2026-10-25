@@ -251,13 +251,13 @@ pub struct BlindingRows {
 /// weight_roots:       Vec<(Digest, Vec<(u32, Digest)>)>
 /// successors:         Vec<(Digest, Digest)>
 /// used_blinding_rows: Vec<(Digest, u32, u8, BitSet)>
-/// derived:            Vec<Digest>                     // strictly increasing
+/// derived:            Vec<(Digest, Digest)>           // (manifest, its one sample), by manifest
 /// proven:             Vec<(Digest /*sample*/, BitSet /*selected index*/, Vec<FixedBits> /*Û*/)>
 /// ```
 ///
-/// `derived` names the samples this verifier derived itself, by revealing its own toss
-/// ([`AuditToss::reveal`](super::AuditToss::reveal)): only those are its samples (RFC-0067 'The
-/// verifier's own sample'). `proven` is the audit's accounting: one record per derived sample
+/// `derived` names, for each manifest, the one sample this verifier derived itself for it, by
+/// revealing its own toss ([`AuditToss::reveal`](super::AuditToss::reveal)): only those are its
+/// samples, and a period has one (RFC-0067 'The verifier's own sample'). `proven` is the audit's accounting: one record per derived sample
 /// with an accepted request, by increasing sample identity. The first three fields are the
 /// weight epochs' (#158), kept as they decode.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -265,7 +265,7 @@ pub struct VerifierLedger {
     weight_roots: Vec<WeightRoots>,
     successors: Vec<(Digest, Digest)>,
     used_blinding_rows: Vec<BlindingRows>,
-    derived: Vec<Digest>,
+    derived: Vec<(Digest, Digest)>,
     proven: Vec<ProvenSample>,
 }
 
@@ -296,25 +296,45 @@ impl VerifierLedger {
         &self.used_blinding_rows
     }
 
-    /// The identities of the samples this verifier derived, increasing.
-    pub fn derived(&self) -> &[Digest] {
+    /// The samples this verifier derived, `(manifest, sample identity)`, by increasing manifest.
+    pub fn derived(&self) -> &[(Digest, Digest)] {
         &self.derived
     }
 
-    /// Whether this verifier derived the sample whose identity is `sample`.
-    pub fn is_derived(&self, sample: &Digest) -> bool {
-        self.derived.binary_search(sample).is_ok()
+    /// The identity of the one sample this verifier derived for `manifest`, if any.
+    pub fn derived_for(&self, manifest: &Digest) -> Option<&Digest> {
+        self.derived
+            .binary_search_by(|(m, _)| m.cmp(manifest))
+            .ok()
+            .and_then(|i| self.derived.get(i))
+            .map(|(_, sample)| sample)
     }
 
-    /// Adds a sample the verifier derived to `derived`, in order; nothing when it is there.
-    /// Only the reveal of the verifier's own toss calls it ([`super::file::LedgerFile`]), so
-    /// that no other sample becomes the verifier's.
-    pub(crate) fn add_derived(&mut self, sample: Digest) -> Result<(), Failure> {
-        if let Err(at) = self.derived.binary_search(&sample) {
-            self.derived.try_reserve(1).map_err(|_| memory())?;
-            self.derived.insert(at, sample);
+    /// Whether `sample` is the one this verifier derived for its manifest.
+    pub fn is_derived(&self, sample: &AuditSample) -> bool {
+        self.derived_for(sample.manifest_digest()) == Some(sample.identity())
+    }
+
+    /// Adds `sample`, which the verifier derived, to `derived` under its manifest (RFC-0067 'One
+    /// sample per manifest'): nothing when it is there already, and `Inconclusive(ERR-PROTO-ORDER)`
+    /// when the manifest holds another sample, which a second share or a second toss over one
+    /// manifest would give. Only the reveal of the verifier's own toss calls it
+    /// ([`super::file::LedgerFile`]), so that no other sample becomes the verifier's.
+    pub(crate) fn add_derived(&mut self, sample: &AuditSample) -> Result<(), Failure> {
+        let (manifest, identity) = (*sample.manifest_digest(), *sample.identity());
+        match self.derived.binary_search_by(|(m, _)| m.cmp(&manifest)) {
+            Ok(at) => match self.derived.get(at) {
+                Some((_, held)) if held == &identity => Ok(()),
+                _ => Err(Failure::Inconclusive(VerifierError {
+                    code: Code::ProtocolOrder,
+                })),
+            },
+            Err(at) => {
+                self.derived.try_reserve(1).map_err(|_| memory())?;
+                self.derived.insert(at, (manifest, identity));
+                Ok(())
+            }
         }
-        Ok(())
     }
 
     /// The samples with an accepted request, by increasing identity.
@@ -358,7 +378,7 @@ impl VerifierLedger {
         sample: &AuditSample,
         statement: &PublicStatement,
     ) -> Result<Vec<u64>, Failure> {
-        if !self.is_derived(sample.identity()) {
+        if !self.is_derived(sample) {
             return Err(usage());
         }
         if &statement.manifest_digest != sample.manifest_digest() {
@@ -488,7 +508,7 @@ impl VerifierLedger {
     /// checks, each `ERR-CODEC-NONCANONICAL`:
     ///
     /// - a `BitSet` whose last byte is zero, at that byte, as the set is read;
-    /// - in `derived`, a digest not above the one before it, at that digest;
+    /// - in `derived`, an entry whose manifest is not above the one before it, at that entry;
     /// - in `proven`, a record whose sample is not above the one before it, or is not in
     ///   `derived`, at the record's first byte; an empty set, at its length; and a `Û` list of
     ///   another length than the set, at the list's length.
@@ -522,18 +542,28 @@ impl VerifierLedger {
                 })
             })?;
             let mut last: Option<Digest> = None;
-            let derived = c.vec(size::DIGEST, |c| {
-                let at = c.offset();
-                let digest = c.digest()?;
-                if last.is_some_and(|l| digest <= l) {
-                    return Err(DecodeError::new(ErrorCode::Noncanonical, at));
-                }
-                last = Some(digest);
-                Ok(digest)
+            let derived = c.vec(DERIVED_LEN, |c| {
+                c.nested(|c| {
+                    let at = c.offset();
+                    let manifest = c.digest()?;
+                    if last.is_some_and(|l| manifest <= l) {
+                        return Err(DecodeError::new(ErrorCode::Noncanonical, at));
+                    }
+                    last = Some(manifest);
+                    Ok((manifest, c.digest()?))
+                })
             })?;
+            // The derived samples, sorted, for the records' rule.
+            let at = c.offset();
+            let mut samples: Vec<Digest> = Vec::new();
+            samples
+                .try_reserve_exact(derived.len())
+                .map_err(|_| DecodeError::new(ErrorCode::Memory, at))?;
+            samples.extend(derived.iter().map(|(_, sample)| *sample));
+            samples.sort_unstable();
             let mut previous: Option<Digest> = None;
             let proven = c.vec(ProvenSample::MIN_LEN, |c| {
-                let record = ProvenSample::decode(c, previous.as_ref(), &derived)?;
+                let record = ProvenSample::decode(c, previous.as_ref(), &samples)?;
                 previous = Some(record.sample);
                 Ok(record)
             })?;
@@ -582,8 +612,9 @@ impl VerifierLedger {
             r.rows.encode(&mut out);
         }
         put_len(&mut out, self.derived.len());
-        for d in &self.derived {
-            out.extend_from_slice(d);
+        for (manifest, sample) in &self.derived {
+            out.extend_from_slice(manifest);
+            out.extend_from_slice(sample);
         }
         put_len(&mut out, self.proven.len());
         for p in &self.proven {
@@ -605,7 +636,7 @@ impl VerifierLedger {
         n = n.checked_add(
             u64::try_from(self.derived.len())
                 .ok()?
-                .checked_mul(size::DIGEST)?,
+                .checked_mul(DERIVED_LEN)?,
         )?;
         for p in &self.proven {
             n = n.checked_add(p.encoded_len()?)?;
@@ -627,6 +658,9 @@ const fn rejected(field: StatementField) -> Failure {
     Failure::Rejected(RejectReason::StatementMismatch { field })
 }
 
+/// A `derived` entry's size: two digests.
+const DERIVED_LEN: u64 = 64;
+
 const fn memory() -> Failure {
     Failure::Inconclusive(VerifierError { code: Code::Memory })
 }
@@ -637,19 +671,19 @@ pub(crate) mod tests {
     use crate::protocol::{BatchDescriptor, Decoding, PredictorSpec, RequestRef};
     use tv_codec::DecodeLimits;
 
-    /// A ledger whose `derived` holds `samples`, in order, and nothing else.
-    pub(crate) fn ledger_of(samples: &[Digest]) -> VerifierLedger {
+    /// A ledger whose `derived` holds `samples`, and nothing else.
+    pub(crate) fn ledger_of(samples: &[&AuditSample]) -> VerifierLedger {
         let mut ledger = VerifierLedger::new();
         for s in samples {
-            ledger.add_derived(*s).unwrap();
+            ledger.add_derived(s).unwrap();
         }
         ledger
     }
 
-    /// A sample over the manifest `[7; 32]` selecting `keys`, decoded from a payload built here,
-    /// its policy selecting everything and its toss opening; `seed` varies the toss.
-    pub(crate) fn sample_of(keys: &[RequestKey], seed: u8) -> AuditSample {
-        let mut payload = vec![7; 32];
+    /// A sample over the manifest `[manifest; 32]` selecting `keys`, decoded from a payload
+    /// built here, its policy selecting everything and its toss opening; `seed` varies the toss.
+    pub(crate) fn sample_over(manifest: u8, keys: &[RequestKey], seed: u8) -> AuditSample {
+        let mut payload = vec![manifest; 32];
         payload.extend(86_400u64.to_le_bytes());
         payload.extend(1u64.to_le_bytes());
         payload.extend(u32::MAX.to_le_bytes());
@@ -671,7 +705,8 @@ pub(crate) mod tests {
         AuditSample::decode_payload(&payload, &DecodeLimits::MESSAGE).unwrap()
     }
 
-    /// A sample of session 1's requests 1 to 3; `seed` varies its identity.
+    /// A sample of session 1's requests 1 to 3 over the manifest `[seed; 32]`: each seed is
+    /// another period, with its own sample.
     pub(crate) fn derived_sample(seed: u8) -> AuditSample {
         let keys: Vec<RequestKey> = (1..=3)
             .map(|r| RequestKey {
@@ -679,7 +714,7 @@ pub(crate) mod tests {
                 request_id: r,
             })
             .collect();
-        sample_of(&keys, seed)
+        sample_over(seed, &keys, seed)
     }
 
     /// The statement of a batch of the sample's selected requests at `indices`.
@@ -710,12 +745,37 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn derived_samples_stay_sorted_and_unique() {
-        let mut ledger = ledger_of(&[[5; 32], [1; 32], [9; 32], [5; 32]]);
-        assert_eq!(ledger.derived(), [[1; 32], [5; 32], [9; 32]]);
-        ledger.add_derived([0; 32]).unwrap();
-        assert_eq!(ledger.derived().first(), Some(&[0; 32]));
-        assert!(ledger.is_derived(&[9; 32]) && !ledger.is_derived(&[8; 32]));
+    fn derived_holds_one_sample_per_manifest() {
+        let (a, b, c) = (derived_sample(5), derived_sample(1), derived_sample(9));
+        let mut ledger = ledger_of(&[&a, &b, &c]);
+        let manifests: Vec<Digest> = ledger.derived().iter().map(|(m, _)| *m).collect();
+        assert_eq!(manifests, [[1; 32], [5; 32], [9; 32]]);
+        assert!(ledger.is_derived(&a) && ledger.is_derived(&c));
+        // The same sample again changes nothing.
+        let before = ledger.clone();
+        ledger.add_derived(&a).unwrap();
+        assert_eq!(ledger, before);
+        // Another sample of a manifest the ledger holds: refused, the ledger as it was.
+        let other = sample_over(5, &[], 77);
+        assert_ne!(other.identity(), a.identity());
+        assert_eq!(
+            ledger.add_derived(&other),
+            Err(Failure::Inconclusive(VerifierError {
+                code: Code::ProtocolOrder
+            }))
+        );
+        assert_eq!(ledger, before);
+        assert!(!ledger.is_derived(&other));
+        // A sample of a manifest the ledger does not hold is not derived; nor is one whose identity
+        // a hand-made ledger lists under another manifest.
+        assert!(!ledger.is_derived(&sample_over(8, &[], 5)));
+        let mut payload = vec![0; 24];
+        payload.extend(1u64.to_le_bytes());
+        payload.extend([3; 32]);
+        payload.extend(a.identity());
+        payload.extend(0u64.to_le_bytes());
+        let misplaced = VerifierLedger::decode_payload(&payload, &DecodeLimits::MESSAGE).unwrap();
+        assert!(!misplaced.is_derived(&a));
         let bytes = ledger.encode_payload().unwrap();
         assert_eq!(
             VerifierLedger::decode_payload(&bytes, &DecodeLimits::MESSAGE).unwrap(),
@@ -726,7 +786,7 @@ pub(crate) mod tests {
     #[test]
     fn a_sample_the_verifier_did_not_derive_is_refused_before_the_statement() {
         let sample = derived_sample(1);
-        let mut ledger = ledger_of(&[*derived_sample(2).identity()]);
+        let mut ledger = ledger_of(&[&derived_sample(2)]);
         // The statement is broken too, in its manifest: the sample's check comes first.
         let mut wrong = statement_of(&sample, &[0]);
         wrong.manifest_digest = [0; 32];
@@ -737,7 +797,7 @@ pub(crate) mod tests {
                 Err(usage())
             );
         }
-        ledger.add_derived(*sample.identity()).unwrap();
+        ledger.add_derived(&sample).unwrap();
         assert_eq!(
             ledger.check_accounting(&sample, &statement_of(&sample, &[2, 0])),
             Ok(vec![2, 0])

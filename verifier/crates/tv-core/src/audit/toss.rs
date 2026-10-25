@@ -24,6 +24,8 @@ pub struct AuditToss {
     policy: AuditPolicy,
     share: Zeroizing<Vec<u8>>,
     commitment: Digest,
+    /// The prover's share the toss was first revealed against, the only one it takes.
+    answer: Option<[u8; 32]>,
 }
 
 impl AuditToss {
@@ -50,6 +52,7 @@ impl AuditToss {
             policy,
             share,
             commitment,
+            answer: None,
         })
     }
 
@@ -74,27 +77,40 @@ impl AuditToss {
     /// manifest. The returned sample's transcript carries `s_V`, which the verifier then sends.
     ///
     /// This is the only way a sample becomes the verifier's own (RFC-0067 'The verifier's own
-    /// sample'): the sample's identity joins `ledger`'s `derived`, and the ledger is written,
+    /// sample'): `(manifest, sample)` joins `ledger`'s `derived`, and the ledger is written,
     /// before the sample is returned. The accounting and the report refuse every other sample,
     /// however well its coin toss opens.
     ///
+    /// One sample per manifest (RFC-0067 'One sample per manifest'): once `s_V` is out, a prover
+    /// could choose another share whose sample suits it. So the toss is revealed against one
+    /// prover share, the first that reaches the derivation, and any other is
+    /// `Inconclusive(ERR-PROTO-ORDER)`; and the ledger takes no second sample for a manifest it
+    /// holds, `Inconclusive(ERR-PROTO-ORDER)`, which also refuses a second toss over one
+    /// manifest. The same share again gives the same sample, which changes nothing.
+    ///
     /// The toss stays usable after a failure, so that a verifier whose inputs disagreed can
-    /// reveal once they agree: the prover answers one commitment per manifest, and a share lost
-    /// would leave the period without a sample.
+    /// reveal once they agree, against the same share: the prover answers one commitment per
+    /// manifest, and a share lost would leave the period without a sample.
     ///
     /// # Errors
     ///
-    /// `Inconclusive(ERR-USAGE)` for a window over another manifest, the errors of
-    /// [`AuditSample::derive`], and those of the ledger's write, after which the sample is not
-    /// returned.
+    /// `Inconclusive(ERR-USAGE)` for a window over another manifest; `Inconclusive(ERR-PROTO-ORDER)`
+    /// for a share other than the first, or a manifest the ledger holds another sample for; the
+    /// errors of [`AuditSample::derive`]; and those of the ledger's write, after which the sample
+    /// is not returned.
     pub fn reveal(
-        &self,
+        &mut self,
         window: &Window<'_>,
         prover_share: [u8; 32],
         ledger: &mut LedgerFile,
     ) -> Result<AuditSample, Failure> {
         if window.period().manifest_digest() != &self.manifest_digest {
             return Err(usage());
+        }
+        match self.answer {
+            Some(first) if first != prover_share => return Err(fail(ErrorCode::ProtocolOrder)),
+            Some(_) => {}
+            None => self.answer = Some(prover_share),
         }
         let mut verifier_share = [0; 32];
         if self.share.len() != verifier_share.len() {

@@ -85,23 +85,39 @@ impl AuditReport {
     /// The report of `sample` with `outcomes`, one per selected request in `selected`'s order,
     /// for a verifier that keeps its verdicts (RFC-0067 'The report from the ledger'). The sample
     /// must be the verifier's own, in `ledger`'s `derived`; the seed is recomputed from its coin
-    /// toss, which must open.
+    /// toss, which must open; and the outcomes must agree with the ledger: `Accepted` exactly for
+    /// the requests the ledger records accepted, each with the `Û` it records (RFC-0067 'The
+    /// verifier's own sample').
     ///
     /// # Errors
     ///
-    /// `Inconclusive(ERR-USAGE)` for a sample the verifier did not derive or another number of
-    /// outcomes than of selected requests, and `Inconclusive(ERR-PROTO-COINTOSS)` for a coin toss
-    /// that does not open.
+    /// `Inconclusive(ERR-USAGE)` for a sample the verifier did not derive, another number of
+    /// outcomes than of selected requests, outcomes that disagree with the ledger, or a record
+    /// that names an index past `selected`; and `Inconclusive(ERR-PROTO-COINTOSS)` for a coin
+    /// toss that does not open.
     pub fn new(
         sample: &AuditSample,
         ledger: &VerifierLedger,
         outcomes: Vec<RequestOutcome>,
     ) -> Result<Self, Failure> {
-        if !ledger.is_derived(sample.identity()) {
+        if !ledger.is_derived(sample) {
             return Err(usage());
         }
         sample.coin_toss().check().map_err(Failure::Inconclusive)?;
         if outcomes.len() != sample.selected().len() {
+            return Err(usage());
+        }
+        let recorded = recorded(sample, ledger)?;
+        let agrees =
+            outcomes
+                .iter()
+                .zip(&recorded)
+                .all(|(outcome, record)| match (outcome, record) {
+                    (RequestOutcome::Accepted { uhat }, Some(r)) => uhat == r,
+                    (RequestOutcome::Accepted { .. }, None) | (_, Some(_)) => false,
+                    (_, None) => true,
+                });
+        if !agrees {
             return Err(usage());
         }
         let mut summary = AuditSummary::default();
@@ -154,26 +170,15 @@ impl AuditReport {
     /// not derive (RFC-0067 'The verifier's own sample'). The ledger holds records of derived
     /// samples only, so such a sample has none, and is refused there.
     pub fn from_ledger(sample: &AuditSample, ledger: &VerifierLedger) -> Result<Self, Failure> {
-        let count = sample.selected().len();
         let mut outcomes = Vec::new();
-        outcomes.try_reserve_exact(count).map_err(|_| {
-            Failure::Inconclusive(VerifierError {
-                code: ErrorCode::Memory,
-            })
-        })?;
-        outcomes.resize(
-            count,
-            RequestOutcome::Unproven(UnprovenReason::DeadlineMissed),
-        );
-        if let Some(record) = ledger.proven(sample.identity()) {
-            for (index, uhat) in record.iter() {
-                let slot = usize::try_from(index)
-                    .ok()
-                    .and_then(|i| outcomes.get_mut(i))
-                    .ok_or(usage())?;
-                *slot = RequestOutcome::Accepted { uhat };
-            }
-        }
+        let recorded = recorded(sample, ledger)?;
+        outcomes
+            .try_reserve_exact(recorded.len())
+            .map_err(|_| memory())?;
+        outcomes.extend(recorded.into_iter().map(|record| match record {
+            Some(uhat) => RequestOutcome::Accepted { uhat },
+            None => RequestOutcome::Unproven(UnprovenReason::DeadlineMissed),
+        }));
         Self::new(sample, ledger, outcomes)
     }
 
@@ -264,4 +269,33 @@ impl AuditReport {
         }
         out.write_str("}}\n")
     }
+}
+
+/// The ledger's record of `sample`, one entry per selected request: its `Û` when the ledger
+/// records it accepted. A record naming an index past `selected` is `Inconclusive(ERR-USAGE)`:
+/// the ledger is not this sample's.
+fn recorded(
+    sample: &AuditSample,
+    ledger: &VerifierLedger,
+) -> Result<Vec<Option<FixedBits>>, Failure> {
+    let count = sample.selected().len();
+    let mut out = Vec::new();
+    out.try_reserve_exact(count).map_err(|_| memory())?;
+    out.resize(count, None);
+    if let Some(record) = ledger.proven(sample.identity()) {
+        for (index, uhat) in record.iter() {
+            let slot = usize::try_from(index)
+                .ok()
+                .and_then(|i| out.get_mut(i))
+                .ok_or(usage())?;
+            *slot = Some(uhat);
+        }
+    }
+    Ok(out)
+}
+
+const fn memory() -> Failure {
+    Failure::Inconclusive(VerifierError {
+        code: ErrorCode::Memory,
+    })
 }

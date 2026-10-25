@@ -10,8 +10,9 @@
 //! envelope reseals, to the input byte for byte (INV-TCE-2), and each proper prefix of a payload
 //! is cut short. The value must keep the rules, read here from its accessors: the policy's
 //! buckets strictly increasing and its batch bounds; `selected` strictly increasing; `derived`
-//! strictly increasing, and each ledger record of a derived sample, of a non-empty set whose
-//! last byte is not zero, with one `Û` per index, by strictly increasing sample (RFC-0067). A
+//! strictly increasing by manifest, and each ledger record of a derived sample, of a non-empty
+//! set whose last byte is not zero, with one `Û` per index, by strictly increasing sample
+//! (RFC-0067). A
 //! report on an accepted sample from an empty ledger, which did not derive it, is refused; from
 //! a ledger that derived it, it has every request unproven, or refuses a coin toss that does not
 //! open.
@@ -116,11 +117,11 @@ fn sample_rules(sample: &AuditSample) {
 
 fn ledger_rules(ledger: &VerifierLedger) {
     for pair in ledger.derived().windows(2) {
-        assert!(pair[0] < pair[1], "derived not increasing");
+        assert!(pair[0].0 < pair[1].0, "derived not increasing by manifest");
     }
     for record in ledger.proven_samples() {
         assert!(
-            ledger.derived().contains(record.sample()),
+            ledger.derived().iter().any(|(_, s)| s == record.sample()),
             "a record of a sample not derived"
         );
     }
@@ -149,6 +150,7 @@ fn ledger_rules(ledger: &VerifierLedger) {
 fn deriving(sample: &AuditSample) -> VerifierLedger {
     let mut payload = vec![0; 24];
     payload.extend(1u64.to_le_bytes());
+    payload.extend(sample.manifest_digest());
     payload.extend(sample.identity());
     payload.extend(0u64.to_le_bytes());
     VerifierLedger::decode_payload(&payload, &DecodeLimits::MESSAGE).unwrap()

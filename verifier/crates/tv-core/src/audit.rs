@@ -55,10 +55,12 @@
 //!    ([`crate::anchor`]). Nothing below runs on anything else.
 //! 2. **The coin toss.** [`AuditToss::commit`] draws `s_V`, 32 fresh bytes, once the policy is
 //!    fixed, and gives `c_V = H("coin-commit", s_V)`; [`AuditToss::reveal`] runs only over a
-//!    window of the toss's manifest, `Inconclusive(ERR-USAGE)` otherwise, and records the
-//!    sample it derives in the ledger's `derived`, the file written, before it returns the
+//!    window of the toss's manifest, `Inconclusive(ERR-USAGE)` otherwise, and records
+//!    `(manifest, sample)` in the ledger's `derived`, the file written, before it returns the
 //!    sample: the only way a sample becomes the verifier's own (RFC-0067 'The verifier's own
-//!    sample'). The transcript
+//!    sample'). One sample per manifest: the toss is revealed against the first prover share
+//!    only, and the ledger takes no other sample for a manifest it holds, each
+//!    `Inconclusive(ERR-PROTO-ORDER)`; the same sample again changes nothing. The transcript
 //!    `CoinTossTranscript { c_V, s_P, s_V }` is 96 bytes; a reveal that does not open `c_V` is
 //!    `Inconclusive(ERR-PROTO-COINTOSS)`.
 //! 3. **The seed.** `sample_seed = H("audit-sample", s_V ‖ s_P ‖ manifest_digest)`, the
@@ -106,11 +108,12 @@
 //! Vec<(Digest, Vec<(u32, Digest)>)>`, `successors: Vec<(Digest, Digest)>`, `used_blinding_rows:
 //! Vec<(Digest, u32, u8, BitSet)>`, `proven: Vec<(Digest, BitSet, Vec<FixedBits>)>`. A `BitSet`
 //! is `Bytes`, index `i` at bit `i mod 8` of byte `⌊i / 8⌋`, whose last byte is not zero, else
-//! `ERR-CODEC-NONCANONICAL` at that byte, as the set is read. `derived: Vec<Digest>`, before
-//! `proven`, names the samples the verifier derived, strictly increasing (else
-//! `ERR-CODEC-NONCANONICAL` at the first digest out of order). In `proven`, one record per
-//! derived sample with an accepted request, by strictly increasing sample identity (else
-//! `ERR-CODEC-NONCANONICAL` at the record's first byte, as for a sample not in `derived`), each
+//! `ERR-CODEC-NONCANONICAL` at that byte, as the set is read. `derived: Vec<(Digest, Digest)>`,
+//! before `proven`, names for each manifest the one sample the verifier derived for it, by
+//! strictly increasing manifest (else `ERR-CODEC-NONCANONICAL` at the first entry out of order).
+//! In `proven`, one record per derived sample with an accepted request, by strictly increasing
+//! sample identity (else `ERR-CODEC-NONCANONICAL` at the record's first byte, as for a sample not
+//! among `derived`'s samples), each
 //! with a non-empty set (else at its length) and one `Û` per index in increasing order (else at
 //! the list's length). The weight fields are #158's and decode without further rules.
 //!
@@ -118,12 +121,17 @@
 //! hard link, else `ERR-USAGE`, checked without opening it, so a FIFO never blocks; its
 //! directory is resolved once at open. A write goes to a synced temporary file renamed over the
 //! old one, then syncs the directory, a failure of which is `ERR-RES-IO`, under a lock file that
-//! keeps a second writer out.
+//! keeps a second writer out and that its writer removes only while it still holds its token. A
+//! ledger that does not change is not written, and one that would not reopen under the ledger's
+//! limits is refused, `ERR-CODEC-LIMIT`, before anything is written.
 //!
 //! ## The report
 //!
-//! [`AuditReport::from_ledger`], at the deadline: the sample is in the ledger's `derived`, else
-//! `Inconclusive(ERR-USAGE)`; its coin toss opens, else `Inconclusive(ERR-PROTO-COINTOSS)`; each selected request, in order, is `Accepted { uhat }`
+//! [`AuditReport::new`] takes outcomes a verifier kept, which must agree with the ledger:
+//! `Accepted` exactly for the requests it records accepted, with their `Û`, else
+//! `Inconclusive(ERR-USAGE)`. [`AuditReport::from_ledger`], at the deadline: the sample is the
+//! one the ledger's `derived` holds for its manifest, else `Inconclusive(ERR-USAGE)`; its coin
+//! toss opens, else `Inconclusive(ERR-PROTO-COINTOSS)`; each selected request, in order, is `Accepted { uhat }`
 //! when the ledger records it for the sample's identity, else `Unproven(DeadlineMissed)`; a
 //! record naming an index past `selected` is `Inconclusive(ERR-USAGE)`. `sample` is the seed,
 //! and the summary counts the outcomes, `max_uhat` the largest accepted `Û`.

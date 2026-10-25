@@ -437,17 +437,21 @@ fn statement(requests: &[u64]) -> PublicStatement {
     }
 }
 
-/// The ledger of a verifier that derived the samples `ids` (sorted here), with nothing proven:
+/// The ledger of a verifier that derived `samples`, one per manifest, with nothing proven:
 /// decoded from its bytes, as a verifier's ledger file holds it after its reveals.
-fn deriving(ids: &[[u8; 32]]) -> VerifierLedger {
-    let mut ids = ids.to_vec();
+fn deriving(samples: &[&AuditSample]) -> VerifierLedger {
+    let mut ids: Vec<([u8; 32], [u8; 32])> = samples
+        .iter()
+        .map(|s| (*s.manifest_digest(), *s.identity()))
+        .collect();
     ids.sort();
     let mut payload = Vec::new();
     for _ in 0..3 {
         payload.extend(0u64.to_le_bytes());
     }
     payload.extend((ids.len() as u64).to_le_bytes());
-    for id in &ids {
+    for (manifest, id) in &ids {
+        payload.extend(manifest);
         payload.extend(id);
     }
     payload.extend(0u64.to_le_bytes());
@@ -463,7 +467,7 @@ fn report_inputs(dir: &Path, accepted: &[u64]) -> (PathBuf, PathBuf) {
     let tas = dir.join("sample.tas");
     fs::write(&tas, sample.seal().unwrap()).unwrap();
     let tvl = dir.join("ledger.tvl");
-    let mut ledger = deriving(&[*sample.identity()]);
+    let mut ledger = deriving(&[&sample]);
     if !accepted.is_empty() {
         ledger
             .record_accepted(
@@ -589,9 +593,10 @@ fn every_report_input_failure_exits_with_its_code() {
         (r.exit_code, error_code(&r.stdout).as_str()),
         (64, "ERR-USAGE")
     );
-    // Recorded as derived, as only a hand-made ledger can: its toss is refused.
+    // Recorded as derived, as only a hand-made ledger can, since a reveal derives from a toss
+    // that opens: its toss is refused, the one path to ERR-PROTO-COINTOSS left.
     let owned = dir.join("owned.tvl");
-    fs::write(&owned, deriving(&[*sample.identity()]).seal().unwrap()).unwrap();
+    fs::write(&owned, deriving(&[&sample]).seal().unwrap()).unwrap();
     let r = report(&owned, &bad_toss, &out);
     assert_eq!(
         (r.exit_code, error_code(&r.stdout).as_str()),

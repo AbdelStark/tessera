@@ -85,17 +85,35 @@ fn checked(path: &Path) -> Result<fs::Metadata, VerifierError> {
 /// Reads the regular file `path`, at most `limit` bytes, after [`checked`], and checks that the
 /// file opened is the one checked.
 fn read_regular(path: &Path, limit: u64) -> Result<Vec<u8>, VerifierError> {
+    read_regular_with(path, limit, &|| ())
+}
+
+/// [`read_regular`], with `between` run after the check and before the open, where a test makes
+/// the file grow.
+fn read_regular_with(
+    path: &Path,
+    limit: u64,
+    between: &dyn Fn(),
+) -> Result<Vec<u8>, VerifierError> {
     let before = checked(path)?;
     if before.len() > limit {
         return Err(VerifierError {
             code: Code::CodecLimit,
         });
     }
+    between();
     let mut file = File::open(path).map_err(|_| io())?;
     let after = file.metadata().map_err(|_| io())?;
     if !after.is_file() || !one_name(&after) || file_id(&after) != file_id(&before) {
         // Replaced between the check and the open.
         return Err(misuse());
+    }
+    // The file may have grown since it was checked: its size is checked again before anything
+    // is reserved for it.
+    if after.len() > limit {
+        return Err(VerifierError {
+            code: Code::CodecLimit,
+        });
     }
     let mut out = Vec::new();
     out.try_reserve_exact(usize::try_from(after.len()).map_err(|_| io())?)
@@ -168,39 +186,49 @@ impl Place {
 #[derive(Debug)]
 pub struct LedgerFile {
     place: Place,
-    lock: PathBuf,
+    lock: Held,
     ledger: VerifierLedger,
+    limits: DecodeLimits,
 }
 
 impl LedgerFile {
-    /// Creates a ledger file at `path`, holding an empty ledger, and holds it.
+    /// Creates a ledger file at `path`, holding an empty ledger, and holds it. `limits` are the
+    /// limits the ledger is to be reopened under: no write makes it larger than they admit.
     ///
     /// # Errors
     ///
     /// `ERR-USAGE` when anything exists at `path`, whose ledger would be lost; `ERR-RES-IO` when
     /// the lock is held, the directory cannot be resolved or a file cannot be written or synced;
-    /// `ERR-RES-MEMORY`.
-    pub fn create(path: &Path) -> Result<Self, VerifierError> {
-        Self::create_with(path, &REAL)
+    /// `ERR-CODEC-LIMIT` for limits that admit no ledger; `ERR-RES-MEMORY`.
+    pub fn create(path: &Path, limits: &DecodeLimits) -> Result<Self, VerifierError> {
+        Self::create_with(path, limits, &REAL)
     }
 
-    fn create_with(path: &Path, hooks: &Hooks<'_>) -> Result<Self, VerifierError> {
+    fn create_with(
+        path: &Path,
+        limits: &DecodeLimits,
+        hooks: &Hooks<'_>,
+    ) -> Result<Self, VerifierError> {
         let place = Place::resolve(path)?;
         let lock = Lock::take(&place)?;
         // The hard link that names the new ledger fails if anything is there, a link that leads
         // nowhere included: the check and the creation are one step.
         let ledger = VerifierLedger::new();
-        write_new(&place, &ledger.seal()?, hooks)?;
+        let bytes = ledger.seal()?;
+        reopenable(&bytes, limits)?;
+        write_new(&place, &bytes, hooks)?;
         Ok(Self {
             place,
             lock: lock.release(),
             ledger,
+            limits: *limits,
         })
     }
 
     /// Opens the ledger file at `path` and holds it: the lock in the directory resolved now,
     /// then the file, read as [`read_ledger`] reads it, the path's rules first. A refusal
-    /// releases the lock.
+    /// releases the lock. `limits` are also the limits no later write may exceed, so that the
+    /// ledger always reopens under them.
     ///
     /// # Errors
     ///
@@ -214,6 +242,7 @@ impl LedgerFile {
             place,
             lock: lock.release(),
             ledger,
+            limits: *limits,
         })
     }
 
@@ -233,7 +262,8 @@ impl LedgerFile {
     ///
     /// Those of [`VerifierLedger::record_accepted`]; `Inconclusive(ERR-RES-IO)` when the file or
     /// its directory cannot be written or synced; `Inconclusive(ERR-USAGE)` when the ledger is no
-    /// longer one regular file of one name.
+    /// longer one regular file of one name; `Inconclusive(ERR-CODEC-LIMIT)` when the new ledger
+    /// would not reopen under the ledger's limits. A batch of no request writes nothing.
     pub fn record_accepted(
         &mut self,
         sample: &AuditSample,
@@ -257,8 +287,9 @@ impl LedgerFile {
 
     /// Records that the verifier derived `sample`, and writes the ledger, before the sample
     /// leaves the verifier (RFC-0067 'The verifier's own sample'). Only the reveal of the
-    /// verifier's own toss calls it ([`super::AuditToss::reveal`]). A sample already recorded
-    /// writes nothing.
+    /// verifier's own toss calls it ([`super::AuditToss::reveal`]). The same sample again writes
+    /// nothing; another sample of a manifest the ledger holds is `Inconclusive(ERR-PROTO-ORDER)`
+    /// (RFC-0067 'One sample per manifest').
     pub(crate) fn record_derived(&mut self, sample: &AuditSample) -> Result<(), Failure> {
         self.record_derived_with(sample, &REAL)
     }
@@ -268,35 +299,85 @@ impl LedgerFile {
         sample: &AuditSample,
         hooks: &Hooks<'_>,
     ) -> Result<(), Failure> {
-        if self.ledger.is_derived(sample.identity()) {
-            return Ok(());
-        }
         let mut next = self.ledger.clone();
-        next.add_derived(*sample.identity())?;
+        next.add_derived(sample)?;
         self.commit(next, hooks)
     }
 
+    /// Writes `next` and makes it the ledger. A ledger that does not change is not written: a
+    /// batch of no request, or a sample derived again. One that would not reopen under the
+    /// ledger's limits is refused before anything is written.
     fn commit(&mut self, next: VerifierLedger, hooks: &Hooks<'_>) -> Result<(), Failure> {
+        if next == self.ledger {
+            return Ok(());
+        }
         let bytes = next.seal().map_err(Failure::Inconclusive)?;
+        reopenable(&bytes, &self.limits).map_err(Failure::Inconclusive)?;
         write_atomic(&self.place, &bytes, hooks).map_err(Failure::Inconclusive)?;
         self.ledger = next;
         Ok(())
     }
 }
 
+/// Whether the sealed ledger `bytes` reopens under `limits`: its size, then the whole decoding,
+/// whose sequences and depth the limits bound too. A ledger past them is `ERR-CODEC-LIMIT`.
+fn reopenable(bytes: &[u8], limits: &DecodeLimits) -> Result<(), VerifierError> {
+    let limit = || VerifierError {
+        code: Code::CodecLimit,
+    };
+    if u64::try_from(bytes.len()).map_or(true, |n| n > limits.max_total_bytes) {
+        return Err(limit());
+    }
+    match VerifierLedger::open(bytes, limits) {
+        Ok(_) => Ok(()),
+        Err(e) if e.code() == tv_codec::ErrorCode::Limit => Err(limit()),
+        Err(e) if e.code() == tv_codec::ErrorCode::Memory => {
+            Err(VerifierError { code: Code::Memory })
+        }
+        // The ledger's own encoding decodes, by INV-TCE-1.
+        Err(_) => Err(VerifierError {
+            code: Code::Internal,
+        }),
+    }
+}
+
 impl Drop for LedgerFile {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.lock);
+        self.lock.remove();
+    }
+}
+
+/// A lock this writer created: its path, and the token it wrote there.
+#[derive(Debug)]
+struct Held {
+    path: PathBuf,
+    token: String,
+}
+
+impl Held {
+    /// Removes the lock if it still holds this writer's token (RFC-0067 'One writer'): after an
+    /// operator cleared a stale lock, the lock at the path may be another writer's, and it stays.
+    fn remove(&self) {
+        let ours = fs::symlink_metadata(&self.path)
+            .is_ok_and(|m| m.file_type().is_file() && m.len() < 4096)
+            && fs::read(&self.path).is_ok_and(|bytes| bytes == self.token.as_bytes());
+        if ours {
+            let _ = fs::remove_file(&self.path);
+        }
     }
 }
 
 /// The lock file of a ledger while it is being taken: removed if dropped armed.
 struct Lock {
-    path: PathBuf,
+    held: Held,
     armed: bool,
 }
 
 impl Lock {
+    /// Creates `<name>.lock` exclusively and writes this writer's token in it: the process, the
+    /// time and a counter, which no other writer's lock repeats. A token that cannot be written
+    /// would leave a lock no one could prove theirs, so the lock is then removed and the take
+    /// fails.
     fn take(place: &Place) -> Result<Self, VerifierError> {
         let path = place.beside("", ".lock");
         let mut file = OpenOptions::new()
@@ -304,22 +385,42 @@ impl Lock {
             .create_new(true)
             .open(&path)
             .map_err(|_| io())?;
-        let lock = Self { path, armed: true };
-        // The holder's process, for the operator; the lock is the file's existence.
-        let _ = writeln!(file, "{}", std::process::id());
-        Ok(lock)
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        let token = format!(
+            "tessera-verify ledger lock: process {}, {nanos} ns, {}\n",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        );
+        if file
+            .write_all(token.as_bytes())
+            .and_then(|()| file.sync_all())
+            .is_err()
+        {
+            drop(file);
+            let _ = fs::remove_file(&path);
+            return Err(io());
+        }
+        Ok(Self {
+            held: Held { path, token },
+            armed: true,
+        })
     }
 
-    fn release(mut self) -> PathBuf {
+    fn release(mut self) -> Held {
         self.armed = false;
-        core::mem::take(&mut self.path)
+        Held {
+            path: core::mem::take(&mut self.held.path),
+            token: core::mem::take(&mut self.held.token),
+        }
     }
 }
 
 impl Drop for Lock {
     fn drop(&mut self) {
         if self.armed {
-            let _ = fs::remove_file(&self.path);
+            self.held.remove();
         }
     }
 }
@@ -511,10 +612,10 @@ mod tests {
         for step in [Step::Created, Step::Partial, Step::Written, Step::Synced] {
             let dir = scratch("interrupt");
             let at = place(&dir);
-            let old = ledger_of(&[[1; 32]]);
+            let old = ledger_of(&[&derived_sample(1)]);
             let old_bytes = old.seal().unwrap();
             write_new(&at, &old_bytes, &REAL).unwrap();
-            let new_bytes = ledger_of(&[[2; 32]]).seal().unwrap();
+            let new_bytes = ledger_of(&[&derived_sample(2)]).seal().unwrap();
             let stop = move |s: Step| s == step;
             let hooks = Hooks {
                 stop: &stop,
@@ -567,11 +668,14 @@ mod tests {
         };
         // Creating: the link is made, the directory's sync fails, and so does the creation.
         let path = dir.join("ledger.tvl");
-        assert_eq!(LedgerFile::create_with(&path, &hooks).err(), Some(io()));
+        assert_eq!(
+            LedgerFile::create_with(&path, &DecodeLimits::MESSAGE, &hooks).err(),
+            Some(io())
+        );
         assert_eq!(synced.borrow().as_slice(), std::slice::from_ref(&dir));
         fs::remove_file(&path).unwrap();
         // Recording: the verdict is not Accept, and the ledger in memory is the old one.
-        let mut file = LedgerFile::create(&path).unwrap();
+        let mut file = LedgerFile::create(&path, &DecodeLimits::MESSAGE).unwrap();
         let sample = derived_sample(4);
         file.record_derived(&sample).unwrap();
         let before = file.ledger().clone();
@@ -600,7 +704,7 @@ mod tests {
     fn a_ledger_of_two_names_is_refused() {
         let dir = scratch("names");
         let path = dir.join("ledger.tvl");
-        drop(LedgerFile::create(&path).unwrap());
+        drop(LedgerFile::create(&path, &DecodeLimits::MESSAGE).unwrap());
         // A symbolic link to it: refused by the reader and the writer, and holds no lock.
         let link = dir.join("link.tvl");
         std::os::unix::fs::symlink(&path, &link).unwrap();
@@ -615,7 +719,10 @@ mod tests {
         // A ledger is not created over a link, even one that leads nowhere.
         let dangling = dir.join("dangling.tvl");
         std::os::unix::fs::symlink(dir.join("nowhere"), &dangling).unwrap();
-        assert_eq!(LedgerFile::create(&dangling).err(), Some(misuse()));
+        assert_eq!(
+            LedgerFile::create(&dangling, &DecodeLimits::MESSAGE).err(),
+            Some(misuse())
+        );
         // A second hard link: both names are refused.
         let hard = dir.join("hard.tvl");
         fs::hard_link(&path, &hard).unwrap();
@@ -654,7 +761,7 @@ mod tests {
         let alias = dir.with_extension("alias");
         std::os::unix::fs::symlink(&dir, &alias).unwrap();
         let path = dir.join("ledger.tvl");
-        let file = LedgerFile::create(&path).unwrap();
+        let file = LedgerFile::create(&path, &DecodeLimits::MESSAGE).unwrap();
         // The same ledger through a linked directory: the same lock, held.
         let through = alias.join("ledger.tvl");
         assert_eq!(
@@ -702,7 +809,7 @@ mod tests {
     fn a_reveal_records_its_sample_before_it_is_used() {
         let dir = scratch("derived");
         let path = dir.join("ledger.tvl");
-        let mut file = LedgerFile::create(&path).unwrap();
+        let mut file = LedgerFile::create(&path, &DecodeLimits::MESSAGE).unwrap();
         let sample = derived_sample(7);
         file.record_derived(&sample).unwrap();
         let bytes = fs::read(&path).unwrap();
@@ -711,7 +818,149 @@ mod tests {
         assert_eq!(fs::read(&path).unwrap(), bytes);
         drop(file);
         let ledger = read_ledger(&path, &DecodeLimits::MESSAGE).unwrap();
-        assert_eq!(ledger.derived(), [*sample.identity()]);
+        assert_eq!(
+            ledger.derived(),
+            [(*sample.manifest_digest(), *sample.identity())]
+        );
+        fs::remove_file(&path).unwrap();
+        fs::remove_dir(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_lock_taken_over_after_an_operator_cleared_it_survives_the_first_writer() {
+        let dir = scratch("takeover");
+        let path = dir.join("ledger.tvl");
+        let lock = dir.join("ledger.tvl.lock");
+        let first = LedgerFile::create(&path, &DecodeLimits::MESSAGE).unwrap();
+        let token = fs::read(&lock).unwrap();
+        assert!(String::from_utf8_lossy(&token).contains(&std::process::id().to_string()));
+        // The operator clears what it takes for a stale lock, and a second writer takes over.
+        fs::remove_file(&lock).unwrap();
+        let second = LedgerFile::open(&path, &DecodeLimits::MESSAGE).unwrap();
+        let theirs = fs::read(&lock).unwrap();
+        assert_ne!(theirs, token, "each writer names itself");
+        // The first writer's exit leaves the second's lock; the second's removes it.
+        drop(first);
+        assert_eq!(fs::read(&lock).unwrap(), theirs);
+        assert_eq!(
+            LedgerFile::open(&path, &DecodeLimits::MESSAGE).err(),
+            Some(io())
+        );
+        drop(second);
+        assert!(!lock.exists());
+        fs::remove_file(&path).unwrap();
+        fs::remove_dir(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_unchanged_ledger_is_not_written() {
+        let dir = scratch("unchanged");
+        let path = dir.join("ledger.tvl");
+        let mut file = LedgerFile::create(&path, &DecodeLimits::MESSAGE).unwrap();
+        let sample = derived_sample(3);
+        file.record_derived(&sample).unwrap();
+        let syncs = RefCell::new(0);
+        let counting = |_: &Path| {
+            *syncs.borrow_mut() += 1;
+            Ok(())
+        };
+        let hooks = Hooks {
+            stop: &never,
+            sync_dir: &counting,
+        };
+        let id = |p: &Path| file_id(&fs::metadata(p).unwrap());
+        let before = (id(&path), fs::read(&path).unwrap());
+        // A batch of no request, and the same sample derived again: nothing is written.
+        file.record_accepted_with(&sample, &statement_of(&sample, &[]), &[], &hooks)
+            .unwrap();
+        file.record_derived_with(&sample, &hooks).unwrap();
+        assert_eq!(*syncs.borrow(), 0);
+        assert_eq!((id(&path), fs::read(&path).unwrap()), before);
+        assert!(leftovers(&dir).is_empty());
+        // A batch of one request is.
+        file.record_accepted_with(
+            &sample,
+            &statement_of(&sample, &[0]),
+            &[FixedBits(1)],
+            &hooks,
+        )
+        .unwrap();
+        assert_eq!(*syncs.borrow(), 1);
+        drop(file);
+        fs::remove_file(&path).unwrap();
+        fs::remove_dir(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_write_past_the_reopening_limits_is_refused_and_leaves_the_ledger() {
+        let dir = scratch("limits");
+        let path = dir.join("ledger.tvl");
+        drop(LedgerFile::create(&path, &DecodeLimits::MESSAGE).unwrap());
+        let size = fs::metadata(&path).unwrap().len();
+        // The bytes: room for the empty ledger, not for one more sample of 64 bytes.
+        let tight = DecodeLimits {
+            max_total_bytes: size + 63,
+            ..DecodeLimits::MESSAGE
+        };
+        let mut file = LedgerFile::open(&path, &tight).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        let limit = Failure::Inconclusive(VerifierError {
+            code: Code::CodecLimit,
+        });
+        assert_eq!(file.record_derived(&derived_sample(1)), Err(limit.clone()));
+        assert_eq!(file.ledger(), &VerifierLedger::new());
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        drop(file);
+        // A sequence's length: one derived sample, not two.
+        let one = DecodeLimits {
+            max_vec_len: 1,
+            ..DecodeLimits::MESSAGE
+        };
+        let mut file = LedgerFile::open(&path, &one).unwrap();
+        file.record_derived(&derived_sample(1)).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        assert_eq!(file.record_derived(&derived_sample(2)), Err(limit));
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert_eq!(file.ledger().derived().len(), 1);
+        drop(file);
+        assert!(
+            read_ledger(&path, &one).is_ok(),
+            "the ledger reopens under its limits"
+        );
+        // Limits that admit no ledger at all refuse its creation.
+        fs::remove_file(&path).unwrap();
+        let none = DecodeLimits {
+            max_total_bytes: 10,
+            ..DecodeLimits::MESSAGE
+        };
+        assert_eq!(
+            LedgerFile::create(&path, &none).err(),
+            Some(VerifierError {
+                code: Code::CodecLimit
+            })
+        );
+        assert!(!path.exists());
+        fs::remove_dir(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_file_grown_past_the_limit_after_its_check_is_refused_before_anything_is_reserved() {
+        let dir = scratch("grown");
+        let path = dir.join("ledger.tvl");
+        drop(LedgerFile::create(&path, &DecodeLimits::MESSAGE).unwrap());
+        let limit = 1 << 20;
+        // A sparse petabyte: reserving its size would fail as memory, not as the limit.
+        let grow = || {
+            let file = OpenOptions::new().write(true).open(&path).unwrap();
+            let _ = file.set_len(1 << 50);
+        };
+        let refused = read_regular_with(&path, limit, &grow);
+        assert_eq!(
+            refused,
+            Err(VerifierError {
+                code: Code::CodecLimit
+            })
+        );
         fs::remove_file(&path).unwrap();
         fs::remove_dir(&dir).unwrap();
     }

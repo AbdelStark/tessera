@@ -308,11 +308,13 @@ def main():
     samples += [(2, bytes.fromhex(case["envelope"])) for case in audit["samples"]]
     # The empty ledger: five empty sequences (RFC-0067), and its envelope (schema 0x0701,
     # version 1) with a zero digest, which the target refuses at the digest. Then a ledger that
-    # derived each sample: three empty sequences, the sample's identity, and no record.
+    # derived each sample: three empty sequences, the sample's manifest and identity, and no
+    # record.
     empty = bytes(40)
     for case in audit["samples"]:
         identity = bytes.fromhex(case["envelope"])[-DIGEST_LEN:]
-        samples.append((1, bytes(24) + (1).to_bytes(8, "little") + identity + bytes(8)))
+        manifest = bytes.fromhex(case["manifest_digest"])
+        samples.append((1, bytes(24) + (1).to_bytes(8, "little") + manifest + identity + bytes(8)))
     header = b"TSRA" + u16(1) + u16(0x0701) + u16(1) + u16(0) + len(empty).to_bytes(8, "little")
     samples += [(1, empty), (3, header + empty + bytes(DIGEST_LEN))]
     for selector, data in samples:

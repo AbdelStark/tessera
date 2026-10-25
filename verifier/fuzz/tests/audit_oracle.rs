@@ -19,6 +19,7 @@ fn inputs() -> Vec<(u8, Vec<u8>)> {
         // A ledger that derived the sample and accepted its first request, when it has one.
         let mut deriving = vec![0; 24];
         deriving.extend(1u64.to_le_bytes());
+        deriving.extend(sample.manifest_digest());
         deriving.extend(sample.identity());
         deriving.extend(0u64.to_le_bytes());
         let mut ledger =
