@@ -10,7 +10,7 @@
   - [RFC-0037](RFC-0037-stage-schedule.md#the-claim-pool) 'The claim pool' and 'Invariants': `ChannelParams` claims in the pool;
   - [RFC-0045](RFC-0045-leaf-layout.md#open-questions) 'Open Questions': resolves the `ChannelParams` opening question;
   - [RFC-0049](RFC-0049-weight-proximity.md#non-goals) 'Non-Goals': opening `ChannelParams` across several claims in one pass.
-- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('Non-Goals' and 'Opening by the single-pass fold': in `tessera-protocol/2`, each claim's mask row and blinding pair)
+- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('Opening by the single-pass fold': in `tessera-protocol/2`, each claim's own mask row and the matrix's blinding pair), which supersedes 'Non-Goals' for `tessera-protocol/2`
 - Origin: [#386](https://github.com/AbdelStark/tessera/issues/386)
 
 ## Summary

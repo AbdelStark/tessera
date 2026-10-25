@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-19
 - Target milestone: v0.3
-- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Non-Goals': opening `ChannelParams` across several claims in one pass); [RFC-0057](RFC-0057-one-proof-unit.md) ('Motivation': the weight read is per proof)
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Non-Goals': opening `ChannelParams` across several claims in one pass); [RFC-0057](RFC-0057-one-proof-unit.md) ('Motivation': the weight read is per proof); [RFC-0065](RFC-0065-masked-channel-params.md) ('The calculator': each matrix's own blinding rows `B_T`)
 - Supersedes, on acceptance:
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule) 'Transcript schedule' rows 3 and 7: where `pcs/weights/{T}/xi` is squeezed in `tessera-protocol/1`;
   - [RFC-0012](RFC-0012-weight-commitment.md#opening-by-the-folding-pass) 'Opening by the folding pass': the proximity row's coefficients and when the fold computes it;
@@ -67,7 +67,7 @@ In `tessera-protocol/1` a weight matrix has:
 - `ϑ_T = ⌈log2 m_T⌉`;
 - no mask, so its rate is `k_T / n_T`.
 
-A matrix with no committed rows has no proximity row and no queries row. In `tessera-protocol/2` the counts stay those of RFC-0014, with `B_W` and `P_W`.
+A matrix with no committed rows has no proximity row and no queries row. In `tessera-protocol/2` the counts stay those of RFC-0014, with each matrix's `B_T` (RFC-0065) and `P_W`.
 
 ### Soundness
 

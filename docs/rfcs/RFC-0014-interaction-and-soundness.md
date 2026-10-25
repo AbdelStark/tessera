@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3 (protocol), v0.4 (zero-knowledge messages), v1.0 (live transport)
-- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Transcript schedule', rows 4 and 5, and 'Soundness budget', in `tessera-protocol/2`), [RFC-0035](RFC-0035-padded-rows.md) ('Transcript schedule', row 6: the zero-check point), [RFC-0054](RFC-0054-token-groups.md) ('Transcript schedule', rows 4 and 5, and the calculator's union row: token groups, the table batch and the merge), [RFC-0065](RFC-0065-masked-channel-params.md) ('Soundness calculator': the field term's `ϑ_T` counts each matrix's own blinding rows `B_T`)
+- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Transcript schedule', rows 4 and 5, and 'Soundness budget', in `tessera-protocol/2`), [RFC-0035](RFC-0035-padded-rows.md) ('Transcript schedule', row 6: the zero-check point), [RFC-0054](RFC-0054-token-groups.md) ('Transcript schedule', rows 4 and 5, and the calculator's union row: token groups, the table batch and the merge), [RFC-0065](RFC-0065-masked-channel-params.md) ('Messages': the weight reservation and each matrix's blinding claims; 'Soundness calculator': the field term's `ϑ_T` counts each matrix's own blinding rows `B_T`)
 
 ## Summary
 
@@ -53,13 +53,13 @@ pub struct Round1 {
     pub session_id: [u8; 16],
     pub statement: PublicStatement,             // 03 §4
     pub advice: AdviceCommitment,               // RFC-0011
-    pub weights: WeightReservation,             // epoch and the blinding rows this proof uses, RFC-0012
+    pub weights: WeightReservation,             // the epoch, then (matrix, b_T) per opened matrix in id order (RFC-0012, RFC-0065)
 }
 pub struct Round2Response {
     pub logup: LogUpProof, pub product_trees: TreeProof,   // leaf stage, RFC-0008/0010
     pub stages: Vec<StageProof>,                            // RFC-0010, masked per RFC-0013
     pub advice_blinding: Vec<Fp2>,                          // q_g per claim group, before the challenges (RFC-0013)
-    pub weight_blinding: Vec<Fp2>,                          // q_T per matrix, before θ_T (RFC-0012)
+    pub weight_blinding: Vec<Fp2>,                          // each opened matrix's claims' q, matrices in id order, before θ_T (RFC-0012, RFC-0065)
     pub advice_combined: Vec<CombinedRow>,                  // u'_g, M_g per group, plus proximity row
     pub weight_combined: Vec<WeightCombinedRows>,           // per matrix
     pub scoring: ScoringClaims,                             // per-request Û claims, RFC-0017
@@ -192,7 +192,7 @@ So that the two agree bit for bit, the rest of this section specifies the calcul
 | `matrices` | Each opened weight matrix, in `WeightMatrix` order: its message width `k_T`, its committed data rows `m_T`, the variables `ν_T` of its polynomial and, in `tessera-protocol/2`, its blinding rows `B_T` (RFC-0065, [#521](https://github.com/AbdelStark/tessera/issues/521)) |
 | `groups` | The leaf stage in token groups ([RFC-0054](RFC-0054-token-groups.md#soundness) 'Soundness'). `count` is `G`. For a proof's budget, it is the proof's own `2^{g_T + g_L}`: 1 for an ungrouped proof. For a statement's report, it is the most groups the verifier accepts for the statement, `2^{min(14, t + n_ℓ)}`, and 1 in `tessera-protocol/2`, which accepts none. With `G > 1`, the other three sizes are: `level_rounds`, the leaf stage's level rounds as counts and degrees, which `rounds` also counts once; `merge_rounds`, `n_max`, the most variables of a merged polynomial; and `merge_claims`, `P`, the merged polynomials' count |
 
-A calculator refuses, with `ERR-USAGE`: a `protocol` other than 1 or 2; `τ_A` or `τ_W` outside `1..=2^16`; a codeword of no symbol or of more than `2^32`, the advice's `n_A = 2^{log2 k + log2 inv_rate}` or a matrix's `n_T = k_T·2^{log2 inv_rate}`; `advice_rows = 0`; in `tessera-protocol/2`, a matrix with `m_T + B_W = 0` (in protocol/1 a matrix with no committed row has no proximity or queries row, [RFC-0049](RFC-0049-weight-proximity.md#the-calculator)); matrices not in strictly increasing `WeightMatrix` order; a `groups.count` that is not a power of two in `1..=2^{14}`; a `groups.count` above 1 in `tessera-protocol/2`; and a `groups.count` of 1 with a `level_rounds` entry, or a nonzero `merge_rounds` or `merge_claims`.
+A calculator refuses, with `ERR-USAGE`: a `protocol` other than 1 or 2; `τ_A` or `τ_W` outside `1..=2^16`; a codeword of no symbol or of more than `2^32`, the advice's `n_A = 2^{log2 k + log2 inv_rate}` or a matrix's `n_T = k_T·2^{log2 inv_rate}`; `advice_rows = 0`; in `tessera-protocol/2`, a matrix with `m_T + B_T = 0` (in protocol/1 a matrix with no committed row has no proximity or queries row, [RFC-0049](RFC-0049-weight-proximity.md#the-calculator)); matrices not in strictly increasing `WeightMatrix` order; a `groups.count` that is not a power of two in `1..=2^{14}`; a `groups.count` above 1 in `tessera-protocol/2`; and a `groups.count` of 1 with a `level_rounds` entry, or a nonzero `merge_rounds` or `merge_claims`.
 
 **Rows.** `q = |Fp2| = p^2`, `p = 2^64 − 2^32 + 1`. A numerator is an exact integer that saturates at `2^128 − 1`, and a maximum over no item is 0.
 

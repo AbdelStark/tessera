@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
-- Amended by: [RFC-0057](RFC-0057-one-proof-unit.md) ('The descriptor': a proof is one unit, so `unit` is always 0)
+- Amended by: [RFC-0057](RFC-0057-one-proof-unit.md) ('The descriptor': a proof is one unit, so `unit` is always 0), [RFC-0065](RFC-0065-masked-channel-params.md) ('The descriptor': a weight matrix's `rows` count its own `B_T`)
 - Supersedes, on acceptance:
   - [RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests) 'Hash function and domains': the `commitment-id` domain; 'Column digests': what `commitment_id` binds;
   - [RFC-0011](RFC-0011-advice-commitment.md#column-digests-and-root) 'Column digests and root': the advice commitment's `commitment_id` and `AdviceCommitment.layout_digest`;

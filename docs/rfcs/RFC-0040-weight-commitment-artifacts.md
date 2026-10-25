@@ -13,7 +13,7 @@
   - [RFC-0039](RFC-0039-statement-fields.md#the-checks) 'The checks': the weight layout's check, at RFC-0019 step 4;
   - [02 §2](../spec/02-public-api.md#2-command-line-interface): `commit-weights` writes both artifacts, and `tessera-verify` reads the public one;
   - [03 §5](../spec/03-data-model.md#5-artifact-catalog): both artifacts are defined here.
-- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('The matrices' and 'Encoding, leaves and roots': `ChannelParams`' blinding rows `B_CP`, and `rows = m_T + B_T`)
+- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('The matrices' and 'Encoding, leaves and roots': `ChannelParams`' blinding rows `B_CP`, `rows = m_T + B_T`, and the leaves over the blinding rows)
 - Origin: [#102](https://github.com/AbdelStark/tessera/issues/102)
 
 ## Summary
@@ -74,7 +74,7 @@ Each `WeightMatrix` ([RFC-0031](RFC-0031-commitment-id.md#the-descriptor)) `T` i
   - `row_block` the parameter set's `B`;
   - `rows = m_T`, plus `B_T` from the version that adds blinding rows: `B_W`, and `ChannelParams`' `B_CP` ([RFC-0065](RFC-0065-masked-channel-params.md#channelparams-blinding-rows));
   - `epoch`.
-- **Leaves.** Each column is one chain over the matrix's committed rows: `leaf_j = d_j[⌈m_T / B⌉]` ([RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests)). A weight matrix has no segments and no `column-merge`. A matrix of no committed rows has the leaves `d_j[0]`.
+- **Leaves.** Each column is one chain over the matrix's committed rows: `leaf_j = d_j[⌈m_T / B⌉]` ([RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests)), and `d_j[⌈(m_T + B_T)/B⌉]` over the blinding rows too, from the version that adds them ([RFC-0065](RFC-0065-masked-channel-params.md#channelparams-blinding-rows)). A weight matrix has no segments and no `column-merge`. A matrix of no committed rows has the leaves `d_j[0]`.
 - **Roots.** `root_T` is the root of the Merkle tree over its `n_T` leaves ([RFC-0004](RFC-0004-hashing-and-transcript.md#merkle-trees)).
 
 ### `WeightCommitmentPublic`

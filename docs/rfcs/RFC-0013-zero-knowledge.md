@@ -5,7 +5,7 @@
 - Created: 2026-10-15
 - Target milestone: v0.4
 - Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('What the verifier sees': tree levels and LogUp roots; 'Masked extensions': `Z` spares the lowest variable; 'LogUp and product-tree roots'; OQ-0013-2)
-- Superseded in part by: [RFC-0065](RFC-0065-masked-channel-params.md) ('Cost': the weight budget per proof, `4m + 2` rows for `ChannelParams`' `m` claims; 'Masked extensions': each `ChannelParams` claim's own mask row, with `Z` over its type tensor's coordinates)
+- Superseded in part by: [RFC-0065](RFC-0065-masked-channel-params.md) ('Cost': the weight budget per proof, `2e + 4` rows for a matrix of `e` claims; 'Masked extensions': each `ChannelParams` claim's own mask row, with `Z` over its type tensor's coordinates)
 
 ## Summary
 
@@ -132,7 +132,7 @@ Before any v0.4 implementation work merges, [`docs/zk/simulator.md`](../zk/simul
 | Mask rows `R_V` (about 2,000 stacked tensors and tree levels, two rows each) | about 1.6×10^10 elements, 0.6% of advice |
 | Stage masking polynomials | < 2×10^4 elements |
 | Blinding rows for advice combined rows (`G + 1 ≤ 17`, two rows each) | 34 rows |
-| Weight budget per proof | 6 blinding rows per weight matrix (two each for evaluation, proximity and mask), and `4m + 2` for `ChannelParams`' `m` claims, 30 at `m = 7` ([RFC-0065](RFC-0065-masked-channel-params.md)) |
+| Weight budget per proof | 6 blinding rows per weight matrix (two each for evaluation, proximity and mask), and `2e + 4` for `ChannelParams`' `e` claims, 18 at `e = 7`: one evaluation pair for the matrix and a mask row per claim ([RFC-0065](RFC-0065-masked-channel-params.md)) |
 | Extra sumcheck work | last round only |
 
 The weight budget per proof is six rows, and the linking proofs take four at each end of an epoch, so `B_W = 4096` gives `(4096 − 8)/6 = 681` proofs per epoch, and `ChannelParams`' `B_CP` gives as many ([RFC-0065](RFC-0065-masked-channel-params.md)), matching the column budget of about 674 in epoch 0 and 673 after it ([RFC-0012](RFC-0012-weight-commitment.md#budget-state-machine), [RFC-0064](RFC-0064-weight-linking-proof.md#the-budget)).
