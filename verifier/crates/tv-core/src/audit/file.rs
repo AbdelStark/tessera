@@ -1165,10 +1165,12 @@ mod tests {
         let path = dir.join("ledger.tvl");
         drop(LedgerFile::create(&path).unwrap());
         let limit = 1 << 20;
-        // A sparse petabyte: reserving its size would fail as memory, not as the limit.
+        // A sparse tebibyte, which ext4 (16 TiB at most), XFS and APFS all allow, and far past what
+        // a runner could reserve: reserving its size would fail as memory, not as the limit. A
+        // filesystem that refuses the size fails the test here, not by passing it unread.
         let grow = || {
             let file = OpenOptions::new().write(true).open(&path).unwrap();
-            let _ = file.set_len(1 << 50);
+            file.set_len(1 << 40).unwrap();
         };
         let refused = read_regular_with(&path, limit, &grow).map(|(bytes, _)| bytes);
         assert_eq!(
