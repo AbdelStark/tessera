@@ -26,8 +26,10 @@ libFuzzer names corpus files:
   GDG-prefixed gadget cases cover each family, model variant, affine change and nonlinear final.
 - audit: every sample of audit/audit.json, as a payload (selector 0) and as an envelope
   (selector 2), its accepted and refused payloads, an empty ledger, payload (1) and envelope
-  (3), and a ledger payload deriving each sample, each under both of the target's limits
-  (src/audit.rs).
+  (3), a ledger payload deriving each sample, and a pending toss over each sample's manifest and
+  policy, whose share opens its commitment, payload (4) and envelope (5), each under both of the
+  target's limits (src/audit.rs). The toss's commitment and envelope digest are H of
+  hash/generate.py, the hash oracle the audit vectors use.
 
 The selectors are the indices of `TYPES` in src/lib.rs, read from the source so that the seeds
 follow any change to the list. The proof targets' input formats are those of `multiproof_case`
@@ -35,10 +37,13 @@ and `inclusion_case` in src/proofs.rs, and of `case` in src/sumcheck.rs.
 """
 
 import hashlib
+import importlib.util
 import json
 import pathlib
 import re
 import sys
+
+sys.dont_write_bytecode = True  # importing the hash oracle leaves nothing behind
 
 HERE = pathlib.Path(__file__).resolve().parent
 VECTORS = HERE.parent.parent / "spec" / "vectors" / "codec"
@@ -47,6 +52,7 @@ INCLUSION_VECTORS = HERE.parent.parent / "spec" / "vectors" / "rfc6962" / "inclu
 SUMCHECK_VECTORS = HERE.parent.parent / "spec" / "vectors" / "sumcheck" / "sumcheck.json"
 AUDIT_VECTORS = HERE.parent.parent / "spec" / "vectors" / "audit" / "audit.json"
 WEIGHT_VECTORS = HERE.parent.parent / "spec" / "vectors" / "weights"
+HASH_ORACLE = HERE.parent.parent / "spec" / "vectors" / "hash" / "generate.py"
 
 # The decode target's limits, selected by its second byte.
 DECODE_LIMITS = 4
@@ -93,6 +99,14 @@ def probe_envelope(payload):
         + len(payload).to_bytes(8, "little")
     )
     return header + payload + bytes(32)
+
+
+def hash_oracle():
+    """spec/vectors/hash/generate.py, whose BLAKE3 is checked against the official vectors."""
+    spec = importlib.util.spec_from_file_location("hash_oracle", HASH_ORACLE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def u16(value):
@@ -317,6 +331,17 @@ def main():
         samples.append((1, bytes(24) + (1).to_bytes(8, "little") + manifest + identity + bytes(8)))
     header = b"TSRA" + u16(1) + u16(0x0701) + u16(1) + u16(0) + len(empty).to_bytes(8, "little")
     samples += [(1, empty), (3, header + empty + bytes(DIGEST_LEN))]
+    # A pending toss over each sample's manifest and policy (RFC-0067 'The pending toss'): the
+    # payload's bytes before its coin toss and `selected`, then H("coin-commit", share) and a
+    # share; and its envelope, schema 0x0702 version 1.
+    H = hash_oracle().H
+    for case in audit["samples"]:
+        payload = bytes.fromhex(case["payload"])
+        policy_end = len(payload) - 96 - 8 - 24 * len(case["selected"])
+        share = bytes([len(payload) % 256]) * 32
+        toss = payload[:policy_end] + H("coin-commit", share) + share
+        header = b"TSRA" + u16(1) + u16(0x0702) + u16(1) + u16(0) + len(toss).to_bytes(8, "little")
+        samples += [(4, toss), (5, header + toss + H("envelope", header + toss))]
     for selector, data in samples:
         for limits in range(2):
             write("audit", bytes([selector, limits]) + data)

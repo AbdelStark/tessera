@@ -56,7 +56,9 @@ COMMANDS:
     tables    Regenerate the claim list's table catalog and print digests
     params    Compute the independent soundness table for a parameter set (RFC-0014)
     live      Verify one caller-pinned Live session through a directory
-    audit     plan: a policy's detection and overhead; report: a sample's audit report (RFC-0016)
+    audit     plan: a policy's detection and overhead; report: a sample's audit report;
+              commit and reveal: the verifier's coin toss, kept in a file between them
+              (RFC-0016, RFC-0067)
     weights link    Reserved; requires the ledger's weight epochs (#158)
 ";
 

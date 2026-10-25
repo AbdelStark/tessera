@@ -160,7 +160,18 @@ tessera-verify params   --params PARAMSET       # independent soundness report
 tessera-verify weights link --ledger LEDGER.tvl --claims claims.tcl --link LINK.twl   # accept a refreshed weight root (RFC-0064)
 tessera-verify audit plan  --policy POLICY.json --traffic PROFILE.json [--mu MU.json]   # detection; overhead with μ
 tessera-verify audit report --ledger LEDGER.tvl --sample SAMPLE.tas --out REPORT.json
+tessera-verify audit commit --manifest MANIFEST.tlm --recorder-key KEY --policy POLICY.json --toss TOSS.tvt
+tessera-verify audit reveal --toss TOSS.tvt --prover-share HEX --manifest MANIFEST.tlm --recorder-key KEY
+                            --log LOG.tdl [--previous-manifest M.tlm --previous-log L.tdl] [--between M.tlm]...
+                            --ledger LEDGER.tvl [--new-ledger] --out SAMPLE.tas
 ```
+
+`audit commit` and `audit reveal` are the verifier's half of the coin toss ([RFC-0016](../rfcs/RFC-0016-audit-sampling.md#sample-derivation), [RFC-0067](../rfcs/RFC-0067-verifier-ledger-encoding.md#the-verifiers-own-sample) 'The pending toss').
+- **`KEY`** is the recorder's Ed25519 public key, 64 hexadecimal digits, which the verifier pins ([RFC-0015](../rfcs/RFC-0015-transcript-anchor.md#signatures) 'Signatures'). A manifest whose signature fails under it exits 10 with `REJ-ANCHOR`.
+- **`audit commit`** checks the manifest's signature. It draws a fresh share, writes the pending toss to `TOSS.tvt` (mode 0600, created exclusively, synced) and only then prints the commitment `c_V`, in hexadecimal or with `--json`. An existing `TOSS.tvt` exits 64.
+- **`audit reveal`** checks each log against its manifest, and the chain from the previous period through any zero-length `--between` periods, as `audit sample` does. It reveals the toss against the prover's share and derives the sample. It records the sample in the ledger before writing `SAMPLE.tas`, and then clears and removes `TOSS.tvt`.
+  - **The ledger** must exist, else `ERR-RES-IO`, unless `--new-ledger` asks the command to create it: then a file already at the path exits 64. A mistyped path never makes a second ledger.
+  - **Refusals.** A toss of another manifest exits 64. A toss whose envelope fails its digest exits 65 with `ERR-CODEC-DIGEST`, and one whose share does not open its commitment exits 20 with `ERR-PROTO-COINTOSS` (04 §3).
 
 `audit plan` reads the policy and the profile as `tessera audit plan` does, and, with `--mu`, a
 `tessera.cost-model/1` report whose projections' contexts are the profile's mean lengths, in

@@ -22,6 +22,7 @@
 //! | [`AuditPolicy::new`] | a policy's rules: buckets strictly increasing, `max_batch_tokens ≥ max(1, 2 · min_batch_tokens)` |
 //! | [`CoinTossTranscript::check`] | `c_V = H("coin-commit", s_V)` |
 //! | [`AuditToss`] | the verifier's share: committed after the policy, revealed after both logs are verified, the sample recorded in the ledger as the verifier's own |
+//! | [`VerifierToss`], [`TossFile`] | the pending toss, a `.tvt` artifact, schema `0x0702`, its commitment checked, and its file: created exclusively, mode 0600, before the commitment leaves; read without following a link; cleared after the ledger records the sample |
 //! | [`AuditSample::derive`] | the sample of a window's period: seed, candidates, selection |
 //! | [`AuditSample::open`] | a `.tas` artifact, schema `0x0403`, and its identity |
 //! | [`pack`] | first-fit decreasing batches of a sample's requests |
@@ -63,6 +64,21 @@
 //!    `Inconclusive(ERR-PROTO-ORDER)`; the same sample again changes nothing. The transcript
 //!    `CoinTossTranscript { c_V, s_P, s_V }` is 96 bytes; a reveal that does not open `c_V` is
 //!    `Inconclusive(ERR-PROTO-COINTOSS)`.
+//!
+//!    **The pending toss** (RFC-0067). `VerifierToss`, schema `0x0702` version 1, `.tvt`, TCE in
+//!    field order: `manifest_digest: Digest, policy: AuditPolicy, commitment: Digest, share: [u8;
+//!    32]`. Its readers check RFC-0003's envelope, `ERR-CODEC-*` (a digest that does not match
+//!    `ERR-CODEC-DIGEST`), then `commitment = H("coin-commit", share)`, else
+//!    `ERR-PROTO-COINTOSS`. The share is secret-class until the reveal: no `Debug` shows it, and
+//!    every buffer that holds it is cleared on drop. [`TossFile::commit`] writes the file before
+//!    the commitment leaves: a synced temporary file of mode 0600 linked into place, which fails
+//!    with `ERR-USAGE` if anything is there, then the directory synced; nothing is replaced.
+//!    [`TossFile::open`] reads it under the ledger's path rules (`ERR-USAGE` for a link or a
+//!    file of several names, `ERR-RES-IO` for a lost one); [`TossFile::reveal`] is
+//!    [`AuditToss::reveal`]; and [`TossFile::clear`], only after that reveal has recorded the
+//!    sample, overwrites the file with zeros, syncs it, removes it and syncs the directory. A
+//!    reveal again after a stop between the record and the removal, against the same prover
+//!    share, gives the same sample and changes nothing.
 //! 3. **The seed.** `sample_seed = H("audit-sample", s_V ‖ s_P ‖ manifest_digest)`, the
 //!    manifest digest the period's identity.
 //! 4. **The selection.** Each candidate of [`Window::candidates`], with its length `L`, is
@@ -154,6 +170,7 @@
 mod batch;
 mod file;
 mod ledger;
+mod pending;
 mod policy;
 mod report;
 mod sample;
@@ -162,10 +179,11 @@ mod toss;
 pub use batch::{Batch, BatchRequest, pack};
 pub use file::{LEDGER_LIMITS, LedgerFile, read_ledger};
 pub use ledger::{BitSet, BlindingRows, ProvenSample, VerifierLedger, WeightRoots};
+pub use pending::{TOSS_LIMITS, TossFile};
 pub use policy::{AuditPolicy, PolicyError, RateBucket};
 pub use report::{AuditReport, AuditSummary, RequestOutcome, UnprovenReason};
 pub use sample::{AuditSample, CoinTossTranscript, RequestKey, select, selection_value};
-pub use toss::AuditToss;
+pub use toss::{AuditToss, VerifierToss};
 
 use crate::anchor::Failure;
 #[cfg(doc)]

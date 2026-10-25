@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The audit sample's and the verifier ledger's readers, payload and envelope, on arbitrary
-//! bytes, against `tv_fuzz::audit`'s oracle: no panic, rejections that are the input's fault and
-//! point inside it, and accepted inputs that are their value's one encoding and keep its rules.
+//! The audit sample's, the verifier ledger's and the pending toss's readers, payload and
+//! envelope, on arbitrary bytes, against `tv_fuzz::audit`'s oracle: no panic, rejections that
+//! are the input's fault and point inside it, and accepted inputs that are their value's one
+//! encoding and keep its rules.
 
 #![no_main]
 

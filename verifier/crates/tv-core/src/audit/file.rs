@@ -42,6 +42,10 @@
 //! - **One limit.** Every reader and writer of the ledger uses [`LEDGER_LIMITS`], `tv-codec`'s
 //!   message limits, so a ledger a writer accepts is one every reader opens (RFC-0067 'One
 //!   limit').
+//! - **The pending toss** ([`super::TossFile`], RFC-0067 'The pending toss') shares the path's
+//!   rules, the reader's checks and the exclusive creation: [`create_new`], [`read_secret`],
+//!   which reads a secret-class file into one buffer cleared on drop, and [`clear`], which
+//!   overwrites a file with zeros, syncs it, removes it and syncs its directory.
 
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
@@ -50,6 +54,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use tv_codec::DecodeLimits;
+use zeroize::Zeroizing;
 
 use super::ledger::VerifierLedger;
 use super::sample::AuditSample;
@@ -73,7 +78,7 @@ const fn misuse() -> VerifierError {
 // ----- The path --------------------------------------------------------------------------------
 
 /// What names a file on the host: its device and inode on Unix, nothing elsewhere.
-type FileId = (u64, u64);
+pub(super) type FileId = (u64, u64);
 
 #[cfg(unix)]
 fn file_id(meta: &fs::Metadata) -> FileId {
@@ -183,6 +188,20 @@ fn read_regular_with(
     limit: u64,
     between: &dyn Fn(),
 ) -> Result<(Vec<u8>, FileId), VerifierError> {
+    let (mut file, after) = open_checked(path, limit, between)?;
+    let out = read_capped(&mut file, after.len(), limit, &|_| ())?;
+    Ok((out, file_id(&after)))
+}
+
+/// Opens the regular file `path` for reading after [`checked`], and checks that the file opened
+/// is the one checked and that neither its size before the open nor after it is past `limit`;
+/// returns the file and its metadata after the open. `between` runs after the check and before
+/// the open.
+fn open_checked(
+    path: &Path,
+    limit: u64,
+    between: &dyn Fn(),
+) -> Result<(File, fs::Metadata), VerifierError> {
     let before = checked(path)?;
     if before.len() > limit {
         return Err(VerifierError {
@@ -190,20 +209,52 @@ fn read_regular_with(
         });
     }
     between();
-    let mut file = open_quietly(path).map_err(|_| io())?;
+    let file = open_quietly(path).map_err(|_| io())?;
     let after = file.metadata().map_err(|_| io())?;
     if !after.is_file() || !one_name(&after) || file_id(&after) != file_id(&before) {
         // Replaced between the check and the open.
         return Err(misuse());
     }
     // The file may have grown since it was checked: its size is checked again, an early exit,
-    // since the read below holds no more than `limit + 1` bytes whatever the size says.
+    // since the read that follows holds no more than `limit + 1` bytes whatever the size says.
     if after.len() > limit {
         return Err(VerifierError {
             code: Code::CodecLimit,
         });
     }
-    let out = read_capped(&mut file, after.len(), limit, &|_| ())?;
+    Ok((file, after))
+}
+
+/// Reads the secret-class file `path`, at most `limit` bytes, under the path's rules and the
+/// checks of [`read_regular`]; returns the bytes and the file's identity. The bytes go into one
+/// buffer, cleared when it is dropped, reserved once at the opened file's size and one byte more
+/// and read into directly: no copy is left in a buffer that grew, nor in a chunk on the stack. A
+/// file whose length at its end is not the size its metadata gave, one that changed while it
+/// was read, is `ERR-RES-IO`.
+pub(super) fn read_secret(
+    path: &Path,
+    limit: u64,
+) -> Result<(Zeroizing<Vec<u8>>, FileId), VerifierError> {
+    let memory = || VerifierError { code: Code::Memory };
+    let (mut file, after) = open_checked(path, limit, &|| ())?;
+    let size = usize::try_from(after.len()).map_err(|_| memory())?;
+    let room = size.checked_add(1).ok_or_else(memory)?;
+    let mut out = Zeroizing::new(Vec::new());
+    out.try_reserve_exact(room).map_err(|_| memory())?;
+    out.resize(room, 0);
+    let mut filled = 0usize;
+    while filled < room {
+        match file.read(out.get_mut(filled..).unwrap_or_default()) {
+            Ok(0) => break,
+            Ok(n) => filled = filled.saturating_add(n),
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(_) => return Err(io()),
+        }
+    }
+    if filled != size {
+        return Err(io());
+    }
+    out.truncate(size);
     Ok((out, file_id(&after)))
 }
 
@@ -282,15 +333,22 @@ fn read_ledger_under(
     Ok((ledger, id))
 }
 
-/// A ledger's place: its directory, resolved once, and its name in it.
+/// A ledger's place, or a pending toss's: its directory, resolved once, and its name in it.
 #[derive(Clone, Debug)]
-struct Place {
+pub(super) struct Place {
     dir: PathBuf,
     name: OsString,
 }
 
 impl Place {
-    fn resolve(path: &Path) -> Result<Self, VerifierError> {
+    /// `path`'s directory, resolved now, and its last component, which is not resolved: a link
+    /// there is the path's rules' to refuse.
+    ///
+    /// # Errors
+    ///
+    /// `ERR-USAGE` for a path with no last component, `ERR-RES-IO` for a directory that cannot
+    /// be resolved.
+    pub(super) fn resolve(path: &Path) -> Result<Self, VerifierError> {
         let name = path.file_name().ok_or(misuse())?.to_os_string();
         let parent = path
             .parent()
@@ -300,7 +358,8 @@ impl Place {
         Ok(Self { dir, name })
     }
 
-    fn file(&self) -> PathBuf {
+    /// The file's path: its name in the directory as resolved.
+    pub(super) fn file(&self) -> PathBuf {
         self.dir.join(&self.name)
     }
 
@@ -751,10 +810,17 @@ fn write_atomic(
     Ok(written)
 }
 
-/// Writes `bytes` as a new ledger, where nothing may exist, under the directory's lock its caller
-/// holds: a synced temporary file, hard-linked to the ledger's name, which fails if anything is
-/// there; then the temporary name removed and the directory synced. Returns the new ledger file's
-/// identity.
+/// Writes `bytes` as a new file at `place`, where nothing may exist: a synced temporary file,
+/// readable and writable by its owner only, hard-linked to the file's name, which fails with
+/// `ERR-USAGE` if anything is there, a link that leads nowhere included, so that the check and
+/// the creation are one step; then the temporary name removed and the directory synced. Returns
+/// the new file's identity. A ledger's creator holds its directory's lock; a pending toss's
+/// takes none, the link alone keeping a second creator out.
+pub(super) fn create_new(place: &Place, bytes: &[u8]) -> Result<FileId, VerifierError> {
+    write_new(place, bytes, &REAL)
+}
+
+/// [`create_new`], with the directory's sync from `hooks`.
 fn write_new(place: &Place, bytes: &[u8], hooks: &Hooks<'_>) -> Result<FileId, VerifierError> {
     let (mut file, mut temp) = temporary(place)?;
     file.write_all(bytes)
@@ -769,11 +835,59 @@ fn write_new(place: &Place, bytes: &[u8], hooks: &Hooks<'_>) -> Result<FileId, V
             io()
         }
     })?;
-    // The ledger must keep one name.
+    // The file must keep one name.
     fs::remove_file(&temp.path).map_err(|_| io())?;
     temp.armed = false;
     (hooks.sync_dir)(&place.dir).map_err(|_| io())?;
     Ok(written)
+}
+
+/// Clears the secret-class file at `place`, the one `id` names (RFC-0067 'Cleared after the
+/// record'): overwritten with zeros in place, synced, removed, and its directory synced. The file
+/// is checked by metadata that does not follow a link, opened for writing without following one
+/// or blocking where the host has the flags for it ([`NO_FOLLOW_NO_BLOCK`]), and compared by
+/// device and inode with `id` before anything is written, so that no other file is overwritten.
+/// A file of several names is cleared too: the zeros are its one content, whatever name is left.
+///
+/// The zeros are written over the file's blocks as the file system keeps them; one that writes
+/// elsewhere, copy-on-write or journaled data, may keep the old bytes until it reuses their
+/// blocks.
+///
+/// # Errors
+///
+/// `ERR-RES-IO` when nothing can be read at the path, when it is not a regular file or not the
+/// file `id` names, and when a write, a sync or the removal fails. A failure after the zeros are
+/// synced leaves a file that holds no share.
+pub(super) fn clear(place: &Place, id: FileId) -> Result<(), VerifierError> {
+    let path = place.file();
+    let before = fs::symlink_metadata(&path).map_err(|_| io())?;
+    if !before.file_type().is_file() || file_id(&before) != id {
+        return Err(io());
+    }
+    let mut options = OpenOptions::new();
+    options.write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(NO_FOLLOW_NO_BLOCK);
+    }
+    let mut file = options.open(&path).map_err(|_| io())?;
+    let after = file.metadata().map_err(|_| io())?;
+    if !after.is_file() || file_id(&after) != id {
+        return Err(io());
+    }
+    let zeros = [0u8; 8192];
+    let mut left = after.len();
+    while left > 0 {
+        let n = usize::try_from(left).map_or(zeros.len(), |l| l.min(zeros.len()));
+        file.write_all(zeros.get(..n).unwrap_or_default())
+            .map_err(|_| io())?;
+        left = left.saturating_sub(u64::try_from(n).unwrap_or(u64::MAX));
+    }
+    file.sync_all().map_err(|_| io())?;
+    drop(file);
+    fs::remove_file(&path).map_err(|_| io())?;
+    sync_dir(&place.dir).map_err(|_| io())
 }
 
 #[cfg(test)]

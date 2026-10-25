@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The `audit` target's oracle: `tv-core`'s readers of the audit sample (schema `0x0403`) and
-//! the verifier's ledger (schema `0x0701`), payload and envelope, on arbitrary bytes (RFC-0016
-//! 'Sample derivation' step 5, RFC-0019 'Ledger').
+//! The `audit` target's oracle: `tv-core`'s readers of the audit sample (schema `0x0403`), the
+//! verifier's ledger (schema `0x0701`) and the verifier's pending toss (schema `0x0702`), payload
+//! and envelope, on arbitrary bytes (RFC-0016 'Sample derivation' step 5, RFC-0019 'Ledger',
+//! RFC-0067 'The pending toss').
 //!
 //! The first byte selects the reader, the second the limits; the rest is the input. A rejection
 //! must be a fault of the input, never `ERR-RES-MEMORY` or `ERR-INTERNAL`, at an offset inside
@@ -15,12 +16,17 @@
 //! (RFC-0067). A
 //! report on an accepted sample from an empty ledger, which did not derive it, is refused; from
 //! a ledger that derived it, it has every request unproven, or refuses a coin toss that does not
-//! open.
+//! open. A toss's reader returns the verifier's error, whose code alone it carries: a rejection
+//! must be `ERR-CODEC-*` or `ERR-PROTO-COINTOSS`, the latter only for bytes whose commitment the
+//! test kit's BLAKE3 finds the share does not open; an accepted toss re-encodes or reseals to the
+//! input, its share opens its commitment, its fields are the input's, and its policy keeps its
+//! rules.
 
 use tv_codec::{DecodeLimits, ErrorCode};
 use tv_core::anchor::Failure;
-use tv_core::audit::{AuditReport, AuditSample, VerifierLedger};
-use tv_core::verdict::ErrorCode as Code;
+use tv_core::audit::{AuditPolicy, AuditReport, AuditSample, VerifierLedger, VerifierToss};
+use tv_core::verdict::{ErrorCode as Code, VerifierError};
+use tv_testkit::blake3::derive_key;
 
 /// The limits, by the second byte: tight enough to reach each limit with short inputs, and
 /// RFC-0003's defaults for messages.
@@ -39,7 +45,7 @@ pub fn check(data: &[u8]) {
         return;
     };
     let limits = LIMITS[usize::from(config & 1)];
-    match selector % 4 {
+    match selector % 6 {
         0 => match AuditSample::decode_payload(input, &limits) {
             Ok(sample) => {
                 assert_eq!(sample.encode_payload().unwrap(), input, "a second encoding");
@@ -64,14 +70,88 @@ pub fn check(data: &[u8]) {
             }
             Err(e) => refused(e, input),
         },
-        _ => match VerifierLedger::open(input, &limits) {
+        3 => match VerifierLedger::open(input, &limits) {
             Ok(ledger) => {
                 assert_eq!(ledger.seal().unwrap(), input, "a second envelope");
                 ledger_rules(&ledger);
             }
             Err(e) => refused(e, input),
         },
+        4 => match VerifierToss::decode_payload(input, &limits) {
+            Ok(toss) => {
+                assert_eq!(
+                    toss.encode_payload().unwrap().as_slice(),
+                    input,
+                    "a second encoding"
+                );
+                toss_rules(&toss, input);
+                for cut in 0..input.len() {
+                    let e = VerifierToss::decode_payload(&input[..cut], &limits)
+                        .expect_err("a proper prefix of an encoding decodes");
+                    assert_eq!(e.code, Code::CodecTruncated, "prefix of {cut}");
+                }
+            }
+            Err(e) => toss_refused(e, input),
+        },
+        _ => match VerifierToss::open(input, &limits) {
+            Ok(toss) => {
+                assert_eq!(toss.seal().unwrap().as_slice(), input, "a second envelope");
+                toss_rules(&toss, &input[20..input.len() - 32]);
+            }
+            Err(e) => toss_refused(
+                e,
+                input.get(20..input.len().saturating_sub(32)).unwrap_or(&[]),
+            ),
+        },
     }
+}
+
+/// A toss's rejection: a fault of the input, `ERR-PROTO-COINTOSS` only where the payload's last
+/// 32 bytes do not open the 32 before them.
+fn toss_refused(e: VerifierError, payload: &[u8]) {
+    match e.code {
+        Code::CodecMagic
+        | Code::CodecVersion
+        | Code::CodecNoncanonical
+        | Code::CodecTruncated
+        | Code::CodecDigest
+        | Code::CodecLimit => {}
+        Code::ProtocolCoinToss => {
+            let n = payload.len();
+            assert!(n >= 64, "a commitment refused in {n} bytes");
+            assert_ne!(
+                derive_key("tessera/v1/coin-commit", &payload[n - 32..]),
+                payload[n - 64..n - 32],
+                "a share that opens its commitment refused"
+            );
+        }
+        other => panic!("{other:?} on a fuzz input"),
+    }
+}
+
+/// An accepted toss: its fields are the payload's, its share opens its commitment under the
+/// test kit's BLAKE3, and its policy keeps its rules.
+fn toss_rules(toss: &VerifierToss, payload: &[u8]) {
+    let n = payload.len();
+    assert_eq!(toss.manifest_digest(), &payload[..32]);
+    assert_eq!(toss.commitment(), &payload[n - 64..n - 32]);
+    assert_eq!(
+        derive_key("tessera/v1/coin-commit", &payload[n - 32..]),
+        payload[n - 64..n - 32],
+        "a share that does not open its commitment accepted"
+    );
+    policy_rules(toss.policy());
+}
+
+fn policy_rules(policy: &AuditPolicy) {
+    for pair in policy.buckets().windows(2) {
+        assert!(
+            pair[0].max_tokens < pair[1].max_tokens,
+            "buckets not increasing"
+        );
+    }
+    let max = u64::from(policy.max_batch_tokens());
+    assert!(max >= 1 && max >= 2 * u64::from(policy.min_batch_tokens()));
 }
 
 fn refused(e: tv_codec::DecodeError, input: &[u8]) {
@@ -89,15 +169,7 @@ fn prefixes(input: &[u8], decode: impl Fn(&[u8]) -> Option<tv_codec::DecodeError
 }
 
 fn sample_rules(sample: &AuditSample) {
-    let policy = sample.policy();
-    for pair in policy.buckets().windows(2) {
-        assert!(
-            pair[0].max_tokens < pair[1].max_tokens,
-            "buckets not increasing"
-        );
-    }
-    let max = u64::from(policy.max_batch_tokens());
-    assert!(max >= 1 && max >= 2 * u64::from(policy.min_batch_tokens()));
+    policy_rules(sample.policy());
     for pair in sample.selected().windows(2) {
         assert!(pair[0] < pair[1], "selected not increasing");
     }

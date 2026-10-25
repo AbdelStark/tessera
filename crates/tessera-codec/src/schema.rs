@@ -84,6 +84,7 @@ catalog! {
     TOKEN_FILE = "TokenFile", 0x0601, 1, Some("ttk"), Secret;
     LOGITS_FILE = "LogitsFile", 0x0602, 1, Some("tlg"), Secret;
     VERIFIER_LEDGER = "VerifierLedger", 0x0701, 1, Some("tvl"), Private;
+    VERIFIER_TOSS = "VerifierToss", 0x0702, 1, Some("tvt"), Secret;
 }
 
 /// The schema with identifier `id`, if the catalog has one.

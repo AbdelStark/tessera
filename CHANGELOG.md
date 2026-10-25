@@ -6,6 +6,13 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The verifier's pending coin toss, specified ([#529](https://github.com/AbdelStark/tessera/issues/529); the verifier's own changelog has the code):
+  - **RFC-0067 'The pending toss'.** The verifier keeps its share between the commitment and the reveal in a `VerifierToss` file (schema `0x0702`, `.tvt`, secret-class, verifier-local in 03 §5). It is written, synced and created exclusively before the commitment leaves. The reveal records the sample in the ledger before the sample leaves, and the file is cleared after the record. A verifier that restarts in between keeps its period's audit.
+  - **What the file does not bind.** A toss edited and resealed derives another sample, which nothing accepts. A file kept past its record, after a stop, reveals the same sample into any ledger it is given, so one ledger per verifier stays the operator's to keep.
+  - **02 §2.3.** `tessera-verify audit commit` and `audit reveal`. The recorder key is 64 hexadecimal digits. `--between` names the zero-length periods, as for `tessera audit sample`. `--new-ledger` creates the ledger, which otherwise must exist. The exit codes of each refusal are listed.
+  - **05 §3.** The verifier's share before its reveal is secret-class.
+  - **`tessera-codec`'s catalog** lists `VerifierToss` (`schema::VERIFIER_TOSS`), as it lists every artifact of 03 §5. `tessera inspect` renders such a file's envelope only, never its share.
+
 - The OBS-3 canary scan, over the exact CLI cycle ([#164](https://github.com/AbdelStark/tessera/issues/164)):
   - **The canary model**, `spec/vectors/canary/`, from the independent Python oracle: two layers, vocabulary 4,096, three runs of eight INT8 weights whose bytes are distinctive 64-bit values, a prompt of distinctive token ids, the model's greedy continuation and an altered copy of it.
   - **`e2e_redaction_canary_scan`** (`tessera-e2e`, `exact_cli`) runs compile, weight commitment, NI and Live proofs, both verifications, four failures and `inspect` of every artifact, each producer command logged at `trace` in JSON and readable form. It scans every file the run leaves except the secret-class artifacts, and fails on any canary in decimal, hex or little-endian byte form. The same run finds the canaries in the model and token files, and finds one injected into a scanned proof and log.

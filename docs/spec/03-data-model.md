@@ -181,6 +181,7 @@ Protocol messages (`Round1`, `SeedCommit`, `ProverSeedShare`, `SeedReveal`, `Rou
 | `TokenFile` | `0x0601` | 1 | `.ttk` | Secret | RFC-0003 |
 | `LogitsFile` | `0x0602` | 1 | `.tlg` | Secret | RFC-0003 |
 | `VerifierLedger` | `0x0701` | 1 | `.tvl` | Private (verifier-local) | RFC-0019 |
+| `VerifierToss` | `0x0702` | 1 | `.tvt` | Secret (verifier-local) | RFC-0067 'The pending toss' |
 
 Schema `0x0203` and the extension `.tts`, once named for a `TableSetManifest`, are retired and stay unassigned: the claim list's `tables` is the table set ([RFC-0029](../rfcs/RFC-0029-table-set.md)).
 

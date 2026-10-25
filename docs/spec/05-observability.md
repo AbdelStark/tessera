@@ -26,7 +26,7 @@
 | PUBLIC | Shapes, ids, digests, roots, `Û`, parameter-set names, counts, timings, device models | Allowed | Allowed | Allowed |
 | PROTOCOL | Sumcheck round messages, openings, column data, combined rows after blinding | Never logged; sizes only | Sizes only | Protocol artifacts only |
 | PRIVATE | Execution plan, budget cursor detail, prover configuration | `debug` level only | Identifiers only | Private artifacts |
-| SECRET | Weights, activations, prompt and output tokens, logits, lookup multiplicities, sampler and transcript keys, masking randomness, per-proof secret seeds, blinding rows; and what the proving engines derive from them that no message carries: bound tables, partial products, contractions, tree levels, codewords | Never | Never | Secret artifacts only, never in reports |
+| SECRET | Weights, activations, prompt and output tokens, logits, lookup multiplicities, sampler and transcript keys, masking randomness, per-proof secret seeds, blinding rows, a verifier's coin-toss share before its reveal ([RFC-0067](../rfcs/RFC-0067-verifier-ledger-encoding.md#the-verifiers-own-sample) 'The pending toss'); and what the proving engines derive from them that no message carries: bound tables, partial products, contractions, tree levels, codewords | Never | Never | Secret artifacts only, never in reports |
 
 Enforcement by type:
 

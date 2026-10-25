@@ -117,6 +117,26 @@ pub(crate) fn publish(path: &Path, bytes: &[u8]) -> Result<(), ErrorCode> {
     atomic(path, bytes, false, &NEXT)
 }
 
+/// Syncs the directory that holds `path`, so that a rename into it survives a power loss: on
+/// Unix `fsync` of the directory; other hosts give `std` no handle on a directory.
+pub(crate) fn sync_parent(path: &Path) -> Result<(), ErrorCode> {
+    #[cfg(unix)]
+    {
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        File::open(parent)
+            .and_then(|dir| dir.sync_all())
+            .map_err(|_| ErrorCode::Io)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}
+
 fn atomic(path: &Path, bytes: &[u8], replace: bool, next: &AtomicU64) -> Result<(), ErrorCode> {
     let parent = path
         .parent()
