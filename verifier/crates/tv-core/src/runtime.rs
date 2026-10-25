@@ -396,6 +396,8 @@ impl Geometry {
                         .checked_add(layout.row_vars())
                         .ok_or(Error::Internal)?,
                 ),
+                // `e_T` (RFC-0065 'The count'), which protocol/1's budget does not read.
+                claims: number(claims.claim_count(matrix))?,
             });
         }
         Ok(self.statement)

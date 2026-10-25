@@ -313,6 +313,13 @@ impl<'a> Claims<'a> {
         }
         Ok(out)
     }
+    /// `e_T`, the claims `matrix` has in the pool, aliases at one point included (RFC-0065 'The
+    /// count'); 0 for a matrix no claim opens.
+    pub fn claim_count(&self, matrix: Matrix) -> usize {
+        self.weights
+            .get(usize::from(matrix.tag()))
+            .map_or(0, Vec::len)
+    }
     /// Matrices required by the original reduction claims, in canonical order.
     /// A proof's matrix list never determines which commitments must be opened.
     pub fn matrices(&self) -> impl Iterator<Item = Matrix> + '_ {

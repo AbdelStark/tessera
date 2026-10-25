@@ -212,6 +212,7 @@ fn report_json(report: &SoundnessReport) -> Value {
                     "width": m.width,
                     "rows": m.rows,
                     "variables": m.variables,
+                    "claims": m.claims,
                 }))
                 .collect::<Vec<_>>(),
             "groups": {

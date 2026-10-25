@@ -1356,6 +1356,14 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- The soundness calculator counts each weight matrix's own blinding rows in `tessera-protocol/2` ([#521](https://github.com/AbdelStark/tessera/issues/521), RFC-0065):
+  - **The input.** RFC-0014's `matrices` gives each matrix's claims `e_T`, and the calculator derives `B_T` from them: `B_W` for `Embed`..`LmHead`, and for `ChannelParams` `B_W + 2·(e_CP − 1)·⌊max(B_W − 4, 0)/6⌋`. It never takes `B_T` as an input.
+  - **The refusals** (`ERR-USAGE`, protocol/2): a matrix with no claim, which is not opened, and a matrix other than `ChannelParams` with `e_T ≠ 1`.
+  - **The 405B statement.** It gives `ChannelParams` 7 claims, so under protocol/2 its `B_CP` is 12,280 and its `ϑ` 14: 102.19 bits, where one `B_W` gave 13 and 102.30.
+  - **`MatrixSizes`** gains `claims` and `blinding_rows`. The `tessera.soundness/1` report gives each matrix's `claims`, a field its schema now requires: a breaking change for its readers.
+  - **The oracle** (`spec/vectors/soundness/`) derives `B_T` the same way. It adds three edge cases: two pin `B_CP` exactly at a power of two, and one has fewer than four blinding rows. `tv-core`'s calculator (the verifier's changelog) agrees on all 92 cases and on 1,000 random profiles.
+  - **`max(B_W − 4, 0)`** in RFC-0014 and RFC-0065 keeps `N_0` a count for a set of fewer than four blinding rows. Floored division would have given −1, and an implementation could read it either way.
+
 - The soundness calculator's weight-linking row counts the link's combining challenge ([#516](https://github.com/AbdelStark/tessera/issues/516)). RFC-0014's row is now `max (ν_T + 1)/q`, the bound RFC-0064 'Soundness' states: `ν_T/q` for two weight polynomials that agree at `ρ_T`, and `1/q` for `θ_T`, which is drawn after the blinding claim. `tessera-protocol`'s calculator and the soundness oracle follow it, and `spec/vectors/soundness/` and `docs/perf/examples/soundness-*.json` are regenerated. At 405B the row goes from 37 to 38 over `q`, 122.75 bits instead of 122.78.
 
 - Long-lived keys are held on the heap ([#495](https://github.com/AbdelStark/tessera/issues/495), OBS-2):
