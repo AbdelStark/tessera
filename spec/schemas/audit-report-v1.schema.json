@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/audit-report-v1.schema.json",
+  "title": "tessera.audit-report/1",
+  "description": "The verifier's audit report at a sample's deadline (RFC-0016 'Audit report', 01 §2 stage 8): one outcome per selected request, in the sample's order, and their counts. `tessera-verify audit report` writes it (#151).",
+  "type": "object",
+  "required": [
+    "schema",
+    "sample",
+    "manifest",
+    "outcomes",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.audit-report/1"
+    },
+    "sample": {
+      "description": "The sample seed `H(\"audit-sample\", s_V ‖ s_P ‖ manifest_digest)`, lowercase hex.",
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "manifest": {
+      "description": "The period's `manifest_digest`, lowercase hex.",
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "outcomes": {
+      "description": "One entry per request the sample selected, in its order: `(session_id, request_id)` increasing.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/outcome"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    }
+  },
+  "$defs": {
+    "outcome": {
+      "description": "An `accepted` outcome carries `uhat_fixed`, a `rejected` one `reject`, an `unproven` one `unproven`, and an `inconclusive` one `error`, and no other of the four.",
+      "type": "object",
+      "required": [
+        "session_id",
+        "request_id",
+        "outcome"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {
+          "description": "The request's session, lowercase hex.",
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "request_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outcome": {
+          "enum": [
+            "accepted",
+            "rejected",
+            "unproven",
+            "inconclusive"
+          ]
+        },
+        "uhat_fixed": {
+          "description": "The proof's `Û` for the request, FixedBits in units of 2^-8 bits.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "reject": {
+          "description": "The reject reason, as `tessera.verdict/1` renders a verdict's `reason`.",
+          "type": "object",
+          "required": [
+            "code"
+          ]
+        },
+        "unproven": {
+          "enum": [
+            "DeadlineMissed",
+            "ProverReportedMismatch",
+            "ProverReportedAnchorMismatch"
+          ]
+        },
+        "error": {
+          "description": "The verifier's own error, as `tessera.verdict/1` renders it.",
+          "type": "object",
+          "required": [
+            "code"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "summary": {
+      "description": "The outcomes' counts: `selected` is their number and the sum of the other four. `max_uhat_fixed` is the largest accepted `uhat_fixed`, null when none is accepted.",
+      "type": "object",
+      "required": [
+        "selected",
+        "accepted",
+        "rejected",
+        "unproven",
+        "inconclusive",
+        "max_uhat_fixed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "selected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "accepted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unproven": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inconclusive": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_uhat_fixed": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

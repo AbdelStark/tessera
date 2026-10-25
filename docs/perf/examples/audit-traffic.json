@@ -1,0 +1,8 @@
+{
+  "schema": "tessera.audit-traffic/1",
+  "buckets": [
+    {"requests": 800000, "tokens": 700, "violations": 50},
+    {"requests": 180000, "tokens": 6000, "violations": 30},
+    {"requests": 20000, "tokens": 60000, "violations": 20}
+  ]
+}

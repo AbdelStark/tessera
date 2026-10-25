@@ -52,7 +52,8 @@ tessera audit sample    --manifest MANIFEST.tlm --log LOG.tdl
                         [--previous-manifest MANIFEST.tlm --previous-log LOG.tdl] [--between MANIFEST.tlm]...
                         --state DIR --verifier-share HEX --out SAMPLE.tas
 tessera audit batch     --sample SAMPLE.tas --out-dir DIR
-tessera audit plan      --policy POLICY.json --traffic PROFILE.json --plan plan.tep   # detection and overhead
+tessera audit plan      --policy POLICY.json --traffic PROFILE.json (--plan plan.tep | --source-defaults)
+                        [--eta η] [--target-overhead O] [--out PLAN.json]           # detection and overhead
 tessera params check    --params PARAMSET [--lookups N] [--table-rows T]   # soundness report
 tessera bench unit-costs --device INT --out UNIT_COSTS.json
 tessera bench model     (--plan plan.tep | --source-defaults) [--context INT,...] [--out MU.json]
@@ -72,6 +73,11 @@ tessera inspect         FILE                                                # re
 - **The record.** The coin toss is the record `audit share` kept for the manifest, with the verifier's revealed share. Its policy is the `tessera.audit-policy/1` file ([schema](../../spec/schemas/audit-policy-v1.schema.json)) given there, its rates decimal strings. A manifest with no record exits 64.
 
 A log that is not its manifest's exits 65 with `ERR-CODEC-DIGEST`. A share that does not open its commitment exits 20 with `ERR-PROTO-COINTOSS`. Previous periods that do not bind, or a policy file the reader refuses, exit 64. The recorder's signatures are the verifier's to check.
+
+`audit plan` reports a policy's detection probability and amortized overhead at a traffic profile ([RFC-0016](../rfcs/RFC-0016-audit-sampling.md#calculators) 'Calculators'):
+- **The inputs.** The `tessera.audit-policy/1` policy, and a `tessera.audit-traffic/1` profile ([schema](../../spec/schemas/audit-traffic-v1.schema.json)) with one entry per bucket: its requests, their mean length and the violating ones. Each bucket's `μ` is the cost model's at its mean length, from the plan's counts or, with `--source-defaults`, the source's, at `bench model`'s scenario (`--gpus`, `--batch-tokens`).
+- **The output.** A table, or with `--json` the `tessera.audit-plan/1` report ([schema](../../spec/schemas/audit-plan-v1.schema.json)), which `--out` writes too. It gives the detection against a prover that pads violations into a later bucket, the detection if none leaves its bucket, the amortized overhead and each bucket's rate for `--target-overhead`.
+- **Refusals.** A profile that is not one well-formed entry per bucket, or that has no request, exits 64.
 
 The v0.3 CPU reference path implements one exact-greedy request from an existing
 `TokenFile` (one prompt followed by its recorded continuation):
@@ -134,7 +140,7 @@ tessera-verify live     --claims claims.tcl --weights-root ROOT --weights WEIGHT
 tessera-verify tables   --claims claims.tcl     # regenerates and prints table digests
 tessera-verify params   --params PARAMSET       # independent soundness report
 tessera-verify weights link --ledger LEDGER.tvl --claims claims.tcl --link LINK.twl   # accept a refreshed weight root (RFC-0064)
-tessera-verify audit plan  --policy POLICY.json --traffic PROFILE.json --claims claims.tcl
+tessera-verify audit plan  --policy POLICY.json --traffic PROFILE.json [--mu MU.json]   # detection; overhead with μ
 tessera-verify audit report --ledger LEDGER.tvl --sample SAMPLE.tas --out REPORT.json
 ```
 

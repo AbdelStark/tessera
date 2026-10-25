@@ -54,7 +54,7 @@ pub(crate) struct ModelArgs {
 }
 
 /// `ERR-USAGE` for an input the model refuses, `ERR-INTERNAL` for an output it could not compute.
-fn model_error(error: ModelError) -> TesseraError {
+pub(crate) fn model_error(error: ModelError) -> TesseraError {
     let code = match error {
         ModelError::Input { .. } => ErrorCode::Usage,
         ModelError::Output { .. } => ErrorCode::Internal,

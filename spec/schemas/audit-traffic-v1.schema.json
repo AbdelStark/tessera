@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/audit-traffic-v1.schema.json",
+  "title": "tessera.audit-traffic/1",
+  "description": "A traffic profile for `tessera audit plan` (RFC-0016 'Calculators'): one entry per bucket of the policy, in its order. `tessera audit plan` reads it strictly: no key may be missing or unknown, and the profile must have as many buckets as the policy.",
+  "type": "object",
+  "required": [
+    "schema",
+    "buckets"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.audit-traffic/1"
+    },
+    "buckets": {
+      "description": "One entry per bucket of the policy, in its order.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/bucket"
+      }
+    }
+  },
+  "$defs": {
+    "bucket": {
+      "type": "object",
+      "required": [
+        "requests",
+        "tokens",
+        "violations"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "requests": {
+          "description": "`n_b`: the requests whose length falls in the bucket over a period, a 64-bit unsigned integer.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens": {
+          "description": "`L_b`: their mean length in tokens, above the previous bucket's `max_tokens` and at most the bucket's own. The cost model's `μ_b` is taken at it.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "violations": {
+          "description": "`v_b`: the violating requests among them, at most `requests`.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

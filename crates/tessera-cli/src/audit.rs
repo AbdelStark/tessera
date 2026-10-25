@@ -24,7 +24,11 @@
 //!    written to `--out` as an `AuditSample` envelope, through a temporary file renamed into
 //!    place.
 //!
-//! Neither command checks a recorder signature: the verifier does, before it derives the same
+//! `tessera audit plan` reports a policy's detection probability and amortized overhead at a
+//! traffic profile, a `tessera.audit-traffic/1` file, with the cost model's `μ` at each bucket's
+//! mean length ([`plan`], RFC-0016 'Calculators').
+//!
+//! Neither sampling command checks a recorder signature: the verifier does, before it derives the same
 //! sample (RFC-0062 'The check'). Everything they read and write is public (03 §5).
 
 use std::fs;
@@ -35,12 +39,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{Map, Value};
 use tessera_anchor::recorder::decode_log;
 use tessera_anchor::{LogManifest, VerifiedLog, candidates};
+use tessera_bench::{Counts, MemoryModel, ModelReport, Scenario, UnitCosts};
 use tessera_codec::error::{ErrorCode, TesseraError};
 use tessera_codec::{Ascii, DecodeLimits, Public, decode, encode, envelope, schema};
 use tessera_hash::ParamSetId;
-use tessera_protocol::{AuditPolicy, RateBucket, RequestKey, ShareRecord};
+use tessera_protocol::{
+    AuditPlan, AuditPolicy, BucketTraffic, PlanError, RateBucket, RequestKey, ShareRecord,
+    check_traffic,
+};
 
-use crate::{Input, io_error, write_bytes_atomically};
+use crate::{Input, io_error, write_atomically, write_bytes_atomically};
 
 /// The policy file's identifier (RFC-0016 'Policy', `spec/schemas/audit-policy-v1.schema.json`).
 pub(crate) const POLICY_SCHEMA: &str = "tessera.audit-policy/1";
@@ -386,6 +394,201 @@ pub(crate) fn share(options: &ShareOptions<'_>, json: bool) -> Result<(), Tesser
             format!("{object}\n")
         }
         false => format!("{share}\n"),
+    };
+    io::stdout()
+        .lock()
+        .write_all(shown.as_bytes())
+        .map_err(io_error("cannot write to stdout".to_owned()))
+}
+
+/// The traffic profile's identifier (RFC-0016 'Calculators',
+/// `spec/schemas/audit-traffic-v1.schema.json`).
+pub(crate) const TRAFFIC_SCHEMA: &str = "tessera.audit-traffic/1";
+
+/// The plan's identifier (RFC-0016 'Calculators', `spec/schemas/audit-plan-v1.schema.json`).
+pub(crate) const PLAN_SCHEMA: &str = "tessera.audit-plan/1";
+
+/// The flags of `tessera audit plan`.
+pub(crate) struct PlanOptions<'a> {
+    pub(crate) policy: &'a Path,
+    pub(crate) traffic: &'a Path,
+    /// The execution plan whose counts give `μ`, or `None` for the source's counts.
+    pub(crate) plan: Option<&'a Path>,
+    pub(crate) gpus: u32,
+    pub(crate) batch_tokens: u32,
+    pub(crate) eta: f64,
+    pub(crate) target_overhead: f64,
+    pub(crate) out: Option<&'a Path>,
+}
+
+/// An unsigned integer field of the traffic profile.
+fn count(object: &Map<String, Value>, key: &str) -> Result<u64, TesseraError> {
+    object
+        .get(key)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| usage(format!("a bucket's {key} is not an unsigned integer")))
+}
+
+/// Reads a `tessera.audit-traffic/1` file strictly: no key missing or unknown, and each bucket
+/// its requests, mean length and violating requests as unsigned integers.
+pub(crate) fn read_traffic(path: &Path) -> Result<Vec<BucketTraffic>, TesseraError> {
+    let shown = path.display().to_string();
+    let text = fs::read_to_string(path).map_err(io_error(format!("cannot read {shown}")))?;
+    let value: Value =
+        serde_json::from_str(&text).map_err(|e| usage(format!("{shown} is not JSON: {e}")))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| usage(format!("{shown} is not a JSON object")))?;
+    if let Some(key) = object
+        .keys()
+        .find(|k| !["schema", "buckets"].contains(&k.as_str()))
+    {
+        return Err(usage(format!("{shown} has an unknown key {key}")));
+    }
+    if object.get("schema").and_then(Value::as_str) != Some(TRAFFIC_SCHEMA) {
+        return Err(usage(format!("{shown} is not a {TRAFFIC_SCHEMA} file")));
+    }
+    object
+        .get("buckets")
+        .and_then(Value::as_array)
+        .ok_or_else(|| usage("the traffic's buckets is not an array".to_owned()))?
+        .iter()
+        .map(|b| {
+            let b = b.as_object().filter(|b| b.len() == 3).ok_or_else(|| {
+                usage("a bucket is not {requests, tokens, violations}".to_owned())
+            })?;
+            Ok(BucketTraffic {
+                requests: count(b, "requests")?,
+                tokens: count(b, "tokens")?,
+                violations: count(b, "violations")?,
+            })
+        })
+        .collect()
+}
+
+/// The plan as `tessera.audit-plan/1`.
+fn plan_json(plan: &AuditPlan, source_defaults: bool) -> Value {
+    let buckets: Vec<Value> = plan
+        .buckets
+        .iter()
+        .map(|b| {
+            serde_json::json!({
+                "max_tokens": b.max_tokens,
+                "rate": b.rate,
+                "lowest_later_rate": b.lowest_later_rate,
+                "requests": b.traffic.requests,
+                "tokens": b.traffic.tokens,
+                "violations": b.traffic.violations,
+                "mu": b.mu,
+                "expected_selected": b.expected_selected,
+                "target_rate": b.target_rate,
+                "detection": b.detection,
+                "detection_in_place": b.detection_in_place,
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "schema": PLAN_SCHEMA,
+        "source_defaults": source_defaults,
+        "eta": plan.eta,
+        "target_overhead": plan.target_overhead,
+        "buckets": buckets,
+        "detection": plan.detection,
+        "detection_in_place": plan.detection_in_place,
+        "overhead": plan.overhead,
+        "expected_selected": plan.expected_selected,
+    })
+}
+
+/// The plan as a table, one row per bucket, then the totals.
+fn plan_table(plan: &AuditPlan) -> String {
+    let mut text = format!(
+        "{:>10} {:>9} {:>9} {:>12} {:>9} {:>10} {:>8} {:>12} {:>9} {:>10} {:>9}\n",
+        "max tokens",
+        "rate",
+        "lowest",
+        "requests",
+        "tokens",
+        "violating",
+        "μ",
+        "selected",
+        "target",
+        "detection",
+        "in place",
+    );
+    for b in &plan.buckets {
+        text.push_str(&format!(
+            "{:>10} {:>8.4}% {:>8.4}% {:>12} {:>9} {:>10} {:>8.3} {:>12.1} {:>8.4}% {:>9.4}% {:>8.4}%\n",
+            b.max_tokens,
+            100.0 * b.rate,
+            100.0 * b.lowest_later_rate,
+            b.traffic.requests,
+            b.traffic.tokens,
+            b.traffic.violations,
+            b.mu,
+            b.expected_selected,
+            100.0 * b.target_rate,
+            100.0 * b.detection,
+            100.0 * b.detection_in_place,
+        ));
+    }
+    text.push_str(&format!(
+        "detection {:.4}% against padding, {:.4}% in place; amortized overhead {:.4}%; {:.1} requests selected\n",
+        100.0 * plan.detection,
+        100.0 * plan.detection_in_place,
+        100.0 * plan.overhead,
+        plan.expected_selected,
+    ));
+    text
+}
+
+/// Runs `tessera audit plan`: the policy's detection probability and amortized overhead at a
+/// traffic profile, with the cost model's `μ` at each bucket's mean length (RFC-0016
+/// 'Calculators'). With `json` the plan is printed as `tessera.audit-plan/1`, and otherwise as a
+/// table; `--out` writes the JSON through a temporary file renamed into place.
+pub(crate) fn plan(options: &PlanOptions<'_>, json: bool) -> Result<(), TesseraError> {
+    let policy = read_policy(options.policy)?;
+    let traffic = read_traffic(options.traffic)?;
+    let refused = |e: PlanError| usage(format!("{}: {e}", options.traffic.display()));
+    // The profile is checked first, so that the cost model runs only at lengths in the buckets.
+    check_traffic(&policy, &traffic).map_err(refused)?;
+    let contexts = traffic
+        .iter()
+        .map(|t| u32::try_from(t.tokens))
+        .collect::<Result<Vec<u32>, _>>()
+        .map_err(|_| usage("a bucket's mean length is past 2^32 − 1".to_owned()))?;
+    let (source_defaults, counts) = match options.plan {
+        Some(plan) => (false, crate::compile::counts_from_plan(plan)?),
+        None => (true, Counts::SOURCE_405B),
+    };
+    let scenario = Scenario {
+        gpus: options.gpus,
+        batch_tokens: options.batch_tokens,
+        eta: options.eta,
+        target_overhead: options.target_overhead,
+        violations: 0,
+    };
+    let model = ModelReport::new(
+        source_defaults,
+        counts,
+        UnitCosts::SOURCE,
+        MemoryModel::NODE_405B,
+        scenario,
+        &contexts,
+    )
+    .map_err(crate::bench::model_error)?;
+    let mu: Vec<f64> = model.projections.iter().map(|p| p.mu.total).collect();
+    let plan = AuditPlan::new(&policy, &traffic, &mu, options.eta, options.target_overhead)
+        .map_err(refused)?;
+    let text = serde_json::to_string_pretty(&plan_json(&plan, source_defaults))
+        .map(|text| format!("{text}\n"))
+        .map_err(|e| TesseraError::new(ErrorCode::Internal).with_source(e.to_string()))?;
+    if let Some(path) = options.out {
+        write_atomically(path, &text)?;
+    }
+    let shown = match json {
+        true => text,
+        false => plan_table(&plan),
     };
     io::stdout()
         .lock()

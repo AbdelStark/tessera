@@ -16,7 +16,8 @@
 //!                         [--previous-manifest MANIFEST.tlm --previous-log LOG.tdl] [--between MANIFEST.tlm]...
 //!                         --state DIR --verifier-share HEX --out SAMPLE.tas
 //! tessera audit batch     --sample SAMPLE.tas --out-dir DIR
-//! tessera audit plan      --policy POLICY.json --traffic PROFILE.json --plan plan.tep
+//! tessera audit plan      --policy POLICY.json --traffic PROFILE.json (--plan plan.tep | --source-defaults)
+//!                         [--eta η] [--target-overhead O] [--out PLAN.json]
 //! tessera params check    --params PARAMSET [--lookups N] [--table-rows T]
 //! tessera bench unit-costs --device INT --out UNIT_COSTS.json
 //! tessera bench model     (--plan plan.tep | --source-defaults) [--context INT,...] [--out MU.json]
@@ -26,7 +27,7 @@
 //!
 //! `tessera prove --reference-tokens` produces one exact-greedy CPU proof in NI or directory
 //! Live mode; sampled audits remain #157. `tessera compile` runs in `compile`,
-//! `tessera commit-weights` in `weights`, `tessera audit share` and `sample` in `audit`, `tessera bench model`
+//! `tessera commit-weights` in `weights`, `tessera audit share`, `sample` and `plan` in `audit`, `tessera bench model`
 //! in `bench`, `tessera params check` in `params`, `tessera recorder ref` in `recorder`, and
 //! `tessera inspect` in `inspect`. Other commands check their
 //! arguments and the envelope of each TCE artifact it reads (RFC-0003), then exits with
@@ -243,13 +244,36 @@ struct BatchArgs {
 
 /// `tessera audit plan`.
 #[derive(Debug, Args)]
+#[command(group(clap::ArgGroup::new("counts").required(true).args(["plan", "source_defaults"])))]
 struct PlanArgs {
+    /// The audit policy, a `tessera.audit-policy/1` file.
     #[arg(long, value_name = "POLICY.json")]
     policy: PathBuf,
+    /// The requests per bucket, their mean length and the violating ones, a
+    /// `tessera.audit-traffic/1` file.
     #[arg(long, value_name = "PROFILE.json")]
     traffic: PathBuf,
+    /// The execution plan whose counts give the cost model's `μ`.
     #[arg(long, value_name = "plan.tep")]
-    plan: PathBuf,
+    plan: Option<PathBuf>,
+    /// Use the source's counts and unit costs for `μ` (source §5).
+    #[arg(long)]
+    source_defaults: bool,
+    /// GPUs that prove a request.
+    #[arg(long, value_name = "G", default_value_t = tessera_bench::Scenario::SOURCE.gpus)]
+    gpus: u32,
+    /// Tokens of a proof batch, which share its weight pass.
+    #[arg(long, value_name = "T", default_value_t = tessera_bench::Scenario::SOURCE.batch_tokens)]
+    batch_tokens: u32,
+    /// Ratio of ideal prefill time to serving time per token.
+    #[arg(long, value_name = "η", default_value_t = tessera_bench::Scenario::SOURCE.eta)]
+    eta: f64,
+    /// Amortized overhead the target rates are set for, as a fraction.
+    #[arg(long, value_name = "O", default_value_t = tessera_bench::Scenario::SOURCE.target_overhead)]
+    target_overhead: f64,
+    /// Write the tessera.audit-plan/1 report to this file.
+    #[arg(long, value_name = "PLAN.json")]
+    out: Option<PathBuf>,
 }
 
 /// `tessera bench unit-costs`.
@@ -424,7 +448,7 @@ fn fail(
 
 /// Runs the command `cli` names, and returns its name, as 02 §2.2 spells it, with its outcome.
 fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
-    use schema::{AUDIT_SAMPLE, EXECUTION_PLAN, WEIGHT_COMMITMENT_STATE};
+    use schema::{AUDIT_SAMPLE, WEIGHT_COMMITMENT_STATE};
     match &cli.command {
         Command::Compile(a) => (
             "compile",
@@ -481,8 +505,20 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
         ),
         Command::Audit(Audit::Plan(a)) => (
             "audit plan",
-            pending("audit plan", &[Input::new(&a.plan, &EXECUTION_PLAN)], 157)
-                .map(|()| ExitCode::SUCCESS),
+            audit::plan(
+                &audit::PlanOptions {
+                    policy: &a.policy,
+                    traffic: &a.traffic,
+                    plan: a.plan.as_deref(),
+                    gpus: a.gpus,
+                    batch_tokens: a.batch_tokens,
+                    eta: a.eta,
+                    target_overhead: a.target_overhead,
+                    out: a.out.as_deref(),
+                },
+                cli.json,
+            )
+            .map(|()| ExitCode::SUCCESS),
         ),
         Command::Params(Params::Check(a)) => ("params check", params::check(a, cli.json)),
         Command::Bench(Bench::UnitCosts(_)) => (

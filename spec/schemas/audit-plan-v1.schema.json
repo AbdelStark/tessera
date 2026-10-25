@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/audit-plan-v1.schema.json",
+  "title": "tessera.audit-plan/1",
+  "description": "What `tessera audit plan` reports (RFC-0016 'Calculators', tessera_protocol::AuditPlan): per bucket of the policy and in total, the detection probability of the violating requests against a prover that pads them into a later bucket, the same if none leaves its bucket, the amortized overhead and the rates that reach a target overhead. Binary64 planning figures: none enters a sample or an artifact.",
+  "type": "object",
+  "required": [
+    "schema",
+    "source_defaults",
+    "eta",
+    "target_overhead",
+    "buckets",
+    "detection",
+    "detection_in_place",
+    "overhead",
+    "expected_selected"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tessera.audit-plan/1"
+    },
+    "source_defaults": {
+      "description": "Whether `μ` comes from the source's counts and unit costs rather than an execution plan's counts.",
+      "type": "boolean"
+    },
+    "eta": {
+      "description": "`η`, the ratio of ideal prefill time to serving time per token.",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "target_overhead": {
+      "description": "`O`, the amortized overhead the target rates are set for.",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "buckets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/bucket"
+      }
+    },
+    "detection": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "`1 − Π_b (1 − s̲_b)^{v_b}`: at least one violating request selected, each padded into the later bucket of lowest rate."
+    },
+    "detection_in_place": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "`1 − Π_b (1 − s_b)^{v_b}`: the same if no violating request leaves its bucket, an upper bound."
+    },
+    "overhead": {
+      "description": "`Σ_b n_b·L_b·s_b·μ_b·η / Σ_b n_b·L_b`, the amortized overhead.",
+      "type": "number",
+      "minimum": 0
+    },
+    "expected_selected": {
+      "description": "`Σ_b n_b·s_b`, the requests a sample is expected to select.",
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "bucket": {
+      "type": "object",
+      "required": [
+        "max_tokens",
+        "rate",
+        "lowest_later_rate",
+        "requests",
+        "tokens",
+        "violations",
+        "mu",
+        "expected_selected",
+        "target_rate",
+        "detection",
+        "detection_in_place"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "`s_b`, the bucket's threshold over 2^64."
+        },
+        "lowest_later_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "`s̲_b = min_{c ≥ b} s_c`."
+        },
+        "requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "violations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mu": {
+          "description": "The cost model's `μ_b` at the bucket's mean length.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "expected_selected": {
+          "description": "`n_b·s_b`.",
+          "type": "number",
+          "minimum": 0
+        },
+        "target_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "`min(1, O/(μ_b·η))`, the rate that alone gives the target overhead at the bucket's context."
+        },
+        "detection": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "`1 − (1 − s̲_b)^{v_b}`."
+        },
+        "detection_in_place": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "`1 − (1 − s_b)^{v_b}`."
+        }
+      }
+    }
+  }
+}
