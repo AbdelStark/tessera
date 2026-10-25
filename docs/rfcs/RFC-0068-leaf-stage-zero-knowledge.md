@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-25
 - Target milestone: v0.4
+- Amended by: [RFC-0069](RFC-0069-one-layer-claims.md) ('The layer sumcheck' step 1 and 'Zero knowledge': an outside value at one layer; 'Non-Goals': the epilogue's claim)
 - Amends, in `tessera-protocol/2`:
   - [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#leaf-checks) 'Leaf checks': each LogUp instance's key and value columns take a mask row of their own;
   - [RFC-0045](RFC-0045-leaf-layout.md#the-leaf-point) 'The leaf point' and 'The split': `P` without the tree index's coordinate, and the values of sites in the layers sent once per site and tensor, at a random layer point, after a layer sumcheck;
@@ -57,7 +58,7 @@ The split shrinks from 53,489 lookup-tensor values to 614. `tessera-protocol/1` 
 
 - **The masking polynomials' openings** (#489). The layer sumcheck adds one.
 - **Grouped leaf stages** (RFC-0054). `tessera-protocol/2` accepts none.
-- **Claims at Boolean layers outside the leaf stage.** The epilogue's claim on the last checkpoint, `Layers::One(L − 1)` (RFC-0037), sits at a Boolean layer where no mask acts. It is #535.
+- **Claims at Boolean layers outside the leaf stage.** The epilogue's claim on the last checkpoint, `Layers::One(L − 1)` (RFC-0037), sits at a Boolean layer where the stacked kind's mask vanishes. [RFC-0069](RFC-0069-one-layer-claims.md) masks it (#535).
 
 ## Proposed Design
 
@@ -88,7 +89,7 @@ For each LogUp instance `I`:
 
 In `tessera-protocol/2` the leaf stage ends as follows, after `logup/values`.
 
-1. **The values outside the layers.** For each site outside the layers, in node order, the prover sends its tensors' values at their points, as RFC-0045 says, under `stage/0/split`. An outside claim that RFC-0037 splits into atoms has its atom values follow, as RFC-0037 'Splits' orders them. Their points' coordinates are all challenges, so the tensors' masks act there.
+1. **The values outside the layers.** For each site outside the layers, in node order, the prover sends its tensors' values at their points, as RFC-0045 says, under `stage/0/split`. An outside claim that RFC-0037 splits into atoms has its atom values follow, as RFC-0037 'Splits' orders them. Their points' coordinates are all challenges, so the tensors' masks act there. A value at one layer, such as a read of the last checkpoint, has its layer coordinates Boolean, and RFC-0069's mask of the layer's tensor acts instead.
 2. **The claims.** Each instance has its key claim `κ'_I(P[0..h_I])`, and its value claim when its table has values: that of RFC-0032, derived from the last level and `logup/values`. By RFC-0045's identity and the column mask,
    ```text
    κ'_I(P[0..h_I]) = Σ_{(s,t) layered} Σ_ℓ C^κ_{I,s,t}(ℓ)·X'_t(π_t(r_s) ‖ ℓ)  +  out^κ_I  +  pub^κ_I  +  Z(P[0..h_I])·R̃_{κ,I}(P[0..c_I])
@@ -181,7 +182,7 @@ This section covers what the verifier sees of the leaf stage (`simulator.md` §4
   - Their per-layer evaluations enter only the column values, already masked, and the layer instance's round sums, masked by `G`.
   - The `v_{s,t}` sit at `(π_t(r_s) ‖ ρ'_y)`, every coordinate but the lowest a challenge, so each tensor's own mask `R_t` acts there (RFC-0013).
   - `R_t` is then revealed at that point and at stage 1's final point, as in every stacked claim. R10's check (#488) covers those points as before.
-- **The outside values** sit at points of challenges and are masked by their tensors' own masks.
+- **The outside values** sit at points of challenges and are masked by their tensors' own masks, or, at one layer, by the layer's tensor's (RFC-0069).
 - **R8.** No tensor or column of the leaf stage is revealed alone at a point where its mask vanishes, and every revealed sum of such terms carries a column mask. R8 is met for the leaf stage.
 - **R9.** `ChannelParams`' class tensors are read at the leaf per layer, but those evaluations are now revealed only inside masked columns.
   - Their stacked claim sits at RFC-0065's `x_i = π(r_s) ‖ ρ'_y`, with random coordinates, where the per-claim masks act.

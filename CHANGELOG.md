@@ -6,6 +6,14 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Claims at one layer in `tessera-protocol/2`, specified ([#535](https://github.com/AbdelStark/tessera/issues/535)):
+  - **RFC-0069, 'Claims at One Layer in `tessera-protocol/2`'.**
+    - **The leak.** The epilogue reads the last checkpoint at layer `L − 1` alone. At 405B the composed schedule has 33 such claims, on the last position's committed output at the Boolean layer 125, where the stacked kind's mask vanishes. Stage 1 has three: the final norm's sum of squares, its product and RFC-0050's residual padding zero-check. Stage 2 has thirty: the final evaluations of its `SumSquares` instances, which the root's 30 coefficient products start. They sit at two points.
+    - **The mask.** Such a claim is on the layer's tensor in its own variables, `X_κ[ℓ]`, which takes an `Fp2` mask row of its own, as RFC-0013 masks every committed tensor. The pool gives the row the coefficient `Z(r)`, in the group the claim already joins.
+    - **Cost at 405B:** one mask row, two committed rows; no opening group, round or label.
+    - RFC-0037 now states the schedule's one read at one layer, the epilogue's of `c_L`, and that no relation proves a claim at one layer.
+    - It amends RFC-0013, RFC-0037 and RFC-0068, and the simulator argument: R8 is met for claims at one layer.
+
 - The leaf stage of `tessera-protocol/2`, specified ([#486](https://github.com/AbdelStark/tessera/issues/486)):
   - **RFC-0068, 'The Leaf Stage in `tessera-protocol/2`: Column Masks and a Layer Sumcheck'.**
     - **The leak.** RFC-0045 evaluates every looked-up tensor of a site in the layers once per real layer, at Boolean layer coordinates, where the masked extension is the tensor. Those values leave as the per-layer split values, 53,489 at 405B, and inside the LogUp columns, which the last tree level reveals unmasked (`docs/zk/simulator.md` §4.3, R8).
