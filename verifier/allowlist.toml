@@ -16,11 +16,6 @@
 # Changing this file changes the trusted base and requires a second reviewer (09 §6).
 
 [[package]]
-name = "ed25519-dalek"
-version = "2"
-reason = "Ed25519 (RFC 8032) verification of recorder log manifests (RFC-0015)"
-
-[[package]]
 name = "rayon"
 version = "1"
 reason = "Data-parallel column checks and combined-row re-encoding within the SC-3 time budget (RFC-0019)"

@@ -23,7 +23,8 @@ tessera-codec = { path = "../tessera-codec" }
 
 [dev-dependencies]
 serde_json = "1"
-# The verifier's independent RFC 9162 verification, for a differential test (DEP-2).
+# The verifier's independent RFC 9162 and strict Ed25519 verification, for differential tests
+# (DEP-2).
 tv-hash = { path = "../../verifier/crates/tv-hash" }
 
 [lints]

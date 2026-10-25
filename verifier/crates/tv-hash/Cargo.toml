@@ -1,6 +1,6 @@
 [package]
 name = "tv-hash"
-description = "BLAKE3 domains, chained column digests, Merkle multiproofs, transcript replay and proof-of-work checks, and the SHA-256 Merkle tree of recorder logs (RFC-0004, RFC-0015)."
+description = "BLAKE3 domains, chained column digests, Merkle multiproofs, transcript replay and proof-of-work checks, the SHA-256 Merkle tree of recorder logs, and strict Ed25519 verification of their manifests (RFC-0004, RFC-0015, RFC-0060)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,8 +8,8 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
-# BLAKE3 and SHA-256 are written here, in safe Rust, from their specifications: no hash crate
-# enters the trusted base (RFC-0019 'Dependencies').
+# BLAKE3, SHA-256, SHA-512 and Ed25519 are written here, in safe Rust, from their specifications:
+# no hash or signature crate enters the trusted base (RFC-0019 'Dependencies').
 [dependencies]
 tv-field = { path = "../tv-field" }
 
