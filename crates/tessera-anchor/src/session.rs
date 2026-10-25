@@ -13,6 +13,7 @@ use aes::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
 use core::borrow::Borrow;
 use core::borrow::BorrowMut;
 use core::fmt;
+use sha2::{Digest, Sha256};
 use tessera_codec::{HeapKey, Secret, SecretBuf, Zeroize};
 
 /// The label of the key commitment (RFC-0015 'Frames').
@@ -196,6 +197,42 @@ impl Session {
         }
         Ok(frame)
     }
+}
+
+/// Whether `frame`, sealed under `keys` in session `session_id` at counter `frame_seq`, has the
+/// digest `expected`: the pre-check's replay (RFC-0059 'Storing the keys', RFC-0015 'Prover
+/// pre-check'). The plaintext is encrypted in place in clearing storage, and only the comparison
+/// leaves: never a ciphertext or a keystream. A plaintext of `2^32` bytes or more has no header,
+/// so it matches nothing.
+#[allow(clippy::disallowed_methods)]
+pub(crate) fn digest_matches(
+    keys: &SessionKeys,
+    session_id: &[u8; 16],
+    frame_seq: u32,
+    frame: &TokenFrame,
+    expected: &[u8; 32],
+) -> bool {
+    let Ok(length) = u32::try_from(frame.plaintext_len()) else {
+        return false;
+    };
+    let cipher = Box::new(Aes128::new(GenericArray::from_slice(
+        Borrow::<[u8; 16]>::borrow(keys.key.expose_secret()),
+    )));
+    let mut sealed = plaintext(frame);
+    keystream(&cipher, session_id, frame_seq, &mut sealed);
+    let header = FrameHeader {
+        session_id: *session_id,
+        request_id: frame.request_id,
+        direction: frame.direction,
+        frame_index: frame.frame_index,
+        length,
+        frame_seq,
+    };
+    let mut hash = Sha256::new();
+    hash.update(header.to_bytes());
+    hash.update(&sealed[..]);
+    let digest: [u8; 32] = hash.finalize().into();
+    digest == *expected
 }
 
 /// `TCE(TokenFrame)` (RFC-0059 'The plaintext'), in clearing storage: `u64` request, `u16`

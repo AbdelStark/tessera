@@ -165,6 +165,22 @@ Cost per token, both directions, is about 250 lookups and 1,000 committed bits, 
 
 Before `Round1`, the prover re-encrypts its stored transcripts, checks the session rules and the request's rules over its window ([RFC-0062](RFC-0062-period-log-sessions.md#the-pre-check), [RFC-0063](RFC-0063-request-boundaries.md#the-requests-rules)), recomputes every frame digest, every session's key commitment and the pinned sampler commitment ([RFC-0061](RFC-0061-sampling-randomness.md#the-sampler-key-and-its-pins)), and compares them with the manifest's entries and the pin ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#the-reference-cipher) says what its replay may return); a mismatch is `ERR-WITNESS-ANCHOR` and the batch is not proven.
 
+- **The stored transcript.** The serving stack keeps one `SessionTranscript` per session: the secret-class artifact `0x0404`, `.tst` (03 §5), written with mode 0600 (06 §7). It is what RFC-0059 'The reference cipher' calls storing `SessionKeys`. TCE, in order:
+  - `session_id: [u8; 16]`, `key: [u8; 16]` (`k_s`), `key_salt: [u8; 16]` (`salt_k`);
+  - `frames: Vec<StoredFrame>`, each `frame_seq: u32`, then the plaintext's `request_id: u64`, `u16` direction tag, `frame_index: u32` and `tokens: Vec<u32>`.
+
+  `frame_seq` strictly increases. A decoder refuses a counter not above the one before it, and a direction tag other than 0 or 1, with `ERR-CODEC-NONCANONICAL` at the field.
+- **The order.** Per request, in `statement.batch` order, the pre-check runs the verifier's order:
+  1. the session's rules in each period of the window that holds a frame of it, with one key (RFC-0063 rule 4);
+  2. the request's rules 1, 2, 3 and 5;
+  3. the lengths;
+  4. at the session's first request in the batch, the window's counters ([RFC-0063](RFC-0063-request-boundaries.md#the-requests-rules) 'One counter across the window');
+  5. the replay: a transcript of the session is held, its keys open the session's key commitment, and each logged frame has a stored plaintext at its counter, with the entry's request, direction, index and length, that re-seals to the entry's digest.
+
+  The first failure names its request.
+- **What the caller binds.** The pre-check reads the window from the period's verified log and the previous period's. The caller binds the two by the chain, as the verifier does (RFC-0063 'The previous period's log').
+- **The sampler key.** Its commitment and containment are checked with the sampler PRF's inputs (#152). A greedy batch has no pin.
+
 ### Verifier checks
 
 1. Manifest signature under a pinned recorder key; unknown scheme rejected.

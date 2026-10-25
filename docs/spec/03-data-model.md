@@ -174,6 +174,7 @@ Protocol messages (`Round1`, `SeedCommit`, `ProverSeedShare`, `SeedReveal`, `Rou
 | `DigestLogEntry` | `0x0401` | 1 | stream; a period's log is `.tdl` ([RFC-0062](../rfcs/RFC-0062-period-log-sessions.md#the-periods-log)) | Public | RFC-0015 |
 | `LogManifest` | `0x0402` | 1 | `.tlm` | Public | RFC-0015 |
 | `AuditSample` | `0x0403` | 1 | `.tas` | Public | RFC-0016 |
+| `SessionTranscript` | `0x0404` | 1 | `.tst` | Secret | RFC-0015 |
 | `SeedCommit`, `ProverSeedShare`, `SeedReveal` | `0x0501`–`0x0503` | 1 | message | Public | RFC-0014 |
 | `Round1`, `Round2Response`, `ColumnQueries`, `Round3Response` | `0x0510`–`0x0513` | 1 | message | Protocol | RFC-0014 |
 | `NiProof` | `0x0520` | 1 | `.tnp` | Protocol | RFC-0014 |

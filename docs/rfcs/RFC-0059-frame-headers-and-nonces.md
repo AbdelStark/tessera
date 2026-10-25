@@ -188,7 +188,7 @@ It has no operation that takes a counter, a key or an identifier from its caller
 - **The pre-check** (RFC-0015 'Prover pre-check', #146) recomputes a stored session's digests and key commitment, and the pinned sampler commitment. Its replay takes the session's keys and its recorded frames, re-seals each plaintext at the frame's recorded counter, and returns only whether each digest matches, never a ciphertext or a keystream.
 - **The witness generators** of the AES-CTR circuit (#142) and of the sampler PRF (#152) evaluate AES under `k_s` at public counter blocks and under the sampler key `K` at the blocks of RFC-0061 'The stream'. The keystream they compute is witness data, secret-class (05 §3, OBS-6), and leaves them only committed.
 
-Storing `SessionKeys` is #146's: it is a secret-class artifact.
+Storing `SessionKeys` is #146's: it is a secret-class artifact, the `SessionTranscript` of [RFC-0015](RFC-0015-transcript-anchor.md#prover-pre-check) 'Prover pre-check'.
 
 ## Security Argument
 
