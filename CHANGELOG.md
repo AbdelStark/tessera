@@ -6,6 +6,14 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Masked `ChannelParams` claims, specified ([#487](https://github.com/AbdelStark/tessera/issues/487)):
+  - **RFC-0065, 'Masked `ChannelParams` Claims in `tessera-protocol/2`'.**
+    - **The leak.** Each claim sits at a point of `Ã_CP` whose padding and type coordinates are Boolean, so RFC-0013's `Z` vanishes there and the masked value is the secret's own (`docs/zk/simulator.md` §4.5). Two claims can also share a column point, and the `m` evaluation rows shared one blinding pair.
+    - **The masks.** Each claim gets its own mask row, with `Z` over its type tensor's `c_i + λ` coordinates, all challenges, and its own blinding pair. A proof reserves `4·m_T + 2` rows per matrix: six for a single-claim matrix, 30 for `ChannelParams` at `m = 7`. The reservation's slots are fixed in `Round1`.
+    - **The budget.** `ChannelParams` has `B_CP = B_W + 4·(m_CP − 1)·⌊(B_W − 4)/6⌋` blinding rows, 20,464 at 405B, so it serves as many proofs per epoch as the other matrices. That costs 3.6% more codeword store and column answers. The alternative, a larger `B_W` for every matrix, would cost 36%.
+  - **Amended:** RFC-0012 (`reserve`, the layout's blinding rows), RFC-0013 (the masked extension and 'Cost'), RFC-0014 (the field term's `B_T`), RFC-0026, RFC-0031, RFC-0040, RFC-0052 and RFC-0064. `docs/zk/simulator.md` marks R9 met.
+  - **Not yet:** the calculators count `B_T` with #521, #147 commits the masks, and #162 tests them.
+
 - RFC-0016's audit calculators and `tessera audit plan` ([#141](https://github.com/AbdelStark/tessera/issues/141)):
   - **`tessera_protocol::AuditPlan`.** From a policy, each bucket's `BucketTraffic` (requests, mean length, violating requests) and the cost model's `μ`, it gives the plan, per bucket and in total:
     - the detection probability against a prover that pads each violation into the later bucket of lowest rate, `1 − Π_b (1 − s̲_b)^{v_b}`;

@@ -17,6 +17,7 @@
   - [RFC-0040](RFC-0040-weight-commitment-artifacts.md) 'masks_seed': every epoch's seed is derived from the model's refresh key, and the seed's expansion is normative;
   - [RFC-0019](RFC-0019-verifier.md#ledger) 'Ledger': one successor per root, and `weights link`'s claim list;
   - [03 §5](../spec/03-data-model.md#5-artifact-catalog): `WeightLinkProof` is defined here.
+- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) (each matrix's own blinding rows `B_T` where this RFC writes `B_W`: `ChannelParams`' are `B_CP`)
 - Origin: [#485](https://github.com/AbdelStark/tessera/issues/485), from the simulator argument ([`docs/zk/simulator.md`](../zk/simulator.md) §6.4, requirement R3)
 
 ## Summary
@@ -191,7 +192,7 @@ pub struct MatrixLink {
 
 - **The state.** Epoch `e + 1`'s state starts with `next_blinding_row = 4`, and its first proof reserves from row 4. Epoch 0, which no link starts, reserves from row 0.
 - **Columns for proofs.** Epoch `e + 1`'s proofs share `P_W − 2τ_link` columns: the link's at its start and the next link's headroom at its end. At `live-64` that is 673 proofs (`(2^16 − 244)/97`), against RFC-0012's 674, and the rows' bound stays 681.
-- **One count.** These are RFC-0012's four rows at each end of an epoch, used once each. RFC-0012 'Failure modes' should read "the four blinding rows", and the `reserve` precondition stays `next_blinding_row + 6 ≤ B_W − 4`.
+- **One count.** These are RFC-0012's four rows at each end of an epoch, used once each. RFC-0012 'Failure modes' should read "the four blinding rows", and the `reserve` precondition stays `next_blinding_row + 6 ≤ B_W − 4`: `next_blinding_row + r_T ≤ B_T − 4` with [RFC-0065](RFC-0065-masked-channel-params.md#the-reservation)'s counts.
 - **The parameters.** 'The transcript' gives `τ_link` and `g_link` per layout. The production layout's are `ni-100`'s `τ_W` and `g_query`, since the link is non-interactive, and `reserve`'s headroom is `τ_link`.
 
 ### One link per epoch

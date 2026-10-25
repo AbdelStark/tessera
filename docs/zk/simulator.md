@@ -9,7 +9,7 @@
 
 **As specified today, `tessera-protocol/2` is not zero-knowledge.** Three of its messages reveal secret values outright:
 - **The leaf stage's per-layer split values** sit at Boolean layer coordinates, where the masked extension equals the tensor (§4.3, R8).
-- **`ChannelParams`' claims** sit at Boolean coordinates too (§4.5, R9).
+- **`ChannelParams`' claims** sit at Boolean coordinates too (§4.5, R9). [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md) fixes it.
 - **The weight linking proof** reveals `W̃_T(ρ_T)` (§6.4, R3).
 
 Further gaps are missing pieces of the protocol, not leaks:
@@ -215,6 +215,11 @@ Each stage is Lemma 4's masked sumcheck. Its final evaluations and its split val
   - **The epoch.** At `m ≈ 7` that is about 30 rows per proof, so about 136 proofs per epoch at `B_W = 4096`, unless `B_W` grows.
   - The budget of RFC-0012, and Lemma 7, recounted for them.
 
+**Met.** [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md) gives each claim its own mask row `R_i`, with `Z` over the type tensor's `c_i + λ` coordinates, all challenges, and its own blinding pair `β_i`.
+- **The cost.** A proof reserves `4m + 2` rows of `ChannelParams`.
+- **The epoch.** `ChannelParams` has `B_CP = B_W + 4·(m_CP − 1)·⌊(B_W − 4)/6⌋` blinding rows, 20,464 at 405B, so it serves as many proofs per epoch as the other matrices.
+- **The argument** is Lemma 5's, with `β_i` designated for row `i`. Each `R_i` enters one value, so the `m` values are jointly uniform even when two claims share a column point. Lemma 7 covers the epoch with `m` evaluation rows per proof.
+
 ### 4.6 Column answers
 
 **Lemma 6 (columns).** For `τ ≤ P` distinct queried columns:
@@ -343,7 +348,7 @@ So `ε_1 < 2^{-105}`, given R10's rank checks. These counts are projections from
 | R6 | The weight budget never rolls back, and an aborted session burns what it reserved | RFC-0012 'Budget state machine' | Met by RFC-0012; #156 must preserve it |
 | R7 | A scoring message that carries a secret evaluation has a masked extension | RFC-0017 | To check when its masked messages land |
 | R8 | No masked tensor is revealed at a point where its own `Z` vanishes, nor alone in a sum all of whose terms are such points. The leaf stage's per-layer split values violate it, so `tessera-protocol/2` needs a leaf layout, or per-layer masks, that avoid them | RFC-0045, RFC-0037 'Splits', RFC-0013 'Masked extensions' | Not met; no `tessera-protocol/2` leaf layout exists; [#486](https://github.com/AbdelStark/tessera/issues/486) |
-| R9 | `ChannelParams` claims take masks over the type tensor's random coordinates `(r_c, ρ)`, and each evaluation row its own blinding pair: `4m + 2` rows per proof with per-claim masks, about 136 proofs per epoch at `m ≈ 7` | RFC-0052, RFC-0012 'Layout' and 'Budget state machine' | Not met; [#487](https://github.com/AbdelStark/tessera/issues/487) |
+| R9 | `ChannelParams` claims take masks over the type tensor's random coordinates `(r_c, ρ)`, and each evaluation row its own blinding pair: `4m + 2` rows per proof, and `ChannelParams`' own blinding rows `B_CP` keep its epoch as long as the others' | [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md), superseding RFC-0052's `tessera-protocol/2` gap and RFC-0012's six-row `reserve` | Met in the specification by RFC-0065 ([#487](https://github.com/AbdelStark/tessera/issues/487)); [#147](https://github.com/AbdelStark/tessera/issues/147) implements it, and [#162](https://github.com/AbdelStark/tessera/issues/162) tests it |
 | R10 | Every mask row's revealed points, as the compiled schedule places them, have linearly independent `eq` vectors, apart from dependencies implied by public relations among the revealed values, such as `e'(λ ‖ r')`'s. The points depend on challenges, so the compiler checks the generic (symbolic) rank and Schwartz–Zippel bounds the rest. Softmax row sums at `1/2` and shared column sub-points are included | the compiler's schedule (RFC-0006, RFC-0037) and the verifier's derivation | Not checked; [#488](https://github.com/AbdelStark/tessera/issues/488) |
 | R11 | Each masked sumcheck's `G(r)` and each tree level's mask claim is opened. Either way, the budget counts it: through its own group, with a blinding pair and a combined row, or through a batching sumcheck that reduces them to shared column points | RFC-0013 'Masked sumcheck', RFC-0011 'Opening protocol', RFC-0032 | Not specified: RFC-0011 opens `eq` functionals only; [#489](https://github.com/AbdelStark/tessera/issues/489) |
 
