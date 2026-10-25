@@ -356,7 +356,7 @@ These tests check the implementation of the masks, not this argument (07 §7). E
 - **Lemma 5.** Combined rows are uniform for two witnesses, under the tensor generator and under the fixed word.
 - **Lemma 6.** Opened symbols are uniform for two witnesses, up to `P` columns. At `P + 1` columns of one row they are not, which is the negative control.
 - **Lemma 7 and R2.** Over a small field, the joint combined rows of many proofs of one epoch are uniform, the relations at earlier columns included, with free coefficients. The tensor generator's rank failures are measured against them.
-- **R3.** A linking proof's view is identical for two weight sets that agree at `ρ_T`. Under the current text it is not, which is the negative control.
+- **R3.** A linking proof's view is identical for two weight sets that differ at `ρ_T`, with the random oracle programmed to give both the same `ρ_T` ([RFC-0064](../rfcs/RFC-0064-weight-linking-proof.md#zero-knowledge)). RFC-0012's openings reveal the two different `W̃_T(ρ_T)`, which is the negative control.
 
 ## 11. Review record
 

@@ -134,7 +134,7 @@ Before any v0.4 implementation work merges, [`docs/zk/simulator.md`](../zk/simul
 | Weight budget per proof | 6 blinding rows per weight matrix (two each for evaluation, proximity and mask) |
 | Extra sumcheck work | last round only |
 
-The weight budget per proof is six rows, and the linking proofs take four at each end of an epoch, so `B_W = 4096` gives `(4096 − 8)/6 = 681` proofs per epoch, matching the column budget of about 674 ([RFC-0012](RFC-0012-weight-commitment.md#budget-state-machine)).
+The weight budget per proof is six rows, and the linking proofs take four at each end of an epoch, so `B_W = 4096` gives `(4096 − 8)/6 = 681` proofs per epoch, matching the column budget of about 674 in epoch 0 and 673 after it ([RFC-0012](RFC-0012-weight-commitment.md#budget-state-machine), [RFC-0064](RFC-0064-weight-linking-proof.md#the-budget)).
 
 ### Invariants
 

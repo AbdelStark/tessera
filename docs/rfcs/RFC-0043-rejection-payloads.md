@@ -62,7 +62,7 @@ Its TCE encoding is the schema id, a `u16`.
 `ProofOfWork { phase: PowPhase }`:
 
 ```rust
-pub enum PowPhase { Seed, Queries }        // NiProof's seed_nonce, then its query_nonce
+pub enum PowPhase { Seed, Queries }        // NiProof's seed_nonce, then its query_nonce; WeightLinkProof's query_nonce is Queries (RFC-0064)
 ```
 
 `Seed` is `NiProof.seed_nonce` under `seed-pow`, and `Queries` is `NiProof.query_nonce` under `query-pow`: each short of its leading zero bits, as [RFC-0014](RFC-0014-interaction-and-soundness.md#grinding) fixes them. Its encoding is RFC-0003's enum: a `u16` tag, `Seed` 0 and `Queries` 1.

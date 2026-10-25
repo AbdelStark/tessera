@@ -106,8 +106,9 @@ Transitions, each persisted (fsync, atomic rename) before the corresponding mess
 | `record_queries` (before `Round3Response`) | Queries are those of the current session | Adds the distinct query indices to `opened_columns` |
 | `abort` | Any time | Nothing is released: burned rows and opened columns stay burned |
 | `refresh` | Any time; required when `reserve` fails | Produces epoch `e + 1` and a `WeightLinkProof` |
+| `link` | Epoch `e` has no link; see [RFC-0064](RFC-0064-weight-linking-proof.md#one-link-per-epoch) | Burns epoch `e`'s last four rows, records the link's columns, closes epoch `e`, and writes epoch `e + 1`'s state from row 4 |
 
-`reserve` failing yields `ERR-WITNESS-BUDGET`. At the defaults, an epoch supports about 670 live proofs: `(B_W − 8)/6 = 681` by blinding rows, since the linking proofs take four rows at each end of an epoch, and `(P_W − τ_link)/τ_W ≈ 674` by columns. The verifier tracks the blinding-row indices declared per epoch and rejects reuse with `Reject(Budget)`; reuse would only hurt the prover, but rejecting it makes prover bugs visible.
+`reserve` failing yields `ERR-WITNESS-BUDGET`. At the defaults, an epoch supports about 670 live proofs: `(B_W − 8)/6 = 681` by blinding rows, since the linking proofs take four rows at each end of an epoch, and `(P_W − τ_link)/τ_W ≈ 674` by columns in epoch 0. A later epoch also spends `τ_link` columns at its start on its link, which leaves 673 ([RFC-0064](RFC-0064-weight-linking-proof.md#the-budget)). The verifier tracks the blinding-row indices declared per epoch and rejects reuse with `Reject(Budget)`; reuse would only hurt the prover, but rejecting it makes prover bugs visible.
 
 ### Refresh and linking proof
 
@@ -137,7 +138,7 @@ pub struct WeightLinkProof { pub old_root: Digest, pub new_root: Digest, pub epo
 | Budget exhausted | `ERR-WITNESS-BUDGET`; operator refreshes |
 | State file lost or corrupted | The prover refreshes before the next proof. The linking proof uses only the four blinding rows and the column headroom reserved for linking at each end of the epoch ([RFC-0064](RFC-0064-weight-linking-proof.md#the-budget)), so it stays within the hiding budget even though the lost state's exact contents are unknown |
 | Combined row inconsistent with columns | `Reject(Proximity)` |
-| Linking evaluations differ | Verifier rejects the refresh; the old root stays current |
+| The linking proof fails ([RFC-0064](RFC-0064-weight-linking-proof.md#the-verifiers-checks)) | Verifier rejects the refresh; the old root stays current |
 
 ## Alternatives Considered
 
