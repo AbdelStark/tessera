@@ -5,7 +5,8 @@
 - Created: 2026-10-15
 - Target milestone: v0.4
 - Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('What the verifier sees': tree levels and LogUp roots; 'Masked extensions': `Z` spares the lowest variable; 'LogUp and product-tree roots'; OQ-0013-2)
-- Superseded in part by: [RFC-0065](RFC-0065-masked-channel-params.md) ('Cost': the weight budget per proof, `2e + 4` rows for a matrix of `e` claims; 'Masked extensions': each `ChannelParams` claim's own mask row, with `Z` over its type tensor's coordinates)
+- Superseded in part by: [RFC-0065](RFC-0065-masked-channel-params.md) ('Cost': the weight budget per proof, `2e + 4` rows for a matrix of `e` claims)
+- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('Masked extensions': each `ChannelParams` claim's own mask row, with `Z` over its type tensor's coordinates; 'Hiding openings', 'Simulator argument' step 4 and INV-ZK-2: the pair a matrix's evaluation rows share)
 
 ## Summary
 
@@ -96,6 +97,7 @@ Weights follow the same rule with the mask row stored as blinding rows of the we
   - **Hiding.** `q_g` reveals one linear functional of the fresh row `Q_g`, which is uniform since `eq(col_g) ≠ 0`. Given `q_g`, `u'_g` is uniform subject to its group check.
 - **The proximity row** carries no claim. Its blinding row enters with coefficient 1, and only the column checks see it.
 - **Masks of combined masks.** The combined vanishing-mask polynomials `M_g` include `Q_g`'s mask, so they are uniform as well.
+- **A weight matrix of several claims** (RFC-0065). `ChannelParams`' `e` evaluation rows share one pair `β_T`, which carries their `e` blinding claims. Each row takes its claim's mask row `R_i` as its designated block, so the rows stay triangular. Claims at one column point give equal blinding claims, a public relation.
 
 ### LogUp and product-tree roots
 
@@ -121,7 +123,7 @@ Before any v0.4 implementation work merges, [`docs/zk/simulator.md`](../zk/simul
 1. The simulator plays the coin toss, programming the random oracle at `H("coin-toss", ·)` to a uniformly chosen seed.
 2. It commits to uniformly random rows in place of advice; roots are distributed identically because opened positions are uniform in both worlds and unopened leaves are random-oracle outputs of high-entropy inputs.
 3. For the LogUp identity sumcheck and each tree level, in order, it samples the masked final evaluations and mask values uniformly subject to each one's final equation, then simulates its rounds ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) 'For the simulator argument'). For each stage in order, it does the same.
-4. It samples each blinding claim `q_g` uniformly before `γ`, then each combined row `u'_g` uniformly subject to its group check, and each weight matrix's `u_T` likewise after `θ_T`.
+4. It samples each blinding claim `q_g` uniformly before `γ`, then each combined row `u'_g` uniformly subject to its group check, and each weight matrix's `u_T` likewise after `θ_T`. A matrix's several blinding claims are sampled uniformly subject to their public relations: equal at a shared column point (RFC-0065).
 5. It answers column queries with uniform symbols consistent with the sampled combined rows (solvable because each queried column adds one linear constraint per row on independent mask coefficients).
 6. Indistinguishability error is bounded by the sum of degenerate events: `Z(p) = 0`, linearly dependent `eq` vectors, and the masked-sumcheck failure terms, each at most a small polynomial over `|Fp2|`.
 
@@ -140,7 +142,7 @@ The weight budget per proof is six rows, and the linking proofs take four at eac
 ### Invariants
 
 - **INV-ZK-1.** Every value sent to the verifier is public, uniformly masked, or determined by previously sent values and public data.
-- **INV-ZK-2.** Every mask row, blinding row and masking polynomial is used in exactly one revealed combination or evaluation set, within its degrees of freedom.
+- **INV-ZK-2.** Every mask row, blinding row and masking polynomial is used in exactly one revealed combination or evaluation set, within its degrees of freedom. A matrix's shared pair `β_T` (RFC-0065) is one evaluation set: it enters all of the matrix's evaluation rows, each with its own designated mask row, the rank reading of R5 (`docs/zk/simulator.md`).
 - **INV-ZK-3.** Masking randomness is drawn from the per-proof secret seed's PRG (advice) or from the epoch's mask seed (weights), never from the transcript.
 
 ## Alternatives Considered

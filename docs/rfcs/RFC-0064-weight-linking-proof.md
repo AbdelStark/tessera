@@ -231,7 +231,7 @@ RFC-0012's state machine gains a transition, for the budget's bookkeeping:
   - The column checks bind `u_T` to them, so `⟨u_T, eq(ρ_T^{col})⟩ = θ_T·(D̃^{old} − D̃^{new})(ρ_T) + Q̃_T`, with `Q̃_T` the true blinding value.
   - The check passes when `θ_T·(D̃^{old} − D̃^{new})(ρ_T) + (Q̃_T − q_T) = 0`. `q_T` is absorbed before `θ_T`, so for `D̃^{old}(ρ_T) ≠ D̃^{new}(ρ_T)` that holds for at most one `θ_T`.
   - Two different multilinear polynomials over `ν_T` variables agree at `ρ_T` with probability at most `ν_T/|Fp2|` (Schwartz–Zippel). The roots fix both commitments before `ρ_T` is squeezed.
-  - Per matrix, then: `(ν_T + 1)/|Fp2|`. At 405B the largest `ν_T` is 37 (`Gate`, `Up` and `Down`), which gives 122.75 bits per matrix. The ten together, `Σ (ν_T + 1) = 345`, give 119.57 bits.
+  - Per matrix, then: `(ν_T + 1)/|Fp2|`. At 405B the largest `ν_T` is 37 (`Gate`, `Up` and `Down`), which gives 122.75 bits per matrix. The ten together, `Σ (ν_T + 1) = 341`, give 119.59 bits.
   - RFC-0014's calculator counts this `(ν_T + 1)/q` in its weight-linking row, for the matrix of most variables ([#516](https://github.com/AbdelStark/tessera/issues/516)). This RFC's `ν_T` is `log2 k_T + ⌈log2 m_T⌉` over the committed rows: 26 for `ChannelParams`, whose 56 committed rows at 405B (8 for each of its seven types, RFC-0012 'Layout') the calculator's input counts by their bound, 882.
 - **Why `θ_T`.** With the claim 0 and no challenge, any `q_T` would match `u_T` for any data. `θ_T` is drawn after `q_T` and multiplies the difference, as RFC-0013 'Hiding openings' orders it for proofs.
 - **Proximity, per commitment.** `((1 + ρ')/2)^{τ_link} + ϑ_T·n_T/|Fp2|`, RFC-0014's bound.
@@ -257,14 +257,14 @@ This is requirement R3 of the simulator argument, met:
 
 ### Sizes at 405B
 
-The production layout links ten matrices, each with `k_T = 2^20` and `n_T = 2^22`. The epoch holds 453,126 committed rows, 40,960 of them blinding rows (RFC-0012 'Column answers').
+The production layout links ten matrices, each with `k_T = 2^20` and `n_T = 2^22`. The epoch holds 461,310 committed rows, 49,144 of them blinding rows: RFC-0012 'Column answers' with [RFC-0065](RFC-0065-masked-channel-params.md)'s `B_CP`.
 
 | Part | Bytes |
 |---|---|
 | Combined rows: 3 per matrix, each `(2^20 + 2^16)` `Fp2` values | 534.8 MB |
-| Columns: at most 122 per matrix and commitment, each a committed row's symbol, for both commitments | 884.5 MB |
+| Columns: at most 122 per matrix and commitment, each a committed row's symbol, for both commitments | 900.5 MB |
 | Multiproofs: at most `122·(22 − log2 122)` digests per matrix and commitment | 1.2 MB |
-| Total, at most | 1.42 GB |
+| Total, at most | 1.44 GB |
 
 RFC-0012's two openings carried four combined rows per matrix, 713.0 MB: the difference saves 178.3 MB. A link is made once per epoch, which serves about 670 live proofs (535 non-interactive ones, `(2^16 − 244)/122`).
 

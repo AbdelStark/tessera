@@ -11,9 +11,11 @@
 - Amends:
   - RFC-0052 'Opening by the single-pass fold': in `tessera-protocol/2`, each evaluation row carries its claim's mask row and the matrix's blinding pair;
   - RFC-0012 'Layout' and 'Column answers': `ChannelParams`' blinding rows `B_CP`, and the store's figures;
-  - RFC-0013 'Masked extensions': each `ChannelParams` claim's mask, over its type tensor's coordinates;
+  - RFC-0013 'Masked extensions', 'Hiding openings', 'Simulator argument' and INV-ZK-2: each `ChannelParams` claim's mask, over its type tensor's coordinates, and the pair its matrix's evaluation rows share;
   - [RFC-0014](RFC-0014-interaction-and-soundness.md) 'Messages' and 'Soundness calculator': each matrix's blinding claims, and the field term's `B_T`;
   - [RFC-0019](RFC-0019-verifier.md#check-order) 'Check order' step 5: the reservation's range;
+  - [RFC-0036](RFC-0036-protocol-messages.md) 'Versions and envelopes': schema version 2's `WeightReservation` and `weight_blinding`;
+  - [RFC-0039](RFC-0039-statement-fields.md): in `tessera-protocol/2`, a site with a `ChannelParams` is affine until #486;
   - [RFC-0026](RFC-0026-claim-list-layout.md) and [RFC-0031](RFC-0031-commitment-id.md): `blinding_rows` is a single-claim matrix's `B_W`, and a matrix's `rows` count its `B_T`;
   - [RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-matrices) 'The matrices' and 'Encoding, leaves and roots': `B_CP`, and the leaves over the blinding rows;
   - [RFC-0049](RFC-0049-weight-proximity.md#the-calculator) 'The calculator' and [RFC-0064](RFC-0064-weight-linking-proof.md): each matrix's own `B_T`.
@@ -25,7 +27,7 @@ In `tessera-protocol/2` a weight matrix's claim is a masked evaluation `W'(p) = 
 
 This RFC gives each claim its own mask row, under a `Z` over the type tensor's own coordinates, and makes that row the designated block of the claim's evaluation row. The matrix's one blinding pair carries the blinding claims. A proof then reserves `2e + 4` rows of each opened matrix: six for a single-claim matrix, as today, and 18 for `ChannelParams` at `e = 7`. `ChannelParams` gets enough blinding rows, `B_CP`, that it never ends an epoch before the other matrices: 12,280 at 405B against `B_W = 4096`.
 
-The claims of the reduction stages are then hidden. The leaf stage's claims, which are all of 405B's, also need that stage to read the type tensors at challenge points, with no per-layer value: [#486](https://github.com/AbdelStark/tessera/issues/486)'s leaf layout (R8).
+The claims of the reduction stages are then hidden. A site of two classes or more reads its class tensor in the leaf stage, which sends it once per layer at Boolean layer points, so its claims are not. Until [#486](https://github.com/AbdelStark/tessera/issues/486)'s leaf layout reads the type tensors only at points whose coordinates other than the lowest are challenges (R8), `tessera-protocol/2` refuses such sites. At 405B every site has two classes, so `tessera-protocol/2` waits for #486 there.
 
 ## Motivation
 
@@ -61,9 +63,9 @@ As RFC-0052 defines them: `ChannelParams` has `C = 2^γ`, `L_pad = 2^λ` and `ν
 **The count.** `e_T` is the number of claims matrix `T` has in the pool: 1 for `Embed`..`LmHead`, and `e_CP` for `ChannelParams`.
 - **What `e_CP` is.** In the Llama templates it is the number of weight types with a `ChannelParams`, the types whose site is affine or has two classes or more (03 §2, RFC-0025). Each such type is followed by one site, which leaves one claim (RFC-0052, INV-SCH-5). The claim list makes these types public (RFC-0040 'The matrices').
 - **How the verifier gets it.** It computes `e_CP` from `PublicQuantSpec` and never reads it from the proof. A schedule whose pool holds another number of `ChannelParams` claims is the verifier's own inconsistency: `Inconclusive(ERR-INTERNAL)`.
-- **The variables.** Every type tensor has at least two variables, `c_i + λ ≥ 2`, as a masked tensor needs (RFC-0013). A weight without layers, which RFC-0052 would read at `ρ_i = 0^λ`, has no `ChannelParams` in the Llama templates. A claim list that gave one is refused at validation (RFC-0007 step 7).
+- **The variables.** Every type tensor has at least two variables, `c_i + λ ≥ 2`, as a masked tensor needs (RFC-0013). A weight without layers, which RFC-0052 would read at `ρ_i = 0^λ`, cannot have one: neither `Embed` nor `LmHead` feeds a site that rescales per channel (RFC-0025).
 
-**The data rows.** `ChannelParams`' committed data rows are `m_CP`, as every matrix's are `m_T`. At 405B a type fills 8 rows of `k_CP = 2^{20}` (RFC-0012 'Layout'), so `m_CP = 56` for seven types. RFC-0012 'Column answers' counts it by its bound, 882.
+**The data rows.** `ChannelParams`' committed data rows are `m_CP`, as every matrix's are `m_T`. At 405B a type fills 8 rows of `k_CP = 2^{20}` (RFC-0012 'Layout'), so `m_CP = 56` for seven types. RFC-0012 'Column answers' counts it as 882, an overcount: the layout allows at most 8 rows per type, 72 for nine types.
 
 ### The masks
 
@@ -83,20 +85,23 @@ P'_{t_i}(x) = \tilde P_{t_i}(x) + Z(x) \cdot S_i(x), \qquad Z(x) = \prod_{j \ge 
 ### What the stages owe
 
 A masked extension hides its tensor only where it is revealed at points whose coordinates other than the lowest are off `{0, 1}` (R8). For the type tensors:
-- **Every revealed value of `P'_{t_i}`** sits at such a point: the claim `v_i`, and any value a stage reveals on the way, such as a lookup's key forms at the leaf level's pair-bit points (`docs/zk/simulator.md` §4.3). No stage reveals `P̃_{t_i}`, or a value of `P'_{t_i}` at a point with a Boolean layer coordinate.
-- **Each `Z` at those points** vanishes with probability at most `2(c_i + λ − 1)/|Fp2|`, and their `eq` vectors over `R_i`'s columns are independent: R10, which #488 checks on the compiled schedule.
+- **Every revealed value of `P'_{t_i}`** sits at such a point. That covers the claim `v_i`, which is a direct evaluation `P'_{t_i}(x_i)`, and any value a stage reveals on the way, such as a lookup's key forms at the leaf level's pair-bit points (`docs/zk/simulator.md` §4.3).
+- **No stage reveals** `P̃_{t_i}`, a value of `P'_{t_i}` at a point with a Boolean coordinate other than the lowest, or a combination all of whose terms are such values, as RFC-0037's stack over layers is (R8's second clause).
+- **The values' functionals.** Each `Z` at those points vanishes with probability at most `2(c_i + λ − 1)/|Fp2|`. The values' functionals of the matrix's pair are independent ('Zero knowledge'): R10, which #488 checks on the compiled schedule for each matrix, `β_T` included.
+- **The mask is never dropped.** No `ChannelParams` evaluation row is opened without its `Z(x_i)·R_i` term. If `Z(x_i) = 0`, the prover aborts before it sends `v_i`, and its reservation stays burned (RFC-0012 `abort`). The pair is shared, so one unmasked row would reveal `β_T`, and with it a fold through every other claim's `q_j`. Two unmasked rows would reveal the difference of their folds.
 - **The reduction stages meet this.** A claim from a `Mul(Leading)` instance, an affine site's multiplier tensor, sits at the instance's final point, all challenges.
 - **The leaf stage does not, as specified.** RFC-0045 'The split' sends one value of each class tensor per real layer, at Boolean layer coordinates, and RFC-0037 stacks them at `ρ_1`. Each per-layer value has `Z = 0`, so it is the secret's own, and their stack is `Ã_CP(point_i)` with no mask term.
   - 126 such values per site and proof reveal `⟨eq(r_c), class_{t,ℓ}⟩` for each layer. Classes survive a refresh, so the proofs of every epoch add up.
-  - `tessera-protocol/2`'s leaf layout ([#486](https://github.com/AbdelStark/tessera/issues/486), R8) must read each class tensor's `P'` at challenge points only, with no per-layer value. One example is a layer point per site in place of the shared `ρ_1`.
-  - All seven of 405B's claims come from two-class sites in the leaf stage. Until #486 lands, `ChannelParams` is hidden at 405B only in this RFC's openings, not in the leaf stage.
+  - `tessera-protocol/2`'s leaf layout ([#486](https://github.com/AbdelStark/tessera/issues/486), R8) must read each class tensor's `P'` only at points whose coordinates other than the lowest are challenges, with no per-layer value. One example is a layer point per site in place of the shared `ρ_1`.
+  - **Until it does, such sites are refused.** In `tessera-protocol/2`, every site with a `ChannelParams` must be affine. A site of two classes or more is refused: the compiler emits no such claim list, and the verifier rejects one at claim-list validation, `Reject(StatementMismatch { field: Rescaling { site } })` (RFC-0039 step 2.4). The honest prover's `v_i`, the stack, would fail step 9 anyway.
+  - **At 405B** all seven claims come from two-class sites, so its `tessera-protocol/2` proofs wait for #486.
 
 ### The evaluation rows
 
 Each opened matrix `T` reserves one blinding pair `β_T` for its evaluation rows ('The reservation'). For each claim `i` of `T`, in pool order:
 
 1. **Blinding claims.** The prover sends `q_i = ⟨β_T, eq(column_point_i)⟩`.
-   - **The message.** `Round2Response.weight_blinding` holds every opened matrix's claims' `q_i`: the matrices in id order, each matrix's claims in pool order. That is one value for `Embed`..`LmHead`, and `e_CP` for `ChannelParams`.
+   - **The message.** `Round2Response.weight_blinding` holds every opened matrix's claims' `q_i`: the matrices in id order, each matrix's claims in pool order. That is one value for `Embed`..`LmHead`, and `e_CP` for `ChannelParams`. Any other length than `Σ_T e_T` is `Reject(Malformed)`, as RFC-0036 'Shapes' rules lengths.
    - **The transcript.** Under `pcs/weights/{T}/blinding` (RFC-0014's transcript schedule, row 7), it absorbs matrix `T`'s values as one `TCE(Vec<Fp2>)`, of length `e_T`, before `θ_T` is squeezed under `pcs/weights/{T}/gamma`.
 2. **The row.** After `θ_T`, the prover reveals
 
@@ -132,7 +137,10 @@ A proof reserves, for each opened matrix `T`, `r_T = 2·e_T + 4` consecutive bli
 
 - **The pairs.** In each pair, the first row enters with `1` and the second with `X`.
 - **The counts.** `Embed`..`LmHead` reserve 6 rows: `β_T`, `R_W`, the proximity pair. `ChannelParams` reserves `2·e_CP + 4`: 18 at `e_CP = 7`.
-- **The declaration.** `Round1`'s `WeightReservation` (RFC-0014 'Messages', in RFC-0036's schema version 2) holds the epoch, then one `(matrix, b_T)` per opened matrix, the matrices in id order. So every slot is fixed before the seed. A matrix with no claim is not opened and reserves nothing.
+- **The declaration.** `Round1`'s `WeightReservation` (RFC-0014 'Messages', in RFC-0036's schema version 2) holds one `(matrix, b_T)` per opened matrix, the matrices in strictly increasing id order. So every slot is fixed before the seed.
+  - **Its epoch** is `statement.weights_epoch`, not repeated.
+  - **Ids out of order** are `ERR-CODEC-NONCANONICAL` at decode, as RFC-0036's keyed sequences are, so the proof gives `Reject(Malformed)`.
+  - A matrix with no claim is not opened and reserves nothing.
 - **The prover's precondition.** RFC-0012's `reserve` precondition becomes, per matrix, `next_blinding_row + r_T ≤ B_T − 4`, and its effect burns `r_T` rows. The four rows at each end of an epoch stay the link's (RFC-0064).
 - **The verifier's check (RFC-0019 step 5).** It derives each `r_T` from the claim list. It refuses with `Reject(Budget { epoch })` a declaration whose matrices are not the opened ones, or whose ranges do not satisfy all of:
   - `b_T ≥ 4` after epoch 0;
@@ -198,15 +206,28 @@ B_CP = B_W + 2·(e_CP − 1)·⌊(B_W − 4)/6⌋   when e_CP ≥ 1, and 0 when 
 
   The view is therefore uniform subject to the checks.
 - **Shared column points.** Two claims at one column point give the public relation `q_i = q_j`, which says nothing about the weights.
-- **Values revealed in the stages.** Any other value of `P'_{t_i}`, such as a leaf level's key form, takes a further functional of `β_T` through `R_i`. Those functionals must be independent of the `q_i`, which is R10.
+- **Values revealed in the stages.** Let `e_y = eq(col(y), ·)` for a point `y`. Once `u_i` is known, a value `w = P'_{t_i}(y)` at another point `y` reads
+
+  ```text
+  w = public + S_{i,y} − (Z(y) / (θ_T·Z(x_i)))·⟨β_T, e_y⟩,    S_{i,y} = P̃_{t_i}(y) − (Z(y)/Z(x_i))·⟨F_i, e_y⟩.
+  ```
+
+  - **When `S_{i,y} = 0`** it is a public relation. That happens at the leaf level's pair-bit points around `x_i`, which differ from it in the lowest coordinate only.
+  - **Otherwise** `e_y` must lie outside the span of every other functional of `β_T` the matrix reveals, the `q_j` and every other claim's values included, apart from public relations.
+
+  This is R10 per matrix, with `β_T`'s functionals together (#488).
+- **One matrix, one fate.** The claims of a matrix share `β_T`, so each is hidden only if all of them are masked. 'What the stages owe' applies to every claim of the matrix, or none is hidden.
 - **The proximity row** is Lemma 5's, with `β_T`'s spare directions among its free rows.
 
 **One epoch** (Lemma 7):
 - **What is revealed.** `N` proofs reveal `e_T` evaluation rows and one proximity row each, per matrix.
 - **The elimination.** Clearing the evaluation rows with their designated `R_i` leaves the proximity rows' block `I + R` on the fixed words. A uniform block sits on the `β_T` columns, `2N` of them.
-- **The bound.** The count is Lemma 7's, `C(N, 2)·p^{−4}` per matrix. In the singular case the scalars' argument applies to `β_T`'s functionals, as it did to `R_W`'s.
+- **The bound.** The count is Lemma 7's, `C(N, 2)·p^{−4}` per matrix.
+- **The singular case.** `β_T` carries `e_T` functionals, where `R_W` carried one. A scalar falls in the vectors' row span only if `(w_1/w_0)^2 = 7` for two of its coefficients. That is impossible, since 7 is a non-residue modulo `p`, given that `{eq(col_i), eq(σ(col_i))}` are independent over the distinct column points, with `σ` the conjugation of `Fp2`.
+- **What that costs.** The independence fails with probability about `2e_T·log2 k/p ≈ 2^{−55}`, within the singular event's `1/p`.
+- **For `ChannelParams` only.** The one-claim matrices keep §6.2's reading, with `β` designated and `U` on `R_W`; it is equally valid for them.
 
-R9 is met for every claim whose stage meets 'What the stages owe': today the reduction stages' claims. The leaf stage's follow with #486.
+R9 is met for every matrix all of whose claims meet 'What the stages owe': today every model whose `ChannelParams` sites are all affine. Models with sites of two classes or more follow with #486.
 
 ### The verifier
 
@@ -222,22 +243,22 @@ R9 is met for every claim whose stage meets 'What the stages owe': today the red
 4. **`B_W` unchanged for `ChannelParams`.** Rejected: 227 proofs per epoch at `e = 7`, three times as many refreshes, each a new commitment of 15 TB.
 5. **Reduce the `e` claims to one point first**, with a masked sumcheck over `Ã_CP` (RFC-0052's alternative 2). Rejected: the `e` values are stage outputs the verifier sees, so they keep their masks. It would save only `2(e − 1)` rows, at the cost of a stage and its masking polynomial.
 6. **The masks in the advice.** Rejected: an advice claim's value is revealed in its group, so `R̃_i(column_point_i)` would be public and `v_i` would give `Ã_CP(point_i)`.
-7. **A mask over the channel coordinates only**, one mask row per type and row block, which would survive per-layer values. Rejected: 8 rows per type at 405B, about 128 rows per proof, and per-layer values reveal the data the stacking binds in any case. #486 removes them instead.
+7. **A mask over the channel coordinates only**, one mask row per type and row block, which would survive per-layer values. Rejected: 8 rows per type at 405B, about 116 rows per proof with one pair per matrix, and per-layer values reveal the data the stacking binds in any case. #486 removes them instead.
 
 ## Drawbacks
 
 - `ChannelParams` holds three times as many blinding rows as the other matrices. Its 8,184 extra rows add 1.8% to the store and to every column answer.
 - `B_CP` depends on the claim list as well as the layout, so a model's `ChannelParams` row count follows from both.
-- At 405B the RFC's hiding waits for #486's leaf layout ('What the stages owe').
+- Until #486, `tessera-protocol/2` admits only affine `ChannelParams` sites, so 405B's two-class sites wait for it.
 
 ## Migration / Rollout
 
 - **#147** commits the masks and blinding rows, `B_CP` included, and implements the reservation and the budget.
-- **#486** specifies the `tessera-protocol/2` leaf stage, reading the class tensors as 'What the stages owe' requires.
+- **#486** specifies the `tessera-protocol/2` leaf stage, reading the class tensors as 'What the stages owe' requires, and lifts the refusal of sites of two classes or more.
 - **#154** builds the masked extensions of the type tensors in the stages that read them, and **#159** verifies them.
 - **#162** distinguishes two witnesses that differ in `ChannelParams`, at the openings and at the leaf stage's split values. The current text is the negative control.
 - **#521** makes both calculators and the soundness oracle count `B_T`.
-- **`docs/zk/simulator.md`** marks R9 met for the reduction stages' claims, and for the leaf stage's with #486.
+- **`docs/zk/simulator.md`** marks R9 met for models whose `ChannelParams` sites are all affine, and for the others with #486.
 
 ## Testing Strategy
 
@@ -245,6 +266,7 @@ R9 is met for every claim whose stage meets 'What the stages owe': today the red
 - **Adversarial (#147, #159).**
   - A false `v_i` gives `Reject(Evaluation { commitment: Weight })`.
   - A row that swaps `β_T` for some `R_i` gives `Reject(Proximity { commitment: Weight, column })`.
+  - A `tessera-protocol/2` claim list with a site of two classes or more gives `Reject(StatementMismatch { field: Rescaling { site } })` until #486.
   - The reservation gives `Reject(Budget)` when:
     - it reuses a burned row;
     - it reaches past `B_T − 4`;
