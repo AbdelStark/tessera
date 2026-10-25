@@ -7,6 +7,7 @@
 use core::fmt;
 
 use tv_codec::{Cursor, DecodeError, DecodeLimits, Envelope, ErrorCode, Expected};
+use tv_hash::ed25519::{Ed25519Error, verify_strict};
 use tv_hash::sha256::sha256;
 use tv_hash::{Digest, Domain, hash};
 
@@ -178,29 +179,25 @@ impl SealedManifest {
     /// 1. its signature under a pinned recorder key, in the order of 'Signatures': the scheme is
     ///    Ed25519; the key is 32 bytes and the signature 64; `recorder_key_id` is the key's
     ///    SHA-256; the key's bytes equal a pinned key's, compared before the key is decoded; and
-    ///    `verify_strict` accepts the signature over [`signed_message`](LogManifest::signed_message);
+    ///    the signature verifies strictly over
+    ///    [`signed_message`](LogManifest::signed_message);
     /// 2. `period_start_ns ≤ period_end_ns`;
     /// 3. `first_seq + entry_count` without overflow;
     /// 4. for `entry_count = 0`, `entries_root = SHA-256("")`.
     ///
-    /// `verify_strict(public_key, message, signature)` is RFC-0060's strict Ed25519 equation,
-    /// supplied by the caller as [`Envelope::open`] is supplied its digest. It must return `true`
-    /// exactly when RFC-0060's three rules hold: `S < L`; `R` and `A` decode as points, with
-    /// `curve25519-dalek` 4's decoding, and neither has small order; and `R`'s 32 bytes encode
-    /// `[S]B − [k]A`, `k = SHA-512(R ‖ A ‖ message) mod L`, hashing `A`'s bytes as given. It
-    /// decodes the key itself, receives only a key already compared with the pinned ones, and must
-    /// return `false`, never panic, for any key or signature outside the set. It is called at most
-    /// once, after every other check of step 1.
+    /// Strict verification is [`tv_hash::ed25519::verify_strict`], RFC-0060's set: `S < L`; `R`
+    /// and the key decode to points, neither of small order; and `R`'s 32 bytes encode
+    /// `[S]B − [k]A`, `k = SHA-512(R ‖ A ‖ message) mod L`, the cofactorless equation. A
+    /// malleated `S + L`, a small-order `R` or key, and a signature that only the cofactored
+    /// equation accepts are all refused. It runs at most once, after every other check of step 1,
+    /// on a key already compared with the pinned ones.
     ///
     /// # Errors
     ///
     /// The first check that fails ([`ManifestError`]): every one is `Reject(Anchor { request_id:
-    /// None, kind: ManifestSignature })` (RFC-0015 'Verifier checks', RFC-0043 'Anchor').
-    pub fn check(
-        self,
-        keys: &RecorderKeys,
-        verify_strict: impl FnOnce(&[u8; 32], &[u8], &[u8; 64]) -> bool,
-    ) -> Result<CheckedManifest, ManifestError> {
+    /// None, kind: ManifestSignature })` (RFC-0015 'Verifier checks', RFC-0043 'Anchor', RFC-0060
+    /// 'Signatures').
+    pub fn check(self, keys: &RecorderKeys) -> Result<CheckedManifest, ManifestError> {
         let m = &self.manifest;
         let envelope = &m.signature;
         if envelope.scheme != ED25519 {
@@ -222,9 +219,8 @@ impl SealedManifest {
         if !keys.pins(public_key) {
             return Err(ManifestError::Unpinned);
         }
-        if !verify_strict(public_key, &m.signed_message(), signature) {
-            return Err(ManifestError::Signature);
-        }
+        verify_strict(public_key, &m.signed_message(), signature)
+            .map_err(ManifestError::Signature)?;
         if m.period_start_ns > m.period_end_ns {
             return Err(ManifestError::Period);
         }
@@ -262,7 +258,8 @@ impl RecorderKeys {
 
 /// Why a manifest failed its own checks, in their order. Each is `Reject(Anchor { request_id:
 /// None, kind: ManifestSignature })`: the variants name the check for tests and diagnostics, and
-/// carry no input bytes.
+/// carry no input bytes. [`Signature`](Self::Signature) carries the first rule of strict
+/// verification the signature fails, which is public.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ManifestError {
     /// The scheme is not 0: scheme 1, ML-DSA-65, is reserved, and every other is unknown.
@@ -275,8 +272,8 @@ pub enum ManifestError {
     KeyId,
     /// The key is not one the verifier pins.
     Unpinned,
-    /// Strict Ed25519 verification refused the signature.
-    Signature,
+    /// Strict Ed25519 verification refused the signature, or the key, at this rule.
+    Signature(Ed25519Error),
     /// `period_start_ns > period_end_ns`.
     Period,
     /// `first_seq + entry_count` overflows.
@@ -297,17 +294,20 @@ impl ManifestError {
 
 impl fmt::Display for ManifestError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
+        let text = match self {
             Self::Scheme => "the manifest's signature scheme is not Ed25519",
             Self::KeyLength => "the manifest's public key is not 32 bytes",
             Self::SignatureLength => "the manifest's signature is not 64 bytes",
             Self::KeyId => "the manifest's recorder_key_id is not its key's SHA-256",
             Self::Unpinned => "the manifest's key is not pinned",
-            Self::Signature => "the manifest's signature does not verify",
+            Self::Signature(rule) => {
+                return write!(f, "the manifest's signature does not verify: {rule}");
+            }
             Self::Period => "the manifest's period ends before it starts",
             Self::Range => "the manifest's entry range overflows",
             Self::EmptyRoot => "the manifest has no entries and another root than SHA-256(\"\")",
-        })
+        };
+        f.write_str(text)
     }
 }
 

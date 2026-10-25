@@ -8,8 +8,9 @@
 mod anchor_support;
 
 use anchor_support::{
-    Built, Fields, GENESIS_NS, KEY, PERIOD_NS, chain, encode_close, encode_end, encode_frame,
-    encode_key_entry, end, inbound, keys, open, outbound, seal, sid,
+    Built, Fields, GENESIS_NS, IDENTITY, KEY, MIXED_NONCE_POINT, NONCE, NONCE_POINT, PERIOD_NS,
+    chain, encode_close, encode_end, encode_frame, encode_key_entry, end, inbound, keys, open,
+    outbound, scalar, seal, sid, sign_with,
 };
 use tv_codec::{DecodeError, DecodeLimits, ErrorCode, decode};
 use tv_core::anchor::{
@@ -17,6 +18,7 @@ use tv_core::anchor::{
     VerifiedLog, Window, log_failure,
 };
 use tv_core::verdict::{AnchorFailure, ErrorCode as Code, RejectReason, Verdict, VerifierError};
+use tv_hash::ed25519::{Ed25519Error, verify_strict};
 use tv_hash::sha256::sha256;
 
 fn decode_entry(bytes: &[u8]) -> Result<DigestLogEntry, DecodeError> {
@@ -231,7 +233,7 @@ fn manifest_over(
     fields.count = entries.len() as u64;
     fields.root = anchor_support::mth(entries);
     mutate(&mut fields);
-    anchor_support::checked(&fields.seal())
+    anchor_support::checked(&fields.seal_signed())
 }
 
 #[test]
@@ -389,20 +391,16 @@ type FieldEdit = dyn Fn(&mut Fields);
 /// A change to a manifest's fields, owned.
 type Mutation = Box<FieldEdit>;
 
-fn own_check(
-    fields: &Fields,
-    keys: &RecorderKeys,
-    verify: impl FnOnce(&[u8; 32], &[u8], &[u8; 64]) -> bool,
-) -> Result<(), ManifestError> {
+fn own_check(fields: &Fields, keys: &RecorderKeys) -> Result<(), ManifestError> {
     LogManifest::open(&fields.seal(), &DecodeLimits::MESSAGE)
         .unwrap()
-        .check(keys, verify)
+        .check(keys)
         .map(|_| ())
 }
 
-/// A verifier the check must not reach.
-fn unreachable_verifier(_: &[u8; 32], _: &[u8], _: &[u8; 64]) -> bool {
-    panic!("the strict verifier runs after every other check of the signature")
+/// The fields' signature as a fixed array.
+fn signature_of(fields: &Fields) -> [u8; 64] {
+    fields.signature.clone().try_into().unwrap()
 }
 
 /// RFC-0060 'Testing Strategy': a wrong key identifier, an unpinned key, scheme 1, an unknown
@@ -411,7 +409,7 @@ fn unreachable_verifier(_: &[u8; 32], _: &[u8], _: &[u8; 64]) -> bool {
 #[test]
 fn each_own_check_refuses_alone() {
     let base = base_fields();
-    assert_eq!(own_check(&base, &keys(), |_, _, _| true), Ok(()));
+    assert_eq!(own_check(&base, &keys()), Ok(()));
     let cases: Vec<(&str, Mutation, ManifestError)> = vec![
         (
             "scheme 1",
@@ -470,11 +468,10 @@ fn each_own_check_refuses_alone() {
     for (name, mutate, expected) in cases {
         let mut fields = base.clone();
         mutate(&mut fields);
-        assert_eq!(
-            own_check(&fields, &keys(), unreachable_verifier),
-            Err(expected),
-            "{name}"
-        );
+        assert_eq!(own_check(&fields, &keys()), Err(expected), "{name}");
+        // Each comes before strict verification: a signature broken too changes nothing.
+        fields.signature[0] ^= 1;
+        assert_eq!(own_check(&fields, &keys()), Err(expected), "{name}");
         assert_eq!(
             expected.reason(),
             RejectReason::Anchor {
@@ -485,18 +482,44 @@ fn each_own_check_refuses_alone() {
     }
     // No key pinned at all.
     assert_eq!(
-        own_check(&base, &RecorderKeys::new(vec![]), unreachable_verifier),
+        own_check(&base, &RecorderKeys::new(vec![])),
         Err(ManifestError::Unpinned)
     );
-    // A pinned key that the strict verifier refuses, for a bad signature or a key that is no
-    // point: the seam's answer is the check's.
+    // Signatures strict verification refuses, with the rule tv-hash names: S changed, R changed,
+    // and a pinned key, with its own id, that is no point.
+    let mut fields = base.clone();
+    fields.signature[32] ^= 1;
     assert_eq!(
-        own_check(&base, &keys(), |_, _, _| false),
-        Err(ManifestError::Signature)
+        own_check(&fields, &keys()),
+        Err(ManifestError::Signature(Ed25519Error::Equation))
+    );
+    let mut fields = base.clone();
+    fields.signature[0] ^= 1;
+    assert_eq!(
+        own_check(&fields, &keys()),
+        Err(ManifestError::Signature(
+            verify_strict(&KEY, &base.signed_message(), &signature_of(&fields)).unwrap_err()
+        ))
+    );
+    let mut fields = base.clone();
+    let mut no_point = [0; 32];
+    no_point[0] = 2;
+    fields.public_key = no_point.to_vec();
+    fields.key_id = sha256(&no_point);
+    assert_eq!(
+        own_check(&fields.signed(), &RecorderKeys::new(vec![no_point])),
+        Err(ManifestError::Signature(Ed25519Error::KeyNotAPoint))
+    );
+    assert_eq!(
+        ManifestError::Signature(Ed25519Error::Equation).reason(),
+        RejectReason::Anchor {
+            request_id: None,
+            kind: AnchorFailure::ManifestSignature
+        }
     );
     // A rotation pins both keys: either signs.
     let both = RecorderKeys::new(vec![[0x5b; 32], KEY]);
-    assert_eq!(own_check(&base, &both, |_, _, _| true), Ok(()));
+    assert_eq!(own_check(&base, &both), Ok(()));
 
     // After the signature: the period, the range, the empty root, in that order.
     let after: Vec<(&str, Mutation, ManifestError)> = vec![
@@ -531,14 +554,14 @@ fn each_own_check_refuses_alone() {
         let mut fields = base.clone();
         mutate(&mut fields);
         assert_eq!(
-            own_check(&fields, &keys(), |_, _, _| true),
+            own_check(&fields.signed(), &keys()),
             Err(expected),
             "{name}"
         );
-        // A signature failure comes first.
+        // Not signed again, the signature fails first: it covers the changed field.
         assert_eq!(
-            own_check(&fields, &keys(), |_, _, _| false),
-            Err(ManifestError::Signature),
+            own_check(&fields, &keys()),
+            Err(ManifestError::Signature(Ed25519Error::Equation)),
             "{name}"
         );
     }
@@ -553,22 +576,103 @@ fn each_own_check_refuses_alone() {
     ] {
         let mut fields = base.clone();
         mutate(&mut fields);
-        assert_eq!(own_check(&fields, &keys(), |_, _, _| true), Ok(()));
+        assert_eq!(own_check(&fields.signed(), &keys()), Ok(()));
     }
 }
 
-/// The seam receives the pinned key, the 163-byte message and the signature, and only once.
+/// RFC-0060 'Signatures': the signature covers exactly `"tessera-manifest/v1" ‖ TCE(m without
+/// signature)`, 163 bytes, under the pinned key; one over any other message is refused.
 #[test]
-fn the_strict_verifier_is_handed_the_signed_message() {
+fn the_signature_covers_the_label_and_every_field_but_itself() {
     let base = base_fields();
-    let mut calls = Vec::new();
-    own_check(&base, &keys(), |key, message, signature| {
-        calls.push((*key, message.to_vec(), *signature));
-        true
-    })
-    .unwrap();
-    let message = [&b"tessera-manifest/v1"[..], &base.encode()[..144]].concat();
-    assert_eq!(calls, vec![(KEY, message, anchor_support::SIGNATURE)]);
+    let payload = base.encode();
+    let message = [&b"tessera-manifest/v1"[..], &payload[..144]].concat();
+    assert_eq!(message.len(), 163);
+    let sealed = LogManifest::open(&base.seal(), &DecodeLimits::MESSAGE).unwrap();
+    assert_eq!(sealed.manifest().signed_message().as_slice(), &message[..]);
+    assert_eq!(verify_strict(&KEY, &message, &signature_of(&base)), Ok(()));
+    for other in [
+        payload[..144].to_vec(),
+        [&b"tessera-manifest/v1"[..], &payload[..146]].concat(),
+        [&b"tessera-manifest/v1"[..], &payload[..143]].concat(),
+        [&b"tessera-manifest/v2"[..], &payload[..144]].concat(),
+    ] {
+        let mut fields = base.clone();
+        fields.signature = anchor_support::sign(&other).to_vec();
+        assert_eq!(
+            own_check(&fields, &keys()),
+            Err(ManifestError::Signature(Ed25519Error::Equation))
+        );
+    }
+}
+
+/// RFC-0060 'Signatures': signatures a verifier without its rules accepts are refused, each at
+/// the rule `tv-hash` names. `S + L` is `S` modulo `L`, so an equation read modulo `L` accepts
+/// it; with the identity as `R` and `S = k·a`, or the identity as a pinned key and `S = r`, the
+/// cofactorless equation itself holds, and only the small-order rules refuse them; with a
+/// mixed-order `R`, only the cofactored equation holds.
+#[test]
+fn signatures_only_an_unstrict_verifier_accepts_are_refused() {
+    let base = base_fields();
+    let message = base.signed_message();
+    let refused = |fields: &Fields, keys: &RecorderKeys, rule: Ed25519Error| {
+        assert_eq!(own_check(fields, keys), Err(ManifestError::Signature(rule)));
+    };
+    // S + L.
+    let s = scalar::from_bytes(&base.signature[32..].try_into().unwrap());
+    let malleated = scalar::sum(&s, &scalar::L);
+    assert_eq!(scalar::reduce(&scalar::to_bytes(&malleated)), s);
+    let mut fields = base.clone();
+    fields.signature[32..].copy_from_slice(&scalar::to_bytes(&malleated));
+    refused(&fields, &keys(), Ed25519Error::ScalarOutOfRange);
+    // R the identity, S = k·a: [S]B − [k]A is the identity, R.
+    let mut fields = base.clone();
+    fields.signature = sign_with(&IDENTITY, &[0; 4], &KEY, &message).to_vec();
+    refused(&fields, &keys(), Ed25519Error::RSmallOrder);
+    // The identity as the pinned key, with its own id, and S = r: [S]B − [k]A is [r]B, R.
+    let mut fields = base.clone();
+    fields.public_key = IDENTITY.to_vec();
+    fields.key_id = sha256(&IDENTITY);
+    fields.signature = [NONCE_POINT, NONCE].concat();
+    refused(
+        &fields,
+        &RecorderKeys::new(vec![IDENTITY]),
+        Ed25519Error::KeySmallOrder,
+    );
+    // R of mixed order, [r]B + T with T of order 8, and S = r + k·a: [8]([S]B − [k]A) = [8]R,
+    // but [S]B − [k]A is [r]B, not R.
+    let mut fields = base.clone();
+    fields.signature =
+        sign_with(&MIXED_NONCE_POINT, &scalar::reduce(&NONCE), &KEY, &message).to_vec();
+    refused(&fields, &keys(), Ed25519Error::Equation);
+}
+
+/// The test signer against signatures computed offline with RFC 8032 §5.1's arithmetic, and
+/// accepted by `tv-hash`'s strict verification.
+#[test]
+fn the_test_signer_agrees_with_rfc_8032() {
+    let signature = anchor_support::sign(b"tessera");
+    assert_eq!(
+        signature.to_vec(),
+        tv_testkit::hex(concat!(
+            "69e8ec7eb4586b63bf87a39b211ee47d660dc5d39c11b2981de188f1336a08f6",
+            "58617551f011892c5d82dc84fa04e1eb8dc4b2748599ae70297d0ba530490406",
+        ))
+    );
+    assert_eq!(verify_strict(&KEY, b"tessera", &signature), Ok(()));
+    let mixed = sign_with(
+        &MIXED_NONCE_POINT,
+        &scalar::reduce(&NONCE),
+        &KEY,
+        b"tessera",
+    );
+    assert_eq!(
+        mixed.to_vec(),
+        tv_testkit::hex(concat!(
+            "8bde9cd4f460165ce288d8fd9115cdcce657fc56648639f0172c61a6d073cc54",
+            "e2f30ff9bb35ba65a797e03e29656f178e6a77bc799788d88dcdd0f2a496b00a",
+        ))
+    );
 }
 
 #[test]
@@ -665,7 +769,7 @@ fn each_link_of_the_chain_is_checked() {
     let relinked = |mutate: &dyn Fn(&mut Fields)| -> Result<(), Failure> {
         let mut fields = base[1].fields.clone();
         mutate(&mut fields);
-        let manifest = anchor_support::checked(&fields.seal());
+        let manifest = anchor_support::checked(&fields.seal_signed());
         let log = VerifiedLog::check(&manifest, &base[1].tdl, &DecodeLimits::MESSAGE).unwrap();
         Window::bind(&log, &[], Some(&previous)).map(|_| ())
     };
@@ -696,7 +800,7 @@ fn each_link_of_the_chain_is_checked() {
             })
             .collect();
         fields.root = anchor_support::mth(&entries);
-        let manifest = anchor_support::checked(&fields.seal());
+        let manifest = anchor_support::checked(&fields.seal_signed());
         let log = VerifiedLog::check(&manifest, &entries.concat(), &DecodeLimits::MESSAGE).unwrap();
         assert_eq!(
             Window::bind(&log, &[], Some(&previous)).map(|_| ()),
@@ -709,7 +813,7 @@ fn each_link_of_the_chain_is_checked() {
     let mut fields = first.fields.clone();
     fields.first_seq = 0;
     fields.prev = [1; 32];
-    let manifest = anchor_support::checked(&fields.seal());
+    let manifest = anchor_support::checked(&fields.seal_signed());
     let log = VerifiedLog::check(&manifest, &first.tdl, &DecodeLimits::MESSAGE).unwrap();
     assert_eq!(
         Window::bind(&log, &[], None).map(|_| ()),
@@ -781,7 +885,7 @@ fn a_false_genesis_and_a_reordered_pair_are_refused() {
     // it lie in a period not held.
     let mut fields = built[1].fields.clone();
     fields.prev = [0; 32];
-    let manifest = anchor_support::checked(&fields.seal());
+    let manifest = anchor_support::checked(&fields.seal_signed());
     let log = VerifiedLog::check(&manifest, &built[1].tdl, &DecodeLimits::MESSAGE).unwrap();
     assert_eq!(Window::bind(&log, &[], None).map(|_| ()), Err(usage()));
 }

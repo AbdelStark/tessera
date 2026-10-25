@@ -6,8 +6,10 @@
 //! short description of their entries.
 //!
 //! The encoders and the tree are this file's own: `tv-core` decodes and streams, these encode
-//! and recurse. No signature is computed: the strict Ed25519 equation is the caller's seam
-//! (`SealedManifest::check`), and these tests hand it a stand-in.
+//! and recurse. Manifests are signed for real, so every check runs `tv-core`'s production path,
+//! strict Ed25519 included: the test recorder signs with a fixed secret scalar and a fixed nonce
+//! ([`sign`]), its points computed offline with RFC 8032 §5.1's arithmetic, and `S` here, modulo
+//! `L`, bit by bit.
 
 #![allow(dead_code)]
 
@@ -18,11 +20,34 @@ use tv_core::anchor::{
 };
 use tv_core::protocol::{BatchDescriptor, Decoding, PredictorSpec, PublicStatement, RequestRef};
 use tv_hash::sha256::sha256;
+use tv_hash::sha512::sha512;
 
-/// The recorder key the scenarios sign with, pinned.
-pub const KEY: [u8; 32] = [0x5a; 32];
-/// The stand-in signature of every scenario manifest.
-pub const SIGNATURE: [u8; 64] = [0x77; 64];
+/// The test recorder's public key, pinned: `A = encode([a]B)` for the secret scalar
+/// [`SECRET`], computed offline with RFC 8032 §5.1's arithmetic.
+pub const KEY: [u8; 32] = hex32("c8f4cfd7ec9c81e16c77144a4d1ce0dca0339661df313cceb9203113468fb608");
+/// The test recorder's secret scalar `a`, `0x0707…07` little-endian, below `L`.
+pub const SECRET: [u8; 32] = [0x07; 32];
+/// The fixed nonce `r` of every test signature, below `L`. Two signatures with one nonce reveal
+/// the secret; the key signs nothing but tests.
+pub const NONCE: [u8; 32] = {
+    let mut r = [0x2a; 32];
+    r[31] = 0x0a;
+    r
+};
+/// `encode([r]B)`, the `R` of every test signature, computed offline.
+pub const NONCE_POINT: [u8; 32] =
+    hex32("69e8ec7eb4586b63bf87a39b211ee47d660dc5d39c11b2981de188f1336a08f6");
+/// `encode([r]B + T)`, `T` a point of order 8, computed offline: a point of mixed order, not of
+/// small order. A signature with it as `R` and `S = r + k·a` passes the cofactored equation
+/// `[8][S]B = [8]R + [8][k]A` and fails the cofactorless one.
+pub const MIXED_NONCE_POINT: [u8; 32] =
+    hex32("8bde9cd4f460165ce288d8fd9115cdcce657fc56648639f0172c61a6d073cc54");
+/// The encoding of the identity, `y = 1`, `x = 0`: a point of order 1, of small order.
+pub const IDENTITY: [u8; 32] = {
+    let mut y = [0; 32];
+    y[0] = 1;
+    y
+};
 /// The scenarios' log.
 pub const LOG_ID: [u8; 16] = [0x10; 16];
 /// A period's length in the scenarios.
@@ -145,9 +170,28 @@ impl Fields {
         .concat()
     }
 
-    /// The `.tlm` file: RFC-0003's envelope of schema `0x0402`, version 1.
+    /// The `.tlm` file: RFC-0003's envelope of schema `0x0402`, version 1, the fields as they
+    /// are, the signature included.
     pub fn seal(&self) -> Vec<u8> {
         seal(&self.encode())
+    }
+
+    /// The signed message: the label, then every field but the signature, the payload's first
+    /// 144 bytes (RFC-0060 'Signatures').
+    pub fn signed_message(&self) -> Vec<u8> {
+        [&b"tessera-manifest/v1"[..], &self.encode()[..144]].concat()
+    }
+
+    /// The fields, signed by the test recorder over their signed message.
+    pub fn signed(&self) -> Self {
+        let mut fields = self.clone();
+        fields.signature = sign(&fields.signed_message()).to_vec();
+        fields
+    }
+
+    /// [`seal`](Self::seal) of [`signed`](Self::signed).
+    pub fn seal_signed(&self) -> Vec<u8> {
+        self.signed().seal()
     }
 }
 
@@ -184,6 +228,147 @@ pub fn mth(entries: &[Vec<u8>]) -> [u8; 32] {
     }
 }
 
+// ----- Signatures -------------------------------------------------------------------------------
+
+/// 32 bytes from 64 hex digits, at compile time.
+const fn hex32(text: &str) -> [u8; 32] {
+    const fn digit(c: u8) -> u8 {
+        match c {
+            b'0'..=b'9' => c - b'0',
+            b'a'..=b'f' => c - b'a' + 10,
+            _ => panic!("a hex digit"),
+        }
+    }
+    let text = text.as_bytes();
+    assert!(text.len() == 64);
+    let mut out = [0; 32];
+    let mut i = 0;
+    while i < 32 {
+        out[i] = digit(text[2 * i]) << 4 | digit(text[2 * i + 1]);
+        i += 1;
+    }
+    out
+}
+
+/// The test recorder's signature on `message`, `R ‖ S` (RFC 8032 §5.1.6 with a fixed nonce):
+/// `R = encode([r]B)`, `S = r + k·a mod L`, `k = SHA-512(R ‖ A ‖ message) mod L`.
+pub fn sign(message: &[u8]) -> [u8; 64] {
+    sign_with(&NONCE_POINT, &scalar::reduce(&NONCE), &KEY, message)
+}
+
+/// A signature `R ‖ S` on `message` under `key`: `S = nonce + k·a mod L`, with the test secret
+/// `a` and `k = SHA-512(R ‖ key ‖ message) mod L`. The cofactorless equation holds when
+/// `R = [nonce]B` and `key = [a]B`, and also for `R` the identity with `nonce = 0`, since then
+/// `[S]B − [k]A` is the identity.
+pub fn sign_with(r: &[u8; 32], nonce: &scalar::Scalar, key: &[u8; 32], message: &[u8]) -> [u8; 64] {
+    let k = scalar::reduce(&sha512(&[&r[..], key, message].concat()));
+    let s = scalar::add(nonce, &scalar::mul(&k, &scalar::reduce(&SECRET)));
+    let mut signature = [0; 64];
+    signature[..32].copy_from_slice(r);
+    signature[32..].copy_from_slice(&scalar::to_bytes(&s));
+    signature
+}
+
+/// Arithmetic modulo `L = 2^252 + 27742317777372353535851937790883648493` on four
+/// little-endian 64-bit limbs, bit by bit: slow and plain, for a few test signatures. Every
+/// value is below `L`, so a sum is below `2^254` and fits.
+pub mod scalar {
+    /// An integer below `2^256`, least significant limb first.
+    pub type Scalar = [u64; 4];
+
+    /// The group order `L`.
+    pub const L: Scalar = [
+        0x5812_631a_5cf5_d3ed,
+        0x14de_f9de_a2f7_9cd6,
+        0,
+        0x1000_0000_0000_0000,
+    ];
+
+    fn below(a: &Scalar, b: &Scalar) -> bool {
+        for i in (0..4).rev() {
+            if a[i] != b[i] {
+                return a[i] < b[i];
+            }
+        }
+        false
+    }
+
+    /// `a + b` without reduction, for `a + b < 2^256`.
+    pub fn sum(a: &Scalar, b: &Scalar) -> Scalar {
+        let mut out = [0; 4];
+        let mut carry = 0u128;
+        for i in 0..4 {
+            let t = u128::from(a[i]) + u128::from(b[i]) + carry;
+            out[i] = t as u64;
+            carry = t >> 64;
+        }
+        assert_eq!(carry, 0);
+        out
+    }
+
+    fn minus_l(a: &Scalar) -> Scalar {
+        let mut out = [0; 4];
+        let mut borrow = false;
+        for i in 0..4 {
+            let (t, b1) = a[i].overflowing_sub(L[i]);
+            let (t, b2) = t.overflowing_sub(u64::from(borrow));
+            out[i] = t;
+            borrow = b1 || b2;
+        }
+        out
+    }
+
+    /// `a + b mod L`, for `a, b < L`.
+    pub fn add(a: &Scalar, b: &Scalar) -> Scalar {
+        let s = sum(a, b);
+        if below(&s, &L) { s } else { minus_l(&s) }
+    }
+
+    /// `a · b mod L`, for `a < L`: double and add over `b`'s bits.
+    pub fn mul(a: &Scalar, b: &Scalar) -> Scalar {
+        let mut x = [0; 4];
+        for i in (0..256).rev() {
+            x = add(&x, &x);
+            if b[i / 64] >> (i % 64) & 1 == 1 {
+                x = add(&x, a);
+            }
+        }
+        x
+    }
+
+    /// A little-endian integer of any length, modulo `L`: Horner's rule over its bits.
+    pub fn reduce(bytes: &[u8]) -> Scalar {
+        let mut x = [0; 4];
+        for byte in bytes.iter().rev() {
+            for bit in (0..8).rev() {
+                x = add(&x, &x);
+                if byte >> bit & 1 == 1 {
+                    x = add(&x, &[1, 0, 0, 0]);
+                }
+            }
+        }
+        x
+    }
+
+    /// The 32 little-endian bytes of `a`.
+    pub fn to_bytes(a: &Scalar) -> [u8; 32] {
+        let mut out = [0; 32];
+        for (i, limb) in a.iter().enumerate() {
+            out[8 * i..8 * i + 8].copy_from_slice(&limb.to_le_bytes());
+        }
+        out
+    }
+
+    /// `a` from its 32 little-endian bytes, unreduced.
+    pub fn from_bytes(bytes: &[u8; 32]) -> Scalar {
+        let mut out = [0; 4];
+        for (i, limb) in out.iter_mut().enumerate() {
+            *limb = u64::from_le_bytes(bytes[8 * i..8 * i + 8].try_into().unwrap());
+        }
+        out
+    }
+}
+
 // ----- Opening and checking ---------------------------------------------------------------------
 
 /// The scenarios' pinned keys.
@@ -191,11 +376,11 @@ pub fn keys() -> RecorderKeys {
     RecorderKeys::new(vec![KEY])
 }
 
-/// Opens and checks a scenario manifest, whose stand-in signature always verifies.
+/// Opens and checks a manifest under the test recorder's pinned key, strict Ed25519 included.
 pub fn checked(tlm: &[u8]) -> CheckedManifest {
     LogManifest::open(tlm, &DecodeLimits::MESSAGE)
         .unwrap()
-        .check(&keys(), |_, _, _| true)
+        .check(&keys())
         .unwrap()
 }
 
@@ -364,8 +549,9 @@ pub fn chain(periods: &[(u64, u64, Items)]) -> Vec<Built> {
             prev: built.last().map_or([0; 32], |b| b.identity),
             scheme: 0,
             public_key: KEY.to_vec(),
-            signature: SIGNATURE.to_vec(),
-        };
+            signature: Vec::new(),
+        }
+        .signed();
         let tlm = fields.seal();
         let identity: [u8; 32] = tlm[tlm.len() - 32..].try_into().unwrap();
         built.push(Built {

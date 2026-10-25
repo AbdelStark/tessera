@@ -3,10 +3,10 @@
 //! The anchor's log checks against the independent oracles' vectors:
 //!
 //! - `spec/vectors/manifest/`: three signed manifests of one log. Each opens to its fields and
-//!   identity, hands the strict Ed25519 seam exactly the vector's key, signed message and
-//!   signature, and verifies its log; the chain links; the window of each period binds its
-//!   predecessor; the second period's candidates are its two requests, which pass every anchor
-//!   check; and a change to any signed byte is refused.
+//!   identity, passes its own checks, its oracle's signature verified by `tv-hash`'s strict
+//!   Ed25519 over the vector's signed message, and verifies its log; the chain links; the window
+//!   of each period binds its predecessor; the second period's candidates are its two requests,
+//!   which pass every anchor check; and a change to any signed byte is refused.
 //! - `spec/vectors/anchor/`: every entry of five sessions decodes to the vector's fields, and the
 //!   sessions, laid end to end as one period, are a log whose every request passes.
 //! - `spec/vectors/audit/`: the `candidates` of every two-period log, with their lengths.
@@ -20,6 +20,7 @@ use tv_core::anchor::{
     SamplerPolicy, VerifiedLog, Window, check_batch,
 };
 use tv_core::protocol::{BatchDescriptor, PublicStatement, RequestRef};
+use tv_hash::ed25519::Ed25519Error;
 use tv_hash::sha256::sha256;
 use tv_testkit::{Json, hex, read_vectors};
 
@@ -85,17 +86,6 @@ fn manifest_vectors() -> (Json, Vec<ManifestVector>) {
     (doc, manifests)
 }
 
-/// The strict Ed25519 seam as a verifier that knows one valid triple: it accepts exactly the
-/// vector's key, message and signature, as a correct strict verifier does for this key, and
-/// refuses everything else.
-fn knows<'a>(
-    key: &'a [u8; 32],
-    message: &'a [u8],
-    signature: &'a [u8; 64],
-) -> impl FnOnce(&[u8; 32], &[u8], &[u8; 64]) -> bool + 'a {
-    move |k, m, s| k == key && m == message && s == signature
-}
-
 #[test]
 fn every_manifest_opens_to_its_fields_identity_and_signed_message() {
     let (doc, manifests) = manifest_vectors();
@@ -136,18 +126,13 @@ fn every_manifest_opens_to_its_fields_identity_and_signed_message() {
         // The signed message is the label and the payload's first 144 bytes.
         assert_eq!(&v.signed[..19], b"tessera-manifest/v1");
         assert_eq!(&v.signed[19..], &v.payload[..144]);
-        let mut seen = None;
-        let checked = sealed
-            .check(&keys, |k, msg, s| {
-                seen = Some((*k, msg.to_vec(), *s));
-                true
-            })
-            .unwrap();
+        // The oracle's signature verifies strictly over the vector's signed message.
         assert_eq!(
-            seen,
-            Some((public_key, v.signed.clone(), v.signature)),
+            tv_hash::ed25519::verify_strict(&public_key, &v.signed, &v.signature),
+            Ok(()),
             "manifest {i}"
         );
+        let checked = sealed.check(&keys).unwrap();
         assert_eq!(checked.identity(), &v.identity);
         // The root is RFC 9162's over the vector's leaves.
         for (entry, leaf) in v.entries.iter().zip(list(&v.fields, "leaves")) {
@@ -189,10 +174,9 @@ fn every_manifest_opens_to_its_fields_identity_and_signed_message() {
 
 fn verified(doc: &Json, v: &ManifestVector) -> VerifiedLog {
     let keys = RecorderKeys::new(vec![bytes32(text(doc, "public_key"))]);
-    let pk = bytes32(text(doc, "public_key"));
     let checked = LogManifest::open(&v.tlm, &DecodeLimits::MESSAGE)
         .unwrap()
-        .check(&keys, knows(&pk, &v.signed, &v.signature))
+        .check(&keys)
         .unwrap();
     VerifiedLog::check(&checked, &v.log, &DecodeLimits::MESSAGE).unwrap()
 }
@@ -297,10 +281,10 @@ fn a_change_to_any_signed_byte_is_refused() {
             // Resealed: the signature check sees the change.
             let resealed = anchor_support::seal(&payload);
             let outcome = LogManifest::open(&resealed, &DecodeLimits::MESSAGE)
-                .map(|sealed| sealed.check(&keys, knows(&pk, &v.signed, &v.signature)));
+                .map(|sealed| sealed.check(&keys));
             let expected = match at {
                 0..32 => Err(ManifestError::KeyId),
-                32..144 => Err(ManifestError::Signature),
+                32..144 => Err(ManifestError::Signature(Ed25519Error::Equation)),
                 144..146 => Err(ManifestError::Scheme),
                 // The key's length: decoding or the length check refuses it.
                 146..154 => {
@@ -318,7 +302,13 @@ fn a_change_to_any_signed_byte_is_refused() {
                     );
                     continue;
                 }
-                _ => Err(ManifestError::Signature),
+                // R or S: whichever strict rule the changed signature fails first.
+                _ => {
+                    let mut signature = v.signature;
+                    signature[at - 194] ^= 0x01;
+                    let rule = tv_hash::ed25519::verify_strict(&pk, &v.signed, &signature);
+                    Err(ManifestError::Signature(rule.unwrap_err()))
+                }
             };
             let outcome = outcome.unwrap_or_else(|e| panic!("byte {at}: {e}"));
             assert_eq!(outcome.map(|_| ()), expected, "byte {at}");
@@ -462,9 +452,9 @@ fn the_anchor_sessions_are_a_log_whose_requests_pass() {
         prev: [0; 32],
         scheme: 0,
         public_key: anchor_support::KEY.to_vec(),
-        signature: anchor_support::SIGNATURE.to_vec(),
+        signature: Vec::new(),
     };
-    let checked = anchor_support::checked(&fields.seal());
+    let checked = anchor_support::checked(&fields.seal_signed());
     let log = VerifiedLog::check(&checked, &encodings.concat(), &DecodeLimits::MESSAGE).unwrap();
     let window = Window::bind(&log, &[], None).unwrap();
     assert_eq!(requests.len(), 7);
@@ -569,6 +559,7 @@ fn with_sessions(built: &mut [anchor_support::Built], logs: &[&[Json]]) {
     let mut prev = [0; 32];
     for period in built.iter_mut() {
         period.fields.prev = prev;
+        period.fields = period.fields.signed();
         period.tlm = period.fields.seal();
         period.identity = period.tlm[period.tlm.len() - 32..].try_into().unwrap();
         prev = period.identity;

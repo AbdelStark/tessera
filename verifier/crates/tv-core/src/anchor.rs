@@ -63,9 +63,10 @@
 //!
 //! 1. the signature: `scheme` is 0, Ed25519 (scheme 1 is reserved, others unknown); `public_key`
 //!    is 32 bytes and `signature` 64; `recorder_key_id = SHA-256(public_key)`; the key's bytes
-//!    equal a pinned key's, compared before anything decodes the key; and the strict Ed25519
-//!    equation accepts `signature` over `"tessera-manifest/v1" ‖ TCE(m without signature)`, 163
-//!    bytes. The equation is the caller's ([`SealedManifest::check`] states its contract);
+//!    equal a pinned key's, compared before anything decodes the key; and
+//!    [`tv_hash::ed25519::verify_strict`] accepts `signature` over `"tessera-manifest/v1" ‖
+//!    TCE(m without signature)`, 163 bytes: RFC-0060's strict set, which refuses `S ≥ L`, a
+//!    point that does not decode, a small-order `R` or key, and the cofactored equation alone;
 //! 2. `period_start_ns ≤ period_end_ns`;
 //! 3. `first_seq + entry_count` does not overflow;
 //! 4. `entry_count = 0` implies `entries_root = SHA-256("")`.
