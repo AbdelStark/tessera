@@ -142,7 +142,7 @@ Before any v0.4 implementation work merges, [`docs/zk/simulator.md`](../zk/simul
 
 | Item | 405B, 16K tokens |
 |---|---|
-| Mask rows `R_V` (about 2,000 stacked tensors and tree levels, two rows each) | about 1.6×10^10 elements, 0.6% of advice |
+| Mask rows `R_V` (about 2,000 stacked tensors and tree levels, two rows each, a projection; the tree levels' 2,621 masks are packed in RFC-0070's masks' block, 779 `Fp2` rows with the masking polynomials) | about 1.6×10^10 elements, 0.6% of advice |
 | Stage masking polynomials | < 2×10^4 elements |
 | Blinding rows for advice combined rows (`G + 1 ≤ 17`, two rows each; in `tessera-protocol/2`, `G + 1 ≤ 21` with RFC-0068's column masks' group, the two reduction stages' fold groups and RFC-0070's batching group) | 34 rows; 42 |
 | The masks' batching ([RFC-0070](RFC-0070-mask-batching.md)) | the pad `S`: 779 `Fp2` rows, 1,558 committed, 0.163% of the advice's non-zero rows; one sumcheck of 32 rounds of degree 2; one opening group. It opens the 46 masked sumchecks' `G(r)` and the 2,621 tree-level mask claims |

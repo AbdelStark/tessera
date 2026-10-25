@@ -133,6 +133,7 @@ In `tessera-protocol/2` the leaf stage ends as follows, after `logup/values`.
 5. **The final values.** The prover sends, under `stage/0/layer/evals`, in this order:
    1. `v_{s,t} = X'_t(π_t(r_s) ‖ ρ'_y)` for every layered site and tensor, in RFC-0045's order of sites and tensors. `ρ'_y` is the layer instance's point, the last `λ` challenges.
    2. `u_i = R̃_{·,I(i)}(ρ'_{w_i})` for every column mask, in claim order. `ρ'_{w_i}` is fold `i`'s point, the last `c_i` challenges.
+   3. `G(ρ')`, the masking polynomial's value, which [RFC-0070](RFC-0070-mask-batching.md)'s batching opens.
 6. **The check.** The verifier computes each `W̃_{s,t}(ρ'_y)`, in `O(L)` per pair, and each fold's public factor. It then checks the last round against the batched final value plus `ρ_zk·G(ρ')`. `G(ρ')` is sent last under `stage/0/layer/evals`, and [RFC-0070](RFC-0070-mask-batching.md)'s batching sumcheck opens it with every other mask claim.
    - A final mismatch is `Reject(Sumcheck { stage: 0, round: n })`. RFC-0010's format derives `p_j(1)` from the claim, so no earlier round can mismatch.
    - The outside claims' atom splits of step 1 are checked before the sumcheck, a mismatch being `Reject(Sumcheck { stage: 0, round: 0 })`.

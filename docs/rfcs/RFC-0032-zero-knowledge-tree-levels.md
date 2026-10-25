@@ -73,7 +73,7 @@ Level `t ≥ 1` of a forest has the pair bit `b`, its lowest variable, and the o
 V'_t(b ‖ x) = Ṽ_t(b ‖ x) + Z_t(x)·R̃_t((b ‖ x)_col),        Z_t(x) = Π_j x_j·(1 − x_j)
 ```
 
-- **The mask.** `R_t` is a fresh `Fp2` mask row over the level's column variables, the pair bit among them, as in [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) 'Masked extensions'.
+- **The mask.** `R_t` is a fresh `Fp2` mask over the level's column variables, the pair bit among them, as in [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) 'Masked extensions'. Its `2^{c_t}` values are a block of [RFC-0070](RFC-0070-mask-batching.md)'s masks' block `M`, aligned to its size.
 - **Agreement.** `Z_t` vanishes when `x` is Boolean, whatever `b`, so `V'_t = Ṽ_t` on the level's hypercube, and every level identity holds with `V'` in place of `Ṽ`.
 - **What a level reveals.** At its final point `r'`, it sends `V'_{t+1}(0 ‖ r')` and `V'_{t+1}(1 ‖ r')`. `r'` holds at least one random coordinate, so `Z_{t+1}(r') ≠ 0`, and `R̃_{t+1}` at the two points masks them, independently, since the pair bit is a variable of the row.
 - **Folding.** A level that proves the claim `V'_t(p) = v`, at `p = ρ ‖ q` with `q` its coordinates besides the pair bit's, proves
@@ -163,7 +163,7 @@ These rows replace RFC-0013's row for LogUp roots and add the tree levels:
 | 4 | squeeze `α`, `β`; then the identity sumcheck: absorb masked sum, squeeze `ρ`, squeeze `γ`, rounds, final evaluations | `logup/alpha`, `logup/beta`, `logup/identity/zk-sum`, `logup/identity/zk-rho`, `logup/identity/gamma`, `logup/identity/round/{j}`, `logup/identity/r/{j}`, `logup/identity/evals` |
 | 5 | per tree level `ℓ`: squeeze the root point of the product forests that join at `ℓ`, absorb masked sum, squeeze `ρ_ℓ`, `γ_ℓ`, and `λ_ℓ` at a level with fraction forests, rounds, evaluations, line | `tree/{ℓ}/root/{c}`, `tree/{ℓ}/zk-sum`, `tree/{ℓ}/zk-rho`, `tree/{ℓ}/gamma`, `tree/{ℓ}/lambda`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line` |
 
-`logup/roots` has no use in `tessera-protocol/2`. `logup/values` stays, after the last level, as in row 5 of `tessera-protocol/1`. `tree/{ℓ}/evals` carries each instance's evaluations, then the mask values `R̃_t`, then `G_ℓ(r)` ([RFC-0070](RFC-0070-mask-batching.md)).
+`logup/roots` has no use in `tessera-protocol/2`. `logup/values` stays, after the last level, as in row 5 of `tessera-protocol/1`. `tree/{ℓ}/evals` carries each instance's evaluations, then the mask values `R̃_t` in instance order, a fraction forest's numerators' before its denominators', then `G_ℓ(r)` ([RFC-0070](RFC-0070-mask-batching.md)).
 
 ### Soundness
 
@@ -177,7 +177,7 @@ These rows replace RFC-0013's row for LogUp roots and add the tree levels:
 | Item | Cost |
 |---|---|
 | Masked sumcheck | `2(n(d + 1) + 1)` committed elements per level: about 700 at `n = 45`, `d = 7`, so a few times 10^4 per proof |
-| Mask rows | One `Fp2` row per level of a product forest, two per level of a fraction forest. RFC-0013's cost table counts tree levels among its mask rows; OQ-0013-1's packing applies. |
+| Mask rows | One `Fp2` mask per level of a product forest, two per level of a fraction forest, packed as blocks of [RFC-0070](RFC-0070-mask-batching.md)'s masks' block `M`: at 405B, 2,621 masks and the masking polynomials' coefficients fit in 779 `Fp2` rows |
 | Padding trees | Constant, computed in closed form; one more round per level |
 | Identity sumcheck | Two rounds |
 

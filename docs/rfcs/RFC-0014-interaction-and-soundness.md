@@ -181,8 +181,8 @@ So that the two agree bit for bit, the rest of this section specifies the calcul
 | Size | What it counts |
 |---|---|
 | `protocol` | The `n` of `tessera-protocol/n`: 1, or 2 with the zero-knowledge items |
-| `rounds` | Every round of every stage and tree level, as a count and a degree `d`; in `tessera-protocol/2`, the LogUp identity sumcheck's and the masks' batching's too, its `m` rounds of degree 2 |
-| `stages` | The instances `m` each reduction stage batches; in `tessera-protocol/2`, the identity sumcheck is one more, the leaf stage's layer sumcheck ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#the-layer-sumcheck)) another, and the masks' batching ([RFC-0070](RFC-0070-mask-batching.md#soundness)) another, whose `m` is its `N` mask claims |
+| `rounds` | Every round of every stage and tree level, as a count and a degree `d`; in `tessera-protocol/2`, the LogUp identity sumcheck's and the masks' batching's too, one round per variable of the masks' cube, of degree 2 |
+| `stages` | The instances `m` each reduction stage batches; in `tessera-protocol/2`, the identity sumcheck is one more, the leaf stage's layer sumcheck ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#the-layer-sumcheck)) another, and the masks' batching ([RFC-0070](RFC-0070-mask-batching.md#soundness)) another, which batches its `N` mask claims as instances |
 | `tree_levels` | The instances `m` each tree level batches: its fraction trees and product forests |
 | `zero_checks` | The variables `n_i` of each `ZeroCheck` ([RFC-0035](RFC-0035-padded-rows.md#zero-check-points)) |
 | `layer_vars` | The coordinates `λ` of stage 1's layer point ([RFC-0037](RFC-0037-stage-schedule.md#the-layer-point)), 0 when the schedule has none. `tessera-protocol/2` has none: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md)'s layer sumcheck, a stage, replaces it ([#537](https://github.com/AbdelStark/tessera/issues/537)) |

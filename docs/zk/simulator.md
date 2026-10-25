@@ -96,7 +96,7 @@ In transcript order (RFC-0014 'Transcript schedule', with RFC-0032's rows 4 and 
 - **The setting.** A stage or level proves `H = Σ_x f(x)` over `n` variables with round degrees `d_j`.
   - The prover commits `G(x) = a_0 + Σ_j g_j(x_j)`, each `g_j` uniform of degree `d_j` over `Fp2`.
   - It sends `Γ = Σ_x G(x)`, and `ρ` is squeezed.
-  - The rounds run on `f + ρ·G` from the claim `H + ρ·Γ`, and `G(r)` is opened.
+  - The rounds run on `f + ρ·G` from the claim `H + ρ·Γ`, and the prover sends `G(r)`, which RFC-0070's batching opens (§4.3a).
 - **Claim.** Given `ρ ≠ 0`, the view `(Γ, p_1, …, p_n, G(r))` is simulatable from `H` and the final value `f(r)`.
 - **Proof.**
   - Round `j`'s polynomial is `F_j(X) + ρ·2^{n−j}·g_j(X) + c_j`, with `F_j` the unmasked round polynomial and `c_j` constant in `X`. Its non-constant coefficients are masked by `g_j`'s, which enter no other round, so they are uniform. Its constant is fixed by the round's check.
@@ -105,7 +105,7 @@ In transcript order (RFC-0014 'Transcript schedule', with RFC-0032's rows 4 and 
   - The pair reveals nothing beyond the checks. `G(r) − Γ/2^n = Σ_{j, m ≥ 1} g_{j,m}·(r_j^m − 1/2)`. Substituting the revealed coefficients, this equals `ρ^{-1}·(public − (f(r) − H/2^n))`, since `Σ_j (F_j(r_j) − F_{j−1}(r_{j−1})/2)/2^{n−j}` telescopes, with `F_0(r_0) = H`.
 - **Other inputs to `f`.** Batched instances, zero-checks and layer points change only `f`'s public factors.
 - **Opening `G(r)` (R11).** `G(r)` is also an advice claim, but its column functional is `(r_j^m)` over the coefficient positions, not an `eq` vector, so RFC-0011 cannot open it alone. Each tree level's mask claim `R̃_t(r'_t)` sits at its own level's point.
-  - **The cost of one group each.** A blinding pair, a blinding claim and a combined row of `k` `Fp2` values, about 64 MB at `k = 2^{22}`, per claim. At 405B that is 2,667 claims at 612 column points: 38.25 GiB even with shared points.
+  - **The cost of one group each.** A blinding pair, a blinding claim and a combined row of `k` `Fp2` values, about 64 MB at `k = 2^{22}`, per claim. At 405B that is 2,667 claims, and even one group per column point would take 612 groups: 38.25 GiB.
   - **What [RFC-0070](../rfcs/RFC-0070-mask-batching.md) does.** The prover sends `G(r)` with the sumcheck's evaluations, so the final check above keeps its rejection. One masked batching sumcheck then opens every `G(r)` and every tree-level mask claim, with one more group (§4.3a, Lemma 4a).
 - **Requirement R4.** Each `g_j` has round `j`'s degree, the round whose degree the masked extensions raise included, up to 7: the last round, or at a LogUp leaf level the round before it (RFC-0032, RFC-0068).
 - **Degenerate event.** `ρ = 0`: `1/q` per masked sumcheck.
@@ -172,24 +172,23 @@ Each stage is Lemma 4's masked sumcheck. Its final evaluations and its split val
 ### 4.3a The masks' batching (RFC-0070)
 
 After the last stage, [RFC-0070](../rfcs/RFC-0070-mask-batching.md) opens the mask claims, every masked sumcheck's `G(r)` and every tree level's `R̃_t(p_t)`, in one sumcheck.
-- **The block.** The claims are linear functionals `⟨c_i, M⟩` of the masks' block `M`, which holds every masking polynomial's coefficients and every tree level's mask row, packed in aligned blocks, and nothing else.
+- **The block.** The claims are linear functionals `⟨c_i, M⟩` of the masks' block `M`, which holds every masking polynomial's coefficients and the tree levels' masks whose values `tree/{ℓ}/evals` carries, packed in aligned blocks, and nothing else. A `SoftmaxRow` forest's leaf mask is folded in a reduction stage and stays out.
 - **The combination.** A challenge `α` combines them into `v = ⟨C, M⟩`, `C = Σ_i α^i·c_i`.
 - **The pad.** `S`, laid out like `M` and committed in Round 1, masks the sumcheck: the prover sends `Γ_S = ⟨C, S⟩`, `ρ` is squeezed, and the rounds prove `Σ_x C̃·z̃ = v + ρ·Γ_S` with `z = M + ρ·S`.
 - **The end.** `y = z̃(r*)` is one advice claim, in one more group.
 
 **Lemma 4a (the masks' batching).** Let `T` be `M`'s non-public positions, `S` uniform over `Fp2^T` and zero off `T`, independent of everything sent before `Γ_S`. Given the earlier view and `ρ ≠ 0`, the batching's view `(Γ_S, the rounds, y)` depends on the secrets only through `v`, which the earlier view fixes.
 - **Proof.**
-  - Given `Γ_S`, `S_T` is uniform on the hyperplane `⟨C_T, ·⟩ = Γ_S`.
+  - `C_T ≠ 0`, since claim 0, the LogUp identity's `G(r)`, puts 1 on its `a_0` slot. So `Γ_S` is uniform, and given it, `S_T` is uniform on the hyperplane `⟨C_T, ·⟩ = Γ_S`.
   - So `z_T` is uniform on `{⟨C_T, z_T⟩ = v + ρ·Γ_S}`, which public values fix, and `z` is zero off `T`.
   - Every later message of the batching is a function of `z`, `C` and the challenges.
 - **What the simulator does.** It samples `Γ_S` uniformly, then `z_T` on that hyperplane, then runs the honest prover. That is exact for every `C` and every adaptive choice of the challenges.
-- **No rank condition.** Coverage replaces it: `S` must be uniform wherever `M` holds a mask value. A dependence among the rounds' functionals is shared by `M`'s side, a public relation. EXP-0027 measured the revealed functionals at `2m`, the most the sumcheck's shape allows, on protocol-like `C`.
+- **No rank condition.** Coverage replaces it: `S` must be uniform wherever `M` holds a mask value, claimed or not. A dependence among the rounds' functionals is shared by `M`'s side, a public relation. EXP-0027 measured the revealed functionals at `2m`, the most the sumcheck's shape allows, on protocol-like `C`.
 - **What the lemma needs, each shown necessary by EXP-0027 on a toy protocol over F65537:**
   - a pad, since the bare batching leaks through a root level's pinned two-entry row;
   - `S` on `M`'s layout, not on `C`'s support, which depends on challenges, and leaks through a block no claim reads;
-  - `M` holding only claimed masks;
-  - `M̃(r*)` and `S̃(r*)` never sent apart;
-  - `S` over `Fp2`.
+  - `M̃(r*)` and `S̃(r*)` never sent apart.
+- **Two design rules beside it.** `S` is drawn over `Fp2`, as every mask is: the proof as written needs its two `Fp` blocks independent, and EXP-0027's prime fields do not test it. `M` holds only claimed masks, which keeps `S` no larger than needed: the lemma does not need it.
 - **After the batching.** `S_T = ρ^{-1}·(z_T − M_T)`, so `M` and `S` enter nothing revealed later except under fresh randomness of its own:
   - `y`'s group, under its blinding pair (§4.4);
   - the proximity row, under `Q_ξ` and the free rows Lemma 5 names, which are not `S`'s;
@@ -374,14 +373,14 @@ Packing several masks in one row, each in its own aligned sub-block at a public 
 
 **At the 405B default.** EXP-0027 counts the tree levels and the masked sumchecks from the compiler's schedule; the tensors' figures are still RFC-0013's projections.
 - **The counts.**
-  - 2,621 tree-level mask rows, each revealed at two masked points and by its claim;
+  - 2,621 tree-level mask rows, each revealed at its masked points and by its claim;
   - 46 masked sumchecks, and the masks' batching;
   - about 5,000 masked points of the tensors, and about 2,000 tensor mask rows with `e_V ≤ 4`.
-- **The `Z` terms.** The tree levels' 5,242 points, at most `2(n − 1) ≤ 86` each, and the tensors' give `≈ 9·10^5/q ≈ 2^{-108}`.
-- **The `eq` terms.** `9 × 2,621` and the tensors' `≈ 32,000` give `≈ 5.6·10^4/q ≈ 2^{-112}`.
+- **The `Z` terms.** The tree levels' masks are revealed at 5,142 masked points: two per level below a root, at most `2(n − 1) = 82` each, and one per root level, 2 each. They sum to 149,072. With the tensors' `≈ 450,000`, that gives `≈ 6.0·10^5/q ≈ 2^{-108.8}`.
+- **The `eq` terms.** `9 × 2,621` and the tensors' `≈ 32,000` give `≈ 5.6·10^4/q ≈ 2^{-112.2}`.
 - **The masked sumchecks.** 47 terms, negligible beside these.
 
-So `ε_1 < 2^{-105}`, given R10's rank checks. The tensors' counts must still be recomputed from the compiler's schedule once `tessera-protocol/2`'s layout is compiled, RFC-0068's column masks and layer sumcheck included.
+So `ε_1 ≈ 6.6·10^5/q ≈ 2^{-108.7} < 2^{-105}`, given R10's rank checks. The tensors' counts must still be recomputed from the compiler's schedule once `tessera-protocol/2`'s layout is compiled, RFC-0068's column masks and layer sumcheck included.
 
 **Outside `ε_1`.** `ε_PRG` and `ε_H` are separate. Per epoch, `ε_W ≤ 2^{-230}` adds to the proofs' terms.
 
@@ -405,7 +404,7 @@ So `ε_1 < 2^{-105}`, given R10's rank checks. The tensors' counts must still be
 
 These tests check the implementation of the masks, not this argument (07 §7). Each mechanism maps to one in #162's distinguisher suite:
 - **Lemma 4.** Round messages' non-constant coefficients, and `Γ`, are uniform for two witnesses.
-- **Lemma 4a.** The masks' batching's view is identical for two witnesses whose earlier views agree. Its negative controls, each told apart: no pad; `M̃(r*)` sent alone on a layout with no spare direction; `S` on `C`'s support with a block no claim reads; and `S` drawn over `Fp`.
+- **Lemma 4a.** The masks' batching's view is identical for two witnesses whose earlier views agree. Its negative controls, each told apart: no pad; `M̃(r*)` sent alone on a layout with no spare direction; `S` on `C`'s support with a block no claim reads; and `S` drawn over `Fp`, on a layout of fewer than `2(2m + 1)` non-public positions, beyond which an `Fp` pad leaves no direction uncovered.
 - **Lemma 2.** Each revealed masked value is uniform for two witnesses. With an `Fp` mask, a distinguisher on the value's line wins.
 - **R8 and R9.** For two witnesses, every revealed evaluation has the same distribution. As the negative control, `tessera-protocol/1`'s per-layer split values and `ChannelParams` claims are told apart, and so are RFC-0068's column values with the column masks set to zero, and RFC-0069's claims at one layer with their rows set to zero.
 - **Lemma 5.** Combined rows are uniform for two witnesses, under the tensor generator and under the fixed word.
