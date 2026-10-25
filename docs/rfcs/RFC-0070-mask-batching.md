@@ -6,8 +6,8 @@
 - Target milestone: v0.4
 - Amends, in `tessera-protocol/2` only:
   - [RFC-0013](RFC-0013-zero-knowledge.md#masked-sumcheck) 'Masked sumcheck' step 4, 'Cost' and INV-ZK-2: no masking polynomial's value is opened alone;
-  - [RFC-0010](RFC-0010-proof-schedule.md#sumcheck-messages) 'Sumcheck messages': a masked sumcheck's final evaluations end with its `G(r)`, and a tree level's with its mask values and then `G(r)`;
-  - [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#masked-tree-levels) 'Masked tree levels', 'Masked extensions that spare the pair bit', 'Labels' and 'Cost': `G_ℓ(r)` is sent with the level's evaluations, the mask values' order, and the mask rows `R_t` as blocks of the masks' block;
+  - [RFC-0010](RFC-0010-proof-schedule.md#sumcheck-messages) 'Tree levels' step 3, 'Sumcheck messages' and 'Invariants': a masked sumcheck's final evaluations end with its `G(r)`, a tree level's with its mask values and then `G(r)`, and a `SoftmaxRow` leaf instance's with `R̃_h`;
+  - [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#masked-tree-levels) 'Masked tree levels', 'Masked extensions that spare the pair bit', 'Leaf checks', 'Labels' and 'Cost': `G_ℓ(r)` is sent with the level's evaluations, the mask values' order, and the mask rows `R_t` as blocks of the masks' block;
   - [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#the-layer-sumcheck) 'The layer sumcheck' steps 5 and 6: `G(ρ')` likewise;
   - [RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) 'Opening protocol' step 1 and 'Sizes': one more group;
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule) 'Transcript schedule' and 'Soundness calculator': the batching's labels, after the last stage, and its sizes;
@@ -20,9 +20,10 @@
 
 ## Summary
 
-`tessera-protocol/2` reveals two kinds of claim on the advice that no opening covers (`docs/zk/simulator.md` R11):
+`tessera-protocol/2` reveals claims on the advice that no opening covers (`docs/zk/simulator.md` R11):
 - each masked sumcheck's `G(r) = a_0 + Σ_j g_j(r_j)`, whose column functional, `(r_j^m)` over the coefficients, is not an `eq` vector, so RFC-0011 cannot open it;
-- each tree level's mask value `R̃_t(r'_t)`, at its own level's point, so that claims of different levels never share a column sub-point.
+- each tree level's mask value `R̃_t(r'_t)`, at its own level's point, so that claims of different levels never share a column sub-point;
+- the `SoftmaxRow` forest's leaf mask value `R̃_h`, at its leaf instance's point.
 
 One RFC-0011 group per claim would cost a combined row of 64 MiB each. The compiler's 405B schedule has 2,668 such claims, the `SoftmaxRow` forest's leaf mask among them. Even sharing a group among the claims at one column point, EXP-0027's 2,667 would take 612 groups: 38.25 GiB.
 
@@ -35,21 +36,21 @@ This RFC opens them all with one masked sumcheck. The masking polynomials' coeff
   - **`R̃_t(r'_t)`.** Each level's final point is its own, so the claims of different levels would take groups of their own.
 - **The count at 405B**, from the compiler's schedule ([EXP-0027](../../research/experiments/EXP-0027-batched-mask-opening/README.md) (d), `servable` with two classes, 16K tokens and context):
   - **Masked sumchecks: 46.** The two reduction stages (42 and 35 rounds), RFC-0068's layer sumcheck (22), the LogUp identity (2), and 42 tree levels: 1,004 rounds, at most 8,006 coefficients, recounted from EXP-0027's rounds under this RFC's one degree per sumcheck: 7 for the stages (RFC-0013's bound) and the tree levels, 4 for the layer and identity sumchecks. EXP-0027's per-round degrees gave 4,562; both fit the same block.
-  - **Tree-level mask claims: 2,621.** Two per level of each fraction forest, its root level's included, and one per level of the `SoftmaxRow` forest below its root. 697 are full width, `2^{22}` entries.
-  - **The leaf mask.** The `SoftmaxRow` forest's leaf mask `R_h` is one more claim, at a point no committed claim shares.
+  - **Tree-level mask claims: 2,621.** Two per level of each fraction forest, its root level's included, and one per level `t = 1, …, h − 1` of the `SoftmaxRow` forest. 697 are full width, `2^{22}` entries.
+  - **The leaf mask.** The `SoftmaxRow` forest's leaf mask `R_h` is one more claim.
   - **One group per claim**, on EXP-0027's 2,667, costs 2,667 groups, 166.7 GiB. **One group per column point** costs 612: the tree levels' claims fall on 566 column points, and each `G(r)` takes a group of its own. That is 38.25 GiB. Either is far beyond 08 §5's 4 GiB gate.
 - **The issue's projection** was about 200 groups. The tree levels' claims alone are 2,621.
 
 ## Goals
 
-- Every `G(r)` and every tree-level mask claim opened, within the proof-size gate.
+- Every `G(r)`, every tree-level mask claim and the `SoftmaxRow` leaf mask's value opened, within the proof-size gate.
 - Zero knowledge for the opening, with a written lemma (`docs/zk/simulator.md` R11).
 - A soundness error the calculator counts with the sizes it already reads.
 - No change to `tessera-protocol/1`.
 
 ## Non-Goals
 
-- **The other masks.** RFC-0068's column masks and the reduction stages' fold masks keep their own groups. They could join the batching only if `S` covered their whole rows ('Alternatives Considered' 3).
+- **The other masks.** RFC-0068's column masks and the reduction stages' #538 fold masks keep their own groups. They could join the batching only if `S` covered their whole rows ('Alternatives Considered' 3).
 - **A smaller pad.** EXP-0027's `S` on the rows whose index has Hamming weight at most 2 never leaked on protocol-like claims, which would cut `S` to 56 `Fp2` rows, 112 committed. It needs a rank lemma of its own ('Open Questions').
 
 ## Proposed Design
@@ -77,7 +78,7 @@ The **mask claims** are:
 `M` is a logical `Fp2` tensor of `R_M` rows of `k` entries. Its cube has `m = log2 k + ⌈log2 R_M⌉` variables, the column variables lowest. It holds every masking polynomial's coefficients and the masks `R_t` and `R_h` whose values are mask claims, in blocks of power-of-two size:
 - **The coefficient block.** The masking polynomials, in the claims' order. A sumcheck of `n` rounds of degree `d` takes `1 + n·(d + 1)` consecutive slots: `a_0`, then round `j`'s `g_{j,0}, …, g_{j,d}` for `j = 1, …, n`, constant first. `d` is the degree its round messages hold, one for every round (RFC-0010 'Sumcheck messages'), so that every `g_j` has degree `d` (R4): 7 at a tree level in `tessera-protocol/2`, whose last round RFC-0032 raises; 4 for the LogUp identity (RFC-0032 'Soundness'); RFC-0068's `d` for the layer sumcheck; and each reduction stage's own. The block is padded with public zeros to `2^{⌈log2 Σ_s (1 + n_s·(d_s + 1))⌉}` slots, over the sumchecks `s`: 8,192 at 405B, for at most 8,006 coefficients.
 - **A tree-level block** per mask `R_t` or `R_h` whose value is a mask claim, of `2^{c_t}` entries: the mask's values, in the order of its `c_t` column variables (RFC-0032).
-- **The packing.** The blocks are placed in order of decreasing size, ties in the claims' order with the coefficient block first, each at the next free position of the cube. Every size is a power of two, so every block is aligned to its size. A block of at most `k` entries lies within one row; the coefficient block, if larger, takes whole rows. The tail of the last row is public zeros, and so are the cube's rows `R_M` to `2^{⌈log2 R_M⌉} − 1`, which are not committed. Packing tree levels' masks is OQ-0013-1's admissible case (`docs/zk/simulator.md` §7): each block's functionals lie on its own block.
+- **The packing.** The blocks are placed in order of decreasing size, ties in the claims' order with the coefficient block first, each at the next free position of the cube. Every size is a power of two, so every block is aligned to its size. A block of at most `k` entries lies within one row; the coefficient block, if larger, takes whole rows. The tail of the last row is public zeros, and so are the cube's rows `R_M` to `2^{⌈log2 R_M⌉} − 1`, which are not committed. Packing tree levels' masks and the `SoftmaxRow` leaf mask is admissible (`docs/zk/simulator.md` §7): each block's functionals lie on its own block.
 - **Nothing else.** `M` holds no other mask. A position of the cube that holds a mask value is **non-public**, and every other position is a public zero. A mask with no claim in `C` could sit in `M` as long as `S` covers it (Lemma 4a), but nothing calls for one.
 
 A block's place is a function of the claim list and the batch descriptor, so `M`'s layout is public before any challenge (INV-PCS-1). At 405B `R_M = 780`, so `m = 22 + 10 = 32`. Each `Fp2` row of `M` is two committed `Fp` rows, `M_w = M_w^{(0)} + X·M_w^{(1)}`, and these are the rows RFC-0013 and RFC-0032 commit for these masks.
@@ -103,7 +104,7 @@ After the last reduction stage's messages, and before the advice groups' blindin
 3. **The rounds.** A sumcheck of degree 2 over the `m` variables, the lowest first, proves `Σ_x C̃(x)·z̃(x) = v + ρ·Γ_S`, with `z = M + ρ·S`. Round `j`, for `j = 1, …, m`, binds variable `j`: its polynomial goes under `masks/round/{j − 1}` and its challenge `r*_j` under `masks/r/{j − 1}`, in RFC-0010's format, which numbers a stage's rounds from 0 ('Sumcheck messages').
 4. **The end.** The prover sends `y = z̃(r*)` under `masks/evals`, as a TCE `Vec<Fp2>` of one value, as RFC-0010 sends a stage's evaluations. The verifier computes `C̃(r*)` itself and checks the last round against `C̃(r*)·y`.
 5. **`y` is one advice claim.** It is a claim at column sub-point `r*_{1..log2 k}` on the pieces `M^{(0)}, M^{(1)}, S^{(0)}, S^{(1)}`, with coefficients `(1, X, ρ, ρX)` times `eq(r*_row, w)` on row `w`. It joins the advice pool (INV-SCH-3) and forms one more RFC-0011 group, the last in group order: its column sub-point is the batching's own.
-6. **What is never sent.** `M̃(r*)` and `S̃(r*)` are never sent apart. No `G(r)` or `R̃_t(p_t)` reaches the opening pool: INV-SCH-3 sends the mask claims to the batching, whose `y` alone joins the pool.
+6. **What is never sent.** `M̃(r*)` and `S̃(r*)` are never sent apart. No `G(r)`, `R̃_t(p_t)` or `R̃_h(p_h)` reaches the opening pool: INV-SCH-3 sends the mask claims to the batching, whose `y` alone joins the pool.
 
 **The verifier's `C̃(r*)`.** `C̃(r*) = Σ_i α^i·⟨c_i, eq(r*, ·)⟩`, from public data:
 - a tree-level block of `2^c` entries in row `w_t`, the `j_t`-th block of its size in that row, gives `α^i·eq(p_t, r*_{1..c})·eq(r*_{c+1..log2 k}, j_t)·eq(r*_row, w_t)`, in `O(m)`;
@@ -138,7 +139,7 @@ Each masked sumcheck's evaluations label carries, last, its `G(r)`:
 - `stage/0/layer/evals`;
 - `stage/{k}/evals`.
 
-So every `v_i` is absorbed before `α`, and `Γ_S` before `ρ`. RFC-0010's length check counts `G(r)` among the final evaluations, and a tree level's mask values too ('Sumcheck messages', as amended).
+So every `v_i` is absorbed before `α`, and `Γ_S` before `ρ`. RFC-0010's length check counts `G(r)` among the final evaluations, a tree level's mask values, and a `SoftmaxRow` leaf instance's `R̃_h` ('Sumcheck messages', as amended).
 
 ### Zero knowledge
 
@@ -167,7 +168,7 @@ So every `v_i` is absorbed before `α`, and `Γ_S` before `ρ`. RFC-0010's lengt
   - the proximity row by `Q_ξ`, and under the tensor generator by Lemma 5's free rows, which are activation mask rows, not `S`'s;
   - the columns by each row's encoding mask (Lemma 6).
 
-**R10** ([#488](https://github.com/AbdelStark/tessera/issues/488)) does not count `r*` as a revealed point of any tree-level mask row: `y` reveals `z̃(r*)`, which `S` masks.
+**R10** ([#488](https://github.com/AbdelStark/tessera/issues/488)) does not count `r*` as a revealed point of any mask in `M`: `y` reveals `z̃(r*)`, which `S` masks.
 
 **The independent reading.** EXP-0027's adversarial reading of the lemma, of its composition with `y`'s group, the proximity row and the columns, and of the ordering, found no break. This RFC settles the two gaps it raised:
 - what `S` and `M` may enter after the batching;
@@ -189,7 +190,7 @@ Further points:
 - **The measurement.** Over F65537, a cheater built to hit every term was accepted at its exact predicted rate:
   - 366 of 10⁶ trials, against 381 ± 78 (4σ);
   - 421 of 2·10⁶ trials, against 427 ± 83 (4σ).
-- **At 405B.** `(2,666 + 64 + 1)/q ≈ 2^{−116.6}`.
+- **At 405B.** `(2,667 + 64 + 1)/q ≈ 2^{−116.6}`.
 
 **The calculator** ([RFC-0014](RFC-0014-interaction-and-soundness.md#soundness-calculator)) counts the batching with the sizes it already reads:
 - **`stages`.** The batching is one more stage, batching its `N` claims as instances, which bounds `α`'s term.

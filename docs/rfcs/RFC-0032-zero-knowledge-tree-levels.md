@@ -9,7 +9,7 @@
   - [RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree) 'Fraction tree': the roots and the leaf checks;
   - [RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels': forests of one tree, and the levels' sumchecks;
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule) 'Transcript schedule', rows 4 and 5.
-- Amended by: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Leaf checks': each LogUp instance's key and value columns take a mask row of their own, and the leaf level's raised degree falls in the round before the last), [RFC-0070](RFC-0070-mask-batching.md) ('Masked tree levels', 'Masked extensions that spare the pair bit' and 'Labels': `G_ℓ(r)` is sent with the level's evaluations, and it and the mask values `R̃_t` are claims on the masks' block, which RFC-0070's batching opens)
+- Amended by: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Leaf checks': each LogUp instance's key and value columns take a mask row of their own, and the leaf level's raised degree falls in the round before the last), [RFC-0070](RFC-0070-mask-batching.md) ('Masked tree levels', 'Masked extensions that spare the pair bit', 'Leaf checks', 'Labels' and 'Cost': `G_ℓ(r)` is sent with the level's evaluations, and it, the mask values `R̃_t` and the `SoftmaxRow` leaf's `R̃_h` are claims on the masks' block, which RFC-0070's batching opens)
 - Origin: [#224](https://github.com/AbdelStark/tessera/issues/224)
 
 ## Summary

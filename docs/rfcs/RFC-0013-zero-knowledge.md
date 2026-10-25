@@ -154,7 +154,7 @@ The weight budget per proof is six rows, and the linking proofs take four at eac
 ### Invariants
 
 - **INV-ZK-1.** Every value sent to the verifier is public, uniformly masked, or determined by previously sent values and public data.
-- **INV-ZK-2.** Every mask row, blinding row and masking polynomial is used in exactly one revealed combination or evaluation set, within its degrees of freedom. A matrix's shared pair `β_T` (RFC-0065) is one evaluation set: it enters all of the matrix's evaluation rows, each with its own designated mask row, the rank reading of R5 (`docs/zk/simulator.md`). The masks' pad `S` ([RFC-0070](RFC-0070-mask-batching.md)) is the masks' batching's: the masking polynomials and the tree levels' mask rows enter that batching only through `M + ρ·S`, which `S` covers (Lemma 4a), and every later use is under a block of its own.
+- **INV-ZK-2.** Every mask row, blinding row and masking polynomial is used in exactly one revealed combination or evaluation set, within its degrees of freedom. A matrix's shared pair `β_T` (RFC-0065) is one evaluation set: it enters all of the matrix's evaluation rows, each with its own designated mask row, the rank reading of R5 (`docs/zk/simulator.md`). The masks' pad `S` ([RFC-0070](RFC-0070-mask-batching.md)) is the masks' batching's: the masking polynomials, the tree levels' masks and the `SoftmaxRow` leaf mask enter that batching only through `M + ρ·S`, which `S` covers (Lemma 4a), and every later use is under a block of its own.
 - **INV-ZK-3.** Masking randomness is drawn from the per-proof secret seed's PRG (advice) or from the epoch's mask seed (weights), never from the transcript.
 
 ## Alternatives Considered
