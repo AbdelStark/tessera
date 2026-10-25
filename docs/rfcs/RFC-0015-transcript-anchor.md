@@ -27,7 +27,7 @@
   - 'Goals' and 'Deployment assumptions', A-ANCHOR-1 and A-ANCHOR-2: the period's log, who sends on the recorded path, and the recorder's carries;
   - 'Log format': `SessionCarry`, and a batch's entries read from its period's log;
   - 'Prover pre-check', 'Verifier checks' 2 and INV-ANC-2: the session rules over the period's log.
-- Amended by: [RFC-0066](RFC-0066-bits-and-sha256.md) ('Circuits' steps 3 and 4: the SHA-256 circuit's construction, its cost, and the binding's zero-check)
+- Amended by: [RFC-0066](RFC-0066-bits-and-sha256.md) ('Circuits' steps 3 and 4: the SHA-256 circuit's construction, its cost, and the binding's zero-check), [RFC-0071](RFC-0071-request-slots.md) ('Circuits' and 'Prover pre-check': in a batch, a request's frames bind its own slot's rows, and a failing request is left out)
 
 ## Summary
 
@@ -139,7 +139,7 @@ The signed message is `"tessera-manifest/v1" ‖ TCE(manifest without signature)
 
 ### Circuits
 
-For each request in the batch and each direction:
+For each request in the batch and each direction, the following hold. In a batch of several requests, request `r`'s tokens are its slot's rows `r·S + p`, prompt then outputs ([RFC-0071](RFC-0071-request-slots.md#the-statement-and-the-batching)).
 
 These steps are amended by [RFC-0059 'The circuits'](RFC-0059-frame-headers-and-nonces.md#the-circuits): the counter blocks and each plaintext's 22-byte prefix are public inputs, and the sampler commitment is opened too.
 
@@ -177,7 +177,7 @@ Cost per token, both directions, against about 1.7×10^7 commitments per token f
 
 ### Prover pre-check
 
-Before `Round1`, the prover re-encrypts its stored transcripts, checks the session rules and the request's rules over its window ([RFC-0062](RFC-0062-period-log-sessions.md#the-pre-check), [RFC-0063](RFC-0063-request-boundaries.md#the-requests-rules)), recomputes every frame digest, every session's key commitment and the pinned sampler commitment ([RFC-0061](RFC-0061-sampling-randomness.md#the-sampler-key-and-its-pins)), and compares them with the manifest's entries and the pin ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#the-reference-cipher) says what its replay may return); a mismatch is `ERR-WITNESS-ANCHOR` and the batch is not proven.
+Before `Round1`, the prover re-encrypts its stored transcripts, checks the session rules and the request's rules over its window ([RFC-0062](RFC-0062-period-log-sessions.md#the-pre-check), [RFC-0063](RFC-0063-request-boundaries.md#the-requests-rules)), recomputes every frame digest, every session's key commitment and the pinned sampler commitment ([RFC-0061](RFC-0061-sampling-randomness.md#the-sampler-key-and-its-pins)), and compares them with the manifest's entries and the pin ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#the-reference-cipher) says what its replay may return); a mismatch is `ERR-WITNESS-ANCHOR` and the batch is not proven. In a batch of several requests ([RFC-0071](RFC-0071-request-slots.md#the-statement-and-the-batching)), the failing request is left out and named, and the rest is proven; the batch is not proven only when no request passes.
 
 - **The stored transcript.** The serving stack keeps one `SessionTranscript` per session: the secret-class artifact `0x0404`, `.tst` (03 §5), written with mode 0600 (06 §7). It is what RFC-0059 'The reference cipher' calls storing `SessionKeys`. TCE, in order:
   - `session_id: [u8; 16]`, `key: [u8; 16]` (`k_s`), `key_salt: [u8; 16]` (`salt_k`);
@@ -193,7 +193,7 @@ Before `Round1`, the prover re-encrypts its stored transcripts, checks the sessi
 
   The first failure names its request.
 - **What the caller binds.** The pre-check reads the window from the period's verified log and the previous period's. The caller binds the two by the chain, as the verifier does (RFC-0063 'The previous period's log').
-- **Where it runs.** `tessera prove --sample` runs it on the batch it proves, with the stored transcripts of `--transcripts DIR` (`<session_id>.tst`), before the prover commits anything: a failure sends no `Round1`. The tokens it proves are then the stored plaintexts of the frames the log names (02 §2.2).
+- **Where it runs.** `tessera prove --sample` runs it on the batch it proves, with the stored transcripts of `--transcripts DIR` (`<session_id>.tst`), before the prover commits anything: a failure sends no `Round1`, and a request that fails in a batch of several is left out before the statement is bound. The tokens it proves are then the stored plaintexts of the frames the log names (02 §2.2).
 - **The sampler key.** Its commitment and containment are checked with the sampler PRF's inputs (#152). A greedy batch has no pin.
 
 ### Verifier checks

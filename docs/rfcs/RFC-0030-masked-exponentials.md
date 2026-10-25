@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
-- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Cost': who pays for the masked half)
+- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Cost': who pays for the masked half), [RFC-0071](RFC-0071-request-slots.md) ('The causal selector' and the root claim: per request, in a batch)
 - Supersedes, on acceptance:
   - [RFC-0009](RFC-0009-gadgets.md#softmaxrow) 'SoftmaxRow': relation 1, the reduction of the trees' leaf claim, and Lemma 5;
   - [RFC-0010](RFC-0010-proof-schedule.md#multilinear-extensions) 'Multilinear extensions': the causal selector; 'Tree levels': `SoftmaxRow`'s public root values;
@@ -92,7 +92,7 @@ A padded row's tree has every leaf 1, so its root is 1. The forest's public root
 - 0 for the trees of a sequence's rows, layers and heads;
 - 1 for every other tree: those of padded rows, and those of padded layers and heads, which pad the forest to a power of two.
 
-The root claim `Σ_y v_y·eq(r, y)` is the extension of a public predicate over the tree index, with an `O(log)` closed form ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels'). For one sequence stacked over layers and heads, it is `1 − LT(r_ℓ, n_layers)·LT(r_h, n_heads)·LT(r_q, n)`.
+The root claim `Σ_y v_y·eq(r, y)` is the extension of a public predicate over the tree index, with an `O(log)` closed form ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels'). For one sequence stacked over layers and heads, it is `1 − LT(r_ℓ, n_layers)·LT(r_h, n_heads)·LT(r_q, n)`. For a batch of several requests ([RFC-0071](RFC-0071-request-slots.md#the-public-selectors)), `LT(r_q, n)` becomes `Σ_{r<R} eq(r_β, r)·LT(r_p, n_r)`, with `r_p` the query's position variables within its slot, low, and `r_β` its request's, high, and the causal selector is `C(τ, i) = [i ≤ τ mod S < n_{⌊τ/S⌋}]`, keys counted within the query's request.
 
 ### Lemma 5, extended
 

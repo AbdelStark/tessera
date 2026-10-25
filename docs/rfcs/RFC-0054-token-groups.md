@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-23
 - Target milestone: v0.3 (CPU prover and verifier), v0.5 (GPU backend)
-- Amended by: [RFC-0057](RFC-0057-one-proof-unit.md) (Alternative 3: no proof units; the 128K figures assume [#470](https://github.com/AbdelStark/tessera/issues/470)'s chunks); [RFC-0055](RFC-0055-windowed-stages.md) ('Reduction stages', 'The executable model', 'Drawbacks', OQ-0054-2: the reduction stages larger than memory, in windowed rounds); [RFC-0056](RFC-0056-native-working-sets.md) ('Reduction stages': stage 1's score instances without the score tensor)
+- Amended by: [RFC-0057](RFC-0057-one-proof-unit.md) (Alternative 3: no proof units; the 128K figures assume [#470](https://github.com/AbdelStark/tessera/issues/470)'s chunks); [RFC-0055](RFC-0055-windowed-stages.md) ('Reduction stages', 'The executable model', 'Drawbacks', OQ-0054-2: the reduction stages larger than memory, in windowed rounds); [RFC-0056](RFC-0056-native-working-sets.md) ('Reduction stages': stage 1's score instances without the score tensor), [RFC-0071](RFC-0071-request-slots.md) ('Groups': a batch's token index is its padded token axis, request slots of `S` rows)
 - Supersedes:
   - [RFC-0018](RFC-0018-gpu-prover-runtime.md#pass-structure) 'Pass structure', 'Leaf levels' and 'Proof units' as they bear on the leaf stage, its P2 row, Alternative 2 and OQ-0018-1;
   - [RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels' and 'Sumcheck messages' for a leaf stage that is grouped: its instances, labels and order;
@@ -81,7 +81,7 @@ At 405B on 0.2 TB, a 16K-token batch takes `G` = 256, 512, 1,024 and 8,192 group
 
 A group fixes `g_T` bits of the token index and `g_L` bits of the layer index, `g = g_T + g_L`. Group `h` sets them to `h`'s bits: the token bits first, then the layer bits, each lowest first.
 
-- **Tokens, interleaved.** The batch's token index is its requests' positions in claim-list order, per-dimension padded to `2^t` ([RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) rule 1). Token subset `s` holds the tokens whose low `g_T` index bits are `s`.
+- **Tokens, interleaved.** The batch's token index is its requests' positions in statement order, per-dimension padded to `2^t` ([RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) rule 1): with several requests, the row `r·S + p` of [RFC-0071](RFC-0071-request-slots.md)'s slots. Token subset `s` holds the tokens whose low `g_T` index bits are `s`.
   - **Why interleaved.** Every subset then holds queries at every position, so causal attention loads every group alike. A contiguous range of queries would put about twice the average scores into the last group.
   - **Score tensors.** In a score tensor the token axis is the query axis. Keys are not split.
   - **The token axis.** Each tensor has at most one token axis, derived from the graph alone, input to output, so that the prover's lowering and the verifier's (RFC-0044) agree. Lengths cannot tell it, since a head or channel axis can be as long as the sequence. With `x` an operation's first input:

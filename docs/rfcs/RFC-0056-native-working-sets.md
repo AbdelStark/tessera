@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-23
 - Target milestone: v0.3 (working sets, plan and cost model), v0.5 (GPU backend)
-- Amended by: [RFC-0057](RFC-0057-one-proof-unit.md) ('The batch's form': a chunk needs [#470](https://github.com/AbdelStark/tessera/issues/470))
+- Amended by: [RFC-0057](RFC-0057-one-proof-unit.md) ('The batch's form': a chunk needs [#470](https://github.com/AbdelStark/tessera/issues/470)), [RFC-0071](RFC-0071-request-slots.md) ('Working sets with the native relations', 'Score instances without the score tensor' and OQ-0056-2: the batch's form, its keys read within a slot)
 - Supersedes:
   - [RFC-0055](RFC-0055-windowed-stages.md) 'Native relations', which left them to [#458](https://github.com/AbdelStark/tessera/issues/458); its 405B windows and its `c_w` bands, which leave the native relations out; its one window per stage, for stages whose rounds bind more than eight own variables of an instance (Alternative 7);
   - [RFC-0020](RFC-0020-cost-model.md#executable-cost-model) 'Executable cost model': the stages' tables by growth, holding and width, the plan at a context, and the windows;
@@ -65,7 +65,7 @@ Composing the native relations also showed duplicated work. Each root's `2·⌈(
 - **Tables.** A graph instance holds one table per evaluation it leaves. A native instance holds its evaluations.
 - **Classes.** Each class is `count + count_per_bit·b` tables of `2^{log2_entries}` entries of `bytes` bytes, each grown as its class grows, with `b` the bits of a request's positions:
   - **Growth.** With a batch of `T` tokens at context `S`, each padded to a power of two, a table gains no variables (`fixed`), `log2 T` (`tokens`), `log2 max(T, S)` (`keys`, the key positions the batch attends), or `log2 T + log2 S` (`tokens_and_context`, the score tensor). The greedy relations' evaluations grow by two per bit of a request's positions, `log2 min(T, S)`.
-  - **The batch's form.** The growths assume that a batch with `T ≥ S` holds `T/S` whole sequences of `S` tokens, and that one with `T < S` is a chunk of one sequence whose earlier keys are cached. Proving such a chunk needs its cached keys and values bound to the tokens before it, across proofs, which no document specifies yet ([RFC-0057](RFC-0057-one-proof-unit.md), [#470](https://github.com/AbdelStark/tessera/issues/470)): the figures at `T < S` are projections for that statement. How a proof unit holds several requests is [#357](https://github.com/AbdelStark/tessera/issues/357)'s.
+  - **The batch's form.** The growths assume that a batch with `T ≥ S` holds `T/S` whole sequences of `S` tokens, and that one with `T < S` is a chunk of one sequence whose earlier keys are cached. Proving such a chunk needs its cached keys and values bound to the tokens before it, across proofs, which no document specifies yet ([RFC-0057](RFC-0057-one-proof-unit.md), [#470](https://github.com/AbdelStark/tessera/issues/470)): the figures at `T < S` are projections for that statement. How a proof unit holds several requests is [RFC-0071](RFC-0071-request-slots.md)'s: `R` whole sequences in slots of `S`.
   - **Classification.** The compiler classifies each instance from the schedules of `m` and `m/2` positions, `m` the largest power of two at or below the sequence. It refuses one that grows by anything other than 0, 1 or 2 variables, or whose table count grows by anything other than 0 or 1.
   - **Holding.** Windowable, an elementwise operand a window may fold (RFC-0055). Resident, held whole: a matrix product's folded operand, or one of the residents below. Computed, never held: the score instances.
   - **Width.** 16 bytes for an `Fp2` table, 1 for an INT8 operand held as it is.
@@ -76,7 +76,7 @@ Composing the native relations also showed duplicated work. Each root's `2·⌈(
 
 ### Score instances without the score tensor
 
-Write the key and forest sums as `Σ_x eq(z, x)·M(x)·(c(ℓ, h, q) − s(x))`, with `s = Q_{ℓ,h,q}·K_{ℓ,g(h),i}` and `M` the causal mask `i ≤ q < n` on real heads and layers. RFC-0010 binds the key index `i` first, its lowest variable.
+Write the key and forest sums as `Σ_x eq(z, x)·M(x)·(c(ℓ, h, q) − s(x))`, with `s = Q_{ℓ,h,q}·K_{ℓ,g(h),i}` and `M` the causal mask `i ≤ q < n` on real heads and layers. RFC-0010 binds the key index `i` first, its lowest variable. In a batch of several requests ([RFC-0071](RFC-0071-request-slots.md#the-lowering)), `q` is a row of the token axis, `i` a key of its slot, `K` is read at `(i, q's request variables)`, and the mask is `i ≤ q mod S < n_r` for `q`'s request `r`.
 
 **Rounds over the key bits**, `j = 1, …, log2 n_pad`.
 - **The split.** Split `i` and `q` at bit `j`, the low parts the first `j` bits.
@@ -234,7 +234,7 @@ Two classes, `B_max = 32`, 16K tokens, 0.2 TB:
 ## Open Questions
 
 - **OQ-0056-1: the window cap.** Eight own variables rests on SUR-0007's count and EXP-0012's extrapolation, at 405B's stages. At those estimates a second window saves 0.01 to 1.3 on `servable`'s stage 1 and costs 0.4 to 1.0 on `minimal`'s stages. OQ-0055-1's H100 measurement of the grid settles the cap, or replaces it by a choice per stage by cost. Owner: @AbdelStark. Resolve with v0.5's measurements.
-- **OQ-0056-2: the batch.** `servable`'s corrected `μ` is lower at 2,048 tokens than at the scenario's 16K: 14.3 and 29.5 against 15.7 and 31.0. The projections keep the source's scenario. How a proof unit holds several requests, and so which batches a prover can choose, is [#357](https://github.com/AbdelStark/tessera/issues/357)'s. Owner: @AbdelStark. Resolve with #357.
+- **OQ-0056-2: the batch.** `servable`'s corrected `μ` is lower at 2,048 tokens than at the scenario's 16K: 14.3 and 29.5 against 15.7 and 31.0. The projections keep the source's scenario. How a proof unit holds several requests, and so which batches a prover can choose, is [#357](https://github.com/AbdelStark/tessera/issues/357)'s. Owner: @AbdelStark. Answered by [RFC-0071](RFC-0071-request-slots.md): a batch is `R` whole sequences in slots of `S`, packed by slot class, which this model's `T/S` sequences of `S` price.
 
 ## References
 

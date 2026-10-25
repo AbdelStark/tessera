@@ -83,9 +83,9 @@ A log that is not its manifest's exits 65 with `ERR-CODEC-DIGEST`. A share that 
 - **The output.** `DIR/batches.json`, the `tessera.audit-batches/1` report ([schema](../../spec/schemas/audit-batches-v1.schema.json)), which `--json` prints too. Batches are numbered from 0 in packing order.
 
 `prove --sample` proves batch `--batch K` of a sample, one batch per invocation:
-- **The batch** is `audit batch`'s `K`, read again from the sample and `LOGS`, never from the report. A `K` past the last batch exits 64, and so does a batch of more than one request, until multi-request proof units exist ([#357](https://github.com/AbdelStark/tessera/issues/357)).
+- **The batch** is `audit batch`'s `K`, read again from the sample and `LOGS`, never from the report. A `K` past the last batch exits 64, and so does a batch of more than one request, until multi-request proof units are implemented ([RFC-0071](../rfcs/RFC-0071-request-slots.md), [#551](https://github.com/AbdelStark/tessera/issues/551)).
 - **The transcripts.** `--transcripts DIR` holds each session's stored `SessionTranscript` as `DIR/<session_id>.tst`, the identifier in 32 lowercase hexadecimal digits.
-- **The pre-check** ([RFC-0015](../rfcs/RFC-0015-transcript-anchor.md#prover-pre-check)) runs before the prover commits anything. A session with no transcript, a stored frame that does not re-seal to its logged digest, or a request whose frames give no lengths, exits 20 with `ERR-WITNESS-ANCHOR`, and no packet is sent.
+- **The pre-check** ([RFC-0015](../rfcs/RFC-0015-transcript-anchor.md#prover-pre-check)) runs before the prover commits anything. A session with no transcript, a stored frame that does not re-seal to its logged digest, or a request whose frames give no lengths, exits 20 with `ERR-WITNESS-ANCHOR`, and no packet is sent. In a batch of several requests, a request that fails is left out and named in the report, and the rest is proven; the command exits 20 only when no request passes ([RFC-0071](../rfcs/RFC-0071-request-slots.md#the-statement-and-the-batching)).
 - **The proof.** The request's tokens are its `In` frames', then its `Out` frames', from the stored frames the log names. Its statement is built as the reference path's below, with the sample's `manifest_digest`.
 
 Both commands refuse `LOGS` with `audit sample`'s codes. A sample of another period, or one that its logs and coin toss do not give, exits 64, and a malformed sample or transcript exits 65.
@@ -240,7 +240,7 @@ impl<'a> Prover<'a> {
 
 The current protocol/1 CPU implementation exposes these types from
 `tessera_prover`. `ProofBatch` holds one expected `PublicStatement` and
-`Secret<Vec<u32>>` containing its prompt and recorded continuation. P1 borrows
+`Secret<Vec<u32>>` containing its requests' prompts and recorded continuations, concatenated in batch order: each request's prompt then outputs, which go to its slot's rows ([RFC-0071](../rfcs/RFC-0071-request-slots.md#the-statement-and-the-batching)). P1 borrows
 the tokens to compute the clearing witness; later rounds need no borrow of the
 caller's batch, which can then be dropped. The driver checks the full named parameter bundle, execution plan,
 actual model commitment and epoch; unsupported GPU targets, predictors and

@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
+- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Graph inputs' and 'A layer': a batch's token axis of `N` rows, its positions and its scores)
 - Supersedes, on acceptance: [RFC-0006](RFC-0006-compiler-ir.md#llama-lowering) 'Llama lowering': the graph's nodes, inputs, constants, shift-class sets and tables are those this RFC lists, in its order.
 - Origin: [#362](https://github.com/AbdelStark/tessera/issues/362)
 
@@ -66,6 +67,8 @@ The lowering starts with two inputs:
 
 1. `tokens`: `[n]`, A, values in `[0, V − 1]`;
 2. `positions`: `[n]`, P, values in `[0, n − 1]`.
+
+A batch of several requests ([RFC-0071](RFC-0071-request-slots.md#the-lowering)) has its token axis of `N` rows in place of `n`, here and below. Its positions are each real row's place in its request, and 0 at a padded row. Its scores are `[n_heads, N, n_max]`, each query reading the keys and values of its own request. With one request, `N = n_max = n`.
 
 An input's type is the narrowest unsigned one that holds its values, of at least one bit: `u1` or `u2` for a class vector, `u16` for a multiplier vector. A weight's is `i8`. Every other input is created by a procedure below, when it is first named:
 - weight `W_{T,ℓ}`: `[rows, cols]`, W, values in `[−127, 127]`, appended to the graph's weight list as `(T, ℓ)`, so that the list is in creation order;

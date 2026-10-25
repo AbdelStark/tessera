@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-21
 - Target milestone: v0.3
+- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Public request and sources', the native relations and 'Schedule, transcript and budget': in a batch, one maximum for the batch, a key column, key relation and time coefficient per request with outputs, one observation only when none has, and their registration order)
 - Origin: #128 and #130; IDEA-0038 / EXP-0025
 - Supersedes: RFC-0009 Argmax's physical range/maximum representation; RFC-0037's native boundary and source schedule; RFC-0045's runtime lookup columns; RFC-0047/0050's complete advice order and RFC-0041's private tile enum, extended below. It adds no protocol-message field or parameter preset and preserves RFC-0011's per-group evaluation checks.
 
@@ -53,15 +54,15 @@ certificate source, never an invented model node or model auxiliary.
 Allocate `M[t]` on the model's padded time domain. Real output-logit positions
 are `prompt-1 <= t < n-1`; every other entry is zero. In a proof unit, place this
 maximum after its model tensors/auxiliaries and before table multiplicities.
-Multiple requests retain their public batch order and separate source identities.
+Multiple requests retain their public batch order and each its own key column and key relation, named by its ordinal. In a batch ([RFC-0071](RFC-0071-request-slots.md#the-greedy-certificate-and-scoring)), request `r`'s time is its slot's rows, and the time cube's `b` bits below are the whole token axis's, slot and request bits together. One maximum `M` serves the batch, a single source in one `GreedyMaximum` tile, real on every request's window, positions `prompt_r − 1 ≤ p < n_r − 1` of slot `r`. Each request keeps its own key column, in batch order, and key relation, whose time coefficient is `Σ_{u<outputs_r} eq(P_row, u)·eq(r_time, r·S + prompt_r − 1 + u)`. The selected and token-binding relations run once over the whole token axis. A maximum per request would let a prover hide a compensating entry outside a window (RFC-0071 'Alternatives Considered' 5).
 Apply the existing whole-row public-zero rule and segment/maximum-size checks to
 the complete runtime layout; secret-observed zeros never remove rows.
 Real inactive maximum positions remain committed and are proved zero by the
 selected relation; model-time padding follows the existing implicit-zero rule.
 Append `GreedyMaximum { gadget: u32 }` as private `Tile` tag 4. Existing tags
 0 through 3 retain their encodings. The compiler's model-only execution plan
-remains unchanged; a per-request runtime expansion inserts this separate tile
-before all used table tiles. This tile has no graph shares or query block.
+remains unchanged; the runtime expansion inserts this separate tile, one per batch
+(RFC-0071), before all used table tiles. This tile has no graph shares or query block.
 
 ### Public range and catalog
 
@@ -141,7 +142,8 @@ arbitrary product of public MLEs on overlapping axes.
    from outside the proof's canonical token commitment.
 
 For zero-output requests, append a degree-one, zero-valued observation instance
-whose raw final vector contains `L(r)` at the model vocabulary/time point. Its
+whose raw final vector contains `L(r)` at the model vocabulary/time point; in a
+batch, one, and only when no request has an output (RFC-0071). Its
 local relation is identically zero; it asserts no greedy predicate. It sends the
 actual LM-head observation into the ordinary GKR reduction, which still owes
 all graph checks and canonical source openings. Supplying an arbitrary logit
@@ -158,7 +160,9 @@ their canonical locations. A local native check never discharges those debts.
 The verifier derives native tags, owners, projections, lookup counts and field
 counts. Preserve the model's existing native slots in their original order, then
 append token binding, then key and selected for nonempty outputs, or the logit
-observation for empty outputs. Use the actual OneHot node as token-binding owner
+observation for empty outputs. In a batch (RFC-0071): token binding, then each
+request with outputs' key relation in batch order, then one selected; or, when
+no request has an output, token binding then one observation. Use the actual OneHot node as token-binding owner
 and the actual LM-head node as the greedy/observation owner. Native tags follow
 this registration order; a source id never changes the graph's node count. The graph's LM-head boundary and weighted OneHot input boundary may be
 deferred only to these replacements; absence/mismatch is an internal error.

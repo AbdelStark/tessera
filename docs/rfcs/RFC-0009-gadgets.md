@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.3
-- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide'), [RFC-0028](RFC-0028-balanced-split.md) ('RequantSplit': the split point), [RFC-0030](RFC-0030-masked-exponentials.md) ('SoftmaxRow': every position looked up, the leaf claims' reduction, Lemma 5), [RFC-0035](RFC-0035-padded-rows.md) ('RsqrtRow', 'SoftmaxRow', 'OneHot', 'InverseCdf': the row selector `ψ` on padded rows), [RFC-0050](RFC-0050-gadget-advice-columns.md) ('BigIntCompare' and 'RsqrtRow': canonical auxiliary columns, range requests and exact counts), [RFC-0058](RFC-0058-inverse-cdf-columns.md) ('InverseCdf': the partition's bound, the integers' limbs, the committed values, range requests and exact counts)
+- Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide'), [RFC-0028](RFC-0028-balanced-split.md) ('RequantSplit': the split point), [RFC-0030](RFC-0030-masked-exponentials.md) ('SoftmaxRow': every position looked up, the leaf claims' reduction, Lemma 5), [RFC-0035](RFC-0035-padded-rows.md) ('RsqrtRow', 'SoftmaxRow', 'OneHot', 'InverseCdf': the row selector `ψ` on padded rows), [RFC-0050](RFC-0050-gadget-advice-columns.md) ('BigIntCompare' and 'RsqrtRow': canonical auxiliary columns, range requests and exact counts), [RFC-0058](RFC-0058-inverse-cdf-columns.md) ('InverseCdf': the partition's bound, the integers' limbs, the committed values, range requests and exact counts), [RFC-0071](RFC-0071-request-slots.md) ('SoftmaxRow': in a batch, keys within the query's request)
 
 ## Summary
 
@@ -105,7 +105,7 @@ Proves `X ≤ Y` for non-negative integers given in base `2^L` limbs that may ex
 
 ### SoftmaxRow
 
-For query row `q` of a sequence of `n` positions, with valid key positions `i ∈ V_q` (causal mask: `C(q, i) = [i ≤ q < n]`, public, [RFC-0030](RFC-0030-masked-exponentials.md#the-causal-selector)) and virtual scores `x_qi` (true integers, `|x| ≤ 2^21`). Every other position of the padded score tensor is masked: padded rows and columns, and, where the tensor is stacked, every position of a padded layer or head.
+For query row `q` of a sequence of `n` positions, with valid key positions `i ∈ V_q` (causal mask: `C(q, i) = [i ≤ q < n]`, public, [RFC-0030](RFC-0030-masked-exponentials.md#the-causal-selector); in a batch, keys within `q`'s request, [RFC-0071](RFC-0071-request-slots.md)) and virtual scores `x_qi` (true integers, `|x| ≤ 2^21`). Every other position of the padded score tensor is masked: padded rows and columns, and, where the tensor is stacked, every position of a padded layer or head.
 
 - Committed: row maximum `c_q`; exponentials `e_qi` at every position, 0 at masked ones; reciprocal `R_q`; limbs of two `NonNeg` instances.
 - Virtual: keys `k_qi = c_q − x_qi`; lookup keys `κ_qi = C(q, i)·k_qi + (1 − C(q, i))·K_0`, with `K_0 = 2^{key_bits} − 1` the table's last key; row sum `s_q = Σ_i e_qi`, which equals `Σ_{i ∈ V_q} e_qi` because the masked `e` are 0; bracket slacks `a_q = ψ_q·2^{2σ} − R_q s_q` and `b_q = s_q − ψ_q − a_q`, with `ψ_q` the row selector, 1 on a real row and 0 on a padded one ([RFC-0035](RFC-0035-padded-rows.md#the-row-selector)).

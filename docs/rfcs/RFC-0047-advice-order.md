@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-19
 - Target milestone: v0.3
+- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('The maximum layout', 'A request's sequence length' and 'RFC-0034's zero rows': a batch's own layout is checked at statement binding, each request in a slot)
 - Supersedes, on acceptance:
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout' rules 1 and 3: the order of a tensor's variables, and `ν`;
   - [RFC-0007](RFC-0007-claim-list.md#verifier-validation) 'Verifier validation' steps 2 and 6: heads grouped by a power of two, and the protocol's maximum layout;
@@ -65,7 +66,7 @@ An attention tile's score tensor takes RFC-0034's `(i_hi, h, q, i_lo)` instead.
 
 A layout fits when it allocates at most `2^{32}` rows: a row index of at most 32 bits.
 - **Column answers.** A column answer then carries at most `2^{32}` symbols, below RFC-0003's default vector limit of `2^{34}`, so every honest answer decodes.
-- **The bound** holds at `max_context`, the longest sequence a claim list admits. RFC-0007 step 6 refuses a claim list whose layout at `n = max_context` exceeds it (`Layout`). Every shorter sequence lays out within it, because rows grow with `n`.
+- **The bound** holds at `max_context`, the longest sequence a claim list admits. RFC-0007 step 6 refuses a claim list whose layout at `n = max_context` exceeds it (`Layout`). Every shorter sequence lays out within it, because rows grow with `n`. A batch of several requests can hold more tokens than `max_context` ([RFC-0071](RFC-0071-request-slots.md#the-plan-and-the-layout)), so RFC-0019 step 4 refuses one whose own layout exceeds the bound (`StatementMismatch { field: Batch }`).
 - **Scale.** The complete 405B `servable`, two-class, Q=512 layout at 16K tokens allocates 2,328,576 rows and spans a 22-bit row index (RFC-0014, RFC-0050).
 
 ### Heads
@@ -77,11 +78,11 @@ A layout fits when it allocates at most `2^{32}` rows: a row index of at most 32
 A request of `prompt_len` prompt tokens and `output_len` output tokens is a sequence of `n = prompt_len + output_len` positions.
 - **Every committed token is a position.** The anchor commits every token (RFC-0015), and each feeds `OneHot`.
 - **Scoring.** It reads the logits at positions `prompt_len − 1` to `n − 2`, one per output token (RFC-0017). The last position's logits are computed and unused.
-- **The bound.** `n ≤ max_context`, as the context window holds every token. RFC-0019 step 4 refuses a batch holding a request with `n > max_context` (`StatementMismatch { field: Batch }`). The bounds of RFC-0009 Lemma 6 and the advice layout's maximum assume it.
+- **The bound.** `n ≤ max_context`, as the context window holds every token. In a batch each request's `n_r` meets it, and the request takes a slot of the batch's token axis ([RFC-0071](RFC-0071-request-slots.md#the-slots)). RFC-0019 step 4 refuses a batch holding a request with `n > max_context` (`StatementMismatch { field: Batch }`). The bounds of RFC-0009 Lemma 6 and the advice layout's maximum assume it.
 
 ### RFC-0034's zero rows
 
-Its two masked-row conditions read `Q'` for `Q`, as RFC-0046 made its layout do: `i_hi·2^w > (qb + 1)·Q' − 1`, and `qb·Q' ≥ S`.
+Its two masked-row conditions read `Q'` for `Q`, as RFC-0046 made its layout do: `i_hi·2^w > (qb + 1)·Q' − 1`, and `qb·Q' ≥ S`. In a batch of several requests, `qb` counts the block within its slot and `S` is its request's length in both ([RFC-0071](RFC-0071-request-slots.md#the-plan-and-the-layout)).
 
 ## Alternatives Considered
 

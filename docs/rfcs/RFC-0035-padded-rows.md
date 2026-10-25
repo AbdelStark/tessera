@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows) ('InverseCdf's padding zero-check pins its partition `Z` too), [RFC-0066](RFC-0066-bits-and-sha256.md) ('Zero-check points': its zero-checks run in stage 1)
+- Amended by: [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows) ('InverseCdf's padding zero-check pins its partition `Z` too), [RFC-0066](RFC-0066-bits-and-sha256.md) ('Zero-check points': its zero-checks run in stage 1), [RFC-0071](RFC-0071-request-slots.md) ('The row selector': a batch's real rows, a sum over its requests)
 - Supersedes, on acceptance:
   - [RFC-0009](RFC-0009-gadgets.md) 'RsqrtRow', 'SoftmaxRow' relation 3, 'OneHot' and 'InverseCdf': the row selector `ψ`;
   - [RFC-0017](RFC-0017-scoring.md#in-circuit-scoring-mixture) 'In-circuit scoring', constraints 3 and 4: the row selector `ψ`;
@@ -59,6 +59,8 @@ A gadget's rows are indexed by layer, by head where its instances are per head, 
 ```
 
 with the head factor only for per-head rows. `LT` has an `O(n)` closed form ([RFC-0010](RFC-0010-proof-schedule.md#multilinear-extensions)), so the verifier evaluates `ψ̃` at any point in `O(log)` time. For the output gadgets, `Argmax` and `InverseCdf`, and for the scoring bound, `t` runs over the positions whose next token the statement records. On a real row `ψ = 1`, and every relation is the one RFC-0009 or RFC-0017 states.
+
+**A batch of several requests** ([RFC-0071](RFC-0071-request-slots.md#the-public-selectors)). Each request `r` takes a slot of `S` rows of one token axis, with its `n_r` positions first. The token factor becomes `Σ_{r<R} eq(r_β, r)·LT(r_p, n_r)`, with `r_p` the position's variables within the slot and `r_β` the request's, `O(R·log S)` for the verifier. For the output gadgets and the scoring bound, the rows are each request's positions `prompt_len_r − 1` to `n_r − 2`. With one request this is the formula above.
 
 ### What a padded row holds
 

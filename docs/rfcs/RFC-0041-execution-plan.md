@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0050](RFC-0050-gadget-advice-columns.md) ('Production order': canonical gadget auxiliary order)
+- Amended by: [RFC-0050](RFC-0050-gadget-advice-columns.md) ('Production order': canonical gadget auxiliary order), [RFC-0071](RFC-0071-request-slots.md) ('Non-Goals', 'Tiles', 'The plan' and 'Drawbacks': a batch's tiles, query blocks within one request)
 - Supersedes, on acceptance:
   - [RFC-0006](RFC-0006-compiler-ir.md#tiling-and-the-execution-plan) 'Tiling and the execution plan': what a tile holds, the production order, and the plan's contents. The plan carries the claim list and one sequence's tiles. It holds neither row ranges, nor stage membership, nor devices.
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout' rule 2: tensors are allocated tile by tile, in this RFC's production order;
@@ -45,7 +45,7 @@ This RFC defines the tiles of a sequence, which partition its committed values, 
 
 ## Non-Goals
 
-- **A batch of several requests in one proof unit.** No document lowers several sequences together (RFC-0006: "one graph covers one sequence"), and none batches them in the schedule. Until #357 defines it, a proof unit of `tessera-protocol/1` covers one request, and this RFC orders one sequence's tiles.
+- **A batch of several requests in one proof unit.** When this RFC was written, no document lowered several sequences together. [RFC-0071](RFC-0071-request-slots.md) now puts each request in a slot of one token axis, and the plan's tiles cover it as 'The plan' states.
 - **Proof units of several layer ranges.** `tessera-protocol/1` sends one advice commitment (`Round1.advice`, [RFC-0036](RFC-0036-protocol-messages.md#round1)), so a proof is one unit.
 - **The layout's offsets, alignment, zero rows and segments**, which are RFC-0011's and #106's.
 
@@ -71,7 +71,7 @@ The tiles of a sequence of `n` tokens are the following. `N = 2^{⌈log2 n⌉}` 
   - the exponentials `e[h, q, i]` and the reciprocals `R[h, q]`;
   - the gadget's maxima `c[h, q]` and the limbs of its two `NonNeg` instances.
 
-  They are split into one tile per KV head `g` and query block `b`. The tile holds the query heads `h` with `⌊h / (n_heads / n_kv_heads)⌋ = g`, and the queries `q` from `b·Q'` to `(b + 1)·Q' − 1`, every key `i` with them. Here `Q' = min(Q, N)` with `Q = GadgetPolicy.query_block`, and `b` runs from 0 to `N / Q' − 1`.
+  They are split into one tile per KV head `g` and query block `b`. The tile holds the query heads `h` with `⌊h / (n_heads / n_kv_heads)⌋ = g`, and the queries `q` from `b·Q'` to `(b + 1)·Q' − 1`, every key `i` with them. Here `Q' = min(Q, N)` with `Q = GadgetPolicy.query_block`, and `b` runs from 0 to `N / Q' − 1`. In a batch of several requests, `Q' = min(Q, S)` with `S` its slot length, and every key `i` is one of the query block's slot ([RFC-0071](RFC-0071-request-slots.md#the-plan-and-the-layout)).
 - **`Table { table }`.** A lookup table's multiplicities.
 
 Every committed value lies in exactly one tile. A node that commits nothing has no tile.
@@ -108,7 +108,7 @@ pub enum Tile {
 }
 ```
 
-- **Sequence length.** A lowering's node and tensor ids do not depend on the sequence's length; only shapes do. The plan therefore holds one sequence's tiles for every length. An `Attention` tile stands for its query blocks, which a length of `n` expands into `N / Q'` tiles in order.
+- **Sequence length.** A lowering's node and tensor ids do not depend on the sequence's length; only shapes do. The plan therefore holds one sequence's tiles for every length. An `Attention` tile stands for its query blocks, which a length of `n` expands into `N / Q'` tiles in order. A batch of several requests ([RFC-0071](RFC-0071-request-slots.md#the-plan-and-the-layout)) takes `Q' = min(Q, S)`, its slot length, and expands the tile over its padded token axis in row order, slot by slot, so that every query block lies within one request.
 - **Determinism.** `compile` writes the plan from the claim list it emits. Compiling twice gives the same bytes, as RFC-0006's determinism test requires, and the plan holds no secret value: the claim list is public, and the tiles follow from it.
 - **Checking.** The plan's readers, `tessera prove` and `tessera commit-weights`, also take `D`. Each compiles `D`'s claim list for the plan's gadget policy, layout and parameter set, and derives its tiles. A plan whose `claims` or `tiles` differ is refused (`ERR-USAGE`): it is not `D`'s plan. The verifier never reads a plan.
 - **What the plan does not hold.**
@@ -126,7 +126,7 @@ pub enum Tile {
 ## Drawbacks
 
 - The plan repeats what it can be derived from. That is its purpose: a cache of the tiles, checked against the claim list, so that a plan and a claim list cannot disagree.
-- A batch of one request until #357.
+- A batch of several requests needs [RFC-0071](RFC-0071-request-slots.md)'s slots, which the tiles cover with query blocks of `Q' = min(Q, S)`.
 
 ## Migration / Rollout
 

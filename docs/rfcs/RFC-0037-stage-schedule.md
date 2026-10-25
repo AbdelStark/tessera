@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
-- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('The claim pool' and 'Invariants': `ChannelParams` claims in the pool), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The layer point', `ρ_1` is the leaf stage's layer sumcheck point; 'Splits' and 'Messages and transcript', the leaf stage's values and labels), [RFC-0069](RFC-0069-one-layer-claims.md) ('Layers and kinds' and 'Stages and their instances': the one read at one layer, and no relation proving such a claim; 'The claim pool', in `tessera-protocol/2`: a piece at one layer takes its layer tensor's own mask row), [RFC-0070](RFC-0070-mask-batching.md) (INV-SCH-3, in `tessera-protocol/2`: the mask claims reach the masks' batching)
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('The claim pool' and 'Invariants': `ChannelParams` claims in the pool), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The layer point', `ρ_1` is the leaf stage's layer sumcheck point; 'Splits' and 'Messages and transcript', the leaf stage's values and labels), [RFC-0069](RFC-0069-one-layer-claims.md) ('Layers and kinds' and 'Stages and their instances': the one read at one layer, and no relation proving such a claim; 'The claim pool', in `tessera-protocol/2`: a piece at one layer takes its layer tensor's own mask row), [RFC-0070](RFC-0070-mask-batching.md) (INV-SCH-3, in `tessera-protocol/2`: the mask claims reach the masks' batching), [RFC-0071](RFC-0071-request-slots.md) ('`Rotate`': a row's position in a batch is its place in its request)
 - Supersedes, on acceptance:
   - [RFC-0010](RFC-0010-proof-schedule.md#relations) 'Relations': `Rotate`'s identity and its one claim on its input, and the claims of the linear maps added here;
   - [RFC-0010](RFC-0010-proof-schedule.md#stages) 'Stages' and 'Batching within a stage': how a stage stacks layers, splits claims and orders its instances, and the layer point;
@@ -122,7 +122,7 @@ The extension of `M` in its row bit `y` and column bit `c` is `C·eq(y, c) + S·
 - **The sumcheck.** It has degree 2. `E_r` is its one public factor, of `2^n` entries, built from the input claim's point `r` as `eq` is.
 - **The claim.** The relation leaves one claim, on `X̃` at the instance's point `r'`.
 - **The verifier's evaluation.** `Ẽ_r(r') = eq(r_b, r'_b)·⟨C, w⟩ + (r_b − r'_b)·⟨S, w⟩`, with `w = eq(r_{−b}, ·)·eq(r'_{−b}, ·)` over `x_{−b}`.
-  - RoPE's constants depend on the position and the frequency, not the head, so the head's coordinates contribute the factor `eq(r_h, r'_h)`.
+  - RoPE's constants depend on the position and the frequency, not the head, so the head's coordinates contribute the factor `eq(r_h, r'_h)`. In a batch of several requests a real row's position is its place in its request, `τ mod S`, and the constants are zero on every padded row, as past `n` today ([RFC-0071](RFC-0071-request-slots.md#the-public-selectors)). The verifier derives both from the batch's lengths, and its inner products run over each request's real rows.
   - The inner products run over `n·d_head/2` entries.
 
 This replaces RFC-0010's partner form, of degree 3 with two claims, which #99 implemented.
