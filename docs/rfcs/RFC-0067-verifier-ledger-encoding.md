@@ -72,7 +72,7 @@ A sample is the verifier's when it derived it itself, with its own share. One wh
   - the same sample again changes nothing.
 
   Without the rule, one period could have two samples, and `proven`, keyed by sample, would accept a request under each.
-- **Accounting.** The checks below refuse a sample whose identity is not in `derived` with `Inconclusive(ERR-USAGE)`, since the verifier's own input is wrong, before any check of the statement.
+- **Accounting.** The checks below refuse a sample that `derived` does not list under its own manifest with `Inconclusive(ERR-USAGE)`, since the verifier's own input is wrong, before any check of the statement.
 - **The report** refuses such a sample too (`ERR-USAGE`, exit 64). The ledger therefore tells "my sample, nothing proven" from "not my sample". A report built from outcomes the caller supplies must agree with the ledger, else `ERR-USAGE`: `Accepted` exactly for the requests the ledger records accepted, with their `Û`.
 - **A lost toss.** A share kept only in memory dies with its process. Since the prover answers one commitment per manifest, a verifier that restarts between commitment and reveal loses that period's audit. Keeping the share across restarts is open (#529).
 
@@ -93,6 +93,10 @@ A sample is the verifier's when it derived it itself, with its own share. One wh
   - A reader of a snapshot takes no lock.
   - The lock is per canonical path: two mount points of one directory give two locks, so an operator opens a ledger by one path only.
   - A writer removes only the lock it created, which names it, so a lock taken over after an operator cleared a stale one survives the first writer's exit.
+  - **Before each rename** a writer checks that the lock still holds its token and that the ledger is still the file it last read or wrote, by device and inode. Otherwise it writes nothing, `ERR-RES-IO`, and the verdict is not `Accept`. A writer whose lock was cleared while it stalled could otherwise rename a stale ledger over another writer's record, and accept one request twice.
+  - **One ledger per verifier.** A toss and its sample belong to the verifier's one ledger. A second ledger file would hold its own `derived` and `proven`, and could accept a request the first holds. The operator keeps one ledger, opened by one path.
+  - **A failed directory sync after the rename** leaves a file that may hold the new record while the verdict is not `Accept`. A report from the ledger then counts the request as accepted. A report built from kept verdicts disagrees with that ledger, and is refused (`ERR-USAGE`) until the operator reconciles the two.
+  - **One limit.** The ledger is written and read under the same decode limits, `tv-codec`'s message limits, so a ledger a writer accepts is one every reader opens.
   - A batch of no request changes nothing and writes nothing.
   - A write that would make the ledger larger than the limits it is reopened under is refused, `ERR-CODEC-LIMIT`, and the ledger is left as it was.
 - **Trust.** The ledger is the verifier's own state. Any file presented as the ledger is believed, `derived` included, so it is protected like the verifier's keys.
