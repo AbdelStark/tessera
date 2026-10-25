@@ -66,6 +66,7 @@ fn prover_and_verifier_select_the_same_sample_for_1000_seeds() {
     let mut rng = Rng(151);
     let limits = DecodeLimits::MESSAGE;
     let mut selected_total = 0usize;
+    let mut shared_sessions = 0usize;
     for _ in 0..1_000 {
         let buckets = buckets(&mut rng);
         let last = buckets.last().map_or(0, |b| b.0);
@@ -118,12 +119,20 @@ fn prover_and_verifier_select_the_same_sample_for_1000_seeds() {
         let seed = sample_seed(&toss, &manifest);
         assert_eq!(tv_toss.sample_seed(&manifest), seed);
 
-        // Candidates up to past every bucket, some keys twice with two lengths.
+        // Candidates up to past every bucket, some keys twice with two lengths. Keys share a few
+        // sessions, with ids around multiples of 256 whose numeric and little-endian byte orders
+        // differ (RFC-0067 'Request order').
+        let sessions: Vec<[u8; 16]> = (0..1 + rng.below(3)).map(|_| rng.bytes()).collect();
         let mut candidates: Vec<(RequestKey, u64)> = Vec::new();
         for _ in 0..rng.below(48) {
+            let session = sessions[rng.below(sessions.len() as u64) as usize];
+            let request_id = match rng.below(3) {
+                0 => rng.next(),
+                _ => 256 * rng.below(4) + rng.below(3),
+            };
             let key = RequestKey {
-                session_id: rng.bytes(),
-                request_id: rng.next(),
+                session_id: session,
+                request_id,
             };
             let tokens = rng.below(u64::from(last) + 64);
             candidates.push((key, tokens));
@@ -163,6 +172,11 @@ fn prover_and_verifier_select_the_same_sample_for_1000_seeds() {
         };
         assert_eq!(keys(&tv_selected), sample.selected());
         selected_total += sample.selected().len();
+        shared_sessions += sample
+            .selected()
+            .windows(2)
+            .filter(|w| w[0].session_id == w[1].session_id)
+            .count();
 
         // The verifier reads the prover's sample, and writes the same bytes.
         let bytes = encode(&sample);
@@ -171,6 +185,7 @@ fn prover_and_verifier_select_the_same_sample_for_1000_seeds() {
         assert_eq!(decoded.seed(), seed);
         assert_eq!(decoded.encode_payload().expect("memory"), bytes);
     }
-    // The comparison is not of empty samples.
+    // The comparison is not of empty samples, and samples hold keys of one session.
     assert!(selected_total > 1_000, "{selected_total}");
+    assert!(shared_sessions > 100, "{shared_sessions}");
 }

@@ -123,7 +123,8 @@ pub struct VerifierLedger {                   // schema 0x0701, persisted, verif
     pub weight_roots: Vec<(Digest /*claim list*/, Vec<(u32 /*epoch*/, Digest /*root*/)>)>,  // linked by WeightLinkProofs
     pub successors: Vec<(Digest /*root*/, Digest /*its successor*/)>,  // one per root (RFC-0064)
     pub used_blinding_rows: Vec<(Digest, u32, u8, BitSet)>,  // (root, epoch, matrix, rows)
-    pub proven: Vec<(Digest /*sample*/, BitSet /*selected index*/)>,
+    pub derived: Vec<(Digest /*manifest*/, Digest /*sample*/)>,  // RFC-0067: one sample per manifest
+    pub proven: Vec<ProvenSample>,  // RFC-0067: accepted indices and their Û, per sample
 }
 ```
 

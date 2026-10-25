@@ -43,7 +43,7 @@ pub struct VerifierLedger {                   // schema 0x0701, version 1, .tvl
     pub weight_roots: Vec<(Digest, Vec<(u32, Digest)>)>,
     pub successors: Vec<(Digest, Digest)>,
     pub used_blinding_rows: Vec<(Digest, u32, u8, BitSet)>,
-    pub derived: Vec<Digest>,                  // the samples this verifier derived, strictly increasing
+    pub derived: Vec<(Digest, Digest)>,        // (manifest, the one sample derived for it), by strictly increasing manifest
     pub proven: Vec<ProvenSample>,             // by strictly increasing sample
 }
 pub struct ProvenSample {
@@ -54,20 +54,26 @@ pub struct ProvenSample {
 ```
 
 - **`BitSet`** is TCE `Bytes`. Index `i` is bit `i mod 8` of byte `⌊i/8⌋`. The last byte, when there is one, is not zero: the empty set is the empty string. A last byte of 0 is `ERR-CODEC-NONCANONICAL` at that byte, checked as the set is read, before any rule of the record that holds it: `[0x00]` is refused at its byte, not as an empty set.
-- **`derived`** is strictly increasing, else `ERR-CODEC-NONCANONICAL` at the first digest out of order.
+- **`derived`** holds one sample per manifest, by strictly increasing manifest digest, else `ERR-CODEC-NONCANONICAL` at the first entry out of order.
 - **`proven`**:
   - each record's `sample` is greater than the one before it, else `ERR-CODEC-NONCANONICAL` at its first byte;
   - an empty `accepted` is `ERR-CODEC-NONCANONICAL` at its length, since a record exists only once a request is accepted;
   - a `uhat` of another length than `accepted`'s count of set bits is `ERR-CODEC-NONCANONICAL` at its length.
-- **`sample`** is the identity of the verifier's own derivation of the sample (RFC-0016 INV-AUD-2), and is in `derived`, else `ERR-CODEC-NONCANONICAL` at the record's first byte.
+- **`sample`** is the identity of the verifier's own derivation of the sample (RFC-0016 INV-AUD-2), and is one of `derived`'s samples, else `ERR-CODEC-NONCANONICAL` at the record's first byte.
 - **Request order.** `selected`, and every list of requests here, sorts by `session_id` as bytes, then by `request_id` as an integer: ids 1 and 256 sort as numbers, not as their little-endian encodings (RFC-0016's `(session_id, request_id)`).
 
 ### The verifier's own sample
 
 A sample is the verifier's when it derived it itself, with its own share. One whose coin toss merely opens could be anyone's: a prover can choose `s_V'`, set `c_V' = H(s_V')`, and attach a policy of rate 0.
-- **Derivation.** The verifier derives a sample only by revealing its own toss over the period's verified window. The toss holds the share it committed after the policy was fixed, and that policy (RFC-0016 'The policy comes first'). The derivation adds the sample's identity to `derived` and writes the ledger before the sample leaves the verifier. Revealing the same toss again changes nothing.
+- **Derivation.** The verifier derives a sample only by revealing its own toss over the period's verified window. The toss holds the share it committed after the policy was fixed, and that policy (RFC-0016 'The policy comes first'). The derivation adds `(manifest, sample)` to `derived` and writes the ledger before the sample leaves the verifier.
+- **One sample per manifest.** Once the verifier has revealed `s_V`, a prover can choose a new share `s_P'` whose sample suits it. So:
+  - a toss is revealed against one prover share, the first. Another is refused with `ERR-PROTO-ORDER`, as the prover answers one commitment per manifest (RFC-0016 'Sample derivation');
+  - a manifest that `derived` already holds takes no other sample, `ERR-PROTO-ORDER`, which also refuses a second toss over one manifest;
+  - the same sample again changes nothing.
+
+  Without the rule, one period could have two samples, and `proven`, keyed by sample, would accept a request under each.
 - **Accounting.** The checks below refuse a sample whose identity is not in `derived` with `Inconclusive(ERR-USAGE)`, since the verifier's own input is wrong, before any check of the statement.
-- **The report** refuses such a sample too (`ERR-USAGE`, exit 64). The ledger therefore tells "my sample, nothing proven" from "not my sample".
+- **The report** refuses such a sample too (`ERR-USAGE`, exit 64). The ledger therefore tells "my sample, nothing proven" from "not my sample". A report built from outcomes the caller supplies must agree with the ledger, else `ERR-USAGE`: `Accepted` exactly for the requests the ledger records accepted, with their `Û`.
 - **A lost toss.** A share kept only in memory dies with its process. Since the prover answers one commitment per manifest, a verifier that restarts between commitment and reveal loses that period's audit. Keeping the share across restarts is open (#529).
 
 ### Updates
@@ -85,6 +91,11 @@ A sample is the verifier's when it derived it itself, with its own share. One wh
 - **One writer.** A lock file, `<name>.lock`, created exclusively, keeps a second writer out while the first holds the ledger.
   - A lock left by a crash refuses later writers with `ERR-RES-IO`. Only the operator removes it, after checking that no verifier runs.
   - A reader of a snapshot takes no lock.
+  - The lock is per canonical path: two mount points of one directory give two locks, so an operator opens a ledger by one path only.
+  - A writer removes only the lock it created, which names it, so a lock taken over after an operator cleared a stale one survives the first writer's exit.
+  - A batch of no request changes nothing and writes nothing.
+  - A write that would make the ledger larger than the limits it is reopened under is refused, `ERR-CODEC-LIMIT`, and the ledger is left as it was.
+- **Trust.** The ledger is the verifier's own state. Any file presented as the ledger is believed, `derived` included, so it is protected like the verifier's keys.
 
 ### The accounting
 
@@ -129,7 +140,7 @@ Every failure of check 2 gives one reason, so its checks need no order among the
 
 - **Encoding.** Every rule above, refused at its offset; round trips of seeded ledgers.
 - **Writes.** A write interrupted at each of its four steps leaves the old ledger byte for byte; a second writer is refused; creating over an existing file is refused.
-- **Accounting.** A request outside the sample, one in two accepted batches, and one named twice in a batch are each refused, as is another manifest. A batch of 2,000,000 requests is checked within a time bound. A sample whose toss opens but which the verifier did not derive is refused, by the accounting and by the report.
+- **Accounting.** A request outside the sample, one in two accepted batches, and one named twice in a batch are each refused, as is another manifest. A batch of 2,000,000 requests is checked within a time bound. A sample whose toss opens but which the verifier did not derive is refused, by the accounting and by the report. A second prover share for one toss, and a second toss over one manifest, are refused.
 - **The file.** A failed directory sync, a symbolic link, a second hard link and a FIFO are each refused.
 - **Report.** A missing proof is `Unproven(DeadlineMissed)`.
 - **Sampling.** The prover's and the verifier's samples agree over 1,000 seeds, with keys that share sessions and ids whose numeric and byte orders differ (`tessera-protocol`'s `audit_verifier.rs`, DEP-2). Their audit plans agree within `10^{-12}` relative over random profiles.
