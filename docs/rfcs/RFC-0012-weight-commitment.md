@@ -136,7 +136,7 @@ pub struct WeightLinkProof { pub old_root: Digest, pub new_root: Digest, pub epo
 | Failure | Response |
 |---|---|
 | Budget exhausted | `ERR-WITNESS-BUDGET`; operator refreshes |
-| State file lost or corrupted | The prover refreshes before the next proof, from the epoch's `masks_seed`, which the link needs; without the seed it starts a new model entry ([RFC-0064](RFC-0064-weight-linking-proof.md#one-link-per-epoch)). Remade, the link is the same bytes. The linking proof uses only the four blinding rows and the column headroom reserved for linking at each end of the epoch ([RFC-0064](RFC-0064-weight-linking-proof.md#the-budget)), so it stays within the hiding budget even though the lost state's exact contents are unknown |
+| State file lost or corrupted | The prover refreshes before the next proof, from the model's refresh key `K`, which gives every epoch's `masks_seed`; without it, it starts a new model entry ([RFC-0064](RFC-0064-weight-linking-proof.md#one-link-per-epoch)). Remade, the link is the same bytes. The linking proof uses only the four blinding rows and the column headroom reserved for linking at each end of the epoch ([RFC-0064](RFC-0064-weight-linking-proof.md#the-budget)), so it stays within the hiding budget even though the lost state's exact contents are unknown |
 | Combined row inconsistent with columns | `Reject(Proximity)` |
 | The linking proof fails ([RFC-0064](RFC-0064-weight-linking-proof.md#the-verifiers-checks)) | Verifier rejects the refresh; the old root stays current |
 

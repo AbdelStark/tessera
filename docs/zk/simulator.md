@@ -302,7 +302,7 @@ So `ε_W ≤ 10·C(N, 2)·p^{-4} ≤ 2^{-230}` over the ten matrices at `N = 681
 
 **A text inconsistency.** RFC-0012's linking proof reserves four blinding rows at each end of an epoch, but its 'Failure modes' says two. R3's rows must be counted once.
 
-**Met.** [RFC-0064](../rfcs/RFC-0064-weight-linking-proof.md) specifies the difference opening as above. The difference row takes a blinding pair from each epoch: rows `B_W − 4` and `B_W − 3` of epoch `e`, and 0 and 1 of `e + 1`. The proximity rows take the next pair at each end. Those are the four rows at each end, counted once, and RFC-0012 'Failure modes' now says four.
+**Met.** [RFC-0064](../rfcs/RFC-0064-weight-linking-proof.md) specifies the difference opening as above. Its seeds come from a model key by `weights-refresh`, so the PRG hybrid replaces each epoch's seed in turn and `ε_PRG` counts every epoch a view spans. The difference row takes a blinding pair from each epoch: rows `B_W − 4` and `B_W − 3` of epoch `e`, and 0 and 1 of `e + 1`. The proximity rows take the next pair at each end. Those are the four rows at each end, counted once, and RFC-0012 'Failure modes' now says four.
 
 ## 7. OQ-0013-1: packing small mask rows
 
