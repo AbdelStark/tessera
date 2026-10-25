@@ -22,6 +22,7 @@
 //! | [`sha512::sha512`], [`sha512::Sha512`] | SHA-512 |
 //! | [`ed25519::verify_strict`] | a recorder manifest's Ed25519 signature, strictly |
 //! | [`rfc6962::leaf_hash`], [`rfc6962::node_hash`], [`rfc6962::verify_inclusion`] | the recorder log's tree and inclusion proofs |
+//! | [`rfc6962::TreeHash`] | the root of a period's log, RFC 9162's tree hash over its leaves as they arrive |
 //!
 //! # Specification
 //!
@@ -99,7 +100,10 @@
 //! ## RFC 6962 trees
 //!
 //! [`rfc6962::leaf_hash`] is `SHA-256(0x00 ‖ entry)` and [`rfc6962::node_hash`]
-//! `SHA-256(0x01 ‖ left ‖ right)`. [`rfc6962::verify_inclusion`] follows RFC 9162 §2.1.3.2 for
+//! `SHA-256(0x01 ‖ left ‖ right)`. [`rfc6962::TreeHash`] computes RFC 9162's tree hash (§2.1.1)
+//! of the leaves pushed into it, `SHA-256("")` for none, in constant memory (RFC-0060 'The tree
+//! over a period's entries'); a push past `2^64 − 1` leaves is `TreeFull`, and the tree is
+//! unchanged. [`rfc6962::verify_inclusion`] follows RFC 9162 §2.1.3.2 for
 //! trees of any size, rejecting with [`rfc6962::InclusionError`]: `leaf_index ≥ tree_size` (an
 //! empty tree included) is `IndexBeyondSize`; proof digests left when the path reaches the root,
 //! `ProofTooLong`; a proof that ends below the root, `ProofTooShort`; another root,

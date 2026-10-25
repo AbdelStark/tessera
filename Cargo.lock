@@ -786,6 +786,8 @@ dependencies = [
  "serde_json",
  "sha2",
  "tessera-codec",
+ "tv-codec",
+ "tv-core",
  "tv-hash",
 ]
 

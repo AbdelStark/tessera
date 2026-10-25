@@ -68,7 +68,15 @@ fn every_rejection_serializes_public_payloads_and_escapes_parameter_names() {
         },
         R::Anchor {
             request_id: Some(u64::MAX),
-            kind: AnchorFailure::Inclusion,
+            kind: AnchorFailure::Frames,
+        },
+        R::Anchor {
+            request_id: Some(3),
+            kind: AnchorFailure::SamplerKey,
+        },
+        R::Anchor {
+            request_id: Some(0),
+            kind: AnchorFailure::Session,
         },
         R::UBoundExceeded {
             request_id: Some(29),
@@ -138,4 +146,78 @@ fn every_rejection_serializes_public_payloads_and_escapes_parameter_names() {
         Some("ERR-RES-MEMORY")
     );
     assert_eq!(error.exit_code(), 20);
+}
+
+/// RFC-0043 'Anchor', with RFC-0061 and RFC-0062: the kinds are `ManifestSignature` (tag 0),
+/// `Frames` (2), `SamplerKey` (3) and `Session` (4); tag 1, `Inclusion`, is retired and stays
+/// reserved. The JSON names the kind and the request, `null` for the manifest's signature, as
+/// `verdict-v1.schema.json` lists them.
+#[test]
+fn anchor_kinds_keep_their_tags_and_names() {
+    use tv_core::verdict::{AnchorFailure as A, RejectReason as R, Verdict};
+    let kinds = [
+        (A::ManifestSignature, 0, "ManifestSignature"),
+        (A::Frames, 2, "Frames"),
+        (A::SamplerKey, 3, "SamplerKey"),
+        (A::Session, 4, "Session"),
+    ];
+    let schema = tv_testkit::Json::parse(
+        &std::fs::read_to_string(
+            tv_testkit::vectors_dir().join("../schemas/verdict-v1.schema.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let listed = find_kind_enum(&schema).expect("the schema lists the anchor kinds");
+    assert_eq!(
+        listed,
+        kinds
+            .iter()
+            .map(|(_, _, name)| name.to_string())
+            .collect::<Vec<_>>()
+    );
+    for (kind, tag, name) in kinds {
+        assert_eq!(kind.tag(), tag);
+        for request_id in [None, Some(7)] {
+            let text = Verdict::Reject(R::Anchor { request_id, kind })
+                .to_json()
+                .unwrap();
+            let parsed = tv_testkit::Json::parse(&text).unwrap();
+            let reason = parsed.get("verdict").unwrap().get("reason").unwrap();
+            assert_eq!(reason.get("code").unwrap().as_str(), Some("REJ-ANCHOR"));
+            assert_eq!(reason.get("kind").unwrap().as_str(), Some(name));
+            assert_eq!(reason.get("request_id").unwrap().as_u64(), request_id);
+            assert_eq!(
+                reason.get("request_id").unwrap().is_null(),
+                request_id.is_none()
+            );
+        }
+    }
+}
+
+/// The `enum` of the schema's `kind` property, wherever it sits.
+fn find_kind_enum(value: &tv_testkit::Json) -> Option<Vec<String>> {
+    use tv_testkit::Json;
+    match value {
+        Json::Object(members) => {
+            for (key, member) in members {
+                if key == "kind"
+                    && let Some(names) = member.get("enum").and_then(Json::as_array)
+                {
+                    return Some(
+                        names
+                            .iter()
+                            .map(|n| n.as_str().unwrap().to_string())
+                            .collect(),
+                    );
+                }
+                if let Some(found) = find_kind_enum(member) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        Json::Array(items) => items.iter().find_map(find_kind_enum),
+        _ => None,
+    }
 }

@@ -14,3 +14,5 @@
 The candidates' entries are written by kind: `open`, `carry` and `close` name a session; `frame` adds its request, direction, index and ciphertext length; `end` adds its request. A test builds each period's `DigestLogEntry` values from them, numbering `seq` from 0 across the two periods, and checks them against a manifest it signs over them.
 
 `crates/tessera-protocol/tests/audit.rs` checks the rates, seeds, values, samples, refusals and batches; `crates/tessera-anchor/tests/period.rs` checks the candidates.
+
+`verifier/crates/tv-core/tests/anchor_vectors.rs` checks the candidates with the verifier's own code.

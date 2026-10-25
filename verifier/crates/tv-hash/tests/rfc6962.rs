@@ -292,3 +292,67 @@ fn a_proof_checked_against_another_tree_size_depends_on_its_shape() {
     );
     assert!(same_shape > 0);
 }
+
+/// RFC-0060 'The tree over a period's entries': the streaming tree hash equals RFC 6962's
+/// recursive `MTH` for every size from 0 to 300 leaves and at the powers of two and their
+/// neighbours to 1025, after every push, and the empty tree is `SHA-256("")`.
+#[test]
+fn the_streaming_tree_hash_is_the_recursive_tree_hash() {
+    use tv_hash::rfc6962::TreeHash;
+    let mut rng = Rng::new(0x9162);
+    let entries: Vec<Vec<u8>> = (0..1025).map(|i| rng.bytes(i % 41)).collect();
+    let mut tree = TreeHash::new();
+    assert_eq!(tree.root(), sha256(&[]));
+    assert_eq!(tree.count(), 0);
+    let checked: Vec<usize> = (0..=300).chain([511, 512, 513, 1023, 1024, 1025]).collect();
+    for (pushed, entry) in entries.iter().enumerate() {
+        if checked.contains(&pushed) {
+            assert_eq!(tree.root(), mth(&entries[..pushed]), "{pushed} leaves");
+        }
+        tree.push(&leaf_hash(entry)).unwrap();
+        assert_eq!(tree.count(), pushed as u64 + 1);
+    }
+    assert_eq!(tree.root(), mth(&entries), "1025 leaves");
+    // Every leaf's RFC 6962 path verifies against the streamed root.
+    let root = tree.root();
+    for index in [0usize, 1, 511, 512, 1023, 1024] {
+        let proof = path(index, &entries);
+        assert_eq!(
+            verify_inclusion(
+                index as u64,
+                1025,
+                &leaf_hash(&entries[index]),
+                &proof,
+                &root
+            ),
+            Ok(())
+        );
+    }
+}
+
+/// The golden trees' roots, prefixes of the RFC 6962 test entries, streamed.
+#[test]
+fn the_streaming_tree_hash_gives_the_golden_roots() {
+    use tv_hash::rfc6962::TreeHash;
+    let entries = golden_entries();
+    let mut seen = 0;
+    for file in files_under("rfc6962/inclusion") {
+        if !file.ends_with("happy-path.json") {
+            continue;
+        }
+        let case = Json::parse(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        let size = number(&case, "treeSize") as usize;
+        let mut tree = TreeHash::new();
+        for entry in &entries[..size] {
+            tree.push(&leaf_hash(entry)).unwrap();
+        }
+        assert_eq!(
+            tree.root().to_vec(),
+            base64(text(&case, "root")),
+            "{}",
+            file.display()
+        );
+        seen += 1;
+    }
+    assert_eq!(seen, 5, "five happy paths");
+}

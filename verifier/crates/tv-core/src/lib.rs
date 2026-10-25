@@ -54,6 +54,7 @@
 //! | [`selectors`] | the public factors: `LT`, the causal selector `C̃`, the row selector `ψ̃`, layer weights `w̃`, `Rotate`'s kernel, and RFC-0035's padding zero-check |
 //! | [`gadgets`] | final checks for requantization, NonNeg, BigIntCompare, OneHot, roots, causal Softmax and Argmax, with canonical source/range obligations (RFC-0009/0050) |
 //! | [`soundness::SoundnessReport::evaluate`] | independent integer-only soundness calculator for every row of RFC-0014's table, a leaf stage in token groups included (RFC-0014, RFC-0049, RFC-0054 'Soundness') |
+//! | [`anchor`] | the transcript anchor's log checks: the recorder's manifest and its signature under pinned keys, the period's verified log, the previous period's log, the candidates, the sampler pins at load, and each request's session, frame and sampler-key rules (RFC-0015, RFC-0059 to RFC-0063) |
 //!
 //! [`driver`] composes one exact-greedy protocol/1 proof unit through all original source
 //! openings and the mandatory runtime budget. [`verify_non_interactive`] judges typed proofs;
@@ -551,6 +552,7 @@ compile_error!(
 );
 
 pub mod advice;
+pub mod anchor;
 pub mod claims;
 mod fiat_shamir;
 pub mod gadgets;

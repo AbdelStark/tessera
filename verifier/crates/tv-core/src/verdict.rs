@@ -236,15 +236,38 @@ pub enum PowPhase {
     /// After all combined rows and scoring claims.
     Queries,
 }
-/// Anchor failure payloads reserved by RFC-0043 for the v0.4 checks.
+/// The anchor check that failed (RFC-0043 'Anchor', with RFC-0059, RFC-0061, RFC-0062 and
+/// RFC-0063). Its TCE encoding is a `u16` tag ([`tag`](Self::tag)): tag 1, `Inclusion`, is retired
+/// by RFC-0062 and stays reserved, so no variant has it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AnchorFailure {
-    /// Invalid manifest signature or key.
+    /// Tag 0, RFC-0015 check 1: the manifest's signature, its scheme or its key, or the
+    /// manifest's other checks alone (RFC-0060 'The chain'). It names no request.
     ManifestSignature,
-    /// Invalid entry inclusion proof.
-    Inclusion,
-    /// Non-contiguous frames or wrong lengths.
+    /// Tag 2, check 2: a request's frames, not contiguous from 0, not its lengths, or of an
+    /// impossible length (RFC-0059); two frames of the session in the period at one position or
+    /// with one counter (RFC-0062); no end or two, an end in the previous period, a frame after it
+    /// or none before it, a late inbound frame, or a position logged twice across the boundary
+    /// (RFC-0063).
     Frames,
+    /// Tag 3, check 2: a request of a temperature batch that falls within no pin, or within
+    /// another than the batch's first request's (RFC-0061).
+    SamplerKey,
+    /// Tag 4, check 2: the request's session, in a period holding a frame of the request, has no
+    /// open or carry, several, or one after another of its entries; or two key commitments across
+    /// the request's two periods (RFC-0062, RFC-0063).
+    Session,
+}
+impl AnchorFailure {
+    /// The TCE tag: the variant's index in RFC-0043's declaration, which keeps the retired tag 1.
+    pub const fn tag(self) -> u16 {
+        match self {
+            Self::ManifestSignature => 0,
+            Self::Frames => 2,
+            Self::SamplerKey => 3,
+            Self::Session => 4,
+        }
+    }
 }
 /// The first failed proof predicate in RFC-0019 order; all payloads are public identifiers.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -326,9 +349,9 @@ pub enum RejectReason {
         /// Seed or query proof of work.
         phase: PowPhase,
     },
-    /// `REJ-ANCHOR`: v0.4 anchor binding failure.
+    /// `REJ-ANCHOR`: the first anchor check that failed (RFC-0043 'Anchor').
     Anchor {
-        /// Request id, or None for a batch-level failure.
+        /// The request being checked, or None for the manifest's signature.
         request_id: Option<u64>,
 
         /// First failed anchor predicate.
