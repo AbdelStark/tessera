@@ -6,6 +6,21 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The anchor's AES-128-CTR circuit, lowered into the IR ([#142](https://github.com/AbdelStark/tessera/issues/142)):
+  - **`tessera_compiler::anchor`.**
+    - `aes128_key_schedule` (FIPS-197 §5.2), `aes128_encrypt` over `B` blocks (§5.1) and `aes128_ctr` (SP 800-38A §6.5), with `aes128_ctr_inputs` for the input declarations and `RCON`.
+    - The lookups are `AesSbox`, `Gf256Mul { 2 }`, `Gf256Mul { 3 }` and `Bitwise8 { xor }`, through the IR's `TableMap` and `Bitwise`.
+    - ShiftRows and MixColumns' reads are `GatherPublic` over a byte-major state `[16, B]`, and each round key reaches the blocks through `Expand`.
+    - Each round key is a `[16]` tensor of four XORs masked to its columns, since the IR has no concatenation and its range analysis would widen a sum of bytes.
+    - `aes128_key_schedule` and `aes128_encrypt` serve the sampler PRF too (RFC-0061).
+  - **Cost.** 1,072 lookups per block, 268 per four-byte token, and 720 per key (`LOOKUPS_PER_BLOCK`, `LOOKUPS_PER_KEY`). RFC-0015 'Circuits' now gives these figures in place of "about 250", and states that the circuit's inputs are range-checked by their producers: the key by SHA-256's bits (#143), the token bytes by step 1.
+  - **Tests** (`tessera-witness`, on the CPU engine):
+    - FIPS-197's key expansion and both cipher examples, and SP 800-38A's four-block CTR-AES128 vector;
+    - 63 random keys of 1 to 9 blocks against the `aes` crate;
+    - the range analysis over the circuit;
+    - every honest lookup a row of its table, while one flipped ciphertext bit, or one flipped key bit under the pinned ciphertext, leaves lookups that are no row;
+    - the lookup count.
+
 - Masked `ChannelParams` claims, specified ([#487](https://github.com/AbdelStark/tessera/issues/487)):
   - **RFC-0065, 'Masked `ChannelParams` Claims in `tessera-protocol/2`'.**
     - **The leak.** Each claim sits at a point of `Ã_CP` whose padding and type coordinates are Boolean, so RFC-0013's `Z` vanishes there and the masked value is the secret's own (`docs/zk/simulator.md` §4.5). Two claims can also share a column point, and the evaluation rows shared one mask and one pair.

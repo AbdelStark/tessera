@@ -144,12 +144,25 @@ These steps are amended by [RFC-0059 'The circuits'](RFC-0059-frame-headers-and-
 
 1. **Token bytes.** The committed token stream feeds both the forward pass (`OneHot`, RFC-0009) and the frame plaintext: each token's four little-endian bytes are committed advice, range-checked to 8 bits, with `token = Σ_b byte_b 2^{8b}` (linear).
 2. **AES-128-CTR.** The key schedule runs once per session; each 16-byte counter block runs 10 rounds with S-box lookups (`AesSbox`), MixColumns through `Gf256Mul { 2 }`, `Gf256Mul { 3 }` and byte XORs (`Bitwise8 { xor }`). Ciphertext bytes are `plaintext ⊕ keystream`.
+   - **The lowering.** `tessera_compiler::anchor` lowers it into the IR (RFC-0006):
+     - the byte operations as `TableMap` and `Bitwise` lookups;
+     - ShiftRows and MixColumns' reads of a column's other bytes as `GatherPublic` over a state `[16, B]` whose outer axis is the 16 bytes in FIPS-197's order;
+     - each round key reaching the blocks through `Expand`.
+
+     The IR has no concatenation, so each round key is a `[16]` tensor of four XORs, each masked to its columns by a per-byte `ConstMul`.
+   - **Its inputs are bytes by their producers.** A `Bitwise8` key `a + 2^8·b` pins `a` and `b` only when each lies in `[0, 2^8)`. Every lookup output does; the circuit's inputs must be checked where they are produced:
+     - `k_s` by the SHA-256 circuit's committed bits of the key commitment's input (step 3);
+     - the token bytes by step 1's range checks.
+
+     The counter blocks and the plaintext's 22-byte prefix are public (RFC-0059).
 3. **SHA-256.** Over `header ‖ ciphertext` per frame and over `"tessera-anchor-key/v1" ‖ k_s ‖ salt_k` per session. Words are committed as 32 bits each, with booleanity in the batched zero-check; `Ch`, `Maj`, `Σ0`, `Σ1`, `σ0`, `σ1` are low-degree polynomials in bits; additions modulo 2^32 use committed carry bits.
 4. **Binding.** The final SHA-256 state bits equal the public digest bits from the log entry, and the key-commitment digest equals the public `key_commitment`. Both are linear checks against public values.
 5. **Header fields** (session, request, direction, index, length, counter) are public and enter the SHA-256 input as constants.
 6. **The sampler key.** SHA-256 over `"tessera-sampler-key/v1" ‖ K_p ‖ salt`, with the base key `K_p` and the salt committed, equals the batch's pinned `sampler_commitment`. The in-circuit PRF of [RFC-0017](RFC-0017-scoring.md#sampler-prf) uses the key `K` derived from `K_p` and the pin's nonce, with each request's stream class ([RFC-0061](RFC-0061-sampling-randomness.md#the-circuits)).
 
-Cost per token, both directions, is about 250 lookups and 1,000 committed bits, against about 1.7×10^7 commitments per token for 405B's linear layers: below 0.01%.
+Cost per token, both directions, against about 1.7×10^7 commitments per token for 405B's linear layers, is below 0.01%:
+- **AES-128-CTR**, counted from the lowering, is 1,072 lookups per 16-byte block, each committing its output byte: 16 for the first AddRoundKey, 112 for each of rounds 1 to 9, 32 for round 10 and 16 for the ciphertext. That is 268 per four-byte token, plus 720 per session for the key schedule. An earlier estimate gave about 250.
+- **SHA-256's** committed bits are #143's to count; this RFC estimated about 1,000 per token.
 
 ### Reference recorder
 

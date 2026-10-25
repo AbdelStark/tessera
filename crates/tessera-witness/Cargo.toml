@@ -17,6 +17,8 @@ tessera-ir = { path = "../tessera-ir" }
 tessera-tables = { path = "../tessera-tables" }
 
 [dev-dependencies]
+# The reference cipher the anchor's AES-128-CTR circuit is checked against (#142).
+aes = "0.8"
 # Counts the current thread's allocations: what a regenerated tile holds (tests/memory.rs).
 allocation-counter = "0.8"
 serde_json = "1"

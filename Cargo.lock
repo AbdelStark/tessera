@@ -1099,6 +1099,7 @@ dependencies = [
 name = "tessera-witness"
 version = "0.1.0"
 dependencies = [
+ "aes",
  "allocation-counter",
  "serde_json",
  "tessera-codec",
