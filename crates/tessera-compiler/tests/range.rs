@@ -29,8 +29,8 @@ use tessera_compiler::{
     CompileError, HALF_FIELD, Range, analyze, analyze_fragment, check_profile, select,
 };
 use tessera_ir::{
-    BoolFn, Broadcast, GadgetPolicy, Graph, GraphBuilder, NodeId, NodeKind, Op, Profile, TableId,
-    TensorId, WeightRef, WeightType,
+    BoolFn, Broadcast, GadgetPolicy, Graph, GraphBuilder, NodeId, NodeKind, Op, PrfRef, Profile,
+    TableId, TensorId, WeightRef, WeightType,
 };
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableKind, TableSpec};
 
@@ -1726,6 +1726,97 @@ fn the_aes_circuit_needs_its_key_and_plaintext_proven() {
             1 => assert_eq!(result.expect_err("the plaintext"), unproven(inputs[3].0)),
             _ => {
                 result.expect("both proven");
+            }
+        }
+    }
+}
+
+// ----- One-hot inputs of Argmax and InverseCdf (RFC-0009 Lemmas 8 and 9, #540) ----------------
+
+#[test]
+fn argmax_and_inverse_cdf_take_their_one_hot_from_a_one_hot() {
+    let refused = |node: u32| CompileError::Range {
+        node: NodeId(node),
+        input: 1,
+        rule: "a one-hot input is a OneHot's output, its rows whole",
+    };
+    // The one-hot `[2, 4]` of two tokens, through `source`; the logits are `[2, 4]` or `[1, 4]`.
+    // Returns the graph and the reader's node id.
+    let build = |source: u8, inverse: bool| {
+        let mut g = GraphBuilder::new();
+        let tokens = g.input(decl(&[2], ADVICE, 0, 3)).expect("tokens");
+        let mut nodes = 0u32;
+        let mut node = |g: &mut GraphBuilder, op: Op, inputs: &[TensorId], shape: &[u32]| {
+            nodes += 1;
+            one(g, op, inputs, out(shape, ADVICE))
+        };
+        let (h, rows) = match source {
+            // Read directly.
+            0 => (node(&mut g, Op::OneHot { vocab: 4 }, &[tokens], &[2, 4]), 2),
+            // The next token's row, a slice on the position axis.
+            1 => {
+                let h = node(&mut g, Op::OneHot { vocab: 4 }, &[tokens], &[2, 4]);
+                let s = Op::Slice {
+                    axis: 0,
+                    start: 1,
+                    len: 1,
+                };
+                (node(&mut g, s, &[h], &[1, 4]), 1)
+            }
+            // Rows picked by a gather.
+            2 => {
+                let h = node(&mut g, Op::OneHot { vocab: 4 }, &[tokens], &[2, 4]);
+                let index = g.constant(vec![1, 0]).expect("rows");
+                (node(&mut g, Op::GatherPublic { index }, &[h], &[2, 4]), 2)
+            }
+            // A slice of the vocabulary axis: a row may lose its 1.
+            3 => {
+                let h = node(&mut g, Op::OneHot { vocab: 4 }, &[tokens], &[2, 4]);
+                let s = Op::Slice {
+                    axis: 1,
+                    start: 0,
+                    len: 2,
+                };
+                (node(&mut g, s, &[h], &[2, 2]), 2)
+            }
+            // Bits a decomposition proves, of any number of ones.
+            4 => {
+                let x = g.input(decl(&[2, 4], ADVICE, 0, 1)).expect("x");
+                let bits = node(
+                    &mut g,
+                    Op::BitDecompose { low: 1, high: 0 },
+                    &[x],
+                    &[2, 4, 1],
+                );
+                (node(&mut g, Op::Reshape, &[bits], &[2, 4]), 2)
+            }
+            // A committed input declared [0, 1].
+            _ => (g.input(decl(&[2, 4], ADVICE, 0, 1)).expect("h"), 2),
+        };
+        let vocab = if source == 3 { 2 } else { 4 };
+        let logits = g
+            .input(decl(&[rows, vocab], ADVICE, -8, 8))
+            .expect("logits");
+        let op = if inverse {
+            Op::InverseCdf { prf: PrfRef(0) }
+        } else {
+            Op::Argmax
+        };
+        g.node(op, &[logits, h], vec![]).expect("the reader");
+        (g.finish(), nodes)
+    };
+    for inverse in [false, true] {
+        for source in 0..6u8 {
+            let (graph, reader) = build(source, inverse);
+            let result = analyze_fragment(&graph, &[]);
+            if source <= 2 {
+                result.unwrap_or_else(|e| panic!("source {source}, {inverse}: {e:?}"));
+            } else {
+                assert_eq!(
+                    result.expect_err("refused"),
+                    refused(reader),
+                    "source {source}, inverse {inverse}"
+                );
             }
         }
     }

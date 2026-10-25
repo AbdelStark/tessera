@@ -896,10 +896,18 @@ fn softmax_registers_every_auxiliary_range_in_first_use_order() {
 
 #[test]
 fn argmax_registers_its_range_and_requires_true_bounded_logits() {
+    // The one-hot input is a OneHot's output (#540), node 0; Argmax is node 1.
     let graph = |lo, hi| {
         let mut b = GraphBuilder::new();
-        let logits = b.input(decl(&[4], ADVICE, lo, hi)).unwrap();
-        let h = b.input(decl(&[4], ADVICE, 0, 1)).unwrap();
+        let logits = b.input(decl(&[1, 4], ADVICE, lo, hi)).unwrap();
+        let token = b.input(decl(&[1], ADVICE, 0, 3)).unwrap();
+        let h = b
+            .node(
+                Op::OneHot { vocab: 4 },
+                &[token],
+                vec![decl(&[1, 4], ADVICE, 0, 0)],
+            )
+            .unwrap()[0];
         b.node(Op::Argmax, &[logits, h], vec![]).unwrap();
         b.finish()
     };
@@ -911,13 +919,21 @@ fn argmax_registers_its_range_and_requires_true_bounded_logits() {
     );
     assert_eq!(
         selected(&good, &[], &policy(28)),
-        Err(refused("a lookup's table has at most 2^{B_max} rows"))
+        Err(CompileError::Range {
+            node: NodeId(1),
+            input: 0,
+            rule: "a lookup's table has at most 2^{B_max} rows",
+        })
     );
     for (lo, hi) in [(-(1 << 28), 0), (0, 1 << 28)] {
         let error = analyze_fragment(&graph(lo, hi), &[]).unwrap_err();
         assert_eq!(
             error,
-            refused("Argmax logits have |ℓ| < 2^28 (RFC-0009 Lemma 9)")
+            CompileError::Range {
+                node: NodeId(1),
+                input: 0,
+                rule: "Argmax logits have |ℓ| < 2^28 (RFC-0009 Lemma 9)",
+            }
         );
     }
 }

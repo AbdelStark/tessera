@@ -573,11 +573,13 @@ impl<'a> Analysis<'a> {
                     "Argmax logits have |ℓ| < 2^28 (RFC-0009 Lemma 9)",
                 )?;
                 self.within(node, 1, 0, 1, "a one-hot entry is 0 or 1")?;
+                self.one_hot(node, 1)?;
                 Ok(Vec::new())
             }
             Op::InverseCdf { .. } => {
                 self.integer(node, 0)?;
                 self.within(node, 1, 0, 1, "a one-hot entry is 0 or 1")?;
+                self.one_hot(node, 1)?;
                 Ok(Vec::new())
             }
             Op::BitDecompose { low, high } => {
@@ -622,6 +624,32 @@ impl<'a> Analysis<'a> {
                 Ok(Vec::new())
             }
         }
+    }
+
+    /// Input `k` of `node` holds rows of exactly one 1: a `OneHot`'s output, read directly or by a
+    /// `Slice` or `GatherPublic` that keeps each vocabulary row whole, as the next token's rows
+    /// are taken (RFC-0009 'OneHot', teacher forcing). Lemma 9's argument needs Lemma 8's "exactly
+    /// one 1", which bits from any other operation, or a committed input's declared `[0, 1]`, do
+    /// not give (#540).
+    fn one_hot(&self, node: &Node, k: usize) -> Result<(), CompileError> {
+        let refused = CompileError::Range {
+            node: node.id,
+            input: k,
+            rule: "a one-hot input is a OneHot's output, its rows whole",
+        };
+        let mut tensor = node.inputs[k];
+        while let Some(producer) = self.producer(tensor) {
+            let input = producer.inputs[0];
+            let rank = self.shape(input).len();
+            match producer.op {
+                Op::OneHot { .. } => return Ok(()),
+                // Positions alone: not the vocabulary axis, the last.
+                Op::Slice { axis, .. } if usize::from(axis) + 1 < rank => tensor = input,
+                Op::GatherPublic { .. } if rank >= 2 => tensor = input,
+                _ => return Err(refused),
+            }
+        }
+        Err(refused)
     }
 
     /// `SoftmaxRow`'s outputs: the exponentials in its `Exp` table's values, and `R_q`, which its
