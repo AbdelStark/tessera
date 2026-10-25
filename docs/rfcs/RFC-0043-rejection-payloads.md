@@ -71,7 +71,7 @@ pub enum PowPhase { Seed, Queries }        // NiProof's seed_nonce, then its que
 
 `Params { name: ParamSetId }`:
 
-04 §2's `ParamSetName` is [RFC-0014](RFC-0014-interaction-and-soundness.md#parameter-sets)'s `ParamSetId(pub Ascii)`: the parameter set the claim list names, such as `live-64/1`, that the verifier does not allow. A claim list's `params` is within its decode limits, so the payload is too.
+04 §2's `ParamSetName` is [RFC-0014](RFC-0014-interaction-and-soundness.md#parameter-sets)'s `ParamSetId(pub Ascii)`: the parameter set the claim list names, such as `live-64/1`, that the verifier does not allow, or, for a proof of an audit sample, that is not the one the sample's policy names ([RFC-0016](RFC-0016-audit-sampling.md#verifier-checks) 'The parameter set'). A claim list's `params` is within its decode limits, so the payload is too.
 
 ### Anchor
 

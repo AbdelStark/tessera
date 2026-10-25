@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The verifier's ledger (RFC-0019 'Ledger', RFC-0067, schema `0x0701`, `.tvl`): its encoding,
-//! the samples the verifier derived, the audit's accounting checks (RFC-0016 'Verifier checks' 1
-//! and 2) and the record of accepted requests. Its file is [`super::file`]'s.
+//! the samples the verifier derived, the audit's accounting checks (RFC-0016 'Verifier checks':
+//! the parameter set, then checks 1 and 2) and the record of accepted requests. Its file is
+//! [`super::file`]'s.
 
 use tv_codec::{Cursor, DecodeError, DecodeLimits, Envelope, ErrorCode, Expected, decode, size};
 use tv_hash::{Digest, Domain, hash};
@@ -11,6 +12,7 @@ use super::policy::put_len;
 use super::sample::{AuditSample, RequestKey};
 use super::seal;
 use crate::anchor::{Failure, usage};
+use crate::claims::ParamSetId;
 use crate::protocol::{FixedBits, PublicStatement};
 use crate::validation::StatementField;
 use crate::verdict::{ErrorCode as Code, RejectReason, VerifierError};
@@ -351,35 +353,57 @@ impl VerifierLedger {
             .and_then(|i| self.proven.get(i))
     }
 
-    /// RFC-0016 'Verifier checks' 1 and 2, for a proof's statement against the sample and this
-    /// ledger, in RFC-0039's field order (RFC-0043 'The audit sample's checks', RFC-0067 'The
-    /// accounting'). First, before any check of the statement, the sample must be the
-    /// verifier's own, in `derived`, else `Inconclusive(ERR-USAGE)`: a sample whose coin toss
-    /// merely opens could be the prover's (RFC-0067 'The verifier's own sample'). Then:
+    /// RFC-0016 'Verifier checks' for a proof of `sample` whose claim list names the parameter
+    /// set `params` and whose statement is `statement`, against this ledger (RFC-0043 'The audit
+    /// sample's checks', RFC-0067 'The accounting'). First, before any check of the proof, the
+    /// sample must be the verifier's own, in `derived`, else `Inconclusive(ERR-USAGE)`: a sample
+    /// whose coin toss merely opens could be the prover's (RFC-0067 'The verifier's own
+    /// sample'). Then, in order, the first that fails giving the result:
     ///
+    /// 0. `params` is the parameter set the sample's policy names ([`AuditPolicy::params`]),
+    ///    compared byte for byte, else `Reject(Params { name })`, naming `params`, the claim
+    ///    list's (RFC-0016 'The parameter set', RFC-0067 'The accounting' step 0, RFC-0043
+    ///    'Parameter sets'). It is RFC-0019 'Check order' step 2 for a proof of an audit sample,
+    ///    so it comes before the statement's fields: the policy fixes the soundness every proof
+    ///    of the audit gives, and a proof under another set, such as `live-64/1` under a policy
+    ///    of `ni-100/1`, must not count toward it. Whether this verifier allows the set at all is
+    ///    the step's other half, [`ParamSet::accept`], which claim-list validation runs
+    ///    ([`validate`]);
     /// 1. `statement.manifest_digest` is the sample's, else `StatementMismatch { field:
     ///    ManifestDigest }`;
     /// 2. then each request of `statement.batch` is in `selected`, is not in an earlier accepted
     ///    batch (this ledger's record of the sample), and is not named twice by the batch, else
     ///    `StatementMismatch { field: Batch }`, a replayed request included.
     ///
-    /// Every failure of check 2 gives the same reason, so the checks need no order among
-    /// themselves: each request is looked up by binary search, and repeats are found by sorting
-    /// a copy of the indices, so a batch of `n` requests costs `O(n log n)` whatever the prover
-    /// lists. Returns each request's index into `selected`, in batch order.
+    /// Checks 1 and 2 run in RFC-0039's field order. Every failure of check 2 gives the same
+    /// reason, so its checks need no order among themselves: each request is looked up by
+    /// binary search, and repeats are found by sorting a copy of the indices, so a batch of `n`
+    /// requests costs `O(n log n)` whatever the prover lists. Returns each request's index into
+    /// `selected`, in batch order.
+    ///
+    /// [`AuditPolicy::params`]: super::AuditPolicy::params
+    /// [`ParamSet::accept`]: crate::params::ParamSet::accept
+    /// [`validate`]: crate::validation::validate
     ///
     /// # Errors
     ///
     /// `Inconclusive(ERR-USAGE)` for a sample the verifier did not derive, `Failure::Rejected`
-    /// with the reasons above, and `Inconclusive(ERR-RES-MEMORY)` when the indices cannot be
-    /// reserved.
+    /// with the reasons above, and `Inconclusive(ERR-RES-MEMORY)` when the indices, or the
+    /// rejection's copy of the name, cannot be reserved.
     pub fn check_accounting(
         &self,
         sample: &AuditSample,
+        params: &ParamSetId,
         statement: &PublicStatement,
     ) -> Result<Vec<u64>, Failure> {
         if !self.is_derived(sample) {
             return Err(usage());
+        }
+        // RFC-0016 'The parameter set' (RFC-0019 step 2): the policy's set and no other, before
+        // any field of the statement.
+        if params != sample.policy().params() {
+            let name = params.try_clone().ok_or(memory())?;
+            return Err(Failure::Rejected(RejectReason::Params { name }));
         }
         if &statement.manifest_digest != sample.manifest_digest() {
             return Err(rejected(StatementField::ManifestDigest));
@@ -416,23 +440,30 @@ impl VerifierLedger {
         Ok(indices)
     }
 
-    /// Records an accepted proof (RFC-0019 step 13): its requests join the sample's record with
-    /// their `Û`, `uhat` in `statement.batch` order. The accounting checks run again first, so a
-    /// request is never recorded twice (INV-AUD-3). Nothing changes unless every step passes,
-    /// and a batch of no request changes nothing.
+    /// Records an accepted proof (RFC-0019 step 13) of `sample`, whose claim list names the
+    /// parameter set `params`: its requests join the sample's record with their `Û`, `uhat` in
+    /// `statement.batch` order. The accounting checks ([`check_accounting`]) run again first, in
+    /// their order: the sample must be the verifier's own, then `params` the policy's, so that no
+    /// proof of another parameter set is recorded (RFC-0016 'The parameter set', RFC-0067 'The
+    /// accounting'), then the statement's fields, so that a request is never recorded twice
+    /// (INV-AUD-3). Nothing changes unless every step passes, and a batch of no request changes
+    /// nothing.
+    ///
+    /// [`check_accounting`]: Self::check_accounting
     ///
     /// # Errors
     ///
-    /// The accounting checks' failure, a rejection first; `Inconclusive(ERR-USAGE)` for a
-    /// `uhat` of another length than the batch; `Inconclusive(ERR-RES-MEMORY)` when memory
-    /// cannot be reserved.
+    /// The accounting checks' failure, `Reject(Params { name })` and the statement's rejections
+    /// first; `Inconclusive(ERR-USAGE)` for a `uhat` of another length than the batch;
+    /// `Inconclusive(ERR-RES-MEMORY)` when memory cannot be reserved.
     pub fn record_accepted(
         &mut self,
         sample: &AuditSample,
+        params: &ParamSetId,
         statement: &PublicStatement,
         uhat: &[FixedBits],
     ) -> Result<(), Failure> {
-        let indices = self.check_accounting(sample, statement)?;
+        let indices = self.check_accounting(sample, params, statement)?;
         if indices.len() != uhat.len() {
             return Err(usage());
         }
@@ -787,19 +818,24 @@ pub(crate) mod tests {
     fn a_sample_the_verifier_did_not_derive_is_refused_before_the_statement() {
         let sample = derived_sample(1);
         let mut ledger = ledger_of(&[&derived_sample(2)]);
-        // The statement is broken too, in its manifest: the sample's check comes first.
+        let live = sample.policy().params();
+        let other = ParamSetId::new("ni-100/1").unwrap();
+        // The statement may be broken too, in its manifest, and the parameter set another than
+        // the policy's: the sample's check comes first.
         let mut wrong = statement_of(&sample, &[0]);
         wrong.manifest_digest = [0; 32];
         for s in [statement_of(&sample, &[0]), wrong] {
-            assert_eq!(ledger.check_accounting(&sample, &s), Err(usage()));
-            assert_eq!(
-                ledger.record_accepted(&sample, &s, &[FixedBits(0)]),
-                Err(usage())
-            );
+            for params in [live, &other] {
+                assert_eq!(ledger.check_accounting(&sample, params, &s), Err(usage()));
+                assert_eq!(
+                    ledger.record_accepted(&sample, params, &s, &[FixedBits(0)]),
+                    Err(usage())
+                );
+            }
         }
         ledger.add_derived(&sample).unwrap();
         assert_eq!(
-            ledger.check_accounting(&sample, &statement_of(&sample, &[2, 0])),
+            ledger.check_accounting(&sample, live, &statement_of(&sample, &[2, 0])),
             Ok(vec![2, 0])
         );
     }

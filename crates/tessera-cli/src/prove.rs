@@ -163,9 +163,14 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
         let sampled = sample::request(a, path)?;
         let mut inputs: Vec<&Path> = vec![path];
         inputs.extend(sampled.inputs.iter().map(PathBuf::as_path));
-        return produce(a, json, &inputs, sampled.manifest_digest, || {
-            Ok((sampled.request, sampled.tokens))
-        });
+        return produce(
+            a,
+            json,
+            &inputs,
+            sampled.manifest_digest,
+            Some(&sampled.params),
+            || Ok((sampled.request, sampled.tokens)),
+        );
     }
     let input = a
         .reference_tokens
@@ -188,7 +193,7 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
             .as_deref()
             .ok_or_else(|| usage("manifest digest required"))?,
     )?;
-    produce(a, json, &[input], manifest_digest, || {
+    produce(a, json, &[input], manifest_digest, None, || {
         let data: tokens::Tokens = Input::new(input, &schema::TOKEN_FILE).open()?;
         let output_len = data
             .len
@@ -209,11 +214,16 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
 /// reference and tokens, builds the `PublicStatement` of the request alone with
 /// `manifest_digest`, proves it in the mode the flags give, and prints the `tessera.proof-run/1`
 /// receipt. `inputs` are the files besides those three that the output must not alias.
+///
+/// `policy_params` is a sample's policy's parameter set: the plan's claim list must name it, else
+/// `ERR-USAGE` before anything is committed, since the verifier would refuse the proof as
+/// `Reject(Params)` (RFC-0016 'Verifier checks').
 fn produce(
     a: &ProveArgs,
     json: bool,
     inputs: &[&Path],
     manifest_digest: [u8; 32],
+    policy_params: Option<&tessera_hash::ParamSetId>,
     request: impl FnOnce() -> Result<(protocol::RequestRef, Secret<Vec<u32>>), TesseraError>,
 ) -> Result<(), TesseraError> {
     if let Some(out) = &a.out {
@@ -223,6 +233,13 @@ fn produce(
     }
     let model: IntegerModel = Input::new(&a.model, &schema::INTEGER_MODEL).open()?;
     let plan: ExecutionPlan = Input::new(&a.plan, &schema::EXECUTION_PLAN).open()?;
+    if let Some(params) = policy_params.filter(|&p| *p != plan.claims.params) {
+        return Err(usage(format!(
+            "the claim list's parameter set {} is not the sample policy's {} (RFC-0016)",
+            plan.claims.params.0.as_str(),
+            params.0.as_str()
+        )));
+    }
     if !fs::metadata(&a.weights)
         .map_err(io_error("cannot read weight state".into()))?
         .is_file()

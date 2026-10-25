@@ -472,6 +472,7 @@ fn report_inputs(dir: &Path, accepted: &[u64]) -> (PathBuf, PathBuf) {
         ledger
             .record_accepted(
                 &sample,
+                sample.policy().params(),
                 &statement(accepted),
                 &vec![FixedBits(5); accepted.len()],
             )

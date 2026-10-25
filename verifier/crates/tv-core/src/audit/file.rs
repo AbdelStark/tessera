@@ -45,6 +45,7 @@ use tv_codec::DecodeLimits;
 use super::ledger::VerifierLedger;
 use super::sample::AuditSample;
 use crate::anchor::Failure;
+use crate::claims::ParamSetId;
 use crate::protocol::{FixedBits, PublicStatement};
 use crate::verdict::{ErrorCode as Code, VerifierError};
 
@@ -389,7 +390,10 @@ impl LedgerFile {
         self.place.file()
     }
 
-    /// Records an accepted proof ([`VerifierLedger::record_accepted`]) and writes the ledger.
+    /// Records an accepted proof of `sample`, whose claim list names the parameter set `params`
+    /// ([`VerifierLedger::record_accepted`]), and writes the ledger. The accounting checks run
+    /// first, the parameter set's among them (RFC-0016 'The parameter set'), and a proof they
+    /// refuse writes nothing.
     ///
     /// # Errors
     ///
@@ -402,21 +406,23 @@ impl LedgerFile {
     pub fn record_accepted(
         &mut self,
         sample: &AuditSample,
+        params: &ParamSetId,
         statement: &PublicStatement,
         uhat: &[FixedBits],
     ) -> Result<(), Failure> {
-        self.record_accepted_with(sample, statement, uhat, &REAL)
+        self.record_accepted_with(sample, params, statement, uhat, &REAL)
     }
 
     fn record_accepted_with(
         &mut self,
         sample: &AuditSample,
+        params: &ParamSetId,
         statement: &PublicStatement,
         uhat: &[FixedBits],
         hooks: &Hooks<'_>,
     ) -> Result<(), Failure> {
         let mut next = self.ledger.clone();
-        next.record_accepted(sample, statement, uhat)?;
+        next.record_accepted(sample, params, statement, uhat)?;
         self.commit(next, hooks)
     }
 
@@ -938,7 +944,13 @@ mod tests {
         let before = file.ledger().clone();
         let statement = statement_of(&sample, &[0]);
         assert_eq!(
-            file.record_accepted_with(&sample, &statement, &[FixedBits(1)], &hooks),
+            file.record_accepted_with(
+                &sample,
+                sample.policy().params(),
+                &statement,
+                &[FixedBits(1)],
+                &hooks
+            ),
             Err(Failure::Inconclusive(io()))
         );
         assert_eq!(file.ledger(), &before);
@@ -962,7 +974,12 @@ mod tests {
         let mut file = LedgerFile::open(&path).unwrap();
         assert!(file.ledger().proven(sample.identity()).is_some());
         assert_eq!(
-            file.record_accepted(&sample, &statement, &[FixedBits(1)]),
+            file.record_accepted(
+                &sample,
+                sample.policy().params(),
+                &statement,
+                &[FixedBits(1)]
+            ),
             Err(Failure::Rejected(
                 crate::verdict::RejectReason::StatementMismatch {
                     field: crate::validation::StatementField::Batch
@@ -1126,8 +1143,14 @@ mod tests {
         let id = |p: &Path| file_id(&fs::metadata(p).unwrap());
         let before = (id(&path), fs::read(&path).unwrap());
         // A batch of no request, and the same sample derived again: nothing is written.
-        file.record_accepted_with(&sample, &statement_of(&sample, &[]), &[], &hooks)
-            .unwrap();
+        file.record_accepted_with(
+            &sample,
+            sample.policy().params(),
+            &statement_of(&sample, &[]),
+            &[],
+            &hooks,
+        )
+        .unwrap();
         file.record_derived_with(&sample, &hooks).unwrap();
         assert_eq!(*syncs.borrow(), 0);
         assert_eq!((id(&path), fs::read(&path).unwrap()), before);
@@ -1135,6 +1158,7 @@ mod tests {
         // A batch of one request is.
         file.record_accepted_with(
             &sample,
+            sample.policy().params(),
             &statement_of(&sample, &[0]),
             &[FixedBits(1)],
             &hooks,
@@ -1241,12 +1265,13 @@ mod tests {
         // The operator takes A's lock for a stale one, and B takes over and accepts R.
         fs::remove_file(&lock).unwrap();
         let mut b = LedgerFile::open(&path).unwrap();
-        b.record_accepted(&sample, &r, &[FixedBits(4)]).unwrap();
+        b.record_accepted(&sample, sample.policy().params(), &r, &[FixedBits(4)])
+            .unwrap();
         let after_b = fs::read(&path).unwrap();
         // A accepts R again from its stale memory: refused, nothing written or left behind.
         assert!(a.ledger().proven(sample.identity()).is_none());
         assert_eq!(
-            a.record_accepted(&sample, &r, &[FixedBits(4)]),
+            a.record_accepted(&sample, sample.policy().params(), &r, &[FixedBits(4)]),
             Err(Failure::Inconclusive(io()))
         );
         assert_eq!(fs::read(&path).unwrap(), after_b);
@@ -1254,8 +1279,13 @@ mod tests {
         // B's record stands, B still writes, and B's lock outlives A.
         drop(a);
         assert!(lock.exists());
-        b.record_accepted(&sample, &statement_of(&sample, &[2]), &[FixedBits(5)])
-            .unwrap();
+        b.record_accepted(
+            &sample,
+            sample.policy().params(),
+            &statement_of(&sample, &[2]),
+            &[FixedBits(5)],
+        )
+        .unwrap();
         drop(b);
         let ledger = read_ledger(&path).unwrap();
         assert_eq!(
@@ -1493,8 +1523,13 @@ mod tests {
                 if p == point && b_slot.borrow().is_none() {
                     fs::remove_file(&lock).unwrap();
                     let mut b = LedgerFile::open(&path).unwrap();
-                    b.record_accepted(&sample, &statement_of(&sample, &[2]), &[FixedBits(5)])
-                        .unwrap();
+                    b.record_accepted(
+                        &sample,
+                        sample.policy().params(),
+                        &statement_of(&sample, &[2]),
+                        &[FixedBits(5)],
+                    )
+                    .unwrap();
                     *b_slot.borrow_mut() = Some(b);
                 }
             };
@@ -1505,6 +1540,7 @@ mod tests {
             };
             let result = a.record_accepted_with(
                 &sample,
+                sample.policy().params(),
                 &statement_of(&sample, &[1]),
                 &[FixedBits(4)],
                 &hooks,

@@ -26,7 +26,20 @@ use tv_testkit::{Json, SplitMix64, blake3, read_vectors};
 
 // ----- Helpers ---------------------------------------------------------------------------------
 
+/// The parameter set every policy and sample here names, unless a test says otherwise, and so
+/// the one an honest claim list of their proofs names.
+const LIVE: &str = "live-64/1";
+
+fn live() -> ParamSetId {
+    ParamSetId::new(LIVE).unwrap()
+}
+
 fn policy(buckets: &[(u32, u64)]) -> AuditPolicy {
+    policy_of(buckets, LIVE)
+}
+
+/// A policy of `buckets` whose proofs use the parameter set `params`.
+fn policy_of(buckets: &[(u32, u64)], params: &str) -> AuditPolicy {
     AuditPolicy::new(
         86_400_000_000_000,
         buckets
@@ -39,7 +52,7 @@ fn policy(buckets: &[(u32, u64)]) -> AuditPolicy {
         16_384,
         262_144,
         604_800_000_000_000,
-        ParamSetId::new("live-64/1").unwrap(),
+        ParamSetId::new(params).unwrap(),
     )
     .unwrap()
 }
@@ -415,7 +428,7 @@ fn the_verifiers_toss_commits_a_fresh_share_and_reveals_only_over_its_manifest()
     let ledger = read_ledger(&path).unwrap();
     assert!(ledger.is_derived(&sample));
     let s = statement(*sample.manifest_digest(), vec![req(1, 2)]);
-    assert_eq!(ledger.check_accounting(&sample, &s), Ok(vec![0]));
+    assert_eq!(ledger.check_accounting(&sample, &live(), &s), Ok(vec![0]));
     fs::remove_file(&path).unwrap();
     fs::remove_dir(&dir).unwrap();
 }
@@ -446,11 +459,11 @@ fn a_sample_the_prover_wrote_is_not_the_verifiers() {
     // The accounting, the record and the report refuse the forged sample, before any check of
     // the statement, whose batch is empty and would pass.
     assert_eq!(
-        ledger.check_accounting(&forged, &empty),
+        ledger.check_accounting(&forged, &live(), &empty),
         Err(inconclusive(Code::Usage))
     );
     assert_eq!(
-        file.record_accepted(&forged, &empty, &[]),
+        file.record_accepted(&forged, &live(), &empty, &[]),
         Err(inconclusive(Code::Usage))
     );
     assert_eq!(
@@ -463,7 +476,11 @@ fn a_sample_the_prover_wrote_is_not_the_verifiers() {
     );
     // The verifier's own passes, and its report has every request.
     assert_eq!(
-        ledger.check_accounting(&mine, &statement(*mine.manifest_digest(), Vec::new())),
+        ledger.check_accounting(
+            &mine,
+            &live(),
+            &statement(*mine.manifest_digest(), Vec::new())
+        ),
         Ok(Vec::new())
     );
     assert_eq!(
@@ -535,7 +552,10 @@ fn requests_sort_by_session_then_by_number() {
     // The accounting finds each by number, and the report lists them in order.
     let ledger = owning(&[&sample]);
     let s = statement([7; 32], vec![req(1, 256), req(1, 1)]);
-    assert_eq!(ledger.check_accounting(&sample, &s), Ok(vec![1, 0]));
+    assert_eq!(
+        ledger.check_accounting(&sample, &live(), &s),
+        Ok(vec![1, 0])
+    );
     let report = AuditReport::from_ledger(&sample, &ledger).unwrap();
     let order: Vec<RequestKey> = report.outcomes().iter().map(|(k, _)| *k).collect();
     assert_eq!(order, [one, big]);
@@ -549,9 +569,12 @@ fn a_batch_of_selected_requests_passes_and_is_recorded_with_its_uhat() {
     let manifest = *scenario.period.manifest_digest();
     let mut ledger = owning(&[&sample]);
     let s = statement(manifest, vec![req(1, 4), req(1, 2)]);
-    assert_eq!(ledger.check_accounting(&sample, &s), Ok(vec![3, 1]));
+    assert_eq!(
+        ledger.check_accounting(&sample, &live(), &s),
+        Ok(vec![3, 1])
+    );
     ledger
-        .record_accepted(&sample, &s, &[FixedBits(40), FixedBits(20)])
+        .record_accepted(&sample, &live(), &s, &[FixedBits(40), FixedBits(20)])
         .unwrap();
     let record = ledger.proven(sample.identity()).unwrap();
     assert_eq!(
@@ -561,7 +584,7 @@ fn a_batch_of_selected_requests_passes_and_is_recorded_with_its_uhat() {
     // A second batch merges by index.
     let s2 = statement(manifest, vec![req(1, 5), req(1, 1)]);
     ledger
-        .record_accepted(&sample, &s2, &[FixedBits(50), FixedBits(10)])
+        .record_accepted(&sample, &live(), &s2, &[FixedBits(50), FixedBits(10)])
         .unwrap();
     let record = ledger.proven(sample.identity()).unwrap();
     assert_eq!(
@@ -589,7 +612,7 @@ fn a_request_not_in_the_sample_is_rejected() {
     // Another request id, another session, and a selected request beside an unselected one.
     for requests in [vec![req(1, 6)], vec![req(2, 1)], vec![req(1, 1), req(1, 0)]] {
         assert_eq!(
-            ledger.check_accounting(&sample, &statement(manifest, requests)),
+            ledger.check_accounting(&sample, &live(), &statement(manifest, requests)),
             Err(batch_rejected())
         );
     }
@@ -603,15 +626,23 @@ fn a_request_in_two_accepted_batches_is_rejected_the_second_time() {
     let mut ledger = owning(&[&sample, &other]);
     let first = statement(manifest, vec![req(1, 1), req(1, 2)]);
     ledger
-        .record_accepted(&sample, &first, &[FixedBits(0), FixedBits(0)])
+        .record_accepted(&sample, &live(), &first, &[FixedBits(0), FixedBits(0)])
         .unwrap();
     let before = ledger.clone();
     // The replay, alone or beside a new request.
     for requests in [vec![req(1, 2)], vec![req(1, 3), req(1, 1)]] {
         let s = statement(manifest, requests);
-        assert_eq!(ledger.check_accounting(&sample, &s), Err(batch_rejected()));
         assert_eq!(
-            ledger.record_accepted(&sample, &s, &[FixedBits(0); 2][..s.batch.requests.len()]),
+            ledger.check_accounting(&sample, &live(), &s),
+            Err(batch_rejected())
+        );
+        assert_eq!(
+            ledger.record_accepted(
+                &sample,
+                &live(),
+                &s,
+                &[FixedBits(0); 2][..s.batch.requests.len()]
+            ),
             Err(Failure::Rejected(batch_mismatch()))
         );
         assert_eq!(ledger, before, "a refused record changes nothing");
@@ -622,13 +653,13 @@ fn a_request_in_two_accepted_batches_is_rejected_the_second_time() {
         vec![req(1, 5), req(1, 3), req(1, 4), req(1, 5)],
     ] {
         assert_eq!(
-            ledger.check_accounting(&sample, &statement(manifest, requests)),
+            ledger.check_accounting(&sample, &live(), &statement(manifest, requests)),
             Err(batch_rejected())
         );
     }
     // Another sample's record does not count against this one.
     let s = statement([7; 32], vec![req(1, 1)]);
-    assert_eq!(ledger.check_accounting(&other, &s), Ok(vec![0]));
+    assert_eq!(ledger.check_accounting(&other, &live(), &s), Ok(vec![0]));
 }
 
 #[test]
@@ -640,7 +671,7 @@ fn another_manifest_is_rejected_before_the_batch() {
     // The batch is broken too; the manifest's field comes first (RFC-0039 'The checks').
     for requests in [vec![req(1, 1)], vec![req(9, 9)]] {
         assert_eq!(
-            ledger.check_accounting(&sample, &statement(manifest, requests)),
+            ledger.check_accounting(&sample, &live(), &statement(manifest, requests)),
             Err(Failure::Rejected(RejectReason::StatementMismatch {
                 field: StatementField::ManifestDigest
             }))
@@ -656,11 +687,307 @@ fn a_record_whose_uhat_does_not_fit_the_batch_changes_nothing() {
     let s = statement(manifest, vec![req(1, 1), req(1, 2)]);
     for uhat in [&[][..], &[FixedBits(1)], &[FixedBits(1); 3]] {
         assert_eq!(
-            ledger.record_accepted(&sample, &s, uhat),
+            ledger.record_accepted(&sample, &live(), &s, uhat),
             Err(inconclusive(Code::Usage))
         );
         assert_eq!(ledger, owning(&[&sample]));
     }
+}
+
+// ----- The parameter set (RFC-0016 'The parameter set', #530) ---------------------------------
+
+/// `Reject(Params { name })`, naming `name`, the claim list's set.
+fn params_rejected(name: &str) -> Failure {
+    Failure::Rejected(RejectReason::Params {
+        name: ParamSetId::new(name).unwrap(),
+    })
+}
+
+/// A sample of `five_requests` under a policy that selects everything and whose proofs use
+/// `ni-100/1`.
+fn sample_under_ni_100() -> (Scenario, AuditSample) {
+    let scenario = five_requests();
+    let sample = AuditSample::derive(
+        &scenario.window(),
+        policy_of(&[(u32::MAX, u64::MAX)], "ni-100/1"),
+        toss([1; 32], [2; 32]),
+    )
+    .unwrap();
+    assert_eq!(sample.policy().params().as_str(), "ni-100/1");
+    assert_eq!(sample.selected().len(), 5);
+    (scenario, sample)
+}
+
+/// RFC-0016 'The parameter set', RFC-0019 step 2: the policy fixes the soundness every proof of
+/// the audit gives, so a proof whose claim list names another set, such as `live-64/1` under a
+/// policy of `ni-100/1`, is `Reject(Params { name })` with the claim list's name, and the record
+/// leaves the ledger as it was. A set that equals the policy's, byte for byte, passes.
+#[test]
+fn a_claim_list_of_another_parameter_set_is_rejected_and_records_nothing() {
+    let (scenario, sample) = sample_under_ni_100();
+    let manifest = *scenario.period.manifest_digest();
+    let mut ledger = owning(&[&sample]);
+    let before = ledger.clone();
+    // A statement that passes every other check.
+    let s = statement(manifest, vec![req(1, 4), req(1, 2)]);
+    let uhat = [FixedBits(40), FixedBits(20)];
+    // The RFC's case: the weaker set.
+    assert_eq!(
+        ledger.check_accounting(&sample, &live(), &s),
+        Err(params_rejected(LIVE))
+    );
+    assert_eq!(
+        ledger.record_accepted(&sample, &live(), &s, &uhat),
+        Err(params_rejected(LIVE))
+    );
+    assert_eq!(ledger, before, "a refused record changes nothing");
+    // The policy's name a byte away, cut, extended, in another case or spaced; another set this
+    // verifier allows with `test-params`; and the empty name. Each rejection names the claim
+    // list's set.
+    for name in [
+        "ni-100/2",
+        "ni-100/10",
+        "ni-100/",
+        "ni-100",
+        "ni-100/1 ",
+        " ni-100/1",
+        "NI-100/1",
+        "ni-101/1",
+        "test-small/1",
+        "",
+    ] {
+        let params = ParamSetId::new(name).unwrap();
+        assert_eq!(
+            ledger.check_accounting(&sample, &params, &s),
+            Err(params_rejected(name)),
+            "{name:?}"
+        );
+        assert_eq!(
+            ledger.record_accepted(&sample, &params, &s, &uhat),
+            Err(params_rejected(name)),
+            "{name:?}"
+        );
+        assert_eq!(ledger, before, "{name:?}");
+    }
+    // Seeded names: printable ASCII of up to 16 bytes, and the policy's name with one byte
+    // replaced. The rare draw equal to the policy's passes; every other is rejected by name.
+    let mut rng = SplitMix64::new(0x0530_0016_0067);
+    let printable = |rng: &mut SplitMix64| 0x20 + (rng.next_u64() % 95) as u8;
+    for case in 0..1000 {
+        let mut name: Vec<u8> = b"ni-100/1".to_vec();
+        if case % 2 == 0 {
+            name = (0..rng.next_u64() % 17)
+                .map(|_| printable(&mut rng))
+                .collect();
+        } else {
+            let at = (rng.next_u64() % name.len() as u64) as usize;
+            name[at] = printable(&mut rng);
+        }
+        let name = String::from_utf8(name).unwrap();
+        let params = ParamSetId::new(&name).unwrap();
+        if name == "ni-100/1" {
+            assert_eq!(
+                ledger.check_accounting(&sample, &params, &s),
+                Ok(vec![3, 1])
+            );
+            continue;
+        }
+        assert_eq!(
+            ledger.check_accounting(&sample, &params, &s),
+            Err(params_rejected(&name)),
+            "case {case}: {name:?}"
+        );
+        assert_eq!(
+            ledger.record_accepted(&sample, &params, &s, &uhat),
+            Err(params_rejected(&name)),
+            "case {case}: {name:?}"
+        );
+    }
+    assert_eq!(ledger, before);
+    // The honest proof, its claim list naming the policy's set, passes and is recorded.
+    let ni = ParamSetId::new("ni-100/1").unwrap();
+    assert_eq!(ledger.check_accounting(&sample, &ni, &s), Ok(vec![3, 1]));
+    ledger.record_accepted(&sample, &ni, &s, &uhat).unwrap();
+    assert_eq!(
+        ledger
+            .proven(sample.identity())
+            .unwrap()
+            .iter()
+            .collect::<Vec<_>>(),
+        [(1, FixedBits(20)), (3, FixedBits(40))]
+    );
+    // The requests still open are refused under the weaker set, and nothing joins the record.
+    let recorded = ledger.clone();
+    let rest = statement(manifest, vec![req(1, 1), req(1, 3), req(1, 5)]);
+    assert_eq!(
+        ledger.record_accepted(&sample, &live(), &rest, &[FixedBits(0); 3]),
+        Err(params_rejected(LIVE))
+    );
+    assert_eq!(ledger, recorded);
+    assert_eq!(
+        AuditReport::from_ledger(&sample, &ledger)
+            .unwrap()
+            .summary()
+            .unproven,
+        3
+    );
+}
+
+/// The same rule through the ledger's file: a proof of another set writes nothing, and the file
+/// keeps its bytes, its directory its entries, and the writer its ledger in memory.
+#[test]
+fn a_ledger_file_writes_nothing_for_another_parameter_set() {
+    let scenario = five_requests();
+    let manifest = *scenario.period.manifest_digest();
+    let dir = scratch("params");
+    let path = dir.join("ledger.tvl");
+    let mut file = LedgerFile::create(&path).unwrap();
+    let sample = AuditToss::commit(
+        scenario.period.manifest(),
+        policy_of(&[(u32::MAX, u64::MAX)], "ni-100/1"),
+    )
+    .unwrap()
+    .reveal(&scenario.window(), [2; 32], &mut file)
+    .unwrap();
+    assert_eq!(sample.policy().params().as_str(), "ni-100/1");
+    let entries = |dir: &PathBuf| {
+        let mut names: Vec<_> = fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        names.sort();
+        names
+    };
+    let (bytes, listed, held) = (
+        fs::read(&path).unwrap(),
+        entries(&dir),
+        file.ledger().clone(),
+    );
+    let s = statement(manifest, vec![req(1, 3)]);
+    assert_eq!(
+        file.record_accepted(&sample, &live(), &s, &[FixedBits(9)]),
+        Err(params_rejected(LIVE))
+    );
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    assert_eq!(entries(&dir), listed);
+    assert_eq!(file.ledger(), &held);
+    // The honest proof is written, and the file holds it once reopened.
+    let ni = ParamSetId::new("ni-100/1").unwrap();
+    file.record_accepted(&sample, &ni, &s, &[FixedBits(9)])
+        .unwrap();
+    drop(file);
+    let ledger = read_ledger(&path).unwrap();
+    assert_eq!(
+        ledger
+            .proven(sample.identity())
+            .unwrap()
+            .iter()
+            .collect::<Vec<_>>(),
+        [(2, FixedBits(9))]
+    );
+    fs::remove_file(&path).unwrap();
+    fs::remove_dir(&dir).unwrap();
+}
+
+/// RFC-0067 'The accounting': the verifier's own sample first, so a sample not in `derived`
+/// is `Inconclusive(ERR-USAGE)` whatever the parameter set; then the parameter set, step 0,
+/// before the manifest, step 1, and the batch, step 2; and in a record before the length of
+/// `uhat`, a rejection first.
+#[test]
+fn the_parameter_set_is_checked_after_the_sample_and_before_the_statement() {
+    let (scenario, sample) = sample_of_five();
+    let manifest = *scenario.period.manifest_digest();
+    let ni = ParamSetId::new("ni-100/1").unwrap();
+    let honest = statement(manifest, vec![req(1, 2)]);
+    let mut other_manifest = manifest;
+    other_manifest[0] ^= 1;
+    // A sample this verifier did not derive: an empty ledger, and one that derived another
+    // period's sample. The parameter set differs too, and so, in the last case, does the
+    // manifest: the sample's check still decides.
+    for mut stranger in [VerifierLedger::new(), owning(&[&sample_with(&[key(1, 1)])])] {
+        assert!(!stranger.is_derived(&sample));
+        let before = stranger.clone();
+        for s in [&honest, &statement(other_manifest, vec![req(9, 9)])] {
+            for params in [&live(), &ni] {
+                assert_eq!(
+                    stranger.check_accounting(&sample, params, s),
+                    Err(inconclusive(Code::Usage))
+                );
+                assert_eq!(
+                    stranger.record_accepted(&sample, params, s, &[FixedBits(1)]),
+                    Err(inconclusive(Code::Usage))
+                );
+            }
+        }
+        assert_eq!(stranger, before);
+    }
+    // The verifier's own sample, with request 1 accepted. Each statement below is broken, and
+    // its own check rejects it under the policy's set; under another set, the parameter set's
+    // check comes first.
+    let mut ledger = owning(&[&sample]);
+    ledger
+        .record_accepted(
+            &sample,
+            &live(),
+            &statement(manifest, vec![req(1, 1)]),
+            &[FixedBits(1)],
+        )
+        .unwrap();
+    let before = ledger.clone();
+    let manifest_mismatch = Failure::Rejected(RejectReason::StatementMismatch {
+        field: StatementField::ManifestDigest,
+    });
+    for (s, own) in [
+        // Another manifest, with a selected request and with one outside the sample.
+        (
+            statement(other_manifest, vec![req(1, 2)]),
+            &manifest_mismatch,
+        ),
+        (
+            statement(other_manifest, vec![req(9, 9)]),
+            &manifest_mismatch,
+        ),
+        // A request outside the sample, a replay of the accepted one, one named twice.
+        (statement(manifest, vec![req(1, 6)]), &batch_rejected()),
+        (
+            statement(manifest, vec![req(1, 3), req(1, 1)]),
+            &batch_rejected(),
+        ),
+        (
+            statement(manifest, vec![req(1, 4), req(1, 4)]),
+            &batch_rejected(),
+        ),
+    ] {
+        let uhat = vec![FixedBits(2); s.batch.requests.len()];
+        assert_eq!(
+            ledger.check_accounting(&sample, &live(), &s),
+            Err(own.clone())
+        );
+        assert_eq!(
+            ledger.record_accepted(&sample, &live(), &s, &uhat),
+            Err(own.clone())
+        );
+        assert_eq!(
+            ledger.check_accounting(&sample, &ni, &s),
+            Err(params_rejected("ni-100/1"))
+        );
+        for u in [&uhat[..], &[]] {
+            assert_eq!(
+                ledger.record_accepted(&sample, &ni, &s, u),
+                Err(params_rejected("ni-100/1"))
+            );
+        }
+        assert_eq!(ledger, before);
+    }
+    // The honest statement under another set too, and under the policy's, it passes.
+    assert_eq!(
+        ledger.check_accounting(&sample, &ni, &honest),
+        Err(params_rejected("ni-100/1"))
+    );
+    assert_eq!(
+        ledger.check_accounting(&sample, &live(), &honest),
+        Ok(vec![1])
+    );
 }
 
 // ----- The ledger's encoding -------------------------------------------------------------------
@@ -939,6 +1266,7 @@ fn the_ledger_file_is_held_by_one_writer_and_written_atomically() {
             .unwrap();
         file.record_accepted(
             &sample,
+            &live(),
             &statement(manifest, vec![req(1, 3)]),
             &[FixedBits(9)],
         )
@@ -948,6 +1276,7 @@ fn the_ledger_file_is_held_by_one_writer_and_written_atomically() {
         assert_eq!(
             file.record_accepted(
                 &sample,
+                &live(),
                 &statement(manifest, vec![req(1, 3)]),
                 &[FixedBits(9)]
             ),
@@ -999,6 +1328,7 @@ fn a_missing_proof_is_unproven_at_the_deadline() {
     ledger
         .record_accepted(
             &sample,
+            &live(),
             &statement(manifest, vec![req(1, 2), req(1, 4)]),
             &[FixedBits(3), FixedBits(11)],
         )
@@ -1108,6 +1438,7 @@ fn the_report_renders_each_outcome_as_the_example_does() {
     ledger
         .record_accepted(
             &sample,
+            &live(),
             &statement(
                 [7; 32],
                 vec![RequestRef {
@@ -1355,7 +1686,7 @@ fn seeded_samples_and_ledgers_round_trip_and_every_prefix_is_cut_short() {
             .collect();
         let uhat: Vec<FixedBits> = some.iter().map(|_| FixedBits(rng.next_u64())).collect();
         ledger
-            .record_accepted(&sample, &statement([7; 32], some), &uhat)
+            .record_accepted(&sample, &live(), &statement([7; 32], some), &uhat)
             .unwrap();
         let bytes = ledger.encode_payload().unwrap();
         assert_eq!(
@@ -1425,8 +1756,13 @@ fn an_accepted_batch_of_no_request_changes_nothing() {
     let (scenario, sample) = sample_of_five();
     let mut ledger = owning(&[&sample]);
     let empty = statement(*scenario.period.manifest_digest(), Vec::new());
-    assert_eq!(ledger.check_accounting(&sample, &empty), Ok(Vec::new()));
-    ledger.record_accepted(&sample, &empty, &[]).unwrap();
+    assert_eq!(
+        ledger.check_accounting(&sample, &live(), &empty),
+        Ok(Vec::new())
+    );
+    ledger
+        .record_accepted(&sample, &live(), &empty, &[])
+        .unwrap();
     assert_eq!(ledger, owning(&[&sample]));
     assert!(ledger.proven(sample.identity()).is_none());
 }
@@ -1452,12 +1788,12 @@ fn a_large_batch_is_checked_in_quasi_linear_time() {
     requests.push(req(1, n - 1));
     let repeated = statement([7; 32], requests);
     let start = std::time::Instant::now();
-    let indices = ledger.check_accounting(&sample, &honest).unwrap();
+    let indices = ledger.check_accounting(&sample, &live(), &honest).unwrap();
     let elapsed = start.elapsed();
     assert_eq!(indices.len() as u64, n);
     assert_eq!(indices[0], n - 1);
     assert_eq!(
-        ledger.check_accounting(&sample, &repeated),
+        ledger.check_accounting(&sample, &live(), &repeated),
         Err(batch_rejected())
     );
     assert!(elapsed < std::time::Duration::from_secs(30), "{elapsed:?}");
@@ -1683,7 +2019,7 @@ fn one_toss_reveals_one_sample_and_one_manifest_takes_one() {
     let ledger = file.ledger().clone();
     let none = statement(*forged.manifest_digest(), Vec::new());
     assert_eq!(
-        ledger.check_accounting(&forged, &none),
+        ledger.check_accounting(&forged, &live(), &none),
         Err(inconclusive(Code::Usage))
     );
     assert_eq!(
@@ -1707,6 +2043,7 @@ fn a_report_from_supplied_outcomes_must_agree_with_the_ledger() {
     ledger
         .record_accepted(
             &sample,
+            &live(),
             &statement(*scenario.period.manifest_digest(), vec![req(1, 2)]),
             &[FixedBits(7)],
         )

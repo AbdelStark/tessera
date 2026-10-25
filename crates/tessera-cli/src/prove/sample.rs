@@ -18,6 +18,10 @@
 //! 4. **The tokens**: its `In` frames' tokens, then its `Out` frames', from the stored frames at
 //!    the counters the log names (`SessionTranscript::request_tokens`).
 //!
+//! The sample's policy also names the parameter set every proof of the audit is made under,
+//! which the claim list must name too (RFC-0016 'Verifier checks', #530). The caller checks it
+//! against the plan, also before anything is committed.
+//!
 //! Errors name requests and sessions by their identifiers and files by their paths, all public;
 //! the keys and tokens stay in their `Secret`s (05 §3).
 
@@ -40,6 +44,8 @@ pub(super) struct Sampled {
     pub(super) request: protocol::RequestRef,
     /// The sample's `manifest_digest`, the period's manifest identity.
     pub(super) manifest_digest: [u8; 32],
+    /// The parameter set the sample's policy names.
+    pub(super) params: tessera_hash::ParamSetId,
     /// Its prompt, then its output.
     pub(super) tokens: Secret<Vec<u32>>,
     /// Every file read, which the proof must not overwrite.
@@ -149,6 +155,7 @@ pub(super) fn request(a: &ProveArgs, path: &Path) -> Result<Sampled, TesseraErro
             output_len: lengths.output_len,
         },
         manifest_digest: *sampled.sample.manifest_digest(),
+        params: sampled.sample.policy().params().clone(),
         tokens,
         inputs,
     })
